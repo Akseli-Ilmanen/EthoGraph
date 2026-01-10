@@ -1,7 +1,7 @@
 # from moveseg.features import *
 # from moveseg.plots import *
 
-# # Import commonly used MovFormer modules
+# # Import commonly used moveseg modules
 # from moveseg.utils import *
 
 # from .data_widget import DataWidget

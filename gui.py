@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Launch MovFormer GUI with napari."""
+"""Launch moveseg GUI with napari."""
 
 import os
 import sys
@@ -35,7 +35,7 @@ def configure_logging(verbose: bool = False) -> None:
 
 def launch_gui(config_path: str = None) -> None:
     """
-    Launch MovFormer GUI with napari viewer.
+    Launch moveseg GUI with napari viewer.
     
     Args:
         config_path: Optional path to configuration file
@@ -43,7 +43,7 @@ def launch_gui(config_path: str = None) -> None:
     configure_logging()
     
     # Create viewer
-    viewer = napari.Viewer(title="MovFormer")
+    viewer = napari.Viewer(title="moveseg")
     
     # Initialize widget with optional config
     if config_path:
@@ -52,7 +52,7 @@ def launch_gui(config_path: str = None) -> None:
         widget = MetaWidget(viewer)
     
     # Add widget to viewer
-    viewer.window.add_dock_widget(widget, name="MovFormer GUI")
+    viewer.window.add_dock_widget(widget, name="moveseg GUI")
     
     # Start the application
     napari.run()
@@ -62,7 +62,7 @@ def main():
     """Main entry point."""
     import argparse
     
-    parser = argparse.ArgumentParser(description="Launch MovFormer GUI")
+    parser = argparse.ArgumentParser(description="Launch moveseg GUI")
     parser.add_argument(
         '--config',
         type=str,
@@ -80,7 +80,7 @@ def main():
     try:
         launch_gui(config_path=args.config)
     except KeyboardInterrupt:
-        print("\nShutting down MovFormer GUI...")
+        print("\nShutting down moveseg GUI...")
     except Exception as e:
         logging.error(f"Failed to launch GUI: {e}")
         sys.exit(1)

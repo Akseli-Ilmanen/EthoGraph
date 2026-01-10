@@ -1,4 +1,4 @@
 @echo off
-call conda activate movformer
-cd /d "D:\Akseli\Code\MovFormer"
+call conda activate moveseg
+cd /d "D:\Akseli\Code\moveseg"
 python gui.py

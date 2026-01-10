@@ -97,7 +97,7 @@
   ],
   "naming": "Freddy_trainAll",
   "dataset_name": "Freddy_trainAll",
-  "mapping_file": "c:\\Users\\aksel\\Documents\\Code\\movformer\\configs\\mapping.txt",
+  "mapping_file": "c:\\Users\\aksel\\Documents\\Code\\moveseg\\configs\\mapping.txt",
   "target_individual": "Freddy",
   "cp_kwargs": {
     "individuals": "Freddy",

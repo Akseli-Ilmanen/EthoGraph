@@ -63,7 +63,7 @@ if __name__ == "__main__":
    
    trainDataReady = False
    
-   model_path = r"D:\Akseli\Code\MovFormer\result\Freddy_train_20251021_164220\split_1\epoch-100.model" # only for inference mode
+   model_path = r"D:\Akseli\Code\moveseg\result\Freddy_train_20251021_164220\split_1\epoch-100.model" # only for inference mode
 
 
    target_individual = "Freddy" # predict labels for this individual

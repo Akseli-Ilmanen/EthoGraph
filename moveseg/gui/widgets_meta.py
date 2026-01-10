@@ -287,7 +287,7 @@ class MetaWidget(CollapsibleWidgetContainer):
     def _open_github(self):
         """Open GitHub issues page."""
         import webbrowser
-        webbrowser.open("https://github.com/akseli-ilmanen/movformer/issues")
+        webbrowser.open("https://github.com/akseli-ilmanen/moveseg/issues")
 
     def _default_yaml_path(self) -> Path:
         yaml_path = Path.cwd() / "gui_settings.yaml"

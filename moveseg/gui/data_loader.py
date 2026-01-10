@@ -1,4 +1,4 @@
-"""Data loading utilities for the movformer GUI."""
+"""Data loading utilities for the moveseg GUI."""
 
 
 import xarray as xr

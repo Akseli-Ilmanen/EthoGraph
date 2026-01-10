@@ -11,7 +11,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 import napari
 import json
 from moveseg.gui.widgets_meta import MetaWidget
-import movformer
+import moveseg
+import matplotlib
 
 
 def main():
@@ -28,7 +29,7 @@ def main():
     logging.getLogger("vispy").setLevel(logging.ERROR)
     logging.getLogger("qtpy").setLevel(logging.ERROR)
 
-    import matplotlib
+    
 
     matplotlib.set_loglevel("WARNING")
 
@@ -41,9 +42,9 @@ def main():
     # Add your plugin
 
     widget = MetaWidget(viewer)
-    viewer.window.add_dock_widget(widget, name="MovFormer GUI")
+    viewer.window.add_dock_widget(widget, name="moveseg GUI")
 
-    print("DEBUG: Napari started with MovFormer GUI")
+    print("DEBUG: Napari started with moveseg GUI")
     print("DEBUG: Use Ctrl+C in terminal to stop")
 
     # Run napari

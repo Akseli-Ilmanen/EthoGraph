@@ -96,7 +96,7 @@ class ExtractS3D(BaseExtractor):
         Returns:
             Dict[str, torch.nn.Module]: model-agnostic dict holding modules for extraction and show_pred
         """
-        s3d_kinetics400_weights_torch_path = './movformer/video_features/checkpoint/S3D_kinetics400_torchified.pt'
+        s3d_kinetics400_weights_torch_path = './moveseg/video_features/checkpoint/S3D_kinetics400_torchified.pt'
         model = S3D(num_class=400, ckpt_path=s3d_kinetics400_weights_torch_path)
         model = model.to(self.device)
         model.eval()

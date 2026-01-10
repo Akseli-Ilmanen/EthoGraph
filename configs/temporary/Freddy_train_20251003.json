@@ -99,7 +99,7 @@
   "test_nc_paths": [
     "C:\\Users\\aksel\\Desktop\\FreddyTrain\\Trial_data2701.nc"
   ],
-  "mapping_file": "c:\\Users\\aksel\\Documents\\Code\\movformer\\configs\\mapping.txt",
+  "mapping_file": "c:\\Users\\aksel\\Documents\\Code\\moveseg\\configs\\mapping.txt",
   "target_individual": "Freddy",
   "cp_kwargs": {
     "individuals": "Freddy",

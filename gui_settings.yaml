@@ -1,0 +1,41 @@
+window_size: 5.0
+audio_folder: C:/Users/aksel/Documents/Code/MoveSeg/data/Night_of_the_Living_Dead
+audio_path: C:\Users\aksel\Documents\Code\MoveSeg\data\Night_of_the_Living_Dead\movie.wav
+vmin_db: -120.0
+nc_file_path: C:/Users/aksel/Documents/Code/MoveSeg/data/Night_of_the_Living_Dead/Movie.nc
+vmax_db: 20.0
+percentile_ylim: 99.5
+plot_spectrogram: false
+video_buffer_size: 300
+video_path: C:\Users\aksel\Documents\Code\MoveSeg\data\Night_of_the_Living_Dead\movie.mp4
+buffer_multiplier: 5.0
+nfft: 1024
+recompute_threshold: 0.5
+cmap: magma
+fps_playback: 30.0
+hop_frac: 0.5
+video_folder: C:/Users/aksel/Documents/Code/MoveSeg/data/Night_of_the_Living_Dead
+import_labels_nc_data: false
+space_plot_type: Layer controls
+cameras_sel: cam1
+features_sel: envelope
+individuals_sel: Ben
+mics_sel: mic1
+trial_conditions_sel: None
+trials_sel: !!python/object/apply:numpy._core.multiarray.scalar
+- !!python/object/apply:numpy.dtype
+  args:
+  - i8
+  - false
+  - true
+  state: !!python/tuple
+  - 3
+  - <
+  - null
+  - null
+  - null
+  - -1
+  - -1
+  - 0
+- !!binary |
+  AQAAAAAAAAA=
