@@ -1,0 +1,17 @@
+0 background
+1 pullOutStick
+2 diagonalToBox
+3 toss
+4 swoopLeftToCorner
+5 reachToWall
+6 right
+7 pullOutPellet
+8 swoopOut
+9 stickToDisp
+10 stickInDisp
+11 rightToPellet
+12 snapPellet
+13 eat
+14 curvedRight
+15 nodding
+16 beakToDisp

@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moveseg"
+version = "0.1.0"
+description = "GUI for segmenting animal behaviour using transformer models and changepoint detection."
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "BSD-3-Clause"}
+authors = [
+    {name = "MoveSeg Team"}
+]
+# Dependencies managed via conda environment.yml files
+dependencies = []
+
+[project.entry-points."napari.manifest"]
+moveseg = "moveseg:napari.yaml"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-qt",
+    "pytest-cov",
+    "ruff",
+    "tox",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["moveseg", "moveseg.*"]
+
+[tool.ruff]
+line-length = 120

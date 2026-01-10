@@ -1,0 +1,32 @@
+name: moveseg-dev
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - movement
+  - napari
+  - pyqt
+  - numpy
+  - xarray
+  # PyTorch with CUDA 12.1
+  - pytorch=2.5.1
+  - torchvision=0.20.1
+  - torchaudio=2.5.1
+  - pytorch-cuda=12.1
+  - scikit-learn
+  - tqdm
+  # Config
+  - pyyaml
+  - pip
+  - pip:
+      - audioio
+      - thunderhopper
+      - pyqtgraph
+      - napari-pyav @ https://github.com/horsto/napari-pyav/releases/download/v0.0.10.1/napari_pyav-0.0.10-py3-none-any.whl
+      - opencv-python
+      - Pillow==10.2.0
+      - omegaconf
+      - -e .[dev]

@@ -1,0 +1,29 @@
+data/
+result/
+
+
+# Byte-compiled
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+
+
+# IDE
+.idea/
+.vscode/
+.claude/
+*.swp
+
+# Jupyter
+.ipynb_checkpoints/
+
+
+# OS
+.DS_Store
+Thumbs.db

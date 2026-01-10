@@ -1,0 +1,24 @@
+# Font sizes
+font.size: 13
+axes.labelsize: 14
+axes.titlesize: 15
+xtick.labelsize: 14
+ytick.labelsize: 14
+legend.fontsize: 12
+
+# Text annotations (plt.text, ax.text, ax.annotate)
+font.size: 13
+
+# Figure title
+figure.titlesize: 15
+
+# Specific text elements
+text.fontsize: 10
+
+# Optional: Additional styling
+axes.grid: False
+grid.alpha: 0.3
+lines.linewidth: 1
+figure.figsize: 10, 8
+figure.dpi: 150
+savefig.dpi: 600

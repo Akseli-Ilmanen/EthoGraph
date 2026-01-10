@@ -1,0 +1,57 @@
+name: movformer-gui
+display_name: Movformer GUI
+# use 'hidden' to remove plugin from napari hub search results
+visibility: public
+# see https://napari.org/stable/plugins/technical_references/manifest.html#fields for valid categories
+# categories: []
+contributions:
+  commands:
+    - id: movformer-gui.widgets_meta
+      python_name: movformer_gui.widgets_meta:MetaWidget
+      title: movformer-gui
+
+    # - id: movformer-gui.get_reader
+    #   python_name: movformer_gui._reader:napari_get_reader
+    #   title: Open data with Movformer GUI
+    # - id: movformer-gui.write_multiple
+    #   python_name: movformer_gui._writer:write_multiple
+    #   title: Save multi-layer data with Movformer GUI
+    # - id: movformer-gui.write_single_image
+    #   python_name: movformer_gui._writer:write_single_image
+    #   title: Save image data with Movformer GUI
+    # - id: movformer-gui.make_container_widget
+    #   python_name: movformer_gui:ImageThreshold
+    #   title: Make threshold Container widget
+    # - id: movformer-gui.make_magic_widget
+    #   python_name: movformer_gui:threshold_magic_widget
+    #   title: Make threshold magic widget
+    # - id: movformer-gui.make_function_widget
+    #   python_name: movformer_gui:threshold_autogenerate_widget
+    #   title: Make threshold function widget
+    # - id: movformer-gui.make_qwidget
+    #   python_name: movformer_gui:ExampleQWidget
+    #   title: Make example QWidget
+  readers:
+    # - command: movformer-gui.get_reader
+    #   accepts_directories: false
+    #   filename_patterns: ['*.npy']
+  writers:
+    # - command: movformer-gui.write_multiple
+    #   layer_types: ['image*','labels*']
+    #   filename_extensions: []
+    # - command: movformer-gui.write_single_image
+    #   layer_types: ['image']
+    #   filename_extensions: ['.npy']
+  widgets:
+    - command: movformer-gui.make_widget
+      display_name: movformer-gui
+
+    # - command: movformer-gui.make_container_widget
+    #   display_name: Container Threshold
+    # - command: movformer-gui.make_magic_widget
+    #   display_name: Magic Threshold
+    # - command: movformer-gui.make_function_widget
+    #   autogenerate: true
+    #   display_name: Autogenerate Threshold
+    # - command: movformer-gui.make_qwidget
+    #   display_name: Example QWidget
