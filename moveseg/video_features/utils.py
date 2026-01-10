@@ -142,7 +142,7 @@ def build_cfg_path(feature_type: str) -> os.PathLike:
     Returns:
         os.PathLike: the path to the default config for the type
     '''
-    path_base = Path('./configs_global')
+    path_base = Path('./configs')
     path = path_base / f'{feature_type}.yml'
     return path
 

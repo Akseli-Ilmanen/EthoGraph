@@ -401,7 +401,7 @@ def create_classification_probabilities_pdf(label_dt, output_path: Union[str, Pa
     N = len(trial_nums)
 
     repo_root = Path(__file__).resolve().parents[2]
-    mapping_path = repo_root / "configs_global" / "mapping.txt"
+    mapping_path = repo_root / "configs" / "mapping.txt"
     motif_mappings = load_motif_mapping(mapping_path)
     class_colors = [motif_mappings[i]['color'] for i in range(len(motif_mappings))]
     num_classes = len(motif_mappings)

@@ -240,7 +240,7 @@ def correct_changepoints_one_trial(labels, ds, all_params, speed_correction=True
     #     corrected_labels = labels.copy()
         
     #     repo_root = Path(__file__).resolve().parents[2]
-    #     speed_stats_path = repo_root / "configs_global" / f"{all_params['target_individual']}_speed_stats.npy"
+    #     speed_stats_path = repo_root / "configs" / f"{all_params['target_individual']}_speed_stats.npy"
         
     #     speed_stats = np.load(speed_stats_path, allow_pickle=True).item()
         

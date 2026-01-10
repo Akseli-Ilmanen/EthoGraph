@@ -33,7 +33,7 @@
     0.9
   ],
   "action": "train",
-  "mapping_file": "D:\\Akseli\\Code\\MovFormer\\configs_global\\mapping.txt",
+  "mapping_file": "D:\\Akseli\\Code\\MovFormer\\configs\\mapping.txt",
   "target_individual": "Freddy",
   "cp_kwargs": {
     "individuals": "Freddy",

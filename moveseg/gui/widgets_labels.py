@@ -93,7 +93,7 @@ class LabelsWidget(QWidget):
 
         
         repo_root = Path(__file__).resolve().parents[2]
-        mapping_path = repo_root / "configs_global" / "mapping.txt"
+        mapping_path = repo_root / "configs" / "mapping.txt"
         self.motif_mappings = load_motif_mapping(mapping_path) # HARD CODED FOR NOW
         self._populate_motifs_table()
 
@@ -624,7 +624,7 @@ class LabelsWidget(QWidget):
     def _cp_correction(self, mode):
         
         # HARD CODED for now
-        params_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'configs_global', "Freddy_train_20251021_164220.json")
+        params_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'configs', "Freddy_train_20251021_164220.json")
 
         with open(params_path, "r") as f:
             all_params = json.load(f)

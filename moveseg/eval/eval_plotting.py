@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
 import pickle
-style_path = Path(__file__).resolve().parents[2] / 'configs_global' / 'style.mplstyle'
+style_path = Path(__file__).resolve().parents[2] / 'configs' / 'style.mplstyle'
 plt.style.use(str(style_path))
 F1_COLOURS = ["#9467bd", "#2ecc71", "#e377c2"]  # purple, green, pink
 PRED_COLOURS = ["#1f77b4", "#d62728"]  # uncorrected: blue, corrected: red

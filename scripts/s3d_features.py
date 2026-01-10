@@ -38,7 +38,9 @@ def s3d_features(args_cli):
 
 if __name__ == '__main__':
 
-    log_file_path = r".\logging\s3d_logs.txt"
+
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    log_file_path = os.path.join(project_root, "logging", "s3d_logs.txt")
     os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
     
     # Redirect stdout to the log file
@@ -50,5 +52,5 @@ if __name__ == '__main__':
 
 
 # """
-# python main.py file_with_video_paths=path/to/video_list.txt output_path=path/to/output_dir
+# python moveseg/model/main.py file_with_video_paths=path/to/video_list.txt output_path=path/to/output_dir
 # """

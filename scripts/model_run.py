@@ -124,15 +124,18 @@ boundary_radius = all_params.get("boundary_radius")
 
 
 # global
-mapping_path = Path("configs_global/mapping.txt")
+# Get project root (two levels up from this script)
+script_dir = Path(__file__).parent
+project_root = script_dir.parent.parent
+mapping_path = project_root / "configs" / "mapping.txt"
 
 
 # data/
 if args.dataset is None:
-    args.dataset = os.path.basename(args.config).replace('.json', '') 
+    args.dataset = os.path.basename(args.config).replace('.json', '')
 
-dataset_dir = f"./data/{args.dataset}/"
-all_params["dataset_dir"] = dataset_dir
+dataset_dir = project_root / "data" / args.dataset
+all_params["dataset_dir"] = str(dataset_dir)
 
 vid_list_file = os.path.join(dataset_dir, f"splits/train.split{args.split}.bundle")
 vid_list_file_tst = os.path.join(dataset_dir, f"splits/test.split{args.split}.bundle")
@@ -146,8 +149,8 @@ trial_mapping_path = os.path.join(dataset_dir, "trial_mapping.json")
 
 
 # result/
-results_dir = f"./result/{args.dataset}/split_{args.split}"
-all_params["result_dir"] = results_dir
+results_dir = project_root / "result" / args.dataset / f"split_{args.split}"
+all_params["result_dir"] = str(results_dir)
 
 
 for d in [features_path, gt_path, Path(vid_list_file).parent]:
@@ -259,15 +262,15 @@ if args.action == "inference":
 #     TODO: If inference mode, just save 'predictions' to .nc file if labels already not zero. Allow user to override existing labels manually.
 
 
-#     python main2.py --config configs/Freddy_CV_fold1.json --method train
-#     python main2.py --config configs/Freddy_CV_fold2.json --method train
-#     python main2.py --config configs/Freddy_CV_fold3.json --method train
+#     python moveseg/model/main2.py --config configs/Freddy_CV_fold1.json --method train
+#     python moveseg/model/main2.py --config configs/Freddy_CV_fold2.json --method train
+#     python moveseg/model/main2.py --config configs/Freddy_CV_fold3.json --method train
 
 
 
-#     python main2.py --config configs/Freddy_CV_fold1.json --method eval --model_path result\Freddy_CV_fold1\epoch-300.model
-#     python main2.py --config configs/Freddy_CV_fold2.json --method eval --model_path result\Freddy_CV_fold2\epoch-300.model
-#     python main2.py --config configs/Freddy_CV_fold3.json --method eval --model_path result\Freddy_CV_fold3\epoch-300.model
+#     python moveseg/model/main2.py --config configs/Freddy_CV_fold1.json --method eval --model_path result\Freddy_CV_fold1\epoch-300.model
+#     python moveseg/model/main2.py --config configs/Freddy_CV_fold2.json --method eval --model_path result\Freddy_CV_fold2\epoch-300.model
+#     python moveseg/model/main2.py --config configs/Freddy_CV_fold3.json --method eval --model_path result\Freddy_CV_fold3\epoch-300.model
 
 #     NOTE: Method has to be specified by the user.
 #     - method: train, eval, inference
