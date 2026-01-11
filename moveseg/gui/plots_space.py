@@ -7,11 +7,11 @@ import pyqtgraph.opengl as gl
 from qtpy.QtWidgets import QWidget, QVBoxLayout
 from typing import Optional
 import xarray as xr
-from moveseg.utils.data_utils import sel_valid
+from ethograph.utils.data_utils import sel_valid
 from movement.plots import plot_centroid_trajectory
 from movement.filtering import rolling_filter
-from moveseg.plots.plot_qtgraph import MultiColoredLineItem
-from moveseg.features.preprocessing import interpolate_nans
+from ethograph.plots.plot_qtgraph import MultiColoredLineItem
+from ethograph.features.preprocessing import interpolate_nans
 
 
 

@@ -15,8 +15,8 @@ from qtpy.QtWidgets import (
 from .app_state import AppStateSpec
 from pathlib import Path
 from qtpy.QtCore import Qt
-from moveseg.utils.io import TrialTree
-from moveseg.utils.paths import gui_default_settings_path
+from ethograph.utils.io import TrialTree
+from ethograph.utils.paths import gui_default_settings_path
 from typing import Optional
 
 class IOWidget(QWidget):

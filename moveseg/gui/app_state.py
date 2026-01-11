@@ -12,7 +12,7 @@ from napari.utils.notifications import show_info
 from qtpy.QtCore import QObject, QTimer, Signal
 from qtpy.QtWidgets import QApplication
 
-from moveseg.utils.io import TrialTree
+from ethograph.utils.io import TrialTree
 
 
 SIMPLE_SIGNAL_TYPES = (int, float, str, bool)

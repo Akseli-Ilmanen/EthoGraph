@@ -1,4 +1,4 @@
-name: moveseg-dev
+name: ethograph-dev
 channels:
   - pytorch
   - nvidia

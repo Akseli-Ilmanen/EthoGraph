@@ -1,4 +1,4 @@
-"""Simple markdown documentation viewer for moveseg napari plugin."""
+"""Simple markdown documentation viewer for ethograph napari plugin."""
 
 from pathlib import Path
 from typing import Optional

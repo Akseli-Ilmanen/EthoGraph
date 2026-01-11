@@ -1,4 +1,4 @@
-# moveseg/shortcuts.py
+# ethograph/shortcuts.py
 from __future__ import annotations
 
 import sys
@@ -30,7 +30,7 @@ def install_shortcut() -> int:
     menu_dir.mkdir(exist_ok=True)
 
     target_icon = menu_dir / "icon.ico"
-    target_json = menu_dir / "moveseg.json"
+    target_json = menu_dir / "ethograph.json"
 
     try:
         if target_icon.exists():

@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 from typing import Tuple, Dict, Union
 
-from moveseg.utils.io import TrialTree
+from ethograph.utils.io import TrialTree
 
 
 def extract_csv_file_info(file_name: str, session_number: str) -> Tuple[str, str, str, str, str]:

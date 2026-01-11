@@ -26,8 +26,8 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from moveseg.gui.parameters import create_function_selector
-from moveseg.utils.data_utils import sel_valid
+from ethograph.gui.parameters import create_function_selector
+from ethograph.utils.data_utils import sel_valid
 from .data_loader import load_dataset
 from .plots_space import SpacePlot
 from .plots_spectrogram import SharedAudioCache

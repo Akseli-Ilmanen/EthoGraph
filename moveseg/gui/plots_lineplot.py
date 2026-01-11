@@ -2,8 +2,8 @@
 
 import numpy as np
 from typing import Optional
-from moveseg.utils.data_utils import sel_valid
-from moveseg.plots.plot_qtgraph import plot_ds_variable, clear_plot_items
+from ethograph.utils.data_utils import sel_valid
+from ethograph.plots.plot_qtgraph import plot_ds_variable, clear_plot_items
 from .plots_base import BasePlot
 import pyqtgraph as pg
 

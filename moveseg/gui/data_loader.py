@@ -1,4 +1,4 @@
-"""Data loading utilities for the moveseg GUI."""
+"""Data loading utilities for the ethograph GUI."""
 
 
 import xarray as xr
@@ -6,7 +6,7 @@ import numpy as np
 from typing import List, Optional, Tuple
 from pathlib import Path
 from napari.utils.notifications import show_error
-from moveseg.utils.io import TrialTree
+from ethograph.utils.io import TrialTree
 
 
 

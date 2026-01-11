@@ -3,7 +3,7 @@ import traceback
 from pathlib import Path
 from typing import Dict, Union
 import numpy as np
-from moveseg.video_features.utils import load_numpy, load_pickle, make_path, write_numpy, write_pickle
+from ethograph.video_features.utils import load_numpy, load_pickle, make_path, write_numpy, write_pickle
 
 
 class BaseExtractor(object):

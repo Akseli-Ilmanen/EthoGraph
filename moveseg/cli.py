@@ -1,28 +1,28 @@
 #!/usr/bin/env python
-"""Command-line interface for MoveSeg."""
+"""Command-line interface for ethograph."""
 
 import sys
 
 
 
 def launch():
-    """Launch the MoveSeg GUI."""
+    """Launch the ethograph GUI."""
     print("Loading GUI...")
     print("\n")
     import napari
-    from moveseg.gui.widgets_meta import MetaWidget
+    from ethograph.gui.widgets_meta import MetaWidget
     
     viewer = napari.Viewer()
-    viewer.window.add_dock_widget(MetaWidget(viewer), name="MoveSeg GUI")
+    viewer.window.add_dock_widget(MetaWidget(viewer), name="ethograph GUI")
     napari.run()
 
 
 def main():
     """Main CLI entry point."""
     if len(sys.argv) < 2:
-        print("Usage: moveseg <command>")
+        print("Usage: ethograph <command>")
         print("Commands:")
-        print("  launch    Launch the MoveSeg GUI")
+        print("  launch    Launch the ethograph GUI")
         sys.exit(1)
 
     command = sys.argv[1]

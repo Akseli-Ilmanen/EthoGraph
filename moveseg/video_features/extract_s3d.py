@@ -3,11 +3,11 @@ from typing import Dict
 import numpy as np
 import torch
 import torchvision
-from moveseg.video_features.base_extractor import BaseExtractor
-from moveseg.video_features.s3d import S3D
-from moveseg.video_features.transforms import CenterCrop, Resize, ToFloatTensorInZeroOne
+from ethograph.video_features.base_extractor import BaseExtractor
+from ethograph.video_features.s3d import S3D
+from ethograph.video_features.transforms import CenterCrop, Resize, ToFloatTensorInZeroOne
 from torchvision.io.video import read_video
-from moveseg.video_features.utils import form_slices
+from ethograph.video_features.utils import form_slices
 
 
 class ExtractS3D(BaseExtractor):
@@ -96,7 +96,7 @@ class ExtractS3D(BaseExtractor):
         Returns:
             Dict[str, torch.nn.Module]: model-agnostic dict holding modules for extraction and show_pred
         """
-        s3d_kinetics400_weights_torch_path = './moveseg/video_features/checkpoint/S3D_kinetics400_torchified.pt'
+        s3d_kinetics400_weights_torch_path = './ethograph/video_features/checkpoint/S3D_kinetics400_torchified.pt'
         model = S3D(num_class=400, ckpt_path=s3d_kinetics400_weights_torch_path)
         model = model.to(self.device)
         model.eval()

@@ -1,12 +1,12 @@
-name: moveseg
-display_name: MoveSeg GUI
+name: ethograph
+display_name: EthoGraph
 visibility: public
 contributions:
   commands:
-    - id: moveseg.make_widget
-      python_name: moveseg.gui.widgets_meta:MetaWidget
-      title: MoveSeg GUI
+    - id: ethograph.make_widget
+      python_name: ethograph.gui.widgets_meta:MetaWidget
+      title: EthoGraph
 
   widgets:
-    - command: moveseg.make_widget
-      display_name: MoveSeg GUI
+    - command: ethograph.make_widget
+      display_name: EthoGraph

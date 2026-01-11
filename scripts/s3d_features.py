@@ -4,8 +4,8 @@ from tqdm import tqdm
 import sys
 import os
 from contextlib import redirect_stdout
-from moveseg.video_features.utils import build_cfg_path, form_list_from_user_input, sanity_check
-from moveseg.video_features.extract_s3d import ExtractS3D as Extractor
+from ethograph.video_features.utils import build_cfg_path, form_list_from_user_input, sanity_check
+from ethograph.video_features.extract_s3d import ExtractS3D as Extractor
 
 
 
@@ -52,5 +52,5 @@ if __name__ == '__main__':
 
 
 # """
-# python moveseg/model/main.py file_with_video_paths=path/to/video_list.txt output_path=path/to/output_dir
+# python ethograph/model/main.py file_with_video_paths=path/to/video_list.txt output_path=path/to/output_dir
 # """

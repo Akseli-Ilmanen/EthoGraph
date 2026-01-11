@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from moveseg.utils.paths import gui_default_settings_path
+from ethograph.utils.paths import gui_default_settings_path
 from napari.layers import Image
 from napari.viewer import Viewer
 from qt_niu.collapsible_widget import CollapsibleWidgetContainer
@@ -271,7 +271,7 @@ class MetaWidget(CollapsibleWidgetContainer):
     def _open_github(self):
         """Open GitHub issues page."""
         import webbrowser
-        webbrowser.open("https://github.com/akseli-ilmanen/moveseg/issues")
+        webbrowser.open("https://github.com/akseli-ilmanen/ethograph/issues")
 
     def _override_napari_shortcuts(self):
         """Aggressively unbind napari shortcuts at all levels."""

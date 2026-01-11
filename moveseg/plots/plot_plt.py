@@ -3,7 +3,7 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 import numpy as np
-from moveseg.utils.data_utils import sel_valid
+from ethograph.utils.data_utils import sel_valid
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Optional

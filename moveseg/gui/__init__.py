@@ -1,8 +1,8 @@
-# from moveseg.features import *
-# from moveseg.plots import *
+# from ethograph.features import *
+# from ethograph.plots import *
 
-# # Import commonly used moveseg modules
-# from moveseg.utils import *
+# # Import commonly used ethograph modules
+# from ethograph.utils import *
 
 # from .data_widget import DataWidget
 # from .labels_widget import LabelsWidget

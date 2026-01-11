@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 import numpy as np
-from moveseg.utils.paths import get_project_root
+from ethograph.utils.paths import get_project_root
 import pyqtgraph as pg
 from napari.viewer import Viewer
 from napari.utils.notifications import show_info
@@ -31,10 +31,10 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 from napari.utils.notifications import show_warning
-from moveseg.features.changepoints import correct_changepoints_one_trial, snap_to_nearest_changepoint
-from moveseg.utils.labels import load_motif_mapping, remove_small_blocks
-from moveseg.utils.data_utils import sel_valid
-from moveseg.utils.io import TrialTree    
+from ethograph.features.changepoints import correct_changepoints_one_trial, snap_to_nearest_changepoint
+from ethograph.utils.labels import load_motif_mapping, remove_small_blocks
+from ethograph.utils.data_utils import sel_valid
+from ethograph.utils.io import TrialTree    
 import json
 import time
 import xarray as xr

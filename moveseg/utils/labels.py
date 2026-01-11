@@ -4,7 +4,7 @@ from typing import Union, Dict
 from pathlib import Path
 import numpy as np
 import os
-from moveseg.utils.paths import get_project_root
+from ethograph.utils.paths import get_project_root
 from itertools import groupby
 from itertools import groupby
 from typing import Dict, List, Tuple, Any, Union

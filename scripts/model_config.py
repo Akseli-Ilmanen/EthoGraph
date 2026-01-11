@@ -8,8 +8,8 @@ import psutil
 import traceback
 import importlib
 import sys
-from moveseg.utils.dataset import save_config
-from moveseg.utils.io import get_project_root
+from ethograph.utils.dataset import save_config
+from ethograph.utils.io import get_project_root
 
 
 params_rigid = {
@@ -64,7 +64,7 @@ if __name__ == "__main__":
    
    trainDataReady = False
    
-   model_path = r"D:\Akseli\Code\moveseg\result\Freddy_train_20251021_164220\split_1\epoch-100.model" # only for inference mode
+   model_path = r"D:\Akseli\Code\ethograph\result\Freddy_train_20251021_164220\split_1\epoch-100.model" # only for inference mode
 
 
    target_individual = "Freddy" # predict labels for this individual
@@ -121,9 +121,9 @@ if __name__ == "__main__":
       config_path = save_config(params_dynamic, 'configs', action)
       
       if action == "train":
-         print("Next run: \npython moveseg/scripts/model_run --config {} --action train".format(config_path))
+         print("Next run: \npython ethograph/scripts/model_run --config {} --action train".format(config_path))
       elif action == "inference":
-         print("Next run: \npython moveseg/scripts/model_run --config {} --action inference --model_path {}".format(config_path, model_path))
+         print("Next run: \npython ethograph/scripts/model_run --config {} --action inference --model_path {}".format(config_path, model_path))
       
    if action == "CV":
       env = os.environ.copy()
@@ -145,7 +145,7 @@ if __name__ == "__main__":
    
       for fold_id in range(num_sessions):      
          result = subprocess.run(
-            [sys.executable, os.path.join(project_root, 'moveseg', 'scripts', 'model_run'), '--action', 'CV', '--config', config_path, '--split', str(fold_id+1)],
+            [sys.executable, os.path.join(project_root, 'ethograph', 'scripts', 'model_run'), '--action', 'CV', '--config', config_path, '--split', str(fold_id+1)],
             env=env,
             text=True
          ) 
@@ -187,7 +187,7 @@ if __name__ == "__main__":
    
       for i in range(len(conditions)):      
          result = subprocess.run(
-            [sys.executable, os.path.join(project_root, 'moveseg', 'scripts', 'model_run'), '--action', 'CV', '--config', config_path, '--split', str(i+1)],
+            [sys.executable, os.path.join(project_root, 'ethograph', 'scripts', 'model_run'), '--action', 'CV', '--config', config_path, '--split', str(i+1)],
             env=env,
             text=True
          ) 

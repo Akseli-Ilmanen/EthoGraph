@@ -1,4 +1,4 @@
-# MoveSeg
+# ethograph
 
 Transformer-based behavioral action segmentation for pose estimation data.
 
@@ -11,6 +11,6 @@ pip install -e .
 ## Usage
 
 ```python
-from moveseg import __version__
+from ethograph import __version__
 print(__version__)
 ```

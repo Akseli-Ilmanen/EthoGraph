@@ -5,7 +5,7 @@
 
 import pyqtgraph as pg
 import numpy as np
-from moveseg.utils.data_utils import sel_valid
+from ethograph.utils.data_utils import sel_valid
 import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore

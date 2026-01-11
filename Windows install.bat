@@ -1,9 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
-set ENV_NAME=moveseg
+set ENV_NAME=ethograph
 
 echo ============================================
-echo MoveSeg Installation Script
+echo ethograph Installation Script
 echo ============================================
 echo.
 
@@ -21,8 +21,8 @@ if %errorlevel% neq 0 (
 
 :: Ask user which environment to install
 echo Choose installation type:
-echo   1. MoveSeg GUI 
-echo   2. MoveSeg GUI + Tranformer segmentation model (in development)
+echo   1. ethograph GUI 
+echo   2. ethograph GUI + Tranformer segmentation model (in development)
 echo.
 set /p choice="Enter choice (1 or 2): "
 
@@ -72,7 +72,7 @@ set /p create_shortcut="Do you want to create a desktop shortcut for the GUI? (y
 if /i "!create_shortcut!"=="y" (
     echo Creating desktop shortcut...
     call conda activate %ENV_NAME%
-    call moveseg-shortcut
+    call ethograph-shortcut
     if %errorlevel% neq 0 (
         echo WARNING: Failed to create desktop shortcut.
     )

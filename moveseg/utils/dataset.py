@@ -9,8 +9,8 @@ import numpy as np
 import xarray as xr
 from pathlib import Path
 from tqdm import tqdm
-from moveseg.utils.io import extract_features_per_trial, TrialTree, extract_variable_flat
-from moveseg.features.preprocessing import clip_by_percentiles, z_normalize, interpolate_nans
+from ethograph.utils.io import extract_features_per_trial, TrialTree, extract_variable_flat
+from ethograph.features.preprocessing import clip_by_percentiles, z_normalize, interpolate_nans
 import random
 import argparse
 import shutil

@@ -1,6 +1,6 @@
 # Utils not from diffact but added for preparing data for training, and doing inference on new data
 import numpy as np
-from moveseg.utils.labels import get_labels_start_end_time
+from ethograph.utils.labels import get_labels_start_end_time
 
 
 def func_eval(ground_truth_dict, predictions_dict, video_list, f1_thresholds=[.5, .75, .9]):
