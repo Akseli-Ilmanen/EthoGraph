@@ -15,13 +15,13 @@ import numpy as np
 from datetime import datetime
 
 
-from moveseg.utils.dataset import get_trial_dict, get_data_dict, write_bundle_list, save_config
-from moveseg.eval.eval_plotting import plot_metrics_best_model
-from moveseg.utils.io import TrialTree
-from moveseg.utils.paths import get_project_root
-from moveseg.utils.labels import load_mapping
-from moveseg.model.cetnet_encoder import *
-from moveseg.utils.batch_gen import BatchGenerator
+from ethograph.utils.dataset import get_trial_dict, get_data_dict, write_bundle_list, save_config
+from ethograph.eval.eval_plotting import plot_metrics_best_model
+from ethograph.utils.io import TrialTree
+from ethograph.utils.paths import get_project_root
+from ethograph.utils.labels import load_mapping
+from ethograph.model.cetnet_encoder import *
+from ethograph.utils.batch_gen import BatchGenerator
 
 
 if not torch.cuda.is_available():
@@ -261,15 +261,15 @@ if args.action == "inference":
 #     TODO: If inference mode, just save 'predictions' to .nc file if labels already not zero. Allow user to override existing labels manually.
 
 
-#     python moveseg/model/main2.py --config configs/Freddy_CV_fold1.json --method train
-#     python moveseg/model/main2.py --config configs/Freddy_CV_fold2.json --method train
-#     python moveseg/model/main2.py --config configs/Freddy_CV_fold3.json --method train
+#     python ethograph/model/main2.py --config configs/Freddy_CV_fold1.json --method train
+#     python ethograph/model/main2.py --config configs/Freddy_CV_fold2.json --method train
+#     python ethograph/model/main2.py --config configs/Freddy_CV_fold3.json --method train
 
 
 
-#     python moveseg/model/main2.py --config configs/Freddy_CV_fold1.json --method eval --model_path result\Freddy_CV_fold1\epoch-300.model
-#     python moveseg/model/main2.py --config configs/Freddy_CV_fold2.json --method eval --model_path result\Freddy_CV_fold2\epoch-300.model
-#     python moveseg/model/main2.py --config configs/Freddy_CV_fold3.json --method eval --model_path result\Freddy_CV_fold3\epoch-300.model
+#     python ethograph/model/main2.py --config configs/Freddy_CV_fold1.json --method eval --model_path result\Freddy_CV_fold1\epoch-300.model
+#     python ethograph/model/main2.py --config configs/Freddy_CV_fold2.json --method eval --model_path result\Freddy_CV_fold2\epoch-300.model
+#     python ethograph/model/main2.py --config configs/Freddy_CV_fold3.json --method eval --model_path result\Freddy_CV_fold3\epoch-300.model
 
 #     NOTE: Method has to be specified by the user.
 #     - method: train, eval, inference
