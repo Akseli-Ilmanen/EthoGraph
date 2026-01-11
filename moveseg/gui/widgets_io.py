@@ -64,7 +64,7 @@ class IOWidget(QWidget):
         self.app_state.delete_yaml()
         
         # Reset all app_state attributes to their defaults
-        for var, (var_type, default, _, _) in AppStateSpec.VARS.items():
+        for var, (_, default, _) in AppStateSpec.VARS.items():
             setattr(self.app_state._state, var, default)
         
         # Clear all dynamic _sel attributes
@@ -86,16 +86,21 @@ class IOWidget(QWidget):
   
   
     def _default_yaml_path(self) -> Path:
-        """Create default YAML path (same logic as meta_widget)."""
-        yaml_path = Path.cwd() / "gui_settings.yaml"
+        """Create default YAML path, falling back to home folder if cwd is not writable."""
+        cwd_path = Path(__file__).parent.parent.parent / "gui_settings.yaml"
+        print()
         try:
-            yaml_path.parent.mkdir(parents=True, exist_ok=True)
-            yaml_path.touch(exist_ok=True)
-        except (OSError, PermissionError):
-            yaml_path = Path.home() / "gui_settings.yaml"
-            yaml_path.parent.mkdir(parents=True, exist_ok=True)
-            yaml_path.touch(exist_ok=True)
-        return yaml_path
+            cwd_path.parent.mkdir(parents=True, exist_ok=True)
+            cwd_path.touch(exist_ok=True)
+            print(f"Settings file: {cwd_path}")
+            return cwd_path
+        except (OSError, PermissionError) as e:
+            home_path = Path.home() / "gui_settings.yaml"
+            print(f"Cannot write to {cwd_path.parent}: {e}")
+            print(f"Falling back to home folder: {home_path}")
+            home_path.parent.mkdir(parents=True, exist_ok=True)
+            home_path.touch(exist_ok=True)
+            return home_path
 
     def _clear_all_line_edits(self):
         """Clear all QLineEdit fields in the widget."""

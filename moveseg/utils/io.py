@@ -30,10 +30,11 @@ class TrialTree(xr.DataTree):
             super().__init__(dataset=data, children=children, name=name)
 
     @property
-    def trials(self) -> List[int]:
+    def trials(self) -> List[int | str]:
         """Get list of trial numbers."""
 
-        trials = [node.ds.attrs["trial"] for node in self.children.values() if node.ds is not None and "trial" in node.ds.attrs]
+        raw = [node.ds.attrs["trial"] for node in self.children.values() if node.ds is not None and "trial" in node.ds.attrs]
+        trials = [val.item() if hasattr(val, 'item') else val for val in raw]
         if not trials:
             raise ValueError("No datasets with 'trial' attribute found in the tree.")
         return trials

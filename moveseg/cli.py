@@ -8,6 +8,7 @@ import sys
 def launch():
     """Launch the MoveSeg GUI."""
     print("Loading GUI...")
+    print("\n")
     import napari
     from moveseg.gui.widgets_meta import MetaWidget
     

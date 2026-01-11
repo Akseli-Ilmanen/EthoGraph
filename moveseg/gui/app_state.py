@@ -1,103 +1,149 @@
 """Refactored observable application state with napari video sync support."""
 
+from datetime import datetime
 from pathlib import Path
-from typing import Any
-import numbers
+from typing import Any, get_args, get_origin
+
+import numpy as np
 import xarray as xr
 import yaml
 from napari.settings import get_settings
-from qtpy.QtCore import QObject, QTimer, Signal
-from datetime import datetime
 from napari.utils.notifications import show_info
-import time
+from qtpy.QtCore import QObject, QTimer, Signal
 from qtpy.QtWidgets import QApplication
+
 from moveseg.utils.io import TrialTree
-import numpy as np
+
+
+SIMPLE_SIGNAL_TYPES = (int, float, str, bool)
+
+
+def get_signal_type(type_hint):
+    """Derive Qt Signal-compatible type from a type hint."""
+    if type_hint in SIMPLE_SIGNAL_TYPES:
+        return type_hint
+    return object
+
+
+def check_type(value, type_hint) -> bool:
+    """Check if value matches type_hint. Returns True if valid."""
+    if value is None:
+        origin = get_origin(type_hint)
+        if origin is type(int | str):  # UnionType
+            return type(None) in get_args(type_hint)
+        return type_hint is type(None)
+
+    origin = get_origin(type_hint)
+
+    if origin is type(int | str):  # UnionType (e.g., str | None)
+        return any(check_type(value, arg) for arg in get_args(type_hint))
+
+    if origin is list:
+        if not isinstance(value, list):
+            return False
+        args = get_args(type_hint)
+        if args:
+            return all(isinstance(item, args[0]) for item in value)
+        return True
+
+    if origin is dict:
+        if not isinstance(value, dict):
+            return False
+        args = get_args(type_hint)
+        if len(args) == 2:
+            key_type, val_type = args
+            return all(isinstance(k, key_type) for k in value.keys())
+        return True
+
+    if isinstance(type_hint, type):
+        return isinstance(value, type_hint)
+
+    return True
+
 
 class AppStateSpec:
+    # Variable name: (type, default, save_to_yaml)
+    VARS = {
+        # Video
+        "current_frame": (int, 0, False),
+        "changes_saved": (bool, True, False),
+        "num_frames": (int, 0, False),
+        "_info_data": (dict[str, Any], {}, False),
+        "sync_state": (str | None, None, False),
+        "window_size": (float, 5.0, True),
+        "audio_buffer": (float | None, None, True),
+
+        # Data
+        "ds": (xr.Dataset | None, None, False),
+        "ds_temp": (xr.Dataset | None, None, False),
+        "dt": (xr.DataTree | None, None, False),
+        "label_ds": (xr.Dataset | None, None, False),
+        "label_dt": (xr.DataTree | None, None, False),
+        "pred_ds": (xr.Dataset | None, None, False),
+        "pred_dt": (xr.DataTree | None, None, False),
+        "import_labels_nc_data": (bool, False, True),
+        "fps_playback": (float, 30.0, True),
+        "trials": (list[int | str], [], False),
+        "plot_spectrogram": (bool, False, True),
+        "load_s3d": (bool, False, False),
+
+        # Paths
+        "nc_file_path": (str | None, None, True),
+        "video_folder": (str | None, None, True),
+        "audio_folder": (str | None, None, True),
+        "tracking_folder": (str | None, None, True),
+        "video_path": (str | None, None, True),
+        "audio_path": (str | None, None, True),
+        "tracking_path": (str | None, None, True),
+
+        # Plotting
+        "ymin": (float | None, None, True),
+        "ymax": (float | None, None, True),
+        "spec_ymin": (float | None, None, True),
+        "spec_ymax": (float | None, None, True),
+        "spec_buffer": (float | None, None, True),
+        "video_buffer_size": (int, 300, True),
+        "ready": (bool, False, False),
+        "nfft": (int, 1024, True),
+        "hop_frac": (float, 0.5, True),
+        "vmin_db": (float, -120.0, True),
+        "vmax_db": (float, 20.0, True),
+        "buffer_multiplier": (float, 5.0, True),
+        "recompute_threshold": (float, 0.5, True),
+        "cmap": (str, "magma", True),
+        "percentile_ylim": (float, 99.5, True),
+        "space_plot_type": (str, "Layer controls", True),
+        "lock_axes": (bool, False, False),
+    }
+
     @classmethod
     def get_default(cls, key):
-        """Return the default value for a given key from VARS."""
         if key in cls.VARS:
             return cls.VARS[key][1]
         raise KeyError(f"No default for key: {key}")
 
-    # Variable name: (type, default, save_to_yaml, signal_type)
-    VARS = {
-        # Video 
-        "current_frame": (int, 0, False, int),
-        "changes_saved": (bool, True, False, bool),
-        "num_frames": (int, 0, False, int),
-        "_info_data": (dict[str, Any], {}, False, object),
-        "sync_state": (str | None, None, False, object),        
-        "window_size": (float, 5.0, True, object),
-        "audio_buffer": (float | None, None, True, float),
-
-        # Data
-        # Seperation between raw data and label data (mutable) for data integrity
-        "ds": (xr.Dataset | None, None, False, object),
-        "ds_temp": (xr.Dataset | None, None, False, object), # for exploratory data manipulations
-        "dt": (xr.DataTree | None, None, False, object),
-        "label_ds": (xr.Dataset | None, None, False, object),
-        "label_dt": (xr.DataTree | None, None, False, object),
-        "pred_ds": (xr.Dataset | None, None, False, object),
-        "pred_dt": (xr.DataTree | None, None, False, object),
-        "import_labels_nc_data": (bool, False, True, bool),
-        "fps_playback": (float, 30.0, True, float),
-        "trials": (list[int], [], False, object),
-        "trials_sel_condition_value": (str | None, None, True, object),
-        "plot_spectrogram": (bool, False, True, bool),
-        "load_s3d": (bool, False, False, bool),
-        
-        
-        # Paths
-        "nc_file_path": (str | None, None, True, str),
-        "video_folder": (str | None, None, True, str),
-        "audio_folder": (str | None, None, True, str),
-        "tracking_folder": (str | None, None, True, str),
-        "video_path": (str | None, None, True, str),
-        "audio_path": (str | None, None, True, str),
-        "tracking_path": (str | None, None, True, str),
-         
-        # Plotting
-        "ymin": (float | None, None, True, object),
-        "ymax": (float | None, None, True, object),
-        "spec_ymin": (float | None, None, True, object),
-        "spec_ymax": (float | None, None, True, object),
-        "spec_buffer": (float | None, None, True, float),
-        "video_buffer_size": (int, 300, True, int),
-        "ready": (bool, False, False, bool),
-        "nfft": (int, 1024, True, int),
-        "hop_frac": (float, 0.5, True, float),
-        "vmin_db": (float, -120.0, True, float),
-        "vmax_db": (float, 20.0, True, float),
-        "buffer_multiplier": (float, 5.0, True, float),
-        "recompute_threshold": (float, 0.5, True, float),
-        "cmap": (str, "magma", True, str),
-        "percentile_ylim": (float, 99.5, True, float),
-        "space_plot_type": (str, "Layer controls", True, str),
-        
-        "lock_axes": (bool, False, False, bool), # always started unlocked
-
-    }
+    @classmethod
+    def get_type(cls, key):
+        if key in cls.VARS:
+            return cls.VARS[key][0]
+        raise KeyError(f"No type for key: {key}")
 
 
 class AppState:
     def __init__(self):
-        for var, (var_type, default, _, _) in AppStateSpec.VARS.items():
+        for var, (_, default, _) in AppStateSpec.VARS.items():
             setattr(self, var, default)
 
     def saveable_attributes(self) -> set[str]:
-        return {k for k, (_, _, save, _) in AppStateSpec.VARS.items() if save}
+        return {k for k, (_, _, save) in AppStateSpec.VARS.items() if save}
 
 
 class ObservableAppState(QObject):
-
     """State container with change notifications and computed properties."""
 
-    # Signals for state changes
-    for var, (_, _, _, signal_type) in AppStateSpec.VARS.items():
-        locals()[f"{var}_changed"] = Signal(signal_type)
+    # Signals for state changes (auto-derive signal type from type hint)
+    for var, (type_hint, _, _) in AppStateSpec.VARS.items():
+        locals()[f"{var}_changed"] = Signal(get_signal_type(type_hint))
 
     data_updated = Signal()
 
@@ -153,12 +199,15 @@ class ObservableAppState(QObject):
             super().__setattr__(name, value)
             return
 
-        # Handle state variables
+        # Handle state variables with type validation
         if name in AppStateSpec.VARS:
+            type_hint = AppStateSpec.get_type(name)
+            if not check_type(value, type_hint):
+                raise TypeError(f"{name}: expected {type_hint}, got {type(value).__name__} = {value!r}")
+
             old_value = getattr(self._state, name, None)
             setattr(self._state, name, value)
 
-            # Emit signal if value changed
             signal = getattr(self, f"{name}_changed", None)
             if signal and old_value != value:
                 signal.emit(value)
@@ -198,20 +247,6 @@ class ObservableAppState(QObject):
         """Set current value for a given info key."""
         if currentValue is None:
             return
-
-        
-        if type_key == "trials":
-            currentValue = _normalize_to_native_type(currentValue)
-            trial_type = type(self.trials[0])
-            
-            # Ensure it matches the trials list type
-            if not isinstance(currentValue, trial_type):
-                try:
-                    currentValue = trial_type(currentValue)
-                except (ValueError, TypeError) as e:
-                    print(f"Failed to coerce trial selection '{currentValue}' to {trial_type}: {e}")
-                    return
-
 
         attr_name = f"{type_key}_sel"
         prev_attr_name = f"{type_key}_sel_previous"
@@ -262,23 +297,26 @@ class ObservableAppState(QObject):
             print(f"Error updating combo box for {type_key}: {e}")
 
     # --- Save/Load methods ---
+    def _to_native(self, value):
+        """Convert numpy types to native Python types for YAML serialization."""
+        if hasattr(value, 'item'):
+            return value.item()
+        return value
+
     def get_saveable_state_dict(self) -> dict:
         state_dict = {}
         for attr in self._state.saveable_attributes():
             value = getattr(self._state, attr)
-            if value is not None:
-                # Only save if value is str, float, int, or bool
-                if isinstance(value, (str, float, int, bool)):
-                    state_dict[attr] = value
-        
-        # Save dynamic _sel attributes
+            if value is not None and isinstance(value, (str, float, int, bool)):
+                state_dict[attr] = self._to_native(value)
+
         for attr in dir(self):
             if attr.endswith("_sel") or attr.endswith("_sel_previous"):
                 try:
                     value = getattr(self, attr)
                     if not callable(value) and value is not None:
-                        if isinstance(value, (str, float, numbers.Integral, bool)) and not (isinstance(value, str) and value.startswith("<xarray.DataArray")):
-                            state_dict[attr] = value
+                        if isinstance(value, (str, float, int, bool)):
+                            state_dict[attr] = self._to_native(value)
                 except (AttributeError, TypeError) as exc:
                     print(f"Error accessing {attr}: {exc}")
         return state_dict
@@ -306,12 +344,12 @@ class ObservableAppState(QObject):
         try:
             path = yaml_path or self._yaml_path
             if not Path(path).exists():
-                print(f"YAML file {path} not found, using defaults")
+                print(f"YAML file {path} not found, using defaults\n")
                 return False
             with open(path, encoding="utf-8") as f:
                 state_dict = yaml.safe_load(f) or {}
             self.load_from_dict(state_dict)
-            print(f"State loaded from {path}")
+            print(f"State loaded from {path}\n")
             return True
         except (OSError, yaml.YAMLError) as e:
             print(f"Error loading state from YAML: {e}")
@@ -376,25 +414,3 @@ class ObservableAppState(QObject):
         show_info(f"✅ Saved: {nc_path.name}")
 
 
-def _normalize_to_native_type(value: Any) -> int | str:
-    """Normalize value to native Python int or str based on content."""
-    import numpy as np
-    
-    # Convert numpy types to native Python types first
-    if isinstance(value, (np.generic, np.ndarray)):
-        value = value.item() if isinstance(value, np.generic) else value.tolist()
-    
-    # Already a native int or str
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        # Try to parse as int if it looks like one
-        if value.strip().lstrip('-').isdigit():
-            return int(value)
-        return value
-    
-    # For other types, try int first, fall back to str
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return str(value)

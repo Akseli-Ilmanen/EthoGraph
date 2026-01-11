@@ -13,6 +13,7 @@ from moveseg.features.preprocessing import z_normalize, interpolate_nans
 from pathlib import Path
 
 
+
 def add_NaN_boundaries(arr, changepoints):
     """
     Finds the boundaries where NaN values transition to valid values and vice versa.

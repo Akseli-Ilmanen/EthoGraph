@@ -9,6 +9,7 @@ dependencies:
   - pyqt
   - numpy
   - xarray
+  - netcdf4
   - menuinst
   - pip
   - pip:
