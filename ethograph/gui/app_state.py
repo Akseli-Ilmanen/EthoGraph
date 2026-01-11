@@ -4,13 +4,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, get_args, get_origin
 
-import numpy as np
 import xarray as xr
 import yaml
 from napari.settings import get_settings
 from napari.utils.notifications import show_info
 from qtpy.QtCore import QObject, QTimer, Signal
-from qtpy.QtWidgets import QApplication
 
 from ethograph.utils.io import TrialTree
 
@@ -128,14 +126,9 @@ class AppStateSpec:
             return cls.VARS[key][0]
         raise KeyError(f"No type for key: {key}")
 
-
-class AppState:
-    def __init__(self):
-        for var, (_, default, _) in AppStateSpec.VARS.items():
-            setattr(self, var, default)
-
-    def saveable_attributes(self) -> set[str]:
-        return {k for k, (_, _, save) in AppStateSpec.VARS.items() if save}
+    @classmethod
+    def saveable_attributes(cls) -> set[str]:
+        return {k for k, (_, _, save) in cls.VARS.items() if save}
 
 
 class ObservableAppState(QObject):
@@ -150,7 +143,9 @@ class ObservableAppState(QObject):
 
     def __init__(self, yaml_path: str | None = None, auto_save_interval: int = 30000):
         super().__init__()
-        object.__setattr__(self, "_state", AppState())
+        object.__setattr__(self, "_values", {})
+        for var, (_, default, _) in AppStateSpec.VARS.items():
+            self._values[var] = default
 
         self.settings = get_settings()
         self._yaml_path = yaml_path or "gui_settings.yaml"
@@ -183,38 +178,27 @@ class ObservableAppState(QObject):
 
     def __getattr__(self, name):
         if name in AppStateSpec.VARS:
-            return getattr(self._state, name)
+            return self._values[name]
         raise AttributeError(name)
 
     def __setattr__(self, name, value):
-        # Handle special attributes that don't go through state
-        if name in (
-            "_state",
-            "settings",
-            "_yaml_path",
-            "_auto_save_timer",
-            "navigation_widget",
-            "lineplot",
-        ):
+        if name in ("_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot"):
             super().__setattr__(name, value)
             return
 
-        # Handle state variables with type validation
         if name in AppStateSpec.VARS:
             type_hint = AppStateSpec.get_type(name)
             if not check_type(value, type_hint):
                 raise TypeError(f"{name}: expected {type_hint}, got {type(value).__name__} = {value!r}")
 
-            old_value = getattr(self._state, name, None)
-            setattr(self._state, name, value)
+            old_value = self._values.get(name)
+            self._values[name] = value
 
             signal = getattr(self, f"{name}_changed", None)
             if signal and old_value != value:
                 signal.emit(value)
-
             return
 
-        # Handle other attributes
         super().__setattr__(name, value)
 
     # --- Dynamic _sel variables ---
@@ -305,8 +289,8 @@ class ObservableAppState(QObject):
 
     def get_saveable_state_dict(self) -> dict:
         state_dict = {}
-        for attr in self._state.saveable_attributes():
-            value = getattr(self._state, attr)
+        for attr in AppStateSpec.saveable_attributes():
+            value = self._values.get(attr)
             if value is not None and isinstance(value, (str, float, int, bool)):
                 state_dict[attr] = self._to_native(value)
 

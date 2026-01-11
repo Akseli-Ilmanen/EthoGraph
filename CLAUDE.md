@@ -17,7 +17,7 @@ You are a Python expert specializing in clean, performant, and idiomatic Python 
 - Design patterns and SOLID principles in Python
 - SOLID stands for:
     Single-responsibility principle (SRP)
-    Open–closed principle (OCP)
+    Open-closed principle (OCP)
     Liskov substitution principle (LSP)
     Interface segregation principle (ISP)
     Dependency inversion principle (DIP)
@@ -31,7 +31,7 @@ You are a Python expert specializing in clean, performant, and idiomatic Python 
 4. Comprehensive error handling with custom exceptions
 5. Test coverage above 90% with edge cases
 
-## Philosophy for adding commetns
+## Philosophy for adding comments
 "Write code with the philosophy of self-documenting code, where the names of functions, variables, and the overall structure should make the purpose clear without the need for excessive comments. This follows the principle outlined by Robert C. Martin in 'Clean Code,' where the code itself expresses its intent. Therefore, comments should be used very sparingly and only when the code is not obvious, which should occur very, very rarely, as stated in 'The Pragmatic Programmer': 'Good code is its own best documentation. Comments are a failure to express yourself in code.'"
 
 ## Output
@@ -91,242 +91,301 @@ pip install -e ".[all]"
 pip install -e ".[testing]"
 ```
 
+## File Structure
+
+```
+ethograph/gui/
+    app_state.py          # Central state management (AppStateSpec + ObservableAppState)
+    data_loader.py        # Dataset loading utilities
+    napari.yaml           # Napari plugin manifest
+    parameters.py         # Parameter dialogs (magicgui-based)
+    plot_container.py     # Manages LinePlot/SpectrogramPlot switching
+    plots_base.py         # Abstract base class for plots
+    plots_lineplot.py     # Time-series line plot
+    plots_space.py        # 2D/3D position visualization
+    plots_spectrogram.py  # Audio spectrogram + caching (SpectrogramBuffer, SharedAudioCache)
+    shortcuts_dialog.py   # Keyboard shortcuts help dialog
+    video_sync.py         # Napari video/audio synchronization
+    widgets_data.py       # Dataset controls and combo boxes (DataWidget)
+    widgets_documentation.py  # Help/tutorial interface
+    widgets_io.py         # File/folder selection (IOWidget)
+    widgets_labels.py     # Motif labeling interface (LabelsWidget)
+    widgets_meta.py       # Main orchestrator widget (MetaWidget)
+    widgets_navigation.py # Trial navigation (NavigationWidget)
+    widgets_plot.py       # Plot settings controls (PlotsWidget)
+```
+
 ## Architecture
 
-### Core Components
+### Core State Management: `app_state.py`
 
-**MetaWidget** (`meta_widget.py`) - Main container widget that orchestrates all other widgets:
-- Creates and manages `ObservableAppState` with YAML persistence
+**Two-class system:**
+
+1. **AppStateSpec** - Type-checked specification with ~40 variables
+   - Each variable: `(type_hint, default_value, save_to_yaml)` tuple
+   - Categories: Video, Data, Paths, Plotting
+   - `saveable_attributes()` returns set of keys to persist
+
+2. **ObservableAppState** - Qt-based reactive state container
+   - Inherits from QObject for signal support
+   - Stores values in `self._values` dict
+   - Auto-generates Signal for each variable (e.g., `current_frame_changed`)
+   - **Dynamic `*_sel` attributes**: Created on-the-fly for xarray selections (e.g., `features_sel`, `individuals_sel`)
+   - Auto-saves to `gui_settings.yaml` every 30 seconds via QTimer
+   - Type validation on `__setattr__` via `check_type()`
+
+**Key methods:**
+- `get_ds_kwargs()`: Builds selection dict from all `*_sel` attributes
+- `set_key_sel(type_key, value)`: Sets selection with previous value tracking
+- `toggle_key_sel(type_key)`: Swaps current/previous selection
+- `save_to_yaml()` / `load_from_yaml()`: YAML persistence
+
+---
+
+### Widget Orchestration: `widgets_meta.py` (MetaWidget)
+
+Central coordinator that creates and wires all widgets together.
+
+**Responsibilities:**
+- Creates shared `ObservableAppState` and passes to all widgets
 - Sets up cross-references between widgets
-- Binds global keyboard shortcuts for napari
-- Uses CollapsibleWidgetContainer for UI organization
+- Binds all global keyboard shortcuts via `@viewer.bind_key()`
+- Manages unsaved changes dialog on close
 
-**ObservableAppState** (`app_state.py`) - Central state management:
-- Qt signal-based reactive state container
-- Automatic YAML persistence (every 10 seconds)
-- Manages dataset, file paths, plot settings, current selections
-- Dynamic `_sel` attributes for user selections (trials_sel, keypoints_sel, etc.)
+**Widget creation order:**
+1. DocumentationWidget (help/shortcuts)
+2. IOWidget (file loading)
+3. DataWidget (dataset controls)
+4. LabelsWidget (motif labeling)
+5. PlotsWidget (plotting settings)
+6. NavigationWidget (trial navigation)
+7. PlotContainer (bottom dock - hidden until data loads)
 
-**IOWidget** (`io_widget.py`) - Data and media file management:
-- File/folder selection dialogs for NetCDF datasets, video, and audio files
-- Handles loading and saving of datasets and user sessions
-- Validates file formats and paths before loading
-- Provides feedback on IO operations and errors
+**Cross-references set:**
+- `data_widget.set_references(plot_container, labels_widget, plots_widget, navigation_widget)`
+- `labels_widget.set_plot_container(plot_container)`
+- `navigation_widget.set_data_widget(data_widget)`
+- `plot_container.labels_redraw_needed` signal -> `update_motif_plot()`
 
-**DataWidget** (`data_widget.py`) - Dataset exploration and trial navigation:
-- Displays dataset structure and metadata
-- Dynamic combo boxes for selecting trials, individuals, and features based on loaded dataset
-- Trial filtering by user-defined conditions
-- Coordinates selection changes with other widgets
-- Synchronizes trial and selection state with video/audio playback
+---
 
-## Plot System Architecture (LinePlot & Spectrogram)
+### Data Loading: `data_loader.py` -> `widgets_io.py` -> `widgets_data.py`
 
-### Component Hierarchy
+**load_dataset() workflow:**
+1. Validate .nc file extension
+2. Load via `TrialTree.load(file_path)` -> returns DataTree
+3. Extract label_dt via `dt.get_label_dt()`
+4. Get first trial: `ds = dt.isel(trials=0)`
+5. Categorize variables by `type` attribute (features, colors, changepoints)
+6. Extract device info (cameras, mics, tracking) from dataset attrs
+7. Return: `(dt, label_dt, type_vars_dict)`
 
+**IOWidget** - File/folder selection:
+- Manages paths via QLineEdit + Browse + Clear buttons
+- Stores device combos in `self.combos` dict: `{cameras, mics, tracking}`
+
+**DataWidget** - The orchestrator widget:
+- `on_load_clicked()`: Triggers loading, creates dynamic UI controls
+- `_create_trial_controls()`: Creates combos for all dimensions
+- `_on_combo_changed()`: Central handler for all selection changes
+- `update_main_plot()`: Updates active plot with current selections
+- `update_motif_plot()`: Draws motif rectangles on plot
+- `update_video_audio()`: Loads/switches video/audio files
+
+---
+
+### Plot System
+
+**Hierarchy:**
 ```
 PlotContainer (plot_container.py)
-    │
-    ├── LinePlot (plots_lineplot.py)
-    │       └── inherits → BasePlot (plots_base.py)
-    │
-    └── SpectrogramPlot (plots_spectrogram.py)
-            ├── inherits → BasePlot (plots_base.py)
-            └── uses → SpectrogramBuffer (same file)
+    |
+    +-- LinePlot (plots_lineplot.py)
+    |       +-- inherits BasePlot (plots_base.py)
+    |
+    +-- SpectrogramPlot (plots_spectrogram.py)
+            +-- inherits BasePlot (plots_base.py)
+            +-- uses SpectrogramBuffer (caching)
+            +-- uses SharedAudioCache (singleton)
 ```
 
-### BasePlot (`plots_base.py`)
-Abstract base class providing shared functionality:
+**BasePlot** (`plots_base.py`) - Abstract base:
 - Time marker (red vertical line for video sync)
-- X-axis range management (default, preserve, center modes)
-- Click handling via `plot_clicked` signal
-- Axes locking (prevent zoom, allow pan)
-- Zoom constraints based on data bounds
+- X-axis range modes: `'default'`, `'preserve'`, `'center'`
+- Click handling: Emits `plot_clicked` signal with `{x: time, button}`
+- Axes locking: Prevents zoom, allows pan
 
-Subclasses must implement:
+Subclasses implement:
 - `update_plot_content(t0, t1)` - Draw actual content
 - `apply_y_range(ymin, ymax)` - Set y-axis limits
-- `_apply_y_constraints()` - Optional y-axis zoom limits
+- `_apply_y_constraints()` - Optional y zoom constraints
 
-### LinePlot (`plots_lineplot.py`)
-- Calls `plot_ds_variable()` to draw xarray data as lines
-- Stores line items in `self.plot_items`
-- Stores motif rectangles in `self.label_items`
-- Y-constraints based on data percentiles
+**LinePlot** (`plots_lineplot.py`):
+- Calls `plot_ds_variable()` to render xarray data
+- Stores items in `plot_items` (lines) and `label_items` (motifs)
+- Y-constraints based on data percentile (default 99.5%)
 
-### SpectrogramPlot (`plots_spectrogram.py`)
-- Uses `pg.ImageItem` to display spectrogram as image
-- Connects `sigRangeChanged` to recompute on pan/zoom
-- Has `SpectrogramBuffer` for caching computed spectrograms
-- Frequency axis (y) based on audio sample rate
+**SpectrogramPlot** (`plots_spectrogram.py`):
+- Renders audio spectrogram as 2D image
+- **SharedAudioCache**: Thread-safe singleton preventing repeated file opens
+- **SpectrogramBuffer**: Smart time-based caching with buffer multiplier (default 5x)
+- Updates on view range changes via `sigRangeChanged`
 
-### SpectrogramBuffer (in `plots_spectrogram.py`)
-Smart caching system for spectrogram computation:
-- Dictionary cache with `(buffer_t0, buffer_t1)` keys
-- Buffer multiplier expands requested range (default 5x)
-- Uses `SharedAudioCache` (audio_cache.py) for audio data
-- Cache limit: 10 entries with simple LRU eviction
-
-### PlotContainer (`plot_container.py`)
-Simple container for switching between plots:
-- Holds both LinePlot and SpectrogramPlot instances
-- Only one visible at a time
-- Pass-through methods: `get_current_xlim()`, `set_x_range()`, etc.
-- Emits `plot_changed` signal on switch
-
-### Data Flow for Plot Updates
-
-```
-DataWidget.update_main_plot(**kwargs)
-    │
-    ├─→ current_plot.update_plot(t0, t1)
-    │       │
-    │       └─→ BasePlot.update_plot()
-    │               │
-    │               ├─→ update_plot_content()  [subclass specific]
-    │               │       ├─→ LinePlot: plot_ds_variable()
-    │               │       └─→ Spectrogram: buffer.compute()
-    │               │
-    │               ├─→ set_x_range()
-    │               └─→ toggle_axes_lock()
-    │
-    └─→ update_motif_plot(ds_kwargs)
-            │
-            └─→ labels_widget.plot_all_motifs(time, labels, predictions)
-                    │
-                    └─→ _draw_motif_rectangle() → adds to current_plot.label_items
-```
-
-### Label Drawing (widgets_labels.py)
-
-`plot_all_motifs()` workflow:
-1. Get `current_plot` from plot_container
-2. Clear existing `label_items` from current_plot
-3. Iterate through label data finding motif segments
-4. Call `_draw_motif_rectangle()` for each segment
-5. Rectangles added to `current_plot.plot_item` and `current_plot.label_items`
-
-**CRITICAL ISSUE**: Labels are only drawn on whichever plot is currently active.
-When switching from LinePlot to SpectrogramPlot, labels don't transfer.
+**PlotContainer** (`plot_container.py`):
+- Manages LinePlot/SpectrogramPlot visibility switching
+- Preserves x-range and time marker on switch
+- Emits `plot_changed` and `labels_redraw_needed` signals
 
 ---
 
-## Known Issues & Diagnosis (December 2025)
+### Video Synchronization: `video_sync.py`
 
-### Issue 1: Labels Only Show on LinePlot, Not Spectrogram
+**NapariVideoSync class:**
+- Connects to napari `dims.events.current_step` for frame tracking
+- `seek_to_frame()`: Updates napari dims
+- `start()/stop()`: Controls napari's dims.play() with fps_playback
+- `play_segment(start, end)`: Synchronized audio/video playback
+- `_on_napari_step_change()`: Updates `app_state.current_frame`, emits `frame_changed`
 
-**Root cause**: `_draw_motif_rectangle()` in `widgets_labels.py:215-262` only draws on `self.plot_container.get_current_plot()`.
-
-**Why it happens**:
-- Each plot has its own `label_items` list
-- `plot_all_motifs()` clears and redraws on current plot only
-- When you switch plots, the other plot has empty `label_items`
-
-**Location**: `widgets_labels.py` lines 145-152, 215-262
-
-**Potential fixes**:
-1. Store label data centrally (not as plot items), redraw on both plots
-2. Call `plot_all_motifs()` again when switching plots
-3. Have PlotContainer manage labels and draw on both plots simultaneously
-
-### Issue 2: Spectrogram Buffering Inefficient for Zoom
-
-**Root cause**: Cache keyed by exact time ranges, no multi-resolution support.
-
-**Why it happens**:
-- `SpectrogramBuffer._get_cache_key()` creates keys from buffered time range
-- Zooming out requires new computation even if zoomed-in data exists
-- No mechanism to combine multiple cached ranges
-- Computing full resolution spectrogram for zoomed-out views is wasteful
-
-**Location**: `plots_spectrogram.py` lines 191-366 (SpectrogramBuffer class)
-
-**Potential fixes**:
-1. Pre-compute spectrogram for entire trial at low resolution
-2. Implement tile-based caching (like map software)
-3. Use downsampled spectrogram for zoomed-out views
-4. Implement smarter cache that combines overlapping ranges
-
-### Issue 3: LinePlot/Spectrogram Sync Drift
-
-**Root cause**: Independent ViewBoxes, no sync on switch.
-
-**Why it happens**:
-- Each plot has its own `vb` (ViewBox)
-- When switching, the hidden plot doesn't receive updates
-- X-range can drift between the two plots
-
-**Location**: `plot_container.py` switch methods (lines 41-73)
-
-**Potential fix**: Copy x-range from previous plot when switching.
+**Playback rate coupling:** Audio rate = `(fps_playback / fps) * sample_rate`
 
 ---
 
-## Widget Component Summary
+### Label Management: `widgets_labels.py`
 
-**LabelsWidget** (`widgets_labels.py`) - Motif labeling interface:
-- Interactive motif creation (click-based boundary definition)
-- Motif editing and deletion
-- Color-coded motif visualization (LinearRegionItem for main, PlotDataItem for predictions)
-- Export functionality for labeled data
-- Connects to `plot_clicked` signal from both LinePlot and SpectrogramPlot
+**LabelsWidget** - Motif labeling interface:
 
-**PlotsWidget** (`widgets_plot.py`) - Plot configuration and control:
-- Y-axis limits and window size settings for line plots and spectrograms
-- Buffer settings for audio and spectrogram caching
-- Autoscale and lock axes checkboxes
-- Real-time parameter updates via `_on_edited()`
+**State:**
+- `motif_mappings`: Dict[int, {color, name}] from mapping.txt
+- `ready_for_label_click`: Activated by motif key press
+- `first_click` / `second_click`: Time positions from two clicks
 
-**NavigationWidget** (`widgets_navigation.py`) - Trial navigation:
-- Trial selection combo box with prev/next buttons
+**Motif creation workflow:**
+1. `activate_motif(motif_id)` -> sets `ready_for_label_click = True`
+2. User clicks plot twice -> `_on_plot_clicked()` fires
+3. Creates rectangle in `app_state.label_ds['labels']` array
+4. `plot_all_motifs()` redraws all labels
+
+**plot_all_motifs():**
+1. Gets current plot from plot_container
+2. Clears existing `label_items`
+3. Draws motif rectangles via `_draw_motif_rectangle()`
+4. Different styling: LinePlot uses `LinearRegionItem`, Spectrogram uses edge lines
+
+**Note:** Labels redraw on plot switch via `labels_redraw_needed` signal connected in MetaWidget.
+
+---
+
+### Navigation: `widgets_navigation.py`
+
+**NavigationWidget:**
+- Trial selection combo (color-coded: green=verified, red=unverified)
+- Previous/Next buttons with confidence filtering
 - Playback FPS control
-- Confidence-based trial filtering
 
-**NapariVideoSync** (`video_sync.py`) - Napari-integrated video player:
-- Uses napari-pyav for video loading (FastVideoReader)
-- Segment playback with synchronized audio using audioio
-- Frame-based seeking through napari's built-in dims controls
-- Emits `frame_changed` signal connected to plot updates
+**_trial_change_consequences()** - On trial change:
+1. Loads new trial from datatree
+2. Updates video/audio files
+3. Updates plots and motif labels
+4. Resets current_frame to 0
 
-### Data Flow
+---
 
-1. **Loading**: DataWidget loads NetCDF dataset → populates AppState → creates dynamic UI controls
-2. **Selection**: User changes selections → AppState signals → widgets update plots/video
-3. **Labeling**: User presses motif key → LabelsWidget activates → click twice on LinePlot → motif created
-4. **Playback**: Right-click on motif → triggers video/audio playback at that time segment
+### Plot Controls: `widgets_plot.py`
 
-### Widget Communication
+**PlotsWidget** - Real-time parameter adjustment:
+- Y-axis limits (separate for lineplot/spectrogram)
+- Window size (visible time range)
+- Buffer settings for audio/spectrogram
+- Autoscale and Lock axes checkboxes
 
-Widgets communicate through:
-- **AppState signals** for data changes
-- **Direct references** set in MetaWidget (e.g., lineplot.set_plots_widget())
-- **Cross-widget method calls** for complex interactions
+---
 
-### Key Design Patterns
+## Data Flow Diagrams
 
-- **Observer Pattern**: AppState emits signals, widgets react to changes
-- **Centralized State**: All application state flows through ObservableAppState
-- **Widget Composition**: MetaWidget composes and coordinates specialized widgets
-- **Dynamic UI**: UI controls generated based on dataset structure
+**On data load:**
+```
+User clicks Load -> DataWidget.on_load_clicked()
+    |
+load_dataset(nc_path) -> TrialTree.load()
+    |
+app_state.dt, label_dt, ds set
+    |
+_create_trial_controls() -> combos created
+    |
+app_state.ready = True
+    |
+navigation_widget._trial_change_consequences() -> video/audio/plots
+```
 
-## Important Implementation Details
+**On feature selection change:**
+```
+User changes feature combo -> _on_combo_changed()
+    |
+app_state.features_sel = new_value -> Signal emitted
+    |
+If "Spectrogram" -> plot_container.switch_to_spectrogram()
+Else -> plot_container.switch_to_lineplot()
+    |
+update_main_plot() -> current_plot.update_plot()
+    |
+update_motif_plot() -> plot_all_motifs()
+```
 
-### AppState Persistence
-- Only attributes in `_saveable_attributes` are persisted to YAML
-- All `*_sel` attributes (user selections) are automatically saved
-- Numeric values converted to Python types (not numpy) for YAML compatibility
+**On motif creation:**
+```
+User presses '1' -> widgets_meta.activate_motif(1)
+    |
+labels_widget.ready_for_label_click = True
+    |
+User clicks plot twice -> _on_plot_clicked()
+    |
+Create label in app_state.label_ds['labels']
+    |
+plot_all_motifs() -> redraws labels
+    |
+app_state.changes_saved = False
+```
 
-### Audio/Video Synchronization
-- Audio playback controlled by napari animation thread events
-- Spectrogram data cached in buffers for performance
-- Buffer cleared when switching trials or changing audio settings
+---
 
-### Keyboard Shortcuts
-- Bound at napari viewer level in MetaWidget._bind_global_shortcuts()
-- Motif keys (1-9, 0, Q, W, R, T) mapped to motif numbers 1-14
-- Navigation keys (M/N for trials, arrows for plot navigation)
+## Keyboard Shortcuts
 
-### Dataset Structure Requirements
-- NetCDF format with time, trials dimensions
-- Expected coordinates: cameras, mics, keypoints, individuals, features
+Bound in `MetaWidget._bind_global_shortcuts()`:
+
+| Key | Action |
+|-----|--------|
+| 1-0, Q-P, A-L, Z-M | Activate motif 1-30 |
+| Ctrl+S | Save labels |
+| Space | Play/pause video |
+| Up/Down Arrow | Navigate trials |
+| Ctrl+F | Toggle feature selection |
+| Ctrl+I | Toggle individual selection |
+| Ctrl+K | Toggle keypoint selection |
+| Ctrl+C | Toggle camera selection |
+| Ctrl+M | Toggle mic selection |
+| Ctrl+T | Toggle tracking selection |
+| Ctrl+E | Edit selected motif |
+| Ctrl+D | Delete selected motif |
+| Ctrl+V | Mark motif as verified |
+
+---
+
+## Key Design Patterns
+
+1. **Observer Pattern**: AppState emits signals, widgets react
+2. **Centralized State**: All data flows through ObservableAppState
+3. **Dynamic Attributes**: `*_sel` attributes created as needed for xarray selections
+4. **Signal-based Communication**: Widgets communicate via Qt signals
+5. **Resource Sharing**: SharedAudioCache singleton prevents file handle leaks
+6. **Smart Caching**: SpectrogramBuffer with buffer multiplier for efficiency
+7. **State Persistence**: Auto-saving to YAML every 30 seconds
+
+---
+
+## Dataset Structure Requirements
+
+- NetCDF format with `time`, `trials` dimensions
+- Expected coordinates: `cameras`, `mics`, `keypoints`, `individuals`, `features`
+- Variables with `type='features'` attribute for feature selection
 - Video files matched by filename in dataset to video folder
