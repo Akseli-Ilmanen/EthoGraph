@@ -1,12 +1,12 @@
 import numpy as np
 import scipy.io as sio
-from moveseg.features.changepoints import more_changepoint_features, merge_changepoints
-from moveseg.utils.labels import fix_endings
+from ethograph.features.changepoints import more_changepoint_features, merge_changepoints
+from ethograph.utils.labels import fix_endings
 import xarray as xr
 from functools import partial
 import itertools
 from scipy.ndimage import gaussian_filter1d
-from moveseg.features.mov_features import get_angle_rgb
+from ethograph.features.mov_features import get_angle_rgb
 import os
 import json
 from pathlib import Path

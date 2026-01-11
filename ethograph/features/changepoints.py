@@ -4,12 +4,12 @@ import matplotlib.pyplot as plt
 from typing import List, Sequence
 from scipy.signal import find_peaks
 import xarray as xr
-from moveseg.utils.labels import stitch_gaps, fix_endings, remove_small_blocks, find_blocks, purge_small_motifs
+from ethograph.utils.labels import stitch_gaps, fix_endings, remove_small_blocks, find_blocks, purge_small_motifs
 import os
 
 from typing import List, Literal
 from movement.utils.broadcasting import make_broadcastable
-from moveseg.features.preprocessing import z_normalize, interpolate_nans
+from ethograph.features.preprocessing import z_normalize, interpolate_nans
 from pathlib import Path
 
 

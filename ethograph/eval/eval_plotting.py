@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
 import pickle
-from moveseg.utils.paths import get_project_root
+from ethograph.utils.paths import get_project_root
 style_path = get_project_root() / 'configs' / 'style.mplstyle'
 plt.style.use(str(style_path))
 F1_COLOURS = ["#9467bd", "#2ecc71", "#e377c2"]  # purple, green, pink
