@@ -38,5 +38,5 @@ processed_data/
 ```
 
 [^1]: If your video files (e.g. `.mp4`) contain audio, the video and audio folder will be the same.
-[^2]: Loading of pose estimation points and tracks occurs via `movement` library. See further here [Movement IO](https://movement.neuroinformatics.dev/user_guide/input_output.html#supported-third-party-formats)
+[^2]: Loading of pose estimation points and tracks occurs via `movement` library. See further here [Movement IO](https://movement.neuroinformatics.dev/latest/input_output.html#supported-third-party-formats).
 
