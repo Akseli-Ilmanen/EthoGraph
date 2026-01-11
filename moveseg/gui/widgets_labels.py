@@ -319,6 +319,8 @@ class LabelsWidget(QWidget):
         self.controls_toggle.setText("🎛️ Controls")
         self.controls_widget.hide()
 
+        layout.addStretch()
+
     def _create_toggle_buttons(self):
         """Create toggle buttons for collapsible sections."""
         self.toggle_widget = QWidget()
@@ -375,29 +377,36 @@ class LabelsWidget(QWidget):
             self.table_toggle.setChecked(True)
 
     def _create_motifs_table_and_edit_buttons(self):
-        """Create the motifs table showing available motif types."""
+        """Create the motifs table showing available motif types in two columns."""
         self.motifs_table = QTableWidget()
-        self.motifs_table.setColumnCount(3)
-        self.motifs_table.setHorizontalHeaderLabels(["ID", "Name", "Color"])
+        self.motifs_table.setColumnCount(6)
+        self.motifs_table.setHorizontalHeaderLabels(["ID", "Name (Shortcut)", "C", "ID", "Name (Shortcut)", "C"])
 
-        # Hide row numbers (left column)
         self.motifs_table.verticalHeader().setVisible(False)
 
-        # Set column widths
         header = self.motifs_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Fixed)  # ID column - fixed width
-        header.setSectionResizeMode(1, QHeaderView.Stretch)  # Name column - stretches
-        header.setSectionResizeMode(2, QHeaderView.Fixed)  # Color column - fixed width
+        header.setSectionResizeMode(0, QHeaderView.Fixed)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.Fixed)
+        header.setSectionResizeMode(3, QHeaderView.Fixed)
+        header.setSectionResizeMode(4, QHeaderView.Stretch)
+        header.setSectionResizeMode(5, QHeaderView.Fixed)
 
-        # Set specific widths for ID and Color columns
-        self.motifs_table.setColumnWidth(0, 20)  # ID column narrow
-        self.motifs_table.setColumnWidth(2, 20)  # Color column narrow
+        self.motifs_table.setColumnWidth(0, 20)
+        self.motifs_table.setColumnWidth(2, 20)
+        self.motifs_table.setColumnWidth(3, 20)
+        self.motifs_table.setColumnWidth(5, 20)
 
-        self.motifs_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.motifs_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.motifs_table.setMaximumHeight(600)  # Limit table height to 600px
+        self.motifs_table.setSelectionBehavior(QAbstractItemView.SelectItems)
+        self.motifs_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.motifs_table.verticalHeader().setDefaultSectionSize(18)
+        self.motifs_table.setMaximumHeight(120)
+        self.motifs_table.setStyleSheet("""
+            QTableWidget { gridline-color: transparent; }
+            QTableWidget::item { padding: 0px 2px; }
+            QHeaderView::section { padding: 0px 2px; }
+        """)
 
-        # Connect row selection to activate_motif
         self.motifs_table.itemSelectionChanged.connect(self._on_table_selection_changed)
 
         # First control row
@@ -655,9 +664,6 @@ class LabelsWidget(QWidget):
         self.data_widget.update_main_plot(t0=xmin, t1=xmax)
         
         
-        
-
-
 
 
     MOTIF_ID_TO_KEY = {}
@@ -683,62 +689,62 @@ class LabelsWidget(QWidget):
     # Also provide reverse mapping for key to motif_id
     KEY_TO_MOTIF_ID = {v.lower(): k for k, v in MOTIF_ID_TO_KEY.items()}
     
-    def _populate_motifs_table(self):    
-        """Populate the motifs table with loaded mappings."""
-        self.motifs_table.setRowCount(len(self.motif_mappings))
-        for row, (motif_id, data) in enumerate(self.motif_mappings.items()):
-            # ID column
+    def _populate_motifs_table(self):
+        """Populate the motifs table with loaded mappings in two columns."""
+        items = [(k, v) for k, v in self.motif_mappings.items() if k != 0]
+        half = (len(items) + 1) // 2
+        self.motifs_table.setRowCount(half)
+
+        for i, (motif_id, data) in enumerate(items):
+            row = i % half
+            col_offset = 0 if i < half else 3
+
             id_item = QTableWidgetItem(str(motif_id))
             id_item.setData(Qt.UserRole, motif_id)
-            self.motifs_table.setItem(row, 0, id_item)
+            self.motifs_table.setItem(row, col_offset, id_item)
 
-            # Name column with keyboard shortcut
             shortcut = self.MOTIF_ID_TO_KEY.get(motif_id, "?")
-            name_with_shortcut = f"{data['name']} (Press {shortcut})"
+            name_with_shortcut = f"{data['name']} ({shortcut})"
             name_item = QTableWidgetItem(name_with_shortcut)
-            self.motifs_table.setItem(row, 1, name_item)
+            name_item.setData(Qt.UserRole, motif_id)
+            self.motifs_table.setItem(row, col_offset + 1, name_item)
 
-            # Color column
             color_item = QTableWidgetItem()
             color = data["color"]
             qcolor = QColor(int(color[0] * 255), int(color[1] * 255), int(color[2] * 255))
             color_item.setBackground(qcolor)
-            self.motifs_table.setItem(row, 2, color_item)
+            color_item.setData(Qt.UserRole, motif_id)
+            self.motifs_table.setItem(row, col_offset + 2, color_item)
 
     def _on_table_selection_changed(self):
-        """Handle table row selection changes by activating the selected motif."""
-        selected_rows = self.motifs_table.selectionModel().selectedRows()
-        if selected_rows:
-            row = selected_rows[0].row()
-            id_item = self.motifs_table.item(row, 0)
-            if id_item:
-                motif_id = id_item.data(Qt.UserRole)
+        """Handle table cell selection changes by activating the selected motif."""
+        selected = self.motifs_table.selectedItems()
+        if selected:
+            item = selected[0]
+            motif_id = item.data(Qt.UserRole)
+            if motif_id is not None:
                 self.activate_motif(motif_id)
 
 
 
     def activate_motif(self, motif_key):
-        """Activate a motif by shortcu1t: select row, set up for labeling, and scroll to row."""
-
-        # Convert key to motif ID using centralized1 mapping
+        """Activate a motif by shortcut: select cell, set up for labeling, and scroll to it."""
         motif_id = self.KEY_TO_MOTIF_ID.get(str(motif_key).lower(), motif_key)
-        # Check if motif ID is valid
         if motif_id not in self.motif_mappings:
-            print(f"No motif defined for key {motif_key}")
             return
-        # Set selected motif and start labeling
+
         self.selected_motif_id = motif_id
 
-        #  Find and select the corresponding row in the table
         for row in range(self.motifs_table.rowCount()):
-            item = self.motifs_table.item(row, 0)  # ID column
-            if item and item.data(Qt.UserRole) == motif_id:
-                self.motifs_table.selectRow(row)
-                self.motifs_table.scrollToItem(item)
-                break
-        self.ready_for_label_click = True
-        self.first_click = None
-        self.second_click = None
+            for col in [0, 3]:  # Check both ID columns
+                item = self.motifs_table.item(row, col)
+                if item and item.data(Qt.UserRole) == motif_id:
+                    self.motifs_table.setCurrentItem(item)
+                    self.motifs_table.scrollToItem(item)
+                    self.ready_for_label_click = True
+                    self.first_click = None
+                    self.second_click = None
+                    return
         
             
             

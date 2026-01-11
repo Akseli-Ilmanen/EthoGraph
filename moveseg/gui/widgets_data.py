@@ -145,9 +145,9 @@ class DataWidget(DataLoader, QWidget):
         load_btn.setEnabled(False)
         load_btn.setText("Restart app to load new data")
 
-
-
         self.setVisible(True)
+
+        self._force_layout_update()
 
             
     def update_trials_combo(self) -> None:
@@ -315,6 +315,14 @@ class DataWidget(DataLoader, QWidget):
         # Also enable/disable IOWidget device controls
         self.io_widget.set_controls_enabled(enabled)
         self.app_state.ready = enabled
+
+    def _force_layout_update(self):
+        """Force Qt to recalculate layout by toggling collapsible widget."""
+        if self.meta_widget and hasattr(self.meta_widget, 'collapsible_widgets'):
+            io_collapsible = self.meta_widget.collapsible_widgets[1]
+            io_collapsible.collapse()
+            QApplication.processEvents()
+            io_collapsible.expand()
 
     def _create_combo_widget(self, key, vars):
         """Create a combo box widget for a given info key."""

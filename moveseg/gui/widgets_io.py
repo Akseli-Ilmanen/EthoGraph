@@ -220,7 +220,7 @@ class IOWidget(QWidget):
                 self._device_row_layout.takeAt(0)
         else:
             self._device_row_layout = QHBoxLayout()
-            self.layout().addRow("Devices:", self._device_row_layout)
+            self.layout().addRow(self._device_row_layout)
 
         for key, folder_attr in [("cameras", "video_folder"), ("mics", "audio_folder"), ("tracking", "tracking_folder")]:
             if key in type_vars_dict and getattr(self.app_state, folder_attr):

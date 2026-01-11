@@ -7,6 +7,8 @@ from napari.layers import Image
 from napari.viewer import Viewer
 from qt_niu.collapsible_widget import CollapsibleWidgetContainer
 from qtpy.QtWidgets import QApplication, QSizePolicy, QMessageBox, QAction, QMenu, QPushButton, QWidget, QHBoxLayout
+from qtpy.QtGui import QFont
+
 
 from .app_state import ObservableAppState
 from .widgets_data import DataWidget
@@ -63,22 +65,8 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.plot_container = PlotContainer(self.viewer, self.app_state)
 
 
-        # Set size policy to allow vertical expansion
         self.plot_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-        # Only set minimum height to ensure lineplot doesn't get too small (1/3 of screen)
-        try:
-            screen = QApplication.primaryScreen()
-            if screen is not None:
-                screen_height = screen.availableGeometry().height()
-            else:
-                screen_height = 1080  # fallback default
-        except (AttributeError, RuntimeError):
-            screen_height = 1080  # fallback default
-
-        # Set minimum to 1/3 of screen height - let napari handle max
-        lineplot_min_height = int(screen_height * 0.33)
-        self.plot_container.setMinimumHeight(lineplot_min_height)
+        self.plot_container.setMinimumHeight(200)
 
         # Add dock widget with margins to prevent covering notifications
         dock_widget = self.viewer.window.add_dock_widget(self.plot_container, area="bottom")
@@ -126,11 +114,6 @@ class MetaWidget(CollapsibleWidgetContainer):
         # The one widget to rule them all (loading data, updating plots, managing sync)
         self.data_widget.set_references(self.plot_container, self.labels_widget, self.plots_widget, self.navigation_widget)
 
-        # Set maximum height constraints for widgets to respect lineplot 60% rule
-        remaining_height = int(screen_height * 0.60)  # 60% of screen for other widgets
-        max_widget_height = int(remaining_height / 6)  # Divide among 6 widgets roughly
-
-        # Configure size policies and max heights for all widgets
         for widget in [
             self.help_widget,
             self.io_widget,
@@ -139,8 +122,7 @@ class MetaWidget(CollapsibleWidgetContainer):
             self.plots_widget,
             self.navigation_widget,
         ]:
-            widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-            widget.setMaximumHeight(max_widget_height)
+            widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         # Add widgets to collapsible container
         self.add_widget(
@@ -181,6 +163,7 @@ class MetaWidget(CollapsibleWidgetContainer):
 
 
         self.layout().setSpacing(0)
+        self.layout().setContentsMargins(0, 0, 0, 0)
 
     def _on_labels_redraw_needed(self):
         """Handle label redraw request when switching between plots."""
@@ -514,31 +497,35 @@ class MetaWidget(CollapsibleWidgetContainer):
 
     def _set_compact_font(self, font_size: int = 8):
         """Apply compact font to this widget and all children."""
-        from qtpy.QtGui import QFont
-        
         font = QFont()
         font.setPointSize(font_size)
         self.setFont(font)
-        
-        # Optional: Apply stylesheet for more control
+
         self.setStyleSheet(f"""
             * {{
                 font-size: {font_size}pt;
+                padding: 1px;
+                margin: 0px;
             }}
             QLabel {{
                 font-size: {font_size}pt;
+                padding: 1px;
             }}
             QPushButton {{
                 font-size: {font_size}pt;
+                padding: 2px 4px;
             }}
             QComboBox {{
                 font-size: {font_size}pt;
+                padding: 1px;
             }}
             QSpinBox, QDoubleSpinBox {{
                 font-size: {font_size}pt;
+                padding: 1px;
             }}
             QLineEdit {{
                 font-size: {font_size}pt;
+                padding: 1px;
             }}
         """)
     
