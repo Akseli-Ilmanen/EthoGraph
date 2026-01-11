@@ -1,7 +1,7 @@
 """Simple container widget for switching between different plot types."""
 
 from qtpy.QtWidgets import QWidget, QVBoxLayout
-from qtpy.QtCore import Signal
+from qtpy.QtCore import Signal, QSize
 from .plots_lineplot import LinePlot
 from .plots_spectrogram import SpectrogramPlot
 import pyqtgraph as pg
@@ -38,6 +38,9 @@ class PlotContainer(QWidget):
         self.spectrogram_plot.hide()
         
         self.confidence_item = None
+
+    def sizeHint(self):
+        return QSize(self.width(), 300)
 
     def switch_to_spectrogram(self):
         """Switch to spectrogram display."""

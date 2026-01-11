@@ -42,30 +42,30 @@ echo.
 echo Installing %ENV_NAME% environment from %ENV_FILE%...
 echo.
 
-@REM :: Check if environment already exists
-@REM call conda env list | findstr /B /C:"%ENV_NAME% " >nul 2>nul
-@REM if %errorlevel% equ 0 (
-@REM     echo Environment %ENV_NAME% already exists.
-@REM     set /p overwrite="Do you want to remove and reinstall it? (y/n): "
-@REM     if /i "!overwrite!"=="y" (
-@REM         echo Removing existing environment...
-@REM         call conda env remove -n %ENV_NAME% -yn
-@REM     ) else (
-@REM         goto :finish
-@REM     )
-@REM )
+:: Check if environment already exists
+call conda env list | findstr /B /C:"%ENV_NAME% " >nul 2>nul
+if %errorlevel% equ 0 (
+    echo Environment %ENV_NAME% already exists.
+    set /p overwrite="Do you want to remove and reinstall it? (y/n): "
+    if /i "!overwrite!"=="y" (
+        echo Removing existing environment...
+        call conda env remove -n %ENV_NAME% -yn
+    ) else (
+        goto :finish
+    )
+)
 
-@REM :: Create conda environment
-@REM echo Creating conda environment...
-@REM call conda env create -f %ENV_FILE%
-@REM if %errorlevel% neq 0 (
-@REM     echo ERROR: Failed to create conda environment.
-@REM     pause
-@REM     exit /b 1
-@REM )
+:: Create conda environment
+echo Creating conda environment...
+call conda env create -f %ENV_FILE%
+if %errorlevel% neq 0 (
+    echo ERROR: Failed to create conda environment.
+    pause
+    exit /b 1
+)
 
-@REM echo.
-@REM echo Environment created successfully!
+echo.
+echo Environment created successfully!
 
 echo.
 set /p create_shortcut="Do you want to create a desktop shortcut for the GUI? (y/n): "

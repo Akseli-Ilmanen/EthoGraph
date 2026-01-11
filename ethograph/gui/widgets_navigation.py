@@ -13,8 +13,6 @@ class NavigationWidget(QWidget):
         super().__init__(parent=parent)
         self.viewer = viewer
         self.app_state = app_state
-        self.data_widget = None
-        self.labels_widget = None  
         
         self.confidence_skip_combo = QComboBox()
         self.confidence_skip_combo.setObjectName("confidence_skip_combo")
@@ -79,51 +77,6 @@ class NavigationWidget(QWidget):
         main_layout.addLayout(row3)
         self.setLayout(main_layout)
 
-
-
-    def set_data_widget(self, data_widget):
-        """Set reference to data widget."""
-        self.data_widget = data_widget
-        
-    def set_labels_widget(self, labels_widget):
-        """Set reference to label widget."""
-        self.labels_widget = labels_widget
-
-
-    def _trial_change_consequences(self):
-        """Handle consequences of trial changes."""
-        trials_sel = self.app_state.trials_sel
-        
-        try:
-            self.app_state.ds = self.app_state.dt.sel(trials=trials_sel)
-            self.app_state.label_ds = self.app_state.label_dt.sel(trials=trials_sel)
-            
-            if self.app_state.pred_dt is not None:
-                self.app_state.pred_ds = self.app_state.pred_dt.sel(trials=trials_sel)
-            
-        except Exception as e:
-            
-
-            self.app_state.ds = self.app_state.dt.isel(trials=0)
-            self.app_state.label_ds = self.app_state.label_dt.isel(trials=0)
-            if self.app_state.pred_dt is not None:
-                self.app_state.pred_ds = self.app_state.pred_dt.isel(trials=0)
-            
-            self.app_state.trials_sel = self.app_state.trials[0]
-            
-            print(f"Error selecting trial {trials_sel}: {e}")
-            
-            
-
-        
-        self.app_state.current_frame = 0
-        self.labels_widget._update_human_verified_status()
-        self.data_widget.update_video_audio()
-        self.data_widget.update_tracking()
-        self.data_widget.update_motif_label()
-        self.data_widget.update_main_plot()
-        self.data_widget.update_space_plot()
-
     def _on_trial_changed(self):
         """Handle trial selection change."""
         if not self.app_state.ready:
@@ -139,7 +92,7 @@ class NavigationWidget(QWidget):
             except KeyError:
                 self.app_state.trials_sel = self.app_state.trials[0]
 
-            self._trial_change_consequences()
+            self.app_state.trial_changed.emit()
 
             # Reset time to 0 on trial change
             if hasattr(self.app_state, "current_time"):
@@ -202,7 +155,7 @@ class NavigationWidget(QWidget):
             self.trials_combo.setCurrentText(str(new_trial))
             self.trials_combo.blockSignals(False)
 
-            self._trial_change_consequences()
+            self.app_state.trial_changed.emit()
             
 
 

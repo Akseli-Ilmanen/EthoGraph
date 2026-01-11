@@ -67,7 +67,7 @@ class IOWidget(QWidget):
         
         # Reset all app_state attributes to their defaults
         for var, (_, default, _) in AppStateSpec.VARS.items():
-            setattr(self.app_state._state, var, default)
+            setattr(self.app_state, var, default)
         
         # Clear all dynamic _sel attributes
         for attr in list(dir(self.app_state)):
@@ -296,11 +296,9 @@ class IOWidget(QWidget):
                     self.label_file_path_edit.setText(labels_file_path)
 
                     self.labels_widget._update_cp_status()
-                    self.labels_widget._update_human_verified_status()
                     self.labels_widget._mark_changes_unsaved()
-
-                    xmin, xmax = self.labels_widget.plot_container.get_current_xlim()
-                    self.data_widget.update_main_plot(t0=xmin, t1=xmax)
+                    self.app_state.verification_changed.emit()
+                    self.app_state.labels_modified.emit()
                     self.labels_widget.refresh_motif_shapes_layer()
 
     

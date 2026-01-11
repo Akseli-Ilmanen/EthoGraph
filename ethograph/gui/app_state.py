@@ -139,6 +139,9 @@ class ObservableAppState(QObject):
         locals()[f"{var}_changed"] = Signal(get_signal_type(type_hint))
 
     data_updated = Signal()
+    labels_modified = Signal()
+    verification_changed = Signal()
+    trial_changed = Signal()
 
 
     def __init__(self, yaml_path: str | None = None, auto_save_interval: int = 30000):

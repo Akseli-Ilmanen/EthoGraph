@@ -54,7 +54,6 @@ class LabelsWidget(QWidget):
 
 
         self.plot_container = None  # Will be set after creation
-        self.data_widget = None
 
         # Make widget focusable for keyboard events
         self.setFocusPolicy(Qt.StrongFocus)
@@ -106,14 +105,6 @@ class LabelsWidget(QWidget):
     def _mark_changes_unsaved(self):
         """Mark that changes have been made and are not saved."""
         self.app_state.changes_saved = False
-
-    def set_data_widget(self, data_widget):
-        """Set reference to data widget."""
-        self.data_widget = data_widget
-
-    def set_meta_widget(self, meta_widget):
-        """Set reference to meta widget."""
-        self.meta_widget = meta_widget
 
     def set_plot_container(self, plot_container):
         """Set the plot container reference and connect click handler."""
@@ -568,9 +559,9 @@ class LabelsWidget(QWidget):
         elif mode == "all_trials":
             for trial in self.app_state.label_dt.trials:
                 self.app_state.label_dt.sel(trials=trial).attrs['human_verified'] = np.int8(1)
-        
 
         self._update_human_verified_status()
+        self.app_state.verification_changed.emit()
 
         
     def _update_human_verified_status(self):
@@ -580,15 +571,12 @@ class LabelsWidget(QWidget):
             return
 
         attrs = self.app_state.label_dt.sel(trials=self.app_state.trials_sel).attrs
-        if attrs.get('human_verified', None) == True: # == np.int8(1):
+        if attrs.get('human_verified', None) == True:
             self.human_verified_status.setText("Human verified")
             self.human_verified_status.setStyleSheet("background-color: green; color: white;")
         else:
             self.human_verified_status.setText("Not verified")
-            self.human_verified_status.setStyleSheet("background-color: red; color: white;")
-
-        self.meta_widget.update_labels_widget_title()            
-        self.data_widget.update_trials_combo()  
+            self.human_verified_status.setStyleSheet("background-color: red; color: white;")  
         
     def _update_cp_status(self):
         if self.app_state.label_dt is None or self.app_state.trials_sel is None:
@@ -619,15 +607,11 @@ class LabelsWidget(QWidget):
             self.pred_show_predictions.setChecked(True)
             self.pred_file_path_edit.setText(file_path)
 
-        xmin, xmax = self.plot_container.get_current_xlim()
-        self.data_widget.update_main_plot(t0=xmin, t1=xmax)
+        self.app_state.labels_modified.emit()
         self.refresh_motif_shapes_layer()
-    
-    
-    
+
     def _on_pred_show_predictions_changed(self):
-        xmin, xmax = self.plot_container.get_current_xlim()
-        self.data_widget.update_main_plot(t0=xmin, t1=xmax)
+        self.app_state.labels_modified.emit()
             
             
     def _cp_correction(self, mode):
@@ -659,9 +643,8 @@ class LabelsWidget(QWidget):
                 self.app_state.label_dt.sel(trials=trial).labels.loc[filt_kwargs] = correct_changepoints_one_trial(curr_labels, ds, all_params, speed_correction=False)
                 self.app_state.label_dt.attrs["changepoint_corrected"] = np.int8(1)    
             self._update_cp_status()
-        
-        xmin, xmax = self.plot_container.get_current_xlim()
-        self.data_widget.update_main_plot(t0=xmin, t1=xmax)
+
+        self.app_state.labels_modified.emit()
         
         
 
@@ -789,10 +772,11 @@ class LabelsWidget(QWidget):
             return
             
 
-        # Handle right-click - play video of motif if clicking on one
+        # Handle right-click - seek video to clicked position
         if button == Qt.RightButton and self.app_state.video_folder is not None:
             frame = int(x_clicked * self.app_state.ds.fps)
-            self.data_widget.video.seek_to_frame(frame)
+            if hasattr(self.app_state, 'video') and self.app_state.video:
+                self.app_state.video.seek_to_frame(frame)
 
         
         # Handle left-click for labeling/editing (only in label mode)
@@ -924,8 +908,7 @@ class LabelsWidget(QWidget):
         self._human_verification_true(mode="single_trial")
 
         self._mark_changes_unsaved()
-
-        self.data_widget.update_motif_plot(ds_kwargs)
+        self.app_state.labels_modified.emit()
         self.refresh_motif_shapes_layer()
         
             
@@ -959,10 +942,9 @@ class LabelsWidget(QWidget):
 
     
         self.app_state.label_dt.sel(trials=self.app_state.trials_sel).labels.loc[filt_kwargs] = labels
-        
 
         self._mark_changes_unsaved()
-        self.data_widget.update_motif_plot(ds_kwargs)
+        self.app_state.labels_modified.emit()
         self.refresh_motif_shapes_layer()
 
     def _edit_motif(self):
@@ -1010,8 +992,8 @@ class LabelsWidget(QWidget):
 
 
 
-        if hasattr(self.data_widget, 'video') and self.data_widget.video:
-            self.data_widget.video.play_segment(start_frame, end_frame)
+        if hasattr(self.app_state, 'video') and self.app_state.video:
+            self.app_state.video.play_segment(start_frame, end_frame)
         else:
             print("No video available for playback.")
 

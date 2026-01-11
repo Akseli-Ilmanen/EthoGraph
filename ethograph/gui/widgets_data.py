@@ -138,7 +138,7 @@ class DataWidget(DataLoader, QWidget):
         self._set_controls_enabled(True)
         self.app_state.ready = True
 
-        self.navigation_widget._trial_change_consequences()
+        self.on_trial_changed()
 
 
         load_btn = self.io_widget.load_button
@@ -584,6 +584,34 @@ class DataWidget(DataLoader, QWidget):
 
 
 
+    def on_trial_changed(self):
+        """Handle all consequences of a trial change - centralized orchestration."""
+        trials_sel = self.app_state.trials_sel
+
+        try:
+            self.app_state.ds = self.app_state.dt.sel(trials=trials_sel)
+            self.app_state.label_ds = self.app_state.label_dt.sel(trials=trials_sel)
+
+            if self.app_state.pred_dt is not None:
+                self.app_state.pred_ds = self.app_state.pred_dt.sel(trials=trials_sel)
+
+        except Exception as e:
+            self.app_state.ds = self.app_state.dt.isel(trials=0)
+            self.app_state.label_ds = self.app_state.label_dt.isel(trials=0)
+            if self.app_state.pred_dt is not None:
+                self.app_state.pred_ds = self.app_state.pred_dt.isel(trials=0)
+
+            self.app_state.trials_sel = self.app_state.trials[0]
+            print(f"Error selecting trial {trials_sel}: {e}")
+
+        self.app_state.current_frame = 0
+        self.update_video_audio()
+        self.update_tracking()
+        self.update_motif_label()
+        self.update_main_plot()
+        self.update_space_plot()
+        self.app_state.verification_changed.emit()
+
     def update_main_plot(self, **kwargs):
         """Update the line plot or spectrogram with current trial/keypoint/variable selection."""
         if not self.app_state.ready:
@@ -638,56 +666,56 @@ class DataWidget(DataLoader, QWidget):
 
     def update_video_audio(self):
         """Update video and audio using appropriate sync manager based on sync_state."""
-        
-  
-
         if not self.app_state.ready or not self.app_state.video_folder:
-            return 
+            return
 
         current_frame = getattr(self.app_state, 'current_frame', 0)
-        
 
-        if self.video:
-            try:
-                self.video.frame_changed.disconnect(self._on_sync_frame_changed)
-                self.video.cleanup()              
-                for layer in list(self.viewer.layers):
-                    if layer.name in ["video", "Video Stream"]:
-                        self.viewer.layers.remove(layer)
-
-                
-                self.video = None
-            except (RuntimeError, TypeError):
-                print("Error during clean up")
-                pass
-
-
-        video_path = None
-        if self.app_state.video_folder and hasattr(self.app_state, 'cameras_sel'):                    
+        # Set up video path
+        if self.app_state.video_folder and hasattr(self.app_state, 'cameras_sel'):
             video_file = self.app_state.ds.attrs[self.app_state.cameras_sel]
             video_path = os.path.join(self.app_state.video_folder, video_file)
             self.app_state.video_path = os.path.normpath(video_path)
 
-
         # Set up audio path if available
-        audio_path = None
         if self.app_state.audio_folder and hasattr(self.app_state, 'mics_sel'):
             try:
-                audio_file = (
-                    self.app_state.ds.attrs[self.app_state.mics_sel]
-                )
+                audio_file = self.app_state.ds.attrs[self.app_state.mics_sel]
                 audio_path = os.path.join(self.app_state.audio_folder, audio_file)
                 self.app_state.audio_path = os.path.normpath(audio_path)
             except (KeyError, AttributeError):
                 self.app_state.audio_path = None
 
+        # Pre-load new video data before any layer operations to avoid race conditions
+        new_video_data = FastVideoReader(self.app_state.video_path, read_format='rgb24')
 
-        
-        video_data = FastVideoReader(self.app_state.video_path, read_format='rgb24')
-        video_layer = self.viewer.add_image(video_data, name="video", rgb=True)
+        # Force the reader to initialize by accessing shape (prevents lazy-load issues during render)
+        _ = new_video_data.shape
+
+        # Cleanup old video sync object first (but don't remove layer yet)
+        if self.video:
+            try:
+                self.video.frame_changed.disconnect(self._on_sync_frame_changed)
+                self.video.cleanup()
+            except (RuntimeError, TypeError):
+                pass
+            self.video = None
+            self.app_state.video = None
+
+        # Add new video layer BEFORE removing old one to avoid race condition
+        # where processEvents triggers a draw with no video layer present
+        video_layer = self.viewer.add_image(new_video_data, name="video_new", rgb=True)
+
+        # Now safely remove old video layers
+        for layer in list(self.viewer.layers):
+            if layer.name in ["video", "Video Stream"]:
+                self.viewer.layers.remove(layer)
+
+        # Rename and reposition the new layer
+        video_layer.name = "video"
         video_index = self.viewer.layers.index(video_layer)
-        self.viewer.layers.move(video_index, 0)  # Move to bottom layer
-        
+        self.viewer.layers.move(video_index, 0)
+
         try:
             self.video = NapariVideoSync(
                 viewer=self.viewer,
@@ -695,13 +723,12 @@ class DataWidget(DataLoader, QWidget):
                 video_source=self.app_state.video_path,
                 audio_source=self.app_state.audio_path
             )
+            self.app_state.video = self.video
         except Exception as e:
             print(f"Error initializing NapariVideoSync: {e}")
             return
-        
+
         self.video.seek_to_frame(current_frame)
-        
-        # Connect sync manager frame changes to app state and lineplot
         self.video.frame_changed.connect(self._on_sync_frame_changed)
 
 

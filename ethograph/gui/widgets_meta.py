@@ -94,21 +94,17 @@ class MetaWidget(CollapsibleWidgetContainer):
         # Now set the data_widget reference in io_widget
         self.io_widget.data_widget = self.data_widget
 
-        # Set up cross-references between widgets, so they can talk to each other
-
-        # Needs data widget for updating plots after navigation/label clicks
-        self.navigation_widget.set_data_widget(self.data_widget)
-        self.navigation_widget.set_labels_widget(self.labels_widget)
-
-        self.labels_widget.set_data_widget(self.data_widget)
-        self.labels_widget.set_meta_widget(self)
-
-        # Labels and plot widgets need plot_container for unified plot access
+        # Set up cross-references between widgets
+        # Plot widgets need plot_container for unified plot access
         self.labels_widget.set_plot_container(self.plot_container)
         self.plots_widget.set_plot_container(self.plot_container)
 
-        # Redraw labels when switching between lineplot and spectrogram
+        # Signal connections for decoupled communication
         self.plot_container.labels_redraw_needed.connect(self._on_labels_redraw_needed)
+        self.app_state.labels_modified.connect(self._on_labels_modified)
+        self.app_state.verification_changed.connect(self._on_verification_changed)
+        self.app_state.verification_changed.connect(self.labels_widget._update_human_verified_status)
+        self.app_state.trial_changed.connect(self.data_widget.on_trial_changed)
  
 
         # The one widget to rule them all (loading data, updating plots, managing sync)
@@ -171,6 +167,18 @@ class MetaWidget(CollapsibleWidgetContainer):
             return
         ds_kwargs = self.app_state.get_ds_kwargs()
         self.data_widget.update_motif_plot(ds_kwargs)
+
+    def _on_labels_modified(self):
+        """Handle label modification - update plots with current view range."""
+        if not self.app_state.ready:
+            return
+        xmin, xmax = self.plot_container.get_current_xlim()
+        self.data_widget.update_main_plot(t0=xmin, t1=xmax)
+
+    def _on_verification_changed(self):
+        """Handle verification status change - update UI indicators."""
+        self.update_labels_widget_title()
+        self.data_widget.update_trials_combo()
 
     def update_labels_widget_title(self):
         """Update the Label controls title with verification status emoji."""

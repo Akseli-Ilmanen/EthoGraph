@@ -134,6 +134,11 @@ ethograph/gui/
    - Auto-saves to `gui_settings.yaml` every 30 seconds via QTimer
    - Type validation on `__setattr__` via `check_type()`
 
+**Event signals for decoupled widget communication:**
+- `trial_changed`: Emitted by NavigationWidget when trial changes
+- `labels_modified`: Emitted by LabelsWidget when labels are created/deleted/modified
+- `verification_changed`: Emitted when human verification status changes
+
 **Key methods:**
 - `get_ds_kwargs()`: Builds selection dict from all `*_sel` attributes
 - `set_key_sel(type_key, value)`: Sets selection with previous value tracking
@@ -148,7 +153,7 @@ Central coordinator that creates and wires all widgets together.
 
 **Responsibilities:**
 - Creates shared `ObservableAppState` and passes to all widgets
-- Sets up cross-references between widgets
+- Sets up signal connections for decoupled communication
 - Binds all global keyboard shortcuts via `@viewer.bind_key()`
 - Manages unsaved changes dialog on close
 
@@ -161,11 +166,17 @@ Central coordinator that creates and wires all widgets together.
 6. NavigationWidget (trial navigation)
 7. PlotContainer (bottom dock - hidden until data loads)
 
-**Cross-references set:**
+**Signal connections (decoupled communication):**
+- `app_state.trial_changed` -> `data_widget.on_trial_changed()`
+- `app_state.labels_modified` -> `MetaWidget._on_labels_modified()` -> updates plots
+- `app_state.verification_changed` -> `MetaWidget._on_verification_changed()` -> updates UI indicators
+- `app_state.verification_changed` -> `labels_widget._update_human_verified_status()`
+- `plot_container.labels_redraw_needed` -> `MetaWidget._on_labels_redraw_needed()`
+
+**Direct references (DataWidget as central orchestrator):**
 - `data_widget.set_references(plot_container, labels_widget, plots_widget, navigation_widget)`
-- `labels_widget.set_plot_container(plot_container)`
-- `navigation_widget.set_data_widget(data_widget)`
-- `plot_container.labels_redraw_needed` signal -> `update_motif_plot()`
+- `labels_widget.set_plot_container(plot_container)` - for drawing motifs
+- `plots_widget.set_plot_container(plot_container)` - for applying settings
 
 ---
 
@@ -184,13 +195,15 @@ Central coordinator that creates and wires all widgets together.
 - Manages paths via QLineEdit + Browse + Clear buttons
 - Stores device combos in `self.combos` dict: `{cameras, mics, tracking}`
 
-**DataWidget** - The orchestrator widget:
+**DataWidget** - The central orchestrator widget:
 - `on_load_clicked()`: Triggers loading, creates dynamic UI controls
+- `on_trial_changed()`: Handles all consequences of trial change (called via signal)
 - `_create_trial_controls()`: Creates combos for all dimensions
 - `_on_combo_changed()`: Central handler for all selection changes
 - `update_main_plot()`: Updates active plot with current selections
 - `update_motif_plot()`: Draws motif rectangles on plot
 - `update_video_audio()`: Loads/switches video/audio files
+- Stores video sync object on `app_state.video` for access by other widgets
 
 ---
 
@@ -278,16 +291,18 @@ Subclasses implement:
 
 ### Navigation: `widgets_navigation.py`
 
-**NavigationWidget:**
+**NavigationWidget** - Fully decoupled, only knows `app_state` and `viewer`:
 - Trial selection combo (color-coded: green=verified, red=unverified)
 - Previous/Next buttons with confidence filtering
 - Playback FPS control
+- Emits `app_state.trial_changed` signal when trial changes
 
-**_trial_change_consequences()** - On trial change:
-1. Loads new trial from datatree
-2. Updates video/audio files
-3. Updates plots and motif labels
-4. Resets current_frame to 0
+**On trial change:**
+1. NavigationWidget sets `app_state.trials_sel` and emits `trial_changed`
+2. DataWidget.on_trial_changed() handles all consequences (via signal connection):
+   - Loads new trial from datatree
+   - Emits `verification_changed` for UI updates
+   - Updates video/audio, tracking, plots
 
 ---
 
@@ -315,26 +330,30 @@ _create_trial_controls() -> combos created
     |
 app_state.ready = True
     |
-navigation_widget._trial_change_consequences() -> video/audio/plots
+DataWidget.on_trial_changed() -> video/audio/plots
 ```
 
-**On feature selection change:**
+**On trial change (signal-based):**
 ```
-User changes feature combo -> _on_combo_changed()
+User changes trial combo -> NavigationWidget._on_trial_changed()
     |
-app_state.features_sel = new_value -> Signal emitted
+app_state.trials_sel = new_trial
     |
-If "Spectrogram" -> plot_container.switch_to_spectrogram()
-Else -> plot_container.switch_to_lineplot()
+app_state.trial_changed.emit()  <- Signal emitted
     |
-update_main_plot() -> current_plot.update_plot()
+DataWidget.on_trial_changed()   <- Connected listener
     |
-update_motif_plot() -> plot_all_motifs()
+    +-- Update datasets (ds, label_ds, pred_ds)
+    +-- app_state.verification_changed.emit()
+    +-- update_video_audio()
+    +-- update_tracking()
+    +-- update_main_plot()
+    +-- update_space_plot()
 ```
 
-**On motif creation:**
+**On motif creation (signal-based):**
 ```
-User presses '1' -> widgets_meta.activate_motif(1)
+User presses '1' -> labels_widget.activate_motif(1)
     |
 labels_widget.ready_for_label_click = True
     |
@@ -342,9 +361,23 @@ User clicks plot twice -> _on_plot_clicked()
     |
 Create label in app_state.label_ds['labels']
     |
-plot_all_motifs() -> redraws labels
+app_state.labels_modified.emit()  <- Signal emitted
     |
-app_state.changes_saved = False
+MetaWidget._on_labels_modified()  <- Connected listener
+    |
+DataWidget.update_main_plot() -> redraws plot with motifs
+```
+
+**On verification change (signal-based):**
+```
+User marks trial verified -> labels_widget._human_verification_true()
+    |
+app_state.verification_changed.emit()  <- Signal emitted
+    |
+    +-- labels_widget._update_human_verified_status()  <- Updates status button
+    +-- MetaWidget._on_verification_changed()
+        +-- update_labels_widget_title()  <- Updates emoji in title
+        +-- data_widget.update_trials_combo()  <- Updates color coding
 ```
 
 ---
@@ -376,10 +409,20 @@ Bound in `MetaWidget._bind_global_shortcuts()`:
 1. **Observer Pattern**: AppState emits signals, widgets react
 2. **Centralized State**: All data flows through ObservableAppState
 3. **Dynamic Attributes**: `*_sel` attributes created as needed for xarray selections
-4. **Signal-based Communication**: Widgets communicate via Qt signals
-5. **Resource Sharing**: SharedAudioCache singleton prevents file handle leaks
-6. **Smart Caching**: SpectrogramBuffer with buffer multiplier for efficiency
-7. **State Persistence**: Auto-saving to YAML every 30 seconds
+4. **Signal-based Decoupling**: Widgets emit event signals (`trial_changed`, `labels_modified`, `verification_changed`) instead of calling each other directly
+5. **Central Orchestrator**: DataWidget handles complex multi-step operations, other widgets are decoupled
+6. **Resource Sharing**: SharedAudioCache singleton prevents file handle leaks; video sync stored on `app_state.video`
+7. **Smart Caching**: SpectrogramBuffer with buffer multiplier for efficiency
+8. **State Persistence**: Auto-saving to YAML every 30 seconds
+
+**Widget Coupling Summary:**
+| Widget | Dependencies | Communication |
+|--------|--------------|---------------|
+| NavigationWidget | `app_state`, `viewer` only | Emits `trial_changed` signal |
+| LabelsWidget | `app_state`, `plot_container` | Emits `labels_modified`, `verification_changed` |
+| DataWidget | All widgets (orchestrator) | Listens to signals, updates UI |
+| PlotsWidget | `app_state`, `plot_container` | Direct plot manipulation |
+| IOWidget | `app_state`, `data_widget`, `labels_widget` | Load operations |
 
 ---
 
