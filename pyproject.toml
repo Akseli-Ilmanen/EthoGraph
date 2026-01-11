@@ -34,6 +34,11 @@ dev = [
     "ruff",
     "tox",
 ]
+docs = [
+    "mkdocs>=1.5",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.24",
+]
 
 
 [tool.setuptools.packages.find]

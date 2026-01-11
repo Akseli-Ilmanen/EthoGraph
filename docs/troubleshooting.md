@@ -1,3 +1,5 @@
+# Troubleshooting
+
 ## Error Messages
 
 1. If you run into a problem, I recommend `Ctrl + S` to save labels `.nc` file, and then restart the GUI. Generally recommended to save semi-regularly!

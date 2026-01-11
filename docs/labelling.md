@@ -1,9 +1,9 @@
-## Labelling
+# Labelling
 
 Before closing, you will be prompted to `update with labels and save`, this takes `labels.nc` file and udpates the `data.nc` file with this info. Don't skip this step, may take a minute!
 
 
-### Creating Labels
+## Creating Labels
 
 ![keyboard](media/keyboard.png)
 
@@ -12,7 +12,7 @@ To create a new motif label:
 2. Click twice on the line plot to define the start and end boundaries of the motif
 3. The motif will be created and displayed with a color-coded overlay
 
-### Playing Back Labels
+## Playing Back Labels
 
 Once you've created motif labels, you can click on the motif, press 'v' to play the segment.
 
@@ -21,7 +21,7 @@ Once you've created motif labels, you can click on the motif, press 'v' to play 
 - Note: How you can also use `←`, `→` to navigate individual frames, or ight-click to jump to specific timepoints. Over time you may find this faster than playing the video.
 
 
-### Editing and Deleting Labels
+## Editing and Deleting Labels
 
 You can edit or delete existing motifs using the labels widget interface:
 
@@ -30,7 +30,7 @@ You can edit or delete existing motifs using the labels widget interface:
 - **Edit**: Select a motif (Left-click), press `Ctrl + E`, then click twice to define new start/stop boundary
 - **Delete**: Select a motif (Left-click), press `Ctrl + D` to delete.
 
-### Changepoint correction
+## Changepoint Correction
 
 - Note how in the video above you can turn off/on the Changepoint correction. 
 
@@ -38,6 +38,6 @@ You can edit or delete existing motifs using the labels widget interface:
 ADD scehmatic image changepoint correction
 
 S
-### Import/save/pred/
+## Import/Save/Predictions
 
 TO DO

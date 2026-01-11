@@ -1,7 +1,7 @@
-## Plot Settings
+# Plot Settings
 
 
-### Zooming
+## Zooming
 
 ![zooming](media/zooming.gif)
 
@@ -12,7 +12,7 @@
 - **Percentile limit**: The GUI has a data-aware zoom-limit, where you can't zoom further out on the x or y-axis, as there is valid data. However, if you have very large outliers, you may prefer not to see them within your limit. By adjusting the percentile limit (y-axis), you can control whether to limit your y-axis zoom to be 95%, 99% or all (100%) of your data.
 
 
-### Axes 
+## Axes
 
 Control x and y-axes limits
 

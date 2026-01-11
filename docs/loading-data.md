@@ -1,4 +1,4 @@
-### Loading Data
+# Loading Data
 
 1. In `I/O` widget, select your session data **file** (`.nc`) 
 2. Select the video **folder** containing camera recordings (`.mp4`, `.mov`, `.avi`)
@@ -8,13 +8,10 @@
 
 
 
-### Folder Structure
+## Folder Structure
 
-![alt text](image.png)
-
-TO DO - fix formatting
-
-    processed_data/
+```
+processed_data/
     └── session_folder/
         ├── data.nc                  # Main behavioral dataset (required)
         └── labels/                  # Motif labels (created by GUI)
@@ -38,18 +35,7 @@ TO DO - fix formatting
             ├── trial002_pose.h5
             ├── trial002_pose.csv
             └── ...
-
-
-### TO DO
-
-- sync via .nc file attributes
-- only dropdowns opened that you need, 
-- dropdowns based on coords, you can add new coords (udpate beyond `indivdiauls, etc`)
-
-### TO DO
-
-Don't keep documentation in napari but a link should jump to an external one, and there it's probably much easier to host GIFs, etc. Anyway good to have one documentation for all.
-
+```
 
 [^1]: If your video files (e.g. `.mp4`) contain audio, the video and audio folder will be the same.
 [^2]: Loading of pose estimation points and tracks occurs via `movement` library. See further here [Movement IO](https://movement.neuroinformatics.dev/user_guide/input_output.html#supported-third-party-formats)

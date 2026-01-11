@@ -1,7 +1,7 @@
-## Keyboard Shortcuts
+# Keyboard Shortcuts
 
 
-### Video/Audio Control
+## Video/Audio Control
 
 | Shortcut | Action |
 |----------|--------|
@@ -10,14 +10,14 @@
 | `←` | Previous frame (NapariVideo) |
 | `→` | Next frame (NapariVideo) |
 
-### Navigation
+## Navigation
 
 | Shortcut | Action |
 |----------|--------|
 | `↑` | Previous trial |
 | `↓` | Next trial |
 
-### Mouse Controls
+## Mouse Controls
 
 | Action | Function |
 |--------|----------|
@@ -25,7 +25,7 @@
 | **Right Click** | Seek video to clicked time |
 | **Right Click + Drag** | Adjust X/Y axis limits (PyQtGraph built-in) |
 
-### Labelling
+## Labelling
 
 | Shortcut / Action | Description |
 |-------------------|-------------|
@@ -38,7 +38,7 @@
 | `Ctrl+X` | Switch between labels and predictions. |
 | `Ctrl+V` | Verify labels correct by editing once or this shortcut. | 
 
-### Selection Toggles
+## Selection Toggles
 
 You can only toggle via shortcut after having selected two options once.
 
@@ -51,7 +51,7 @@ You can only toggle via shortcut after having selected two options once.
 | `Ctrl+M` | Toggle to last selected microphone |
 | `Ctrl+T` | Toggle to last tracking file |
 
-### Plot Controls
+## Plot Controls
 
 | Shortcut | Action |
 |----------|--------|
