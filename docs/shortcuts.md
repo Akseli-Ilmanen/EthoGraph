@@ -36,7 +36,7 @@
 | `Ctrl+D` | Delete selected motif (after selecting motif) |
 | `Ctrl+S` | Save labels `.nc` file. (Save `data.nc` only via button). |
 | `Ctrl+X` | Switch between labels and predictions. |
-| `Ctrl+V` | Verify labels correct by editing once or this shortcut. | 
+| `Ctrl+V` | 'Verify predictions' by editing once or this shortcut. | 
 
 ## Selection Toggles
 
@@ -49,7 +49,6 @@ You can only toggle via shortcut after having selected two options once.
 | `Ctrl+K` | Toggle to last selected keypoint |
 | `Ctrl+C` | Toggle to last selected camera |
 | `Ctrl+M` | Toggle to last selected microphone |
-| `Ctrl+T` | Toggle to last tracking file |
 
 ## Plot Controls
 

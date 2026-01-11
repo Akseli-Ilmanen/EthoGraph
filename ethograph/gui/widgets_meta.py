@@ -1,5 +1,5 @@
 """Widget container for other collapsible widgets."""
-
+import webbrowser
 from pathlib import Path
 
 from ethograph.utils.paths import gui_default_settings_path
@@ -17,7 +17,7 @@ from .widgets_labels import LabelsWidget
 from .widgets_navigation import NavigationWidget
 from .widgets_io import IOWidget
 from .widgets_plot import PlotsWidget
-from .widgets_documentation import InteractiveDocsDialog
+
 
 
 class MetaWidget(CollapsibleWidgetContainer):
@@ -255,31 +255,22 @@ class MetaWidget(CollapsibleWidgetContainer):
         layout = QHBoxLayout()
         widget.setLayout(layout)
 
-        # Documentation button
-        self.docs_button = QPushButton("📚 Tutorials & Shortcuts")
-        self.docs_button.clicked.connect(self._show_documentation)
+        self.docs_button = QPushButton("📚 Documentation")
+        self.docs_button.clicked.connect(lambda: webbrowser.open("https://ethograph.readthedocs.io/en/latest/"))
         layout.addWidget(self.docs_button)
-
-        # GitHub button
+        
         self.github_button = QPushButton("🔗 GitHub Issues")
-        self.github_button.clicked.connect(self._open_github)
+        self.github_button.clicked.connect(lambda: webbrowser.open("https://github.com/akseli-ilmanen/ethograph/issues"))
         layout.addWidget(self.github_button)
+        
+        
 
         self.docs_dialog = None
+        
+        
+        
         return widget
 
-    def _show_documentation(self):
-        """Show the interactive documentation dialog."""
-        if self.docs_dialog is None:
-            self.docs_dialog = InteractiveDocsDialog(parent=self)
-        self.docs_dialog.show()
-        self.docs_dialog.raise_()
-        self.docs_dialog.activateWindow()
-
-    def _open_github(self):
-        """Open GitHub issues page."""
-        import webbrowser
-        webbrowser.open("https://github.com/akseli-ilmanen/ethograph/issues")
 
     def _override_napari_shortcuts(self):
         """Aggressively unbind napari shortcuts at all levels."""

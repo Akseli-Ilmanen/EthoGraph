@@ -163,7 +163,7 @@ class TrialTree(xr.DataTree):
     def _validate_tree(self) -> List[str]:
         
 
-        inconsistencies, errors = validate_datatree(self, type_vars_dict={})
+        inconsistencies, errors = validate_datatree(self)
     
         if inconsistencies or errors:
             error_msg = ""

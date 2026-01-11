@@ -5,6 +5,8 @@ import numpy as np
 import xarray as xr
 from typing import Dict, List, Set, TYPE_CHECKING
 from numbers import Number
+from pathlib import Path
+
 
 
 if TYPE_CHECKING:
@@ -50,12 +52,12 @@ def validate_media_files(ds: xr.Dataset, file_type: str) -> List[str]:
         return errors
 
     keys = np.atleast_1d(keys)
-    for key in keys:
-        if key not in ds.attrs:
-            errors.append(
-                f"Missing file path for '{file_type}': ds.attrs['{key}'] not found. "
-                f"Use set_media_files() to set both key list and file paths together."
-            )
+    # for key in keys:
+    #     if key not in ds.attrs:
+    #         errors.append(
+    #             f"Missing file path for '{file_type}': ds.attrs['{key}'] not found. "
+    #             f"Use set_media_files() to set both key list and file paths together."
+    #         )
 
     return errors
 
@@ -126,12 +128,13 @@ def validate_dataset(ds: xr.Dataset, type_vars_dict: Dict) -> List[str]:
 
     # Required attributes
     errors.extend(validate_required_attrs(ds))
+    
 
     # Required dimensions and coordinates
-    if "time" not in ds.dims:
+    if "time" not in ds.dims or len(ds.coords["time"]) == 0:
         errors.append("Xarray dataset ('ds') must have 'time' dimension")
 
-    if "individuals" not in ds.coords:
+    if "individuals" not in ds.coords or len(ds.coords["individuals"]) == 0:
         errors.append("Xarray dataset ('ds') must have 'individuals' coordinate")
 
     # Required variables
@@ -140,10 +143,10 @@ def validate_dataset(ds: xr.Dataset, type_vars_dict: Dict) -> List[str]:
     elif not is_integer_array(ds['labels'].values):
         errors.append("Variable 'labels' must contain integer values")
 
-    if "features" not in type_vars_dict:
+    if "features" not in type_vars_dict or len(type_vars_dict["features"]) == 0:
         errors.append("Xarray dataset ('ds') must contain at least one variable with attribute type='features'")
 
-    if "cameras" not in type_vars_dict:
+    if "cameras" not in type_vars_dict or len(type_vars_dict["cameras"]) == 0:
         errors.append("Xarray dataset ('ds') must have 'cameras' attribute")
 
     # Audio requires sample rate
@@ -222,11 +225,72 @@ def _check_cross_trial_consistency(
     return inconsistencies
 
 
+def _possible_trial_conditions(ds: xr.Dataset, dt: "TrialTree") -> List[str]:
+    """Identify possible trial condition attributes."""
+    common_extensions = {
+        '.csv', '.mp4', '.avi', '.mov', '.h5', '.hdf5',
+        '.wav', '.mp3', '.npy',
+    }
+
+    common_attrs = dt.get_common_attrs().keys()
+
+    cond_attrs = []
+    for key, value in ds.attrs.items():
+        if key in ['trial'] or key in common_attrs:
+            continue
+
+        if isinstance(value, str):
+            if Path(value).suffix.lower() in common_extensions:
+                continue
+
+        cond_attrs.append(key)
+
+    return cond_attrs
+
+
+
+    
+def extract_type_vars(ds: xr.Dataset, dt: "TrialTree") -> dict:
+    """Extract type variables dictionary from dataset."""
+    type_vars_dict = {}
+
+    type_vars_dict['individuals'] = ds.coords['individuals'].values.astype(str)
+
+    feat_ds = ds.filter_by_attrs(type='features')
+    type_vars_dict['features'] = list(feat_ds.data_vars)
+
+    type_vars_dict['cameras'] = np.atleast_1d(ds.attrs.get('cameras')).astype(str)
+
+    # Optional attributes
+    mics = ds.attrs.get('mics')
+    if mics:
+        type_vars_dict['mics'] = np.atleast_1d(mics).astype(str)
+
+    tracking = ds.attrs.get('tracking')
+    if tracking:
+        type_vars_dict['tracking'] = np.atleast_1d(tracking).astype(str)
+
+    if 'keypoints' in ds.coords:
+        type_vars_dict['keypoints'] = ds.coords['keypoints'].values.astype(str)
+
+    color_ds = ds.filter_by_attrs(type='colors')
+    if color_ds.data_vars:
+        type_vars_dict['colors'] = list(color_ds.data_vars)
+
+    cp_ds = ds.filter_by_attrs(type='changepoints')
+    if cp_ds.data_vars:
+        type_vars_dict['changepoints'] = list(cp_ds.data_vars)
+
+    type_vars_dict["trial_conditions"] = _possible_trial_conditions(ds, dt)
+    
+
+    return type_vars_dict
+
+
 
 
 def validate_datatree(
-    dt: "TrialTree",
-    type_vars_dict: Dict,
+    dt: "TrialTree"
 ) -> tuple[Dict[str, Set[str]], List[str]]:
     """Validate a TrialTree for consistency and data integrity.
 
@@ -238,18 +302,15 @@ def validate_datatree(
 
     Args:
         dt: TrialTree to validate
-        type_vars_dict: Dictionary of categorized variables/coordinates
     Returns:
         Tuple of:
         - inconsistencies: Dict mapping category to set of inconsistent items
         - errors: List of validation error messages
     """
-    if not type_vars_dict:
-        type_vars_dict = {
-            'individuals': np.array([], dtype=str),
-            'features': [],
-            'cameras': np.array([], dtype=str),
-        }
+    ds = dt.isel(trials=0) # sample
+    type_vars_dict = extract_type_vars(ds, dt)
+    
+    print("Extracted type_vars_dict:", type_vars_dict)
             
     datasets = _extract_trial_datasets(dt)
 
@@ -266,7 +327,4 @@ def validate_datatree(
     for idx in sample_indices:
         errors.extend(validate_dataset(datasets[idx], type_vars_dict))
         
-
-    return inconsistencies, errors
-    
-
+    return inconsistencies, list(set(errors))
