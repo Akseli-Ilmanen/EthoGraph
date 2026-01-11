@@ -9,6 +9,7 @@ from scipy.ndimage import gaussian_filter1d
 from moveseg.features.mov_features import get_angle_rgb
 import os
 import json
+from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Union, List, Set
 
 

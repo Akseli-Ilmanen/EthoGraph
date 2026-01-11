@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from moveseg.utils.paths import gui_default_settings_path
 from napari.layers import Image
 from napari.viewer import Viewer
 from qt_niu.collapsible_widget import CollapsibleWidgetContainer
@@ -30,8 +31,8 @@ class MetaWidget(CollapsibleWidgetContainer):
         self._set_compact_font()
 
         # Create centralized app_state with YAML persistence
-        yaml_path = self._default_yaml_path()
-        print(f"Settings saved in {yaml_path}")
+        yaml_path = gui_default_settings_path()
+        print(f"Settings file: {yaml_path}")
 
         self.app_state = ObservableAppState(yaml_path=str(yaml_path))
 
@@ -288,17 +289,6 @@ class MetaWidget(CollapsibleWidgetContainer):
         """Open GitHub issues page."""
         import webbrowser
         webbrowser.open("https://github.com/akseli-ilmanen/moveseg/issues")
-
-    def _default_yaml_path(self) -> Path:
-        yaml_path = Path.cwd() / "gui_settings.yaml"
-        try:
-            yaml_path.parent.mkdir(parents=True, exist_ok=True)
-            yaml_path.touch(exist_ok=True)
-        except (OSError, PermissionError):
-            yaml_path = Path.home() / "gui_settings.yaml"
-            yaml_path.parent.mkdir(parents=True, exist_ok=True)
-            yaml_path.touch(exist_ok=True)
-        return yaml_path
 
     def _override_napari_shortcuts(self):
         """Aggressively unbind napari shortcuts at all levels."""

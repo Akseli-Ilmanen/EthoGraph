@@ -6,6 +6,7 @@ from qtpy.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QPushButton,
     QWidget,
@@ -15,6 +16,7 @@ from .app_state import AppStateSpec
 from pathlib import Path
 from qtpy.QtCore import Qt
 from moveseg.utils.io import TrialTree
+from moveseg.utils.paths import gui_default_settings_path
 from typing import Optional
 
 class IOWidget(QWidget):
@@ -80,27 +82,9 @@ class IOWidget(QWidget):
         
 
         
-        yaml_path = self._default_yaml_path()
+        yaml_path = gui_default_settings_path()
         self.app_state._yaml_path = str(yaml_path)
         self.app_state.save_to_yaml()
-  
-  
-    def _default_yaml_path(self) -> Path:
-        """Create default YAML path, falling back to home folder if cwd is not writable."""
-        cwd_path = Path(__file__).parent.parent.parent / "gui_settings.yaml"
-        print()
-        try:
-            cwd_path.parent.mkdir(parents=True, exist_ok=True)
-            cwd_path.touch(exist_ok=True)
-            print(f"Settings file: {cwd_path}")
-            return cwd_path
-        except (OSError, PermissionError) as e:
-            home_path = Path.home() / "gui_settings.yaml"
-            print(f"Cannot write to {cwd_path.parent}: {e}")
-            print(f"Falling back to home folder: {home_path}")
-            home_path.parent.mkdir(parents=True, exist_ok=True)
-            home_path.touch(exist_ok=True)
-            return home_path
 
     def _clear_all_line_edits(self):
         """Clear all QLineEdit fields in the widget."""
@@ -224,7 +208,6 @@ class IOWidget(QWidget):
 
         for key in ['cameras', 'mics', 'tracking']:
             if key in self.combos:
-                # Remove from layout and delete widget
                 combo = self.combos[key]
                 combo.setParent(None)
                 combo.deleteLater()
@@ -232,24 +215,27 @@ class IOWidget(QWidget):
                 if combo in self.controls:
                     self.controls.remove(combo)
 
-        if "cameras" in type_vars_dict.keys() and self.app_state.video_folder:
-            self._create_combo_widget("cameras", type_vars_dict["cameras"])
- 
-        if "mics" in type_vars_dict.keys() and self.app_state.audio_folder:
-            self._create_combo_widget("mics", type_vars_dict["mics"])
+        if hasattr(self, '_device_row_layout'):
+            while self._device_row_layout.count():
+                self._device_row_layout.takeAt(0)
+        else:
+            self._device_row_layout = QHBoxLayout()
+            self.layout().addRow("Devices:", self._device_row_layout)
 
-        if "tracking" in type_vars_dict.keys() and self.app_state.tracking_folder:
-            self._create_combo_widget("tracking", type_vars_dict["tracking"])
+        for key, folder_attr in [("cameras", "video_folder"), ("mics", "audio_folder"), ("tracking", "tracking_folder")]:
+            if key in type_vars_dict and getattr(self.app_state, folder_attr):
+                self._create_combo_widget(key, type_vars_dict[key], self._device_row_layout)
 
 
 
-    def _create_combo_widget(self, key, vars):
+    def _create_combo_widget(self, key, vars, layout):
         """Create a combo box widget for a given info key."""
         combo = QComboBox()
         combo.setObjectName(f"{key}_combo")
         combo.currentTextChanged.connect(self._on_combo_changed)
         combo.addItems([str(var) for var in vars])
-        self.layout().addRow(f"{key.capitalize()}:", combo)
+        layout.addWidget(QLabel(f"{key.capitalize()}:"))
+        layout.addWidget(combo)
         self.combos[key] = combo
         self.controls.append(combo)
         return combo

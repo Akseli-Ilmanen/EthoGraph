@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 import numpy as np
+from moveseg.utils.paths import get_project_root
 import pyqtgraph as pg
 from napari.viewer import Viewer
 from napari.utils.notifications import show_info
@@ -92,8 +93,7 @@ class LabelsWidget(QWidget):
         # Use absolute path to mapping.txt in the project root
 
         
-        repo_root = Path(__file__).resolve().parents[2]
-        mapping_path = repo_root / "configs" / "mapping.txt"
+        mapping_path = get_project_root() / "configs" / "mapping.txt"
         self.motif_mappings = load_motif_mapping(mapping_path) # HARD CODED FOR NOW
         self._populate_motifs_table()
 

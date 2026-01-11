@@ -9,6 +9,7 @@ import traceback
 import importlib
 import sys
 from moveseg.utils.dataset import save_config
+from moveseg.utils.io import get_project_root
 
 
 params_rigid = {
@@ -79,8 +80,7 @@ if __name__ == "__main__":
    
    
 
-   project_root = os.path.dirname(os.path.abspath(__file__))
-   mapping_file = os.path.join(project_root, "configs", "mapping.txt")
+   mapping_file = os.path.join(get_project_root(), "configs", "mapping.txt")
 
 
    nc_paths = [

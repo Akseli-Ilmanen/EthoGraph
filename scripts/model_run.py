@@ -18,6 +18,7 @@ from datetime import datetime
 from moveseg.utils.dataset import get_trial_dict, get_data_dict, write_bundle_list, save_config
 from moveseg.eval.eval_plotting import plot_metrics_best_model
 from moveseg.utils.io import TrialTree
+from moveseg.utils.paths import get_project_root
 from moveseg.utils.labels import load_mapping
 from moveseg.model.cetnet_encoder import *
 from moveseg.utils.batch_gen import BatchGenerator
@@ -124,9 +125,7 @@ boundary_radius = all_params.get("boundary_radius")
 
 
 # global
-# Get project root (two levels up from this script)
-script_dir = Path(__file__).parent
-project_root = script_dir.parent.parent
+project_root = get_project_root()
 mapping_path = project_root / "configs" / "mapping.txt"
 
 

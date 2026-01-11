@@ -4,6 +4,7 @@ from typing import Union, Dict
 from pathlib import Path
 import numpy as np
 import os
+from moveseg.utils.paths import get_project_root
 from itertools import groupby
 from itertools import groupby
 from typing import Dict, List, Tuple, Any, Union
@@ -400,8 +401,7 @@ def create_classification_probabilities_pdf(label_dt, output_path: Union[str, Pa
     trial_nums = label_dt.trials
     N = len(trial_nums)
 
-    repo_root = Path(__file__).resolve().parents[2]
-    mapping_path = repo_root / "configs" / "mapping.txt"
+    mapping_path = get_project_root() / "configs" / "mapping.txt"
     motif_mappings = load_motif_mapping(mapping_path)
     class_colors = [motif_mappings[i]['color'] for i in range(len(motif_mappings))]
     num_classes = len(motif_mappings)
