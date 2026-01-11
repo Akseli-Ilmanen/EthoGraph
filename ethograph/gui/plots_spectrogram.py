@@ -43,12 +43,6 @@ class SharedAudioCache:
         with cls._lock:
             cls._instances.clear()
 
-    @classmethod
-    def remove_loader(cls, audio_path):
-        """Remove specific AudioLoader from cache."""
-        with cls._lock:
-            if audio_path in cls._instances:
-                del cls._instances[audio_path]
 
 
 class SpectrogramPlot(BasePlot):
@@ -95,6 +89,8 @@ class SpectrogramPlot(BasePlot):
         # ColorBarItem or use a different approach. For now, we'll use the
         # built-in color mapping of ImageItem.
 
+    
+    # May use in the future
     def update_colormap(self, colormap_name='viridis'):
         """Update colormap for spectrogram."""
         if hasattr(self.spec_item, 'setColorMap'):

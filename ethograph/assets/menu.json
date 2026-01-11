@@ -8,7 +8,7 @@
       "command": ["ethograph", "launch"],
       "icon": "{{ MENU_DIR }}/icon.ico",
       "activate": true,
-      "terminal": true,
+      "terminal": false,
       "platforms": {
         "win": {}
       }

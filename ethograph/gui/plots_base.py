@@ -45,11 +45,6 @@ class BasePlot(pg.PlotWidget):
         # Store interaction state
         self._interaction_enabled = True
 
-        # Data bounds for smart zoom constraints
-        self._data_time_min = None
-        self._data_time_max = None
-        self._min_time_range = 0.001
-
 
         # Connect click handler
         self.scene().sigMouseClicked.connect(self._handle_click)

@@ -1,7 +1,6 @@
 """Space plot widget for displaying box topview and centroid trajectory plots."""
 
 import numpy as np
-from pyparsing import line
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 from qtpy.QtWidgets import QWidget, QVBoxLayout

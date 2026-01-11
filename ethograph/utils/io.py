@@ -11,7 +11,7 @@ import os
 import json
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Union, List, Set
-
+from ethograph.utils.validation import validate_datatree
 
 class TrialTree(xr.DataTree):
     """DataTree subclass with trial-specific functionality."""
@@ -143,7 +143,9 @@ class TrialTree(xr.DataTree):
 
             trials.append(trial_num)
             tree[f'{cls.TRIAL_PREFIX}{trial_num}'] = xr.DataTree(ds)
-
+            
+        
+        tree._validate_tree()
         return tree
     
     @classmethod
@@ -154,50 +156,33 @@ class TrialTree(xr.DataTree):
         for trial_num, ds in trials_dict.items():
             tree[f'{cls.TRIAL_PREFIX}{trial_num}'] = xr.DataTree(ds)
 
+        tree._validate_tree()
         return tree
 
+
+    def _validate_tree(self) -> List[str]:
+        
+
+        inconsistencies, errors = validate_datatree(self, type_vars_dict={})
+    
+        if inconsistencies or errors:
+            error_msg = ""
+            
+            if inconsistencies:
+                error_msg += "Inconsistent structure across trials:\n"
+                for category, items in inconsistencies.items():
+                    error_msg += f"• {category}: {items}\n"
+            
+            if errors:
+                if error_msg:
+                    error_msg += "\n"
+                error_msg += "Dataset validation failed:\n"
+                error_msg += "\n".join(f"• {e}" for e in errors)
+            
+            
+            raise ValueError("TrialTree validation failed: \n" + error_msg)
     
 
-    def _validate_datatree(self) -> Dict[str, set]:
-        """Validate and return inconsistencies across trials."""
-        trials_data = []
-        for name, node in self.children.items():
-            if name.startswith(self.TRIAL_PREFIX) and node.ds is not None:
-                trials_data.append(node.ds)
-        
-        if len(trials_data) < 2:
-            return {}
-        
-        all_coords = [set(ds.coords.keys()) for ds in trials_data]
-        all_vars = [set(ds.data_vars.keys()) for ds in trials_data]
-        all_attrs = [set(ds.attrs.keys()) for ds in trials_data]
-        
-        # Find inconsistencies
-        union_coords = set.union(*all_coords)
-        intersect_coords = set.intersection(*all_coords)
-        inconsistent_coords = union_coords - intersect_coords
-        
-        union_vars = set.union(*all_vars)
-        intersect_vars = set.intersection(*all_vars)
-        inconsistent_vars = union_vars - intersect_vars
-        
-        union_attrs = set.union(*all_attrs)
-        intersect_attrs = set.intersection(*all_attrs)
-        inconsistent_attrs = union_attrs - intersect_attrs
-        
-        inconsistencies = {}
-        if inconsistent_coords:
-            inconsistencies['coords'] = inconsistent_coords
-            print(f"Inconsistent coords: {inconsistent_coords}. Keys must be the same across trials.")
-        if inconsistent_vars:
-            inconsistencies['data_vars'] = inconsistent_vars
-            print(f"Inconsistent data_vars: {inconsistent_vars}. Keys must be the same across trials.")
-        if inconsistent_attrs:
-            inconsistencies['attrs'] = inconsistent_attrs
-            print(f"Inconsistent attrs: {inconsistent_attrs}. Keys must be the same across trials.")
-        
-        return inconsistencies
-    
     
     def get_label_dt(self, empty: bool = False) -> "TrialTree":
         """Extract label information, optionally as empty arrays.
@@ -515,7 +500,7 @@ class TrialTree(xr.DataTree):
             merged[session_name] = session_tree
         
         result = cls(merged)
-        result._validate_datatree()
+        result._validate_tree()
         return result
     
     
@@ -689,8 +674,69 @@ def check_paths_exist(nc_paths):
         exit(1)
  
     
+def set_media_files(
+    ds: xr.Dataset,
+    cameras: Optional[List[str]] = None,
+    mics: Optional[List[str]] = None,
+    tracking: Optional[List[str]] = None,
+    tracking_prefix: str = "dlc",
+) -> xr.Dataset:
+    """
+    Set media file attributes with consistent keys.
+
+    Creates both the file type list (e.g., ds.attrs["cameras"] = ["cam1", "cam2"])
+    and individual file path attrs (e.g., ds.attrs["cam1"] = "video.mp4").
+
+    Args:
+        ds: xarray Dataset to modify
+        cameras: List of camera file paths, keys auto-generated as cam1, cam2, ...
+        mics: List of microphone file paths, keys auto-generated as mic1, mic2, ...
+        tracking: List of tracking file paths, keys use tracking_prefix
+        tracking_prefix: Prefix for tracking keys (default "dlc", could be "sleap", "anipose")
+
+    Returns:
+        Modified dataset with file attributes set
+
+    Example:
+        ds = set_media_files(
+            ds,
+            cameras=["video-cam-1.mp4", "video-cam-2.mp4"],
+            tracking=["dlc-cam-1.csv", "dlc-cam-2.csv"],
+        )
+        # Result:
+        # ds.attrs["cameras"] = ["cam1", "cam2"]
+        # ds.attrs["cam1"] = "video-cam-1.mp4"
+        # ds.attrs["cam2"] = "video-cam-2.mp4"
+        # ds.attrs["tracking"] = ["dlc1", "dlc2"]
+        # ds.attrs["dlc1"] = "dlc-cam-1.csv"
+    """
+    file_configs = [
+        ("cameras", cameras, "cam"),
+        ("mics", mics, "mic"),
+        ("tracking", tracking, tracking_prefix),
+    ]
+
+    for file_type, files, prefix in file_configs:
+        if files is None:
+            continue
+
+        keys = [f"{prefix}{i+1}" for i in range(len(files))]
+
+        ds.attrs[file_type] = keys
+        for key, filepath in zip(keys, files):
+            ds.attrs[key] = filepath
+
+    return ds
+
+
 def set_file_types_attrs(ds, cameras=None, tracking=None, mics=None):
-    """Set file types as individual attributes (NetCDF compatible)."""
+    """Deprecated: Use set_media_files instead."""
+    import warnings
+    warnings.warn(
+        "set_file_types_attrs is deprecated, use set_media_files instead",
+        DeprecationWarning,
+        stacklevel=2
+    )
     if cameras is not None:
         ds.attrs["cameras"] = cameras
     if tracking is not None:

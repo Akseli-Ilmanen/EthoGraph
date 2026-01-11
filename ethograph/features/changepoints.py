@@ -41,7 +41,11 @@ def add_NaN_boundaries(arr, changepoints):
     # Binarize
     mask = np.zeros_like(arr, dtype=np.int8)
     mask[changepoints] = 1
-
+    
+    # If mask is all zeros, except 1 at beginning and end, set to all zeros
+    if np.sum(mask) == 2 and mask[0] == 1 and mask[-1] == 1:
+        mask[:] = 0
+        
     return mask
 
 
@@ -149,6 +153,8 @@ def snap_to_nearest_changepoint(x_clicked, ds, feature_sel, **ds_kwargs):
     ])
     changepoint_indices = np.unique(changepoint_indices)
 
+    if len(changepoint_indices) == 0:
+        return x_clicked
     
     snapped_idx = np.argmin(np.abs(changepoint_indices - x_clicked))
     snapped_val = int(round(changepoint_indices[snapped_idx]))
