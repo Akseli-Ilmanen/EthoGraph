@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://schemas.conda.io/menuinst-1.schema.json",
+  "menu_name": "MoveSeg",
+  "menu_items": [
+    {
+      "name": "MoveSeg",
+      "command": ["moveseg", "launch"],
+      "icon": "{{ MENU_DIR }}/icon.ico",
+      "activate": true,
+      "terminal": true,
+      "platforms": {
+        "win": {}
+      }
+    }
+  ]
+}

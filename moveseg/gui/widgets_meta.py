@@ -474,25 +474,6 @@ class MetaWidget(CollapsibleWidgetContainer):
             for i, key in enumerate(home_row):
                 viewer.bind_key(key, lambda v, mk=i+21: labels_widget.activate_motif(mk), overwrite=True)
             
-            print("""
-            Motif Layout:
-            [ 1][ 2][ 3][ 4][ 5][ 6][ 7][ 8][ 9][10]  (1-0 keys)
-            [11][12][13][14][15][16][17][18][19][20]  (Q-P keys)  
-            [21][22][23][24][25][26][27][28][29][30]  (A-; keys)
-            
-            Control Functions (use Shift+key):
-            up/Down: Next/previous trial
-            Space: Play/pause video and audio
-            Ctrl+P: Toggle playback mode
-            Ctrl+E: Edit motif
-            Ctrl+D: Delete motif
-            Ctrl+F: Toggle features
-            Ctrl+I: Toggle individuals
-            Ctrl+K: Toggle keypoints
-            Ctrl+C: Toggle cameras
-            Ctrl+M: Toggle mics
-            Ctrl+T: Toggle tracking
-            """)
 
         # Call the setup function
         setup_keybindings_grid_layout(viewer, labels_widget)

@@ -20,6 +20,7 @@ dependencies:
   - tqdm
   # Config
   - pyyaml
+  - menuinst
   - pip
   - pip:
       - audioio
@@ -29,4 +30,4 @@ dependencies:
       - opencv-python
       - Pillow==10.2.0
       - omegaconf
-      - -e .[dev]
+      - -e .

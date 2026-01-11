@@ -9,6 +9,7 @@ dependencies:
   - pyqt
   - numpy
   - xarray
+  - menuinst
   - pip
   - pip:
       - audioio

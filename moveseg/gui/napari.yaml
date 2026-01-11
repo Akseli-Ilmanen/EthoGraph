@@ -1,57 +1,12 @@
-name: moveseg-gui
-display_name: moveseg GUI
-# use 'hidden' to remove plugin from napari hub search results
+name: moveseg
+display_name: MoveSeg GUI
 visibility: public
-# see https://napari.org/stable/plugins/technical_references/manifest.html#fields for valid categories
-# categories: []
 contributions:
   commands:
-    - id: moveseg-gui.widgets_meta
-      python_name: moveseg_gui.widgets_meta:MetaWidget
-      title: moveseg-gui
+    - id: moveseg.make_widget
+      python_name: moveseg.gui.widgets_meta:MetaWidget
+      title: MoveSeg GUI
 
-    # - id: moveseg-gui.get_reader
-    #   python_name: moveseg_gui._reader:napari_get_reader
-    #   title: Open data with moveseg GUI
-    # - id: moveseg-gui.write_multiple
-    #   python_name: moveseg_gui._writer:write_multiple
-    #   title: Save multi-layer data with moveseg GUI
-    # - id: moveseg-gui.write_single_image
-    #   python_name: moveseg_gui._writer:write_single_image
-    #   title: Save image data with moveseg GUI
-    # - id: moveseg-gui.make_container_widget
-    #   python_name: moveseg_gui:ImageThreshold
-    #   title: Make threshold Container widget
-    # - id: moveseg-gui.make_magic_widget
-    #   python_name: moveseg_gui:threshold_magic_widget
-    #   title: Make threshold magic widget
-    # - id: moveseg-gui.make_function_widget
-    #   python_name: moveseg_gui:threshold_autogenerate_widget
-    #   title: Make threshold function widget
-    # - id: moveseg-gui.make_qwidget
-    #   python_name: moveseg_gui:ExampleQWidget
-    #   title: Make example QWidget
-  readers:
-    # - command: moveseg-gui.get_reader
-    #   accepts_directories: false
-    #   filename_patterns: ['*.npy']
-  writers:
-    # - command: moveseg-gui.write_multiple
-    #   layer_types: ['image*','labels*']
-    #   filename_extensions: []
-    # - command: moveseg-gui.write_single_image
-    #   layer_types: ['image']
-    #   filename_extensions: ['.npy']
   widgets:
-    - command: moveseg-gui.make_widget
-      display_name: moveseg-gui
-
-    # - command: moveseg-gui.make_container_widget
-    #   display_name: Container Threshold
-    # - command: moveseg-gui.make_magic_widget
-    #   display_name: Magic Threshold
-    # - command: moveseg-gui.make_function_widget
-    #   autogenerate: true
-    #   display_name: Autogenerate Threshold
-    # - command: moveseg-gui.make_qwidget
-    #   display_name: Example QWidget
+    - command: moveseg.make_widget
+      display_name: MoveSeg GUI

@@ -15,8 +15,16 @@ authors = [
 # Dependencies managed via conda environment.yml files
 dependencies = []
 
+[project.scripts]
+moveseg = "moveseg.cli:main"
+
+
+[project.gui-scripts]
+moveseg-gui = "moveseg.cli:launch"
+moveseg-shortcut = "moveseg.shortcuts:install_shortcut"
+
 [project.entry-points."napari.manifest"]
-moveseg = "moveseg:napari.yaml"
+moveseg-gui = "moveseg.gui:napari.yaml"
 
 [project.optional-dependencies]
 dev = [
@@ -27,9 +35,13 @@ dev = [
     "tox",
 ]
 
+
 [tool.setuptools.packages.find]
-where = ["src"]
 include = ["moveseg", "moveseg.*"]
+
+[tool.setuptools.package-data]
+"moveseg.gui" = ["*.yaml"]
+moveseg = ["assets/*"]
 
 [tool.ruff]
 line-length = 120
