@@ -34,6 +34,9 @@ def validate_required_attrs(ds: xr.Dataset) -> List[str]:
 
     if "trial" not in ds.attrs:
         errors.append("Xarray dataset ('ds') must have 'trial' attribute")
+        
+    if "cameras" not in ds.attrs:
+        errors.append("Xarray dataset ('ds') must have 'cameras' attribute")
 
     return errors
 
@@ -146,12 +149,25 @@ def validate_dataset(ds: xr.Dataset, type_vars_dict: Dict) -> List[str]:
     if "features" not in type_vars_dict or len(type_vars_dict["features"]) == 0:
         errors.append("Xarray dataset ('ds') must contain at least one variable with attribute type='features'")
 
-    if "cameras" not in type_vars_dict or len(type_vars_dict["cameras"]) == 0:
-        errors.append("Xarray dataset ('ds') must have 'cameras' attribute")
+        
+    for cam in type_vars_dict["cameras"]:
+        if cam not in ds.attrs:
+            errors.append(f"Xarray dataset ('ds') missing file name attribute for camera '{cam}'")
 
     # Audio requires sample rate
     if "mics" in type_vars_dict and "sr" not in ds.attrs:
         errors.append("Xarray dataset ('ds') with 'mics' must have 'sr' (sample rate) attribute")
+    
+    if "mics" in type_vars_dict:
+        for mic in type_vars_dict["mics"]:
+            if mic not in ds.attrs:
+                errors.append(f"Xarray dataset ('ds') missing file name attribute for mic '{mic}'")
+                
+    if "tracking" in type_vars_dict:
+        # e.g. dlc1, dlc2 for cam1, cam2
+        for track in type_vars_dict["tracking"]:
+            if track not in ds.attrs:
+                errors.append(f"Xarray dataset ('ds') missing file name attribute for pose data: '{track}'")
 
     # Media file consistency
     for file_type in ["cameras", "mics", "tracking"]:

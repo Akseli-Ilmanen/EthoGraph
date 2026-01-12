@@ -54,6 +54,7 @@ class LabelsWidget(QWidget):
 
 
         self.plot_container = None  # Will be set after creation
+        self.meta_widget = None  # Will be set after creation
 
         # Make widget focusable for keyboard events
         self.setFocusPolicy(Qt.StrongFocus)
@@ -114,6 +115,10 @@ class LabelsWidget(QWidget):
         self.plot_container.line_plot.plot_clicked.connect(self._on_plot_clicked)
         if hasattr(self.plot_container, 'spectrogram_plot'):
             self.plot_container.spectrogram_plot.plot_clicked.connect(self._on_plot_clicked)
+
+    def set_meta_widget(self, meta_widget):
+        """Set reference to the meta widget for layout refresh."""
+        self.meta_widget = meta_widget
 
     def plot_all_motifs(self, time_data, labels, predictions=None):
         """Plot all motifs for current trial and keypoint based on current labels state.
@@ -349,6 +354,7 @@ class LabelsWidget(QWidget):
             self.controls_toggle.setText("🎛️ Controls ✓")
             self.table_toggle.setText("📋 Motifs Table")
             self.controls_toggle.setChecked(True)
+        self._refresh_layout()
 
     def _toggle_controls(self):
         """Toggle controls visibility (mutually exclusive with table)."""
@@ -366,6 +372,16 @@ class LabelsWidget(QWidget):
             self.table_toggle.setText("📋 Motifs Table ✓")
             self.controls_toggle.setText("🎛️ Controls")
             self.table_toggle.setChecked(True)
+        self._refresh_layout()
+
+    def _refresh_layout(self):
+        """Force layout recalculation by toggling the collapsible widget."""
+        if self.meta_widget and hasattr(self.meta_widget, 'collapsible_widgets'):
+            # Labels widget is at index 3 (0: Documentation, 1: I/O, 2: Data controls, 3: Label controls)
+            labels_collapsible = self.meta_widget.collapsible_widgets[3]
+            labels_collapsible.collapse()
+            QApplication.processEvents()
+            labels_collapsible.expand()
 
     def _create_motifs_table_and_edit_buttons(self):
         """Create the motifs table showing available motif types in two columns."""

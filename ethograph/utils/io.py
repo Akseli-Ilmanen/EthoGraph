@@ -12,6 +12,11 @@ import json
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Union, List, Set
 from ethograph.utils.validation import validate_datatree
+from movement.kinematics import compute_velocity, compute_speed
+from movement.io import load_poses
+from ethograph.features.audio_features import get_synced_envelope
+
+
 
 class TrialTree(xr.DataTree):
     """DataTree subclass with trial-specific functionality."""
@@ -182,7 +187,6 @@ class TrialTree(xr.DataTree):
             
             raise ValueError("TrialTree validation failed: \n" + error_msg)
     
-
     
     def get_label_dt(self, empty: bool = False) -> "TrialTree":
         """Extract label information, optionally as empty arrays.
@@ -631,48 +635,108 @@ class TrialTree(xr.DataTree):
                 )
 
         return concatenated
-   
-   
-def extract_variable_flat(
-    nc_paths: List[str],
-    variable: str,
-    selection: Optional[Dict[str, Any]] = None
-) -> np.ndarray:
-    """
-    Extract and flatten a variable from multiple TrialTree files.
+
     
-    Args:
-        nc_paths: List of paths to NetCDF files
-        variable: Name of the variable to extract
-        selection: Optional selection dict for the variable
+def _minimal_basics(ds):
+    
+    if "labels" not in ds.data_vars:
+        ds["labels"] = xr.DataArray(
+                np.zeros((ds.dims["time"], ds.dims["individuals"])),
+                dims=["time", "individuals"],
+        )
         
-    Returns:
-        Flattened 1D numpy array of the variable
-    """
-    arrays = []
+    for feat in list(ds.data_vars):
+        if feat != "labels":
+            ds[feat].attrs["type"] = "features"
+
+    ds.attrs["trial"] = "sample_trial"
+    dt = TrialTree.from_datasets([ds])
     
-    for path in nc_paths:
-        dt = TrialTree.load(path)
-        
-        for trial_num in dt.trials:
-            trial_ds = dt.sel(trial=trial_num)
-            
-            data = trial_ds[variable]
-            if selection:
-                data = data.sel(**selection)
-            arrays.append(data.squeeze().values.flatten())
-    
-    return np.concatenate(arrays)
+    return dt
    
 
-def check_paths_exist(nc_paths):
-    missing_paths = [p for p in nc_paths if not os.path.exists(p)]
-    if missing_paths:
-        print("Error: The following test_nc_paths do not exist:")
-        for p in missing_paths:
-            print(f"  {p}")
-        exit(1)
+   
+def minimal_dt_from_pose(video_path, fps=None, tracking_path=None, ds=None, source_software=None):
+    """
+    Create a minimal TrialTree from pose data.
+    
+    Args:
+        video_path: Path to video file
+        fps: Frames per second of the video
+        tracking_path: Path to tracking file (optional)
+        ds: Existing xarray Dataset (optional)
+        source_software: Software used for tracking (e.g., 'DeepLabCut')
+        
+        
+    Returns:
+        TrialTree with minimal structure
+        
+    Raises:
+        ValueError: If neither ds nor (source_software + fps) are provided
+    """
+    # Validate inputs: must provide either ds OR (source_software + fps)
+    if ds is None:
+        if source_software is None or fps is None or tracking_path is None:
+            raise ValueError(
+                "Must provide either 'ds' OR both 'source_software' and 'fps', and path to the pose file."
+            )
+        ds = load_poses.from_file(
+            file_path=tracking_path, 
+            fps=fps, 
+            source_software=source_software
+        )
+
+
+    ds = set_media_files(
+        ds,
+        cameras=[Path(video_path).name],
+        tracking=[Path(tracking_path).name],
+        tracking_prefix=f"{ds.attrs['source_software']}_1"
+    )            
+    dt = _minimal_basics(ds)
+
+
+    return dt
+
+
+def minimal_dt_from_audio(video_path, fps, audio_path, sr, individuals=None):
+
+
+    if individuals is None:
+        individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
+
+    envelope = get_synced_envelope(audio_path, sr, fps)
+    
+    n_frames = len(envelope)
+    time_coords = np.arange(n_frames) / fps
+    
+    ds = xr.Dataset(
+        data_vars={
+            "envelope": ("time", envelope),
+            "labels": (["time", "individuals"], np.zeros((n_frames, len(individuals))))
+        },
+        coords={
+            "time": time_coords,
+            "individuals": individuals  
+        }
+    )    
+
+    ds.attrs["sr"] = sr
+    ds.attrs["fps"] = fps
+
+    
+    ds = set_media_files(
+        ds,
+        cameras=[Path(video_path).name],
+        mics=[Path(audio_path).name],
+    )  
+    
+    dt = _minimal_basics(ds)
+    
+    return dt
  
+
+
     
 def set_media_files(
     ds: xr.Dataset,
@@ -727,6 +791,39 @@ def set_media_files(
             ds.attrs[key] = filepath
 
     return ds
+
+
+def extract_variable_flat(
+    nc_paths: List[str],
+    variable: str,
+    selection: Optional[Dict[str, Any]] = None
+) -> np.ndarray:
+    """
+    Extract and flatten a variable from multiple TrialTree files.
+    
+    Args:
+        nc_paths: List of paths to NetCDF files
+        variable: Name of the variable to extract
+        selection: Optional selection dict for the variable
+        
+    Returns:
+        Flattened 1D numpy array of the variable
+    """
+    arrays = []
+    
+    for path in nc_paths:
+        dt = TrialTree.load(path)
+        
+        for trial_num in dt.trials:
+            trial_ds = dt.sel(trial=trial_num)
+            
+            data = trial_ds[variable]
+            if selection:
+                data = data.sel(**selection)
+            arrays.append(data.squeeze().values.flatten())
+    
+    return np.concatenate(arrays)
+   
 
 
 def set_file_types_attrs(ds, cameras=None, tracking=None, mics=None):
