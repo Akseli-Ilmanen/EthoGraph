@@ -1,7 +1,7 @@
 site_name: EthoGraph
 site_description: GUI for segmenting animal behaviour using transformer models and changepoint detection
 site_url: https://ethograph.readthedocs.io
-repo_url: https://github.com/yourusername/ethograph
+repo_url: https://github.com/akseli-ilmanen/ethograph
 repo_name: ethograph
 
 theme:
@@ -70,7 +70,4 @@ nav:
   - Help:
       - Troubleshooting: troubleshooting.md
 
-extra:
-  social:
-    - icon: fontawesome/brands/github
-      link: https://github.com/Akseli-Ilmanen/ethograph
+
