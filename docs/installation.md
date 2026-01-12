@@ -74,7 +74,7 @@
                 cd ethograph
                 ```
 
-            !!! tip "Don't have Git installed?"
+            !!! question "Don't have Git installed?"
                 === "MacOS"
                     Install Git using Homebrew:
                     ```bash
@@ -120,11 +120,10 @@
     ??? note "Launching the GUI."
         === "Windows"
             Double click on the new desktop shortcut.
-            If that doesn't work:
-
-            ??? note "Launching from terminal"
-                Navigate to the EthoGraph folder in the terminal, as you did before.
-
+            
+            
+            ??? failure "If that doesn't work:"
+                Navigate to the EthoGraph folder in the terminal:
                 ```bash
                 cd /path/to/EthoGraph
                 ```
@@ -142,7 +141,7 @@
             ```
 
             Activate the conda environment and launch the GUI.
-             ```bash
+            ```bash
             conda activate ethograph
             ethograph launch
             ```      
