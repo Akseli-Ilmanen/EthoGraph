@@ -53,7 +53,7 @@
                 ```
             4. Wait for the download to complete. You will now have an `ethograph` folder in your chosen location.
 
-            !!! tip "Don't have Git installed?"
+            !!! tipp "Don't have Git installed?"
                 If the `git` command is not recognized, you need to install Git first:
 
                 1. Download Git from [git-scm.com](https://git-scm.com/download/win).
@@ -74,7 +74,7 @@
                 cd ethograph
                 ```
 
-            !!! question "Don't have Git installed?"
+            !!! tipp "Don't have Git installed?"
                 === "MacOS"
                     Install Git using Homebrew:
                     ```bash
@@ -90,7 +90,7 @@
                     sudo dnf install git
                     ```
 
-4. Install the EthoGraph environment. <br>
+4. Install the EthoGraph conda environment. <br>
     Choose the environment file based on your needs:
 
     - **`environment.yml`** - GUI only (recommended for most users)
@@ -115,30 +115,19 @@
                 conda env create -f environment-dev.yml
                 ```
 
-5. Test it worked. <br>
+5. Test it works. <br>
 
-    ??? note "Launching the GUI."
+    ??? question "How to launch the GUI?"
         === "Windows"
             Double click on the new desktop shortcut.
             
-            
-            ??? failure "If that doesn't work:"
-                Navigate to the EthoGraph folder in the terminal:
-                ```bash
-                cd /path/to/EthoGraph
-                ```
-
-                Activate the conda environment and launch the GUI.
-                ```bash
-                conda activate ethograph
-                ethograph launch
-                ``` 
+            Or manually activate the conda environment and launch the GUI.
+            ```bash
+            conda activate ethograph
+            ethograph launch
+            ```      
 
         === "MacOS / Linux"
-
-            ```bash
-            cd /path/to/EthoGraph
-            ```
 
             Activate the conda environment and launch the GUI.
             ```bash
