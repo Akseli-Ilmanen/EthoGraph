@@ -1,24 +1,27 @@
-nc_file_path: C:/Users/aksel/Documents/Code/EthoGraph/data/20210119_Recording_SR1_SR2_social_vidtwo/pair24.nc
-fps_playback: 30.0
-recompute_threshold: 0.5
 plot_spectrogram: false
-import_labels_nc_data: false
-percentile_ylim: 99.5
-video_buffer_size: 300
-window_size: 5.0
-video_folder: C:/Users/aksel/Documents/Code/EthoGraph/data/20210119_Recording_SR1_SR2_social_vidtwo/videos
-vmin_db: -120.0
-cmap: magma
-nfft: 1024
-hop_frac: 0.5
-vmax_db: 20.0
-space_plot_type: Layer controls
-video_path: C:\Users\aksel\Documents\Code\EthoGraph\data\20210119_Recording_SR1_SR2_social_vidtwo\videos\Camera1\14000.mp4
+nc_file_path: C:/Users/aksel/Documents/Code/EthoGraph/data/20210119_Recording_SR1_SR2_social_vidtwo/pair24.nc
+video_path: C:\Users\aksel\Documents\Code\EthoGraph\data\20210119_Recording_SR1_SR2_social_vidtwo\videos\Camera4\17500.mp4
 buffer_multiplier: 5.0
-cameras_sel: cam1
-features_sel: speed
-features_sel_previous: velocity
-individuals_sel: an1
-keypoints_sel: HeadF
+recompute_threshold: 0.5
+import_labels_nc_data: false
+vmin_db: -120.0
+nfft: 1024
+fps_playback: 30.0
+video_buffer_size: 300
+hop_frac: 0.5
+video_folder: C:/Users/aksel/Documents/Code/EthoGraph/data/20210119_Recording_SR1_SR2_social_vidtwo/videos
+percentile_ylim: 99.5
+space_plot_type: Layer controls
+window_size: 5.0
+vmax_db: 20.0
+cmap: magma
+cameras_sel: cam4
+cameras_sel_previous: cam3
+features_sel: nose_nose_distance
+features_sel_previous: speed
+individuals_sel: mouse 1
+individuals_sel_previous: mouse 2
+keypoints_sel: HeadB
+keypoints_sel_previous: HeadF
 trial_conditions_sel: None
-trials_sel: '4'
+trials_sel: 3

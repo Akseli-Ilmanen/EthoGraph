@@ -517,8 +517,9 @@ class DataWidget(DataLoader, QWidget):
 
 
         if self.app_state.key_sel_exists("trials"):
-            self.navigation_widget.trials_combo.setCurrentText(str(self.app_state.get_key_sel("trials")))
-            self.app_state.trials_sel = self.app_state.get_key_sel("trials")
+            saved_trial = self.app_state.get_key_sel("trials")
+            self.app_state.set_key_sel("trials", saved_trial)
+            self.navigation_widget.trials_combo.setCurrentText(str(self.app_state.trials_sel))
         else:
             # Default to first value
             self.navigation_widget.trials_combo.setCurrentText(str(self.app_state.trials[0]))

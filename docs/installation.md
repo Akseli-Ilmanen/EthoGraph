@@ -99,7 +99,7 @@
     ??? note "Installation instructions"
         === "Windows"
             1. Open File Explorer and navigate to the EthoGraph folder.
-            2. Double-click on `Windows install.bat` and follow the steps.
+            2. Double-click on `Windows install.bat` and follow the steps. Optionally, you can create a Desktop shortcut.
 
         === "MacOS / Linux"
             1. Open a terminal and navigate to the EthoGraph folder:
@@ -114,11 +114,35 @@
                 # Or for GUI + model (in development)
                 conda env create -f environment-dev.yml
                 ```
-            3. Activate the environment:
+
+5. Test it worked. <br>
+
+    ??? note "Launching the GUI."
+        === "Windows"
+            Double click on the new desktop shortcut.
+            If that doesn't work:
+
+            ??? note "Launching from terminal"
+                Navigate to the EthoGraph folder in the terminal, as you did before.
+
+                ```bash
+                cd /path/to/EthoGraph
+                ```
+
+                Activate the conda environment and launch the GUI.
                 ```bash
                 conda activate ethograph
-                ```
-            4. Verify the installation:
-                ```bash
-                python -c "import ethograph; print('Installation successful!')"
-                ```
+                ethograph launch
+                ``` 
+
+        === "MacOS / Linux"
+
+            ```bash
+            cd /path/to/EthoGraph
+            ```
+
+            Activate the conda environment and launch the GUI.
+             ```bash
+            conda activate ethograph
+            ethograph launch
+            ```      

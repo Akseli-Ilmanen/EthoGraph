@@ -230,18 +230,33 @@ class ObservableAppState(QObject):
 
 
 
+    def _coerce_to_list_type(self, value, reference_list: list):
+        """Coerce value to match the type of items in reference_list."""
+        if not reference_list:
+            return value
+        sample = reference_list[0]
+        if isinstance(sample, int) and not isinstance(value, int):
+            try:
+                return int(value)
+            except (ValueError, TypeError):
+                return value
+        return value
+
     def set_key_sel(self, type_key, currentValue):
         """Set current value for a given info key."""
         if currentValue is None:
             return
 
+        if type_key == "trials" and hasattr(self, "trials") and self.trials:
+            currentValue = self._coerce_to_list_type(currentValue, self.trials)
+
         attr_name = f"{type_key}_sel"
         prev_attr_name = f"{type_key}_sel_previous"
         old_value = getattr(self, attr_name, None)
-        
+
         if old_value is not None and old_value != currentValue and type_key in ["features", "keypoints", "individuals", "cameras", "mics"]:
             setattr(self, prev_attr_name, old_value)
-        
+
         setattr(self, attr_name, currentValue)
 
         if old_value != currentValue:
