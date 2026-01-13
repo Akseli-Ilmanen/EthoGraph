@@ -1,25 +1,16 @@
-audio_folder: C:\Users\aksel\Documents\Code\EthoGraph\data\Night_of_the_Living_Dead
-buffer_multiplier: 5.0
-nfft: 1024
-vmax_db: 20.0
-hop_frac: 0.5
 video_buffer_size: 300
-cmap: magma
 vmin_db: -120.0
-nc_file_path: C:/Users/aksel/Documents/Code/EthoGraph/data/Night_of_the_Living_Dead/xx.nc
-space_plot_type: Layer controls
+nfft: 1024
 percentile_ylim: 99.5
-plot_spectrogram: false
 window_size: 5.0
-fps_playback: 30.0
-video_folder: C:\Users\aksel\Documents\Code\EthoGraph\data\Night_of_the_Living_Dead
-video_path: C:\Users\aksel\Documents\Code\EthoGraph\data\Night_of_the_Living_Dead\movie.mp4
 recompute_threshold: 0.5
-audio_path: C:\Users\aksel\Documents\Code\EthoGraph\data\Night_of_the_Living_Dead\movie.wav
+buffer_multiplier: 5.0
+cmap: magma
+fps_playback: 30.0
+nc_file_path: C:/Users/Admin/Documents/Akseli/AI_data/derivatives/sub-03_id-Freddy/ses-000_date-20250527_01/behav/Trial_data.nc
+plot_spectrogram: false
+space_plot_type: Layer controls
+video_folder: C:/Users/Admin/Documents/Akseli/VidData/20250527_01_Freddy
+vmax_db: 20.0
 import_labels_nc_data: false
-cameras_sel: cam1
-features_sel: envelope
-individuals_sel: individual 1
-mics_sel: mic1
-trial_conditions_sel: None
-trials_sel: sample_trial
+hop_frac: 0.5
