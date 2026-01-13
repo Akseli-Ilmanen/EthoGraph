@@ -8,7 +8,6 @@ from ethograph.utils.labels import stitch_gaps, fix_endings, remove_small_blocks
 import os
 
 from typing import List, Literal
-from movement.utils.broadcasting import make_broadcastable
 from ethograph.features.preprocessing import z_normalize, interpolate_nans
 from pathlib import Path
 

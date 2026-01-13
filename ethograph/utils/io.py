@@ -48,7 +48,12 @@ class TrialTree(xr.DataTree):
             raise ValueError("No datasets with 'trial' attribute found in the tree.")
         return trials
     
-
+    # https://docs.xarray.dev/en/stable/generated/xarray.DataTree.sel.html#xarray.DataTree.sel
+    # Given xarray has native .sel, and they are quite useful! I should reorganize my own methods.
+    
+    
+    
+    
     def sel(self, trials: int = None, trial: int = None, **kwargs) -> xr.Dataset:
         """Select from a specific trial dataset. Accepts 'trials' or 'trial' as argument."""
         # Accept both 'trials' and 'trial' as argument names
@@ -58,7 +63,7 @@ class TrialTree(xr.DataTree):
         
         ds = self[f'{self.TRIAL_PREFIX}{trial_num}'].ds
         if ds is None:
-            raise ValueError(f"Trial {trial_num} has no fdataset")
+            raise ValueError(f"Trial {trial_num} has no dataset")
 
         return ds.sel(**kwargs) if kwargs else ds
 
@@ -156,21 +161,21 @@ class TrialTree(xr.DataTree):
         tree._validate_tree()
         return tree
     
+
     @classmethod
-    def from_dict(cls, trials_dict: Dict[int, xr.Dataset]) -> "TrialTree":
-        """Create from dictionary mapping trial numbers to datasets."""
+    def from_datatree(cls, dt: xr.DataTree, attrs: dict | None = None) -> "TrialTree":
         tree = cls()
-
-        for trial_num, ds in trials_dict.items():
-            tree[f'{cls.TRIAL_PREFIX}{trial_num}'] = xr.DataTree(ds)
-
-        tree._validate_tree()
+        for name, child in dt.children.items():
+            tree[name] = child
+        if dt.ds is not None: # handle root node
+            tree.ds = dt.ds
+        tree.attrs = (attrs if attrs is not None else dt.attrs).copy()
+        
+        
         return tree
 
 
     def _validate_tree(self) -> List[str]:
-        
-
         inconsistencies, errors = validate_datatree(self)
     
         if inconsistencies or errors:
@@ -191,13 +196,8 @@ class TrialTree(xr.DataTree):
             raise ValueError("TrialTree validation failed: \n" + error_msg)
     
     
+
     def get_label_dt(self, empty: bool = False) -> "TrialTree":
-        """Extract label information, optionally as empty arrays.
-        
-        Args:
-            empty: If True, return zero-filled arrays preserving structure.
-                If False, return actual label data.
-        """
         def filter_node(ds):
             if ds is None or "labels" not in ds.data_vars:
                 return xr.Dataset()
@@ -209,19 +209,9 @@ class TrialTree(xr.DataTree):
             filtered = ds[vars_to_extract]
             return xr.zeros_like(filtered) if empty else filtered
         
-        filtered = self.map_over_datasets(filter_node)
-        
-        new_tree = TrialTree()
-        for name, child in filtered.children.items():
-            new_tree[name] = child
-        if filtered.ds is not None:
-            new_tree.ds = filtered.ds
-        
-        new_tree.attrs = self.attrs.copy()
-        
-        return new_tree
-        
-    
+        return self.from_datatree(self.map_over_datasets(filter_node), attrs=self.attrs)
+
+
     def apply_1d(
         self,
         var_name: str,
@@ -229,25 +219,7 @@ class TrialTree(xr.DataTree):
         dim: str = 'time',
         **kwargs
     ) -> "TrialTree":
-        """
-        Apply 1D function to a variable across all datasets.
-        
-        Parameters
-        ----------
-        var_name : str
-            Variable name to transform
-        func : callable
-            1D numpy function to apply
-        dim : str
-            Dimension to apply along
-        **kwargs
-            Additional arguments for func
-        
-        Returns
-        -------
-        TrialTree
-            New tree with transformed variable
-        """
+        """Apply a 1D function to a variable along a dimension across all trials."""
         def transform_ds(ds):
             if ds is None or var_name not in ds:
                 return ds
@@ -267,46 +239,21 @@ class TrialTree(xr.DataTree):
             
             result = ds.copy()
             result[var_name] = transformed
-            
             return result
         
-        new_tree = self.map_over_datasets(transform_ds)
-        new_tree.attrs = self.attrs.copy()
-        
-        return TrialTree(new_tree)
-    
+        return self.from_datatree(self.map_over_datasets(transform_ds), attrs=self.attrs)
+
+
     def apply_2d(
         self,
         var1_name: str,
         var2_name: str,
         func: Callable[[np.ndarray, np.ndarray], np.ndarray],
-        output_name: Optional[str] = None,
+        output_name: str | None = None,
         dim: str = 'time',
         **kwargs
     ) -> "TrialTree":
-        """
-        Apply function taking two inputs to variables.
-        
-        Parameters
-        ----------
-        var1_name : str
-            First variable name
-        var2_name : str
-            Second variable name
-        func : callable
-            Function taking two arrays and returning one
-        output_name : str, optional
-            Name for output variable. If None, overwrites var1_name
-        dim : str
-            Shared dimension
-        **kwargs
-            Additional arguments for func
-        
-        Returns
-        -------
-        TrialTree
-            New tree with transformed variable
-        """
+        """Apply a function taking two arrays to variables across all trials."""
         def transform_ds(ds):
             if ds is None or var1_name not in ds or var2_name not in ds:
                 return ds
@@ -323,19 +270,13 @@ class TrialTree(xr.DataTree):
                 vectorize=True,
                 dask='parallelized'
             )
-            
             transformed.attrs = var1_attrs
             
             result = ds.copy()
-            output_var = output_name or var1_name
-            result[output_var] = transformed
-            
+            result[output_name or var1_name] = transformed
             return result
         
-        new_tree = self.map_over_datasets(transform_ds)
-        new_tree.attrs = self.attrs.copy()
-        
-        return TrialTree(new_tree)
+        return self.from_datatree(self.map_over_datasets(transform_ds), attrs=self.attrs)
         
     def overwrite_with_attrs(self, labels_tree: xr.DataTree) -> "TrialTree":
         """
@@ -375,17 +316,6 @@ class TrialTree(xr.DataTree):
         result.attrs = labels_tree.attrs.copy()
         return result
     
-    
-    def label_dt_fix_endings(self) -> "TrialTree":
-        """Fix label endings in all trials."""
-        new_tree = xr.DataTree()
-        
-        for name, node in self.children.items():
-
-            fixed_ds = fix_endings(node.ds)
-            new_tree[name] = xr.DataTree(fixed_ds)
- 
-        return TrialTree(new_tree)
         
         
     def filter_by_attr(self, attr_name: str, attr_value: Any) -> "TrialTree":
@@ -413,69 +343,8 @@ class TrialTree(xr.DataTree):
         
         return TrialTree(new_tree)
     
-    def filter_by_datavar_type(self, type_value: str) -> "TrialTree":
-        """Filter trials by data variable type attribute."""
-        new_tree = xr.DataTree()
-        
-        for name, node in self.children.items():
-            
-            if node.ds:
-                filtered_ds = node.ds.filter_by_attrs(type=type_value)
-                if len(filtered_ds.data_vars) > 0:
-                    new_tree[name] = xr.DataTree(filtered_ds)
-        
-        return TrialTree(new_tree)
     
-    def filter_by_datavar(
-        self, 
-        exclude_vars: Optional[Union[str, List[str], Set[str]]] = None
-    ) -> "TrialTree":
-        """
-        Filter trials by excluding specified data variables.
-        
-        Parameters
-        ----------
-        exclude_vars : str, list of str, set of str, or None
-            Variable names to exclude from datasets.
-            
-        Returns
-        -------
-        TrialTree
-            New TrialTree with specified variables removed.
-            
-        Examples
-        --------
-        >>> tree.filter_by_datavar("temperature")
-        >>> tree.filter_by_datavar(["temp", "pressure", "humidity"])
-        """
-        if exclude_vars is None:
-            return TrialTree(self._tree.copy())
-        
-        # Normalize to set for O(1) lookup
-        vars_to_exclude = (
-            {exclude_vars} if isinstance(exclude_vars, str) 
-            else set(exclude_vars)
-        )
-        
-        new_tree = xr.DataTree()
-        
-        for name, node in self.children.items():
-            if not node.ds:
-                continue
-                
-            # Filter data variables
-            remaining_vars = [
-                var for var in node.ds.data_vars 
-                if var not in vars_to_exclude
-            ]
-            
-            if remaining_vars:
-                new_tree[name] = xr.DataTree(
-                    node.ds[remaining_vars].copy()
-                )
-        
-        return TrialTree(new_tree)
-    
+
     
     @classmethod
     def merge_session_trees(
@@ -535,110 +404,62 @@ class TrialTree(xr.DataTree):
             raise ValueError("Cannot specify both drop_vars and keep_vars")
 
         attrs_to_vars = attrs_to_vars or []
-        components = []
-        session_indices = []
-        trial_indices = []
-        session_names = []
-        trial_numbers = []
-        attr_values = {attr_name: [] for attr_name in attrs_to_vars}
-
-        # Check if this is a hierarchical tree (sessions -> trials)
-        has_sessions = any(
-            isinstance(node, xr.DataTree) and
-            any(child.startswith(self.TRIAL_PREFIX) for child in node.children)
-            for node in self.children.values()
-        )
-
-        if has_sessions:
-            # Hierarchical: root -> sessions -> trials
-            for session_idx, (session_name, session_node) in enumerate(self.children.items()):
-                if not isinstance(session_node, xr.DataTree):
-                    continue
-
-                for trial_name, trial_node in session_node.children.items():
-                    if not trial_name.startswith(self.TRIAL_PREFIX):
-                        continue
-
-                    ds = trial_node.ds.copy()
-                    trial_num = int(trial_name.split('_')[1])
-
-                    # Apply variable filtering
-                    if drop_vars:
-                        ds = ds.drop_vars([v for v in drop_vars if v in ds])
-                    elif keep_vars:
-                        ds = ds[[v for v in keep_vars if v in ds]]
-
-                    # Collect attribute values before removing them
-                    for attr_name in attrs_to_vars:
-                        attr_values[attr_name].append(ds.attrs.get(attr_name, np.nan))
-
         
+        def iter_trials(self):
+            """Yield (session_name, session_idx, trial_num, dataset) for all trials."""
+            has_sessions = any(
+                any(child.startswith(self.TRIAL_PREFIX) for child in node.children)
+                for node in self.children.values()
+                if isinstance(node, xr.DataTree)
+            )
+            
+            if has_sessions:
+                for session_idx, (session_name, session_node) in enumerate(self.children.items()):
+                    for trial_name, trial_node in session_node.children.items():
+                        if trial_name.startswith(self.TRIAL_PREFIX):
+                            trial_num = int(trial_name.split('_')[1])
+                            yield session_name, session_idx, trial_num, trial_node.ds
+            else:
+                for trial_name, trial_node in self.children.items():
+                    if trial_name.startswith(self.TRIAL_PREFIX):
+                        trial_num = int(trial_name.split('_')[1])
+                        yield "session_0", 0, trial_num, trial_node.ds
 
-                    components.append(ds)
-                    session_indices.append(session_idx)
-                    trial_indices.append(trial_num)
-                    session_names.append(session_name)
-                    trial_numbers.append(trial_num)
-        else:
-            # Flat: root -> trials (single session)
-            session_name = "session_0"
-            for trial_name, trial_node in self.children.items():
-                if not trial_name.startswith(self.TRIAL_PREFIX):
-                    continue
+        components = []
+        metadata = {"session_idx": [], "trial_idx": [], "session_name": [], "trial_num": []}
+        attr_values = {attr: [] for attr in attrs_to_vars}
 
-                ds = trial_node.ds.copy()
-                trial_num = int(trial_name.split('_')[1])
+        for session_name, session_idx, trial_num, ds in iter_trials(self):
+            ds = ds.copy()
+            
+            if drop_vars:
+                ds = ds.drop_vars([v for v in drop_vars if v in ds])
+            elif keep_vars:
+                ds = ds[[v for v in keep_vars if v in ds]]
 
-                # Apply variable filtering
-                if drop_vars:
-                    ds = ds.drop_vars([v for v in drop_vars if v in ds])
-                elif keep_vars:
-                    ds = ds[[v for v in keep_vars if v in ds]]
+            for attr in attrs_to_vars:
+                attr_values[attr].append(ds.attrs.get(attr, np.nan))
 
-                # Collect attribute values before removing them
-                for attr_name in attrs_to_vars:
-                    attr_values[attr_name].append(ds.attrs.get(attr_name, np.nan))
-
-
-                components.append(ds)
-                session_indices.append(0)
-                trial_indices.append(trial_num)
-                session_names.append(session_name)
-                trial_numbers.append(trial_num)
+            components.append(ds)
+            metadata["session_idx"].append(session_idx)
+            metadata["trial_idx"].append(trial_num)
+            metadata["session_name"].append(session_name)
+            metadata["trial_num"].append(trial_num)
 
         if not components:
             raise ValueError("No valid trials found in tree")
 
-        # Concatenate with NaN padding using outer join
-        concatenated = xr.concat(
-            components,
-            dim=concat_dim,
-            join="outer",
-            combine_attrs="drop_conflicts"
-        )
+        result = xr.concat(components, dim=concat_dim, join="outer", combine_attrs="drop_conflicts")
 
-        # Add indexing coordinates if requested
         if add_index_coords:
-            concatenated = concatenated.assign_coords({
-                f"{concat_dim}_session_idx": (concat_dim, session_indices),
-                f"{concat_dim}_trial_idx": (concat_dim, trial_indices),
-                f"{concat_dim}_session_name": (concat_dim, session_names),
-                f"{concat_dim}_trial_num": (concat_dim, trial_numbers)
+            result = result.assign_coords({
+                f"{concat_dim}_{k}": (concat_dim, v) for k, v in metadata.items()
             })
 
-        # Convert specified attributes to data arrays
-        if attrs_to_vars:
-            for attr_name in attrs_to_vars:
-                attr_data = attr_values[attr_name]
-                concatenated[attr_name] = xr.DataArray(
-                    attr_data,
-                    dims=[concat_dim],
-                    coords={concat_dim: concatenated[concat_dim]},
-                    name=attr_name
-                )
+        for attr in attrs_to_vars:
+            result[attr] = xr.DataArray(attr_values[attr], dims=[concat_dim])
 
-        return concatenated
-
+        return result
     
 def _minimal_basics(ds):
     
@@ -657,9 +478,6 @@ def _minimal_basics(ds):
     
     return dt
    
-
-
-
 
    
 def minimal_dt_from_pose(video_path, fps, tracking_path, source_software):
