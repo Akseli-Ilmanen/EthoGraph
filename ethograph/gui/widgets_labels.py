@@ -598,10 +598,10 @@ class LabelsWidget(QWidget):
         if self.app_state.label_dt is None or self.app_state.trials_sel is None:
             return
         if mode == "single_trial":
-            self.app_state.label_dt.sel(trials=self.app_state.trials_sel).attrs['human_verified'] = np.int8(1)
+            self.app_state.label_dt.trial(self.app_state.trials_sel).attrs['human_verified'] = np.int8(1)
         elif mode == "all_trials":
             for trial in self.app_state.label_dt.trials:
-                self.app_state.label_dt.sel(trials=trial).attrs['human_verified'] = np.int8(1)
+                self.app_state.label_dt.trial(trial).attrs['human_verified'] = np.int8(1)
 
         self._update_human_verified_status()
         self.app_state.verification_changed.emit()
@@ -613,7 +613,7 @@ class LabelsWidget(QWidget):
             self.human_verified_status.setStyleSheet("background-color: red; color: white;")
             return
 
-        attrs = self.app_state.label_dt.sel(trials=self.app_state.trials_sel).attrs
+        attrs = self.app_state.label_dt.trial(self.app_state.trials_sel).attrs
         if attrs.get('human_verified', None) == True:
             self.human_verified_status.setText("Human verified")
             self.human_verified_status.setStyleSheet("background-color: green; color: white;")
@@ -645,7 +645,7 @@ class LabelsWidget(QWidget):
                 show_warning("Filename must include 'predictions' .")
                 return
             self.app_state.pred_dt = TrialTree.load(file_path)
-            self.app_state.pred_ds = self.app_state.pred_dt.sel(trials=self.app_state.trials_sel)
+            self.app_state.pred_ds = self.app_state.pred_dt.trial(self.app_state.trials_sel)
             self.pred_show_predictions.setEnabled(True)
             self.pred_show_predictions.setChecked(True)
             self.pred_file_path_edit.setText(file_path)
@@ -671,7 +671,7 @@ class LabelsWidget(QWidget):
  
         if mode == "single_trial":
             curr_labels, filt_kwargs = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
-            self.app_state.label_dt.sel(trials=self.app_state.trials_sel).labels.loc[filt_kwargs] = correct_changepoints_one_trial(curr_labels, self.app_state.ds, all_params, speed_correction=False)
+            self.app_state.label_dt.trial(self.app_state.trials_sel).labels.loc[filt_kwargs] = correct_changepoints_one_trial(curr_labels, self.app_state.ds, all_params, speed_correction=False)
 
     
         if mode == "all_trials":
@@ -681,9 +681,9 @@ class LabelsWidget(QWidget):
                 
 
             for trial in self.app_state.label_dt.trials:
-                curr_labels, filt_kwargs = sel_valid(self.app_state.label_dt.sel(trials=trial).labels, ds_kwargs)
-                ds = self.app_state.dt.sel(trials=trial)
-                self.app_state.label_dt.sel(trials=trial).labels.loc[filt_kwargs] = correct_changepoints_one_trial(curr_labels, ds, all_params, speed_correction=False)
+                curr_labels, filt_kwargs = sel_valid(self.app_state.label_dt.trial(trial).labels, ds_kwargs)
+                ds = self.app_state.dt.trial(trial)
+                self.app_state.label_dt.trial(trial).labels.loc[filt_kwargs] = correct_changepoints_one_trial(curr_labels, ds, all_params, speed_correction=False)
                 self.app_state.label_dt.attrs["changepoint_corrected"] = np.int8(1)    
             self._update_cp_status()
 
@@ -947,7 +947,7 @@ class LabelsWidget(QWidget):
         
         labels = remove_small_blocks(labels, min_motif_len=3)
     
-        self.app_state.label_dt.sel(trials=self.app_state.trials_sel).labels.loc[filt_kwargs] = labels
+        self.app_state.label_dt.trial(self.app_state.trials_sel).labels.loc[filt_kwargs] = labels
         self._human_verification_true(mode="single_trial")
 
         self._mark_changes_unsaved()
@@ -984,7 +984,7 @@ class LabelsWidget(QWidget):
         self.current_motif_is_prediction = False
 
     
-        self.app_state.label_dt.sel(trials=self.app_state.trials_sel).labels.loc[filt_kwargs] = labels
+        self.app_state.label_dt.trial(self.app_state.trials_sel).labels.loc[filt_kwargs] = labels
 
         self._mark_changes_unsaved()
         self.app_state.labels_modified.emit()

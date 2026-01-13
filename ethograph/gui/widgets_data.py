@@ -117,11 +117,11 @@ class DataWidget(DataLoader, QWidget):
         else:
             self.app_state.label_dt = self.app_state.dt.get_label_dt(empty=True)
             
-        self.app_state.label_ds = self.app_state.label_dt.sel(trials=trials[0])
+        self.app_state.label_ds = self.app_state.label_dt.trial(trials[0])
 
 
         
-        self.app_state.ds = self.app_state.dt.sel(trials=trials[0])
+        self.app_state.ds = self.app_state.dt.trial(trials[0])
         
 
 
@@ -188,7 +188,7 @@ class DataWidget(DataLoader, QWidget):
         trial_status = {}
         
         for trial in self.app_state.trials:
-            is_verified = self.app_state.label_dt.sel(trials=trial).attrs.get('human_verified', 0)
+            is_verified = self.app_state.label_dt.trial(trial).attrs.get('human_verified', 0)
             trial_status[trial] = bool(is_verified)
 
         return trial_status
@@ -590,17 +590,17 @@ class DataWidget(DataLoader, QWidget):
         trials_sel = self.app_state.trials_sel
 
         try:
-            self.app_state.ds = self.app_state.dt.sel(trials=trials_sel)
-            self.app_state.label_ds = self.app_state.label_dt.sel(trials=trials_sel)
+            self.app_state.ds = self.app_state.dt.trial(trials_sel)
+            self.app_state.label_ds = self.app_state.label_dt.trial(trials_sel)
 
             if self.app_state.pred_dt is not None:
-                self.app_state.pred_ds = self.app_state.pred_dt.sel(trials=trials_sel)
+                self.app_state.pred_ds = self.app_state.pred_dt.trial(trials_sel)
 
         except Exception as e:
-            self.app_state.ds = self.app_state.dt.isel(trials=0)
-            self.app_state.label_ds = self.app_state.label_dt.isel(trials=0)
+            self.app_state.ds = self.app_state.dt.itrial(0)
+            self.app_state.label_ds = self.app_state.label_dt.itrial(0)
             if self.app_state.pred_dt is not None:
-                self.app_state.pred_ds = self.app_state.pred_dt.isel(trials=0)
+                self.app_state.pred_ds = self.app_state.pred_dt.itrial(0)
 
             self.app_state.trials_sel = self.app_state.trials[0]
             print(f"Error selecting trial {trials_sel}: {e}")

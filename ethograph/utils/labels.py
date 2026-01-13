@@ -415,7 +415,7 @@ def create_classification_probabilities_pdf(label_dt, output_path: Union[str, Pa
     axes = axes.flatten()
 
     for idx, trial_num in enumerate(trial_nums):
-        trial_ds = label_dt.sel(trials=trial_num)
+        trial_ds = label_dt.trial(trial_num)
 
         if 'labels_confidence' not in trial_ds:
             continue
@@ -471,7 +471,7 @@ def create_classification_probabilities_pdf(label_dt, output_path: Union[str, Pa
         trial_name = f"trial-{trial_num}"
         ax.set_title(f'{trial_name}\nMean confidence: {confidence:.3f}', fontsize=10)
 
-        label_dt.sel(trials=trial_num).attrs['mean_model_confidence'] = float(confidence)
+        label_dt.trial(trial_num).attrs['mean_model_confidence'] = float(confidence)
         
         
         if confidence < confidence_threshold or has_low_segment:
@@ -480,9 +480,9 @@ def create_classification_probabilities_pdf(label_dt, output_path: Union[str, Pa
                 spine.set_linewidth(3)
             ax.set_title(f'{trial_name}\nConfidence: {confidence:.3f}',
                         fontsize=10, color='red', weight='bold')
-            label_dt.sel(trials=trial_num).attrs['model_confidence'] = 'low'
+            label_dt.trial(trial_num).attrs['model_confidence'] = 'low'
         else:
-            label_dt.sel(trials=trial_num).attrs['model_confidence'] = 'high'
+            label_dt.trial(trial_num).attrs['model_confidence'] = 'high'
             
         
             

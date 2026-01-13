@@ -192,7 +192,7 @@ class MetaWidget(CollapsibleWidgetContainer):
             if (hasattr(self.app_state, 'label_dt') and self.app_state.label_dt is not None and
                 hasattr(self.app_state, 'trials_sel') and self.app_state.trials_sel is not None):
                 try:
-                    attrs = self.app_state.label_dt.sel(trials=self.app_state.trials_sel).attrs
+                    attrs = self.app_state.label_dt.trial(self.app_state.trials_sel).attrs
                     if attrs.get('human_verified', None) == True:
                         verification_emoji = "✅"
                 except (KeyError, AttributeError):
