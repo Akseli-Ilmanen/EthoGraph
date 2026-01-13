@@ -13,7 +13,7 @@
 ```
 processed_data/
     └── session_folder/
-        ├── data.nc                  # Main behavioral dataset (required)
+        ├── sesssion                  # Main behavioral dataset (required)
         └── labels/                  # Motif labels (created by GUI)
             ├── data_labels_20240315_143022.nc
             └── data_labels_20240316_091045.nc

@@ -794,8 +794,8 @@ class DataWidget(DataLoader, QWidget):
         
         # COMMENTED OUT 
         # self._add_tracks_layer() 
-        if self.data_bboxes is not None:
-            self._add_boxes_layer()
+        # if self.data_bboxes is not None:
+        #     self._add_boxes_layer()
         self._set_initial_state()
 
             

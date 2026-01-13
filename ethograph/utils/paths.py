@@ -1,6 +1,15 @@
 """Path utilities with zero internal dependencies (stdlib only)."""
 from pathlib import Path
+import os
 
+def check_paths_exist(nc_paths):
+    missing_paths = [p for p in nc_paths if not os.path.exists(p)]
+    if missing_paths:
+        print("Error: The following test_nc_paths do not exist:")
+        for p in missing_paths:
+            print(f"  {p}")
+        exit(1)
+ 
 
 def get_project_root(start: Path | None = None) -> Path:
     """Find project root by walking up to find pyproject.toml or .git folder.

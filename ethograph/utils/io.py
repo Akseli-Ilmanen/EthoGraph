@@ -10,8 +10,16 @@ from ethograph.features.mov_features import get_angle_rgb
 import os
 import json
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Union, List, Set
+from typing import Any, Callable, Dict, Optional, Union, List, Set, get_args
 from ethograph.utils.validation import validate_datatree
+from movement.kinematics import compute_velocity, compute_speed, compute_acceleration, compute_pairwise_distances
+from movement.io import load_poses
+from ethograph.features.audio_features import get_synced_envelope
+
+
+
+
+
 
 class TrialTree(xr.DataTree):
     """DataTree subclass with trial-specific functionality."""
@@ -182,7 +190,6 @@ class TrialTree(xr.DataTree):
             
             raise ValueError("TrialTree validation failed: \n" + error_msg)
     
-
     
     def get_label_dt(self, empty: bool = False) -> "TrialTree":
         """Extract label information, optionally as empty arrays.
@@ -631,8 +638,185 @@ class TrialTree(xr.DataTree):
                 )
 
         return concatenated
+
+    
+def _minimal_basics(ds):
+    
+    if "labels" not in ds.data_vars:
+        ds["labels"] = xr.DataArray(
+                np.zeros((ds.dims["time"], ds.dims["individuals"])),
+                dims=["time", "individuals"],
+        )
+        
+    for feat in list(ds.data_vars):
+        if feat != "labels":
+            ds[feat].attrs["type"] = "features"
+
+    ds.attrs["trial"] = "sample_trial"
+    dt = TrialTree.from_datasets([ds])
+    
+    return dt
    
+
+
+
+
    
+def minimal_dt_from_pose(video_path, fps, tracking_path, source_software):
+    """
+    Create a minimal TrialTree from pose data.
+    
+    Args:
+        video_path: Path to video file
+        fps: Frames per second of the video
+        tracking_path: Path to tracking file (e.g. poses.csv/poses.h5)
+        source_software: Software used for tracking (e.g., 'DeepLabCut')
+        
+        
+    Returns:
+        TrialTree with minimal structure
+    """
+    # Validate inputs: must provide either ds OR (source_software + fps)
+
+    ds = load_poses.from_file(
+        file_path=tracking_path, 
+        fps=fps, 
+        source_software=source_software
+    )
+
+
+    ds["velocity"] = compute_velocity(ds.position)
+    ds["speed"] = compute_speed(ds.position)
+    ds["acceleration"] = compute_acceleration(ds.position)
+    
+    if len(ds.keypoints) > 1:
+        compute_pairwise_distances(ds.position, dim='keypoints', pairs='all')
+    
+    if len(ds.individuals) > 1:
+        # Not sure how this looks like with individuals > 2
+        compute_pairwise_distances(ds.position, dim='individuals', pairs='all')
+    
+
+
+    ds = set_media_attrs(
+        ds,
+        cameras=[Path(video_path).name],
+        tracking=[Path(tracking_path).name],
+        tracking_prefix=f"{ds.attrs['source_software']}_1"
+    )            
+    dt = _minimal_basics(ds)
+
+
+    return dt
+
+
+def minimal_dt_from_ds(video_path, ds: xr.Dataset):
+    
+    # No public function from movement to validate that this
+    # is a proper poses dataset -> add later
+    
+    ds = set_media_attrs(
+        ds,
+        cameras=[Path(video_path).name],
+    )  
+    dt = _minimal_basics(ds)
+    
+    return dt
+
+
+def minimal_dt_from_audio(video_path, fps, audio_path, sr, individuals=None):
+
+    if individuals is None:
+        individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
+
+    envelope = get_synced_envelope(audio_path, sr, fps)
+    
+    n_frames = len(envelope)
+    time_coords = np.arange(n_frames) / fps
+    
+    ds = xr.Dataset(
+        data_vars={
+            "envelope": ("time", envelope),
+            "labels": (["time", "individuals"], np.zeros((n_frames, len(individuals))))
+        },
+        coords={
+            "time": time_coords,
+            "individuals": individuals  
+        }
+    )    
+
+    ds.attrs["sr"] = sr
+    ds.attrs["fps"] = fps
+
+    
+    ds = set_media_attrs(
+        ds,
+        cameras=[Path(video_path).name],
+        mics=[Path(audio_path).name],
+    )  
+    
+    dt = _minimal_basics(ds)
+    
+    return dt
+ 
+
+
+    
+def set_media_attrs(
+    ds: xr.Dataset,
+    cameras: Optional[List[str]] = None,
+    mics: Optional[List[str]] = None,
+    tracking: Optional[List[str]] = None,
+    tracking_prefix: str = "dlc",
+) -> xr.Dataset:
+    """
+    Set media file attributes with consistent keys.
+
+    Creates both the file type list (e.g., ds.attrs["cameras"] = ["cam1", "cam2"])
+    and individual file path attrs (e.g., ds.attrs["cam1"] = "video.mp4").
+
+    Args:
+        ds: xarray Dataset to modify
+        cameras: List of camera file paths, keys auto-generated as cam1, cam2, ...
+        mics: List of microphone file paths, keys auto-generated as mic1, mic2, ...
+        tracking: List of tracking file paths, keys use tracking_prefix
+        tracking_prefix: Prefix for tracking keys (default "dlc", could be "sleap", "anipose")
+
+    Returns:
+        Modified dataset with file attributes set
+
+    Example:
+        ds = set_media_attrs(
+            ds,
+            cameras=["video-cam-1.mp4", "video-cam-2.mp4"],
+            tracking=["dlc-cam-1.csv", "dlc-cam-2.csv"],
+        )
+        # Result:
+        # ds.attrs["cameras"] = ["cam1", "cam2"]
+        # ds.attrs["cam1"] = "video-cam-1.mp4"
+        # ds.attrs["cam2"] = "video-cam-2.mp4"
+        # ds.attrs["tracking"] = ["dlc1", "dlc2"]
+        # ds.attrs["dlc1"] = "dlc-cam-1.csv"
+    """
+    file_configs = [
+        ("cameras", cameras, "cam"),
+        ("mics", mics, "mic"),
+        ("tracking", tracking, tracking_prefix),
+    ]
+
+    for file_type, files, prefix in file_configs:
+        if files is None:
+            continue
+
+        keys = [f"{prefix}{i+1}" for i in range(len(files))]
+
+        ds.attrs[file_type] = keys
+        for key, filepath in zip(keys, files):
+            ds.attrs[key] = filepath
+
+    return ds
+
+
 def extract_variable_flat(
     nc_paths: List[str],
     variable: str,
@@ -665,75 +849,12 @@ def extract_variable_flat(
     return np.concatenate(arrays)
    
 
-def check_paths_exist(nc_paths):
-    missing_paths = [p for p in nc_paths if not os.path.exists(p)]
-    if missing_paths:
-        print("Error: The following test_nc_paths do not exist:")
-        for p in missing_paths:
-            print(f"  {p}")
-        exit(1)
- 
-    
-def set_media_files(
-    ds: xr.Dataset,
-    cameras: Optional[List[str]] = None,
-    mics: Optional[List[str]] = None,
-    tracking: Optional[List[str]] = None,
-    tracking_prefix: str = "dlc",
-) -> xr.Dataset:
-    """
-    Set media file attributes with consistent keys.
-
-    Creates both the file type list (e.g., ds.attrs["cameras"] = ["cam1", "cam2"])
-    and individual file path attrs (e.g., ds.attrs["cam1"] = "video.mp4").
-
-    Args:
-        ds: xarray Dataset to modify
-        cameras: List of camera file paths, keys auto-generated as cam1, cam2, ...
-        mics: List of microphone file paths, keys auto-generated as mic1, mic2, ...
-        tracking: List of tracking file paths, keys use tracking_prefix
-        tracking_prefix: Prefix for tracking keys (default "dlc", could be "sleap", "anipose")
-
-    Returns:
-        Modified dataset with file attributes set
-
-    Example:
-        ds = set_media_files(
-            ds,
-            cameras=["video-cam-1.mp4", "video-cam-2.mp4"],
-            tracking=["dlc-cam-1.csv", "dlc-cam-2.csv"],
-        )
-        # Result:
-        # ds.attrs["cameras"] = ["cam1", "cam2"]
-        # ds.attrs["cam1"] = "video-cam-1.mp4"
-        # ds.attrs["cam2"] = "video-cam-2.mp4"
-        # ds.attrs["tracking"] = ["dlc1", "dlc2"]
-        # ds.attrs["dlc1"] = "dlc-cam-1.csv"
-    """
-    file_configs = [
-        ("cameras", cameras, "cam"),
-        ("mics", mics, "mic"),
-        ("tracking", tracking, tracking_prefix),
-    ]
-
-    for file_type, files, prefix in file_configs:
-        if files is None:
-            continue
-
-        keys = [f"{prefix}{i+1}" for i in range(len(files))]
-
-        ds.attrs[file_type] = keys
-        for key, filepath in zip(keys, files):
-            ds.attrs[key] = filepath
-
-    return ds
-
 
 def set_file_types_attrs(ds, cameras=None, tracking=None, mics=None):
-    """Deprecated: Use set_media_files instead."""
+    """Deprecated: Use set_media_attrs instead."""
     import warnings
     warnings.warn(
-        "set_file_types_attrs is deprecated, use set_media_files instead",
+        "set_file_types_attrs is deprecated, use set_media_attrs instead",
         DeprecationWarning,
         stacklevel=2
     )

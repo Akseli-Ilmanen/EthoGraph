@@ -1,6 +1,6 @@
 # Labelling
 
-Before closing, you will be prompted to `update with labels and save`, this takes `labels.nc` file and udpates the `data.nc` file with this info. Don't skip this step, may take a minute!
+Before closing, you will be prompted to `update with labels and save`, this takes `labels.nc` file and udpates the `sesssion` file with this info. Don't skip this step, may take a minute!
 
 
 ## Creating Labels
