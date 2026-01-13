@@ -267,6 +267,8 @@ class TrialTree(xr.DataTree):
         
         return self.from_datatree(self.map_over_datasets(transform_ds), attrs=self.attrs)
         
+    
+    
     def overwrite_with_attrs(self, labels_tree: xr.DataTree) -> "TrialTree":
         """
         Overwrite attrs in this tree with that from another tree.
@@ -332,123 +334,7 @@ class TrialTree(xr.DataTree):
         
         return TrialTree(new_tree)
     
-    
-
-    
-    @classmethod
-    def merge_session_trees(
-        cls,
-        trees: Dict[str, "TrialTree"]
-    ) -> "TrialTree":
-        """Create hierarchical structure with sessions as parent nodes.
         
-        Args:
-            trees: Dict mapping session names to TrialTree instances
-        
-        Returns:
-            Hierarchical TrialTree: root -> sessions -> trials
-        """
-        merged = xr.DataTree()
-        
-        for session_name, trial_tree in trees.items():
-            # Create session subtree
-            session_tree = xr.DataTree(name=session_name)
-            
-            # Copy trials under session
-            trial_nodes = [
-                k for k in trial_tree.children 
-                if k.startswith(trial_tree.TRIAL_PREFIX)
-            ]
-            for node_key in trial_nodes:
-                session_tree[node_key] = trial_tree[node_key].copy()
-            
-            merged[session_name] = session_tree
-        
-        result = cls(merged)
-        result._validate_tree()
-        return result
-    
-    
-    def stack_session(
-        self,
-        concat_dim: str = "trials",
-        drop_vars: Optional[List[str]] = None,
-        keep_vars: Optional[List[str]] = None,
-        add_index_coords: bool = False,
-        attrs_to_vars: Optional[List[str]] = None
-    ) -> xr.Dataset:
-        """Concatenate hierarchical tree into flat dataset with outer join.
-
-        Args:
-            concat_dim: Name for concatenated dimension across sessions/trials
-            drop_vars: Variables to drop from datasets
-            keep_vars: If specified, keep only these variables
-            add_index_coords: If True, add session_idx and trial_idx coordinates
-            attrs_to_vars: Attributes to convert to data arrays indexed by concat_dim
-
-        Returns:
-            Concatenated dataset with NaN padding, indexable coordinates, and converted attributes
-        """
-        if drop_vars and keep_vars:
-            raise ValueError("Cannot specify both drop_vars and keep_vars")
-
-        attrs_to_vars = attrs_to_vars or []
-        
-        def iter_trials(self):
-            """Yield (session_name, session_idx, trial_num, dataset) for all trials."""
-            has_sessions = any(
-                any(child.startswith(self.TRIAL_PREFIX) for child in node.children)
-                for node in self.children.values()
-                if isinstance(node, xr.DataTree)
-            )
-            
-            if has_sessions:
-                for session_idx, (session_name, session_node) in enumerate(self.children.items()):
-                    for trial_name, trial_node in session_node.children.items():
-                        if trial_name.startswith(self.TRIAL_PREFIX):
-                            trial_num = int(trial_name.split('_')[1])
-                            yield session_name, session_idx, trial_num, trial_node.ds
-            else:
-                for trial_name, trial_node in self.children.items():
-                    if trial_name.startswith(self.TRIAL_PREFIX):
-                        trial_num = int(trial_name.split('_')[1])
-                        yield "session_0", 0, trial_num, trial_node.ds
-
-        components = []
-        metadata = {"session_idx": [], "trial_idx": [], "session_name": [], "trial_num": []}
-        attr_values = {attr: [] for attr in attrs_to_vars}
-
-        for session_name, session_idx, trial_num, ds in iter_trials(self):
-            ds = ds.copy()
-            
-            if drop_vars:
-                ds = ds.drop_vars([v for v in drop_vars if v in ds])
-            elif keep_vars:
-                ds = ds[[v for v in keep_vars if v in ds]]
-
-            for attr in attrs_to_vars:
-                attr_values[attr].append(ds.attrs.get(attr, np.nan))
-
-            components.append(ds)
-            metadata["session_idx"].append(session_idx)
-            metadata["trial_idx"].append(trial_num)
-            metadata["session_name"].append(session_name)
-            metadata["trial_num"].append(trial_num)
-
-        if not components:
-            raise ValueError("No valid trials found in tree")
-
-        result = xr.concat(components, dim=concat_dim, join="outer", combine_attrs="drop_conflicts")
-
-        if add_index_coords:
-            result = result.assign_coords({
-                f"{concat_dim}_{k}": (concat_dim, v) for k, v in metadata.items()
-            })
-
-        for attr in attrs_to_vars:
-            result[attr] = xr.DataArray(attr_values[attr], dims=[concat_dim])
-
-        return result
     
 def _minimal_basics(ds):
     
