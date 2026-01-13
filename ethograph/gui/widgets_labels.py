@@ -17,12 +17,15 @@ from qtpy.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
+    QPlainTextEdit,
     QPushButton,
     QSizePolicy,
     QTableWidget,
@@ -543,29 +546,53 @@ class LabelsWidget(QWidget):
         self.human_verified_status.setText("Not verified")
         grid_layout.addWidget(self.human_verified_status, 2, 3)
 
-
         layout.addWidget(control_grid)
 
-        # Save buttons row
-        save_row = QWidget()
-        save_layout = QHBoxLayout()
-        save_layout.setSpacing(5)
-        save_row.setLayout(save_layout)
+
+        bottom_row = QWidget()
+        temp_labels_layout = QHBoxLayout()
+        temp_labels_layout.setSpacing(5)
+        bottom_row.setLayout(temp_labels_layout)
+
+        self.temp_labels_button = QPushButton("Create temporary labels")
+        self.temp_labels_button.setToolTip("Create custom labels for this session only")
+        self.temp_labels_button.clicked.connect(self._create_temporary_labels)
+        temp_labels_layout.addWidget(self.temp_labels_button)
+
+  
+        temp_labels_layout.addSpacing(30)
 
         self.save_labels_button = QPushButton("Save labels file")
         self.save_labels_button.setToolTip("Shortcut: (Ctrl + S). Save file in labels\\... folder")
         self.save_labels_button.clicked.connect(lambda: self.app_state.save_labels())
-        save_layout.addWidget(self.save_labels_button)
+        temp_labels_layout.addWidget(self.save_labels_button)
 
-        self.save_button = QPushButton("Merge labels and save data.nc")
-        self.save_button.setToolTip("Takes current labels and saves to original data.nc file")
+        self.save_button = QPushButton("Merge labels and save sesssion")
+        self.save_button.setToolTip("Takes current labels and saves to original sesssion file")
         self.save_button.clicked.connect(lambda: self.app_state.save_file())
-        save_layout.addWidget(self.save_button)
+        temp_labels_layout.addWidget(self.save_button)
 
-        save_layout.addStretch()
-        layout.addWidget(save_row)
+        temp_labels_layout.addStretch()
+        layout.addWidget(bottom_row)
 
-       
+
+    def _create_temporary_labels(self):
+        """Open dialog to create temporary labels for this session."""
+        dialog = TemporaryLabelsDialog(self)
+        if dialog.exec_():
+            labels = dialog.get_labels()
+            if labels:
+                mapping_path = get_project_root() / "configs" / "mapping_temporary.txt"
+                with open(mapping_path, "w") as f:
+                    f.write("0 background\n")
+                    for i, label in enumerate(labels, start=1):
+                        f.write(f"{i} {label}\n") 
+
+                self.motif_mappings = load_motif_mapping(mapping_path)
+                self._populate_motifs_table()
+                self.refresh_motif_shapes_layer()
+                show_info(f"Loaded {len(labels)} temporary labels")
+
     def _human_verification_true(self, mode=None):
         """Mark current trial as human verified."""
         if self.app_state.label_dt is None or self.app_state.trials_sel is None:
@@ -1133,3 +1160,37 @@ class LabelsWidget(QWidget):
         """Refresh the entire motif shapes layer - call when labels change."""
         self._remove_motif_shapes_layer()
         self._add_motif_shapes_layer()
+
+
+class TemporaryLabelsDialog(QDialog):
+    """Dialog for creating temporary labels for the current session."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Create Temporary Labels")
+        self.setMinimumWidth(400)
+        self.setMinimumHeight(300)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        info_label = QLabel("Enter label names (one per line):")
+        layout.addWidget(info_label)
+
+        self.text_edit = QPlainTextEdit()
+        self.text_edit.setPlaceholderText(
+            "label1\nlabel2\nlabel3\n...\n\n(background is added automatically as label 0)"
+        )
+        layout.addWidget(self.text_edit)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def get_labels(self):
+        """Parse and return the list of label names."""
+        text = self.text_edit.toPlainText()
+        labels = [line.strip().replace(" ", "_") for line in text.split("\n") if line.strip()]
+        return labels

@@ -27,6 +27,8 @@ def load_dataset(file_path: str) -> Tuple[Optional[xr.Dataset], Optional[dict]]:
         raise ValueError(error_msg)
 
     dt = TrialTree.load(file_path)
+    
+    
     label_dt = dt.get_label_dt()
     ds = dt.isel(trials=0)
 

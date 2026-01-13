@@ -1,26 +1,25 @@
+audio_folder: C:\Users\aksel\Documents\Code\EthoGraph\data\Night_of_the_Living_Dead
+buffer_multiplier: 5.0
+nfft: 1024
+vmax_db: 20.0
+hop_frac: 0.5
+video_buffer_size: 300
+cmap: magma
+vmin_db: -120.0
+nc_file_path: C:/Users/aksel/Documents/Code/EthoGraph/data/Night_of_the_Living_Dead/xx.nc
+space_plot_type: Layer controls
+percentile_ylim: 99.5
+plot_spectrogram: false
 window_size: 5.0
 fps_playback: 30.0
-nfft: 1024
-plot_spectrogram: false
-vmax_db: 20.0
-percentile_ylim: 99.5
-vmin_db: -120.0
+video_folder: C:\Users\aksel\Documents\Code\EthoGraph\data\Night_of_the_Living_Dead
+video_path: C:\Users\aksel\Documents\Code\EthoGraph\data\Night_of_the_Living_Dead\movie.mp4
 recompute_threshold: 0.5
-video_path: C:\Users\aksel\Documents\Code\EthoGraph\data\pupil\video.mp4
-buffer_multiplier: 5.0
-tracking_folder: C:/Users/aksel/Documents/Code/EthoGraph/data/pupil
+audio_path: C:\Users\aksel\Documents\Code\EthoGraph\data\Night_of_the_Living_Dead\movie.wav
 import_labels_nc_data: false
-hop_frac: 0.5
-nc_file_path: C:/Users/aksel/Documents/Code/EthoGraph/data/pupil/trial.nc
-space_plot_type: Layer controls
-cmap: magma
-video_buffer_size: 300
-video_folder: C:/Users/aksel/Documents/Code/EthoGraph/data/pupil
 cameras_sel: cam1
-features_sel: position
-individuals_sel: individual_0
-keypoints_sel: eye-L
-keypoints_sel_previous: pupil-R
-tracking_sel: DeepLabCut_11
+features_sel: envelope
+individuals_sel: individual 1
+mics_sel: mic1
 trial_conditions_sel: None
 trials_sel: sample_trial

@@ -59,7 +59,7 @@ def validate_media_files(ds: xr.Dataset, file_type: str) -> List[str]:
     #     if key not in ds.attrs:
     #         errors.append(
     #             f"Missing file path for '{file_type}': ds.attrs['{key}'] not found. "
-    #             f"Use set_media_files() to set both key list and file paths together."
+    #             f"Use set_media_attrs() to set both key list and file paths together."
     #         )
 
     return errors

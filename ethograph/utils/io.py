@@ -10,11 +10,14 @@ from ethograph.features.mov_features import get_angle_rgb
 import os
 import json
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Union, List, Set
+from typing import Any, Callable, Dict, Optional, Union, List, Set, get_args
 from ethograph.utils.validation import validate_datatree
-from movement.kinematics import compute_velocity, compute_speed
+from movement.kinematics import compute_velocity, compute_speed, compute_acceleration, compute_pairwise_distances
 from movement.io import load_poses
 from ethograph.features.audio_features import get_synced_envelope
+
+
+
 
 
 
@@ -655,39 +658,47 @@ def _minimal_basics(ds):
     return dt
    
 
+
+
+
    
-def minimal_dt_from_pose(video_path, fps=None, tracking_path=None, ds=None, source_software=None):
+def minimal_dt_from_pose(video_path, fps, tracking_path, source_software):
     """
     Create a minimal TrialTree from pose data.
     
     Args:
         video_path: Path to video file
         fps: Frames per second of the video
-        tracking_path: Path to tracking file (optional)
-        ds: Existing xarray Dataset (optional)
+        tracking_path: Path to tracking file (e.g. poses.csv/poses.h5)
         source_software: Software used for tracking (e.g., 'DeepLabCut')
         
         
     Returns:
         TrialTree with minimal structure
-        
-    Raises:
-        ValueError: If neither ds nor (source_software + fps) are provided
     """
     # Validate inputs: must provide either ds OR (source_software + fps)
-    if ds is None:
-        if source_software is None or fps is None or tracking_path is None:
-            raise ValueError(
-                "Must provide either 'ds' OR both 'source_software' and 'fps', and path to the pose file."
-            )
-        ds = load_poses.from_file(
-            file_path=tracking_path, 
-            fps=fps, 
-            source_software=source_software
-        )
+
+    ds = load_poses.from_file(
+        file_path=tracking_path, 
+        fps=fps, 
+        source_software=source_software
+    )
 
 
-    ds = set_media_files(
+    ds["velocity"] = compute_velocity(ds.position)
+    ds["speed"] = compute_speed(ds.position)
+    ds["acceleration"] = compute_acceleration(ds.position)
+    
+    if len(ds.keypoints) > 1:
+        compute_pairwise_distances(ds.position, dim='keypoints', pairs='all')
+    
+    if len(ds.individuals) > 1:
+        # Not sure how this looks like with individuals > 2
+        compute_pairwise_distances(ds.position, dim='individuals', pairs='all')
+    
+
+
+    ds = set_media_attrs(
         ds,
         cameras=[Path(video_path).name],
         tracking=[Path(tracking_path).name],
@@ -699,8 +710,21 @@ def minimal_dt_from_pose(video_path, fps=None, tracking_path=None, ds=None, sour
     return dt
 
 
-def minimal_dt_from_audio(video_path, fps, audio_path, sr, individuals=None):
+def minimal_dt_from_ds(video_path, ds: xr.Dataset):
+    
+    # No public function from movement to validate that this
+    # is a proper poses dataset -> add later
+    
+    ds = set_media_attrs(
+        ds,
+        cameras=[Path(video_path).name],
+    )  
+    dt = _minimal_basics(ds)
+    
+    return dt
 
+
+def minimal_dt_from_audio(video_path, fps, audio_path, sr, individuals=None):
 
     if individuals is None:
         individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
@@ -725,7 +749,7 @@ def minimal_dt_from_audio(video_path, fps, audio_path, sr, individuals=None):
     ds.attrs["fps"] = fps
 
     
-    ds = set_media_files(
+    ds = set_media_attrs(
         ds,
         cameras=[Path(video_path).name],
         mics=[Path(audio_path).name],
@@ -738,7 +762,7 @@ def minimal_dt_from_audio(video_path, fps, audio_path, sr, individuals=None):
 
 
     
-def set_media_files(
+def set_media_attrs(
     ds: xr.Dataset,
     cameras: Optional[List[str]] = None,
     mics: Optional[List[str]] = None,
@@ -762,7 +786,7 @@ def set_media_files(
         Modified dataset with file attributes set
 
     Example:
-        ds = set_media_files(
+        ds = set_media_attrs(
             ds,
             cameras=["video-cam-1.mp4", "video-cam-2.mp4"],
             tracking=["dlc-cam-1.csv", "dlc-cam-2.csv"],
@@ -827,10 +851,10 @@ def extract_variable_flat(
 
 
 def set_file_types_attrs(ds, cameras=None, tracking=None, mics=None):
-    """Deprecated: Use set_media_files instead."""
+    """Deprecated: Use set_media_attrs instead."""
     import warnings
     warnings.warn(
-        "set_file_types_attrs is deprecated, use set_media_files instead",
+        "set_file_types_attrs is deprecated, use set_media_attrs instead",
         DeprecationWarning,
         stacklevel=2
     )
