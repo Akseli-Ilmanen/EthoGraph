@@ -97,6 +97,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         # Set up cross-references between widgets
         # Plot widgets need plot_container for unified plot access
         self.labels_widget.set_plot_container(self.plot_container)
+        self.labels_widget.set_meta_widget(self)
         self.plots_widget.set_plot_container(self.plot_container)
 
         # Signal connections for decoupled communication

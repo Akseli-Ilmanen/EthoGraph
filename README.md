@@ -1,3 +1,4 @@
 # EthoGraph
 
-More coming soon!
+
+Installation instr

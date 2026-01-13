@@ -34,7 +34,7 @@
 | Left-click on motif | Select existing motif |
 | `Ctrl+E` | Edit selected motif boundaries (after selecting motif, click twice for new boundaries) |
 | `Ctrl+D` | Delete selected motif (after selecting motif) |
-| `Ctrl+S` | Save labels `.nc` file. (Save `data.nc` only via button). |
+| `Ctrl+S` | Save labels `.nc` file. (Save `sesssion` only via button). |
 | `Ctrl+X` | Switch between labels and predictions. |
 | `Ctrl+V` | 'Verify predictions' by editing once or this shortcut. | 
 
