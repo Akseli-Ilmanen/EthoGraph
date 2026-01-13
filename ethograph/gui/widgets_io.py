@@ -13,6 +13,7 @@ from qtpy.QtWidgets import (
     QCheckBox,
 )
 from .app_state import AppStateSpec
+from .dialog_create_nc import CreateNCDialog
 from pathlib import Path
 from qtpy.QtCore import Qt
 from ethograph.utils.io import TrialTree
@@ -36,13 +37,16 @@ class IOWidget(QWidget):
         
         
 
-        self.reset_button = QPushButton("Reset gui_settings.yaml")
+        self.reset_button = QPushButton("💡Reset gui_settings.yaml")
         self.reset_button.setObjectName("reset_button")
         self.reset_button.clicked.connect(self._on_reset_gui_clicked)
         self.layout().addRow(self.reset_button)
 
-        
-        
+        self.create_nc_button = QPushButton("➕Create session.nc file with own data")
+        self.create_nc_button.setObjectName("create_nc_button")
+        self.create_nc_button.clicked.connect(self._on_create_nc_clicked)
+        self.layout().addRow(self.create_nc_button)
+
         self._create_path_folder_widgets()
         self._create_device_combos()
 
@@ -61,14 +65,14 @@ class IOWidget(QWidget):
 
     def _on_reset_gui_clicked(self):
         """Reset the GUI to its initial state."""
-     
+
 
         self.app_state.delete_yaml()
-        
+
         # Reset all app_state attributes to their defaults
         for var, (_, default, _) in AppStateSpec.VARS.items():
             setattr(self.app_state, var, default)
-        
+
         # Clear all dynamic _sel attributes
         for attr in list(dir(self.app_state)):
             if attr.endswith("_sel") or attr.endswith("_sel_previous"):
@@ -76,15 +80,18 @@ class IOWidget(QWidget):
                     delattr(self.app_state, attr)
                 except AttributeError:
                     pass
-        
+
         self._clear_all_line_edits()
         self._clear_combo_boxes()
-        
 
-        
         yaml_path = gui_default_settings_path()
         self.app_state._yaml_path = str(yaml_path)
         self.app_state.save_to_yaml()
+
+    def _on_create_nc_clicked(self):
+        """Open the dialog to create a .nc file from various data sources."""
+        dialog = CreateNCDialog(self.app_state, self, self)
+        dialog.exec_()
 
     def _clear_all_line_edits(self):
         """Clear all QLineEdit fields in the widget."""
@@ -159,7 +166,7 @@ class IOWidget(QWidget):
     def _create_path_folder_widgets(self):
         """Create file path, video folder, and audio folder selectors."""
         self.nc_file_path_edit = self._create_path_widget(
-            label="Get data.nc:",
+            label="Get sesssion:",
             object_name="nc_file_path",
             browse_callback=lambda: self.on_browse_clicked("file", "data"),
         )
