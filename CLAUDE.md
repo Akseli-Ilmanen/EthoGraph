@@ -186,7 +186,7 @@ Central coordinator that creates and wires all widgets together.
 1. Validate .nc file extension
 2. Load via `TrialTree.load(file_path)` -> returns DataTree
 3. Extract label_dt via `dt.get_label_dt()`
-4. Get first trial: `ds = dt.isel(trials=0)`
+4. Get first trial: `ds = dt.itrial(0)`
 5. Categorize variables by `type` attribute (features, colors, changepoints)
 6. Extract device info (cameras, mics, tracking) from dataset attrs
 7. Return: `(dt, label_dt, type_vars_dict)`

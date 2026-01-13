@@ -66,7 +66,7 @@ def get_data_dict(all_params, nc_paths, trial_dict, features_path=None, gt_path=
         for trial_num in tqdm(trial_dict[hash_key]['trials']):
             
 
-            ds = dt.sel(trials=trial_num)
+            ds = dt.trial(trial_num)
 
             # In inference (data is unlabelled), labels should be all zeros
             individual = all_params["target_individual"]

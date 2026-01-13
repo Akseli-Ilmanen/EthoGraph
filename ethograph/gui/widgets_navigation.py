@@ -121,7 +121,7 @@ class NavigationWidget(QWidget):
             new_trial = self.app_state.trials[new_idx]
             
          
-            trial_attrs = self.app_state.label_dt.sel(trials=new_trial).attrs
+            trial_attrs = self.app_state.label_dt.trial(new_trial).attrs
             
             if "model_confidence" not in trial_attrs:
                 break

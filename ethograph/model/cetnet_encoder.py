@@ -490,7 +490,7 @@ class Trainer:
                     
 
     
-                ds = dt.sel(trials=trial)
+                ds = dt.trial(trial)
                 corr_pred = correct_changepoints_one_trial(predicted, ds, all_params, speed_correction)               
                 corr_pred_dict[vid] = corr_pred
                 
@@ -608,7 +608,7 @@ class Trainer:
                 
                 
                 pred_dt = sess_dict[hash_key]["pred_dt"]
-                pred_dt.sel(trials=trial_num).labels.loc[{"individuals": individual}] = predicted
+                pred_dt.trial(trial_num).labels.loc[{"individuals": individual}] = predicted
 
                 pred_dt.new_var_like(
                         trial=trial_num,
@@ -628,10 +628,10 @@ class Trainer:
                     nc_path = trial_mapping[hash_key]["nc_path"]
                     dt = TrialTree.load(nc_path)
                 
-                corr_pred = correct_changepoints_one_trial(predicted, dt.sel(trials=trial_num), all_params, False)      
+                corr_pred = correct_changepoints_one_trial(predicted, dt.trial(trial_num), all_params, False)      
                 
             
-                corr_pred_dt.sel(trials=trial_num).labels.loc[{"individuals": individual}] = corr_pred
+                corr_pred_dt.trial(trial_num).labels.loc[{"individuals": individual}] = corr_pred
                 
                 
                 
@@ -752,7 +752,7 @@ class Trainer:
                 
                 # Store encoder prediction (index 0)
                 pred_dt_encoder = sess_dict[hash_key]["pred_dt_encoder"]
-                pred_dt_encoder.sel(trials=trial_num).labels.loc[{"individuals": individual}] = all_predictions[0]
+                pred_dt_encoder.trial(trial_num).labels.loc[{"individuals": individual}] = all_predictions[0]
                 sess_dict[hash_key]["pred_dt_encoder"] = pred_dt_encoder
                 
                 # Store decoder predictions (indices 1, 2, 3)
@@ -760,7 +760,7 @@ class Trainer:
                 for i, decoder_key in enumerate(decoder_keys):
                     if i + 1 < len(all_predictions):
                         pred_dt_decoder = sess_dict[hash_key][decoder_key]
-                        pred_dt_decoder.sel(trials=trial_num).labels.loc[{"individuals": individual}] = all_predictions[i + 1]
+                        pred_dt_decoder.trial(trial_num).labels.loc[{"individuals": individual}] = all_predictions[i + 1]
                         sess_dict[hash_key][decoder_key] = pred_dt_decoder
                 
                 # Corrected prediction from last decoder
@@ -771,8 +771,8 @@ class Trainer:
                     nc_path = trial_mapping[hash_key]["nc_path"]
                     dt = TrialTree.load(nc_path)
                 
-                corr_pred = correct_changepoints_one_trial(all_predictions[-1], dt.sel(trials=trial_num), all_params, False)      
-                corr_pred_dt.sel(trials=trial_num).labels.loc[{"individuals": individual}] = corr_pred
+                corr_pred = correct_changepoints_one_trial(all_predictions[-1], dt.trial(trial_num), all_params, False)      
+                corr_pred_dt.trial(trial_num).labels.loc[{"individuals": individual}] = corr_pred
                 sess_dict[hash_key]["corr_pred_dt"] = corr_pred_dt                
 
                 sess_dict[hash_key]["inference"] = True

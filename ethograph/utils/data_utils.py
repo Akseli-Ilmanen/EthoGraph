@@ -46,7 +46,7 @@ def ds_to_df(ds):
     fps = 200  # Hz
     
     for trial_idx in range(ds.sizes['trials']):
-        labels = ds.labels.isel(trials=trial_idx).values
+        labels = ds.labels.itrial(trial_idx).values
         trial_id = ds.trials.values[trial_idx]
         
         # Exclude eat label (13) as often cut off
@@ -68,8 +68,8 @@ def ds_to_df(ds):
         times_adjusted = times_cropped - time_offset
         actual_trial_length = times_adjusted[-1]
         
-        poscat_value = float(ds.poscat.isel(trials=trial_idx).item())
-        num_pellets_value = float(ds.num_pellets.isel(trials=trial_idx).item())
+        poscat_value = float(ds.poscat.itrial(trial_idx).item())
+        num_pellets_value = float(ds.num_pellets.itrial(trial_idx).item())
         
         trial_events = []
         label_sequence = []

@@ -52,27 +52,16 @@ class TrialTree(xr.DataTree):
     # Given xarray has native .sel, and they are quite useful! I should reorganize my own methods.
     
     
-    
-    
-    def sel(self, trials: int = None, trial: int = None, **kwargs) -> xr.Dataset:
-        """Select from a specific trial dataset. Accepts 'trials' or 'trial' as argument."""
-        # Accept both 'trials' and 'trial' as argument names
-        trial_num = trials if trials is not None else trial
-        if trial_num is None:
-            raise ValueError("You must specify either 'trials' or 'trial' argument.")
+    def trial(self, trial) -> xr.Dataset:
         
-        ds = self[f'{self.TRIAL_PREFIX}{trial_num}'].ds
+        ds = self[f'{self.TRIAL_PREFIX}{trial}'].ds
         if ds is None:
-            raise ValueError(f"Trial {trial_num} has no dataset")
+            raise ValueError(f"Trial {trial} has no dataset")   
 
-        return ds.sel(**kwargs) if kwargs else ds
+        return ds
 
-    def isel(self, trials: int = None, trial: int = None, **kwargs) -> xr.Dataset:
+    def itrial(self, trial_idx) -> xr.Dataset:
         """Index select from a specific trial dataset."""
-
-        trial_idx = trials if trials is not None else trial
-        if trial_idx is None:
-            raise ValueError("You must specify either 'trials' or 'trial' argument.")
 
         trial_nodes = sorted(
             k for k in self.children
@@ -84,12 +73,12 @@ class TrialTree(xr.DataTree):
         if ds is None:
             raise ValueError(f"Trial at index {trial_idx} has no dataset")
 
-        return ds.sel(**kwargs) if kwargs else ds
+        return ds
     
 
     def get_all_trials(self) -> Dict[int, xr.Dataset]:
         """Get all trials as a dictionary."""
-        return {num: self.sel(trials=num) for num in self.trials}
+        return {num: self.trial(num) for num in self.trials}
     
     def get_common_attrs(self) -> Dict[str, Any]:
         """Extract attributes common to all trial datasets."""
@@ -657,7 +646,7 @@ def extract_variable_flat(
         dt = TrialTree.load(path)
         
         for trial_num in dt.trials:
-            trial_ds = dt.sel(trial=trial_num)
+            trial_ds = dt.trial(trial_num)
             
             data = trial_ds[variable]
             if selection:

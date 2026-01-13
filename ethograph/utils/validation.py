@@ -323,7 +323,7 @@ def validate_datatree(
         - inconsistencies: Dict mapping category to set of inconsistent items
         - errors: List of validation error messages
     """
-    ds = dt.isel(trials=0) # sample
+    ds = dt.itrial(0) # sample
     type_vars_dict = extract_type_vars(ds, dt)
     
     print("Extracted type_vars_dict:", type_vars_dict)
