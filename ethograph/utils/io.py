@@ -422,7 +422,10 @@ def minimal_dt_from_audio(video_path, fps, audio_path, sr, individuals=None):
     if individuals is None:
         individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
 
-    envelope = get_synced_envelope(audio_path, sr, fps)
+    envelope, gen_wav_path = get_synced_envelope(audio_path, sr, fps)
+
+    if gen_wav_path:
+        audio_path = gen_wav_path
     
     n_frames = len(envelope)
     time_coords = np.arange(n_frames) / fps

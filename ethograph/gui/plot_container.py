@@ -4,16 +4,17 @@ from qtpy.QtWidgets import QWidget, QVBoxLayout
 from qtpy.QtCore import Signal, QSize
 from .plots_lineplot import LinePlot
 from .plots_spectrogram import SpectrogramPlot
+from .plots_audiotrace import AudioTracePlot
 import pyqtgraph as pg
 import numpy as np
 
 class PlotContainer(QWidget):
-    """Container that holds and switches between LinePlot and SpectrogramPlot.
+    """Container that holds and switches between LinePlot, SpectrogramPlot, and AudioTracePlot.
 
     It just manages the widget switching and exposes the current_plot for direct access.
     """
 
-    plot_changed = Signal(str)  # Emits 'lineplot' or 'spectrogram'
+    plot_changed = Signal(str)  # Emits 'lineplot', 'spectrogram', or 'audiotrace'
     labels_redraw_needed = Signal()  # Emits when labels need to be redrawn on new plot
 
     def __init__(self, napari_viewer, app_state):
@@ -25,68 +26,63 @@ class PlotContainer(QWidget):
         self.setLayout(self.layout)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
-        # Create both plot types
         self.line_plot = LinePlot(napari_viewer, app_state)
         self.spectrogram_plot = SpectrogramPlot(app_state)
+        self.audio_trace_plot = AudioTracePlot(app_state)
 
-        # Current active plot
         self.current_plot = self.line_plot
         self.current_plot_type = 'lineplot'
 
-        # Add line plot by default
         self.layout.addWidget(self.line_plot)
         self.spectrogram_plot.hide()
-        
+        self.audio_trace_plot.hide()
+
         self.confidence_item = None
 
     def sizeHint(self):
         return QSize(self.width(), 300)
 
-    def switch_to_spectrogram(self):
-        """Switch to spectrogram display."""
-        if self.current_plot_type == 'spectrogram':
+    def _switch_to_plot(self, target_type: str):
+        """Generic method to switch between plot types."""
+        if self.current_plot_type == target_type:
             return
 
-        prev_xlim = self.line_plot.get_current_xlim()
-        prev_time_marker = self.line_plot.time_marker.value()
+        plot_map = {
+            'lineplot': self.line_plot,
+            'spectrogram': self.spectrogram_plot,
+            'audiotrace': self.audio_trace_plot,
+        }
 
-        self.line_plot.hide()
-        self.layout.removeWidget(self.line_plot)
+        prev_xlim = self.current_plot.get_current_xlim()
+        prev_time_marker = self.current_plot.time_marker.value()
 
-        self.layout.addWidget(self.spectrogram_plot)
-        self.spectrogram_plot.show()
+        self.current_plot.hide()
+        self.layout.removeWidget(self.current_plot)
 
-        self.current_plot = self.spectrogram_plot
-        self.current_plot_type = 'spectrogram'
+        target_plot = plot_map[target_type]
+        self.layout.addWidget(target_plot)
+        target_plot.show()
 
-        self.spectrogram_plot.set_x_range(mode='preserve', curr_xlim=prev_xlim)
-        self.spectrogram_plot.update_time_marker(prev_time_marker)
+        self.current_plot = target_plot
+        self.current_plot_type = target_type
 
-        self.plot_changed.emit('spectrogram')
+        target_plot.set_x_range(mode='preserve', curr_xlim=prev_xlim)
+        target_plot.update_time_marker(prev_time_marker)
+
+        self.plot_changed.emit(target_type)
         self.labels_redraw_needed.emit()
+
+    def switch_to_spectrogram(self):
+        """Switch to spectrogram display."""
+        self._switch_to_plot('spectrogram')
 
     def switch_to_lineplot(self):
         """Switch to line plot display."""
-        if self.current_plot_type == 'lineplot':
-            return
+        self._switch_to_plot('lineplot')
 
-        prev_xlim = self.spectrogram_plot.get_current_xlim()
-        prev_time_marker = self.spectrogram_plot.time_marker.value()
-
-        self.spectrogram_plot.hide()
-        self.layout.removeWidget(self.spectrogram_plot)
-
-        self.layout.addWidget(self.line_plot)
-        self.line_plot.show()
-
-        self.current_plot = self.line_plot
-        self.current_plot_type = 'lineplot'
-
-        self.line_plot.set_x_range(mode='preserve', curr_xlim=prev_xlim)
-        self.line_plot.update_time_marker(prev_time_marker)
-
-        self.plot_changed.emit('lineplot')
-        self.labels_redraw_needed.emit()
+    def switch_to_audiotrace(self):
+        """Switch to audio trace display."""
+        self._switch_to_plot('audiotrace')
 
     def show_confidence_plot(self, confidence_data):
         """Display confidence values on a secondary y-axis."""
@@ -143,6 +139,14 @@ class PlotContainer(QWidget):
     def is_spectrogram(self):
         """Check if currently showing spectrogram."""
         return self.current_plot_type == 'spectrogram'
+
+    def is_audiotrace(self):
+        """Check if currently showing audio trace."""
+        return self.current_plot_type == 'audiotrace'
+
+    def is_lineplot(self):
+        """Check if currently showing line plot."""
+        return self.current_plot_type == 'lineplot'
 
     def get_current_xlim(self):
         """Get current x-axis limits from active plot."""

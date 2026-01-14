@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/debug_gui.py",
+            "console": "integratedTerminal",
+            "python": "C:\\Users\\aksel\\anaconda3\\envs\\ethograph\\python.exe",
+            "justMyCode": false,
+            "env": {
+                "PYTHONFAULTHANDLER": "1"
+            }
+        }
+    ]
+}

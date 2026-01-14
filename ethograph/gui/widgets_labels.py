@@ -111,13 +111,14 @@ class LabelsWidget(QWidget):
         self.app_state.changes_saved = False
 
     def set_plot_container(self, plot_container):
-        """Set the plot container reference and connect click handler."""
+        """Set the plot container reference and connect click handler to all plots."""
         self.plot_container = plot_container
 
-
-        self.plot_container.line_plot.plot_clicked.connect(self._on_plot_clicked)
-        if hasattr(self.plot_container, 'spectrogram_plot'):
-            self.plot_container.spectrogram_plot.plot_clicked.connect(self._on_plot_clicked)
+        for plot in [plot_container.line_plot,
+                     plot_container.spectrogram_plot,
+                     plot_container.audio_trace_plot]:
+            if plot is not None:
+                plot.plot_clicked.connect(self._on_plot_clicked)
 
     def set_meta_widget(self, meta_widget):
         """Set reference to the meta widget for layout refresh."""
@@ -224,10 +225,10 @@ class LabelsWidget(QWidget):
         color_rgb = tuple(int(c * 255) for c in color)
 
         current_plot = self.plot_container.get_current_plot()
-        is_spectrogram = self.plot_container.is_spectrogram()
+        use_edge_style = self.plot_container.is_spectrogram()
 
         if is_main:
-            if is_spectrogram:
+            if use_edge_style:
                 # Spectrogram: transparent fill with thick colored edges
                 y_range = current_plot.plot_item.getViewBox().viewRange()[1]
                 y_min, y_max = y_range[0], y_range[1]
@@ -264,7 +265,7 @@ class LabelsWidget(QWidget):
                     current_plot.plot_item.addItem(edge)
                     current_plot.label_items.append(edge)
             else:
-                # LinePlot: standard semi-transparent rectangle
+                # Line-based plots (lineplot, audiotrace): standard semi-transparent rectangle
                 rect = pg.LinearRegionItem(
                     values=(start_time, end_time),
                     orientation="vertical",

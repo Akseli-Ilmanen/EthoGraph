@@ -59,7 +59,8 @@ class DataWidget(DataLoader, QWidget):
         self.video = None  
         self.plot_container = None
         self.labels_widget = None
-        self.plots_widget = None  
+        self.axes_widget = None
+        self.spectrogram_widget = None
         self.audio_player = None 
         self.video_path = None
         self.audio_path = None
@@ -82,12 +83,13 @@ class DataWidget(DataLoader, QWidget):
         
         
 
-    def set_references(self, plot_container, labels_widget, plots_widget, navigation_widget):
+    def set_references(self, plot_container, labels_widget, axes_widget, navigation_widget, spectrogram_widget=None):
         """Set references to other widgets after creation."""
         self.plot_container = plot_container
         self.labels_widget = labels_widget
-        self.plots_widget = plots_widget
+        self.axes_widget = axes_widget
         self.navigation_widget = navigation_widget
+        self.spectrogram_widget = spectrogram_widget
         
 
     
@@ -259,8 +261,8 @@ class DataWidget(DataLoader, QWidget):
                     features_list = list(self.type_vars_dict[type_var])
  
        
-                    features_with_spec = features_list + ["Spectrogram"]
-                    self._create_combo_widget(type_var, features_with_spec)
+                    features_with_audio = features_list + ["Spectrogram", "Waveform"]
+                    self._create_combo_widget(type_var, features_with_audio)
                 else:
                     self._create_combo_widget(type_var, self.type_vars_dict[type_var])
 
@@ -375,7 +377,7 @@ class DataWidget(DataLoader, QWidget):
 
     def _get_dim(self):
         """Return the non-time dimension for a given feature in ds."""
-        if not hasattr(self.app_state, 'features_sel') or self.app_state.features_sel == "Spectrogram":
+        if not hasattr(self.app_state, 'features_sel') or self.app_state.features_sel in ("Spectrogram", "Waveform"):
             return None
         
         ds = self.app_state.ds
@@ -441,6 +443,8 @@ class DataWidget(DataLoader, QWidget):
             if key == "features":
                 if selected_value == "Spectrogram":
                     self.plot_container.switch_to_spectrogram()
+                elif selected_value == "Waveform":
+                    self.plot_container.switch_to_audiotrace()
                 else:
                     self.plot_container.switch_to_lineplot()
 
@@ -679,13 +683,18 @@ class DataWidget(DataLoader, QWidget):
             self.app_state.video_path = os.path.normpath(video_path)
 
         # Set up audio path if available
+        has_audio = False
         if self.app_state.audio_folder and hasattr(self.app_state, 'mics_sel'):
             try:
                 audio_file = self.app_state.ds.attrs[self.app_state.mics_sel]
                 audio_path = os.path.join(self.app_state.audio_folder, audio_file)
                 self.app_state.audio_path = os.path.normpath(audio_path)
+                has_audio = True
             except (KeyError, AttributeError):
                 self.app_state.audio_path = None
+
+        if self.spectrogram_widget:
+            self.spectrogram_widget.set_enabled_state(has_audio)
 
         # Pre-load new video data before any layer operations to avoid race conditions
         new_video_data = FastVideoReader(self.app_state.video_path, read_format='rgb24')

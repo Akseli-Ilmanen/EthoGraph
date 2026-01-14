@@ -592,7 +592,12 @@ class AudioFileDialog(QDialog):
             )
             self.accept()
         except Exception as e:
+            print(f"Error creating session.nc file: {e}"    )
             QMessageBox.critical(self, "Error", f"Failed to create session.nc file:\n{e}")
+            
+            
+            
+            
 
     def _populate_io_fields(self, output_path: str, video_path: str, audio_path: str):
         video_folder = str(Path(video_path).parent)
