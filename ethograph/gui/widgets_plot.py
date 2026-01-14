@@ -143,10 +143,17 @@ class AxesWidget(QWidget):
             values[attr] = val
             setattr(self.app_state, attr, val)
 
+        user_set_yrange = (self._parse_float(self.ymin_edit.text()) is not None or
+                           self._parse_float(self.ymax_edit.text()) is not None)
+
         if not self.plot_container.is_spectrogram():
+            if user_set_yrange:
+                current_plot = self.plot_container.get_current_plot()
+                if hasattr(current_plot, 'vb'):
+                    current_plot.vb.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
             self.plot_container.apply_y_range(values["ymin"], values["ymax"])
 
-        if "percentile_ylim" in values:
+        if not user_set_yrange and "percentile_ylim" in values:
             current_plot = self.plot_container.get_current_plot()
             if hasattr(current_plot, '_apply_zoom_constraints'):
                 current_plot._apply_zoom_constraints()

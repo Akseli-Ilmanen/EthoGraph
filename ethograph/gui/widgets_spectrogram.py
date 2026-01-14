@@ -15,7 +15,6 @@ class SpectrogramWidget(QWidget):
     Keys used in gui_settings.yaml (via app_state):
       - spec_ymin, spec_ymax (frequency range in Hz, displayed as kHz)
       - vmin_db, vmax_db (dB levels)
-      - spec_buffer
       - nfft
       - hop_frac
       - spec_colormap
@@ -39,7 +38,6 @@ class SpectrogramWidget(QWidget):
         self.spec_ymax_edit = QLineEdit()
         self.vmin_db_edit = QLineEdit()
         self.vmax_db_edit = QLineEdit()
-        self.spec_buffer_edit = QLineEdit()
         self.nfft_edit = QLineEdit()
         self.hop_frac_edit = QLineEdit()
 
@@ -78,11 +76,6 @@ class SpectrogramWidget(QWidget):
         group_layout.addWidget(QLabel("Hop fraction:"), row, 2)
         group_layout.addWidget(self.hop_frac_edit, row, 3)
 
-        row += 1
-        group_layout.addWidget(QLabel("Colormap:"), row, 0)
-        group_layout.addWidget(self.colormap_combo, row, 1)
-        group_layout.addWidget(QLabel("Buffer (x):"), row, 2)
-        group_layout.addWidget(self.spec_buffer_edit, row, 3)
 
         row += 1
         group_layout.addWidget(self.auto_levels_button, row, 0, 1, 2)
@@ -93,7 +86,6 @@ class SpectrogramWidget(QWidget):
         self.spec_ymax_edit.editingFinished.connect(self._on_edited)
         self.vmin_db_edit.editingFinished.connect(self._on_edited)
         self.vmax_db_edit.editingFinished.connect(self._on_edited)
-        self.spec_buffer_edit.editingFinished.connect(self._on_edited)
         self.nfft_edit.editingFinished.connect(self._on_edited)
         self.hop_frac_edit.editingFinished.connect(self._on_edited)
         self.colormap_combo.currentTextChanged.connect(self._on_colormap_changed)
@@ -114,7 +106,6 @@ class SpectrogramWidget(QWidget):
         for attr, edit in [
             ("vmin_db", self.vmin_db_edit),
             ("vmax_db", self.vmax_db_edit),
-            ("spec_buffer", self.spec_buffer_edit),
             ("nfft", self.nfft_edit),
             ("hop_frac", self.hop_frac_edit),
         ]:
@@ -215,7 +206,6 @@ class SpectrogramWidget(QWidget):
         float_edits = {
             "vmin_db": self.vmin_db_edit,
             "vmax_db": self.vmax_db_edit,
-            "spec_buffer": self.spec_buffer_edit,
             "hop_frac": self.hop_frac_edit,
         }
 
@@ -270,7 +260,6 @@ class SpectrogramWidget(QWidget):
         for attr, edit in [
             ("vmin_db", self.vmin_db_edit),
             ("vmax_db", self.vmax_db_edit),
-            ("spec_buffer", self.spec_buffer_edit),
             ("nfft", self.nfft_edit),
             ("hop_frac", self.hop_frac_edit),
         ]:
