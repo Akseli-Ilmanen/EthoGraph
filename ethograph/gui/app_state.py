@@ -100,18 +100,16 @@ class AppStateSpec:
         "spec_ymin": (float | None, None, True),
         "spec_ymax": (float | None, None, True),
         "spec_buffer": (float | None, None, True),
-        "video_buffer_size": (int, 300, True),
         "ready": (bool, False, False),
-        "nfft": (int, 1024, True),
+        "nfft": (int, 256, True),
         "hop_frac": (float, 0.5, True),
         "vmin_db": (float, -120.0, True),
-        "vmax_db": (float, 20.0, True),
+        "vmax_db": (float, -20.0, True),
         "buffer_multiplier": (float, 5.0, True),
-        "recompute_threshold": (float, 0.5, True),
-        "cmap": (str, "magma", True),
         "percentile_ylim": (float, 99.5, True),
         "space_plot_type": (str, "Layer controls", True),
         "lock_axes": (bool, False, False),
+        "spec_colormap": (str, "CET-R4", True),
     }
 
     @classmethod

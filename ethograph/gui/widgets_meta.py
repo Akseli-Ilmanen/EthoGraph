@@ -16,7 +16,8 @@ from .plot_container import PlotContainer
 from .widgets_labels import LabelsWidget
 from .widgets_navigation import NavigationWidget
 from .widgets_io import IOWidget
-from .widgets_plot import PlotsWidget
+from .widgets_plot import AxesWidget
+from .widgets_spectrogram import SpectrogramWidget
 
 
 
@@ -82,23 +83,24 @@ class MetaWidget(CollapsibleWidgetContainer):
         self._configure_notifications()
 
         # Create all widgets with app_state
-        self.plots_widget = PlotsWidget(self.viewer, self.app_state)
+        self.axes_widget = AxesWidget(self.viewer, self.app_state)
+        self.spectrogram_widget = SpectrogramWidget(self.viewer, self.app_state)
         self.labels_widget = LabelsWidget(self.viewer, self.app_state)
         self.help_widget = self._create_help_widget()
         self.navigation_widget = NavigationWidget(self.viewer, self.app_state)
-        
+
         # Create I/O widget first, then pass it to data widget
-        self.io_widget = IOWidget(self.app_state, None, self.labels_widget)  # Will set data_widget reference after creation
+        self.io_widget = IOWidget(self.app_state, None, self.labels_widget)
         self.data_widget = DataWidget(self.viewer, self.app_state, self, self.io_widget)
-        
+
         # Now set the data_widget reference in io_widget
         self.io_widget.data_widget = self.data_widget
 
         # Set up cross-references between widgets
-        # Plot widgets need plot_container for unified plot access
         self.labels_widget.set_plot_container(self.plot_container)
         self.labels_widget.set_meta_widget(self)
-        self.plots_widget.set_plot_container(self.plot_container)
+        self.axes_widget.set_plot_container(self.plot_container)
+        self.spectrogram_widget.set_plot_container(self.plot_container)
 
         # Signal connections for decoupled communication
         self.plot_container.labels_redraw_needed.connect(self._on_labels_redraw_needed)
@@ -109,14 +111,18 @@ class MetaWidget(CollapsibleWidgetContainer):
  
 
         # The one widget to rule them all (loading data, updating plots, managing sync)
-        self.data_widget.set_references(self.plot_container, self.labels_widget, self.plots_widget, self.navigation_widget)
+        self.data_widget.set_references(
+            self.plot_container, self.labels_widget, self.axes_widget,
+            self.navigation_widget, self.spectrogram_widget
+        )
 
         for widget in [
             self.help_widget,
             self.io_widget,
             self.data_widget,
             self.labels_widget,
-            self.plots_widget,
+            self.axes_widget,
+            self.spectrogram_widget,
             self.navigation_widget,
         ]:
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -147,9 +153,15 @@ class MetaWidget(CollapsibleWidgetContainer):
         )
 
         self.add_widget(
-            self.plots_widget,
+            self.axes_widget,
             collapsible=True,
-            widget_title="Plotting controls",
+            widget_title="Axes controls",
+        )
+
+        self.add_widget(
+            self.spectrogram_widget,
+            collapsible=True,
+            widget_title="Spectrogram controls",
         )
 
         self.add_widget(
@@ -404,18 +416,17 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         @viewer.bind_key("ctrl+a", overwrite=True)
         def toggle_autoscale(v):
-            autoscale_status = self.plots_widget.autoscale_checkbox.isChecked()
-            self.plots_widget.autoscale_checkbox.setChecked(not autoscale_status)
-            
+            autoscale_status = self.axes_widget.autoscale_checkbox.isChecked()
+            self.axes_widget.autoscale_checkbox.setChecked(not autoscale_status)
+
         @viewer.bind_key("ctrl+l", overwrite=True)
         def toggle_lock(v):
-            lock_status = self.plots_widget.lock_axes_checkbox.isChecked()
-            self.plots_widget.lock_axes_checkbox.setChecked(not lock_status)
-            
-    
+            lock_status = self.axes_widget.lock_axes_checkbox.isChecked()
+            self.axes_widget.lock_axes_checkbox.setChecked(not lock_status)
+
         @viewer.bind_key("ctrl+enter", overwrite=True)
         def apply_plot_settings(v):
-            self.plots_widget.apply_button.click()
+            self.axes_widget.apply_button.click()
             
         @viewer.bind_key("ctrl+v", overwrite=True)
         def human_verified(v):
