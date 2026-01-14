@@ -6,6 +6,34 @@ from qtpy.QtCore import Signal
 from typing import Optional, Tuple
 
 
+class TimeAxisItem(pg.AxisItem):
+    """Custom axis that displays time in min:sec format."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def tickStrings(self, values, scale, spacing):
+        """Convert seconds to min:sec format."""
+        strings = []
+        for v in values:
+            total_seconds = abs(v)
+            minutes = int(total_seconds // 60)
+            seconds = total_seconds % 60
+            sign = '-' if v < 0 else ''
+
+            if minutes > 0:
+                if seconds == int(seconds):
+                    strings.append(f'{sign}{minutes}:{int(seconds):02d}')
+                else:
+                    strings.append(f'{sign}{minutes}:{seconds:05.2f}')
+            else:
+                if seconds == int(seconds):
+                    strings.append(f'{sign}{int(seconds)}s')
+                else:
+                    strings.append(f'{sign}{seconds:.2f}s')
+        return strings
+
+
 class BasePlot(pg.PlotWidget):
     """Base class for plot widgets with shared sync and marker functionality.
 
@@ -22,11 +50,11 @@ class BasePlot(pg.PlotWidget):
     plot_clicked = Signal(object)
 
     def __init__(self, app_state, parent=None, **kwargs):
-        super().__init__(parent, background='white', **kwargs)
+        time_axis = TimeAxisItem(orientation='bottom')
+        super().__init__(parent, background='white', axisItems={'bottom': time_axis}, **kwargs)
         self.app_state = app_state
 
-        # Common setup
-        self.setLabel('bottom', 'Time', units='s') 
+        self.setLabel('bottom', 'Time') 
 
         # Time marker with enhanced styling
         self.time_marker = pg.InfiniteLine(

@@ -268,10 +268,29 @@ class DataWidget(DataLoader, QWidget):
 
 
 
+        overlay_row = QHBoxLayout()
+
         self.show_confidence_checkbox = QCheckBox("Show confidence")
         self.show_confidence_checkbox.setChecked(False)
         self.show_confidence_checkbox.stateChanged.connect(self._on_show_confidence_changed)
-        self.layout().addRow(self.show_confidence_checkbox)
+        overlay_row.addWidget(self.show_confidence_checkbox)
+
+        overlay_row.addSpacing(20)
+
+        self.show_waveform_checkbox = QCheckBox("Waveform overlay")
+        self.show_waveform_checkbox.setChecked(False)
+        self.show_waveform_checkbox.stateChanged.connect(self._on_audio_overlay_changed)
+        self.show_waveform_checkbox.hide()
+        overlay_row.addWidget(self.show_waveform_checkbox)
+
+        self.show_spectrogram_checkbox = QCheckBox("Spectrogram overlay")
+        self.show_spectrogram_checkbox.setChecked(False)
+        self.show_spectrogram_checkbox.stateChanged.connect(self._on_audio_overlay_changed)
+        self.show_spectrogram_checkbox.hide()
+        overlay_row.addWidget(self.show_spectrogram_checkbox)
+
+        overlay_row.addStretch()
+        self.layout().addRow(overlay_row)
         
 
 
@@ -285,6 +304,61 @@ class DataWidget(DataLoader, QWidget):
     def _on_show_confidence_changed(self):
         xmin, xmax = self.plot_container.get_current_xlim()
         self.update_main_plot(t0=xmin, t1=xmax)
+
+    def _on_audio_overlay_changed(self):
+        """Handle audio overlay checkbox changes with mutual exclusion."""
+        sender = self.sender()
+
+        if sender == self.show_waveform_checkbox and self.show_waveform_checkbox.isChecked():
+            self.show_spectrogram_checkbox.blockSignals(True)
+            self.show_spectrogram_checkbox.setChecked(False)
+            self.show_spectrogram_checkbox.blockSignals(False)
+        elif sender == self.show_spectrogram_checkbox and self.show_spectrogram_checkbox.isChecked():
+            self.show_waveform_checkbox.blockSignals(True)
+            self.show_waveform_checkbox.setChecked(False)
+            self.show_waveform_checkbox.blockSignals(False)
+
+        self._update_audio_overlay()
+
+    def _update_audio_overlay(self):
+        """Update audio overlay visibility in plot container."""
+        if not self.plot_container:
+            return
+
+        if self.show_waveform_checkbox.isChecked():
+            self.plot_container.show_audio_overlay('waveform')
+        elif self.show_spectrogram_checkbox.isChecked():
+            self.plot_container.show_audio_overlay('spectrogram')
+        else:
+            self.plot_container.hide_audio_overlay()
+
+        xmin, xmax = self.plot_container.get_current_xlim()
+        self.update_main_plot(t0=xmin, t1=xmax)
+
+    def _update_audio_overlay_checkboxes(self):
+        """Enable/disable audio overlay checkboxes based on feature selection.
+
+        Overlays only make sense when viewing a line plot feature, not when
+        viewing Waveform or Spectrogram directly.
+        """
+        if not hasattr(self.app_state, 'features_sel'):
+            return
+
+        feature = self.app_state.features_sel
+
+        if feature in ("Waveform", "Spectrogram"):
+            self.show_waveform_checkbox.blockSignals(True)
+            self.show_waveform_checkbox.setEnabled(False)
+            self.show_waveform_checkbox.setChecked(False)
+            self.show_waveform_checkbox.blockSignals(False)
+
+            self.show_spectrogram_checkbox.blockSignals(True)
+            self.show_spectrogram_checkbox.setEnabled(False)
+            self.show_spectrogram_checkbox.setChecked(False)
+            self.show_spectrogram_checkbox.blockSignals(False)
+        else:
+            self.show_waveform_checkbox.setEnabled(True)
+            self.show_spectrogram_checkbox.setEnabled(True)
 
         
         
@@ -448,8 +522,9 @@ class DataWidget(DataLoader, QWidget):
                 else:
                     self.plot_container.switch_to_lineplot()
 
-                    
-                    
+                self._update_audio_overlay_checkboxes()
+                self._update_audio_overlay()
+
                 current_plot = self.plot_container.get_current_plot()
                 xmin, xmax = current_plot.get_current_xlim()
                 
@@ -639,7 +714,11 @@ class DataWidget(DataLoader, QWidget):
                     pass
             else:
                 self.plot_container.hide_confidence_plot()
-                    
+
+            # Handle audio overlay
+            if self.plot_container.is_lineplot():
+                self.plot_container.update_audio_overlay()
+
         except (KeyError, AttributeError, ValueError) as e:
             show_error(f"Error updating plot: {e}")
 
@@ -695,6 +774,13 @@ class DataWidget(DataLoader, QWidget):
 
         if self.spectrogram_widget:
             self.spectrogram_widget.set_enabled_state(has_audio)
+
+        if has_audio:
+            self.show_waveform_checkbox.show()
+            self.show_spectrogram_checkbox.show()
+        else:
+            self.show_waveform_checkbox.hide()
+            self.show_spectrogram_checkbox.hide()
 
         # Pre-load new video data before any layer operations to avoid race conditions
         new_video_data = FastVideoReader(self.app_state.video_path, read_format='rgb24')

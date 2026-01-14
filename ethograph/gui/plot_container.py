@@ -39,6 +39,11 @@ class PlotContainer(QWidget):
 
         self.confidence_item = None
 
+        self.audio_overlay_type = None
+        self.audio_overlay_item = None
+        self.audio_overlay_vb = None
+        self._original_line_pen = None
+
     def sizeHint(self):
         return QSize(self.width(), 300)
 
@@ -46,6 +51,9 @@ class PlotContainer(QWidget):
         """Generic method to switch between plot types."""
         if self.current_plot_type == target_type:
             return
+
+        if self.current_plot_type == 'lineplot':
+            self.hide_audio_overlay()
 
         plot_map = {
             'lineplot': self.line_plot,
@@ -130,8 +138,253 @@ class PlotContainer(QWidget):
             right_axis = self.current_plot.plot_item.getAxis('right')
             right_axis.hide()
             self.confidence_item = None
-            
-            
+
+    def show_audio_overlay(self, overlay_type: str):
+        """Show audio waveform or spectrogram as overlay behind line plot.
+
+        Args:
+            overlay_type: 'waveform' or 'spectrogram'
+        """
+        if not self.is_lineplot():
+            return
+
+        self.hide_audio_overlay()
+
+        self.audio_overlay_type = overlay_type
+
+        if overlay_type == 'waveform':
+            self._show_waveform_overlay()
+        elif overlay_type == 'spectrogram':
+            self._show_spectrogram_overlay()
+
+    def _show_waveform_overlay(self):
+        """Add waveform trace as overlay on line plot with separate Y-axis."""
+        t0, t1 = self.line_plot.get_current_xlim()
+        result = self.audio_trace_plot.buffer.get_trace_data(
+            self.app_state.audio_path, t0, t1
+        )
+        if result is None:
+            return
+
+        times, amplitudes, step = result
+
+        self.audio_overlay_vb = pg.ViewBox()
+        self.line_plot.plot_item.scene().addItem(self.audio_overlay_vb)
+        self.audio_overlay_vb.setXLink(self.line_plot.plot_item.vb)
+
+        amp_min, amp_max = amplitudes.min(), amplitudes.max()
+        if amp_max - amp_min < 1e-10:
+            amp_min, amp_max = -1, 1
+
+        self.audio_overlay_item = pg.PlotDataItem(
+            times, amplitudes,
+            pen=pg.mkPen(color=(100, 100, 100, 150), width=1),
+        )
+        self.audio_overlay_vb.addItem(self.audio_overlay_item)
+        self.audio_overlay_vb.setYRange(amp_min * 1.1, amp_max * 1.1, padding=0)
+        self.audio_overlay_vb.setXRange(t0, t1, padding=0)
+
+        def update_overlay_geometry():
+            self.audio_overlay_vb.setGeometry(self.line_plot.plot_item.vb.sceneBoundingRect())
+
+        update_overlay_geometry()
+        self.line_plot.plot_item.vb.sigResized.connect(update_overlay_geometry)
+        self._overlay_geometry_updater = update_overlay_geometry
+
+        def on_x_range_changed():
+            if self.audio_overlay_type == 'waveform':
+                self._refresh_waveform_data()
+
+        self.line_plot.plot_item.vb.sigXRangeChanged.connect(on_x_range_changed)
+        self._overlay_xrange_updater = on_x_range_changed
+
+    def _refresh_waveform_data(self):
+        """Refresh waveform data for current X range."""
+        if self.audio_overlay_item is None or self.audio_overlay_vb is None:
+            return
+
+        t0, t1 = self.line_plot.get_current_xlim()
+        result = self.audio_trace_plot.buffer.get_trace_data(
+            self.app_state.audio_path, t0, t1
+        )
+        if result is None:
+            return
+
+        times, amplitudes, step = result
+        self.audio_overlay_item.setData(times, amplitudes)
+
+        amp_min, amp_max = amplitudes.min(), amplitudes.max()
+        if amp_max - amp_min > 1e-10:
+            self.audio_overlay_vb.setYRange(amp_min * 1.1, amp_max * 1.1, padding=0)
+
+    def _show_spectrogram_overlay(self):
+        """Add spectrogram as overlay on line plot with separate frequency Y-axis."""
+        t0, t1 = self.line_plot.get_current_xlim()
+        result = self.spectrogram_plot.buffer.get_spectrogram(
+            self.app_state.audio_path, t0, t1
+        )
+        if result is None:
+            return
+
+        Sxx_db, spec_rect = result
+        buf_t0, buf_f0, buf_width, buf_fmax = spec_rect
+
+        spec_ymin = self.app_state.get_with_default('spec_ymin')
+        spec_ymax = self.app_state.get_with_default('spec_ymax')
+
+        self.audio_overlay_vb = pg.ViewBox()
+        self.line_plot.plot_item.scene().addItem(self.audio_overlay_vb)
+        self.line_plot.plot_item.getAxis('right').linkToView(self.audio_overlay_vb)
+        self.audio_overlay_vb.setXLink(self.line_plot.plot_item.vb)
+
+        right_axis = self.line_plot.plot_item.getAxis('right')
+        right_axis.setLabel('Frequency', units='Hz')
+        right_axis.setStyle(showValues=True)
+        right_axis.show()
+
+        self.audio_overlay_item = pg.ImageItem()
+        self.audio_overlay_item.setImage(Sxx_db.T, autoLevels=False)
+
+        vmin = self.app_state.get_with_default('vmin_db')
+        vmax = self.app_state.get_with_default('vmax_db')
+        self.audio_overlay_item.setLevels([vmin, vmax])
+
+        colormap_name = self.app_state.get_with_default('spec_colormap')
+        try:
+            cmap = pg.colormap.get(colormap_name)
+            self.audio_overlay_item.setColorMap(cmap)
+        except Exception:
+            pass
+
+        self.audio_overlay_item.setOpacity(0.6)
+        self.audio_overlay_vb.addItem(self.audio_overlay_item)
+
+        self.audio_overlay_item.setRect(pg.QtCore.QRectF(buf_t0, 0, buf_width, buf_fmax))
+        self.audio_overlay_vb.setYRange(0, buf_fmax, padding=0)
+        self.audio_overlay_vb.setLimits(yMin=0, yMax=buf_fmax)
+
+        def update_overlay_geometry():
+            self.audio_overlay_vb.setGeometry(self.line_plot.plot_item.vb.sceneBoundingRect())
+
+        update_overlay_geometry()
+        self.line_plot.plot_item.vb.sigResized.connect(update_overlay_geometry)
+        self._overlay_geometry_updater = update_overlay_geometry
+
+        self._spec_overlay_last_range = (t0, t1)
+        self._spec_overlay_pending_refresh = False
+
+        from qtpy.QtCore import QTimer
+        self._spec_overlay_debounce = QTimer()
+        self._spec_overlay_debounce.setSingleShot(True)
+        self._spec_overlay_debounce.setInterval(100)
+
+        def do_refresh():
+            if self._spec_overlay_pending_refresh:
+                self._spec_overlay_pending_refresh = False
+                self._refresh_spectrogram_data()
+
+        self._spec_overlay_debounce.timeout.connect(do_refresh)
+
+        def on_x_range_changed():
+            if self.audio_overlay_type == 'spectrogram':
+                new_t0, new_t1 = self.line_plot.get_current_xlim()
+                old_t0, old_t1 = self._spec_overlay_last_range
+                old_width = old_t1 - old_t0
+                new_width = new_t1 - new_t0
+
+                if new_width < old_width * 0.5 or new_width > old_width * 2.0:
+                    self.spectrogram_plot.buffer._clear_buffer()
+                    self._spec_overlay_last_range = (new_t0, new_t1)
+
+                self._spec_overlay_pending_refresh = True
+                self._spec_overlay_debounce.start()
+
+        self.line_plot.plot_item.vb.sigXRangeChanged.connect(on_x_range_changed)
+        self._overlay_xrange_updater = on_x_range_changed
+
+        if hasattr(self.line_plot, 'plot_items') and self.line_plot.plot_items:
+            for item in self.line_plot.plot_items:
+                if hasattr(item, 'opts') and 'pen' in item.opts:
+                    self._original_line_pen = item.opts['pen']
+                    item.setPen(pg.mkPen(color='yellow', width=2))
+                    break
+
+    def _refresh_spectrogram_data(self):
+        """Refresh spectrogram data for current X range."""
+        if self.audio_overlay_item is None or self.audio_overlay_vb is None:
+            return
+
+        t0, t1 = self.line_plot.get_current_xlim()
+        result = self.spectrogram_plot.buffer.get_spectrogram(
+            self.app_state.audio_path, t0, t1
+        )
+        if result is None:
+            return
+
+        Sxx_db, spec_rect = result
+        buf_t0, buf_f0, buf_width, buf_fmax = spec_rect
+
+        self.audio_overlay_item.setImage(Sxx_db.T, autoLevels=False)
+
+        vmin = self.app_state.get_with_default('vmin_db')
+        vmax = self.app_state.get_with_default('vmax_db')
+        self.audio_overlay_item.setLevels([vmin, vmax])
+
+        self.audio_overlay_item.setRect(pg.QtCore.QRectF(buf_t0, 0, buf_width, buf_fmax))
+        self.audio_overlay_vb.setYRange(0, buf_fmax, padding=0)
+
+    def hide_audio_overlay(self):
+        """Remove audio overlay from line plot."""
+        if hasattr(self, '_overlay_geometry_updater') and self._overlay_geometry_updater:
+            try:
+                self.line_plot.plot_item.vb.sigResized.disconnect(self._overlay_geometry_updater)
+            except Exception:
+                pass
+            self._overlay_geometry_updater = None
+
+        if hasattr(self, '_overlay_xrange_updater') and self._overlay_xrange_updater:
+            try:
+                self.line_plot.plot_item.vb.sigXRangeChanged.disconnect(self._overlay_xrange_updater)
+            except Exception:
+                pass
+            self._overlay_xrange_updater = None
+
+        if hasattr(self, '_spec_overlay_debounce') and self._spec_overlay_debounce:
+            self._spec_overlay_debounce.stop()
+            self._spec_overlay_debounce = None
+
+        if self.audio_overlay_vb is not None:
+            try:
+                if self.audio_overlay_item is not None:
+                    self.audio_overlay_vb.removeItem(self.audio_overlay_item)
+                self.line_plot.plot_item.scene().removeItem(self.audio_overlay_vb)
+                right_axis = self.line_plot.plot_item.getAxis('right')
+                right_axis.hide()
+            except Exception:
+                pass
+            self.audio_overlay_vb = None
+            self.audio_overlay_item = None
+        elif self.audio_overlay_item is not None:
+            try:
+                self.line_plot.plot_item.removeItem(self.audio_overlay_item)
+            except Exception:
+                pass
+            self.audio_overlay_item = None
+
+        if self._original_line_pen is not None and hasattr(self.line_plot, 'plot_items'):
+            for item in self.line_plot.plot_items:
+                if hasattr(item, 'setPen'):
+                    item.setPen(self._original_line_pen)
+                    break
+            self._original_line_pen = None
+
+        self.audio_overlay_type = None
+
+    def update_audio_overlay(self):
+        """Refresh the audio overlay with current view range."""
+        if self.audio_overlay_type:
+            self.show_audio_overlay(self.audio_overlay_type)
+
     def get_current_plot(self):
         """Get the currently active plot widget."""
         return self.current_plot

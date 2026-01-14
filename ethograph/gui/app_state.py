@@ -69,7 +69,6 @@ class AppStateSpec:
         "_info_data": (dict[str, Any], {}, False),
         "sync_state": (str | None, None, False),
         "window_size": (float, 5.0, True),
-        "audio_buffer": (float | None, None, True),
 
         # Data
         "ds": (xr.Dataset | None, None, False),
@@ -99,7 +98,6 @@ class AppStateSpec:
         "ymax": (float | None, None, True),
         "spec_ymin": (float | None, None, True),
         "spec_ymax": (float | None, None, True),
-        "spec_buffer": (float | None, None, True),
         "ready": (bool, False, False),
         "nfft": (int, 256, True),
         "hop_frac": (float, 0.5, True),
