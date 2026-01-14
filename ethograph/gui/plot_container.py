@@ -7,6 +7,8 @@ from .plots_spectrogram import SpectrogramPlot
 from .plots_audiotrace import AudioTracePlot
 import pyqtgraph as pg
 import numpy as np
+from typing import Optional, Dict, Any
+
 
 class PlotContainer(QWidget):
     """Container that holds and switches between LinePlot, SpectrogramPlot, and AudioTracePlot.
@@ -43,6 +45,8 @@ class PlotContainer(QWidget):
         self.audio_overlay_item = None
         self.audio_overlay_vb = None
         self._original_line_pen = None
+
+        self.motif_mappings: Dict[int, Dict[str, Any]] = {}
 
     def sizeHint(self):
         return QSize(self.width(), 300)
@@ -421,7 +425,197 @@ class PlotContainer(QWidget):
         """Toggle axes lock on active plot."""
         return self.current_plot.toggle_axes_lock()
 
+    def set_motif_mappings(self, mappings: Dict[int, Dict[str, Any]]):
+        """Set the motif color/name mappings for label drawing."""
+        self.motif_mappings = mappings
 
+    def draw_all_labels(self, time_data, labels, predictions=None, show_predictions=False):
+        """Draw labels on ALL plots to ensure synchronization.
+
+        This is the central entry point for label drawing. It draws labels on
+        every plot type, so switching plots always shows correct labels.
+
+        Args:
+            time_data: Time array for x-axis
+            labels: Primary label data array
+            predictions: Optional prediction data array
+            show_predictions: Whether to show prediction rectangles
+        """
+        if labels is None or not self.motif_mappings:
+            return
+
+        all_plots = [self.line_plot, self.spectrogram_plot, self.audio_trace_plot]
+
+        for plot in all_plots:
+            if plot is None:
+                continue
+
+            self._clear_labels_on_plot(plot)
+            self._draw_labels_on_plot(plot, time_data, labels, is_main=True)
+
+            if predictions is not None and show_predictions:
+                self._draw_labels_on_plot(plot, time_data, predictions, is_main=False)
+
+    def _clear_labels_on_plot(self, plot):
+        """Clear all label items from a specific plot."""
+        if not hasattr(plot, 'label_items'):
+            plot.label_items = []
+            return
+
+        for item in plot.label_items:
+            try:
+                plot.plot_item.removeItem(item)
+            except Exception:
+                pass
+        plot.label_items.clear()
+
+    def _draw_labels_on_plot(self, plot, time_data, data, is_main=True):
+        """Draw label segments on a specific plot.
+
+        Args:
+            plot: The plot widget to draw on
+            time_data: Time array for x-axis
+            data: Label data array
+            is_main: If True, draw full-height; if False, draw prediction strip at top
+        """
+        if not hasattr(plot, 'label_items'):
+            plot.label_items = []
+
+        current_motif_id = 0
+        segment_start = None
+
+        for i, label in enumerate(data):
+            if label != 0:
+                if label != current_motif_id:
+                    if current_motif_id != 0 and segment_start is not None:
+                        self._draw_single_label(
+                            plot, time_data[segment_start], time_data[i - 1],
+                            current_motif_id, is_main
+                        )
+                    current_motif_id = label
+                    segment_start = i
+            else:
+                if current_motif_id != 0 and segment_start is not None:
+                    self._draw_single_label(
+                        plot, time_data[segment_start], time_data[i - 1],
+                        current_motif_id, is_main
+                    )
+                    current_motif_id = 0
+                    segment_start = None
+
+        if current_motif_id != 0 and segment_start is not None:
+            self._draw_single_label(
+                plot, time_data[segment_start], time_data[-1],
+                current_motif_id, is_main
+            )
+
+    def _draw_single_label(self, plot, start_time, end_time, motif_id, is_main=True):
+        """Draw a single label rectangle on a plot with appropriate style.
+
+        Args:
+            plot: The plot widget to draw on
+            start_time: Start time of the motif
+            end_time: End time of the motif
+            motif_id: ID of the motif for color mapping
+            is_main: If True, draw full-height; if False, draw prediction strip
+        """
+        if motif_id not in self.motif_mappings:
+            return
+
+        color = self.motif_mappings[motif_id]["color"]
+        color_rgb = tuple(int(c * 255) for c in color)
+
+        use_edge_style = (plot == self.spectrogram_plot)
+
+        if is_main:
+            if use_edge_style:
+                self._draw_spectrogram_style_label(plot, start_time, end_time, color_rgb)
+            else:
+                self._draw_standard_label(plot, start_time, end_time, color_rgb)
+        else:
+            self._draw_prediction_label(plot, start_time, end_time, color_rgb)
+
+    def _draw_standard_label(self, plot, start_time, end_time, color_rgb):
+        """Draw standard semi-transparent rectangle for lineplot/audiotrace."""
+        rect = pg.LinearRegionItem(
+            values=(start_time, end_time),
+            orientation="vertical",
+            brush=(*color_rgb, 180),
+            movable=False,
+        )
+        rect.setZValue(-10)
+        plot.plot_item.addItem(rect)
+        plot.label_items.append(rect)
+
+    def _draw_spectrogram_style_label(self, plot, start_time, end_time, color_rgb):
+        """Draw transparent fill with thick colored edges for spectrogram."""
+        spec_ymin = self.app_state.get_with_default('spec_ymin')
+        spec_ymax = self.app_state.get_with_default('spec_ymax')
+
+        if spec_ymin is not None and spec_ymax is not None and spec_ymax > spec_ymin:
+            y_min, y_max = spec_ymin, spec_ymax
+        else:
+            y_range = plot.plot_item.getViewBox().viewRange()[1]
+            y_min, y_max = y_range[0], y_range[1]
+            if y_max <= y_min:
+                y_min, y_max = 0, 20000
+
+        rect = pg.LinearRegionItem(
+            values=(start_time, end_time),
+            orientation="vertical",
+            brush=(*color_rgb, 40),
+            movable=False,
+        )
+        rect.setZValue(-10)
+        plot.plot_item.addItem(rect)
+        plot.label_items.append(rect)
+
+        edge_pen = pg.mkPen(color=(*color_rgb, 255), width=3)
+
+        left_edge = pg.PlotDataItem([start_time, start_time], [y_min, y_max], pen=edge_pen)
+        right_edge = pg.PlotDataItem([end_time, end_time], [y_min, y_max], pen=edge_pen)
+        top_edge = pg.PlotDataItem([start_time, end_time], [y_max, y_max], pen=edge_pen)
+        bottom_edge = pg.PlotDataItem([start_time, end_time], [y_min, y_min], pen=edge_pen)
+
+        for edge in [left_edge, right_edge, top_edge, bottom_edge]:
+            edge.setZValue(-5)
+            plot.plot_item.addItem(edge)
+            plot.label_items.append(edge)
+
+    def _draw_prediction_label(self, plot, start_time, end_time, color_rgb):
+        """Draw small rectangle at top for prediction data."""
+        y_range = plot.plot_item.getViewBox().viewRange()[1]
+        y_top = y_range[1]
+        y_height = (y_range[1] - y_range[0]) * 0.10
+
+        if y_top <= y_range[0]:
+            y_top = 20000
+            y_height = 2000
+
+        x_coords = [start_time, end_time, end_time, start_time, start_time]
+        y_coords = [y_top, y_top, y_top - y_height, y_top - y_height, y_top]
+
+        rect = pg.PlotDataItem(
+            x_coords, y_coords,
+            fillLevel=y_top - y_height,
+            brush=(*color_rgb, 200),
+            pen=None
+        )
+        rect.setZValue(10)
+        plot.plot_item.addItem(rect)
+        plot.label_items.append(rect)
+
+    def redraw_current_plot_labels(self, time_data, labels, predictions=None, show_predictions=False):
+        """Redraw labels only on the current plot (for view range changes)."""
+        if labels is None or not self.motif_mappings:
+            return
+
+        plot = self.current_plot
+        self._clear_labels_on_plot(plot)
+        self._draw_labels_on_plot(plot, time_data, labels, is_main=True)
+
+        if predictions is not None and show_predictions:
+            self._draw_labels_on_plot(plot, time_data, predictions, is_main=False)
 
     @property
     def vb(self):

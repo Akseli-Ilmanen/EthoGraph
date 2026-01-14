@@ -113,6 +113,7 @@ class LabelsWidget(QWidget):
     def set_plot_container(self, plot_container):
         """Set the plot container reference and connect click handler to all plots."""
         self.plot_container = plot_container
+        plot_container.set_motif_mappings(self.motif_mappings)
 
         for plot in [plot_container.line_plot,
                      plot_container.spectrogram_plot,
@@ -127,8 +128,8 @@ class LabelsWidget(QWidget):
     def plot_all_motifs(self, time_data, labels, predictions=None):
         """Plot all motifs for current trial and keypoint based on current labels state.
 
-        This implements state-based plotting similar to the MATLAB plot_motifs() function.
-        It clears all existing motif rectangles and redraws them based on the current labels.
+        Delegates to PlotContainer for centralized, synchronized label drawing
+        across all plot types.
 
         Args:
             time_data: Time array for x-axis
@@ -137,162 +138,19 @@ class LabelsWidget(QWidget):
         """
         if labels is None or self.plot_container is None:
             return
-        
 
-        current_plot = self.plot_container.get_current_plot()
-        if hasattr(current_plot, "label_items"):
-            for item in current_plot.label_items:
-                try:
-                    current_plot.plot_item.removeItem(item)
-                except:
-                    pass
-            current_plot.label_items.clear()
+        show_predictions = (
+            predictions is not None and
+            self.pred_show_predictions.isChecked() and
+            hasattr(self.app_state, 'pred_ds') and
+            self.app_state.pred_ds is not None
+        )
 
-        try:
-          
-            self._plot_motif_segments(time_data, labels, is_main=True)
-
-    
-            if (predictions is not None and
-                self.pred_show_predictions.isChecked() and
-                hasattr(self.app_state, 'pred_ds') and
-                self.app_state.pred_ds is not None):
-                self._plot_motif_segments(time_data, predictions, is_main=False)
-
-        except (KeyError, IndexError, AttributeError) as e:
-            print(f"Error plotting motifs: {e}")
-
-    def _plot_motif_segments(self, time_data, data, is_main=True):
-        """Plot motif segments for a given data array.
-
-        Args:
-            time_data: Time array for x-axis
-            data: Label/prediction data array
-            is_main: If True, plot full-height rectangles; if False, plot small rectangles at top
-        """
-        current_motif_id = 0
-        segment_start = None
-
-        for i, label in enumerate(data):
-            if label != 0:  # Start of a motif or continuing one
-                if label != current_motif_id:  # New motif starts
-                    # End previous motif if it exists
-                    if current_motif_id != 0 and segment_start is not None:
-                        self._draw_motif_rectangle(
-                            time_data[segment_start],
-                            time_data[i - 1],
-                            current_motif_id,
-                            is_main=is_main
-                        )
-
-                    # Start new motif
-                    current_motif_id = label
-                    segment_start = i
-
-            else:  # End of current motif
-                if current_motif_id != 0 and segment_start is not None:
-                    self._draw_motif_rectangle(
-                        time_data[segment_start],
-                        time_data[i - 1],
-                        current_motif_id,
-                        is_main=is_main
-                    )
-                    current_motif_id = 0
-                    segment_start = None
-
-        # Handle case where motif continues to the end
-        if current_motif_id != 0 and segment_start is not None:
-            self._draw_motif_rectangle(
-                time_data[segment_start],
-                time_data[-1],
-                current_motif_id,
-                is_main=is_main
-            )
-
-    def _draw_motif_rectangle(self, start_time, end_time, motif_id, is_main=True):
-        """Draw motif rectangle using PyQtGraph.
-
-        Args:
-            start_time: Start time of the motif
-            end_time: End time of the motif
-            motif_id: ID of the motif for color mapping
-            is_main: If True, draw full-height rectangle; if False, draw small rectangle at top
-        """
-        if motif_id not in self.motif_mappings:
-            return
-
-        color = self.motif_mappings[motif_id]["color"]
-        color_rgb = tuple(int(c * 255) for c in color)
-
-        current_plot = self.plot_container.get_current_plot()
-        use_edge_style = self.plot_container.is_spectrogram()
-
-        if is_main:
-            if use_edge_style:
-                # Spectrogram: transparent fill with thick colored edges
-                y_range = current_plot.plot_item.getViewBox().viewRange()[1]
-                y_min, y_max = y_range[0], y_range[1]
-
-                # Very transparent fill rectangle
-                rect = pg.LinearRegionItem(
-                    values=(start_time, end_time),
-                    orientation="vertical",
-                    brush=(*color_rgb, 40),  # Nearly transparent fill
-                    movable=False,
-                )
-                rect.setZValue(-10)
-                current_plot.plot_item.addItem(rect)
-                current_plot.label_items.append(rect)
-
-                # Thick colored edge lines (left, right, top, bottom)
-                edge_pen = pg.mkPen(color=(*color_rgb, 255), width=3)
-
-                left_edge = pg.PlotDataItem(
-                    [start_time, start_time], [y_min, y_max], pen=edge_pen
-                )
-                right_edge = pg.PlotDataItem(
-                    [end_time, end_time], [y_min, y_max], pen=edge_pen
-                )
-                top_edge = pg.PlotDataItem(
-                    [start_time, end_time], [y_max, y_max], pen=edge_pen
-                )
-                bottom_edge = pg.PlotDataItem(
-                    [start_time, end_time], [y_min, y_min], pen=edge_pen
-                )
-
-                for edge in [left_edge, right_edge, top_edge, bottom_edge]:
-                    edge.setZValue(-5)
-                    current_plot.plot_item.addItem(edge)
-                    current_plot.label_items.append(edge)
-            else:
-                # Line-based plots (lineplot, audiotrace): standard semi-transparent rectangle
-                rect = pg.LinearRegionItem(
-                    values=(start_time, end_time),
-                    orientation="vertical",
-                    brush=(*color_rgb, 180),
-                    movable=False,
-                )
-                rect.setZValue(-10)
-                current_plot.plot_item.addItem(rect)
-                current_plot.label_items.append(rect)
-        else:
-            # Small rectangle at top for secondary data (predictions)
-            y_range = current_plot.plot_item.getViewBox().viewRange()[1]
-            y_top = y_range[1]
-            y_height = (y_range[1] - y_range[0]) * 0.10
-
-            x_coords = [start_time, end_time, end_time, start_time, start_time]
-            y_coords = [y_top, y_top, y_top - y_height, y_top - y_height, y_top]
-
-            rect = pg.PlotDataItem(
-                x_coords, y_coords,
-                fillLevel=y_top - y_height,
-                brush=(*color_rgb, 200),
-                pen=None
-            )
-            rect.setZValue(10)
-            current_plot.plot_item.addItem(rect)
-            current_plot.label_items.append(rect)
+        self.plot_container.draw_all_labels(
+            time_data, labels,
+            predictions=predictions,
+            show_predictions=show_predictions
+        )
 
     def _setup_ui(self):
         """Set up the user interface."""
@@ -587,9 +445,11 @@ class LabelsWidget(QWidget):
                 with open(mapping_path, "w") as f:
                     f.write("0 background\n")
                     for i, label in enumerate(labels, start=1):
-                        f.write(f"{i} {label}\n") 
+                        f.write(f"{i} {label}\n")
 
                 self.motif_mappings = load_motif_mapping(mapping_path)
+                if self.plot_container:
+                    self.plot_container.set_motif_mappings(self.motif_mappings)
                 self._populate_motifs_table()
                 self.refresh_motif_shapes_layer()
                 show_info(f"Loaded {len(labels)} temporary labels")
@@ -954,11 +814,16 @@ class LabelsWidget(QWidget):
         self._mark_changes_unsaved()
         self.app_state.labels_modified.emit()
         self.refresh_motif_shapes_layer()
-        
-            
-            
 
+        self._seek_to_frame(start_idx)
 
+    def _seek_to_frame(self, frame_idx: int):
+        """Seek video and update time marker to the specified frame."""
+        if hasattr(self.app_state, 'video') and self.app_state.video:
+            self.app_state.video.seek_to_frame(frame_idx)
+        elif self.plot_container:
+            current_time = frame_idx / self.app_state.ds.fps
+            self.plot_container.current_plot.update_time_marker(current_time)
 
 
     def _delete_motif(self):

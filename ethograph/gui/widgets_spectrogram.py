@@ -258,8 +258,6 @@ class SpectrogramWidget(QWidget):
 
     def _reset_to_defaults(self):
         for attr, edit in [
-            ("vmin_db", self.vmin_db_edit),
-            ("vmax_db", self.vmax_db_edit),
             ("nfft", self.nfft_edit),
             ("hop_frac", self.hop_frac_edit),
         ]:
@@ -267,14 +265,24 @@ class SpectrogramWidget(QWidget):
             edit.setText("" if value is None else str(value))
             setattr(self.app_state, attr, value)
 
-        for attr, edit in [
-            ("spec_ymin", self.spec_ymin_edit),
-            ("spec_ymax", self.spec_ymax_edit),
-        ]:
-            value = self.app_state.get_with_default(attr)
-            setattr(self.app_state, attr, value)
-            display_val = value / 1000 if value is not None else None
-            edit.setText("" if display_val is None else str(display_val))
+        nyquist_freq = 22050.0
+        if self.plot_container and self.plot_container.spectrogram_plot:
+            buffer = self.plot_container.spectrogram_plot.buffer
+            if buffer.fs is not None:
+                nyquist_freq = float(buffer.fs / 2)
+
+        default_ymin = self.app_state.get_with_default("spec_ymin")
+        default_ymax = self.app_state.get_with_default("spec_ymax")
+
+        if default_ymin is None:
+            default_ymin = 0.0
+        if default_ymax is None:
+            default_ymax = nyquist_freq
+
+        self.app_state.spec_ymin = default_ymin
+        self.app_state.spec_ymax = default_ymax
+        self.spec_ymin_edit.setText(str(default_ymin / 1000))
+        self.spec_ymax_edit.setText(str(default_ymax / 1000))
 
         default_colormap = self.app_state.get_with_default("spec_colormap")
         if default_colormap in self.colormap_display:

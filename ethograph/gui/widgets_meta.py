@@ -67,7 +67,7 @@ class MetaWidget(CollapsibleWidgetContainer):
 
 
         self.plot_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.plot_container.setMinimumHeight(200)
+        self.plot_container.setMinimumHeight(250)
 
         # Add dock widget with margins to prevent covering notifications
         dock_widget = self.viewer.window.add_dock_widget(self.plot_container, area="bottom")
