@@ -726,13 +726,10 @@ class DataWidget(DataLoader, QWidget):
         current_plot = self.plot_container.get_current_plot()
 
         try:
-            t1 = time.time()
-            current_plot.update_plot(**kwargs)
-            print(f"    [TIMING] current_plot.update_plot: {time.time() - t1:.3f}s")
 
-            t1 = time.time()
+            current_plot.update_plot(**kwargs)
             self.update_motif_plot(ds_kwargs)
-            print(f"    [TIMING] update_motif_plot: {time.time() - t1:.3f}s")
+   
 
             # Handle confidence plotting based on checkbox state
             if self.show_confidence_checkbox.isChecked():
@@ -746,9 +743,9 @@ class DataWidget(DataLoader, QWidget):
 
             # Handle audio overlay
             if self.plot_container.is_lineplot():
-                t1 = time.time()
+ 
                 self.plot_container.update_audio_overlay()
-                print(f"    [TIMING] update_audio_overlay: {time.time() - t1:.3f}s")
+         
 
         except (KeyError, AttributeError, ValueError) as e:
             show_error(f"Error updating plot: {e}")
@@ -756,12 +753,12 @@ class DataWidget(DataLoader, QWidget):
 
     def update_motif_plot(self, ds_kwargs):
         """Update motif plot with labels and predictions."""
-        import time
-        t0 = time.time()
+
+ 
         label_ds = self.app_state.label_ds
         time_data = label_ds.time.values
         labels, _ = sel_valid(label_ds.labels, ds_kwargs)
-        print(f"      [TIMING] motif_plot sel_valid: {time.time() - t0:.3f}s")
+
 
         predictions = None
         if (
@@ -771,13 +768,10 @@ class DataWidget(DataLoader, QWidget):
         ):
             pred_ds = self.app_state.pred_ds
             predictions, _ = sel_valid(pred_ds.labels, ds_kwargs)
-            t1 = time.time()
             self.labels_widget.plot_all_motifs(time_data, labels, predictions)
-            print(f"      [TIMING] plot_all_motifs: {time.time() - t1:.3f}s")
+
         else:
-            t1 = time.time()
             self.labels_widget.plot_all_motifs(time_data, labels)
-            print(f"      [TIMING] plot_all_motifs: {time.time() - t1:.3f}s")
 
 
 
