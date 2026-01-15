@@ -1,3 +1,5 @@
+# Limitations -> often also low fps, and does not show ethograph time series
+# 
 # pip install napari-animation
 # Open console in 'window' tab, and paste this in (one line)
 from napari import current_viewer; from napari_animation import Animation; import numpy as np

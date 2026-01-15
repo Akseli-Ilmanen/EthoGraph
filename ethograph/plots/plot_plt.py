@@ -59,7 +59,8 @@ def plot_singledim(ax, time, data, color_data=None, changepoints_dict=None):
             label=f"{cp_name}",
             facecolors='none',    
             edgecolors=color,  
-            zorder=5             
+            zorder=5,
+            s=100             
             )
 
 
@@ -78,7 +79,7 @@ def plot_ds_variable(ax, ds, ds_kwargs, variable, color_variable=None):
     time = ds["time"].values
 
     
-    data, _ = sel_valid(var, ds_kwargs).squeeze() 
+    data, _ = sel_valid(var, ds_kwargs)
     
     
     # (time, XX), e.g. (time, space)
@@ -109,7 +110,7 @@ def plot_ds_variable(ax, ds, ds_kwargs, variable, color_variable=None):
 
 
     if hasattr(ds, "boundary_events"):
-        boundary_events_raw = ds["boundary_events"].sel(trials=ds_kwargs["trials"]).values
+        boundary_events_raw = ds["boundary_events"].values
         valid_events = boundary_events_raw[~np.isnan(boundary_events_raw)]
         eventsIdxs = valid_events.astype(int)
         eventsIdxs = eventsIdxs[(eventsIdxs >= 0) & (eventsIdxs < len(time))]
