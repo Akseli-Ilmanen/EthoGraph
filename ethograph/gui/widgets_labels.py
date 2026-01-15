@@ -687,7 +687,7 @@ class LabelsWidget(QWidget):
         elif button == Qt.LeftButton and self.ready_for_label_click:
     
             # Snap to nearest changepoint if available
-            x_clicked_idx = int(x_clicked * self.app_state.ds.fps)  # Convert to frame index
+            x_clicked_idx = int(x_clicked * self.app_state.data_sr)  # Use 'data_sr' since we are indexing labels (with SR = Samples / dt.time)
             
             if self.changepoint_correction_checkbox.isChecked():
                 x_snapped = self._snap_to_changepoint(x_clicked_idx)
@@ -715,17 +715,17 @@ class LabelsWidget(QWidget):
             is_prediction_main: Whether the main data is predictions or labels
         """
         # Check if there's a motif at this position
-        frame_idx = int(x_clicked * self.app_state.ds.fps)
+        label_idx = int(x_clicked * self.app_state.data_sr)
 
-        if frame_idx >= len(main_data):
-            print(f"Frame index {frame_idx} out of bounds for data length {len(main_data)}")
+        if label_idx >= len(main_data):
+            print(f"Frame index {label_idx} out of bounds for data length {len(main_data)}")
             return False
 
-        motif_id = int(main_data[frame_idx])
+        motif_id = int(main_data[label_idx])
 
         if motif_id != 0:
-            motif_start = frame_idx
-            motif_end = frame_idx
+            motif_start = label_idx
+            motif_end = label_idx
 
             # Find start of motif
             while motif_start > 0 and main_data[motif_start - 1] == motif_id:
@@ -762,6 +762,7 @@ class LabelsWidget(QWidget):
 
     def _apply_motif(self):
         """Apply the selected motif to the selected time range."""
+        
         if self.first_click is None or self.second_click is None:
             return
         
@@ -769,6 +770,7 @@ class LabelsWidget(QWidget):
 
         ds_kwargs = self.app_state.get_ds_kwargs()
         labels, filt_kwargs = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
+
 
         start_idx = self.first_click
         end_idx = self.second_click
@@ -805,24 +807,36 @@ class LabelsWidget(QWidget):
         self.first_click = None
         self.second_click = None
         self.ready_for_label_click = False
-        
-        labels = remove_small_blocks(labels, min_motif_len=3)
-    
-        self.app_state.label_dt.trial(self.app_state.trials_sel).labels.loc[filt_kwargs] = labels
-        self._human_verification_true(mode="single_trial")
 
+   
+        labels = remove_small_blocks(labels, min_motif_len=3)
+
+
+
+        self.app_state.label_dt.trial(self.app_state.trials_sel).labels.loc[filt_kwargs] = labels
+
+        self._human_verification_true(mode="single_trial")
         self._mark_changes_unsaved()
         self.app_state.labels_modified.emit()
+        self._seek_to_frame(start_idx)
         self.refresh_motif_shapes_layer()
 
-        self._seek_to_frame(start_idx)
+        
 
-    def _seek_to_frame(self, frame_idx: int):
-        """Seek video and update time marker to the specified frame."""
+    def _seek_to_frame(self, data_idx: int):
+        """Seek video and update time marker to the specified data index.
+
+        Args:
+            data_idx: Index into the data array (at data_sr rate), not a video frame.
+        """
+        # Convert data index to time
+        current_time = data_idx / self.app_state.data_sr
+
         if hasattr(self.app_state, 'video') and self.app_state.video:
-            self.app_state.video.seek_to_frame(frame_idx)
+            # Convert time to video frame for seek
+            video_frame = int(current_time * self.app_state.ds.fps)
+            self.app_state.video.seek_to_frame(video_frame)
         elif self.plot_container:
-            current_time = frame_idx / self.app_state.ds.fps
             self.plot_container.current_plot.update_time_marker(current_time)
 
 
@@ -881,11 +895,11 @@ class LabelsWidget(QWidget):
         if self.current_motif_pos is None:
             print("No motif selected for playback")
             return
-        
+
         if self.app_state.sync_state not in ["napari_video_mode", "napari_video_mode_paused"]:
             self.app_state.sync_state = "napari_video_mode" # fallback
 
-        
+
         if (
             self.app_state.sync_state != "napari_video_mode"
             or not self.current_motif_id
@@ -894,12 +908,12 @@ class LabelsWidget(QWidget):
             print(f"Playback conditions not met - sync_state: {self.app_state.sync_state}, motif_id: {self.current_motif_id}, pos_len: {len(self.current_motif_pos) if self.current_motif_pos else 0}")
             return
 
-
-
-        start_frame = self.current_motif_pos[0]
-        end_frame = self.current_motif_pos[1]
-
-
+        # current_motif_pos contains data sample indices (at data_sr rate)
+        # Convert to time, then to video frames for play_segment
+        start_time = self.current_motif_pos[0] / self.app_state.data_sr
+        end_time = self.current_motif_pos[1] / self.app_state.data_sr
+        start_frame = int(start_time * self.app_state.ds.fps)
+        end_frame = int(end_time * self.app_state.ds.fps)
 
         if hasattr(self.app_state, 'video') and self.app_state.video:
             self.app_state.video.play_segment(start_frame, end_frame)
@@ -959,20 +973,6 @@ class LabelsWidget(QWidget):
         
 
         labels_array = np.asarray(labels)
-        frame_to_text = {}
-        frame_to_color = {}
-        
-        for idx, label in enumerate(labels_array):
-            if label in self.motif_mappings:
-                if label == 0:
-                    frame_to_text[idx] = ""
-                else:
-                    frame_to_text[idx] = self.motif_mappings[label]["name"]
-                
-                color = self.motif_mappings[label]["color"]
-                frame_to_color[idx] = color.tolist() if hasattr(color, 'tolist') else list(color)
-        
-
 
         shapes_layer = self.viewer.add_shapes(
             rect,
@@ -984,28 +984,43 @@ class LabelsWidget(QWidget):
             opacity=0.9,
             text={'string': [''], 'color': [[0, 0, 0]], 'size': 20, 'anchor': 'center'}
         )
-   
-        
+
         shapes_layer.z_index = 1000
-        
+
+        # Store labels array and conversion factors for on-demand lookup
+        video_fps = self.app_state.ds.fps if hasattr(self.app_state, 'ds') and self.app_state.ds else 30.0
+        data_sr = getattr(self.app_state, 'data_sr', video_fps)
 
         shapes_layer.metadata = {
-            'frame_to_text': frame_to_text,
-            'frame_to_color': frame_to_color
+            'labels_array': labels_array,
+            'video_fps': video_fps,
+            'data_sr': data_sr,
+            'motif_mappings': self.motif_mappings,
         }
-        
-    
+
         def update_motif_text(event=None):
-            current_frame = self.viewer.dims.current_step[0]
-            if current_frame in frame_to_text:
-                shapes_layer.text = {
-                    'string': [frame_to_text[current_frame]],
-                    'color': [frame_to_color[current_frame]],
-                    'size': 18,
-                    'anchor': 'center'
-                }
-            else:
-                shapes_layer.text = {'string': [''], 'color': [[0, 0, 0]]}
+            # Convert video frame to data index on-demand
+            video_frame = self.viewer.dims.current_step[0]
+            time_s = video_frame / shapes_layer.metadata['video_fps']
+            data_idx = int(time_s * shapes_layer.metadata['data_sr'])
+
+            labels_arr = shapes_layer.metadata['labels_array']
+            mappings = shapes_layer.metadata['motif_mappings']
+
+            if 0 <= data_idx < len(labels_arr):
+                label = int(labels_arr[data_idx])
+                if label in mappings and label != 0:
+                    color = mappings[label]["color"]
+                    color_list = color.tolist() if hasattr(color, 'tolist') else list(color)
+                    shapes_layer.text = {
+                        'string': [mappings[label]["name"]],
+                        'color': [color_list],
+                        'size': 18,
+                        'anchor': 'center'
+                    }
+                    return
+
+            shapes_layer.text = {'string': [''], 'color': [[0, 0, 0]]}
         
     
         self.viewer.dims.events.current_step.connect(update_motif_text)
@@ -1023,9 +1038,16 @@ class LabelsWidget(QWidget):
 
 
     def refresh_motif_shapes_layer(self):
-        """Refresh the entire motif shapes layer - call when labels change."""
-        self._remove_motif_shapes_layer()
-        self._add_motif_shapes_layer()
+        """Refresh labels data without recreating the layer."""
+        if "motif_labels" not in self.viewer.layers:
+            self._add_motif_shapes_layer()
+            return
+
+        # Just update the labels array in existing layer's metadata
+        shapes_layer = self.viewer.layers["motif_labels"]
+        ds_kwargs = self.app_state.get_ds_kwargs()
+        labels, _ = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
+        shapes_layer.metadata['labels_array'] = np.asarray(labels)
 
 
 class TemporaryLabelsDialog(QDialog):

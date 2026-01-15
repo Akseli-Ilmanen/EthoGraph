@@ -46,8 +46,8 @@ def get_video_fps(video_path: str) -> Optional[int]:
 def get_audio_sample_rate(audio_path: str) -> Optional[int]:
     """Read sample rate from audio file using audioio, rounded to nearest integer."""
     try:
-        _, sr = aio.load_audio(audio_path)
-        return round(sr)
+        _, audio_sr = aio.load_audio(audio_path)
+        return round(audio_sr)
     except Exception:
         return None
 
@@ -481,11 +481,11 @@ class AudioFileDialog(QDialog):
         self.fps_spinbox.setSuffix(" fps")
         form_layout.addRow("Video frame rate:", self.fps_spinbox)
 
-        self.sr_spinbox = QSpinBox()
-        self.sr_spinbox.setRange(1000, 192000)
-        self.sr_spinbox.setValue(44100)
-        self.sr_spinbox.setSuffix(" Hz")
-        form_layout.addRow("Audio sample rate:", self.sr_spinbox)
+        self.audio_sr_spinbox = QSpinBox()
+        self.audio_sr_spinbox.setRange(1000, 192000)
+        self.audio_sr_spinbox.setValue(44100)
+        self.audio_sr_spinbox.setSuffix(" Hz")
+        form_layout.addRow("Audio sample rate:", self.audio_sr_spinbox)
 
         self.individuals_edit = QLineEdit()
         self.individuals_edit.setPlaceholderText("e.g., bird1, bird2, bird3 (leave empty for default)")
@@ -536,9 +536,9 @@ class AudioFileDialog(QDialog):
         )
         if result and result[0]:
             self.audio_edit.setText(result[0])
-            sr = get_audio_sample_rate(result[0])
-            if sr is not None:
-                self.sr_spinbox.setValue(sr)
+            audio_sr = get_audio_sample_rate(result[0])
+            if audio_sr is not None:
+                self.audio_sr_spinbox.setValue(audio_sr)
 
     def _on_output_browse(self):
         result = QFileDialog.getSaveFileName(
@@ -566,7 +566,7 @@ class AudioFileDialog(QDialog):
         video_path = self.video_edit.text()
         audio_path = self.audio_edit.text()
         fps = self.fps_spinbox.value()
-        sr = self.sr_spinbox.value()
+        audio_sr = self.audio_sr_spinbox.value()
         output_path = self.output_edit.text()
 
         individuals = None
@@ -578,7 +578,7 @@ class AudioFileDialog(QDialog):
                 video_path=video_path,
                 fps=fps,
                 audio_path=audio_path,
-                sr=sr,
+                audio_sr=audio_sr,
                 individuals=individuals,
             )
             dt.to_netcdf(output_path)
