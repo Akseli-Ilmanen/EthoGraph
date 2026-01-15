@@ -28,6 +28,7 @@ from qtpy.QtWidgets import (
 
 from ethograph.gui.parameters import create_function_selector
 from ethograph.utils.data_utils import sel_valid
+from ethograph.utils.io import downsample_trialtree
 from .data_loader import load_dataset
 from .plots_space import SpacePlot
 from .plots_spectrogram import SharedAudioCache
@@ -90,6 +91,13 @@ class DataWidget(DataLoader, QWidget):
         self.axes_widget = axes_widget
         self.navigation_widget = navigation_widget
         self.spectrogram_widget = spectrogram_widget
+
+    def _get_sampling_rate(self, time_coords: np.ndarray) -> float:
+        """Calculate sampling rate from time coordinates."""
+        if len(time_coords) < 2:
+            return 30.0
+        dt = np.median(np.diff(time_coords))
+        return 1.0 / dt if dt > 0 else 30.0
         
 
     
@@ -110,9 +118,19 @@ class DataWidget(DataLoader, QWidget):
         
         
         self.app_state.dt, label_dt, self.type_vars_dict = load_dataset(nc_file_path)
+
+        downsample_factor = self.io_widget.get_downsample_factor()
+        if downsample_factor is not None:
+            self.app_state.dt = downsample_trialtree(self.app_state.dt, downsample_factor)
+            self.app_state.downsample_factor_used = downsample_factor
+            print(f"Downsampled data by factor {downsample_factor}")
+        else:
+            self.app_state.downsample_factor_used = None
+
+        self.io_widget.disable_downsample_controls()
+
         trials = self.app_state.dt.trials
-        
-        
+
         if self.app_state.import_labels_nc_data:
             self.app_state.label_dt = label_dt
             
@@ -124,8 +142,8 @@ class DataWidget(DataLoader, QWidget):
 
         
         self.app_state.ds = self.app_state.dt.trial(trials[0])
-        
 
+        self.app_state.data_sr = self._get_sampling_rate(self.app_state.ds.time.values)
 
         self.update_trials_combo()
         self.app_state.trials = sorted(trials)
@@ -512,7 +530,13 @@ class DataWidget(DataLoader, QWidget):
 
         if key:
             selected_value = combo.currentText()
-            self.app_state.set_key_sel(key, selected_value)
+
+            if key == "mics":
+                mic_name, channel_idx = self.io_widget.get_mic_and_channel(selected_value)
+                self.app_state.set_key_sel(key, mic_name)
+                self.app_state.audio_channel_idx = channel_idx
+            else:
+                self.app_state.set_key_sel(key, selected_value)
 
             if key == "features":
                 if selected_value == "Spectrogram":
@@ -694,6 +718,7 @@ class DataWidget(DataLoader, QWidget):
 
     def update_main_plot(self, **kwargs):
         """Update the line plot or spectrogram with current trial/keypoint/variable selection."""
+        import time
         if not self.app_state.ready:
             return
 
@@ -701,9 +726,13 @@ class DataWidget(DataLoader, QWidget):
         current_plot = self.plot_container.get_current_plot()
 
         try:
-            # Update the current plot
+            t1 = time.time()
             current_plot.update_plot(**kwargs)
+            print(f"    [TIMING] current_plot.update_plot: {time.time() - t1:.3f}s")
+
+            t1 = time.time()
             self.update_motif_plot(ds_kwargs)
+            print(f"    [TIMING] update_motif_plot: {time.time() - t1:.3f}s")
 
             # Handle confidence plotting based on checkbox state
             if self.show_confidence_checkbox.isChecked():
@@ -717,7 +746,9 @@ class DataWidget(DataLoader, QWidget):
 
             # Handle audio overlay
             if self.plot_container.is_lineplot():
+                t1 = time.time()
                 self.plot_container.update_audio_overlay()
+                print(f"    [TIMING] update_audio_overlay: {time.time() - t1:.3f}s")
 
         except (KeyError, AttributeError, ValueError) as e:
             show_error(f"Error updating plot: {e}")
@@ -725,9 +756,12 @@ class DataWidget(DataLoader, QWidget):
 
     def update_motif_plot(self, ds_kwargs):
         """Update motif plot with labels and predictions."""
+        import time
+        t0 = time.time()
         label_ds = self.app_state.label_ds
         time_data = label_ds.time.values
         labels, _ = sel_valid(label_ds.labels, ds_kwargs)
+        print(f"      [TIMING] motif_plot sel_valid: {time.time() - t0:.3f}s")
 
         predictions = None
         if (
@@ -737,9 +771,13 @@ class DataWidget(DataLoader, QWidget):
         ):
             pred_ds = self.app_state.pred_ds
             predictions, _ = sel_valid(pred_ds.labels, ds_kwargs)
+            t1 = time.time()
             self.labels_widget.plot_all_motifs(time_data, labels, predictions)
+            print(f"      [TIMING] plot_all_motifs: {time.time() - t1:.3f}s")
         else:
+            t1 = time.time()
             self.labels_widget.plot_all_motifs(time_data, labels)
+            print(f"      [TIMING] plot_all_motifs: {time.time() - t1:.3f}s")
 
 
 

@@ -481,33 +481,32 @@ class PlotContainer(QWidget):
         if not hasattr(plot, 'label_items'):
             plot.label_items = []
 
-        current_motif_id = 0
-        segment_start = None
+        data = np.asarray(data)
+        if len(data) == 0:
+            return
 
-        for i, label in enumerate(data):
-            if label != 0:
-                if label != current_motif_id:
-                    if current_motif_id != 0 and segment_start is not None:
-                        self._draw_single_label(
-                            plot, time_data[segment_start], time_data[i - 1],
-                            current_motif_id, is_main
-                        )
-                    current_motif_id = label
-                    segment_start = i
-            else:
-                if current_motif_id != 0 and segment_start is not None:
-                    self._draw_single_label(
-                        plot, time_data[segment_start], time_data[i - 1],
-                        current_motif_id, is_main
-                    )
-                    current_motif_id = 0
-                    segment_start = None
+        # Vectorized: find indices where value changes (including start/end boundaries)
+        # Pad with different sentinel values to detect first and last segments
+        padded = np.concatenate([[-1], data, [-1]])
+        change_mask = padded[:-1] != padded[1:]
+        change_indices = np.nonzero(change_mask)[0]
 
-        if current_motif_id != 0 and segment_start is not None:
-            self._draw_single_label(
-                plot, time_data[segment_start], time_data[-1],
-                current_motif_id, is_main
-            )
+        # Each consecutive pair of change_indices defines a segment
+        for i in range(len(change_indices) - 1):
+            start_idx = change_indices[i]
+            end_idx = change_indices[i + 1] - 1
+
+            if start_idx >= len(data):
+                continue
+            end_idx = min(end_idx, len(data) - 1)
+
+            motif_id = int(data[start_idx])
+            if motif_id == 0:
+                continue
+
+            start_time = time_data[start_idx]
+            end_time = time_data[end_idx]
+            self._draw_single_label(plot, start_time, end_time, motif_id, is_main)
 
     def _draw_single_label(self, plot, start_time, end_time, motif_id, is_main=True):
         """Draw a single label rectangle on a plot with appropriate style.

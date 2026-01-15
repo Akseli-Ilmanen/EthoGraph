@@ -11,10 +11,12 @@ from qtpy.QtWidgets import (
     QPushButton,
     QWidget,
     QCheckBox,
+    QSpinBox,
 )
 from .app_state import AppStateSpec
 from .dialog_create_nc import CreateNCDialog
 from pathlib import Path
+import os
 from qtpy.QtCore import Qt
 from ethograph.utils.io import TrialTree
 from ethograph.utils.paths import gui_default_settings_path
@@ -34,6 +36,8 @@ class IOWidget(QWidget):
         self.combos = {}
         # List to store controls for enabling/disabling
         self.controls = []
+        # Mapping from display name to (mic_name, channel_idx) for multi-channel audio
+        self.mic_channel_map = {}
         
         
 
@@ -235,12 +239,80 @@ class IOWidget(QWidget):
 
 
 
+    def _get_audio_channel_count(self, audio_path: str) -> int:
+        """Detect number of channels in an audio file."""
+        try:
+            from audioio import AudioLoader
+            with AudioLoader(audio_path) as loader:
+                if loader.shape is None:
+                    return 1
+                return loader.channels if hasattr(loader, 'channels') else (loader.shape[1] if len(loader.shape) > 1 else 1)
+        except Exception:
+            return 1
+
+    def _expand_mics_with_channels(self, mic_names) -> list[str]:
+        """Expand mic names to include channel info for multi-channel files.
+
+        Returns list of display names and populates self.mic_channel_map.
+        """
+        self.mic_channel_map.clear()
+        expanded_items = []
+
+        audio_folder = self.app_state.audio_folder
+        ds = getattr(self.app_state, 'ds', None)
+
+        if not audio_folder or ds is None:
+            for mic in mic_names:
+                display_name = str(mic)
+                self.mic_channel_map[display_name] = (str(mic), 0)
+                expanded_items.append(display_name)
+            return expanded_items
+
+        for mic in mic_names:
+            mic_str = str(mic)
+            try:
+                audio_file = ds.attrs.get(mic_str)
+                if not audio_file:
+                    display_name = mic_str
+                    self.mic_channel_map[display_name] = (mic_str, 0)
+                    expanded_items.append(display_name)
+                    continue
+
+                audio_path = os.path.join(audio_folder, audio_file)
+                n_channels = self._get_audio_channel_count(audio_path)
+
+                if n_channels > 1:
+                    for ch in range(n_channels):
+                        display_name = f"{mic_str} (Ch {ch + 1})"
+                        self.mic_channel_map[display_name] = (mic_str, ch)
+                        expanded_items.append(display_name)
+                else:
+                    display_name = mic_str
+                    self.mic_channel_map[display_name] = (mic_str, 0)
+                    expanded_items.append(display_name)
+            except Exception:
+                display_name = mic_str
+                self.mic_channel_map[display_name] = (mic_str, 0)
+                expanded_items.append(display_name)
+
+        return expanded_items
+
+    def get_mic_and_channel(self, display_name: str) -> tuple[str, int]:
+        """Get (mic_name, channel_idx) from a mic combo display name."""
+        return self.mic_channel_map.get(display_name, (display_name, 0))
+
     def _create_combo_widget(self, key, vars, layout):
         """Create a combo box widget for a given info key."""
         combo = QComboBox()
         combo.setObjectName(f"{key}_combo")
         combo.currentTextChanged.connect(self._on_combo_changed)
-        combo.addItems([str(var) for var in vars])
+
+        if key == "mics":
+            expanded_items = self._expand_mics_with_channels(vars)
+            combo.addItems(expanded_items)
+        else:
+            combo.addItems([str(var) for var in vars])
+
         layout.addWidget(QLabel(f"{key.capitalize()}:"))
         layout.addWidget(combo)
         self.combos[key] = combo
@@ -258,11 +330,47 @@ class IOWidget(QWidget):
             control.setEnabled(enabled)
 
     def _create_load_button(self):
-        """Create a button to load the file to the viewer."""
+        """Create a button to load the file to the viewer with optional downsampling."""
+        load_layout = QHBoxLayout()
+
+        self.downsample_checkbox = QCheckBox("Downsample:")
+        self.downsample_checkbox.setObjectName("downsample_checkbox")
+        self.downsample_checkbox.setChecked(False)
+        self.downsample_checkbox.setToolTip("Downsample data on load for faster display")
+        self.downsample_checkbox.toggled.connect(self._on_downsample_toggled)
+
+        self.downsample_spin = QSpinBox()
+        self.downsample_spin.setObjectName("downsample_spin")
+        self.downsample_spin.setRange(2, 1000)
+        self.downsample_spin.setValue(100)
+        self.downsample_spin.setEnabled(False)
+        self.downsample_spin.setToolTip("Downsample factor (e.g., 100 = keep 1 in 100 samples)")
+        self.downsample_spin.setFixedWidth(70)
+
         self.load_button = QPushButton("Load")
         self.load_button.setObjectName("load_button")
         self.load_button.clicked.connect(lambda: self.data_widget.on_load_clicked())
-        self.layout().addRow(self.load_button)
+
+        load_layout.addWidget(self.downsample_checkbox)
+        load_layout.addWidget(self.downsample_spin)
+        load_layout.addWidget(self.load_button, stretch=1)
+
+        self.layout().addRow(load_layout)
+
+    def _on_downsample_toggled(self, checked: bool):
+        """Enable/disable downsample spinbox based on checkbox state."""
+        self.downsample_spin.setEnabled(checked)
+
+    def disable_downsample_controls(self):
+        """Disable downsample controls after data is loaded."""
+        self.downsample_checkbox.setEnabled(False)
+        self.downsample_spin.setEnabled(False)
+
+    def get_downsample_factor(self) -> Optional[int]:
+        """Get the downsample factor if enabled, else None."""
+        if self.downsample_checkbox.isChecked():
+            return self.downsample_spin.value()
+        return None
 
     def on_browse_clicked(self, browse_type: str = "file", media_type: str | None = None):
         """

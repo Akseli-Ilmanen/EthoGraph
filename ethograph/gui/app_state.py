@@ -80,6 +80,7 @@ class AppStateSpec:
         "pred_dt": (xr.DataTree | None, None, False),
         "import_labels_nc_data": (bool, False, True),
         "fps_playback": (float, 30.0, True),
+        "data_sr": (float, 30.0, False), # For frame-wise features same as ds.fps
         "trials": (list[int | str], [], False),
         "plot_spectrogram": (bool, False, True),
         "load_s3d": (bool, False, False),
@@ -91,6 +92,7 @@ class AppStateSpec:
         "tracking_folder": (str | None, None, True),
         "video_path": (str | None, None, True),
         "audio_path": (str | None, None, True),
+        "audio_channel_idx": (int, 0, True),
         "tracking_path": (str | None, None, True),
 
         # Plotting
@@ -99,6 +101,7 @@ class AppStateSpec:
         "spec_ymin": (float | None, None, True),
         "spec_ymax": (float | None, None, True),
         "ready": (bool, False, False),
+        "downsample_factor_used": (int | None, None, False),
         "nfft": (int, 256, True),
         "hop_frac": (float, 0.5, True),
         "vmin_db": (float, -120.0, True),
@@ -375,40 +378,54 @@ class ObservableAppState(QObject):
 
 
 
+    def _get_downsampled_suffix(self) -> str:
+        """Get suffix for downsampled files."""
+        if self.downsample_factor_used:
+            return f"_downsampled_{self.downsample_factor_used}x"
+        return ""
+
     def save_labels(self):
         """Save only updated labels to preserve data integrity of other variables."""
 
         nc_path = Path(self.nc_file_path)
-        
+        suffix = self._get_downsampled_suffix()
+
         # Save label seperately as backup
         labels_dir = nc_path.parent / "labels"
         labels_dir.mkdir(exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        versioned_filename = f"{nc_path.stem}_labels_{timestamp}{nc_path.suffix}"
+        versioned_filename = f"{nc_path.stem}{suffix}_labels_{timestamp}{nc_path.suffix}"
         versioned_path = labels_dir / versioned_filename
 
         self.label_dt.to_netcdf(versioned_path)
         show_info(f"✅ Saved: {Path(versioned_path).name}")
-        
+
         self.changes_saved = True
-        
-        
+
+
     def save_file(self) -> None:
         nc_path = Path(self.nc_file_path)
-        
-        # Create temporary copy for saving
-        temp_path = nc_path.with_suffix('.tmp.nc')
-        
-        updated_dt = self.dt.overwrite_with_labels(self.label_dt)
-        updated_dt.to_netcdf(temp_path, mode='w')
-        updated_dt.close()
-        
+        suffix = self._get_downsampled_suffix()
 
-        self.dt.close()
-        temp_path.replace(nc_path)
-        
+        if suffix:
+            # Save to separate file to avoid overwriting raw data
+            save_path = nc_path.parent / f"{nc_path.stem}{suffix}{nc_path.suffix}"
+            updated_dt = self.dt.overwrite_with_labels(self.label_dt)
+            updated_dt.to_netcdf(save_path, mode='w')
+            updated_dt.close()
+            show_info(f"✅ Saved downsampled: {save_path.name}")
+        else:
+            # Original behavior: overwrite source file
+            temp_path = nc_path.with_suffix('.tmp.nc')
 
-        self.dt = TrialTree.load(nc_path)
-        show_info(f"✅ Saved: {nc_path.name}")
+            updated_dt = self.dt.overwrite_with_labels(self.label_dt)
+            updated_dt.to_netcdf(temp_path, mode='w')
+            updated_dt.close()
+
+            self.dt.close()
+            temp_path.replace(nc_path)
+
+            self.dt = TrialTree.load(nc_path)
+            show_info(f"✅ Saved: {nc_path.name}")
 
 
