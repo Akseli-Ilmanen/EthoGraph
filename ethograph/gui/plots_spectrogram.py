@@ -189,6 +189,7 @@ class SpectrogramBuffer:
     def __init__(self, app_state):
         self.app_state = app_state
         self.current_path = None
+        self.current_channel = None
         self.buffer_multiplier = self._get_buffer_multiplier()
 
         self.Sxx_db = None
@@ -220,9 +221,12 @@ class SpectrogramBuffer:
 
     def get_spectrogram(self, audio_path, t0, t1):
         """Get spectrogram data, computing only if necessary."""
-        if audio_path != self.current_path:
+        channel_idx = getattr(self.app_state, 'audio_channel_idx', 0)
+
+        if audio_path != self.current_path or channel_idx != self.current_channel:
             self._clear_buffer()
             self.current_path = audio_path
+            self.current_channel = channel_idx
 
         if self._covers_range(t0, t1):
             return self.Sxx_db, self._get_spec_rect()
@@ -259,7 +263,10 @@ class SpectrogramBuffer:
 
         audio_data = audio_loader[i0:i1]
         if audio_data.ndim > 1:
-            audio_data = np.mean(audio_data, axis=1)
+            channel_idx = getattr(self.app_state, 'audio_channel_idx', 0)
+            n_channels = audio_data.shape[1]
+            channel_idx = min(channel_idx, n_channels - 1)
+            audio_data = audio_data[:, channel_idx]
 
         if len(audio_data) == 0:
             return
@@ -300,6 +307,7 @@ class SpectrogramBuffer:
         self.buffer_t0 = 0.0
         self.buffer_t1 = 0.0
         self.buffer_changed = False
+        self.current_channel = None
 
     def update_buffer_size(self):
         self.buffer_multiplier = self._get_buffer_multiplier()
