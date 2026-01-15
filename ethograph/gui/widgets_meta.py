@@ -189,7 +189,6 @@ class MetaWidget(CollapsibleWidgetContainer):
             return
         xmin, xmax = self.plot_container.get_current_xlim()
         self.data_widget.update_main_plot(t0=xmin, t1=xmax)
-        print(f"  [TIMING] _on_labels_modified (update_main_plot): {time.time() - t0:.3f}s")
 
     def _on_verification_changed(self):
         """Handle verification status change - update UI indicators."""

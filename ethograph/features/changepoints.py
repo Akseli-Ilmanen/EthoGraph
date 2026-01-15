@@ -136,7 +136,7 @@ def snap_to_nearest_changepoint(x_clicked, ds, feature_sel, **ds_kwargs):
         snapped_val, snapped_idx
         
     Example:
-        ds_kwargs = {trials=20, individuals:"Freddy", keypoints: "beakTip"}
+        ds_kwargs = {individuals:"Freddy", keypoints: "beakTip"}
         snapped_val, _ = snap_to_nearest_changepoint(x_clicked, cds, 'speed', **ds_kwargs)
     """
     
