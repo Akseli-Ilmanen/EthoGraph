@@ -293,26 +293,40 @@ def purge_small_motifs(labels: np.ndarray, min_motif_len: int) -> np.ndarray:
 def remove_small_blocks(input_vec, min_motif_len):
     """
     Remove blocks shorter than min_motif_len from input_vec (set to 0).
+
+    Vectorized implementation for performance with high-frequency data.
     """
-    
     if isinstance(input_vec, (str, bytes)):
         input_vec = np.array([int(c) for c in str(input_vec)])
     else:
-        input_vec = np.array(input_vec)
+        input_vec = np.asarray(input_vec)
+
+    if len(input_vec) == 0:
+        return input_vec.copy()
+
     output_vec = input_vec.copy()
-    i = 0
-    while i < len(input_vec):
-        if input_vec[i] != 0:
-            val = input_vec[i]
-            j = i
-            while j < len(input_vec) and input_vec[j] == val:
-                j += 1
-            run_length = j - i
-            if run_length < min_motif_len:
-                output_vec[i:j] = 0
-            i = j
-        else:
-            i += 1
+
+    # Find segment boundaries using vectorized diff
+    padded = np.concatenate([[-1], input_vec, [-1]])
+    change_mask = padded[:-1] != padded[1:]
+    change_indices = np.nonzero(change_mask)[0]
+
+    # Each consecutive pair defines a segment
+    for i in range(len(change_indices) - 1):
+        start_idx = change_indices[i]
+        end_idx = change_indices[i + 1]  # exclusive
+
+        if start_idx >= len(input_vec):
+            continue
+
+        val = input_vec[start_idx]
+        if val == 0:
+            continue
+
+        run_length = end_idx - start_idx
+        if run_length < min_motif_len:
+            output_vec[start_idx:end_idx] = 0
+
     return output_vec
 
 

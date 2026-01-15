@@ -127,13 +127,17 @@ class AudioTraceBuffer:
     def __init__(self, app_state):
         self.app_state = app_state
         self.current_path = None
+        self.current_channel = None
         self.fs = None
         self.audio_loader = None
 
     def get_trace_data(self, audio_path, t0, t1):
         """Get audio trace data with smart min/max downsampling."""
-        if audio_path != self.current_path:
+        channel_idx = getattr(self.app_state, 'audio_channel_idx', 0)
+
+        if audio_path != self.current_path or channel_idx != self.current_channel:
             self.current_path = audio_path
+            self.current_channel = channel_idx
             self.audio_loader = SharedAudioCache.get_loader(audio_path)
             if self.audio_loader:
                 self.fs = self.audio_loader.rate
@@ -156,7 +160,9 @@ class AudioTraceBuffer:
 
         audio_data = self.audio_loader[start:stop]
         if audio_data.ndim > 1:
-            audio_data = audio_data[:, 0]
+            n_channels = audio_data.shape[1]
+            ch = min(channel_idx, n_channels - 1)
+            audio_data = audio_data[:, ch]
 
         if step > 1:
             aligned_start = (start // step) * step
@@ -168,7 +174,9 @@ class AudioTraceBuffer:
 
             audio_data = self.audio_loader[actual_start:actual_stop]
             if audio_data.ndim > 1:
-                audio_data = audio_data[:, 0]
+                n_channels = audio_data.shape[1]
+                ch = min(channel_idx, n_channels - 1)
+                audio_data = audio_data[:, ch]
 
             n_segments = len(audio_data) // step
             if n_segments == 0:

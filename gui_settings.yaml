@@ -1,17 +1,17 @@
-plot_spectrogram: false
-video_path: C:\Users\Admin\Documents\Akseli\VidData\20250526_02_Freddy\2025-05-26_136_Freddy-cam-1.mp4
-vmax_db: -20.0
-spec_colormap: CET-R4
+import_labels_nc_data: true
+nfft: 256
+percentile_ylim: 99.5
 fps_playback: 30.0
+space_plot_type: Layer controls
+buffer_multiplier: 5.0
+video_path: C:\Users\Admin\Documents\Akseli\VidData\20250526_02_Freddy\2025-05-26_136_Freddy-cam-1.mp4
+spec_colormap: CET-R4
+plot_spectrogram: false
+window_size: 5.0
 hop_frac: 0.5
 vmin_db: -120.0
-nfft: 256
-buffer_multiplier: 5.0
-import_labels_nc_data: true
-percentile_ylim: 99.5
+vmax_db: -20.0
 video_folder: C:/Users/Admin/Documents/Akseli/VidData/20250526_02_Freddy
-space_plot_type: Layer controls
-window_size: 5.0
 nc_file_path: C:/Users/Admin/Documents/Akseli/Trial_data_Freddy_20250526_02.nc
 cameras_sel: cam1_file
 colors_sel: None

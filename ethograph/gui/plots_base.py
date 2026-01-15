@@ -136,9 +136,9 @@ class BasePlot(pg.PlotWidget):
                 return
 
             if center_on_frame is not None:
-                current_time = center_on_frame / self.app_state.ds.fps
+                current_time = center_on_frame / self.app_state.data_sr
             else:
-                current_time = self.app_state.current_frame / self.app_state.ds.fps
+                current_time = self.app_state.current_frame / self.app_state.data_sr
 
             window_size = self.app_state.get_with_default('window_size')
             half_window = window_size / 2.0

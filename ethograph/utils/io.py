@@ -328,22 +328,114 @@ class TrialTree(xr.DataTree):
     
         
     
-def _minimal_basics(ds):
-    
+def minimal_basics(ds):
+
     if "labels" not in ds.data_vars:
         ds["labels"] = xr.DataArray(
                 np.zeros((ds.dims["time"], ds.dims["individuals"])),
                 dims=["time", "individuals"],
         )
-        
+
     for feat in list(ds.data_vars):
         if feat != "labels":
             ds[feat].attrs["type"] = "features"
 
     ds.attrs["trial"] = "sample_trial"
     dt = TrialTree.from_datasets([ds])
-    
+
     return dt
+
+
+def downsample_dataset(ds: xr.Dataset, factor: int) -> xr.Dataset:
+    """Downsample a dataset along the time dimension using min-max envelope.
+
+    Args:
+        ds: xarray Dataset with 'time' dimension
+        factor: Downsample factor (e.g., 100 = keep ~2% of samples as min/max pairs)
+
+    Returns:
+        Downsampled dataset preserving peaks via min-max envelope
+    """
+    if 'time' not in ds.dims:
+        return ds
+
+    n_time = ds.dims['time']
+    n_segments = n_time // factor
+    if n_segments < 2:
+        return ds
+
+    usable_len = n_segments * factor
+    time_vals = ds.time.values[:usable_len]
+
+    time_downsampled = time_vals[::factor][:n_segments]
+    dt = (time_vals[-1] - time_vals[0]) / len(time_vals) if len(time_vals) > 1 else 1.0
+    half_step = dt * factor / 2
+
+    time_interleaved = np.empty(n_segments * 2)
+    time_interleaved[0::2] = time_downsampled
+    time_interleaved[1::2] = time_downsampled + half_step
+
+    new_coords = {'time': time_interleaved}
+    for coord_name, coord_val in ds.coords.items():
+        if coord_name != 'time':
+            new_coords[coord_name] = coord_val
+
+    data_vars = {}
+    for var_name, var_data in ds.data_vars.items():
+        if 'time' not in var_data.dims:
+            data_vars[var_name] = var_data
+            continue
+
+        var_attrs = var_data.attrs.copy()
+        values = var_data.values[:usable_len] if var_data.dims[0] == 'time' else var_data.values
+
+        time_axis = var_data.dims.index('time')
+        other_dims = [d for d in var_data.dims if d != 'time']
+        new_dims = ['time'] + other_dims
+
+        if time_axis == 0:
+            shape_suffix = values.shape[1:] if len(values.shape) > 1 else ()
+            reshaped = values.reshape(n_segments, factor, *shape_suffix)
+            mins = reshaped.min(axis=1)
+            maxs = reshaped.max(axis=1)
+        else:
+            values_t = np.moveaxis(values, time_axis, 0)[:usable_len]
+            shape_suffix = values_t.shape[1:] if len(values_t.shape) > 1 else ()
+            reshaped = values_t.reshape(n_segments, factor, *shape_suffix)
+            mins = reshaped.min(axis=1)
+            maxs = reshaped.max(axis=1)
+
+        interleaved_shape = (n_segments * 2,) + shape_suffix
+        interleaved = np.empty(interleaved_shape, dtype=values.dtype)
+        interleaved[0::2] = mins
+        interleaved[1::2] = maxs
+
+        data_vars[var_name] = xr.DataArray(interleaved, dims=new_dims, attrs=var_attrs)
+
+    new_attrs = ds.attrs.copy()
+    if 'audio_sr' in new_attrs:
+        new_attrs['original_audio_sr'] = new_attrs['audio_sr']
+        new_attrs['audio_sr'] = new_attrs['audio_sr'] / factor * 2
+    new_attrs['downsample_factor'] = factor
+    new_attrs['downsample_method'] = 'minmax_envelope'
+
+    return xr.Dataset(data_vars, coords=new_coords, attrs=new_attrs)
+
+
+def downsample_trialtree(dt: "TrialTree", factor: int) -> "TrialTree":
+    """Downsample all trials in a TrialTree using min-max envelope.
+
+    Args:
+        dt: TrialTree to downsample
+        factor: Downsample factor
+
+    Returns:
+        New TrialTree with downsampled data
+    """
+    return TrialTree.from_datatree(
+        dt.map_over_datasets(lambda ds: downsample_dataset(ds, factor) if ds is not None else ds),
+        attrs=dt.attrs
+    )
    
 
    
@@ -389,7 +481,7 @@ def minimal_dt_from_pose(video_path, fps, tracking_path, source_software):
         tracking=[Path(tracking_path).name],
         tracking_prefix=f"{ds.attrs['source_software']}_1"
     )            
-    dt = _minimal_basics(ds)
+    dt = minimal_basics(ds)
 
 
     return dt
@@ -404,17 +496,17 @@ def minimal_dt_from_ds(video_path, ds: xr.Dataset):
         ds,
         cameras=[Path(video_path).name],
     )  
-    dt = _minimal_basics(ds)
+    dt = minimal_basics(ds)
     
     return dt
 
 
-def minimal_dt_from_audio(video_path, fps, audio_path, sr, individuals=None):
+def minimal_dt_from_audio(video_path, fps, audio_path, audio_sr, individuals=None):
 
     if individuals is None:
         individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
 
-    envelope, gen_wav_path = get_synced_envelope(audio_path, sr, fps)
+    envelope, gen_wav_path = get_synced_envelope(audio_path, audio_sr, fps)
 
     if gen_wav_path:
         audio_path = gen_wav_path
@@ -422,9 +514,9 @@ def minimal_dt_from_audio(video_path, fps, audio_path, sr, individuals=None):
     n_frames = len(envelope)
     time_coords = np.arange(n_frames) / fps
     
+
     ds = xr.Dataset(
         data_vars={
-            "envelope": ("time", envelope),
             "labels": (["time", "individuals"], np.zeros((n_frames, len(individuals))))
         },
         coords={
@@ -432,8 +524,18 @@ def minimal_dt_from_audio(video_path, fps, audio_path, sr, individuals=None):
             "individuals": individuals  
         }
     )    
+    
+    if envelope.ndim == 1:
+        ds["audio_envelope"] = (["time"], envelope)
+    elif envelope.ndim == 2:
+        ds["audio_envelope"] = (["time", "channels"], envelope)
+    else:
+        raise ValueError("Envelope must be 1D or 2D array")
+        
 
-    ds.attrs["sr"] = sr
+        
+
+    ds.attrs["audio_sr"] = audio_sr
     ds.attrs["fps"] = fps
 
     
@@ -443,7 +545,7 @@ def minimal_dt_from_audio(video_path, fps, audio_path, sr, individuals=None):
         mics=[Path(audio_path).name],
     )  
     
-    dt = _minimal_basics(ds)
+    dt = minimal_basics(ds)
     
     return dt
  

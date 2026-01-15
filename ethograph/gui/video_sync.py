@@ -40,13 +40,13 @@ class NapariVideoSync(QObject):
         self.total_frames = 0
         self.total_duration = 0.0
 
-        self.sr = getattr(app_state.ds, "sr", None) if hasattr(app_state, "ds") else None
-        if self.sr is None and audio_source:
+        self.audio_sr = getattr(app_state.ds, "sr", None) if hasattr(app_state, "ds") else None
+        if self.audio_sr is None and audio_source:
             try:
                 with AudioLoader(audio_source) as data:
-                    self.sr = data.rate
+                    self.audio_sr = data.rate
             except Exception:
-                self.sr = 44100
+                self.audio_sr = 44100
 
         for layer in self.viewer.layers:
             if layer.name == "video" and hasattr(layer, "data"):
@@ -106,16 +106,19 @@ class NapariVideoSync(QObject):
         self.seek_to_frame(start_frame)
         self._monitor_end_frame = end_frame
 
-        if self.audio_source and self.sr:
+        if self.audio_source and self.audio_sr:
             with AudioLoader(self.audio_source) as data:
-                start_sample = int(start_frame / self.fps * self.sr)
-                end_sample = int(end_frame / self.fps * self.sr)
+                start_sample = int(start_frame / self.fps * self.audio_sr)
+                end_sample = int(end_frame / self.fps * self.audio_sr)
                 segment = data[start_sample:end_sample]
 
-            if segment.shape[0] > 1:
-                segment = segment[:, 0]
+            if segment.ndim > 1:
+                channel_idx = getattr(self.app_state, 'audio_channel_idx', 0)
+                n_channels = segment.shape[1]
+                channel_idx = min(channel_idx, n_channels - 1)
+                segment = segment[:, channel_idx]
 
-            rate = (self.fps_playback / self.fps) * self.sr
+            rate = (self.fps_playback / self.fps) * self.audio_sr
             self._audio_player = PlayAudio()
             self._audio_player.play(data=segment, rate=float(rate), blocking=False)
 
