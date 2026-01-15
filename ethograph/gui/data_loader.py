@@ -33,21 +33,12 @@ def load_dataset(file_path: str) -> Tuple[Optional[xr.Dataset], Optional[dict]]:
     ds = dt.itrial(0)
 
 
-    inconsistencies, errors = validate_datatree(dt)
-    
-    if inconsistencies or errors:
-        error_msg = ""
+    errors = validate_datatree(dt)
+    if errors:
+        if error_msg:
+            error_msg += "\n"
+        error_msg += "\n".join(f"• {e}" for e in errors)
         
-        if inconsistencies:
-            error_msg += "Inconsistent structure across trials:\n"
-            for category, items in inconsistencies.items():
-                error_msg += f"• {category}: {items}\n"
-        
-        if errors:
-            if error_msg:
-                error_msg += "\n"
-            error_msg += "\n".join(f"• {e}" for e in errors)
-            
         suffix = "\n\n See documentation: XXX"
         
         # Display twice to ensure visibility in napari

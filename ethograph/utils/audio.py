@@ -1,5 +1,4 @@
 import subprocess
-import soundfile as sf
 from pathlib import Path
 import tempfile
 import numpy as np

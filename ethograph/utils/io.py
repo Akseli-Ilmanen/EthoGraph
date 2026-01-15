@@ -165,25 +165,17 @@ class TrialTree(xr.DataTree):
 
 
     def _validate_tree(self) -> List[str]:
-        inconsistencies, errors = validate_datatree(self)
+        errors = validate_datatree(self)
     
-        if inconsistencies or errors:
-            error_msg = ""
-            
-            if inconsistencies:
-                error_msg += "Inconsistent structure across trials:\n"
-                for category, items in inconsistencies.items():
-                    error_msg += f"• {category}: {items}\n"
-            
-            if errors:
-                if error_msg:
-                    error_msg += "\n"
-                error_msg += "Dataset validation failed:\n"
-                error_msg += "\n".join(f"• {e}" for e in errors)
-            
-            
-            raise ValueError("TrialTree validation failed: \n" + error_msg)
-    
+        if errors:
+            if error_msg:
+                error_msg += "\n"
+            error_msg += "Dataset validation failed:\n"
+            error_msg += "\n".join(f"• {e}" for e in errors)
+        
+        
+        raise ValueError("TrialTree validation failed: \n" + error_msg)
+
     
 
     def get_label_dt(self, empty: bool = False) -> "TrialTree":
