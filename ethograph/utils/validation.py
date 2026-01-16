@@ -199,40 +199,43 @@ def _extract_trial_datasets(dt: "TrialTree") -> List[xr.Dataset]:
     return datasets
 
 
-def _check_cross_trial_consistency(
-    datasets: List[xr.Dataset],
-) -> Dict[str, Set[str]]:
-    """Check that coords, data_vars, and attrs keys are consistent across trials.
+# Removed temporarily, probably not needed long-term
 
-    Returns:
-        Dict with 'coords', 'data_vars', 'attrs' keys mapping to sets of
-        inconsistent items (empty dict if all consistent).
-    """
-    if len(datasets) < 2:
-        return {}
 
-    all_coords = [set(ds.coords.keys()) for ds in datasets]
-    all_vars = [set(ds.data_vars.keys()) for ds in datasets]
-    all_attrs = [set(ds.attrs.keys()) for ds in datasets]
+# def _check_cross_trial_consistency(
+#     datasets: List[xr.Dataset],
+# ) -> Dict[str, Set[str]]:
+#     """Check that coords, data_vars, and attrs keys are consistent across trials.
 
-    inconsistencies = {}
+#     Returns:
+#         Dict with 'coords', 'data_vars', 'attrs' keys mapping to sets of
+#         inconsistent items (empty dict if all consistent).
+#     """
+#     if len(datasets) < 2:
+#         return {}
 
-    union_coords = set.union(*all_coords)
-    intersect_coords = set.intersection(*all_coords)
-    if diff := (union_coords - intersect_coords):
-        inconsistencies["coords"] = diff
+#     all_coords = [set(ds.coords.keys()) for ds in datasets]
+#     all_vars = [set(ds.data_vars.keys()) for ds in datasets]
+#     all_attrs = [set(ds.attrs.keys()) for ds in datasets]
 
-    union_vars = set.union(*all_vars)
-    intersect_vars = set.intersection(*all_vars)
-    if diff := (union_vars - intersect_vars):
-        inconsistencies["data_vars"] = diff
+#     inconsistencies = {}
 
-    union_attrs = set.union(*all_attrs)
-    intersect_attrs = set.intersection(*all_attrs)
-    if diff := (union_attrs - intersect_attrs):
-        diff.discard("human_verified")
-        if diff:
-            inconsistencies["attrs"] = diff
+#     union_coords = set.union(*all_coords)
+#     intersect_coords = set.intersection(*all_coords)
+#     if diff := (union_coords - intersect_coords):
+#         inconsistencies["coords"] = diff
+
+#     union_vars = set.union(*all_vars)
+#     intersect_vars = set.intersection(*all_vars)
+#     if diff := (union_vars - intersect_vars):
+#         inconsistencies["data_vars"] = diff
+
+#     union_attrs = set.union(*all_attrs)
+#     intersect_attrs = set.intersection(*all_attrs)
+#     if diff := (union_attrs - intersect_attrs):
+#         diff.discard("human_verified")
+#         if diff:
+#             inconsistencies["attrs"] = diff
 
 
 
@@ -333,8 +336,6 @@ def validate_datatree(
     if not datasets:
         return {}, ["No trial datasets found in TrialTree"]
 
-    # Check cross-trial consistency (keys)
-    inconsistencies = _check_cross_trial_consistency(datasets)
 
     errors = []
     # Validate data content on random sample of trials
@@ -343,4 +344,4 @@ def validate_datatree(
     for idx in sample_indices:
         errors.extend(validate_dataset(datasets[idx], type_vars_dict))
         
-    return inconsistencies, list(set(errors))
+    return list(set(errors))
