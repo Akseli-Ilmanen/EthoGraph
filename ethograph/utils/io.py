@@ -168,13 +168,12 @@ class TrialTree(xr.DataTree):
         errors = validate_datatree(self)
     
         if errors:
-            if error_msg:
-                error_msg += "\n"
+            error_msg += "\n"
             error_msg += "Dataset validation failed:\n"
             error_msg += "\n".join(f"• {e}" for e in errors)
         
         
-        raise ValueError("TrialTree validation failed: \n" + error_msg)
+            raise ValueError("TrialTree validation failed: \n" + error_msg)
 
     
 
@@ -328,13 +327,24 @@ class TrialTree(xr.DataTree):
     
         
     
-def minimal_basics(ds):
+def minimal_basics(ds, label_sr: Optional[float] = None) -> TrialTree:
 
     if "labels" not in ds.data_vars:
-        ds["labels"] = xr.DataArray(
-                np.zeros((ds.dims["time"], ds.dims["individuals"])),
-                dims=["time", "individuals"],
-        )
+        
+        if label_sr is not None:
+            time_labels = np.arange(0, ds.time.values[-1] + 1/label_sr, 1/label_sr)
+            
+            ds["labels"] = xr.DataArray(
+                np.zeros((len(time_labels), ds.dims["individuals"])),
+                dims=["time_labels", "individuals"],
+                coords={"time_labels": time_labels, "individuals": ds.individuals},
+            )
+            
+        else: 
+            ds["labels"] = xr.DataArray(
+                    np.zeros((ds.dims["time"], ds.dims["individuals"])),
+                    dims=["time", "individuals"],
+            )
 
     for feat in list(ds.data_vars):
         if feat != "labels":
