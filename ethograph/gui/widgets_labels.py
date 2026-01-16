@@ -643,10 +643,10 @@ class LabelsWidget(QWidget):
             click_info: dict with 'x' (time coordinate) and 'button' (Qt button constant)
         """
 
-        x_clicked = click_info["x"]
+        t_clicked = click_info["x"]
         button = click_info["button"]
 
-        if x_clicked is None or not self.app_state.ready:
+        if t_clicked is None or not self.app_state.ready:
             return
 
 
@@ -668,7 +668,7 @@ class LabelsWidget(QWidget):
  
 
             if button == Qt.LeftButton and not self.ready_for_label_click:
-                result = self._check_motif_click(x_clicked, main_data, secondary_data, is_prediction_main)
+                result = self._check_motif_click(t_clicked, main_data, secondary_data, is_prediction_main)
     
 
         except Exception as e:
@@ -678,7 +678,7 @@ class LabelsWidget(QWidget):
 
         # Handle right-click - seek video to clicked position
         if button == Qt.RightButton and self.app_state.video_folder is not None:
-            frame = int(x_clicked * self.app_state.ds.fps)
+            frame = int(t_clicked * self.app_state.ds.fps)
             if hasattr(self.app_state, 'video') and self.app_state.video:
                 self.app_state.video.seek_to_frame(frame)
 
@@ -687,19 +687,19 @@ class LabelsWidget(QWidget):
         elif button == Qt.LeftButton and self.ready_for_label_click:
     
             # Snap to nearest changepoint if available
-            x_clicked_idx = int(x_clicked * self.app_state.data_sr)  # Use 'data_sr' since we are indexing labels (with SR = Samples / dt.time)
+            label_idx = int(t_clicked * self.app_state.label_sr)  
             
             if self.changepoint_correction_checkbox.isChecked():
-                x_snapped = self._snap_to_changepoint(x_clicked_idx)
+                label_idx_snapped = self._snap_to_changepoint(label_idx)
             else:
-                x_snapped = x_clicked_idx
+                label_idx_snapped = label_idx
 
             if self.first_click is None:
                 # First click - just store the position
-                self.first_click = x_snapped
+                self.first_click = label_idx_snapped
             else:
                 # Second click - store position and automatically apply
-                self.second_click = x_snapped
+                self.second_click = label_idx_snapped
                 self._apply_motif()  # Automatically apply after two clicks
 
 
@@ -715,7 +715,7 @@ class LabelsWidget(QWidget):
             is_prediction_main: Whether the main data is predictions or labels
         """
         # Check if there's a motif at this position
-        label_idx = int(x_clicked * self.app_state.data_sr)
+        label_idx = int(x_clicked * self.app_state.label_sr)
 
         if label_idx >= len(main_data):
             print(f"Frame index {label_idx} out of bounds for data length {len(main_data)}")
@@ -774,6 +774,8 @@ class LabelsWidget(QWidget):
 
         start_idx = self.first_click
         end_idx = self.second_click
+        print(f"Applying motif {self.selected_motif_id} from {start_idx} to {end_idx}")
+        print(f"Labels length: {len(labels)}")
         self.highlight_spaceplot.emit(start_idx, end_idx)
 
 
@@ -823,14 +825,14 @@ class LabelsWidget(QWidget):
 
         
 
-    def _seek_to_frame(self, data_idx: int):
-        """Seek video and update time marker to the specified data index.
+    def _seek_to_frame(self, label_idx: int):
+        """Seek video and update time marker to the specified label index.
 
         Args:
-            data_idx: Index into the data array (at data_sr rate), not a video frame.
+            label_idx: Index into the label array (at label_sr rate), not a video frame.
         """
-        # Convert data index to time
-        current_time = data_idx / self.app_state.data_sr
+        # Convert label index to time
+        current_time = label_idx / self.app_state.label_sr
 
         if hasattr(self.app_state, 'video') and self.app_state.video:
             # Convert time to video frame for seek
@@ -908,10 +910,9 @@ class LabelsWidget(QWidget):
             print(f"Playback conditions not met - sync_state: {self.app_state.sync_state}, motif_id: {self.current_motif_id}, pos_len: {len(self.current_motif_pos) if self.current_motif_pos else 0}")
             return
 
-        # current_motif_pos contains data sample indices (at data_sr rate)
-        # Convert to time, then to video frames for play_segment
-        start_time = self.current_motif_pos[0] / self.app_state.data_sr
-        end_time = self.current_motif_pos[1] / self.app_state.data_sr
+        # Label idxs -> Time -> Frame idxs
+        start_time = self.current_motif_pos[0] / self.app_state.label_sr
+        end_time = self.current_motif_pos[1] / self.app_state.label_sr
         start_frame = int(start_time * self.app_state.ds.fps)
         end_frame = int(end_time * self.app_state.ds.fps)
 
@@ -989,12 +990,12 @@ class LabelsWidget(QWidget):
 
         # Store labels array and conversion factors for on-demand lookup
         video_fps = self.app_state.ds.fps if hasattr(self.app_state, 'ds') and self.app_state.ds else 30.0
-        data_sr = getattr(self.app_state, 'data_sr', video_fps)
+        label_sr = getattr(self.app_state, 'label_sr')
 
         shapes_layer.metadata = {
             'labels_array': labels_array,
             'video_fps': video_fps,
-            'data_sr': data_sr,
+            'label_sr': label_sr,
             'motif_mappings': self.motif_mappings,
         }
 
@@ -1002,13 +1003,13 @@ class LabelsWidget(QWidget):
             # Convert video frame to data index on-demand
             video_frame = self.viewer.dims.current_step[0]
             time_s = video_frame / shapes_layer.metadata['video_fps']
-            data_idx = int(time_s * shapes_layer.metadata['data_sr'])
+            label_idx = int(time_s * shapes_layer.metadata['label_sr'])
 
             labels_arr = shapes_layer.metadata['labels_array']
             mappings = shapes_layer.metadata['motif_mappings']
 
-            if 0 <= data_idx < len(labels_arr):
-                label = int(labels_arr[data_idx])
+            if 0 <= label_idx < len(labels_arr):
+                label = int(labels_arr[label_idx])
                 if label in mappings and label != 0:
                     color = mappings[label]["color"]
                     color_list = color.tolist() if hasattr(color, 'tolist') else list(color)

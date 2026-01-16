@@ -81,6 +81,7 @@ class AppStateSpec:
         "import_labels_nc_data": (bool, False, True),
         "fps_playback": (float, 30.0, True),
         "data_sr": (float, 30.0, False), # For frame-wise features same as ds.fps
+        "label_sr": (float | None, None, False),
         "trials": (list[int | str], [], False),
         "plot_spectrogram": (bool, False, True),
         "load_s3d": (bool, False, False),

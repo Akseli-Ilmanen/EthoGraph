@@ -20,13 +20,11 @@ def space_plot_pyqt(
     color_variable: Optional[str] = None,
     view_3d: bool = False,
     **ds_kwargs
-) -> None:
+) -> tuple:
     """Plot trajectory from top view (2D) or 3D view using PyQtGraph.
 
-    Args:
-        x_limits: Tuple of (min, max) for X axis
-        y_limits: Tuple of (min, max) for Y axis
-        z_limits: Tuple of (min, max) for Z axis (3D only)
+    Returns:
+        Tuple of (X, Y, Z) position arrays. Z is None for 2D plots.
     """
 
     space_widget.clear()
@@ -60,11 +58,12 @@ def space_plot_pyqt(
 
     if view_3d:
         XYZ = np.column_stack([X, Y, Z]).astype(np.float32)
-        
+
         if color_data is not None:
             line = gl.GLLinePlotItem(pos=XYZ, color=color_data, width=3, antialias=True)
         else:
             line = gl.GLLinePlotItem(pos=XYZ, color=(0, 0, 1, 1), width=3, antialias=True)
+        line._is_trajectory = True
         space_widget.addItem(line)
 
         x_min, x_max = box_xy_base[:, 0].min(), box_xy_base[:, 0].max()
@@ -119,7 +118,7 @@ def space_plot_pyqt(
                 x=X, y=Y,
                 pen=pg.mkPen(color='b', width=3)
             )
-            
+        line._is_trajectory = True
         space_widget.addItem(line)
 
         box_line = pg.PlotCurveItem(
@@ -127,11 +126,9 @@ def space_plot_pyqt(
             y=box_xy_base[:, 1],
             pen=pg.mkPen(color='k', width=2)
         )
-        
-        
         space_widget.addItem(box_line)
 
-
+    return X, Y, Z
 
 
 class SpacePlot(QWidget):
@@ -150,6 +147,7 @@ class SpacePlot(QWidget):
         self.space_widget = None  # Can be either PlotWidget (2D) or GLViewWidget (3D)
         self.is_3d = False
         self.ds_kwargs = {}
+        self._trajectory_pos = None
         self.hide()
 
 
@@ -223,69 +221,59 @@ class SpacePlot(QWidget):
 
         self.ds_kwargs = ds_kwargs
 
-        # Use space_plot_pyqt for both 2D and 3D
-        space_plot_pyqt(self.space_widget, self.app_state.ds,
-                        color_variable, view_3d,
-                        **ds_kwargs)
+        X, Y, Z = space_plot_pyqt(
+            self.space_widget, self.app_state.ds, color_variable, view_3d, **ds_kwargs
+        )
+        self._trajectory_pos = (X, Y, Z)
 
 
     def highlight_positions(self, start_frame: int, end_frame: int):
-        """Highlight positions in the plot based on current frame."""
-        if not self.space_widget:
+        """Highlight positions: full trajectory in green, selected portion in orange."""
+        if not self.space_widget or self._trajectory_pos is None:
             return
 
+        X, Y, Z = self._trajectory_pos
+
         if self.is_3d:
-       
             for item in list(self.space_widget.items):
-                if hasattr(item, '_is_highlight') and item._is_highlight:
+                if getattr(item, '_is_trajectory', False) or getattr(item, '_is_highlight', False):
                     self.space_widget.removeItem(item)
 
+            full_pos = np.column_stack([X, Y, Z]).astype(np.float32)
+            green_line = gl.GLLinePlotItem(
+                pos=full_pos, color=(0.2, 0.8, 0.2, 1), width=3, antialias=True
+            )
+            green_line._is_trajectory = True
+            self.space_widget.addItem(green_line)
 
-            spaces = ['x', 'y', 'z']
-            if ('space' in self.app_state.ds.coords and
-                all(s in self.app_state.ds.coords['space'] for s in spaces)):
-
-                highlighted_points = self.app_state.ds.sel(space=spaces, **self.ds_kwargs).isel(time=slice(start_frame, end_frame + 1)).position
-                
-                x = highlighted_points.sel(space='x').values
-                y = highlighted_points.sel(space='y').values
-                z = highlighted_points.sel(space='z').values
-
-                pos = np.column_stack([x, y, z])
-                scatter = gl.GLScatterPlotItem(
-                    pos=pos, size=1, color=(0, 0, 0, 1), pxMode=False
+            highlight_pos = full_pos[start_frame:end_frame + 1]
+            if len(highlight_pos) > 1:
+                orange_line = gl.GLLinePlotItem(
+                    pos=highlight_pos, color=(1, 0.4, 0, 1), width=5, antialias=True
                 )
-                scatter.setGLOptions('translucent')
-                scatter._is_highlight = True
-                self.space_widget.addItem(scatter)
+                orange_line._is_highlight = True
+                self.space_widget.addItem(orange_line)
         else:
-   
             plot_item = self.space_widget.getPlotItem()
-            items_to_remove = []
-            for item in plot_item.items:
-                if hasattr(item, '_is_highlight') and item._is_highlight:
-                    items_to_remove.append(item)
-
+            items_to_remove = [
+                item for item in plot_item.items
+                if getattr(item, '_is_trajectory', False) or getattr(item, '_is_highlight', False)
+            ]
             for item in items_to_remove:
                 plot_item.removeItem(item)
 
-            # Add 2D highlights
-            if ('space' in self.app_state.ds.coords and
-                'x' in self.app_state.ds.coords['space'] and
-                'y' in self.app_state.ds.coords['space']):
+            green_line = pg.PlotCurveItem(
+                x=X, y=Y, pen=pg.mkPen(color=(50, 200, 50), width=3)
+            )
+            green_line._is_trajectory = True
+            plot_item.addItem(green_line)
 
-                highlighted_points = self.app_state.ds.sel(space=["x", "y"], **self.ds_kwargs).isel(time=slice(start_frame, end_frame + 1)).position
-
-       
-                x = highlighted_points.sel(space='x').values
-                y = highlighted_points.sel(space='y').values
-
-                scatter = pg.ScatterPlotItem(
-                    x=x, y=y,
-                    pen=pg.mkPen(color='k', width=2),
-                    brush=pg.mkBrush(color='k'),
-                    symbol='o',
-                    size=5
+            x_highlight = X[start_frame:end_frame + 1]
+            y_highlight = Y[start_frame:end_frame + 1]
+            if len(x_highlight) > 1:
+                orange_line = pg.PlotCurveItem(
+                    x=x_highlight, y=y_highlight,
+                    pen=pg.mkPen(color=(255, 102, 0), width=4)
                 )
-                scatter._is_highlight = True
-                plot_item.addItem(scatter)
+                orange_line._is_highlight = True
+                plot_item.addItem(orange_line)

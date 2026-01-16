@@ -29,7 +29,11 @@ def sel_valid(da, sel_kwargs):
     valid_keys = set(da.dims)
     filt_kwargs = {k: v for k, v in sel_kwargs.items() if k in valid_keys}
     da = da.sel(**filt_kwargs).squeeze()
-    da = da.transpose('time', ...)
+    
+    if 'time_labels' in da.dims:
+        da = da.transpose('time_labels', ...)
+    else:
+        da = da.transpose('time', ...)
 
     data = da.values
     assert data.ndim in [1, 2] # either (time,) or (time, space)/ (time, RGB), ...

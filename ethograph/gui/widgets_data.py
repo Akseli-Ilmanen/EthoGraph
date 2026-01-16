@@ -130,20 +130,34 @@ class DataWidget(DataLoader, QWidget):
         self.io_widget.disable_downsample_controls()
 
         trials = self.app_state.dt.trials
+    
+        
+        
+        
+
+
 
         if self.app_state.import_labels_nc_data:
             self.app_state.label_dt = label_dt
-            
         else:
             self.app_state.label_dt = self.app_state.dt.get_label_dt(empty=True)
             
-        self.app_state.label_ds = self.app_state.label_dt.trial(trials[0])
-
-
+            
         
         self.app_state.ds = self.app_state.dt.trial(trials[0])
-
+        self.app_state.label_ds = self.app_state.label_dt.trial(trials[0])
+        
+        
         self.app_state.data_sr = self._get_sampling_rate(self.app_state.ds.time.values)
+        if 'time_labels' in self.app_state.label_ds.coords:
+            self.app_state.label_sr = self._get_sampling_rate(self.app_state.label_ds.time_labels.values)
+        else:
+            self.app_state.label_sr = self.app_state.data_sr 
+
+
+            
+            
+
 
         self.update_trials_combo()
         self.app_state.trials = sorted(trials)
@@ -442,11 +456,13 @@ class DataWidget(DataLoader, QWidget):
             if dim:
                 values = [str(v) for v in self.app_state.ds[dim].values.tolist()]
                 completer = QCompleter(["All"] + values)
-                completer.setMaxVisibleItems(10) 
+                completer.setMaxVisibleItems(10)
                 self.feature_dims_input.setCompleter(completer)
+                self._set_feature_dims_placeholder(values)
             else:
                 completer = QCompleter(["N/A"])
                 self.feature_dims_input.setCompleter(completer)
+                self.feature_dims_input.setPlaceholderText("N/A")
 
             self.layout().addRow("Feature Dims:", self.feature_dims_input)
 
@@ -471,16 +487,26 @@ class DataWidget(DataLoader, QWidget):
         """Return the non-time dimension for a given feature in ds."""
         if not hasattr(self.app_state, 'features_sel') or self.app_state.features_sel in ("Spectrogram", "Waveform"):
             return None
-        
+
         ds = self.app_state.ds
         arr = ds[self.app_state.features_sel]
 
         excluded = ["time"] + list(self.type_vars_dict.keys())
         if all(dim in excluded for dim in arr.dims):
             return None
-        
+
         dim = next(dim for dim in arr.dims if dim not in excluded)
         return dim
+
+    def _set_feature_dims_placeholder(self, values: list[str]) -> None:
+        """Set placeholder text on feature_dims_input showing available options."""
+        max_display = 8
+        if len(values) <= max_display:
+            placeholder = "all, " + ", ".join(values)
+        else:
+            displayed = values[:max_display]
+            placeholder = f"all, {', '.join(displayed)}, ... ({len(values)} total)"
+        self.feature_dims_input.setPlaceholderText(placeholder)
 
     @staticmethod
     def is_number(s: str) -> bool:
@@ -494,15 +520,15 @@ class DataWidget(DataLoader, QWidget):
     def _dim_changed(self):
         dim = self._get_dim()
         if dim:
-            input = self.feature_dims_input.text().strip()
+            input_text = self.feature_dims_input.text().strip()
 
-            if not input or input == "All":
-                return
-            
-            if self.is_number(input):
-                input = float(input) if '.' in input else int(input)
+            if not input_text or input_text.lower() == "all":
+                setattr(self.app_state, f"{dim}_sel", None)
+            else:
+                if self.is_number(input_text):
+                    input_text = float(input_text) if '.' in input_text else int(input_text)
+                self.app_state.set_key_sel(dim, input_text)
 
-            self.app_state.set_key_sel(dim, input)
             xmin, xmax = self.plot_container.get_current_xlim()
             self.update_main_plot(t0=xmin, t1=xmax)
 
@@ -558,23 +584,22 @@ class DataWidget(DataLoader, QWidget):
                 if dim:
                     values = [str(v) for v in self.app_state.ds[dim].values.tolist()]
                     completer = QCompleter(["All"] + values)
-                    completer.setMaxVisibleItems(10)  
+                    completer.setMaxVisibleItems(10)
                     self.feature_dims_input.setCompleter(completer)
+                    self._set_feature_dims_placeholder(values)
                     self.feature_dims_input.clear()
-    
+
                     if len(values) > 5:
                         self.feature_dims_input.setText(values[0])
-                        input = self.feature_dims_input.text().strip()
-                        if self.is_number(input):
-                            input = float(input) if '.' in input else int(input)
-                        self.app_state.set_key_sel(dim, input)
-
-                        self.app_state.set_key_sel(dim, input)
+                        input_val = self.feature_dims_input.text().strip()
+                        if self.is_number(input_val):
+                            input_val = float(input_val) if '.' in input_val else int(input_val)
+                        self.app_state.set_key_sel(dim, input_val)
 
                 else:
                     completer = QCompleter(["N/A"])
                     self.feature_dims_input.setCompleter(completer)
- 
+                    self.feature_dims_input.setPlaceholderText("N/A")
                     self.feature_dims_input.setText("N/A")
  
             if key in ["cameras", "mics"]:
@@ -756,7 +781,14 @@ class DataWidget(DataLoader, QWidget):
 
  
         label_ds = self.app_state.label_ds
-        time_data = label_ds.time.values
+        
+        
+        if 'time_labels' in label_ds.coords:
+            time_data = label_ds.time_labels.values
+        else:
+            time_data = label_ds.time.values
+        
+        
         labels, _ = sel_valid(label_ds.labels, ds_kwargs)
 
 
@@ -982,8 +1014,11 @@ class DataWidget(DataLoader, QWidget):
             
             
 
-    def _highlight_positions_in_space_plot(self, start_frame: int, end_frame: int):
+    def _highlight_positions_in_space_plot(self, start_time: float, end_time: float):
         """Highlight positions in space plot based on current frame."""
+        start_frame = int(start_time * self.fps)
+        end_frame = int(end_time * self.fps)
+        
         if self.space_plot and self.space_plot.dock_widget.isVisible():
             self.space_plot.highlight_positions(start_frame, end_frame)
 
