@@ -107,7 +107,7 @@ class PlotContainer(QWidget):
         if confidence_data is None or len(confidence_data) == 0:
             return
 
-        time = self.app_state.ds.time.values
+        time = self.app_state.time
         
         right_axis = self.current_plot.plot_item.getAxis('right')
         right_axis.setLabel('Confidence', color='m')

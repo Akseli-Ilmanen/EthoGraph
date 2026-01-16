@@ -27,7 +27,7 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.gui.parameters import create_function_selector
-from ethograph.utils.data_utils import sel_valid
+from ethograph.utils.data_utils import sel_valid, get_time_coords
 from ethograph.utils.io import downsample_trialtree
 from .data_loader import load_dataset
 from .plots_space import SpacePlot
@@ -119,6 +119,11 @@ class DataWidget(DataLoader, QWidget):
         
         self.app_state.dt, label_dt, self.type_vars_dict = load_dataset(nc_file_path)
 
+        
+
+        
+
+
         downsample_factor = self.io_widget.get_downsample_factor()
         if downsample_factor is not None:
             self.app_state.dt = downsample_trialtree(self.app_state.dt, downsample_factor)
@@ -146,16 +151,21 @@ class DataWidget(DataLoader, QWidget):
         
         self.app_state.ds = self.app_state.dt.trial(trials[0])
         self.app_state.label_ds = self.app_state.label_dt.trial(trials[0])
+
         
+    
+        features_list = list(self.type_vars_dict["features"])
+        self.app_state.time = get_time_coords(self.app_state.ds[features_list[0]])
         
-        self.app_state.data_sr = self._get_sampling_rate(self.app_state.ds.time.values)
-        if 'time_labels' in self.app_state.label_ds.coords:
-            self.app_state.label_sr = self._get_sampling_rate(self.app_state.label_ds.time_labels.values)
-        else:
-            self.app_state.label_sr = self.app_state.data_sr 
+
+        coords = self.app_state.ds.labels.coords
+        if any('time' in coord for coord in coords):
+            time_coord = next(coord for coord in coords if 'time' in coord)
+            self.app_state.label_sr = self._get_sampling_rate(self.app_state.label_ds.labels[time_coord].values)
 
 
-            
+
+        print(f"Label sampling rate: {self.app_state.label_sr} Hz") 
             
 
 
@@ -288,11 +298,9 @@ class DataWidget(DataLoader, QWidget):
         
         for type_var in remaining_type_vars:
             if type_var in self.type_vars_dict.keys():
- 
-                if type_var == "features" and self.app_state.audio_folder:
+                    
+                if type_var == "features" and self.app_state.audio_path:
                     features_list = list(self.type_vars_dict[type_var])
- 
-       
                     features_with_audio = features_list + ["Spectrogram", "Waveform"]
                     self._create_combo_widget(type_var, features_with_audio)
                 else:
@@ -783,12 +791,8 @@ class DataWidget(DataLoader, QWidget):
         label_ds = self.app_state.label_ds
         
         
-        if 'time_labels' in label_ds.coords:
-            time_data = label_ds.time_labels.values
-        else:
-            time_data = label_ds.time.values
         
-        
+        time = get_time_coords(label_ds.labels)
         labels, _ = sel_valid(label_ds.labels, ds_kwargs)
 
 
@@ -800,10 +804,10 @@ class DataWidget(DataLoader, QWidget):
         ):
             pred_ds = self.app_state.pred_ds
             predictions, _ = sel_valid(pred_ds.labels, ds_kwargs)
-            self.labels_widget.plot_all_motifs(time_data, labels, predictions)
+            self.labels_widget.plot_all_motifs(time, labels, predictions)
 
         else:
-            self.labels_widget.plot_all_motifs(time_data, labels)
+            self.labels_widget.plot_all_motifs(time, labels)
 
 
 

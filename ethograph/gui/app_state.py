@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, get_args, get_origin
 
+import numpy as np
 import xarray as xr
 import yaml
 from napari.settings import get_settings
@@ -11,6 +12,7 @@ from napari.utils.notifications import show_info
 from qtpy.QtCore import QObject, QTimer, Signal
 
 from ethograph.utils.io import TrialTree
+from ethograph.utils.data_utils import get_time_coords
 
 
 SIMPLE_SIGNAL_TYPES = (int, float, str, bool)
@@ -80,8 +82,8 @@ class AppStateSpec:
         "pred_dt": (xr.DataTree | None, None, False),
         "import_labels_nc_data": (bool, False, True),
         "fps_playback": (float, 30.0, True),
-        "data_sr": (float, 30.0, False), # For frame-wise features same as ds.fps
-        "label_sr": (float | None, None, False),
+        "time": (np.ndarray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
+        "label_sr": (float | None, None, False), # for labels (e.g. 'time' or 'time_labels')
         "trials": (list[int | str], [], False),
         "plot_spectrogram": (bool, False, True),
         "load_s3d": (bool, False, False),
@@ -185,7 +187,7 @@ class ObservableAppState(QObject):
         raise AttributeError(name)
 
     def __setattr__(self, name, value):
-        if name in ("_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot"):
+        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot"):
             super().__setattr__(name, value)
             return
 
@@ -246,6 +248,8 @@ class ObservableAppState(QObject):
         """Set current value for a given info key."""
         if currentValue is None:
             return
+        
+
 
         if type_key == "trials" and hasattr(self, "trials") and self.trials:
             currentValue = self._coerce_to_list_type(currentValue, self.trials)
@@ -256,6 +260,10 @@ class ObservableAppState(QObject):
 
         if old_value is not None and old_value != currentValue and type_key in ["features", "keypoints", "individuals", "cameras", "mics"]:
             setattr(self, prev_attr_name, old_value)
+        
+        if type_key == "features" and self.ds:        
+            self.time = get_time_coords(self.ds[currentValue])
+    
 
         setattr(self, attr_name, currentValue)
 
