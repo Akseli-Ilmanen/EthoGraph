@@ -134,8 +134,7 @@ def validate_dataset(ds: xr.Dataset, type_vars_dict: Dict) -> List[str]:
     
 
     # Required dimensions and coordinates
-    if "time" not in ds.dims or len(ds.coords["time"]) == 0:
-        errors.append("Xarray dataset ('ds') must have 'time' dimension")
+    
 
     if "individuals" not in ds.coords or len(ds.coords["individuals"]) == 0:
         errors.append("Xarray dataset ('ds') must have 'individuals' coordinate")
@@ -148,6 +147,13 @@ def validate_dataset(ds: xr.Dataset, type_vars_dict: Dict) -> List[str]:
 
     if "features" not in type_vars_dict or len(type_vars_dict["features"]) == 0:
         errors.append("Xarray dataset ('ds') must contain at least one variable with attribute type='features'")
+        
+        # Check that feature variables have time coordinates
+        for feat_name in type_vars_dict["features"]:
+            feat_var = ds[feat_name]
+            has_time_coord = any('time' in str(dim).lower() for dim in feat_var.dims)
+            if not has_time_coord:
+                errors.append(f"Feature variable '{feat_name}' must have a coordinate containing 'time'. E.g. 'time', 'time_labels', 'time_aux', etc.")
 
         
     for cam in type_vars_dict["cameras"]:

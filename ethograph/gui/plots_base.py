@@ -129,16 +129,16 @@ class BasePlot(pg.PlotWidget):
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
 
-        time = self.app_state.ds.time.values
+        time = self.app_state.time
 
         if mode == 'center':
             if not hasattr(self.app_state, 'window_size'):
                 return
 
             if center_on_frame is not None:
-                current_time = center_on_frame / self.app_state.data_sr
+                current_time = center_on_frame / self.app_state.ds.fps
             else:
-                current_time = self.app_state.current_frame / self.app_state.data_sr
+                current_time = self.app_state.current_frame / self.app_state.ds.fps
 
             window_size = self.app_state.get_with_default('window_size')
             half_window = window_size / 2.0
@@ -177,7 +177,7 @@ class BasePlot(pg.PlotWidget):
             x_range = current_xlim[1] - current_xlim[0]
 
             if hasattr(self.app_state, 'ds') and self.app_state.ds is not None:
-                time = self.app_state.ds.time.values
+                time = self.app_state.time
                 data_xmin = float(time[0])
                 data_xmax = float(time[-1])
 
@@ -218,7 +218,7 @@ class BasePlot(pg.PlotWidget):
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
 
-        time = self.app_state.ds.time.values
+        time = self.app_state.time
         xMin = time[0]
         xMax = time[-1]
         xRange = xMax - xMin

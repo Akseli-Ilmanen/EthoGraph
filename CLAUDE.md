@@ -147,6 +147,39 @@ ethograph/gui/
 
 ---
 
+### Time Coordinate System
+
+Different DataArrays can have different time coordinates (e.g., `time`, `time_aux`, `time_labels`) with different sampling rates. The system handles this transparently:
+
+**Core utility** (`data_utils.py`):
+```python
+def get_time_coords(da: xr.DataArray) -> np.ndarray:
+    """Select whichever time coord is available for a given DataArray."""
+    coords = da.coords
+    time_coord = next((c for c in coords if 'time' in c), None)
+    return coords[time_coord].values
+```
+
+**AppState time variables:**
+- `app_state.time` (np.ndarray): Time array for the currently selected feature. Updated when feature selection changes via `set_key_sel("features", ...)`.
+- `app_state.label_sr` (float): Sampling rate for labels. Calculated from whichever time coord the labels array uses.
+
+**Usage pattern:**
+```
+Feature DataArray    ->  time coord: "time" or "time_aux"  ->  app_state.time
+Labels DataArray     ->  time coord: "time" or "time_labels"  ->  get_time_coords(label_ds.labels)
+```
+
+**Where used:**
+- `LinePlot._get_buffered_ds()`: Uses `app_state.time` for buffer range calculations
+- `BasePlot.set_x_range()`: Uses `app_state.time` for x-axis limits
+- `DataWidget.update_motif_plot()`: Uses `get_time_coords(label_ds.labels)` to get labels' own time
+- `LabelsWidget`: Uses `app_state.label_sr` for time-to-index conversions when creating/editing labels
+
+This decoupling allows features to be sampled at different rates than labels while both display correctly on the same plot.
+
+---
+
 ### Widget Orchestration: `widgets_meta.py` (MetaWidget)
 
 Central coordinator that creates and wires all widgets together.
@@ -428,7 +461,10 @@ Bound in `MetaWidget._bind_global_shortcuts()`:
 
 ## Dataset Structure Requirements
 
-- NetCDF format with `time`, `trials` dimensions
+- NetCDF format with `trials` dimension
+- Time coordinates: Can be `time`, `time_aux`, `time_labels`, etc. (any coord containing 'time')
+  - Different variables can use different time coordinates with different sampling rates
+  - Labels array may use `time_labels` at a different rate than feature arrays using `time`
 - Expected coordinates: `cameras`, `mics`, `keypoints`, `individuals`, `features`
 - Variables with `type='features'` attribute for feature selection
 - Video files matched by filename in dataset to video folder
