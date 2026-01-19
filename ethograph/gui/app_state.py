@@ -70,7 +70,7 @@ class AppStateSpec:
         "num_frames": (int, 0, False),
         "_info_data": (dict[str, Any], {}, False),
         "sync_state": (str | None, None, False),
-        "window_size": (float, 5.0, True),
+        "window_size": (float, 3.0, True),
 
         # Data
         "ds": (xr.Dataset | None, None, False),
@@ -88,7 +88,7 @@ class AppStateSpec:
         "plot_spectrogram": (bool, False, True),
         "load_s3d": (bool, False, False),
 
-        # Paths
+        # Paths 
         "nc_file_path": (str | None, None, True),
         "video_folder": (str | None, None, True),
         "audio_folder": (str | None, None, True),
@@ -261,8 +261,9 @@ class ObservableAppState(QObject):
         if old_value is not None and old_value != currentValue and type_key in ["features", "keypoints", "individuals", "cameras", "mics"]:
             setattr(self, prev_attr_name, old_value)
         
-        if type_key == "features" and self.ds:        
-            self.time = get_time_coords(self.ds[currentValue])
+        if type_key == "features" and self.ds:
+            if currentValue not in ("Spectrogram", "Waveform"):
+                self.time = get_time_coords(self.ds[currentValue])
     
 
         setattr(self, attr_name, currentValue)

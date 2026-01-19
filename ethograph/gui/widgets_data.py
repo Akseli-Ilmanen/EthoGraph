@@ -1020,8 +1020,8 @@ class DataWidget(DataLoader, QWidget):
 
     def _highlight_positions_in_space_plot(self, start_time: float, end_time: float):
         """Highlight positions in space plot based on current frame."""
-        start_frame = int(start_time * self.fps)
-        end_frame = int(end_time * self.fps)
+        start_frame = int(start_time * self.app_state.ds.fps)
+        end_frame = int(end_time * self.app_state.ds.fps)
         
         if self.space_plot and self.space_plot.dock_widget.isVisible():
             self.space_plot.highlight_positions(start_frame, end_frame)
