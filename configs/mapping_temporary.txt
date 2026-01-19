@@ -1,0 +1,5 @@
+0 background
+1 flying
+2 preening
+3 singing
+4 jump

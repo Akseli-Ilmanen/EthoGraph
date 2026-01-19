@@ -47,7 +47,7 @@ from qtpy.QtCore import Qt, Signal
 class LabelsWidget(QWidget):
     """Widget for labeling movement motifs in time series data."""
     
-    highlight_spaceplot = Signal(int, int)
+    highlight_spaceplot = Signal(float, float)
 
     def __init__(self, napari_viewer: Viewer, app_state, parent=None):
         super().__init__(parent=parent)
@@ -726,6 +726,8 @@ class LabelsWidget(QWidget):
         if motif_id != 0:
             motif_start = label_idx
             motif_end = label_idx
+            
+            
 
             # Find start of motif
             while motif_start > 0 and main_data[motif_start - 1] == motif_id:
@@ -738,7 +740,10 @@ class LabelsWidget(QWidget):
             self.current_motif_id = motif_id
             self.current_motif_pos = [motif_start, motif_end]
             self.current_motif_is_prediction = is_prediction_main
-            self.highlight_spaceplot.emit(motif_start, motif_end)
+            
+            motif_start_t = motif_start / self.app_state.label_sr
+            motif_end_t = motif_end / self.app_state.label_sr
+            self.highlight_spaceplot.emit(motif_start_t, motif_end_t)
 
             self.selected_motif_id = motif_id
 
@@ -776,7 +781,10 @@ class LabelsWidget(QWidget):
         end_idx = self.second_click
         print(f"Applying motif {self.selected_motif_id} from {start_idx} to {end_idx}")
         print(f"Labels length: {len(labels)}")
-        self.highlight_spaceplot.emit(start_idx, end_idx)
+    
+        start_t = start_idx / self.app_state.label_sr
+        end_t = end_idx / self.app_state.label_sr
+        self.highlight_spaceplot.emit(start_t, end_t)
 
 
 
@@ -798,9 +806,11 @@ class LabelsWidget(QWidget):
             
 
         labels[start_idx : end_idx + 1] = self.selected_motif_id
-        
-        
 
+        # Auto-select the newly created/edited motif for immediate playback with 'v'
+        self.current_motif_pos = [start_idx, end_idx]
+        self.current_motif_id = self.selected_motif_id
+        self.current_motif_is_prediction = False
 
 
 
@@ -1044,11 +1054,12 @@ class LabelsWidget(QWidget):
             self._add_motif_shapes_layer()
             return
 
-        # Just update the labels array in existing layer's metadata
+        # Update both labels array and motif mappings in existing layer's metadata
         shapes_layer = self.viewer.layers["motif_labels"]
         ds_kwargs = self.app_state.get_ds_kwargs()
         labels, _ = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
         shapes_layer.metadata['labels_array'] = np.asarray(labels)
+        shapes_layer.metadata['motif_mappings'] = self.motif_mappings
 
 
 class TemporaryLabelsDialog(QDialog):
