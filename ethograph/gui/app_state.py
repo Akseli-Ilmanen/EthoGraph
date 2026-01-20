@@ -12,7 +12,7 @@ from napari.utils.notifications import show_info
 from qtpy.QtCore import QObject, QTimer, Signal
 
 from ethograph.utils.io import TrialTree
-from ethograph.utils.data_utils import get_time_coords
+from ethograph.utils.data_utils import get_time_coord
 
 
 SIMPLE_SIGNAL_TYPES = (int, float, str, bool)
@@ -82,7 +82,7 @@ class AppStateSpec:
         "pred_dt": (xr.DataTree | None, None, False),
         "import_labels_nc_data": (bool, False, True),
         "fps_playback": (float, 30.0, True),
-        "time": (np.ndarray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
+        "time": (xr.DataArray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
         "label_sr": (float | None, None, False), # for labels (e.g. 'time' or 'time_labels')
         "trials": (list[int | str], [], False),
         "plot_spectrogram": (bool, False, True),
@@ -263,7 +263,7 @@ class ObservableAppState(QObject):
         
         if type_key == "features" and self.ds:
             if currentValue not in ("Spectrogram", "Waveform"):
-                self.time = get_time_coords(self.ds[currentValue])
+                self.time = get_time_coord(self.ds[currentValue])
     
 
         setattr(self, attr_name, currentValue)

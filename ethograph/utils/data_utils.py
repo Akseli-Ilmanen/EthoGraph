@@ -39,11 +39,11 @@ def sel_valid(da, sel_kwargs):
 
     return data, filt_kwargs
 
-def get_time_coords(da: xr.DataArray) -> np.ndarray | None:
+def get_time_coord(da: xr.DataArray) -> xr.DataArray | None:
     """Select whichever time coord is available for a given data array."""
     coords = da.coords
-    time_coord = next((c for c in coords if 'time' in c), None)
-    return coords[time_coord].values
+    time_coord = next((c for c in coords if 'time' in c.lower()), None)
+    return coords[time_coord]
 
 
 def stack_trials(

@@ -74,14 +74,18 @@ class LinePlot(BasePlot):
             return self._buffered_ds
 
         ds = self.app_state.ds
-        time = self.app_state.time
+        time = self.app_state.time.values
 
         window_size = t1 - t0
         buffer_size = window_size * self._buffer_multiplier
         load_t0 = max(time[0], t0 - buffer_size / 2)
         load_t1 = min(time[-1], t1 + buffer_size / 2)
 
-        self._buffered_ds = ds.sel(time=slice(load_t0, load_t1))
+        time_coord_name = self.app_state.time.name
+        self._buffered_ds = ds.sel({time_coord_name: slice(load_t0, load_t1)})
+        
+
+        
         self._buffer_t0 = load_t0
         self._buffer_t1 = load_t1
 

@@ -153,7 +153,7 @@ Different DataArrays can have different time coordinates (e.g., `time`, `time_au
 
 **Core utility** (`data_utils.py`):
 ```python
-def get_time_coords(da: xr.DataArray) -> np.ndarray:
+def get_time_coord(da: xr.DataArray) -> np.ndarray:
     """Select whichever time coord is available for a given DataArray."""
     coords = da.coords
     time_coord = next((c for c in coords if 'time' in c), None)
@@ -167,13 +167,13 @@ def get_time_coords(da: xr.DataArray) -> np.ndarray:
 **Usage pattern:**
 ```
 Feature DataArray    ->  time coord: "time" or "time_aux"  ->  app_state.time
-Labels DataArray     ->  time coord: "time" or "time_labels"  ->  get_time_coords(label_ds.labels)
+Labels DataArray     ->  time coord: "time" or "time_labels"  ->  get_time_coord(label_ds.labels)
 ```
 
 **Where used:**
 - `LinePlot._get_buffered_ds()`: Uses `app_state.time` for buffer range calculations
 - `BasePlot.set_x_range()`: Uses `app_state.time` for x-axis limits
-- `DataWidget.update_motif_plot()`: Uses `get_time_coords(label_ds.labels)` to get labels' own time
+- `DataWidget.update_motif_plot()`: Uses `get_time_coord(label_ds.labels)` to get labels' own time
 - `LabelsWidget`: Uses `app_state.label_sr` for time-to-index conversions when creating/editing labels
 
 This decoupling allows features to be sampled at different rates than labels while both display correctly on the same plot.

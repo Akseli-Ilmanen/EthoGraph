@@ -35,6 +35,7 @@ class NapariVideoSync(QObject):
         self.video_layer = None
         self._audio_player: Optional[PlayAudio] = None
         self._monitor_timer = QTimer()
+        self._monitor_timer.timeout.connect(self._check_segment_playback)
         self._monitor_end_frame = 0
 
         self.total_frames = 0
@@ -103,6 +104,9 @@ class NapariVideoSync(QObject):
         self.stop() if self.is_playing else self.start()
 
     def play_segment(self, start_frame: int, end_frame: int):
+        self._monitor_timer.stop()
+        self._stop_audio()
+
         self.seek_to_frame(start_frame)
         self._monitor_end_frame = end_frame
 
@@ -123,26 +127,24 @@ class NapariVideoSync(QObject):
             self._audio_player.play(data=segment, rate=float(rate), blocking=False)
 
         self.qt_viewer.dims.play(axis=0, fps=self.fps_playback)
+        self._monitor_timer.start(int(1000 / self.fps_playback / 2))
 
-        def check_playback():
-            should_stop = not self.is_playing or self.app_state.current_frame >= self._monitor_end_frame
-            if should_stop:
-                self._monitor_timer.stop()
-                self.stop()
-                if self._audio_player:
-                    self._audio_player.stop()
-                    self._audio_player.__exit__(None, None, None)
-                    self._audio_player = None
+    def _check_segment_playback(self):
+        should_stop = not self.is_playing or self.app_state.current_frame >= self._monitor_end_frame
+        if should_stop:
+            self._monitor_timer.stop()
+            self.stop()
+            self._stop_audio()
 
-        self._monitor_timer.timeout.connect(check_playback)
-        self._monitor_timer.start(int(1000 / self.fps_playback / 20))
+    def _stop_audio(self):
+        if self._audio_player:
+            self._audio_player.stop()
+            self._audio_player.__exit__(None, None, None)
+            self._audio_player = None
 
     def cleanup(self):
         self.viewer.dims.events.current_step.disconnect(self._on_napari_step_change)
         self._monitor_timer.stop()
         self._monitor_timer.deleteLater()
-        if self._audio_player:
-            self._audio_player.stop()
-            self._audio_player.__exit__(None, None, None)
-            self._audio_player = None
+        self._stop_audio()
         self.stop()

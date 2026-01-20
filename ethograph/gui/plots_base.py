@@ -129,7 +129,7 @@ class BasePlot(pg.PlotWidget):
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
 
-        time = self.app_state.time
+        time = self.app_state.time.values
 
         if mode == 'center':
             if not hasattr(self.app_state, 'window_size'):
@@ -177,7 +177,7 @@ class BasePlot(pg.PlotWidget):
             x_range = current_xlim[1] - current_xlim[0]
 
             if hasattr(self.app_state, 'ds') and self.app_state.ds is not None:
-                time = self.app_state.time
+                time = self.app_state.time.values
                 data_xmin = float(time[0])
                 data_xmax = float(time[-1])
 
@@ -218,7 +218,7 @@ class BasePlot(pg.PlotWidget):
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
 
-        time = self.app_state.time
+        time = self.app_state.time.values
         xMin = time[0]
         xMax = time[-1]
         xRange = xMax - xMin
@@ -253,11 +253,3 @@ class BasePlot(pg.PlotWidget):
         }
         self.plot_clicked.emit(click_info)
 
-
-
-    def update_yrange(self, ymin: Optional[float], ymax: Optional[float]):
-        """Update y-axis range."""
-        if self.app_state.sync_state == "pyav_stream_mode":
-            return
-
-        self.apply_y_range(ymin, ymax)
