@@ -27,7 +27,7 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.gui.parameters import create_function_selector
-from ethograph.utils.data_utils import sel_valid, get_time_coords
+from ethograph.utils.data_utils import sel_valid, get_time_coord
 from ethograph.utils.io import downsample_trialtree
 from .data_loader import load_dataset
 from .plots_space import SpacePlot
@@ -155,13 +155,11 @@ class DataWidget(DataLoader, QWidget):
         
     
         features_list = list(self.type_vars_dict["features"])
-        self.app_state.time = get_time_coords(self.app_state.ds[features_list[0]])
+        self.app_state.time = get_time_coord(self.app_state.ds[features_list[0]])
         
 
-        coords = self.app_state.ds.labels.coords
-        if any('time' in coord for coord in coords):
-            time_coord = next(coord for coord in coords if 'time' in coord)
-            self.app_state.label_sr = self._get_sampling_rate(self.app_state.label_ds.labels[time_coord].values)
+        time_coord = get_time_coord(self.app_state.ds.labels)
+        self.app_state.label_sr = self._get_sampling_rate(time_coord.values)
 
 
 
@@ -499,7 +497,7 @@ class DataWidget(DataLoader, QWidget):
         ds = self.app_state.ds
         arr = ds[self.app_state.features_sel]
 
-        excluded = ["time"] + list(self.type_vars_dict.keys())
+        excluded = [d for d in arr.dims if 'time' in d.lower()] + list(self.type_vars_dict.keys())
         if all(dim in excluded for dim in arr.dims):
             return None
 
@@ -579,6 +577,7 @@ class DataWidget(DataLoader, QWidget):
                     self.plot_container.switch_to_audiotrace()
                 else:
                     self.plot_container.switch_to_lineplot()
+                    self.app_state.time = get_time_coord(self.app_state.ds[selected_value])
 
                 self._update_audio_overlay_checkboxes()
                 self._update_audio_overlay()
@@ -741,6 +740,10 @@ class DataWidget(DataLoader, QWidget):
             self.app_state.trials_sel = self.app_state.trials[0]
             print(f"Error selecting trial {trials_sel}: {e}")
 
+        feature_sel = getattr(self.app_state, 'features_sel', None)
+        if feature_sel and feature_sel not in ("Spectrogram", "Waveform"):
+            self.app_state.time = get_time_coord(self.app_state.ds[feature_sel])
+
         self.app_state.current_frame = 0
         self.update_video_audio()
         self.update_tracking()
@@ -792,7 +795,7 @@ class DataWidget(DataLoader, QWidget):
         
         
         
-        time = get_time_coords(label_ds.labels)
+        time = get_time_coord(label_ds.labels)
         labels, _ = sel_valid(label_ds.labels, ds_kwargs)
 
 
@@ -817,7 +820,7 @@ class DataWidget(DataLoader, QWidget):
 
 
     def update_video_audio(self):
-        """Update video and audio using appropriate sync manager based on sync_state."""
+        """Update video and audio."""
         if not self.app_state.ready or not self.app_state.video_folder:
             return
 

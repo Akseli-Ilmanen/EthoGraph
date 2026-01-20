@@ -100,10 +100,6 @@ class LabelsWidget(QWidget):
         self.motif_mappings = load_motif_mapping(mapping_path) # HARD CODED FOR NOW
         self._populate_motifs_table()
 
-        self._sync_disabled = False
-        self._in_labeling_operation = False  # Add flag to prevent re-entrance
-        self._operation_lock = threading.Lock()  # Thread-safe flag
-        
 
 
     def _mark_changes_unsaved(self):
@@ -908,16 +904,8 @@ class LabelsWidget(QWidget):
             print("No motif selected for playback")
             return
 
-        if self.app_state.sync_state not in ["napari_video_mode", "napari_video_mode_paused"]:
-            self.app_state.sync_state = "napari_video_mode" # fallback
-
-
-        if (
-            self.app_state.sync_state != "napari_video_mode"
-            or not self.current_motif_id
-            or len(self.current_motif_pos) != 2
-        ):
-            print(f"Playback conditions not met - sync_state: {self.app_state.sync_state}, motif_id: {self.current_motif_id}, pos_len: {len(self.current_motif_pos) if self.current_motif_pos else 0}")
+        if not self.current_motif_id or len(self.current_motif_pos) != 2:
+            print(f"Playback conditions not met - motif_id: {self.current_motif_id}, pos_len: {len(self.current_motif_pos) if self.current_motif_pos else 0}")
             return
 
         # Label idxs -> Time -> Frame idxs
@@ -930,12 +918,6 @@ class LabelsWidget(QWidget):
             self.app_state.video.play_segment(start_frame, end_frame)
         else:
             print("No video available for playback.")
-
-
-
-
-
-        
 
 
 
