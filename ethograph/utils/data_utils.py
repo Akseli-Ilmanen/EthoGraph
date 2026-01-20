@@ -163,6 +163,54 @@ def ds_to_df(ds):
     return pd.DataFrame(df)
 
 
+def build_speed_dict(
+    trees: Dict[str, TrialTree],
+    keypoint: str = "beakTip",
+    individual: str = None,
+) -> Dict[Tuple[str, int], np.ndarray]:
+    """
+    Build dictionary mapping (session, trial) to pre-computed angle_rgb arrays.
+
+    Parameters
+    ----------
+    trees : Dict[str, TrialTree]
+        Same trees dict used for stack_trials.
+    keypoint : str
+        Keypoint to extract angles for (default: "beakTip").
+    individual : str, optional
+        Individual to select. If None, uses first available.
+
+    Returns
+    -------
+    Dict[Tuple[str, int], np.ndarray]
+        Mapping of (session, trial) -> angle_rgb array with shape (time,).
+    """
+    speed_dict = {}
+
+    for tree in trees.values():
+        for trial_name in tree.children:
+            if not trial_name.startswith("trial_"):
+                continue
+
+            trial_ds = tree[trial_name].ds
+
+            session = trial_ds.attrs.get('session')
+            trial_num = int(trial_name.split('_')[1])
+
+            speed = trial_ds.speed.sel(keypoints=keypoint)
+
+            if individual is not None:
+                speed = speed.sel(individuals=individual)
+            elif 'individuals' in speed.dims:
+                speed = speed.isel(individuals=0)
+            
+            speed_dict[(session, trial_num)] = speed.values
+            
+    
+
+    return speed_dict
+
+
 def build_angle_rgb_dict(
     trees: Dict[str, TrialTree],
     keypoint: str = "beakTip",
