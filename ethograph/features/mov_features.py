@@ -7,7 +7,7 @@ from typing import Dict, Tuple, Any, List
 from pathlib import Path
 import xarray as xr
 from scipy.signal import find_peaks, peak_prominences
-
+import pandas as pd
 
 from typing import Union
 import numpy as np
@@ -432,135 +432,29 @@ def stats_histograms(speed_stats: Dict[int, Dict[str, float]], hist_stats: Dict[
     plt.close(fig)
 
 
-def create_event_aligned_heatmap(
-    xy_positions: np.ndarray,
-    event_indices: np.ndarray,
-    fs: float,
-    window: float = 1.0,
-    sort_by_duration: np.ndarray = None,
-    smooth_func=None,
-    smoothing_params: dict = None,
-    ax: plt.Axes = None,
-    cmap: str = 'hsv',
-    show_event_markers: bool = True,
-) -> Tuple[plt.Figure, plt.Axes, np.ndarray]:
-    """
-    Create event-aligned heatmap of movement angles.
 
-    Parameters
-    ----------
-    xy_positions : np.ndarray
-        Position data with shape (time, 2) or (time, >=2). Uses first two columns as x, y.
-    event_indices : np.ndarray
-        Frame indices to align events to (e.g., motif starts).
-    fs : float
-        Sampling rate in Hz.
-    window : float
-        Time window in seconds on each side of the event (default 1.0s).
-    sort_by_duration : np.ndarray, optional
-        If provided, sorts rows by these durations and draws end markers.
-    smooth_func : callable, optional
-        Function to smooth positions before angle calculation.
-    smoothing_params : dict, optional
-        Parameters for the smoothing function.
-    ax : plt.Axes, optional
-        Axes to plot on. If None, creates new figure.
-    cmap : str
-        Colormap name (default 'hsv' for cyclic angles).
-    show_event_markers : bool
-        Draw vertical lines at event onset (t=0) and optionally at durations.
-
-    Returns
-    -------
-    fig : plt.Figure
-        The matplotlib figure.
-    ax : plt.Axes
-        The axes with the heatmap.
-    aligned_data : np.ndarray
-        The aligned angle data matrix (n_events, time_points).
-    """
-    rgb_matrix, angles = get_angle_rgb(xy_positions, smooth_func, smoothing_params)
-
-    window_frames = int(window * fs)
-    time_axis = np.linspace(-window, window, window_frames * 2 + 1)
-    n_events = len(event_indices)
-
-    aligned_data = np.full((n_events, len(time_axis)), np.nan)
-
-    for i, event_idx in enumerate(event_indices):
-        start_frame = event_idx - window_frames
-        end_frame = event_idx + window_frames
-
-        data_start = max(0, start_frame)
-        data_end = min(len(angles), end_frame + 1)
-
-        if data_start >= data_end:
-            continue
-
-        extracted = angles[data_start:data_end]
-
-        target_start = max(0, data_start - start_frame)
-        target_end = target_start + len(extracted)
-
-        aligned_data[i, target_start:target_end] = extracted
-
-    if sort_by_duration is not None:
-        sort_order = np.argsort(sort_by_duration)
-        aligned_data = aligned_data[sort_order]
-        sort_by_duration = sort_by_duration[sort_order]
-
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 6))
-    else:
-        fig = ax.get_figure()
-
-    masked_data = np.ma.masked_invalid(aligned_data)
-    im = ax.imshow(
-        masked_data,
-        aspect='auto',
-        extent=[time_axis[0], time_axis[-1], 0, n_events],
-        origin='lower',
-        cmap=cmap,
-        vmin=0,
-        vmax=359,
-    )
-    ax.set_facecolor('white')
-
-    if show_event_markers:
-        ax.axvline(0, color='black', linewidth=1, linestyle='-')
-
-        if sort_by_duration is not None:
-            for i, duration in enumerate(sort_by_duration):
-                ax.plot([duration, duration], [i, i + 1], color='black', linewidth=1)
-
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Events')
-    ax.set_yticks([])
-
-    cbar = fig.colorbar(im, ax=ax, label='Angle (°)')
-
-    return fig, ax, aligned_data
 
 
 def create_heatmap_from_segments(
-    df: 'pd.DataFrame',
-    angle_rgb_dict: Dict[Tuple[str, int], np.ndarray],
+    df: pd.DataFrame,
+    data_dict: Dict[Tuple[str, int], np.ndarray],
     fs: float,
     label_filter: int = None,
     window: float = 1.0,
     align_to: str = 'start',
     sort_by: str = 'duration',
+    cmap: str = None,
 ) -> Tuple[plt.Figure, plt.Axes, np.ndarray]:
     """
-    Create heatmap from segment DataFrame using pre-computed angle_rgb.
+    Create heatmap from segment DataFrame using pre-computed data.
 
     Parameters
     ----------
     df : pd.DataFrame
         Segment DataFrame from ds_to_df with session and trial columns.
-    angle_rgb_dict : Dict[Tuple[str, int], np.ndarray]
-        Mapping of (session, trial) -> angle_rgb array (time, 3).
-        Use build_angle_rgb_dict() to create this.
+    data_dict : Dict[Tuple[str, int], np.ndarray]
+        Mapping of (session, trial) -> data array.
+        Shape (time, 3) for RGB or (time,) / (time, 1) for grayscale.
     fs : float
         Sampling rate in Hz.
     label_filter : int, optional
@@ -571,10 +465,12 @@ def create_heatmap_from_segments(
         Align to 'start' or 'stop' of segments.
     sort_by : str
         Sort events by 'duration', 'trial', or None.
+    cmap : str, optional
+        Colormap for grayscale data. Ignored for RGB.
 
     Returns
     -------
-    fig, ax, aligned_rgb
+    fig, ax, aligned_data
     """
     if label_filter is not None:
         df = df[df['label'] == label_filter]
@@ -584,59 +480,59 @@ def create_heatmap_from_segments(
 
     event_indices = []
     durations = []
-    all_rgb = []
+    all_data = []
     offset = 0
 
-    # Group by unique (session, trial) pairs
     for (session, trial), trial_df in df.groupby(['session', 'trial']):
-        rgb_data = angle_rgb_dict.get((session, trial))
-
+        data = data_dict.get((session, trial))
 
         for _, row in trial_df.iterrows():
-            if align_to == 'start':
-                event_idx = int(row['start'] * fs) + offset
-            else:
-                event_idx = int(row['stop'] * fs) + offset
-
+            event_idx = int(row[align_to] * fs) + offset
             event_indices.append(event_idx)
             durations.append(row['duration'])
 
-        all_rgb.append(rgb_data)
-        offset += len(rgb_data)
+        all_data.append(data)
+        offset += len(data)
 
-    if not all_rgb:
-        raise ValueError("No RGB data found for trials in DataFrame")
+    if not all_data:
+        raise ValueError("No data found for trials in DataFrame")
 
-    combined_rgb = np.concatenate(all_rgb, axis=0)
+    combined_data = np.concatenate(all_data, axis=0)
     event_indices = np.array(event_indices)
     durations = np.array(durations)
 
     sort_durations = durations if sort_by == 'duration' else None
+    
+    if window is None:
+        window = np.max(durations) * 1.3
 
-    return create_rgb_heatmap(
-        combined_rgb,
+    return create_aligned_heatmap(
+        combined_data,
         event_indices,
         fs,
         window=window,
         sort_by_duration=sort_durations,
+        cmap=cmap,
     )
 
 
-def create_rgb_heatmap(
-    rgb_data: np.ndarray,
+def create_aligned_heatmap(
+    data: np.ndarray,
     event_indices: np.ndarray,
     fs: float,
     window: float = 1.0,
     sort_by_duration: np.ndarray = None,
     ax: plt.Axes = None,
+    cmap: str = None,
 ) -> Tuple[plt.Figure, plt.Axes, np.ndarray]:
     """
-    Create event-aligned heatmap from pre-computed RGB data.
+    Create event-aligned heatmap from data.
 
     Parameters
     ----------
-    rgb_data : np.ndarray
-        RGB values with shape (time, 3). Values in [0, 1] or [0, 255].
+    data : np.ndarray
+        Data with shape (time, 3) for RGB or (time,) / (time, 1) for grayscale.
+        RGB values in [0, 1] or [0, 255].
     event_indices : np.ndarray
         Indices of events to align to.
     fs : float
@@ -647,65 +543,136 @@ def create_rgb_heatmap(
         If provided, sort rows by duration and draw end markers.
     ax : plt.Axes, optional
         Axes to plot on. If None, creates new figure.
+    cmap : str, optional
+        Colormap for grayscale data (e.g., 'viridis', 'gray').
+        Ignored for RGB data.
 
     Returns
     -------
-    fig, ax, aligned_rgb
+    fig, ax, aligned_data
     """
-    window_frames = int(window * fs)
-    n_frames = 2 * window_frames + 1
-    n_events = len(event_indices)
+    is_rgb = data.ndim == 2 and data.shape[1] == 3
+    
+    print("Creating heatmap...")
+    print(f"Data shape: {data.shape}, Number of events: {len(event_indices)}")
+    
+    if data.ndim == 1:
+        data = data[:, np.newaxis]
 
-    aligned_rgb = np.full((n_events, n_frames, 3), np.nan)
-
-    for i, event_idx in enumerate(event_indices):
-        start_idx = event_idx - window_frames
-        end_idx = event_idx + window_frames + 1
-
-        src_start = max(0, start_idx)
-        src_end = min(len(rgb_data), end_idx)
-
-        if src_start >= src_end:
-            continue
-
-        tgt_start = src_start - start_idx
-        tgt_end = tgt_start + (src_end - src_start)
-
-        aligned_rgb[i, tgt_start:tgt_end, :] = rgb_data[src_start:src_end]
-
-    # Normalize to [0, 1] if needed
-    if np.nanmax(aligned_rgb) > 1.0:
-        aligned_rgb = aligned_rgb / 255.0
-
+    
+    if is_rgb:
+        aligned_data = _align_data_to_events(data, event_indices, fs, window, normalize=False)
+    else:
+        aligned_data = _align_data_to_events(data, event_indices, fs, window, normalize=True)    
+    
+    
     if sort_by_duration is not None:
-        order = np.argsort(sort_by_duration)
-        aligned_rgb = aligned_rgb[order]
-        sort_by_duration = sort_by_duration[order]
-
+        aligned_data, sort_by_duration = _sort_by_duration(aligned_data, sort_by_duration)
+    
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
     else:
         fig = ax.get_figure()
-
-    # Replace NaN with white for display
-    display_rgb = np.nan_to_num(aligned_rgb, nan=1.0)
-
-    ax.imshow(
-        display_rgb,
-        aspect='auto',
-        extent=[-window, window, 0, n_events],
-        origin='lower',
-        interpolation='nearest',
-    )
-
-    ax.axvline(0, color='black', linewidth=1, linestyle='-')
-
-    if sort_by_duration is not None:
-        for i, dur in enumerate(sort_by_duration):
-            ax.plot([dur, dur], [i, i + 1], color='black', linewidth=0.5)
-
+    
+    _plot_heatmap(ax, aligned_data, window, is_rgb, cmap)
+    _add_event_markers(ax, sort_by_duration)
+    
     ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Trials')
+    ax.set_ylabel(f'Syllables (n={aligned_data.shape[0]})')
     ax.set_yticks([])
+    
+    return fig, ax, aligned_data
 
-    return fig, ax, aligned_rgb
+
+def _align_data_to_events(
+    data: np.ndarray,
+    event_indices: np.ndarray,
+    fs: float,
+    window: float,
+    normalize: bool = False,
+) -> np.ndarray:
+    """Align data to event indices with specified time window."""
+    window_frames = int(window * fs)
+    n_frames = 2 * window_frames + 1
+    n_events = len(event_indices)
+    n_channels = data.shape[1]
+    
+    aligned_data = np.full((n_events, n_frames, n_channels), np.nan)
+    
+    for i, event_idx in enumerate(event_indices):
+        start_idx = event_idx - window_frames
+        end_idx = event_idx + window_frames + 1
+        
+        src_start = max(0, start_idx)
+        src_end = min(len(data), end_idx)
+        
+        if src_start >= src_end:
+            continue
+        
+        tgt_start = src_start - start_idx
+        tgt_end = tgt_start + (src_end - src_start)
+        
+        aligned_data[i, tgt_start:tgt_end, :] = data[src_start:src_end]
+        
+        if normalize:
+            event_data = aligned_data[i, :, 0]
+            from ethograph.features.preprocessing import interpolate_nans
+            
+            
+            event_data = interpolate_nans(event_data)
+            event_data = np.clip(event_data, np.nanpercentile(event_data, 0), np.nanpercentile(event_data, 80))
+            aligned_data[i, :, 0] = (event_data - np.mean(event_data)) / np.std(event_data)  
+
+    
+    return aligned_data
+
+
+def _sort_by_duration(
+    aligned_data: np.ndarray,
+    durations: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Sort aligned data by duration."""
+    order = np.argsort(durations)
+    return aligned_data[order], durations[order]
+
+
+def _plot_heatmap(
+    ax: plt.Axes,
+    aligned_data: np.ndarray,
+    window: float,
+    is_rgb: bool,
+    cmap: str,
+) -> None:
+    """Plot the aligned data as a heatmap."""
+    n_events = aligned_data.shape[0]
+    
+    if is_rgb:
+        if np.nanmax(aligned_data) > 1.0:
+            aligned_data = aligned_data / 255.0
+        display_data = np.nan_to_num(aligned_data, nan=1.0)
+        ax.imshow(
+            display_data,
+            aspect='auto',
+            extent=[-window, window, 0, n_events],
+            origin='lower',
+            interpolation='nearest',
+        )
+    else:
+        display_data = aligned_data.squeeze()
+        ax.imshow(
+            display_data,
+            aspect='auto',
+            extent=[-window, window, 0, n_events],
+            origin='lower',
+            cmap=cmap or 'viridis',
+            interpolation='nearest',
+        )
+
+
+def _add_event_markers(ax: plt.Axes, durations: np.ndarray = None) -> None:
+    """Add event onset and duration markers to heatmap."""
+    ax.axvline(0, color='red', linewidth=3, linestyle='-')
+    
+    if durations is not None:
+        for i, dur in enumerate(durations):
+            ax.plot([dur, dur], [i, i + 1], color='red', linewidth=3)
