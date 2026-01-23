@@ -16,3 +16,5 @@
 15 nodding
 16 beakToDisp
 17 stickInDispTwo
+18 loseStick
+19 beakToStickBase
