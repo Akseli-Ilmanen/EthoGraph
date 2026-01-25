@@ -221,7 +221,7 @@ class SpectrogramBuffer:
 
     def get_spectrogram(self, audio_path, t0, t1):
         """Get spectrogram data, computing only if necessary."""
-        channel_idx = getattr(self.app_state, 'audio_channel_idx', 0)
+        _, channel_idx = self.app_state.get_audio_source()
 
         if audio_path != self.current_path or channel_idx != self.current_channel:
             self._clear_buffer()
@@ -263,7 +263,7 @@ class SpectrogramBuffer:
 
         audio_data = audio_loader[i0:i1]
         if audio_data.ndim > 1:
-            channel_idx = getattr(self.app_state, 'audio_channel_idx', 0)
+            _, channel_idx = self.app_state.get_audio_source()
             n_channels = audio_data.shape[1]
             channel_idx = min(channel_idx, n_channels - 1)
             audio_data = audio_data[:, channel_idx]

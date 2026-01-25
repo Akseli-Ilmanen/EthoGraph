@@ -14,13 +14,12 @@
 
 ## Axes
 
-Control x and y-axes limits
 
 ![axes_settings](media/axes_settings.gif)
 
 
-- **Auto-scale**: Automatically adjust Y-axis based on visible data. Helpful when switching between features (see video).
-- **Fixed range**: Lock Y-axis to specific values for consistent viewing.
+- **Auto-scale axes** (`Ctrl + A`): Automatically adjust Y-axis based on visible data. Helpful when switching between features (see video).
+- **Lock axes** (`Ctrl + L`): Lock Y-axis to specific values for consistent viewing.
 
 
 

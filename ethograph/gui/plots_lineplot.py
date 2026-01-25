@@ -123,6 +123,10 @@ class LinePlot(BasePlot):
         ds_kwargs = self.app_state.get_ds_kwargs()
         feature_sel = self.app_state.features_sel
 
+        # Skip audio-specific features - they use dedicated plots
+        if feature_sel in ("Spectrogram", "Waveform"):
+            return
+
         color_var = None
         if hasattr(self.app_state, 'colors_sel') and self.app_state.colors_sel != "None":
             color_var = self.app_state.colors_sel
@@ -152,6 +156,9 @@ class LinePlot(BasePlot):
             return
 
         feature_sel = self.app_state.features_sel
+        if feature_sel in ("Spectrogram", "Waveform"):
+            return
+
         ds_kwargs = self.app_state.get_ds_kwargs()
 
         try:

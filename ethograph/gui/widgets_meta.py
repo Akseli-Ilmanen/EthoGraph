@@ -297,7 +297,8 @@ class MetaWidget(CollapsibleWidgetContainer):
         control_row = ['e', 'd', 'f', 'i', 'k', 'c', 'm', 't', 'n', 'p']
         other = ['y', 'space', 'Up', 'Down', 'v', 'x']
 
-        combos = ['Ctrl-a', 'Ctrl-s', 'Ctrl+x', 'Ctrl-v']
+        combos = ['Ctrl-a', 'Ctrl-s', 'Ctrl-x', 'Ctrl-v', 'Ctrl-l', 'Ctrl-enter', 'Ctrl-d', 
+                  'Ctrl-e', 'Ctrl-f', 'Ctrl-i', 'Ctrl-k', 'Ctrl-c', 'Ctrl-m', 'Ctrl-t']
 
         all_keys = number_keys + qwerty_row + home_row + control_row + other + combos
         
@@ -353,7 +354,7 @@ class MetaWidget(CollapsibleWidgetContainer):
                 menubar = window._qt_window.menuBar()
                 for menu in menubar.findChildren(QMenu):
                     for action in menu.actions():
-                        if action.shortcut().toString() in ['Ctrl+S', 'Ctrl+A']:
+                        if action.shortcut().toString() in ['Ctrl+S', 'Ctrl+A', 'Ctrl+M']:
                             action.setShortcut('')
 
 

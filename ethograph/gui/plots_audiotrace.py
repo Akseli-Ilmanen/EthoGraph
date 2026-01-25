@@ -133,7 +133,7 @@ class AudioTraceBuffer:
 
     def get_trace_data(self, audio_path, t0, t1):
         """Get audio trace data with smart min/max downsampling."""
-        channel_idx = getattr(self.app_state, 'audio_channel_idx', 0)
+        _, channel_idx = self.app_state.get_audio_source()
 
         if audio_path != self.current_path or channel_idx != self.current_channel:
             self.current_path = audio_path

@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, Optional, Union, List, Set, get_args
 from ethograph.utils.validation import validate_datatree
 from movement.kinematics import compute_velocity, compute_speed, compute_acceleration, compute_pairwise_distances
 from movement.io import load_poses
-from ethograph.features.audio_features import get_synced_envelope
+from ethograph.features.audio_features import get_envelope
 
 
 
@@ -516,7 +516,7 @@ def minimal_dt_from_audio(video_path, fps, audio_path, audio_sr, individuals=Non
     if individuals is None:
         individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
 
-    envelope, gen_wav_path = get_synced_envelope(audio_path, audio_sr, fps)
+    envelope, gen_wav_path = get_envelope(audio_path, audio_sr, fps)
 
     if gen_wav_path:
         audio_path = gen_wav_path
@@ -541,9 +541,7 @@ def minimal_dt_from_audio(video_path, fps, audio_path, audio_sr, individuals=Non
         ds["audio_envelope"] = (["time", "channels"], envelope)
     else:
         raise ValueError("Envelope must be 1D or 2D array")
-        
-
-        
+                
 
     ds.attrs["audio_sr"] = audio_sr
     ds.attrs["fps"] = fps

@@ -36,8 +36,6 @@ class IOWidget(QWidget):
         self.combos = {}
         # List to store controls for enabling/disabling
         self.controls = []
-        # Mapping from display name to (mic_name, channel_idx) for multi-channel audio
-        self.mic_channel_map = {}
         
         
 
@@ -253,9 +251,9 @@ class IOWidget(QWidget):
     def _expand_mics_with_channels(self, mic_names) -> list[str]:
         """Expand mic names to include channel info for multi-channel files.
 
-        Returns list of display names and populates self.mic_channel_map.
+        Returns list of display names and populates app_state.audio_source_map.
         """
-        self.mic_channel_map.clear()
+        self.app_state.audio_source_map.clear()
         expanded_items = []
 
         audio_folder = self.app_state.audio_folder
@@ -264,7 +262,7 @@ class IOWidget(QWidget):
         if not audio_folder or ds is None:
             for mic in mic_names:
                 display_name = str(mic)
-                self.mic_channel_map[display_name] = (str(mic), 0)
+                self.app_state.audio_source_map[display_name] = (str(mic), 0)
                 expanded_items.append(display_name)
             return expanded_items
 
@@ -274,7 +272,7 @@ class IOWidget(QWidget):
                 audio_file = ds.attrs.get(mic_str)
                 if not audio_file:
                     display_name = mic_str
-                    self.mic_channel_map[display_name] = (mic_str, 0)
+                    self.app_state.audio_source_map[display_name] = (mic_str, 0)
                     expanded_items.append(display_name)
                     continue
 
@@ -284,22 +282,18 @@ class IOWidget(QWidget):
                 if n_channels > 1:
                     for ch in range(n_channels):
                         display_name = f"{mic_str} (Ch {ch + 1})"
-                        self.mic_channel_map[display_name] = (mic_str, ch)
+                        self.app_state.audio_source_map[display_name] = (mic_str, ch)
                         expanded_items.append(display_name)
                 else:
                     display_name = mic_str
-                    self.mic_channel_map[display_name] = (mic_str, 0)
+                    self.app_state.audio_source_map[display_name] = (mic_str, 0)
                     expanded_items.append(display_name)
             except Exception:
                 display_name = mic_str
-                self.mic_channel_map[display_name] = (mic_str, 0)
+                self.app_state.audio_source_map[display_name] = (mic_str, 0)
                 expanded_items.append(display_name)
 
         return expanded_items
-
-    def get_mic_and_channel(self, display_name: str) -> tuple[str, int]:
-        """Get (mic_name, channel_idx) from a mic combo display name."""
-        return self.mic_channel_map.get(display_name, (display_name, 0))
 
     def _create_combo_widget(self, key, vars, layout):
         """Create a combo box widget for a given info key."""
@@ -335,17 +329,18 @@ class IOWidget(QWidget):
 
         self.downsample_checkbox = QCheckBox("Downsample:")
         self.downsample_checkbox.setObjectName("downsample_checkbox")
-        self.downsample_checkbox.setChecked(False)
+        self.downsample_checkbox.setChecked(self.app_state.downsample_enabled)
         self.downsample_checkbox.setToolTip("Downsample data on load for faster display")
         self.downsample_checkbox.toggled.connect(self._on_downsample_toggled)
 
         self.downsample_spin = QSpinBox()
         self.downsample_spin.setObjectName("downsample_spin")
         self.downsample_spin.setRange(2, 1000)
-        self.downsample_spin.setValue(100)
-        self.downsample_spin.setEnabled(False)
+        self.downsample_spin.setValue(self.app_state.downsample_factor)
+        self.downsample_spin.setEnabled(self.app_state.downsample_enabled)
         self.downsample_spin.setToolTip("Downsample factor (e.g., 100 = keep 1 in 100 samples)")
         self.downsample_spin.setFixedWidth(70)
+        self.downsample_spin.valueChanged.connect(self._on_downsample_value_changed)
 
         self.load_button = QPushButton("Load")
         self.load_button.setObjectName("load_button")
@@ -360,6 +355,11 @@ class IOWidget(QWidget):
     def _on_downsample_toggled(self, checked: bool):
         """Enable/disable downsample spinbox based on checkbox state."""
         self.downsample_spin.setEnabled(checked)
+        self.app_state.downsample_enabled = checked
+
+    def _on_downsample_value_changed(self, value: int):
+        """Update app_state when downsample factor changes."""
+        self.app_state.downsample_factor = value
 
     def disable_downsample_controls(self):
         """Disable downsample controls after data is loaded."""
