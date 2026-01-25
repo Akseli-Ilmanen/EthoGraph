@@ -11,7 +11,7 @@ from movement.filtering import rolling_filter, savgol_filter
 from movement.napari.loader_widgets import DataLoader
 from napari.utils.notifications import show_error
 from napari.viewer import Viewer
-from qtpy.QtCore import Qt, QTimer
+from qtpy.QtCore import Qt, QTimer, QSortFilterProxyModel
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QApplication,
@@ -23,8 +23,11 @@ from qtpy.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QWidget,
 )
+
+
 
 from ethograph.gui.parameters import create_function_selector
 from ethograph.utils.data_utils import sel_valid, get_time_coord
@@ -36,6 +39,21 @@ from .video_sync import NapariVideoSync
 
 # PyAV streamer with fixes 
 from napari_pyav._reader import FastVideoReader
+
+
+def make_searchable(combo_box: QComboBox) -> None:
+    combo_box.setFocusPolicy(Qt.StrongFocus)
+    combo_box.setEditable(True)
+    combo_box.setInsertPolicy(QComboBox.NoInsert)
+
+    filter_model = QSortFilterProxyModel(combo_box)
+    filter_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+    filter_model.setSourceModel(combo_box.model())
+
+    completer = QCompleter(filter_model, combo_box)
+    completer.setCompletionMode(QCompleter.UnfilteredPopupCompletion)
+    combo_box.setCompleter(completer)
+    combo_box.lineEdit().textEdited.connect(filter_model.setFilterFixedString)
 
 
 class DataWidget(DataLoader, QWidget):
@@ -69,6 +87,8 @@ class DataWidget(DataLoader, QWidget):
 
         # Dictionary to store all combo boxes
         self.combos = {}
+        # Dictionary to store "All" checkboxes for combo widgets
+        self.all_checkboxes = {}
         # Dictionary to store all controls for enabling/disabling
         self.controls = []
 
@@ -289,15 +309,20 @@ class DataWidget(DataLoader, QWidget):
         gap_label.setFixedHeight(10)  # Create visual gap
         self.layout().addRow(gap_label)
 
+        # Setup trial conditions in navigation widget
+        self.navigation_widget.setup_trial_conditions(self.type_vars_dict)
+        self.navigation_widget.set_data_widget(self)
+
         # 6. Now add remaining controls
-        remaining_type_vars = ["individuals", "keypoints", "features", "colors", "trial_conditions"]
+        non_data_type_vars = ["cameras", "mics", "tracking", "trial_conditions", "changepoints", "rgb"]
         
         
         
-        for type_var in remaining_type_vars:
-            if type_var in self.type_vars_dict.keys():
-                    
-                if type_var == "features" and self.app_state.audio_path:
+        
+        for type_var in self.type_vars_dict.keys():
+            if type_var.lower() not in non_data_type_vars:
+                has_audio = "mics" in self.type_vars_dict or self.app_state.audio_folder
+                if type_var == "features" and has_audio:
                     features_list = list(self.type_vars_dict[type_var])
                     features_with_audio = features_list + ["Spectrogram", "Waveform"]
                     self._create_combo_widget(type_var, features_with_audio)
@@ -439,104 +464,52 @@ class DataWidget(DataLoader, QWidget):
             io_collapsible.expand()
 
     def _create_combo_widget(self, key, vars):
-        """Create a combo box widget for a given info key."""
+        """Create a combo box widget for a given info key.
+
+        For qualifying type variables (not features, colors, cameras, mics,
+        tracking), adds an 'All' checkbox that shows all traces.
+        """
+        excluded_from_all = {"individuals", "features", "colors", "cameras", "mics", "tracking"}
+        show_all_checkbox = key not in excluded_from_all
 
         combo = QComboBox()
         combo.setObjectName(f"{key}_combo")
-        combo.currentTextChanged.connect(self._on_combo_changed)
-        if key in ["colors", "trial_conditions"]:
+        combo.currentIndexChanged.connect(self._on_combo_changed)
+        if key == "colors":
             colour_variables = ["None"] + [str(var) for var in vars]
             combo.addItems(colour_variables)
         else:
             combo.addItems([str(var) for var in vars])
-        
-        self.layout().addRow(f"{key.capitalize()}:", combo)
+
+        make_searchable(combo)
+
+        if show_all_checkbox:
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(5)
+
+            combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            row_layout.addWidget(combo)
+
+            all_checkbox = QCheckBox("All")
+            all_checkbox.setObjectName(f"{key}_all_checkbox")
+            all_checkbox.setToolTip(f"Show all {key} traces on the plot")
+            all_checkbox.stateChanged.connect(lambda state, k=key: self._on_all_checkbox_changed(k, state))
+            row_layout.addWidget(all_checkbox)
+
+            self.all_checkboxes[key] = all_checkbox
+            self.controls.append(all_checkbox)
+
+            self.layout().addRow(f"{key.capitalize()}:", row_widget)
+        else:
+            self.layout().addRow(f"{key.capitalize()}:", combo)
 
         self.combos[key] = combo
         self.controls.append(combo)
-
-        if key == "features":
-            self.feature_dims_input = QLineEdit()
-            self.feature_dims_input.setObjectName("feature_dims_input")
-            dim = self._get_dim()
-            if dim:
-                values = [str(v) for v in self.app_state.ds[dim].values.tolist()]
-                completer = QCompleter(["All"] + values)
-                completer.setMaxVisibleItems(10)
-                self.feature_dims_input.setCompleter(completer)
-                self._set_feature_dims_placeholder(values)
-            else:
-                completer = QCompleter(["N/A"])
-                self.feature_dims_input.setCompleter(completer)
-                self.feature_dims_input.setPlaceholderText("N/A")
-
-            self.layout().addRow("Feature Dims:", self.feature_dims_input)
-
             
-    
-            self.feature_dims_input.textChanged.connect(self._dim_changed)
-            self.controls.append(self.feature_dims_input)
-            self.combos["feature_dims"] = self.feature_dims_input
-            
-            
-
-        if key == "trial_conditions":
-            self.trial_conditions_value_combo = QComboBox()
-            self.trial_conditions_value_combo.setObjectName("trial_condition_value_combo")
-            self.trial_conditions_value_combo.addItem("None")
-            self.trial_conditions_value_combo.currentTextChanged.connect(self._on_trial_condition_values_changed)
-            self.layout().addRow("Filter by condition:", self.trial_conditions_value_combo)
-            self.controls.append(self.trial_conditions_value_combo)
+        
         return combo
-
-    def _get_dim(self):
-        """Return the non-time dimension for a given feature in ds."""
-        if not hasattr(self.app_state, 'features_sel') or self.app_state.features_sel in ("Spectrogram", "Waveform"):
-            return None
-
-        ds = self.app_state.ds
-        arr = ds[self.app_state.features_sel]
-
-        excluded = [d for d in arr.dims if 'time' in d.lower()] + list(self.type_vars_dict.keys())
-        if all(dim in excluded for dim in arr.dims):
-            return None
-
-        dim = next(dim for dim in arr.dims if dim not in excluded)
-        return dim
-
-    def _set_feature_dims_placeholder(self, values: list[str]) -> None:
-        """Set placeholder text on feature_dims_input showing available options."""
-        max_display = 8
-        if len(values) <= max_display:
-            placeholder = "all, " + ", ".join(values)
-        else:
-            displayed = values[:max_display]
-            placeholder = f"all, {', '.join(displayed)}, ... ({len(values)} total)"
-        self.feature_dims_input.setPlaceholderText(placeholder)
-
-    @staticmethod
-    def is_number(s: str) -> bool:
-        """Check if string can be converted to a number."""
-        try:
-            float(s)
-            return True
-        except (ValueError, TypeError):
-            return False
-
-    def _dim_changed(self):
-        dim = self._get_dim()
-        if dim:
-            input_text = self.feature_dims_input.text().strip()
-
-            if not input_text or input_text.lower() == "all":
-                setattr(self.app_state, f"{dim}_sel", None)
-            else:
-                if self.is_number(input_text):
-                    input_text = float(input_text) if '.' in input_text else int(input_text)
-                self.app_state.set_key_sel(dim, input_text)
-
-            xmin, xmax = self.plot_container.get_current_xlim()
-            self.update_main_plot(t0=xmin, t1=xmax)
 
 
     def _on_combo_changed(self):
@@ -586,33 +559,10 @@ class DataWidget(DataLoader, QWidget):
                 xmin, xmax = current_plot.get_current_xlim()
                 
                   
-                        
-                dim = self._get_dim()
-                if dim:
-                    values = [str(v) for v in self.app_state.ds[dim].values.tolist()]
-                    completer = QCompleter(["All"] + values)
-                    completer.setMaxVisibleItems(10)
-                    self.feature_dims_input.setCompleter(completer)
-                    self._set_feature_dims_placeholder(values)
-                    self.feature_dims_input.clear()
-
-                    if len(values) > 5:
-                        self.feature_dims_input.setText(values[0])
-                        input_val = self.feature_dims_input.text().strip()
-                        if self.is_number(input_val):
-                            input_val = float(input_val) if '.' in input_val else int(input_val)
-                        self.app_state.set_key_sel(dim, input_val)
-
-                else:
-                    completer = QCompleter(["N/A"])
-                    self.feature_dims_input.setCompleter(completer)
-                    self.feature_dims_input.setPlaceholderText("N/A")
-                    self.feature_dims_input.setText("N/A")
- 
             if key in ["cameras", "mics"]:
                 self.update_video_audio()
 
-            if key in ["features", "colors", "individuals", "keypoints", "feature_dims", "mics"]:
+            if key not in ["cameras", "tracking"]:
                 current_plot = self.plot_container.get_current_plot()
                 xmin, xmax = current_plot.get_current_xlim()
                 self.update_main_plot(t0=xmin, t1=xmax)
@@ -623,11 +573,47 @@ class DataWidget(DataLoader, QWidget):
 
             if key == "tracking":
                 self.update_tracking()
-        
-            if key == "trial_conditions":
-                self._update_trial_condition_values()
 
+    def _on_all_checkbox_changed(self, key: str, state: int):
+        """Handle 'All' checkbox state change for a type variable.
 
+        When checked, disables the combo and sets selection to None so all
+        values are shown on the plot. When unchecked, restores the combo.
+        Only one 'All' checkbox can be active at a time.
+        """
+        if not self.app_state.ready:
+            return
+
+        combo = self.combos.get(key)
+        if combo is None:
+            return
+
+        is_checked = state == Qt.Checked
+
+        if is_checked:
+            for other_key, other_checkbox in self.all_checkboxes.items():
+                if other_key != key and other_checkbox.isChecked():
+                    other_checkbox.blockSignals(True)
+                    other_checkbox.setChecked(False)
+                    other_checkbox.blockSignals(False)
+                    other_combo = self.combos.get(other_key)
+                    if other_combo:
+                        other_combo.setEnabled(True)
+                        self.app_state.set_key_sel(other_key, other_combo.currentText())
+
+        combo.setEnabled(not is_checked)
+
+        if is_checked:
+            self.app_state.set_key_sel(key, None)
+        else:
+            current_text = combo.currentText()
+            self.app_state.set_key_sel(key, current_text)
+
+        if key in ["individuals", "keypoints"]:
+            current_plot = self.plot_container.get_current_plot()
+            xmin, xmax = current_plot.get_current_xlim()
+            self.update_main_plot(t0=xmin, t1=xmax)
+            self.update_space_plot()
 
 
 
@@ -639,14 +625,9 @@ class DataWidget(DataLoader, QWidget):
             combo = self.io_widget.combos.get(key) or self.combos.get(key)
 
             if combo is not None:
-                if key == "trial_conditions":
-                    # Always default to None
-                    combo.setCurrentText("None")
-                    self.app_state.set_key_sel(key, "None")
-                elif self.app_state.key_sel_exists(key) and self.app_state.get_key_sel(key) in [str(var) for var in vars]:
+                if self.app_state.key_sel_exists(key) and self.app_state.get_key_sel(key) in [str(var) for var in vars]:
                     combo.setCurrentText(str(self.app_state.get_key_sel(key)))
                 else:
-                    # Default to first value
                     combo.setCurrentText(str(vars[0]))
                     self.app_state.set_key_sel(key, str(vars[0]))
 
@@ -668,55 +649,6 @@ class DataWidget(DataLoader, QWidget):
                 
    
 
-
-    def _update_trial_condition_values(self):
-        """Update the trial condition value dropdown based on selected key."""
-        filter_condition = self.app_state.trial_conditions_sel
-
-        if filter_condition == "None":
-            self.trial_conditions_value_combo.setCurrentText("None")
-            return
-
-        self.trial_conditions_value_combo.blockSignals(True)
-        self.trial_conditions_value_combo.clear()
-
-        if filter_condition in self.type_vars_dict.get("trial_conditions", []):
-    
-            filter_values = [node.ds.attrs[filter_condition] for node in self.app_state.dt.children.values()]
-            unique_values = np.unique(filter_values)
-
-            self.trial_conditions_value_combo.addItems(["None"] + [str(int(val)) for val in np.sort(unique_values)])
-
-        self.trial_conditions_value_combo.blockSignals(False)
-
-    def _on_trial_condition_values_changed(self):
-        """Update the available trials based on condition filtering."""
-        filter_condition = self.app_state.trial_conditions_sel
-        filter_value = self.trial_conditions_value_combo.currentText()
-
-        original_trials = self.app_state.dt.trials
-
-        if filter_condition != "None" and filter_value != "None":
-            filt_dt = self.app_state.dt.filter_by_attr(filter_condition, filter_value)
-            
-            
-            self.app_state.trials = list(set(original_trials) & set(filt_dt.trials))
-        else:
-            # Reset to all trials
-            self.app_state.trials = original_trials
-
-        # Update trials dropdown
-        self.navigation_widget.trials_combo.clear()
-        self.update_trials_combo()
-
-        # Update current trial if needed
-        if self.app_state.trials_sel not in self.app_state.trials:
-            if self.app_state.trials:
-                self.app_state.trials_sel = self.app_state.trials[0]
-                self.navigation_widget.trials_combo.setCurrentText(str(self.app_state.trials_sel))
-
-        self.navigation_widget.trials_combo.blockSignals(False)
-        self.update_main_plot()
 
 
 
@@ -1048,12 +980,13 @@ class DataWidget(DataLoader, QWidget):
             self.space_plot_combo.clear()
             self.space_plot_combo.addItems(["Layer controls"])
             self.space_plot_combo.setCurrentText("Layer controls")
-        
-        # Reset trial conditions combo if it exists
-        if hasattr(self, 'trial_conditions_value_combo'):
-            self.trial_conditions_value_combo.clear()
-            self.trial_conditions_value_combo.addItems(["None"])
-            self.trial_conditions_value_combo.setCurrentText("None")
+
+        # Reset trial conditions combos in navigation widget
+        if self.navigation_widget:
+            self.navigation_widget.trial_conditions_combo.clear()
+            self.navigation_widget.trial_conditions_combo.addItem("None")
+            self.navigation_widget.trial_conditions_value_combo.clear()
+            self.navigation_widget.trial_conditions_value_combo.addItem("None")
             
         # Clear navigation widget trials combo
         if self.navigation_widget and hasattr(self.navigation_widget, 'trials_combo'):

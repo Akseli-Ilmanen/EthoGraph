@@ -1,8 +1,11 @@
 """Enhanced navigation widget with proper sync mode handling."""
 
+import numpy as np
 from napari import Viewer
 from qtpy.QtCore import Signal
 from qtpy.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
+from magicgui.widgets import ComboBox
+
 
 
 class NavigationWidget(QWidget):
@@ -13,17 +16,35 @@ class NavigationWidget(QWidget):
         super().__init__(parent=parent)
         self.viewer = viewer
         self.app_state = app_state
-        
+        self.type_vars_dict = {}
+
         self.confidence_skip_combo = QComboBox()
         self.confidence_skip_combo.setObjectName("confidence_skip_combo")
         self.confidence_skip_combo.addItems(["Show all", "Show low confidence only", "Show high confidence only"])
-        confidence_label = QLabel("Trial filter:")
+        confidence_label = QLabel("Filter by confidence:")
         confidence_label.setObjectName("confidence_label")
+
+        # Trial conditions combo
+        self.trial_conditions_combo = QComboBox()
+        self.trial_conditions_combo.setObjectName("trial_conditions_combo")
+        self.trial_conditions_combo.addItem("None")
+        self.trial_conditions_combo.currentTextChanged.connect(self._on_trial_conditions_changed)
+        self.trial_conditions_label = QLabel("Filter by condition:")
+        self.trial_conditions_label.setObjectName("trial_conditions_label")
+
+        # Filter by condition value combo
+        self.trial_conditions_value_combo = QComboBox()
+        self.trial_conditions_value_combo.setObjectName("trial_condition_value_combo")
+        self.trial_conditions_value_combo.addItem("None")
+        self.trial_conditions_value_combo.currentTextChanged.connect(self._on_trial_condition_values_changed)
+        self.filter_label = QLabel("Condition value:")
+        self.filter_label.setObjectName("filter_label")
 
         # Trial selection combo
         self.trials_combo = QComboBox()
+        self.trials_combo.setEditable(True)
         self.trials_combo.setObjectName("trials_combo")
-        self.trials_combo.currentTextChanged.connect(self._on_trial_changed)
+        self.trials_combo.currentIndexChanged.connect(self._on_trial_changed)
         trial_label = QLabel("Trial:")
         trial_label.setObjectName("trial_label")
 
@@ -56,7 +77,13 @@ class NavigationWidget(QWidget):
         row0 = QHBoxLayout()
         row0.addWidget(confidence_label)
         row0.addWidget(self.confidence_skip_combo)
-        
+
+        row_conditions = QHBoxLayout()
+        row_conditions.addWidget(self.trial_conditions_label)
+        row_conditions.addWidget(self.trial_conditions_combo)
+        row_conditions.addWidget(self.filter_label)
+        row_conditions.addWidget(self.trial_conditions_value_combo)
+
         row1 = QHBoxLayout()
         row1.addWidget(trial_label)
         row1.addWidget(self.trials_combo)
@@ -72,6 +99,7 @@ class NavigationWidget(QWidget):
 
         main_layout = QVBoxLayout()
         main_layout.addLayout(row0)
+        main_layout.addLayout(row_conditions)
         main_layout.addLayout(row1)
         main_layout.addLayout(row2)
         main_layout.addLayout(row3)
@@ -169,4 +197,88 @@ class NavigationWidget(QWidget):
         if qt_dims.slider_widgets:
             slider_widget = qt_dims.slider_widgets[0]
             slider_widget._update_play_settings(fps=fps_playback, loop_mode="once", frame_range=None)
+
+    def setup_trial_conditions(self, type_vars_dict: dict):
+        """Populate trial conditions combo with available conditions."""
+        self.type_vars_dict = type_vars_dict
+
+        if "trial_conditions" not in type_vars_dict:
+            self.trial_conditions_combo.hide()
+            self.trial_conditions_value_combo.hide()
+            self.trial_conditions_label.hide()
+            self.filter_label.hide()
+            return
+
+        self.trial_conditions_combo.blockSignals(True)
+        self.trial_conditions_combo.clear()
+        self.trial_conditions_combo.addItem("None")
+        for condition in type_vars_dict["trial_conditions"]:
+            self.trial_conditions_combo.addItem(str(condition))
+        self.trial_conditions_combo.blockSignals(False)
+
+    def _on_trial_conditions_changed(self):
+        """Handle trial condition key selection change."""
+        if not self.app_state.ready:
+            return
+
+        selected = self.trial_conditions_combo.currentText()
+        self.app_state.set_key_sel("trial_conditions", selected)
+        self._update_trial_condition_values()
+
+    def _update_trial_condition_values(self):
+        """Update the trial condition value dropdown based on selected key."""
+        filter_condition = self.app_state.trial_conditions_sel
+
+        if filter_condition == "None":
+            self.trial_conditions_value_combo.blockSignals(True)
+            self.trial_conditions_value_combo.clear()
+            self.trial_conditions_value_combo.addItem("None")
+            self.trial_conditions_value_combo.blockSignals(False)
+            return
+
+        self.trial_conditions_value_combo.blockSignals(True)
+        self.trial_conditions_value_combo.clear()
+
+        if filter_condition in self.type_vars_dict.get("trial_conditions", []):
+            filter_values = [node.ds.attrs[filter_condition] for node in self.app_state.dt.children.values()]
+            unique_values = np.unique(filter_values)
+            self.trial_conditions_value_combo.addItems(["None"] + [str(int(val)) for val in np.sort(unique_values)])
+
+        self.trial_conditions_value_combo.blockSignals(False)
+
+    def _on_trial_condition_values_changed(self):
+        """Update the available trials based on condition filtering."""
+        if not self.app_state.ready:
+            return
+
+        filter_condition = self.app_state.trial_conditions_sel
+        filter_value = self.trial_conditions_value_combo.currentText()
+
+        original_trials = self.app_state.dt.trials
+
+        if filter_condition != "None" and filter_value != "None":
+            filt_dt = self.app_state.dt.filter_by_attr(filter_condition, filter_value)
+            self.app_state.trials = list(set(original_trials) & set(filt_dt.trials))
+        else:
+            self.app_state.trials = original_trials
+
+        self.trials_combo.blockSignals(True)
+        self.trials_combo.clear()
+
+        if hasattr(self, 'data_widget') and self.data_widget:
+            self.data_widget.update_trials_combo()
+
+        if self.app_state.trials_sel not in self.app_state.trials:
+            if self.app_state.trials:
+                self.app_state.trials_sel = self.app_state.trials[0]
+                self.trials_combo.setCurrentText(str(self.app_state.trials_sel))
+
+        self.trials_combo.blockSignals(False)
+
+        if hasattr(self, 'data_widget') and self.data_widget:
+            self.data_widget.update_main_plot()
+
+    def set_data_widget(self, data_widget):
+        """Set reference to data widget for callbacks."""
+        self.data_widget = data_widget
 

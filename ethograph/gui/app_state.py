@@ -211,11 +211,26 @@ class ObservableAppState(QObject):
         ds_kwargs = {}
 
         for dim in self.ds.dims:
+            if "time" in dim:
+                continue
             attr_name = f"{dim}_sel"
-            if hasattr(self, attr_name):
-                output = getattr(self, attr_name)
-                if output is not None and output not in ["", "All", "None"]:
-                    ds_kwargs[dim] = output
+            if not hasattr(self, attr_name):
+                continue
+
+            output = getattr(self, attr_name)
+            if output is None or output in ["", "None"]:
+                continue
+
+            # Check if dim has coords and determine appropriate type
+            if dim in self.ds.coords:
+                coord_dtype = self.ds.coords[dim].dtype
+                if coord_dtype.kind in ('i', 'u'):
+                    ds_kwargs[dim] = int(output)
+                else:
+                    ds_kwargs[dim] = str(output)
+            else:
+                # Dim without coord - assume integer index
+                ds_kwargs[dim] = int(output)
 
         return ds_kwargs
             
@@ -245,12 +260,11 @@ class ObservableAppState(QObject):
         return value
 
     def set_key_sel(self, type_key, currentValue):
-        """Set current value for a given info key."""
-        if currentValue is None:
-            return
-        
+        """Set current value for a given info key.
 
-
+        When currentValue is None, the dimension will not be filtered in
+        get_ds_kwargs(), effectively showing all values for that dimension.
+        """
         if type_key == "trials" and hasattr(self, "trials") and self.trials:
             currentValue = self._coerce_to_list_type(currentValue, self.trials)
 
