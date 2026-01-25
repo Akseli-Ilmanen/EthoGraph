@@ -6,7 +6,7 @@ from ethograph.utils.paths import gui_default_settings_path
 from napari.layers import Image
 from napari.viewer import Viewer
 from qt_niu.collapsible_widget import CollapsibleWidgetContainer
-from qtpy.QtWidgets import QApplication, QSizePolicy, QMessageBox, QAction, QMenu, QPushButton, QWidget, QHBoxLayout
+from qtpy.QtWidgets import QApplication, QSizePolicy, QMessageBox, QAction, QMenu, QPushButton, QWidget, QHBoxLayout, QComboBox, QCompleter
 from qtpy.QtGui import QFont
 
 
@@ -567,3 +567,5 @@ class MetaWidget(CollapsibleWidgetContainer):
         except Exception as e:
             # Silently handle any issues with notification configuration
             print(f"Notification configuration warning: {e}")
+            
+

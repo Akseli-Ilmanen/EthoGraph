@@ -9,11 +9,25 @@ from pathlib import Path
 
 
 
+
+
 if TYPE_CHECKING:
     from ethograph.utils.io import TrialTree
 
 
 TRIAL_PREFIX = "trial_"
+
+
+def find_temporal_dims(ds: xr.Dataset, time_dim: str = 'time') -> set[str]:
+    """Identify dims that co-occur with time in at least one data var."""
+    temporal = set()
+
+    for var in ds.data_vars.values():
+        if time_dim in var.dims:
+            temporal.update(var.dims)
+
+    temporal.discard(time_dim)
+    return temporal
 
 
 def is_integer_array(arr: np.ndarray) -> bool:
@@ -276,38 +290,40 @@ def _possible_trial_conditions(ds: xr.Dataset, dt: "TrialTree") -> List[str]:
 
     
 def extract_type_vars(ds: xr.Dataset, dt: "TrialTree") -> dict:
-    """Extract type variables dictionary from dataset."""
     type_vars_dict = {}
 
-    type_vars_dict['individuals'] = ds.coords['individuals'].values.astype(str)
+    # Known coords/attrs to check explicitly
+    known_coords = ['individuals', 'cameras', 'mics', 'tracking']
+    for name in known_coords:
+        if name in ds.coords:
+            type_vars_dict[name] = ds.coords[name].values.astype(str)
+        elif name in ds.attrs:
+            type_vars_dict[name] = np.atleast_1d(ds.attrs[name]).astype(str)
 
-    feat_ds = ds.filter_by_attrs(type='features')
-    type_vars_dict['features'] = list(feat_ds.data_vars)
-
-    type_vars_dict['cameras'] = np.atleast_1d(ds.attrs.get('cameras')).astype(str)
-
-    # Optional attributes
-    mics = ds.attrs.get('mics')
-    if mics:
-        type_vars_dict['mics'] = np.atleast_1d(mics).astype(str)
-
-    tracking = ds.attrs.get('tracking')
-    if tracking:
-        type_vars_dict['tracking'] = np.atleast_1d(tracking).astype(str)
-
-    if 'keypoints' in ds.coords:
-        type_vars_dict['keypoints'] = ds.coords['keypoints'].values.astype(str)
-
-    color_ds = ds.filter_by_attrs(type='colors')
-    if color_ds.data_vars:
-        type_vars_dict['colors'] = list(color_ds.data_vars)
-
-    cp_ds = ds.filter_by_attrs(type='changepoints')
-    if cp_ds.data_vars:
-        type_vars_dict['changepoints'] = list(cp_ds.data_vars)
-
+    # Filter by type attribute
+    type_filters = ['features', 'colors', 'changepoints']
+    for type_name in type_filters:
+        filtered = ds.filter_by_attrs(type=type_name)
+        if filtered.data_vars:
+            type_vars_dict[type_name] = list(filtered.data_vars)
+            
+    # Custom user coords/dims
+    dims = find_temporal_dims(ds)
+    for name in dims:
+        if name in type_vars_dict:
+            continue
+        if name in ds.coords:
+            coord = ds.coords[name]
+            if coord.dtype.kind in ('U', 'S', 'O'):
+                type_vars_dict[name] = coord.values.astype(str)
+            elif coord.dtype.kind in ('i', 'u', 'f'):  # int, unsigned int, float
+                type_vars_dict[name] = coord.values
+        else:
+            # Dim without coord - generate integer range
+            type_vars_dict[name] = np.arange(ds.dims[name])
+            
+            
     type_vars_dict["trial_conditions"] = _possible_trial_conditions(ds, dt)
-    
 
     return type_vars_dict
 

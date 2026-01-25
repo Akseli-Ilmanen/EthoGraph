@@ -9,12 +9,12 @@ def sel_valid(da, sel_kwargs):
     """
     Selects data from an xarray DataArray using only valid dimension keys.
     This function filters the selection keyword arguments to include only those
-    keys that are present in the DataArray's dimensions. It then performs the
-    selection using the filtered arguments.
+    keys that are present in the DataArray's dimensions. Uses .sel() for
+    dimensions with coordinates and .isel() for dimensions without.
     Parameters
     ----------
     da : xarray.DataArray
-        The DataArray from which to select data. 
+        The DataArray from which to select data.
     sel_kwargs : dict
         Dictionary of selection arguments, where keys are coordinate names and
         values are the labels or slices to select.
@@ -27,8 +27,28 @@ def sel_valid(da, sel_kwargs):
     """
 
     valid_keys = set(da.dims)
-    filt_kwargs = {k: v for k, v in sel_kwargs.items() if k in valid_keys}
-    da = da.sel(**filt_kwargs).squeeze()
+    coord_keys = set(da.coords.keys())
+
+    sel_kwargs_filtered = {}
+    isel_kwargs = {}
+
+    for k, v in sel_kwargs.items():
+        if k not in valid_keys:
+            continue
+        if k in coord_keys:
+            sel_kwargs_filtered[k] = v
+        else:
+            isel_kwargs[k] = int(v) if isinstance(v, str) else v
+
+    # Only return sel-compatible kwargs (those with coordinates)
+    # isel kwargs are applied but not returned since .sel() can't use them
+    filt_kwargs = dict(sel_kwargs_filtered)
+
+    if sel_kwargs_filtered:
+        da = da.sel(**sel_kwargs_filtered)
+    if isel_kwargs:
+        da = da.isel(**isel_kwargs)
+    da = da.squeeze()
     
     time_dim = next((dim for dim in da.dims if 'time' in dim), None)
     if time_dim:

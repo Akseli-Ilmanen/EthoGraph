@@ -127,7 +127,7 @@ def plot_singledim(plot_item, time, data, color_data=None, changepoints_dict=Non
     if existing_items is None:
         existing_items = []
 
-    if color_data is not None and color_data.shape[1] == 3:
+    if color_data is not None and color_data.ndim == 2 and color_data.shape[1] == 3:
         multi_line = MultiColoredLineItem(time, data, color_data)
         plot_item.addItem(multi_line)
         existing_items.append(multi_line)
@@ -200,12 +200,21 @@ def plot_ds_variable(plot_item, ds, ds_kwargs, variable, color_variable=None):
     plot_items = []
 
     if data.ndim == 2:
-        coord_labels = var.coords[var.dims[-1]].values
+        # data is (time, other_dim) after sel_valid transpose
+        # Find the non-time dimension for coordinate labels
+        non_time_dim = next((d for d in var.dims if 'time' not in d.lower()), None)
+        if non_time_dim and non_time_dim in var.coords:
+            coord_labels = var.coords[non_time_dim].values
+        else:
+            coord_labels = [str(i) for i in range(data.shape[1])]
+        plot_item.legend = plot_item.addLegend(offset=(10, 10))
         plot_items = plot_multidim(plot_item, time, data, coord_labels, plot_items)
 
     elif data.ndim == 1:
         if color_variable and color_variable in ds.data_vars:
-            color_data, _ = sel_valid(ds[color_variable], ds_kwargs)
+            # Exclude RGB from kwargs to keep all 3 color channels
+            color_kwargs = {k: v for k, v in ds_kwargs.items() if k != 'RGB'}
+            color_data, _ = sel_valid(ds[color_variable], color_kwargs)
         else:
             color_data = None
 
@@ -245,18 +254,16 @@ def plot_ds_variable(plot_item, ds, ds_kwargs, variable, color_variable=None):
             plot_item.addItem(vline)
             plot_items.append(vline)
     
-    # Set labels and title
+    # Set labels and title - use filt_kwargs which contains the applied selections
     ylabel = var.attrs.get("ylabel", variable)
-    title = ", ".join([f"Trial: {ds.attrs.get('trial')}"] + [f"{k}={v}" for k, v in ds_kwargs.items()])
+    title_parts = [f"Trial: {ds.attrs.get('trial')}"]
+    title_parts.extend(f"{k}={v}" for k, v in filt_kwargs.items())
+    title = ", ".join(title_parts)
     
     plot_item.setLabel('bottom', 'Time', units='s')
     plot_item.setLabel('left', ylabel, Fontsize='12pt')
     plot_item.setTitle(title)
-    
-    
-    # Add legend if we have named items (store reference on plot_item)
-    plot_item.legend = plot_item.addLegend()
-    
+
     return plot_items
 
 
