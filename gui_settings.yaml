@@ -1,27 +1,25 @@
-window_size: 3.0
-audio_channel_idx: 0
-nfft: 256
-tracking_folder: C:/Users/aksel/Documents/Code/EthoGraph/data/Philodoptera
-vmin_db: -120.0
-video_folder: C:/Users/aksel/Documents/Code/EthoGraph/data/Philodoptera
-audio_folder: C:/Users/aksel/Documents/Code/EthoGraph/data/Philodoptera
-fps_playback: 1.0
-buffer_multiplier: 5.0
-nc_file_path: C:/Users/aksel/Documents/Code/EthoGraph/data/Philodoptera/Philodoptera_labelsr1000.nc
-video_path: C:\Users\aksel\Documents\Code\EthoGraph\data\Philodoptera\video.mp4
-spec_colormap: CET-R4
-audio_path: C:\Users\aksel\Documents\Code\EthoGraph\data\Philodoptera\audio.wav
-plot_spectrogram: false
 percentile_ylim: 99.5
+fps_playback: 30.0
 vmax_db: -20.0
+downsample_factor: 100
+buffer_multiplier: 5.0
+window_size: 3.0
+nfft: 256
+audio_folder: C:/Users/aksel/Documents/Code/EthoGraph/data/copExpBP08
+nc_file_path: C:/Users/aksel/Documents/Code/EthoGraph/data/copExpBP08/birdpark_accelerometer.nc
+video_folder: C:/Users/aksel/Documents/Code/EthoGraph/data/copExpBP08
+audio_path: C:\Users\aksel\Documents\Code\EthoGraph\data\copExpBP08\audio.wav
+video_path: C:\Users\aksel\Documents\Code\EthoGraph\data\copExpBP08\video.mp4
+audio_channel_idx: 0
 space_plot_type: Layer controls
-import_labels_nc_data: false
 hop_frac: 0.5
+spec_colormap: CET-R4
+vmin_db: -120.0
+downsample_enabled: true
+import_labels_nc_data: false
 cameras_sel: cam1
-features_sel: position
-individuals_sel: Pholidoptera_littoralis_1
-keypoints_sel: LeftWingTip
+features_sel: vibration (accelerometer)
+individuals_sel: male (red radio)
 mics_sel: mic1
-space_sel: x
-tracking_sel: dlc1
+mics_sel_previous: mic1 (Ch 4)
 trials_sel: sample_trial

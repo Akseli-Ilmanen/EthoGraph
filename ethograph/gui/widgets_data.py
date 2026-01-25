@@ -7,7 +7,6 @@ from typing import Dict, Optional
 import napari
 import numpy as np
 import xarray as xr
-from movement.filtering import rolling_filter, savgol_filter
 from movement.napari.loader_widgets import DataLoader
 from napari.utils.notifications import show_error
 from napari.viewer import Viewer
@@ -21,15 +20,12 @@ from qtpy.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
-    QPushButton,
     QSizePolicy,
     QWidget,
 )
 
 
 
-from ethograph.gui.parameters import create_function_selector
 from ethograph.utils.data_utils import sel_valid, get_time_coord
 from ethograph.utils.io import downsample_trialtree
 from .data_loader import load_dataset
@@ -139,7 +135,13 @@ class DataWidget(DataLoader, QWidget):
         
         self.app_state.dt, label_dt, self.type_vars_dict = load_dataset(nc_file_path)
 
-        
+        # Add audio features to type_vars_dict if audio is available
+        has_audio = "mics" in self.type_vars_dict or self.app_state.audio_folder
+        if has_audio and "features" in self.type_vars_dict:
+            features_list = list(self.type_vars_dict["features"])
+            self.type_vars_dict["features"] = features_list + ["Spectrogram", "Waveform"]
+
+
 
         
 
@@ -200,13 +202,11 @@ class DataWidget(DataLoader, QWidget):
         self._set_controls_enabled(True)
         self.app_state.ready = True
 
-        self.on_trial_changed()
-
-
         load_btn = self.io_widget.load_button
         load_btn.setEnabled(False)
         load_btn.setText("Restart app to load new data")
 
+        self.on_trial_changed()
         self.setVisible(True)
 
         self._force_layout_update()
@@ -256,13 +256,7 @@ class DataWidget(DataLoader, QWidget):
         return trial_status
 
 
-    def zero_all_datasets(self, dt: xr.DataTree) -> xr.DataTree:
-        """Set all values in all datasets to zero."""
-        for node in dt.subtree:
-            if node.ds is not None:
-                for var in node.ds.data_vars:
-                    node.ds[var].values[:] = 0
-        return dt
+ 
 
     def _create_trial_controls(self):
         """Create all trial-related controls based on info configuration."""
@@ -274,46 +268,19 @@ class DataWidget(DataLoader, QWidget):
         if 'position' in self.app_state.ds.data_vars:
             self.space_plot_combo = QComboBox()
             self.space_plot_combo.setObjectName("space_plot_combo")
-            
-            self.space_plot_combo.addItems(["Layer controls", "space_2D", "space_3D"])        
+            self.space_plot_combo.addItems(["Layer controls", "space_2D", "space_3D"])
             self.space_plot_combo.currentTextChanged.connect(self._on_space_plot_changed)
             self.controls.append(self.space_plot_combo)
-        
-            functions = {
-                "savgol_filter": {
-                    "func": savgol_filter,
-                    "docs": "https://movement.neuroinformatics.dev/api/movement.filtering.savgol_filter.html"
-                },
-                "rolling_filter": {
-                    "func": rolling_filter,
-                    "docs": "https://movement.neuroinformatics.dev/api/movement.filtering.rolling_filter.html"
-                },
-            }
-            func_combo, settings_btn, docs_btn = create_function_selector(functions, parent=self.viewer.window.qt_viewer
-                                                                        , on_execute=self._smooth_tracks)
-            
-            
-            row_widget = QWidget()
-            row_layout = QHBoxLayout(row_widget)
-            row_layout.setContentsMargins(0, 0, 0, 0)
-            row_layout.addWidget(self.space_plot_combo)
-            row_layout.addWidget(func_combo.native)
-            row_layout.addWidget(settings_btn.native)
-            row_layout.addWidget(docs_btn.native)
-            self.layout().addRow(row_widget)
-        
-        
+            self.layout().addRow("Space plot:", self.space_plot_combo)
+            gap_label = QLabel("")
+            gap_label.setFixedHeight(10) 
+            self.layout().addRow(gap_label)
 
-        # 5. Add gap (empty row) for separation
-        gap_label = QLabel("")
-        gap_label.setFixedHeight(10)  # Create visual gap
-        self.layout().addRow(gap_label)
 
-        # Setup trial conditions in navigation widget
         self.navigation_widget.setup_trial_conditions(self.type_vars_dict)
         self.navigation_widget.set_data_widget(self)
 
-        # 6. Now add remaining controls
+
         non_data_type_vars = ["cameras", "mics", "tracking", "trial_conditions", "changepoints", "rgb"]
         
         
@@ -321,13 +288,7 @@ class DataWidget(DataLoader, QWidget):
         
         for type_var in self.type_vars_dict.keys():
             if type_var.lower() not in non_data_type_vars:
-                has_audio = "mics" in self.type_vars_dict or self.app_state.audio_folder
-                if type_var == "features" and has_audio:
-                    features_list = list(self.type_vars_dict[type_var])
-                    features_with_audio = features_list + ["Spectrogram", "Waveform"]
-                    self._create_combo_widget(type_var, features_with_audio)
-                else:
-                    self._create_combo_widget(type_var, self.type_vars_dict[type_var])
+                self._create_combo_widget(type_var, self.type_vars_dict[type_var])
 
 
 
@@ -424,27 +385,7 @@ class DataWidget(DataLoader, QWidget):
             self.show_spectrogram_checkbox.setEnabled(True)
 
         
-        
-    def _smooth_tracks(self, func, **kwargs):
-        
-        ds_orig = self.app_state.ds
-
-        ds_kwargs = self.app_state.get_ds_kwargs()
-        _, valid_kwargs = sel_valid(ds_orig.position, ds_kwargs)
-        
-        
-        ds_temp = ds_orig.copy()
-        ds_temp.update(
-            {
-                "position": func(
-                    ds_orig.position, **kwargs
-                )
-            }
-        )
-        self.app_state.ds = ds_temp
-        self.update_main_plot()
-        self.update_space_plot()
-        self.app_state.ds = ds_orig 
+ 
           
 
     def _set_controls_enabled(self, enabled: bool):
@@ -535,13 +476,7 @@ class DataWidget(DataLoader, QWidget):
 
         if key:
             selected_value = combo.currentText()
-
-            if key == "mics":
-                mic_name, channel_idx = self.io_widget.get_mic_and_channel(selected_value)
-                self.app_state.set_key_sel(key, mic_name)
-                self.app_state.audio_channel_idx = channel_idx
-            else:
-                self.app_state.set_key_sel(key, selected_value)
+            self.app_state.set_key_sel(key, selected_value)
 
             if key == "features":
                 if selected_value == "Spectrogram":
@@ -609,11 +544,11 @@ class DataWidget(DataLoader, QWidget):
             current_text = combo.currentText()
             self.app_state.set_key_sel(key, current_text)
 
-        if key in ["individuals", "keypoints"]:
-            current_plot = self.plot_container.get_current_plot()
-            xmin, xmax = current_plot.get_current_xlim()
-            self.update_main_plot(t0=xmin, t1=xmax)
-            self.update_space_plot()
+
+        current_plot = self.plot_container.get_current_plot()
+        xmin, xmax = current_plot.get_current_xlim()
+        self.update_main_plot(t0=xmin, t1=xmax)
+        self.update_space_plot()
 
 
 
@@ -625,8 +560,21 @@ class DataWidget(DataLoader, QWidget):
             combo = self.io_widget.combos.get(key) or self.combos.get(key)
 
             if combo is not None:
-                if self.app_state.key_sel_exists(key) and self.app_state.get_key_sel(key) in [str(var) for var in vars]:
-                    combo.setCurrentText(str(self.app_state.get_key_sel(key)))
+                saved_value = self.app_state.get_key_sel(key) if self.app_state.key_sel_exists(key) else None
+                vars_str = [str(var) for var in vars]
+
+                if saved_value in vars_str:
+                    combo.setCurrentText(str(saved_value))
+                elif saved_value and key == "mics":
+                    # Backwards compatibility: old yaml may have base name "mic1"
+                    # but combo now has "mic1 (Ch 1)", "mic1 (Ch 2)", etc.
+                    match = next((v for v in vars_str if v.startswith(str(saved_value))), None)
+                    if match:
+                        combo.setCurrentText(match)
+                        self.app_state.set_key_sel(key, match)
+                    else:
+                        combo.setCurrentText(str(vars[0]))
+                        self.app_state.set_key_sel(key, str(vars[0]))
                 else:
                     combo.setCurrentText(str(vars[0]))
                     self.app_state.set_key_sel(key, str(vars[0]))
@@ -647,10 +595,6 @@ class DataWidget(DataLoader, QWidget):
             self.space_plot_combo.setCurrentText(space_plot_type)
 
                 
-   
-
-
-
 
     def on_trial_changed(self):
         """Handle all consequences of a trial change - centralized orchestration."""
@@ -764,15 +708,14 @@ class DataWidget(DataLoader, QWidget):
             video_path = os.path.join(self.app_state.video_folder, video_file)
             self.app_state.video_path = os.path.normpath(video_path)
 
-        # Set up audio path if available
+        # Set up audio path if available (uses centralized get_audio_source)
         has_audio = False
         if self.app_state.audio_folder and hasattr(self.app_state, 'mics_sel'):
-            try:
-                audio_file = self.app_state.ds.attrs[self.app_state.mics_sel]
-                audio_path = os.path.join(self.app_state.audio_folder, audio_file)
-                self.app_state.audio_path = os.path.normpath(audio_path)
+            audio_path, _ = self.app_state.get_audio_source()
+            if audio_path:
+                self.app_state.audio_path = audio_path
                 has_audio = True
-            except (KeyError, AttributeError):
+            else:
                 self.app_state.audio_path = None
 
         if self.spectrogram_widget:

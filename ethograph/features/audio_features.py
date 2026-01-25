@@ -5,8 +5,8 @@ from ethograph.utils.audio import mp4_to_wav
 from pathlib import Path
 
 
-def get_synced_envelope(audio_path, audio_sr, fps):
-    "Create audio envelope amplitude at same sampling rate as video fps."
+def get_envelope(audio_path, audio_sr, env_rate):
+    "Create audio envelope amplitude."
     
 
     if isinstance(audio_path, Path):
@@ -31,8 +31,8 @@ def get_synced_envelope(audio_path, audio_sr, fps):
     env_list = []
     
     for ch in range(num_channels):
-        # Nyquist frequency is fps/2, so cutoff should be less than that
-        ch_env = envelope(audio_data[:, ch], rate=audio_sr, cutoff=fps/4, env_rate=fps)
+        # Nyquist frequency is env_rate/2, so cutoff should be less than that
+        ch_env = envelope(audio_data[:, ch], rate=audio_sr, cutoff=env_rate/4, env_rate=env_rate)
         env_list.append(np.squeeze(ch_env))
     
     # Stack to create (T, Ch) shape

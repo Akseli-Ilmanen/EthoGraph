@@ -117,7 +117,7 @@ class NapariVideoSync(QObject):
                 segment = data[start_sample:end_sample]
 
             if segment.ndim > 1:
-                channel_idx = getattr(self.app_state, 'audio_channel_idx', 0)
+                _, channel_idx = self.app_state.get_audio_source()
                 n_channels = segment.shape[1]
                 channel_idx = min(channel_idx, n_channels - 1)
                 segment = segment[:, channel_idx]

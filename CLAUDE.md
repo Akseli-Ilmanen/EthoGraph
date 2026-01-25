@@ -98,7 +98,6 @@ ethograph/gui/
     app_state.py          # Central state management (AppStateSpec + ObservableAppState)
     data_loader.py        # Dataset loading utilities
     napari.yaml           # Napari plugin manifest
-    parameters.py         # Parameter dialogs (magicgui-based)
     plot_container.py     # Manages LinePlot/SpectrogramPlot switching
     plots_base.py         # Abstract base class for plots
     plots_lineplot.py     # Time-series line plot
@@ -231,12 +230,19 @@ Central coordinator that creates and wires all widgets together.
 **DataWidget** - The central orchestrator widget:
 - `on_load_clicked()`: Triggers loading, creates dynamic UI controls
 - `on_trial_changed()`: Handles all consequences of trial change (called via signal)
-- `_create_trial_controls()`: Creates combos for all dimensions
+- `_create_trial_controls()`: Creates combos for all dimensions (including dynamic ones)
 - `_on_combo_changed()`: Central handler for all selection changes
 - `update_main_plot()`: Updates active plot with current selections
 - `update_motif_plot()`: Draws motif rectangles on plot
 - `update_video_audio()`: Loads/switches video/audio files
 - Stores video sync object on `app_state.video` for access by other widgets
+
+**Dynamic Dimension Handling:**
+- `find_temporal_dims()` in `validation.py`: Identifies all dimensions that co-occur with time
+- Creates combo boxes for any dimension found in feature variables (e.g., `channels`, `space`)
+- Dimensions with coordinates: Display coordinate labels in combo
+- Dimensions without coordinates: Display integer indices (0, 1, 2, ...)
+- `get_ds_kwargs()` filters out invalid selections (None, "", "None") before building selection dict
 
 ---
 
@@ -270,6 +276,16 @@ Subclasses implement:
 - Calls `plot_ds_variable()` to render xarray data
 - Stores items in `plot_items` (lines) and `label_items` (motifs)
 - Y-constraints based on data percentile (default 99.5%)
+
+**Single vs Multi-line Plotting** (`plot_qtgraph.py`):
+- Controlled by dimension selection combos with "All" checkbox option
+- When a dimension has a specific value selected: `data.ndim == 1` -> single line via `plot_singledim()`
+- When "All" is checked for a dimension (e.g., space): `data.ndim == 2` -> multiple lines via `plot_multidim()`
+- `plot_multidim()` adds a legend showing coordinate labels (e.g., 'x', 'y', 'z' for space)
+- `sel_valid()` handles dimension selection:
+  - Dimensions with coordinates use `.sel()` (label-based)
+  - Dimensions without coordinates use `.isel()` (integer-based)
+  - Returns only `.sel()`-compatible kwargs for title display
 
 **SpectrogramPlot** (`plots_spectrogram.py`):
 - Renders audio spectrogram as 2D image
@@ -328,7 +344,14 @@ Subclasses implement:
 - Trial selection combo (color-coded: green=verified, red=unverified)
 - Previous/Next buttons with confidence filtering
 - Playback FPS control
+- Trial condition combos (managed here, not in DataWidget)
 - Emits `app_state.trial_changed` signal when trial changes
+
+**Trial Conditions:**
+- `setup_trial_conditions(type_vars_dict)`: Called by DataWidget after loading
+- Creates combo boxes for each trial condition attribute (e.g., poscat, num_pellets)
+- Condition values extracted from dataset attributes (not coordinates)
+- Filtering: When a condition is selected, Previous/Next buttons skip non-matching trials
 
 **On trial change:**
 1. NavigationWidget sets `app_state.trials_sel` and emits `trial_changed`

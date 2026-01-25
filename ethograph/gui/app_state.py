@@ -85,8 +85,8 @@ class AppStateSpec:
         "time": (xr.DataArray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
         "label_sr": (float | None, None, False), # for labels (e.g. 'time' or 'time_labels')
         "trials": (list[int | str], [], False),
-        "plot_spectrogram": (bool, False, True),
-        "load_s3d": (bool, False, False),
+        "downsample_enabled": (bool, False, True),
+        "downsample_factor": (int, 100, True),
 
         # Paths 
         "nc_file_path": (str | None, None, True),
@@ -140,7 +140,7 @@ class ObservableAppState(QObject):
     for var, (type_hint, _, _) in AppStateSpec.VARS.items():
         locals()[f"{var}_changed"] = Signal(get_signal_type(type_hint))
 
-    data_updated = Signal()
+
     labels_modified = Signal()
     verification_changed = Signal()
     trial_changed = Signal()
@@ -151,6 +151,8 @@ class ObservableAppState(QObject):
         object.__setattr__(self, "_values", {})
         for var, (_, default, _) in AppStateSpec.VARS.items():
             self._values[var] = default
+
+        self.audio_source_map: dict[str, tuple[str, int]] = {}
 
         self.settings = get_settings()
         self._yaml_path = yaml_path or "gui_settings.yaml"
@@ -181,13 +183,41 @@ class ObservableAppState(QObject):
             value = AppStateSpec.get_default(key)
         return value
 
+    def get_audio_source(self) -> tuple[str | None, int]:
+        """Get audio file path and channel index from current mics_sel.
+
+        Returns (audio_path, channel_idx) tuple. Uses audio_source_map to resolve
+        the display name to (mic_name, channel_idx), then looks up the file from
+        ds.attrs[mic_name].
+        """
+        import os
+
+        mics_sel = getattr(self, 'mics_sel', None)
+        if not mics_sel or not self.audio_source_map:
+            return None, 0
+
+        mic_name, channel_idx = self.audio_source_map.get(mics_sel, (mics_sel, 0))
+
+        audio_folder = getattr(self, 'audio_folder', None)
+        ds = getattr(self, 'ds', None)
+
+        if not audio_folder or ds is None:
+            return None, channel_idx
+
+        audio_file = ds.attrs.get(mic_name)
+        if not audio_file:
+            return None, channel_idx
+
+        audio_path = os.path.normpath(os.path.join(audio_folder, audio_file))
+        return audio_path, channel_idx
+
     def __getattr__(self, name):
         if name in AppStateSpec.VARS:
             return self._values[name]
         raise AttributeError(name)
 
     def __setattr__(self, name, value):
-        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot"):
+        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map"):
             super().__setattr__(name, value)
             return
 
@@ -282,15 +312,14 @@ class ObservableAppState(QObject):
 
         setattr(self, attr_name, currentValue)
 
-        if old_value != currentValue:
-            self.data_updated.emit()
+
             
     def set_key_sel_previous(self, type_key, previousValue):
         """Set previous selection for a given key."""
         prev_attr_name = f"{type_key}_sel_previous"
         setattr(self, prev_attr_name, previousValue)
 
-    def toggle_key_sel(self, type_key, data_widget=None):
+    def toggle_key_sel(self, type_key, data_widget):
         """Toggle between current and previous value for a given key."""
         attr_name = f"{type_key}_sel"
         prev_attr_name = f"{type_key}_sel_previous"
@@ -307,17 +336,22 @@ class ObservableAppState(QObject):
             if data_widget is not None:
                 self._update_combo_box(type_key, previous_value, data_widget)
             
-            self.data_updated.emit()
+   
     
     def _update_combo_box(self, type_key, new_value, data_widget):
         """Update the corresponding combo box in the UI and trigger its change signal."""
         try:
-            # Check IOWidget combos first, then DataWidget combos
             combo = data_widget.io_widget.combos.get(type_key) or data_widget.combos.get(type_key)
-            
+
             if combo is not None:
-                combo.setCurrentText(str(new_value))
-                combo.currentTextChanged.emit(combo.currentText())
+                index = combo.findText(str(new_value))
+                if index < 0 and type_key == "mics":
+                    for i in range(combo.count()):
+                        if combo.itemText(i).startswith(str(new_value)):
+                            index = i
+                            break
+                if index >= 0:
+                    combo.setCurrentIndex(index)
         except (AttributeError, TypeError) as e:
             print(f"Error updating combo box for {type_key}: {e}")
 
