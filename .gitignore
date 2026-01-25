@@ -2,6 +2,8 @@ data/
 result/
 audian/
 
+*.mp4
+
 
 # Byte-compiled
 __pycache__/
