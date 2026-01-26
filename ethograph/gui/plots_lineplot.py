@@ -133,12 +133,14 @@ class LinePlot(BasePlot):
 
         buffered_ds = self._get_buffered_ds(t0, t1)
 
+        show_cp = getattr(self.app_state, 'show_changepoints', False)
         self.plot_items = plot_ds_variable(
             self.plot_item,
             buffered_ds,
             ds_kwargs,
             feature_sel,
-            color_variable=color_var
+            color_variable=color_var,
+            show_changepoints=show_cp
         )
 
         for item in self.plot_items:

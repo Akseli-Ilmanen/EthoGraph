@@ -1,25 +1,31 @@
 percentile_ylim: 99.5
-fps_playback: 30.0
-vmax_db: -20.0
-downsample_factor: 100
+noise_reduce_prop_decrease: 1.0
 buffer_multiplier: 5.0
-window_size: 3.0
+space_plot_type: Layer controls
+spec_colormap: CET-R4
 nfft: 256
+audio_cp_silence_threshold: 0.1
+audio_cp_min_level_db: -70.0
+show_audio_changepoints: false
+vmax_db: -20.0
+window_size: 3.0
+audio_channel_idx: 0
+hop_frac: 0.5
+noise_reduce_enabled: false
+video_path: C:\Users\aksel\Documents\Code\EthoGraph\data\copExpBP08\video.mp4
+downsample_factor: 100
 audio_folder: C:/Users/aksel/Documents/Code/EthoGraph/data/copExpBP08
-nc_file_path: C:/Users/aksel/Documents/Code/EthoGraph/data/copExpBP08/birdpark_accelerometer.nc
 video_folder: C:/Users/aksel/Documents/Code/EthoGraph/data/copExpBP08
 audio_path: C:\Users\aksel\Documents\Code\EthoGraph\data\copExpBP08\audio.wav
-video_path: C:\Users\aksel\Documents\Code\EthoGraph\data\copExpBP08\video.mp4
-audio_channel_idx: 0
-space_plot_type: Layer controls
-hop_frac: 0.5
-spec_colormap: CET-R4
 vmin_db: -120.0
-downsample_enabled: true
 import_labels_nc_data: false
+audio_cp_min_syllable_length_s: 0.02
+audio_cp_hop_length_ms: 5.0
+downsample_enabled: true
+nc_file_path: C:/Users/aksel/Documents/Code/EthoGraph/data/copExpBP08/birdpark_accelerometer.nc
+fps_playback: 30.0
 cameras_sel: cam1
 features_sel: vibration (accelerometer)
 individuals_sel: male (red radio)
 mics_sel: mic1
-mics_sel_previous: mic1 (Ch 4)
 trials_sel: sample_trial

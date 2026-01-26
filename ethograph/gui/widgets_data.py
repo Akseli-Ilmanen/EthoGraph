@@ -67,7 +67,10 @@ class DataWidget(DataLoader, QWidget):
         QWidget.__init__(self, parent=parent)
         self.parent = parent
         self.viewer = napari_viewer
-        self.setLayout(QFormLayout())
+        layout = QFormLayout()
+        layout.setSpacing(2)
+        layout.setContentsMargins(2, 2, 2, 2)
+        self.setLayout(layout)
         self.app_state = app_state
         self.meta_widget = meta_widget
         self.io_widget = io_widget  
@@ -75,7 +78,7 @@ class DataWidget(DataLoader, QWidget):
         self.plot_container = None
         self.labels_widget = None
         self.axes_widget = None
-        self.spectrogram_widget = None
+        self.audio_widget = None
         self.audio_player = None 
         self.video_path = None
         self.audio_path = None
@@ -100,13 +103,24 @@ class DataWidget(DataLoader, QWidget):
         
         
 
-    def set_references(self, plot_container, labels_widget, axes_widget, navigation_widget, spectrogram_widget=None):
+    def set_references(self, plot_container, labels_widget, axes_widget, navigation_widget, audio_widget=None, changepoints_widget=None):
         """Set references to other widgets after creation."""
         self.plot_container = plot_container
         self.labels_widget = labels_widget
         self.axes_widget = axes_widget
         self.navigation_widget = navigation_widget
-        self.spectrogram_widget = spectrogram_widget
+        self.audio_widget = audio_widget
+        self.changepoints_widget = changepoints_widget
+
+        if changepoints_widget is not None:
+            changepoints_widget.request_plot_update.connect(self._on_plot_update_request)
+
+    def _on_plot_update_request(self):
+        """Handle request to update the main plot from changepoints widget."""
+        if not self.app_state.ready or not self.plot_container:
+            return
+        xmin, xmax = self.plot_container.get_current_xlim()
+        self.update_main_plot(t0=xmin, t1=xmax)
 
     def _get_sampling_rate(self, time_coords: np.ndarray) -> float:
         """Calculate sampling rate from time coordinates."""
@@ -185,11 +199,9 @@ class DataWidget(DataLoader, QWidget):
 
 
 
-        print(f"Label sampling rate: {self.app_state.label_sr} Hz") 
-            
+        print(f"Label sampling rate: {self.app_state.label_sr} Hz")
 
 
-        self.update_trials_combo()
         self.app_state.trials = sorted(trials)
         
         
@@ -197,17 +209,29 @@ class DataWidget(DataLoader, QWidget):
 
         self._create_trial_controls()
 
-        
+        if self.changepoints_widget:
+            self.changepoints_widget.setEnabled(True)
+
+        if hasattr(self.app_state, 'features_sel_changed'):
+            self.app_state.features_sel_changed.connect(self._on_external_feature_change)
+
         self._restore_or_set_defaults()
         self._set_controls_enabled(True)
         self.app_state.ready = True
 
         load_btn = self.io_widget.load_button
         load_btn.setEnabled(False)
-        load_btn.setText("Restart app to load new data")
+
+        # Set initial trial selection before calling on_trial_changed
+        if not self.app_state.trials_sel:
+            self.app_state.trials_sel = self.app_state.trials[0]
+
+        # Update trials combo after ready=True so it populates correctly
+        self.update_trials_combo()
 
         self.on_trial_changed()
         self.setVisible(True)
+        load_btn.setText("Restart app to load new data")
 
         self._force_layout_update()
 
@@ -509,6 +533,34 @@ class DataWidget(DataLoader, QWidget):
             if key == "tracking":
                 self.update_tracking()
 
+    def _on_external_feature_change(self):
+        """Handle feature selection change from app_state (e.g., from changepoints widget)."""
+        if not self.app_state.ready:
+            return
+
+        features_combo = self.combos.get("features")
+        if features_combo is None:
+            return
+
+        feature = self.app_state.features_sel
+        if not feature or feature == features_combo.currentText():
+            return
+
+        features_combo.blockSignals(True)
+        idx = features_combo.findText(feature)
+        if idx >= 0:
+            features_combo.setCurrentIndex(idx)
+        features_combo.blockSignals(False)
+
+        if feature not in ["Spectrogram", "Waveform"]:
+            self.plot_container.switch_to_lineplot()
+            self.app_state.time = get_time_coord(self.app_state.ds[feature])
+            self._update_audio_overlay_checkboxes()
+            self._update_audio_overlay()
+            current_plot = self.plot_container.get_current_plot()
+            xmin, xmax = current_plot.get_current_xlim()
+            self.update_main_plot(t0=xmin, t1=xmax)
+
     def _on_all_checkbox_changed(self, key: str, state: int):
         """Handle 'All' checkbox state change for a type variable.
 
@@ -718,8 +770,11 @@ class DataWidget(DataLoader, QWidget):
             else:
                 self.app_state.audio_path = None
 
-        if self.spectrogram_widget:
-            self.spectrogram_widget.set_enabled_state(has_audio)
+        if self.audio_widget:
+            self.audio_widget.set_enabled_state(has_audio)
+
+        if self.changepoints_widget:
+            self.changepoints_widget.set_enabled_state(has_audio)
 
         if has_audio:
             self.show_waveform_checkbox.show()

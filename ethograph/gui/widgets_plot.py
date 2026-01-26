@@ -26,6 +26,8 @@ class AxesWidget(QWidget):
         self.plot_container = None
 
         main_layout = QVBoxLayout()
+        main_layout.setSpacing(2)
+        main_layout.setContentsMargins(2, 2, 2, 2)
         self.setLayout(main_layout)
 
         group_box = QGroupBox("Axes Controls")
