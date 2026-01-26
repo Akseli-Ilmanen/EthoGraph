@@ -114,6 +114,15 @@ class AppStateSpec:
         "space_plot_type": (str, "Layer controls", True),
         "lock_axes": (bool, False, False),
         "spec_colormap": (str, "CET-R4", True),
+
+        # Audio processing
+        "noise_reduce_enabled": (bool, False, True),
+        "noise_reduce_prop_decrease": (float, 1.0, True),
+        "audio_cp_hop_length_ms": (float, 5.0, True),
+        "audio_cp_min_level_db": (float, -70.0, True),
+        "audio_cp_min_syllable_length_s": (float, 0.02, True),
+        "audio_cp_silence_threshold": (float, 0.1, True),
+        "show_audio_changepoints": (bool, False, True),
     }
 
     @classmethod

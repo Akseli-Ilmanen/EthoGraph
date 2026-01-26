@@ -1,16 +1,19 @@
-"""Spectrogram-specific controls widget."""
+"""Spectrogram controls widget - spectrogram settings and noise reduction."""
 
 import numpy as np
 from qtpy.QtWidgets import (
     QGridLayout, QLineEdit, QWidget, QPushButton,
-    QVBoxLayout, QLabel, QComboBox, QGroupBox,
+    QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
+    QGroupBox, QCheckBox, QDoubleSpinBox
 )
+from qtpy.QtCore import Qt
 from napari.viewer import Viewer
+from napari.utils.notifications import show_info, show_warning
 from typing import Optional
 
 
 class SpectrogramWidget(QWidget):
-    """Spectrogram controls - enabled when audio data is loaded.
+    """Spectrogram controls - spectrogram settings and noise reduction.
 
     Keys used in gui_settings.yaml (via app_state):
       - spec_ymin, spec_ymax (frequency range in Hz, displayed as kHz)
@@ -18,6 +21,8 @@ class SpectrogramWidget(QWidget):
       - nfft
       - hop_frac
       - spec_colormap
+      - noise_reduce_enabled
+      - noise_reduce_prop_decrease
     """
 
     def __init__(self, napari_viewer: Viewer, app_state, parent=None):
@@ -26,9 +31,21 @@ class SpectrogramWidget(QWidget):
         self.viewer = napari_viewer
         self.plot_container = None
 
+        self.setAttribute(Qt.WA_AlwaysShowToolTips)
+
         main_layout = QVBoxLayout()
+        main_layout.setSpacing(2)
+        main_layout.setContentsMargins(2, 2, 2, 2)
         self.setLayout(main_layout)
 
+        self._create_spectrogram_controls(main_layout)
+        self._create_noise_reduction_controls(main_layout)
+
+        self._restore_or_set_default_selections()
+        self.setEnabled(False)
+
+    def _create_spectrogram_controls(self, main_layout):
+        """Create spectrogram parameter controls."""
         group_box = QGroupBox("Spectrogram Controls")
         group_layout = QGridLayout()
         group_box.setLayout(group_layout)
@@ -76,25 +93,55 @@ class SpectrogramWidget(QWidget):
         group_layout.addWidget(QLabel("Hop fraction:"), row, 2)
         group_layout.addWidget(self.hop_frac_edit, row, 3)
 
-
         row += 1
         group_layout.addWidget(self.auto_levels_button, row, 0, 1, 2)
         group_layout.addWidget(self.apply_button, row, 2)
         group_layout.addWidget(self.reset_button, row, 3)
 
-        self.spec_ymin_edit.editingFinished.connect(self._on_edited)
-        self.spec_ymax_edit.editingFinished.connect(self._on_edited)
-        self.vmin_db_edit.editingFinished.connect(self._on_edited)
-        self.vmax_db_edit.editingFinished.connect(self._on_edited)
-        self.nfft_edit.editingFinished.connect(self._on_edited)
-        self.hop_frac_edit.editingFinished.connect(self._on_edited)
+        self.spec_ymin_edit.editingFinished.connect(self._on_spec_edited)
+        self.spec_ymax_edit.editingFinished.connect(self._on_spec_edited)
+        self.vmin_db_edit.editingFinished.connect(self._on_spec_edited)
+        self.vmax_db_edit.editingFinished.connect(self._on_spec_edited)
+        self.nfft_edit.editingFinished.connect(self._on_spec_edited)
+        self.hop_frac_edit.editingFinished.connect(self._on_spec_edited)
         self.colormap_combo.currentTextChanged.connect(self._on_colormap_changed)
         self.auto_levels_button.clicked.connect(self._auto_levels)
-        self.apply_button.clicked.connect(self._on_edited)
-        self.reset_button.clicked.connect(self._reset_to_defaults)
+        self.apply_button.clicked.connect(self._on_spec_edited)
+        self.reset_button.clicked.connect(self._reset_spec_to_defaults)
 
-        self._restore_or_set_default_selections()
-        self.setEnabled(False)
+    def _create_noise_reduction_controls(self, main_layout):
+        """Create noise reduction controls with reference."""
+        group_box = QGroupBox("Remove stationary noise")
+        group_layout = QGridLayout()
+        group_box.setLayout(group_layout)
+        main_layout.addWidget(group_box)
+
+        self.noise_reduce_checkbox = QCheckBox("Enable")
+        self.noise_reduce_checkbox.setToolTip(
+            "Apply spectral gating noise reduction to audio.\n"
+            "Affects spectrogram and waveform display."
+        )
+        self.noise_reduce_checkbox.stateChanged.connect(self._on_noise_reduce_changed)
+
+        self.prop_decrease_spin = QDoubleSpinBox()
+        self.prop_decrease_spin.setRange(0.0, 1.0)
+        self.prop_decrease_spin.setSingleStep(0.1)
+        self.prop_decrease_spin.setValue(1.0)
+        self.prop_decrease_spin.setDecimals(2)
+        self.prop_decrease_spin.setToolTip(
+            "Proportion to reduce noise by (0.0-1.0).\n"
+            "1.0 = 100% reduction (default)"
+        )
+        self.prop_decrease_spin.valueChanged.connect(self._on_noise_reduce_changed)
+
+        ref_label = QLabel('<a href="https://github.com/timsainb/noisereduce" style="color: #87CEEB; text-decoration: none;">noisereduce (Sainburg, 2020)</a>')
+        ref_label.setOpenExternalLinks(True)
+
+        row = 0
+        group_layout.addWidget(self.noise_reduce_checkbox, row, 0)
+        group_layout.addWidget(QLabel("Reduction:"), row, 1)
+        group_layout.addWidget(self.prop_decrease_spin, row, 2)
+        group_layout.addWidget(ref_label, row, 3)
 
     def set_plot_container(self, plot_container):
         self.plot_container = plot_container
@@ -130,6 +177,18 @@ class SpectrogramWidget(QWidget):
         if colormap in self.colormap_display:
             self.colormap_combo.setCurrentText(self.colormap_display[colormap])
 
+        noise_reduce = getattr(self.app_state, 'noise_reduce_enabled', None)
+        if noise_reduce is None:
+            noise_reduce = self.app_state.get_with_default('noise_reduce_enabled')
+            self.app_state.noise_reduce_enabled = noise_reduce
+        self.noise_reduce_checkbox.setChecked(noise_reduce)
+
+        prop_decrease = getattr(self.app_state, 'noise_reduce_prop_decrease', None)
+        if prop_decrease is None:
+            prop_decrease = self.app_state.get_with_default('noise_reduce_prop_decrease')
+            self.app_state.noise_reduce_prop_decrease = prop_decrease
+        self.prop_decrease_spin.setValue(prop_decrease)
+
     def _parse_float(self, text: str) -> Optional[float]:
         s = (text or "").strip()
         if not s:
@@ -158,7 +217,7 @@ class SpectrogramWidget(QWidget):
                 current_plot.update_colormap(colormap_name)
 
     def _auto_levels(self):
-        """Estimate optimal dB levels from current spectrogram data (audian algorithm)."""
+        """Estimate optimal dB levels from current spectrogram data."""
         if not self.plot_container or not self.plot_container.is_spectrogram():
             return
 
@@ -199,7 +258,7 @@ class SpectrogramWidget(QWidget):
         if hasattr(current_plot, 'update_levels'):
             current_plot.update_levels(zmin, zmax)
 
-    def _on_edited(self):
+    def _on_spec_edited(self):
         if not self.plot_container:
             return
 
@@ -256,7 +315,7 @@ class SpectrogramWidget(QWidget):
             if hasattr(current_plot, 'update_plot_content'):
                 current_plot.update_plot_content()
 
-    def _reset_to_defaults(self):
+    def _reset_spec_to_defaults(self):
         for attr, edit in [
             ("nfft", self.nfft_edit),
             ("hop_frac", self.hop_frac_edit),
@@ -288,4 +347,48 @@ class SpectrogramWidget(QWidget):
         if default_colormap in self.colormap_display:
             self.colormap_combo.setCurrentText(self.colormap_display[default_colormap])
 
-        self._on_edited()
+        self._on_spec_edited()
+
+    def _on_noise_reduce_changed(self, state=None):
+        """Handle noise reduction checkbox or prop_decrease change."""
+        self.app_state.noise_reduce_enabled = self.noise_reduce_checkbox.isChecked()
+
+        prop_decrease = self.prop_decrease_spin.value()
+        if prop_decrease is not None:
+            prop_decrease = max(0.0, min(1.0, prop_decrease))
+            self.app_state.noise_reduce_prop_decrease = prop_decrease
+
+        if self.plot_container:
+            self.plot_container.clear_audio_cache()
+
+            if self.plot_container.is_spectrogram():
+                current_plot = self.plot_container.get_current_plot()
+                if hasattr(current_plot, 'buffer') and hasattr(current_plot.buffer, '_clear_buffer'):
+                    current_plot.buffer._clear_buffer()
+                if hasattr(current_plot, 'update_plot_content'):
+                    current_plot.update_plot_content()
+            elif self.plot_container.is_audiotrace():
+                current_plot = self.plot_container.get_current_plot()
+                if hasattr(current_plot, 'buffer'):
+                    current_plot.buffer.audio_loader = None
+                    current_plot.buffer.current_path = None
+                if hasattr(current_plot, 'update_plot_content'):
+                    current_plot.update_plot_content()
+
+    def get_audio_changepoints_for_snap(self) -> Optional[np.ndarray]:
+        """Get audio changepoints for snap-to-changepoint functionality.
+
+        Returns combined onset/offset times if changepoints are computed
+        and display is enabled, otherwise None.
+        """
+        if not getattr(self.app_state, 'show_audio_changepoints', False):
+            return None
+
+        onsets = getattr(self.app_state, 'audio_changepoint_onsets', None)
+        offsets = getattr(self.app_state, 'audio_changepoint_offsets', None)
+
+        if onsets is None or offsets is None:
+            return None
+
+        all_cp = np.concatenate([onsets, offsets])
+        return np.unique(np.sort(all_cp))

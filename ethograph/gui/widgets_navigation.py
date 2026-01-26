@@ -3,7 +3,7 @@
 import numpy as np
 from napari import Viewer
 from qtpy.QtCore import Signal
-from qtpy.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
+from qtpy.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QGroupBox, QGridLayout
 from magicgui.widgets import ComboBox
 
 
@@ -18,46 +18,58 @@ class NavigationWidget(QWidget):
         self.app_state = app_state
         self.type_vars_dict = {}
 
+        # === Filter trials group ===
+        filter_group = QGroupBox("Filter trials")
+        filter_layout = QGridLayout()
+        filter_group.setLayout(filter_layout)
+
         self.confidence_skip_combo = QComboBox()
         self.confidence_skip_combo.setObjectName("confidence_skip_combo")
-        self.confidence_skip_combo.addItems(["Show all", "Show low confidence only", "Show high confidence only"])
-        confidence_label = QLabel("Filter by confidence:")
+        self.confidence_skip_combo.addItems(["Show all", "Low confidence only", "High confidence only"])
+        confidence_label = QLabel("By confidence:")
         confidence_label.setObjectName("confidence_label")
 
-        # Trial conditions combo
         self.trial_conditions_combo = QComboBox()
         self.trial_conditions_combo.setObjectName("trial_conditions_combo")
         self.trial_conditions_combo.addItem("None")
         self.trial_conditions_combo.currentTextChanged.connect(self._on_trial_conditions_changed)
-        self.trial_conditions_label = QLabel("Filter by condition:")
+        self.trial_conditions_label = QLabel("By condition:")
         self.trial_conditions_label.setObjectName("trial_conditions_label")
 
-        # Filter by condition value combo
         self.trial_conditions_value_combo = QComboBox()
         self.trial_conditions_value_combo.setObjectName("trial_condition_value_combo")
         self.trial_conditions_value_combo.addItem("None")
         self.trial_conditions_value_combo.currentTextChanged.connect(self._on_trial_condition_values_changed)
-        self.filter_label = QLabel("Condition value:")
+        self.filter_label = QLabel("Value:")
         self.filter_label.setObjectName("filter_label")
 
-        # Trial selection combo
+        filter_layout.addWidget(confidence_label, 0, 0)
+        filter_layout.addWidget(self.confidence_skip_combo, 0, 1, 1, 3)
+        filter_layout.addWidget(self.trial_conditions_label, 1, 0)
+        filter_layout.addWidget(self.trial_conditions_combo, 1, 1)
+        filter_layout.addWidget(self.filter_label, 1, 2)
+        filter_layout.addWidget(self.trial_conditions_value_combo, 1, 3)
+
+        # === Navigate trials group ===
+        navigate_group = QGroupBox("Navigate trials")
+        navigate_layout = QGridLayout()
+        navigate_group.setLayout(navigate_layout)
+
+
         self.trials_combo = QComboBox()
         self.trials_combo.setEditable(True)
         self.trials_combo.setObjectName("trials_combo")
         self.trials_combo.currentIndexChanged.connect(self._on_trial_changed)
-        trial_label = QLabel("Trial:")
-        trial_label.setObjectName("trial_label")
 
-        # Navigation buttons
-        self.prev_button = QPushButton("Previous Trial")
-        self.prev_button.setObjectName("prev_button")
-        self.prev_button.clicked.connect(lambda: self._update_trial(-1))
-
-        self.next_button = QPushButton("Next Trial")
+        self.next_button = QPushButton("Next")
         self.next_button.setObjectName("next_button")
         self.next_button.clicked.connect(lambda: self._update_trial(1))
 
-        # Playback FPS control
+        self.prev_button = QPushButton("Previous")
+        self.prev_button.setObjectName("prev_button")
+        self.prev_button.clicked.connect(lambda: self._update_trial(-1))
+
+
         self.fps_playback_edit = QLineEdit()
         self.fps_playback_edit.setObjectName("fps_playback_edit")
         fps_playback = app_state.get_with_default("fps_playback")
@@ -68,41 +80,23 @@ class NavigationWidget(QWidget):
         self.fps_playback_edit.setToolTip(
             "Playback FPS for video.\n"
             "Note: Video decoding typically caps at ~30-50 fps\n"
-            "depending on resolution, codec, and hardware."
-            "Audio playback speed is coupled to this setting."
+            "depending on resolution, codec, and hardware.\n"
+            "Audio playback speed is coupled to this setting.\n"
             "Set to recording FPS for normal audio playback."
         )
 
+        navigate_layout.addWidget(self.prev_button, 0, 0)
+        navigate_layout.addWidget(self.trials_combo, 0, 1, 1, 2)
+        navigate_layout.addWidget(self.next_button, 0, 3)
+        navigate_layout.addWidget(fps_label, 1, 0)
+        navigate_layout.addWidget(self.fps_playback_edit, 1, 1, 1, 3)
 
-        row0 = QHBoxLayout()
-        row0.addWidget(confidence_label)
-        row0.addWidget(self.confidence_skip_combo)
-
-        row_conditions = QHBoxLayout()
-        row_conditions.addWidget(self.trial_conditions_label)
-        row_conditions.addWidget(self.trial_conditions_combo)
-        row_conditions.addWidget(self.filter_label)
-        row_conditions.addWidget(self.trial_conditions_value_combo)
-
-        row1 = QHBoxLayout()
-        row1.addWidget(trial_label)
-        row1.addWidget(self.trials_combo)
-
-        row2 = QHBoxLayout()
-        row2.addWidget(self.prev_button)
-        row2.addWidget(self.next_button)
-
-        row3 = QHBoxLayout()
-        row3.addWidget(fps_label)
-        row3.addWidget(self.fps_playback_edit)
-
-
+        # === Main layout ===
         main_layout = QVBoxLayout()
-        main_layout.addLayout(row0)
-        main_layout.addLayout(row_conditions)
-        main_layout.addLayout(row1)
-        main_layout.addLayout(row2)
-        main_layout.addLayout(row3)
+        main_layout.setSpacing(2)
+        main_layout.setContentsMargins(2, 2, 2, 2)
+        main_layout.addWidget(filter_group)
+        main_layout.addWidget(navigate_group)
         self.setLayout(main_layout)
 
     def _on_trial_changed(self):
@@ -158,8 +152,8 @@ class NavigationWidget(QWidget):
             confidence_mode = self.confidence_skip_combo.currentText()
             
             should_skip = (
-                (confidence_mode == "Show low confidence only" and trial_confidence == "high") or
-                (confidence_mode == "Show high confidence only" and trial_confidence == "low")
+                (confidence_mode == "Low confidence only" and trial_confidence == "high") or
+                (confidence_mode == "High confidence only" and trial_confidence == "low")
             )
             
             if not should_skip:

@@ -1,7 +1,7 @@
 """Simple container widget for switching between different plot types."""
 
 from qtpy.QtWidgets import QWidget, QVBoxLayout
-from qtpy.QtCore import Signal, QSize
+from qtpy.QtCore import Signal, QSize, Qt
 from .plots_lineplot import LinePlot
 from .plots_spectrogram import SpectrogramPlot
 from .plots_audiotrace import AudioTracePlot
@@ -47,6 +47,17 @@ class PlotContainer(QWidget):
         self._original_line_pen = None
 
         self.motif_mappings: Dict[int, Dict[str, Any]] = {}
+
+        self.audio_cp_items: list = []
+        self.dataset_cp_items: list = []
+
+        # Connect zoom events to update changepoint line styles
+        self.spectrogram_plot.vb.sigRangeChanged.connect(self._on_audio_plot_zoom)
+        self.audio_trace_plot.vb.sigRangeChanged.connect(self._on_audio_plot_zoom)
+
+    def _on_audio_plot_zoom(self):
+        """Update changepoint line styles when zoom level changes."""
+        self.update_audio_changepoint_styles()
 
     def sizeHint(self):
         return QSize(self.width(), 300)
@@ -524,10 +535,14 @@ class PlotContainer(QWidget):
         color = self.motif_mappings[motif_id]["color"]
         color_rgb = tuple(int(c * 255) for c in color)
 
-        use_edge_style = (plot == self.spectrogram_plot)
+        # Use bottom strip style for spectrogram or when spectrogram overlay is active
+        use_bottom_strip = (
+            plot == self.spectrogram_plot or
+            (plot == self.line_plot and self.audio_overlay_type == 'spectrogram')
+        )
 
         if is_main:
-            if use_edge_style:
+            if use_bottom_strip:
                 self._draw_spectrogram_style_label(plot, start_time, end_time, color_rgb)
             else:
                 self._draw_standard_label(plot, start_time, end_time, color_rgb)
@@ -547,39 +562,8 @@ class PlotContainer(QWidget):
         plot.label_items.append(rect)
 
     def _draw_spectrogram_style_label(self, plot, start_time, end_time, color_rgb):
-        """Draw transparent fill with thick colored edges for spectrogram."""
-        spec_ymin = self.app_state.get_with_default('spec_ymin')
-        spec_ymax = self.app_state.get_with_default('spec_ymax')
-
-        if spec_ymin is not None and spec_ymax is not None and spec_ymax > spec_ymin:
-            y_min, y_max = spec_ymin, spec_ymax
-        else:
-            y_range = plot.plot_item.getViewBox().viewRange()[1]
-            y_min, y_max = y_range[0], y_range[1]
-            if y_max <= y_min:
-                y_min, y_max = 0, 20000
-
-        rect = pg.LinearRegionItem(
-            values=(start_time, end_time),
-            orientation="vertical",
-            brush=(*color_rgb, 40),
-            movable=False,
-        )
-        rect.setZValue(-10)
-        plot.plot_item.addItem(rect)
-        plot.label_items.append(rect)
-
-        edge_pen = pg.mkPen(color=(*color_rgb, 255), width=3)
-
-        left_edge = pg.PlotDataItem([start_time, start_time], [y_min, y_max], pen=edge_pen)
-        right_edge = pg.PlotDataItem([end_time, end_time], [y_min, y_max], pen=edge_pen)
-        top_edge = pg.PlotDataItem([start_time, end_time], [y_max, y_max], pen=edge_pen)
-        bottom_edge = pg.PlotDataItem([start_time, end_time], [y_min, y_min], pen=edge_pen)
-
-        for edge in [left_edge, right_edge, top_edge, bottom_edge]:
-            edge.setZValue(-5)
-            plot.plot_item.addItem(edge)
-            plot.label_items.append(edge)
+        """Draw label as colored strip at bottom of spectrogram."""
+        self._draw_label_strip_bottom(plot, start_time, end_time, color_rgb)
 
     def _draw_prediction_label(self, plot, start_time, end_time, color_rgb):
         """Draw small rectangle at top for prediction data."""
@@ -604,6 +588,29 @@ class PlotContainer(QWidget):
         plot.plot_item.addItem(rect)
         plot.label_items.append(rect)
 
+    def _draw_label_strip_bottom(self, plot, start_time, end_time, color_rgb):
+        """Draw small rectangle at bottom for labels on spectrogram."""
+        y_range = plot.plot_item.getViewBox().viewRange()[1]
+        y_bottom = y_range[0]
+        y_height = (y_range[1] - y_range[0]) * 0.08
+
+        if y_range[1] <= y_bottom:
+            y_bottom = 0
+            y_height = 1600
+
+        x_coords = [start_time, end_time, end_time, start_time, start_time]
+        y_coords = [y_bottom, y_bottom, y_bottom + y_height, y_bottom + y_height, y_bottom]
+
+        rect = pg.PlotDataItem(
+            x_coords, y_coords,
+            fillLevel=y_bottom,
+            brush=(*color_rgb, 220),
+            pen=None
+        )
+        rect.setZValue(10)
+        plot.plot_item.addItem(rect)
+        plot.label_items.append(rect)
+
     def redraw_current_plot_labels(self, time_data, labels, predictions=None, show_predictions=False):
         """Redraw labels only on the current plot (for view range changes)."""
         if labels is None or not self.motif_mappings:
@@ -620,3 +627,165 @@ class PlotContainer(QWidget):
     def vb(self):
         """Get ViewBox from active plot for direct access."""
         return self.current_plot.vb
+
+    def draw_audio_changepoints(self, onsets: np.ndarray, offsets: np.ndarray):
+        """Draw audio changepoints as vertical lines on audio plots.
+
+        Only draws on spectrogram and audiotrace plots. White lines that
+        adapt style based on zoom level (dotted when zoomed out, solid when zoomed in).
+        Times are rounded to nearest label sample for alignment with label grid.
+
+        Args:
+            onsets: Array of onset times in seconds
+            offsets: Array of offset times in seconds
+        """
+        self.clear_audio_changepoints()
+
+        plots_to_draw = [self.spectrogram_plot, self.audio_trace_plot]
+
+        # Determine line style based on current zoom level
+        line_style = self._get_changepoint_line_style()
+
+        # Round times to nearest label sample for alignment
+        label_sr = getattr(self.app_state, 'label_sr', None)
+        if label_sr and label_sr > 0:
+            onsets = np.round(onsets * label_sr) / label_sr
+            offsets = np.round(offsets * label_sr) / label_sr
+
+        for plot in plots_to_draw:
+            if plot is None:
+                continue
+
+            # White for spectrogram, black for waveform
+            color = (0, 0, 0, 200) if plot == self.audio_trace_plot else (255, 255, 255, 200)
+
+            for onset_t in onsets:
+                line = pg.InfiniteLine(
+                    pos=onset_t,
+                    angle=90,
+                    pen=pg.mkPen(color=color, width=line_style['width'], style=line_style['style']),
+                    movable=False,
+                )
+                line.setZValue(50)
+                plot.plot_item.addItem(line)
+                self.audio_cp_items.append((plot, line, 'onset'))
+
+            for offset_t in offsets:
+                line = pg.InfiniteLine(
+                    pos=offset_t,
+                    angle=90,
+                    pen=pg.mkPen(color=color, width=line_style['width'], style=line_style['style']),
+                    movable=False,
+                )
+                line.setZValue(50)
+                plot.plot_item.addItem(line)
+                self.audio_cp_items.append((plot, line, 'offset'))
+
+    def _get_changepoint_line_style(self):
+        """Get line style based on current zoom level.
+
+        Returns dotted lines when zoomed out (>2s visible), solid thin lines when zoomed in.
+        """
+        try:
+            xmin, xmax = self.current_plot.get_current_xlim()
+            visible_range = xmax - xmin
+
+            if visible_range > 10.0:
+                # Very zoomed out: thin dotted lines
+                return {'style': pg.QtCore.Qt.DotLine, 'width': 0.1}
+            elif visible_range > 2.0:
+                # Medium zoom: dashed lines
+                return {'style': pg.QtCore.Qt.DashLine, 'width': 1.0}
+            else:
+                # Zoomed in: solid lines for precision
+                return {'style': pg.QtCore.Qt.SolidLine, 'width': 2.0}
+        except Exception:
+            return {'style': pg.QtCore.Qt.DashLine, 'width': 1.0}
+
+    def update_audio_changepoint_styles(self):
+        """Update changepoint line styles based on current zoom level."""
+        if not self.audio_cp_items:
+            return
+
+        line_style = self._get_changepoint_line_style()
+
+        for item in self.audio_cp_items:
+            plot, line, _ = item
+            # White for spectrogram, black for waveform
+            color = (0, 0, 0, 200) if plot == self.audio_trace_plot else (255, 255, 255, 200)
+            line.setPen(pg.mkPen(color=color, width=line_style['width'], style=line_style['style']))
+
+    def clear_audio_changepoints(self):
+        """Remove all audio changepoint lines from plots."""
+        for item in self.audio_cp_items:
+            plot, line = item[0], item[1]
+            try:
+                plot.plot_item.removeItem(line)
+            except Exception:
+                pass
+        self.audio_cp_items.clear()
+
+    def draw_dataset_changepoints(self, time_array: np.ndarray, cp_by_method: dict):
+        """Draw dataset changepoints as circles on lineplot.
+
+        Args:
+            time_array: Time coordinate array
+            cp_by_method: Dict mapping method name to array of indices
+        """
+        self.clear_dataset_changepoints()
+
+        if not self.is_lineplot():
+            return
+
+        method_colors = {
+            'peaks': (255, 100, 100, 200),      # Red
+            'troughs': (100, 100, 255, 200),    # Blue
+            'turning_points': (100, 255, 100, 200),  # Green
+            'ruptures': (255, 165, 0, 200),     # Orange
+        }
+
+        y_range = self.line_plot.plot_item.getViewBox().viewRange()[1]
+        y_pos = y_range[0] + (y_range[1] - y_range[0]) * 0.05
+
+        for method_name, indices in cp_by_method.items():
+            if len(indices) == 0:
+                continue
+
+            times = time_array[indices]
+            y_values = np.full_like(times, y_pos)
+
+            color = method_colors.get(method_name, (200, 200, 200, 200))
+
+            scatter = pg.ScatterPlotItem(
+                x=times,
+                y=y_values,
+                size=8,
+                pen=pg.mkPen(color=color, width=1),
+                brush=pg.mkBrush(color=color),
+                symbol='o',
+                name=method_name,
+            )
+            scatter.setZValue(100)
+            self.line_plot.plot_item.addItem(scatter)
+            self.dataset_cp_items.append(scatter)
+
+    def clear_dataset_changepoints(self):
+        """Remove all dataset changepoint markers from lineplot."""
+        for item in self.dataset_cp_items:
+            try:
+                self.line_plot.plot_item.removeItem(item)
+            except Exception:
+                pass
+        self.dataset_cp_items.clear()
+
+    def clear_audio_cache(self):
+        """Clear audio caches when noise reduction setting changes."""
+        from .plots_spectrogram import SharedAudioCache
+        SharedAudioCache.clear_cache()
+
+        if hasattr(self.spectrogram_plot, 'buffer'):
+            self.spectrogram_plot.buffer._clear_buffer()
+
+        if hasattr(self.audio_trace_plot, 'buffer'):
+            self.audio_trace_plot.buffer.audio_loader = None
+            self.audio_trace_plot.buffer.current_path = None

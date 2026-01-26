@@ -18,6 +18,7 @@ from .widgets_navigation import NavigationWidget
 from .widgets_io import IOWidget
 from .widgets_plot import AxesWidget
 from .widgets_spectrogram import SpectrogramWidget
+from .widgets_changepoints import ChangepointsWidget
 
 
 
@@ -84,7 +85,8 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         # Create all widgets with app_state
         self.axes_widget = AxesWidget(self.viewer, self.app_state)
-        self.spectrogram_widget = SpectrogramWidget(self.viewer, self.app_state)
+        self.audio_widget = SpectrogramWidget(self.viewer, self.app_state)
+        self.changepoints_widget = ChangepointsWidget(self.viewer, self.app_state)
         self.labels_widget = LabelsWidget(self.viewer, self.app_state)
         self.help_widget = self._create_help_widget()
         self.navigation_widget = NavigationWidget(self.viewer, self.app_state)
@@ -99,8 +101,11 @@ class MetaWidget(CollapsibleWidgetContainer):
         # Set up cross-references between widgets
         self.labels_widget.set_plot_container(self.plot_container)
         self.labels_widget.set_meta_widget(self)
+        self.labels_widget.changepoints_widget = self.changepoints_widget
         self.axes_widget.set_plot_container(self.plot_container)
-        self.spectrogram_widget.set_plot_container(self.plot_container)
+        self.audio_widget.set_plot_container(self.plot_container)
+        self.changepoints_widget.set_plot_container(self.plot_container)
+        self.changepoints_widget.set_meta_widget(self)
 
         # Signal connections for decoupled communication
         self.plot_container.labels_redraw_needed.connect(self._on_labels_redraw_needed)
@@ -113,7 +118,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         # The one widget to rule them all (loading data, updating plots, managing sync)
         self.data_widget.set_references(
             self.plot_container, self.labels_widget, self.axes_widget,
-            self.navigation_widget, self.spectrogram_widget
+            self.navigation_widget, self.audio_widget, self.changepoints_widget
         )
 
         for widget in [
@@ -121,8 +126,9 @@ class MetaWidget(CollapsibleWidgetContainer):
             self.io_widget,
             self.data_widget,
             self.labels_widget,
+            self.changepoints_widget,
             self.axes_widget,
-            self.spectrogram_widget,
+            self.audio_widget,
             self.navigation_widget,
         ]:
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -153,13 +159,19 @@ class MetaWidget(CollapsibleWidgetContainer):
         )
 
         self.add_widget(
+            self.changepoints_widget,
+            collapsible=True,
+            widget_title="Changepoints (CPs)",
+        )
+
+        self.add_widget(
             self.axes_widget,
             collapsible=True,
             widget_title="Axes controls",
         )
 
         self.add_widget(
-            self.spectrogram_widget,
+            self.audio_widget,
             collapsible=True,
             widget_title="Spectrogram controls",
         )
@@ -171,8 +183,14 @@ class MetaWidget(CollapsibleWidgetContainer):
         )
 
 
-        self.layout().setSpacing(0)
-        self.layout().setContentsMargins(0, 0, 0, 0)
+
+
+
+        for i in range(self.layout().count()):
+            item = self.layout().itemAt(i)
+            if item.widget() and item.widget().layout():
+                item.widget().layout().setSpacing(3)
+                item.widget().layout().setContentsMargins(3, 3, 3, 3)
 
     def _on_labels_redraw_needed(self):
         """Handle label redraw request when switching between plots."""
@@ -518,28 +536,59 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.setStyleSheet(f"""
             * {{
                 font-size: {font_size}pt;
-                padding: 1px;
-                margin: 0px;
+                padding: 2px;
+                margin: 1px;
             }}
             QLabel {{
                 font-size: {font_size}pt;
-                padding: 1px;
+                padding: 2px;
             }}
             QPushButton {{
                 font-size: {font_size}pt;
-                padding: 2px 4px;
+                padding: 4px 8px;
             }}
             QComboBox {{
                 font-size: {font_size}pt;
-                padding: 1px;
+                padding: 2px 4px;
             }}
             QSpinBox, QDoubleSpinBox {{
                 font-size: {font_size}pt;
-                padding: 1px;
+                padding: 2px;
             }}
             QLineEdit {{
                 font-size: {font_size}pt;
+                padding: 2px 4px;
+            }}
+            QGroupBox {{
+                margin-top: 4px;
+                margin-bottom: 2px;
+                padding-top: 12px;
+            }}
+            QGroupBox::title {{
+                padding: 2px 4px;
+            }}
+            QFrame {{
+                margin: 1px;
                 padding: 1px;
+            }}
+            QCollapsible {{
+                margin: 1px;
+                padding: 1px;
+                border: none;
+                spacing: 2px;
+            }}
+            QCollapsible > QToolButton {{
+                padding: 2px 6px;
+                margin: 1px;
+                min-height: 18px;
+                max-height: 20px;
+                border: none;
+                border-bottom: 1px solid palette(mid);
+            }}
+            QCollapsible > QFrame {{
+                margin: 2px;
+                padding: 2px;
+                border: none;
             }}
         """)
     

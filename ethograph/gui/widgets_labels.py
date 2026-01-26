@@ -58,6 +58,7 @@ class LabelsWidget(QWidget):
 
         self.plot_container = None  # Will be set after creation
         self.meta_widget = None  # Will be set after creation
+        self.changepoints_widget = None  # Will be set after creation
 
         # Make widget focusable for keyboard events
         self.setFocusPolicy(Qt.StrongFocus)
@@ -273,33 +274,6 @@ class LabelsWidget(QWidget):
         """)
 
         self.motifs_table.itemSelectionChanged.connect(self._on_table_selection_changed)
-
-        # First control row
-        first_row = QWidget()
-        first_layout = QHBoxLayout()
-        first_layout.setSpacing(0)
-        first_row.setLayout(first_layout)
-
-        self.changepoint_correction_checkbox = QCheckBox("Label changepoint correction")
-        self.changepoint_correction_checkbox.setChecked(True)
-        first_layout.addWidget(self.changepoint_correction_checkbox)
-
-        self.delete_button = QPushButton("Delete")
-        self.delete_button.setToolTip("Shortcut: (Ctrl + D)")
-        self.delete_button.clicked.connect(self._delete_motif)
-        first_layout.addWidget(self.delete_button)
-
-        self.edit_button = QPushButton("Edit")
-        self.edit_button.setToolTip("Shortcut: (Ctrl + E)")
-        self.edit_button.clicked.connect(self._edit_motif)
-        first_layout.addWidget(self.edit_button)
-
-        self.play_button = QPushButton("Play")
-        self.play_button.setToolTip("Click on segment then press v to play")
-        self.play_button.clicked.connect(self._play_segment)
-        first_layout.addWidget(self.play_button)
-
-        self.layout().addWidget(first_row)
 
 
 
@@ -685,7 +659,7 @@ class LabelsWidget(QWidget):
             # Snap to nearest changepoint if available
             label_idx = int(t_clicked * self.app_state.label_sr)  
             
-            if self.changepoint_correction_checkbox.isChecked():
+            if self.changepoints_widget and self.changepoints_widget.is_changepoint_correction_enabled():
                 label_idx_snapped = self._snap_to_changepoint(label_idx)
             else:
                 label_idx_snapped = label_idx
@@ -748,18 +722,41 @@ class LabelsWidget(QWidget):
             return False
 
     def _snap_to_changepoint(self, x_clicked_idx: float) -> float:
-        """Snap the clicked x-coordinate to the nearest changepoint."""
+        """Snap the clicked x-coordinate to the nearest changepoint.
+
+        Considers both dataset changepoints and audio changepoints (if visible).
+        """
+        best_snapped = x_clicked_idx
+        best_distance = float('inf')
 
         ds_kwargs = self.app_state.get_ds_kwargs()
 
         cp_ds = self.app_state.ds.sel(**ds_kwargs).filter_by_attrs(type="changepoints")
-        if len(cp_ds.data_vars) == 0:
-            return x_clicked_idx
+        if len(cp_ds.data_vars) > 0:
+            feature_sel = self.app_state.features_sel
+            ds_kwargs = self.app_state.get_ds_kwargs()
+            ds_snapped = snap_to_nearest_changepoint(x_clicked_idx, self.app_state.ds, feature_sel, **ds_kwargs)
+            ds_distance = abs(ds_snapped - x_clicked_idx)
+            if ds_distance < best_distance:
+                best_snapped = ds_snapped
+                best_distance = ds_distance
 
-        feature_sel = self.app_state.features_sel
-        ds_kwargs = self.app_state.get_ds_kwargs()
-        snapped_val = snap_to_nearest_changepoint(x_clicked_idx, self.app_state.ds, feature_sel, **ds_kwargs)
-        return snapped_val
+        if getattr(self.app_state, 'show_audio_changepoints', False):
+            onsets = getattr(self.app_state, 'audio_changepoint_onsets', None)
+            offsets = getattr(self.app_state, 'audio_changepoint_offsets', None)
+            if onsets is not None and offsets is not None:
+                label_sr = self.app_state.label_sr
+                if label_sr and label_sr > 0:
+                    all_audio_cp_times = np.concatenate([onsets, offsets])
+                    audio_cp_indices = (all_audio_cp_times * label_sr).astype(int)
+                    if len(audio_cp_indices) > 0:
+                        nearest_idx = np.argmin(np.abs(audio_cp_indices - x_clicked_idx))
+                        audio_snapped = audio_cp_indices[nearest_idx]
+                        audio_distance = abs(audio_snapped - x_clicked_idx)
+                        if audio_distance < best_distance:
+                            best_snapped = audio_snapped
+
+        return best_snapped
 
     def _apply_motif(self):
         """Apply the selected motif to the selected time range."""

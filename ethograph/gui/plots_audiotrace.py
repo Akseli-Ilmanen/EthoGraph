@@ -164,6 +164,16 @@ class AudioTraceBuffer:
             ch = min(channel_idx, n_channels - 1)
             audio_data = audio_data[:, ch]
 
+        if getattr(self.app_state, 'noise_reduce_enabled', False):
+            try:
+                from ethograph.features.audio_changepoints import apply_noise_reduction
+                nfft = self.app_state.get_with_default("nfft")
+                hop_frac = self.app_state.get_with_default("hop_frac")
+                prop_decrease = getattr(self.app_state, 'noise_reduce_prop_decrease', 1.0)
+                audio_data = apply_noise_reduction(audio_data, int(self.fs), nfft, hop_frac, prop_decrease=prop_decrease)
+            except ImportError:
+                pass
+
         if step > 1:
             aligned_start = (start // step) * step
             aligned_stop = ((stop // step) + 1) * step
@@ -177,6 +187,16 @@ class AudioTraceBuffer:
                 n_channels = audio_data.shape[1]
                 ch = min(channel_idx, n_channels - 1)
                 audio_data = audio_data[:, ch]
+
+            if getattr(self.app_state, 'noise_reduce_enabled', False):
+                try:
+                    from ethograph.features.audio_changepoints import apply_noise_reduction
+                    nfft = self.app_state.get_with_default("nfft")
+                    hop_frac = self.app_state.get_with_default("hop_frac")
+                    prop_decrease = getattr(self.app_state, 'noise_reduce_prop_decrease', 1.0)
+                    audio_data = apply_noise_reduction(audio_data, int(self.fs), nfft, hop_frac, prop_decrease=prop_decrease)
+                except ImportError:
+                    pass
 
             n_segments = len(audio_data) // step
             if n_segments == 0:

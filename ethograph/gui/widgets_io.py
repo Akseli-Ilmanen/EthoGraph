@@ -30,8 +30,11 @@ class IOWidget(QWidget):
         self.app_state = app_state
         self.data_widget = data_widget
         self.labels_widget = labels_widget
-        self.setLayout(QFormLayout())
-        
+        layout = QFormLayout()
+        layout.setSpacing(2)
+        layout.setContentsMargins(2, 2, 2, 2)
+        self.setLayout(layout)
+
         # Dictionary to store combo boxes
         self.combos = {}
         # List to store controls for enabling/disabling

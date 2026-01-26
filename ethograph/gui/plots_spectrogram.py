@@ -273,6 +273,15 @@ class SpectrogramBuffer:
 
         nfft = self.app_state.get_with_default("nfft")
         hop_frac = self.app_state.get_with_default("hop_frac")
+
+        if getattr(self.app_state, 'noise_reduce_enabled', False):
+            try:
+                from ethograph.features.audio_changepoints import apply_noise_reduction
+                prop_decrease = getattr(self.app_state, 'noise_reduce_prop_decrease', 1.0)
+                audio_data = apply_noise_reduction(audio_data, int(self.fs), nfft, hop_frac, prop_decrease=prop_decrease)
+            except ImportError:
+                pass
+
         hop = int(nfft * hop_frac)
 
         if len(audio_data) < nfft:

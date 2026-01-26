@@ -123,7 +123,7 @@ def plot_multidim(plot_item, time, data, coord_labels=None, existing_curves=None
     return existing_curves
 
 
-def plot_singledim(plot_item, time, data, color_data=None, changepoints_dict=None, existing_items=None):
+def plot_singledim(plot_item, time, data, color_data=None, changepoints_dict=None, existing_items=None, show_changepoints=True):
     if existing_items is None:
         existing_items = []
 
@@ -139,7 +139,7 @@ def plot_singledim(plot_item, time, data, color_data=None, changepoints_dict=Non
         existing_items.append(curve)
 
     # Add changepoints as scatter plots, each with its own color and label
-    if changepoints_dict is not None:
+    if changepoints_dict is not None and show_changepoints:
         # Use tab10 color palette from matplotlib, converted to 0-255 RGB
         
         
@@ -168,7 +168,7 @@ def plot_singledim(plot_item, time, data, color_data=None, changepoints_dict=Non
     return existing_items
 
 
-def plot_ds_variable(plot_item, ds, ds_kwargs, variable, color_variable=None):
+def plot_ds_variable(plot_item, ds, ds_kwargs, variable, color_variable=None, show_changepoints=True):
     """
     Plot a variable from ds for a given trial and keypoint using PyQtGraph.
     Handles both multi-dimensional (e.g., pos, vel) and single-dimensional (e.g., speed) variables.
@@ -179,6 +179,7 @@ def plot_ds_variable(plot_item, ds, ds_kwargs, variable, color_variable=None):
         ds_kwargs: dict with selection criteria (e.g., {keypoints="beakTip"})
         variable: variable name to plot
         color_variable: optional variable name for coloring
+        show_changepoints: whether to draw changepoint markers
 
     Returns:
         list of created plot items
@@ -229,11 +230,16 @@ def plot_ds_variable(plot_item, ds, ds_kwargs, variable, color_variable=None):
                 if cp_var.attrs.get("target_feature") == variable and not np.isnan(cp_data).all():
                     changepoints_dict[cp_var_name] = cp_data
 
+        # Add legend if changepoints will be shown
+        if changepoints_dict and show_changepoints:
+            plot_item.legend = plot_item.addLegend(offset=(10, 10))
+
         plot_items = plot_singledim(
             plot_item, time, data,
             color_data=color_data,
             changepoints_dict=changepoints_dict if changepoints_dict else None,
-            existing_items=plot_items
+            existing_items=plot_items,
+            show_changepoints=show_changepoints
         )
     else:
         print(f"Variable '{variable}' not supported for plotting.")
