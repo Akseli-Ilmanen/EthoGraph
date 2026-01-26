@@ -26,6 +26,7 @@ dependencies:
   - pip:
       - audioio
       - thunderhopper
+      - ruptures
       - noisereduce
       - pip install noisereduce
       - pip install git+https://github.com/timsainb/vocalization-segmentation.git

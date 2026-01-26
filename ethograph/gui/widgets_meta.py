@@ -189,8 +189,8 @@ class MetaWidget(CollapsibleWidgetContainer):
         for i in range(self.layout().count()):
             item = self.layout().itemAt(i)
             if item.widget() and item.widget().layout():
-                item.widget().layout().setSpacing(3)
-                item.widget().layout().setContentsMargins(3, 3, 3, 3)
+                item.widget().layout().setSpacing(2)
+                item.widget().layout().setContentsMargins(2, 2, 2, 2)
 
     def _on_labels_redraw_needed(self):
         """Handle label redraw request when switching between plots."""
