@@ -81,11 +81,6 @@ class SpectrogramWidget(QWidget):
         group_layout.addWidget(QLabel("Freq max (kHz):"), row, 2)
         group_layout.addWidget(self.spec_ymax_edit, row, 3)
 
-        row += 1
-        group_layout.addWidget(QLabel("dB min:"), row, 0)
-        group_layout.addWidget(self.vmin_db_edit, row, 1)
-        group_layout.addWidget(QLabel("dB max:"), row, 2)
-        group_layout.addWidget(self.vmax_db_edit, row, 3)
 
         row += 1
         group_layout.addWidget(QLabel("NFFT:"), row, 0)
@@ -94,7 +89,16 @@ class SpectrogramWidget(QWidget):
         group_layout.addWidget(self.hop_frac_edit, row, 3)
 
         row += 1
-        group_layout.addWidget(self.auto_levels_button, row, 0, 1, 2)
+        group_layout.addWidget(QLabel("dB min:"), row, 0)
+        group_layout.addWidget(self.vmin_db_edit, row, 1)
+        group_layout.addWidget(QLabel("dB max:"), row, 2)
+        group_layout.addWidget(self.vmax_db_edit, row, 3)
+
+
+        row += 1
+        group_layout.addWidget(QLabel("Colormap:"), row, 0)
+        group_layout.addWidget(self.colormap_combo, row, 1)
+        group_layout.addWidget(self.auto_levels_button, row, 2, 1, 2)
         group_layout.addWidget(self.apply_button, row, 2)
         group_layout.addWidget(self.reset_button, row, 3)
 
