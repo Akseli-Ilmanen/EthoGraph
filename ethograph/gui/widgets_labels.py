@@ -741,7 +741,7 @@ class LabelsWidget(QWidget):
                 best_snapped = ds_snapped
                 best_distance = ds_distance
 
-        if getattr(self.app_state, 'show_audio_changepoints', False):
+        if getattr(self.app_state, 'show_changepoints', False):
             onsets = getattr(self.app_state, 'audio_changepoint_onsets', None)
             offsets = getattr(self.app_state, 'audio_changepoint_offsets', None)
             if onsets is not None and offsets is not None:

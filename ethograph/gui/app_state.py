@@ -115,6 +115,9 @@ class AppStateSpec:
         "lock_axes": (bool, False, False),
         "spec_colormap": (str, "CET-R4", True),
 
+        # All checkbox states for dimension combos (e.g., {"keypoints": True, "space": False})
+        "all_checkbox_states": (dict[str, bool], {}, True),
+
         # Audio processing
         "noise_reduce_enabled": (bool, False, True),
         "noise_reduce_prop_decrease": (float, 1.0, True),
@@ -122,7 +125,7 @@ class AppStateSpec:
         "audio_cp_min_level_db": (float, -70.0, True),
         "audio_cp_min_syllable_length_s": (float, 0.02, True),
         "audio_cp_silence_threshold": (float, 0.1, True),
-        "show_audio_changepoints": (bool, False, True),
+        "show_changepoints": (bool, True, True),
     }
 
     @classmethod
@@ -377,6 +380,8 @@ class ObservableAppState(QObject):
             value = self._values.get(attr)
             if value is not None and isinstance(value, (str, float, int, bool)):
                 state_dict[attr] = self._to_native(value)
+            elif isinstance(value, dict) and value:
+                state_dict[attr] = value
 
         for attr in dir(self):
             if attr.endswith("_sel") or attr.endswith("_sel_previous"):

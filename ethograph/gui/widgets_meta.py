@@ -113,7 +113,9 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.app_state.verification_changed.connect(self._on_verification_changed)
         self.app_state.verification_changed.connect(self.labels_widget._update_human_verified_status)
         self.app_state.trial_changed.connect(self.data_widget.on_trial_changed)
- 
+        self.changepoints_widget.changepoint_correction_checkbox.stateChanged.connect(
+            self.update_changepoints_widget_title
+        )
 
         # The one widget to rule them all (loading data, updating plots, managing sync)
         self.data_widget.set_references(
@@ -192,6 +194,8 @@ class MetaWidget(CollapsibleWidgetContainer):
                 item.widget().layout().setSpacing(2)
                 item.widget().layout().setContentsMargins(2, 2, 2, 2)
 
+        self.update_changepoints_widget_title()
+
     def _on_labels_redraw_needed(self):
         """Handle label redraw request when switching between plots."""
         if not self.app_state.ready:
@@ -240,6 +244,24 @@ class MetaWidget(CollapsibleWidgetContainer):
                 labels_collapsible.setTitle(new_title)
             elif hasattr(labels_collapsible, '_title_widget') and hasattr(labels_collapsible._title_widget, 'setText'):
                 labels_collapsible._title_widget.setText(new_title)
+
+    def update_changepoints_widget_title(self):
+        """Update the Changepoints title with correction mode indicator."""
+        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 4:
+            # Changepoints widget is at index 4
+            cp_collapsible = self.collapsible_widgets[4]
+
+            correction_enabled = self.changepoints_widget.changepoint_correction_checkbox.isChecked()
+            indicator = "🎯" if correction_enabled else "⭕"
+
+            new_title = f"Changepoints (CPs) {indicator}"
+
+            if hasattr(cp_collapsible, 'setText'):
+                cp_collapsible.setText(new_title)
+            elif hasattr(cp_collapsible, 'setTitle'):
+                cp_collapsible.setTitle(new_title)
+            elif hasattr(cp_collapsible, '_title_widget') and hasattr(cp_collapsible._title_widget, 'setText'):
+                cp_collapsible._title_widget.setText(new_title)
 
     def _check_unsaved_changes(self, event):
         """Check for unsaved changes and prompt user. Returns True if OK to close, False if not."""
@@ -453,6 +475,10 @@ class MetaWidget(CollapsibleWidgetContainer):
         def human_verified(v):
             self.labels_widget._human_verification_true(mode="single_trial")
 
+        @viewer.bind_key("ctrl+b", overwrite=True)
+        def toggle_changepoint_correction(v):
+            checkbox = self.changepoints_widget.changepoint_correction_checkbox
+            checkbox.setChecked(not checkbox.isChecked())
 
         def setup_keybindings_grid_layout(viewer, labels_widget):
             """Setup using grid layout for motif activation"""

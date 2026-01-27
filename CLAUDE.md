@@ -457,6 +457,7 @@ Bound in `MetaWidget._bind_global_shortcuts()`:
 | Ctrl+E | Edit selected motif |
 | Ctrl+D | Delete selected motif |
 | Ctrl+V | Mark motif as verified |
+| Ctrl+B | Toggle changepoint correction for labels |
 
 ---
 

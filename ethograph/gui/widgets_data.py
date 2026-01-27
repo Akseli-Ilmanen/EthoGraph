@@ -171,11 +171,6 @@ class DataWidget(DataLoader, QWidget):
         self.io_widget.disable_downsample_controls()
 
         trials = self.app_state.dt.trials
-    
-        
-        
-        
-
 
 
         if self.app_state.import_labels_nc_data:
@@ -229,7 +224,9 @@ class DataWidget(DataLoader, QWidget):
         # Update trials combo after ready=True so it populates correctly
         self.update_trials_combo()
 
-        self.on_trial_changed()
+        self._load_trial_with_fallback()
+        
+        
         self.setVisible(True)
         load_btn.setText("Restart app to load new data")
 
@@ -587,8 +584,10 @@ class DataWidget(DataLoader, QWidget):
                     if other_combo:
                         other_combo.setEnabled(True)
                         self.app_state.set_key_sel(other_key, other_combo.currentText())
+                    self._update_all_checkbox_state(other_key, False)
 
         combo.setEnabled(not is_checked)
+        self._update_all_checkbox_state(key, is_checked)
 
         if is_checked:
             self.app_state.set_key_sel(key, None)
@@ -602,7 +601,14 @@ class DataWidget(DataLoader, QWidget):
         self.update_main_plot(t0=xmin, t1=xmax)
         self.update_space_plot()
 
-
+    def _update_all_checkbox_state(self, key: str, is_checked: bool):
+        """Update the all_checkbox_states dict in app_state."""
+        states = self.app_state.all_checkbox_states.copy()
+        if is_checked:
+            states[key] = True
+        else:
+            states.pop(key, None)
+        self.app_state.all_checkbox_states = states
 
     def _restore_or_set_defaults(self):
         """Restore saved selections from app_state or set defaults from available options."""
@@ -646,27 +652,44 @@ class DataWidget(DataLoader, QWidget):
         if hasattr(self, 'space_plot_combo'):
             self.space_plot_combo.setCurrentText(space_plot_type)
 
+        # Restore "All" checkbox states
+        checkbox_states = self.app_state.all_checkbox_states or {}
+        for key, is_checked in checkbox_states.items():
+            checkbox = self.all_checkboxes.get(key)
+            combo = self.combos.get(key)
+            if checkbox and is_checked:
+                checkbox.blockSignals(True)
+                checkbox.setChecked(True)
+                checkbox.blockSignals(False)
+                if combo:
+                    combo.setEnabled(False)
+                self.app_state.set_key_sel(key, None)
+
                 
+
+    def _load_trial_with_fallback(self) -> None:
+        first_trial = self.app_state.trials[0]
+        current_trial = self.app_state.trials_sel
+
+        try:
+            self.on_trial_changed()
+        except Exception as e:
+            if current_trial == first_trial:
+                raise RuntimeError(f"Failed to load first trial: {e}") from e
+
+            print(f"Error loading trial {current_trial}: {e}\nReverting to first trial.")
+            self.app_state.trials_sel = first_trial
+            self.on_trial_changed()
 
     def on_trial_changed(self):
         """Handle all consequences of a trial change - centralized orchestration."""
         trials_sel = self.app_state.trials_sel
 
-        try:
-            self.app_state.ds = self.app_state.dt.trial(trials_sel)
-            self.app_state.label_ds = self.app_state.label_dt.trial(trials_sel)
+        self.app_state.ds = self.app_state.dt.trial(trials_sel)
+        self.app_state.label_ds = self.app_state.label_dt.trial(trials_sel)
 
-            if self.app_state.pred_dt is not None:
-                self.app_state.pred_ds = self.app_state.pred_dt.trial(trials_sel)
-
-        except Exception as e:
-            self.app_state.ds = self.app_state.dt.itrial(0)
-            self.app_state.label_ds = self.app_state.label_dt.itrial(0)
-            if self.app_state.pred_dt is not None:
-                self.app_state.pred_ds = self.app_state.pred_dt.itrial(0)
-
-            self.app_state.trials_sel = self.app_state.trials[0]
-            print(f"Error selecting trial {trials_sel}: {e}")
+        if self.app_state.pred_dt is not None:
+            self.app_state.pred_ds = self.app_state.pred_dt.trial(trials_sel)
 
         feature_sel = getattr(self.app_state, 'features_sel', None)
         if feature_sel and feature_sel not in ("Spectrogram", "Waveform"):

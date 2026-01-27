@@ -17,4 +17,5 @@
 16 beakToDisp
 17 stickInDispTwo
 18 loseStick
-19 beakToStickBase
+19 pickUpStick
+20 shake
