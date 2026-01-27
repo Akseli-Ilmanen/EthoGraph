@@ -59,7 +59,7 @@ class NavigationWidget(QWidget):
         self.trials_combo = QComboBox()
         self.trials_combo.setEditable(True)
         self.trials_combo.setObjectName("trials_combo")
-        self.trials_combo.currentIndexChanged.connect(self._on_trial_changed)
+        self.trials_combo.currentTextChanged.connect(self._on_trial_changed)
 
         self.next_button = QPushButton("Next")
         self.next_button.setObjectName("next_button")
@@ -86,8 +86,8 @@ class NavigationWidget(QWidget):
         )
 
         navigate_layout.addWidget(self.prev_button, 0, 0)
-        navigate_layout.addWidget(self.trials_combo, 0, 1, 1, 2)
-        navigate_layout.addWidget(self.next_button, 0, 3)
+        navigate_layout.addWidget(self.next_button, 0, 1)
+        navigate_layout.addWidget(self.trials_combo, 0, 2, 1, 2)
         navigate_layout.addWidget(fps_label, 1, 0)
         navigate_layout.addWidget(self.fps_playback_edit, 1, 1, 1, 3)
 

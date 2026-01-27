@@ -385,7 +385,7 @@ class SpectrogramWidget(QWidget):
         Returns combined onset/offset times if changepoints are computed
         and display is enabled, otherwise None.
         """
-        if not getattr(self.app_state, 'show_audio_changepoints', False):
+        if not getattr(self.app_state, 'show_changepoints', False):
             return None
 
         onsets = getattr(self.app_state, 'audio_changepoint_onsets', None)

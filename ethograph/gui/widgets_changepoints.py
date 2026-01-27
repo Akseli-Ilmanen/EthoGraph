@@ -116,6 +116,7 @@ class ChangepointsWidget(QWidget):
 
         self.show_cp_checkbox = QCheckBox("Show changepoints")
         self.show_cp_checkbox.setToolTip("Display changepoints on plot")
+        self.show_cp_checkbox.setChecked(True)
         self.show_cp_checkbox.stateChanged.connect(self._on_show_changepoints_changed)
         row1_layout.addWidget(self.show_cp_checkbox)
 
@@ -565,7 +566,7 @@ class ChangepointsWidget(QWidget):
             self.spectral_min_spin.setValue(0)
             self.spectral_max_spin.setValue(0)
 
-        show_cp = getattr(self.app_state, "show_audio_changepoints", False)
+        show_cp = getattr(self.app_state, "show_changepoints", False)
         self.show_cp_checkbox.setChecked(show_cp)
 
     def _parse_float(self, text: str) -> Optional[float]:
