@@ -7,32 +7,6 @@ from typing import Tuple, Dict, Union
 
 from ethograph.utils.io import TrialTree
 
-
-def extract_csv_file_info(file_name: str, session_number: str) -> Tuple[str, str, str, str, str]:
-    """
-    Extracts session_date, trial, subject_id, and generates folder name and mp4 file name.
-
-    Args:
-        file_name: A string with the format 'YYYY-MM-DD_trial_SubjectID_DLC_3D[.csv|.m]'
-        session_number: Suffix after date: 'XX' in 'YYYYMMDD_XX'
-
-    Returns:
-        session_date: The date in 'YYYY-MM-DD' format
-        trial: The trial number or identifier after the date
-        subject_id: The subject ID in the file
-        folder_name: The folder name in 'YYYYMMDD_XX_SubjectID' format
-        mp4_file_name: The MP4 filename in 'YYYY-MM-DD_trial_SubjectID-cam-1.mp4' format
-    """
-    pattern = r'(\d{4}-\d{2}-\d{2})_(\d+)_([A-Za-z]+)_DLC_3D'
-    match = re.search(pattern, file_name)
-    if not match:
-        raise ValueError('Filename does not match the expected format.')
-    session_date, trial, subject_id = match.groups()
-    folder_name = f"{session_date.replace('-', '')}_{session_number}_{subject_id}\\"
-    mp4_file_name = f"{session_date}_{str(trial).zfill(3)}_{subject_id}-cam-1.mp4"
-    return session_date, trial, subject_id, folder_name, mp4_file_name
-
-
 def get_all_trials_path_info(all_trials_path):
     """
     Extract subject_id, session_date, session_number, and dataset_name from a path string.
