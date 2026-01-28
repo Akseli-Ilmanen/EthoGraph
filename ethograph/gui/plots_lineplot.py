@@ -4,7 +4,7 @@ import numpy as np
 from typing import Optional
 from qtpy.QtCore import QTimer
 from ethograph.utils.data_utils import sel_valid
-from deps.ethograph.ethograph.plots.lineplot_qtgraph import plot_ds_variable, clear_plot_items
+from ethograph.plots.lineplot_qtgraph import plot_ds_variable, clear_plot_items
 from .plots_base import BasePlot
 
 
