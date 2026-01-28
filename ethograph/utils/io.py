@@ -1,20 +1,15 @@
 import numpy as np
-import scipy.io as sio
-from ethograph.features.changepoints import more_changepoint_features, merge_changepoints
-from ethograph.utils.labels import fix_endings
 import xarray as xr
+import os
+import json
 from functools import partial
 import itertools
 from scipy.ndimage import gaussian_filter1d
 from ethograph.features.mov_features import get_angle_rgb
-import os
-import json
-from pathlib import Path
+from ethograph.features.changepoints import more_changepoint_features, merge_changepoints
 from typing import Any, Callable, Dict, Optional, Union, List, Set, get_args
 from ethograph.utils.validation import validate_datatree
-from movement.kinematics import compute_velocity, compute_speed, compute_acceleration, compute_pairwise_distances
-from movement.io import load_poses
-from ethograph.features.audio_features import get_envelope
+
 
 
 
@@ -327,33 +322,7 @@ class TrialTree(xr.DataTree):
     
         
     
-def minimal_basics(ds, label_sr: Optional[float] = None) -> TrialTree:
 
-    if "labels" not in ds.data_vars:
-        
-        if label_sr is not None:
-            time_labels = np.arange(0, ds.time.values[-1] + 1/label_sr, 1/label_sr)
-            
-            ds["labels"] = xr.DataArray(
-                np.zeros((len(time_labels), ds.dims["individuals"])),
-                dims=["time_labels", "individuals"],
-                coords={"time_labels": time_labels, "individuals": ds.individuals},
-            )
-            
-        else: 
-            ds["labels"] = xr.DataArray(
-                    np.zeros((ds.dims["time"], ds.dims["individuals"])),
-                    dims=["time", "individuals"],
-            )
-
-    for feat in list(ds.data_vars):
-        if feat != "labels":
-            ds[feat].attrs["type"] = "features"
-
-    ds.attrs["trial"] = "sample_trial"
-    dt = TrialTree.from_datasets([ds])
-
-    return dt
 
 
 def downsample_dataset(ds: xr.Dataset, factor: int) -> xr.Dataset:
@@ -447,116 +416,6 @@ def downsample_trialtree(dt: "TrialTree", factor: int) -> "TrialTree":
         attrs=dt.attrs
     )
    
-
-   
-def minimal_dt_from_pose(video_path, fps, tracking_path, source_software):
-    """
-    Create a minimal TrialTree from pose data.
-    
-    Args:
-        video_path: Path to video file
-        fps: Frames per second of the video
-        tracking_path: Path to tracking file (e.g. poses.csv/poses.h5)
-        source_software: Software used for tracking (e.g., 'DeepLabCut')
-        
-        
-    Returns:
-        TrialTree with minimal structure
-    """
-    # Validate inputs: must provide either ds OR (source_software + fps)
-
-    ds = load_poses.from_file(
-        file_path=tracking_path, 
-        fps=fps, 
-        source_software=source_software
-    )
-
-
-    ds["velocity"] = compute_velocity(ds.position)
-    ds["speed"] = compute_speed(ds.position)
-    ds["acceleration"] = compute_acceleration(ds.position)
-    
-    if len(ds.keypoints) > 1:
-        compute_pairwise_distances(ds.position, dim='keypoints', pairs='all')
-    
-    if len(ds.individuals) > 1:
-        # Not sure how this looks like with individuals > 2
-        compute_pairwise_distances(ds.position, dim='individuals', pairs='all')
-    
-
-
-    ds = set_media_attrs(
-        ds,
-        cameras=[Path(video_path).name],
-        tracking=[Path(tracking_path).name],
-        tracking_prefix=f"{ds.attrs['source_software']}_1"
-    )            
-    dt = minimal_basics(ds)
-
-
-    return dt
-
-
-def minimal_dt_from_ds(video_path, ds: xr.Dataset):
-    
-    # No public function from movement to validate that this
-    # is a proper poses dataset -> add later
-    
-    ds = set_media_attrs(
-        ds,
-        cameras=[Path(video_path).name],
-    )  
-    dt = minimal_basics(ds)
-    
-    return dt
-
-
-def minimal_dt_from_audio(video_path, fps, audio_path, audio_sr, individuals=None):
-
-    if individuals is None:
-        individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
-
-    envelope, gen_wav_path = get_envelope(audio_path, audio_sr, fps)
-
-    if gen_wav_path:
-        audio_path = gen_wav_path
-    
-    n_frames = len(envelope)
-    time_coords = np.arange(n_frames) / fps
-    
-
-    ds = xr.Dataset(
-        data_vars={
-            "labels": (["time", "individuals"], np.zeros((n_frames, len(individuals))))
-        },
-        coords={
-            "time": time_coords,
-            "individuals": individuals  
-        }
-    )    
-    
-    if envelope.ndim == 1:
-        ds["audio_envelope"] = (["time"], envelope)
-    elif envelope.ndim == 2:
-        ds["audio_envelope"] = (["time", "channels"], envelope)
-    else:
-        raise ValueError("Envelope must be 1D or 2D array")
-                
-
-    ds.attrs["audio_sr"] = audio_sr
-    ds.attrs["fps"] = fps
-
-    
-    ds = set_media_attrs(
-        ds,
-        cameras=[Path(video_path).name],
-        mics=[Path(audio_path).name],
-    )  
-    
-    dt = minimal_basics(ds)
-    
-    return dt
- 
 
 
     
