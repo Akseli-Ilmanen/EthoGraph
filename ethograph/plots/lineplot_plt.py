@@ -1,14 +1,9 @@
-import matplotlib.pyplot as plt
-import numpy as np
-
+from typing import Optional
+import xarray as xr
 import matplotlib.pyplot as plt
 import numpy as np
 from ethograph.utils.data_utils import sel_valid
-import numpy as np
-import matplotlib.pyplot as plt
-from typing import Optional
-import xarray as xr
-from mpl_toolkits.mplot3d import Axes3D
+
 
 
 
