@@ -1,5 +1,6 @@
 """Features related to movements/kinematics."""
 
+import shutil
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm as mpl_cm
@@ -14,6 +15,11 @@ import numpy as np
 import xarray as xr
 from scipy.spatial.distance import cdist
 from itertools import groupby
+
+import subprocess
+import tempfile
+import re
+import sys
 
 
 class Position3DCalibration:
@@ -269,4 +275,60 @@ def get_angle_rgb(xy_pos, smooth_func=None, smoothing_params=None):
 
 
 
-
+def extract_video_motion(
+    video_path: Path | str,
+    fps: float,
+    time_coord_name: str = "time",
+    scale_width: int = 160,
+    hwaccel: str | None = None,
+    verbose: bool = True,
+) -> xr.DataArray:
+    video_path = Path(video_path)
+    
+    if not video_path.exists():
+        raise FileNotFoundError(f"Video not found: {video_path}")
+    
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_video = Path(tmp_dir) / "video.mp4"
+        temp_path = Path(tmp_dir) / "motion.txt"
+        
+        shutil.copy(video_path, tmp_video)
+        
+        if sys.platform == "win32":
+            filter_str = f"scale={scale_width}:-1:flags=neighbor,format=gray,signalstats,metadata=print:file=motion.txt:key=lavfi.signalstats.YDIF"
+            cwd = tmp_dir
+            input_path = "video.mp4"
+        else:
+            temp_path_ffmpeg = temp_path.as_posix()
+            filter_str = f"scale={scale_width}:-1:flags=neighbor,format=gray,signalstats,metadata=print:file={temp_path_ffmpeg}:key=lavfi.signalstats.YDIF"
+            cwd = None
+            input_path = tmp_video.as_posix()
+        
+        cmd = ["ffmpeg", "-y"]
+        
+        if hwaccel:
+            cmd.extend(["-hwaccel", hwaccel])
+        elif sys.platform == "darwin":
+            cmd.extend(["-hwaccel", "videotoolbox"])
+        
+        cmd.extend(["-i", input_path, "-vf", filter_str, "-f", "null", "-"])
+        
+        if verbose:
+            # Live output to terminal
+            result = subprocess.run(cmd, cwd=cwd)
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
+        
+        if result.returncode != 0:
+            err = result.stderr if hasattr(result, 'stderr') and result.stderr else "Unknown error"
+            raise RuntimeError(f"FFmpeg error: {err}")
+        
+        text = temp_path.read_text()
+        pattern = r"lavfi\.signalstats\.YDIF=(\d+\.?\d*)"
+        motion = np.array([float(m) for m in re.findall(pattern, text)], dtype=np.float32)
+    
+    return xr.DataArray(
+        motion,
+        dims=[time_coord_name],
+        coords={time_coord_name: np.arange(len(motion)) / fps},
+    )
