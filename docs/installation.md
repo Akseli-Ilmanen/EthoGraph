@@ -108,6 +108,8 @@
                 ```
             2. Create the conda environment from the YAML file:
                 ```bash
+                # Requires conda >= 23.10 (or run: conda config --set solver libmamba)
+
                 # For GUI only
                 conda env create -f environment.yml
 

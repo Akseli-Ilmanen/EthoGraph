@@ -3,7 +3,6 @@ channels:
   - pytorch
   - nvidia
   - conda-forge
-  - defaults
 dependencies:
   - python=3.11
   - movement
@@ -28,8 +27,8 @@ dependencies:
       - thunderhopper
       - ruptures
       - noisereduce
-      - pip install noisereduce
-      - pip install git+https://github.com/timsainb/vocalization-segmentation.git
+      - git+https://github.com/timsainb/vocalization-segmentation.git
+      - librosa
       - pyqtgraph
       - napari-pyav @ https://github.com/horsto/napari-pyav/releases/download/v0.0.10.1/napari_pyav-0.0.10-py3-none-any.whl
       - Pillow==10.2.0

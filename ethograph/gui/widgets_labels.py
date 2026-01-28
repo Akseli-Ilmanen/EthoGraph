@@ -502,7 +502,7 @@ class LabelsWidget(QWidget):
  
         if mode == "single_trial":
             curr_labels, filt_kwargs = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
-            self.app_state.label_dt.trial(self.app_state.trials_sel).labels.loc[filt_kwargs] = correct_changepoints_one_trial(curr_labels, self.app_state.ds, all_params, speed_correction=False)
+            self.app_state.label_dt.trial(self.app_state.trials_sel).labels.loc[filt_kwargs] = correct_changepoints_one_trial(curr_labels, self.app_state.ds, all_params)
 
     
         if mode == "all_trials":
@@ -514,7 +514,7 @@ class LabelsWidget(QWidget):
             for trial in self.app_state.label_dt.trials:
                 curr_labels, filt_kwargs = sel_valid(self.app_state.label_dt.trial(trial).labels, ds_kwargs)
                 ds = self.app_state.dt.trial(trial)
-                self.app_state.label_dt.trial(trial).labels.loc[filt_kwargs] = correct_changepoints_one_trial(curr_labels, ds, all_params, speed_correction=False)
+                self.app_state.label_dt.trial(trial).labels.loc[filt_kwargs] = correct_changepoints_one_trial(curr_labels, ds, all_params)
                 self.app_state.label_dt.attrs["changepoint_corrected"] = np.int8(1)    
             self._update_cp_status()
 
