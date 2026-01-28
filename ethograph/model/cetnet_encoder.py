@@ -461,7 +461,6 @@ class Trainer:
         corr_pred_dict = dict()
         video_list = []
         previous_hash = None
-        speed_correction = all_params["changepoint_params"]["speed_correction"]
         trial_mapping = json.load(open(os.path.join(all_params["dataset_dir"], 'trial_mapping.json')))
         
         
@@ -491,7 +490,7 @@ class Trainer:
 
     
                 ds = dt.trial(trial)
-                corr_pred = correct_changepoints_one_trial(predicted, ds, all_params, speed_correction)               
+                corr_pred = correct_changepoints_one_trial(predicted, ds, all_params)               
                 corr_pred_dict[vid] = corr_pred
                 
                 
@@ -628,7 +627,7 @@ class Trainer:
                     nc_path = trial_mapping[hash_key]["nc_path"]
                     dt = TrialTree.load(nc_path)
                 
-                corr_pred = correct_changepoints_one_trial(predicted, dt.trial(trial_num), all_params, False)      
+                corr_pred = correct_changepoints_one_trial(predicted, dt.trial(trial_num), all_params)      
                 
             
                 corr_pred_dt.trial(trial_num).labels.loc[{"individuals": individual}] = corr_pred
@@ -771,7 +770,7 @@ class Trainer:
                     nc_path = trial_mapping[hash_key]["nc_path"]
                     dt = TrialTree.load(nc_path)
                 
-                corr_pred = correct_changepoints_one_trial(all_predictions[-1], dt.trial(trial_num), all_params, False)      
+                corr_pred = correct_changepoints_one_trial(all_predictions[-1], dt.trial(trial_num), all_params)      
                 corr_pred_dt.trial(trial_num).labels.loc[{"individuals": individual}] = corr_pred
                 sess_dict[hash_key]["corr_pred_dt"] = corr_pred_dt                
 

@@ -149,7 +149,8 @@ trial_mapping_path = os.path.join(dataset_dir, "trial_mapping.json")
 
 # result/
 results_dir = project_root / "result" / args.dataset / f"split_{args.split}"
-all_params["result_dir"] = str(results_dir)
+results_dir = str(results_dir)
+all_params["result_dir"] = results_dir
 
 
 for d in [features_path, gt_path, Path(vid_list_file).parent]:

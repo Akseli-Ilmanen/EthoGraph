@@ -162,7 +162,7 @@ def snap_to_nearest_changepoint(x_clicked, ds, feature_sel, **ds_kwargs):
 
 
 
-def correct_changepoints_one_trial(labels, ds, all_params, speed_correction=True):
+def correct_changepoints_one_trial(labels, ds, all_params):
     """
     Correct labels (or predictions of labels) with changepoints.
     """
@@ -181,187 +181,62 @@ def correct_changepoints_one_trial(labels, ds, all_params, speed_correction=True
     
     assert changepoints_binary.ndim == 1
 
+
+    # Simple correction without speed
+    changepoint_idxs = np.where(changepoints_binary)[0]
+    corrected_labels = np.zeros_like(labels, dtype=np.int8)
     
-    # Missing some of the checks from below
-    if not speed_correction:
-        # Simple correction without speed
-        changepoint_idxs = np.where(changepoints_binary)[0]
-        corrected_labels = np.zeros_like(labels, dtype=np.int8)
-        
-        
-        changepoint_idxs = np.where(changepoints_binary)[0]
-        labels = purge_small_motifs(labels, min_motif_len)
-        labels = stitch_gaps(labels, stitch_gap_len)
+    
+    changepoint_idxs = np.where(changepoints_binary)[0]
+    labels = purge_small_motifs(labels, min_motif_len)
+    labels = stitch_gaps(labels, stitch_gap_len)
 
+    
+    # Step two - Changepoint correction
+    for label in np.unique(labels):
+        if label == 0:
+            continue
         
-        # Step two - Changepoint correction
-        for label in np.unique(labels):
-            if label == 0:
-                continue
+        label_mask = labels == label
+        starts, ends = find_blocks(label_mask)
+        
+        for block_start, block_end in zip(starts, ends):
+            snap_start = changepoint_idxs[np.argmin(np.abs(changepoint_idxs - block_start))]
+            snap_end = changepoint_idxs[np.argmin(np.abs(changepoint_idxs - block_end))]
+
+
+
+            start_expansion = block_start - snap_start  # Positive = expanding left
+            start_shrink = snap_start - block_start      # Positive = shrinking from left
             
-            label_mask = labels == label
-            starts, ends = find_blocks(label_mask)
+            if start_expansion > max_expansion or start_shrink > max_shrink:                    
+                snap_start = block_start
             
-            for block_start, block_end in zip(starts, ends):
-                snap_start = changepoint_idxs[np.argmin(np.abs(changepoint_idxs - block_start))]
-                snap_end = changepoint_idxs[np.argmin(np.abs(changepoint_idxs - block_end))]
-
-
-
-                start_expansion = block_start - snap_start  # Positive = expanding left
-                start_shrink = snap_start - block_start      # Positive = shrinking from left
-                
-                if start_expansion > max_expansion or start_shrink > max_shrink:                    
-                    snap_start = block_start
-                
-                end_expansion = snap_end - block_end  # Positive = expanding right
-                end_shrink = block_end - snap_end      # Positive = shrinking from right
-                
-                if end_expansion > max_expansion or end_shrink > max_shrink:
-                    snap_end = block_end
-                
-                # Ensure valid boundaries
-                if snap_start > snap_end:
-                    # Keep original boundaries if snapping creates invalid range
-                    snap_start = block_start
-                    snap_end = block_end
-                
-
-                if snap_end < len(corrected_labels):
-                    if corrected_labels[snap_end] != 0 and not corrected_labels[snap_end] == label:
-                        snap_end = snap_end - 1
-                        
-                
-
-                # Clear original block and set corrected boundaries
-                corrected_labels[block_start:block_end+1] = 0
-                if snap_start < snap_end:
-                    corrected_labels[snap_start:snap_end+1] = label
-                    
-                    
-                
-    # else:
-        
-    #     # Speed-based correction
-    #     corrected_labels = labels.copy()
-        
-    #     repo_root = Path(__file__).resolve().parents[2]
-    #     speed_stats_path = repo_root / "configs" / f"{all_params['target_individual']}_speed_stats.npy"
-        
-    #     speed_stats = np.load(speed_stats_path, allow_pickle=True).item()
-        
-    #     speed = ds["speed"].values
-        
-
-    #     cp_ds = ds.filter_by_attrs(type="changepoints")
-        
-    #     speed_da_list = [da_candidate
-    #             for da_candidate in cp_ds.data_vars.values()
-    #             if da_candidate.attrs.get('target_feature') == 'speed'
-    #     ]
-
-    #     changepoint_idxs = np.concatenate([
-    #         np.where(da.values)[0] for da in speed_da_list
-    #     ])
-    #     changepoint_idxs = np.unique(changepoint_idxs)
-        
-        
-    #     assert speed.ndim == 1
-    #     assert changepoint_idxs.ndim == 1
-        
-        
-
-    #     # Process each label class
-    #     for label in np.unique(labels):
-    #         if label == 0:
-    #             continue
+            end_expansion = snap_end - block_end  # Positive = expanding right
+            end_shrink = block_end - snap_end      # Positive = shrinking from right
             
-    #         if label not in speed_stats:
-    #             max_start = float('inf')
-    #             max_end = float('inf')
-      
-    #         else:
-    #             max_start = speed_stats[label]["max_starts"]
-    #             max_end = speed_stats[label]["max_ends"]
-
-
+            if end_expansion > max_expansion or end_shrink > max_shrink:
+                snap_end = block_end
+            
+            # Ensure valid boundaries
+            if snap_start > snap_end:
+                # Keep original boundaries if snapping creates invalid range
+                snap_start = block_start
+                snap_end = block_end
             
 
-    #         # Find contiguous blocks of this label
-    #         label_mask = labels == label
-    #         diff = np.diff(np.concatenate(([0], label_mask.astype(int), [0])))
-    #         starts = np.where(diff == 1)[0]
-    #         ends = np.where(diff == -1)[0] - 1
+            if snap_end < len(corrected_labels):
+                if corrected_labels[snap_end] != 0 and not corrected_labels[snap_end] == label:
+                    snap_end = snap_end - 1
+                    
             
-    #         for block_start, block_end in zip(starts, ends):
-    #             # Skip small blocks
-    #             if (block_end - block_start + 1) < min_motif_len:
-    #                 corrected_labels[block_start:block_end+1] = 0
-    #                 continue
+
+            # Clear original block and set corrected boundaries
+            corrected_labels[block_start:block_end+1] = 0
+            if snap_start < snap_end:
+                corrected_labels[snap_start:snap_end+1] = label
                 
                 
-
-    #             min_prominence = all_params["changepoint_params"]["min_prominence_peaks"]
-                
-    #             if label in all_params["changepoint_params"].get("prominence_exceptions", []):
-    #                 min_prominence = 2.0
-                
-                
-    #             peaks, _ = find_peaks(speed, prominence=min_prominence)
-                
-                
-    #             peaks_in_range = peaks[(peaks >= block_start) & (peaks <= block_end)]
-                
-    #             if len(peaks_in_range) == 0:
-    #                 # No peaks, just snap to nearest changepoints
-    #                 snap_start = changepoint_idxs[np.argmin(np.abs(changepoint_idxs - block_start))]
-    #                 snap_end = changepoint_idxs[np.argmin(np.abs(changepoint_idxs - block_end))]
-    #             else:
-    #                 # Use peaks to find changepoints
-    #                 first_peak = peaks_in_range.min()
-    #                 last_peak = peaks_in_range.max()
-                    
-                    
-    #                 # Find left changepoint (before first peak, speed < max_start)
-    #                 left_cps = changepoint_idxs[changepoint_idxs < first_peak]
-    #                 valid_left = left_cps[speed[left_cps] < max_start]
-    #                 snap_start = valid_left[-1] if len(valid_left) > 0 else left_cps[-1]
-                    
-                    
-    #                 # Find right changepoint (after last peak, speed < max_end)
-    #                 right_cps = changepoint_idxs[changepoint_idxs > last_peak]
-    #                 valid_right = right_cps[speed[right_cps] < max_end]
-    #                 snap_end = valid_right[0] if len(valid_right) > 0 else right_cps[0]
-
-
-     
-
-    #             if (block_start - snap_start) > max_expansion or (snap_start - block_start) > max_shrink:
-    #                 snap_start = changepoint_idxs[np.argmin(np.abs(changepoint_idxs - block_start))]
-
-    #                 if (block_start - snap_start) > max_expansion or (snap_start - block_start) > max_shrink:
-    #                     snap_start = block_start
-
-
-                  
-    #             if (snap_end - block_end) > max_expansion or (block_end - snap_end) > max_shrink:
-    #                 snap_end = changepoint_idxs[np.argmin(np.abs(changepoint_idxs - block_end))]
-
-    #                 if (snap_end - block_end) > max_expansion or (block_end - snap_end) > max_shrink:
-    #                     snap_end = block_end
-                        
-
-    #             if snap_end < len(corrected_labels):
-    #                 if corrected_labels[snap_end] != 0 and not corrected_labels[snap_end] == label:
-    #                     snap_end = snap_end - 1
-
-
-    #             # Clear original block and set corrected boundaries
-    #             mask =  (corrected_labels[block_start:block_end+1] == label)
-    #             corrected_labels[block_start:block_end+1][mask] = 0
-    #             if snap_start < snap_end:
-    #                 corrected_labels[snap_start:snap_end+1] = label
-
 
     corrected_labels = remove_small_blocks(corrected_labels, min_motif_len)
     corrected_labels = fix_endings(corrected_labels, changepoints_binary)
@@ -435,7 +310,6 @@ def more_changepoint_features(
     seq_length = len(changepoint_binary)
     changepoint_indices = np.where(changepoint_binary)[0]
     
-    print(sigmas)
     
     x = np.arange(seq_length)
     for sigma in sigmas:
@@ -464,8 +338,7 @@ def more_changepoint_features(
             segment_ids[start:end] = i
         if segment_ids.max() > 0:
             segment_ids /= segment_ids.max()
-            
-    print(cp_binary_peak.shape, weighted_cps.shape, segment_ids.shape)
+
 
     return np.column_stack([cp_binary_peak, weighted_cps, segment_ids])
 
