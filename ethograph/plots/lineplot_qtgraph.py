@@ -5,7 +5,7 @@
 
 import pyqtgraph as pg
 import numpy as np
-from ethograph.utils.data_utils import sel_valid
+from ethograph.utils.data_utils import sel_valid, get_time_coord
 import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
@@ -194,7 +194,7 @@ def plot_ds_variable(plot_item, ds, ds_kwargs, variable, color_variable=None, sh
     # clearing before this function is called. Blanket clearing removes labels.
 
     var = ds[variable]
-    time = ds["time"].values
+    time = get_time_coord(var).values
 
     data, filt_kwargs = sel_valid(var, ds_kwargs)
     var = var.sel(**filt_kwargs)

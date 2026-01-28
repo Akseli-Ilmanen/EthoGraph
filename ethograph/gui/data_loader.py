@@ -11,6 +11,7 @@ from ethograph.utils.validation import validate_datatree, extract_type_vars
 from movement.kinematics import compute_velocity, compute_speed, compute_acceleration, compute_pairwise_distances
 from movement.io import load_poses
 from ethograph.features.audio_features import get_envelope
+from ethograph.features.mov_features import extract_video_motion
 
 def show_error_dialog(message: str, title: str = ".nc File Error") -> None:
     QMessageBox.critical(current_viewer().window._qt_window, title, message)
@@ -58,7 +59,7 @@ def load_dataset(file_path: str) -> Tuple[Optional[xr.Dataset], Optional[dict]]:
 
 
 
-def minimal_basics(ds, label_sr: Optional[float] = None) -> TrialTree:
+def minimal_basics(ds, label_sr: Optional[float] = None, video_path: Optional[str] = None, video_motion: bool = False) -> TrialTree:
 
     if "labels" not in ds.data_vars:
         
@@ -77,6 +78,12 @@ def minimal_basics(ds, label_sr: Optional[float] = None) -> TrialTree:
                     dims=["time", "individuals"],
             )
 
+
+    if video_motion and video_path is not None:
+        ds["video_motion"] = extract_video_motion(video_path, fps=ds.fps, time_coord_name="time_video")
+        
+
+
     for feat in list(ds.data_vars):
         if feat != "labels":
             ds[feat].attrs["type"] = "features"
@@ -85,6 +92,8 @@ def minimal_basics(ds, label_sr: Optional[float] = None) -> TrialTree:
     dt = TrialTree.from_datasets([ds])
 
     return dt
+
+
 
    
 def minimal_dt_from_pose(video_path, fps, tracking_path, source_software):
@@ -129,7 +138,7 @@ def minimal_dt_from_pose(video_path, fps, tracking_path, source_software):
         tracking=[Path(tracking_path).name],
         tracking_prefix=f"{ds.attrs['source_software']}_1"
     )            
-    dt = minimal_basics(ds)
+    dt = minimal_basics(ds, video_motion=False) # Kinematics -> no video motion needed
 
 
     return dt
@@ -149,7 +158,52 @@ def minimal_dt_from_ds(video_path, ds: xr.Dataset):
     return dt
 
 
-def minimal_dt_from_audio(video_path, fps, audio_path, audio_sr, individuals=None):
+def minimal_dt_from_npy_file(video_path, fps, npy_path, data_sr, individuals=None, video_motion: bool = False):
+
+    if individuals is None:
+        individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
+
+    data = np.load(npy_path)
+
+    if data.ndim == 1:
+        data = data.reshape(-1, 1)
+
+    n_samples, n_variables = data.shape
+
+    # Assume longer dimension is time
+    if n_samples < n_variables:
+        data = data.T
+        n_samples, n_variables = data.shape
+
+    time_coords = np.arange(n_samples) / data_sr
+
+    ds = xr.Dataset(
+        data_vars={
+            "data": (["time", "variable"], data)
+        },
+        coords={
+            "time": time_coords,
+            "individuals": individuals  
+        }
+    )    
+    
+    ds.attrs["fps"] = fps
+
+    
+    ds = set_media_attrs(
+        ds,
+        cameras=[Path(video_path).name],
+    )  
+    
+    
+    dt = minimal_basics(ds, video_path=video_path, video_motion=video_motion)
+    
+    return dt
+
+
+
+
+def minimal_dt_from_audio(video_path, fps, audio_path, audio_sr, individuals=None, video_motion: bool = False):
 
     if individuals is None:
         individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
@@ -191,7 +245,7 @@ def minimal_dt_from_audio(video_path, fps, audio_path, audio_sr, individuals=Non
         mics=[Path(audio_path).name],
     )  
     
-    dt = minimal_basics(ds)
+    dt = minimal_basics(ds, video_path=video_path, video_motion=video_motion)
     
     return dt
 
