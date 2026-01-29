@@ -44,6 +44,95 @@ import xarray as xr
 from scipy.io import loadmat
 
 
+
+def update_dt_with_matlab_pulse_onsets(
+    nc_path: str | Path,
+    matlab_path: str | Path,
+    output_path: Optional[str | Path] = None
+) -> xr.DataTree:
+    """
+    Update NetCDF trial data with information from MATLAB AllTrials structure.
+    
+    Parameters
+    ----------
+    nc_path : str | Path
+        Path to the NetCDF file containing trial data
+    matlab_path : str | Path
+        Path to the MATLAB file containing AllTrials structure
+    output_path : Optional[str | Path]
+        Path to save updated NetCDF. If None, overwrites input file
+        
+    Returns
+    -------
+    xr.DataTree
+        Updated DataTree with MATLAB trial information
+        
+    Raises
+    ------
+    FileNotFoundError
+        If input files don't exist
+    ValueError
+        If required data structures are missing
+    """
+    nc_path = Path(nc_path)
+    matlab_path = Path(matlab_path)
+    
+    if not nc_path.exists():
+        raise FileNotFoundError(f"NetCDF file not found: {nc_path}")
+    if not matlab_path.exists():
+        raise FileNotFoundError(f"MATLAB file not found: {matlab_path}")
+    
+    # Load DataTree
+    dt = TrialTree.open(nc_path)
+    
+        
+    # Load MATLAB data
+    mat_data = loadmat(
+        matlab_path, 
+        squeeze_me=True, 
+        struct_as_record=False
+    )
+    
+    if 'AllTrials' not in mat_data:
+        raise ValueError(f"'AllTrials' structure not found in {matlab_path}")
+    
+    all_trials = mat_data['AllTrials']
+    
+    # Create lookup for efficient trial matching
+    matlab_trials_dict = {
+        trial.trial_num: trial 
+        for trial in all_trials
+    }
+    
+    # Update each dataset in the tree
+    for node_name, node in dt.children.items():
+        if node.ds is None or 'trial' not in node.ds.attrs:
+            continue
+            
+        trial_num = node.ds.attrs['trial']
+
+
+        if trial_num not in matlab_trials_dict:
+            continue
+            
+        trial = matlab_trials_dict[trial_num]
+        
+        # Create mutable copy of the dataset
+        ds = node.to_dataset().copy()
+        
+        pulse_onsets = trial.pulse_info.pulse_onsets
+        
+        assert len(pulse_onsets) == len(ds.time)
+        
+        ds['pulse_onsets'] = ('time', pulse_onsets)
+
+        # Assign back to the DataTree node
+        dt[node_name] = ds
+
+    
+    return dt
+
+
 def update_nc_with_matlab_trials(
     nc_path: str | Path,
     matlab_path: str | Path,
@@ -82,7 +171,7 @@ def update_nc_with_matlab_trials(
         raise FileNotFoundError(f"MATLAB file not found: {matlab_path}")
     
     # Load DataTree
-    dt = TrialTree.load(nc_path)
+    dt = TrialTree.open(nc_path)
     
     # Load MATLAB data
     mat_data = loadmat(

@@ -52,12 +52,13 @@ if __name__ == "__main__":
 
 
    # need to comment out for train-all
-   action="train" # "train", "inference", "CV", "ablation"
+   action="inference" # "train", "inference", "CV", "ablation"
    # eval run manually via terminal
    
    trainDataReady = False
    
    # model_path = r"D:\Akseli\Code\ethograph\result\Freddy_train_20251021_164220\split_1\epoch-100.model" # only for inference mode
+   model_path = r"D:\Akseli\Code\ethograph\configs\model\Ivy_train_20260128_171450_epoch-100.model"
    
    
    
@@ -96,10 +97,11 @@ if __name__ == "__main__":
       # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250530_01\behav\Trial_data.nc",
       # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250602_01\behav\Trial_data.nc",
       
-      r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250306_01\behav\Trial_data.nc",
-      r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250309_01\behav\Trial_data.nc",
-      r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250503_02\behav\Trial_data.nc",
-      r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250514_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250306_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250309_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250503_02\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250514_01\behav\Trial_data.nc",
+      r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250504_01\behav\Trial_data.nc"
    ]
          
    
@@ -119,7 +121,7 @@ if __name__ == "__main__":
          params_dynamic['test_nc_paths'] = [nc_paths[0]]  # For compatibility, no eval
       if action in ["inference"]:
          params_dynamic['test_nc_paths'] = nc_paths  # Inference on all sessions
-      config_path = save_config(params_dynamic, 'configs', action)
+      config_path = save_config(params_dynamic, 'configs/model', action)
       
       if action == "train":
          print("Next run: \npython scripts/model_run.py --config {} --action train".format(config_path))
@@ -140,7 +142,7 @@ if __name__ == "__main__":
          params_dynamic[f'split_{fold_id+1}'] = {"train_nc_paths": train_nc_paths, "test_nc_paths": test_nc_paths}
 
 
-      config_path = save_config(params_dynamic, 'configs', action)
+      config_path = save_config(params_dynamic, 'configs/model', action)
          
       get_project_root()
    

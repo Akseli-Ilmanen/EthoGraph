@@ -497,7 +497,7 @@ class ObservableAppState(QObject):
             self.dt.close()
             temp_path.replace(nc_path)
 
-            self.dt = TrialTree.load(nc_path)
+            self.dt = TrialTree.open(nc_path)
             show_info(f"✅ Saved: {nc_path.name}")
 
 

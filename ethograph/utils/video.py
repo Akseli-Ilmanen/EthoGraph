@@ -55,7 +55,7 @@ from ethograph.utils.labels import get_segment_indices
 #     output_dir = Path(output_dir) if output_dir else video_path.parent / "motif_clips"
 #     output_dir.mkdir(parents=True, exist_ok=True)
 
-#     dt = TrialTree.load(str(nc_path))
+#     dt = TrialTree.open(str(nc_path))
 #     label_dt = dt.get_label_dt()
 
 #     trial = trial_sel if trial_sel is not None else dt.trials[0]
@@ -160,7 +160,7 @@ from ethograph.utils.labels import get_segment_indices
 #     output_dir = Path(output_dir) if output_dir else nc_path.parent / "motif_clips"
 #     output_dir.mkdir(parents=True, exist_ok=True)
 
-#     dt = TrialTree.load(str(nc_path))
+#     dt = TrialTree.open(str(nc_path))
 #     all_exported = []
 
 #     for trial in dt.trials:
@@ -201,7 +201,7 @@ from ethograph.utils.labels import get_segment_indices
 #     Returns:
 #         Dictionary with motif statistics including segment counts and durations.
 #     """
-#     dt = TrialTree.load(str(nc_path))
+#     dt = TrialTree.open(str(nc_path))
 #     label_dt = dt.get_label_dt()
 
 #     trial = trial_sel if trial_sel is not None else dt.trials[0]

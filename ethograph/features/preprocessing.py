@@ -3,7 +3,30 @@ from sklearn.preprocessing import StandardScaler
 from scipy.ndimage import gaussian_filter1d
 import xarray as xr
 from typing import Tuple
+from scipy.interpolate import interp1d
+from scipy.signal import decimate
 
+
+def downsample_with_antialiasing(data: np.ndarray, factor: int) -> np.ndarray:
+    """Downsample with low-pass filter to prevent aliasing."""
+    if data.ndim == 1:
+        return decimate(data, factor, ftype='fir', zero_phase=True)
+    return np.column_stack([
+        decimate(data[:, i], factor, ftype='fir', zero_phase=True)
+        for i in range(data.shape[1])
+    ])
+
+def resample_to_frames(
+    data: np.ndarray, 
+    time_original: np.ndarray, 
+    time_target: np.ndarray
+) -> np.ndarray:
+    """Interpolate data from original time to target time points."""
+    if data.ndim == 1:
+        return np.interp(time_target, time_original, data)
+    
+    f = interp1d(time_original, data, axis=0, fill_value='extrapolate')
+    return f(time_target)
 
 def interpolate_nans(arr: np.ndarray, axis: int = 0) -> np.ndarray:
     """Interpolate NaNs using NumPy's interp, with leading/trailing NaNs set to zero.
@@ -40,24 +63,6 @@ def interpolate_nans(arr: np.ndarray, axis: int = 0) -> np.ndarray:
 
 
 
-
-
-def clip_percentile(arr: np.ndarray, axis=0, lower_pct=1, upper_pct=99):
-    """
-    Clip values to percentiles along a given axis, returning only the clipped array.
-
-    Args:
-        arr (np.ndarray): Input array.
-        axis (int): Axis along which to compute percentiles (default 0).
-        lower_pct (float): Lower percentile (default 1).
-        upper_pct (float): Upper percentile (default 99).
-
-    Returns:
-        np.ndarray: Arr clipped to percentile thresholds along axis.
-    """
-    lower = np.nanpercentile(arr, lower_pct, axis=axis, keepdims=True)
-    upper = np.nanpercentile(arr, upper_pct, axis=axis, keepdims=True)
-    return np.clip(arr, lower, upper)
 
 
 

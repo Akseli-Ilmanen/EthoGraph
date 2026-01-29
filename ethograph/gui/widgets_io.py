@@ -408,7 +408,7 @@ class IOWidget(QWidget):
                     return
 
                 if labels_file_path:
-                    self.app_state.label_dt = TrialTree.load(labels_file_path)
+                    self.app_state.label_dt = TrialTree.open(labels_file_path)
                     self.app_state.label_ds = self.app_state.label_dt.trial(self.app_state.trials_sel)
 
                     self.label_file_path_edit.setText(labels_file_path)

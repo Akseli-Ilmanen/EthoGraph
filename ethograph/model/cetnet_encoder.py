@@ -486,7 +486,7 @@ class Trainer:
                 if hash_key != previous_hash:
                     previous_hash = hash_key
                     nc_path = trial_mapping[hash_key]["nc_path"]
-                    dt = TrialTree.load(nc_path)
+                    dt = TrialTree.open(nc_path)
                     
 
     
@@ -564,7 +564,7 @@ class Trainer:
             sess_dict = {}
             for key in trial_mapping.keys():
                 nc_path = trial_mapping[key]["nc_path"]
-                dt = TrialTree.load(nc_path)
+                dt = TrialTree.open(nc_path)
                 pred_dt = dt.get_label_dt(empty=True)
                 corr_pred_dt = dt.get_label_dt(empty=True)
 
@@ -626,7 +626,7 @@ class Trainer:
                 if hash_key != previous_hash:
                     previous_hash = hash_key
                     nc_path = trial_mapping[hash_key]["nc_path"]
-                    dt = TrialTree.load(nc_path)
+                    dt = TrialTree.open(nc_path)
                 
                 corr_pred = correct_changepoints_one_trial(predicted, dt.trial(trial_num), all_params)      
                 
@@ -687,131 +687,131 @@ class Trainer:
                     corr_pred_dt.to_netcdf(versioned_path)
 
 
-    def inference_stepwise(self, model_path, features_path, batch_gen_tst, epoch, trial_mapping, sample_rate, all_params):
-        self.model.eval()
+    # def inference_stepwise(self, model_path, features_path, batch_gen_tst, epoch, trial_mapping, sample_rate, all_params):
+    #     self.model.eval()
         
         
-        with torch.no_grad():
-            self.model.to(device)
-            print("Loading model from {}".format(model_path))
-            self.model.load_state_dict(torch.load(model_path, weights_only=True))
+    #     with torch.no_grad():
+    #         self.model.to(device)
+    #         print("Loading model from {}".format(model_path))
+    #         self.model.load_state_dict(torch.load(model_path, weights_only=True))
 
-            batch_gen_tst.reset(shuffle=False)           
+    #         batch_gen_tst.reset(shuffle=False)           
 
-            previous_hash = None    
-            sess_dict = {}
+    #         previous_hash = None    
+    #         sess_dict = {}
             
-            for key in trial_mapping.keys():
-                nc_path = trial_mapping[key]["nc_path"]
-                dt = TrialTree.load(nc_path)
-                pred_dt = dt.get_label_dt(empty=True)
-                corr_pred_dt = dt.get_label_dt(empty=True)
+    #         for key in trial_mapping.keys():
+    #             nc_path = trial_mapping[key]["nc_path"]
+    #             dt = TrialTree.open(nc_path)
+    #             pred_dt = dt.get_label_dt(empty=True)
+    #             corr_pred_dt = dt.get_label_dt(empty=True)
                 
-                sess_dict[key] = {
-                    "pred_dt_encoder": copy.deepcopy(pred_dt),
-                    "pred_dt_decoder1": copy.deepcopy(pred_dt),
-                    "pred_dt_decoder2": copy.deepcopy(pred_dt),
-                    "pred_dt_decoder3": copy.deepcopy(pred_dt),
-                    "corr_pred_dt": corr_pred_dt,
-                    "nc_path": nc_path,
-                    "inference": False
-                }
+    #             sess_dict[key] = {
+    #                 "pred_dt_encoder": copy.deepcopy(pred_dt),
+    #                 "pred_dt_decoder1": copy.deepcopy(pred_dt),
+    #                 "pred_dt_decoder2": copy.deepcopy(pred_dt),
+    #                 "pred_dt_decoder3": copy.deepcopy(pred_dt),
+    #                 "corr_pred_dt": corr_pred_dt,
+    #                 "nc_path": nc_path,
+    #                 "inference": False
+    #             }
                 
-            print("Running inference...")
-            while batch_gen_tst.has_next():
-                batch_input, batch_target, mask, vids = batch_gen_tst.next_batch(1)
+    #         print("Running inference...")
+    #         while batch_gen_tst.has_next():
+    #             batch_input, batch_target, mask, vids = batch_gen_tst.next_batch(1)
 
-                vid = vids[0]
-                vid = vid.split('.')[0]
-                features = np.load(features_path + vid + '.npy')
-                features = features[:, ::sample_rate]
+    #             vid = vids[0]
+    #             vid = vid.split('.')[0]
+    #             features = np.load(features_path + vid + '.npy')
+    #             features = features[:, ::sample_rate]
 
-                input_x = torch.tensor(features, dtype=torch.float)
-                input_x.unsqueeze_(0)
-                input_x = input_x.to(device)
+    #             input_x = torch.tensor(features, dtype=torch.float)
+    #             input_x.unsqueeze_(0)
+    #             input_x = input_x.to(device)
 
-                # predictions[0] = encoder output
-                # predictions[1:4] = decoder outputs (3 decoders)
-                predictions, _ = self.model(input_x, torch.ones(input_x.size(), device=device))
+    #             # predictions[0] = encoder output
+    #             # predictions[1:4] = decoder outputs (3 decoders)
+    #             predictions, _ = self.model(input_x, torch.ones(input_x.size(), device=device))
                 
 
                 
-                # Extract all predictions: encoder + 3 decoders
-                all_predictions = []
-                for i in range(len(predictions)):
-                    _, predicted = torch.max(predictions[i].data, 1)
-                    predicted = predicted.squeeze().cpu().numpy()
+    #             # Extract all predictions: encoder + 3 decoders
+    #             all_predictions = []
+    #             for i in range(len(predictions)):
+    #                 _, predicted = torch.max(predictions[i].data, 1)
+    #                 predicted = predicted.squeeze().cpu().numpy()
                     
                     
-                    all_predictions.append(predicted)
+    #                 all_predictions.append(predicted)
                     
                     
             
-                hash_key, trial_num = vid.split('_')
-                individual = all_params["target_individual"]
+    #             hash_key, trial_num = vid.split('_')
+    #             individual = all_params["target_individual"]
                 
-                # Store encoder prediction (index 0)
-                pred_dt_encoder = sess_dict[hash_key]["pred_dt_encoder"]
-                pred_dt_encoder.trial(trial_num).labels.loc[{"individuals": individual}] = all_predictions[0]
-                sess_dict[hash_key]["pred_dt_encoder"] = pred_dt_encoder
+    #             # Store encoder prediction (index 0)
+    #             pred_dt_encoder = sess_dict[hash_key]["pred_dt_encoder"]
+    #             pred_dt_encoder.trial(trial_num).labels.loc[{"individuals": individual}] = all_predictions[0]
+    #             sess_dict[hash_key]["pred_dt_encoder"] = pred_dt_encoder
                 
-                # Store decoder predictions (indices 1, 2, 3)
-                decoder_keys = ["pred_dt_decoder1", "pred_dt_decoder2", "pred_dt_decoder3"]
-                for i, decoder_key in enumerate(decoder_keys):
-                    if i + 1 < len(all_predictions):
-                        pred_dt_decoder = sess_dict[hash_key][decoder_key]
-                        pred_dt_decoder.trial(trial_num).labels.loc[{"individuals": individual}] = all_predictions[i + 1]
-                        sess_dict[hash_key][decoder_key] = pred_dt_decoder
+    #             # Store decoder predictions (indices 1, 2, 3)
+    #             decoder_keys = ["pred_dt_decoder1", "pred_dt_decoder2", "pred_dt_decoder3"]
+    #             for i, decoder_key in enumerate(decoder_keys):
+    #                 if i + 1 < len(all_predictions):
+    #                     pred_dt_decoder = sess_dict[hash_key][decoder_key]
+    #                     pred_dt_decoder.trial(trial_num).labels.loc[{"individuals": individual}] = all_predictions[i + 1]
+    #                     sess_dict[hash_key][decoder_key] = pred_dt_decoder
                 
-                # Corrected prediction from last decoder
-                corr_pred_dt = sess_dict[hash_key]["corr_pred_dt"]
+    #             # Corrected prediction from last decoder
+    #             corr_pred_dt = sess_dict[hash_key]["corr_pred_dt"]
                 
-                if hash_key != previous_hash:
-                    previous_hash = hash_key
-                    nc_path = trial_mapping[hash_key]["nc_path"]
-                    dt = TrialTree.load(nc_path)
+    #             if hash_key != previous_hash:
+    #                 previous_hash = hash_key
+    #                 nc_path = trial_mapping[hash_key]["nc_path"]
+    #                 dt = TrialTree.open(nc_path)
                 
-                corr_pred = correct_changepoints_one_trial(all_predictions[-1], dt.trial(trial_num), all_params)      
-                corr_pred_dt.trial(trial_num).labels.loc[{"individuals": individual}] = corr_pred
-                sess_dict[hash_key]["corr_pred_dt"] = corr_pred_dt                
+    #             corr_pred = correct_changepoints_one_trial(all_predictions[-1], dt.trial(trial_num), all_params)      
+    #             corr_pred_dt.trial(trial_num).labels.loc[{"individuals": individual}] = corr_pred
+    #             sess_dict[hash_key]["corr_pred_dt"] = corr_pred_dt                
 
-                sess_dict[hash_key]["inference"] = True
+    #             sess_dict[hash_key]["inference"] = True
 
-            # Save all predictions
-            for key in sess_dict.keys():
-                if sess_dict[key].get("inference"):
-                    nc_path_obj = Path(sess_dict[key]["nc_path"])
-                    print(f"Saving predictions for session {key}..., nc_path: {nc_path_obj}")
-                    labels_dir = nc_path_obj.parent / "labels"
-                    labels_dir.mkdir(exist_ok=True)
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    #         # Save all predictions
+    #         for key in sess_dict.keys():
+    #             if sess_dict[key].get("inference"):
+    #                 nc_path_obj = Path(sess_dict[key]["nc_path"])
+    #                 print(f"Saving predictions for session {key}..., nc_path: {nc_path_obj}")
+    #                 labels_dir = nc_path_obj.parent / "labels"
+    #                 labels_dir.mkdir(exist_ok=True)
+    #                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     
-                    # Save encoder predictions
-                    pred_dt_encoder = sess_dict[key]["pred_dt_encoder"]
-                    versioned_path = labels_dir / f"{nc_path_obj.stem}_predictions_encoder_{timestamp}{nc_path_obj.suffix}"
-                    pred_dt_encoder.attrs["changepoint_corrected"] = np.int8(0)
-                    pred_dt_encoder.to_netcdf(versioned_path)
+    #                 # Save encoder predictions
+    #                 pred_dt_encoder = sess_dict[key]["pred_dt_encoder"]
+    #                 versioned_path = labels_dir / f"{nc_path_obj.stem}_predictions_encoder_{timestamp}{nc_path_obj.suffix}"
+    #                 pred_dt_encoder.attrs["changepoint_corrected"] = np.int8(0)
+    #                 pred_dt_encoder.to_netcdf(versioned_path)
                     
-                    # Save decoder predictions
-                    for i in range(1, 4):
-                        decoder_key = f"pred_dt_decoder{i}"
-                        pred_dt_decoder = sess_dict[key][decoder_key]
-                        versioned_path = labels_dir / f"{nc_path_obj.stem}_predictions_decoder{i}_{timestamp}{nc_path_obj.suffix}"
-                        pred_dt_decoder.attrs["changepoint_corrected"] = np.int8(0)
-                        pred_dt_decoder.to_netcdf(versioned_path)
+    #                 # Save decoder predictions
+    #                 for i in range(1, 4):
+    #                     decoder_key = f"pred_dt_decoder{i}"
+    #                     pred_dt_decoder = sess_dict[key][decoder_key]
+    #                     versioned_path = labels_dir / f"{nc_path_obj.stem}_predictions_decoder{i}_{timestamp}{nc_path_obj.suffix}"
+    #                     pred_dt_decoder.attrs["changepoint_corrected"] = np.int8(0)
+    #                     pred_dt_decoder.to_netcdf(versioned_path)
                     
-                    # Save corrected predictions
-                    corr_pred_dt = sess_dict[key]["corr_pred_dt"]
-                    corr_pred_dt.attrs["changepoint_corrected"] = np.int8(1)
-                    versioned_path = labels_dir / f"{nc_path_obj.stem}_predictions_corr_{timestamp}{nc_path_obj.suffix}"
-                    corr_pred_dt.to_netcdf(versioned_path)
+    #                 # Save corrected predictions
+    #                 corr_pred_dt = sess_dict[key]["corr_pred_dt"]
+    #                 corr_pred_dt.attrs["changepoint_corrected"] = np.int8(1)
+    #                 versioned_path = labels_dir / f"{nc_path_obj.stem}_predictions_corr_{timestamp}{nc_path_obj.suffix}"
+    #                 corr_pred_dt.to_netcdf(versioned_path)
 
-                    # Save confidence PDF
-                    pdf_filename = f"{nc_path_obj.stem}_classification_probabilities_{timestamp}.pdf"
-                    pdf_path = labels_dir / pdf_filename
-                    try:
-                        create_classification_probabilities_pdf(corr_pred_dt, pdf_path)
-                    except Exception as e:
-                        print(f"Warning: Failed to create classification probabilities PDF: {e}")                    
+    #                 # Save confidence PDF
+    #                 pdf_filename = f"{nc_path_obj.stem}_classification_probabilities_{timestamp}.pdf"
+    #                 pdf_path = labels_dir / pdf_filename
+    #                 try:
+    #                     create_classification_probabilities_pdf(corr_pred_dt, pdf_path)
+    #                 except Exception as e:
+    #                     print(f"Warning: Failed to create classification probabilities PDF: {e}")                    
 
 
