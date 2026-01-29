@@ -6,8 +6,12 @@ from typing import List, Optional, Tuple
 from pathlib import Path
 from qtpy.QtWidgets import QMessageBox
 from napari import current_viewer
-from ethograph.utils.io import TrialTree
+from ethograph.utils.io import TrialTree, set_media_attrs
 from ethograph.utils.validation import validate_datatree, extract_type_vars
+from movement.kinematics import compute_velocity, compute_speed, compute_acceleration, compute_pairwise_distances
+from movement.io import load_poses
+from ethograph.features.audio_features import get_envelope
+from ethograph.features.mov_features import extract_video_motion
 
 def show_error_dialog(message: str, title: str = ".nc File Error") -> None:
     QMessageBox.critical(current_viewer().window._qt_window, title, message)
@@ -55,5 +59,193 @@ def load_dataset(file_path: str) -> Tuple[Optional[xr.Dataset], Optional[dict]]:
 
 
 
+def minimal_basics(ds, label_sr: Optional[float] = None, video_path: Optional[str] = None, video_motion: bool = False) -> TrialTree:
 
+    if "labels" not in ds.data_vars:
+        
+        if label_sr is not None:
+            time_labels = np.arange(0, ds.time.values[-1] + 1/label_sr, 1/label_sr)
+            
+            ds["labels"] = xr.DataArray(
+                np.zeros((len(time_labels), ds.dims["individuals"])),
+                dims=["time_labels", "individuals"],
+                coords={"time_labels": time_labels, "individuals": ds.individuals},
+            )
+            
+        else: 
+            ds["labels"] = xr.DataArray(
+                    np.zeros((ds.dims["time"], ds.dims["individuals"])),
+                    dims=["time", "individuals"],
+            )
+
+
+    if video_motion and video_path is not None:
+        ds["video_motion"] = extract_video_motion(video_path, fps=ds.fps, time_coord_name="time_video")
+        
+
+
+    for feat in list(ds.data_vars):
+        if feat != "labels":
+            ds[feat].attrs["type"] = "features"
+
+    ds.attrs["trial"] = "sample_trial"
+    dt = TrialTree.from_datasets([ds])
+
+    return dt
+
+
+
+   
+def minimal_dt_from_pose(video_path, fps, tracking_path, source_software):
+    """
+    Create a minimal TrialTree from pose data.
+    
+    Args:
+        video_path: Path to video file
+        fps: Frames per second of the video
+        tracking_path: Path to tracking file (e.g. poses.csv/poses.h5)
+        source_software: Software used for tracking (e.g., 'DeepLabCut')
+        
+        
+    Returns:
+        TrialTree with minimal structure
+    """
+    # Validate inputs: must provide either ds OR (source_software + fps)
+
+    ds = load_poses.from_file(
+        file_path=tracking_path, 
+        fps=fps, 
+        source_software=source_software
+    )
+
+
+    ds["velocity"] = compute_velocity(ds.position)
+    ds["speed"] = compute_speed(ds.position)
+    ds["acceleration"] = compute_acceleration(ds.position)
+    
+    if len(ds.keypoints) > 1:
+        compute_pairwise_distances(ds.position, dim='keypoints', pairs='all')
+    
+    if len(ds.individuals) > 1:
+        # Not sure how this looks like with individuals > 2
+        compute_pairwise_distances(ds.position, dim='individuals', pairs='all')
+    
+
+
+    ds = set_media_attrs(
+        ds,
+        cameras=[Path(video_path).name],
+        tracking=[Path(tracking_path).name],
+        tracking_prefix=f"{ds.attrs['source_software']}_1"
+    )            
+    dt = minimal_basics(ds, video_motion=False) # Kinematics -> no video motion needed
+
+
+    return dt
+
+
+def minimal_dt_from_ds(video_path, ds: xr.Dataset):
+    
+    # No public function from movement to validate that this
+    # is a proper poses dataset -> add later
+    
+    ds = set_media_attrs(
+        ds,
+        cameras=[Path(video_path).name],
+    )  
+    dt = minimal_basics(ds)
+    
+    return dt
+
+
+def minimal_dt_from_npy_file(video_path, fps, npy_path, data_sr, individuals=None, video_motion: bool = False):
+
+    if individuals is None:
+        individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
+
+    data = np.load(npy_path)
+
+    if data.ndim == 1:
+        data = data.reshape(-1, 1)
+
+    n_samples, n_variables = data.shape
+
+    # Assume longer dimension is time
+    if n_samples < n_variables:
+        data = data.T
+        n_samples, n_variables = data.shape
+
+    time_coords = np.arange(n_samples) / data_sr
+
+    ds = xr.Dataset(
+        data_vars={
+            "data": (["time", "variable"], data)
+        },
+        coords={
+            "time": time_coords,
+            "individuals": individuals  
+        }
+    )    
+    
+    ds.attrs["fps"] = fps
+
+    
+    ds = set_media_attrs(
+        ds,
+        cameras=[Path(video_path).name],
+    )  
+    
+    
+    dt = minimal_basics(ds, video_path=video_path, video_motion=video_motion)
+    
+    return dt
+
+
+
+
+def minimal_dt_from_audio(video_path, fps, audio_path, audio_sr, individuals=None, video_motion: bool = False):
+
+    if individuals is None:
+        individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
+
+    envelope, gen_wav_path = get_envelope(audio_path, audio_sr, fps)
+
+    if gen_wav_path:
+        audio_path = gen_wav_path
+    
+    n_frames = len(envelope)
+    time_coords = np.arange(n_frames) / fps
+    
+
+    ds = xr.Dataset(
+        data_vars={
+            "labels": (["time", "individuals"], np.zeros((n_frames, len(individuals))))
+        },
+        coords={
+            "time": time_coords,
+            "individuals": individuals  
+        }
+    )    
+    
+    if envelope.ndim == 1:
+        ds["audio_envelope"] = (["time"], envelope)
+    elif envelope.ndim == 2:
+        ds["audio_envelope"] = (["time", "channels"], envelope)
+    else:
+        raise ValueError("Envelope must be 1D or 2D array")
+                
+
+    ds.attrs["audio_sr"] = audio_sr
+    ds.attrs["fps"] = fps
+
+    
+    ds = set_media_attrs(
+        ds,
+        cameras=[Path(video_path).name],
+        mics=[Path(audio_path).name],
+    )  
+    
+    dt = minimal_basics(ds, video_path=video_path, video_motion=video_motion)
+    
+    return dt
 

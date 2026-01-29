@@ -1,32 +1,31 @@
-spec_colormap: CET-R4
-nfft: 256
-audio_cp_hop_length_ms: 5.0
-percentile_ylim: 99.5
-audio_cp_silence_threshold: 0.1
-nc_file_path: D:/Alice/AK_data/derivatives/sub-01_id-Ivy/ses-000_date-20250514_01/behav/Trial_data.nc
-hop_frac: 0.5
-buffer_multiplier: 5.0
-audio_channel_idx: 0
-space_plot_type: Layer controls
-show_changepoints: true
-audio_cp_min_syllable_length_s: 0.02
-vmax_db: -20.0
-audio_cp_min_level_db: -70.0
-vmin_db: -120.0
-window_size: 3.0
-noise_reduce_enabled: false
-noise_reduce_prop_decrease: 1.0
-downsample_factor: 100
-video_path: D:\Alice\VidData\20250514_01_Ivy\2025-05-14_001_Ivy-cam-1.mp4
-fps_playback: 30.0
-video_folder: D:/Alice/VidData/20250514_01_Ivy
+all_checkbox_states:
+  variable: true
 downsample_enabled: false
+downsample_factor: 100
+video_folder: C:\Users\Admin\Documents\Akseli\Code\ethograph\data\epilepsy
+buffer_multiplier: 5.0
 import_labels_nc_data: false
-cameras_sel: cam1_file
-colors_sel: angle_rgb
-features_sel: position
-individuals_sel: Ivy
-keypoints_sel: beakTip
-s3d_dims_sel: '0'
-space_sel: x
-trials_sel: 1
+spec_colormap: CET-R4
+percentile_ylim: 99.5
+vmin_db: -120.0
+audio_cp_silence_threshold: 0.1
+audio_channel_idx: 0
+nc_file_path: C:/Users/Admin/Documents/Akseli/Code/ethograph/data/epilepsy/zz.nc
+noise_reduce_prop_decrease: 1.0
+vmax_db: -20.0
+audio_cp_min_syllable_length_s: 0.02
+audio_cp_min_level_db: -70.0
+show_changepoints: true
+audio_cp_hop_length_ms: 5.0
+hop_frac: 0.5
+noise_reduce_enabled: false
+fps_playback: 30.0
+space_plot_type: Layer controls
+video_path: C:\Users\Admin\Documents\Akseli\Code\ethograph\data\epilepsy\video.mp4
+window_size: 3.0
+nfft: 256
+cameras_sel: cam1
+features_sel: video_motion
+features_sel_previous: data
+individuals_sel: individual 1
+trials_sel: sample_trial

@@ -8,7 +8,7 @@ import psutil
 import traceback
 import importlib
 import sys
-from ethograph.utils.dataset import save_config
+from ethograph.model.dataset import save_config
 from ethograph.utils.paths import get_project_root
 
 

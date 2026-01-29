@@ -13,10 +13,11 @@ import json
 from pathlib import Path
 from datetime import datetime
 from scipy.stats import entropy
-from ethograph.eval.metrics import func_eval, func_eval_labelwise
-from ethograph.features.changepoints import correct_changepoints_one_trial
-from ethograph.utils.labels import get_labels_start_end_time, create_classification_probabilities_pdf
 from ethograph.utils.io import TrialTree
+from ethograph.model.eval_metrics import func_eval, func_eval_labelwise
+from ethograph.features.changepoints import correct_changepoints_one_trial
+from ethograph.utils.labels import create_classification_probabilities_pdf
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
