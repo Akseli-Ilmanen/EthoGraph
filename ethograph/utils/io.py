@@ -4,6 +4,7 @@ import os
 import json
 from functools import partial
 import itertools
+from pathlib import Path
 from scipy.ndimage import gaussian_filter1d
 from ethograph.features.mov_features import get_angle_rgb
 from ethograph.features.changepoints import more_changepoint_features, merge_changepoints
@@ -117,13 +118,44 @@ class TrialTree(xr.DataTree):
         self[trial_node] = xr.DataTree(trial_ds)
     
     @classmethod
-    def load(cls, path: str) -> "TrialTree":
-        """Load TrialTree from a NetCDF file."""
+    def open(cls, path: str) -> "TrialTree":
+        """Open TrialTree from a NetCDF file."""
         tree = xr.open_datatree(path)
         tree.__class__ = cls  # Convert xr.DataTree to TrialTree
+        tree._source_path = path
         return tree
 
-    
+    def save(self, path: str | Path | None = None) -> None:
+        import gc
+        import shutil
+        
+        source_path = getattr(self, '_source_path', None)
+        
+        if path is None and source_path is None:
+            raise ValueError("No path provided and no source path stored.")
+        
+        path = Path(path) if path else source_path
+        
+        self.load()
+        self.close()
+        gc.collect()
+        
+        if path == source_path:
+            temp_path = path.with_suffix('.tmp.nc')
+            self.to_netcdf(temp_path, mode='w')
+            
+            # Delete original first, then move temp
+            try:
+                path.unlink()
+            except PermissionError:
+                gc.collect()
+                path.unlink()
+            
+            shutil.move(str(temp_path), str(path))
+        else:
+            self.to_netcdf(path, mode='w')
+            
+            
     @classmethod
     def from_datasets(cls, datasets: List[xr.Dataset]) -> "TrialTree":
         """Create from list of datasets."""
@@ -493,7 +525,7 @@ def extract_variable_flat(
     arrays = []
     
     for path in nc_paths:
-        dt = TrialTree.load(path)
+        dt = TrialTree.open(path)
         
         for trial_num in dt.trials:
             trial_ds = dt.trial(trial_num)

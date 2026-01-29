@@ -216,7 +216,7 @@ Central coordinator that creates and wires all widgets together.
 
 **load_dataset() workflow:**
 1. Validate .nc file extension
-2. Load via `TrialTree.load(file_path)` -> returns DataTree
+2. Load via `TrialTree.open(file_path)` -> returns DataTree
 3. Extract label_dt via `dt.get_label_dt()`
 4. Get first trial: `ds = dt.itrial(0)`
 5. Categorize variables by `type` attribute (features, colors, changepoints)
@@ -378,7 +378,7 @@ Subclasses implement:
 ```
 User clicks Load -> DataWidget.on_load_clicked()
     |
-load_dataset(nc_path) -> TrialTree.load()
+load_dataset(nc_path) -> TrialTree.open()
     |
 app_state.dt, label_dt, ds set
     |

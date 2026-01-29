@@ -248,7 +248,7 @@ if args.action == "inference":
     batch_gen_tst.read_data(vid_list_file_tst, shuffle=False)
     
 
-    trainer.inference_stepwise(all_params["model_path"], features_path, batch_gen_tst, num_epochs, trial_mapping, sample_rate, all_params)
+    trainer.inference(all_params["model_path"], features_path, batch_gen_tst, num_epochs, trial_mapping, sample_rate, all_params)
 
 
 
@@ -261,15 +261,15 @@ if args.action == "inference":
 #     TODO: If inference mode, just save 'predictions' to .nc file if labels already not zero. Allow user to override existing labels manually.
 
 
-#     python ethograph/model/main2.py --config configs/Freddy_CV_fold1.json --method train
-#     python ethograph/model/main2.py --config configs/Freddy_CV_fold2.json --method train
-#     python ethograph/model/main2.py --config configs/Freddy_CV_fold3.json --method train
+#     python ethograph/model/main2.py --config configs/model/Freddy_CV_fold1.json --method train
+#     python ethograph/model/main2.py --config configs/model/Freddy_CV_fold2.json --method train
+#     python ethograph/model/main2.py --config configs/model/Freddy_CV_fold3.json --method train
 
 
 
-#     python ethograph/model/main2.py --config configs/Freddy_CV_fold1.json --method eval --model_path result\Freddy_CV_fold1\epoch-300.model
-#     python ethograph/model/main2.py --config configs/Freddy_CV_fold2.json --method eval --model_path result\Freddy_CV_fold2\epoch-300.model
-#     python ethograph/model/main2.py --config configs/Freddy_CV_fold3.json --method eval --model_path result\Freddy_CV_fold3\epoch-300.model
+#     python ethograph/model/main2.py --config configs/model/Freddy_CV_fold1.json --method eval --model_path result\Freddy_CV_fold1\epoch-300.model
+#     python ethograph/model/main2.py --config configs/model/Freddy_CV_fold2.json --method eval --model_path result\Freddy_CV_fold2\epoch-300.model
+#     python ethograph/model/main2.py --config configs/model/Freddy_CV_fold3.json --method eval --model_path result\Freddy_CV_fold3\epoch-300.model
 
 #     NOTE: Method has to be specified by the user.
 #     - method: train, eval, inference

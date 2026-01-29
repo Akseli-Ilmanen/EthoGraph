@@ -475,7 +475,7 @@ class LabelsWidget(QWidget):
             if 'predictions' not in os.path.basename(file_path):
                 show_warning("Filename must include 'predictions' .")
                 return
-            self.app_state.pred_dt = TrialTree.load(file_path)
+            self.app_state.pred_dt = TrialTree.open(file_path)
             self.app_state.pred_ds = self.app_state.pred_dt.trial(self.app_state.trials_sel)
             self.pred_show_predictions.setEnabled(True)
             self.pred_show_predictions.setChecked(True)

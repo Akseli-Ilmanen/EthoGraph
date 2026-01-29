@@ -7,13 +7,17 @@ from matplotlib import cm as mpl_cm
 from typing import Dict, Tuple, Any, List
 from pathlib import Path
 import xarray as xr
-from scipy.signal import find_peaks, peak_prominences
+
 import pandas as pd
+
 
 from typing import Union
 import numpy as np
 import xarray as xr
+from scipy import interpolate
 from scipy.spatial.distance import cdist
+from scipy.integrate import cumulative_trapezoid
+
 from itertools import groupby
 
 import subprocess
@@ -332,3 +336,70 @@ def extract_video_motion(
         dims=[time_coord_name],
         coords={time_coord_name: np.arange(len(motion)) / fps},
     )
+    
+    
+def _movmean_omitnan(arr: np.ndarray, window: int) -> np.ndarray:
+    result = np.empty_like(arr)
+    half = window // 2
+    for col in range(arr.shape[1]):
+        for i in range(len(arr)):
+            start, end = max(0, i - half), min(len(arr), i + half + 1)
+            result[i, col] = np.nanmean(arr[start:end, col])
+    return result    
+
+
+
+def compute_aux_velocity_and_speed(
+    a_aux_trial: np.ndarray,
+    time_intan: np.ndarray,
+    fps: float = 30000.0,
+    mov_mean_window1: int = 6001,
+    mov_mean_window2: int = 15001
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    if a_aux_trial.shape[0] != len(time_intan):
+        raise ValueError(
+            f"Shape mismatch: a_aux_trial has {a_aux_trial.shape[0]} samples "
+            f"but time_intan has {len(time_intan)} samples"
+        )
+    
+    dt = 1 / fps
+    
+    # MATLAB-style outlier detection (median + scaled MAD)
+    med = np.median(a_aux_trial, axis=0)
+    mad = np.median(np.abs(a_aux_trial - med), axis=0)
+    threshold = 3 * mad * 1.4826
+    outlier_mask = np.abs(a_aux_trial - med) > threshold
+    
+    a_good = a_aux_trial.copy()
+    a_good[outlier_mask] = np.nan
+    
+    drift = pd.DataFrame(a_good).rolling(
+        mov_mean_window1, center=True, min_periods=1
+    ).mean().values
+    
+    drift_interp = np.empty_like(a_aux_trial)
+    for col in range(a_aux_trial.shape[1]):
+        valid_idx = ~np.isnan(a_good[:, col])
+        f = interpolate.interp1d(
+            time_intan[valid_idx],
+            drift[valid_idx, col],
+            kind='linear',
+            fill_value='extrapolate'
+        )
+        drift_interp[:, col] = f(time_intan)
+    
+    a_aux_trial_driftcorr = a_aux_trial - drift_interp
+    
+    # Trapezoidal integration (matches MATLAB cumtrapz)
+    v_aux_trial = cumulative_trapezoid(a_aux_trial_driftcorr, dx=dt, axis=0, initial=0)
+    
+    drift2 = pd.DataFrame(v_aux_trial).rolling(
+        mov_mean_window2, center=True, min_periods=1
+    ).mean().values
+    
+    v_aux_trial_driftcorr = v_aux_trial - drift2
+    v_aux_speed = np.linalg.norm(v_aux_trial_driftcorr, axis=1)
+    
+    return a_aux_trial_driftcorr, v_aux_trial_driftcorr, v_aux_speed
+
+

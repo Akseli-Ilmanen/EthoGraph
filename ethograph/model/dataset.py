@@ -61,7 +61,7 @@ def get_data_dict(all_params, nc_paths, trial_dict, features_path=None, gt_path=
     for hash_key in trial_dict.keys():
         nc_path = trial_dict[hash_key]['nc_path']
         print(f"Processing {nc_path}, hash key: {hash_key}")
-        dt = TrialTree.load(nc_path)
+        dt = TrialTree.open(nc_path)
 
         for trial_num in tqdm(trial_dict[hash_key]['trials']):
             
@@ -140,7 +140,7 @@ def get_trial_dict(all_params, nc_paths) -> dict:
 
     for nc_path in nc_paths:
         hash_key = get_file_hash(nc_path)
-        dt = TrialTree.load(nc_path)
+        dt = TrialTree.open(nc_path)
         
         valid_trials = []
         for node in dt.children.values():
