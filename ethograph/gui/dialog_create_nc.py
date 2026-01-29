@@ -10,6 +10,7 @@ import xarray as xr
 from movement.io import load_poses
 
 from qtpy.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -25,10 +26,11 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ethograph.utils.io import (
+from ethograph.gui.data_loader import (
     minimal_dt_from_pose,
     minimal_dt_from_ds,
     minimal_dt_from_audio,
+    minimal_dt_from_npy_file,
 )
 
 
@@ -91,7 +93,11 @@ class CreateNCDialog(QDialog):
         self.audio_button.clicked.connect(self._on_audio_clicked)
         layout.addWidget(self.audio_button)
 
-        self.tutorial_button = QPushButton("4) Tutorials for creating custom .nc files")
+        self.npy_button = QPushButton("4) Generate from npy file")
+        self.npy_button.clicked.connect(self._on_npy_clicked)
+        layout.addWidget(self.npy_button)
+
+        self.tutorial_button = QPushButton("5) Tutorials for creating custom .nc files")
         self.tutorial_button.clicked.connect(self._on_tutorials_clicked)
         layout.addWidget(self.tutorial_button)
 
@@ -113,6 +119,11 @@ class CreateNCDialog(QDialog):
 
     def _on_audio_clicked(self):
         dialog = AudioFileDialog(self.app_state, self.io_widget, self)
+        if dialog.exec_():
+            self.accept()
+
+    def _on_npy_clicked(self):
+        dialog = NpyFileDialog(self.app_state, self.io_widget, self)
         if dialog.exec_():
             self.accept()
 
@@ -491,6 +502,10 @@ class AudioFileDialog(QDialog):
         self.individuals_edit.setPlaceholderText("e.g., bird1, bird2, bird3 (leave empty for default)")
         form_layout.addRow("Individuals (optional):", self.individuals_edit)
 
+        self.video_motion_checkbox = QCheckBox("Load video motion features")
+        self.video_motion_checkbox.setToolTip("Extract motion features from video (may take longer)")
+        form_layout.addRow("", self.video_motion_checkbox)
+
         output_widget = QWidget()
         output_layout = QHBoxLayout(output_widget)
         output_layout.setContentsMargins(0, 0, 0, 0)
@@ -573,6 +588,8 @@ class AudioFileDialog(QDialog):
         if self.individuals_edit.text().strip():
             individuals = [s.strip() for s in self.individuals_edit.text().split(",")]
 
+        video_motion = self.video_motion_checkbox.isChecked()
+
         try:
             dt = minimal_dt_from_audio(
                 video_path=video_path,
@@ -580,6 +597,7 @@ class AudioFileDialog(QDialog):
                 audio_path=audio_path,
                 audio_sr=audio_sr,
                 individuals=individuals,
+                video_motion=video_motion,
             )
             dt.to_netcdf(output_path)
 
@@ -592,12 +610,8 @@ class AudioFileDialog(QDialog):
             )
             self.accept()
         except Exception as e:
-            print(f"Error creating session.nc file: {e}"    )
+            print(f"Error creating session.nc file: {e}")
             QMessageBox.critical(self, "Error", f"Failed to create session.nc file:\n{e}")
-            
-            
-            
-            
 
     def _populate_io_fields(self, output_path: str, video_path: str, audio_path: str):
         video_folder = str(Path(video_path).parent)
@@ -611,3 +625,186 @@ class AudioFileDialog(QDialog):
 
         self.app_state.audio_folder = audio_folder
         self.io_widget.audio_folder_edit.setText(audio_folder)
+
+
+class NpyFileDialog(QDialog):
+    """Dialog for generating .nc file from npy file."""
+
+    def __init__(self, app_state, io_widget, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.app_state = app_state
+        self.io_widget = io_widget
+        self.setWindowTitle("Generate from Npy File")
+        self.setMinimumWidth(550)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        info_label = QLabel(
+            "Generate a .nc file from a numpy (.npy) file. "
+            "The file should contain a 2D array with shape (n_frames, n_variables)."
+        )
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        layout.addSpacing(15)
+
+        form_layout = QFormLayout()
+
+        video_widget = QWidget()
+        video_layout = QHBoxLayout(video_widget)
+        video_layout.setContentsMargins(0, 0, 0, 0)
+        self.video_edit = QLineEdit()
+        self.video_edit.setPlaceholderText("Select video file (.mp4, .mov)...")
+        self.video_edit.setReadOnly(True)
+        video_browse = QPushButton("Browse")
+        video_browse.clicked.connect(self._on_video_browse)
+        video_layout.addWidget(self.video_edit)
+        video_layout.addWidget(video_browse)
+        form_layout.addRow("Video file:", video_widget)
+
+        npy_widget = QWidget()
+        npy_layout = QHBoxLayout(npy_widget)
+        npy_layout.setContentsMargins(0, 0, 0, 0)
+        self.npy_edit = QLineEdit()
+        self.npy_edit.setPlaceholderText("Select numpy file (.npy)...")
+        self.npy_edit.setReadOnly(True)
+        npy_browse = QPushButton("Browse")
+        npy_browse.clicked.connect(self._on_npy_browse)
+        npy_layout.addWidget(self.npy_edit)
+        npy_layout.addWidget(npy_browse)
+        form_layout.addRow("Npy file:", npy_widget)
+
+        self.fps_spinbox = QSpinBox()
+        self.fps_spinbox.setRange(1, 1000)
+        self.fps_spinbox.setValue(30)
+        self.fps_spinbox.setSuffix(" fps")
+        form_layout.addRow("Video frame rate:", self.fps_spinbox)
+
+        self.data_sr_spinbox = QSpinBox()
+        self.data_sr_spinbox.setRange(1, 100000)
+        self.data_sr_spinbox.setValue(30)
+        self.data_sr_spinbox.setSuffix(" Hz")
+        form_layout.addRow("Data sampling rate:", self.data_sr_spinbox)
+
+        self.individuals_edit = QLineEdit()
+        self.individuals_edit.setPlaceholderText("e.g., bird1, bird2, bird3 (leave empty for default)")
+        form_layout.addRow("Individuals (optional):", self.individuals_edit)
+
+        self.video_motion_checkbox = QCheckBox("Load video motion features")
+        self.video_motion_checkbox.setToolTip("Extract motion features from video (may take longer)")
+        form_layout.addRow("", self.video_motion_checkbox)
+
+        output_widget = QWidget()
+        output_layout = QHBoxLayout(output_widget)
+        output_layout.setContentsMargins(0, 0, 0, 0)
+        self.output_edit = QLineEdit()
+        self.output_edit.setPlaceholderText("Select output location for session.nc...")
+        self.output_edit.setReadOnly(True)
+        output_browse = QPushButton("Browse")
+        output_browse.clicked.connect(self._on_output_browse)
+        output_layout.addWidget(self.output_edit)
+        output_layout.addWidget(output_browse)
+        form_layout.addRow("Output path:", output_widget)
+
+        layout.addLayout(form_layout)
+        layout.addSpacing(20)
+
+        self.generate_button = QPushButton("Generate .nc file")
+        self.generate_button.clicked.connect(self._on_generate)
+        layout.addWidget(self.generate_button)
+
+        layout.addSpacing(10)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Cancel)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def _on_video_browse(self):
+        result = QFileDialog.getOpenFileName(
+            self,
+            caption="Select video file",
+            filter="Video files (*.mp4 *.mov *.avi);;All files (*)",
+        )
+        if result and result[0]:
+            self.video_edit.setText(result[0])
+            fps = get_video_fps(result[0])
+            if fps is not None:
+                self.fps_spinbox.setValue(fps)
+
+    def _on_npy_browse(self):
+        result = QFileDialog.getOpenFileName(
+            self,
+            caption="Select numpy file",
+            filter="Numpy files (*.npy);;All files (*)",
+        )
+        if result and result[0]:
+            self.npy_edit.setText(result[0])
+
+    def _on_output_browse(self):
+        result = QFileDialog.getSaveFileName(
+            self,
+            caption="Save session.nc file",
+            filter="NetCDF files (*.nc);;All files (*)",
+        )
+        if result and result[0]:
+            path = result[0]
+            if not path.endswith(".nc"):
+                path += ".nc"
+            self.output_edit.setText(path)
+
+    def _on_generate(self):
+        if not self.video_edit.text():
+            QMessageBox.warning(self, "Missing Input", "Please select a video file.")
+            return
+        if not self.npy_edit.text():
+            QMessageBox.warning(self, "Missing Input", "Please select a npy file.")
+            return
+        if not self.output_edit.text():
+            QMessageBox.warning(self, "Missing Input", "Please select an output path.")
+            return
+
+        video_path = self.video_edit.text()
+        npy_path = self.npy_edit.text()
+        fps = self.fps_spinbox.value()
+        data_sr = self.data_sr_spinbox.value()
+        output_path = self.output_edit.text()
+
+        individuals = None
+        if self.individuals_edit.text().strip():
+            individuals = [s.strip() for s in self.individuals_edit.text().split(",")]
+
+        video_motion = self.video_motion_checkbox.isChecked()
+
+        try:
+            dt = minimal_dt_from_npy_file(
+                video_path=video_path,
+                fps=fps,
+                npy_path=npy_path,
+                data_sr=data_sr,
+                individuals=individuals,
+                video_motion=video_motion,
+            )
+            dt.to_netcdf(output_path)
+
+            self._populate_io_fields(output_path, video_path)
+
+            QMessageBox.information(
+                self,
+                "Success",
+                f"Successfully created:\n{output_path}",
+            )
+            self.accept()
+        except Exception as e:
+            print(f"Error creating session.nc file: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to create session.nc file:\n{e}")
+
+    def _populate_io_fields(self, output_path: str, video_path: str):
+        video_folder = str(Path(video_path).parent)
+
+        self.app_state.nc_file_path = output_path
+        self.io_widget.nc_file_path_edit.setText(output_path)
+
+        self.app_state.video_folder = video_folder
+        self.io_widget.video_folder_edit.setText(video_folder)

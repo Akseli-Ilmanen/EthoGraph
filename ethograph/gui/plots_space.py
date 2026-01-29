@@ -7,11 +7,8 @@ from qtpy.QtWidgets import QWidget, QVBoxLayout
 from typing import Optional
 import xarray as xr
 from ethograph.utils.data_utils import sel_valid
-from movement.plots import plot_centroid_trajectory
-from movement.filtering import rolling_filter
-from ethograph.plots.plot_qtgraph import MultiColoredLineItem
 from ethograph.features.preprocessing import interpolate_nans
-
+from ethograph.plots.lineplot_qtgraph import MultiColoredLineItem
 
 
 def space_plot_pyqt(

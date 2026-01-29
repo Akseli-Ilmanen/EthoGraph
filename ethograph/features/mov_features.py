@@ -1,5 +1,6 @@
 """Features related to movements/kinematics."""
 
+import shutil
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm as mpl_cm
@@ -14,6 +15,11 @@ import numpy as np
 import xarray as xr
 from scipy.spatial.distance import cdist
 from itertools import groupby
+
+import subprocess
+import tempfile
+import re
+import sys
 
 
 class Position3DCalibration:
@@ -267,412 +273,62 @@ def get_angle_rgb(xy_pos, smooth_func=None, smoothing_params=None):
     return rgb_matrix, angles
 
 
-def extract_speed_statistics(
-    labels: Union[List[int], np.ndarray],
-    features: Union[List[Any], np.ndarray],
-    skip_background: bool = True
-) -> Dict[int, Dict[str, List[Any]]]:
-    """
-    Extract statistical values for each label segment.
-    
-    Args:
-        labels: Sequence of integer labels
-        features: Feature values aligned with labels
-        skip_background: Whether to skip label 0
-    
-    Returns:
-        Dictionary: {label: {'starts': [...], 'ends': [...], 'peak_heights': [...]}}
-    """
-    if len(labels) != len(features):
-        raise ValueError("Labels and features must have same length")
-    
-    labels = np.asarray(labels)
-    features = np.asarray(features)
-    
-    # Filter NaN values first
-    valid_mask = ~np.isnan(labels)
-    labels = labels[valid_mask].astype(int)
-    features = features[valid_mask]
-    
 
-    segment_stats = {}
-    position = 0
+
+def extract_video_motion(
+    video_path: Path | str,
+    fps: float,
+    time_coord_name: str = "time",
+    scale_width: int = 160,
+    hwaccel: str | None = None,
+    verbose: bool = True,
+) -> xr.DataArray:
+    video_path = Path(video_path)
     
-    for label, group in groupby(labels):
-        segment_length = sum(1 for _ in group)
-        end_position = position + segment_length - 1
+    if not video_path.exists():
+        raise FileNotFoundError(f"Video not found: {video_path}")
+    
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_video = Path(tmp_dir) / "video.mp4"
+        temp_path = Path(tmp_dir) / "motion.txt"
         
-        if not (skip_background and label == 0):
-            if label not in segment_stats:
-                segment_stats[label] = {
-                    'max_starts': [], 
-                    'max_ends': []
-                }
-            
-
-            start_value = features[position]
-            end_value = features[end_position]
-            
-            segment_stats[label]['max_starts'].append(start_value)
-            segment_stats[label]['max_ends'].append(end_value)
-
+        shutil.copy(video_path, tmp_video)
         
-        position += segment_length
-    
-    return segment_stats
-
-
-
-def compute_speed_statistics(
-        boundary_stats: Dict[int, Dict[str, List[Any]]],
-        n_mad: float = 1.0,
-    ) -> Dict[int, Dict[str, Dict[str, float]]]:
-        """
-        Compute statistical boundaries (mean ± factor * std) for start and end values of each label.
-
-        Args:
-            boundary_stats: Output from extract_boundary_values
-                            {label: {'max_starts': [...], 'max_ends': [...]} }
-            factor: Scaling factor for the standard deviation (default: 2)
-
-        Returns:
-            Dictionary with upper/lower limits for each label's start/end values
-            {label: {'max_starts': 150, 
-                    'max_ends': 120}
-        """
-        final_stats = {}
-        hist_stats = {}
+        if sys.platform == "win32":
+            filter_str = f"scale={scale_width}:-1:flags=neighbor,format=gray,signalstats,metadata=print:file=motion.txt:key=lavfi.signalstats.YDIF"
+            cwd = tmp_dir
+            input_path = "video.mp4"
+        else:
+            temp_path_ffmpeg = temp_path.as_posix()
+            filter_str = f"scale={scale_width}:-1:flags=neighbor,format=gray,signalstats,metadata=print:file={temp_path_ffmpeg}:key=lavfi.signalstats.YDIF"
+            cwd = None
+            input_path = tmp_video.as_posix()
         
-        for label, boundaries in boundary_stats.items():
-            label = int(label)  # Ensure label is int for dictionary keys
-            final_stats[label] = {}
-            hist_stats[label] = {}
-
-            for boundary_type in ['max_starts', 'max_ends']:
-                values = boundaries[boundary_type]
-
-                if isinstance(values, list) and any(isinstance(v, (np.ndarray, list)) for v in values):
-                    values = np.concatenate([np.asarray(v, dtype=np.float64).flatten() for v in values])
-                else:
-                    values = np.array(values, dtype=np.float64)
-                if values.ndim > 1:
-                    values = values.flatten()
-                values = values[~np.isnan(values)]
-                
-                if len(values) == 0:
-                    continue
-                
-                median = np.median(values)
-                mad = _compute_mad(values)
-
-                if boundary_type in ['max_starts', 'max_ends']:
-                    final_stats[label][boundary_type] = median + n_mad * mad
-
-
-                hist_stats[label][boundary_type] = values
-            
+        cmd = ["ffmpeg", "-y"]
         
-        return final_stats, hist_stats
-
-def _compute_mad(values: np.ndarray) -> float:
-    """
-    Compute Median Absolute Deviation with consistency factor.
+        if hwaccel:
+            cmd.extend(["-hwaccel", hwaccel])
+        elif sys.platform == "darwin":
+            cmd.extend(["-hwaccel", "videotoolbox"])
+        
+        cmd.extend(["-i", input_path, "-vf", filter_str, "-f", "null", "-"])
+        
+        if verbose:
+            # Live output to terminal
+            result = subprocess.run(cmd, cwd=cwd)
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
+        
+        if result.returncode != 0:
+            err = result.stderr if hasattr(result, 'stderr') and result.stderr else "Unknown error"
+            raise RuntimeError(f"FFmpeg error: {err}")
+        
+        text = temp_path.read_text()
+        pattern = r"lavfi\.signalstats\.YDIF=(\d+\.?\d*)"
+        motion = np.array([float(m) for m in re.findall(pattern, text)], dtype=np.float32)
     
-    Args:
-        values: Array of values
-    
-    Returns:
-        Scaled MAD value (comparable to standard deviation)
-    """
-    median = np.median(values)
-    
-    mad = np.median(np.abs(values - median))
-    
-    consistency_factor = 1.4826
-    
-    return consistency_factor * mad
-
-def stats_histograms(speed_stats: Dict[int, Dict[str, float]], hist_stats: Dict[int, Dict[str, np.ndarray]], save_path: str, num_bins: int = 50):
-    """
-    Plot histograms of boundary statistics for each label.
-
-    Args:
-        speed_stats: {label: {stat_name: float}}
-        hist_stats: {label: {stat_name: np.ndarray}}
-        save_path: Path to save the figure
-        num_bins: Number of bins for histogram (default: 50)
-    """
-    import matplotlib.pyplot as plt
-
-    stat_names = ['max_starts', 'max_ends']
-    labels = sorted(hist_stats.keys())
-    n_labels = len(labels)
-    n_stats = len(stat_names)
-
-    fig, axes = plt.subplots(n_labels, n_stats, figsize=(4 * n_stats, 3 * n_labels), squeeze=False)
-
-    for i, label in enumerate(labels):
-        stats = hist_stats[label]
-        cutoffs = speed_stats[label]
-        for j, stat_name in enumerate(stat_names):
-            ax = axes[i][j]
-            value = stats.get(stat_name)
-            cutoff = cutoffs.get(stat_name)
-            if value is not None:
-                ax.hist([value], bins=num_bins, alpha=0.7)
-            ax.set_title(f'Label {label} - {stat_name}')
-            ax.axvline(x=cutoff, color='r', linestyle='--', label='Cutoff')
-            ax.set_xlabel(stat_name)
-            ax.set_ylabel('Frequency')
-            ax.grid(True)
-            ax.legend()
-
-    plt.tight_layout()
-    plt.savefig(save_path)
-    plt.close(fig)
-
-
-
-
-
-def create_heatmap_from_segments(
-    df: pd.DataFrame,
-    data_dict: Dict[Tuple[str, int], np.ndarray],
-    fs: float,
-    label_filter: int = None,
-    window: float = 1.0,
-    align_to: str = 'start',
-    sort_by: str = 'duration',
-    cmap: str = None,
-) -> Tuple[plt.Figure, plt.Axes, np.ndarray]:
-    """
-    Create heatmap from segment DataFrame using pre-computed data.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Segment DataFrame from ds_to_df with session and trial columns.
-    data_dict : Dict[Tuple[str, int], np.ndarray]
-        Mapping of (session, trial) -> data array.
-        Shape (time, 3) for RGB or (time,) / (time, 1) for grayscale.
-    fs : float
-        Sampling rate in Hz.
-    label_filter : int, optional
-        Only include segments with this label.
-    window : float
-        Time window around event in seconds.
-    align_to : str
-        Align to 'start' or 'stop' of segments.
-    sort_by : str
-        Sort events by 'duration', 'trial', or None.
-    cmap : str, optional
-        Colormap for grayscale data. Ignored for RGB.
-
-    Returns
-    -------
-    fig, ax, aligned_data
-    """
-    if label_filter is not None:
-        df = df[df['label'] == label_filter]
-
-    if df.empty:
-        raise ValueError(f"No segments found for label {label_filter}")
-
-    event_indices = []
-    durations = []
-    all_data = []
-    offset = 0
-
-    for (session, trial), trial_df in df.groupby(['session', 'trial']):
-        data = data_dict.get((session, trial))
-
-        for _, row in trial_df.iterrows():
-            event_idx = int(row[align_to] * fs) + offset
-            event_indices.append(event_idx)
-            durations.append(row['duration'])
-
-        all_data.append(data)
-        offset += len(data)
-
-    if not all_data:
-        raise ValueError("No data found for trials in DataFrame")
-
-    combined_data = np.concatenate(all_data, axis=0)
-    event_indices = np.array(event_indices)
-    durations = np.array(durations)
-
-    sort_durations = durations if sort_by == 'duration' else None
-    
-    if window is None:
-        window = np.max(durations) * 1.3
-
-    return create_aligned_heatmap(
-        combined_data,
-        event_indices,
-        fs,
-        window=window,
-        sort_by_duration=sort_durations,
-        cmap=cmap,
+    return xr.DataArray(
+        motion,
+        dims=[time_coord_name],
+        coords={time_coord_name: np.arange(len(motion)) / fps},
     )
-
-
-def create_aligned_heatmap(
-    data: np.ndarray,
-    event_indices: np.ndarray,
-    fs: float,
-    window: float = 1.0,
-    sort_by_duration: np.ndarray = None,
-    ax: plt.Axes = None,
-    cmap: str = None,
-) -> Tuple[plt.Figure, plt.Axes, np.ndarray]:
-    """
-    Create event-aligned heatmap from data.
-
-    Parameters
-    ----------
-    data : np.ndarray
-        Data with shape (time, 3) for RGB or (time,) / (time, 1) for grayscale.
-        RGB values in [0, 1] or [0, 255].
-    event_indices : np.ndarray
-        Indices of events to align to.
-    fs : float
-        Sampling rate in Hz.
-    window : float
-        Time window on each side of event in seconds.
-    sort_by_duration : np.ndarray, optional
-        If provided, sort rows by duration and draw end markers.
-    ax : plt.Axes, optional
-        Axes to plot on. If None, creates new figure.
-    cmap : str, optional
-        Colormap for grayscale data (e.g., 'viridis', 'gray').
-        Ignored for RGB data.
-
-    Returns
-    -------
-    fig, ax, aligned_data
-    """
-    is_rgb = data.ndim == 2 and data.shape[1] == 3
-    
-    print("Creating heatmap...")
-    print(f"Data shape: {data.shape}, Number of events: {len(event_indices)}")
-    
-    if data.ndim == 1:
-        data = data[:, np.newaxis]
-
-    
-    if is_rgb:
-        aligned_data = _align_data_to_events(data, event_indices, fs, window, normalize=False)
-    else:
-        aligned_data = _align_data_to_events(data, event_indices, fs, window, normalize=True)    
-    
-    
-    if sort_by_duration is not None:
-        aligned_data, sort_by_duration = _sort_by_duration(aligned_data, sort_by_duration)
-    
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 6))
-    else:
-        fig = ax.get_figure()
-    
-    _plot_heatmap(ax, aligned_data, window, is_rgb, cmap)
-    _add_event_markers(ax, sort_by_duration)
-    
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel(f'Syllables (n={aligned_data.shape[0]})')
-    ax.set_yticks([])
-    
-    return fig, ax, aligned_data
-
-
-def _align_data_to_events(
-    data: np.ndarray,
-    event_indices: np.ndarray,
-    fs: float,
-    window: float,
-    normalize: bool = False,
-) -> np.ndarray:
-    """Align data to event indices with specified time window."""
-    window_frames = int(window * fs)
-    n_frames = 2 * window_frames + 1
-    n_events = len(event_indices)
-    n_channels = data.shape[1]
-    
-    aligned_data = np.full((n_events, n_frames, n_channels), np.nan)
-    
-    for i, event_idx in enumerate(event_indices):
-        start_idx = event_idx - window_frames
-        end_idx = event_idx + window_frames + 1
-        
-        src_start = max(0, start_idx)
-        src_end = min(len(data), end_idx)
-        
-        if src_start >= src_end:
-            continue
-        
-        tgt_start = src_start - start_idx
-        tgt_end = tgt_start + (src_end - src_start)
-        
-        aligned_data[i, tgt_start:tgt_end, :] = data[src_start:src_end]
-        
-        if normalize:
-            event_data = aligned_data[i, :, 0]
-            from ethograph.features.preprocessing import interpolate_nans
-            
-            
-            event_data = interpolate_nans(event_data)
-            event_data = np.clip(event_data, np.nanpercentile(event_data, 0), np.nanpercentile(event_data, 80))
-            aligned_data[i, :, 0] = (event_data - np.mean(event_data)) / np.std(event_data)  
-
-    
-    return aligned_data
-
-
-def _sort_by_duration(
-    aligned_data: np.ndarray,
-    durations: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Sort aligned data by duration."""
-    order = np.argsort(durations)
-    return aligned_data[order], durations[order]
-
-
-def _plot_heatmap(
-    ax: plt.Axes,
-    aligned_data: np.ndarray,
-    window: float,
-    is_rgb: bool,
-    cmap: str,
-) -> None:
-    """Plot the aligned data as a heatmap."""
-    n_events = aligned_data.shape[0]
-    
-    if is_rgb:
-        if np.nanmax(aligned_data) > 1.0:
-            aligned_data = aligned_data / 255.0
-        display_data = np.nan_to_num(aligned_data, nan=1.0)
-        ax.imshow(
-            display_data,
-            aspect='auto',
-            extent=[-window, window, 0, n_events],
-            origin='lower',
-            interpolation='nearest',
-        )
-    else:
-        display_data = aligned_data.squeeze()
-        ax.imshow(
-            display_data,
-            aspect='auto',
-            extent=[-window, window, 0, n_events],
-            origin='lower',
-            cmap=cmap or 'viridis',
-            interpolation='nearest',
-        )
-
-
-def _add_event_markers(ax: plt.Axes, durations: np.ndarray = None) -> None:
-    """Add event onset and duration markers to heatmap."""
-    ax.axvline(0, color='red', linewidth=3, linestyle='-')
-    
-    if durations is not None:
-        for i, dur in enumerate(durations):
-            ax.plot([dur, dur], [i, i + 1], color='red', linewidth=3)

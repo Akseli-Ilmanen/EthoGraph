@@ -7,6 +7,9 @@ Reference: https://github.com/timsainb/vocalization-segmentation
 import numpy as np
 from typing import Tuple, Optional
 import hashlib
+from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
+import audioio as aio
+import noisereduce as nr
 
 
 _audio_changepoint_cache: dict[str, dict] = {}
@@ -51,8 +54,6 @@ def detect_audio_changepoints(
     Returns:
         Tuple of (onset_times, offset_times) in seconds
     """
-    from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
-    import audioio as aio
 
     cache_key = get_file_hash(audio_path)
     spectral_range_str = f"{spectral_range}" if spectral_range else "None"
@@ -143,13 +144,9 @@ def apply_noise_reduction(
     Returns:
         Noise-reduced audio samples
     """
-    try:
-        import noisereduce as nr
-        hop_length = int(n_fft * hop_fraction)
-        return nr.reduce_noise(
-            y=audio, sr=sr, stationary=stationary,
-            n_fft=n_fft, hop_length=hop_length, prop_decrease=prop_decrease
-        )
-    except ImportError:
-        print("noisereduce not installed. Install with: pip install noisereduce")
-        return audio
+    
+    hop_length = int(n_fft * hop_fraction)
+    return nr.reduce_noise(
+        y=audio, sr=sr, stationary=stationary,
+        n_fft=n_fft, hop_length=hop_length, prop_decrease=prop_decrease
+    )
