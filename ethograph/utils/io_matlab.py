@@ -121,6 +121,7 @@ def update_dt_with_matlab_pulse_onsets(
         ds = node.to_dataset().copy()
         
         pulse_onsets = trial.pulse_info.pulse_onsets
+
         
         assert len(pulse_onsets) == len(ds.time)
         
