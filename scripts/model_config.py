@@ -32,8 +32,8 @@ params_rigid = {
 "channel_mask_rate": 0.3,
 "batch_size":1,
 "learning_rate":0.0005,
-"num_epochs":1,
-"eval_epoch": 1,
+"num_epochs":100,
+"eval_epoch": 100,
 "log_freq":10, # At how many epochs, the model is saved
 "f1_thresholds": [0.5, 0.75, 0.9],  # IoU thresholds for F1 score calculation
 "boundary_radius": 2, # Window = 2*radius+1
@@ -58,7 +58,7 @@ if __name__ == "__main__":
    trainDataReady = False
    
    # model_path = r"D:\Akseli\Code\ethograph\result\Freddy_train_20251021_164220\split_1\epoch-100.model" # only for inference mode
-   model_path = r"D:\Akseli\Code\ethograph\configs\model\Ivy_train_20260128_171450_epoch-100.model"
+   model_path = r"D:\Akseli\Code\ethograph\configs\model\Ivy_train_20260129_182315_epoch-100.model"
    
    
    
