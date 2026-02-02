@@ -2,7 +2,7 @@ import xarray as xr
 import numpy as np
 import pandas as pd
 from itertools import groupby
-from ethograph.utils.io import TrialTree
+from ethograph import TrialTree
 from typing import Any, Dict, List, Mapping, Tuple
 
 def sel_valid(da, sel_kwargs):

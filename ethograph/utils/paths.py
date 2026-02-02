@@ -41,6 +41,21 @@ def gui_default_settings_path() -> Path:
     return settings_path
 
 
+def extract_trial_info_from_filename(path):
+    """
+    Extract session_date, trial_num, and bird from a DLC filename.
+    Expected filename format: YYYY-MM-DD_NNN_Bird_...
+    """
+    filename = os.path.basename(path)
+    parts = filename.split('_')
+    if len(parts) >= 3:
+        session_date = parts[0]
+        trial_num = int(parts[1])
+        bird = parts[2]
+        return session_date, trial_num, bird
+    else:
+        raise ValueError(f"Filename format not recognized: {filename}")
+
 def get_session_path(user: str, datatype: str, bird: str, session: str, data_folder_type: str):
     """
     Args:

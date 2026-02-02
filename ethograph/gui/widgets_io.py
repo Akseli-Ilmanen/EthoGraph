@@ -18,7 +18,7 @@ from .dialog_create_nc import CreateNCDialog
 from pathlib import Path
 import os
 from qtpy.QtCore import Qt
-from ethograph.utils.io import TrialTree
+from ethograph import TrialTree
 from ethograph.utils.paths import gui_default_settings_path
 from typing import Optional
 
@@ -136,9 +136,10 @@ class IOWidget(QWidget):
         if object_name == "nc_file_path":
             import_labels_checkbox = QCheckBox("Import labels")
             import_labels_checkbox.setObjectName("import_labels_checkbox")
-            import_labels_checkbox.setChecked(self.app_state.import_labels_nc_data)
-            import_labels_checkbox.stateChanged.connect(lambda state: setattr(self.app_state, 'import_labels_nc_data', state == Qt.Checked))
-            
+            import_labels_checkbox.stateChanged.connect(
+                lambda state: setattr(self.app_state, 'import_labels_nc_data', state == Qt.CheckState.Checked.value if hasattr(Qt.CheckState, 'Checked') else state == 2)
+            )
+            import_labels_checkbox.setChecked(bool(self.app_state.import_labels_nc_data))
 
 
         clear_button = QPushButton("Clear")

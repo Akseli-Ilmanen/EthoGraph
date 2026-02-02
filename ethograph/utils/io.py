@@ -1,18 +1,11 @@
 import numpy as np
 import xarray as xr
-import os
-import json
 from functools import partial
-import itertools
 from pathlib import Path
 from scipy.ndimage import gaussian_filter1d
+from typing import Any, Callable, Dict, Optional, List 
 from ethograph.features.mov_features import get_angle_rgb
-from ethograph.features.changepoints import more_changepoint_features, merge_changepoints
-from typing import Any, Callable, Dict, Optional, Union, List, Set, get_args
 from ethograph.utils.validation import validate_datatree
-
-
-
 
 
 
@@ -25,40 +18,106 @@ class TrialTree(xr.DataTree):
     def __init__(self, data=None, children=None, name=None):
         """Initialize TrialTree from DataTree or other arguments."""
         if isinstance(data, xr.DataTree):
-            # Initialize with the root dataset from the DataTree
             super().__init__(dataset=data.ds, children=children, name=name)
-            # Copy all children from the source DataTree
             for child_name, child_node in data.children.items():
                 self[child_name] = child_node
         else:
-            # Standard initialization (data can be a Dataset)
             super().__init__(dataset=data, children=children, name=name)
+
+    # -------------------------------------------------------------------------
+    # Factory methods
+    # -------------------------------------------------------------------------
+
+    @classmethod
+    def open(cls, path: str) -> "TrialTree":
+        """Open TrialTree from a NetCDF file."""
+        tree = xr.open_datatree(path)
+        tree.__class__ = cls
+        tree._source_path = path
+        return tree
+
+    @classmethod
+    def from_datasets(cls, datasets: List[xr.Dataset]) -> "TrialTree":
+        """Create from list of datasets."""
+        tree = cls()
+        trials = []
+        for ds in datasets:
+            trial_num = ds.attrs.get('trial')
+            if trial_num is None:
+                raise ValueError("Each dataset must have 'trial' attribute")
+            if trial_num in trials:
+                raise ValueError(f"Duplicate trial number: {trial_num}")
+            trials.append(trial_num)
+            tree[f'{cls.TRIAL_PREFIX}{trial_num}'] = xr.DataTree(ds)
+        tree._validate_tree()
+        return tree
+
+    @classmethod
+    def from_datatree(cls, dt: xr.DataTree, attrs: dict | None = None) -> "TrialTree":
+        tree = cls()
+        for name, child in dt.children.items():
+            tree[name] = child
+        if dt.ds is not None:
+            tree.ds = dt.ds
+        tree.attrs = (attrs if attrs is not None else dt.attrs).copy()
+        return tree
+
+    # -------------------------------------------------------------------------
+    # Persistence
+    # -------------------------------------------------------------------------
+
+    def save(self, path: str | Path | None = None) -> None:
+        import gc
+        import shutil
+
+        source_path = getattr(self, '_source_path', None)
+
+        if path is None and source_path is None:
+            raise ValueError("No path provided and no source path stored.")
+
+        path = Path(path) if path else Path(source_path)
+
+        self.load()
+        self.close()
+        gc.collect()
+
+        if path.exists():
+            temp_path = path.with_suffix('.tmp.nc')
+            self.to_netcdf(temp_path, mode='w')
+            try:
+                path.unlink()
+            except PermissionError:
+                gc.collect()
+                path.unlink()
+            shutil.move(str(temp_path), str(path))
+        else:
+            self.to_netcdf(path, mode='w')
+
+    # -------------------------------------------------------------------------
+    # Properties
+    # -------------------------------------------------------------------------
 
     @property
     def trials(self) -> List[int | str]:
         """Get list of trial numbers."""
-
         raw = [node.ds.attrs["trial"] for node in self.children.values() if node.ds is not None and "trial" in node.ds.attrs]
         trials = [val.item() if hasattr(val, 'item') else val for val in raw]
         if not trials:
             raise ValueError("No datasets with 'trial' attribute found in the tree.")
         return trials
-    
-    # https://docs.xarray.dev/en/stable/generated/xarray.DataTree.sel.html#xarray.DataTree.sel
-    # Given xarray has native .sel, and they are quite useful! I should reorganize my own methods.
-    
-    
+
+    # -------------------------------------------------------------------------
+    # Trial access
+    # -------------------------------------------------------------------------
+
     def trial(self, trial) -> xr.Dataset:
-        
         ds = self[f'{self.TRIAL_PREFIX}{trial}'].ds
         if ds is None:
-            raise ValueError(f"Trial {trial} has no dataset")   
-
+            raise ValueError(f"Trial {trial} has no dataset")
         return ds
 
     def itrial(self, trial_idx) -> xr.Dataset:
         """Index select from a specific trial dataset."""
-
         trial_nodes = sorted(
             k for k in self.children
             if k.startswith(self.TRIAL_PREFIX)
@@ -68,23 +127,18 @@ class TrialTree(xr.DataTree):
         ds = self[trial_nodes[trial_idx]].ds
         if ds is None:
             raise ValueError(f"Trial at index {trial_idx} has no dataset")
-
         return ds
-    
 
     def get_all_trials(self) -> Dict[int, xr.Dataset]:
         """Get all trials as a dictionary."""
         return {num: self.trial(num) for num in self.trials}
-    
+
     def get_common_attrs(self) -> Dict[str, Any]:
         """Extract attributes common to all trial datasets."""
         trials_dict = self.get_all_trials()
         if not trials_dict:
             return {}
-        
         common = dict(next(iter(trials_dict.values())).attrs)
-        
-        # Keep only attrs that match across all trials
         for ds in trials_dict.values():
             common = {
                 k: v for k, v in common.items()
@@ -92,10 +146,14 @@ class TrialTree(xr.DataTree):
             }
         return common
 
+    # -------------------------------------------------------------------------
+    # Data manipulation
+    # -------------------------------------------------------------------------
+
     def new_var_like(self, trial: int, new_var: str, new_val: np.ndarray, template_var: str, kwargs: dict = None):
         """
         Update multiple variables for a trial at once.
-        
+
         Args:
             trial: Trial number
             new_var: Name of new variable
@@ -105,119 +163,12 @@ class TrialTree(xr.DataTree):
         """
         trial_node = f'{self.TRIAL_PREFIX}{trial}'
         trial_ds = self[trial_node].ds.copy()
-        
         trial_ds[new_var] = xr.full_like(trial_ds[template_var], np.nan)
-            
-        # Set value
         if kwargs:
             trial_ds[new_var].loc[kwargs] = new_val
         else:
             trial_ds[new_var][:] = new_val
-    
-        # Replace node once with all updates
         self[trial_node] = xr.DataTree(trial_ds)
-    
-    @classmethod
-    def open(cls, path: str) -> "TrialTree":
-        """Open TrialTree from a NetCDF file."""
-        tree = xr.open_datatree(path)
-        tree.__class__ = cls  # Convert xr.DataTree to TrialTree
-        tree._source_path = path
-        return tree
-
-    def save(self, path: str | Path | None = None) -> None:
-        import gc
-        import shutil
-        
-        source_path = getattr(self, '_source_path', None)
-        
-        if path is None and source_path is None:
-            raise ValueError("No path provided and no source path stored.")
-        
-        path = Path(path) if path else source_path
-        
-        self.load()
-        self.close()
-        gc.collect()
-        
-        if path == source_path:
-            temp_path = path.with_suffix('.tmp.nc')
-            self.to_netcdf(temp_path, mode='w')
-            
-            # Delete original first, then move temp
-            try:
-                path.unlink()
-            except PermissionError:
-                gc.collect()
-                path.unlink()
-            
-            shutil.move(str(temp_path), str(path))
-        else:
-            self.to_netcdf(path, mode='w')
-            
-            
-    @classmethod
-    def from_datasets(cls, datasets: List[xr.Dataset]) -> "TrialTree":
-        """Create from list of datasets."""
-        tree = cls()
-
-        trials = []
-        for ds in datasets:
-            trial_num = ds.attrs.get('trial')
-            if trial_num is None:
-                raise ValueError("Each dataset must have 'trial' attribute")
-
-            if trial_num in trials:
-                raise ValueError(f"Duplicate trial number: {trial_num}")
-
-            trials.append(trial_num)
-            tree[f'{cls.TRIAL_PREFIX}{trial_num}'] = xr.DataTree(ds)
-            
-        
-        tree._validate_tree()
-        return tree
-    
-
-    @classmethod
-    def from_datatree(cls, dt: xr.DataTree, attrs: dict | None = None) -> "TrialTree":
-        tree = cls()
-        for name, child in dt.children.items():
-            tree[name] = child
-        if dt.ds is not None: # handle root node
-            tree.ds = dt.ds
-        tree.attrs = (attrs if attrs is not None else dt.attrs).copy()
-        
-        
-        return tree
-
-
-    def _validate_tree(self) -> List[str]:
-        errors = validate_datatree(self)
-    
-        if errors:
-            error_msg += "\n"
-            error_msg += "Dataset validation failed:\n"
-            error_msg += "\n".join(f"• {e}" for e in errors)
-        
-        
-            raise ValueError("TrialTree validation failed: \n" + error_msg)
-
-    
-
-    def get_label_dt(self, empty: bool = False) -> "TrialTree":
-        def filter_node(ds):
-            if ds is None or "labels" not in ds.data_vars:
-                return xr.Dataset()
-            
-            vars_to_extract = ["labels"]
-            if "labels_confidence" in ds.data_vars:
-                vars_to_extract.append("labels_confidence")
-            
-            filtered = ds[vars_to_extract]
-            return xr.zeros_like(filtered) if empty else filtered
-        
-        return self.from_datatree(self.map_over_datasets(filter_node), attrs=self.attrs)
-
 
     def apply_1d(
         self,
@@ -230,9 +181,7 @@ class TrialTree(xr.DataTree):
         def transform_ds(ds):
             if ds is None or var_name not in ds:
                 return ds
-            
             var_attrs = ds[var_name].attrs.copy()
-            
             transformed = xr.apply_ufunc(
                 func,
                 ds[var_name],
@@ -243,13 +192,10 @@ class TrialTree(xr.DataTree):
                 dask='parallelized'
             )
             transformed.attrs = var_attrs
-            
             result = ds.copy()
             result[var_name] = transformed
             return result
-        
         return self.from_datatree(self.map_over_datasets(transform_ds), attrs=self.attrs)
-
 
     def apply_2d(
         self,
@@ -264,9 +210,7 @@ class TrialTree(xr.DataTree):
         def transform_ds(ds):
             if ds is None or var1_name not in ds or var2_name not in ds:
                 return ds
-            
             var1_attrs = ds[var1_name].attrs.copy()
-            
             transformed = xr.apply_ufunc(
                 func,
                 ds[var1_name],
@@ -278,86 +222,178 @@ class TrialTree(xr.DataTree):
                 dask='parallelized'
             )
             transformed.attrs = var1_attrs
-            
             result = ds.copy()
             result[output_name or var1_name] = transformed
             return result
-        
         return self.from_datatree(self.map_over_datasets(transform_ds), attrs=self.attrs)
-        
-    
-    
+
+    # -------------------------------------------------------------------------
+    # Label operations
+    # -------------------------------------------------------------------------
+
+    def get_label_dt(self, empty: bool = False) -> "TrialTree":
+        def filter_node(ds):
+            if ds is None or "labels" not in ds.data_vars:
+                return xr.Dataset()
+            vars_to_extract = ["labels"]
+            if "labels_confidence" in ds.data_vars:
+                vars_to_extract.append("labels_confidence")
+            filtered = ds[vars_to_extract]
+            return xr.zeros_like(filtered) if empty else filtered
+        return self.from_datatree(self.map_over_datasets(filter_node), attrs=self.attrs)
+
     def overwrite_with_attrs(self, labels_tree: xr.DataTree) -> "TrialTree":
-        """
-        Overwrite attrs in this tree with that from another tree.
-        """
+        """Overwrite attrs in this tree with that from another tree."""
         def merge_func(self_ds, labels_ds):
             self_ds.attrs.update(labels_ds.attrs)
             return self_ds
+        tree = self.map_over_datasets(merge_func, labels_tree)
+        tree.attrs = labels_tree.attrs.copy()
+        return TrialTree(tree)
 
-        result = self.map_over_datasets(merge_func, labels_tree)
-        result.attrs = labels_tree.attrs.copy()
-        return result
-        
-    
-    
-    
     def overwrite_with_labels(self, labels_tree: xr.DataTree) -> "TrialTree":
-        """
-        Overwrite labels/labels confidence and attrs in this tree with labels from another tree.
-        """
+        """Overwrite labels/labels confidence and attrs in this tree with labels from another tree."""
         def merge_func(data_ds, labels_ds):
             if labels_ds is not None and data_ds is not None:
-                result = data_ds.copy()
-
+                tree = data_ds.copy()
                 for var_name in labels_ds.data_vars:
-                    result[var_name] = labels_ds[var_name]
-
-                # Copy individual dataset attributes from labels_ds
-                result.attrs.update(labels_ds.attrs)
-
-                return result
+                    tree[var_name] = labels_ds[var_name]
+                tree.attrs.update(labels_ds.attrs)
+                return tree
             return data_ds
+        tree = self.map_over_datasets(merge_func, labels_tree)
+        tree.attrs = labels_tree.attrs.copy()
+        return TrialTree(tree)
 
-        result = self.map_over_datasets(merge_func, labels_tree)
+    # -------------------------------------------------------------------------
+    # Filtering
+    # -------------------------------------------------------------------------
 
-        # Copy global attributes from labels_tree (not from self)
-        result.attrs = labels_tree.attrs.copy()
-        return result
-    
-        
-        
     def filter_by_attr(self, attr_name: str, attr_value: Any) -> "TrialTree":
         """Filter trials by attribute value with type conversion."""
         new_tree = xr.DataTree()
-        
+
         def values_match(stored: Any, target: Any) -> bool:
-            """Check if values match, attempting type coercion if needed."""
             if stored == target:
                 return True
-            
-            # Try coercing both to common types
             for coerce in (str, int, float):
                 try:
                     return coerce(stored) == coerce(target)
                 except (ValueError, TypeError):
                     continue
             return False
-        
+
         for name, node in self.children.items():
-            
             if node.ds and attr_name in node.ds.attrs:
                 if values_match(node.ds.attrs[attr_name], attr_value):
                     new_tree[name] = node
-        
         return TrialTree(new_tree)
+
+    # -------------------------------------------------------------------------
+    # Private
+    # -------------------------------------------------------------------------
+
+    def _validate_tree(self) -> List[str]:
+        errors = validate_datatree(self)
+        if errors:
+            error_msg = "Dataset validation failed:\n"
+            error_msg += "\n".join(f"• {e}" for e in errors)
+            raise ValueError("TrialTree validation failed:\n" + error_msg)
     
         
     
 
+def set_media_attrs(
+    ds: xr.Dataset,
+    cameras: Optional[List[str]] = None,
+    mics: Optional[List[str]] = None,
+    tracking: Optional[List[str]] = None,
+    tracking_prefix: str = "dlc",
+) -> xr.Dataset:
+    """
+    Set media file attributes with consistent keys.
+
+    Creates both the file type list (e.g., ds.attrs["cameras"] = ["cam1", "cam2"])
+    and individual file path attrs (e.g., ds.attrs["cam1"] = "video.mp4").
+
+    Args:
+        ds: xarray Dataset to modify
+        cameras: List of camera file paths, keys auto-generated as cam1, cam2, ...
+        mics: List of microphone file paths, keys auto-generated as mic1, mic2, ...
+        tracking: List of tracking file paths, keys use tracking_prefix
+        tracking_prefix: Prefix for tracking keys (default "dlc", could be "sleap", "anipose")
+
+    Returns:
+        Modified dataset with file attributes set
+
+    Example:
+        ds = set_media_attrs(
+            ds,
+            cameras=["video-cam-1.mp4", "video-cam-2.mp4"],
+            tracking=["dlc-cam-1.csv", "dlc-cam-2.csv"],
+        )
+        # Result:
+        # ds.attrs["cameras"] = ["cam1", "cam2"]
+        # ds.attrs["cam1"] = "video-cam-1.mp4"
+        # ds.attrs["cam2"] = "video-cam-2.mp4"
+        # ds.attrs["tracking"] = ["dlc1", "dlc2"]
+        # ds.attrs["dlc1"] = "dlc-cam-1.csv"
+    """
+    file_configs = [
+        ("cameras", cameras, "cam"),
+        ("mics", mics, "mic"),
+        ("tracking", tracking, tracking_prefix),
+    ]
+
+    for file_type, files, prefix in file_configs:
+        if files is None:
+            continue
+
+        keys = [f"{prefix}{i+1}" for i in range(len(files))]
+
+        ds.attrs[file_type] = keys
+        for key, filepath in zip(keys, files):
+            ds.attrs[key] = filepath
+
+    return ds
 
 
-def downsample_dataset(ds: xr.Dataset, factor: int) -> xr.Dataset:
+
+
+def set_file_types_attrs(ds, cameras=None, tracking=None, mics=None):
+    """Deprecated: Use set_media_attrs instead."""
+    import warnings
+    warnings.warn(
+        "set_file_types_attrs is deprecated, use set_media_attrs instead",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    if cameras is not None:
+        ds.attrs["cameras"] = cameras
+    if tracking is not None:
+        ds.attrs["tracking"] = tracking
+    if mics is not None:
+        ds.attrs["mics"] = mics
+    return ds
+
+
+
+def downsample_trialtree(dt: "TrialTree", factor: int) -> "TrialTree":
+    """Downsample all trials in a TrialTree using min-max envelope.
+
+    Args:
+        dt: TrialTree to downsample
+        factor: Downsample factor
+
+    Returns:
+        New TrialTree with downsampled data
+    """
+    return TrialTree.from_datatree(
+        dt.map_over_datasets(lambda ds: _downsample_dataset(ds, factor) if ds is not None else ds),
+        attrs=dt.attrs
+    )
+
+def _downsample_dataset(ds: xr.Dataset, factor: int) -> xr.Dataset:
     """Downsample a dataset along the time dimension using min-max envelope.
 
     Args:
@@ -431,246 +467,6 @@ def downsample_dataset(ds: xr.Dataset, factor: int) -> xr.Dataset:
     new_attrs['downsample_method'] = 'minmax_envelope'
 
     return xr.Dataset(data_vars, coords=new_coords, attrs=new_attrs)
-
-
-def downsample_trialtree(dt: "TrialTree", factor: int) -> "TrialTree":
-    """Downsample all trials in a TrialTree using min-max envelope.
-
-    Args:
-        dt: TrialTree to downsample
-        factor: Downsample factor
-
-    Returns:
-        New TrialTree with downsampled data
-    """
-    return TrialTree.from_datatree(
-        dt.map_over_datasets(lambda ds: downsample_dataset(ds, factor) if ds is not None else ds),
-        attrs=dt.attrs
-    )
-   
-
-
-    
-def set_media_attrs(
-    ds: xr.Dataset,
-    cameras: Optional[List[str]] = None,
-    mics: Optional[List[str]] = None,
-    tracking: Optional[List[str]] = None,
-    tracking_prefix: str = "dlc",
-) -> xr.Dataset:
-    """
-    Set media file attributes with consistent keys.
-
-    Creates both the file type list (e.g., ds.attrs["cameras"] = ["cam1", "cam2"])
-    and individual file path attrs (e.g., ds.attrs["cam1"] = "video.mp4").
-
-    Args:
-        ds: xarray Dataset to modify
-        cameras: List of camera file paths, keys auto-generated as cam1, cam2, ...
-        mics: List of microphone file paths, keys auto-generated as mic1, mic2, ...
-        tracking: List of tracking file paths, keys use tracking_prefix
-        tracking_prefix: Prefix for tracking keys (default "dlc", could be "sleap", "anipose")
-
-    Returns:
-        Modified dataset with file attributes set
-
-    Example:
-        ds = set_media_attrs(
-            ds,
-            cameras=["video-cam-1.mp4", "video-cam-2.mp4"],
-            tracking=["dlc-cam-1.csv", "dlc-cam-2.csv"],
-        )
-        # Result:
-        # ds.attrs["cameras"] = ["cam1", "cam2"]
-        # ds.attrs["cam1"] = "video-cam-1.mp4"
-        # ds.attrs["cam2"] = "video-cam-2.mp4"
-        # ds.attrs["tracking"] = ["dlc1", "dlc2"]
-        # ds.attrs["dlc1"] = "dlc-cam-1.csv"
-    """
-    file_configs = [
-        ("cameras", cameras, "cam"),
-        ("mics", mics, "mic"),
-        ("tracking", tracking, tracking_prefix),
-    ]
-
-    for file_type, files, prefix in file_configs:
-        if files is None:
-            continue
-
-        keys = [f"{prefix}{i+1}" for i in range(len(files))]
-
-        ds.attrs[file_type] = keys
-        for key, filepath in zip(keys, files):
-            ds.attrs[key] = filepath
-
-    return ds
-
-
-def extract_variable_flat(
-    nc_paths: List[str],
-    variable: str,
-    selection: Optional[Dict[str, Any]] = None
-) -> np.ndarray:
-    """
-    Extract and flatten a variable from multiple TrialTree files.
-    
-    Args:
-        nc_paths: List of paths to NetCDF files
-        variable: Name of the variable to extract
-        selection: Optional selection dict for the variable
-        
-    Returns:
-        Flattened 1D numpy array of the variable
-    """
-    arrays = []
-    
-    for path in nc_paths:
-        dt = TrialTree.open(path)
-        
-        for trial_num in dt.trials:
-            trial_ds = dt.trial(trial_num)
-            
-            data = trial_ds[variable]
-            if selection:
-                data = data.sel(**selection)
-            arrays.append(data.squeeze().values.flatten())
-    
-    return np.concatenate(arrays)
-   
-
-
-def set_file_types_attrs(ds, cameras=None, tracking=None, mics=None):
-    """Deprecated: Use set_media_attrs instead."""
-    import warnings
-    warnings.warn(
-        "set_file_types_attrs is deprecated, use set_media_attrs instead",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    if cameras is not None:
-        ds.attrs["cameras"] = cameras
-    if tracking is not None:
-        ds.attrs["tracking"] = tracking
-    if mics is not None:
-        ds.attrs["mics"] = mics
-    return ds
-
-def extract_trial_info_from_filename(path):
-    """
-    Extract session_date, trial_num, and bird from a DLC filename.
-    Expected filename format: YYYY-MM-DD_NNN_Bird_...
-    """
-    filename = os.path.basename(path)
-    parts = filename.split('_')
-    if len(parts) >= 3:
-        session_date = parts[0]
-        trial_num = int(parts[1])
-        bird = parts[2]
-        return session_date, trial_num, bird
-    else:
-        raise ValueError(f"Filename format not recognized: {filename}")
-
-
-# TO DO, figure out smart way to specify individual in feat_kwargs, else. 
-def get_feature_names(ds, all_params):
-    changepoint_sigmas = all_params["changepoint_params"]["sigmas"]
-    changepoint_names = []
-
-    for var in ds.filter_by_attrs(type="changepoints").data_vars:
-        changepoint_names.extend([f"{var}_binary"])
-        changepoint_names.extend([f"{var}_σ={sigma}" for sigma in changepoint_sigmas])
-        changepoint_names.extend([f"{var}_segIDs"])
-
-    feat_kwargs = all_params["feat_kwargs"]
-    feat_da = ds.sel(**feat_kwargs).squeeze().filter_by_attrs(type="features")
-
-    
-    feature_var_names = []
-    for var_name in feat_da.data_vars:
-        var_data = feat_da[var_name]
-        non_time_dims = [dim for dim in var_data.dims if dim != 'time' and dim != 'trials']
-        if len(non_time_dims) == 0:
-            feature_var_names.append(var_name)
-        elif len(non_time_dims) == 1:
-            dim_name = non_time_dims[0]
-            dim_coords = var_data[dim_name].values
-            for coord in dim_coords:
-                feature_var_names.append(f"{var_name}_{coord}")
-        else:
-            dim_coords_lists = [var_data[dim].values for dim in non_time_dims]
-            for coord_combo in itertools.product(*dim_coords_lists):
-                name_parts = [var_name] + [str(c) for c in coord_combo]
-                feature_var_names.append("_".join(name_parts))
-    return changepoint_names + feature_var_names
-
-
-
-def extract_features_per_trial(ds, all_params):
-    """
-    Extracts and concatenates changepoint and feature data for a single trial from a dataset.
-    This function selects the data corresponding to the specified trial, removes any padding.
-    ----------
-    ds : xarray.Dataset (single trial)
-    Returns
-    -------
-    tuple of np.ndarray
-        changepoint_feats: 2D array of shape (time, num_changepoint_features)
-        features: 2D array of shape (time, num_features)
-    """
-    
-    changepoint_sigmas = all_params["changepoint_params"]["sigmas"]
-    feat_kwargs = all_params["feat_kwargs"]
-    cp_kwargs = all_params["cp_kwargs"]
-    good_s3d_feats = all_params["good_s3d_feats"]
-    
-    
-
-    if all_params["changepoint_params"]["merge_changepoints"]:
-        ds, target_feature = merge_changepoints(ds)
-    
-
-    cp_ds = ds.sel(**cp_kwargs).filter_by_attrs(type="changepoints")
-
-    
-    
-
-    cp_list = []
-    for var in cp_ds.data_vars:
-        
-        if not all_params["changepoint_params"]["merge_changepoints"]:
-            target_feature = cp_ds[var].attrs["target_feature"]
-            
-        targ_feat_vals = ds[target_feature].sel(**cp_kwargs).values
-        cp_data = cp_ds[var].squeeze().values
-        
-        output = more_changepoint_features(cp_data, sigmas=changepoint_sigmas, targ_feat_vals=targ_feat_vals)
-        cp_list.append(output)
-    cp_feats = np.hstack(cp_list)
-
-    if good_s3d_feats is None: # or all_params["split_5"]["feature_ablation_condition"] == "all_s3d":
-        s3d = ds.s3d.values
-    else:
-        s3d = ds.s3d.sel(s3d_dims=good_s3d_feats).values
-    
-    
-    # s3d = ds.s3d.values
-    ds = ds.drop_vars("s3d")
-    
-    feat_ds = ds.sel(**feat_kwargs).squeeze().filter_by_attrs(type="features")
-    features = feat_ds.to_stacked_array('features', sample_dims=['time']).values # flatten across non-time dimensions
-    shape1 = features.shape
-    features = features[:, ~np.all(np.isnan(features), axis=0)]
-    shape2 = features.shape
-    
-    # if shape1[1] != shape2[1]:
-    #     print(f"\nWarning: Dropped {shape1[1]-shape2[1]} all-NaN feature columns.")
-
-    return cp_feats, features, s3d
-
-
-
-
-
 
 
 

@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 if TYPE_CHECKING:
-    from ethograph.utils.io import TrialTree
+    from ethograph import TrialTree
 
 
 TRIAL_PREFIX = "trial_"

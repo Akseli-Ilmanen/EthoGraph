@@ -27,7 +27,7 @@ from qtpy.QtWidgets import (
 
 
 from ethograph.utils.data_utils import sel_valid, get_time_coord
-from ethograph.utils.io import downsample_trialtree
+from ethograph import downsample_trialtree
 from .data_loader import load_dataset
 from .plots_space import SpacePlot
 from .plots_spectrogram import SharedAudioCache

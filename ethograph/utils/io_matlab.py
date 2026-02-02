@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 from typing import Tuple, Dict, Union
 
-from ethograph.utils.io import TrialTree
+from ethograph import TrialTree
 
 def get_all_trials_path_info(all_trials_path):
     """

@@ -5,7 +5,7 @@
 4 swoopPreBox
 5 reachToWall
 6 right
-7 pullOutPellet
+7 pullOutAlongWall
 8 swoopOut
 9 stickToDisp
 10 stickInDisp
