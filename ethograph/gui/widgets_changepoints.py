@@ -823,7 +823,7 @@ class ChangepointsWidget(QWidget):
         method = self.method_combo.currentText()
 
         try:
-            from ethograph.utils.io import add_changepoints_to_ds
+            from ethograph import add_changepoints_to_ds
             from ethograph.features.changepoints import (
                 find_peaks_binary,
                 find_troughs_binary,

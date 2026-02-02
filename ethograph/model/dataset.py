@@ -9,8 +9,9 @@ import numpy as np
 import xarray as xr
 from pathlib import Path
 from tqdm import tqdm
-from ethograph.utils.io import extract_features_per_trial, TrialTree, extract_variable_flat
+from ethograph import TrialTree
 from ethograph.features.preprocessing import clip_by_percentiles, z_normalize, interpolate_nans
+from ethograph.features.changepoints import more_changepoint_features, merge_changepoints
 import random
 import argparse
 import shutil
@@ -50,6 +51,103 @@ def write_bundle_list(trial_dict, bundle_path):
     with open(bundle_path, "w") as f:
         for item in bundle_list:
             f.write(f"{item}.txt\n")
+
+
+def extract_features_per_trial(ds, all_params):
+    """
+    Extracts and concatenates changepoint and feature data for a single trial from a dataset.
+    This function selects the data corresponding to the specified trial, removes any padding.
+    ----------
+    ds : xarray.Dataset (single trial)
+    Returns
+    -------
+    tuple of np.ndarray
+        changepoint_feats: 2D array of shape (time, num_changepoint_features)
+        features: 2D array of shape (time, num_features)
+    """
+    
+    changepoint_sigmas = all_params["changepoint_params"]["sigmas"]
+    feat_kwargs = all_params["feat_kwargs"]
+    cp_kwargs = all_params["cp_kwargs"]
+    good_s3d_feats = all_params["good_s3d_feats"]
+    
+    
+
+    if all_params["changepoint_params"]["merge_changepoints"]:
+        ds, target_feature = merge_changepoints(ds)
+    
+
+    cp_ds = ds.sel(**cp_kwargs).filter_by_attrs(type="changepoints")
+
+    
+    
+
+    cp_list = []
+    for var in cp_ds.data_vars:
+        
+        if not all_params["changepoint_params"]["merge_changepoints"]:
+            target_feature = cp_ds[var].attrs["target_feature"]
+            
+        targ_feat_vals = ds[target_feature].sel(**cp_kwargs).values
+        cp_data = cp_ds[var].squeeze().values
+        
+        output = more_changepoint_features(cp_data, sigmas=changepoint_sigmas, targ_feat_vals=targ_feat_vals)
+        cp_list.append(output)
+    cp_feats = np.hstack(cp_list)
+
+    if good_s3d_feats is None: # or all_params["split_5"]["feature_ablation_condition"] == "all_s3d":
+        s3d = ds.s3d.values
+    else:
+        s3d = ds.s3d.sel(s3d_dims=good_s3d_feats).values
+    
+    
+    # s3d = ds.s3d.values
+    ds = ds.drop_vars("s3d")
+    
+    feat_ds = ds.sel(**feat_kwargs).squeeze().filter_by_attrs(type="features")
+    features = feat_ds.to_stacked_array('features', sample_dims=['time']).values # flatten across non-time dimensions
+    shape1 = features.shape
+    features = features[:, ~np.all(np.isnan(features), axis=0)]
+    shape2 = features.shape
+    
+    # if shape1[1] != shape2[1]:
+    #     print(f"\nWarning: Dropped {shape1[1]-shape2[1]} all-NaN feature columns.")
+
+    return cp_feats, features, s3d
+
+
+# TO DO, figure out smart way to specify individual in feat_kwargs, else. 
+def get_feature_names(ds, all_params):
+    changepoint_sigmas = all_params["changepoint_params"]["sigmas"]
+    changepoint_names = []
+
+    for var in ds.filter_by_attrs(type="changepoints").data_vars:
+        changepoint_names.extend([f"{var}_binary"])
+        changepoint_names.extend([f"{var}_σ={sigma}" for sigma in changepoint_sigmas])
+        changepoint_names.extend([f"{var}_segIDs"])
+
+    feat_kwargs = all_params["feat_kwargs"]
+    feat_da = ds.sel(**feat_kwargs).squeeze().filter_by_attrs(type="features")
+
+    
+    feature_var_names = []
+    for var_name in feat_da.data_vars:
+        var_data = feat_da[var_name]
+        non_time_dims = [dim for dim in var_data.dims if dim != 'time' and dim != 'trials']
+        if len(non_time_dims) == 0:
+            feature_var_names.append(var_name)
+        elif len(non_time_dims) == 1:
+            dim_name = non_time_dims[0]
+            dim_coords = var_data[dim_name].values
+            for coord in dim_coords:
+                feature_var_names.append(f"{var_name}_{coord}")
+        else:
+            dim_coords_lists = [var_data[dim].values for dim in non_time_dims]
+            for coord_combo in itertools.product(*dim_coords_lists):
+                name_parts = [var_name] + [str(c) for c in coord_combo]
+                feature_var_names.append("_".join(name_parts))
+    return changepoint_names + feature_var_names
+
 
 def get_data_dict(all_params, nc_paths, trial_dict, features_path=None, gt_path=None, idx_to_class=None):
     

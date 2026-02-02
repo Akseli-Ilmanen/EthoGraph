@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, get_args, get_origin
 
+import gc
 import numpy as np
 import xarray as xr
 import yaml
@@ -11,7 +12,7 @@ from napari.settings import get_settings
 from napari.utils.notifications import show_info
 from qtpy.QtCore import QObject, QTimer, Signal
 
-from ethograph.utils.io import TrialTree
+from ethograph import TrialTree
 from ethograph.utils.data_utils import get_time_coord
 
 
@@ -487,16 +488,15 @@ class ObservableAppState(QObject):
             updated_dt.close()
             show_info(f"✅ Saved downsampled: {save_path.name}")
         else:
-            # Original behavior: overwrite source file
-            temp_path = nc_path.with_suffix('.tmp.nc')
-
             updated_dt = self.dt.overwrite_with_labels(self.label_dt)
-            updated_dt.to_netcdf(temp_path, mode='w')
-            updated_dt.close()
+            updated_dt.save(nc_path)
 
-            self.dt.close()
-            temp_path.replace(nc_path)
 
+            # Close the original file handle
+            self.dt.load()   # Load data into memory first
+            self.dt.close()  # Release file handle
+            gc.collect()     # Force cleanup on Windows
+  
             self.dt = TrialTree.open(nc_path)
             show_info(f"✅ Saved: {nc_path.name}")
 

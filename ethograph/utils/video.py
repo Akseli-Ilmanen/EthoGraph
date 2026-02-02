@@ -5,7 +5,7 @@ from typing import Optional
 
 import numpy as np
 
-from ethograph.utils.io import TrialTree
+from ethograph import TrialTree
 from ethograph.utils.labels import get_segment_indices
 
 

@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 from pathlib import Path
 from qtpy.QtWidgets import QMessageBox
 from napari import current_viewer
-from ethograph.utils.io import TrialTree, set_media_attrs
+from ethograph import TrialTree, set_media_attrs
 from ethograph.utils.validation import validate_datatree, extract_type_vars
 from movement.kinematics import compute_velocity, compute_speed, compute_acceleration, compute_pairwise_distances
 from movement.io import load_poses

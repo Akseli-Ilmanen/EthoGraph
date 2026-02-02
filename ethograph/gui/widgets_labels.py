@@ -37,7 +37,7 @@ from napari.utils.notifications import show_warning
 from ethograph.features.changepoints import correct_changepoints_one_trial, snap_to_nearest_changepoint
 from ethograph.utils.labels import load_motif_mapping, remove_small_blocks
 from ethograph.utils.data_utils import sel_valid
-from ethograph.utils.io import TrialTree    
+from ethograph import TrialTree    
 import json
 import time
 import xarray as xr
