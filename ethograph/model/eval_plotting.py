@@ -2,8 +2,6 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
-import matplotlib.gridspec as gridspec
-from matplotlib.figure import Figure
 from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
@@ -65,6 +63,7 @@ def plot_metrics_best_model(results_dir: Path, result_paths: List[str],
     path_pdf = os.path.join(results_dir, f"eval_summary_epoch{epoch}_{dt_str}.pdf")
     path_eps = os.path.join(results_dir, f"eval_summary_epoch{epoch}_{dt_str}.eps")
     
+    os.makedirs(results_dir, exist_ok=True)    
     plt.savefig(path_png, dpi=300, bbox_inches='tight')
     plt.savefig(path_eps, format='eps', bbox_inches='tight')
     # plt.savefig(path_pdf, format='pdf', dpi=600, bbox_inches='tight', pad_inches=0.05, facecolor='white', edgecolor='none')
@@ -253,8 +252,13 @@ def plot_labelwise_results(ax, results_list: List[Dict], f1_thresholds: List[flo
         results_list: List of dictionaries returned by func_eval_labelwise
         f1_thresholds: List of F1 threshold values
     """
-    # Get classes from first result (assuming all have same classes)
-    classes = [int(cls) for cls in results_list[0].keys()]
+
+    # Get union of all classes across all folds
+    all_classes = set()
+    for result in results_list:
+        all_classes.update(result.keys())
+    classes = sorted([int(cls) for cls in all_classes])
+
     n_classes = len(classes)
     
     # Calculate means and collect individual values
@@ -263,7 +267,8 @@ def plot_labelwise_results(ax, results_list: List[Dict], f1_thresholds: List[flo
     
     for cls_idx, cls in enumerate(classes):
         for result in results_list:
-            f1_points[cls_idx].append(result[cls]['f1s'])
+            if cls in result.keys():
+                f1_points[cls_idx].append(result[cls]['f1s'])
         f1_means[cls_idx] = np.mean(f1_points[cls_idx], axis=0)
     
     x = np.arange(n_classes)

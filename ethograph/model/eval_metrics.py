@@ -102,6 +102,7 @@ def func_eval_labelwise(ground_truth_dict, predictions_dict, video_list, bg_clas
 
     eval_classes = [c for c in np.sort(np.unique(np.concatenate(list(ground_truth_dict.values())))) if c not in bg_class]
 
+
     classResults = {}
     
     all_IoUs = np.array([], dtype=float)
@@ -152,6 +153,7 @@ def func_eval_labelwise(ground_truth_dict, predictions_dict, video_list, bg_clas
             f1 = 2.0 * (precision * recall) / denom_f1 if denom_f1 > 0 else 0.0
             f1 = np.nan_to_num(f1) * 100
             f1s[s] = f1 
+        
 
         classResults[int(target_class)] = {
             'f1s': f1s,
@@ -228,6 +230,13 @@ def f_score(recognized, ground_truth, overlap, bg_class=["background"]):
                 tp += 1
                 hits[idx] = 1
             else:
-                fp
+                fp += 1
+              
+              
+        if len(p_label) == len(y_label):
+            start_deltas = np.concatenate((start_deltas, [abs(y_start[idx] - p_start[j])]), axis=0)
+            end_deltas = np.concatenate((end_deltas, [abs(y_end[idx] - p_end[j])]), axis=0)
+
+                
     fn = len(y_label) - sum(hits)
     return float(tp), float(fp), float(fn), IoUs, start_deltas, end_deltas

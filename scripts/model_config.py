@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
 
    # need to comment out for train-all
-   action="inference" # "train", "inference", "CV", "ablation"
+   action="CV" # "train", "inference", "CV", "ablation"
    # eval run manually via terminal
    
    trainDataReady = False
@@ -97,10 +97,10 @@ if __name__ == "__main__":
       # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250530_01\behav\Trial_data.nc",
       # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250602_01\behav\Trial_data.nc",
       
-      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250306_01\behav\Trial_data.nc",
-      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250309_01\behav\Trial_data.nc",
-      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250503_02\behav\Trial_data.nc",
-      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250514_01\behav\Trial_data.nc",
+      r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250306_01\behav\Trial_data.nc",
+      r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250309_01\behav\Trial_data.nc",
+      r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250503_02\behav\Trial_data.nc",
+      r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250514_01\behav\Trial_data.nc",
       r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250504_01\behav\Trial_data.nc"
    ]
          
@@ -148,7 +148,7 @@ if __name__ == "__main__":
    
       for fold_id in range(num_sessions):      
           result = subprocess.run(
-            [sys.executable, str(get_project_root() / 'ethograph' / 'model' / 'model_run'), '--action', 'CV', '--config', config_path, '--split', str(fold_id+1)],
+            [sys.executable, str(get_project_root()  / 'scripts' / 'model_run.py'), '--action', 'CV', '--config', config_path, '--split', str(fold_id+1)],
             env=env,
             text=True
           )
