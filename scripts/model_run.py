@@ -261,18 +261,18 @@ if args.action == "inference":
 #     TODO: If inference mode, just save 'predictions' to .nc file if labels already not zero. Allow user to override existing labels manually.
 
 
-#     python ethograph/model/main2.py --config configs/model/Freddy_CV_fold1.json --method train
-#     python ethograph/model/main2.py --config configs/model/Freddy_CV_fold2.json --method train
-#     python ethograph/model/main2.py --config configs/model/Freddy_CV_fold3.json --method train
+#     python scripts/model_run.py --config configs/model/Freddy_CV_fold1.json --action train
+#     python scripts/model_run.py --config configs/model/Freddy_CV_fold2.json --action train
+#     python scripts/model_run.py --config configs/model/Freddy_CV_fold3.json --action train
 
 
 
-#     python ethograph/model/main2.py --config configs/model/Freddy_CV_fold1.json --method eval --model_path result\Freddy_CV_fold1\epoch-300.model
-#     python ethograph/model/main2.py --config configs/model/Freddy_CV_fold2.json --method eval --model_path result\Freddy_CV_fold2\epoch-300.model
-#     python ethograph/model/main2.py --config configs/model/Freddy_CV_fold3.json --method eval --model_path result\Freddy_CV_fold3\epoch-300.model
+#     python scripts/model_run.py --config configs/model/Freddy_CV_fold1.json --action eval --model_path result\Freddy_CV_fold1\epoch-300.model --split 1
+#     python scripts/model_run.py --config configs/model/Freddy_CV_fold2.json --action eval --model_path result\Freddy_CV_fold2\epoch-300.model --split 2
+#     python scripts/model_run.py --config configs/model/Freddy_CV_fold3.json --action eval --model_path result\Freddy_CV_fold3\epoch-300.model --split 3
 
 #     NOTE: Method has to be specified by the user.
-#     - method: train, eval, inference
+#     - action: train, eval, inference
 #         - train: for training with optional eval on test set after every log_freq epochs
 #         - eval: for evaluation of a trained model on test set
 #         - inference: for inference of a trained model on test set without evaluation (no ground truth needed)
