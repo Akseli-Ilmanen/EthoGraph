@@ -26,6 +26,7 @@ class NavigationWidget(QWidget):
         self.confidence_skip_combo = QComboBox()
         self.confidence_skip_combo.setObjectName("confidence_skip_combo")
         self.confidence_skip_combo.addItems(["Show all", "Low confidence only", "High confidence only"])
+        self.confidence_skip_combo.currentTextChanged.connect(self._on_confidence_filter_changed)
         confidence_label = QLabel("By confidence:")
         confidence_label.setObjectName("confidence_label")
 
@@ -240,21 +241,48 @@ class NavigationWidget(QWidget):
 
         self.trial_conditions_value_combo.blockSignals(False)
 
+    def _on_confidence_filter_changed(self):
+        """Update available trials based on confidence filtering."""
+        if not self.app_state.ready:
+            return
+        self._apply_all_filters()
+
     def _on_trial_condition_values_changed(self):
         """Update the available trials based on condition filtering."""
         if not self.app_state.ready:
             return
+        self._apply_all_filters()
 
-        filter_condition = self.app_state.trial_conditions_sel
-        filter_value = self.trial_conditions_value_combo.currentText()
-
+    def _apply_all_filters(self):
+        """Apply both confidence and condition filters to trials list."""
+        if not hasattr(self.app_state, "dt") or not self.app_state.dt:
+            return
         original_trials = self.app_state.dt.trials
+        filtered_trials = set(original_trials)
 
-        if filter_condition != "None" and filter_value != "None":
+        # Apply condition filter
+        filter_condition = getattr(self.app_state, "trial_conditions_sel", "None")
+        filter_value = self.trial_conditions_value_combo.currentText()
+        if filter_condition and filter_condition != "None" and filter_value != "None":
             filt_dt = self.app_state.dt.filter_by_attr(filter_condition, filter_value)
-            self.app_state.trials = list(set(original_trials) & set(filt_dt.trials))
-        else:
-            self.app_state.trials = original_trials
+            filtered_trials &= set(filt_dt.trials)
+
+        # Apply confidence filter
+        confidence_mode = self.confidence_skip_combo.currentText()
+        if confidence_mode != "Show all" and hasattr(self.app_state, "label_dt") and self.app_state.label_dt:
+            confidence_filtered = []
+            target_confidence = "low" if confidence_mode == "Low confidence only" else "high"
+            for trial in filtered_trials:
+                trial_attrs = self.app_state.label_dt.trial(trial).attrs
+                if trial_attrs.get("model_confidence") == target_confidence:
+                    confidence_filtered.append(trial)
+            filtered_trials = set(confidence_filtered)
+
+        # Sort trials numerically if possible
+        try:
+            self.app_state.trials = sorted(filtered_trials, key=int)
+        except (ValueError, TypeError):
+            self.app_state.trials = sorted(filtered_trials)
 
         self.trials_combo.blockSignals(True)
         self.trials_combo.clear()

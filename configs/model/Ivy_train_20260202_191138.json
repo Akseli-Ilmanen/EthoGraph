@@ -22,8 +22,8 @@
   "channel_mask_rate": 0.3,
   "batch_size": 1,
   "learning_rate": 0.0005,
-  "num_epochs": 1,
-  "eval_epoch": 1,
+  "num_epochs": 100,
+  "eval_epoch": 100,
   "log_freq": 10,
   "f1_thresholds": [
     0.5,
@@ -38,7 +38,7 @@
     "30": 1.5,
     "40": 2.0
   },
-  "action": "inference",
+  "action": "train",
   "mapping_file": "D:\\Akseli\\Code\\ethograph\\configs\\mapping.txt",
   "target_individual": "Ivy",
   "cp_kwargs": {
@@ -53,7 +53,15 @@
     "individuals": "Ivy"
   },
   "trainDataReady": false,
+  "train_nc_paths": [
+    "D:\\Alice\\AK_data\\derivatives\\sub-01_id-Ivy\\ses-000_date-20250306_01\\behav\\Trial_data.nc",
+    "D:\\Alice\\AK_data\\derivatives\\sub-01_id-Ivy\\ses-000_date-20250309_01\\behav\\Trial_data.nc",
+    "D:\\Alice\\AK_data\\derivatives\\sub-01_id-Ivy\\ses-000_date-20250503_02\\behav\\Trial_data.nc",
+    "D:\\Alice\\AK_data\\derivatives\\sub-01_id-Ivy\\ses-000_date-20250514_01\\behav\\Trial_data.nc",
+    "D:\\Alice\\AK_data\\derivatives\\sub-01_id-Ivy\\ses-000_date-20250504_01\\behav\\Trial_data.nc",
+    "D:\\Alice\\AK_data\\derivatives\\sub-01_id-Ivy\\ses-000_date-20250505_01\\behav\\Trial_data.nc"
+  ],
   "test_nc_paths": [
-    "D:\\Alice\\AK_data\\derivatives\\sub-01_id-Ivy\\ses-000_date-20250504_01\\behav\\Trial_data.nc"
+    "D:\\Alice\\AK_data\\derivatives\\sub-01_id-Ivy\\ses-000_date-20250306_01\\behav\\Trial_data.nc"
   ]
 }
