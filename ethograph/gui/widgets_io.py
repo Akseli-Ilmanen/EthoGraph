@@ -137,7 +137,7 @@ class IOWidget(QWidget):
             import_labels_checkbox = QCheckBox("Import labels")
             import_labels_checkbox.setObjectName("import_labels_checkbox")
             import_labels_checkbox.stateChanged.connect(
-                lambda state: setattr(self.app_state, 'import_labels_nc_data', state == Qt.CheckState.Checked.value if hasattr(Qt.CheckState, 'Checked') else state == 2)
+                lambda state: setattr(self.app_state, 'import_labels_nc_data', state == 2)
             )
             import_labels_checkbox.setChecked(bool(self.app_state.import_labels_nc_data))
 
@@ -399,9 +399,13 @@ class IOWidget(QWidget):
                 self.app_state.nc_file_path = nc_file_path
                 
             elif media_type == "labels":
+                nc_parent = Path(self.app_state.nc_file_path).parent
+
+
                 result = QFileDialog.getOpenFileName(
                     None,
                     caption="Open file in ./labels/data_labels.nc",
+                    dir=str(nc_parent),
                     filter="NetCDF files (*.nc)",
                 )
                 labels_file_path = result[0] if result and len(result) >= 1 else ""

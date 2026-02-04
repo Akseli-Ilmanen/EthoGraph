@@ -235,9 +235,9 @@ def correct_changepoints_one_trial(labels, ds, all_params):
             corrected_labels[block_start:block_end+1] = 0
             if snap_start < snap_end:
                 corrected_labels[snap_start:snap_end+1] = label
-                
-                
-
+    
+    
+    
     corrected_labels = remove_small_blocks(corrected_labels, min_motif_len)
     corrected_labels = fix_endings(corrected_labels, changepoints_binary)
         

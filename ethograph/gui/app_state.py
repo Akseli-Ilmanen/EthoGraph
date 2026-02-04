@@ -477,27 +477,27 @@ class ObservableAppState(QObject):
 
 
     def save_file(self) -> None:
+        import time
+
         nc_path = Path(self.nc_file_path)
         suffix = self._get_downsampled_suffix()
 
         if suffix:
-            # Save to separate file to avoid overwriting raw data
             save_path = nc_path.parent / f"{nc_path.stem}{suffix}{nc_path.suffix}"
             updated_dt = self.dt.overwrite_with_labels(self.label_dt)
             updated_dt.to_netcdf(save_path, mode='w')
             updated_dt.close()
             show_info(f"✅ Saved downsampled: {save_path.name}")
         else:
+            # Load into memory and release file handle FIRST
+            self.dt.load()
+            self.dt.close()
+            gc.collect()
+
+            # Now safe to overwrite
             updated_dt = self.dt.overwrite_with_labels(self.label_dt)
-            updated_dt.save(nc_path)
+            updated_dt.to_netcdf(nc_path, mode='w')
+            updated_dt.close()
 
-
-            # Close the original file handle
-            self.dt.load()   # Load data into memory first
-            self.dt.close()  # Release file handle
-            gc.collect()     # Force cleanup on Windows
-  
             self.dt = TrialTree.open(nc_path)
             show_info(f"✅ Saved: {nc_path.name}")
-
-
