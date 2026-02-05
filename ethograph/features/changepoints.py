@@ -102,6 +102,9 @@ def find_nearest_turning_points_binary(x, threshold=1, max_value=None, **kwargs)
 
     nearest_turning_points = []
 
+    # Exclude peaks from turning points
+    turning_points = np.setdiff1d(turning_points, peaks)
+
     for peak in peaks:
         # Left candidates (points before peak)
         left_candidates = turning_points[turning_points < peak]

@@ -446,7 +446,7 @@ class LabelsWidget(QWidget):
 
         attrs = self.app_state.label_dt.trial(self.app_state.trials_sel).attrs
         if attrs.get('human_verified', None) == True:
-            self.human_verified_status.setText("Human verified")
+            self.human_verified_status.setText("Human verified (this trial)")
             self.human_verified_status.setStyleSheet("background-color: green; color: white;")
         else:
             self.human_verified_status.setText("Not verified")
