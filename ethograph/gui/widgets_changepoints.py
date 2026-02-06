@@ -113,10 +113,10 @@ class ChangepointsWidget(QWidget):
         main_layout.addWidget(self.correction_params_panel)
 
         self.changepoints_panel.hide()
-        self.audio_changepoints_panel.show()
+        self.audio_changepoints_panel.hide()
         self.ruptures_panel.hide()
-        self.correction_params_panel.hide()
-        self.audio_toggle.setText("Audio CPs ✓")
+        self.correction_params_panel.show()
+        self.correction_toggle.setText("CP Correction")
 
         main_layout.addStretch()
 
@@ -134,12 +134,15 @@ class ChangepointsWidget(QWidget):
         row1_layout.addWidget(self.show_cp_checkbox)
 
         self.changepoint_correction_checkbox = QCheckBox(
-            "Changepoint correction for labels"
+            "Changepoint correction during hand-labelling"
         )
-        self.changepoint_correction_checkbox.setChecked(True)
+        self.changepoint_correction_checkbox.setChecked(self.app_state.apply_changepoint_correction)
         self.changepoint_correction_checkbox.setToolTip(
-            "Snap label boundaries to nearest changepoint when creating labels"
+            "Snap label boundaries to nearest changepoint when creating labels.\n"
+            "When enabled, uses full correction parameters.\n"
+            "When disabled, uses fallback min_label_length=2 only."
         )
+        self.changepoint_correction_checkbox.stateChanged.connect(self._on_changepoint_correction_changed)
         row1_layout.addWidget(self.changepoint_correction_checkbox)
 
         row1_layout.addStretch()
@@ -151,6 +154,14 @@ class ChangepointsWidget(QWidget):
         toggle_layout.setSpacing(2)
         toggle_layout.setContentsMargins(0, 0, 0, 0)
         self.toggle_widget.setLayout(toggle_layout)
+
+
+        self.correction_toggle = QPushButton("CP Correction")
+        self.correction_toggle.setCheckable(True)
+        self.correction_toggle.setChecked(True)
+        self.correction_toggle.clicked.connect(self._toggle_correction_params)
+        toggle_layout.addWidget(self.correction_toggle)
+
 
         self.cp_toggle = QPushButton("Kinematic CPs")
         self.cp_toggle.setCheckable(True)
@@ -166,24 +177,18 @@ class ChangepointsWidget(QWidget):
 
         self.audio_toggle = QPushButton("Audio CPs")
         self.audio_toggle.setCheckable(True)
-        self.audio_toggle.setChecked(True)
+        self.audio_toggle.setChecked(False)
         self.audio_toggle.clicked.connect(self._toggle_audio_changepoints)
         toggle_layout.addWidget(self.audio_toggle)
-
-        self.correction_toggle = QPushButton("CP Correction")
-        self.correction_toggle.setCheckable(True)
-        self.correction_toggle.setChecked(False)
-        self.correction_toggle.clicked.connect(self._toggle_correction_params)
-        toggle_layout.addWidget(self.correction_toggle)
 
         main_layout.addWidget(self.toggle_widget)
 
     def _show_panel(self, panel_name: str):
         panels = {
+            "correction": (self.correction_params_panel, self.correction_toggle, "CP Correction"),
             "kinematic": (self.changepoints_panel, self.cp_toggle, "Kinematic CPs"),
             "ruptures": (self.ruptures_panel, self.ruptures_toggle, "Ruptures CPs"),
             "audio": (self.audio_changepoints_panel, self.audio_toggle, "Audio CPs"),
-            "correction": (self.correction_params_panel, self.correction_toggle, "CP Correction"),
         }
         for name, (panel, toggle, label) in panels.items():
             if name == panel_name:
@@ -1130,10 +1135,10 @@ class ChangepointsWidget(QWidget):
         self._custom_label_thresholds = {}
         self._correction_snapshot = None
 
-        global_group = QGroupBox("Global parameters")
+        self._correction_params_group = QGroupBox("Global parameters")
         global_layout = QGridLayout()
-        global_group.setLayout(global_layout)
-        layout.addWidget(global_group)
+        self._correction_params_group.setLayout(global_layout)
+        layout.addWidget(self._correction_params_group)
 
         self.min_label_length_spin = QSpinBox()
         self.min_label_length_spin.setRange(1, 10000)
@@ -1219,16 +1224,12 @@ class ChangepointsWidget(QWidget):
         self.cp_undo_btn.clicked.connect(self._undo_correction)
         correction_layout.addWidget(self.cp_undo_btn)
 
-        self.status_label = QLabel("Global status:")
-        correction_layout.addWidget(self.status_label)
-
-        self.cp_status_btn = QPushButton()
-        self.cp_status_btn.setEnabled(False)
-        self.cp_status_btn.setText("Not corrected")
-        correction_layout.addWidget(self.cp_status_btn)
-
         correction_layout.addStretch()
         layout.addLayout(correction_layout)
+
+        apply_cp = self.changepoint_correction_checkbox.isChecked()
+        self._correction_params_group.setEnabled(apply_cp)
+        self.per_label_btn.setEnabled(apply_cp)
 
     def set_motif_mappings(self, mappings: dict):
         self._motif_mappings = mappings
@@ -1254,6 +1255,21 @@ class ChangepointsWidget(QWidget):
 
     def _on_min_label_length_changed(self, _value: int):
         pass
+
+    def get_effective_min_length(self, label_id: int) -> int:
+        """Get effective min label length for a specific label, considering per-label overrides."""
+        if not self.app_state.apply_changepoint_correction:
+            return 2
+        return self._custom_label_thresholds.get(label_id, self.min_label_length_spin.value())
+
+
+    def _on_changepoint_correction_changed(self, state):
+        enabled = state == Qt.Checked
+        self.app_state.apply_changepoint_correction = enabled
+        if hasattr(self, '_correction_params_group'):
+            self._correction_params_group.setEnabled(enabled)
+        if hasattr(self, 'per_label_btn'):
+            self.per_label_btn.setEnabled(enabled)
 
     def _save_correction_snapshot(self, mode, ds_kwargs):
         snapshot = {"mode": mode, "ds_kwargs": ds_kwargs}
@@ -1302,6 +1318,8 @@ class ChangepointsWidget(QWidget):
             self.app_state.label_dt.trial(self.app_state.trials_sel).labels.loc[filt_kwargs] = (
                 correct_changepoints_one_trial(curr_labels, self.app_state.ds, all_params)
             )
+            self.app_state.label_dt.trial(self.app_state.trials_sel).attrs['changepoint_corrected'] = np.int8(1)
+            self._update_cp_status()
 
         if mode == "all_trials":
             if self.app_state.label_dt.attrs.get("changepoint_corrected", 0) == 1:
@@ -1315,38 +1333,58 @@ class ChangepointsWidget(QWidget):
                 self.app_state.label_dt.trial(trial).labels.loc[filt_kwargs] = (
                     correct_changepoints_one_trial(curr_labels, ds, all_params)
                 )
-                self.app_state.label_dt.attrs["changepoint_corrected"] = np.int8(1)
+                self.app_state.label_dt.trial(trial).attrs['changepoint_corrected'] = np.int8(1)
+            self.app_state.label_dt.attrs["changepoint_corrected"] = np.int8(1)
             self._update_cp_status()
 
         self.app_state.labels_modified.emit()
 
     def _update_cp_status(self):
+        default_style = ""
+        corrected_style = "background-color: green; color: white;"
+
         if self.app_state.label_dt is None or self.app_state.trials_sel is None:
-            self.cp_status_btn.setText("Not corrected")
-            self.cp_status_btn.setStyleSheet("background-color: red; color: white;")
+            self.cp_correction_trial_btn.setStyleSheet(default_style)
+            self.cp_correction_all_trials_btn.setStyleSheet(default_style)
             return
 
-        attrs = self.app_state.label_dt.attrs
-        if attrs.get('changepoint_corrected', 0):
-            self.cp_status_btn.setText("Corrected")
-            self.cp_status_btn.setStyleSheet("background-color: green; color: white;")
+        trial_attrs = self.app_state.label_dt.trial(self.app_state.trials_sel).attrs
+        if trial_attrs.get('changepoint_corrected', 0):
+            self.cp_correction_trial_btn.setStyleSheet(corrected_style)
         else:
-            self.cp_status_btn.setText("Not corrected")
-            self.cp_status_btn.setStyleSheet("background-color: red; color: white;")
+            self.cp_correction_trial_btn.setStyleSheet(default_style)
+
+        global_attrs = self.app_state.label_dt.attrs
+        if global_attrs.get('changepoint_corrected', 0):
+            self.cp_correction_all_trials_btn.setStyleSheet(corrected_style)
+        else:
+            self.cp_correction_all_trials_btn.setStyleSheet(default_style)
 
     def get_correction_params(self) -> dict:
-        label_thresholds = {
-            str(k): v for k, v in self._custom_label_thresholds.items()
-        }
-        return {
-            "min_label_length": self.min_label_length_spin.value(),
-            "label_thresholds": label_thresholds,
-            "stitch_gap_len": self.stitch_gap_spin.value(),
-            "changepoint_params": {
-                "max_expansion": self.max_expansion_spin.value(),
-                "max_shrink": self.max_shrink_spin.value(),
-            },
-        }
+        apply_cp = self.app_state.apply_changepoint_correction
+        if apply_cp:
+            label_thresholds = {
+                str(k): v for k, v in self._custom_label_thresholds.items()
+            }
+            return {
+                "min_label_length": self.min_label_length_spin.value(),
+                "label_thresholds": label_thresholds,
+                "stitch_gap_len": self.stitch_gap_spin.value(),
+                "changepoint_params": {
+                    "max_expansion": self.max_expansion_spin.value(),
+                    "max_shrink": self.max_shrink_spin.value(),
+                },
+            }
+        else:
+            return {
+                "min_label_length": 2,
+                "label_thresholds": {},
+                "stitch_gap_len": 0,
+                "changepoint_params": {
+                    "max_expansion": 0,
+                    "max_shrink": 0,
+                },
+            }
 
     def _save_correction_params(self):
         params = self.get_correction_params()

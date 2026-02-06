@@ -12,6 +12,7 @@ import random
 import torch
 import argparse
 import numpy as np
+import yaml
 from datetime import datetime
 
 
@@ -58,8 +59,6 @@ all_params = json.load(open(args.config))
 for k, v in vars(args).items():
     if v is not None:
         all_params[k] = v
-print(all_params)
-print()
 
 
 
@@ -164,6 +163,8 @@ print("num_classes:"+str(num_classes))
 
 
 
+
+
 # Only relevant for training/cross-validation
 if all_params["action"] in ["CV", "train", "feature_ablation"] and not all_params.get("trainDataReady"):  # Skip reloading train data if already converted o
     train_trial_dict = get_trial_dict(all_params, train_nc_paths)
@@ -198,12 +199,28 @@ write_bundle_list(test_trial_dict, vid_list_file_tst)
 print(f"Feature dimension: {features_dim}")
 all_params["feature_dim"] = features_dim
 
+
+
 trial_mapping = train_trial_dict | test_trial_dict
 
 with open(trial_mapping_path, 'w') as f:
     json.dump(trial_mapping, f, indent=4)
+
+
+changepoint_settings_path = project_root / "configs" / "changepoint_settings.yaml"
+with open(changepoint_settings_path, "r") as f:
+    changepoint_params = yaml.safe_load(f)
+all_params.update(changepoint_params)
+print()
+print(f"Params: {all_params}")
+print()
     
 
+# Update json file in configs/model/...
+with open(args.config, 'w') as outfile:
+    json.dump(all_params, outfile, ensure_ascii=False, indent=2)
+    
+# Save json file in result/...
 if not all_params["action"] == "inference":
     os.makedirs(results_dir, exist_ok=True)
     config_path = os.path.join(results_dir, os.path.basename(args.config))

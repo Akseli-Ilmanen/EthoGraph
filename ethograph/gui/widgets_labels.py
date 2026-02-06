@@ -55,6 +55,7 @@ from .app_constants import (
     LABELS_OVERLAY_FALLBACK_SIZE,
     DEFAULT_LAYOUT_SPACING,
     Z_INDEX_LABELS_OVERLAY,
+    MIN_LABEL_LEN
 )
 
 
@@ -294,14 +295,12 @@ class LabelsWidget(QWidget):
         
         self.controls_widget = QWidget()
         layout = QVBoxLayout()
-        layout.setSpacing(0)
         self.controls_widget.setLayout(layout)
 
 
         # Mapping file row
         mapping_row = QWidget()
         mapping_layout = QHBoxLayout()
-        mapping_layout.setSpacing(0)
         mapping_row.setLayout(mapping_layout)
 
         self.mapping_file_path_edit = QLineEdit()
@@ -327,7 +326,6 @@ class LabelsWidget(QWidget):
         # Predictions file row
         pred_row = QWidget()
         pred_layout = QHBoxLayout()
-        pred_layout.setSpacing(0)
         pred_row.setLayout(pred_layout)
 
         self.pred_file_path_edit = QLineEdit()
@@ -350,8 +348,6 @@ class LabelsWidget(QWidget):
 
         # Human verification row
         hv_row = QHBoxLayout()
-        hv_row.setSpacing(4)
-
         hv_row.addWidget(QLabel("Apply human verification to:"))
 
         self.human_verify_trial_btn = QPushButton("Single Trial")
@@ -362,18 +358,13 @@ class LabelsWidget(QWidget):
         self.human_verify_all_trials_btn.clicked.connect(lambda: self._human_verification_true("all_trials"))
         hv_row.addWidget(self.human_verify_all_trials_btn)
 
-        self.human_verified_status = QPushButton()
-        self.human_verified_status.setEnabled(False)
-        self.human_verified_status.setText("This trial is not verified.")
-        hv_row.addWidget(self.human_verified_status)
-
+        hv_row.addStretch()
         layout.addLayout(hv_row)
 
 
 
         bottom_row = QWidget()
         bottom_layout = QHBoxLayout()
-        bottom_layout.setSpacing(5)
         bottom_row.setLayout(bottom_layout)
 
         self.save_labels_button = QPushButton("Save labels file")
@@ -452,18 +443,28 @@ class LabelsWidget(QWidget):
 
         
     def _update_human_verified_status(self):
+        default_style = ""
+        verified_style = "background-color: green; color: white;"
+
         if self.app_state.label_dt is None or self.app_state.trials_sel is None:
-            self.human_verified_status.setText("This trial is not verified.")
-            self.human_verified_status.setStyleSheet("background-color: red; color: white;")
+            self.human_verify_trial_btn.setStyleSheet(default_style)
+            self.human_verify_all_trials_btn.setStyleSheet(default_style)
             return
 
         attrs = self.app_state.label_dt.trial(self.app_state.trials_sel).attrs
         if attrs.get('human_verified', None) == True:
-            self.human_verified_status.setText("This trial is verified.")
-            self.human_verified_status.setStyleSheet("background-color: green; color: white;")
+            self.human_verify_trial_btn.setStyleSheet(verified_style)
         else:
-            self.human_verified_status.setText("This trial is not verified.")
-            self.human_verified_status.setStyleSheet("background-color: red; color: white;")  
+            self.human_verify_trial_btn.setStyleSheet(default_style)
+
+        all_verified = all(
+            self.app_state.label_dt.trial(t).attrs.get('human_verified', None) == True
+            for t in self.app_state.label_dt.trials
+        )
+        if all_verified:
+            self.human_verify_all_trials_btn.setStyleSheet(verified_style)
+        else:
+            self.human_verify_all_trials_btn.setStyleSheet(default_style)  
         
 
 
@@ -778,11 +779,7 @@ class LabelsWidget(QWidget):
         self.ready_for_label_click = False
 
    
-        if self.changepoints_widget and hasattr(self.changepoints_widget, 'min_label_length_spin'):
-            ml_length = self.changepoints_widget.min_label_length_spin.value()
-        else:
-            ml_length = 2 # Fallback
-        labels = purge_small_blocks(labels, ml_length)
+        labels = purge_small_blocks(labels, MIN_LABEL_LEN)
 
 
 

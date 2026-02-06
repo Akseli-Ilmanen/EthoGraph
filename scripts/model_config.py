@@ -14,15 +14,11 @@ from ethograph.utils.paths import get_project_root
 
 
 params_rigid = {
-"good_s3d_feats": None, # Already exclude in file generation
-"min_label_length": 10, # Minimum block length, also applied after changepoint correction
-"label_thresholds": {3: 6}, # Per-label overrides for min_label_length (e.g., toss=3 uses 6)
-"stitch_gap_len": 3, # 000222000222333000 -> 0002222222333000
-"changepoint_params": {
+"Note": "Purge, stich and other changepoint_params determiend in configs/changepoints_settings.yaml",
+"good_s3d_feats": None,
+"changepoint_feats": {
    "sigmas": [2.0, 3.0, 5.0],
    "merge_changepoints": True,
-   "max_expansion": 10.0, # in samples
-   "max_shrink": 10.0, # in samples      
 },
 "root_data_dir": "./data",
 "split_id": 1,
@@ -108,8 +104,7 @@ if __name__ == "__main__":
       # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250508_02\behav\Trial_data.nc",
       # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250509_01\behav\Trial_data.nc",
       # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250512_01\behav\Trial_data.nc",
-      
-      r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250513_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250513_01\behav\Trial_data.nc",
       
       r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250515_01\behav\Trial_data.nc",
       r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250516_01\behav\Trial_data.nc",

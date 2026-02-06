@@ -66,14 +66,14 @@ def extract_features_per_trial(ds, all_params):
         features: 2D array of shape (time, num_features)
     """
     
-    changepoint_sigmas = all_params["changepoint_params"]["sigmas"]
+    changepoint_sigmas = all_params["changepoint_feats"]["sigmas"]
     feat_kwargs = all_params["feat_kwargs"]
     cp_kwargs = all_params["cp_kwargs"]
     good_s3d_feats = all_params["good_s3d_feats"]
     
     
 
-    if all_params["changepoint_params"]["merge_changepoints"]:
+    if all_params["changepoint_feats"]["merge_changepoints"]:
         ds, target_feature = merge_changepoints(ds)
     
 
@@ -85,7 +85,7 @@ def extract_features_per_trial(ds, all_params):
     cp_list = []
     for var in cp_ds.data_vars:
         
-        if not all_params["changepoint_params"]["merge_changepoints"]:
+        if not all_params["changepoint_feats"]["merge_changepoints"]:
             target_feature = cp_ds[var].attrs["target_feature"]
             
         targ_feat_vals = ds[target_feature].sel(**cp_kwargs).values
@@ -118,7 +118,7 @@ def extract_features_per_trial(ds, all_params):
 
 # TO DO, figure out smart way to specify individual in feat_kwargs, else. 
 def get_feature_names(ds, all_params):
-    changepoint_sigmas = all_params["changepoint_params"]["sigmas"]
+    changepoint_sigmas = all_params["changepoint_feats"]["sigmas"]
     changepoint_names = []
 
     for var in ds.filter_by_attrs(type="changepoints").data_vars:
