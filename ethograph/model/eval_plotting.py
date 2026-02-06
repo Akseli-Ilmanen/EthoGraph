@@ -7,7 +7,7 @@ from typing import List, Dict, Any
 from datetime import datetime
 import pickle
 from ethograph.utils.paths import get_project_root
-style_path = get_project_root() / 'configs' / 'style.mplstyle'
+style_path = get_project_root() / 'configs' / 'style' / 'style.mplstyle'
 plt.style.use(str(style_path))
 F1_COLOURS = ["#9467bd", "#2ecc71", "#e377c2"]  # purple, green, pink
 PRED_COLOURS = ["#1f77b4", "#d62728"]  # uncorrected: blue, corrected: red
@@ -289,7 +289,7 @@ def plot_labelwise_results(ax, results_list: List[Dict], f1_thresholds: List[flo
             ax.scatter(x[cls_idx] + 0.5*width, point[1], color=F1_COLOURS[1], s=15, alpha=0.6, zorder=3)
             ax.scatter(x[cls_idx] + 1.5*width, point[2], color=F1_COLOURS[2], s=15, alpha=0.6, zorder=3)
     
-    ax.set_xlabel('Motifs')
+    ax.set_xlabel('Labels')
     ax.set_xticks(x)
     
     

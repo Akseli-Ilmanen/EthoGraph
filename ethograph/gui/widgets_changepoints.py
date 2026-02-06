@@ -2,9 +2,16 @@
 
 import numpy as np
 import xarray as xr
+import yaml
 from qtpy.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
     QGridLayout,
+    QHeaderView,
     QLineEdit,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QWidget,
     QPushButton,
     QVBoxLayout,
@@ -20,6 +27,9 @@ from napari.viewer import Viewer
 from napari.utils.notifications import show_info, show_warning
 from typing import Optional
 from concurrent.futures import ProcessPoolExecutor, Future
+from ethograph.utils.paths import get_project_root
+from ethograph.features.changepoints import correct_changepoints_one_trial
+from ethograph.utils.data_utils import sel_valid
 import ruptures as rpt
 
 
@@ -95,14 +105,17 @@ class ChangepointsWidget(QWidget):
         self._create_changepoints_panel()
         self._create_audio_changepoints_panel()
         self._create_ruptures_panel()
+        self._create_correction_params_panel()
 
         main_layout.addWidget(self.changepoints_panel)
         main_layout.addWidget(self.audio_changepoints_panel)
         main_layout.addWidget(self.ruptures_panel)
+        main_layout.addWidget(self.correction_params_panel)
 
         self.changepoints_panel.hide()
         self.audio_changepoints_panel.show()
         self.ruptures_panel.hide()
+        self.correction_params_panel.hide()
         self.audio_toggle.setText("Audio CPs ✓")
 
         main_layout.addStretch()
@@ -157,6 +170,12 @@ class ChangepointsWidget(QWidget):
         self.audio_toggle.clicked.connect(self._toggle_audio_changepoints)
         toggle_layout.addWidget(self.audio_toggle)
 
+        self.correction_toggle = QPushButton("CP Correction")
+        self.correction_toggle.setCheckable(True)
+        self.correction_toggle.setChecked(False)
+        self.correction_toggle.clicked.connect(self._toggle_correction_params)
+        toggle_layout.addWidget(self.correction_toggle)
+
         main_layout.addWidget(self.toggle_widget)
 
     def _show_panel(self, panel_name: str):
@@ -164,16 +183,15 @@ class ChangepointsWidget(QWidget):
             "kinematic": (self.changepoints_panel, self.cp_toggle, "Kinematic CPs"),
             "ruptures": (self.ruptures_panel, self.ruptures_toggle, "Ruptures CPs"),
             "audio": (self.audio_changepoints_panel, self.audio_toggle, "Audio CPs"),
+            "correction": (self.correction_params_panel, self.correction_toggle, "CP Correction"),
         }
         for name, (panel, toggle, label) in panels.items():
             if name == panel_name:
                 panel.show()
                 toggle.setChecked(True)
-                toggle.setText(f"{label} ✓")
             else:
                 panel.hide()
                 toggle.setChecked(False)
-                toggle.setText(label)
 
         self._refresh_layout()
 
@@ -192,6 +210,12 @@ class ChangepointsWidget(QWidget):
     def _toggle_ruptures(self):
         if self.ruptures_toggle.isChecked():
             self._show_panel("ruptures")
+        else:
+            self._show_panel("audio")
+
+    def _toggle_correction_params(self):
+        if self.correction_toggle.isChecked():
+            self._show_panel("correction")
         else:
             self._show_panel("audio")
 
@@ -568,6 +592,8 @@ class ChangepointsWidget(QWidget):
 
         show_cp = getattr(self.app_state, "show_changepoints", False)
         self.show_cp_checkbox.setChecked(show_cp)
+
+        self._load_correction_params_from_file()
 
     def _parse_float(self, text: str) -> Optional[float]:
         try:
@@ -1090,6 +1116,363 @@ class ChangepointsWidget(QWidget):
             self.compute_ruptures_button.setEnabled(True)
             self.clear_ruptures_button.setEnabled(True)
 
+    # =========================================================================
+    # Correction Parameters Panel
+    # =========================================================================
+
+    def _create_correction_params_panel(self):
+        self.correction_params_panel = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 4, 0, 0)
+        self.correction_params_panel.setLayout(layout)
+
+        self._motif_mappings = {}
+        self._custom_label_thresholds = {}
+        self._correction_snapshot = None
+
+        global_group = QGroupBox("Global parameters")
+        global_layout = QGridLayout()
+        global_group.setLayout(global_layout)
+        layout.addWidget(global_group)
+
+        self.min_label_length_spin = QSpinBox()
+        self.min_label_length_spin.setRange(1, 10000)
+        self.min_label_length_spin.setValue(10)
+        self.min_label_length_spin.setToolTip(
+            "Global minimum label length in samples.\n"
+            "Labels shorter than this are removed."
+        )
+        self.min_label_length_spin.valueChanged.connect(self._on_min_label_length_changed)
+
+        self.stitch_gap_spin = QSpinBox()
+        self.stitch_gap_spin.setRange(0, 10000)
+        self.stitch_gap_spin.setValue(3)
+        self.stitch_gap_spin.setToolTip(
+            "Max gap (samples) between same-label segments to stitch together"
+        )
+
+        self.max_expansion_spin = QDoubleSpinBox()
+        self.max_expansion_spin.setRange(0, 1000)
+        self.max_expansion_spin.setDecimals(1)
+        self.max_expansion_spin.setValue(10.0)
+        self.max_expansion_spin.setToolTip(
+            "Max expansion of label boundaries at changepoints (samples)"
+        )
+
+        self.max_shrink_spin = QDoubleSpinBox()
+        self.max_shrink_spin.setRange(0, 1000)
+        self.max_shrink_spin.setDecimals(1)
+        self.max_shrink_spin.setValue(10.0)
+        self.max_shrink_spin.setToolTip(
+            "Max shrinkage of label boundaries at changepoints (samples)"
+        )
+
+        row = 0
+        global_layout.addWidget(QLabel("Min label length:"), row, 0)
+        global_layout.addWidget(self.min_label_length_spin, row, 1)
+        global_layout.addWidget(QLabel("Stitch gap:"), row, 2)
+        global_layout.addWidget(self.stitch_gap_spin, row, 3)
+
+        row += 1
+        global_layout.addWidget(QLabel("Max expansion:"), row, 0)
+        global_layout.addWidget(self.max_expansion_spin, row, 1)
+        global_layout.addWidget(QLabel("Max shrink:"), row, 2)
+        global_layout.addWidget(self.max_shrink_spin, row, 3)
+
+        button_layout = QHBoxLayout()
+
+        self.per_label_btn = QPushButton("Per-label thresholds...")
+        self.per_label_btn.setToolTip("Override min label length for individual labels")
+        self.per_label_btn.clicked.connect(self._open_label_thresholds_dialog)
+        button_layout.addWidget(self.per_label_btn)
+
+        save_btn = QPushButton("Save")
+        save_btn.setToolTip("Save correction parameters to changepoint_settings.yaml")
+        save_btn.clicked.connect(self._save_correction_params)
+        button_layout.addWidget(save_btn)
+
+        load_btn = QPushButton("Load")
+        load_btn.setToolTip("Load correction parameters from changepoint_settings.yaml")
+        load_btn.clicked.connect(self._load_correction_params)
+        button_layout.addWidget(load_btn)
+
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+
+        correction_layout = QHBoxLayout()
+
+        cp_label = QLabel("Apply correction to:")
+        correction_layout.addWidget(cp_label)
+
+        self.cp_correction_trial_btn = QPushButton("Single Trial")
+        self.cp_correction_trial_btn.clicked.connect(lambda: self._cp_correction("single_trial"))
+        correction_layout.addWidget(self.cp_correction_trial_btn)
+
+        self.cp_correction_all_trials_btn = QPushButton("All Trials")
+        self.cp_correction_all_trials_btn.clicked.connect(lambda: self._cp_correction("all_trials"))
+        correction_layout.addWidget(self.cp_correction_all_trials_btn)
+
+        self.cp_undo_btn = QPushButton("\u21bb")
+        self.cp_undo_btn.setToolTip("Undo last correction")
+        self.cp_undo_btn.setFixedWidth(30)
+        self.cp_undo_btn.setEnabled(False)
+        self.cp_undo_btn.clicked.connect(self._undo_correction)
+        correction_layout.addWidget(self.cp_undo_btn)
+
+        self.status_label = QLabel("Global status:")
+        correction_layout.addWidget(self.status_label)
+
+        self.cp_status_btn = QPushButton()
+        self.cp_status_btn.setEnabled(False)
+        self.cp_status_btn.setText("Not corrected")
+        correction_layout.addWidget(self.cp_status_btn)
+
+        correction_layout.addStretch()
+        layout.addLayout(correction_layout)
+
+    def set_motif_mappings(self, mappings: dict):
+        self._motif_mappings = mappings
+
+    def _open_label_thresholds_dialog(self):
+        if not self._motif_mappings:
+            show_warning("No label mappings loaded yet")
+            return
+
+        dialog = LabelThresholdsDialog(
+            self._motif_mappings,
+            self._custom_label_thresholds,
+            self.min_label_length_spin.value(),
+            parent=self,
+        )
+        if dialog.exec_():
+            self._custom_label_thresholds = dialog.get_custom_thresholds()
+            n_custom = len(self._custom_label_thresholds)
+            if n_custom:
+                self.per_label_btn.setText(f"Per-label thresholds ({n_custom})...")
+            else:
+                self.per_label_btn.setText("Per-label thresholds...")
+
+    def _on_min_label_length_changed(self, _value: int):
+        pass
+
+    def _save_correction_snapshot(self, mode, ds_kwargs):
+        snapshot = {"mode": mode, "ds_kwargs": ds_kwargs}
+        if mode == "single_trial":
+            trial = self.app_state.trials_sel
+            curr_labels, filt_kwargs = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
+            snapshot["trial"] = trial
+            snapshot["filt_kwargs"] = filt_kwargs
+            snapshot["labels"] = np.array(curr_labels)
+        elif mode == "all_trials":
+            snapshot["trials"] = {}
+            for trial in self.app_state.label_dt.trials:
+                curr_labels, filt_kwargs = sel_valid(self.app_state.label_dt.trial(trial).labels, ds_kwargs)
+                snapshot["trials"][trial] = {"filt_kwargs": filt_kwargs, "labels": np.array(curr_labels)}
+            snapshot["old_cp_corrected"] = self.app_state.label_dt.attrs.get("changepoint_corrected", 0)
+        self._correction_snapshot = snapshot
+        self.cp_undo_btn.setEnabled(True)
+
+    def _undo_correction(self):
+        if self._correction_snapshot is None:
+            return
+        snapshot = self._correction_snapshot
+        mode = snapshot["mode"]
+
+        if mode == "single_trial":
+            self.app_state.label_dt.trial(snapshot["trial"]).labels.loc[snapshot["filt_kwargs"]] = snapshot["labels"]
+        elif mode == "all_trials":
+            for trial, data in snapshot["trials"].items():
+                self.app_state.label_dt.trial(trial).labels.loc[data["filt_kwargs"]] = data["labels"]
+            self.app_state.label_dt.attrs["changepoint_corrected"] = snapshot["old_cp_corrected"]
+            self._update_cp_status()
+
+        self._correction_snapshot = None
+        self.cp_undo_btn.setEnabled(False)
+        self.app_state.labels_modified.emit()
+        show_info("Reverted correction")
+
+    def _cp_correction(self, mode):
+        all_params = self.get_correction_params()
+        ds_kwargs = self.app_state.get_ds_kwargs()
+        all_params["cp_kwargs"] = ds_kwargs
+
+        if mode == "single_trial":
+            self._save_correction_snapshot(mode, ds_kwargs)
+            curr_labels, filt_kwargs = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
+            self.app_state.label_dt.trial(self.app_state.trials_sel).labels.loc[filt_kwargs] = (
+                correct_changepoints_one_trial(curr_labels, self.app_state.ds, all_params)
+            )
+
+        if mode == "all_trials":
+            if self.app_state.label_dt.attrs.get("changepoint_corrected", 0) == 1:
+                show_warning("Changepoint correction has already been applied to all trials. Don't re-apply.")
+                return
+
+            self._save_correction_snapshot(mode, ds_kwargs)
+            for trial in self.app_state.label_dt.trials:
+                curr_labels, filt_kwargs = sel_valid(self.app_state.label_dt.trial(trial).labels, ds_kwargs)
+                ds = self.app_state.dt.trial(trial)
+                self.app_state.label_dt.trial(trial).labels.loc[filt_kwargs] = (
+                    correct_changepoints_one_trial(curr_labels, ds, all_params)
+                )
+                self.app_state.label_dt.attrs["changepoint_corrected"] = np.int8(1)
+            self._update_cp_status()
+
+        self.app_state.labels_modified.emit()
+
+    def _update_cp_status(self):
+        if self.app_state.label_dt is None or self.app_state.trials_sel is None:
+            self.cp_status_btn.setText("Not corrected")
+            self.cp_status_btn.setStyleSheet("background-color: red; color: white;")
+            return
+
+        attrs = self.app_state.label_dt.attrs
+        if attrs.get('changepoint_corrected', 0):
+            self.cp_status_btn.setText("Corrected")
+            self.cp_status_btn.setStyleSheet("background-color: green; color: white;")
+        else:
+            self.cp_status_btn.setText("Not corrected")
+            self.cp_status_btn.setStyleSheet("background-color: red; color: white;")
+
+    def get_correction_params(self) -> dict:
+        label_thresholds = {
+            str(k): v for k, v in self._custom_label_thresholds.items()
+        }
+        return {
+            "min_label_length": self.min_label_length_spin.value(),
+            "label_thresholds": label_thresholds,
+            "stitch_gap_len": self.stitch_gap_spin.value(),
+            "changepoint_params": {
+                "max_expansion": self.max_expansion_spin.value(),
+                "max_shrink": self.max_shrink_spin.value(),
+            },
+        }
+
+    def _save_correction_params(self):
+        params = self.get_correction_params()
+        params_path = get_project_root() / "configs" / "changepoint_settings.yaml"
+        with open(params_path, "w") as f:
+            yaml.dump(params, f, default_flow_style=False, sort_keys=False)
+        show_info(f"Saved correction parameters to {params_path.name}")
+
+    def _load_correction_params(self):
+        params_path = get_project_root() / "configs" / "changepoint_settings.yaml"
+        if not params_path.exists():
+            show_warning(f"No settings file found at {params_path}")
+            return
+        with open(params_path, "r") as f:
+            params = yaml.safe_load(f)
+        self._apply_correction_params(params)
+        show_info(f"Loaded correction parameters from {params_path.name}")
+
+    def _load_correction_params_from_file(self):
+        params_path = get_project_root() / "configs" / "changepoint_settings.yaml"
+        if not params_path.exists():
+            return
+        try:
+            with open(params_path, "r") as f:
+                params = yaml.safe_load(f)
+            if params:
+                self._apply_correction_params(params)
+        except Exception:
+            pass
+
+    def _apply_correction_params(self, params: dict):
+        self.min_label_length_spin.blockSignals(True)
+        self.min_label_length_spin.setValue(params.get("min_label_length", 10))
+        self.min_label_length_spin.blockSignals(False)
+
+        self.stitch_gap_spin.setValue(params.get("stitch_gap_len", 3))
+
+        cp_params = params.get("changepoint_params", {})
+        self.max_expansion_spin.setValue(cp_params.get("max_expansion", 10.0))
+        self.max_shrink_spin.setValue(cp_params.get("max_shrink", 10.0))
+
+        self._custom_label_thresholds = {
+            int(k): v for k, v in params.get("label_thresholds", {}).items()
+        }
+        n_custom = len(self._custom_label_thresholds)
+        if n_custom:
+            self.per_label_btn.setText(f"Per-label thresholds ({n_custom})...")
+        else:
+            self.per_label_btn.setText("Per-label thresholds...")
+
     def closeEvent(self, event):
         self._cancel_ruptures_detection()
         super().closeEvent(event)
+
+
+class LabelThresholdsDialog(QDialog):
+    """Dialog for editing per-label minimum length overrides."""
+
+    def __init__(self, motif_mappings: dict, custom_thresholds: dict,
+                 global_min: int, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Per-label min length")
+        self.setMinimumWidth(350)
+
+        self._global_min = global_min
+        self._custom_thresholds = dict(custom_thresholds)
+
+        layout = QVBoxLayout(self)
+
+        info = QLabel(f"Global min label length: {global_min}")
+        layout.addWidget(info)
+
+        self._table = QTableWidget()
+        self._table.setColumnCount(3)
+        self._table.setHorizontalHeaderLabels(["ID", "Name", "Min Length"])
+        self._table.verticalHeader().setVisible(False)
+        self._table.verticalHeader().setDefaultSectionSize(24)
+
+        header = self._table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Fixed)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.Fixed)
+        self._table.setColumnWidth(0, 35)
+        self._table.setColumnWidth(2, 90)
+
+        items = [(k, v) for k, v in motif_mappings.items() if k != 0]
+        self._table.setRowCount(len(items))
+        self._spins: dict[int, QSpinBox] = {}
+
+        for row_idx, (motif_id, data) in enumerate(items):
+            id_item = QTableWidgetItem(str(motif_id))
+            id_item.setFlags(id_item.flags() & ~Qt.ItemIsEditable)
+            self._table.setItem(row_idx, 0, id_item)
+
+            name_item = QTableWidgetItem(data["name"])
+            name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
+            self._table.setItem(row_idx, 1, name_item)
+
+            spin = QSpinBox()
+            spin.setRange(1, 10000)
+            spin.setValue(self._custom_thresholds.get(motif_id, global_min))
+            self._spins[motif_id] = spin
+            self._table.setCellWidget(row_idx, 2, spin)
+
+        layout.addWidget(self._table)
+
+        btn_layout = QHBoxLayout()
+        reset_btn = QPushButton("Reset all to global")
+        reset_btn.clicked.connect(self._reset_all)
+        btn_layout.addWidget(reset_btn)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def _reset_all(self):
+        for spin in self._spins.values():
+            spin.setValue(self._global_min)
+
+    def get_custom_thresholds(self) -> dict[int, int]:
+        result = {}
+        for motif_id, spin in self._spins.items():
+            val = spin.value()
+            if val != self._global_min:
+                result[motif_id] = val
+        return result

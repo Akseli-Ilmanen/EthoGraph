@@ -54,8 +54,8 @@ class MultiColoredLineItem(pg.GraphicsObject):
     
     
     
-def get_motif_colours():
-    """Get motif colors - same as original but formatted for PyQtGraph (0-255 RGB)."""
+def get_label_colours():
+    """Get label colors - same as original but formatted for PyQtGraph (0-255 RGB)."""
     # Already in 0-255 format which PyQtGraph uses
     category_colors_rgb = [
         [255, 255, 255],

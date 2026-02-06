@@ -19,6 +19,7 @@ from .widgets_io import IOWidget
 from .widgets_plot import AxesWidget
 from .widgets_spectrogram import SpectrogramWidget
 from .widgets_changepoints import ChangepointsWidget
+from .app_constants import PLOT_CONTAINER_MIN_HEIGHT, DOCK_WIDGET_BOTTOM_MARGIN, DEFAULT_LAYOUT_SPACING, DEFAULT_LAYOUT_MARGIN
 
 
 
@@ -68,17 +69,17 @@ class MetaWidget(CollapsibleWidgetContainer):
 
 
         self.plot_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.plot_container.setMinimumHeight(250)
+        self.plot_container.setMinimumHeight(PLOT_CONTAINER_MIN_HEIGHT)
 
         # Add dock widget with margins to prevent covering notifications
         dock_widget = self.viewer.window.add_dock_widget(self.plot_container, area="bottom")
-        
+
         # Try to set margins on the dock widget to leave space for notifications
         try:
             if hasattr(dock_widget, 'setContentsMargins'):
-                dock_widget.setContentsMargins(0, 0, 0, 50)  # Leave 50px at bottom for notifications
-        except:
-            pass
+                dock_widget.setContentsMargins(0, 0, 0, DOCK_WIDGET_BOTTOM_MARGIN)
+        except (AttributeError, TypeError):
+            pass  # Dock widget doesn't support margin setting
         
         # Ensure napari notifications are positioned correctly
         self._configure_notifications()
@@ -106,6 +107,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.audio_widget.set_plot_container(self.plot_container)
         self.changepoints_widget.set_plot_container(self.plot_container)
         self.changepoints_widget.set_meta_widget(self)
+        self.changepoints_widget.set_motif_mappings(self.labels_widget._mappings)
 
         # Signal connections for decoupled communication
         self.plot_container.labels_redraw_needed.connect(self._on_labels_redraw_needed)
@@ -113,6 +115,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.app_state.verification_changed.connect(self._on_verification_changed)
         self.app_state.verification_changed.connect(self.labels_widget._update_human_verified_status)
         self.app_state.trial_changed.connect(self.data_widget.on_trial_changed)
+        self.app_state.trial_changed.connect(self.changepoints_widget._update_cp_status)
         self.changepoints_widget.changepoint_correction_checkbox.stateChanged.connect(
             self.update_changepoints_widget_title
         )
@@ -191,8 +194,8 @@ class MetaWidget(CollapsibleWidgetContainer):
         for i in range(self.layout().count()):
             item = self.layout().itemAt(i)
             if item.widget() and item.widget().layout():
-                item.widget().layout().setSpacing(2)
-                item.widget().layout().setContentsMargins(2, 2, 2, 2)
+                item.widget().layout().setSpacing(DEFAULT_LAYOUT_SPACING)
+                item.widget().layout().setContentsMargins(DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN)
 
         self.update_changepoints_widget_title()
 
@@ -201,7 +204,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         if not self.app_state.ready:
             return
         ds_kwargs = self.app_state.get_ds_kwargs()
-        self.data_widget.update_motif_plot(ds_kwargs)
+        self.data_widget.update_label_plot(ds_kwargs)
 
     def _on_labels_modified(self):
         """Handle label modification - update plots with current view range."""
@@ -352,7 +355,7 @@ class MetaWidget(CollapsibleWidgetContainer):
                 try:
                     if hasattr(layer_type, 'bind_key'):
                         layer_type.bind_key(key, None)
-                except Exception as e:
+                except (KeyError, ValueError, AttributeError) as e:
                     print(f"Could not unbind {key} from {layer_type.__name__}: {e}")
 
         for key in all_keys:
@@ -431,7 +434,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         
         # In napari video, can user left, right arrow keys to go back/forward one frame
         
-        # Navigation shortcuts (avoiding conflicts with motif labeling)
+        # Navigation shortcuts (avoiding conflicts with label labeling)
         @viewer.bind_key("Down", overwrite=True) 
         def next_trial(v):
             self.navigation_widget.next_trial()
@@ -481,45 +484,45 @@ class MetaWidget(CollapsibleWidgetContainer):
             checkbox.setChecked(not checkbox.isChecked())
 
         def setup_keybindings_grid_layout(viewer, labels_widget):
-            """Setup using grid layout for motif activation"""
+            """Setup using grid layout for label activation"""
             
-            # Row 1: 1-0 (Motifs 1-10)
+            # Row 1: 1-0 (Labels 1-10)
             number_keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
             
-            # Row 2: Q-P (Motifs 11-20)
+            # Row 2: Q-P (Labels 11-20)
             qwerty_row = ['q', 'w', 'e', 'r', 't', 'z', 'u', 'i', 'o', 'p']
             
-            # Row 3: A-; (Motifs 21-30)
+            # Row 3: A-; (Labels 21-30)
             home_row = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l']
             
-            # Bind number keys for motifs 1-10
+            # Bind number keys for labels 1-10
             for i, key in enumerate(number_keys):
-                motif_id = i + 1 if key != '0' else 10
-                viewer.bind_key(key, lambda v, mk=motif_id: labels_widget.activate_motif(mk), overwrite=True)
+                label_id = i + 1 if key != '0' else 10
+                viewer.bind_key(key, lambda v, mk=label_id: labels_widget.activate_label(mk), overwrite=True)
             
-            # Bind qwerty row for motifs 11-20
+            # Bind qwerty row for labels 11-20
             for i, key in enumerate(qwerty_row):
-                viewer.bind_key(key, lambda v, mk=i+11: labels_widget.activate_motif(mk), overwrite=True)
+                viewer.bind_key(key, lambda v, mk=i+11: labels_widget.activate_label(mk), overwrite=True)
             
-            # Bind home row for motifs 21-30
+            # Bind home row for labels 21-30
             for i, key in enumerate(home_row):
-                viewer.bind_key(key, lambda v, mk=i+21: labels_widget.activate_motif(mk), overwrite=True)
+                viewer.bind_key(key, lambda v, mk=i+21: labels_widget.activate_label(mk), overwrite=True)
             
 
         # Call the setup function
         setup_keybindings_grid_layout(viewer, labels_widget)
 
-        # Left click to label a motif (Press shortcut, then left-click, left-click)
-        # Right click on a motif to play it
+        # Left click to label a label (Press shortcut, then left-click, left-click)
+        # Right click on a label to play it
 
         @viewer.bind_key("ctrl+e", overwrite=True)  
-        def edit_motif(v):
-            labels_widget._edit_motif()
+        def edit_label(v):
+            labels_widget._edit_label()
 
-        # Delete motif (Ctrl+D)
+        # Delete label (Ctrl+D)
         @viewer.bind_key("ctrl+d", overwrite=True)  
-        def delete_motif(v):
-            labels_widget._delete_motif()
+        def delete_label(v):
+            labels_widget._delete_label()
 
         # Toggle features selection (Ctrl+F)
         @viewer.bind_key("ctrl+f", overwrite=True)  
@@ -639,8 +642,8 @@ class MetaWidget(CollapsibleWidgetContainer):
                                 parent_rect = parent.geometry()
                                 # Position overlay to leave space at bottom
                                 overlay.resize(parent_rect.width(), parent_rect.height() - 80)
-                                
-        except Exception as e:
+
+        except (AttributeError, KeyError, TypeError) as e:
             # Silently handle any issues with notification configuration
             print(f"Notification configuration warning: {e}")
             

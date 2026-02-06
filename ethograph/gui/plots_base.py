@@ -5,6 +5,13 @@ import numpy as np
 from qtpy.QtCore import Signal
 from typing import Optional, Tuple
 
+from .app_constants import (
+    LOCKED_RANGE_MIN_FACTOR,
+    LOCKED_RANGE_MAX_FACTOR,
+    AXIS_LIMIT_PADDING_RATIO,
+    Z_INDEX_TIME_MARKER,
+)
+
 
 class TimeAxisItem(pg.AxisItem):
     """Custom axis that displays time in min:sec format."""
@@ -63,7 +70,7 @@ class BasePlot(pg.PlotWidget):
             movable=False
         )
         self.addItem(self.time_marker)
-        self.time_marker.setZValue(1000)
+        self.time_marker.setZValue(Z_INDEX_TIME_MARKER)
 
         # Setup viewbox and interaction
         self.plot_item = self.plotItem
@@ -180,21 +187,23 @@ class BasePlot(pg.PlotWidget):
                 time = self.app_state.time.values
                 data_xmin = float(time[0])
                 data_xmax = float(time[-1])
+                data_range = data_xmax - data_xmin
+                padding = data_range * AXIS_LIMIT_PADDING_RATIO
 
                 if preserve_default_range:
                     # For default range (trial changes), use window_size as the base range
                     # but allow some flexibility for panning
                     window_size = self.app_state.get_with_default("window_size")
-                    min_range = window_size * 0.8  # Allow slightly smaller
-                    max_range = window_size * 1.5  # Allow zooming out a bit
+                    min_range = window_size * LOCKED_RANGE_MIN_FACTOR
+                    max_range = window_size * LOCKED_RANGE_MAX_FACTOR
                 else:
                     # For preserve mode, lock exactly to current range
                     min_range = x_range
                     max_range = x_range
 
                 self.vb.setLimits(
-                    xMin=data_xmin - 3,
-                    xMax=data_xmax + 3,
+                    xMin=data_xmin - padding,
+                    xMax=data_xmax + padding,
                     minXRange=min_range,
                     maxXRange=max_range,
                     yMin=current_ylim[0],
@@ -222,12 +231,13 @@ class BasePlot(pg.PlotWidget):
         xMin = time[0]
         xMax = time[-1]
         xRange = xMax - xMin
+        padding = xRange * AXIS_LIMIT_PADDING_RATIO
 
         self.vb.setLimits(
-            xMin=xMin - 3,
-            xMax=xMax + 3,
+            xMin=xMin - padding,
+            xMax=xMax + padding,
             minXRange=None,
-            maxXRange=xRange + 1,
+            maxXRange=xRange * (1 + AXIS_LIMIT_PADDING_RATIO),
         )
 
         # Apply plot-specific y constraints

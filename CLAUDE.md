@@ -55,7 +55,7 @@ C:\Users\Admin\anaconda3\envs\ethograph-gui
 
 ## Project Overview
 
-ethograph-GUI is a napari plugin for labeling start/stop times of animal movements. It integrates with ethograph, a workflow using action segmentation transformers to predict movement segments. The GUI loads NetCDF datasets containing behavioral features, displays synchronized video/audio, and allows interactive motif labeling.
+ethograph-GUI is a napari plugin for labeling start/stop times of animal movements. It integrates with ethograph, a workflow using action segmentation transformers to predict movement segments. The GUI loads NetCDF datasets containing behavioral features, displays synchronized video/audio, and allows interactive label labeling.
 
 ## Development Commands
 ! for bash mode
@@ -108,7 +108,7 @@ ethograph/gui/
     widgets_data.py       # Dataset controls and combo boxes (DataWidget)
     widgets_documentation.py  # Help/tutorial interface
     widgets_io.py         # File/folder selection (IOWidget)
-    widgets_labels.py     # Motif labeling interface (LabelsWidget)
+    widgets_labels.py     # Label labeling interface (LabelsWidget)
     widgets_meta.py       # Main orchestrator widget (MetaWidget)
     widgets_navigation.py # Trial navigation (NavigationWidget)
     widgets_plot.py       # Plot settings controls (PlotsWidget)
@@ -172,7 +172,7 @@ Labels DataArray     ->  time coord: "time" or "time_labels"  ->  get_time_coord
 **Where used:**
 - `LinePlot._get_buffered_ds()`: Uses `app_state.time` for buffer range calculations
 - `BasePlot.set_x_range()`: Uses `app_state.time` for x-axis limits
-- `DataWidget.update_motif_plot()`: Uses `get_time_coord(label_ds.labels)` to get labels' own time
+- `DataWidget.update_label_plot()`: Uses `get_time_coord(label_ds.labels)` to get labels' own time
 - `LabelsWidget`: Uses `app_state.label_sr` for time-to-index conversions when creating/editing labels
 
 This decoupling allows features to be sampled at different rates than labels while both display correctly on the same plot.
@@ -193,13 +193,14 @@ Central coordinator that creates and wires all widgets together.
 1. DocumentationWidget (help/shortcuts)
 2. IOWidget (file loading)
 3. DataWidget (dataset controls)
-4. LabelsWidget (motif labeling)
+4. LabelsWidget (label labeling)
 5. PlotsWidget (plotting settings)
 6. NavigationWidget (trial navigation)
 7. PlotContainer (bottom dock - hidden until data loads)
 
 **Signal connections (decoupled communication):**
 - `app_state.trial_changed` -> `data_widget.on_trial_changed()`
+- `app_state.trial_changed` -> `changepoints_widget._update_cp_status()`
 - `app_state.labels_modified` -> `MetaWidget._on_labels_modified()` -> updates plots
 - `app_state.verification_changed` -> `MetaWidget._on_verification_changed()` -> updates UI indicators
 - `app_state.verification_changed` -> `labels_widget._update_human_verified_status()`
@@ -207,7 +208,7 @@ Central coordinator that creates and wires all widgets together.
 
 **Direct references (DataWidget as central orchestrator):**
 - `data_widget.set_references(plot_container, labels_widget, plots_widget, navigation_widget)`
-- `labels_widget.set_plot_container(plot_container)` - for drawing motifs
+- `labels_widget.set_plot_container(plot_container)` - for drawing labels
 - `plots_widget.set_plot_container(plot_container)` - for applying settings
 
 ---
@@ -233,7 +234,7 @@ Central coordinator that creates and wires all widgets together.
 - `_create_trial_controls()`: Creates combos for all dimensions (including dynamic ones)
 - `_on_combo_changed()`: Central handler for all selection changes
 - `update_main_plot()`: Updates active plot with current selections
-- `update_motif_plot()`: Draws motif rectangles on plot
+- `update_label_plot()`: Draws label rectangles on plot
 - `update_video_audio()`: Loads/switches video/audio files
 - Stores video sync object on `app_state.video` for access by other widgets
 
@@ -274,7 +275,7 @@ Subclasses implement:
 
 **LinePlot** (`plots_lineplot.py`):
 - Calls `plot_ds_variable()` to render xarray data
-- Stores items in `plot_items` (lines) and `label_items` (motifs)
+- Stores items in `plot_items` (lines) and `label_items` (labels)
 - Y-constraints based on data percentile (default 99.5%)
 
 **Single vs Multi-line Plotting** (`plot_qtgraph.py`):
@@ -315,23 +316,23 @@ Subclasses implement:
 
 ### Label Management: `widgets_labels.py`
 
-**LabelsWidget** - Motif labeling interface:
+**LabelsWidget** - Label labeling interface:
 
 **State:**
-- `motif_mappings`: Dict[int, {color, name}] from mapping.txt
-- `ready_for_label_click`: Activated by motif key press
+- `label_mappings`: Dict[int, {color, name}] from mapping.txt
+- `ready_for_label_click`: Activated by label key press
 - `first_click` / `second_click`: Time positions from two clicks
 
-**Motif creation workflow:**
-1. `activate_motif(motif_id)` -> sets `ready_for_label_click = True`
+**Label creation workflow:**
+1. `activate_label(label_id)` -> sets `ready_for_label_click = True`
 2. User clicks plot twice -> `_on_plot_clicked()` fires
 3. Creates rectangle in `app_state.label_ds['labels']` array
-4. `plot_all_motifs()` redraws all labels
+4. `plot_all_labels()` redraws all labels
 
-**plot_all_motifs():**
+**plot_all_labels():**
 1. Gets current plot from plot_container
 2. Clears existing `label_items`
-3. Draws motif rectangles via `_draw_motif_rectangle()`
+3. Draws label rectangles via `_draw_label_rectangle()`
 4. Different styling: LinePlot uses `LinearRegionItem`, Spectrogram uses edge lines
 
 **Note:** Labels redraw on plot switch via `labels_redraw_needed` signal connected in MetaWidget.
@@ -359,6 +360,51 @@ Subclasses implement:
    - Loads new trial from datatree
    - Emits `verification_changed` for UI updates
    - Updates video/audio, tracking, plots
+
+---
+
+### Changepoint Correction System: `widgets_changepoints.py` + `changepoints.py`
+
+The correction system refines raw label boundaries by snapping them to detected changepoints in the kinematic/audio data.
+
+**UI Location:** Correction tab in `ChangepointsWidget` (4th toggle alongside Kinematic, Ruptures, Audio).
+
+**Parameters** (persisted in `configs/changepoint_settings.yaml`):
+- `min_label_length`: Global minimum label length in samples (labels shorter are removed)
+- `label_thresholds`: Per-label overrides for min length (`{label_id: min_length}`)
+- `stitch_gap_len`: Max gap between same-label segments to merge
+- `changepoint_params.max_expansion`: Max samples a boundary can expand toward a changepoint
+- `changepoint_params.max_shrink`: Max samples a boundary can shrink toward a changepoint
+
+**Per-label thresholds** are managed via a popup `LabelThresholdsDialog` (button shows count of custom overrides). Values matching the global min are automatically excluded.
+
+**Correction pipeline** (`correct_changepoints_one_trial` in `changepoints.py`):
+1. Merge all dataset changepoints into a single binary array via `merge_changepoints()`
+2. `purge_small_blocks()` — remove labels shorter than their threshold
+3. `stitch_gaps()` — merge adjacent same-label segments separated by small gaps
+4. For each label block, snap start/end to nearest changepoint index, constrained by `max_expansion`/`max_shrink`
+5. Final `purge_small_blocks()` + `fix_endings()` cleanup
+
+**Parameter keys:** Both the YAML file and `correct_changepoints_one_trial()` use `min_label_length` consistently. The `_cp_correction()` method only injects `cp_kwargs` (dimension selections from `app_state.get_ds_kwargs()`) before passing params to the correction function.
+
+**Modes:**
+- *Single Trial*: Corrects current trial's labels only
+- *All Trials*: Corrects every trial; sets `label_dt.attrs["changepoint_corrected"] = 1` to prevent double-application
+
+**Status indicator:** `cp_status_btn` shows "Not corrected" (red) or "CP corrected (global)" (green). Updated on trial change via `app_state.trial_changed` signal.
+
+**Signal flow:**
+```
+User clicks "All Trials" -> ChangepointsWidget._cp_correction("all_trials")
+    |
+    correct_changepoints_one_trial() for each trial
+    |
+    label_dt.attrs["changepoint_corrected"] = 1
+    |
+    _update_cp_status() -> green status
+    |
+    app_state.labels_modified.emit() -> plots refresh
+```
 
 ---
 
@@ -407,9 +453,9 @@ DataWidget.on_trial_changed()   <- Connected listener
     +-- update_space_plot()
 ```
 
-**On motif creation (signal-based):**
+**On label creation (signal-based):**
 ```
-User presses '1' -> labels_widget.activate_motif(1)
+User presses '1' -> labels_widget.activate_label(1)
     |
 labels_widget.ready_for_label_click = True
     |
@@ -421,7 +467,7 @@ app_state.labels_modified.emit()  <- Signal emitted
     |
 MetaWidget._on_labels_modified()  <- Connected listener
     |
-DataWidget.update_main_plot() -> redraws plot with motifs
+DataWidget.update_main_plot() -> redraws plot with labels
 ```
 
 **On verification change (signal-based):**
@@ -444,7 +490,7 @@ Bound in `MetaWidget._bind_global_shortcuts()`:
 
 | Key | Action |
 |-----|--------|
-| 1-0, Q-P, A-L, Z-M | Activate motif 1-30 |
+| 1-0, Q-P, A-L, Z-M | Activate label 1-30 |
 | Ctrl+S | Save labels |
 | Space | Play/pause video |
 | Up/Down Arrow | Navigate trials |
@@ -454,9 +500,9 @@ Bound in `MetaWidget._bind_global_shortcuts()`:
 | Ctrl+C | Toggle camera selection |
 | Ctrl+M | Toggle mic selection |
 | Ctrl+T | Toggle tracking selection |
-| Ctrl+E | Edit selected motif |
-| Ctrl+D | Delete selected motif |
-| Ctrl+V | Mark motif as verified |
+| Ctrl+E | Edit selected label |
+| Ctrl+D | Delete selected label |
+| Ctrl+V | Mark label as verified |
 | Ctrl+B | Toggle changepoint correction for labels |
 
 ---
@@ -476,7 +522,8 @@ Bound in `MetaWidget._bind_global_shortcuts()`:
 | Widget | Dependencies | Communication |
 |--------|--------------|---------------|
 | NavigationWidget | `app_state`, `viewer` only | Emits `trial_changed` signal |
-| LabelsWidget | `app_state`, `plot_container` | Emits `labels_modified`, `verification_changed` |
+| LabelsWidget | `app_state`, `plot_container`, `changepoints_widget` | Emits `labels_modified`, `verification_changed` |
+| ChangepointsWidget | `app_state`, `plot_container` | CP detection, correction, emits `labels_modified` |
 | DataWidget | All widgets (orchestrator) | Listens to signals, updates UI |
 | PlotsWidget | `app_state`, `plot_container` | Direct plot manipulation |
 | IOWidget | `app_state`, `data_widget`, `labels_widget` | Load operations |

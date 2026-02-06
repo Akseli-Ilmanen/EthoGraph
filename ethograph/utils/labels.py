@@ -32,15 +32,15 @@ def load_mapping(mapping_file):
     return class_to_idx, idx_to_class
 
 
-def load_motif_mapping(mapping_file: Union[str, Path] = "mapping.txt") -> Dict[int, Dict[str, np.ndarray]]:
+def load_label_mapping(mapping_file: Union[str, Path] = "mapping.txt") -> Dict[int, Dict[str, np.ndarray]]:
     """
-    Load motif mapping from a text file and return mapping dictionary with colors.
+    Load label mapping from a text file and return mapping dictionary with colors.
 
     Args:
         mapping_file: Path to the mapping file (default: "mapping.txt")
 
     Returns:
-        Dictionary mapping motif_id to {'name': str, 'color': np.ndarray}
+        Dictionary mapping label_id to {'name': str, 'color': np.ndarray}
 
     Example mapping.txt file:
         0 background
@@ -55,14 +55,14 @@ def load_motif_mapping(mapping_file: Union[str, Path] = "mapping.txt") -> Dict[i
         9 beakTip_idle
 
     Example usage:
-        >>> mapping = load_motif_mapping("mapping.txt")
+        >>> mapping = load_label_mapping("mapping.txt")
         >>> print(mapping[1]['name'])  # 'beakTip_pullOutStick'
         >>> print(mapping[1]['color'])  # [1.0, 0.4, 0.698]
     """
     mapping_file = Path(mapping_file)
    
     # RGB colours, where adjacent colours are maximally different
-    motif_colors = [
+    label_colors = [
         [1, 1, 1],           # background class
         [255, 102, 178],     
         [102, 158, 255],     
@@ -103,7 +103,7 @@ def load_motif_mapping(mapping_file: Union[str, Path] = "mapping.txt") -> Dict[i
     ]
 
     
-    motif_mappings = {}
+    label_mappings = {}
     
     if not mapping_file.exists():
         raise FileNotFoundError(f"Mapping file not found: {mapping_file}")
@@ -112,36 +112,36 @@ def load_motif_mapping(mapping_file: Union[str, Path] = "mapping.txt") -> Dict[i
         for line in f:
             parts = line.strip().split()
             if len(parts) >= 2:
-                motif_id = int(parts[0])
+                label_id = int(parts[0])
                 name = parts[1]
                 
-                color = np.array(motif_colors[motif_id]) / 255.0
+                color = np.array(label_colors[label_id]) / 255.0
                 
-                motif_mappings[motif_id] = {
+                label_mappings[label_id] = {
                     'name': name,
                     'color': color
                 }
     
-    return motif_mappings
+    return label_mappings
 
 
 
 def labels_to_rgb(
     labels: Union[str, np.ndarray], 
-    motif_mapping: Dict[int, Dict[str, np.ndarray]]
+    label_mapping: Dict[int, Dict[str, np.ndarray]]
 ) -> np.ndarray:
     """
-    Convert label sequence to RGB colors based on motif mapping.
+    Convert label sequence to RGB colors based on label mapping.
     
     Args:
-        labels: String of digits or array of integers representing motif IDs
-        motif_mapping: Dictionary from load_motif_mapping()
+        labels: String of digits or array of integers representing label IDs
+        label_mapping: Dictionary from load_label_mapping()
         
     Returns:
         Array of shape (N, 3) with RGB values [0, 1] for each frame
         
     Example:
-        >>> mapping = load_motif_mapping("mapping.txt")
+        >>> mapping = load_label_mapping("mapping.txt")
         >>> labels = "000000111111000002222223333333300000444444444"
         >>> rgb_array = labels_to_rgb(labels, mapping)
         >>> print(rgb_array.shape)  # (45, 3)
@@ -157,13 +157,13 @@ def labels_to_rgb(
     rgb_array = np.zeros((n_frames, 3), dtype=np.float32)
     
     # Vectorized assignment for each unique label
-    for motif_id in np.unique(labels):
-        if motif_id in motif_mapping:
-            mask = labels == motif_id
-            rgb_array[mask] = motif_mapping[motif_id]['color']
+    for label_id in np.unique(labels):
+        if label_id in label_mapping:
+            mask = labels == label_id
+            rgb_array[mask] = label_mapping[label_id]['color']
         else:
             # Default to white for unmapped labels
-            mask = labels == motif_id
+            mask = labels == label_id
             rgb_array[mask] = [1.0, 1.0, 1.0]
     
     return rgb_array
@@ -269,65 +269,64 @@ def stitch_gaps(labels: np.ndarray, max_gap_len: int) -> np.ndarray:
     return stitched
 
 
-# Purge and remove equivalent except for toss exception
-def purge_small_motifs(labels: np.ndarray, min_motif_len: int) -> np.ndarray:
-    purged = labels.copy()
-    
-    for label in np.unique(labels):
-        if label == 0:
-            continue
-        
-        starts, ends = find_blocks(labels == label)
-        
-        for start, end in zip(starts, ends):
-            block_len = end - start + 1
-            
-            # Toss exception - HARD CODED
-            threshold = 6 if label == 3 else min_motif_len
-            
-            if block_len < threshold:
-                purged[start:end + 1] = 0
-    
-    return purged
-
-def remove_small_blocks(input_vec, min_motif_len):
+def purge_small_blocks(
+    labels: np.ndarray,
+    min_length: int,
+    label_thresholds: Dict[Union[int, str], int] = None
+) -> np.ndarray:
     """
-    Remove blocks shorter than min_motif_len from input_vec (set to 0).
+    Remove label blocks shorter than their threshold (set to 0).
 
-    Vectorized implementation for performance with high-frequency data.
+    Args:
+        labels: Array of integer labels
+        min_length: Default minimum length for all labels
+        label_thresholds: Optional dict mapping label_id to custom threshold.
+                         Keys can be int or str (for JSON compatibility).
+
+    Returns:
+        Labels array with short blocks set to 0
+
+    Example:
+        # All labels use threshold 3, except label 3 uses threshold 6
+        purge_small_blocks(labels, min_length=3, label_thresholds={3: 6})
     """
-    if isinstance(input_vec, (str, bytes)):
-        input_vec = np.array([int(c) for c in str(input_vec)])
+    if isinstance(labels, (str, bytes)):
+        labels = np.array([int(c) for c in str(labels)])
     else:
-        input_vec = np.asarray(input_vec)
+        labels = np.asarray(labels)
 
-    if len(input_vec) == 0:
-        return input_vec.copy()
+    if len(labels) == 0:
+        return labels.copy()
 
-    output_vec = input_vec.copy()
+    if label_thresholds is None:
+        label_thresholds = {}
+    else:
+        label_thresholds = {int(k): v for k, v in label_thresholds.items()}
 
-    # Find segment boundaries using vectorized diff
-    padded = np.concatenate([[-1], input_vec, [-1]])
+    output = labels.copy()
+
+    padded = np.concatenate([[-1], labels, [-1]])
     change_mask = padded[:-1] != padded[1:]
     change_indices = np.nonzero(change_mask)[0]
 
-    # Each consecutive pair defines a segment
     for i in range(len(change_indices) - 1):
         start_idx = change_indices[i]
-        end_idx = change_indices[i + 1]  # exclusive
+        end_idx = change_indices[i + 1]
 
-        if start_idx >= len(input_vec):
+        if start_idx >= len(labels):
             continue
 
-        val = input_vec[start_idx]
-        if val == 0:
+        label_val = int(labels[start_idx])
+        if label_val == 0:
             continue
 
+        threshold = label_thresholds.get(label_val, min_length)
         run_length = end_idx - start_idx
-        if run_length < min_motif_len:
-            output_vec[start_idx:end_idx] = 0
 
-    return output_vec
+        if run_length < threshold:
+            output[start_idx:end_idx] = 0
+
+    return output
 
 
 def fix_endings(labels, changepoints):
@@ -416,9 +415,9 @@ def create_classification_probabilities_pdf(label_dt, output_path: Union[str, Pa
     N = len(trial_nums)
 
     mapping_path = get_project_root() / "configs" / "mapping.txt"
-    motif_mappings = load_motif_mapping(mapping_path)
-    class_colors = [motif_mappings[i]['color'] for i in range(len(motif_mappings))]
-    num_classes = len(motif_mappings)
+    label_mappings = load_label_mapping(mapping_path)
+    class_colors = [label_mappings[i]['color'] for i in range(len(label_mappings))]
+    num_classes = len(label_mappings)
     
     n_cols = 3
     n_rows = (N + n_cols - 1) // n_cols
@@ -520,77 +519,77 @@ def create_classification_probabilities_pdf(label_dt, output_path: Union[str, Pa
     return label_dt
 
     
-def plot_motif_segments(ax, time_data, labels, motif_mappings, is_main=True, fraction=0.2):
-    """Plot motif segments for a given data array.
+def plot_label_segments(ax, time_data, labels, label_mappings, is_main=True, fraction=0.2):
+    """Plot label segments for a given data array.
     
     Args:
         ax: Matplotlib axis to plot on
         labels: Label/prediction data array
-        motif_mappings: Dict mapping motif_id to color info
+        label_mappings: Dict mapping label_id to color info
         fps: Frames per second for time conversion (optional)
         is_main: If True, plot full-height rectangles; if False, plot small rectangles at top
     """
 
     
-    current_motif_id = 0
+    current_label_id = 0
     segment_start = None
     
     for i, label in enumerate(labels):
         if label != 0:
-            if label != current_motif_id:
-                if current_motif_id != 0 and segment_start is not None:
-                    draw_motif_rectangle(
+            if label != current_label_id:
+                if current_label_id != 0 and segment_start is not None:
+                    draw_label_rectangle(
                         ax,
                         time_data[segment_start],
                         time_data[i - 1],
-                        current_motif_id,
-                        motif_mappings,
+                        current_label_id,
+                        label_mappings,
                         is_main,
                         fraction=fraction
                     )
                 
-                current_motif_id = label
+                current_label_id = label
                 segment_start = i
         else:
-            if current_motif_id != 0 and segment_start is not None:
-                draw_motif_rectangle(
+            if current_label_id != 0 and segment_start is not None:
+                draw_label_rectangle(
                     ax,
                     time_data[segment_start],
                     time_data[i - 1],
-                    current_motif_id,
-                    motif_mappings,
+                    current_label_id,
+                    label_mappings,
                     is_main,
                     fraction=fraction
                 )
-                current_motif_id = 0
+                current_label_id = 0
                 segment_start = None
     
-    if current_motif_id != 0 and segment_start is not None:
-        draw_motif_rectangle(
+    if current_label_id != 0 and segment_start is not None:
+        draw_label_rectangle(
             ax,
             time_data[segment_start],
             time_data[-1],
-            current_motif_id,
-            motif_mappings,
+            current_label_id,
+            label_mappings,
             is_main,
             fraction=fraction
         )
 
-def draw_motif_rectangle(ax, start_time, end_time, motif_id, motif_mappings, is_main=True, fraction=None):
-    """Draw motif rectangle using matplotlib.
+def draw_label_rectangle(ax, start_time, end_time, label_id, label_mappings, is_main=True, fraction=None):
+    """Draw label rectangle using matplotlib.
     
     Args:
         ax: Matplotlib axis to plot on
-        start_time: Start time of the motif
-        end_time: End time of the motif
-        motif_id: ID of the motif for color mapping
-        motif_mappings: Dict mapping motif_id to color info
+        start_time: Start time of the label
+        end_time: End time of the label
+        label_id: ID of the label for color mapping
+        label_mappings: Dict mapping label_id to color info
         is_main: If True, draw full-height rectangle; if False, draw small rectangle at top
     """
-    if motif_id not in motif_mappings:
+    if label_id not in label_mappings:
         return
     
-    color = motif_mappings[motif_id]["color"]
+    color = label_mappings[label_id]["color"]
     
     if is_main:
         ax.axvspan(
@@ -615,23 +614,23 @@ def draw_motif_rectangle(ax, start_time, end_time, motif_id, motif_mappings, is_
         
         
         
-def plot_motif_segments_multirow(
+def plot_label_segments_multirow(
     ax: plt.Axes,
     time_data: np.ndarray,
     labels: np.ndarray,
-    motif_mappings: Dict[int, Dict[str, str]],
+    label_mappings: Dict[int, Dict[str, str]],
     row_index: int = 0,
     row_spacing: float = 0.8,
     rect_height: float = 0.7,
     alpha: float = 0.7
 ) -> None:
-    """Plot motif segments at a specific row position.
+    """Plot label segments at a specific row position.
     
     Args:
         ax: Matplotlib axis to plot on
         time_data: Time array for x-axis positioning
         labels: Label/prediction data array
-        motif_mappings: Dict mapping motif_id to color info
+        label_mappings: Dict mapping label_id to color info
         row_index: Row number (0-based) for vertical positioning
         row_spacing: Vertical spacing between rows
         rect_height: Height of each rectangle
@@ -639,7 +638,7 @@ def plot_motif_segments_multirow(
     """
     y_base = row_index * row_spacing
     
-    current_motif_id = 0
+    current_label_id = 0
     segment_start = None
     
     for i, label in enumerate(labels):
@@ -647,31 +646,31 @@ def plot_motif_segments_multirow(
         label = int(label) if hasattr(label, 'item') else int(label)
         
         if label != 0:
-            if label != current_motif_id:
-                if current_motif_id != 0 and segment_start is not None:
+            if label != current_label_id:
+                if current_label_id != 0 and segment_start is not None:
                     _draw_rectangle(
                         ax, time_data[segment_start], time_data[i - 1],
-                        y_base, rect_height, current_motif_id,
-                        motif_mappings, alpha
+                        y_base, rect_height, current_label_id,
+                        label_mappings, alpha
                     )
                 
-                current_motif_id = label
+                current_label_id = label
                 segment_start = i
         else:
-            if current_motif_id != 0 and segment_start is not None:
+            if current_label_id != 0 and segment_start is not None:
                 _draw_rectangle(
                     ax, time_data[segment_start], time_data[i - 1],
-                    y_base, rect_height, current_motif_id,
-                    motif_mappings, alpha
+                    y_base, rect_height, current_label_id,
+                    label_mappings, alpha
                 )
-                current_motif_id = 0
+                current_label_id = 0
                 segment_start = None
     
-    if current_motif_id != 0 and segment_start is not None:
+    if current_label_id != 0 and segment_start is not None:
         _draw_rectangle(
             ax, time_data[segment_start], time_data[-1],
-            y_base, rect_height, current_motif_id,
-            motif_mappings, alpha
+            y_base, rect_height, current_label_id,
+            label_mappings, alpha
         )
 
 
@@ -681,18 +680,18 @@ def _draw_rectangle(
     end_time: float,
     y_base: float,
     height: float,
-    motif_id: int,
-    motif_mappings: Dict[int, Dict[str, str]],
+    label_id: int,
+    label_mappings: Dict[int, Dict[str, str]],
     alpha: float
 ) -> None:
-    """Draw a single motif rectangle."""
-    # Ensure motif_id is a scalar integer
-    motif_id = int(motif_id) if hasattr(motif_id, 'item') else int(motif_id)
+    """Draw a single label rectangle."""
+    # Ensure label_id is a scalar integer
+    label_id = int(label_id) if hasattr(label_id, 'item') else int(label_id)
     
-    if motif_id not in motif_mappings:
+    if label_id not in label_mappings:
         return
     
-    color = motif_mappings[motif_id]["color"]
+    color = label_mappings[label_id]["color"]
     
     rect = patches.Rectangle(
         (start_time, y_base),
