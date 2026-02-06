@@ -121,7 +121,6 @@ class PlotContainer(QWidget):
         time = self.app_state.time.values
         
         right_axis = self.current_plot.plot_item.getAxis('right')
-        right_axis.setLabel('Confidence', color='m')
         right_axis.setStyle(showValues=True)
         right_axis.show()
         
@@ -134,8 +133,7 @@ class PlotContainer(QWidget):
         self.confidence_item = pg.PlotCurveItem(
             time,
             scaled_confidence,
-            pen=pg.mkPen(color='k', width=2, style=pg.QtCore.Qt.DashLine),
-            name='Confidence'
+            pen=pg.mkPen(color='k', width=2, style=pg.QtCore.Qt.DashLine)
         )
         self.current_plot.plot_item.addItem(self.confidence_item)
         
