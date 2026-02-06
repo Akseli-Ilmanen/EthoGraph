@@ -422,7 +422,7 @@ class IOWidget(QWidget):
                     self.labels_widget._mark_changes_unsaved()
                     self.app_state.verification_changed.emit()
                     self.app_state.labels_modified.emit()
-                    self.labels_widget.refresh_motif_shapes_layer()
+                    self.labels_widget.refresh_labels_shapes_layer()
 
     
             

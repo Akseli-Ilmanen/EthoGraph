@@ -15,7 +15,8 @@ from ethograph.utils.paths import get_project_root
 
 params_rigid = {
 "good_s3d_feats": None, # Already exclude in file generation
-"min_motif_len": 10, # Same as purge value, but also applied after changepoint correction, for toss, I in changepoint set this to 5
+"min_label_length": 10, # Minimum block length, also applied after changepoint correction
+"label_thresholds": {3: 6}, # Per-label overrides for min_label_length (e.g., toss=3 uses 6)
 "stitch_gap_len": 3, # 000222000222333000 -> 0002222222333000
 "changepoint_params": {
    "sigmas": [2.0, 3.0, 5.0],
