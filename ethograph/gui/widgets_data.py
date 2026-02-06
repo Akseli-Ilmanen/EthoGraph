@@ -311,7 +311,7 @@ class DataWidget(DataLoader, QWidget):
             self.space_plot_combo.addItems(["Layer controls", "space_2D", "space_3D"])
             self.space_plot_combo.currentTextChanged.connect(self._on_space_plot_changed)
             self.controls.append(self.space_plot_combo)
-            self.layout().addRow("Space plot:", self.space_plot_combo)
+            self.layout().addRow("On the left show:", self.space_plot_combo)
 
         # Overlay checkboxes row (confidence + audio overlays)
         overlay_row = QHBoxLayout()

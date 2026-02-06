@@ -76,6 +76,8 @@ DEFAULT_FALLBACK_MAX_FREQUENCY = 25000  # Hz, fallback when audio not loaded
 # DATA PROCESSING
 # =============================================================================
 
+MIN_LABEL_LEN = 3 # If not specified via changepoint correction
+
 
 # Z-index values for layering
 Z_INDEX_BACKGROUND = -20

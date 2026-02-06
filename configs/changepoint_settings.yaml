@@ -1,6 +1,10 @@
 min_label_length: 10
 label_thresholds:
   '3': 6
+  '8': 6
+  '9': 6
+  '10': 6
+  '17': 6
 stitch_gap_len: 3
 changepoint_params:
   max_expansion: 10.0

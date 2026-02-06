@@ -1,4 +1,4 @@
-"""Refactored observable application state with napari video sync support."""
+"""Settings that the user can modify and are saved in gui_settings.yaml"""
 
 from datetime import datetime
 from pathlib import Path
@@ -127,6 +127,7 @@ class AppStateSpec:
         "audio_cp_min_syllable_length_s": (float, 0.02, True),
         "audio_cp_silence_threshold": (float, 0.1, True),
         "show_changepoints": (bool, True, True),
+        "apply_changepoint_correction": (bool, True, True),
     }
 
     @classmethod

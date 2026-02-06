@@ -98,6 +98,7 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         # Now set the data_widget reference in io_widget
         self.io_widget.data_widget = self.data_widget
+        self.io_widget.changepoints_widget = self.changepoints_widget
 
         # Set up cross-references between widgets
         self.labels_widget.set_plot_container(self.plot_container)

@@ -418,7 +418,7 @@ class IOWidget(QWidget):
 
                     self.label_file_path_edit.setText(labels_file_path)
 
-                    self.labels_widget._update_cp_status()
+                    self.changepoints_widget._update_cp_status()
                     self.labels_widget._mark_changes_unsaved()
                     self.app_state.verification_changed.emit()
                     self.app_state.labels_modified.emit()
