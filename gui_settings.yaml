@@ -1,7 +1,7 @@
 fps_playback: 30.0
 video_folder: D:/Alice/VidData/20250513_01_Ivy
 vmin_db: -120.0
-video_path: D:\Alice\VidData\20250513_01_Ivy\2025-05-13_091_Ivy-cam-1.mp4
+video_path: D:\Alice\VidData\20250513_01_Ivy\2025-05-13_012_Ivy-cam-1.mp4
 show_changepoints: true
 hop_frac: 0.5
 buffer_multiplier: 5.0
@@ -33,4 +33,4 @@ keypoints_sel: beakTip
 keypoints_sel_previous: stickTip
 s3d_dims_sel: '0'
 trial_conditions_sel: None
-trials_sel: 91
+trials_sel: 12
