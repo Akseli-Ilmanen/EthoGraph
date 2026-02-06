@@ -36,7 +36,7 @@ def get_project_root(start: Path | None = None) -> Path:
 
 def gui_default_settings_path() -> Path:
     """Get the default path for gui_settings.yaml in the project root."""
-    settings_path = get_project_root() / "gui_settings.yaml"
+    settings_path = get_project_root() / "configs" / "gui_settings.yaml"
     settings_path.touch(exist_ok=True)
     return settings_path
 

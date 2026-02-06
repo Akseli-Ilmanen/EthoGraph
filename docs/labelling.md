@@ -7,14 +7,15 @@ Before closing, you will be prompted to `update with labels and save`, this take
 
 ![keyboard](media/keyboard.png)
 
-To create a new motif label:
-1. Press one of the keys above to activate a specific motif label.
-2. Click twice on the line plot to define the start and end boundaries of the motif
-3. The motif will be created and displayed with a color-coded overlay
+To create a new label label:
+
+1. Press one of the keys above to activate a specific label label.
+2. Click twice on the line plot to define the start and end boundaries of the label
+3. The label will be created and displayed with a color-coded overlay
 
 ## Playing Back Labels
 
-Once you've created motif labels, you can click on the motif, press 'v' to play the segment.
+Once you've created label labels, you can click on the label, press 'v' to play the segment.
 
 ![label_play](media/label_play.gif)
 
@@ -23,12 +24,12 @@ Once you've created motif labels, you can click on the motif, press 'v' to play 
 
 ## Editing and Deleting Labels
 
-You can edit or delete existing motifs using the labels widget interface:
+You can edit or delete existing labels using the labels widget interface:
 
 ![edit_delete](media/edit_delete.gif)
 
-- **Edit**: Select a motif (Left-click), press `Ctrl + E`, then click twice to define new start/stop boundary
-- **Delete**: Select a motif (Left-click), press `Ctrl + D` to delete.
+- **Edit**: Select a label (Left-click), press `Ctrl + E`, then click twice to define new start/stop boundary
+- **Delete**: Select a label (Left-click), press `Ctrl + D` to delete.
 
 ## Changepoint Correction
 

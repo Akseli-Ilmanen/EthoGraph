@@ -6,7 +6,7 @@
 | Shortcut | Action |
 |----------|--------|
 | `Space` | Toggle play/pause video and audio |
-| `v` | Play selected motif segment |
+| `v` | Play selected label segment |
 | `←` | Previous frame (NapariVideo) |
 | `→` | Next frame (NapariVideo) |
 
@@ -21,7 +21,7 @@
 
 | Action | Function |
 |--------|----------|
-| **Left Click** | Select motif (when not in label mode) |
+| **Left Click** | Select label (when not in label mode) |
 | **Right Click** | Seek video to clicked time |
 | **Right Click + Drag** | Adjust X/Y axis limits (PyQtGraph built-in) |
 
@@ -29,11 +29,11 @@
 
 | Shortcut / Action | Description |
 |-------------------|-------------|
-| `1-9`, `0`, `Q-P`, `A-L` | Activate motif |
-| Click twice on line plot | Define motif boundaries (set start/end) |
-| Left-click on motif | Select existing motif |
-| `Ctrl+E` | Edit selected motif boundaries (after selecting motif, click twice for new boundaries) |
-| `Ctrl+D` | Delete selected motif (after selecting motif) |
+| `1-9`, `0`, `Q-P`, `A-L` | Activate label |
+| Click twice on line plot | Define label boundaries (set start/end) |
+| Left-click on label | Select existing label |
+| `Ctrl+E` | Edit selected label boundaries (after selecting label, click twice for new boundaries) |
+| `Ctrl+D` | Delete selected label (after selecting label) |
 | `Ctrl+S` | Save labels `.nc` file. (Save `sesssion` only via button). |
 | `Ctrl+X` | Switch between labels and predictions. |
 | `Ctrl+V` | 'Verify predictions' by editing once or this shortcut. | 

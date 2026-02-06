@@ -228,10 +228,10 @@ def update_nc_with_matlab_trials(
         )
         
         # Update labels if available
-        if hasattr(trial, 'motif_infos') and hasattr(trial.motif_infos, 'beakTip'):
+        if hasattr(trial, 'label_infos') and hasattr(trial.label_infos, 'beakTip'):
             if 'bird' in ds.attrs:
                 bird = ds.attrs['bird']
-                labels = trial.motif_infos.beakTip.labels
+                labels = trial.label_infos.beakTip.labels
                 ds['labels'].loc[dict(individuals=bird)] = labels
     
     # Save updated tree

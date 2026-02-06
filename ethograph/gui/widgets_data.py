@@ -18,9 +18,11 @@ from qtpy.QtWidgets import (
     QComboBox,
     QCompleter,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QSizePolicy,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -32,8 +34,9 @@ from .data_loader import load_dataset
 from .plots_space import SpacePlot
 from .plots_spectrogram import SharedAudioCache
 from .video_sync import NapariVideoSync
+from .app_constants import DEFAULT_LAYOUT_SPACING, DEFAULT_LAYOUT_MARGIN
 
-# PyAV streamer with fixes 
+# PyAV streamer with fixes
 from napari_pyav._reader import FastVideoReader
 
 
@@ -68,8 +71,8 @@ class DataWidget(DataLoader, QWidget):
         self.parent = parent
         self.viewer = napari_viewer
         layout = QFormLayout()
-        layout.setSpacing(2)
-        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(DEFAULT_LAYOUT_SPACING)
+        layout.setContentsMargins(DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN)
         self.setLayout(layout)
         self.app_state = app_state
         self.meta_widget = meta_widget
@@ -124,10 +127,8 @@ class DataWidget(DataLoader, QWidget):
 
     def _get_sampling_rate(self, time_coords: np.ndarray) -> float:
         """Calculate sampling rate from time coordinates."""
-        if len(time_coords) < 2:
-            return 30.0
         dt = np.median(np.diff(time_coords))
-        return 1.0 / dt if dt > 0 else 30.0
+        return 1.0 / dt 
         
 
     
@@ -285,7 +286,25 @@ class DataWidget(DataLoader, QWidget):
         # Create device combos in IOWidget
         self.io_widget.create_device_controls(self.type_vars_dict)
 
-        
+        self.navigation_widget.setup_trial_conditions(self.type_vars_dict)
+        self.navigation_widget.set_data_widget(self)
+
+        # Create QGroupBox for xarray coordinates
+        self.coords_groupbox = QGroupBox("Xarray coords")
+        self.coords_groupbox_layout = QFormLayout()
+        self.coords_groupbox_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
+        self.coords_groupbox_layout.setContentsMargins(DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN)
+        self.coords_groupbox.setLayout(self.coords_groupbox_layout)
+
+        non_data_type_vars = ["cameras", "mics", "tracking", "trial_conditions", "changepoints", "rgb"]
+
+        for type_var in self.type_vars_dict.keys():
+            if type_var.lower() not in non_data_type_vars:
+                self._create_combo_widget(type_var, self.type_vars_dict[type_var])
+
+        self.layout().addRow(self.coords_groupbox)
+
+        # Space plot combo in its own row
         if 'position' in self.app_state.ds.data_vars:
             self.space_plot_combo = QComboBox()
             self.space_plot_combo.setObjectName("space_plot_combo")
@@ -293,34 +312,15 @@ class DataWidget(DataLoader, QWidget):
             self.space_plot_combo.currentTextChanged.connect(self._on_space_plot_changed)
             self.controls.append(self.space_plot_combo)
             self.layout().addRow("Space plot:", self.space_plot_combo)
-            gap_label = QLabel("")
-            gap_label.setFixedHeight(10) 
-            self.layout().addRow(gap_label)
 
-
-        self.navigation_widget.setup_trial_conditions(self.type_vars_dict)
-        self.navigation_widget.set_data_widget(self)
-
-
-        non_data_type_vars = ["cameras", "mics", "tracking", "trial_conditions", "changepoints", "rgb"]
-        
-        
-        
-        
-        for type_var in self.type_vars_dict.keys():
-            if type_var.lower() not in non_data_type_vars:
-                self._create_combo_widget(type_var, self.type_vars_dict[type_var])
-
-
-
+        # Overlay checkboxes row (confidence + audio overlays)
         overlay_row = QHBoxLayout()
+        overlay_row.setSpacing(15)
 
-        self.show_confidence_checkbox = QCheckBox("Show confidence")
+        self.show_confidence_checkbox = QCheckBox("Confidence")
         self.show_confidence_checkbox.setChecked(False)
         self.show_confidence_checkbox.stateChanged.connect(self._on_show_confidence_changed)
         overlay_row.addWidget(self.show_confidence_checkbox)
-
-        overlay_row.addSpacing(20)
 
         self.show_waveform_checkbox = QCheckBox("Waveform overlay")
         self.show_waveform_checkbox.setChecked(False)
@@ -335,11 +335,7 @@ class DataWidget(DataLoader, QWidget):
         overlay_row.addWidget(self.show_spectrogram_checkbox)
 
         overlay_row.addStretch()
-        self.layout().addRow(overlay_row)
-        
-
-
-
+        self.layout().addRow("Overlays:", overlay_row)
 
         # Initially disable trial controls until data is loaded
         self._set_controls_enabled(False)
@@ -430,6 +426,7 @@ class DataWidget(DataLoader, QWidget):
 
         For qualifying type variables (not features, colors, cameras, mics,
         tracking), adds an 'All' checkbox that shows all traces.
+        Adds widgets to the coords_groupbox_layout.
         """
         excluded_from_all = {"individuals", "features", "colors", "cameras", "mics", "tracking"}
         show_all_checkbox = key not in excluded_from_all
@@ -444,6 +441,9 @@ class DataWidget(DataLoader, QWidget):
             combo.addItems([str(var) for var in vars])
 
         make_searchable(combo)
+
+        # Add to groupbox layout instead of main layout
+        target_layout = self.coords_groupbox_layout
 
         if show_all_checkbox:
             row_widget = QWidget()
@@ -463,14 +463,13 @@ class DataWidget(DataLoader, QWidget):
             self.all_checkboxes[key] = all_checkbox
             self.controls.append(all_checkbox)
 
-            self.layout().addRow(f"{key.capitalize()}:", row_widget)
+            target_layout.addRow(f"{key.capitalize()}:", row_widget)
         else:
-            self.layout().addRow(f"{key.capitalize()}:", combo)
+            target_layout.addRow(f"{key.capitalize()}:", combo)
 
         self.combos[key] = combo
         self.controls.append(combo)
-            
-        
+
         return combo
 
 
@@ -698,7 +697,7 @@ class DataWidget(DataLoader, QWidget):
         self.app_state.current_frame = 0
         self.update_video_audio()
         self.update_tracking()
-        self.update_motif_label()
+        self.update_label_label()
         self.update_main_plot()
         self.update_space_plot()
         self.app_state.verification_changed.emit()
@@ -715,7 +714,7 @@ class DataWidget(DataLoader, QWidget):
         try:
 
             current_plot.update_plot(**kwargs)
-            self.update_motif_plot(ds_kwargs)
+            self.update_label_plot(ds_kwargs)
    
 
             # Handle confidence plotting based on checkbox state
@@ -738,8 +737,8 @@ class DataWidget(DataLoader, QWidget):
             show_error(f"Error updating plot: {e}")
 
 
-    def update_motif_plot(self, ds_kwargs):
-        """Update motif plot with labels and predictions."""
+    def update_label_plot(self, ds_kwargs):
+        """Update label plot with labels and predictions."""
 
  
         label_ds = self.app_state.label_ds
@@ -758,10 +757,10 @@ class DataWidget(DataLoader, QWidget):
         ):
             pred_ds = self.app_state.pred_ds
             predictions, _ = sel_valid(pred_ds.labels, ds_kwargs)
-            self.labels_widget.plot_all_motifs(time, labels, predictions)
+            self.labels_widget.plot_all_labels(time, labels, predictions)
 
         else:
-            self.labels_widget.plot_all_motifs(time, labels)
+            self.labels_widget.plot_all_labels(time, labels)
 
 
 
@@ -852,9 +851,9 @@ class DataWidget(DataLoader, QWidget):
         self.video.frame_changed.connect(self._on_sync_frame_changed)
 
 
-    def update_motif_label(self):
-        """Update motif label display."""
-        self.labels_widget.refresh_motif_shapes_layer()
+    def update_label_label(self):
+        """Update label label display."""
+        self.labels_widget.refresh_labels_shapes_layer()
 
 
     def toggle_pause_resume(self):

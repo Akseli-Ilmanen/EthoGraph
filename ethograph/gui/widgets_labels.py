@@ -34,18 +34,32 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 from napari.utils.notifications import show_warning
-from ethograph.features.changepoints import correct_changepoints_one_trial, snap_to_nearest_changepoint
-from ethograph.utils.labels import load_motif_mapping, remove_small_blocks
+from ethograph.features.changepoints import snap_to_nearest_changepoint
+from ethograph.utils.labels import load_label_mapping, purge_small_blocks
 from ethograph.utils.data_utils import sel_valid
-from ethograph import TrialTree    
+from ethograph import TrialTree
 import json
 import time
 import xarray as xr
 from qtpy.QtCore import Qt, Signal
 
+from .app_constants import (
+    LABELS_TABLE_MAX_HEIGHT,
+    LABELS_TABLE_ROW_HEIGHT,
+    LABELS_TABLE_ID_COLUMN_WIDTH,
+    LABELS_TABLE_COLOR_COLUMN_WIDTH,
+    LABELS_OVERLAY_BOX_WIDTH,
+    LABELS_OVERLAY_BOX_HEIGHT,
+    LABELS_OVERLAY_BOX_MARGIN,
+    LABELS_OVERLAY_TEXT_SIZE,
+    LABELS_OVERLAY_FALLBACK_SIZE,
+    DEFAULT_LAYOUT_SPACING,
+    Z_INDEX_LABELS_OVERLAY,
+)
+
 
 class LabelsWidget(QWidget):
-    """Widget for labeling movement motifs in time series data."""
+    """Widget for labeling movement labels in time series data."""
     
     highlight_spaceplot = Signal(float, float)
 
@@ -68,38 +82,36 @@ class LabelsWidget(QWidget):
         # Shortcut bindings are now handled outside the widget
 
         # Labeling state
-        self.motif_mappings: dict[int, dict[str, Any]] = {}
+        self._mappings: dict[int, dict[str, Any]] = {}
         self.ready_for_label_click = False
         self.ready_for_play_click = False
         self.first_click = None
         self.second_click = None
-        self.selected_motif_id = 0
+        self.selected_labels_id = 0
 
-        # Current motif selection for editing
-        self.current_motif_pos: list[int] | None = None  # [start, end] idx of selected motif
-        self.current_motif_id: int | None = None  # ID of currently selected motif
-        self.current_motif_is_prediction: bool = False  # Whether selected motif is from predictions
+        # Current  selection for editing
+        self.current_labels_pos: list[int] | None = None  # [start, end] idx of selected 
+        self.current_labels_id: int | None = None  # ID of currently selected 
+        self.current_labels_is_prediction: bool = False  # Whether selected  is from predictions
 
         # Edit mode state  
-        self.old_motif_pos: list[int] | None = None  # Original position when editing
-        self.old_motif_id: int | None = None  # Original ID when editing
+        self.old_labels_pos: list[int] | None = None  # Original position when editing
+        self.old_labels_id: int | None = None  # Original ID when editing
         
-        # Frame tracking for motif display
+        # Frame tracking for  display
         self.previous_frame: int | None = None
 
 
         # UI components
-        self.motifs_table = None
+        self.labels_table = None
 
         self._setup_ui()
 
 
-        # Use absolute path to mapping.txt in the project root
 
-        
         mapping_path = get_project_root() / "configs" / "mapping.txt"
-        self.motif_mappings = load_motif_mapping(mapping_path) # HARD CODED FOR NOW
-        self._populate_motifs_table()
+        self._mappings = load_label_mapping(mapping_path)
+        self._populate_labels_table()
 
 
 
@@ -110,7 +122,7 @@ class LabelsWidget(QWidget):
     def set_plot_container(self, plot_container):
         """Set the plot container reference and connect click handler to all plots."""
         self.plot_container = plot_container
-        plot_container.set_motif_mappings(self.motif_mappings)
+        plot_container.set_label_mappings(self._mappings)
 
         for plot in [plot_container.line_plot,
                      plot_container.spectrogram_plot,
@@ -122,8 +134,8 @@ class LabelsWidget(QWidget):
         """Set reference to the meta widget for layout refresh."""
         self.meta_widget = meta_widget
 
-    def plot_all_motifs(self, time_data, labels, predictions=None):
-        """Plot all motifs for current trial and keypoint based on current labels state.
+    def plot_all_labels(self, time_data, labels, predictions=None):
+        """Plot all labels for current trial and keypoint based on current labels state.
 
         Delegates to PlotContainer for centralized, synchronized label drawing
         across all plot types.
@@ -152,25 +164,25 @@ class LabelsWidget(QWidget):
     def _setup_ui(self):
         """Set up the user interface."""
         layout = QVBoxLayout()
-        layout.setSpacing(2)  # Minimal spacing
+        layout.setSpacing(DEFAULT_LAYOUT_SPACING)
         self.setLayout(layout)
 
         # Create toggle buttons for collapsible sections
         self._create_toggle_buttons()
         layout.addWidget(self.toggle_widget)
 
-        # Create motifs table
-        self._create_motifs_table_and_edit_buttons()
+        # Create labels table
+        self._create_labels_table_and_edit_buttons()
 
         # Create control buttons
         self._create_control_buttons()
 
         # Add collapsible sections
-        layout.addWidget(self.motifs_table)
+        layout.addWidget(self.labels_table)
         layout.addWidget(self.controls_widget)
 
         # Set initial state: table visible, controls hidden
-        self.table_toggle.setText("📋 Motifs Table ✓")
+        self.table_toggle.setText("📋 Table ✓")
         self.controls_toggle.setText("🎛️ Controls")
         self.controls_widget.hide()
 
@@ -184,7 +196,7 @@ class LabelsWidget(QWidget):
         self.toggle_widget.setLayout(toggle_layout)
 
         # Table toggle button
-        self.table_toggle = QPushButton("📋 Motifs Table")
+        self.table_toggle = QPushButton("📋 Table")
         self.table_toggle.setCheckable(True)
         self.table_toggle.setChecked(True)
         self.table_toggle.clicked.connect(self._toggle_table)
@@ -198,20 +210,20 @@ class LabelsWidget(QWidget):
         toggle_layout.addWidget(self.controls_toggle)
 
     def _toggle_table(self):
-        """Toggle motifs table visibility (mutually exclusive with controls)."""
+        """Toggle labels table visibility (mutually exclusive with controls)."""
         if self.table_toggle.isChecked():
             # Show table, hide controls
-            self.motifs_table.show()
+            self.labels_table.show()
             self.controls_widget.hide()
-            self.table_toggle.setText("📋 Motifs Table ✓")
+            self.table_toggle.setText("📋 Table ✓")
             self.controls_toggle.setText("🎛️ Controls")
             self.controls_toggle.setChecked(False)
         else:
             # If trying to uncheck table, force controls to be checked instead
             self.controls_widget.show()
-            self.motifs_table.hide()
+            self.labels_table.hide()
             self.controls_toggle.setText("🎛️ Controls ✓")
-            self.table_toggle.setText("📋 Motifs Table")
+            self.table_toggle.setText("📋 Table")
             self.controls_toggle.setChecked(True)
         self._refresh_layout()
 
@@ -220,15 +232,15 @@ class LabelsWidget(QWidget):
         if self.controls_toggle.isChecked():
             # Show controls, hide table
             self.controls_widget.show()
-            self.motifs_table.hide()
+            self.labels_table.hide()
             self.controls_toggle.setText("🎛️ Controls ✓")
-            self.table_toggle.setText("📋 Motifs Table")
+            self.table_toggle.setText("📋 Table")
             self.table_toggle.setChecked(False)
         else:
             # If trying to uncheck controls, force table to be checked instead
-            self.motifs_table.show()
+            self.labels_table.show()
             self.controls_widget.hide()
-            self.table_toggle.setText("📋 Motifs Table ✓")
+            self.table_toggle.setText("📋 Table ✓")
             self.controls_toggle.setText("🎛️ Controls")
             self.table_toggle.setChecked(True)
         self._refresh_layout()
@@ -242,15 +254,15 @@ class LabelsWidget(QWidget):
             QApplication.processEvents()
             labels_collapsible.expand()
 
-    def _create_motifs_table_and_edit_buttons(self):
-        """Create the motifs table showing available motif types in two columns."""
-        self.motifs_table = QTableWidget()
-        self.motifs_table.setColumnCount(6)
-        self.motifs_table.setHorizontalHeaderLabels(["ID", "Name (Shortcut)", "C", "ID", "Name (Shortcut)", "C"])
+    def _create_labels_table_and_edit_buttons(self):
+        """Create the labels table showing available  types in two columns."""
+        self.labels_table = QTableWidget()
+        self.labels_table.setColumnCount(6)
+        self.labels_table.setHorizontalHeaderLabels(["ID", "Name (Shortcut)", "C", "ID", "Name (Shortcut)", "C"])
 
-        self.motifs_table.verticalHeader().setVisible(False)
+        self.labels_table.verticalHeader().setVisible(False)
 
-        header = self.motifs_table.horizontalHeader()
+        header = self.labels_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Fixed)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         header.setSectionResizeMode(2, QHeaderView.Fixed)
@@ -258,22 +270,22 @@ class LabelsWidget(QWidget):
         header.setSectionResizeMode(4, QHeaderView.Stretch)
         header.setSectionResizeMode(5, QHeaderView.Fixed)
 
-        self.motifs_table.setColumnWidth(0, 20)
-        self.motifs_table.setColumnWidth(2, 20)
-        self.motifs_table.setColumnWidth(3, 20)
-        self.motifs_table.setColumnWidth(5, 20)
+        self.labels_table.setColumnWidth(0, LABELS_TABLE_ID_COLUMN_WIDTH)
+        self.labels_table.setColumnWidth(2, LABELS_TABLE_COLOR_COLUMN_WIDTH)
+        self.labels_table.setColumnWidth(3, LABELS_TABLE_ID_COLUMN_WIDTH)
+        self.labels_table.setColumnWidth(5, LABELS_TABLE_COLOR_COLUMN_WIDTH)
 
-        self.motifs_table.setSelectionBehavior(QAbstractItemView.SelectItems)
-        self.motifs_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.motifs_table.verticalHeader().setDefaultSectionSize(18)
-        self.motifs_table.setMaximumHeight(120)
-        self.motifs_table.setStyleSheet("""
+        self.labels_table.setSelectionBehavior(QAbstractItemView.SelectItems)
+        self.labels_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.labels_table.verticalHeader().setDefaultSectionSize(LABELS_TABLE_ROW_HEIGHT)
+        self.labels_table.setMaximumHeight(LABELS_TABLE_MAX_HEIGHT)
+        self.labels_table.setStyleSheet("""
             QTableWidget { gridline-color: transparent; }
             QTableWidget::item { padding: 0px 2px; }
             QHeaderView::section { padding: 0px 2px; }
         """)
 
-        self.motifs_table.itemSelectionChanged.connect(self._on_table_selection_changed)
+        self.labels_table.itemSelectionChanged.connect(self._on_table_selection_changed)
 
 
 
@@ -285,6 +297,32 @@ class LabelsWidget(QWidget):
         layout.setSpacing(0)
         self.controls_widget.setLayout(layout)
 
+
+        # Mapping file row
+        mapping_row = QWidget()
+        mapping_layout = QHBoxLayout()
+        mapping_layout.setSpacing(0)
+        mapping_row.setLayout(mapping_layout)
+
+        self.mapping_file_path_edit = QLineEdit()
+        default_mapping_path = str(get_project_root() / "configs" / "mapping.txt")
+        self.mapping_file_path_edit.setText(default_mapping_path)
+        self.mapping_file_path_edit.setToolTip("Path to mapping.txt file")
+        self.mapping_file_path_edit.returnPressed.connect(
+            lambda: self._reload_mapping(self.mapping_file_path_edit.text())
+        )
+        mapping_layout.addWidget(self.mapping_file_path_edit)
+
+        self.browse_mapping_btn = QPushButton("Browse")
+        self.browse_mapping_btn.clicked.connect(self._browse_mapping_file)
+        mapping_layout.addWidget(self.browse_mapping_btn)
+
+        self.temp_labels_button = QPushButton("Create temporary labels")
+        self.temp_labels_button.setToolTip("Create custom labels for this session only")
+        self.temp_labels_button.clicked.connect(self._create_temporary_labels)
+        mapping_layout.addWidget(self.temp_labels_button)
+
+        layout.addWidget(mapping_row)
 
         # Predictions file row
         pred_row = QWidget()
@@ -310,100 +348,72 @@ class LabelsWidget(QWidget):
         layout.addWidget(pred_row)
 
 
-        # Control grid (3 rows x 4 columns)
-        control_grid = QWidget()
-        grid_layout = QGridLayout()
-        grid_layout.setSpacing(4)
-        grid_layout.setVerticalSpacing(4)
-        control_grid.setLayout(grid_layout)
+        # Human verification row
+        hv_row = QHBoxLayout()
+        hv_row.setSpacing(4)
 
-        # Header labels (row 0)
-        apply_label = QLabel("Apply")
-        apply_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        grid_layout.addWidget(apply_label, 0, 0)
-
-        to_label = QLabel("to")
-        to_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        grid_layout.addWidget(to_label, 0, 1)
-
-
-
-        empty_label = QLabel("to")
-        grid_layout.addWidget(empty_label, 0, 2)
-
-
-        status_label = QLabel("Status")
-        status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        grid_layout.addWidget(status_label, 0, 3)
-
-        # Changepoint correction row (row 1)
-        cp_label = QLabel("Changepoint correction")
-        grid_layout.addWidget(cp_label, 1, 0)
-
-        self.cp_correction_trial_btn = QPushButton("Single Trial")
-        self.cp_correction_trial_btn.clicked.connect(lambda: self._cp_correction("single_trial"))
-        grid_layout.addWidget(self.cp_correction_trial_btn, 1, 1)
-
-
-        self.cp_correction_all_trials_btn = QPushButton("All Trials")
-        self.cp_correction_all_trials_btn.clicked.connect(lambda: self._cp_correction("all_trials"))
-        grid_layout.addWidget(self.cp_correction_all_trials_btn, 1, 2)
-
-        self.cp_status_btn = QPushButton()
-        self.cp_status_btn.setEnabled(False)
-        self.cp_status_btn.setText("Not corrected")
-        grid_layout.addWidget(self.cp_status_btn, 1, 3)
-
-
-
-        # Human verification row (row 2)
-        hv_label = QLabel("Human verification")
-        grid_layout.addWidget(hv_label, 2, 0)
+        hv_row.addWidget(QLabel("Apply human verification to:"))
 
         self.human_verify_trial_btn = QPushButton("Single Trial")
         self.human_verify_trial_btn.clicked.connect(lambda: self._human_verification_true("single_trial"))
-        grid_layout.addWidget(self.human_verify_trial_btn, 2, 1)
-
+        hv_row.addWidget(self.human_verify_trial_btn)
 
         self.human_verify_all_trials_btn = QPushButton("All Trials")
         self.human_verify_all_trials_btn.clicked.connect(lambda: self._human_verification_true("all_trials"))
-        grid_layout.addWidget(self.human_verify_all_trials_btn, 2, 2)
-
+        hv_row.addWidget(self.human_verify_all_trials_btn)
 
         self.human_verified_status = QPushButton()
         self.human_verified_status.setEnabled(False)
-        self.human_verified_status.setText("Not verified")
-        grid_layout.addWidget(self.human_verified_status, 2, 3)
+        self.human_verified_status.setText("This trial is not verified.")
+        hv_row.addWidget(self.human_verified_status)
 
-        layout.addWidget(control_grid)
+        layout.addLayout(hv_row)
+
 
 
         bottom_row = QWidget()
-        temp_labels_layout = QHBoxLayout()
-        temp_labels_layout.setSpacing(5)
-        bottom_row.setLayout(temp_labels_layout)
-
-        self.temp_labels_button = QPushButton("Create temporary labels")
-        self.temp_labels_button.setToolTip("Create custom labels for this session only")
-        self.temp_labels_button.clicked.connect(self._create_temporary_labels)
-        temp_labels_layout.addWidget(self.temp_labels_button)
-
-  
-        temp_labels_layout.addSpacing(30)
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setSpacing(5)
+        bottom_row.setLayout(bottom_layout)
 
         self.save_labels_button = QPushButton("Save labels file")
         self.save_labels_button.setToolTip("Shortcut: (Ctrl + S). Save file in labels\\... folder")
         self.save_labels_button.clicked.connect(lambda: self.app_state.save_labels())
-        temp_labels_layout.addWidget(self.save_labels_button)
+        bottom_layout.addWidget(self.save_labels_button)
 
         self.save_button = QPushButton("Merge labels and save sesssion")
         self.save_button.setToolTip("Takes current labels and saves to original sesssion file")
         self.save_button.clicked.connect(lambda: self.app_state.save_file())
-        temp_labels_layout.addWidget(self.save_button)
+        bottom_layout.addWidget(self.save_button)
 
-        temp_labels_layout.addStretch()
+        bottom_layout.addStretch()
         layout.addWidget(bottom_row)
 
+
+    def _browse_mapping_file(self):
+        """Browse for a mapping.txt file and reload  mappings."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select mapping.txt file",
+            str(get_project_root() / "configs"),
+            "Text files (*.txt);;All Files (*)"
+        )
+        if file_path:
+            self.mapping_file_path_edit.setText(file_path)
+            self._reload_mapping(file_path)
+
+    def _reload_mapping(self, mapping_path: str):
+        """Reload  mappings from the specified path."""
+        try:
+            self._mappings = load_label_mapping(Path(mapping_path))
+            if self.plot_container:
+                self.plot_container.set_label_mappings(self._mappings)
+            if self.changepoints_widget:
+                self.changepoints_widget.set_motif_mappings(self._mappings)
+            self._populate_labels_table()
+            self.refresh_labels_shapes_layer()
+            show_info(f"Loaded {len(self._mappings) - 1} labels from {Path(mapping_path).name}")
+        except FileNotFoundError:
+            show_warning(f"Mapping file not found: {mapping_path}")
 
     def _create_temporary_labels(self):
         """Open dialog to create temporary labels for this session."""
@@ -417,11 +427,14 @@ class LabelsWidget(QWidget):
                     for i, label in enumerate(labels, start=1):
                         f.write(f"{i} {label}\n")
 
-                self.motif_mappings = load_motif_mapping(mapping_path)
+                self.mapping_file_path_edit.setText(str(mapping_path))
+                self._mappings = load_label_mapping(mapping_path)
                 if self.plot_container:
-                    self.plot_container.set_motif_mappings(self.motif_mappings)
-                self._populate_motifs_table()
-                self.refresh_motif_shapes_layer()
+                    self.plot_container.set_label_mappings(self._mappings)
+                if self.changepoints_widget:
+                    self.changepoints_widget.set_motif_mappings(self._mappings)
+                self._populate_labels_table()
+                self.refresh_labels_shapes_layer()
                 show_info(f"Loaded {len(labels)} temporary labels")
 
     def _human_verification_true(self, mode=None):
@@ -440,33 +453,18 @@ class LabelsWidget(QWidget):
         
     def _update_human_verified_status(self):
         if self.app_state.label_dt is None or self.app_state.trials_sel is None:
-            self.human_verified_status.setText("Not verified")
+            self.human_verified_status.setText("This trial is not verified.")
             self.human_verified_status.setStyleSheet("background-color: red; color: white;")
             return
 
         attrs = self.app_state.label_dt.trial(self.app_state.trials_sel).attrs
         if attrs.get('human_verified', None) == True:
-            self.human_verified_status.setText("Human verified (this trial)")
+            self.human_verified_status.setText("This trial is verified.")
             self.human_verified_status.setStyleSheet("background-color: green; color: white;")
         else:
-            self.human_verified_status.setText("Not verified")
+            self.human_verified_status.setText("This trial is not verified.")
             self.human_verified_status.setStyleSheet("background-color: red; color: white;")  
         
-    def _update_cp_status(self):
-        if self.app_state.label_dt is None or self.app_state.trials_sel is None:
-            self.cp_status_btn.setText("Not corrected")
-            self.cp_status_btn.setStyleSheet("background-color: red; color: white;")
-            return
-
-        attrs = self.app_state.label_dt.attrs
-        if attrs.get('changepoint_corrected', 0):
-            self.cp_status_btn.setText("CP corrected (global)")
-            self.cp_status_btn.setStyleSheet("background-color: green; color: white;")
-        else:
-            self.cp_status_btn.setText("Not corrected")
-            self.cp_status_btn.setStyleSheet("background-color: red; color: white;")
-
-    
 
 
     def _import_predictions_from_file(self):
@@ -482,122 +480,88 @@ class LabelsWidget(QWidget):
             self.pred_file_path_edit.setText(file_path)
 
         self.app_state.labels_modified.emit()
-        self.refresh_motif_shapes_layer()
+        self.refresh_labels_shapes_layer()
 
     def _on_pred_show_predictions_changed(self):
         self.app_state.labels_modified.emit()
             
             
-    def _cp_correction(self, mode):
-        
-        # HARD CODED for now
-        params_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'configs', "Freddy_train_20251021_164220.json")
 
-        with open(params_path, "r") as f:
-            all_params = json.load(f)
-            
-        ds_kwargs = self.app_state.get_ds_kwargs()
- 
- 
- 
-        if mode == "single_trial":
-            curr_labels, filt_kwargs = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
-            self.app_state.label_dt.trial(self.app_state.trials_sel).labels.loc[filt_kwargs] = correct_changepoints_one_trial(curr_labels, self.app_state.ds, all_params)
+    LABELS_ID_TO_KEY = {}
 
-    
-        if mode == "all_trials":
-            if self.app_state.label_dt.attrs.get("changepoint_corrected", 0) == 1:
-                show_warning("Changepoint correction has already been applied to all trials. Don't re-apply.")
-                return
-                
-
-            for trial in self.app_state.label_dt.trials:
-                curr_labels, filt_kwargs = sel_valid(self.app_state.label_dt.trial(trial).labels, ds_kwargs)
-                ds = self.app_state.dt.trial(trial)
-                self.app_state.label_dt.trial(trial).labels.loc[filt_kwargs] = correct_changepoints_one_trial(curr_labels, ds, all_params)
-                self.app_state.label_dt.attrs["changepoint_corrected"] = np.int8(1)    
-            self._update_cp_status()
-
-        self.app_state.labels_modified.emit()
-        
-        
-
-
-    MOTIF_ID_TO_KEY = {}
-
-    # Row 1: 1-0 (Motifs 1-10)
+    # Row 1: 1-0 (Labels 1-10)
     number_keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
     for i, key in enumerate(number_keys):
-        motif_id = i + 1 if key != '0' else 10
-        MOTIF_ID_TO_KEY[motif_id] = key
+        _id = i + 1 if key != '0' else 10
+        LABELS_ID_TO_KEY[_id] = key
 
-    # Row 2: Q-P (Motifs 11-20)
+    # Row 2: Q-P (Labels 11-20)
     qwerty_row = ['q', 'w', 'e', 'r', 't', 'z', 'u', 'i', 'o', 'p']
     for i, key in enumerate(qwerty_row):
-        motif_id = i + 11
-        MOTIF_ID_TO_KEY[motif_id] = key.upper()  # Display as uppercase for clarity
+        _id = i + 11
+        LABELS_ID_TO_KEY[_id] = key.upper()  # Display as uppercase for clarity
 
-    # Row 3: A-; (Motifs 21-30)
+    # Row 3: A-; (Labels 21-30)
     home_row = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';']
     for i, key in enumerate(home_row):
-        motif_id = i + 21
-        MOTIF_ID_TO_KEY[motif_id] = key.upper() if key != ';' else ';'  # Keep ; as is
+        _id = i + 21
+        LABELS_ID_TO_KEY[_id] = key.upper() if key != ';' else ';'  # Keep ; as is
 
-    # Also provide reverse mapping for key to motif_id
-    KEY_TO_MOTIF_ID = {v.lower(): k for k, v in MOTIF_ID_TO_KEY.items()}
+    # Also provide reverse mapping for key to _id
+    KEY_TO_LABELS_ID = {v.lower(): k for k, v in LABELS_ID_TO_KEY.items()}
     
-    def _populate_motifs_table(self):
-        """Populate the motifs table with loaded mappings in two columns."""
-        items = [(k, v) for k, v in self.motif_mappings.items() if k != 0]
+    def _populate_labels_table(self):
+        """Populate the labels table with loaded mappings in two columns."""
+        items = [(k, v) for k, v in self._mappings.items() if k != 0]
         half = (len(items) + 1) // 2
-        self.motifs_table.setRowCount(half)
+        self.labels_table.setRowCount(half)
 
-        for i, (motif_id, data) in enumerate(items):
+        for i, (_id, data) in enumerate(items):
             row = i % half
             col_offset = 0 if i < half else 3
 
-            id_item = QTableWidgetItem(str(motif_id))
-            id_item.setData(Qt.UserRole, motif_id)
-            self.motifs_table.setItem(row, col_offset, id_item)
+            id_item = QTableWidgetItem(str(_id))
+            id_item.setData(Qt.UserRole, _id)
+            self.labels_table.setItem(row, col_offset, id_item)
 
-            shortcut = self.MOTIF_ID_TO_KEY.get(motif_id, "?")
+            shortcut = self.LABELS_ID_TO_KEY.get(_id, "?")
             name_with_shortcut = f"{data['name']} ({shortcut})"
             name_item = QTableWidgetItem(name_with_shortcut)
-            name_item.setData(Qt.UserRole, motif_id)
-            self.motifs_table.setItem(row, col_offset + 1, name_item)
+            name_item.setData(Qt.UserRole, _id)
+            self.labels_table.setItem(row, col_offset + 1, name_item)
 
             color_item = QTableWidgetItem()
             color = data["color"]
             qcolor = QColor(int(color[0] * 255), int(color[1] * 255), int(color[2] * 255))
             color_item.setBackground(qcolor)
-            color_item.setData(Qt.UserRole, motif_id)
-            self.motifs_table.setItem(row, col_offset + 2, color_item)
+            color_item.setData(Qt.UserRole, _id)
+            self.labels_table.setItem(row, col_offset + 2, color_item)
 
     def _on_table_selection_changed(self):
-        """Handle table cell selection changes by activating the selected motif."""
-        selected = self.motifs_table.selectedItems()
+        """Handle table cell selection changes by activating the selected ."""
+        selected = self.labels_table.selectedItems()
         if selected:
             item = selected[0]
-            motif_id = item.data(Qt.UserRole)
-            if motif_id is not None:
-                self.activate_motif(motif_id)
+            _id = item.data(Qt.UserRole)
+            if _id is not None:
+                self.activate_label(_id)
 
 
 
-    def activate_motif(self, motif_key):
-        """Activate a motif by shortcut: select cell, set up for labeling, and scroll to it."""
-        motif_id = self.KEY_TO_MOTIF_ID.get(str(motif_key).lower(), motif_key)
-        if motif_id not in self.motif_mappings:
+    def activate_label(self, _key):
+        """Activate a  by shortcut: select cell, set up for labeling, and scroll to it."""
+        _id = self.KEY_TO_LABELS_ID.get(str(_key).lower(), _key)
+        if _id not in self._mappings:
             return
 
-        self.selected_motif_id = motif_id
+        self.selected_labels_id = _id
 
-        for row in range(self.motifs_table.rowCount()):
+        for row in range(self.labels_table.rowCount()):
             for col in [0, 3]:  # Check both ID columns
-                item = self.motifs_table.item(row, col)
-                if item and item.data(Qt.UserRole) == motif_id:
-                    self.motifs_table.setCurrentItem(item)
-                    self.motifs_table.scrollToItem(item)
+                item = self.labels_table.item(row, col)
+                if item and item.data(Qt.UserRole) == _id:
+                    self.labels_table.setCurrentItem(item)
+                    self.labels_table.scrollToItem(item)
                     self.ready_for_label_click = True
                     self.first_click = None
                     self.second_click = None
@@ -638,10 +602,10 @@ class LabelsWidget(QWidget):
  
 
             if button == Qt.LeftButton and not self.ready_for_label_click:
-                result = self._check_motif_click(t_clicked, main_data, secondary_data, is_prediction_main)
+                result = self._check_labels_click(t_clicked, main_data, secondary_data, is_prediction_main)
     
 
-        except Exception as e:
+        except (KeyError, IndexError, ValueError, AttributeError) as e:
             print(f"Error in plot click handling: {e}")
             return
             
@@ -670,52 +634,52 @@ class LabelsWidget(QWidget):
             else:
                 # Second click - store position and automatically apply
                 self.second_click = label_idx_snapped
-                self._apply_motif()  # Automatically apply after two clicks
+                self._apply_label()  # Automatically apply after two clicks
 
 
 
-    def _check_motif_click(self, x_clicked: float, main_data: np.ndarray,
+    def _check_labels_click(self, x_clicked: float, main_data: np.ndarray,
                           secondary_data: np.ndarray = None, is_prediction_main: bool = False) -> bool:
-        """Check if the click is on an existing motif and select it if so.
+        """Check if the click is on an existing  and select it if so.
 
         Args:
             x_clicked: X coordinate of the click
-            main_data: Primary data array to check for motifs
+            main_data: Primary data array to check for labels
             secondary_data: Secondary data array (optional)
             is_prediction_main: Whether the main data is predictions or labels
         """
-        # Check if there's a motif at this position
+        # Check if there's a  at this position
         label_idx = int(x_clicked * self.app_state.label_sr)
 
         if label_idx >= len(main_data):
             print(f"Frame index {label_idx} out of bounds for data length {len(main_data)}")
             return False
 
-        motif_id = int(main_data[label_idx])
+        _id = int(main_data[label_idx])
 
-        if motif_id != 0:
-            motif_start = label_idx
-            motif_end = label_idx
+        if _id != 0:
+            _start = label_idx
+            _end = label_idx
             
             
 
-            # Find start of motif
-            while motif_start > 0 and main_data[motif_start - 1] == motif_id:
-                motif_start -= 1
+            # Find start of 
+            while _start > 0 and main_data[_start - 1] == _id:
+                _start -= 1
 
-            # Find end of motif
-            while motif_end < len(main_data) - 1 and main_data[motif_end + 1] == motif_id:
-                motif_end += 1
+            # Find end of 
+            while _end < len(main_data) - 1 and main_data[_end + 1] == _id:
+                _end += 1
 
-            self.current_motif_id = motif_id
-            self.current_motif_pos = [motif_start, motif_end]
-            self.current_motif_is_prediction = is_prediction_main
+            self.current_labels_id = _id
+            self.current_labels_pos = [_start, _end]
+            self.current_labels_is_prediction = is_prediction_main
             
-            motif_start_t = motif_start / self.app_state.label_sr
-            motif_end_t = motif_end / self.app_state.label_sr
-            self.highlight_spaceplot.emit(motif_start_t, motif_end_t)
+            _start_t = _start / self.app_state.label_sr
+            _end_t = _end / self.app_state.label_sr
+            self.highlight_spaceplot.emit(_start_t, _end_t)
 
-            self.selected_motif_id = motif_id
+            self.selected_labels_id = _id
 
             return True
         else:
@@ -758,8 +722,8 @@ class LabelsWidget(QWidget):
 
         return best_snapped
 
-    def _apply_motif(self):
-        """Apply the selected motif to the selected time range."""
+    def _apply_label(self):
+        """Apply the selected  to the selected time range."""
         
         if self.first_click is None or self.second_click is None:
             return
@@ -772,7 +736,7 @@ class LabelsWidget(QWidget):
 
         start_idx = self.first_click
         end_idx = self.second_click
-        print(f"Applying motif {self.selected_motif_id} from {start_idx} to {end_idx}")
+        print(f"Applying  {self.selected_labels_id} from {start_idx} to {end_idx}")
         print(f"Labels length: {len(labels)}")
     
         start_t = start_idx / self.app_state.label_sr
@@ -782,28 +746,28 @@ class LabelsWidget(QWidget):
 
 
 
-        if hasattr(self, 'old_motif_pos') and self.old_motif_pos is not None:
-            old_start, old_end = self.old_motif_pos
+        if hasattr(self, 'old_labels_pos') and self.old_labels_pos is not None:
+            old_start, old_end = self.old_labels_pos
             labels[old_start : old_end + 1] = 0
 
             
             # Clean up edit mode variables
-            self.old_motif_pos = None
-            self.old_motif_id = None
-            self.current_motif_pos = None
-            self.current_motif_id = None
-            self.current_motif_is_prediction = False
+            self.old_labels_pos = None
+            self.old_labels_id = None
+            self.current_labels_pos = None
+            self.current_labels_id = None
+            self.current_labels_is_prediction = False
 
         if labels[end_idx] != 0 and not labels[end_idx+1] == 0:
             end_idx = end_idx - 1
             
 
-        labels[start_idx : end_idx + 1] = self.selected_motif_id
+        labels[start_idx : end_idx + 1] = self.selected_labels_id
 
-        # Auto-select the newly created/edited motif for immediate playback with 'v'
-        self.current_motif_pos = [start_idx, end_idx]
-        self.current_motif_id = self.selected_motif_id
-        self.current_motif_is_prediction = False
+        # Auto-select the newly created/edited  for immediate playback with 'v'
+        self.current_labels_pos = [start_idx, end_idx]
+        self.current_labels_id = self.selected_labels_id
+        self.current_labels_is_prediction = False
 
 
 
@@ -814,7 +778,11 @@ class LabelsWidget(QWidget):
         self.ready_for_label_click = False
 
    
-        labels = remove_small_blocks(labels, min_motif_len=3)
+        if self.changepoints_widget and hasattr(self.changepoints_widget, 'min_label_length_spin'):
+            ml_length = self.changepoints_widget.min_label_length_spin.value()
+        else:
+            ml_length = 2 # Fallback
+        labels = purge_small_blocks(labels, ml_length)
 
 
 
@@ -824,7 +792,7 @@ class LabelsWidget(QWidget):
         self._mark_changes_unsaved()
         self.app_state.labels_modified.emit()
         self._seek_to_frame(start_idx)
-        self.refresh_motif_shapes_layer()
+        self.refresh_labels_shapes_layer()
 
         
 
@@ -845,13 +813,13 @@ class LabelsWidget(QWidget):
             self.plot_container.current_plot.update_time_marker(current_time)
 
 
-    def _delete_motif(self):
-        if self.current_motif_pos is None:
+    def _delete_label(self):
+        if self.current_labels_pos is None:
             return
         
     
 
-        start, end = self.current_motif_pos
+        start, end = self.current_labels_pos
 
 
         ds_kwargs = self.app_state.get_ds_kwargs()
@@ -864,29 +832,29 @@ class LabelsWidget(QWidget):
         labels[start : end + 1] = 0
 
 
-        self.current_motif_pos = None
-        self.current_motif_id = None
-        self.current_motif_is_prediction = False
+        self.current_labels_pos = None
+        self.current_labels_id = None
+        self.current_labels_is_prediction = False
 
     
         self.app_state.label_dt.trial(self.app_state.trials_sel).labels.loc[filt_kwargs] = labels
 
         self._mark_changes_unsaved()
         self.app_state.labels_modified.emit()
-        self.refresh_motif_shapes_layer()
+        self.refresh_labels_shapes_layer()
 
-    def _edit_motif(self):
-        """Enter edit mode for adjusting motif boundaries."""
-        if self.current_motif_pos is None:
-            print("No motif selected. Right-click on a motif first to select it.")
+    def _edit_label(self):
+        """Enter edit mode for adjusting  boundaries."""
+        if self.current_labels_pos is None:
+            print("No  selected. Right-click on a  first to select it.")
             return
         
 
 
 
-        # Store the old motif info for later cleanup
-        self.old_motif_pos = self.current_motif_pos.copy()
-        self.old_motif_id = self.current_motif_id
+        # Store the old  info for later cleanup
+        self.old_labels_pos = self.current_labels_pos.copy()
+        self.old_labels_id = self.current_labels_id
         
         # Enter editing mode - user needs to click twice to set new boundaries
         self.ready_for_label_click = True
@@ -897,17 +865,17 @@ class LabelsWidget(QWidget):
         return
 
     def _play_segment(self):
-        if self.current_motif_pos is None:
-            print("No motif selected for playback")
+        if self.current_labels_pos is None:
+            print("No  selected for playback")
             return
 
-        if not self.current_motif_id or len(self.current_motif_pos) != 2:
-            print(f"Playback conditions not met - motif_id: {self.current_motif_id}, pos_len: {len(self.current_motif_pos) if self.current_motif_pos else 0}")
+        if not self.current_labels_id or len(self.current_labels_pos) != 2:
+            print(f"Playback conditions not met - _id: {self.current_labels_id}, pos_len: {len(self.current_labels_pos) if self.current_labels_pos else 0}")
             return
 
         # Label idxs -> Time -> Frame idxs
-        start_time = self.current_motif_pos[0] / self.app_state.label_sr
-        end_time = self.current_motif_pos[1] / self.app_state.label_sr
+        start_time = self.current_labels_pos[0] / self.app_state.label_sr
+        end_time = self.current_labels_pos[1] / self.app_state.label_sr
         start_frame = int(start_time * self.app_state.ds.fps)
         end_frame = int(end_time * self.app_state.ds.fps)
 
@@ -919,7 +887,7 @@ class LabelsWidget(QWidget):
 
 
 
-    def _add_motif_shapes_layer(self):
+    def _add_labels_shapes_layer(self):
         """Add single box overlay with dynamically updating text."""
  
         
@@ -937,23 +905,20 @@ class LabelsWidget(QWidget):
             
             if layer.data.ndim == 2:
                 height, width = layer.data.shape
-            
+
             elif layer.data.ndim == 3:
                 height, width = layer.data.shape[1:3]
-                
+
             else:
-                height, width = 100, 100
-            
+                height, width = LABELS_OVERLAY_FALLBACK_SIZE
+
         except (IndexError, AttributeError):
-            print("No video layer found for motif shapes overlay.")
+            print("No video layer found for  shapes overlay.")
             return None
-        
-        
-        
-        
-        box_width, box_height = 180, 50
-        x = width - box_width - 5
-        y = height - box_height - 5
+
+        box_width, box_height = LABELS_OVERLAY_BOX_WIDTH, LABELS_OVERLAY_BOX_HEIGHT
+        x = width - box_width - LABELS_OVERLAY_BOX_MARGIN
+        y = height - box_height - LABELS_OVERLAY_BOX_MARGIN
         
 
         rect = np.array([[[y, x],
@@ -967,15 +932,15 @@ class LabelsWidget(QWidget):
         shapes_layer = self.viewer.add_shapes(
             rect,
             shape_type='rectangle',
-            name="motif_labels",
+            name="_labels",
             face_color='white',
             edge_color='black',
             edge_width=2,
             opacity=0.9,
-            text={'string': [''], 'color': [[0, 0, 0]], 'size': 20, 'anchor': 'center'}
+            text={'string': [''], 'color': [[0, 0, 0]], 'size': LABELS_OVERLAY_TEXT_SIZE, 'anchor': 'center'}
         )
 
-        shapes_layer.z_index = 1000
+        shapes_layer.z_index = Z_INDEX_LABELS_OVERLAY
 
         # Store labels array and conversion factors for on-demand lookup
         video_fps = self.app_state.ds.fps if hasattr(self.app_state, 'ds') and self.app_state.ds else 30.0
@@ -985,17 +950,17 @@ class LabelsWidget(QWidget):
             'labels_array': labels_array,
             'video_fps': video_fps,
             'label_sr': label_sr,
-            'motif_mappings': self.motif_mappings,
+            '_mappings': self._mappings,
         }
 
-        def update_motif_text(event=None):
+        def update_labels_text(event=None):
             # Convert video frame to data index on-demand
             video_frame = self.viewer.dims.current_step[0]
             time_s = video_frame / shapes_layer.metadata['video_fps']
             label_idx = int(time_s * shapes_layer.metadata['label_sr'])
 
             labels_arr = shapes_layer.metadata['labels_array']
-            mappings = shapes_layer.metadata['motif_mappings']
+            mappings = shapes_layer.metadata['_mappings']
 
             if 0 <= label_idx < len(labels_arr):
                 label = int(labels_arr[label_idx])
@@ -1005,7 +970,7 @@ class LabelsWidget(QWidget):
                     shapes_layer.text = {
                         'string': [mappings[label]["name"]],
                         'color': [color_list],
-                        'size': 18,
+                        'size': LABELS_OVERLAY_TEXT_SIZE,
                         'anchor': 'center'
                     }
                     return
@@ -1013,32 +978,32 @@ class LabelsWidget(QWidget):
             shapes_layer.text = {'string': [''], 'color': [[0, 0, 0]]}
         
     
-        self.viewer.dims.events.current_step.connect(update_motif_text)
+        self.viewer.dims.events.current_step.connect(update_labels_text)
         
     
-        update_motif_text()
+        update_labels_text()
         
   
         return shapes_layer
     
-    def _remove_motif_shapes_layer(self):
-        """Remove existing motif shapes layer if it exists."""
-        if "motif_labels" in self.viewer.layers:
-            self.viewer.layers.remove("motif_labels")
+    def _remove_labels_shapes_layer(self):
+        """Remove existing  shapes layer if it exists."""
+        if "_labels" in self.viewer.layers:
+            self.viewer.layers.remove("_labels")
 
 
-    def refresh_motif_shapes_layer(self):
+    def refresh_labels_shapes_layer(self):
         """Refresh labels data without recreating the layer."""
-        if "motif_labels" not in self.viewer.layers:
-            self._add_motif_shapes_layer()
+        if "_labels" not in self.viewer.layers:
+            self._add_labels_shapes_layer()
             return
 
-        # Update both labels array and motif mappings in existing layer's metadata
-        shapes_layer = self.viewer.layers["motif_labels"]
+        # Update both labels array and  mappings in existing layer's metadata
+        shapes_layer = self.viewer.layers["_labels"]
         ds_kwargs = self.app_state.get_ds_kwargs()
         labels, _ = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
         shapes_layer.metadata['labels_array'] = np.asarray(labels)
-        shapes_layer.metadata['motif_mappings'] = self.motif_mappings
+        shapes_layer.metadata['_mappings'] = self._mappings
 
 
 class TemporaryLabelsDialog(QDialog):
