@@ -54,6 +54,7 @@ You can only toggle via shortcut after having selected two options once.
 
 | Shortcut | Action |
 |----------|--------|
+| `Ctrl+R` | Refresh line plot |
 | `Ctrl+A` | Toggle autoscale |
 | `Ctrl+L` | Toggle lock axes |
 | `Ctrl+Enter` | Apply current plot settings |

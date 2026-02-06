@@ -319,7 +319,7 @@ class DataWidget(DataLoader, QWidget):
 
         self.show_confidence_checkbox = QCheckBox("Confidence")
         self.show_confidence_checkbox.setChecked(False)
-        self.show_confidence_checkbox.stateChanged.connect(self._on_show_confidence_changed)
+        self.show_confidence_checkbox.stateChanged.connect(self.refresh_lineplot)
         overlay_row.addWidget(self.show_confidence_checkbox)
 
         self.show_waveform_checkbox = QCheckBox("Waveform overlay")
@@ -341,10 +341,10 @@ class DataWidget(DataLoader, QWidget):
         self._set_controls_enabled(False)
         
     
-
-    def _on_show_confidence_changed(self):
+    def refresh_lineplot(self):
         xmin, xmax = self.plot_container.get_current_xlim()
         self.update_main_plot(t0=xmin, t1=xmax)
+        
 
     def _on_audio_overlay_changed(self):
         """Handle audio overlay checkbox changes with mutual exclusion."""

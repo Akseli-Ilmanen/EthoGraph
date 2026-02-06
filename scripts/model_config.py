@@ -104,11 +104,11 @@ if __name__ == "__main__":
       # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250508_02\behav\Trial_data.nc",
       # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250509_01\behav\Trial_data.nc",
       # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250512_01\behav\Trial_data.nc",
-      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250513_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250513_01\behav\Trial_data.nc",      
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250515_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250516_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250519_01\behav\Trial_data.nc",
       
-      r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250515_01\behav\Trial_data.nc",
-      r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250516_01\behav\Trial_data.nc",
-      r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250519_01\behav\Trial_data.nc",
       r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250521_01\behav\Trial_data.nc",
       r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250522_01\behav\Trial_data.nc"             
    ]
