@@ -6,12 +6,13 @@ import os
 from contextlib import redirect_stdout
 from ethograph.video_features.utils import build_cfg_path, form_list_from_user_input, sanity_check
 from ethograph.video_features.extract_s3d import ExtractS3D as Extractor
-
+from ethograph.utils.paths import get_project_root
 
 
 def s3d_features(args_cli):
     args_cli.feature_type = "s3d" # hard-coded
-    args_yml = OmegaConf.load(build_cfg_path(args_cli.feature_type))
+    yaml_path = get_project_root() / "ethograph" / "video_features" / "s3d.yml"
+    args_yml = OmegaConf.load(yaml_path)
     args = OmegaConf.merge(args_yml, args_cli)  # the latter arguments are prioritized
     # OmegaConf.set_readonly(args, True)
     sanity_check(args)
