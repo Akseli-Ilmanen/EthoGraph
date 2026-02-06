@@ -14,7 +14,7 @@
 processed_data/
     └── ses-20220509/
         ├── sesssion.nc              # Main behavioral dataset (required)
-        └── labels/                  # Motif labels (created by GUI)
+        └── labels/                  # Label labels (created by GUI)
             ├── data_labels_20240315_143022.nc
             └── data_labels_20240316_091045.nc
 rawdata/

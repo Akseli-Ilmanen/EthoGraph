@@ -9,6 +9,13 @@ from scipy.signal import spectrogram
 from qtpy.QtCore import Signal, QTimer
 from typing import Optional
 from .plots_base import BasePlot
+from .app_constants import (
+    SPECTROGRAM_DEBOUNCE_MS,
+    DEFAULT_BUFFER_MULTIPLIER,
+    BUFFER_COVERAGE_MARGIN,
+    DEFAULT_FALLBACK_MAX_FREQUENCY,
+    Z_INDEX_BACKGROUND,
+)
 
 
 class SharedAudioCache:
@@ -26,7 +33,7 @@ class SharedAudioCache:
             if audio_path not in cls._instances:
                 try:
                     cls._instances[audio_path] = AudioLoader(audio_path, buffersize=buffer_size)
-                except Exception as e:
+                except (OSError, IOError, ValueError) as e:
                     print(f"Failed to load audio file {audio_path}: {e}")
                     return None
             return cls._instances[audio_path]
@@ -49,7 +56,7 @@ class SpectrogramPlot(BasePlot):
         self.setLabel('left', 'Frequency', units='Hz')
 
         self.spec_item = pg.ImageItem()
-        self.spec_item.setZValue(-20)
+        self.spec_item.setZValue(Z_INDEX_BACKGROUND)
         self.addItem(self.spec_item)
 
         self.init_colorbar()
@@ -60,7 +67,7 @@ class SpectrogramPlot(BasePlot):
 
         self._debounce_timer = QTimer()
         self._debounce_timer.setSingleShot(True)
-        self._debounce_timer.setInterval(50)
+        self._debounce_timer.setInterval(SPECTROGRAM_DEBOUNCE_MS)
         self._debounce_timer.timeout.connect(self._debounced_update)
         self._pending_range = None
 
@@ -138,11 +145,11 @@ class SpectrogramPlot(BasePlot):
                     # Set Y limits: 0 Hz to Nyquist frequency
                     self.vb.setLimits(yMin=0, yMax=nyquist_freq)
                     return
-            except Exception:
+            except (OSError, IOError, AttributeError):
                 pass
 
         # Fallback: reasonable default frequency range for audio
-        self.vb.setLimits(yMin=0, yMax=25000)  # 0 Hz to 25 kHz
+        self.vb.setLimits(yMin=0, yMax=DEFAULT_FALLBACK_MAX_FREQUENCY)
 
     def _apply_y_constraints(self):
         """Apply frequency-based y-axis constraints."""
@@ -208,15 +215,15 @@ class SpectrogramBuffer:
             return spec_buffer
         try:
             val = self.app_state.get_with_default("buffer_multiplier")
-            return val if val is not None else 5.0
+            return val if val is not None else DEFAULT_BUFFER_MULTIPLIER
         except (KeyError, AttributeError):
-            return 5.0
+            return DEFAULT_BUFFER_MULTIPLIER
 
     def _covers_range(self, t0, t1):
         """Check if current buffer covers requested range with margin."""
         if self.Sxx_db is None:
             return False
-        margin = (t1 - t0) * 0.1
+        margin = (t1 - t0) * BUFFER_COVERAGE_MARGIN
         return self.buffer_t0 <= t0 - margin and self.buffer_t1 >= t1 + margin
 
     def get_spectrogram(self, audio_path, t0, t1):

@@ -9,6 +9,32 @@ import pyqtgraph as pg
 import numpy as np
 from typing import Optional, Dict, Any
 
+from .app_constants import (
+    PLOT_CONTAINER_SIZE_HINT_HEIGHT,
+    SPECTROGRAM_OVERLAY_OPACITY,
+    SPECTROGRAM_OVERLAY_DEBOUNCE_MS,
+    SPECTROGRAM_OVERLAY_ZOOM_OUT_THRESHOLD,
+    SPECTROGRAM_OVERLAY_ZOOM_IN_THRESHOLD,
+    PREDICTION_LABELS_HEIGHT_RATIO,
+    SPECTROGRAM_LABELS_HEIGHT_RATIO,
+    PREDICTION_FALLBACK_Y_TOP,
+    PREDICTION_FALLBACK_Y_HEIGHT,
+    SPECTROGRAM_FALLBACK_Y_HEIGHT,
+    CP_ZOOM_VERY_OUT_THRESHOLD,
+    CP_ZOOM_MEDIUM_THRESHOLD,
+    CP_LINE_WIDTH_THIN,
+    CP_LINE_WIDTH_MEDIUM,
+    CP_LINE_WIDTH_THICK,
+    CP_COLOR_WAVEFORM,
+    CP_COLOR_SPECTROGRAM,
+    CP_METHOD_COLORS,
+    CP_SCATTER_SIZE,
+    CP_SCATTER_Y_POSITION_RATIO,
+    Z_INDEX_LABELS,
+    Z_INDEX_PREDICTIONS,
+    Z_INDEX_CHANGEPOINTS,
+)
+
 
 class PlotContainer(QWidget):
     """Container that holds and switches between LinePlot, SpectrogramPlot, and AudioTracePlot.
@@ -46,7 +72,7 @@ class PlotContainer(QWidget):
         self.audio_overlay_vb = None
         self._original_line_pen = None
 
-        self.motif_mappings: Dict[int, Dict[str, Any]] = {}
+        self.label_mappings: Dict[int, Dict[str, Any]] = {}
 
         self.audio_cp_items: list = []
         self.dataset_cp_items: list = []
@@ -60,7 +86,7 @@ class PlotContainer(QWidget):
         self.update_audio_changepoint_styles()
 
     def sizeHint(self):
-        return QSize(self.width(), 300)
+        return QSize(self.width(), PLOT_CONTAINER_SIZE_HINT_HEIGHT)
 
     def _switch_to_plot(self, target_type: str):
         """Generic method to switch between plot types."""
@@ -268,10 +294,10 @@ class PlotContainer(QWidget):
         try:
             cmap = pg.colormap.get(colormap_name)
             self.audio_overlay_item.setColorMap(cmap)
-        except Exception:
-            pass
+        except (KeyError, ValueError, TypeError):
+            pass  # Use default colormap if specified one is unavailable
 
-        self.audio_overlay_item.setOpacity(0.6)
+        self.audio_overlay_item.setOpacity(SPECTROGRAM_OVERLAY_OPACITY)
         self.audio_overlay_vb.addItem(self.audio_overlay_item)
 
         self.audio_overlay_item.setRect(pg.QtCore.QRectF(buf_t0, 0, buf_width, buf_fmax))
@@ -291,7 +317,7 @@ class PlotContainer(QWidget):
         from qtpy.QtCore import QTimer
         self._spec_overlay_debounce = QTimer()
         self._spec_overlay_debounce.setSingleShot(True)
-        self._spec_overlay_debounce.setInterval(100)
+        self._spec_overlay_debounce.setInterval(SPECTROGRAM_OVERLAY_DEBOUNCE_MS)
 
         def do_refresh():
             if self._spec_overlay_pending_refresh:
@@ -307,7 +333,7 @@ class PlotContainer(QWidget):
                 old_width = old_t1 - old_t0
                 new_width = new_t1 - new_t0
 
-                if new_width < old_width * 0.5 or new_width > old_width * 2.0:
+                if new_width < old_width * SPECTROGRAM_OVERLAY_ZOOM_OUT_THRESHOLD or new_width > old_width * SPECTROGRAM_OVERLAY_ZOOM_IN_THRESHOLD:
                     self.spectrogram_plot.buffer._clear_buffer()
                     self._spec_overlay_last_range = (new_t0, new_t1)
 
@@ -353,15 +379,15 @@ class PlotContainer(QWidget):
         if hasattr(self, '_overlay_geometry_updater') and self._overlay_geometry_updater:
             try:
                 self.line_plot.plot_item.vb.sigResized.disconnect(self._overlay_geometry_updater)
-            except Exception:
-                pass
+            except (RuntimeError, TypeError):
+                pass  # Signal was already disconnected or never connected
             self._overlay_geometry_updater = None
 
         if hasattr(self, '_overlay_xrange_updater') and self._overlay_xrange_updater:
             try:
                 self.line_plot.plot_item.vb.sigXRangeChanged.disconnect(self._overlay_xrange_updater)
-            except Exception:
-                pass
+            except (RuntimeError, TypeError):
+                pass  # Signal was already disconnected or never connected
             self._overlay_xrange_updater = None
 
         if hasattr(self, '_spec_overlay_debounce') and self._spec_overlay_debounce:
@@ -375,15 +401,15 @@ class PlotContainer(QWidget):
                 self.line_plot.plot_item.scene().removeItem(self.audio_overlay_vb)
                 right_axis = self.line_plot.plot_item.getAxis('right')
                 right_axis.hide()
-            except Exception:
-                pass
+            except (RuntimeError, AttributeError, ValueError):
+                pass  # Item already removed or scene not available
             self.audio_overlay_vb = None
             self.audio_overlay_item = None
         elif self.audio_overlay_item is not None:
             try:
                 self.line_plot.plot_item.removeItem(self.audio_overlay_item)
-            except Exception:
-                pass
+            except (RuntimeError, AttributeError, ValueError):
+                pass  # Item already removed
             self.audio_overlay_item = None
 
         if self._original_line_pen is not None and hasattr(self.line_plot, 'plot_items'):
@@ -436,9 +462,9 @@ class PlotContainer(QWidget):
         """Toggle axes lock on active plot."""
         return self.current_plot.toggle_axes_lock()
 
-    def set_motif_mappings(self, mappings: Dict[int, Dict[str, Any]]):
-        """Set the motif color/name mappings for label drawing."""
-        self.motif_mappings = mappings
+    def set_label_mappings(self, mappings: Dict[int, Dict[str, Any]]):
+        """Set the label color/name mappings for label drawing."""
+        self.label_mappings = mappings
 
     def draw_all_labels(self, time_data, labels, predictions=None, show_predictions=False):
         """Draw labels on ALL plots to ensure synchronization.
@@ -452,7 +478,7 @@ class PlotContainer(QWidget):
             predictions: Optional prediction data array
             show_predictions: Whether to show prediction rectangles
         """
-        if labels is None or not self.motif_mappings:
+        if labels is None or not self.label_mappings:
             return
 
         all_plots = [self.line_plot, self.spectrogram_plot, self.audio_trace_plot]
@@ -476,8 +502,8 @@ class PlotContainer(QWidget):
         for item in plot.label_items:
             try:
                 plot.plot_item.removeItem(item)
-            except Exception:
-                pass
+            except (RuntimeError, AttributeError, ValueError):
+                pass  # Item already removed from plot
         plot.label_items.clear()
 
     def _draw_labels_on_plot(self, plot, time_data, data, is_main=True):
@@ -511,28 +537,28 @@ class PlotContainer(QWidget):
                 continue
             end_idx = min(end_idx, len(data) - 1)
 
-            motif_id = int(data[start_idx])
-            if motif_id == 0:
+            label_id = int(data[start_idx])
+            if label_id == 0:
                 continue
 
             start_time = time_data[start_idx]
             end_time = time_data[end_idx]
-            self._draw_single_label(plot, start_time, end_time, motif_id, is_main)
+            self._draw_single_label(plot, start_time, end_time, label_id, is_main)
 
-    def _draw_single_label(self, plot, start_time, end_time, motif_id, is_main=True):
+    def _draw_single_label(self, plot, start_time, end_time, label_id, is_main=True):
         """Draw a single label rectangle on a plot with appropriate style.
 
         Args:
             plot: The plot widget to draw on
-            start_time: Start time of the motif
-            end_time: End time of the motif
-            motif_id: ID of the motif for color mapping
+            start_time: Start time of the label
+            end_time: End time of the label
+            label_id: ID of the label for color mapping
             is_main: If True, draw full-height; if False, draw prediction strip
         """
-        if motif_id not in self.motif_mappings:
+        if label_id not in self.label_mappings:
             return
 
-        color = self.motif_mappings[motif_id]["color"]
+        color = self.label_mappings[label_id]["color"]
         color_rgb = tuple(int(c * 255) for c in color)
 
         # Use bottom strip style for spectrogram or when spectrogram overlay is active
@@ -557,7 +583,7 @@ class PlotContainer(QWidget):
             brush=(*color_rgb, 180),
             movable=False,
         )
-        rect.setZValue(-10)
+        rect.setZValue(Z_INDEX_LABELS)
         plot.plot_item.addItem(rect)
         plot.label_items.append(rect)
 
@@ -569,11 +595,11 @@ class PlotContainer(QWidget):
         """Draw small rectangle at top for prediction data."""
         y_range = plot.plot_item.getViewBox().viewRange()[1]
         y_top = y_range[1]
-        y_height = (y_range[1] - y_range[0]) * 0.10
+        y_height = (y_range[1] - y_range[0]) * PREDICTION_LABELS_HEIGHT_RATIO
 
         if y_top <= y_range[0]:
-            y_top = 20000
-            y_height = 2000
+            y_top = PREDICTION_FALLBACK_Y_TOP
+            y_height = PREDICTION_FALLBACK_Y_HEIGHT
 
         x_coords = [start_time, end_time, end_time, start_time, start_time]
         y_coords = [y_top, y_top, y_top - y_height, y_top - y_height, y_top]
@@ -584,7 +610,7 @@ class PlotContainer(QWidget):
             brush=(*color_rgb, 200),
             pen=None
         )
-        rect.setZValue(10)
+        rect.setZValue(Z_INDEX_PREDICTIONS)
         plot.plot_item.addItem(rect)
         plot.label_items.append(rect)
 
@@ -592,11 +618,11 @@ class PlotContainer(QWidget):
         """Draw small rectangle at bottom for labels on spectrogram."""
         y_range = plot.plot_item.getViewBox().viewRange()[1]
         y_bottom = y_range[0]
-        y_height = (y_range[1] - y_range[0]) * 0.08
+        y_height = (y_range[1] - y_range[0]) * SPECTROGRAM_LABELS_HEIGHT_RATIO
 
         if y_range[1] <= y_bottom:
             y_bottom = 0
-            y_height = 1600
+            y_height = SPECTROGRAM_FALLBACK_Y_HEIGHT
 
         x_coords = [start_time, end_time, end_time, start_time, start_time]
         y_coords = [y_bottom, y_bottom, y_bottom + y_height, y_bottom + y_height, y_bottom]
@@ -607,13 +633,13 @@ class PlotContainer(QWidget):
             brush=(*color_rgb, 220),
             pen=None
         )
-        rect.setZValue(10)
+        rect.setZValue(Z_INDEX_PREDICTIONS)
         plot.plot_item.addItem(rect)
         plot.label_items.append(rect)
 
     def redraw_current_plot_labels(self, time_data, labels, predictions=None, show_predictions=False):
         """Redraw labels only on the current plot (for view range changes)."""
-        if labels is None or not self.motif_mappings:
+        if labels is None or not self.label_mappings:
             return
 
         plot = self.current_plot
@@ -656,8 +682,8 @@ class PlotContainer(QWidget):
             if plot is None:
                 continue
 
-            # White for spectrogram, black for waveform
-            color = (0, 0, 0, 200) if plot == self.audio_trace_plot else (255, 255, 255, 200)
+            # Black for waveform, white for spectrogram
+            color = CP_COLOR_WAVEFORM if plot == self.audio_trace_plot else CP_COLOR_SPECTROGRAM
 
             for onset_t in onsets:
                 line = pg.InfiniteLine(
@@ -666,7 +692,7 @@ class PlotContainer(QWidget):
                     pen=pg.mkPen(color=color, width=line_style['width'], style=line_style['style']),
                     movable=False,
                 )
-                line.setZValue(50)
+                line.setZValue(Z_INDEX_CHANGEPOINTS)
                 plot.plot_item.addItem(line)
                 self.audio_cp_items.append((plot, line, 'onset'))
 
@@ -677,7 +703,7 @@ class PlotContainer(QWidget):
                     pen=pg.mkPen(color=color, width=line_style['width'], style=line_style['style']),
                     movable=False,
                 )
-                line.setZValue(50)
+                line.setZValue(Z_INDEX_CHANGEPOINTS)
                 plot.plot_item.addItem(line)
                 self.audio_cp_items.append((plot, line, 'offset'))
 
@@ -690,17 +716,17 @@ class PlotContainer(QWidget):
             xmin, xmax = self.current_plot.get_current_xlim()
             visible_range = xmax - xmin
 
-            if visible_range > 10.0:
+            if visible_range > CP_ZOOM_VERY_OUT_THRESHOLD:
                 # Very zoomed out: thin dotted lines
-                return {'style': pg.QtCore.Qt.DotLine, 'width': 0.1}
-            elif visible_range > 2.0:
+                return {'style': pg.QtCore.Qt.DotLine, 'width': CP_LINE_WIDTH_THIN}
+            elif visible_range > CP_ZOOM_MEDIUM_THRESHOLD:
                 # Medium zoom: dashed lines
-                return {'style': pg.QtCore.Qt.DashLine, 'width': 1.0}
+                return {'style': pg.QtCore.Qt.DashLine, 'width': CP_LINE_WIDTH_MEDIUM}
             else:
                 # Zoomed in: solid lines for precision
-                return {'style': pg.QtCore.Qt.SolidLine, 'width': 2.0}
-        except Exception:
-            return {'style': pg.QtCore.Qt.DashLine, 'width': 1.0}
+                return {'style': pg.QtCore.Qt.SolidLine, 'width': CP_LINE_WIDTH_THICK}
+        except (AttributeError, TypeError, ValueError):
+            return {'style': pg.QtCore.Qt.DashLine, 'width': CP_LINE_WIDTH_MEDIUM}
 
     def update_audio_changepoint_styles(self):
         """Update changepoint line styles based on current zoom level."""
@@ -711,8 +737,8 @@ class PlotContainer(QWidget):
 
         for item in self.audio_cp_items:
             plot, line, _ = item
-            # White for spectrogram, black for waveform
-            color = (0, 0, 0, 200) if plot == self.audio_trace_plot else (255, 255, 255, 200)
+            # Black for waveform, white for spectrogram
+            color = CP_COLOR_WAVEFORM if plot == self.audio_trace_plot else CP_COLOR_SPECTROGRAM
             line.setPen(pg.mkPen(color=color, width=line_style['width'], style=line_style['style']))
 
     def clear_audio_changepoints(self):
@@ -721,8 +747,8 @@ class PlotContainer(QWidget):
             plot, line = item[0], item[1]
             try:
                 plot.plot_item.removeItem(line)
-            except Exception:
-                pass
+            except (RuntimeError, AttributeError, ValueError):
+                pass  # Item already removed from plot
         self.audio_cp_items.clear()
 
     def draw_dataset_changepoints(self, time_array: np.ndarray, cp_by_method: dict):
@@ -737,15 +763,8 @@ class PlotContainer(QWidget):
         if not self.is_lineplot():
             return
 
-        method_colors = {
-            'peaks': (255, 100, 100, 200),      # Red
-            'troughs': (100, 100, 255, 200),    # Blue
-            'turning_points': (100, 255, 100, 200),  # Green
-            'ruptures': (255, 165, 0, 200),     # Orange
-        }
-
         y_range = self.line_plot.plot_item.getViewBox().viewRange()[1]
-        y_pos = y_range[0] + (y_range[1] - y_range[0]) * 0.05
+        y_pos = y_range[0] + (y_range[1] - y_range[0]) * CP_SCATTER_Y_POSITION_RATIO
 
         for method_name, indices in cp_by_method.items():
             if len(indices) == 0:
@@ -754,18 +773,18 @@ class PlotContainer(QWidget):
             times = time_array[indices]
             y_values = np.full_like(times, y_pos)
 
-            color = method_colors.get(method_name, (200, 200, 200, 200))
+            color = CP_METHOD_COLORS.get(method_name, CP_METHOD_COLORS['default'])
 
             scatter = pg.ScatterPlotItem(
                 x=times,
                 y=y_values,
-                size=8,
+                size=CP_SCATTER_SIZE,
                 pen=pg.mkPen(color=color, width=1),
                 brush=pg.mkBrush(color=color),
                 symbol='o',
                 name=method_name,
             )
-            scatter.setZValue(100)
+            scatter.setZValue(Z_INDEX_CHANGEPOINTS)
             self.line_plot.plot_item.addItem(scatter)
             self.dataset_cp_items.append(scatter)
 
@@ -774,8 +793,8 @@ class PlotContainer(QWidget):
         for item in self.dataset_cp_items:
             try:
                 self.line_plot.plot_item.removeItem(item)
-            except Exception:
-                pass
+            except (RuntimeError, AttributeError, ValueError):
+                pass  # Item already removed from plot
         self.dataset_cp_items.clear()
 
     def clear_audio_cache(self):

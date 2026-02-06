@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from typing import List, Sequence
 from scipy.signal import find_peaks
 import xarray as xr
-from ethograph.utils.labels import stitch_gaps, fix_endings, remove_small_blocks, find_blocks, purge_small_motifs
+from ethograph.utils.labels import stitch_gaps, fix_endings, purge_small_blocks, find_blocks
 import os
 
 from typing import List, Literal
@@ -170,8 +170,9 @@ def correct_changepoints_one_trial(labels, ds, all_params):
     Correct labels (or predictions of labels) with changepoints.
     """
     cp_kwargs = all_params["cp_kwargs"]
-    
-    min_motif_len = all_params.get("min_motif_len")
+
+    min_label_length = all_params.get("min_label_length")
+    label_thresholds = all_params.get("label_thresholds", {})
     stitch_gap_len = all_params.get("stitch_gap_len")
     max_expansion = all_params["changepoint_params"]["max_expansion"]
     max_shrink = all_params["changepoint_params"]["max_shrink"]
@@ -191,7 +192,7 @@ def correct_changepoints_one_trial(labels, ds, all_params):
     
     
     changepoint_idxs = np.where(changepoints_binary)[0]
-    labels = purge_small_motifs(labels, min_motif_len)
+    labels = purge_small_blocks(labels, min_label_length, label_thresholds)
     labels = stitch_gaps(labels, stitch_gap_len)
 
     
@@ -241,7 +242,7 @@ def correct_changepoints_one_trial(labels, ds, all_params):
     
     
     
-    corrected_labels = remove_small_blocks(corrected_labels, min_motif_len)
+    corrected_labels = purge_small_blocks(corrected_labels, min_label_length)
     corrected_labels = fix_endings(corrected_labels, changepoints_binary)
         
     
