@@ -484,6 +484,10 @@ class MetaWidget(CollapsibleWidgetContainer):
             checkbox = self.changepoints_widget.changepoint_correction_checkbox
             checkbox.setChecked(not checkbox.isChecked())
 
+        @viewer.bind_key("ctrl+r", overwrite=True)
+        def refresh_lineplot(v):
+            self.data_widget.refresh_lineplot()
+
         def setup_keybindings_grid_layout(viewer, labels_widget):
             """Setup using grid layout for label activation"""
             
