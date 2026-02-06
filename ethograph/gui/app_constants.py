@@ -33,7 +33,7 @@ DEFAULT_LAYOUT_MARGIN = 2
 # Axis locking (plots_base.py)
 LOCKED_RANGE_MIN_FACTOR = 0.8  # window_size * 0.8 when locked
 LOCKED_RANGE_MAX_FACTOR = 1.5  # window_size * 1.5 when locked
-AXIS_LIMIT_PADDING_RATIO = 0.02  # 2% of data range as padding for xMin/xMax
+AXIS_LIMIT_PADDING_RATIO = 0.05  # 5% of data range as padding for xMin/xMax
 
 # Label drawing (plot_container.py)
 PREDICTION_LABELS_HEIGHT_RATIO = 0.10  # Height as fraction of y-range

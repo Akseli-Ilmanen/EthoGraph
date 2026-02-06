@@ -188,7 +188,7 @@ class BasePlot(pg.PlotWidget):
                 data_xmin = float(time[0])
                 data_xmax = float(time[-1])
                 data_range = data_xmax - data_xmin
-                padding = data_range * AXIS_LIMIT_PADDING_RATIO
+                padding = min(data_range * AXIS_LIMIT_PADDING_RATIO, 5) # or 5 seconds
 
                 if preserve_default_range:
                     # For default range (trial changes), use window_size as the base range
