@@ -1,7 +1,5 @@
 import subprocess
 from pathlib import Path
-import tempfile
-import numpy as np
 
 
 def mp4_to_wav(mp4_path: str | Path, audio_sr: int) -> Path:

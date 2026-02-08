@@ -1,9 +1,11 @@
-import numpy as np
-import xarray as xr
 from functools import partial
 from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
+
+import numpy as np
+import xarray as xr
 from scipy.ndimage import gaussian_filter1d
-from typing import Any, Callable, Dict, Optional, List 
+
 from ethograph.features.mov_features import get_angle_rgb
 from ethograph.utils.validation import validate_datatree
 
@@ -14,6 +16,14 @@ class TrialTree(xr.DataTree):
     """DataTree subclass with trial-specific functionality."""
 
     TRIAL_PREFIX: str = "trial_"
+
+    @classmethod
+    def trial_key(cls, trial_num: int | str) -> str:
+        return f"{cls.TRIAL_PREFIX}{trial_num}"
+
+    @classmethod
+    def trial_id(cls, key: str) -> str:
+        return key.removeprefix(cls.TRIAL_PREFIX)
 
     def __init__(self, data=None, children=None, name=None):
         """Initialize TrialTree from DataTree or other arguments."""
@@ -48,7 +58,7 @@ class TrialTree(xr.DataTree):
             if trial_num in trials:
                 raise ValueError(f"Duplicate trial number: {trial_num}")
             trials.append(trial_num)
-            tree[f'{cls.TRIAL_PREFIX}{trial_num}'] = xr.DataTree(ds)
+            tree[cls.trial_key(trial_num)] = xr.DataTree(ds)
         tree._validate_tree()
         return tree
 
@@ -111,7 +121,7 @@ class TrialTree(xr.DataTree):
     # -------------------------------------------------------------------------
 
     def trial(self, trial) -> xr.Dataset:
-        ds = self[f'{self.TRIAL_PREFIX}{trial}'].ds
+        ds = self[self.trial_key(trial)].ds
         if ds is None:
             raise ValueError(f"Trial {trial} has no dataset")
         return ds
@@ -161,7 +171,7 @@ class TrialTree(xr.DataTree):
             template_var: Variable name to use as template for shape and coords
             kwargs: e.g. kwargs = {'individuals': 'bird1'} [Optional]
         """
-        trial_node = f'{self.TRIAL_PREFIX}{trial}'
+        trial_node = self.trial_key(trial)
         trial_ds = self[trial_node].ds.copy()
         trial_ds[new_var] = xr.full_like(trial_ds[template_var], np.nan)
         if kwargs:
@@ -358,23 +368,6 @@ def set_media_attrs(
     return ds
 
 
-
-
-def set_file_types_attrs(ds, cameras=None, tracking=None, mics=None):
-    """Deprecated: Use set_media_attrs instead."""
-    import warnings
-    warnings.warn(
-        "set_file_types_attrs is deprecated, use set_media_attrs instead",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    if cameras is not None:
-        ds.attrs["cameras"] = cameras
-    if tracking is not None:
-        ds.attrs["tracking"] = tracking
-    if mics is not None:
-        ds.attrs["mics"] = mics
-    return ds
 
 
 

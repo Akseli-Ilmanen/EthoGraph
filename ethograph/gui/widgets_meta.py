@@ -1,25 +1,35 @@
 """Widget container for other collapsible widgets."""
-import webbrowser
-from pathlib import Path
 
-from ethograph.utils.paths import gui_default_settings_path
-from napari.layers import Image
+import webbrowser
+
 from napari.viewer import Viewer
 from qt_niu.collapsible_widget import CollapsibleWidgetContainer
-from qtpy.QtWidgets import QApplication, QSizePolicy, QMessageBox, QAction, QMenu, QPushButton, QWidget, QHBoxLayout, QComboBox, QCompleter
 from qtpy.QtGui import QFont
+from qtpy.QtWidgets import (
+    QAction,
+    QApplication,
+    QComboBox,
+    QCompleter,
+    QHBoxLayout,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QWidget,
+)
 
+from ethograph.utils.paths import gui_default_settings_path
 
+from .app_constants import DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_SPACING, DOCK_WIDGET_BOTTOM_MARGIN, PLOT_CONTAINER_MIN_HEIGHT
 from .app_state import ObservableAppState
-from .widgets_data import DataWidget
 from .plot_container import PlotContainer
+from .widgets_changepoints import ChangepointsWidget
+from .widgets_data import DataWidget
+from .widgets_io import IOWidget
 from .widgets_labels import LabelsWidget
 from .widgets_navigation import NavigationWidget
-from .widgets_io import IOWidget
 from .widgets_plot import AxesWidget
 from .widgets_spectrogram import SpectrogramWidget
-from .widgets_changepoints import ChangepointsWidget
-from .app_constants import PLOT_CONTAINER_MIN_HEIGHT, DOCK_WIDGET_BOTTOM_MARGIN, DEFAULT_LAYOUT_SPACING, DEFAULT_LAYOUT_MARGIN
 
 
 

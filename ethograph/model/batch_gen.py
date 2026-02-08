@@ -2,10 +2,10 @@
     Adapted from https://github.com/yabufarha/ms-tcn
 '''
 
-import torch
-import numpy as np
 import random
-# from grid_sampler import GridSampler, TimeWarpLayer
+
+import numpy as np
+import torch
 
 class BatchGenerator(object):
     def __init__(self, num_classes, actions_dict, gt_path, features_path, sample_rate):

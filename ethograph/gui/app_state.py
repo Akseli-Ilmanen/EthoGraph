@@ -1,10 +1,10 @@
 """Settings that the user can modify and are saved in gui_settings.yaml"""
 
+import gc
 from datetime import datetime
 from pathlib import Path
 from typing import Any, get_args, get_origin
 
-import gc
 import numpy as np
 import xarray as xr
 import yaml

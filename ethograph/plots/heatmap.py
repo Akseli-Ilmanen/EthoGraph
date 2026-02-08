@@ -1,8 +1,10 @@
+from typing import Dict, Tuple
+
 import matplotlib.pyplot as plt
-from ethograph.features.preprocessing import interpolate_nans
 import numpy as np
 import pandas as pd
-from typing import Tuple, Dict
+
+from ethograph.features.preprocessing import interpolate_nans
 
 def create_heatmap_from_segments(
     df: pd.DataFrame,

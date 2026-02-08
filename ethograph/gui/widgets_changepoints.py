@@ -1,36 +1,39 @@
 """Changepoints widget - dataset changepoints and audio changepoint detection."""
 
+from concurrent.futures import Future, ProcessPoolExecutor
+from typing import Optional
+
 import numpy as np
+import ruptures as rpt
 import xarray as xr
 import yaml
+from napari.utils.notifications import show_info, show_warning
+from napari.viewer import Viewer
+from qtpy.QtCore import Qt, QTimer, Signal
 from qtpy.QtWidgets import (
+    QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
     QHeaderView,
+    QLabel,
     QLineEdit,
+    QPushButton,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
-    QWidget,
-    QPushButton,
     QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QGroupBox,
-    QCheckBox,
-    QComboBox,
-    QDoubleSpinBox,
+    QWidget,
 )
-from qtpy.QtCore import Qt, Signal, QTimer
-from napari.viewer import Viewer
-from napari.utils.notifications import show_info, show_warning
-from typing import Optional
-from concurrent.futures import ProcessPoolExecutor, Future
-from ethograph.utils.paths import get_project_root
+
+from ethograph import TrialTree
 from ethograph.features.changepoints import correct_changepoints_one_trial
 from ethograph.utils.data_utils import sel_valid
-import ruptures as rpt
+from ethograph.utils.paths import get_project_root
 
 
 def _run_ruptures_in_process(
@@ -817,7 +820,7 @@ class ChangepointsWidget(QWidget):
         new_ds = ds.drop_vars(vars_to_remove)
 
         trial = self.app_state.trials_sel
-        trial_node = f"trial_{trial}"
+        trial_node = TrialTree.trial_key(trial)
         self.app_state.dt[trial_node] = xr.DataTree(new_ds)
         self.app_state.ds = self.app_state.dt.trial(trial)
 
@@ -911,7 +914,7 @@ class ChangepointsWidget(QWidget):
             cp_var_name = f"{feature}_{changepoint_name}"
 
             trial = self.app_state.trials_sel
-            trial_node = f"trial_{trial}"
+            trial_node = TrialTree.trial_key(trial)
             self.app_state.dt[trial_node] = xr.DataTree(new_ds)
             self.app_state.ds = self.app_state.dt.trial(trial)
 
@@ -1089,7 +1092,7 @@ class ChangepointsWidget(QWidget):
         )
 
         trial = self.app_state.trials_sel
-        trial_node = f"trial_{trial}"
+        trial_node = TrialTree.trial_key(trial)
         self.app_state.dt[trial_node] = xr.DataTree(new_ds)
         self.app_state.ds = self.app_state.dt.trial(trial)
 

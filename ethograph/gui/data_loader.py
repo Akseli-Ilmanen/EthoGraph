@@ -1,17 +1,19 @@
 """Data loading utilities for the ethograph GUI."""
 
+from pathlib import Path
+from typing import Optional, Tuple
+
 import numpy as np
 import xarray as xr
-from typing import List, Optional, Tuple
-from pathlib import Path
-from qtpy.QtWidgets import QMessageBox
 from napari import current_viewer
+from qtpy.QtWidgets import QMessageBox
+
 from ethograph import TrialTree, set_media_attrs
-from ethograph.utils.validation import validate_datatree, extract_type_vars
-from movement.kinematics import compute_velocity, compute_speed, compute_acceleration, compute_pairwise_distances
-from movement.io import load_poses
 from ethograph.features.audio_features import get_envelope
 from ethograph.features.mov_features import extract_video_motion
+from ethograph.utils.validation import extract_type_vars, validate_datatree
+from movement.io import load_poses
+from movement.kinematics import compute_acceleration, compute_pairwise_distances, compute_speed, compute_velocity
 
 def show_error_dialog(message: str, title: str = ".nc File Error") -> None:
     QMessageBox.critical(current_viewer().window._qt_window, title, message)

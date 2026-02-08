@@ -1,8 +1,10 @@
-import audioio as aio
-from thunderhopper.filters import envelope
-import numpy as np
-from ethograph.utils.audio import mp4_to_wav
 from pathlib import Path
+
+import audioio as aio
+import numpy as np
+from thunderhopper.filters import envelope
+
+from ethograph.utils.audio import mp4_to_wav
 
 
 def get_envelope(audio_path, audio_sr, env_rate):

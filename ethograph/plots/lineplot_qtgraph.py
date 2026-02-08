@@ -1,16 +1,11 @@
 """Plot utilities for PyQtGraph-based plotting."""
 
-
-
-
-import pyqtgraph as pg
-import numpy as np
-from ethograph.utils.data_utils import sel_valid, get_time_coord
-import numpy as np
-import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtCore
-import sys
 import matplotlib.pyplot as plt
+import numpy as np
+import pyqtgraph as pg
+
+from ethograph.utils.data_utils import get_time_coord, sel_valid
+
 
 
 class MultiColoredLineItem(pg.GraphicsObject):
@@ -53,30 +48,6 @@ class MultiColoredLineItem(pg.GraphicsObject):
         return pg.QtCore.QRectF(self.picture.boundingRect())
     
     
-    
-def get_label_colours():
-    """Get label colors - same as original but formatted for PyQtGraph (0-255 RGB)."""
-    # Already in 0-255 format which PyQtGraph uses
-    category_colors_rgb = [
-        [255, 255, 255],
-        [255, 102, 178],
-        [102, 158, 255],
-        [153, 51, 255],
-        [255, 51, 51],
-        [102, 255, 102],
-        [255, 153, 102],
-        [0, 153, 0],
-        [0, 0, 128],
-        [255, 255, 0],
-        [0, 204, 204],
-        [128, 128, 0],
-        [255, 0, 255],
-        [255, 165, 0],
-        [0, 128, 255],      
-        [128, 0, 255],      
-        [255, 128, 0]       
-    ]
-    return category_colors_rgb
 
 
 def plot_multidim(plot_item, time, data, coord_labels=None, existing_curves=None):

@@ -1,11 +1,13 @@
 import os
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
-from pathlib import Path
-from typing import List, Dict, Any
-from datetime import datetime
 import pickle
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List
+
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.patches import Patch
+
 from ethograph.utils.paths import get_project_root
 style_path = get_project_root() / 'configs' / 'style' / 'style.mplstyle'
 plt.style.use(str(style_path))

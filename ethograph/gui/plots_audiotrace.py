@@ -1,10 +1,12 @@
 """Audio waveform trace plot with smart downsampling (inspired by audian's TraceItem)."""
 
+from typing import Optional
+
 import numpy as np
 import pyqtgraph as pg
 from qtpy.QtCore import QTimer
 from qtpy.QtWidgets import QApplication
-from typing import Optional
+
 from .plots_base import BasePlot
 from .plots_spectrogram import SharedAudioCache
 

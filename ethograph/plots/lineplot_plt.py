@@ -1,7 +1,9 @@
 from typing import Optional
-import xarray as xr
+
 import matplotlib.pyplot as plt
 import numpy as np
+import xarray as xr
+
 from ethograph.utils.data_utils import sel_valid
 
 

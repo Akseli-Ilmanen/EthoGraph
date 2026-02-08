@@ -1,7 +1,12 @@
-
 """Widget for input/output controls and data loading."""
 
+import os
+from pathlib import Path
+from typing import Optional
+
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -9,18 +14,15 @@ from qtpy.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QWidget,
-    QCheckBox,
     QSpinBox,
+    QWidget,
 )
-from .app_state import AppStateSpec
-from .dialog_create_nc import CreateNCDialog
-from pathlib import Path
-import os
-from qtpy.QtCore import Qt
+
 from ethograph import TrialTree
 from ethograph.utils.paths import gui_default_settings_path
-from typing import Optional
+
+from .app_state import AppStateSpec
+from .dialog_create_nc import CreateNCDialog
 
 class IOWidget(QWidget):
     """Widget to control I/O paths, device selection, and data loading."""

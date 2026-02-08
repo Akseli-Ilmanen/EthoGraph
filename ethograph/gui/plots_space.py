@@ -1,14 +1,16 @@
 """Space plot widget for displaying box topview and centroid trajectory plots."""
 
+from typing import Optional
+
 import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
-from qtpy.QtWidgets import QWidget, QVBoxLayout
-from typing import Optional
 import xarray as xr
-from ethograph.utils.data_utils import sel_valid
+from qtpy.QtWidgets import QVBoxLayout, QWidget
+
 from ethograph.features.preprocessing import interpolate_nans
 from ethograph.plots.lineplot_qtgraph import MultiColoredLineItem
+from ethograph.utils.data_utils import sel_valid
 
 
 def space_plot_pyqt(

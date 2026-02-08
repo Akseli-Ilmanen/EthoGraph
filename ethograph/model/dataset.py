@@ -1,22 +1,19 @@
 """Modified from DiffAct so that features can be directly passed from .nc file"""
-import os
-from xml.sax.handler import all_features
-import torch
-import random
-import glob
+
+import argparse
 import hashlib
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+
 import numpy as np
 import xarray as xr
-from pathlib import Path
 from tqdm import tqdm
+
 from ethograph import TrialTree
-from ethograph.features.preprocessing import clip_by_percentiles, z_normalize, interpolate_nans
-from ethograph.features.changepoints import more_changepoint_features, merge_changepoints
-import random
-import argparse
-import shutil
-from datetime import datetime
-import json
+from ethograph.features.changepoints import merge_changepoints, more_changepoint_features
+from ethograph.features.preprocessing import clip_by_percentiles, interpolate_nans, z_normalize
 
 def save_config(all_params, folder='configs', action="train"):
     if not os.path.exists(folder):

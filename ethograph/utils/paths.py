@@ -1,7 +1,8 @@
 """Path utilities with zero internal dependencies (stdlib only)."""
-from pathlib import Path
-import os
+
 import json
+import os
+from pathlib import Path
 
 def check_paths_exist(nc_paths):
     missing_paths = [p for p in nc_paths if not os.path.exists(p)]

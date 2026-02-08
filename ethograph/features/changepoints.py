@@ -1,15 +1,11 @@
-import json
-import numpy as np
-import matplotlib.pyplot as plt
-from typing import List, Sequence
-from scipy.signal import find_peaks
-import xarray as xr
-from ethograph.utils.labels import stitch_gaps, fix_endings, purge_small_blocks, find_blocks
-import os
-
 from typing import List, Literal
-from ethograph.features.preprocessing import z_normalize, interpolate_nans
-from pathlib import Path
+
+import numpy as np
+import xarray as xr
+from scipy.signal import find_peaks
+
+from ethograph.features.preprocessing import z_normalize
+from ethograph.utils.labels import find_blocks, fix_endings, purge_small_blocks, stitch_gaps
 
 
 

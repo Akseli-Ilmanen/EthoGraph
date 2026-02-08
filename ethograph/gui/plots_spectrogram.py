@@ -2,12 +2,14 @@
 
 import os
 import threading
-import pyqtgraph as pg
-import numpy as np
-from audioio import AudioLoader
-from scipy.signal import spectrogram
-from qtpy.QtCore import Signal, QTimer
 from typing import Optional
+
+import numpy as np
+import pyqtgraph as pg
+from audioio import AudioLoader
+from qtpy.QtCore import QTimer, Signal
+from scipy.signal import spectrogram
+
 from .plots_base import BasePlot
 from .app_constants import (
     SPECTROGRAM_DEBOUNCE_MS,
