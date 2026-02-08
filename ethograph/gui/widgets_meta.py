@@ -63,11 +63,14 @@ class MetaWidget(CollapsibleWidgetContainer):
         
         # Connect to napari window close event to check for unsaved changes
         if hasattr(self.viewer, 'window') and hasattr(self.viewer.window, '_qt_window'):
-            original_close_event = self.viewer.window._qt_window.closeEvent
+            self._original_close_event = self.viewer.window._qt_window.closeEvent
             def napari_close_event(event):
                 if not self._check_unsaved_changes(event):
-                    return  
-                original_close_event(event)
+                    return
+                try:
+                    self._original_close_event(event)
+                except RuntimeError:
+                    event.accept()
             self.viewer.window._qt_window.closeEvent = napari_close_event
 
     def _create_widgets(self):
@@ -395,15 +398,6 @@ class MetaWidget(CollapsibleWidgetContainer):
                         action.setShortcut('')  # Remove shortcut
                         print(f"Removed shortcut from: {action.text()}")
             
-            if hasattr(window, 'qt_viewer'):
-                qt_window = window.qt_viewer
-                for action in qt_window.window().findChildren(QAction):
-                    shortcut = action.shortcut().toString()
-                    if shortcut in ['Ctrl+S', 'Ctrl+A', 'Ctrl+Shift+S']:
-                        action.setShortcut('')
-                        print(f"Removed {shortcut} from {action.text()}")
-            
-
             if hasattr(window, '_qt_window'):
                 menubar = window._qt_window.menuBar()
                 for menu in menubar.findChildren(QMenu):

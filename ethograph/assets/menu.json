@@ -6,11 +6,18 @@
     {
       "name": "ethograph",
       "command": ["ethograph", "launch"],
-      "icon": "{{ MENU_DIR }}/icon.ico",
       "activate": true,
       "terminal": true,
       "platforms": {
-        "win": {}
+        "win": {
+          "icon": "{{ MENU_DIR }}/icon.ico"
+        },
+        "linux": {
+          "icon": "{{ MENU_DIR }}/icon.png"
+        },
+        "osx": {
+          "icon": "{{ MENU_DIR }}/icon.png"
+        }
       }
     }
   ]

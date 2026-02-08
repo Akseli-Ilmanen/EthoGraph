@@ -617,7 +617,7 @@ class LabelsWidget(QWidget):
         elif button == Qt.LeftButton and self.ready_for_label_click:
     
             # Snap to nearest changepoint if available
-            label_idx = int(t_clicked * self.app_state.label_sr)  
+            label_idx = int(t_clicked * self.app_state.label_sr)
             
             if self.changepoints_widget and self.changepoints_widget.is_changepoint_correction_enabled():
                 label_idx_snapped = self._snap_to_changepoint(label_idx)

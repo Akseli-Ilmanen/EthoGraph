@@ -65,6 +65,7 @@ def gui(qtbot, tmp_path, monkeypatch):
 
     from ethograph.gui.widgets_meta import MetaWidget
     meta = MetaWidget(viewer)
+    meta._check_unsaved_changes = lambda event: True
 
     yield viewer, meta
     viewer.close()
@@ -78,6 +79,22 @@ def loaded_gui(gui, qtbot):
     meta.io_widget.nc_file_path_edit.setText(str(TEST_NC_PATH))
     meta.app_state.nc_file_path = str(TEST_NC_PATH)
     meta.io_widget.downsample_checkbox.setChecked(False)
+
+    meta.data_widget.on_load_clicked()
+    QApplication.processEvents()
+
+    return viewer, meta
+
+
+@pytest.fixture
+def loaded_gui_downsampled(gui, qtbot):
+    from qtpy.QtWidgets import QApplication
+
+    viewer, meta = gui
+    meta.io_widget.nc_file_path_edit.setText(str(TEST_NC_PATH))
+    meta.app_state.nc_file_path = str(TEST_NC_PATH)
+    meta.io_widget.downsample_checkbox.setChecked(True)
+    meta.io_widget.downsample_spin.setValue(100)
 
     meta.data_widget.on_load_clicked()
     QApplication.processEvents()

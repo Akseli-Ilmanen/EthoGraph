@@ -244,7 +244,7 @@ class ObservableAppState(QObject):
             self._values[name] = value
 
             signal = getattr(self, f"{name}_changed", None)
-            if signal and old_value != value:
+            if signal and old_value is not value:
                 signal.emit(value)
             return
 

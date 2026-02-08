@@ -9,8 +9,6 @@ import xarray as xr
 
 
 
-
-
 if TYPE_CHECKING:
     from ethograph import TrialTree
 
@@ -319,7 +317,7 @@ def extract_type_vars(ds: xr.Dataset, dt: "TrialTree") -> dict:
                 type_vars_dict[name] = coord.values
         else:
             # Dim without coord - generate integer range
-            type_vars_dict[name] = np.arange(ds.dims[name])
+            type_vars_dict[name] = np.arange(ds.sizes[name])
             
             
     type_vars_dict["trial_conditions"] = _possible_trial_conditions(ds, dt)

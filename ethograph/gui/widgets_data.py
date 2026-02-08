@@ -292,7 +292,7 @@ class DataWidget(DataLoader, QWidget):
         self.coords_groupbox_layout.setContentsMargins(DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN)
         self.coords_groupbox.setLayout(self.coords_groupbox_layout)
 
-        non_data_type_vars = ["features", "cameras", "mics", "tracking", "trial_conditions", "changepoints", "rgb"]
+        non_data_type_vars = ["cameras", "mics", "tracking", "trial_conditions", "changepoints", "rgb"]
 
         for type_var in self.type_vars_dict.keys():
             if type_var.lower() not in non_data_type_vars:

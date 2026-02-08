@@ -69,14 +69,14 @@ def minimal_basics(ds, label_sr: Optional[float] = None, video_path: Optional[st
             time_labels = np.arange(0, ds.time.values[-1] + 1/label_sr, 1/label_sr)
             
             ds["labels"] = xr.DataArray(
-                np.zeros((len(time_labels), ds.dims["individuals"])),
+                np.zeros((len(time_labels), ds.sizes["individuals"])),
                 dims=["time_labels", "individuals"],
                 coords={"time_labels": time_labels, "individuals": ds.individuals},
             )
             
         else: 
             ds["labels"] = xr.DataArray(
-                    np.zeros((ds.dims["time"], ds.dims["individuals"])),
+                    np.zeros((ds.sizes["time"], ds.sizes["individuals"])),
                     dims=["time", "individuals"],
             )
 
