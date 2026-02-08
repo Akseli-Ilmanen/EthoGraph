@@ -399,7 +399,7 @@ def _downsample_dataset(ds: xr.Dataset, factor: int) -> xr.Dataset:
     if 'time' not in ds.dims:
         return ds
 
-    n_time = ds.dims['time']
+    n_time = ds.sizes['time']
     n_segments = n_time // factor
     if n_segments < 2:
         return ds

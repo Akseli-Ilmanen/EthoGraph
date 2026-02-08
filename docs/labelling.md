@@ -15,7 +15,7 @@ To create a new label label:
 
 ## Playing Back Labels
 
-Once you've created label labels, you can click on the label, press 'v' to play the segment.
+Once you've created label labels, you can click on the label, press `v` to play the segment.
 
 ![label_play](media/label_play.gif)
 

@@ -97,11 +97,11 @@
     - **`environment-dev.yml`** - GUI + model training (in development)
 
     ??? note "Installation instructions"
-        === "Windows"
+        === "Windows (via .bat)"
             1. Open File Explorer and navigate to the EthoGraph folder.
             2. Double-click on `Windows install.bat` and follow the steps. Optionally, you can create a Desktop shortcut.
 
-        === "MacOS / Linux"
+        === "Windows (manual) / MacOS / Linux"
             1. Open a terminal and navigate to the EthoGraph folder:
                 ```bash
                 cd /path/to/EthoGraph
@@ -115,6 +115,10 @@
 
                 # Or for GUI + model (in development)
                 conda env create -f environment-dev.yml
+                ```
+            3. Optionally, create a desktop shortcut.
+                ```
+                ethograph-shortcut
                 ```
 
 5. Test it works. <br>
