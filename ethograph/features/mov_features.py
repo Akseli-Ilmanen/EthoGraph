@@ -1,29 +1,20 @@
 """Features related to movements/kinematics."""
 
-import shutil
-import matplotlib.pyplot as plt
-import numpy as np
-from matplotlib import cm as mpl_cm
-from typing import Dict, Tuple, Any, List
-from pathlib import Path
-import xarray as xr
-
-import pandas as pd
-
-
-from typing import Union
-import numpy as np
-import xarray as xr
-from scipy import interpolate
-from scipy.spatial.distance import cdist
-from scipy.integrate import cumulative_trapezoid
-
-from itertools import groupby
-
-import subprocess
-import tempfile
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
+from pathlib import Path
+from typing import Union
+
+import numpy as np
+import pandas as pd
+import xarray as xr
+from matplotlib import cm as mpl_cm
+from scipy import interpolate
+from scipy.integrate import cumulative_trapezoid
+from scipy.spatial.distance import cdist
 
 
 class Position3DCalibration:
@@ -338,15 +329,6 @@ def extract_video_motion(
     )
     
     
-def _movmean_omitnan(arr: np.ndarray, window: int) -> np.ndarray:
-    result = np.empty_like(arr)
-    half = window // 2
-    for col in range(arr.shape[1]):
-        for i in range(len(arr)):
-            start, end = max(0, i - half), min(len(arr), i + half + 1)
-            result[i, col] = np.nanmean(arr[start:end, col])
-    return result    
-
 
 
 def compute_aux_velocity_and_speed(

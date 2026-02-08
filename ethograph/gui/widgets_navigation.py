@@ -2,9 +2,17 @@
 
 import numpy as np
 from napari import Viewer
-from qtpy.QtCore import Signal
-from qtpy.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QGroupBox, QGridLayout
-from magicgui.widgets import ComboBox
+from qtpy.QtWidgets import (
+    QComboBox,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 

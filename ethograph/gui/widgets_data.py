@@ -4,13 +4,13 @@ import os
 from pathlib import Path
 from typing import Dict, Optional
 
-import napari
 import numpy as np
 import xarray as xr
 from movement.napari.loader_widgets import DataLoader
 from napari.utils.notifications import show_error
 from napari.viewer import Viewer
-from qtpy.QtCore import Qt, QTimer, QSortFilterProxyModel
+from napari_pyav._reader import FastVideoReader
+from qtpy.QtCore import QSortFilterProxyModel, Qt, QTimer
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QApplication,
@@ -26,18 +26,14 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-
-
-from ethograph.utils.data_utils import sel_valid, get_time_coord
 from ethograph import downsample_trialtree
+from ethograph.utils.data_utils import get_time_coord, sel_valid
+
+from .app_constants import DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_SPACING
 from .data_loader import load_dataset
 from .plots_space import SpacePlot
 from .plots_spectrogram import SharedAudioCache
 from .video_sync import NapariVideoSync
-from .app_constants import DEFAULT_LAYOUT_SPACING, DEFAULT_LAYOUT_MARGIN
-
-# PyAV streamer with fixes
-from napari_pyav._reader import FastVideoReader
 
 
 def make_searchable(combo_box: QComboBox) -> None:

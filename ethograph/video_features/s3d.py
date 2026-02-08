@@ -1,7 +1,8 @@
 """adapted from https://github.com/kylemin/S3D"""
+
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 
 
 class S3D(nn.Module):

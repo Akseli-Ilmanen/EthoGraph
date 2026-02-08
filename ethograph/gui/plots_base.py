@@ -1,9 +1,10 @@
 """Shared base class for plot widgets with sync and marker functionality."""
 
-import pyqtgraph as pg
-import numpy as np
-from qtpy.QtCore import Signal
 from typing import Optional, Tuple
+
+import numpy as np
+import pyqtgraph as pg
+from qtpy.QtCore import Signal
 
 from .app_constants import (
     LOCKED_RANGE_MIN_FACTOR,

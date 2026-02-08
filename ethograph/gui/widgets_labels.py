@@ -1,16 +1,14 @@
 """Widget for labeling segments in movement data."""
-from distinctipy import name
+
 import os
-import threading
-from collections.abc import Generator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+
 import numpy as np
-from ethograph.utils.paths import get_project_root
-import pyqtgraph as pg
+import xarray as xr
+from napari.utils.notifications import show_info, show_warning
 from napari.viewer import Viewer
-from napari.utils.notifications import show_info
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QAbstractItemView,
@@ -33,15 +31,12 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from napari.utils.notifications import show_warning
-from ethograph.features.changepoints import snap_to_nearest_changepoint
-from ethograph.utils.labels import load_label_mapping, purge_small_blocks
-from ethograph.utils.data_utils import sel_valid
+
 from ethograph import TrialTree
-import json
-import time
-import xarray as xr
-from qtpy.QtCore import Qt, Signal
+from ethograph.features.changepoints import snap_to_nearest_changepoint
+from ethograph.utils.data_utils import sel_valid
+from ethograph.utils.labels import load_label_mapping, purge_small_blocks
+from ethograph.utils.paths import get_project_root
 
 from .app_constants import (
     LABELS_TABLE_MAX_HEIGHT,

@@ -3,10 +3,11 @@ from typing import Dict
 import numpy as np
 import torch
 import torchvision
+from torchvision.io.video import read_video
+
 from ethograph.video_features.base_extractor import BaseExtractor
 from ethograph.video_features.s3d import S3D
 from ethograph.video_features.transforms import CenterCrop, Resize, ToFloatTensorInZeroOne
-from torchvision.io.video import read_video
 from ethograph.video_features.utils import form_slices
 
 

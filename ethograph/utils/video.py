@@ -1,14 +1,5 @@
 """Video utilities for extracting and exporting label segments from labeled data."""
 
-from pathlib import Path
-from typing import Optional
-
-import numpy as np
-
-from ethograph import TrialTree
-from ethograph.utils.labels import get_segment_indices
-
-
 # IMPORTANT: If I want to use this code, need to make some fixes, replaces data_sr with label_sr where appropriate.
 
 # def export_label_clips(

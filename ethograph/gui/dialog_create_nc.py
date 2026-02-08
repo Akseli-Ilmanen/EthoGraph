@@ -8,7 +8,6 @@ import audioio as aio
 import av
 import xarray as xr
 from movement.io import load_poses
-
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -27,10 +26,10 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.gui.data_loader import (
-    minimal_dt_from_pose,
-    minimal_dt_from_ds,
     minimal_dt_from_audio,
+    minimal_dt_from_ds,
     minimal_dt_from_npy_file,
+    minimal_dt_from_pose,
 )
 
 

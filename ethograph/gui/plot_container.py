@@ -1,13 +1,11 @@
 """Simple container widget for switching between different plot types."""
 
-from qtpy.QtWidgets import QWidget, QVBoxLayout
-from qtpy.QtCore import Signal, QSize, Qt
-from .plots_lineplot import LinePlot
-from .plots_spectrogram import SpectrogramPlot
-from .plots_audiotrace import AudioTracePlot
-import pyqtgraph as pg
+from typing import Any, Dict, Optional
+
 import numpy as np
-from typing import Optional, Dict, Any
+import pyqtgraph as pg
+from qtpy.QtCore import QSize, Qt, Signal
+from qtpy.QtWidgets import QVBoxLayout, QWidget
 
 from .app_constants import (
     PLOT_CONTAINER_SIZE_HINT_HEIGHT,
@@ -34,6 +32,9 @@ from .app_constants import (
     Z_INDEX_PREDICTIONS,
     Z_INDEX_CHANGEPOINTS,
 )
+from .plots_audiotrace import AudioTracePlot
+from .plots_lineplot import LinePlot
+from .plots_spectrogram import SpectrogramPlot
 
 
 class PlotContainer(QWidget):

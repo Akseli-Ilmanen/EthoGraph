@@ -1,20 +1,14 @@
-import numpy as np
-from sklearn.preprocessing import StandardScaler
-from scipy.ndimage import gaussian_filter1d
-import xarray as xr
 from typing import Tuple
+
+import numpy as np
+import xarray as xr
 from scipy.interpolate import interp1d
+from scipy.ndimage import gaussian_filter1d
 from scipy.signal import decimate
+from sklearn.preprocessing import StandardScaler
 
 
-def downsample_with_antialiasing(data: np.ndarray, factor: int) -> np.ndarray:
-    """Downsample with low-pass filter to prevent aliasing."""
-    if data.ndim == 1:
-        return decimate(data, factor, ftype='fir', zero_phase=True)
-    return np.column_stack([
-        decimate(data[:, i], factor, ftype='fir', zero_phase=True)
-        for i in range(data.shape[1])
-    ])
+
 
 def resample_to_frames(
     data: np.ndarray, 

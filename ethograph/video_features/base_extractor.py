@@ -2,7 +2,9 @@ import os
 import traceback
 from pathlib import Path
 from typing import Dict, Union
+
 import numpy as np
+
 from ethograph.video_features.utils import load_numpy, load_pickle, make_path, write_numpy, write_pickle
 
 

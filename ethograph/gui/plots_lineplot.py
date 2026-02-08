@@ -1,10 +1,13 @@
 """Enhanced line plot inheriting from BasePlot."""
 
-import numpy as np
 from typing import Optional
+
+import numpy as np
 from qtpy.QtCore import QTimer
+
+from ethograph.plots.lineplot_qtgraph import clear_plot_items, plot_ds_variable
 from ethograph.utils.data_utils import sel_valid
-from ethograph.plots.lineplot_qtgraph import plot_ds_variable, clear_plot_items
+
 from .plots_base import BasePlot
 
 

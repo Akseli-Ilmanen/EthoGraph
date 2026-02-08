@@ -1,15 +1,23 @@
 """Spectrogram controls widget - spectrogram settings and noise reduction."""
 
-import numpy as np
-from qtpy.QtWidgets import (
-    QGridLayout, QLineEdit, QWidget, QPushButton,
-    QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
-    QGroupBox, QCheckBox, QDoubleSpinBox
-)
-from qtpy.QtCore import Qt
-from napari.viewer import Viewer
-from napari.utils.notifications import show_info, show_warning
 from typing import Optional
+
+import numpy as np
+from napari.viewer import Viewer
+from qtpy.QtCore import Qt
+from qtpy.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class SpectrogramWidget(QWidget):

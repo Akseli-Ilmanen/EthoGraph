@@ -2,7 +2,12 @@ data/
 result/
 audian/
 
+# Block mp4 everywhere except tests/test_data
 *.mp4
+!tests/test_data/**/*.mp4
+
+
+*gui_settings.yaml
 
 
 # Byte-compiled

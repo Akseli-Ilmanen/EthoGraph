@@ -4,12 +4,13 @@ Uses vocalseg library for detecting vocal onset/offset candidates in audio files
 Reference: https://github.com/timsainb/vocalization-segmentation
 """
 
-import numpy as np
-from typing import Tuple, Optional
 import hashlib
-from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
+from typing import Optional, Tuple
+
 import audioio as aio
 import noisereduce as nr
+import numpy as np
+from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
 
 
 _audio_changepoint_cache: dict[str, dict] = {}

@@ -48,5 +48,8 @@ include = ["ethograph", "ethograph.*"]
 "ethograph.gui" = ["*.yaml"]
 ethograph = ["assets/*"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 120

@@ -1,9 +1,11 @@
-import xarray as xr
+from itertools import groupby
+from typing import Dict, List, Tuple
+
 import numpy as np
 import pandas as pd
-from itertools import groupby
+import xarray as xr
+
 from ethograph import TrialTree
-from typing import Any, Dict, List, Mapping, Tuple
 
 def sel_valid(da, sel_kwargs):
     """
@@ -91,7 +93,7 @@ def stack_trials(
 
     for tree in trees.values():
         for trial in tree.children:
-            if not trial.startswith("trial_"):
+            if not trial.startswith(TrialTree.TRIAL_PREFIX):
                 continue
             trial_ds = tree[trial].ds[keep_vars].copy()
 
@@ -135,10 +137,10 @@ def ds_to_df(ds):
         
         
 
-        if isinstance(raw_trial_id, str) and raw_trial_id.startswith('trial_'):
-            trial_id = int(raw_trial_id.split('_')[1])
+        if isinstance(raw_trial_id, str) and raw_trial_id.startswith(TrialTree.TRIAL_PREFIX):
+            trial_id = TrialTree.trial_id(raw_trial_id)
         else:
-            trial_id = int(raw_trial_id)
+            trial_id = raw_trial_id
 
 
 
@@ -209,13 +211,13 @@ def build_speed_dict(
 
     for tree in trees.values():
         for trial_name in tree.children:
-            if not trial_name.startswith("trial_"):
+            if not trial_name.startswith(TrialTree.TRIAL_PREFIX):
                 continue
 
             trial_ds = tree[trial_name].ds
 
             session = trial_ds.attrs.get('session')
-            trial_num = int(trial_name.split('_')[1])
+            trial_num = TrialTree.trial_id(trial_name)
 
             speed = trial_ds.speed.sel(keypoints=keypoint)
 
@@ -257,13 +259,13 @@ def build_angle_rgb_dict(
 
     for tree in trees.values():
         for trial_name in tree.children:
-            if not trial_name.startswith("trial_"):
+            if not trial_name.startswith(TrialTree.TRIAL_PREFIX):
                 continue
 
             trial_ds = tree[trial_name].ds
 
             session = trial_ds.attrs.get('session')
-            trial_num = int(trial_name.split('_')[1])
+            trial_num = TrialTree.trial_id(trial_name)
 
             rgb = trial_ds.angle_rgb.sel(keypoints=keypoint)
 

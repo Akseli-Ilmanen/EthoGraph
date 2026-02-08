@@ -1,5 +1,7 @@
 # Utils not from diffact but added for preparing data for training, and doing inference on new data
+
 import numpy as np
+
 from ethograph.utils.labels import get_labels_start_end_time
 
 

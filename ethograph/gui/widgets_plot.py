@@ -1,12 +1,19 @@
 """Axes control widget for plot settings."""
 
-from qtpy.QtWidgets import (
-    QGridLayout, QLineEdit, QWidget, QPushButton,
-    QVBoxLayout, QLabel, QCheckBox, QGroupBox,
-)
-from napari.viewer import Viewer
 from typing import Optional
+
+from napari.viewer import Viewer
 from qtpy.QtGui import QDoubleValidator
+from qtpy.QtWidgets import (
+    QCheckBox,
+    QGridLayout,
+    QGroupBox,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class AxesWidget(QWidget):

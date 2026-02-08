@@ -1,11 +1,15 @@
 """Custom code for importing data from lab-internal matlab codes to python"""
 
 import re
-import numpy as np
 from pathlib import Path
-from typing import Tuple, Dict, Union
+from typing import Optional
+
+import numpy as np
+import xarray as xr
+from scipy.io import loadmat
 
 from ethograph import TrialTree
+
 
 def get_all_trials_path_info(all_trials_path):
     """
@@ -28,20 +32,9 @@ def get_all_trials_path_info(all_trials_path):
         session_date = ''
         session_number = ''
 
-    dataset_name = f'{session_date}-{session_number}_{subject_id}' 
+    dataset_name = f'{session_date}-{session_number}_{subject_id}'
 
     return subject_id, session_date, session_number, dataset_name
-
-
-
-
-
-
-from pathlib import Path
-from typing import Optional, Dict, Any
-import numpy as np
-import xarray as xr
-from scipy.io import loadmat
 
 
 

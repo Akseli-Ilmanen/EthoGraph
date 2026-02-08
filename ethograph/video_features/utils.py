@@ -1,16 +1,15 @@
 import argparse
 import os
 import pickle
+import platform
 import random
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Union
-import platform
 
 import numpy as np
-from omegaconf.dictconfig import DictConfig
 import torch
-import torch.nn.functional as F
+from omegaconf.dictconfig import DictConfig
 from omegaconf.listconfig import ListConfig
 
 

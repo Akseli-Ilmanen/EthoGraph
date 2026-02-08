@@ -1,11 +1,13 @@
 """
 Mostly from torchvision
 """
-import torch
-from typing import Iterable
-import numpy as np
-from PIL import Image
+
 import random
+from typing import Iterable
+
+import numpy as np
+import torch
+from PIL import Image
 
 
 def crop(vid, i, j, h, w):

@@ -1,11 +1,11 @@
 """Validation utilities for TrialTree datasets."""
 
+from numbers import Number
+from pathlib import Path
+from typing import TYPE_CHECKING, Dict, List, Set
 
 import numpy as np
 import xarray as xr
-from typing import Dict, List, Set, TYPE_CHECKING
-from numbers import Number
-from pathlib import Path
 
 
 
@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from ethograph import TrialTree
 
 
-TRIAL_PREFIX = "trial_"
 
 
 def find_temporal_dims(ds: xr.Dataset, time_dim: str = 'time') -> set[str]:
@@ -214,7 +213,7 @@ def _extract_trial_datasets(dt: "TrialTree") -> List[xr.Dataset]:
     """Extract all trial datasets from a TrialTree."""
     datasets = []
     for name, node in dt.children.items():
-        if name.startswith(TRIAL_PREFIX) and node.ds is not None:
+        if name.startswith(dt.TRIAL_PREFIX) and node.ds is not None:
             datasets.append(node.ds)
     return datasets
 
@@ -261,7 +260,7 @@ def _extract_trial_datasets(dt: "TrialTree") -> List[xr.Dataset]:
 
 
 
-    return inconsistencies
+#     return inconsistencies
 
 
 def _possible_trial_conditions(ds: xr.Dataset, dt: "TrialTree") -> List[str]:

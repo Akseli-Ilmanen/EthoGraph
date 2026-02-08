@@ -1,22 +1,21 @@
+import copy
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+from typing import Tuple
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import optim
-from torch import Tensor
-import copy
-import numpy as np
-import math
-from typing import Tuple
 import xarray as xr
-import os
-import json
-from pathlib import Path
-from datetime import datetime
 from scipy.stats import entropy
+from torch import Tensor, optim
+
 from ethograph import TrialTree
-from ethograph.model.eval_metrics import func_eval, func_eval_labelwise
 from ethograph.features.changepoints import correct_changepoints_one_trial
-from ethograph.utils.labels import create_classification_probabilities_pdf
+from ethograph.model.eval_metrics import func_eval, func_eval_labelwise
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
