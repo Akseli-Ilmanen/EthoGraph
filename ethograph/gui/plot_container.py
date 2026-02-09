@@ -46,6 +46,7 @@ class PlotContainer(QWidget):
 
     plot_changed = Signal(str)  # Emits 'lineplot', 'spectrogram', or 'audiotrace'
     labels_redraw_needed = Signal()  # Emits when labels need to be redrawn on new plot
+    spectrogram_overlay_shown = Signal()  # Emits after spectrogram overlay is created
 
     def __init__(self, napari_viewer, app_state):
         super().__init__()
@@ -83,7 +84,7 @@ class PlotContainer(QWidget):
 
         self.amp_envelope_vb = None
         self.amp_envelope_item = None
-        self.amp_threshold_line = None
+        self.amp_threshold_lines: list = []
         self._amp_envelope_geometry_updater = None
 
         # Connect zoom events to update changepoint line styles
@@ -193,12 +194,31 @@ class PlotContainer(QWidget):
             right_axis.hide()
             self.confidence_item = None
 
-    def draw_amplitude_envelope(self, time: np.ndarray, envelope: np.ndarray, threshold: float):
-        """Draw amplitude envelope and threshold line as overlay on the line plot."""
+    def draw_amplitude_envelope(
+        self,
+        time: np.ndarray,
+        envelope: np.ndarray,
+        threshold: float | None = None,
+        thresholds: list[tuple[float, Any]] | None = None,
+    ):
+        """Draw amplitude envelope and threshold line(s) as overlay on the line plot.
+
+        Args:
+            time: Time array for x-axis.
+            envelope: Amplitude envelope values.
+            threshold: Single threshold value (backward compat). Drawn as red dashed.
+            thresholds: List of values for multiple threshold lines.
+                        If both threshold and thresholds are given, thresholds wins.
+        """
         self.clear_amplitude_envelope()
 
         if not self.is_lineplot():
             return
+
+        if thresholds is None and threshold is not None:
+            thresholds = [
+                (threshold, pg.mkPen(color=(255, 50, 50, 200), width=2, style=Qt.DashLine))
+            ]
 
         self.amp_envelope_vb = pg.ViewBox()
         self.line_plot.plot_item.scene().addItem(self.amp_envelope_vb)
@@ -211,13 +231,15 @@ class PlotContainer(QWidget):
         )
         self.amp_envelope_vb.addItem(self.amp_envelope_item)
 
-        self.amp_threshold_line = pg.InfiniteLine(
-            pos=threshold, angle=0,
-            pen=pg.mkPen(color=(255, 50, 50, 200), width=2, style=Qt.DashLine),
-        )
-        self.amp_envelope_vb.addItem(self.amp_threshold_line)
+        max_thresh = 0.0
+        if thresholds:
+            for value in thresholds:
+                line = pg.InfiniteLine(pos=value, angle=0)
+                self.amp_envelope_vb.addItem(line)
+                self.amp_threshold_lines.append(line)
+                max_thresh = max(max_thresh, value)
 
-        env_max = max(float(envelope.max()), threshold * 1.5)
+        env_max = max(float(envelope.max()), max_thresh * 1.5) if max_thresh > 0 else float(envelope.max())
         self.amp_envelope_vb.setYRange(0, env_max, padding=0.05)
 
         t0, t1 = self.line_plot.get_current_xlim()
@@ -243,14 +265,14 @@ class PlotContainer(QWidget):
             try:
                 if self.amp_envelope_item:
                     self.amp_envelope_vb.removeItem(self.amp_envelope_item)
-                if self.amp_threshold_line:
-                    self.amp_envelope_vb.removeItem(self.amp_threshold_line)
+                for line in self.amp_threshold_lines:
+                    self.amp_envelope_vb.removeItem(line)
                 self.line_plot.plot_item.scene().removeItem(self.amp_envelope_vb)
             except (RuntimeError, AttributeError, ValueError):
                 pass
             self.amp_envelope_vb = None
             self.amp_envelope_item = None
-            self.amp_threshold_line = None
+            self.amp_threshold_lines.clear()
 
     def show_audio_overlay(self, overlay_type: str):
         """Show audio waveform or spectrogram as overlay behind line plot.
@@ -426,6 +448,8 @@ class PlotContainer(QWidget):
                     item.setPen(pg.mkPen(color='yellow', width=2))
                     break
 
+        self.spectrogram_overlay_shown.emit()
+
     def _refresh_spectrogram_data(self):
         """Refresh spectrogram data for current X range."""
         from .spectrogram_sources import build_audio_source
@@ -525,6 +549,21 @@ class PlotContainer(QWidget):
     def is_heatmap(self):
         """Check if currently showing heatmap."""
         return self.current_plot_type == 'heatmap'
+
+    def has_spectrogram_overlay(self) -> bool:
+        return self.audio_overlay_type == 'spectrogram' and self.audio_overlay_item is not None
+
+    def apply_overlay_levels(self, vmin: float, vmax: float):
+        if self.audio_overlay_item is not None and self.audio_overlay_type == 'spectrogram':
+            self.audio_overlay_item.setLevels([vmin, vmax])
+
+    def apply_overlay_colormap(self, colormap_name: str):
+        if self.audio_overlay_item is not None and self.audio_overlay_type == 'spectrogram':
+            try:
+                cmap = pg.colormap.get(colormap_name)
+                self.audio_overlay_item.setColorMap(cmap)
+            except (KeyError, ValueError, TypeError):
+                pass
 
     def get_current_xlim(self):
         """Get current x-axis limits from active plot."""
