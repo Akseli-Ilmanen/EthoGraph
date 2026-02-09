@@ -47,6 +47,9 @@ SPECTROGRAM_FALLBACK_Y_HEIGHT = 1600
 SPECTROGRAM_OVERLAY_ZOOM_OUT_THRESHOLD = 0.5  # Refresh when width < old * 0.5
 SPECTROGRAM_OVERLAY_ZOOM_IN_THRESHOLD = 2.0   # Refresh when width > old * 2.0
 
+# Percentile filtered in heatmap view
+HEATMAP_EXCLUSION_PERCENTILE = 98
+
 # Changepoint line styles based on zoom level (plot_container.py)
 CP_ZOOM_VERY_OUT_THRESHOLD = 10.0  # seconds visible
 CP_ZOOM_MEDIUM_THRESHOLD = 2.0     # seconds visible

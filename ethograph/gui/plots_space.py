@@ -9,7 +9,7 @@ import xarray as xr
 from qtpy.QtWidgets import QVBoxLayout, QWidget
 
 from ethograph.features.preprocessing import interpolate_nans
-from ethograph.plots.lineplot_qtgraph import MultiColoredLineItem
+from ethograph.gui.plots_lineplot import MultiColoredLineItem
 from ethograph.utils.data_utils import sel_valid
 
 
@@ -37,7 +37,7 @@ def space_plot_pyqt(
     X, Y = pos[:, 0], pos[:, 1]
     Z = pos[:, 2] if view_3d else None
 
-
+    # TODO: Specific to crow project, make general.
     box_xy_base = np.array([
         [-7.00,  0.00],
         [-7.00,  9.80],
