@@ -162,72 +162,53 @@ def labels_to_rgb(
     return rgb_array
 
 
-def get_labels_start_end_time(frame_wise_labels, bg_class=[0.0]):
-    labels = []
-    starts = []
-    ends = []
-    last_label = frame_wise_labels[0]
-    if frame_wise_labels[0] not in bg_class:
-        labels.append(frame_wise_labels[0])
-        starts.append(0)
-    for i in range(len(frame_wise_labels)):
-        if frame_wise_labels[i] != last_label:
-            if frame_wise_labels[i] not in bg_class:
-                labels.append(frame_wise_labels[i])
-                starts.append(i)
-            if last_label not in bg_class:
-                ends.append(i) 
-            last_label = frame_wise_labels[i]
-    if last_label not in bg_class:
-        ends.append(i)
-        
-    return labels, starts, ends
-
-
-def get_segment_indices(arr: List[int]) -> List[Tuple[int, int, int]]:
+def get_segments(col, bg_class=0):
     """
-    Alternative using groupby - more Pythonic for lists.
+    Example: [0,1,1,1,0,2,2] → [(1,1,4), (2,5,7)]
     """
+    padded = np.concatenate([[bg_class - 1], col, [bg_class - 1]])
+    change_indices = np.nonzero(padded[:-1] != padded[1:])[0]
+    
     segments = []
-    start = 0
-    
-    for value, group in groupby(arr):
-        length = len(list(group))
-        if value != 0:  # Skip zeros if desired
-            segments.append((value, start, start + length))
-        start += length
-    
+    for i in range(len(change_indices) - 1):
+        start = change_indices[i]
+        end = change_indices[i + 1]
+        label = int(col[start])
+        if label != bg_class:
+            segments.append((label, start, end))
     return segments
 
 
-
-def count_continuous_segments(ds: xr.Dataset) -> Dict[int, int]:
-    """Count continuous segments for each unique label (excluding 0).
+def get_labels_start_end_indices(col, bg_class=0):
+    """Returns indices for array slicing (exclusive end).
     
-    Args:
-        ds: Dataset with 'labels' DataArray containing sequential labels
-        
-    Returns:
-        Dictionary mapping label ID to number of continuous segments
+    Example: [0,1,1,1,0,2,2] → labels=[1,2], starts=[1,5], ends=[4,7]
     """
-    labels = ds.labels.values
-    
-    # Find where labels change (including transitions from/to 0)
-    diff = np.diff(labels, prepend=labels[0]-1)
-    change_indices = np.where(diff != 0)[0]
-    
-    # Get segment labels and count
-    segment_counts = {}
-    for i in range(len(change_indices)):
-        end_idx = change_indices[i+1] if i+1 < len(change_indices) else len(labels)
-        label = labels[change_indices[i]]
-        
-        if label == 0:
-            continue
+    segments = get_segments(col, bg_class)
+    labels = [s[0] for s in segments]
+    starts = [s[1] for s in segments]
+    ends = [s[2] for s in segments]
+    return labels, starts, ends
 
-        segment_counts[int(label)] = segment_counts.get(int(label), 0) + 1
 
-    return segment_counts
+def get_labels_start_end_times(col, time_coord, individual, bg_class=0):
+    """Returns time intervals for storage (inclusive end).
+    
+    Returns:
+        List of dicts with onset_s, offset_s (both inclusive), label_id, individual.
+        Example at 10Hz: [0,1,1,1,0,2,2] → 
+            [{'onset_s': 0.1, 'offset_s': 0.3, 'label_id': 1, 'individual': 'crow_A'},
+             {'onset_s': 0.5, 'offset_s': 0.6, 'label_id': 2, 'individual': 'crow_A'}]
+    """
+    segments = get_segments(col, bg_class)
+    return [{
+        "onset_s": float(time_coord[start]),
+        "offset_s": float(time_coord[end - 1]),
+        "label_id": label,
+        "individual": individual,
+    } for label, start, end in segments]
+    
+    
 
 
 

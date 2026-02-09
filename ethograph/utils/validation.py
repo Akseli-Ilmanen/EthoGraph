@@ -150,11 +150,7 @@ def validate_dataset(ds: xr.Dataset, type_vars_dict: Dict) -> List[str]:
     if "individuals" not in ds.coords or len(ds.coords["individuals"]) == 0:
         errors.append("Xarray dataset ('ds') must have 'individuals' coordinate")
 
-    # Required variables
-    if "labels" not in ds.data_vars:
-        errors.append("Xarray dataset ('ds') must contain 'labels' variable")
-    elif not is_integer_array(ds['labels'].values):
-        errors.append("Variable 'labels' must contain integer values")
+    # TODO: add something about new interval based label validation?
 
     if "features" not in type_vars_dict or len(type_vars_dict["features"]) == 0:
         errors.append("Xarray dataset ('ds') must contain at least one variable with attribute type='features'")

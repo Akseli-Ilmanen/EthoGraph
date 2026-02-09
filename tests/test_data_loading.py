@@ -27,11 +27,15 @@ class TestTrialTree:
     def test_label_dt(self, trial_tree):
         label_dt = trial_tree.get_label_dt()
         first_trial = label_dt.trials[0]
-        assert "labels" in label_dt.trial(first_trial).data_vars
+        trial_ds = label_dt.trial(first_trial)
+        assert "onset_s" in trial_ds.data_vars
+        assert "offset_s" in trial_ds.data_vars
+        assert "label_id" in trial_ds.data_vars
+        assert "individual" in trial_ds.data_vars
 
         label_dt_empty = trial_tree.get_label_dt(empty=True)
-        labels = label_dt_empty.trial(first_trial).labels.values
-        assert np.all(labels == 0)
+        empty_ds = label_dt_empty.trial(first_trial)
+        assert empty_ds.sizes.get("segment", 0) == 0
 
     def test_from_datasets_roundtrip(self, first_trial_ds):
         from ethograph import TrialTree

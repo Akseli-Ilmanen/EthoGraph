@@ -176,52 +176,30 @@ class TestLabelsWidget:
     def test_label_creation_via_two_clicks(self, loaded_gui):
         _, meta = loaded_gui
         from qtpy.QtCore import Qt
-        from ethograph.utils.data_utils import sel_valid, get_time_coord
+        from ethograph.utils.label_intervals import find_interval_at
 
         label_id = 1
-        label_sr = meta.app_state.label_sr
-        ds_kwargs = meta.app_state.get_ds_kwargs()
+        t_start = 1.0
+        t_end = 2.0
 
-        labels_before, _ = sel_valid(meta.app_state.label_ds.labels, ds_kwargs)
-        n = len(labels_before)
-
-        start_idx = max(10, n // 10)
-        end_idx = min(n - 10, n // 5)
-        assert end_idx - start_idx > 10, "Not enough samples for label creation test"
-
-        # Zero out the target region to ensure a clean slate
-        labels_before[start_idx:end_idx + 1] = 0
-
-        # Convert label indices to time (simulates where user clicks on plot)
-        t_start = start_idx / label_sr
-        t_end = end_idx / label_sr
-
-        # Activate label and simulate two clicks
         meta.labels_widget.activate_label(label_id)
         meta.labels_widget._on_plot_clicked({"x": t_start, "button": Qt.LeftButton})
-        assert meta.labels_widget.first_click == start_idx
+        assert meta.labels_widget.first_click == pytest.approx(t_start)
 
         meta.labels_widget._on_plot_clicked({"x": t_end, "button": Qt.LeftButton})
         QApplication.processEvents()
 
-        # Verify label was written into label_dt
-        labels_after, _ = sel_valid(meta.app_state.label_ds.labels, ds_kwargs)
-        assert np.all(labels_after[start_idx:end_idx + 1] == label_id), (
-            f"Expected label {label_id} in range [{start_idx}:{end_idx}]"
-        )
+        df = meta.app_state.label_intervals
+        assert df is not None and not df.empty, "No intervals after label creation"
 
-        # Boundaries must remain untouched
-        if start_idx > 0:
-            assert labels_after[start_idx - 1] == 0
-        if end_idx + 1 < n:
-            assert labels_after[end_idx + 1] == 0
+        individual = meta.labels_widget._current_individual()
+        idx = find_interval_at(df, (t_start + t_end) / 2, individual)
+        assert idx is not None, "Interval not found at midpoint"
 
-        # Verify time-to-index alignment via label time coordinate
-        time_coord = get_time_coord(meta.app_state.label_ds.labels).values
-        labeled_mask = labels_after == label_id
-        labeled_times = time_coord[labeled_mask]
-        assert labeled_times[0] == pytest.approx(time_coord[start_idx], abs=1e-6)
-        assert labeled_times[-1] == pytest.approx(time_coord[end_idx], abs=1e-6)
+        row = df.loc[idx]
+        assert row["label_id"] == label_id
+        assert row["onset_s"] == pytest.approx(t_start, abs=0.01)
+        assert row["offset_s"] == pytest.approx(t_end, abs=0.01)
 
     def test_human_verification_single_trial(self, loaded_gui):
         _, meta = loaded_gui

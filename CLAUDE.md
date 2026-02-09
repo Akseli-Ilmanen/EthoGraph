@@ -120,6 +120,12 @@ ethograph/gui/
     widgets_meta.py       # Main orchestrator widget (MetaWidget)
     widgets_navigation.py # Trial navigation (NavigationWidget)
     widgets_plot.py       # Plot settings controls (PlotsWidget)
+
+ethograph/utils/
+    label_intervals.py    # Interval-based label representation (core module)
+    labels.py             # Label utilities (mapping, purge, stitch - legacy dense ops)
+    io.py                 # TrialTree I/O with auto-conversion of dense → interval format
+    data_utils.py         # sel_valid(), get_time_coord()
 ```
 
 ## Architecture
@@ -151,6 +157,8 @@ ethograph/gui/
 - `set_key_sel(type_key, value)`: Sets selection with previous value tracking
 - `toggle_key_sel(type_key)`: Swaps current/previous selection
 - `save_to_yaml()` / `load_from_yaml()`: YAML persistence
+- `get_trial_intervals(trial) -> pd.DataFrame`: Extracts interval labels from label_dt for a trial
+- `set_trial_intervals(trial, df)`: Writes interval DataFrame back to label_dt (preserves attrs)
 
 ---
 
@@ -169,21 +177,22 @@ def get_time_coord(da: xr.DataArray) -> np.ndarray:
 
 **AppState time variables:**
 - `app_state.time` (np.ndarray): Time array for the currently selected feature. Updated when feature selection changes via `set_key_sel("features", ...)`.
-- `app_state.label_sr` (float): Sampling rate for labels. Calculated from whichever time coord the labels array uses.
+- `app_state.label_sr` (float): Derived from the feature time coordinate. Used for audio changepoint quantization in plot_container.
+- `app_state.label_intervals` (pd.DataFrame | None): Working DataFrame for the current trial's interval-based labels.
 
 **Usage pattern:**
 ```
 Feature DataArray    ->  time coord: "time" or "time_aux"  ->  app_state.time
-Labels DataArray     ->  time coord: "time" or "time_labels"  ->  get_time_coord(label_ds.labels)
+Labels (intervals)   ->  onset_s/offset_s in seconds       ->  app_state.label_intervals
 ```
 
 **Where used:**
 - `LinePlot._get_buffered_ds()`: Uses `app_state.time` for buffer range calculations
 - `BasePlot.set_x_range()`: Uses `app_state.time` for x-axis limits
-- `DataWidget.update_label_plot()`: Uses `get_time_coord(label_ds.labels)` to get labels' own time
-- `LabelsWidget`: Uses `app_state.label_sr` for time-to-index conversions when creating/editing labels
+- `DataWidget.update_label_plot()`: Passes `app_state.label_intervals` DataFrame to plot
+- `LabelsWidget`: All operations work directly in seconds (no index conversion needed)
 
-This decoupling allows features to be sampled at different rates than labels while both display correctly on the same plot.
+Labels are decoupled from any specific sampling rate since they store onset/offset in seconds.
 
 ---
 
@@ -238,11 +247,11 @@ Central coordinator that creates and wires all widgets together.
 
 **DataWidget** - The central orchestrator widget:
 - `on_load_clicked()`: Triggers loading, creates dynamic UI controls
-- `on_trial_changed()`: Handles all consequences of trial change (called via signal)
+- `on_trial_changed()`: Handles all consequences of trial change (called via signal). Loads interval-based labels via `app_state.get_trial_intervals()` into `app_state.label_intervals`.
 - `_create_trial_controls()`: Creates combos for all dimensions (including dynamic ones)
 - `_on_combo_changed()`: Central handler for all selection changes
 - `update_main_plot()`: Updates active plot with current selections
-- `update_label_plot()`: Draws label rectangles on plot
+- `update_label_plot()`: Passes `app_state.label_intervals` DataFrame to `labels_widget.plot_all_labels()`
 - `update_video_audio()`: Loads/switches video/audio files
 - Stores video sync object on `app_state.video` for access by other widgets
 
@@ -322,26 +331,52 @@ Subclasses implement:
 
 ---
 
-### Label Management: `widgets_labels.py`
+### Label System: Interval-Based (`label_intervals.py` + `widgets_labels.py`)
+
+Labels are stored as a pandas DataFrame with columns `(onset_s, offset_s, label_id, individual)` — times in seconds, decoupled from any sampling rate.
+
+**Core module** (`ethograph/utils/label_intervals.py`):
+```python
+INTERVAL_COLUMNS = ["onset_s", "offset_s", "label_id", "individual"]
+
+empty_intervals() -> pd.DataFrame              # Empty DataFrame with correct dtypes
+dense_to_intervals(arr, time, individuals)     # Legacy dense array -> intervals
+intervals_to_dense(df, sr, duration, individuals)  # Intervals -> dense (for CP correction)
+intervals_to_xr(df) -> xr.Dataset             # DataFrame -> xarray (segment dim) for persistence
+xr_to_intervals(ds) -> pd.DataFrame           # xarray -> DataFrame for working
+add_interval(df, onset, offset, label_id, ind) # Add with overlap resolution (split/trim/delete)
+delete_interval(df, idx) -> pd.DataFrame       # Drop by DataFrame index
+find_interval_at(df, time_s, individual) -> int | None  # Find interval containing time
+get_interval_bounds(df, idx) -> (onset, offset, label_id)
+purge_short_intervals(df, min_s, per_label=None)  # Drop short intervals
+stitch_intervals(df, max_gap_s, individual)    # Merge adjacent same-label
+```
+
+**Persistence**: xarray Dataset with `segment` dimension inside the DataTree (same `.nc` file).
+**Backward compat**: Old dense `.nc` files auto-convert on load in `get_label_dt()`.
 
 **LabelsWidget** - Label labeling interface:
 
 **State:**
-- `label_mappings`: Dict[int, {color, name}] from mapping.txt
+- `_mappings`: Dict[int, {color, name}] from mapping.txt
 - `ready_for_label_click`: Activated by label key press
-- `first_click` / `second_click`: Time positions from two clicks
+- `first_click` / `second_click`: Float times in seconds from two clicks
+- `current_labels_pos`: int | None — DataFrame index of selected interval
 
 **Label creation workflow:**
 1. `activate_label(label_id)` -> sets `ready_for_label_click = True`
-2. User clicks plot twice -> `_on_plot_clicked()` fires
-3. Creates rectangle in `app_state.label_ds['labels']` array
-4. `plot_all_labels()` redraws all labels
+2. User clicks plot twice -> `_on_plot_clicked()` captures time in seconds
+3. Optional snap to changepoint via `_snap_to_changepoint_time()` (works in time domain)
+4. `_apply_label()` calls `add_interval()` which handles overlap resolution
+5. Stores result in `app_state.label_intervals` and writes to `label_dt` via `set_trial_intervals()`
+6. `plot_all_labels(intervals_df)` redraws all labels on all plots
 
-**plot_all_labels():**
-1. Gets current plot from plot_container
-2. Clears existing `label_items`
-3. Draws label rectangles via `_draw_label_rectangle()`
-4. Different styling: LinePlot uses `LinearRegionItem`, Spectrogram uses edge lines
+**Label selection**: `_check_labels_click()` uses `find_interval_at(df, time_s, individual)` to find the clicked interval. Returns onset/offset/label_id directly — no dense array scanning.
+
+**plot_all_labels(intervals_df, predictions_df=None):**
+- Delegates to `PlotContainer.draw_all_labels(intervals_df)`
+- `_draw_intervals_on_plot()` iterates DataFrame rows directly
+- `_draw_single_label(plot, start_time, end_time, label_id)` unchanged — already works in time domain
 
 **Note:** Labels redraw on plot switch via `labels_redraw_needed` signal connected in MetaWidget.
 
@@ -373,7 +408,7 @@ Subclasses implement:
 
 ### Changepoint Correction System: `widgets_changepoints.py` + `changepoints.py`
 
-The correction system refines raw label boundaries by snapping them to detected changepoints in the kinematic/audio data.
+The correction system refines raw label boundaries by snapping them to detected changepoints in the kinematic/audio data. Uses a **bridge pattern**: intervals are converted to dense arrays for correction, then back to intervals.
 
 **UI Location:** Correction tab in `ChangepointsWidget` (4th toggle alongside Kinematic, Ruptures, Audio).
 
@@ -386,26 +421,34 @@ The correction system refines raw label boundaries by snapping them to detected 
 
 **Per-label thresholds** are managed via a popup `LabelThresholdsDialog` (button shows count of custom overrides). Values matching the global min are automatically excluded.
 
-**Correction pipeline** (`correct_changepoints_one_trial` in `changepoints.py`):
+**Bridge pattern** (`_correct_trial_intervals` in `widgets_changepoints.py`):
+```python
+# For each individual:
+dense_1d = intervals_to_dense(ind_df, sr, duration, [ind])  # intervals -> dense
+corrected_1d = correct_changepoints_one_trial(dense_1d, ds, all_params)  # correct
+corrected_df = dense_to_intervals(corrected_1d, time_coord, [ind])  # dense -> intervals
+```
+
+**Correction pipeline** (`correct_changepoints_one_trial` in `changepoints.py` — unchanged, operates on dense arrays):
 1. Merge all dataset changepoints into a single binary array via `merge_changepoints()`
 2. `purge_small_blocks()` — remove labels shorter than their threshold
 3. `stitch_gaps()` — merge adjacent same-label segments separated by small gaps
 4. For each label block, snap start/end to nearest changepoint index, constrained by `max_expansion`/`max_shrink`
 5. Final `purge_small_blocks()` + `fix_endings()` cleanup
 
-**Parameter keys:** Both the YAML file and `correct_changepoints_one_trial()` use `min_label_length` consistently. The `_cp_correction()` method only injects `cp_kwargs` (dimension selections from `app_state.get_ds_kwargs()`) before passing params to the correction function.
+**Undo/snapshot**: Stores DataFrame copies (not dense arrays) for revert.
 
 **Modes:**
 - *Single Trial*: Corrects current trial's labels only
 - *All Trials*: Corrects every trial; sets `label_dt.attrs["changepoint_corrected"] = 1` to prevent double-application
 
-**Status indicator:** `cp_status_btn` shows "Not corrected" (red) or "CP corrected (global)" (green). Updated on trial change via `app_state.trial_changed` signal.
-
 **Signal flow:**
 ```
 User clicks "All Trials" -> ChangepointsWidget._cp_correction("all_trials")
     |
-    correct_changepoints_one_trial() for each trial
+    _correct_trial_intervals() for each trial (bridge: intervals->dense->correct->intervals)
+    |
+    app_state.set_trial_intervals(trial, corrected_df)
     |
     label_dt.attrs["changepoint_corrected"] = 1
     |
@@ -434,13 +477,15 @@ User clicks Load -> DataWidget.on_load_clicked()
     |
 load_dataset(nc_path) -> TrialTree.open()
     |
+dt.get_label_dt() -> auto-converts dense to interval format if needed
+    |
 app_state.dt, label_dt, ds set
     |
 _create_trial_controls() -> combos created
     |
 app_state.ready = True
     |
-DataWidget.on_trial_changed() -> video/audio/plots
+DataWidget.on_trial_changed() -> loads intervals, video/audio/plots
 ```
 
 **On trial change (signal-based):**
@@ -454,10 +499,11 @@ app_state.trial_changed.emit()  <- Signal emitted
 DataWidget.on_trial_changed()   <- Connected listener
     |
     +-- Update datasets (ds, label_ds, pred_ds)
+    +-- app_state.label_intervals = app_state.get_trial_intervals(trial)
     +-- app_state.verification_changed.emit()
     +-- update_video_audio()
     +-- update_tracking()
-    +-- update_main_plot()
+    +-- update_main_plot() -> update_label_plot(intervals_df)
     +-- update_space_plot()
 ```
 
@@ -467,15 +513,18 @@ User presses '1' -> labels_widget.activate_label(1)
     |
 labels_widget.ready_for_label_click = True
     |
-User clicks plot twice -> _on_plot_clicked()
+User clicks plot twice -> _on_plot_clicked() (captures time in seconds)
     |
-Create label in app_state.label_ds['labels']
+_apply_label() -> add_interval(df, onset_s, offset_s, label_id, individual)
+    |
+app_state.label_intervals = df  (working DataFrame)
+app_state.set_trial_intervals(trial, df)  (persists to label_dt)
     |
 app_state.labels_modified.emit()  <- Signal emitted
     |
 MetaWidget._on_labels_modified()  <- Connected listener
     |
-DataWidget.update_main_plot() -> redraws plot with labels
+DataWidget.update_main_plot() -> plot_all_labels(intervals_df)
 ```
 
 **On verification change (signal-based):**
@@ -494,24 +543,7 @@ app_state.verification_changed.emit()  <- Signal emitted
 
 ## Keyboard Shortcuts
 
-Bound in `MetaWidget._bind_global_shortcuts()`:
-
-| Key | Action |
-|-----|--------|
-| 1-0, Q-P, A-L, Z-M | Activate label 1-30 |
-| Ctrl+S | Save labels |
-| Space | Play/pause video |
-| Up/Down Arrow | Navigate trials |
-| Ctrl+F | Toggle feature selection |
-| Ctrl+I | Toggle individual selection |
-| Ctrl+K | Toggle keypoint selection |
-| Ctrl+C | Toggle camera selection |
-| Ctrl+M | Toggle mic selection |
-| Ctrl+T | Toggle tracking selection |
-| Ctrl+E | Edit selected label |
-| Ctrl+D | Delete selected label |
-| Ctrl+V | Mark label as verified |
-| Ctrl+B | Toggle changepoint correction for labels |
+See `docs/shortcuts.md`
 
 ---
 
@@ -543,7 +575,69 @@ Bound in `MetaWidget._bind_global_shortcuts()`:
 - NetCDF format with `trials` dimension
 - Time coordinates: Can be `time`, `time_aux`, `time_labels`, etc. (any coord containing 'time')
   - Different variables can use different time coordinates with different sampling rates
-  - Labels array may use `time_labels` at a different rate than feature arrays using `time`
 - Expected coordinates: `cameras`, `mics`, `keypoints`, `individuals`, `features`
 - Variables with `type='features'` attribute for feature selection
 - Video files matched by filename in dataset to video folder
+
+**Label format (interval-based):**
+- Labels stored as xarray Dataset with `segment` dimension containing:
+  - `onset_s` (float64) — start time in seconds
+  - `offset_s` (float64) — end time in seconds
+  - `label_id` (int32) — label class ID (nonzero)
+  - `individual` (str) — individual identifier
+- **Backward compat**: Old files with dense `labels` DataArray (time x individuals) are auto-converted on load
+- Working representation: `pd.DataFrame` with columns `["onset_s", "offset_s", "label_id", "individual"]`
+- Dense arrays generated on demand via `intervals_to_dense(df, sample_rate, duration, individuals)` for ML pipelines and changepoint correction
+
+---
+
+## Interval Labels Migration — Context & Roadmap
+
+### Why interval-based labels?
+
+EthoGraph labels were originally a dense `np.int8` array of shape `(n_time_samples, n_individuals)` locked to a single sampling rate via `label_sr`. This had three limitations:
+1. **Rate-locked**: Cannot label across data types with different rates (video 30Hz vs audio 44kHz)
+2. **Export friction**: Converting to standard formats (BORIS, crowsetta, Audacity) required index→time conversion
+3. **Memory**: Dense arrays waste space for sparse annotations
+
+The migration to interval-based labels `(onset_s, offset_s, label_id, individual)` decouples labels from any sampling rate while preserving the "one file to rule them all" NetCDF philosophy.
+
+### Architecture (implemented)
+
+- **Core module**: `ethograph/utils/label_intervals.py` — 11 pure functions, no GUI dependencies
+- **Persistence**: xarray Dataset with `segment` dimension inside `label_dt` → same `.nc` file
+- **Working representation**: `pd.DataFrame` in `app_state.label_intervals` (fast filtering, easy crowsetta mapping)
+- **Bridge pattern**: Changepoint correction converts intervals→dense→correct→intervals via `_correct_trial_intervals()`
+- **Auto-conversion**: Old dense `.nc` files transparently convert on load in `get_label_dt()`
+- **Individual filtering**: `update_label_plot()` filters intervals by selected individual from `ds_kwargs`
+
+### Files modified in migration
+
+| File | Changes |
+|------|---------|
+| `ethograph/utils/label_intervals.py` | **NEW** — all interval logic (empty_intervals, dense_to_intervals, intervals_to_dense, add_interval, delete_interval, find_interval_at, etc.) |
+| `tests/test_label_intervals.py` | **NEW** — 32 unit tests |
+| `ethograph/utils/io.py` | `get_label_dt()` detects format, auto-converts legacy; `overwrite_with_labels()` writes interval format |
+| `ethograph/gui/app_state.py` | Added `label_intervals` state, `get_trial_intervals()`, `set_trial_intervals()` helpers |
+| `ethograph/gui/widgets_labels.py` | All label CRUD operations → interval-based (clicks store seconds, not indices) |
+| `ethograph/gui/widgets_data.py` | `update_label_plot()` passes filtered intervals DataFrame |
+| `ethograph/gui/plot_container.py` | `draw_all_labels()` / `_draw_intervals_on_plot()` iterates DataFrame rows |
+| `ethograph/gui/widgets_changepoints.py` | Bridge: intervals↔dense for correction, undo snapshots store DataFrames |
+| `ethograph/gui/data_loader.py` | `minimal_basics()` creates empty interval structure |
+
+### Phase 6: Future work (not yet implemented)
+
+Thoughts:
+- I/O -> Get ./labels should also try to be able to load crowsetta, audacity, boris, raven, all by attempting to convert them into crowsetta and from there into label_dt.nc format. 
+
+- For model, check that intervals to dense conversion works correctly, before giving dense to ML
+- 
+
+
+- **Crowsetta integration**: `intervals_df_to_crowsetta(df) → crowsetta.Annotation` and vice versa. Trivial since DataFrame columns map 1:1 to crowsetta's `Segment(onset_s, offset_s, label)`. This enables:
+  - **CSV export/import**: Via `crowsetta.formats.seq.GenericSeq` transcriber
+  - **Audacity label track export**: Via `crowsetta.formats.seq.AudSeq` transcriber
+  - **BORIS export**: Via crowsetta or direct DataFrame `to_csv()` with BORIS column mapping
+  - **Raven selection table**: Via `crowsetta.formats.bbox.Raven` format
+- **Interval-native changepoint correction**: Rewrite `purge_small_blocks()`, `stitch_gaps()`, and boundary snapping to operate directly on interval boundaries in seconds, eliminating the dense bridge entirely
+- **Per-label `purge_short_intervals`** with seconds-based thresholds (already implemented in `label_intervals.py`, not yet wired to UI)

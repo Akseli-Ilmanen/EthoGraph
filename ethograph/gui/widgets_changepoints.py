@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from typing import Optional
 
 import numpy as np
+import pandas as pd
 import ruptures as rpt
 import xarray as xr
 import yaml
@@ -35,7 +36,8 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph import TrialTree
-from ethograph.utils.data_utils import sel_valid, get_time_coord
+from ethograph.utils.data_utils import get_time_coord, sel_valid
+from ethograph.utils.label_intervals import dense_to_intervals, empty_intervals, intervals_to_dense
 from ethograph.utils.paths import get_project_root
 from ethograph.features.changepoints import correct_changepoints_one_trial
 from ethograph.features.audio_changepoints import (
@@ -387,10 +389,15 @@ class ChangepointsWidget(QWidget):
 
         params_group = QGroupBox("Audio changepoint parameters")
         params_layout = QGridLayout()
+        params_layout.setVerticalSpacing(6)
+        params_layout.setColumnMinimumWidth(0, 90)
+        params_layout.setColumnMinimumWidth(2, 90)
+        params_layout.setColumnStretch(1, 1)
+        params_layout.setColumnStretch(3, 1)
         params_group.setLayout(params_layout)
         layout.addWidget(params_group)
 
-        # --- Row 0: Method combo + dynamic reference label ---
+        # --- Row 0: Method combo + Min dur (shared) ---
         self.audio_cp_method_combo = QComboBox()
         self.audio_cp_method_combo.setToolTip(
             "meansquared: Mean-squared energy thresholding (VocalPy)\n"
@@ -403,64 +410,42 @@ class ChangepointsWidget(QWidget):
         self.audio_cp_ref_label = QLabel()
         self.audio_cp_ref_label.setOpenExternalLinks(True)
 
-        row = 0
-        params_layout.addWidget(QLabel("Method:"), row, 0)
-        params_layout.addWidget(self.audio_cp_method_combo, row, 1)
-        params_layout.addWidget(self.audio_cp_ref_label, row, 2, 1, 2)
-
-        # --- Row 1: Min dur (shared) + Silence/Min silence (method-specific) ---
         self.audio_cp_min_dur_edit = QLineEdit("0.02")
         self.audio_cp_min_dur_edit.setToolTip("Minimum segment duration in seconds")
 
-        # VocalSeg: silence threshold
-        self.vs_silence_label = QLabel("Silence:")
-        self.vs_silence_edit = QLineEdit()
-        self.vs_silence_edit.setToolTip(
-            "Envelope threshold for offset detection (0-1).\n"
-            "Lower = offsets detected later (captures more tail).\n"
-            "Higher = offsets detected earlier."
-        )
+        row = 0
+        params_layout.addWidget(QLabel("Method:"), row, 0)
+        params_layout.addWidget(self.audio_cp_method_combo, row, 1)
+        params_layout.addWidget(QLabel("Min dur (s):"), row, 2)
+        params_layout.addWidget(self.audio_cp_min_dur_edit, row, 3)
 
-        # meansquared: min silent duration
+        # --- Row 1: meansquared — Min silence + Smooth ---
         self.ms_min_silent_label = QLabel("Min silence (s):")
         self.ms_min_silent_dur_edit = QLineEdit("0.002")
         self.ms_min_silent_dur_edit.setToolTip(
             "Minimum silent gap between segments (seconds).\n"
             "Gaps shorter than this are merged."
         )
+        self.ms_smooth_label = QLabel("Smooth (ms):")
+        self.ms_smooth_win_spin = QSpinBox()
+        self.ms_smooth_win_spin.setRange(1, 100)
+        self.ms_smooth_win_spin.setValue(2)
+        self.ms_smooth_win_spin.setToolTip("Smoothing window size in milliseconds")
 
         row += 1
-        params_layout.addWidget(QLabel("Min dur (s):"), row, 0)
-        params_layout.addWidget(self.audio_cp_min_dur_edit, row, 1)
-        params_layout.addWidget(self.vs_silence_label, row, 2)
-        params_layout.addWidget(self.vs_silence_edit, row, 3)
-        params_layout.addWidget(self.ms_min_silent_label, row, 2)
-        params_layout.addWidget(self.ms_min_silent_dur_edit, row, 3)
+        params_layout.addWidget(self.ms_min_silent_label, row, 0)
+        params_layout.addWidget(self.ms_min_silent_dur_edit, row, 1)
+        params_layout.addWidget(self.ms_smooth_label, row, 2)
+        params_layout.addWidget(self.ms_smooth_win_spin, row, 3)
 
-        # --- Row 2: Freq range (shared) + N FFT / Smooth / nperseg ---
-        self.audio_cp_freq_range_widget = QWidget()
-        freq_layout = QHBoxLayout()
-        freq_layout.setContentsMargins(0, 0, 0, 0)
-        freq_layout.setSpacing(2)
-        self.audio_cp_freq_range_widget.setLayout(freq_layout)
-
-        self.audio_cp_freq_min_spin = QDoubleSpinBox()
-        self.audio_cp_freq_min_spin.setRange(1, 100000)
-        self.audio_cp_freq_min_spin.setDecimals(0)
-        self.audio_cp_freq_min_spin.setSpecialValueText("None")
-        self.audio_cp_freq_min_spin.setToolTip("Minimum frequency in Hz (0 = no filter)")
-
-        self.audio_cp_freq_max_spin = QDoubleSpinBox()
-        self.audio_cp_freq_max_spin.setRange(2, 100000)
-        self.audio_cp_freq_max_spin.setDecimals(0)
-        self.audio_cp_freq_max_spin.setSpecialValueText("None")
-        self.audio_cp_freq_max_spin.setToolTip("Maximum frequency in Hz (0 = no filter)")
-
-        freq_layout.addWidget(self.audio_cp_freq_min_spin)
-        freq_layout.addWidget(QLabel("\u2013"))
-        freq_layout.addWidget(self.audio_cp_freq_max_spin)
-
-        # VocalSeg: N FFT
+        # --- Row 2: vocalseg — Min silence + N FFT ---
+        self.vs_silence_label = QLabel("Min silence (s):")
+        self.vs_silence_edit = QLineEdit()
+        self.vs_silence_edit.setToolTip(
+            "Envelope threshold for offset detection (0-1).\n"
+            "Lower = offsets detected later (captures more tail).\n"
+            "Higher = offsets detected earlier."
+        )
         self.vs_n_fft_label = QLabel("N FFT:")
         self.vs_n_fft_edit = QLineEdit()
         self.vs_n_fft_edit.setToolTip(
@@ -469,14 +454,13 @@ class ChangepointsWidget(QWidget):
             "use smaller values like 150-200."
         )
 
-        # meansquared: Smooth window
-        self.ms_smooth_label = QLabel("Smooth (ms):")
-        self.ms_smooth_win_spin = QSpinBox()
-        self.ms_smooth_win_spin.setRange(1, 100)
-        self.ms_smooth_win_spin.setValue(2)
-        self.ms_smooth_win_spin.setToolTip("Smoothing window size in milliseconds")
+        row += 1
+        params_layout.addWidget(self.vs_silence_label, row, 0)
+        params_layout.addWidget(self.vs_silence_edit, row, 1)
+        params_layout.addWidget(self.vs_n_fft_label, row, 2)
+        params_layout.addWidget(self.vs_n_fft_edit, row, 3)
 
-        # ava: nperseg
+        # --- Row 3: ava — nperseg ---
         self.ava_nperseg_label = QLabel("nperseg:")
         self.ava_nperseg_spin = QSpinBox()
         self.ava_nperseg_spin.setRange(4, 8192)
@@ -487,17 +471,54 @@ class ChangepointsWidget(QWidget):
         )
 
         row += 1
+        params_layout.addWidget(self.ava_nperseg_label, row, 0)
+        params_layout.addWidget(self.ava_nperseg_spin, row, 1)
+
+        # --- Row 4: Freq range (shared) ---
+        self.audio_cp_freq_range_widget = QWidget()
+        freq_layout = QHBoxLayout()
+        freq_layout.setContentsMargins(0, 0, 0, 0)
+        freq_layout.setSpacing(2)
+        self.audio_cp_freq_range_widget.setLayout(freq_layout)
+
+        self.audio_cp_freq_min_spin = QDoubleSpinBox()
+        self.audio_cp_freq_min_spin.setRange(1, 100000)
+        self.audio_cp_freq_min_spin.setDecimals(0)
+        self.audio_cp_freq_min_spin.setMaximumWidth(75)
+        self.audio_cp_freq_min_spin.setSpecialValueText("None")
+        self.audio_cp_freq_min_spin.setToolTip("Minimum frequency in Hz (0 = no filter)")
+
+        self.audio_cp_freq_max_spin = QDoubleSpinBox()
+        self.audio_cp_freq_max_spin.setRange(2, 100000)
+        self.audio_cp_freq_max_spin.setDecimals(0)
+        self.audio_cp_freq_max_spin.setMaximumWidth(75)
+        self.audio_cp_freq_max_spin.setSpecialValueText("None")
+        self.audio_cp_freq_max_spin.setToolTip("Maximum frequency in Hz (0 = no filter)")
+
+        freq_layout.addWidget(self.audio_cp_freq_min_spin)
+        freq_layout.addWidget(QLabel("\u2013"))
+        freq_layout.addWidget(self.audio_cp_freq_max_spin)
+
+        row += 1
         params_layout.addWidget(QLabel("Freq (Hz):"), row, 0)
         params_layout.addWidget(self.audio_cp_freq_range_widget, row, 1)
-        params_layout.addWidget(self.vs_n_fft_label, row, 2)
-        params_layout.addWidget(self.vs_n_fft_edit, row, 3)
-        params_layout.addWidget(self.ms_smooth_label, row, 2)
-        params_layout.addWidget(self.ms_smooth_win_spin, row, 3)
-        params_layout.addWidget(self.ava_nperseg_label, row, 2)
-        params_layout.addWidget(self.ava_nperseg_spin, row, 3)
 
-        # --- Row 3: Ref dB + Min dB (vocalseg) / Threshold (ms) / Thresh lowest + min (ava) ---
-        # VocalSeg
+        # --- Row 5: meansquared — Threshold ---
+        self.ms_threshold_label = QLabel("Threshold:")
+        self.ms_threshold_spin = QSpinBox()
+        self.ms_threshold_spin.setRange(1, 1000000)
+        self.ms_threshold_spin.setValue(5000)
+        self.ms_threshold_spin.setToolTip(
+            "Minimum mean-squared energy to count as a segment.\n"
+            "Lower = more sensitive (detects quieter sounds).\n"
+            "Higher = less sensitive."
+        )
+
+        row += 1
+        params_layout.addWidget(self.ms_threshold_label, row, 0)
+        params_layout.addWidget(self.ms_threshold_spin, row, 1)
+
+        # --- Row 6: vocalseg — Ref dB + Min dB ---
         self.vs_ref_db_label = QLabel("Ref dB:")
         self.vs_ref_db_edit = QLineEdit()
         self.vs_ref_db_edit.setToolTip("Reference level dB of audio (default: 20)")
@@ -509,18 +530,13 @@ class ChangepointsWidget(QWidget):
             "More negative = more sensitive (detects quieter sounds)."
         )
 
-        # meansquared
-        self.ms_threshold_label = QLabel("Threshold:")
-        self.ms_threshold_spin = QSpinBox()
-        self.ms_threshold_spin.setRange(1, 1000000)
-        self.ms_threshold_spin.setValue(5000)
-        self.ms_threshold_spin.setToolTip(
-            "Minimum mean-squared energy to count as a segment.\n"
-            "Lower = more sensitive (detects quieter sounds).\n"
-            "Higher = less sensitive."
-        )
+        row += 1
+        params_layout.addWidget(self.vs_ref_db_label, row, 0)
+        params_layout.addWidget(self.vs_ref_db_edit, row, 1)
+        params_layout.addWidget(self.vs_min_db_label, row, 2)
+        params_layout.addWidget(self.vs_min_db_edit, row, 3)
 
-        # ava
+        # --- Row 7: ava — Thresh lowest + Thresh min ---
         self.ava_thresh_lowest_label = QLabel("Thresh lowest:")
         self.ava_thresh_lowest_spin = QDoubleSpinBox()
         self.ava_thresh_lowest_spin.setRange(0.0, 1.0)
@@ -543,22 +559,21 @@ class ChangepointsWidget(QWidget):
         )
 
         row += 1
-        params_layout.addWidget(self.vs_ref_db_label, row, 0)
-        params_layout.addWidget(self.vs_ref_db_edit, row, 1)
-        params_layout.addWidget(self.vs_min_db_label, row, 2)
-        params_layout.addWidget(self.vs_min_db_edit, row, 3)
-        params_layout.addWidget(self.ms_threshold_label, row, 0)
-        params_layout.addWidget(self.ms_threshold_spin, row, 1)
         params_layout.addWidget(self.ava_thresh_lowest_label, row, 0)
         params_layout.addWidget(self.ava_thresh_lowest_spin, row, 1)
         params_layout.addWidget(self.ava_thresh_min_label, row, 2)
         params_layout.addWidget(self.ava_thresh_min_spin, row, 3)
 
-        # --- Row 4: Hop ms (vocalseg) / Thresh max (ava) ---
+        # --- Row 8: vocalseg — Hop ---
         self.vs_hop_label = QLabel("Hop (ms):")
         self.vs_hop_edit = QLineEdit()
         self.vs_hop_edit.setToolTip("Hop length in milliseconds for spectrogram")
 
+        row += 1
+        params_layout.addWidget(self.vs_hop_label, row, 0)
+        params_layout.addWidget(self.vs_hop_edit, row, 1)
+
+        # --- Row 9: ava — Thresh max ---
         self.ava_thresh_max_label = QLabel("Thresh max:")
         self.ava_thresh_max_spin = QDoubleSpinBox()
         self.ava_thresh_max_spin.setRange(0.0, 1.0)
@@ -568,8 +583,6 @@ class ChangepointsWidget(QWidget):
         self.ava_thresh_max_spin.setToolTip("Threshold for finding local maxima.")
 
         row += 1
-        params_layout.addWidget(self.vs_hop_label, row, 0)
-        params_layout.addWidget(self.vs_hop_edit, row, 1)
         params_layout.addWidget(self.ava_thresh_max_label, row, 0)
         params_layout.addWidget(self.ava_thresh_max_spin, row, 1)
 
@@ -597,6 +610,7 @@ class ChangepointsWidget(QWidget):
         button_layout.addWidget(self.audio_cp_count_label)
 
         button_layout.addStretch()
+        button_layout.addWidget(self.audio_cp_ref_label)
 
         layout.addLayout(button_layout)
 
@@ -735,7 +749,11 @@ class ChangepointsWidget(QWidget):
         is_ava = method == "ava"
         is_vs = method == "Dynamic thresholding"
 
-        # VocalSeg-specific
+        for w in (self.ms_min_silent_label, self.ms_min_silent_dur_edit,
+                  self.ms_smooth_label, self.ms_smooth_win_spin,
+                  self.ms_threshold_label, self.ms_threshold_spin):
+            w.setVisible(is_ms)
+
         for w in (self.vs_silence_label, self.vs_silence_edit,
                   self.vs_n_fft_label, self.vs_n_fft_edit,
                   self.vs_ref_db_label, self.vs_ref_db_edit,
@@ -743,20 +761,12 @@ class ChangepointsWidget(QWidget):
                   self.vs_hop_label, self.vs_hop_edit):
             w.setVisible(is_vs)
 
-        # meansquared-specific
-        for w in (self.ms_min_silent_label, self.ms_min_silent_dur_edit,
-                  self.ms_smooth_label, self.ms_smooth_win_spin,
-                  self.ms_threshold_label, self.ms_threshold_spin):
-            w.setVisible(is_ms)
-
-        # ava-specific
         for w in (self.ava_nperseg_label, self.ava_nperseg_spin,
                   self.ava_thresh_lowest_label, self.ava_thresh_lowest_spin,
                   self.ava_thresh_min_label, self.ava_thresh_min_spin,
                   self.ava_thresh_max_label, self.ava_thresh_max_spin):
             w.setVisible(is_ava)
 
-        # Dynamic reference label
         if is_vs:
             self.audio_cp_ref_label.setText(
                 '<a href="https://github.com/timsainb/vocalization-segmentation" '
@@ -765,7 +775,7 @@ class ChangepointsWidget(QWidget):
             self.audio_cp_ref_label.setToolTip("Open vocalseg GitHub repository")
         else:
             self.audio_cp_ref_label.setText(
-                '<a href="https://vocalpy.readthedocs.io/en/latest/" '
+                '<a href="https://vocalpy.readthedocs.io/" '
                 'style="color: #87CEEB; text-decoration: none;">VocalPy (Nicholson et al.)</a>'
             )
             self.audio_cp_ref_label.setToolTip("Open VocalPy documentation")
@@ -1029,7 +1039,7 @@ class ChangepointsWidget(QWidget):
 
         try:
             with self._busy_button(self.compute_audio_cp_button):
-                dt = np.median(np.diff(self.app_state.time))
+                dt = np.median(np.diff(np.asarray(self.app_state.time)))
                 sample_rate = 1.0 / dt
                 params = self._get_audio_cp_params()
                 method = params.pop("method")
@@ -1073,21 +1083,21 @@ class ChangepointsWidget(QWidget):
                 else:
                     raise ValueError(f"Invalid method: {method}")
 
+                if method == "meansquared" and self.plot_container:
+                    self.plot_container.draw_amplitude_envelope(
+                        env_time, envelope, params["threshold"]
+                    )
+                elif method == "ava" and self.plot_container:
+                    self.plot_container.draw_amplitude_envelope(
+                        env_time, envelope,
+                        (params["thresh_lowest"], params["thresh_min"], params["thresh_max"]),
+                    )
+
                 if len(onsets) == 0 and len(offsets) == 0:
                     show_info("No changepoints detected. Try adjusting parameters.")
                     return
 
                 self._store_detection_results(onsets, offsets, self.audio_cp_count_label)
-
-                if method == "meansquared":
-                    self.plot_container.draw_amplitude_envelope(
-                        env_time, envelope, params["threshold"]
-                    )
-                elif method == "ava":
-                    self.plot_container.draw_amplitude_envelope(
-                        env_time, envelope,
-                        (params["thresh_lowest"], params["thresh_min"], params["thresh_max"]),
-                    )
 
         except Exception as e:
             show_warning(f"Error detecting changepoints: {e}")
@@ -1368,7 +1378,7 @@ class ChangepointsWidget(QWidget):
     def _create_correction_params_panel(self):
         self.correction_params_panel = QWidget()
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 5, 0, 0)
+        layout.setContentsMargins(0, 4, 0, 0)
         self.correction_params_panel.setLayout(layout)
 
         self._motif_mappings = {}
@@ -1512,19 +1522,16 @@ class ChangepointsWidget(QWidget):
         if hasattr(self, 'per_label_btn'):
             self.per_label_btn.setEnabled(enabled)
 
-    def _save_correction_snapshot(self, mode, ds_kwargs):
-        snapshot = {"mode": mode, "ds_kwargs": ds_kwargs}
+    def _save_correction_snapshot(self, mode):
+        snapshot = {"mode": mode}
         if mode == "single_trial":
             trial = self.app_state.trials_sel
-            curr_labels, filt_kwargs = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
             snapshot["trial"] = trial
-            snapshot["filt_kwargs"] = filt_kwargs
-            snapshot["labels"] = np.array(curr_labels)
+            snapshot["intervals_df"] = self.app_state.get_trial_intervals(trial).copy()
         elif mode == "all_trials":
             snapshot["trials"] = {}
             for trial in self.app_state.label_dt.trials:
-                curr_labels, filt_kwargs = sel_valid(self.app_state.label_dt.trial(trial).labels, ds_kwargs)
-                snapshot["trials"][trial] = {"filt_kwargs": filt_kwargs, "labels": np.array(curr_labels)}
+                snapshot["trials"][trial] = self.app_state.get_trial_intervals(trial).copy()
             snapshot["old_cp_corrected"] = self.app_state.label_dt.attrs.get("changepoint_corrected", 0)
         self._correction_snapshot = snapshot
         self.cp_undo_btn.setEnabled(True)
@@ -1536,11 +1543,15 @@ class ChangepointsWidget(QWidget):
         mode = snapshot["mode"]
 
         if mode == "single_trial":
-            self.app_state.label_dt.trial(snapshot["trial"]).labels.loc[snapshot["filt_kwargs"]] = snapshot["labels"]
+            trial = snapshot["trial"]
+            self.app_state.set_trial_intervals(trial, snapshot["intervals_df"])
+            if trial == self.app_state.trials_sel:
+                self.app_state.label_intervals = snapshot["intervals_df"]
         elif mode == "all_trials":
-            for trial, data in snapshot["trials"].items():
-                self.app_state.label_dt.trial(trial).labels.loc[data["filt_kwargs"]] = data["labels"]
+            for trial, df in snapshot["trials"].items():
+                self.app_state.set_trial_intervals(trial, df)
             self.app_state.label_dt.attrs["changepoint_corrected"] = snapshot["old_cp_corrected"]
+            self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
             self._update_cp_status()
 
         self._correction_snapshot = None
@@ -1548,18 +1559,50 @@ class ChangepointsWidget(QWidget):
         self.app_state.labels_modified.emit()
         show_info("Reverted correction")
 
+    def _correct_trial_intervals(self, trial, ds, all_params, ds_kwargs):
+        """Bridge: intervals -> dense -> correct -> intervals for one trial."""
+        intervals_df = self.app_state.get_trial_intervals(trial)
+
+        # Determine time coord and individuals from dataset
+        feature_sel = self.app_state.features_sel
+        if feature_sel and feature_sel in ds.data_vars:
+            time_coord = get_time_coord(ds[feature_sel]).values
+        else:
+            first_var = next(iter(ds.data_vars), None)
+            time_coord = get_time_coord(ds[first_var]).values if first_var else np.arange(100) * 0.01
+
+        sr = 1.0 / np.median(np.diff(time_coord)) if len(time_coord) > 1 else 30.0
+        duration = float(time_coord[-1]) if len(time_coord) > 0 else 1.0
+        individuals = (
+            list(ds.coords['individuals'].values)
+            if 'individuals' in ds.coords
+            else ["default"]
+        )
+
+        corrected_dfs = []
+        for ind in individuals:
+            ind_df = intervals_df[intervals_df["individual"] == ind]
+            dense_1d = intervals_to_dense(ind_df, sr, duration, [ind], n_samples=len(time_coord))[:, 0]
+            corrected_1d = correct_changepoints_one_trial(dense_1d, ds, all_params)
+            corrected_df = dense_to_intervals(corrected_1d, time_coord, [ind])
+            corrected_dfs.append(corrected_df)
+
+        if corrected_dfs:
+            return pd.concat(corrected_dfs, ignore_index=True).sort_values("onset_s").reset_index(drop=True)
+        return empty_intervals()
+
     def _cp_correction(self, mode):
         all_params = self.get_correction_params()
         ds_kwargs = self.app_state.get_ds_kwargs()
         all_params["cp_kwargs"] = ds_kwargs
 
         if mode == "single_trial":
-            self._save_correction_snapshot(mode, ds_kwargs)
-            curr_labels, filt_kwargs = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
-            self.app_state.label_dt.trial(self.app_state.trials_sel).labels.loc[filt_kwargs] = (
-                correct_changepoints_one_trial(curr_labels, self.app_state.ds, all_params)
-            )
-            self.app_state.label_dt.trial(self.app_state.trials_sel).attrs['changepoint_corrected'] = np.int8(1)
+            self._save_correction_snapshot(mode)
+            trial = self.app_state.trials_sel
+            corrected_df = self._correct_trial_intervals(trial, self.app_state.ds, all_params, ds_kwargs)
+            self.app_state.set_trial_intervals(trial, corrected_df)
+            self.app_state.label_intervals = corrected_df
+            self.app_state.label_dt.trial(trial).attrs['changepoint_corrected'] = np.int8(1)
             self._update_cp_status()
 
         if mode == "all_trials":
@@ -1567,15 +1610,14 @@ class ChangepointsWidget(QWidget):
                 show_warning("Changepoint correction has already been applied to all trials. Don't re-apply.")
                 return
 
-            self._save_correction_snapshot(mode, ds_kwargs)
+            self._save_correction_snapshot(mode)
             for trial in self.app_state.label_dt.trials:
-                curr_labels, filt_kwargs = sel_valid(self.app_state.label_dt.trial(trial).labels, ds_kwargs)
                 ds = self.app_state.dt.trial(trial)
-                self.app_state.label_dt.trial(trial).labels.loc[filt_kwargs] = (
-                    correct_changepoints_one_trial(curr_labels, ds, all_params)
-                )
+                corrected_df = self._correct_trial_intervals(trial, ds, all_params, ds_kwargs)
+                self.app_state.set_trial_intervals(trial, corrected_df)
                 self.app_state.label_dt.trial(trial).attrs['changepoint_corrected'] = np.int8(1)
             self.app_state.label_dt.attrs["changepoint_corrected"] = np.int8(1)
+            self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
             self._update_cp_status()
 
         self.app_state.labels_modified.emit()
