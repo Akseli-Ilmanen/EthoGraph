@@ -4,17 +4,13 @@ Uses vocalseg library for detecting vocal onset/offset candidates in audio files
 Reference: https://github.com/timsainb/vocalization-segmentation
 """
 
-import hashlib
 from typing import Tuple
 
 import audioio as aio
 import noisereduce as nr
 import numpy as np
 import vocalpy as voc
-from scipy.ndimage import gaussian_filter
-from scipy.signal import stft
 from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
-from vocalpy.signal.audio import meansquared as voc_meansquared
 
 
 
@@ -96,13 +92,6 @@ def _prepare_sound(
     return voc.Sound(data=signal.reshape(1, -1), samplerate=int(sample_rate))
 
 
-@dataclass
-class SegmentationResult:
-    onsets: np.ndarray
-    offsets: np.ndarray
-    envelope: np.ndarray | None = None
-
-
 def vocalpy_segment(
     method: str = "meansquared",
     audio_path: str | None = None,
@@ -110,36 +99,30 @@ def vocalpy_segment(
     sample_rate: float | None = None,
     channel_idx: int = 0,
     **kwargs,
-) -> SegmentationResult:
-    """Segment audio using vocalpy, supporting both file-based and array-based inputs.
+) -> tuple:
+    """Segment audio using vocalpy.
 
-    Args:
-        method: "meansquared" or "ava".
-        audio_path: Path to audio file (mutually exclusive with signal).
-        signal: 1D signal array (requires sample_rate).
-        sample_rate: Sample rate in Hz (required with signal).
-        channel_idx: Audio channel to use for multi-channel files.
-        **kwargs: Forwarded to the vocalpy segmentation function.
+    Returns:
+        ((onsets, offsets), time_array, envelope) tuple.
     """
-
     sound = _prepare_sound(audio_path, signal, sample_rate, channel_idx)
     sr = sound.samplerate
 
     if method == "meansquared":
-        segments, envelope = voc.segment.meansquared(sound, **kwargs)
+        segments, envelope = voc.segment.meansquared(sound, scale=False, **kwargs)
     elif method == "ava":
         segments, envelope = voc.segment.ava(sound, scale=False, **kwargs)
     else:
         raise ValueError(f"Unknown method: {method!r}. Use 'meansquared' or 'ava'.")
-
-    result = SegmentationResult(
-        onsets=segments.start_inds.astype(float) / sr,
-        offsets=segments.stop_inds.astype(float) / sr,
-    )
     
+    if segments is None:
+        return None,  None, None
+
+    onsets = segments.start_inds.astype(float) / sr
+    offsets = segments.stop_inds.astype(float) / sr
     time_array = np.arange(len(envelope)) / sound.samplerate
 
-    return result, time_array, envelope
+    return (onsets, offsets), time_array, envelope
 
 
 
