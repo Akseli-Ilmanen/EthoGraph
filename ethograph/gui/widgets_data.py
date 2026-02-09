@@ -20,7 +20,6 @@ from qtpy.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
-    QLabel,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -150,7 +149,7 @@ class DataWidget(DataLoader, QWidget):
         has_audio = "mics" in self.type_vars_dict or self.app_state.audio_folder
         if has_audio and "features" in self.type_vars_dict:
             features_list = list(self.type_vars_dict["features"])
-            self.type_vars_dict["features"] = features_list + ["Spectrogram", "Waveform"]
+            self.type_vars_dict["features"] = features_list + ["Audio Waveform"]
 
 
 
@@ -211,6 +210,9 @@ class DataWidget(DataLoader, QWidget):
         self._set_controls_enabled(True)
         self.app_state.ready = True
 
+        if self.audio_widget:
+            self.audio_widget.set_enabled_state(has_audio=False)
+
         load_btn = self.io_widget.load_button
         load_btn.setEnabled(False)
 
@@ -222,8 +224,9 @@ class DataWidget(DataLoader, QWidget):
         self.update_trials_combo()
 
         self._load_trial_with_fallback()
-        
-        
+
+        self.view_mode_combo.show()
+
         self.setVisible(True)
         load_btn.setText("Restart app to load new data")
 
@@ -300,16 +303,39 @@ class DataWidget(DataLoader, QWidget):
 
         self.layout().addRow(self.coords_groupbox)
 
-        # Space plot combo in its own row
+        # View mode + space plot row
+        view_space_row = QHBoxLayout()
+        view_space_row.setSpacing(15)
+
+        self.view_mode_combo = QComboBox()
+        self.view_mode_combo.setObjectName("view_mode_combo")
+        self.view_mode_combo.addItems([
+            "Line (N-dim)",
+            "Spectrogram (1-dim)",
+            "Heatmap (N-dim)",
+        ])
+        self.view_mode_combo.currentTextChanged.connect(self._on_view_mode_changed)
+        self.view_mode_combo.hide()
+        self.controls.append(self.view_mode_combo)
+        view_space_row.addWidget(self.view_mode_combo)
+
+        
+        self.space_plot_combo = QComboBox()
+        self.space_plot_combo.setObjectName("space_plot_combo")
+        
+        # TODO: Make more generalized to handle other types of 2D/3D spatial input (e.g. PCA space)
         if 'position' in self.app_state.ds.data_vars:
-            self.space_plot_combo = QComboBox()
-            self.space_plot_combo.setObjectName("space_plot_combo")
             self.space_plot_combo.addItems(["Layer controls", "space_2D", "space_3D"])
             self.space_plot_combo.currentTextChanged.connect(self._on_space_plot_changed)
-            self.controls.append(self.space_plot_combo)
-            self.layout().addRow("On the left show:", self.space_plot_combo)
+        else:
+            self.space_plot_combo.addItems(["Layer controls"])
+        self.controls.append(self.space_plot_combo)
+        view_space_row.addWidget(self.space_plot_combo)
 
-        # Overlay checkboxes row (confidence + audio overlays)
+        view_space_row.addStretch()
+        self.layout().addRow("Views:", view_space_row)
+
+
         overlay_row = QHBoxLayout()
         overlay_row.setSpacing(15)
 
@@ -318,13 +344,13 @@ class DataWidget(DataLoader, QWidget):
         self.show_confidence_checkbox.stateChanged.connect(self.refresh_lineplot)
         overlay_row.addWidget(self.show_confidence_checkbox)
 
-        self.show_waveform_checkbox = QCheckBox("Waveform overlay")
+        self.show_waveform_checkbox = QCheckBox("Waveform (audio)")
         self.show_waveform_checkbox.setChecked(False)
         self.show_waveform_checkbox.stateChanged.connect(self._on_audio_overlay_changed)
         self.show_waveform_checkbox.hide()
         overlay_row.addWidget(self.show_waveform_checkbox)
 
-        self.show_spectrogram_checkbox = QCheckBox("Spectrogram overlay")
+        self.show_spectrogram_checkbox = QCheckBox("Spectrogram (audio)")
         self.show_spectrogram_checkbox.setChecked(False)
         self.show_spectrogram_checkbox.stateChanged.connect(self._on_audio_overlay_changed)
         self.show_spectrogram_checkbox.hide()
@@ -341,6 +367,13 @@ class DataWidget(DataLoader, QWidget):
         xmin, xmax = self.plot_container.get_current_xlim()
         self.update_main_plot(t0=xmin, t1=xmax)
         
+
+    def cycle_view_mode(self):
+        """Cycle through view modes: Line -> Spectrogram -> Heatmap -> Line."""
+        if not hasattr(self, 'view_mode_combo') or not self.view_mode_combo.isVisible():
+            return
+        next_index = (self.view_mode_combo.currentIndex() + 1) % self.view_mode_combo.count()
+        self.view_mode_combo.setCurrentIndex(next_index)
 
     def _on_audio_overlay_changed(self):
         """Handle audio overlay checkbox changes with mutual exclusion."""
@@ -372,18 +405,89 @@ class DataWidget(DataLoader, QWidget):
         xmin, xmax = self.plot_container.get_current_xlim()
         self.update_main_plot(t0=xmin, t1=xmax)
 
+    def _on_view_mode_changed(self, mode: str):
+        """Switch between Line / Spectrogram / Heatmap view modes."""
+        if not self.app_state.ready or not self.plot_container:
+            return
+
+        feature_sel = getattr(self.app_state, 'features_sel', None)
+        if feature_sel == "Audio Waveform":
+            self._apply_view_mode_for_waveform()
+        else:
+            self._apply_view_mode_for_feature()
+
+        self._update_audio_overlay_checkboxes()
+        xmin, xmax = self.plot_container.get_current_xlim()
+        self.update_main_plot(t0=xmin, t1=xmax)
+
+    def _apply_view_mode_for_waveform(self):
+        """Apply current view mode when feature is Audio Waveform (audio data)."""
+        mode = self.view_mode_combo.currentText()
+        if mode.startswith("Spectrogram"):
+            self.plot_container.spectrogram_plot.set_source(None)
+            self.plot_container.switch_to_spectrogram()
+        else:
+            self.plot_container.spectrogram_plot.set_source(None)
+            self.plot_container.switch_to_audiotrace()
+
+    def _apply_view_mode_for_feature(self):
+        """Apply current view mode when feature is a regular xarray variable."""
+        mode = self.view_mode_combo.currentText()
+        if mode.startswith("Spectrogram"):
+            source = self._build_xarray_source()
+            if source is None:
+                self.view_mode_combo.blockSignals(True)
+                self.view_mode_combo.setCurrentText("Line")
+                self.view_mode_combo.blockSignals(False)
+                self.plot_container.switch_to_lineplot()
+                self._update_audio_overlay()
+                return
+            self.plot_container.spectrogram_plot.set_source(source)
+            self.plot_container.switch_to_spectrogram()
+        elif mode.startswith("Heatmap"):
+            self.plot_container.spectrogram_plot.set_source(None)
+            self.plot_container.switch_to_heatmap()
+        else:
+            self.plot_container.spectrogram_plot.set_source(None)
+            self.plot_container.switch_to_lineplot()
+            self._update_audio_overlay()
+
+    def _build_xarray_source(self):
+        """Build an XarraySource from the current feature selection."""
+        from .spectrogram_sources import build_xarray_source
+
+        feature_sel = getattr(self.app_state, 'features_sel', None)
+        if not feature_sel or feature_sel == "Audio Waveform":
+            return None
+
+        try:
+            da = self.app_state.ds[feature_sel]
+            ds_kwargs = self.app_state.get_ds_kwargs()
+            data_1d, _ = sel_valid(da, ds_kwargs)
+            time_coords = get_time_coord(da)
+            return build_xarray_source(
+                xr.DataArray(data_1d, coords={"time": time_coords}),
+                np.asarray(time_coords),
+                feature_sel,
+                ds_kwargs,
+            )
+        except (KeyError, ValueError, IndexError) as e:
+            print(f"Cannot build xarray spectrogram source: {e}")
+            return None
+
     def _update_audio_overlay_checkboxes(self):
         """Enable/disable audio overlay checkboxes based on feature selection.
 
         Overlays only make sense when viewing a line plot feature, not when
-        viewing Waveform or Spectrogram directly.
+        viewing Audio Waveform or Spectrogram directly.
         """
         if not hasattr(self.app_state, 'features_sel'):
             return
 
         feature = self.app_state.features_sel
+        view_mode = self.view_mode_combo.currentText() if hasattr(self, 'view_mode_combo') else "Line"
 
-        if feature in ("Waveform", "Spectrogram"):
+        if feature == "Audio Waveform" or not view_mode.startswith("Line"):
             self.show_waveform_checkbox.blockSignals(True)
             self.show_waveform_checkbox.setEnabled(False)
             self.show_waveform_checkbox.setChecked(False)
@@ -396,10 +500,6 @@ class DataWidget(DataLoader, QWidget):
         else:
             self.show_waveform_checkbox.setEnabled(True)
             self.show_spectrogram_checkbox.setEnabled(True)
-
-        
- 
-          
 
     def _set_controls_enabled(self, enabled: bool):
         """Enable or disable all trial-related controls."""
@@ -495,13 +595,13 @@ class DataWidget(DataLoader, QWidget):
             self.app_state.set_key_sel(key, selected_value)
 
             if key == "features":
-                if selected_value == "Spectrogram":
-                    self.plot_container.switch_to_spectrogram()
-                elif selected_value == "Waveform":
-                    self.plot_container.switch_to_audiotrace()
+                if selected_value == "Audio Waveform":
+                    self.view_mode_combo.show()
+                    self._apply_view_mode_for_waveform()
                 else:
-                    self.plot_container.switch_to_lineplot()
                     self.app_state.time = get_time_coord(self.app_state.ds[selected_value])
+                    self.view_mode_combo.show()
+                    self._apply_view_mode_for_feature()
 
                 self._update_audio_overlay_checkboxes()
                 self._update_audio_overlay()
@@ -544,7 +644,7 @@ class DataWidget(DataLoader, QWidget):
             features_combo.setCurrentIndex(idx)
         features_combo.blockSignals(False)
 
-        if feature not in ["Spectrogram", "Waveform"]:
+        if feature != "Audio Waveform":
             self.plot_container.switch_to_lineplot()
             self.app_state.time = get_time_coord(self.app_state.ds[feature])
             self._update_audio_overlay_checkboxes()
@@ -687,13 +787,22 @@ class DataWidget(DataLoader, QWidget):
             self.app_state.pred_ds = self.app_state.pred_dt.trial(trials_sel)
 
         feature_sel = getattr(self.app_state, 'features_sel', None)
-        if feature_sel and feature_sel not in ("Spectrogram", "Waveform"):
+        if feature_sel and feature_sel != "Audio Waveform":
             self.app_state.time = get_time_coord(self.app_state.ds[feature_sel])
+
+        if hasattr(self, 'view_mode_combo'):
+            view_mode = self.view_mode_combo.currentText()
+            if view_mode.startswith("Spectrogram") and feature_sel != "Audio Waveform":
+                source = self._build_xarray_source()
+                if source is not None:
+                    self.plot_container.spectrogram_plot.set_source(source)
+            elif view_mode.startswith("Heatmap"):
+                self.plot_container.heatmap_plot._clear_buffer()
 
         self.app_state.current_frame = 0
         self.update_video_audio()
         self.update_tracking()
-        self.update_label_label()
+        self.update_label()
         self.update_main_plot()
         self.update_space_plot()
         self.app_state.verification_changed.emit()
@@ -706,6 +815,10 @@ class DataWidget(DataLoader, QWidget):
 
         ds_kwargs = self.app_state.get_ds_kwargs()
         current_plot = self.plot_container.get_current_plot()
+
+        self.plot_container.clear_amplitude_envelope()
+        if self.changepoints_widget:
+            self.changepoints_widget.update_frequency_limits()
 
         try:
 
@@ -789,7 +902,7 @@ class DataWidget(DataLoader, QWidget):
                 self.app_state.audio_path = None
 
         if self.audio_widget:
-            self.audio_widget.set_enabled_state(has_audio)
+            self.audio_widget.set_enabled_state(has_audio=has_audio)
 
         if self.changepoints_widget:
             self.changepoints_widget.set_enabled_state(has_audio)
@@ -847,8 +960,8 @@ class DataWidget(DataLoader, QWidget):
         self.video.frame_changed.connect(self._on_sync_frame_changed)
 
 
-    def update_label_label(self):
-        """Update label label display."""
+    def update_label(self):
+        """Update label display."""
         self.labels_widget.refresh_labels_shapes_layer()
 
 

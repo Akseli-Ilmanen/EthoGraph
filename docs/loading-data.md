@@ -25,8 +25,8 @@ If you don't have a `session.nc` file yet, click the **Create session.nc** butto
 Use this if you have pose estimation output from tracking software.
 
 - **Source software**: Select the software that generated the file (DeepLabCut, SLEAP, LightningPose, etc.)
-- **Pose file**: The tracking output file
-- **Video file**: Path to corresponding video file (`.mp4`, `.mov`, `.avi`).
+- **Pose file**: Path to the pose file (`.h5`, `.csv`)
+- **Video file**: Path to corresponding video file (`.mp4`, `.mov`, `.avi`)
 - **Video frame rate**
 - **Output path**: Where to save the generated `session.nc`
 
@@ -42,26 +42,26 @@ Use this if you have a [Movement](https://movement.neuroinformatics.dev/latest/u
 
 ### 3) From an audio file
 
-Use this if your primary data source is audio (e.g. birdsong recordings). If your `.mp4` video contains audio, you can use that same file as the audio source.
+Use this if you have video and audio data (e.g. animal vocalizations). If your `.mp4` video contains audio, you can use that same file as the audio source.
 
-- **Video file**: Path to video file (`.mp4`, `.mov`, `.avi`).
+- **Video file**: Path to video file (`.mp4`, `.mov`, `.avi`)
 - **Audio file**: Path to corresponding audio file (`.wav`, `.mp3`, `.mp4`, `.flac`)
-- **Video frame rate**: 
+- **Video frame rate**
 - **Audio sample rate**
 - **Individuals** (optional): Comma-separated list of individual names (e.g. `bird1, bird2, bird3`)
-- **Load video motion features**: If enabled, extracts a frame-to-frame motion intensity signal from the video using FFmpeg. This provides a 1D movement proxy aligned to the same time axis as your audio.
+- **Load video motion features**: If enabled, extracts a frame-to-frame motion intensity signal from the video using FFmpeg. This provides a 1D movement proxy aligned to the same time axis as your video & audio.
 - **Output path**: Where to save the generated `session.nc`
 
 ### 4) From a numpy (.npy) file
 
 Use this if you have pre-computed features stored as a numpy array. The file should contain a 2D array with shape `(n_samples, n_variables)` or `(n_variables, n_samples)`. Longer dimension is assumed to be `n_samples`.
 
-- **Video file**: Path to corresponding video file (`.mp4`, `.mov`, `.avi`).
+- **Video file**: Path to corresponding video file (`.mp4`, `.mov`, `.avi`)
 - **Npy file**: Path to `.npy` file containing your feature array
-- **Video frame rate**: 
+- **Video frame rate**
 - **Data sampling rate**: The sampling rate of your numpy data (in Hz)
 - **Individuals** (optional): Comma-separated list of individual names (e.g. `bird1, bird2, bird3`)
-- **Load video motion features**: If enabled, extracts a frame-to-frame motion intensity signal from the video using FFmpeg. This provides a 1D movement proxy aligned to the same time axis as your audio.
+- **Load video motion features**: If enabled, extracts a frame-to-frame motion intensity signal from the video using FFmpeg. This provides a 1D movement proxy aligned to the same time axis as your video.
 - **Output path**: Where to save the generated `session.nc`
 
 ### 5) Tutorials for custom .nc files
@@ -76,9 +76,9 @@ For more advanced use cases, see the [tutorials](https://github.com/Akseli-Ilman
 processed_data/
     └── ses-20220509/
         ├── session.nc                 # Main behavioral dataset (required)
-        └── labels/                    # Label files (created by GUI)
-            ├── data_labels_20240315_143022.nc
-            └── data_labels_20240316_091045.nc
+        └── labels/                    # Temporary label files (created by GUI)
+            ├── session_labels_20240315_143022.nc
+            └── session_labels_20240316_091045.nc
 rawdata/
 └── ses-20220509/
     ├── video/

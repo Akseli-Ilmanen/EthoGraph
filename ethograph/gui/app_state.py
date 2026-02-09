@@ -96,7 +96,6 @@ class AppStateSpec:
         "tracking_folder": (str | None, None, True),
         "video_path": (str | None, None, True),
         "audio_path": (str | None, None, True),
-        "audio_channel_idx": (int, 0, True),
         "tracking_path": (str | None, None, True),
 
         # Plotting
@@ -115,6 +114,7 @@ class AppStateSpec:
         "space_plot_type": (str, "Layer controls", True),
         "lock_axes": (bool, False, False),
         "spec_colormap": (str, "CET-R4", True),
+        "spec_levels_mode": (str, "auto", True),
 
         # All checkbox states for dimension combos (e.g., {"keypoints": True, "space": False})
         "all_checkbox_states": (dict[str, bool], {}, True),
@@ -320,7 +320,7 @@ class ObservableAppState(QObject):
             setattr(self, prev_attr_name, old_value)
         
         if type_key == "features" and self.ds:
-            if currentValue not in ("Spectrogram", "Waveform"):
+            if currentValue != "Audio Waveform":
                 self.time = get_time_coord(self.ds[currentValue])
     
 
@@ -334,21 +334,24 @@ class ObservableAppState(QObject):
         setattr(self, prev_attr_name, previousValue)
 
     def toggle_key_sel(self, type_key, data_widget):
-        """Toggle between current and previous value for a given key."""
+        """Toggle between current and previous value for a given key.
+
+        If a previous value exists, swap current and previous.
+        Otherwise, cycle to the next item in the combo box.
+        """
         attr_name = f"{type_key}_sel"
         prev_attr_name = f"{type_key}_sel_previous"
-        
+
         current_value = getattr(self, attr_name, None)
         previous_value = getattr(self, prev_attr_name, None)
-        
+
         if previous_value is not None:
-            # Swap current and previous
             setattr(self, attr_name, previous_value)
             setattr(self, prev_attr_name, current_value)
-            
-            # Update UI combo box if data_widget is provided
             if data_widget is not None:
                 self._update_combo_box(type_key, previous_value, data_widget)
+        elif data_widget is not None:
+            self._cycle_combo_box(type_key, data_widget)
             
    
     
@@ -368,6 +371,16 @@ class ObservableAppState(QObject):
                     combo.setCurrentIndex(index)
         except (AttributeError, TypeError) as e:
             print(f"Error updating combo box for {type_key}: {e}")
+
+    def _cycle_combo_box(self, type_key, data_widget):
+        """Cycle the combo box to the next item when no previous selection exists."""
+        try:
+            combo = data_widget.io_widget.combos.get(type_key) or data_widget.combos.get(type_key)
+            if combo is not None and combo.count() > 1:
+                next_index = (combo.currentIndex() + 1) % combo.count()
+                combo.setCurrentIndex(next_index)
+        except (AttributeError, TypeError) as e:
+            print(f"Error cycling combo box for {type_key}: {e}")
 
     # --- Save/Load methods ---
     def _to_native(self, value):

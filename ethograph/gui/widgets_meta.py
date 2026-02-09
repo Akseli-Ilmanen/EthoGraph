@@ -439,7 +439,6 @@ class MetaWidget(CollapsibleWidgetContainer):
         
         # In napari video, can user left, right arrow keys to go back/forward one frame
         
-        # Navigation shortcuts (avoiding conflicts with label labeling)
         @viewer.bind_key("Down", overwrite=True) 
         def next_trial(v):
             self.navigation_widget.next_trial()
@@ -559,9 +558,14 @@ class MetaWidget(CollapsibleWidgetContainer):
             self.app_state.toggle_key_sel("mics", self.data_widget)
 
         # Toggle tracking selection (Ctrl+T)
-        @viewer.bind_key("ctrl+t", overwrite=True)  
+        @viewer.bind_key("ctrl+t", overwrite=True)
         def toggle_tracking(v):
             self.app_state.toggle_key_sel("tracking", self.data_widget)
+
+        # Cycle view mode (Ctrl+G)
+        @viewer.bind_key("ctrl+g", overwrite=True)
+        def cycle_view_mode(v):
+            self.data_widget.cycle_view_mode()
 
         
 
