@@ -589,19 +589,15 @@ class PlotContainer(QWidget):
         """Set the label color/name mappings for label drawing."""
         self.label_mappings = mappings
 
-    def draw_all_labels(self, time_data, labels, predictions=None, show_predictions=False):
+    def draw_all_labels(self, intervals_df, predictions_df=None, show_predictions=False):
         """Draw labels on ALL plots to ensure synchronization.
 
-        This is the central entry point for label drawing. It draws labels on
-        every plot type, so switching plots always shows correct labels.
-
         Args:
-            time_data: Time array for x-axis
-            labels: Primary label data array
-            predictions: Optional prediction data array
+            intervals_df: DataFrame with onset_s, offset_s, label_id, individual columns
+            predictions_df: Optional prediction intervals DataFrame
             show_predictions: Whether to show prediction rectangles
         """
-        if labels is None or not self.label_mappings:
+        if intervals_df is None or not self.label_mappings:
             return
 
         all_plots = [self.line_plot, self.spectrogram_plot, self.audio_trace_plot, self.heatmap_plot]
@@ -611,10 +607,10 @@ class PlotContainer(QWidget):
                 continue
 
             self._clear_labels_on_plot(plot)
-            self._draw_labels_on_plot(plot, time_data, labels, is_main=True)
+            self._draw_intervals_on_plot(plot, intervals_df, is_main=True)
 
-            if predictions is not None and show_predictions:
-                self._draw_labels_on_plot(plot, time_data, predictions, is_main=False)
+            if predictions_df is not None and show_predictions:
+                self._draw_intervals_on_plot(plot, predictions_df, is_main=False)
 
     def _clear_labels_on_plot(self, plot):
         """Clear all label items from a specific plot."""
@@ -629,44 +625,25 @@ class PlotContainer(QWidget):
                 pass  # Item already removed from plot
         plot.label_items.clear()
 
-    def _draw_labels_on_plot(self, plot, time_data, data, is_main=True):
-        """Draw label segments on a specific plot.
+    def _draw_intervals_on_plot(self, plot, intervals_df, is_main=True):
+        """Draw interval-based label segments on a specific plot.
 
         Args:
             plot: The plot widget to draw on
-            time_data: Time array for x-axis
-            data: Label data array
+            intervals_df: DataFrame with onset_s, offset_s, label_id, individual
             is_main: If True, draw full-height; if False, draw prediction strip at top
         """
         if not hasattr(plot, 'label_items'):
             plot.label_items = []
 
-        data = np.asarray(data)
-        if len(data) == 0:
+        if intervals_df is None or intervals_df.empty:
             return
 
-        # Vectorized: find indices where value changes (including start/end boundaries)
-        # Pad with different sentinel values to detect first and last segments
-        padded = np.concatenate([[-1], data, [-1]])
-        change_mask = padded[:-1] != padded[1:]
-        change_indices = np.nonzero(change_mask)[0]
-
-        # Each consecutive pair of change_indices defines a segment
-        for i in range(len(change_indices) - 1):
-            start_idx = change_indices[i]
-            end_idx = change_indices[i + 1] - 1
-
-            if start_idx >= len(data):
-                continue
-            end_idx = min(end_idx, len(data) - 1)
-
-            label_id = int(data[start_idx])
+        for _, row in intervals_df.iterrows():
+            label_id = int(row["label_id"])
             if label_id == 0:
                 continue
-
-            start_time = time_data[start_idx]
-            end_time = time_data[end_idx]
-            self._draw_single_label(plot, start_time, end_time, label_id, is_main)
+            self._draw_single_label(plot, row["onset_s"], row["offset_s"], label_id, is_main)
 
     def _draw_single_label(self, plot, start_time, end_time, label_id, is_main=True):
         """Draw a single label rectangle on a plot with appropriate style.
@@ -761,17 +738,17 @@ class PlotContainer(QWidget):
         plot.plot_item.addItem(rect)
         plot.label_items.append(rect)
 
-    def redraw_current_plot_labels(self, time_data, labels, predictions=None, show_predictions=False):
+    def redraw_current_plot_labels(self, intervals_df, predictions_df=None, show_predictions=False):
         """Redraw labels only on the current plot (for view range changes)."""
-        if labels is None or not self.label_mappings:
+        if intervals_df is None or not self.label_mappings:
             return
 
         plot = self.current_plot
         self._clear_labels_on_plot(plot)
-        self._draw_labels_on_plot(plot, time_data, labels, is_main=True)
+        self._draw_intervals_on_plot(plot, intervals_df, is_main=True)
 
-        if predictions is not None and show_predictions:
-            self._draw_labels_on_plot(plot, time_data, predictions, is_main=False)
+        if predictions_df is not None and show_predictions:
+            self._draw_intervals_on_plot(plot, predictions_df, is_main=False)
 
     @property
     def vb(self):

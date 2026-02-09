@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import xarray as xr
 from napari.utils.notifications import show_info, show_warning
 from napari.viewer import Viewer
 from qtpy.QtCore import Qt, Signal
@@ -34,8 +33,14 @@ from qtpy.QtWidgets import (
 
 from ethograph import TrialTree
 from ethograph.features.changepoints import snap_to_nearest_changepoint
-from ethograph.utils.data_utils import sel_valid
-from ethograph.utils.labels import load_label_mapping, purge_small_blocks
+from ethograph.utils.label_intervals import (
+    add_interval,
+    delete_interval,
+    empty_intervals,
+    find_interval_at,
+    get_interval_bounds,
+)
+from ethograph.utils.labels import load_label_mapping
 from ethograph.utils.paths import get_project_root
 
 from .app_constants import (
@@ -50,7 +55,6 @@ from .app_constants import (
     LABELS_OVERLAY_FALLBACK_SIZE,
     DEFAULT_LAYOUT_SPACING,
     Z_INDEX_LABELS_OVERLAY,
-    MIN_LABEL_LEN
 )
 
 
@@ -85,13 +89,13 @@ class LabelsWidget(QWidget):
         self.second_click = None
         self.selected_labels_id = 0
 
-        # Current  selection for editing
-        self.current_labels_pos: list[int] | None = None  # [start, end] idx of selected 
-        self.current_labels_id: int | None = None  # ID of currently selected 
+        # Current  selection for editing (interval DataFrame index)
+        self.current_labels_pos: int | None = None  # DataFrame index of selected interval
+        self.current_labels_id: int | None = None  # ID of currently selected
         self.current_labels_is_prediction: bool = False  # Whether selected  is from predictions
 
-        # Edit mode state  
-        self.old_labels_pos: list[int] | None = None  # Original position when editing
+        # Edit mode state
+        self.old_labels_pos: int | None = None  # Original interval index when editing
         self.old_labels_id: int | None = None  # Original ID when editing
         
         # Frame tracking for  display
@@ -131,31 +135,30 @@ class LabelsWidget(QWidget):
         """Set reference to the meta widget for layout refresh."""
         self.meta_widget = meta_widget
 
-    def plot_all_labels(self, time_data, labels, predictions=None):
-        """Plot all labels for current trial and keypoint based on current labels state.
+    def plot_all_labels(self, intervals_df, predictions_df=None):
+        """Plot all labels for current trial based on interval data.
 
         Delegates to PlotContainer for centralized, synchronized label drawing
         across all plot types.
 
         Args:
-            time_data: Time array for x-axis
-            labels: Primary label data to plot as main rectangles
-            predictions: Optional prediction data to plot as small rectangles at top
+            intervals_df: DataFrame with onset_s, offset_s, label_id, individual columns
+            predictions_df: Optional prediction intervals DataFrame
         """
-        if labels is None or self.plot_container is None:
+        if intervals_df is None or self.plot_container is None:
             return
 
         show_predictions = (
-            predictions is not None and
+            predictions_df is not None and
             self.pred_show_predictions.isChecked() and
             hasattr(self.app_state, 'pred_ds') and
             self.app_state.pred_ds is not None
         )
 
         self.plot_container.draw_all_labels(
-            time_data, labels,
-            predictions=predictions,
-            show_predictions=show_predictions
+            intervals_df,
+            predictions_df=predictions_df,
+            show_predictions=show_predictions,
         )
 
     def _setup_ui(self):
@@ -546,26 +549,38 @@ class LabelsWidget(QWidget):
 
 
     def activate_label(self, _key):
-        """Activate a  by shortcut: select cell, set up for labeling, and scroll to it."""
+        """Activate a label by shortcut: select cell, set up for labeling, and scroll to it."""
         _id = self.KEY_TO_LABELS_ID.get(str(_key).lower(), _key)
         if _id not in self._mappings:
             return
 
         self.selected_labels_id = _id
+        self.ready_for_label_click = True
+        self.first_click = None
+        self.second_click = None
 
+        self.labels_table.blockSignals(True)
         for row in range(self.labels_table.rowCount()):
-            for col in [0, 3]:  # Check both ID columns
+            for col in [0, 3]:
                 item = self.labels_table.item(row, col)
                 if item and item.data(Qt.UserRole) == _id:
                     self.labels_table.setCurrentItem(item)
                     self.labels_table.scrollToItem(item)
-                    self.ready_for_label_click = True
-                    self.first_click = None
-                    self.second_click = None
+                    self.labels_table.blockSignals(False)
                     return
+        self.labels_table.blockSignals(False)
         
             
             
+
+    def _current_individual(self) -> str:
+        """Return the currently selected individual name for interval operations."""
+        ind = getattr(self.app_state, 'individuals_sel', None)
+        if ind is not None and ind not in ("", "None"):
+            return str(ind)
+        if self.app_state.ds is not None and 'individuals' in self.app_state.ds.coords:
+            return str(self.app_state.ds.coords['individuals'].values[0])
+        return "default"
 
     def _on_plot_clicked(self, click_info):
         """Handle mouse clicks on the lineplot widget.
@@ -580,32 +595,15 @@ class LabelsWidget(QWidget):
         if t_clicked is None or not self.app_state.ready:
             return
 
-
-        ds_kwargs = self.app_state.get_ds_kwargs()
+        individual = self._current_individual()
 
         try:
-            if (self.pred_show_predictions.isChecked() and
-                self.app_state.pred_ds is not None):
-
-        
-                main_data, _ = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
-                secondary_data, _ = sel_valid(self.app_state.pred_ds.labels, ds_kwargs)
-                is_prediction_main = False
-   
-            else:
-                main_data, _ = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
-                secondary_data = None
-                is_prediction_main = False
- 
-
             if button == Qt.LeftButton and not self.ready_for_label_click:
-                result = self._check_labels_click(t_clicked, main_data, secondary_data, is_prediction_main)
-    
+                self._check_labels_click(t_clicked, individual)
 
         except (KeyError, IndexError, ValueError, AttributeError) as e:
             print(f"Error in plot click handling: {e}")
             return
-            
 
         # Handle right-click - seek video to clicked position
         if button == Qt.RightButton and self.app_state.video_folder is not None:
@@ -613,264 +611,181 @@ class LabelsWidget(QWidget):
             if hasattr(self.app_state, 'video') and self.app_state.video:
                 self.app_state.video.seek_to_frame(frame)
 
-        
         # Handle left-click for labeling/editing (only in label mode)
         elif button == Qt.LeftButton and self.ready_for_label_click:
-    
-            # Snap to nearest changepoint if available
-            label_idx = int(t_clicked * self.app_state.label_sr)
-            
+
+            # Snap to nearest changepoint if available (in time domain)
             if self.changepoints_widget and self.changepoints_widget.is_changepoint_correction_enabled():
-                label_idx_snapped = self._snap_to_changepoint(label_idx)
+                t_snapped = self._snap_to_changepoint_time(t_clicked)
             else:
-                label_idx_snapped = label_idx
+                t_snapped = t_clicked
 
             if self.first_click is None:
-                # First click - just store the position
-                self.first_click = label_idx_snapped
+                self.first_click = t_snapped
             else:
-                # Second click - store position and automatically apply
-                self.second_click = label_idx_snapped
-                self._apply_label()  # Automatically apply after two clicks
+                self.second_click = t_snapped
+                self._apply_label()
 
 
 
-    def _check_labels_click(self, x_clicked: float, main_data: np.ndarray,
-                          secondary_data: np.ndarray = None, is_prediction_main: bool = False) -> bool:
-        """Check if the click is on an existing  and select it if so.
+    def _check_labels_click(self, t_clicked: float, individual: str) -> bool:
+        """Check if the click is on an existing interval and select it.
 
         Args:
-            x_clicked: X coordinate of the click
-            main_data: Primary data array to check for labels
-            secondary_data: Secondary data array (optional)
-            is_prediction_main: Whether the main data is predictions or labels
+            t_clicked: Time in seconds of the click
+            individual: Individual name to check
         """
-        # Check if there's a  at this position
-        label_idx = int(x_clicked * self.app_state.label_sr)
-
-        if label_idx >= len(main_data):
-            print(f"Frame index {label_idx} out of bounds for data length {len(main_data)}")
+        df = self.app_state.label_intervals
+        if df is None or df.empty:
             return False
 
-        _id = int(main_data[label_idx])
-
-        if _id != 0:
-            _start = label_idx
-            _end = label_idx
-            
-            
-
-            # Find start of 
-            while _start > 0 and main_data[_start - 1] == _id:
-                _start -= 1
-
-            # Find end of 
-            while _end < len(main_data) - 1 and main_data[_end + 1] == _id:
-                _end += 1
-
-            self.current_labels_id = _id
-            self.current_labels_pos = [_start, _end]
-            self.current_labels_is_prediction = is_prediction_main
-            
-            _start_t = _start / self.app_state.label_sr
-            _end_t = _end / self.app_state.label_sr
-            self.highlight_spaceplot.emit(_start_t, _end_t)
-
-            self.selected_labels_id = _id
-
+        idx = find_interval_at(df, t_clicked, individual)
+        if idx is not None:
+            onset_s, offset_s, label_id = get_interval_bounds(df, idx)
+            self.current_labels_id = label_id
+            self.current_labels_pos = idx
+            self.current_labels_is_prediction = False
+            self.highlight_spaceplot.emit(onset_s, offset_s)
+            self.selected_labels_id = label_id
             return True
-        else:
-            return False
+        return False
 
-    def _snap_to_changepoint(self, x_clicked_idx: float) -> float:
-        """Snap the clicked x-coordinate to the nearest changepoint.
+    def _snap_to_changepoint_time(self, t_clicked: float) -> float:
+        """Snap the clicked time (seconds) to the nearest changepoint time.
 
-        Considers both dataset changepoints and audio changepoints (if visible).
+        Converts to index domain for snap_to_nearest_changepoint, then back to time.
+        Also considers audio changepoints (if visible).
         """
-        best_snapped = x_clicked_idx
+        best_time = t_clicked
         best_distance = float('inf')
 
         ds_kwargs = self.app_state.get_ds_kwargs()
+        time_coord = np.asarray(self.app_state.time)
 
         cp_ds = self.app_state.ds.sel(**ds_kwargs).filter_by_attrs(type="changepoints")
         if len(cp_ds.data_vars) > 0:
             feature_sel = self.app_state.features_sel
-            ds_kwargs = self.app_state.get_ds_kwargs()
-            ds_snapped = snap_to_nearest_changepoint(x_clicked_idx, self.app_state.ds, feature_sel, **ds_kwargs)
-            ds_distance = abs(ds_snapped - x_clicked_idx)
-            if ds_distance < best_distance:
-                best_snapped = ds_snapped
-                best_distance = ds_distance
+            # snap_to_nearest_changepoint works with indices
+            x_idx = int(np.argmin(np.abs(time_coord - t_clicked)))
+            snapped_idx = snap_to_nearest_changepoint(x_idx, self.app_state.ds, feature_sel, **ds_kwargs)
+            if 0 <= snapped_idx < len(time_coord):
+                snapped_time = float(time_coord[snapped_idx])
+                ds_distance = abs(snapped_time - t_clicked)
+                if ds_distance < best_distance:
+                    best_time = snapped_time
+                    best_distance = ds_distance
 
         if getattr(self.app_state, 'show_changepoints', False):
             onsets = getattr(self.app_state, 'audio_changepoint_onsets', None)
             offsets = getattr(self.app_state, 'audio_changepoint_offsets', None)
             if onsets is not None and offsets is not None:
-                label_sr = self.app_state.label_sr
-                if label_sr and label_sr > 0:
-                    all_audio_cp_times = np.concatenate([onsets, offsets])
-                    audio_cp_indices = (all_audio_cp_times * label_sr).astype(int)
-                    if len(audio_cp_indices) > 0:
-                        nearest_idx = np.argmin(np.abs(audio_cp_indices - x_clicked_idx))
-                        audio_snapped = audio_cp_indices[nearest_idx]
-                        audio_distance = abs(audio_snapped - x_clicked_idx)
-                        if audio_distance < best_distance:
-                            best_snapped = audio_snapped
+                all_audio_cp_times = np.concatenate([onsets, offsets])
+                if len(all_audio_cp_times) > 0:
+                    nearest_idx = np.argmin(np.abs(all_audio_cp_times - t_clicked))
+                    audio_time = float(all_audio_cp_times[nearest_idx])
+                    audio_distance = abs(audio_time - t_clicked)
+                    if audio_distance < best_distance:
+                        best_time = audio_time
 
-        return best_snapped
+        return best_time
 
     def _apply_label(self):
-        """Apply the selected  to the selected time range."""
-        
+        """Apply the selected label to the selected time range using intervals."""
         if self.first_click is None or self.second_click is None:
             return
-        
 
+        onset_s = min(self.first_click, self.second_click)
+        offset_s = max(self.first_click, self.second_click)
+        individual = self._current_individual()
 
-        ds_kwargs = self.app_state.get_ds_kwargs()
-        labels, filt_kwargs = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
+        self.highlight_spaceplot.emit(onset_s, offset_s)
 
+        df = self.app_state.label_intervals
+        if df is None:
+            df = empty_intervals()
 
-        start_idx = self.first_click
-        end_idx = self.second_click
-        print(f"Applying  {self.selected_labels_id} from {start_idx} to {end_idx}")
-        print(f"Labels length: {len(labels)}")
-    
-        start_t = start_idx / self.app_state.label_sr
-        end_t = end_idx / self.app_state.label_sr
-        self.highlight_spaceplot.emit(start_t, end_t)
-
-
-
-
-        if hasattr(self, 'old_labels_pos') and self.old_labels_pos is not None:
-            old_start, old_end = self.old_labels_pos
-            labels[old_start : old_end + 1] = 0
-
-            
-            # Clean up edit mode variables
+        # If editing, delete the old interval first
+        if self.old_labels_pos is not None:
+            df = delete_interval(df, self.old_labels_pos)
             self.old_labels_pos = None
             self.old_labels_id = None
-            self.current_labels_pos = None
-            self.current_labels_id = None
-            self.current_labels_is_prediction = False
 
-        if labels[end_idx] != 0 and not labels[end_idx+1] == 0:
-            end_idx = end_idx - 1
-            
+        df = add_interval(df, onset_s, offset_s, self.selected_labels_id, individual)
+        self.app_state.label_intervals = df
+        self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
 
-        labels[start_idx : end_idx + 1] = self.selected_labels_id
-
-        # Auto-select the newly created/edited  for immediate playback with 'v'
-        self.current_labels_pos = [start_idx, end_idx]
+        # Auto-select the newly created interval for immediate playback
+        new_idx = find_interval_at(df, (onset_s + offset_s) / 2, individual)
+        self.current_labels_pos = new_idx
         self.current_labels_id = self.selected_labels_id
         self.current_labels_is_prediction = False
-
-
-
-
 
         self.first_click = None
         self.second_click = None
         self.ready_for_label_click = False
 
-   
-        labels = purge_small_blocks(labels, MIN_LABEL_LEN)
-
-
-
-        self.app_state.label_dt.trial(self.app_state.trials_sel).labels.loc[filt_kwargs] = labels
-
         self._human_verification_true(mode="single_trial")
         self._mark_changes_unsaved()
         self.app_state.labels_modified.emit()
-        self._seek_to_frame(start_idx)
+        self._seek_to_frame(onset_s)
         self.refresh_labels_shapes_layer()
 
         
 
-    def _seek_to_frame(self, label_idx: int):
-        """Seek video and update time marker to the specified label index.
-
-        Args:
-            label_idx: Index into the label array (at label_sr rate), not a video frame.
-        """
-        # Convert label index to time
-        current_time = label_idx / self.app_state.label_sr
-
+    def _seek_to_frame(self, time_s: float):
+        """Seek video and update time marker to the specified time in seconds."""
         if hasattr(self.app_state, 'video') and self.app_state.video:
-            # Convert time to video frame for seek
-            video_frame = int(current_time * self.app_state.ds.fps)
+            video_frame = int(time_s * self.app_state.ds.fps)
             self.app_state.video.seek_to_frame(video_frame)
         elif self.plot_container:
-            self.plot_container.current_plot.update_time_marker(current_time)
+            self.plot_container.current_plot.update_time_marker(time_s)
 
 
     def _delete_label(self):
         if self.current_labels_pos is None:
             return
-        
-    
 
-        start, end = self.current_labels_pos
+        df = self.app_state.label_intervals
+        if df is None or df.empty:
+            return
 
-
-        ds_kwargs = self.app_state.get_ds_kwargs()
-
-
-        labels, filt_kwargs = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
-
-
-
-        labels[start : end + 1] = 0
-
+        df = delete_interval(df, self.current_labels_pos)
+        self.app_state.label_intervals = df
+        self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
 
         self.current_labels_pos = None
         self.current_labels_id = None
         self.current_labels_is_prediction = False
-
-    
-        self.app_state.label_dt.trial(self.app_state.trials_sel).labels.loc[filt_kwargs] = labels
 
         self._mark_changes_unsaved()
         self.app_state.labels_modified.emit()
         self.refresh_labels_shapes_layer()
 
     def _edit_label(self):
-        """Enter edit mode for adjusting  boundaries."""
+        """Enter edit mode for adjusting interval boundaries."""
         if self.current_labels_pos is None:
-            print("No  selected. Right-click on a  first to select it.")
+            print("No label selected. Click on a label first to select it.")
             return
-        
 
-
-
-        # Store the old  info for later cleanup
-        self.old_labels_pos = self.current_labels_pos.copy()
+        self.old_labels_pos = self.current_labels_pos
         self.old_labels_id = self.current_labels_id
-        
-        # Enter editing mode - user needs to click twice to set new boundaries
+
         self.ready_for_label_click = True
         self.first_click = None
         self.second_click = None
-        
-
-        return
 
     def _play_segment(self):
         if self.current_labels_pos is None:
-            print("No  selected for playback")
+            print("No label selected for playback")
             return
 
-        if not self.current_labels_id or len(self.current_labels_pos) != 2:
-            print(f"Playback conditions not met - _id: {self.current_labels_id}, pos_len: {len(self.current_labels_pos) if self.current_labels_pos else 0}")
+        df = self.app_state.label_intervals
+        if df is None or self.current_labels_pos not in df.index:
             return
 
-        # Label idxs -> Time -> Frame idxs
-        start_time = self.current_labels_pos[0] / self.app_state.label_sr
-        end_time = self.current_labels_pos[1] / self.app_state.label_sr
-        start_frame = int(start_time * self.app_state.ds.fps)
-        end_frame = int(end_time * self.app_state.ds.fps)
+        onset_s, offset_s, _ = get_interval_bounds(df, self.current_labels_pos)
+        start_frame = int(onset_s * self.app_state.ds.fps)
+        end_frame = int(offset_s * self.app_state.ds.fps)
 
         if hasattr(self.app_state, 'video') and self.app_state.video:
             self.app_state.video.play_segment(start_frame, end_frame)
@@ -881,46 +796,27 @@ class LabelsWidget(QWidget):
 
 
     def _add_labels_shapes_layer(self):
-        """Add single box overlay with dynamically updating text."""
- 
-        
-        ds_kwargs = self.app_state.get_ds_kwargs()
-        
-
-        label_ds = self.app_state.label_ds
-        labels, _ = sel_valid(label_ds.labels, ds_kwargs)
-
-   
-
-
+        """Add single box overlay with dynamically updating text using intervals."""
         try:
             layer = self.viewer.layers[0]
-            
             if layer.data.ndim == 2:
                 height, width = layer.data.shape
-
             elif layer.data.ndim == 3:
                 height, width = layer.data.shape[1:3]
-
             else:
                 height, width = LABELS_OVERLAY_FALLBACK_SIZE
-
         except (IndexError, AttributeError):
-            print("No video layer found for  shapes overlay.")
+            print("No video layer found for label shapes overlay.")
             return None
 
         box_width, box_height = LABELS_OVERLAY_BOX_WIDTH, LABELS_OVERLAY_BOX_HEIGHT
         x = width - box_width - LABELS_OVERLAY_BOX_MARGIN
         y = height - box_height - LABELS_OVERLAY_BOX_MARGIN
-        
 
         rect = np.array([[[y, x],
                         [y, x + box_width],
                         [y + box_height, x + box_width],
                         [y + box_height, x]]])
-        
-
-        labels_array = np.asarray(labels)
 
         shapes_layer = self.viewer.add_shapes(
             rect,
@@ -935,48 +831,43 @@ class LabelsWidget(QWidget):
 
         shapes_layer.z_index = Z_INDEX_LABELS_OVERLAY
 
-        # Store labels array and conversion factors for on-demand lookup
         video_fps = self.app_state.ds.fps if hasattr(self.app_state, 'ds') and self.app_state.ds else 30.0
-        label_sr = getattr(self.app_state, 'label_sr')
+        individual = self._current_individual()
 
         shapes_layer.metadata = {
-            'labels_array': labels_array,
+            'intervals_df': self.app_state.label_intervals,
             'video_fps': video_fps,
-            'label_sr': label_sr,
+            'individual': individual,
             '_mappings': self._mappings,
         }
 
         def update_labels_text(event=None):
-            # Convert video frame to data index on-demand
             video_frame = self.viewer.dims.current_step[0]
             time_s = video_frame / shapes_layer.metadata['video_fps']
-            label_idx = int(time_s * shapes_layer.metadata['label_sr'])
-
-            labels_arr = shapes_layer.metadata['labels_array']
+            df = shapes_layer.metadata['intervals_df']
+            ind = shapes_layer.metadata['individual']
             mappings = shapes_layer.metadata['_mappings']
 
-            if 0 <= label_idx < len(labels_arr):
-                label = int(labels_arr[label_idx])
-                if label in mappings and label != 0:
-                    color = mappings[label]["color"]
-                    color_list = color.tolist() if hasattr(color, 'tolist') else list(color)
-                    shapes_layer.text = {
-                        'string': [mappings[label]["name"]],
-                        'color': [color_list],
-                        'size': LABELS_OVERLAY_TEXT_SIZE,
-                        'anchor': 'center'
-                    }
-                    return
+            if df is not None and not df.empty:
+                idx = find_interval_at(df, time_s, ind)
+                if idx is not None:
+                    _, _, label_id = get_interval_bounds(df, idx)
+                    if label_id in mappings and label_id != 0:
+                        color = mappings[label_id]["color"]
+                        color_list = color.tolist() if hasattr(color, 'tolist') else list(color)
+                        shapes_layer.text = {
+                            'string': [mappings[label_id]["name"]],
+                            'color': [color_list],
+                            'size': LABELS_OVERLAY_TEXT_SIZE,
+                            'anchor': 'center'
+                        }
+                        return
 
             shapes_layer.text = {'string': [''], 'color': [[0, 0, 0]]}
-        
-    
+
         self.viewer.dims.events.current_step.connect(update_labels_text)
-        
-    
         update_labels_text()
-        
-  
+
         return shapes_layer
     
     def _remove_labels_shapes_layer(self):
@@ -986,16 +877,14 @@ class LabelsWidget(QWidget):
 
 
     def refresh_labels_shapes_layer(self):
-        """Refresh labels data without recreating the layer."""
+        """Refresh intervals data without recreating the layer."""
         if "_labels" not in self.viewer.layers:
             self._add_labels_shapes_layer()
             return
 
-        # Update both labels array and  mappings in existing layer's metadata
         shapes_layer = self.viewer.layers["_labels"]
-        ds_kwargs = self.app_state.get_ds_kwargs()
-        labels, _ = sel_valid(self.app_state.label_ds.labels, ds_kwargs)
-        shapes_layer.metadata['labels_array'] = np.asarray(labels)
+        shapes_layer.metadata['intervals_df'] = self.app_state.label_intervals
+        shapes_layer.metadata['individual'] = self._current_individual()
         shapes_layer.metadata['_mappings'] = self._mappings
 
 

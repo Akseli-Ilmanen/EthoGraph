@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from ethograph.utils.labels import get_labels_start_end_time
+from ethograph.utils.labels import get_labels_start_end_indices
 
 
 def func_eval(ground_truth_dict, predictions_dict, video_list, f1_thresholds=[.5, .75, .9]):
@@ -195,13 +195,13 @@ def levenstein(p, y, norm=False):
 
  
 def edit_score(recognized, ground_truth, norm=True, bg_class=["background"]):
-    P, _, _ = get_labels_start_end_time(recognized, bg_class)
-    Y, _, _ = get_labels_start_end_time(ground_truth, bg_class)
+    P, _, _ = get_labels_start_end_indices(recognized, bg_class)
+    Y, _, _ = get_labels_start_end_indices(ground_truth, bg_class)
     return levenstein(P, Y, norm)
  
 def f_score(recognized, ground_truth, overlap, bg_class=["background"]):
-    p_label, p_start, p_end = get_labels_start_end_time(recognized, bg_class)
-    y_label, y_start, y_end = get_labels_start_end_time(ground_truth, bg_class)
+    p_label, p_start, p_end = get_labels_start_end_indices(recognized, bg_class)
+    y_label, y_start, y_end = get_labels_start_end_indices(ground_truth, bg_class)
  
     tp = 0
     fp = 0

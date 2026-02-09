@@ -7,6 +7,12 @@ import xarray as xr
 from scipy.ndimage import gaussian_filter1d
 
 from ethograph.features.mov_features import get_angle_rgb
+from ethograph.utils.label_intervals import (
+    dense_to_intervals,
+    empty_intervals,
+    intervals_to_xr,
+    xr_to_intervals,
+)
 from ethograph.utils.validation import validate_datatree
 
 
@@ -243,14 +249,64 @@ class TrialTree(xr.DataTree):
 
     def get_label_dt(self, empty: bool = False) -> "TrialTree":
         def filter_node(ds):
-            if ds is None or "labels" not in ds.data_vars:
+            if ds is None:
                 return xr.Dataset()
-            vars_to_extract = ["labels"]
+
+            orig_attrs = ds.attrs.copy()
+
+            # New interval format: has onset_s with segment dimension
+            if "onset_s" in ds.data_vars and "segment" in ds.dims:
+                if empty:
+                    result = intervals_to_xr(empty_intervals())
+                else:
+                    interval_vars = [v for v in ("onset_s", "offset_s", "label_id", "individual") if v in ds.data_vars]
+                    result = ds[interval_vars].copy()
+                    if "labels_confidence" in ds.data_vars:
+                        result["labels_confidence"] = ds["labels_confidence"]
+                result.attrs = orig_attrs
+                return result
+
+            # Legacy dense format: has labels with a time-like dimension
+            if "labels" not in ds.data_vars:
+                return xr.Dataset()
+
+            if empty:
+                result = intervals_to_xr(empty_intervals())
+                result.attrs = orig_attrs
+                return result
+
+            # Convert dense labels to interval format
+            labels_da = ds["labels"]
+            time_coord_name = next((c for c in labels_da.coords if "time" in c.lower()), None)
+            if time_coord_name is None:
+                result = intervals_to_xr(empty_intervals())
+                result.attrs = orig_attrs
+                return result
+
+            time_vals = labels_da.coords[time_coord_name].values
+            dense = labels_da.values
+
+            # Determine individuals
+            if "individuals" in labels_da.dims:
+                individuals = [str(v) for v in labels_da.coords["individuals"].values]
+            else:
+                individuals = ["default"]
+                if dense.ndim == 1:
+                    dense = dense[:, np.newaxis]
+
+            df = dense_to_intervals(dense, time_vals, individuals)
+            result = intervals_to_xr(df)
+
             if "labels_confidence" in ds.data_vars:
-                vars_to_extract.append("labels_confidence")
-            filtered = ds[vars_to_extract]
-            return xr.zeros_like(filtered) if empty else filtered
+                result["labels_confidence"] = ds["labels_confidence"]
+
+            result.attrs = orig_attrs
+            return result
+
         return self.from_datatree(self.map_over_datasets(filter_node), attrs=self.attrs)
+
+
+
 
     def overwrite_with_attrs(self, labels_tree: xr.DataTree) -> "TrialTree":
         """Overwrite attrs in this tree with that from another tree."""
@@ -262,10 +318,20 @@ class TrialTree(xr.DataTree):
         return TrialTree(tree)
 
     def overwrite_with_labels(self, labels_tree: xr.DataTree) -> "TrialTree":
-        """Overwrite labels/labels confidence and attrs in this tree with labels from another tree."""
+        """Overwrite labels and attrs in this tree with labels from another tree.
+
+        Handles both dense format (legacy 'labels' variable) and interval format
+        (onset_s/offset_s/label_id/individual with 'segment' dimension).
+        When writing interval format, removes any old dense 'labels' variable.
+        """
+        interval_vars = {"onset_s", "offset_s", "label_id", "individual"}
+
         def merge_func(data_ds, labels_ds):
             if labels_ds is not None and data_ds is not None:
                 tree = data_ds.copy()
+                is_interval = bool(interval_vars & set(labels_ds.data_vars))
+                if is_interval and "labels" in tree.data_vars:
+                    tree = tree.drop_vars("labels")
                 for var_name in labels_ds.data_vars:
                     tree[var_name] = labels_ds[var_name]
                 tree.attrs.update(labels_ds.attrs)

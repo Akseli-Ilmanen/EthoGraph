@@ -193,12 +193,10 @@ class DataWidget(DataLoader, QWidget):
         self.app_state.time = get_time_coord(self.app_state.ds[features_list[0]])
         
 
-        time_coord = get_time_coord(self.app_state.ds.labels)
-        self.app_state.label_sr = self._get_sampling_rate(time_coord.values)
-
-
-
-        print(f"Label sampling rate: {self.app_state.label_sr} Hz")
+        # Derive label_sr from feature time coord (labels are now interval-based)
+        feature_time = self.app_state.time
+        if feature_time is not None and len(feature_time) > 1:
+            self.app_state.label_sr = self._get_sampling_rate(np.asarray(feature_time))
 
 
         self.app_state.trials = sorted(trials)
@@ -631,6 +629,9 @@ class DataWidget(DataLoader, QWidget):
             if key in ["individuals", "keypoints", "colors"]:
                 self.update_space_plot()
 
+            if key == "individuals":
+                self.labels_widget.refresh_labels_shapes_layer()
+
 
             if key == "tracking":
                 self.update_tracking()
@@ -811,6 +812,9 @@ class DataWidget(DataLoader, QWidget):
             elif view_mode.startswith("Heatmap"):
                 self.plot_container.heatmap_plot._clear_buffer()
 
+        # Load interval-based labels for this trial
+        self.app_state.label_intervals = self.app_state.get_trial_intervals(trials_sel)
+
         self.app_state.current_frame = 0
         self.update_video_audio()
         self.update_tracking()
@@ -859,18 +863,15 @@ class DataWidget(DataLoader, QWidget):
 
 
     def update_label_plot(self, ds_kwargs):
-        """Update label plot with labels and predictions."""
+        """Update label plot with interval-based labels and predictions."""
+        intervals_df = self.app_state.label_intervals
 
- 
-        label_ds = self.app_state.label_ds
-        
-        
-        
-        time = get_time_coord(label_ds.labels)
-        labels, _ = sel_valid(label_ds.labels, ds_kwargs)
+        if intervals_df is not None and not intervals_df.empty and "individuals" in ds_kwargs:
+            selected_ind = str(ds_kwargs["individuals"])
+            intervals_df = intervals_df[intervals_df["individual"] == selected_ind]
 
+        predictions_df = None
 
-        predictions = None
         if (
             self.labels_widget.pred_show_predictions.isChecked()
             and hasattr(self.app_state, 'pred_ds')
@@ -878,10 +879,21 @@ class DataWidget(DataLoader, QWidget):
         ):
             pred_ds = self.app_state.pred_ds
             predictions, _ = sel_valid(pred_ds.labels, ds_kwargs)
-            self.labels_widget.plot_all_labels(time, labels, predictions)
+            # Predictions still use dense format — convert on demand
+            from ethograph.utils.label_intervals import dense_to_intervals
+            pred_time = get_time_coord(pred_ds.labels).values
+            individuals = (
+                list(pred_ds.coords['individuals'].values)
+                if 'individuals' in pred_ds.coords
+                else ["default"]
+            )
+            predictions_df = dense_to_intervals(
+                np.asarray(predictions).reshape(-1, 1) if np.asarray(predictions).ndim == 1 else np.asarray(predictions),
+                pred_time,
+                individuals,
+            )
 
-        else:
-            self.labels_widget.plot_all_labels(time, labels)
+        self.labels_widget.plot_all_labels(intervals_df, predictions_df)
 
 
 

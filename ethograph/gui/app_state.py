@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, get_args, get_origin
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 import yaml
 from napari.settings import get_settings
@@ -14,6 +15,11 @@ from qtpy.QtCore import QObject, QTimer, Signal
 
 from ethograph import TrialTree
 from ethograph.utils.data_utils import get_time_coord
+from ethograph.utils.label_intervals import (
+    empty_intervals,
+    intervals_to_xr,
+    xr_to_intervals,
+)
 
 
 SIMPLE_SIGNAL_TYPES = (int, float, str, bool)
@@ -85,6 +91,7 @@ class AppStateSpec:
         "fps_playback": (float, 30.0, True),
         "time": (xr.DataArray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
         "label_sr": (float | None, None, False), # for labels (e.g. 'time' or 'time_labels')
+        "label_intervals": (pd.DataFrame | None, None, False),
         "trials": (list[int | str], [], False),
         "downsample_enabled": (bool, False, True),
         "downsample_factor": (int, 100, True),
@@ -338,7 +345,24 @@ class ObservableAppState(QObject):
 
         If a previous value exists, swap current and previous.
         Otherwise, cycle to the next item in the combo box.
+
+        Special case: type_key="Audio Waveform" toggles the features
+        selection to/from Audio Waveform.
         """
+        if type_key == "Audio Waveform":
+            current = getattr(self, "features_sel", None)
+            if current == "Audio Waveform":
+                previous = getattr(self, "features_sel_previous", None)
+                if previous is not None:
+                    self.set_key_sel("features", previous)
+                    if data_widget is not None:
+                        self._update_combo_box("features", previous, data_widget)
+            else:
+                self.set_key_sel("features", "Audio Waveform")
+                if data_widget is not None:
+                    self._update_combo_box("features", "Audio Waveform", data_widget)
+            return
+
         attr_name = f"{type_key}_sel"
         prev_attr_name = f"{type_key}_sel_previous"
 
@@ -463,7 +487,25 @@ class ObservableAppState(QObject):
             self._auto_save_timer.stop()
             self.save_to_yaml()
 
+    # --- Interval label helpers ---
+    def get_trial_intervals(self, trial) -> pd.DataFrame:
+        if self.label_dt is None:
+            return empty_intervals()
+        trial_ds = self.label_dt.trial(trial)
+        if "onset_s" in trial_ds.data_vars:
+            return xr_to_intervals(trial_ds)
+        return empty_intervals()
 
+    def set_trial_intervals(self, trial, df: pd.DataFrame) -> None:
+        if self.label_dt is None:
+            return
+        trial_key = TrialTree.trial_key(trial)
+        interval_ds = intervals_to_xr(df)
+        old_ds = self.label_dt.trial(trial)
+        interval_ds.attrs = old_ds.attrs.copy()
+        if "labels_confidence" in old_ds.data_vars:
+            interval_ds["labels_confidence"] = old_ds["labels_confidence"]
+        self.label_dt[trial_key] = xr.DataTree(interval_ds)
 
     def _get_downsampled_suffix(self) -> str:
         """Get suffix for downsampled files."""

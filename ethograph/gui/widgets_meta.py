@@ -562,6 +562,11 @@ class MetaWidget(CollapsibleWidgetContainer):
         def toggle_tracking(v):
             self.app_state.toggle_key_sel("tracking", self.data_widget)
 
+        # Toggle Audio Waveform (Ctrl+A)
+        @viewer.bind_key("ctrl+a", overwrite=True)
+        def toggle_audio_waveform(v):
+            self.app_state.toggle_key_sel("Audio Waveform", self.data_widget)
+
         # Cycle view mode (Ctrl+G)
         @viewer.bind_key("ctrl+g", overwrite=True)
         def cycle_view_mode(v):

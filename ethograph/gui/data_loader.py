@@ -11,6 +11,7 @@ from qtpy.QtWidgets import QMessageBox
 from ethograph import TrialTree, set_media_attrs
 from ethograph.features.audio_features import get_envelope
 from ethograph.features.mov_features import extract_video_motion
+from ethograph.utils.label_intervals import empty_intervals, intervals_to_xr
 from ethograph.utils.validation import extract_type_vars, validate_datatree
 from movement.io import load_poses
 from movement.kinematics import compute_acceleration, compute_pairwise_distances, compute_speed, compute_velocity
@@ -41,9 +42,7 @@ def load_dataset(file_path: str) -> Tuple[Optional[xr.Dataset], Optional[dict]]:
 
     errors = validate_datatree(dt)
     if errors:
-        if error_msg:
-            error_msg += "\n"
-        error_msg += "\n".join(f"• {e}" for e in errors)
+        error_msg = "\n".join(f"• {e}" for e in errors)
         
         suffix = "\n\n See documentation: XXX"
         
@@ -63,22 +62,10 @@ def load_dataset(file_path: str) -> Tuple[Optional[xr.Dataset], Optional[dict]]:
 
 def minimal_basics(ds, label_sr: Optional[float] = None, video_path: Optional[str] = None, video_motion: bool = False) -> TrialTree:
 
-    if "labels" not in ds.data_vars:
-        
-        if label_sr is not None:
-            time_labels = np.arange(0, ds.time.values[-1] + 1/label_sr, 1/label_sr)
-            
-            ds["labels"] = xr.DataArray(
-                np.zeros((len(time_labels), ds.sizes["individuals"])),
-                dims=["time_labels", "individuals"],
-                coords={"time_labels": time_labels, "individuals": ds.individuals},
-            )
-            
-        else: 
-            ds["labels"] = xr.DataArray(
-                    np.zeros((ds.sizes["time"], ds.sizes["individuals"])),
-                    dims=["time", "individuals"],
-            )
+    if "labels" not in ds.data_vars and "onset_s" not in ds.data_vars:
+        interval_ds = intervals_to_xr(empty_intervals())
+        for var_name in interval_ds.data_vars:
+            ds[var_name] = interval_ds[var_name]
 
 
     if video_motion and video_path is not None:
