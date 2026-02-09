@@ -100,7 +100,6 @@ CP_COLOR_SPECTROGRAM = (255, 255, 255, 200)  # White for spectrogram
 
 # Dataset changepoint method colors
 CP_METHOD_COLORS = {
-    'peaks': (255, 100, 100, 200),          # Red
     'troughs': (100, 100, 255, 200),        # Blue
     'turning_points': (100, 255, 100, 200), # Green
     'ruptures': (255, 165, 0, 200),         # Orange

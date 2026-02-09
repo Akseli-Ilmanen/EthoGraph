@@ -7,15 +7,15 @@ Before closing, you will be prompted to `update with labels and save`, this take
 
 ![keyboard](media/keyboard.png)
 
-To create a new label label:
+To create a new behavioural label:
 
-1. Press one of the keys above to activate a specific label label.
+1. Press one of the keys above to activate a specific behavioural label.
 2. Click twice on the line plot to define the start and end boundaries of the label
 3. The label will be created and displayed with a color-coded overlay
 
 ## Playing Back Labels
 
-Once you've created label labels, you can click on the label, press `v` to play the segment.
+Once you've created label, you can click on the label, press `v` to play the segment.
 
 ![label_play](media/label_play.gif)
 
@@ -39,6 +39,3 @@ You can edit or delete existing labels using the labels widget interface:
 ADD scehmatic image changepoint correction
 
 S
-## Import/Save/Predictions
-
-TO DO

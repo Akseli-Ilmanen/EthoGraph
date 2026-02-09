@@ -63,7 +63,7 @@ C:\Users\Admin\anaconda3\envs\ethograph-gui
 
 ## Project Overview
 
-ethograph-GUI is a napari plugin for labeling start/stop times of animal movements. It integrates with ethograph, a workflow using action segmentation transformers to predict movement segments. The GUI loads NetCDF datasets containing behavioral features, displays synchronized video/audio, and allows interactive label labeling.
+ethograph-GUI is a napari plugin for labeling start/stop times of animal movements. It integrates with ethograph, a workflow using action segmentation transformers to predict movement segments. The GUI loads NetCDF datasets containing behavioral features, displays synchronized video/audio, and allows interactive labeling.
 
 ## Development Commands
 ! for bash mode
@@ -201,7 +201,7 @@ Central coordinator that creates and wires all widgets together.
 1. DocumentationWidget (help/shortcuts)
 2. IOWidget (file loading)
 3. DataWidget (dataset controls)
-4. LabelsWidget (label labeling)
+4. LabelsWidget (labeling)
 5. PlotsWidget (plotting settings)
 6. NavigationWidget (trial navigation)
 7. PlotContainer (bottom dock - hidden until data loads)
