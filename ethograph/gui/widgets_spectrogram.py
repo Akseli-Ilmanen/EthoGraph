@@ -4,7 +4,7 @@ from typing import Optional
 
 import numpy as np
 from napari.viewer import Viewer
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt, QTimer
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -18,6 +18,8 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from .app_state import AppStateSpec
 
 
 class SpectrogramWidget(QWidget):
@@ -38,6 +40,7 @@ class SpectrogramWidget(QWidget):
         self.app_state = app_state
         self.viewer = napari_viewer
         self.plot_container = None
+        self._needs_auto_levels = True
 
         self.setAttribute(Qt.WA_AlwaysShowToolTips)
 
@@ -74,14 +77,15 @@ class SpectrogramWidget(QWidget):
             'CET-CBL2': 'black-blue-yellow-white',
             'CET-L1': 'black-white',
             'CET-L3': 'inferno',
-            'viridis': 'viridis',
         }
         self.colormaps = list(self.colormap_display.keys())
         self.colormap_combo.addItems(self.colormap_display.values())
 
-        self.auto_levels_button = QPushButton("Auto levels")
-        self.apply_button = QPushButton("Apply")
-        self.reset_button = QPushButton("Reset")
+        self.levels_mode_combo = QComboBox()
+        self.levels_mode_combo.addItems(["Always auto dB levels", "Remember dB levels"])
+
+        self.auto_levels_button = QPushButton("Auto dB levels")
+        self.apply_button = QPushButton("Apply settings")
 
         row = 0
         group_layout.addWidget(QLabel("Freq min (kHz):"), row, 0)
@@ -106,9 +110,17 @@ class SpectrogramWidget(QWidget):
         row += 1
         group_layout.addWidget(QLabel("Colormap:"), row, 0)
         group_layout.addWidget(self.colormap_combo, row, 1)
-        group_layout.addWidget(self.auto_levels_button, row, 2, 1, 2)
-        group_layout.addWidget(self.apply_button, row, 2)
-        group_layout.addWidget(self.reset_button, row, 3)
+        group_layout.addWidget(QLabel("Levels:"), row, 2)
+        group_layout.addWidget(self.levels_mode_combo, row, 3)
+
+        row += 1
+        button_widget = QWidget()
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.addWidget(self.auto_levels_button)
+        button_layout.addWidget(self.apply_button)
+        button_widget.setLayout(button_layout)
+        group_layout.addWidget(button_widget, row, 0, 1, 4)
 
         self.spec_ymin_edit.editingFinished.connect(self._on_spec_edited)
         self.spec_ymax_edit.editingFinished.connect(self._on_spec_edited)
@@ -117,9 +129,10 @@ class SpectrogramWidget(QWidget):
         self.nfft_edit.editingFinished.connect(self._on_spec_edited)
         self.hop_frac_edit.editingFinished.connect(self._on_spec_edited)
         self.colormap_combo.currentTextChanged.connect(self._on_colormap_changed)
+        self.levels_mode_combo.currentIndexChanged.connect(self._on_levels_mode_changed)
         self.auto_levels_button.clicked.connect(self._auto_levels)
         self.apply_button.clicked.connect(self._on_spec_edited)
-        self.reset_button.clicked.connect(self._reset_spec_to_defaults)
+
 
     def _create_noise_reduction_controls(self, main_layout):
         """Create noise reduction controls with reference."""
@@ -157,9 +170,53 @@ class SpectrogramWidget(QWidget):
 
     def set_plot_container(self, plot_container):
         self.plot_container = plot_container
+        plot_container.plot_changed.connect(self._on_plot_changed)
+        plot_container.spectrogram_overlay_shown.connect(self._on_overlay_shown)
+        if plot_container.spectrogram_plot:
+            plot_container.spectrogram_plot.bufferUpdated.connect(self._on_buffer_updated)
 
-    def set_enabled_state(self, has_audio: bool):
-        self.setEnabled(has_audio)
+    def set_enabled_state(self, has_audio: bool = False):
+        self.setEnabled(True)
+        self.noise_reduce_checkbox.setEnabled(has_audio)
+        self.prop_decrease_spin.setEnabled(has_audio)
+
+    def _is_auto_levels_mode(self) -> bool:
+        return getattr(self.app_state, 'spec_levels_mode', 'auto') == 'auto'
+
+    def _on_plot_changed(self, plot_type: str):
+        if plot_type == 'spectrogram' and self._needs_auto_levels:
+            QTimer.singleShot(500, self._try_initial_auto_levels)
+
+    def _try_initial_auto_levels(self):
+        if not self._needs_auto_levels:
+            return
+        if not self.plot_container or not self.plot_container.is_spectrogram():
+            return
+        current_plot = self.plot_container.get_current_plot()
+        if not hasattr(current_plot, 'buffer') or current_plot.buffer.Sxx_db is None:
+            return
+        self._needs_auto_levels = False
+        self._auto_levels()
+
+    def _on_buffer_updated(self):
+        if self._is_auto_levels_mode():
+            self._auto_levels()
+
+    def _on_overlay_shown(self):
+        colormap_name = self.app_state.get_with_default('spec_colormap')
+        self.plot_container.apply_overlay_colormap(colormap_name)
+        if self._is_auto_levels_mode():
+            QTimer.singleShot(200, self._auto_levels)
+        else:
+            self._apply_remembered_levels()
+
+    def _on_levels_mode_changed(self, index: int):
+        mode = "auto" if index == 0 else "remember"
+        self.app_state.spec_levels_mode = mode
+        if mode == "auto":
+            self._auto_levels()
+        else:
+            self._apply_remembered_levels()
 
     def _restore_or_set_default_selections(self):
         for attr, edit in [
@@ -173,6 +230,12 @@ class SpectrogramWidget(QWidget):
                 value = self.app_state.get_with_default(attr)
                 setattr(self.app_state, attr, value)
             edit.setText("" if value is None else str(value))
+
+        default_vmin = AppStateSpec.get_default("vmin_db")
+        default_vmax = AppStateSpec.get_default("vmax_db")
+        if (getattr(self.app_state, "vmin_db", default_vmin) != default_vmin or
+                getattr(self.app_state, "vmax_db", default_vmax) != default_vmax):
+            self._needs_auto_levels = False
 
         for attr, edit in [
             ("spec_ymin", self.spec_ymin_edit),
@@ -188,6 +251,14 @@ class SpectrogramWidget(QWidget):
         colormap = self.app_state.get_with_default("spec_colormap")
         if colormap in self.colormap_display:
             self.colormap_combo.setCurrentText(self.colormap_display[colormap])
+
+        levels_mode = getattr(self.app_state, 'spec_levels_mode', None)
+        if levels_mode is None:
+            levels_mode = self.app_state.get_with_default('spec_levels_mode')
+            self.app_state.spec_levels_mode = levels_mode
+        self.levels_mode_combo.setCurrentIndex(0 if levels_mode == 'auto' else 1)
+        if levels_mode == 'remember':
+            self._needs_auto_levels = False
 
         noise_reduce = getattr(self.app_state, 'noise_reduce_enabled', None)
         if noise_reduce is None:
@@ -223,21 +294,30 @@ class SpectrogramWidget(QWidget):
         display_to_internal = {v: k for k, v in self.colormap_display.items()}
         colormap_name = display_to_internal.get(display_name, display_name)
         self.app_state.spec_colormap = colormap_name
-        if self.plot_container and self.plot_container.is_spectrogram():
-            current_plot = self.plot_container.get_current_plot()
-            if hasattr(current_plot, 'update_colormap'):
-                current_plot.update_colormap(colormap_name)
+        if self.plot_container:
+            if self.plot_container.is_spectrogram():
+                current_plot = self.plot_container.get_current_plot()
+                if hasattr(current_plot, 'update_colormap'):
+                    current_plot.update_colormap(colormap_name)
+            if self.plot_container.has_spectrogram_overlay():
+                self.plot_container.apply_overlay_colormap(colormap_name)
 
     def _auto_levels(self):
         """Estimate optimal dB levels from current spectrogram data."""
-        if not self.plot_container or not self.plot_container.is_spectrogram():
+        if not self.plot_container:
             return
 
-        current_plot = self.plot_container.get_current_plot()
-        if not hasattr(current_plot, 'buffer') or current_plot.buffer.Sxx_db is None:
+        is_spec = self.plot_container.is_spectrogram()
+        has_overlay = self.plot_container.has_spectrogram_overlay()
+
+        if not is_spec and not has_overlay:
             return
 
-        Sxx_db = current_plot.buffer.Sxx_db
+        spec_plot = self.plot_container.spectrogram_plot
+        if not hasattr(spec_plot, 'buffer') or spec_plot.buffer.Sxx_db is None:
+            return
+
+        Sxx_db = spec_plot.buffer.Sxx_db
 
         if Sxx_db.size == 0:
             return
@@ -267,8 +347,28 @@ class SpectrogramWidget(QWidget):
         self.app_state.vmin_db = zmin
         self.app_state.vmax_db = zmax
 
-        if hasattr(current_plot, 'update_levels'):
-            current_plot.update_levels(zmin, zmax)
+        if is_spec and hasattr(spec_plot, 'update_levels'):
+            spec_plot.update_levels(zmin, zmax)
+
+        if has_overlay:
+            self.plot_container.apply_overlay_levels(zmin, zmax)
+
+    def _apply_remembered_levels(self):
+        vmin = self._parse_float(self.vmin_db_edit.text())
+        vmax = self._parse_float(self.vmax_db_edit.text())
+        if vmin is None:
+            vmin = self.app_state.get_with_default("vmin_db")
+        if vmax is None:
+            vmax = self.app_state.get_with_default("vmax_db")
+        self.app_state.vmin_db = vmin
+        self.app_state.vmax_db = vmax
+        if self.plot_container:
+            if self.plot_container.is_spectrogram():
+                current_plot = self.plot_container.get_current_plot()
+                if hasattr(current_plot, 'update_levels'):
+                    current_plot.update_levels(vmin, vmax)
+            if self.plot_container.has_spectrogram_overlay():
+                self.plot_container.apply_overlay_levels(vmin, vmax)
 
     def _on_spec_edited(self):
         if not self.plot_container:
@@ -327,10 +427,19 @@ class SpectrogramWidget(QWidget):
             if hasattr(current_plot, 'update_plot_content'):
                 current_plot.update_plot_content()
 
+        if self.plot_container.has_spectrogram_overlay():
+            self.plot_container.apply_overlay_levels(values["vmin_db"], values["vmax_db"])
+            spec_plot = self.plot_container.spectrogram_plot
+            if hasattr(spec_plot, 'buffer') and hasattr(spec_plot.buffer, '_clear_buffer'):
+                spec_plot.buffer._clear_buffer()
+            self.plot_container.update_audio_overlay()
+
     def _reset_spec_to_defaults(self):
         for attr, edit in [
             ("nfft", self.nfft_edit),
             ("hop_frac", self.hop_frac_edit),
+            ("vmin_db", self.vmin_db_edit),
+            ("vmax_db", self.vmax_db_edit),
         ]:
             value = self.app_state.get_with_default(attr)
             edit.setText("" if value is None else str(value))
@@ -358,6 +467,9 @@ class SpectrogramWidget(QWidget):
         default_colormap = self.app_state.get_with_default("spec_colormap")
         if default_colormap in self.colormap_display:
             self.colormap_combo.setCurrentText(self.colormap_display[default_colormap])
+
+        self.levels_mode_combo.setCurrentIndex(0)
+        self.app_state.spec_levels_mode = "auto"
 
         self._on_spec_edited()
 

@@ -68,7 +68,7 @@ def plot_ds_variable(ax, ds, ds_kwargs, variable, color_variable=None):
     Plot a variable from ds for a given trial and keypoint.
     Handles both multi-dimensional (e.g., pos, vel) and single-dimensional (e.g., speed) variables.
 
-    e.g. ds_kwargs: {trials=20, keypoints="beakTip", individuals="Freddy"}
+    e.g. ds_kwargs: {keypoints="beakTip", individuals="Freddy"}
 
     """
     # Use ds.sel for direct selection
@@ -88,8 +88,10 @@ def plot_ds_variable(ax, ds, ds_kwargs, variable, color_variable=None):
     # (time, )
     elif data.ndim == 1:
 
-        color_data, _ = sel_valid(ds[color_variable], ds_kwargs) if color_variable in ds.data_vars else None
-
+        if color_variable and color_variable in ds.data_vars:
+            color_data, _ = sel_valid(ds[color_variable], ds_kwargs)
+        else:
+            color_data = None
         
         changepoints_dict = {}
         cp_ds = ds.filter_by_attrs(type="changepoints")
