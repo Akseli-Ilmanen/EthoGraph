@@ -33,6 +33,7 @@ from .app_constants import (
     Z_INDEX_CHANGEPOINTS,
 )
 from .plots_audiotrace import AudioTracePlot
+from .plots_heatmap import HeatmapPlot
 from .plots_lineplot import LinePlot
 from .plots_spectrogram import SpectrogramPlot
 
@@ -58,6 +59,7 @@ class PlotContainer(QWidget):
         self.line_plot = LinePlot(napari_viewer, app_state)
         self.spectrogram_plot = SpectrogramPlot(app_state)
         self.audio_trace_plot = AudioTracePlot(app_state)
+        self.heatmap_plot = HeatmapPlot(app_state)
 
         self.current_plot = self.line_plot
         self.current_plot_type = 'lineplot'
@@ -65,6 +67,7 @@ class PlotContainer(QWidget):
         self.layout.addWidget(self.line_plot)
         self.spectrogram_plot.hide()
         self.audio_trace_plot.hide()
+        self.heatmap_plot.hide()
 
         self.confidence_item = None
 
@@ -78,9 +81,15 @@ class PlotContainer(QWidget):
         self.audio_cp_items: list = []
         self.dataset_cp_items: list = []
 
+        self.amp_envelope_vb = None
+        self.amp_envelope_item = None
+        self.amp_threshold_line = None
+        self._amp_envelope_geometry_updater = None
+
         # Connect zoom events to update changepoint line styles
         self.spectrogram_plot.vb.sigRangeChanged.connect(self._on_audio_plot_zoom)
         self.audio_trace_plot.vb.sigRangeChanged.connect(self._on_audio_plot_zoom)
+        self.heatmap_plot.vb.sigRangeChanged.connect(self._on_audio_plot_zoom)
 
     def _on_audio_plot_zoom(self):
         """Update changepoint line styles when zoom level changes."""
@@ -101,6 +110,7 @@ class PlotContainer(QWidget):
             'lineplot': self.line_plot,
             'spectrogram': self.spectrogram_plot,
             'audiotrace': self.audio_trace_plot,
+            'heatmap': self.heatmap_plot,
         }
 
         prev_xlim = self.current_plot.get_current_xlim()
@@ -133,6 +143,10 @@ class PlotContainer(QWidget):
     def switch_to_audiotrace(self):
         """Switch to audio trace display."""
         self._switch_to_plot('audiotrace')
+
+    def switch_to_heatmap(self):
+        """Switch to heatmap display."""
+        self._switch_to_plot('heatmap')
 
     def show_confidence_plot(self, confidence_data):
         """Display confidence values on a secondary y-axis."""
@@ -178,6 +192,65 @@ class PlotContainer(QWidget):
             right_axis = self.current_plot.plot_item.getAxis('right')
             right_axis.hide()
             self.confidence_item = None
+
+    def draw_amplitude_envelope(self, time: np.ndarray, envelope: np.ndarray, threshold: float):
+        """Draw amplitude envelope and threshold line as overlay on the line plot."""
+        self.clear_amplitude_envelope()
+
+        if not self.is_lineplot():
+            return
+
+        self.amp_envelope_vb = pg.ViewBox()
+        self.line_plot.plot_item.scene().addItem(self.amp_envelope_vb)
+        self.amp_envelope_vb.setXLink(self.line_plot.plot_item.vb)
+
+        self.amp_envelope_item = pg.PlotDataItem(
+            time, envelope,
+            pen=pg.mkPen(color=(255, 165, 0, 100), width=2),
+            downsample=10, downsampleMethod='peak',
+        )
+        self.amp_envelope_vb.addItem(self.amp_envelope_item)
+
+        self.amp_threshold_line = pg.InfiniteLine(
+            pos=threshold, angle=0,
+            pen=pg.mkPen(color=(255, 50, 50, 200), width=2, style=Qt.DashLine),
+        )
+        self.amp_envelope_vb.addItem(self.amp_threshold_line)
+
+        env_max = max(float(envelope.max()), threshold * 1.5)
+        self.amp_envelope_vb.setYRange(0, env_max, padding=0.05)
+
+        t0, t1 = self.line_plot.get_current_xlim()
+        self.amp_envelope_vb.setXRange(t0, t1, padding=0)
+
+        def update_geometry():
+            self.amp_envelope_vb.setGeometry(self.line_plot.plot_item.vb.sceneBoundingRect())
+
+        update_geometry()
+        self.line_plot.plot_item.vb.sigResized.connect(update_geometry)
+        self._amp_envelope_geometry_updater = update_geometry
+
+    def clear_amplitude_envelope(self):
+        """Remove amplitude envelope overlay from the line plot."""
+        if self._amp_envelope_geometry_updater:
+            try:
+                self.line_plot.plot_item.vb.sigResized.disconnect(self._amp_envelope_geometry_updater)
+            except (RuntimeError, TypeError):
+                pass
+            self._amp_envelope_geometry_updater = None
+
+        if self.amp_envelope_vb is not None:
+            try:
+                if self.amp_envelope_item:
+                    self.amp_envelope_vb.removeItem(self.amp_envelope_item)
+                if self.amp_threshold_line:
+                    self.amp_envelope_vb.removeItem(self.amp_threshold_line)
+                self.line_plot.plot_item.scene().removeItem(self.amp_envelope_vb)
+            except (RuntimeError, AttributeError, ValueError):
+                pass
+            self.amp_envelope_vb = None
+            self.amp_envelope_item = None
+            self.amp_threshold_line = None
 
     def show_audio_overlay(self, overlay_type: str):
         """Show audio waveform or spectrogram as overlay behind line plot.
@@ -259,10 +332,14 @@ class PlotContainer(QWidget):
 
     def _show_spectrogram_overlay(self):
         """Add spectrogram as overlay on line plot with separate frequency Y-axis."""
+        from .spectrogram_sources import build_audio_source
+
+        source = build_audio_source(self.app_state)
+        if source is None:
+            return
+
         t0, t1 = self.line_plot.get_current_xlim()
-        result = self.spectrogram_plot.buffer.get_spectrogram(
-            self.app_state.audio_path, t0, t1
-        )
+        result = self.spectrogram_plot.buffer.get_spectrogram(source, t0, t1)
         if result is None:
             return
 
@@ -351,13 +428,17 @@ class PlotContainer(QWidget):
 
     def _refresh_spectrogram_data(self):
         """Refresh spectrogram data for current X range."""
+        from .spectrogram_sources import build_audio_source
+
         if self.audio_overlay_item is None or self.audio_overlay_vb is None:
             return
 
+        source = build_audio_source(self.app_state)
+        if source is None:
+            return
+
         t0, t1 = self.line_plot.get_current_xlim()
-        result = self.spectrogram_plot.buffer.get_spectrogram(
-            self.app_state.audio_path, t0, t1
-        )
+        result = self.spectrogram_plot.buffer.get_spectrogram(source, t0, t1)
         if result is None:
             return
 
@@ -441,6 +522,10 @@ class PlotContainer(QWidget):
         """Check if currently showing line plot."""
         return self.current_plot_type == 'lineplot'
 
+    def is_heatmap(self):
+        """Check if currently showing heatmap."""
+        return self.current_plot_type == 'heatmap'
+
     def get_current_xlim(self):
         """Get current x-axis limits from active plot."""
         return self.current_plot.get_current_xlim()
@@ -480,7 +565,7 @@ class PlotContainer(QWidget):
         if labels is None or not self.label_mappings:
             return
 
-        all_plots = [self.line_plot, self.spectrogram_plot, self.audio_trace_plot]
+        all_plots = [self.line_plot, self.spectrogram_plot, self.audio_trace_plot, self.heatmap_plot]
 
         for plot in all_plots:
             if plot is None:
@@ -563,6 +648,7 @@ class PlotContainer(QWidget):
         # Use bottom strip style for spectrogram or when spectrogram overlay is active
         use_bottom_strip = (
             plot == self.spectrogram_plot or
+            plot == self.heatmap_plot or
             (plot == self.line_plot and self.audio_overlay_type == 'spectrogram')
         )
 

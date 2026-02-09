@@ -1,8 +1,10 @@
 """Enhanced spectrogram plot inheriting from BasePlot."""
 
+from __future__ import annotations
+
 import os
 import threading
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 import pyqtgraph as pg
@@ -18,6 +20,9 @@ from .app_constants import (
     DEFAULT_FALLBACK_MAX_FREQUENCY,
     Z_INDEX_BACKGROUND,
 )
+
+if TYPE_CHECKING:
+    from .spectrogram_sources import SpectrogramSource
 
 
 class SharedAudioCache:
@@ -51,6 +56,7 @@ class SpectrogramPlot(BasePlot):
     """Spectrogram plot with shared sync and marker functionality from BasePlot."""
 
     sigFilterChanged = Signal(float, float)
+    bufferUpdated = Signal()
 
     def __init__(self, app_state, parent=None):
         super().__init__(app_state, parent)
@@ -64,6 +70,7 @@ class SpectrogramPlot(BasePlot):
         self.init_colorbar()
         self.buffer = SpectrogramBuffer(app_state)
         self.current_range = None
+        self.source: SpectrogramSource | None = None
 
         self._set_frequency_limits()
 
@@ -96,8 +103,42 @@ class SpectrogramPlot(BasePlot):
             vmax = self.app_state.get_with_default("vmax_db")
         self.spec_item.setLevels([vmin, vmax])
 
+    def set_source(self, source: SpectrogramSource | None):
+        """Set a custom spectrogram source (e.g. XarraySource). Clears buffer."""
+        self.source = source
+        self.buffer._clear_buffer()
+        if source is not None:
+            self._set_frequency_limits()
+
     def update_plot_content(self, t0: Optional[float] = None, t1: Optional[float] = None):
         """Update the spectrogram content."""
+        source = self.source
+        if source is None:
+            source = self._build_fallback_audio_source()
+        if source is None:
+            return
+
+        if t0 is None or t1 is None:
+            xmin, xmax = self.get_current_xlim()
+            t0, t1 = xmin, xmax
+
+        result = self.buffer.get_spectrogram(source, t0, t1)
+        if result is None:
+            return
+
+        Sxx_db, spec_rect = result
+        if Sxx_db is not None and self.buffer.buffer_changed:
+            self.spec_item.setImage(Sxx_db.T, autoLevels=False)
+            self.spec_item.setRect(*spec_rect)
+            self.buffer.buffer_changed = False
+            self.bufferUpdated.emit()
+
+        self.current_range = (t0, t1)
+
+    def _build_fallback_audio_source(self):
+        """Build AudioFileSource from app_state as backward-compat fallback."""
+        from .spectrogram_sources import build_audio_source
+
         audio_path = getattr(self.app_state, 'audio_path', None)
         if not audio_path:
             if (hasattr(self.app_state, 'audio_folder') and
@@ -112,23 +153,9 @@ class SpectrogramPlot(BasePlot):
                     pass
 
         if not audio_path:
-            return
+            return None
 
-        if t0 is None or t1 is None:
-            xmin, xmax = self.get_current_xlim()
-            t0, t1 = xmin, xmax
-
-        result = self.buffer.get_spectrogram(audio_path, t0, t1)
-        if result is None:
-            return
-
-        Sxx_db, spec_rect = result
-        if Sxx_db is not None and self.buffer.buffer_changed:
-            self.spec_item.setImage(Sxx_db.T, autoLevels=False)
-            self.spec_item.setRect(*spec_rect)
-            self.buffer.buffer_changed = False
-
-        self.current_range = (t0, t1)
+        return build_audio_source(self.app_state)
 
     def apply_y_range(self, ymin: Optional[float], ymax: Optional[float]):
         """Apply frequency range for spectrogram."""
@@ -136,7 +163,12 @@ class SpectrogramPlot(BasePlot):
             self.plot_item.setYRange(ymin, ymax)
 
     def _set_frequency_limits(self):
-        """Set frequency limits based on audio sampling rate."""
+        """Set frequency limits based on source sampling rate."""
+        if self.source is not None:
+            nyquist_freq = self.source.rate / 2
+            self.vb.setLimits(yMin=0, yMax=nyquist_freq)
+            return
+
         audio_path = getattr(self.app_state, 'audio_path', None)
         if audio_path:
             try:
@@ -144,13 +176,11 @@ class SpectrogramPlot(BasePlot):
                 if audio_loader:
                     fs = audio_loader.rate
                     nyquist_freq = fs / 2
-                    # Set Y limits: 0 Hz to Nyquist frequency
                     self.vb.setLimits(yMin=0, yMax=nyquist_freq)
                     return
             except (OSError, IOError, AttributeError):
                 pass
 
-        # Fallback: reasonable default frequency range for audio
         self.vb.setLimits(yMin=0, yMax=DEFAULT_FALLBACK_MAX_FREQUENCY)
 
     def _apply_y_constraints(self):
@@ -197,8 +227,7 @@ class SpectrogramBuffer:
 
     def __init__(self, app_state):
         self.app_state = app_state
-        self.current_path = None
-        self.current_channel = None
+        self.current_identity: str | None = None
         self.buffer_multiplier = self._get_buffer_multiplier()
 
         self.Sxx_db = None
@@ -228,54 +257,36 @@ class SpectrogramBuffer:
         margin = (t1 - t0) * BUFFER_COVERAGE_MARGIN
         return self.buffer_t0 <= t0 - margin and self.buffer_t1 >= t1 + margin
 
-    def get_spectrogram(self, audio_path, t0, t1):
+    def get_spectrogram(self, source: SpectrogramSource, t0: float, t1: float):
         """Get spectrogram data, computing only if necessary."""
-        _, channel_idx = self.app_state.get_audio_source()
-
-        if audio_path != self.current_path or channel_idx != self.current_channel:
+        if source.identity != self.current_identity:
             self._clear_buffer()
-            self.current_path = audio_path
-            self.current_channel = channel_idx
+            self.current_identity = source.identity
 
         if self._covers_range(t0, t1):
             return self.Sxx_db, self._get_spec_rect()
 
-        self._compute_buffer(audio_path, t0, t1)
+        self._compute_buffer(source, t0, t1)
 
         if self.Sxx_db is None:
             return None
 
         return self.Sxx_db, self._get_spec_rect()
 
-    def _compute_buffer(self, audio_path, t0, t1):
+    def _compute_buffer(self, source: SpectrogramSource, t0: float, t1: float):
         """Compute spectrogram for buffered range."""
-        audio_loader = SharedAudioCache.get_loader(audio_path)
-        if not audio_loader:
-            return
-
-        self.fs = audio_loader.rate
+        self.fs = source.rate
 
         window_size = t1 - t0
         buffer_size = window_size * self.buffer_multiplier
         self.buffer_t0 = max(0.0, t0 - buffer_size / 2)
         self.buffer_t1 = t1 + buffer_size / 2
 
-        max_time = len(audio_loader) / self.fs
+        max_time = source.duration
         if self.buffer_t1 > max_time:
             self.buffer_t1 = max_time
 
-        i0 = int(self.buffer_t0 * self.fs)
-        i1 = int(self.buffer_t1 * self.fs)
-
-        if i1 <= i0:
-            return
-
-        audio_data = audio_loader[i0:i1]
-        if audio_data.ndim > 1:
-            _, channel_idx = self.app_state.get_audio_source()
-            n_channels = audio_data.shape[1]
-            channel_idx = min(channel_idx, n_channels - 1)
-            audio_data = audio_data[:, channel_idx]
+        audio_data = source.get_data(self.buffer_t0, self.buffer_t1)
 
         if len(audio_data) == 0:
             return
@@ -283,7 +294,7 @@ class SpectrogramBuffer:
         nfft = self.app_state.get_with_default("nfft")
         hop_frac = self.app_state.get_with_default("hop_frac")
 
-        if getattr(self.app_state, 'noise_reduce_enabled', False):
+        if source.supports_noise_reduction and getattr(self.app_state, 'noise_reduce_enabled', False):
             try:
                 from ethograph.features.audio_changepoints import apply_noise_reduction
                 prop_decrease = getattr(self.app_state, 'noise_reduce_prop_decrease', 1.0)
@@ -325,7 +336,7 @@ class SpectrogramBuffer:
         self.buffer_t0 = 0.0
         self.buffer_t1 = 0.0
         self.buffer_changed = False
-        self.current_channel = None
+        self.current_identity = None
 
     def update_buffer_size(self):
         self.buffer_multiplier = self._get_buffer_multiplier()
