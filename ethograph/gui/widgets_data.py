@@ -182,6 +182,14 @@ class DataWidget(DataLoader, QWidget):
         
     
         features_list = list(self.type_vars_dict["features"])
+        
+        # TODO: Change later
+        if 'speed' in features_list:
+            setattr(self.app_state, "features_sel", "speed")
+        else:
+            setattr(self.app_state, "features_sel", features_list[0])
+        
+        
         self.app_state.time = get_time_coord(self.app_state.ds[features_list[0]])
         
 
@@ -231,6 +239,8 @@ class DataWidget(DataLoader, QWidget):
         load_btn.setText("Restart app to load new data")
 
         self._force_layout_update()
+        
+
 
             
     def update_trials_combo(self) -> None:
@@ -786,7 +796,9 @@ class DataWidget(DataLoader, QWidget):
         if self.app_state.pred_dt is not None:
             self.app_state.pred_ds = self.app_state.pred_dt.trial(trials_sel)
 
-        feature_sel = getattr(self.app_state, 'features_sel', None)
+
+        default_feature = self.combos["features"].itemText(0)
+        feature_sel = getattr(self.app_state, 'features_sel', default_feature)
         if feature_sel and feature_sel != "Audio Waveform":
             self.app_state.time = get_time_coord(self.app_state.ds[feature_sel])
 
