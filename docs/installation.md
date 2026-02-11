@@ -96,30 +96,32 @@
     - **`environment.yml`** - GUI only (recommended for most users)
     - **`environment-dev.yml`** - GUI + model training (in development)
 
-    ??? note "Installation instructions"
-        === "Windows (via .bat)"
-            1. Open File Explorer and navigate to the EthoGraph folder.
-            2. Double-click on `Windows install.bat` and follow the steps. Optionally, you can create a Desktop shortcut.
+    ??? note "Installation Steps"
+        **Option 1: Using the batch script (Windows only)**
+        
+        1. Open File Explorer and navigate to the EthoGraph folder.
+        2. Double-click on `Windows install.bat` and follow the steps. Optionally, you can create a Desktop shortcut.
 
-        === "Windows (manual) / MacOS / Linux"
-            1. Open a terminal and navigate to the EthoGraph folder:
-                ```bash
-                cd /path/to/EthoGraph
-                ```
-            2. Create the conda environment from the YAML file:
-                ```bash
-                # Requires conda >= 23.10 (or run: conda config --set solver libmamba)
+        **Option 2: Manual installation (Windows / MacOS / Linux)**
+        
+        1. Open a terminal and navigate to the EthoGraph folder:
+    ```bash
+            cd /path/to/EthoGraph
+    ```
+        2. Create the conda environment from the YAML file:
+    ```bash
+            # Requires conda >= 23.10 (or run: conda config --set solver libmamba)
 
-                # For GUI only
-                conda env create -f environment.yml
+            # For GUI only
+            conda env create -f environment.yml
 
-                # Or for GUI + model (in development)
-                conda env create -f environment-dev.yml
-                ```
-            3. Optionally, create a desktop shortcut.
-                ```
-                ethograph-shortcut
-                ```
+            # Or for GUI + model (in development)
+            conda env create -f environment-dev.yml
+    ```
+        3. Optionally, create a desktop shortcut:
+    ```bash
+            ethograph-shortcut
+    ```
 
 5. Test it works. <br>
 

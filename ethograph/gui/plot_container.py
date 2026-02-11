@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import pyqtgraph as pg
-from qtpy.QtCore import QSize, Qt, Signal
+from qtpy.QtCore import QSize, Qt, QTimer, Signal
 from qtpy.QtWidgets import QVBoxLayout, QWidget
 
 from .app_constants import (
@@ -86,6 +86,7 @@ class PlotContainer(QWidget):
         self.amp_envelope_item = None
         self.amp_threshold_lines: list = []
         self._amp_envelope_geometry_updater = None
+        self._amp_envelope_host_plot = None
 
         # Connect zoom events to update changepoint line styles
         self.spectrogram_plot.vb.sigRangeChanged.connect(self._on_audio_plot_zoom)
@@ -201,7 +202,7 @@ class PlotContainer(QWidget):
         threshold: float | None = None,
         thresholds: list[tuple[float, Any]] | None = None,
     ):
-        """Draw amplitude envelope and threshold line(s) as overlay on the line plot.
+        """Draw amplitude envelope and threshold line(s) as overlay on the active plot.
 
         Args:
             time: Time array for x-axis.
@@ -212,17 +213,25 @@ class PlotContainer(QWidget):
         """
         self.clear_amplitude_envelope()
 
-        if not self.is_lineplot():
+        if self.is_lineplot():
+            host = self.line_plot
+        elif self.is_audiotrace():
+            host = self.audio_trace_plot
+        else:
             return
 
+        self._amp_envelope_host_plot = host
+
         if thresholds is None and threshold is not None:
-            thresholds = [
-                (threshold, pg.mkPen(color=(255, 50, 50, 200), width=2, style=Qt.DashLine))
-            ]
+            default_pen = pg.mkPen(color=(255, 50, 50, 200), width=2, style=Qt.DashLine)
+            if isinstance(threshold, (tuple, list)):
+                thresholds = [(v, default_pen) for v in threshold]
+            else:
+                thresholds = [(threshold, default_pen)]
 
         self.amp_envelope_vb = pg.ViewBox()
-        self.line_plot.plot_item.scene().addItem(self.amp_envelope_vb)
-        self.amp_envelope_vb.setXLink(self.line_plot.plot_item.vb)
+        host.plot_item.scene().addItem(self.amp_envelope_vb)
+        self.amp_envelope_vb.setXLink(host.plot_item.vb)
 
         self.amp_envelope_item = pg.PlotDataItem(
             time, envelope,
@@ -233,30 +242,33 @@ class PlotContainer(QWidget):
 
         max_thresh = 0.0
         if thresholds:
-            for value in thresholds:
-                line = pg.InfiniteLine(pos=value, angle=0)
+            for value, pen in thresholds:
+                line = pg.InfiniteLine(pos=value, angle=0, pen=pen)
                 self.amp_envelope_vb.addItem(line)
                 self.amp_threshold_lines.append(line)
-                max_thresh = max(max_thresh, value)
+                max_thresh = max(max_thresh, float(value))
 
         env_max = max(float(envelope.max()), max_thresh * 1.5) if max_thresh > 0 else float(envelope.max())
         self.amp_envelope_vb.setYRange(0, env_max, padding=0.05)
 
-        t0, t1 = self.line_plot.get_current_xlim()
+        t0, t1 = host.get_current_xlim()
         self.amp_envelope_vb.setXRange(t0, t1, padding=0)
 
         def update_geometry():
-            self.amp_envelope_vb.setGeometry(self.line_plot.plot_item.vb.sceneBoundingRect())
+            if self.amp_envelope_vb is not None:
+                self.amp_envelope_vb.setGeometry(host.plot_item.vb.sceneBoundingRect())
 
-        update_geometry()
-        self.line_plot.plot_item.vb.sigResized.connect(update_geometry)
+        # Defer initial geometry so Qt layout has settled
+        QTimer.singleShot(0, update_geometry)
+        host.plot_item.vb.sigResized.connect(update_geometry)
         self._amp_envelope_geometry_updater = update_geometry
 
     def clear_amplitude_envelope(self):
-        """Remove amplitude envelope overlay from the line plot."""
+        """Remove amplitude envelope overlay from the plot it was drawn on."""
+        host = self._amp_envelope_host_plot or self.line_plot
         if self._amp_envelope_geometry_updater:
             try:
-                self.line_plot.plot_item.vb.sigResized.disconnect(self._amp_envelope_geometry_updater)
+                host.plot_item.vb.sigResized.disconnect(self._amp_envelope_geometry_updater)
             except (RuntimeError, TypeError):
                 pass
             self._amp_envelope_geometry_updater = None
@@ -267,12 +279,14 @@ class PlotContainer(QWidget):
                     self.amp_envelope_vb.removeItem(self.amp_envelope_item)
                 for line in self.amp_threshold_lines:
                     self.amp_envelope_vb.removeItem(line)
-                self.line_plot.plot_item.scene().removeItem(self.amp_envelope_vb)
+                host.plot_item.scene().removeItem(self.amp_envelope_vb)
             except (RuntimeError, AttributeError, ValueError):
                 pass
             self.amp_envelope_vb = None
             self.amp_envelope_item = None
             self.amp_threshold_lines.clear()
+
+        self._amp_envelope_host_plot = None
 
     def show_audio_overlay(self, overlay_type: str):
         """Show audio waveform or spectrogram as overlay behind line plot.
@@ -593,7 +607,7 @@ class PlotContainer(QWidget):
         """Draw labels on ALL plots to ensure synchronization.
 
         Args:
-            intervals_df: DataFrame with onset_s, offset_s, label_id, individual columns
+            intervals_df: DataFrame with onset_s, offset_s, labels, individual columns
             predictions_df: Optional prediction intervals DataFrame
             show_predictions: Whether to show prediction rectangles
         """
@@ -630,7 +644,7 @@ class PlotContainer(QWidget):
 
         Args:
             plot: The plot widget to draw on
-            intervals_df: DataFrame with onset_s, offset_s, label_id, individual
+            intervals_df: DataFrame with onset_s, offset_s, labels, individual
             is_main: If True, draw full-height; if False, draw prediction strip at top
         """
         if not hasattr(plot, 'label_items'):
@@ -640,25 +654,25 @@ class PlotContainer(QWidget):
             return
 
         for _, row in intervals_df.iterrows():
-            label_id = int(row["label_id"])
-            if label_id == 0:
+            labels = int(row["labels"])
+            if labels == 0:
                 continue
-            self._draw_single_label(plot, row["onset_s"], row["offset_s"], label_id, is_main)
+            self._draw_single_label(plot, row["onset_s"], row["offset_s"], labels, is_main)
 
-    def _draw_single_label(self, plot, start_time, end_time, label_id, is_main=True):
+    def _draw_single_label(self, plot, start_time, end_time, labels, is_main=True):
         """Draw a single label rectangle on a plot with appropriate style.
 
         Args:
             plot: The plot widget to draw on
             start_time: Start time of the label
             end_time: End time of the label
-            label_id: ID of the label for color mapping
+            labels: ID of the label for color mapping
             is_main: If True, draw full-height; if False, draw prediction strip
         """
-        if label_id not in self.label_mappings:
+        if labels not in self.label_mappings:
             return
 
-        color = self.label_mappings[label_id]["color"]
+        color = self.label_mappings[labels]["color"]
         color_rgb = tuple(int(c * 255) for c in color)
 
         # Use bottom strip style for spectrogram or when spectrogram overlay is active

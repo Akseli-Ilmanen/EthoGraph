@@ -6,7 +6,7 @@ import os
 from contextlib import redirect_stdout
 from ethograph.video_features.utils import build_cfg_path, form_list_from_user_input, sanity_check
 from ethograph.video_features.extract_s3d import ExtractS3D as Extractor
-from ethograph.utils.paths import get_project_root
+from ethograph import get_project_root
 
 
 def s3d_features(args_cli):

@@ -1,8 +1,9 @@
 import pytest
 import numpy as np
 from pathlib import Path
+from ethograph import get_project_root
 
-TEST_DATA_DIR = Path(__file__).parent / "test_data"
+TEST_DATA_DIR = get_project_root / "data" / "examples"
 TEST_NC_PATH = TEST_DATA_DIR / "copExpBP08_trim.nc"
 
 

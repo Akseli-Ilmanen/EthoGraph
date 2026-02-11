@@ -8,141 +8,163 @@ from ethograph.features.preprocessing import z_normalize
 from ethograph.utils.labels import find_blocks, fix_endings, purge_small_blocks, stitch_gaps
 
 
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
-def add_NaN_boundaries(arr, changepoints):
-    """
-    Finds the boundaries where NaN values transition to valid values and vice versa.
-
-    Inputs:
-        arr - 1D array of values (may contain NaN values)
-        changepoints - other type of changepoint (e.g., peaks, troughs).
-
-    Outputs:
-        Binary mask of changepoint locations.
-    """
+def _nan_boundary_indices(arr: np.ndarray) -> np.ndarray:
+    """Return indices where NaN transitions occur (NaN->valid and valid->NaN)."""
     arr = np.asarray(arr)
-    if arr.ndim != 1:
-        raise ValueError("add_NaN_boundaries only supports 1D (N,) input arrays.")
-
     is_valid = ~np.isnan(arr)
     transitions = np.diff(np.concatenate(([0], is_valid.astype(int), [0])))
+    nan_to_val = np.where(transitions == 1)[0]
+    val_to_nan = np.where(transitions == -1)[0] - 1
+    return np.concatenate((nan_to_val, val_to_nan)).astype(int)
 
-    nan_to_val_idx = np.where(transitions == 1)[0]      # (NaN → value) - rising edge
-    val_to_nan_idx = np.where(transitions == -1)[0] - 1 # (value → NaN) - falling edge
 
-    NaN_boundaries = np.concatenate((nan_to_val_idx, val_to_nan_idx)).astype(int)
-    changepoints = np.unique(np.concatenate((changepoints, NaN_boundaries)))
-    
-    # Binarize
-    mask = np.zeros_like(arr, dtype=np.int8)
-    mask[changepoints] = 1
-    
-    # If mask is all zeros, except 1 at beginning and end, set to all zeros
+def _to_binary(indices: np.ndarray, length: int) -> np.ndarray:
+    """Convert sparse index array to dense binary mask.
+
+    If the only marked positions are the first and last sample, returns all zeros
+    (boundary-only case treated as empty).
+    """
+    mask = np.zeros(length, dtype=np.int8)
+    if len(indices) == 0:
+        return mask
+    valid = indices[(indices >= 0) & (indices < length)]
+    mask[valid] = 1
     if np.sum(mask) == 2 and mask[0] == 1 and mask[-1] == 1:
         mask[:] = 0
-        
     return mask
 
 
+# ---------------------------------------------------------------------------
+# NaN boundary handling (refactored to use helpers)
+# ---------------------------------------------------------------------------
+
+def add_NaN_boundaries(arr, changepoints):
+    """Merge NaN-transition boundaries with other changepoints -> binary mask."""
+    arr = np.asarray(arr)
+    if arr.ndim != 1:
+        raise ValueError("add_NaN_boundaries only supports 1D (N,) input arrays.")
+    nan_bounds = _nan_boundary_indices(arr)
+    merged = np.unique(np.concatenate((np.asarray(changepoints, dtype=int), nan_bounds)))
+    return _to_binary(merged, len(arr))
+
+
+# ---------------------------------------------------------------------------
+# Binary detection (dense binary masks for apply_ufunc / dataset storage)
+# ---------------------------------------------------------------------------
+
 def find_peaks_binary(x, **kwargs):
-    """
-    scipy.signal.find_peaks + NaN boundaries -> binary mask
-    """
+    """scipy.signal.find_peaks + NaN boundaries -> binary mask."""
     peaks, _ = find_peaks(np.asarray(x), **kwargs)
-    
-    changepoints_mask = add_NaN_boundaries(x, peaks)
-
-    return changepoints_mask
-
+    return add_NaN_boundaries(x, peaks)
 
 
 def find_troughs_binary(x, **kwargs):
-    """
-    Mimics scipy.signal.find_peaks, but finds troughs (local minima) instead. Otherwise, it's the same. + NaN boundaries
-    -> binary mask
-    """
+    """Find troughs (local minima) + NaN boundaries -> binary mask."""
     troughs, _ = find_peaks(-np.asarray(x), **kwargs)
-    
-    changepoints_mask = add_NaN_boundaries(x, troughs)
-    
-    return changepoints_mask
+    return add_NaN_boundaries(x, troughs)
 
 
 def find_nearest_turning_points_binary(x, threshold=1, max_value=None, **kwargs):
-    """
-    For each peak (found via scipy.signal.find_peaks), find the nearest left and right turning points where the gradient
-    is within the (-threshold, threshold) and x value is less than max_value (if provided).
-
-    Inputs:
-    x - 1D array of values (e.g., any variable profile)
-    threshold - gradient threshold (default = 1)
-    max_value - maximum value to qualify as a turning point (default = None, no filtering)
-    **kwargs - additional keyword arguments for scipy.signal.find_peaks
-
-    Outputs:
-    nearest_turning_points - array of nearest left/right turning point indices
-    """
- 
-        
+    """Nearest turning points around peaks + NaN boundaries -> binary mask."""
+    x = np.asarray(x, dtype=float)
     grad = np.gradient(x)
-
-    # Find turning points where gradient is within threshold
     turning_points = np.where((grad > -threshold) & (grad < threshold))[0]
 
-    # Optionally filter turning points where x value is less than max_value
     if max_value is not None:
         turning_points = turning_points[x[turning_points] < max_value]
-        
 
-    peaks, _ = find_peaks(np.asarray(x), **kwargs)
-
-    nearest_turning_points = []
-
-    # Exclude peaks from turning points
+    peaks, _ = find_peaks(x, **kwargs)
     turning_points = np.setdiff1d(turning_points, peaks)
 
+    nearest = []
     for peak in peaks:
-        # Left candidates (points before peak)
-        left_candidates = turning_points[turning_points < peak]
+        left = turning_points[turning_points < peak]
+        right = turning_points[turning_points > peak]
+        if len(left) > 0:
+            nearest.append(left[-1])
+        if len(right) > 0:
+            nearest.append(right[0])
 
-        # Right candidates (points after peak)
-        right_candidates = turning_points[turning_points > peak]
-
-        # Add nearest left turning point (largest index < peak)
-        if len(left_candidates) > 0:
-            nearest_turning_points.append(left_candidates[-1])
-
-        # Add nearest right turning point (smallest index > peak)
-        if len(right_candidates) > 0:
-            nearest_turning_points.append(right_candidates[0])
-
-    nearest_turning_points = np.array(nearest_turning_points, dtype=int)
-
-    return add_NaN_boundaries(x, nearest_turning_points)
+    return add_NaN_boundaries(x, np.array(nearest, dtype=int))
 
 
+# ---------------------------------------------------------------------------
+# Changepoint time extraction
+# ---------------------------------------------------------------------------
 
+def extract_cp_times(ds: xr.Dataset, time_coord: np.ndarray, **cp_kwargs) -> np.ndarray:
+    """Extract merged changepoint times from dataset.
+
+    Replaces the inline pattern: merge_changepoints -> binary -> np.where -> times.
+    Returns empty array if no CP variables exist.
+    """
+    filtered = ds.sel(**cp_kwargs) if cp_kwargs else ds
+    cp_ds = filtered.filter_by_attrs(type="changepoints")
+    if len(cp_ds.data_vars) == 0:
+        return np.array([], dtype=np.float64)
+
+    try:
+        ds_merged, _ = merge_changepoints(filtered)
+    except (ValueError, KeyError):
+        return np.array([], dtype=np.float64)
+
+    cp_binary = ds_merged["changepoints"].values
+    cp_indices = np.where(cp_binary)[0]
+    if len(cp_indices) == 0:
+        return np.array([], dtype=np.float64)
+
+    valid = cp_indices[cp_indices < len(time_coord)]
+    return time_coord[valid].astype(np.float64)
+
+
+def snap_to_nearest_changepoint_time(
+    t_clicked: float,
+    ds: xr.Dataset,
+    feature_sel: str,
+    time_coord: np.ndarray,
+    **ds_kwargs,
+) -> float:
+    """Snap a clicked time (seconds) to the nearest changepoint time.
+
+    Works entirely in the time domain — no index conversion needed.
+    Also filters changepoints by target_feature matching feature_sel.
+    """
+    filtered = ds.sel(**ds_kwargs) if ds_kwargs else ds
+    cp_ds = filtered.filter_by_attrs(type="changepoints")
+    cp_ds = cp_ds.filter_by_attrs(target_feature=feature_sel)
+
+    if len(cp_ds.data_vars) == 0:
+        return t_clicked
+
+    cp_indices = np.concatenate([
+        np.where(cp_ds[var].values)[0] for var in cp_ds.data_vars
+    ])
+    cp_indices = np.unique(cp_indices)
+    if len(cp_indices) == 0:
+        return t_clicked
+
+    valid = cp_indices[cp_indices < len(time_coord)]
+    if len(valid) == 0:
+        return t_clicked
+
+    cp_times = time_coord[valid]
+    nearest_idx = np.argmin(np.abs(cp_times - t_clicked))
+    return float(cp_times[nearest_idx])
+
+
+# ---------------------------------------------------------------------------
+# Legacy index-domain snap (kept for backward compat)
+# ---------------------------------------------------------------------------
 
 def snap_to_nearest_changepoint(x_clicked, ds, feature_sel, **ds_kwargs):
-    """
-    Args:
-        x_clicked: The x-coordinate value to snap.
-        ds: xarray.Dataset
-        feature_sel: The feature to filter changepoints by (e.g., 'speed').
-        ds_kwargs: Additional selection arguments for the dataset (e.g., trials, individuals, keypoints).
-        
-    Returns:
-        snapped_val, snapped_idx
-        
-    Example:
-        ds_kwargs = {individuals:"Freddy", keypoints: "beakTip"}
-        snapped_val, _ = snap_to_nearest_changepoint(x_clicked, cds, 'speed', **ds_kwargs)
-    """
-    
-    
+    """Snap index to nearest changepoint index (legacy, index-domain)."""
     cp_ds = ds.sel(**ds_kwargs).filter_by_attrs(type="changepoints")
     cp_ds = cp_ds.filter_by_attrs(target_feature=feature_sel)
-    
+
     if len(cp_ds.data_vars) == 0:
         return x_clicked
 
@@ -153,18 +175,18 @@ def snap_to_nearest_changepoint(x_clicked, ds, feature_sel, **ds_kwargs):
 
     if len(changepoint_indices) == 0:
         return x_clicked
-    
+
     snapped_idx = np.argmin(np.abs(changepoint_indices - x_clicked))
     snapped_val = int(round(changepoint_indices[snapped_idx]))
     return snapped_val
 
 
-
+# ---------------------------------------------------------------------------
+# Dense correction (legacy — kept for ML pipeline)
+# ---------------------------------------------------------------------------
 
 def correct_changepoints_one_trial(labels, ds, all_params):
-    """
-    Correct labels (or predictions of labels) with changepoints.
-    """
+    """Correct labels with changepoints (dense array, legacy pipeline)."""
     cp_kwargs = all_params["cp_kwargs"]
 
     min_label_length = all_params.get("min_label_length")
@@ -172,103 +194,76 @@ def correct_changepoints_one_trial(labels, ds, all_params):
     stitch_gap_len = all_params.get("stitch_gap_len")
     max_expansion = all_params["changepoint_params"]["max_expansion"]
     max_shrink = all_params["changepoint_params"]["max_shrink"]
-    
-
 
     ds = ds.sel(**cp_kwargs)
     ds_merged, _ = merge_changepoints(ds)
     changepoints_binary = ds_merged["changepoints"].values
-    
+
     assert changepoints_binary.ndim == 1
 
-
-    # Simple correction without speed
     changepoint_idxs = np.where(changepoints_binary)[0]
     corrected_labels = np.zeros_like(labels, dtype=np.int8)
-    
-    
-    changepoint_idxs = np.where(changepoints_binary)[0]
+
     labels = purge_small_blocks(labels, min_label_length, label_thresholds)
     labels = stitch_gaps(labels, stitch_gap_len)
 
-    
-    # Step two - Changepoint correction
     for label in np.unique(labels):
         if label == 0:
             continue
-        
+
         label_mask = labels == label
         starts, ends = find_blocks(label_mask)
-        
+
         for block_start, block_end in zip(starts, ends):
             snap_start = changepoint_idxs[np.argmin(np.abs(changepoint_idxs - block_start))]
             snap_end = changepoint_idxs[np.argmin(np.abs(changepoint_idxs - block_end))]
 
+            start_expansion = block_start - snap_start
+            start_shrink = snap_start - block_start
 
-
-            start_expansion = block_start - snap_start  # Positive = expanding left
-            start_shrink = snap_start - block_start      # Positive = shrinking from left
-            
-            if start_expansion > max_expansion or start_shrink > max_shrink:                    
+            if start_expansion > max_expansion or start_shrink > max_shrink:
                 snap_start = block_start
-            
-            end_expansion = snap_end - block_end  # Positive = expanding right
-            end_shrink = block_end - snap_end      # Positive = shrinking from right
-            
+
+            end_expansion = snap_end - block_end
+            end_shrink = block_end - snap_end
+
             if end_expansion > max_expansion or end_shrink > max_shrink:
                 snap_end = block_end
-            
-            # Ensure valid boundaries
+
             if snap_start > snap_end:
-                # Keep original boundaries if snapping creates invalid range
                 snap_start = block_start
                 snap_end = block_end
-            
 
             if snap_end < len(corrected_labels):
-                if corrected_labels[snap_end] != 0 and not corrected_labels[snap_end] == label:
+                if corrected_labels[snap_end] != 0 and corrected_labels[snap_end] != label:
                     snap_end = snap_end - 1
-                    
-            
 
-            # Clear original block and set corrected boundaries
             corrected_labels[block_start:block_end+1] = 0
             if snap_start < snap_end:
                 corrected_labels[snap_start:snap_end+1] = label
-    
-    
-    
+
     corrected_labels = purge_small_blocks(corrected_labels, min_label_length)
     corrected_labels = fix_endings(corrected_labels, changepoints_binary)
-        
-    
-    
-    
+
     return corrected_labels
 
 
-
+# ---------------------------------------------------------------------------
+# Merge changepoints
+# ---------------------------------------------------------------------------
 
 def merge_changepoints(ds):
     """Merge all changepoint variables into a single combined mask."""
-
-    # Make a copy to ensure mutability
     ds = ds.copy()
     cp_ds = ds.filter_by_attrs(type="changepoints")
 
     target_feature = []
     for var in cp_ds.data_vars:
         target_feature.append(cp_ds[var].attrs["target_feature"])
-        
+
     if np.unique(target_feature).size > 1:
         raise ValueError(f"Not allowed to merge changepoints for different target features: {np.unique(target_feature)}")
 
-    # This will merge all changepoint variables into one.
-    # If ds has not been filtered, e.g. by:
-    # cp_kwargs = {"individuals": "Poppy", "keypoints": "beakTip"}
-    # ds.sel(**cp_kwargs)
-    # Then this will also merge across individuals and keypoints, thus
-    # maybe overspecified changepoints.
     dims = [dim for dim in cp_ds.dims if dim not in ["trials", "time"]]
 
     ds["changepoints"] = (cp_ds
@@ -277,17 +272,14 @@ def merge_changepoints(ds):
                                 .astype(float))
     ds["changepoints"].attrs["type"] = "changepoints"
 
-    # Remove individual changepoint variables
     ds = ds.drop_vars(list(cp_ds.data_vars))
 
     return ds, target_feature[0]
 
 
-
-
-
-
-
+# ---------------------------------------------------------------------------
+# ML feature engineering
+# ---------------------------------------------------------------------------
 
 def more_changepoint_features(
     changepoint_binary: np.ndarray,
@@ -295,22 +287,11 @@ def more_changepoint_features(
     sigmas: List[float],
     distribution: Literal["gaussian", "laplacian"] = "laplacian",
 ) -> np.ndarray:
-    """Create changepoint-based features from binary changepoint array.
-    
-    Args:
-        changepoint_binary: Binary array where 1 indicates changepoints
-        targ_feat_vals: Target feature values (e.g., speed) associated with changepoints
-        sigmas: Scale parameters for distribution peaks
-        distribution: Type of distribution ("gaussian" or "laplacian")
-        
-    Returns:
-        Changepoint features with distribution peaks, weighted versions, and segment IDs
-    """
+    """Create changepoint-based features from binary changepoint array."""
     features = [changepoint_binary]
     seq_length = len(changepoint_binary)
     changepoint_indices = np.where(changepoint_binary)[0]
-    
-    
+
     x = np.arange(seq_length)
     for sigma in sigmas:
         peak = np.zeros(seq_length)
@@ -319,18 +300,18 @@ def more_changepoint_features(
                 peak += np.exp(-0.5 * ((x - idx) / sigma) ** 2)
             else:
                 peak += np.exp(-np.abs(x - idx) / sigma)
-        
+
         if peak.max() > 0:
             peak /= peak.max()
         features.append(peak)
-        
+
     cp_binary_peak = np.column_stack(features)
-    
+
     multiplier = np.exp(-targ_feat_vals / (np.nanmean(targ_feat_vals) + 1e-8))
     weighted_cps = cp_binary_peak * multiplier[:, np.newaxis]
     weighted_cps = np.nan_to_num(weighted_cps, nan=0.0)
     weighted_cps = z_normalize(weighted_cps)
-    
+
     segment_ids = np.zeros(seq_length)
     if len(changepoint_indices) > 0:
         boundaries = np.unique(np.concatenate([[0], changepoint_indices, [seq_length]]))
@@ -339,46 +320,4 @@ def more_changepoint_features(
         if segment_ids.max() > 0:
             segment_ids /= segment_ids.max()
 
-
     return np.column_stack([cp_binary_peak, weighted_cps, segment_ids])
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    # add later with speed above to make feature explanation 
-
-    # changepoints = [0, 20, 22, 35, 79, 89]
-    # seq_len = 100
-
-    # default_features = make_changepoint_features(changepoints, seq_len)
-    
-    
-    # fig, axes = plt.subplots(5, 1, figsize=(4, 3), sharex=True)
-
-    # x = np.arange(seq_len)
-    # row_labels = ['binary', 'σ=3', 'σ=5', 'σ=7', 'segIDs']
-
-    # for i in range(5):
-    #     axes[i].plot(x, default_features[:, i], color='k' if i == 0 else ['r', 'b', 'g', 'm'][i-1], linewidth=2)
-    #     axes[i].set_yticks([])
-    #     axes[i].text(seq_len + 0.5, 0.5, row_labels[i], va='center', ha='left', fontsize=10)
-    #     axes[i].set_xlim([0, 100])
-    # axes[-1].set_xlabel('Sequence Index')
-    # plt.subplots_adjust(hspace=0)  # tighter vertical spacing
-    # for ax in axes:
-    #     ax.get_yaxis().set_visible(False)
-    #     ax.get_xaxis().set_visible(False)
-    #     ax.spines['top'].set_visible(False)
-    #     ax.spines['right'].set_visible(False)
-    #     ax.spines['bottom'].set_visible(False)
-    #     ax.spines['left'].set_visible(False)

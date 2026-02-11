@@ -15,15 +15,18 @@ if TYPE_CHECKING:
 
 
 
-def find_temporal_dims(ds: xr.Dataset, time_dim: str = 'time') -> set[str]:
-    """Identify dims that co-occur with time in at least one data var."""
+def find_temporal_dims(ds: xr.Dataset) -> set[str]:
+    """Identify dims that co-occur with any time-like dim in at least one data var."""
     temporal = set()
+    time_dims = set()
 
     for var in ds.data_vars.values():
-        if time_dim in var.dims:
+        var_time_dims = {d for d in var.dims if 'time' in d}
+        if var_time_dims:
+            time_dims.update(var_time_dims)
             temporal.update(var.dims)
 
-    temporal.discard(time_dim)
+    temporal -= time_dims
     return temporal
 
 

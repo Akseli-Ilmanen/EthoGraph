@@ -31,8 +31,8 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ethograph import TrialTree
-from ethograph.features.changepoints import snap_to_nearest_changepoint
+from ethograph import TrialTree, get_project_root
+from ethograph.features.changepoints import snap_to_nearest_changepoint_time
 from ethograph.utils.label_intervals import (
     add_interval,
     delete_interval,
@@ -41,7 +41,7 @@ from ethograph.utils.label_intervals import (
     get_interval_bounds,
 )
 from ethograph.utils.labels import load_label_mapping
-from ethograph.utils.paths import get_project_root
+
 
 from .app_constants import (
     LABELS_TABLE_MAX_HEIGHT,
@@ -87,16 +87,16 @@ class LabelsWidget(QWidget):
         self.ready_for_play_click = False
         self.first_click = None
         self.second_click = None
-        self.selected_labels_id = 0
+        self.selected_labels = 0
 
         # Current  selection for editing (interval DataFrame index)
         self.current_labels_pos: int | None = None  # DataFrame index of selected interval
-        self.current_labels_id: int | None = None  # ID of currently selected
+        self.current_labels: int | None = None  # ID of currently selected
         self.current_labels_is_prediction: bool = False  # Whether selected  is from predictions
 
         # Edit mode state
         self.old_labels_pos: int | None = None  # Original interval index when editing
-        self.old_labels_id: int | None = None  # Original ID when editing
+        self.old_labels: int | None = None  # Original ID when editing
         
         # Frame tracking for  display
         self.previous_frame: int | None = None
@@ -142,7 +142,7 @@ class LabelsWidget(QWidget):
         across all plot types.
 
         Args:
-            intervals_df: DataFrame with onset_s, offset_s, label_id, individual columns
+            intervals_df: DataFrame with onset_s, offset_s, labels, individual columns
             predictions_df: Optional prediction intervals DataFrame
         """
         if intervals_df is None or self.plot_container is None:
@@ -487,28 +487,28 @@ class LabelsWidget(QWidget):
             
             
 
-    LABELS_ID_TO_KEY = {}
+    labels_TO_KEY = {}
 
     # Row 1: 1-0 (Labels 1-10)
     number_keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
     for i, key in enumerate(number_keys):
         _id = i + 1 if key != '0' else 10
-        LABELS_ID_TO_KEY[_id] = key
+        labels_TO_KEY[_id] = key
 
     # Row 2: Q-P (Labels 11-20)
     qwerty_row = ['q', 'w', 'e', 'r', 't', 'z', 'u', 'i', 'o', 'p']
     for i, key in enumerate(qwerty_row):
         _id = i + 11
-        LABELS_ID_TO_KEY[_id] = key.upper()  # Display as uppercase for clarity
+        labels_TO_KEY[_id] = key.upper()  # Display as uppercase for clarity
 
     # Row 3: A-; (Labels 21-30)
     home_row = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';']
     for i, key in enumerate(home_row):
         _id = i + 21
-        LABELS_ID_TO_KEY[_id] = key.upper() if key != ';' else ';'  # Keep ; as is
+        labels_TO_KEY[_id] = key.upper() if key != ';' else ';'  # Keep ; as is
 
     # Also provide reverse mapping for key to _id
-    KEY_TO_LABELS_ID = {v.lower(): k for k, v in LABELS_ID_TO_KEY.items()}
+    KEY_TO_labels = {v.lower(): k for k, v in labels_TO_KEY.items()}
     
     def _populate_labels_table(self):
         """Populate the labels table with loaded mappings in two columns."""
@@ -524,7 +524,7 @@ class LabelsWidget(QWidget):
             id_item.setData(Qt.UserRole, _id)
             self.labels_table.setItem(row, col_offset, id_item)
 
-            shortcut = self.LABELS_ID_TO_KEY.get(_id, "?")
+            shortcut = self.labels_TO_KEY.get(_id, "?")
             name_with_shortcut = f"{data['name']} ({shortcut})"
             name_item = QTableWidgetItem(name_with_shortcut)
             name_item.setData(Qt.UserRole, _id)
@@ -550,11 +550,11 @@ class LabelsWidget(QWidget):
 
     def activate_label(self, _key):
         """Activate a label by shortcut: select cell, set up for labeling, and scroll to it."""
-        _id = self.KEY_TO_LABELS_ID.get(str(_key).lower(), _key)
+        _id = self.KEY_TO_labels.get(str(_key).lower(), _key)
         if _id not in self._mappings:
             return
 
-        self.selected_labels_id = _id
+        self.selected_labels = _id
         self.ready_for_label_click = True
         self.first_click = None
         self.second_click = None
@@ -641,39 +641,34 @@ class LabelsWidget(QWidget):
 
         idx = find_interval_at(df, t_clicked, individual)
         if idx is not None:
-            onset_s, offset_s, label_id = get_interval_bounds(df, idx)
-            self.current_labels_id = label_id
+            onset_s, offset_s, labels = get_interval_bounds(df, idx)
+            self.current_labels = labels
             self.current_labels_pos = idx
             self.current_labels_is_prediction = False
             self.highlight_spaceplot.emit(onset_s, offset_s)
-            self.selected_labels_id = label_id
+            self.selected_labels = labels
             return True
         return False
 
     def _snap_to_changepoint_time(self, t_clicked: float) -> float:
         """Snap the clicked time (seconds) to the nearest changepoint time.
 
-        Converts to index domain for snap_to_nearest_changepoint, then back to time.
-        Also considers audio changepoints (if visible).
+        Works entirely in the time domain. Also considers audio changepoints.
         """
         best_time = t_clicked
         best_distance = float('inf')
 
         ds_kwargs = self.app_state.get_ds_kwargs()
         time_coord = np.asarray(self.app_state.time)
+        feature_sel = self.app_state.features_sel
 
-        cp_ds = self.app_state.ds.sel(**ds_kwargs).filter_by_attrs(type="changepoints")
-        if len(cp_ds.data_vars) > 0:
-            feature_sel = self.app_state.features_sel
-            # snap_to_nearest_changepoint works with indices
-            x_idx = int(np.argmin(np.abs(time_coord - t_clicked)))
-            snapped_idx = snap_to_nearest_changepoint(x_idx, self.app_state.ds, feature_sel, **ds_kwargs)
-            if 0 <= snapped_idx < len(time_coord):
-                snapped_time = float(time_coord[snapped_idx])
-                ds_distance = abs(snapped_time - t_clicked)
-                if ds_distance < best_distance:
-                    best_time = snapped_time
-                    best_distance = ds_distance
+        snapped = snap_to_nearest_changepoint_time(
+            t_clicked, self.app_state.ds, feature_sel, time_coord, **ds_kwargs
+        )
+        ds_distance = abs(snapped - t_clicked)
+        if ds_distance < best_distance:
+            best_time = snapped
+            best_distance = ds_distance
 
         if getattr(self.app_state, 'show_changepoints', False):
             onsets = getattr(self.app_state, 'audio_changepoint_onsets', None)
@@ -708,16 +703,16 @@ class LabelsWidget(QWidget):
         if self.old_labels_pos is not None:
             df = delete_interval(df, self.old_labels_pos)
             self.old_labels_pos = None
-            self.old_labels_id = None
+            self.old_labels = None
 
-        df = add_interval(df, onset_s, offset_s, self.selected_labels_id, individual)
+        df = add_interval(df, onset_s, offset_s, self.selected_labels, individual)
         self.app_state.label_intervals = df
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
 
         # Auto-select the newly created interval for immediate playback
         new_idx = find_interval_at(df, (onset_s + offset_s) / 2, individual)
         self.current_labels_pos = new_idx
-        self.current_labels_id = self.selected_labels_id
+        self.current_labels = self.selected_labels
         self.current_labels_is_prediction = False
 
         self.first_click = None
@@ -754,7 +749,7 @@ class LabelsWidget(QWidget):
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
 
         self.current_labels_pos = None
-        self.current_labels_id = None
+        self.current_labels = None
         self.current_labels_is_prediction = False
 
         self._mark_changes_unsaved()
@@ -768,7 +763,7 @@ class LabelsWidget(QWidget):
             return
 
         self.old_labels_pos = self.current_labels_pos
-        self.old_labels_id = self.current_labels_id
+        self.old_labels = self.current_labels
 
         self.ready_for_label_click = True
         self.first_click = None
@@ -851,12 +846,12 @@ class LabelsWidget(QWidget):
             if df is not None and not df.empty:
                 idx = find_interval_at(df, time_s, ind)
                 if idx is not None:
-                    _, _, label_id = get_interval_bounds(df, idx)
-                    if label_id in mappings and label_id != 0:
-                        color = mappings[label_id]["color"]
+                    _, _, labels = get_interval_bounds(df, idx)
+                    if labels in mappings and labels != 0:
+                        color = mappings[labels]["color"]
                         color_list = color.tolist() if hasattr(color, 'tolist') else list(color)
                         shapes_layer.text = {
-                            'string': [mappings[label_id]["name"]],
+                            'string': [mappings[labels]["name"]],
                             'color': [color_list],
                             'size': LABELS_OVERLAY_TEXT_SIZE,
                             'anchor': 'center'

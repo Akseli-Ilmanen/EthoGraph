@@ -333,21 +333,21 @@ Subclasses implement:
 
 ### Label System: Interval-Based (`label_intervals.py` + `widgets_labels.py`)
 
-Labels are stored as a pandas DataFrame with columns `(onset_s, offset_s, label_id, individual)` — times in seconds, decoupled from any sampling rate.
+Labels are stored as a pandas DataFrame with columns `(onset_s, offset_s, labels, individual)` — times in seconds, decoupled from any sampling rate.
 
 **Core module** (`ethograph/utils/label_intervals.py`):
 ```python
-INTERVAL_COLUMNS = ["onset_s", "offset_s", "label_id", "individual"]
+INTERVAL_COLUMNS = ["onset_s", "offset_s", "labels", "individual"]
 
 empty_intervals() -> pd.DataFrame              # Empty DataFrame with correct dtypes
 dense_to_intervals(arr, time, individuals)     # Legacy dense array -> intervals
 intervals_to_dense(df, sr, duration, individuals)  # Intervals -> dense (for CP correction)
 intervals_to_xr(df) -> xr.Dataset             # DataFrame -> xarray (segment dim) for persistence
 xr_to_intervals(ds) -> pd.DataFrame           # xarray -> DataFrame for working
-add_interval(df, onset, offset, label_id, ind) # Add with overlap resolution (split/trim/delete)
+add_interval(df, onset, offset, labels, ind) # Add with overlap resolution (split/trim/delete)
 delete_interval(df, idx) -> pd.DataFrame       # Drop by DataFrame index
 find_interval_at(df, time_s, individual) -> int | None  # Find interval containing time
-get_interval_bounds(df, idx) -> (onset, offset, label_id)
+get_interval_bounds(df, idx) -> (onset, offset, labels)
 purge_short_intervals(df, min_s, per_label=None)  # Drop short intervals
 stitch_intervals(df, max_gap_s, individual)    # Merge adjacent same-label
 ```
@@ -364,19 +364,19 @@ stitch_intervals(df, max_gap_s, individual)    # Merge adjacent same-label
 - `current_labels_pos`: int | None — DataFrame index of selected interval
 
 **Label creation workflow:**
-1. `activate_label(label_id)` -> sets `ready_for_label_click = True`
+1. `activate_label(labels)` -> sets `ready_for_label_click = True`
 2. User clicks plot twice -> `_on_plot_clicked()` captures time in seconds
 3. Optional snap to changepoint via `_snap_to_changepoint_time()` (works in time domain)
 4. `_apply_label()` calls `add_interval()` which handles overlap resolution
 5. Stores result in `app_state.label_intervals` and writes to `label_dt` via `set_trial_intervals()`
 6. `plot_all_labels(intervals_df)` redraws all labels on all plots
 
-**Label selection**: `_check_labels_click()` uses `find_interval_at(df, time_s, individual)` to find the clicked interval. Returns onset/offset/label_id directly — no dense array scanning.
+**Label selection**: `_check_labels_click()` uses `find_interval_at(df, time_s, individual)` to find the clicked interval. Returns onset/offset/labels directly — no dense array scanning.
 
 **plot_all_labels(intervals_df, predictions_df=None):**
 - Delegates to `PlotContainer.draw_all_labels(intervals_df)`
 - `_draw_intervals_on_plot()` iterates DataFrame rows directly
-- `_draw_single_label(plot, start_time, end_time, label_id)` unchanged — already works in time domain
+- `_draw_single_label(plot, start_time, end_time, labels)` unchanged — already works in time domain
 
 **Note:** Labels redraw on plot switch via `labels_redraw_needed` signal connected in MetaWidget.
 
@@ -414,7 +414,7 @@ The correction system refines raw label boundaries by snapping them to detected 
 
 **Parameters** (persisted in `configs/changepoint_settings.yaml`):
 - `min_label_length`: Global minimum label length in samples (labels shorter are removed)
-- `label_thresholds`: Per-label overrides for min length (`{label_id: min_length}`)
+- `label_thresholds`: Per-label overrides for min length (`{labels: min_length}`)
 - `stitch_gap_len`: Max gap between same-label segments to merge
 - `changepoint_params.max_expansion`: Max samples a boundary can expand toward a changepoint
 - `changepoint_params.max_shrink`: Max samples a boundary can shrink toward a changepoint
@@ -515,7 +515,7 @@ labels_widget.ready_for_label_click = True
     |
 User clicks plot twice -> _on_plot_clicked() (captures time in seconds)
     |
-_apply_label() -> add_interval(df, onset_s, offset_s, label_id, individual)
+_apply_label() -> add_interval(df, onset_s, offset_s, labels, individual)
     |
 app_state.label_intervals = df  (working DataFrame)
 app_state.set_trial_intervals(trial, df)  (persists to label_dt)
@@ -583,10 +583,10 @@ See `docs/shortcuts.md`
 - Labels stored as xarray Dataset with `segment` dimension containing:
   - `onset_s` (float64) — start time in seconds
   - `offset_s` (float64) — end time in seconds
-  - `label_id` (int32) — label class ID (nonzero)
+  - `labels` (int32) — label class ID (nonzero)
   - `individual` (str) — individual identifier
 - **Backward compat**: Old files with dense `labels` DataArray (time x individuals) are auto-converted on load
-- Working representation: `pd.DataFrame` with columns `["onset_s", "offset_s", "label_id", "individual"]`
+- Working representation: `pd.DataFrame` with columns `["onset_s", "offset_s", "labels", "individual"]`
 - Dense arrays generated on demand via `intervals_to_dense(df, sample_rate, duration, individuals)` for ML pipelines and changepoint correction
 
 ---
@@ -600,7 +600,7 @@ EthoGraph labels were originally a dense `np.int8` array of shape `(n_time_sampl
 2. **Export friction**: Converting to standard formats (BORIS, crowsetta, Audacity) required index→time conversion
 3. **Memory**: Dense arrays waste space for sparse annotations
 
-The migration to interval-based labels `(onset_s, offset_s, label_id, individual)` decouples labels from any sampling rate while preserving the "one file to rule them all" NetCDF philosophy.
+The migration to interval-based labels `(onset_s, offset_s, labels, individual)` decouples labels from any sampling rate while preserving the "one file to rule them all" NetCDF philosophy.
 
 ### Architecture (implemented)
 
@@ -625,7 +625,28 @@ The migration to interval-based labels `(onset_s, offset_s, label_id, individual
 | `ethograph/gui/widgets_changepoints.py` | Bridge: intervals↔dense for correction, undo snapshots store DataFrames |
 | `ethograph/gui/data_loader.py` | `minimal_basics()` creates empty interval structure |
 
-### Phase 6: Future work (not yet implemented)
+
+
+## RoadMap: Future work
+
+### Audio changepoints
+
+Fix envelope plotting, see also https://github.com/issues/created?issue=vocalpy%7Cvocalpy%7C229, test with cricket audio
+
+
+### Testing
+
+Work through claude test functions, and only keep important ones. Add some for changepoints and checking if plot content is there, e.g. spectrogram, etc. Add for model predictions loaded. 
+
+
+### Integration with models
+
+For audio models, use https://github.com/vocalpy/vak
+
+For vidoe models, DLC2Action, ...
+
+
+### Labels I/0
 
 Thoughts:
 - I/O -> Get ./labels should also try to be able to load crowsetta, audacity, boris, raven, all by attempting to convert them into crowsetta and from there into label_dt.nc format. 

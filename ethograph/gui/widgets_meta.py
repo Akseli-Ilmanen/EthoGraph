@@ -505,8 +505,8 @@ class MetaWidget(CollapsibleWidgetContainer):
             
             # Bind number keys for labels 1-10
             for i, key in enumerate(number_keys):
-                label_id = i + 1 if key != '0' else 10
-                viewer.bind_key(key, lambda v, mk=label_id: labels_widget.activate_label(mk), overwrite=True)
+                labels = i + 1 if key != '0' else 10
+                viewer.bind_key(key, lambda v, mk=labels: labels_widget.activate_label(mk), overwrite=True)
             
             # Bind qwerty row for labels 11-20
             for i, key in enumerate(qwerty_row):

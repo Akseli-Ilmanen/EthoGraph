@@ -171,18 +171,18 @@ class TestLabelsWidget:
         _, meta = loaded_gui
         meta.labels_widget.activate_label(1)
         assert meta.labels_widget.ready_for_label_click is True
-        assert meta.labels_widget.selected_labels_id == 1
+        assert meta.labels_widget.selected_labels == 1
 
     def test_label_creation_via_two_clicks(self, loaded_gui):
         _, meta = loaded_gui
         from qtpy.QtCore import Qt
         from ethograph.utils.label_intervals import find_interval_at
 
-        label_id = 1
+        labels = 1
         t_start = 1.0
         t_end = 2.0
 
-        meta.labels_widget.activate_label(label_id)
+        meta.labels_widget.activate_label(labels)
         meta.labels_widget._on_plot_clicked({"x": t_start, "button": Qt.LeftButton})
         assert meta.labels_widget.first_click == pytest.approx(t_start)
 
@@ -197,7 +197,7 @@ class TestLabelsWidget:
         assert idx is not None, "Interval not found at midpoint"
 
         row = df.loc[idx]
-        assert row["label_id"] == label_id
+        assert row["labels"] == labels
         assert row["onset_s"] == pytest.approx(t_start, abs=0.01)
         assert row["offset_s"] == pytest.approx(t_end, abs=0.01)
 
