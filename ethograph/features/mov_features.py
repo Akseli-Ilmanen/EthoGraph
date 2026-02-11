@@ -189,24 +189,73 @@ def compute_distance_to_constant(
     return distances
 
 
-def calculate_movement_angles(xy_pos):
-   """
-   Calculate movement angles between consecutive points in the x-y plane.
-   
-   Parameters
-   ----------
-   xy_pos : array-like of shape (N, D)
-       N points with D dimensions. Uses first two columns as x, y coordinates.
-       D must be at least 2.
-   
-   Returns
-   -------
-   angles : ndarray of shape (N-1,)
-       Angles in degrees from positive y-axis, measured counterclockwise.
-   """
-   xy_pos = np.asarray(xy_pos)
-   vectors = np.diff(xy_pos[:, :2], axis=0)  # Use only x-y plane
-   return np.degrees(np.arctan2(vectors[:, 0], vectors[:, 1]))
+def calculate_movement_angles(data, input_type="position"):
+    """
+    Calculate movement angles in the x-y plane (azimuth), and optionally
+    elevation if z-data is available.
+
+    Converts Cartesian displacement/velocity vectors to polar angle coordinates
+    using arctan2. See: https://movement.neuroinformatics.dev/latest/examples/compute_head_direction.html#head-to-snout-vector-in-polar-coordinates
+
+    Parameters
+    ----------
+    data : array-like or xarray.DataArray
+        If input_type="position": array of shape (N, D) where D >= 2.
+            Uses first two columns as x, y (and optionally third as z).
+            Only plain arrays supported.
+        If input_type="velocity": array of shape (N, 2+) or xarray.DataArray
+            with a "space" dimension containing "x", "y" (and optionally "z").
+            Velocity can be computed via ``movement.move_accessor``, e.g.
+            ``ds.move.compute_velocity()``, which uses np.gradient internally.
+
+    input_type : str, {"position", "velocity"}
+        Whether ``data`` contains positions or velocities.
+
+    Returns
+    -------
+    azimuth : ndarray of shape (N-1,) for position, (N,) for velocity
+        Angles in degrees from positive y-axis, measured counterclockwise.
+    elevation : ndarray or None
+        Angle in degrees from the x-y plane. Only returned (non-None) when
+        z-data is available. Positive = above the plane, negative = below.
+
+    Notes
+    -----
+    Both approaches yield very similar angles. The key differences:
+
+    - **position** (uses ``np.diff``): forward differences, returns N-1 values
+      with a 1-sample offset relative to the original timestamps.
+    - **velocity** (uses ``np.gradient``): central differences in the interior,
+      forward/backward at edges, returns N values aligned with original timestamps.
+
+    Since velocity is just displacement scaled by 1/dt, the *direction* (angle)
+    is the same — only the array length and edge handling differ slightly.
+    """
+    if input_type == "position":
+        data = np.asarray(data)
+        vectors = np.diff(data[:, :2], axis=0)
+        dx, dy = vectors[:, 0], vectors[:, 1]
+        dz = np.diff(data[:, 2], axis=0) if data.shape[1] > 2 else None
+    elif input_type == "velocity":
+        if hasattr(data, "sel"):  # xarray DataArray
+            dx = data.sel(space="x").values
+            dy = data.sel(space="y").values
+            dz = data.sel(space="z").values if "z" in data.space.values else None
+        else:
+            data = np.asarray(data)
+            dx, dy = data[:, 0], data[:, 1]
+            dz = data[:, 2] if data.shape[1] > 2 else None
+    else:
+        raise ValueError(f"input_type must be 'position' or 'velocity', got '{input_type}'")
+
+    azimuth = np.degrees(np.arctan2(dx, dy))
+
+    if dz is not None:
+        elevation = np.degrees(np.arctan2(dz, np.sqrt(dx**2 + dy**2)))
+    else:
+        elevation = None
+
+    return azimuth, elevation
 
 
 
@@ -245,7 +294,7 @@ def get_angle_rgb(xy_pos, smooth_func=None, smoothing_params=None):
     cm = cmap(np.linspace(0, 1, 256))[:, :3]  # Get RGB, exclude alpha
 
 
-    curr_angles = calculate_movement_angles(xy_pos)
+    curr_angles = calculate_movement_angles(xy_pos, "position")
 
     # Add 0 at the end (forward scheme)
     curr_angles = np.append(curr_angles, 0)
