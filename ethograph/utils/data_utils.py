@@ -185,13 +185,13 @@ def ds_to_df(ds):
     return pd.DataFrame(df)
 
 
-def build_speed_dict(
+def build_variable_dict(
     trees: Dict[str, TrialTree],
-    keypoint: str = "beakTip",
-    individual: str = None,
+    variable: str,
+    ds_kwargs: Dict[str, str] = None,
 ) -> Dict[Tuple[str, int], np.ndarray]:
     """
-    Build dictionary mapping (session, trial) to pre-computed angle_rgb arrays.
+    Build dictionary mapping (session, trial) to pre-computed variable arrays.
 
     Parameters
     ----------
@@ -205,9 +205,9 @@ def build_speed_dict(
     Returns
     -------
     Dict[Tuple[str, int], np.ndarray]
-        Mapping of (session, trial) -> angle_rgb array with shape (time,).
+        Mapping of (session, trial) -> angle_rgb/speed/... array with shape (time,).
     """
-    speed_dict = {}
+    variable_dict = {}
 
     for tree in trees.values():
         for trial_name in tree.children:
@@ -215,65 +215,20 @@ def build_speed_dict(
                 continue
 
             trial_ds = tree[trial_name].ds
-
-            session = trial_ds.attrs.get('session')
-            trial_num = TrialTree.trial_id(trial_name)
-
-            speed = trial_ds.speed.sel(keypoints=keypoint)
-
-            if individual is not None:
-                speed = speed.sel(individuals=individual)
-            elif 'individuals' in speed.dims:
-                speed = speed.isel(individuals=0)
-            
-            speed_dict[(session, trial_num)] = speed.values
-            
-    
-
-    return speed_dict
-
-
-def build_angle_rgb_dict(
-    trees: Dict[str, TrialTree],
-    keypoint: str = "beakTip",
-    individual: str = None,
-) -> Dict[Tuple[str, int], np.ndarray]:
-    """
-    Build dictionary mapping (session, trial) to pre-computed angle_rgb arrays.
-
-    Parameters
-    ----------
-    trees : Dict[str, TrialTree]
-        Same trees dict used for stack_trials.
-    keypoint : str
-        Keypoint to extract angles for (default: "beakTip").
-    individual : str, optional
-        Individual to select. If None, uses first available.
-
-    Returns
-    -------
-    Dict[Tuple[str, int], np.ndarray]
-        Mapping of (session, trial) -> angle_rgb array with shape (time, 3).
-    """
-    angle_dict = {}
-
-    for tree in trees.values():
-        for trial_name in tree.children:
-            if not trial_name.startswith(TrialTree.TRIAL_PREFIX):
+            if variable not in trial_ds.data_vars:
                 continue
 
-            trial_ds = tree[trial_name].ds
-
             session = trial_ds.attrs.get('session')
             trial_num = TrialTree.trial_id(trial_name)
 
-            rgb = trial_ds.angle_rgb.sel(keypoints=keypoint)
+            if ds_kwargs is None:
+                ds_kwargs = {}
 
-            if individual is not None:
-                rgb = rgb.sel(individuals=individual)
-            elif 'individuals' in rgb.dims:
-                rgb = rgb.isel(individuals=0)
+            da = trial_ds[variable].sel(**ds_kwargs)
 
-            angle_dict[(session, trial_num)] = rgb.values
+            variable_dict[(session, trial_num)] = da.values
 
-    return angle_dict
+            
+
+    return variable_dict
+
