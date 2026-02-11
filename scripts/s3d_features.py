@@ -12,6 +12,7 @@ from ethograph import get_project_root
 def s3d_features(args_cli):
     args_cli.feature_type = "s3d" # hard-coded
     yaml_path = get_project_root() / "ethograph" / "video_features" / "s3d.yml"
+    print(f"config yaml path {yaml_path}")
     args_yml = OmegaConf.load(yaml_path)
     args = OmegaConf.merge(args_yml, args_cli)  # the latter arguments are prioritized
     # OmegaConf.set_readonly(args, True)
@@ -53,5 +54,5 @@ if __name__ == '__main__':
 
 
 # """
-# python ethograph/model/main.py file_with_video_paths=path/to/video_list.txt output_path=path/to/output_dir
+# python ethograph/scripts/s3d_features.py file_with_video_paths=path/to/video_list.txt output_path=path/to/output_dir
 # """

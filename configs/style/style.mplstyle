@@ -5,21 +5,12 @@ axes.titlesize: 15
 xtick.labelsize: 14
 ytick.labelsize: 14
 legend.fontsize: 12
-
-# Text annotations (plt.text, ax.text, ax.annotate)
-font.size: 13
-
-# Figure title
 figure.titlesize: 15
 
-# Specific text elements
-text.fontsize: 10
-
-# Optional: Additional styling
+# Styling
 axes.grid: False
 grid.alpha: 0.3
-lines.linewidth: 1
+lines.linewidth: 2
 figure.figsize: 10, 8
 figure.dpi: 150
 savefig.dpi: 600
-lines.linewidth: 2

@@ -100,10 +100,10 @@ class AppStateSpec:
         "nc_file_path": (str | None, None, True),
         "video_folder": (str | None, None, True),
         "audio_folder": (str | None, None, True),
-        "tracking_folder": (str | None, None, True),
+        "pose_folder": (str | None, None, True),
         "video_path": (str | None, None, True),
         "audio_path": (str | None, None, True),
-        "tracking_path": (str | None, None, True),
+        "pose_path": (str | None, None, True),
 
         # Plotting
         "ymin": (float | None, None, True),
@@ -208,8 +208,7 @@ class ObservableAppState(QObject):
         """Get audio file path and channel index from current mics_sel.
 
         Returns (audio_path, channel_idx) tuple. Uses audio_source_map to resolve
-        the display name to (mic_name, channel_idx), then looks up the file from
-        ds.attrs[mic_name].
+        the display name to (mic_file, channel_idx).
         """
         import os
 
@@ -217,19 +216,13 @@ class ObservableAppState(QObject):
         if not mics_sel or not self.audio_source_map:
             return None, 0
 
-        mic_name, channel_idx = self.audio_source_map.get(mics_sel, (mics_sel, 0))
+        mic_file, channel_idx = self.audio_source_map.get(mics_sel, (mics_sel, 0))
 
         audio_folder = getattr(self, 'audio_folder', None)
-        ds = getattr(self, 'ds', None)
-
-        if not audio_folder or ds is None:
+        if not audio_folder or not mic_file:
             return None, channel_idx
 
-        audio_file = ds.attrs.get(mic_name)
-        if not audio_file:
-            return None, channel_idx
-
-        audio_path = os.path.normpath(os.path.join(audio_folder, audio_file))
+        audio_path = os.path.normpath(os.path.join(audio_folder, mic_file))
         return audio_path, channel_idx
 
     def __getattr__(self, name):

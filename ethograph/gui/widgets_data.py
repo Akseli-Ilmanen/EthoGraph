@@ -337,7 +337,7 @@ class DataWidget(DataLoader, QWidget):
         self.coords_groupbox_layout.setContentsMargins(DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN)
         self.coords_groupbox.setLayout(self.coords_groupbox_layout)
 
-        non_data_type_vars = ["cameras", "mics", "tracking", "trial_conditions", "changepoints", "rgb"]
+        non_data_type_vars = ["cameras", "mics", "pose", "trial_conditions", "changepoints", "rgb"]
 
         for type_var in self.type_vars_dict.keys():
             if type_var.lower() not in non_data_type_vars:
@@ -563,10 +563,10 @@ class DataWidget(DataLoader, QWidget):
         """Create a combo box widget for a given info key.
 
         For qualifying type variables (not features, colors, cameras, mics,
-        tracking), adds an 'All' checkbox that shows all traces.
+        pose), adds an 'All' checkbox that shows all traces.
         Adds widgets to the coords_groupbox_layout.
         """
-        excluded_from_all = {"individuals", "features", "colors", "cameras", "mics", "tracking"}
+        excluded_from_all = {"individuals", "features", "colors", "cameras", "mics", "pose"}
         show_all_checkbox = key not in excluded_from_all
 
         combo = QComboBox()
@@ -656,7 +656,7 @@ class DataWidget(DataLoader, QWidget):
             if key in ["cameras", "mics"]:
                 self.update_video_audio()
 
-            if key not in ["cameras", "tracking"]:
+            if key not in ["cameras", "pose"]:
                 current_plot = self.plot_container.get_current_plot()
                 xmin, xmax = current_plot.get_current_xlim()
                 self.update_main_plot(t0=xmin, t1=xmax)
@@ -667,9 +667,8 @@ class DataWidget(DataLoader, QWidget):
             if key == "individuals":
                 self.labels_widget.refresh_labels_shapes_layer()
 
-
-            if key == "tracking":
-                self.update_tracking()
+            if key == "pose":
+                self.update_pose()
 
     def _on_external_feature_change(self):
         """Handle feature selection change from app_state (e.g., from changepoints widget)."""
@@ -839,6 +838,7 @@ class DataWidget(DataLoader, QWidget):
         if self.app_state.pred_dt is not None:
             self.app_state.pred_ds = self.app_state.pred_dt.trial(trials_sel)
 
+        self.io_widget.update_device_combos_for_trial(self.app_state.ds)
 
         default_feature = self.combos["features"].itemText(0)
         feature_sel = getattr(self.app_state, 'features_sel', default_feature)
@@ -861,7 +861,7 @@ class DataWidget(DataLoader, QWidget):
 
         self.app_state.current_frame = 0
         self.update_video_audio()
-        self.update_tracking()
+        self.update_pose()
         self.update_label()
         self.update_main_plot()
         self.update_space_plot()
@@ -955,7 +955,7 @@ class DataWidget(DataLoader, QWidget):
 
         # Set up video path
         if self.app_state.video_folder and hasattr(self.app_state, 'cameras_sel'):
-            video_file = self.app_state.ds.attrs[self.app_state.cameras_sel]
+            video_file = self.app_state.cameras_sel
             video_path = os.path.join(self.app_state.video_folder, video_file)
             self.app_state.video_path = os.path.normpath(video_path)
 
@@ -1053,11 +1053,10 @@ class DataWidget(DataLoader, QWidget):
                 
                 
                 
-    def update_tracking(self):
-        if not self.app_state.tracking_folder or not hasattr(self.app_state, 'tracking_sel'):
+    def update_pose(self):
+        if not self.app_state.pose_folder or not hasattr(self.app_state, 'pose_sel'):
             return
- 
-        # Remove all previous layers with name "video"
+
         for layer in list(self.viewer.layers):
             if self.file_name and layer.name in [
                 f"tracks: {self.file_name}",
@@ -1070,11 +1069,8 @@ class DataWidget(DataLoader, QWidget):
         self.fps = self.app_state.ds.fps
         self.source_software = self.app_state.ds.source_software
 
-        tracking_file = (
-            self.app_state.ds.attrs[self.app_state.tracking_sel]
-        )
-
-        self.file_path = os.path.join(self.app_state.tracking_folder, tracking_file)
+        pose_file = self.app_state.pose_sel
+        self.file_path = os.path.join(self.app_state.pose_folder, pose_file)
         self.file_name = Path(self.file_path).name
 
         self._format_data_for_layers()

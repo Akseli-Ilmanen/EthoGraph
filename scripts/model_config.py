@@ -55,11 +55,11 @@ if __name__ == "__main__":
    
    trainDataReady = False
    
-   # model_path = r"D:\Akseli\Code\ethograph\result\Freddy_train_20251021_164220\split_1\epoch-100.model" # only for inference mode
-   model_path = os.path.join(get_project_root(), "configs", "model", "Ivy_train_20260202_191138_epoch-100.model")
+   # model_path = r"D:\Akseli\Code\ethograph\configs\model\Freddy_train_20251021_164220.json" # only for inference mode
+   # model_path = os.path.join(get_project_root(), "configs", "model", "Ivy_train_20260202_191138_epoch-100.model")
 
 
-   target_individual = "Ivy" # predict labels for this individual
+   target_individual = "Crow1" # predict labels for this individual
    
    cp_kwargs = {
       "individuals": target_individual,
@@ -75,7 +75,7 @@ if __name__ == "__main__":
    mapping_file = os.path.join(get_project_root(), "configs", "mapping.txt")
 
 
-   nc_paths = [
+   nc_paths = [      
       # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250527_01\behav\Trial_data.nc", 
       # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250527_02\behav\Trial_data.nc", 
       # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250528_01\behav\Trial_data.nc",
@@ -84,7 +84,7 @@ if __name__ == "__main__":
       # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250528_02\behav\Trial_data.nc",
       # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250529_01\behav\Trial_data.nc",
       # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250530_01\behav\Trial_data.nc",
-      # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250602_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250602_01\behav\Trial_data.nc"
       
 
 
@@ -109,8 +109,8 @@ if __name__ == "__main__":
       # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250516_01\behav\Trial_data.nc",
       # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250519_01\behav\Trial_data.nc",
       
-      r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250521_01\behav\Trial_data.nc",
-      r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250522_01\behav\Trial_data.nc"             
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250521_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250522_01\behav\Trial_data.nc"             
    ]
          
    

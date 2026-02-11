@@ -37,10 +37,9 @@ from qtpy.QtWidgets import (
 
 from ethograph import TrialTree, get_project_root
 from ethograph.utils.data_utils import get_time_coord, sel_valid
-from ethograph.utils.label_intervals import correct_changepoints, empty_intervals
-from ethograph.features.changepoints import extract_cp_times
+from ethograph.utils.label_intervals import empty_intervals
+from ethograph.features.changepoints import extract_cp_times, correct_changepoints
 from ethograph.features.audio_changepoints import (
-    vocalseg_from_path,
     vocalseg_from_array,
     vocalpy_segment,
 )
@@ -1579,12 +1578,12 @@ class ChangepointsWidget(QWidget):
         cp_kwargs = all_params.get("cp_kwargs", ds_kwargs)
         cp_times = extract_cp_times(ds, time_coord, **cp_kwargs)
 
-        min_label_length = all_params.get("min_label_length", 10)
+        min_label_length = all_params.get("min_label_length", 2)
         label_thresholds_samples = all_params.get("label_thresholds", {})
-        stitch_gap_len = all_params.get("stitch_gap_len", 3)
+        stitch_gap_len = all_params.get("stitch_gap_len", 0)
         cp_params = all_params.get("changepoint_params", {})
-        max_expansion = cp_params.get("max_expansion", 10.0)
-        max_shrink = cp_params.get("max_shrink", 10.0)
+        max_expansion = cp_params.get("max_expansion", np.inf)
+        max_shrink = cp_params.get("max_shrink", np.inf)
 
         min_duration_s = min_label_length / sr
         stitch_gap_s = stitch_gap_len / sr

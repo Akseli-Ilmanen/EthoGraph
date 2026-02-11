@@ -220,6 +220,12 @@ def find_blocks(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return starts, ends
 
 
+
+# ---------------------------------------------------------------------------
+# Helpers for dense correction (legacy — kept for ML pipeline)
+# ---------------------------------------------------------------------------
+
+
 def stitch_gaps(labels: np.ndarray, max_gap_len: int) -> np.ndarray:
     stitched = labels.copy()
     zero_starts, zero_ends = find_blocks(labels == 0)
@@ -241,6 +247,7 @@ def stitch_gaps(labels: np.ndarray, max_gap_len: int) -> np.ndarray:
             stitched[start:end + 1] = left_label
     
     return stitched
+
 
 
 def purge_small_blocks(

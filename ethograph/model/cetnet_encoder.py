@@ -14,7 +14,7 @@ from scipy.stats import entropy
 from torch import Tensor, optim
 
 from ethograph import TrialTree
-from ethograph.features.changepoints import correct_changepoints_one_trial
+from ethograph.features.changepoints import correct_changepoints_dense
 from ethograph.model.eval_metrics import func_eval, func_eval_labelwise
 
 
@@ -490,7 +490,7 @@ class Trainer:
 
     
                 ds = dt.trial(trial)
-                corr_pred = correct_changepoints_one_trial(predicted, ds, all_params)               
+                corr_pred = correct_changepoints_dense(predicted, ds, all_params)               
                 corr_pred_dict[vid] = corr_pred
                 
                 
@@ -627,7 +627,7 @@ class Trainer:
                     nc_path = trial_mapping[hash_key]["nc_path"]
                     dt = TrialTree.open(nc_path)
                 
-                corr_pred = correct_changepoints_one_trial(predicted, dt.trial(trial_num), all_params)      
+                corr_pred = correct_changepoints_dense(predicted, dt.trial(trial_num), all_params)      
                 
             
                 corr_pred_dt.trial(trial_num).labels.loc[{"individuals": individual}] = corr_pred
@@ -770,7 +770,7 @@ class Trainer:
     #                 nc_path = trial_mapping[hash_key]["nc_path"]
     #                 dt = TrialTree.open(nc_path)
                 
-    #             corr_pred = correct_changepoints_one_trial(all_predictions[-1], dt.trial(trial_num), all_params)      
+    #             corr_pred = correct_changepoints_dense(all_predictions[-1], dt.trial(trial_num), all_params)      
     #             corr_pred_dt.trial(trial_num).labels.loc[{"individuals": individual}] = corr_pred
     #             sess_dict[hash_key]["corr_pred_dt"] = corr_pred_dt                
 

@@ -56,26 +56,18 @@ def validate_required_attrs(ds: xr.Dataset) -> List[str]:
 
 
 def validate_media_files(ds: xr.Dataset, file_type: str) -> List[str]:
-    """Validate media file attributes consistency.
+    """Validate media file attributes.
 
-    Checks that each key in the file type list has a corresponding file path attribute.
-    E.g., if ds.attrs["cameras"] = ["cam1", "cam2"], then ds.attrs["cam1"] and
-    ds.attrs["cam2"] must exist.
+    Checks that the file type list exists and contains strings.
     """
     errors = []
-
-    keys = ds.attrs.get(file_type)
-    if keys is None:
+    files = ds.attrs.get(file_type)
+    if files is None:
         return errors
-
-    keys = np.atleast_1d(keys)
-    # for key in keys:
-    #     if key not in ds.attrs:
-    #         errors.append(
-    #             f"Missing file path for '{file_type}': ds.attrs['{key}'] not found. "
-    #             f"Use set_media_attrs() to set both key list and file paths together."
-    #         )
-
+    files = np.atleast_1d(files)
+    for f in files:
+        if not isinstance(f, str) or not f:
+            errors.append(f"'{file_type}' contains invalid entry: {f!r}")
     return errors
 
 
@@ -166,27 +158,11 @@ def validate_dataset(ds: xr.Dataset, type_vars_dict: Dict) -> List[str]:
                 errors.append(f"Feature variable '{feat_name}' must have a coordinate containing 'time'. E.g. 'time', 'time_labels', 'time_aux', etc.")
 
         
-    for cam in type_vars_dict["cameras"]:
-        if cam not in ds.attrs:
-            errors.append(f"Xarray dataset ('ds') missing file name attribute for camera '{cam}'")
-
     # Audio requires sample rate
     if "mics" in type_vars_dict and "audio_sr" not in ds.attrs:
         errors.append("Xarray dataset ('ds') with 'mics' must have 'audio_sr' (sample rate) attribute")
-    
-    if "mics" in type_vars_dict:
-        for mic in type_vars_dict["mics"]:
-            if mic not in ds.attrs:
-                errors.append(f"Xarray dataset ('ds') missing file name attribute for mic '{mic}'")
-                
-    if "tracking" in type_vars_dict:
-        # e.g. dlc1, dlc2 for cam1, cam2
-        for track in type_vars_dict["tracking"]:
-            if track not in ds.attrs:
-                errors.append(f"Xarray dataset ('ds') missing file name attribute for pose data: '{track}'")
 
-    # Media file consistency
-    for file_type in ["cameras", "mics", "tracking"]:
+    for file_type in ["cameras", "mics", "pose"]:
         errors.extend(validate_media_files(ds, file_type))
 
     # Feature variables must be arrays
@@ -271,7 +247,7 @@ def _possible_trial_conditions(ds: xr.Dataset, dt: "TrialTree") -> List[str]:
 
     cond_attrs = []
     for key, value in ds.attrs.items():
-        if key in ['trial'] or key in common_attrs:
+        if key in ['trial', 'pose', 'cameras', 'mics'] or key in common_attrs:
             continue
 
         if isinstance(value, str):
@@ -289,7 +265,7 @@ def extract_type_vars(ds: xr.Dataset, dt: "TrialTree") -> dict:
     type_vars_dict = {}
 
     # Known coords/attrs to check explicitly
-    known_coords = ['individuals', 'cameras', 'mics', 'tracking']
+    known_coords = ['individuals', 'cameras', 'mics', 'pose']
     for name in known_coords:
         if name in ds.coords:
             type_vars_dict[name] = ds.coords[name].values.astype(str)

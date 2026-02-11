@@ -557,10 +557,10 @@ class MetaWidget(CollapsibleWidgetContainer):
         def toggle_mics(v):
             self.app_state.toggle_key_sel("mics", self.data_widget)
 
-        # Toggle tracking selection (Ctrl+T)
+        # Toggle pose selection (Ctrl+T)
         @viewer.bind_key("ctrl+t", overwrite=True)
-        def toggle_tracking(v):
-            self.app_state.toggle_key_sel("tracking", self.data_widget)
+        def toggle_pose(v):
+            self.app_state.toggle_key_sel("pose", self.data_widget)
 
         # Toggle Audio Waveform (Ctrl+A)
         @viewer.bind_key("ctrl+a", overwrite=True)

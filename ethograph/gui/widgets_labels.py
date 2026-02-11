@@ -401,6 +401,7 @@ class LabelsWidget(QWidget):
                 self.changepoints_widget.set_motif_mappings(self._mappings)
             self._populate_labels_table()
             self.refresh_labels_shapes_layer()
+            self.app_state.labels_modified.emit()
             show_info(f"Loaded {len(self._mappings) - 1} labels from {Path(mapping_path).name}")
         except FileNotFoundError:
             show_warning(f"Mapping file not found: {mapping_path}")
@@ -425,6 +426,7 @@ class LabelsWidget(QWidget):
                     self.changepoints_widget.set_motif_mappings(self._mappings)
                 self._populate_labels_table()
                 self.refresh_labels_shapes_layer()
+                self.app_state.labels_modified.emit()
                 show_info(f"Loaded {len(labels)} temporary labels")
 
     def _human_verification_true(self, mode=None):

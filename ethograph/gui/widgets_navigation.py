@@ -245,7 +245,8 @@ class NavigationWidget(QWidget):
         if filter_condition in self.type_vars_dict.get("trial_conditions", []):
             filter_values = [node.ds.attrs[filter_condition] for node in self.app_state.dt.children.values()]
             unique_values = np.unique(filter_values)
-            self.trial_conditions_value_combo.addItems(["None"] + [str(int(val)) for val in np.sort(unique_values)])
+            sorted_values = sorted(unique_values, key=str)
+            self.trial_conditions_value_combo.addItems(["None"] + [str(v) for v in sorted_values])
 
         self.trial_conditions_value_combo.blockSignals(False)
 

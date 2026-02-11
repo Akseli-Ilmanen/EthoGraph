@@ -14,6 +14,7 @@ from tqdm import tqdm
 from ethograph import TrialTree
 from ethograph.features.changepoints import merge_changepoints, more_changepoint_features
 from ethograph.features.preprocessing import clip_by_percentiles, interpolate_nans, z_normalize
+from ethograph.utils.label_intervals import intervals_to_dense, xr_to_intervals
 
 def save_config(all_params, folder='configs', action="train"):
     if not os.path.exists(folder):
@@ -157,15 +158,24 @@ def get_data_dict(all_params, nc_paths, trial_dict, features_path=None, gt_path=
         nc_path = trial_dict[hash_key]['nc_path']
         print(f"Processing {nc_path}, hash key: {hash_key}")
         dt = TrialTree.open(nc_path)
+        
+        if all_params["action"] == "inference":
+            label_dt = dt.get_label_dt(empty=True)
+        else:
+            label_dt = dt.get_label_dt()
 
         for trial_num in tqdm(trial_dict[hash_key]['trials']):
-            
+
 
             ds = dt.trial(trial_num)
 
-            # In inference (data is unlabelled), labels should be all zeros
             individual = all_params["target_individual"]
-            labels = np.array(ds.sel(individuals=individual).labels.values)
+            intervals_df = xr_to_intervals(label_dt.trial(trial_num))
+            time_coord = ds.time.values
+            n_samples = len(time_coord)
+            sr = 1.0 / np.median(np.diff(time_coord))
+            duration = float(time_coord[-1] - time_coord[0])
+            labels = intervals_to_dense(intervals_df, sr, duration, [individual], n_samples=n_samples)[:, 0]
 
 
             # B - Batch, T - Time, F - Feature
@@ -236,15 +246,17 @@ def get_trial_dict(all_params, nc_paths) -> dict:
     for nc_path in nc_paths:
         hash_key = get_file_hash(nc_path)
         dt = TrialTree.open(nc_path)
-        
+        label_dt = dt.get_label_dt()
+
         valid_trials = []
         for node in dt.children.values():
             trial_num = node.ds.attrs['trial']
             individual = all_params["target_individual"]
-            
+
             if all_params["action"] in ['train', 'eval']:
-                labels = node.ds["labels"].sel(individuals=individual).values
-                if np.all(labels == 0):
+                intervals_df = xr_to_intervals(label_dt.trial(trial_num))
+                ind_labels = intervals_df[intervals_df["individual"] == individual]
+                if ind_labels.empty:
                     continue
                     
             if all_params["action"] == 'inference':
