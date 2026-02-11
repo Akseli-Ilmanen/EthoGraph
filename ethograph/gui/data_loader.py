@@ -8,13 +8,13 @@ import xarray as xr
 from napari import current_viewer
 from qtpy.QtWidgets import QMessageBox
 
-from ethograph import TrialTree, set_media_attrs
+from ethograph import TrialTree, set_media_attrs, minimal_basics
 from ethograph.features.audio_features import get_envelope
-from ethograph.features.mov_features import extract_video_motion
-from ethograph.utils.label_intervals import empty_intervals, intervals_to_xr
 from ethograph.utils.validation import extract_type_vars, validate_datatree
 from movement.io import load_poses
 from movement.kinematics import compute_acceleration, compute_pairwise_distances, compute_speed, compute_velocity
+
+
 
 def show_error_dialog(message: str, title: str = ".nc File Error") -> None:
     QMessageBox.critical(current_viewer().window._qt_window, title, message)
@@ -59,31 +59,6 @@ def load_dataset(file_path: str) -> Tuple[Optional[xr.Dataset], Optional[dict]]:
 
 
 
-
-def minimal_basics(ds, label_sr: Optional[float] = None, video_path: Optional[str] = None, video_motion: bool = False) -> TrialTree:
-
-    if "labels" not in ds.data_vars and "onset_s" not in ds.data_vars:
-        interval_ds = intervals_to_xr(empty_intervals())
-        for var_name in interval_ds.data_vars:
-            ds[var_name] = interval_ds[var_name]
-
-
-    if video_motion and video_path is not None:
-        ds["video_motion"] = extract_video_motion(video_path, fps=ds.fps, time_coord_name="time_video")
-        
-
-
-    for feat in list(ds.data_vars):
-        if feat != "labels":
-            ds[feat].attrs["type"] = "features"
-
-    ds.attrs["trial"] = "sample_trial"
-    dt = TrialTree.from_datasets([ds])
-
-    return dt
-
-
-
    
 def minimal_dt_from_pose(video_path, fps, tracking_path, source_software):
     """
@@ -120,7 +95,6 @@ def minimal_dt_from_pose(video_path, fps, tracking_path, source_software):
         compute_pairwise_distances(ds.position, dim='individuals', pairs='all')
     
 
-
     ds = set_media_attrs(
         ds,
         cameras=[Path(video_path).name],
@@ -134,9 +108,6 @@ def minimal_dt_from_pose(video_path, fps, tracking_path, source_software):
 
 
 def minimal_dt_from_ds(video_path, ds: xr.Dataset):
-    
-    # No public function from movement to validate that this
-    # is a proper poses dataset -> add later
     
     ds = set_media_attrs(
         ds,

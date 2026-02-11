@@ -33,7 +33,7 @@ def load_label_mapping(mapping_file: Union[str, Path] = "mapping.txt") -> Dict[i
         mapping_file: Path to the mapping file (default: "mapping.txt")
 
     Returns:
-        Dictionary mapping label_id to {'name': str, 'color': np.ndarray}
+        Dictionary mapping labels to {'name': str, 'color': np.ndarray}
 
     Example mapping.txt file:
         0 background
@@ -105,12 +105,12 @@ def load_label_mapping(mapping_file: Union[str, Path] = "mapping.txt") -> Dict[i
         for line in f:
             parts = line.strip().split()
             if len(parts) >= 2:
-                label_id = int(parts[0])
+                labels = int(parts[0])
                 name = parts[1]
                 
-                color = np.array(label_colors[label_id]) / 255.0
+                color = np.array(label_colors[labels]) / 255.0
                 
-                label_mappings[label_id] = {
+                label_mappings[labels] = {
                     'name': name,
                     'color': color
                 }
@@ -150,13 +150,13 @@ def labels_to_rgb(
     rgb_array = np.zeros((n_frames, 3), dtype=np.float32)
     
     # Vectorized assignment for each unique label
-    for label_id in np.unique(labels):
-        if label_id in label_mapping:
-            mask = labels == label_id
-            rgb_array[mask] = label_mapping[label_id]['color']
+    for labels in np.unique(labels):
+        if labels in label_mapping:
+            mask = labels == labels
+            rgb_array[mask] = label_mapping[labels]['color']
         else:
             # Default to white for unmapped labels
-            mask = labels == label_id
+            mask = labels == labels
             rgb_array[mask] = [1.0, 1.0, 1.0]
     
     return rgb_array
@@ -195,16 +195,16 @@ def get_labels_start_end_times(col, time_coord, individual, bg_class=0):
     """Returns time intervals for storage (inclusive end).
     
     Returns:
-        List of dicts with onset_s, offset_s (both inclusive), label_id, individual.
+        List of dicts with onset_s, offset_s (both inclusive), labels, individual.
         Example at 10Hz: [0,1,1,1,0,2,2] → 
-            [{'onset_s': 0.1, 'offset_s': 0.3, 'label_id': 1, 'individual': 'crow_A'},
-             {'onset_s': 0.5, 'offset_s': 0.6, 'label_id': 2, 'individual': 'crow_A'}]
+            [{'onset_s': 0.1, 'offset_s': 0.3, 'labels': 1, 'individual': 'crow_A'},
+             {'onset_s': 0.5, 'offset_s': 0.6, 'labels': 2, 'individual': 'crow_A'}]
     """
     segments = get_segments(col, bg_class)
     return [{
         "onset_s": float(time_coord[start]),
         "offset_s": float(time_coord[end - 1]),
-        "label_id": label,
+        "labels": label,
         "individual": individual,
     } for label, start, end in segments]
     
@@ -254,7 +254,7 @@ def purge_small_blocks(
     Args:
         labels: Array of integer labels
         min_length: Default minimum length for all labels
-        label_thresholds: Optional dict mapping label_id to custom threshold.
+        label_thresholds: Optional dict mapping labels to custom threshold.
                          Keys can be int or str (for JSON compatibility).
 
     Returns:
@@ -351,71 +351,71 @@ def plot_label_segments(ax, time_data, labels, label_mappings, is_main=True, fra
     Args:
         ax: Matplotlib axis to plot on
         labels: Label/prediction data array
-        label_mappings: Dict mapping label_id to color info
+        label_mappings: Dict mapping labels to color info
         fps: Frames per second for time conversion (optional)
         is_main: If True, plot full-height rectangles; if False, plot small rectangles at top
     """
 
     
-    current_label_id = 0
+    current_label = 0
     segment_start = None
     
     for i, label in enumerate(labels):
         if label != 0:
-            if label != current_label_id:
-                if current_label_id != 0 and segment_start is not None:
+            if label != current_label:
+                if current_label != 0 and segment_start is not None:
                     draw_label_rectangle(
                         ax,
                         time_data[segment_start],
                         time_data[i - 1],
-                        current_label_id,
+                        current_label,
                         label_mappings,
                         is_main,
                         fraction=fraction
                     )
                 
-                current_label_id = label
+                current_label = label
                 segment_start = i
         else:
-            if current_label_id != 0 and segment_start is not None:
+            if current_label != 0 and segment_start is not None:
                 draw_label_rectangle(
                     ax,
                     time_data[segment_start],
                     time_data[i - 1],
-                    current_label_id,
+                    current_label,
                     label_mappings,
                     is_main,
                     fraction=fraction
                 )
-                current_label_id = 0
+                current_label = 0
                 segment_start = None
     
-    if current_label_id != 0 and segment_start is not None:
+    if current_label != 0 and segment_start is not None:
         draw_label_rectangle(
             ax,
             time_data[segment_start],
             time_data[-1],
-            current_label_id,
+            current_label,
             label_mappings,
             is_main,
             fraction=fraction
         )
 
-def draw_label_rectangle(ax, start_time, end_time, label_id, label_mappings, is_main=True, fraction=None):
+def draw_label_rectangle(ax, start_time, end_time, labels, label_mappings, is_main=True, fraction=None):
     """Draw label rectangle using matplotlib.
     
     Args:
         ax: Matplotlib axis to plot on
         start_time: Start time of the label
         end_time: End time of the label
-        label_id: ID of the label for color mapping
-        label_mappings: Dict mapping label_id to color info
+        labels: ID of the label for color mapping
+        label_mappings: Dict mapping labels to color info
         is_main: If True, draw full-height rectangle; if False, draw small rectangle at top
     """
-    if label_id not in label_mappings:
+    if labels not in label_mappings:
         return
     
-    color = label_mappings[label_id]["color"]
+    color = label_mappings[labels]["color"]
     
     if is_main:
         ax.axvspan(
@@ -456,7 +456,7 @@ def plot_label_segments_multirow(
         ax: Matplotlib axis to plot on
         time_data: Time array for x-axis positioning
         labels: Label/prediction data array
-        label_mappings: Dict mapping label_id to color info
+        label_mappings: Dict mapping labels to color info
         row_index: Row number (0-based) for vertical positioning
         row_spacing: Vertical spacing between rows
         rect_height: Height of each rectangle
@@ -464,7 +464,7 @@ def plot_label_segments_multirow(
     """
     y_base = row_index * row_spacing
     
-    current_label_id = 0
+    current_label = 0
     segment_start = None
     
     for i, label in enumerate(labels):
@@ -472,30 +472,30 @@ def plot_label_segments_multirow(
         label = int(label) if hasattr(label, 'item') else int(label)
         
         if label != 0:
-            if label != current_label_id:
-                if current_label_id != 0 and segment_start is not None:
+            if label != current_label:
+                if current_label != 0 and segment_start is not None:
                     _draw_rectangle(
                         ax, time_data[segment_start], time_data[i - 1],
-                        y_base, rect_height, current_label_id,
+                        y_base, rect_height, current_label,
                         label_mappings, alpha
                     )
                 
-                current_label_id = label
+                current_label = label
                 segment_start = i
         else:
-            if current_label_id != 0 and segment_start is not None:
+            if current_label != 0 and segment_start is not None:
                 _draw_rectangle(
                     ax, time_data[segment_start], time_data[i - 1],
-                    y_base, rect_height, current_label_id,
+                    y_base, rect_height, current_label,
                     label_mappings, alpha
                 )
-                current_label_id = 0
+                current_label = 0
                 segment_start = None
     
-    if current_label_id != 0 and segment_start is not None:
+    if current_label != 0 and segment_start is not None:
         _draw_rectangle(
             ax, time_data[segment_start], time_data[-1],
-            y_base, rect_height, current_label_id,
+            y_base, rect_height, current_label,
             label_mappings, alpha
         )
 
@@ -506,18 +506,18 @@ def _draw_rectangle(
     end_time: float,
     y_base: float,
     height: float,
-    label_id: int,
+    labels: int,
     label_mappings: Dict[int, Dict[str, str]],
     alpha: float
 ) -> None:
     """Draw a single label rectangle."""
-    # Ensure label_id is a scalar integer
-    label_id = int(label_id) if hasattr(label_id, 'item') else int(label_id)
+    # Ensure labels is a scalar integer
+    labels = int(labels) if hasattr(labels, 'item') else int(labels)
     
-    if label_id not in label_mappings:
+    if labels not in label_mappings:
         return
     
-    color = label_mappings[label_id]["color"]
+    color = label_mappings[labels]["color"]
     
     rect = patches.Rectangle(
         (start_time, y_base),

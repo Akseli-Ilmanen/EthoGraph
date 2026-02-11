@@ -2,8 +2,7 @@ from pathlib import Path
 
 import audioio as aio
 import numpy as np
-from thunderhopper.filters import envelope
-
+from ethograph.features.filter import envelope
 from ethograph.utils.audio import mp4_to_wav
 
 

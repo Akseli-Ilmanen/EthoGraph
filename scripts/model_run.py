@@ -18,7 +18,7 @@ from datetime import datetime
 
 from ethograph.model.dataset import get_trial_dict, get_data_dict, write_bundle_list, save_config
 from ethograph.model.eval_plotting import plot_metrics_best_model
-from ethograph.utils.paths import get_project_root
+from ethograph import get_project_root
 from ethograph.utils.labels import load_mapping
 from ethograph.model.cetnet_encoder import *
 from ethograph.model.batch_gen import BatchGenerator

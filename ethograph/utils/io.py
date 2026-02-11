@@ -11,10 +11,10 @@ from ethograph.utils.label_intervals import (
     dense_to_intervals,
     empty_intervals,
     intervals_to_xr,
-    xr_to_intervals,
 )
 from ethograph.utils.validation import validate_datatree
-
+from ethograph.features.mov_features import extract_video_motion
+from ethograph.utils.label_intervals import empty_intervals, intervals_to_xr, INTERVAL_COLUMNS
 
 
 
@@ -259,15 +259,26 @@ class TrialTree(xr.DataTree):
                 if empty:
                     result = intervals_to_xr(empty_intervals())
                 else:
-                    interval_vars = [v for v in ("onset_s", "offset_s", "label_id", "individual") if v in ds.data_vars]
+                    interval_vars = [v for v in ("onset_s", "offset_s", "labels", "individual") if v in ds.data_vars]
+                    # Handle legacy column name: label_id -> labels
+                    if "label_id" in ds.data_vars and "labels" not in ds.data_vars:
+                        interval_vars = [v for v in ("onset_s", "offset_s", "label_id", "individual") if v in ds.data_vars]
                     result = ds[interval_vars].copy()
+                    if "label_id" in result.data_vars:
+                        result = result.rename({"label_id": "labels"})
                     if "labels_confidence" in ds.data_vars:
                         result["labels_confidence"] = ds["labels_confidence"]
                 result.attrs = orig_attrs
                 return result
 
             # Legacy dense format: has labels with a time-like dimension
-            if "labels" not in ds.data_vars:
+            # Check for dense 'labels' variable (has time dim, not segment dim)
+            has_dense_labels = False
+            if "labels" in ds.data_vars:
+                da = ds["labels"]
+                has_dense_labels = any("time" in str(d).lower() for d in da.dims)
+
+            if not has_dense_labels:
                 return xr.Dataset()
 
             if empty:
@@ -321,10 +332,10 @@ class TrialTree(xr.DataTree):
         """Overwrite labels and attrs in this tree with labels from another tree.
 
         Handles both dense format (legacy 'labels' variable) and interval format
-        (onset_s/offset_s/label_id/individual with 'segment' dimension).
+        (onset_s/offset_s/labels/individual with 'segment' dimension).
         When writing interval format, removes any old dense 'labels' variable.
         """
-        interval_vars = {"onset_s", "offset_s", "label_id", "individual"}
+        interval_vars = {"onset_s", "offset_s", "labels", "individual"}
 
         def merge_func(data_ds, labels_ds):
             if labels_ds is not None and data_ds is not None:
@@ -376,7 +387,29 @@ class TrialTree(xr.DataTree):
             error_msg += "\n".join(f"• {e}" for e in errors)
             raise ValueError("TrialTree validation failed:\n" + error_msg)
     
+
+
+def minimal_basics(ds, video_path: Optional[str] = None, video_motion: bool = False) -> TrialTree:
+
+    if "labels" not in ds.data_vars and "onset_s" not in ds.data_vars:
+        interval_ds = intervals_to_xr(empty_intervals())
+        for var_name in interval_ds.data_vars:
+            ds[var_name] = interval_ds[var_name]
+
+
+    if video_motion and video_path is not None:
+        ds["video_motion"] = extract_video_motion(video_path, fps=ds.fps, time_coord_name="time_video")
         
+
+    for feat in list(ds.data_vars):
+        if feat not in INTERVAL_COLUMNS and feat != "confidence":
+            ds[feat].attrs["type"] = "features"
+
+    ds.attrs["trial"] = 1
+    dt = TrialTree.from_datasets([ds])
+
+    return dt
+
     
 
 def set_media_attrs(
@@ -434,6 +467,26 @@ def set_media_attrs(
     return ds
 
 
+def get_project_root(start: Path | None = None) -> Path:
+    """Find project root by walking up to find pyproject.toml or .git folder.
+
+    Args:
+        start: Starting path for search. Defaults to this file's location.
+
+    Returns:
+        Path to project root.
+
+    Raises:
+        FileNotFoundError: If no pyproject.toml or .git folder found in any parent.
+    """
+    path = (start or Path(__file__)).resolve()
+    markers = ["pyproject.toml", ".git"]
+    for parent in [path] + list(path.parents):
+        if any((parent / marker).exists() for marker in markers):
+            return parent
+    raise FileNotFoundError(
+        f"Could not find project root (pyproject.toml or .git) starting from {path}"
+    )
 
 
 

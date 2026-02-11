@@ -65,7 +65,7 @@ class CreateNCDialog(QDialog):
         super().__init__(parent)
         self.app_state = app_state
         self.io_widget = io_widget
-        self.setWindowTitle("➕ Create session.nc file with own data")
+        self.setWindowTitle("➕ Create trials.nc file with own data")
         self.setMinimumWidth(450)
         self._setup_ui()
 
@@ -73,7 +73,7 @@ class CreateNCDialog(QDialog):
         layout = QVBoxLayout(self)
 
         description = QLabel(
-            "Select how you want to create your session.nc file (TrialTree style):"
+            "Select how you want to create your trials.nc file (TrialTree style):"
         )
         description.setWordWrap(True)
         layout.addWidget(description)
@@ -184,7 +184,7 @@ class PoseFileDialog(QDialog):
         output_layout = QHBoxLayout(output_widget)
         output_layout.setContentsMargins(0, 0, 0, 0)
         self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText("Select output location for session.nc...")
+        self.output_edit.setPlaceholderText("Select output location for trials.nc...")
         self.output_edit.setReadOnly(True)
         output_browse = QPushButton("Browse")
         output_browse.clicked.connect(self._on_output_browse)
@@ -229,7 +229,7 @@ class PoseFileDialog(QDialog):
     def _on_output_browse(self):
         result = QFileDialog.getSaveFileName(
             self,
-            caption="Save session.nc file",
+            caption="Save trials.nc file",
             filter="NetCDF files (*.nc);;All files (*)",
         )
         if result and result[0]:
@@ -273,7 +273,7 @@ class PoseFileDialog(QDialog):
             )
             self.accept()
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to create session.nc file:\n{e}")
+            QMessageBox.critical(self, "Error", f"Failed to create trials.nc file:\n{e}")
 
     def _populate_io_fields(self, output_path: str, video_path: str, tracking_path: str):
         video_folder = str(Path(video_path).parent)
@@ -344,7 +344,7 @@ class XarrayDatasetDialog(QDialog):
         output_layout = QHBoxLayout(output_widget)
         output_layout.setContentsMargins(0, 0, 0, 0)
         self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText("Select output location for session.nc...")
+        self.output_edit.setPlaceholderText("Select output location for trials.nc...")
         self.output_edit.setReadOnly(True)
         output_browse = QPushButton("Browse")
         output_browse.clicked.connect(self._on_output_browse)
@@ -386,7 +386,7 @@ class XarrayDatasetDialog(QDialog):
     def _on_output_browse(self):
         result = QFileDialog.getSaveFileName(
             self,
-            caption="Save session.nc file",
+            caption="Save trials.nc file",
             filter="NetCDF files (*.nc);;All files (*)",
         )
         if result and result[0]:
@@ -424,7 +424,7 @@ class XarrayDatasetDialog(QDialog):
             )
             self.accept()
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to create session.nc file:\n{e}")
+            QMessageBox.critical(self, "Error", f"Failed to create trials.nc file:\n{e}")
 
     def _populate_io_fields(self, output_path: str, video_path: str):
         video_folder = str(Path(video_path).parent)
@@ -509,7 +509,7 @@ class AudioFileDialog(QDialog):
         output_layout = QHBoxLayout(output_widget)
         output_layout.setContentsMargins(0, 0, 0, 0)
         self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText("Select output location for session.nc...")
+        self.output_edit.setPlaceholderText("Select output location for trials.nc...")
         self.output_edit.setReadOnly(True)
         output_browse = QPushButton("Browse")
         output_browse.clicked.connect(self._on_output_browse)
@@ -557,7 +557,7 @@ class AudioFileDialog(QDialog):
     def _on_output_browse(self):
         result = QFileDialog.getSaveFileName(
             self,
-            caption="Save session.nc file",
+            caption="Save trials.nc file",
             filter="NetCDF files (*.nc);;All files (*)",
         )
         if result and result[0]:
@@ -609,8 +609,8 @@ class AudioFileDialog(QDialog):
             )
             self.accept()
         except Exception as e:
-            print(f"Error creating session.nc file: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to create session.nc file:\n{e}")
+            print(f"Error creating trials.nc file: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to create trials.nc file:\n{e}")
 
     def _populate_io_fields(self, output_path: str, video_path: str, audio_path: str):
         video_folder = str(Path(video_path).parent)
@@ -699,7 +699,7 @@ class NpyFileDialog(QDialog):
         output_layout = QHBoxLayout(output_widget)
         output_layout.setContentsMargins(0, 0, 0, 0)
         self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText("Select output location for session.nc...")
+        self.output_edit.setPlaceholderText("Select output location for trials.nc...")
         self.output_edit.setReadOnly(True)
         output_browse = QPushButton("Browse")
         output_browse.clicked.connect(self._on_output_browse)
@@ -744,7 +744,7 @@ class NpyFileDialog(QDialog):
     def _on_output_browse(self):
         result = QFileDialog.getSaveFileName(
             self,
-            caption="Save session.nc file",
+            caption="Save trials.nc file",
             filter="NetCDF files (*.nc);;All files (*)",
         )
         if result and result[0]:
@@ -796,8 +796,8 @@ class NpyFileDialog(QDialog):
             )
             self.accept()
         except Exception as e:
-            print(f"Error creating session.nc file: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to create session.nc file:\n{e}")
+            print(f"Error creating trials.nc file: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to create trials.nc file:\n{e}")
 
     def _populate_io_fields(self, output_path: str, video_path: str):
         video_folder = str(Path(video_path).parent)

@@ -35,11 +35,10 @@ from qtpy.QtWidgets import (
     QApplication,
 )
 
-from ethograph import TrialTree
+from ethograph import TrialTree, get_project_root
 from ethograph.utils.data_utils import get_time_coord, sel_valid
-from ethograph.utils.label_intervals import dense_to_intervals, empty_intervals, intervals_to_dense
-from ethograph.utils.paths import get_project_root
-from ethograph.features.changepoints import correct_changepoints_one_trial
+from ethograph.utils.label_intervals import correct_changepoints, empty_intervals
+from ethograph.features.changepoints import extract_cp_times
 from ethograph.features.audio_changepoints import (
     vocalseg_from_path,
     vocalseg_from_array,
@@ -485,14 +484,12 @@ class ChangepointsWidget(QWidget):
         self.audio_cp_freq_min_spin.setRange(1, 100000)
         self.audio_cp_freq_min_spin.setDecimals(0)
         self.audio_cp_freq_min_spin.setMaximumWidth(75)
-        self.audio_cp_freq_min_spin.setSpecialValueText("None")
         self.audio_cp_freq_min_spin.setToolTip("Minimum frequency in Hz (0 = no filter)")
 
         self.audio_cp_freq_max_spin = QDoubleSpinBox()
         self.audio_cp_freq_max_spin.setRange(2, 100000)
         self.audio_cp_freq_max_spin.setDecimals(0)
         self.audio_cp_freq_max_spin.setMaximumWidth(75)
-        self.audio_cp_freq_max_spin.setSpecialValueText("None")
         self.audio_cp_freq_max_spin.setToolTip("Maximum frequency in Hz (0 = no filter)")
 
         freq_layout.addWidget(self.audio_cp_freq_min_spin)
@@ -1506,10 +1503,10 @@ class ChangepointsWidget(QWidget):
     def _on_min_label_length_changed(self, _value: int):
         pass
 
-    def get_effective_min_length(self, label_id: int) -> int:
+    def get_effective_min_length(self, labels: int) -> int:
         if not self.app_state.apply_changepoint_correction:
             return 2
-        return self._custom_label_thresholds.get(label_id, self.min_label_length_spin.value())
+        return self._custom_label_thresholds.get(labels, self.min_label_length_spin.value())
 
     def is_changepoint_correction_enabled(self) -> bool:
         return self.changepoint_correction_checkbox.isChecked()
@@ -1560,10 +1557,9 @@ class ChangepointsWidget(QWidget):
         show_info("Reverted correction")
 
     def _correct_trial_intervals(self, trial, ds, all_params, ds_kwargs):
-        """Bridge: intervals -> dense -> correct -> intervals for one trial."""
+        """Interval-native correction: purge -> stitch -> snap -> purge."""
         intervals_df = self.app_state.get_trial_intervals(trial)
 
-        # Determine time coord and individuals from dataset
         feature_sel = self.app_state.features_sel
         if feature_sel and feature_sel in ds.data_vars:
             time_coord = get_time_coord(ds[feature_sel]).values
@@ -1572,24 +1568,34 @@ class ChangepointsWidget(QWidget):
             time_coord = get_time_coord(ds[first_var]).values if first_var else np.arange(100) * 0.01
 
         sr = 1.0 / np.median(np.diff(time_coord)) if len(time_coord) > 1 else 30.0
-        duration = float(time_coord[-1]) if len(time_coord) > 0 else 1.0
-        individuals = (
-            list(ds.coords['individuals'].values)
-            if 'individuals' in ds.coords
-            else ["default"]
+
+        cp_kwargs = all_params.get("cp_kwargs", ds_kwargs)
+        cp_times = extract_cp_times(ds, time_coord, **cp_kwargs)
+
+        min_label_length = all_params.get("min_label_length", 10)
+        label_thresholds_samples = all_params.get("label_thresholds", {})
+        stitch_gap_len = all_params.get("stitch_gap_len", 3)
+        cp_params = all_params.get("changepoint_params", {})
+        max_expansion = cp_params.get("max_expansion", 10.0)
+        max_shrink = cp_params.get("max_shrink", 10.0)
+
+        min_duration_s = min_label_length / sr
+        stitch_gap_s = stitch_gap_len / sr
+        max_expansion_s = max_expansion / sr
+        max_shrink_s = max_shrink / sr
+        label_thresholds_s = {
+            int(k): v / sr for k, v in label_thresholds_samples.items()
+        }
+
+        return correct_changepoints(
+            intervals_df,
+            cp_times,
+            min_duration_s=min_duration_s,
+            stitch_gap_s=stitch_gap_s,
+            max_expansion_s=max_expansion_s,
+            max_shrink_s=max_shrink_s,
+            label_thresholds_s=label_thresholds_s or None,
         )
-
-        corrected_dfs = []
-        for ind in individuals:
-            ind_df = intervals_df[intervals_df["individual"] == ind]
-            dense_1d = intervals_to_dense(ind_df, sr, duration, [ind], n_samples=len(time_coord))[:, 0]
-            corrected_1d = correct_changepoints_one_trial(dense_1d, ds, all_params)
-            corrected_df = dense_to_intervals(corrected_1d, time_coord, [ind])
-            corrected_dfs.append(corrected_df)
-
-        if corrected_dfs:
-            return pd.concat(corrected_dfs, ignore_index=True).sort_values("onset_s").reset_index(drop=True)
-        return empty_intervals()
 
     def _cp_correction(self, mode):
         all_params = self.get_correction_params()

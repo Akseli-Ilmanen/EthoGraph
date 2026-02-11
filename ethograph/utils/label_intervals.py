@@ -3,7 +3,7 @@
 Labels are stored as a pandas DataFrame with columns:
     onset_s   (float64) - start time in seconds
     offset_s  (float64) - end time in seconds
-    label_id  (int)     - label class ID (nonzero)
+    labels  (int)     - label class ID (nonzero)
     individual (str)    - individual identifier
 """
 
@@ -12,12 +12,12 @@ import pandas as pd
 import xarray as xr
 from ethograph.utils.labels import get_labels_start_end_times
 
-INTERVAL_COLUMNS = ["onset_s", "offset_s", "label_id", "individual"]
+INTERVAL_COLUMNS = ["onset_s", "offset_s", "labels", "individual"]
 
 INTERVAL_DTYPES = {
     "onset_s": np.float64,
     "offset_s": np.float64,
-    "label_id": np.int32,
+    "labels": np.int32,
     "individual": str,
 }
 
@@ -84,7 +84,7 @@ def intervals_to_dense(
         end_idx = int(round(row["offset_s"] * sample_rate))
         start_idx = max(0, start_idx)
         end_idx = min(n_samples - 1, end_idx)
-        dense[start_idx : end_idx + 1, ind_idx] = int(row["label_id"])
+        dense[start_idx : end_idx + 1, ind_idx] = int(row["labels"])
 
     return dense
 
@@ -96,7 +96,7 @@ def intervals_to_xr(df: pd.DataFrame) -> xr.Dataset:
             {
                 "onset_s": ("segment", np.array([], dtype=np.float64)),
                 "offset_s": ("segment", np.array([], dtype=np.float64)),
-                "label_id": ("segment", np.array([], dtype=np.int32)),
+                "labels": ("segment", np.array([], dtype=np.int32)),
                 "individual": ("segment", np.array([], dtype="<U1")),
             }
         )
@@ -105,7 +105,7 @@ def intervals_to_xr(df: pd.DataFrame) -> xr.Dataset:
         {
             "onset_s": ("segment", df_reset["onset_s"].values.astype(np.float64)),
             "offset_s": ("segment", df_reset["offset_s"].values.astype(np.float64)),
-            "label_id": ("segment", df_reset["label_id"].values.astype(np.int32)),
+            "labels": ("segment", df_reset["labels"].values.astype(np.int32)),
             "individual": ("segment", df_reset["individual"].values.astype(str)),
         }
     )
@@ -119,7 +119,7 @@ def xr_to_intervals(ds: xr.Dataset) -> pd.DataFrame:
         {
             "onset_s": ds["onset_s"].values.astype(np.float64),
             "offset_s": ds["offset_s"].values.astype(np.float64),
-            "label_id": ds["label_id"].values.astype(np.int32),
+            "labels": ds["labels"].values.astype(np.int32),
             "individual": ds["individual"].values.astype(str),
         }
     )
@@ -130,7 +130,7 @@ def add_interval(
     df: pd.DataFrame,
     onset_s: float,
     offset_s: float,
-    label_id: int,
+    labels: int,
     individual: str,
 ) -> pd.DataFrame:
     """Add an interval, resolving overlaps for the same individual.
@@ -148,7 +148,7 @@ def add_interval(
     kept: list[dict] = []
     for _, row in same.iterrows():
         ro, rf = row["onset_s"], row["offset_s"]
-        rid = row["label_id"]
+        rid = row["labels"]
 
         if rf <= onset_s or ro >= offset_s:
             kept.append(row.to_dict())
@@ -156,15 +156,15 @@ def add_interval(
 
         if ro < onset_s:
             kept.append(
-                {"onset_s": ro, "offset_s": onset_s, "label_id": rid, "individual": individual}
+                {"onset_s": ro, "offset_s": onset_s, "labels": rid, "individual": individual}
             )
         if rf > offset_s:
             kept.append(
-                {"onset_s": offset_s, "offset_s": rf, "label_id": rid, "individual": individual}
+                {"onset_s": offset_s, "offset_s": rf, "labels": rid, "individual": individual}
             )
 
     kept.append(
-        {"onset_s": onset_s, "offset_s": offset_s, "label_id": label_id, "individual": individual}
+        {"onset_s": onset_s, "offset_s": offset_s, "labels": labels, "individual": individual}
     )
 
     new_same = _rows_to_df(kept)
@@ -185,7 +185,7 @@ def find_interval_at(df: pd.DataFrame, time_s: float, individual: str) -> int | 
         (df["individual"] == individual)
         & (df["onset_s"] <= time_s)
         & (df["offset_s"] >= time_s)
-        & (df["label_id"] != 0)
+        & (df["labels"] != 0)
     )
     matches = df.index[mask]
     if len(matches) == 0:
@@ -194,9 +194,9 @@ def find_interval_at(df: pd.DataFrame, time_s: float, individual: str) -> int | 
 
 
 def get_interval_bounds(df: pd.DataFrame, idx: int) -> tuple[float, float, int]:
-    """Return (onset_s, offset_s, label_id) for interval at index."""
+    """Return (onset_s, offset_s, labels) for interval at index."""
     row = df.loc[idx]
-    return float(row["onset_s"]), float(row["offset_s"]), int(row["label_id"])
+    return float(row["onset_s"]), float(row["offset_s"]), int(row["labels"])
 
 
 def purge_short_intervals(
@@ -209,7 +209,7 @@ def purge_short_intervals(
         label_thresholds_s = {}
 
     durations = df["offset_s"] - df["onset_s"]
-    thresholds = df["label_id"].map(
+    thresholds = df["labels"].map(
         lambda lid: label_thresholds_s.get(lid, min_duration_s)
     )
     keep = durations >= thresholds
@@ -246,7 +246,7 @@ def stitch_intervals(
             nxt = target.iloc[j]
             if (
                 nxt["individual"] == current["individual"]
-                and nxt["label_id"] == current["label_id"]
+                and nxt["labels"] == current["labels"]
                 and (nxt["onset_s"] - current["offset_s"]) <= max_gap_s
             ):
                 current["offset_s"] = nxt["offset_s"]
@@ -259,6 +259,130 @@ def stitch_intervals(
     result = pd.concat([other, _rows_to_df(merged)], ignore_index=True)
     result.sort_values("onset_s", inplace=True)
     result.reset_index(drop=True, inplace=True)
+    return result
+
+
+def snap_boundaries(
+    df: pd.DataFrame,
+    cp_times: np.ndarray,
+    max_expansion_s: float,
+    max_shrink_s: float,
+) -> pd.DataFrame:
+    """Snap interval onset/offset to nearest changepoint times.
+
+    For each boundary, finds the nearest CP time and snaps if the move is
+    within the expansion/shrink limits. Falls back to the original boundary
+    if snapping would create an invalid range (onset >= offset).
+
+    Post-processes to resolve overlaps between adjacent intervals of different
+    labels by trimming the earlier interval's offset.
+    """
+    if df.empty or len(cp_times) == 0:
+        return df.copy()
+
+    cp_times = np.sort(cp_times)
+    rows = []
+
+    for _, row in df.iterrows():
+        onset = row["onset_s"]
+        offset = row["offset_s"]
+
+        snap_onset = _snap_onset(onset, cp_times, max_expansion_s, max_shrink_s)
+        snap_offset = _snap_offset(offset, cp_times, max_expansion_s, max_shrink_s)
+
+        if snap_onset >= snap_offset:
+            snap_onset = onset
+            snap_offset = offset
+
+        rows.append({
+            "onset_s": snap_onset,
+            "offset_s": snap_offset,
+            "labels": row["labels"],
+            "individual": row["individual"],
+        })
+
+    result = _rows_to_df(rows)
+    result.sort_values(["individual", "onset_s"], inplace=True)
+    result.reset_index(drop=True, inplace=True)
+
+    result = _resolve_overlaps(result)
+    return result
+
+
+def _snap_onset(
+    boundary: float, cp_times: np.ndarray, max_expansion_s: float, max_shrink_s: float
+) -> float:
+    """Snap an onset boundary. Expanding = moving earlier, shrinking = moving later."""
+    nearest_idx = np.argmin(np.abs(cp_times - boundary))
+    cp_val = float(cp_times[nearest_idx])
+    expansion = boundary - cp_val  # positive when cp_val < boundary (expanding left)
+    shrink = cp_val - boundary     # positive when cp_val > boundary (shrinking from left)
+    if expansion > max_expansion_s or shrink > max_shrink_s:
+        return boundary
+    return cp_val
+
+
+def _snap_offset(
+    boundary: float, cp_times: np.ndarray, max_expansion_s: float, max_shrink_s: float
+) -> float:
+    """Snap an offset boundary. Expanding = moving later, shrinking = moving earlier."""
+    nearest_idx = np.argmin(np.abs(cp_times - boundary))
+    cp_val = float(cp_times[nearest_idx])
+    expansion = cp_val - boundary  # positive when cp_val > boundary (expanding right)
+    shrink = boundary - cp_val     # positive when cp_val < boundary (shrinking from right)
+    if expansion > max_expansion_s or shrink > max_shrink_s:
+        return boundary
+    return cp_val
+
+
+def _resolve_overlaps(df: pd.DataFrame) -> pd.DataFrame:
+    """Trim overlaps between adjacent intervals of different labels per individual."""
+    if df.empty:
+        return df
+
+    groups = []
+    for ind, group in df.groupby("individual", sort=False):
+        group = group.sort_values("onset_s").reset_index(drop=True)
+        for i in range(len(group) - 1):
+            if group.at[i, "offset_s"] > group.at[i + 1, "onset_s"]:
+                if group.at[i, "labels"] != group.at[i + 1, "labels"]:
+                    group.at[i, "offset_s"] = group.at[i + 1, "onset_s"]
+        groups.append(group)
+
+    result = pd.concat(groups, ignore_index=True)
+    result.sort_values("onset_s", inplace=True)
+    result.reset_index(drop=True, inplace=True)
+    return result
+
+
+def correct_changepoints(
+    df: pd.DataFrame,
+    cp_times: np.ndarray,
+    min_duration_s: float,
+    stitch_gap_s: float,
+    max_expansion_s: float,
+    max_shrink_s: float,
+    label_thresholds_s: dict[int, float] | None = None,
+) -> pd.DataFrame:
+    """Full interval-native correction pipeline.
+
+    Steps:
+        1. purge_short_intervals — pre-cleanup
+        2. stitch_intervals — merge same-label across small gaps
+        3. snap_boundaries — snap to changepoint times
+        4. purge_short_intervals — post-cleanup (snapping may create short intervals)
+    """
+    if df.empty:
+        return df.copy()
+
+    result = purge_short_intervals(df, min_duration_s, label_thresholds_s)
+
+    result = stitch_intervals(result, stitch_gap_s)
+
+    result = snap_boundaries(result, cp_times, max_expansion_s, max_shrink_s)
+
+    result = purge_short_intervals(result, min_duration_s, label_thresholds_s)
+
     return result
 
 

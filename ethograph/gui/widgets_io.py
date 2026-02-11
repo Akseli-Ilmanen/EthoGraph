@@ -49,7 +49,7 @@ class IOWidget(QWidget):
         self.reset_button.clicked.connect(self._on_reset_gui_clicked)
         self.layout().addRow(self.reset_button)
 
-        self.create_nc_button = QPushButton("➕Create session.nc file with own data")
+        self.create_nc_button = QPushButton("➕Create trials.nc file with own data")
         self.create_nc_button.setObjectName("create_nc_button")
         self.create_nc_button.clicked.connect(self._on_create_nc_clicked)
         self.layout().addRow(self.create_nc_button)

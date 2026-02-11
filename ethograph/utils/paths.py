@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+from ethograph import get_project_root
 
 def check_paths_exist(nc_paths):
     missing_paths = [p for p in nc_paths if not os.path.exists(p)]
@@ -13,26 +14,6 @@ def check_paths_exist(nc_paths):
         exit(1)
  
 
-def get_project_root(start: Path | None = None) -> Path:
-    """Find project root by walking up to find pyproject.toml or .git folder.
-
-    Args:
-        start: Starting path for search. Defaults to this file's location.
-
-    Returns:
-        Path to project root.
-
-    Raises:
-        FileNotFoundError: If no pyproject.toml or .git folder found in any parent.
-    """
-    path = (start or Path(__file__)).resolve()
-    markers = ["pyproject.toml", ".git"]
-    for parent in [path] + list(path.parents):
-        if any((parent / marker).exists() for marker in markers):
-            return parent
-    raise FileNotFoundError(
-        f"Could not find project root (pyproject.toml or .git) starting from {path}"
-    )
 
 
 def gui_default_settings_path() -> Path:

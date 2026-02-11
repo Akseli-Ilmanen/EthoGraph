@@ -30,7 +30,7 @@ class TestTrialTree:
         trial_ds = label_dt.trial(first_trial)
         assert "onset_s" in trial_ds.data_vars
         assert "offset_s" in trial_ds.data_vars
-        assert "label_id" in trial_ds.data_vars
+        assert "labels" in trial_ds.data_vars
         assert "individual" in trial_ds.data_vars
 
         label_dt_empty = trial_tree.get_label_dt(empty=True)

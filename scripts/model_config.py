@@ -10,7 +10,7 @@ import traceback
 import importlib
 import sys
 from ethograph.model.dataset import save_config
-from ethograph.utils.paths import get_project_root
+from ethograph import get_project_root
 
 
 params_rigid = {

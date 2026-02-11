@@ -123,10 +123,44 @@ class DataWidget(DataLoader, QWidget):
     def _get_sampling_rate(self, time_coords: np.ndarray) -> float:
         """Calculate sampling rate from time coordinates."""
         dt = np.median(np.diff(time_coords))
-        return 1.0 / dt 
-        
+        return 1.0 / dt
 
-    
+    def _set_audio_time(self):
+        """Set app_state.time to an audio-rate time coordinate for Audio Waveform."""
+        ds = self.app_state.ds
+        audio_sr = ds.attrs.get("audio_sr")
+        if audio_sr is None:
+            return
+
+        audio_sr = float(audio_sr)
+
+        # Determine duration from audio file (preferred) or feature time extent
+        n_samples = None
+        audio_path = getattr(self.app_state, 'audio_path', None)
+        if audio_path:
+            loader = SharedAudioCache.get_loader(audio_path)
+            if loader:
+                n_samples = len(loader)
+                audio_sr = float(loader.rate)
+
+        if n_samples is None:
+            features = [v for v in self.type_vars_dict.get("features", [])
+                        if v != "Audio Waveform"]
+            if features:
+                feature_time = get_time_coord(ds[features[0]])
+                duration = float(feature_time.values[-1])
+                n_samples = int(duration * audio_sr) + 1
+            else:
+                return
+
+        time_values = np.arange(n_samples) / audio_sr
+        self.app_state.time = xr.DataArray(
+            time_values, dims=["time_audio"],
+            coords={"time_audio": time_values}, name="time_audio",
+        )
+        self.app_state.label_sr = audio_sr
+
+
 
 
     def on_load_clicked(self):
@@ -472,10 +506,10 @@ class DataWidget(DataLoader, QWidget):
             da = self.app_state.ds[feature_sel]
             ds_kwargs = self.app_state.get_ds_kwargs()
             data_1d, _ = sel_valid(da, ds_kwargs)
-            time_coords = get_time_coord(da)
+            time_values = np.asarray(get_time_coord(da))
             return build_xarray_source(
-                xr.DataArray(data_1d, coords={"time": time_coords}),
-                np.asarray(time_coords),
+                xr.DataArray(data_1d, dims=["time"], coords={"time": time_values}),
+                time_values,
                 feature_sel,
                 ds_kwargs,
             )
@@ -604,6 +638,7 @@ class DataWidget(DataLoader, QWidget):
 
             if key == "features":
                 if selected_value == "Audio Waveform":
+                    self._set_audio_time()
                     self.view_mode_combo.show()
                     self._apply_view_mode_for_waveform()
                 else:
@@ -655,7 +690,14 @@ class DataWidget(DataLoader, QWidget):
             features_combo.setCurrentIndex(idx)
         features_combo.blockSignals(False)
 
-        if feature != "Audio Waveform":
+        if feature == "Audio Waveform":
+            self._set_audio_time()
+            self._apply_view_mode_for_waveform()
+            self._update_audio_overlay_checkboxes()
+            current_plot = self.plot_container.get_current_plot()
+            xmin, xmax = current_plot.get_current_xlim()
+            self.update_main_plot(t0=xmin, t1=xmax)
+        else:
             self.plot_container.switch_to_lineplot()
             self.app_state.time = get_time_coord(self.app_state.ds[feature])
             self._update_audio_overlay_checkboxes()
@@ -800,7 +842,9 @@ class DataWidget(DataLoader, QWidget):
 
         default_feature = self.combos["features"].itemText(0)
         feature_sel = getattr(self.app_state, 'features_sel', default_feature)
-        if feature_sel and feature_sel != "Audio Waveform":
+        if feature_sel == "Audio Waveform":
+            self._set_audio_time()
+        elif feature_sel:
             self.app_state.time = get_time_coord(self.app_state.ds[feature_sel])
 
         if hasattr(self, 'view_mode_combo'):

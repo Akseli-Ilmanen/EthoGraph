@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Union
 import numpy as np
 import matplotlib.pyplot as plt
-from ethograph.utils.paths import get_project_root
+from ethograph import get_project_root
 from ethograph.utils.labels import load_label_mapping
 
 def create_classification_probabilities_pdf(label_dt, output_path: Union[str, Path],
