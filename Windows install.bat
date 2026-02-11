@@ -59,6 +59,8 @@ if %errorlevel% equ 0 (
 echo Creating conda environment...
 call conda config --set solver libmamba
 call conda env create -f %ENV_FILE%
+call conda activate %ENV_NAME%
+call pip install -r requirements.txt
 if %errorlevel% neq 0 (
     echo ERROR: Failed to create conda environment.
     pause
