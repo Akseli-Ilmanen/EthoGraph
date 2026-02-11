@@ -8,13 +8,12 @@ from scipy.ndimage import gaussian_filter1d
 
 from ethograph.features.mov_features import get_angle_rgb
 from ethograph.utils.label_intervals import (
-    dense_to_intervals,
+    INTERVAL_COLUMNS,
     empty_intervals,
     intervals_to_xr,
 )
 from ethograph.utils.validation import validate_datatree
 from ethograph.features.mov_features import extract_video_motion
-from ethograph.utils.label_intervals import empty_intervals, intervals_to_xr, INTERVAL_COLUMNS
 
 
 
@@ -85,6 +84,7 @@ class TrialTree(xr.DataTree):
     def save(self, path: str | Path | None = None) -> None:
         import gc
         import shutil
+        import time
 
         source_path = getattr(self, '_source_path', None)
 
@@ -100,10 +100,14 @@ class TrialTree(xr.DataTree):
         if path.exists():
             temp_path = path.with_suffix('.tmp.nc')
             self.to_netcdf(temp_path, mode='w')
-            try:
-                path.unlink()
-            except PermissionError:
-                gc.collect()
+            for attempt in range(5):
+                try:
+                    path.unlink()
+                    break
+                except PermissionError:
+                    gc.collect()
+                    time.sleep(0.5)
+            else:
                 path.unlink()
             shutil.move(str(temp_path), str(path))
         else:
@@ -254,67 +258,24 @@ class TrialTree(xr.DataTree):
 
             orig_attrs = ds.attrs.copy()
 
-            # New interval format: has onset_s with segment dimension
             if "onset_s" in ds.data_vars and "segment" in ds.dims:
                 if empty:
                     result = intervals_to_xr(empty_intervals())
                 else:
                     interval_vars = [v for v in ("onset_s", "offset_s", "labels", "individual") if v in ds.data_vars]
-                    # Handle legacy column name: label_id -> labels
-                    if "label_id" in ds.data_vars and "labels" not in ds.data_vars:
-                        interval_vars = [v for v in ("onset_s", "offset_s", "label_id", "individual") if v in ds.data_vars]
                     result = ds[interval_vars].copy()
-                    if "label_id" in result.data_vars:
-                        result = result.rename({"label_id": "labels"})
                     if "labels_confidence" in ds.data_vars:
                         result["labels_confidence"] = ds["labels_confidence"]
                 result.attrs = orig_attrs
                 return result
 
-            # Legacy dense format: has labels with a time-like dimension
-            # Check for dense 'labels' variable (has time dim, not segment dim)
-            has_dense_labels = False
-            if "labels" in ds.data_vars:
-                da = ds["labels"]
-                has_dense_labels = any("time" in str(d).lower() for d in da.dims)
-
-            if not has_dense_labels:
-                return xr.Dataset()
-
-            if empty:
-                result = intervals_to_xr(empty_intervals())
-                result.attrs = orig_attrs
-                return result
-
-            # Convert dense labels to interval format
-            labels_da = ds["labels"]
-            time_coord_name = next((c for c in labels_da.coords if "time" in c.lower()), None)
-            if time_coord_name is None:
-                result = intervals_to_xr(empty_intervals())
-                result.attrs = orig_attrs
-                return result
-
-            time_vals = labels_da.coords[time_coord_name].values
-            dense = labels_da.values
-
-            # Determine individuals
-            if "individuals" in labels_da.dims:
-                individuals = [str(v) for v in labels_da.coords["individuals"].values]
-            else:
-                individuals = ["default"]
-                if dense.ndim == 1:
-                    dense = dense[:, np.newaxis]
-
-            df = dense_to_intervals(dense, time_vals, individuals)
-            result = intervals_to_xr(df)
-
-            if "labels_confidence" in ds.data_vars:
-                result["labels_confidence"] = ds["labels_confidence"]
-
+            result = xr.Dataset()
             result.attrs = orig_attrs
             return result
 
-        return self.from_datatree(self.map_over_datasets(filter_node), attrs=self.attrs)
+        tree = self.from_datatree(self.map_over_datasets(filter_node), attrs=self.attrs)
+        tree.ds = xr.Dataset(attrs=tree.ds.attrs if tree.ds is not None else {})
+        return tree
 
 
 
@@ -329,20 +290,10 @@ class TrialTree(xr.DataTree):
         return TrialTree(tree)
 
     def overwrite_with_labels(self, labels_tree: xr.DataTree) -> "TrialTree":
-        """Overwrite labels and attrs in this tree with labels from another tree.
-
-        Handles both dense format (legacy 'labels' variable) and interval format
-        (onset_s/offset_s/labels/individual with 'segment' dimension).
-        When writing interval format, removes any old dense 'labels' variable.
-        """
-        interval_vars = {"onset_s", "offset_s", "labels", "individual"}
-
+        """Overwrite interval labels and attrs in this tree from another tree."""
         def merge_func(data_ds, labels_ds):
             if labels_ds is not None and data_ds is not None:
                 tree = data_ds.copy()
-                is_interval = bool(interval_vars & set(labels_ds.data_vars))
-                if is_interval and "labels" in tree.data_vars:
-                    tree = tree.drop_vars("labels")
                 for var_name in labels_ds.data_vars:
                     tree[var_name] = labels_ds[var_name]
                 tree.attrs.update(labels_ds.attrs)
@@ -416,21 +367,18 @@ def set_media_attrs(
     ds: xr.Dataset,
     cameras: Optional[List[str]] = None,
     mics: Optional[List[str]] = None,
-    tracking: Optional[List[str]] = None,
-    tracking_prefix: str = "dlc",
+    pose: Optional[List[str]] = None,
 ) -> xr.Dataset:
-    """
-    Set media file attributes with consistent keys.
+    """Set media file attributes on a dataset.
 
-    Creates both the file type list (e.g., ds.attrs["cameras"] = ["cam1", "cam2"])
-    and individual file path attrs (e.g., ds.attrs["cam1"] = "video.mp4").
+    Stores file paths directly in the attribute lists. Position in the list
+    determines the index (e.g. cameras[0] is the first camera).
 
     Args:
         ds: xarray Dataset to modify
-        cameras: List of camera file paths, keys auto-generated as cam1, cam2, ...
-        mics: List of microphone file paths, keys auto-generated as mic1, mic2, ...
-        tracking: List of tracking file paths, keys use tracking_prefix
-        tracking_prefix: Prefix for tracking keys (default "dlc", could be "sleap", "anipose")
+        cameras: List of camera file paths
+        mics: List of microphone file paths
+        pose: List of pose file paths
 
     Returns:
         Modified dataset with file attributes set
@@ -439,30 +387,14 @@ def set_media_attrs(
         ds = set_media_attrs(
             ds,
             cameras=["video-cam-1.mp4", "video-cam-2.mp4"],
-            tracking=["dlc-cam-1.csv", "dlc-cam-2.csv"],
+            pose=["dlc-cam-1.csv", "dlc-cam-2.csv"],
         )
-        # Result:
-        # ds.attrs["cameras"] = ["cam1", "cam2"]
-        # ds.attrs["cam1"] = "video-cam-1.mp4"
-        # ds.attrs["cam2"] = "video-cam-2.mp4"
-        # ds.attrs["tracking"] = ["dlc1", "dlc2"]
-        # ds.attrs["dlc1"] = "dlc-cam-1.csv"
+        # ds.attrs["cameras"] = ["video-cam-1.mp4", "video-cam-2.mp4"]
+        # ds.attrs["pose"] = ["dlc-cam-1.csv", "dlc-cam-2.csv"]
     """
-    file_configs = [
-        ("cameras", cameras, "cam"),
-        ("mics", mics, "mic"),
-        ("tracking", tracking, tracking_prefix),
-    ]
-
-    for file_type, files, prefix in file_configs:
-        if files is None:
-            continue
-
-        keys = [f"{prefix}{i+1}" for i in range(len(files))]
-
-        ds.attrs[file_type] = keys
-        for key, filepath in zip(keys, files):
-            ds.attrs[key] = filepath
+    for attr_name, files in [("cameras", cameras), ("mics", mics), ("pose", pose)]:
+        if files is not None:
+            ds.attrs[attr_name] = list(files)
 
     return ds
 

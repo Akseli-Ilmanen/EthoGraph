@@ -18,7 +18,7 @@ INTERVAL_DTYPES = {
     "onset_s": np.float64,
     "offset_s": np.float64,
     "labels": np.int32,
-    "individual": str,
+    "individual": object,
 }
 
 
@@ -101,12 +101,13 @@ def intervals_to_xr(df: pd.DataFrame) -> xr.Dataset:
             }
         )
     df_reset = df.reset_index(drop=True)
+    ind_values = np.array(df_reset["individual"].tolist(), dtype="U")
     return xr.Dataset(
         {
             "onset_s": ("segment", df_reset["onset_s"].values.astype(np.float64)),
             "offset_s": ("segment", df_reset["offset_s"].values.astype(np.float64)),
             "labels": ("segment", df_reset["labels"].values.astype(np.int32)),
-            "individual": ("segment", df_reset["individual"].values.astype(str)),
+            "individual": ("segment", ind_values),
         }
     )
 
@@ -355,35 +356,7 @@ def _resolve_overlaps(df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def correct_changepoints(
-    df: pd.DataFrame,
-    cp_times: np.ndarray,
-    min_duration_s: float,
-    stitch_gap_s: float,
-    max_expansion_s: float,
-    max_shrink_s: float,
-    label_thresholds_s: dict[int, float] | None = None,
-) -> pd.DataFrame:
-    """Full interval-native correction pipeline.
 
-    Steps:
-        1. purge_short_intervals — pre-cleanup
-        2. stitch_intervals — merge same-label across small gaps
-        3. snap_boundaries — snap to changepoint times
-        4. purge_short_intervals — post-cleanup (snapping may create short intervals)
-    """
-    if df.empty:
-        return df.copy()
-
-    result = purge_short_intervals(df, min_duration_s, label_thresholds_s)
-
-    result = stitch_intervals(result, stitch_gap_s)
-
-    result = snap_boundaries(result, cp_times, max_expansion_s, max_shrink_s)
-
-    result = purge_short_intervals(result, min_duration_s, label_thresholds_s)
-
-    return result
 
 
 def _rows_to_df(rows: list[dict]) -> pd.DataFrame:

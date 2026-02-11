@@ -259,12 +259,12 @@ class PoseFileDialog(QDialog):
             dt = minimal_dt_from_pose(
                 video_path=video_path,
                 fps=fps,
-                tracking_path=pose_path,
+                pose_path=pose_path,
                 source_software=software,
             )
             dt.to_netcdf(output_path)
 
-            self._populate_io_fields(output_path, video_path, tracking_path=pose_path)
+            self._populate_io_fields(output_path, video_path, pose_path=pose_path)
 
             QMessageBox.information(
                 self,
@@ -275,9 +275,9 @@ class PoseFileDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to create trials.nc file:\n{e}")
 
-    def _populate_io_fields(self, output_path: str, video_path: str, tracking_path: str):
+    def _populate_io_fields(self, output_path: str, video_path: str, pose_path: str):
         video_folder = str(Path(video_path).parent)
-        tracking_folder = str(Path(tracking_path).parent)
+        pose_folder = str(Path(pose_path).parent)
 
         self.app_state.nc_file_path = output_path
         self.io_widget.nc_file_path_edit.setText(output_path)
@@ -285,8 +285,8 @@ class PoseFileDialog(QDialog):
         self.app_state.video_folder = video_folder
         self.io_widget.video_folder_edit.setText(video_folder)
 
-        self.app_state.tracking_folder = tracking_folder
-        self.io_widget.tracking_folder_edit.setText(tracking_folder)
+        self.app_state.pose_folder = pose_folder
+        self.io_widget.pose_folder_edit.setText(pose_folder)
 
 
 class XarrayDatasetDialog(QDialog):

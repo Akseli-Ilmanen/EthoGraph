@@ -38,28 +38,6 @@ def _run_dynamic_threshold(
     return np.array(results['onsets']), np.array(results['offsets'])
 
 
-def vocalseg_from_path(
-    audio_path: str,
-    channel_idx: int = 0,
-    **kwargs,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Detect onset and offset times using vocalseg.dynamic_threshold_segmentation().
-
-    All segmentation parameters are forwarded via **kwargs to let vocalseg
-    handle its own defaults.
-    """
-
-    audio, sr = aio.load_audio(audio_path)
-
-    if audio.ndim > 1:
-        ch = min(channel_idx, audio.shape[1] - 1)
-        audio = audio[:, ch]
-
-    onsets, offsets = _run_dynamic_threshold(audio, sr, **kwargs)
-
-
-    return onsets, offsets
-
 
 def vocalseg_from_array(
     signal: np.ndarray,

@@ -425,11 +425,11 @@ The correction system refines raw label boundaries by snapping them to detected 
 ```python
 # For each individual:
 dense_1d = intervals_to_dense(ind_df, sr, duration, [ind])  # intervals -> dense
-corrected_1d = correct_changepoints_one_trial(dense_1d, ds, all_params)  # correct
+corrected_1d = correct_changepoints_dense(dense_1d, ds, all_params)  # correct
 corrected_df = dense_to_intervals(corrected_1d, time_coord, [ind])  # dense -> intervals
 ```
 
-**Correction pipeline** (`correct_changepoints_one_trial` in `changepoints.py` — unchanged, operates on dense arrays):
+**Correction pipeline** (`correct_changepoints_dense` in `changepoints.py` — unchanged, operates on dense arrays):
 1. Merge all dataset changepoints into a single binary array via `merge_changepoints()`
 2. `purge_small_blocks()` — remove labels shorter than their threshold
 3. `stitch_gaps()` — merge adjacent same-label segments separated by small gaps
