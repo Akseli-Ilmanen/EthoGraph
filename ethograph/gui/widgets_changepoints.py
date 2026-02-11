@@ -211,7 +211,7 @@ class ChangepointsWidget(QWidget):
         row1_layout.addWidget(self.show_cp_checkbox)
 
         self.changepoint_correction_checkbox = QCheckBox(
-            "Changepoint correction during hand-labelling"
+            "Changepoint correction"
         )
         self.changepoint_correction_checkbox.setChecked(self.app_state.apply_changepoint_correction)
         self.changepoint_correction_checkbox.setToolTip(
@@ -1438,15 +1438,15 @@ class ChangepointsWidget(QWidget):
         self.per_label_btn.clicked.connect(self._open_label_thresholds_dialog)
         button_layout.addWidget(self.per_label_btn)
 
-        save_btn = QPushButton("Save")
-        save_btn.setToolTip("Save correction parameters to changepoint_settings.yaml")
-        save_btn.clicked.connect(self._save_correction_params)
-        button_layout.addWidget(save_btn)
+        self.save_params_btn = QPushButton("Save")
+        self.save_params_btn.setToolTip("Save correction parameters to changepoint_settings.yaml")
+        self.save_params_btn.clicked.connect(self._save_correction_params)
+        button_layout.addWidget(self.save_params_btn)
 
-        load_btn = QPushButton("Load")
-        load_btn.setToolTip("Load correction parameters from changepoint_settings.yaml")
-        load_btn.clicked.connect(self._load_correction_params)
-        button_layout.addWidget(load_btn)
+        self.load_params_btn = QPushButton("Load")
+        self.load_params_btn.setToolTip("Load correction parameters from changepoint_settings.yaml")
+        self.load_params_btn.clicked.connect(self._load_correction_params)
+        button_layout.addWidget(self.load_params_btn)
 
         button_layout.addStretch()
         layout.addLayout(button_layout)
@@ -1477,6 +1477,10 @@ class ChangepointsWidget(QWidget):
         apply_cp = self.changepoint_correction_checkbox.isChecked()
         self._correction_params_group.setEnabled(apply_cp)
         self.per_label_btn.setEnabled(apply_cp)
+        self.save_params_btn.setEnabled(apply_cp)
+        self.load_params_btn.setEnabled(apply_cp)
+        self.cp_correction_trial_btn.setEnabled(apply_cp)
+        self.cp_correction_all_trials_btn.setEnabled(apply_cp)
 
     def set_motif_mappings(self, mappings: dict):
         self._motif_mappings = mappings
@@ -1516,8 +1520,11 @@ class ChangepointsWidget(QWidget):
         self.app_state.apply_changepoint_correction = enabled
         if hasattr(self, '_correction_params_group'):
             self._correction_params_group.setEnabled(enabled)
-        if hasattr(self, 'per_label_btn'):
-            self.per_label_btn.setEnabled(enabled)
+        for btn_name in ('per_label_btn', 'save_params_btn', 'load_params_btn',
+                         'cp_correction_trial_btn', 'cp_correction_all_trials_btn'):
+            btn = getattr(self, btn_name, None)
+            if btn is not None:
+                btn.setEnabled(enabled)
 
     def _save_correction_snapshot(self, mode):
         snapshot = {"mode": mode}
