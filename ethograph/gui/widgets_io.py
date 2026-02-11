@@ -25,6 +25,7 @@ from ethograph.utils.paths import gui_default_settings_path
 
 from .app_state import AppStateSpec
 from .dialog_create_nc import CreateNCDialog
+from .dialog_select_template import TemplateDialog
 
 class IOWidget(QWidget):
     """Widget to control I/O paths, device selection, and data loading."""
@@ -54,7 +55,15 @@ class IOWidget(QWidget):
         self.create_nc_button = QPushButton("➕Create trials.nc file with own data")
         self.create_nc_button.setObjectName("create_nc_button")
         self.create_nc_button.clicked.connect(self._on_create_nc_clicked)
-        self.layout().addRow(self.create_nc_button)
+
+        self.template_button = QPushButton("📋 Select template")
+        self.template_button.setObjectName("template_button")
+        self.template_button.clicked.connect(self._on_select_template_clicked)
+
+        button_row = QHBoxLayout()
+        button_row.addWidget(self.create_nc_button)
+        button_row.addWidget(self.template_button)
+        self.layout().addRow(button_row)
 
         self._create_path_folder_widgets()
         self._create_device_combos()
@@ -102,6 +111,25 @@ class IOWidget(QWidget):
         dialog = CreateNCDialog(self.app_state, self, self)
         dialog.exec_()
 
+    def _on_select_template_clicked(self):
+        dialog = TemplateDialog(self)
+        if dialog.exec_() and dialog.selected_template:
+            t = dialog.selected_template
+            if t["nc_file_path"]:
+                self.nc_file_path_edit.setText(t["nc_file_path"])
+                self.app_state.nc_file_path = t["nc_file_path"]
+            if t["video_folder"]:
+                self.video_folder_edit.setText(t["video_folder"])
+                self.app_state.video_folder = t["video_folder"]
+            if t["audio_folder"]:
+                self.audio_folder_edit.setText(t["audio_folder"])
+                self.app_state.audio_folder = t["audio_folder"]
+            if t["pose_folder"]:
+                self.pose_folder_edit.setText(t["pose_folder"])
+                self.app_state.pose_folder = t["pose_folder"]
+            if t.get("import_labels"):
+                self.import_labels_checkbox.setChecked(True)
+
     def _clear_all_line_edits(self):
         """Clear all QLineEdit fields in the widget."""
         if hasattr(self, 'nc_file_path_edit'):
@@ -138,12 +166,12 @@ class IOWidget(QWidget):
 
 
         if object_name == "nc_file_path":
-            import_labels_checkbox = QCheckBox("Import labels")
-            import_labels_checkbox.setObjectName("import_labels_checkbox")
-            import_labels_checkbox.stateChanged.connect(
+            self.import_labels_checkbox = QCheckBox("Import labels")
+            self.import_labels_checkbox.setObjectName("import_labels_checkbox")
+            self.import_labels_checkbox.stateChanged.connect(
                 lambda state: setattr(self.app_state, 'import_labels_nc_data', state == 2)
             )
-            import_labels_checkbox.setChecked(bool(self.app_state.import_labels_nc_data))
+            self.import_labels_checkbox.setChecked(bool(self.app_state.import_labels_nc_data))
 
 
         clear_button = QPushButton("Clear")
@@ -154,7 +182,7 @@ class IOWidget(QWidget):
         layout.addWidget(line_edit)
         layout.addWidget(browse_button)
         if object_name == "nc_file_path":
-            layout.addWidget(import_labels_checkbox)
+            layout.addWidget(self.import_labels_checkbox)
         layout.addWidget(clear_button)
         self.layout().addRow(label, layout)
 
