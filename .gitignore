@@ -5,13 +5,16 @@ audian/
 # Block all files in data/
 data/**/*
 
-# Allow data/examples/ and its contents
+# Except some examples
 !data/examples/
 !data/examples/**
+!data/Moll2025
+!data/Moll2025/**
 
 # Block mp4 everywhere except data/examples
 *.mp4
 !data/examples/**/*.mp4
+!data/Moll2025/**/*.mp4
 
 *gui_settings.yaml
 
