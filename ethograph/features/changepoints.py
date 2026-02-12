@@ -108,6 +108,8 @@ def extract_cp_times(ds: xr.Dataset, time_coord: np.ndarray, **cp_kwargs) -> np.
     if len(cp_ds.data_vars) == 0:
         return np.array([], dtype=np.float64)
 
+
+    # TODO: Do I want merging of changepoints
     try:
         ds_merged, _ = merge_changepoints(filtered)
     except (ValueError, KeyError):
@@ -134,25 +136,38 @@ def snap_to_nearest_changepoint_time(
     Works entirely in the time domain — no index conversion needed.
     Also filters changepoints by target_feature matching feature_sel.
     """
-    filtered = ds.sel(**ds_kwargs) if ds_kwargs else ds
-    cp_ds = filtered.filter_by_attrs(type="changepoints")
-    cp_ds = cp_ds.filter_by_attrs(target_feature=feature_sel)
+    
+    # Changepoints in time
+    if feature_sel == "Audio Waveform":
+        cp_ds = ds.filter_by_attrs(type="audio_changepoints")
+        cp_times = np.concatenate([cp_ds["audio_cp_onsets"].values, cp_ds["audio_cp_offsets"].values])
+        
+        if len(cp_times) == 0:
+            return t_clicked    
+        
+    else:
+        # Changepoints in idxs
+        filtered = ds.sel(**ds_kwargs) if ds_kwargs else ds
+        cp_ds = filtered.filter_by_attrs(type="changepoints")
+        cp_ds = cp_ds.filter_by_attrs(target_feature=feature_sel)
+    
+        if len(cp_ds.data_vars) == 0:
+            return t_clicked
 
-    if len(cp_ds.data_vars) == 0:
-        return t_clicked
+        cp_indices = np.concatenate([
+            np.where(cp_ds[var].values)[0] for var in cp_ds.data_vars
+        ])
+        cp_indices = np.unique(cp_indices)
+        if len(cp_indices) == 0:
+            return t_clicked
 
-    cp_indices = np.concatenate([
-        np.where(cp_ds[var].values)[0] for var in cp_ds.data_vars
-    ])
-    cp_indices = np.unique(cp_indices)
-    if len(cp_indices) == 0:
-        return t_clicked
+        valid = cp_indices[cp_indices < len(time_coord)]
+        if len(valid) == 0:
+            return t_clicked
 
-    valid = cp_indices[cp_indices < len(time_coord)]
-    if len(valid) == 0:
-        return t_clicked
+        cp_times = time_coord[valid] 
 
-    cp_times = time_coord[valid]
+
     nearest_idx = np.argmin(np.abs(cp_times - t_clicked))
     return float(cp_times[nearest_idx])
 

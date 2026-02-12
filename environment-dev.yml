@@ -1,3 +1,5 @@
+# Only relevant if you want to use functionality in ethograph/video_features / ethograph/model. 
+# In development, not well documented.
 name: ethograph
 channels:
   - pytorch

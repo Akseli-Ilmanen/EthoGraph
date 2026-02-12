@@ -50,17 +50,17 @@ class IOWidget(QWidget):
         self.reset_button = QPushButton("💡Reset gui_settings.yaml")
         self.reset_button.setObjectName("reset_button")
         self.reset_button.clicked.connect(self._on_reset_gui_clicked)
-        self.layout().addRow(self.reset_button)
 
-        self.create_nc_button = QPushButton("➕Create trials.nc file with own data")
+        self.create_nc_button = QPushButton("➕Create with own data")
         self.create_nc_button.setObjectName("create_nc_button")
         self.create_nc_button.clicked.connect(self._on_create_nc_clicked)
 
-        self.template_button = QPushButton("📋 Select template")
+        self.template_button = QPushButton("📋Select template data")
         self.template_button.setObjectName("template_button")
         self.template_button.clicked.connect(self._on_select_template_clicked)
 
         button_row = QHBoxLayout()
+        button_row.addWidget(self.reset_button)
         button_row.addWidget(self.create_nc_button)
         button_row.addWidget(self.template_button)
         self.layout().addRow(button_row)

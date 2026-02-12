@@ -91,27 +91,21 @@
                     ```
 
 4. Install the ethograph conda environment. <br>
-´´
-    **Option 1: Using the batch script (Windows only)**
-    
-    1. Open File Explorer and navigate to the ethograph folder.
-    2. Double-click on `Windows install.bat` and follow the steps. Optionally, you can create a Desktop shortcut.
 
-    **Option 2: Manual installation (Windows / MacOS / Linux)**
+    Open a terminal and navigate to the ethograph folder:
+    ```bash
+        cd /path/to/ethograph
+    ```
+    Create the conda environment:
+    ```bash
+        conda env create -f environment.yml && conda activate ethograph && pip install -r requirements.txt
+    ```
+    Optionally, create a desktop shortcut:
+    ```bash
+        ethograph shortcut
+    ```
     
-    1. Open a terminal and navigate to the ethograph folder:
-    ```bash
-            cd /path/to/ethograph
-    ```
-        2. Create the conda environment
-    ```bash
-            # Requires conda >= 23.10 (or run: conda config --set solver libmamba)
-            conda env create -f environment.yml && conda activate ethograph && pip install -r requirements.txt
-    ```
-        3. Optionally, create a desktop shortcut:
-    ```bash
-            ethograph-shortcut
-    ```
+ 
 
 5. Test it works. <br>
 

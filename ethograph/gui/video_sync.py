@@ -43,11 +43,8 @@ class NapariVideoSync(QObject):
 
         self.audio_sr = getattr(app_state.ds, "sr", None) if hasattr(app_state, "ds") else None
         if self.audio_sr is None and audio_source:
-            try:
-                with AudioLoader(audio_source) as data:
-                    self.audio_sr = data.rate
-            except Exception:
-                self.audio_sr = 44100
+            with AudioLoader(audio_source) as data:
+                self.audio_sr = data.rate
 
         for layer in self.viewer.layers:
             if layer.name == "video" and hasattr(layer, "data"):

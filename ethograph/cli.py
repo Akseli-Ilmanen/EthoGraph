@@ -4,14 +4,13 @@
 import sys
 
 
-
 def launch():
     """Launch the ethograph GUI."""
     print("Loading GUI...")
     print("\n")
     import napari
     from ethograph.gui.widgets_meta import MetaWidget
-    
+
     viewer = napari.Viewer()
     viewer.window.add_dock_widget(MetaWidget(viewer), name="ethograph GUI")
     napari.run()
@@ -29,9 +28,12 @@ def main():
 
     if command == "launch":
         launch()
+    elif command == "shortcut":
+        from ethograph.shortcuts import install_shortcut
+        install_shortcut()
     else:
         print(f"Unknown command: {command}")
-        print("Available commands: launch")
+        print("Available commands: launch, shortcut")
         sys.exit(1)
 
 

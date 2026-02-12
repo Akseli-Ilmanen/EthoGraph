@@ -230,6 +230,9 @@ class PlotContainer(QWidget):
                 thresholds = [(threshold, default_pen)]
 
         self.amp_envelope_vb = pg.ViewBox()
+        self.amp_envelope_vb.setZValue(1000)
+        self.amp_envelope_vb.enableAutoRange(axis=pg.ViewBox.XAxis, enable=False)
+        self.amp_envelope_vb.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
         host.plot_item.scene().addItem(self.amp_envelope_vb)
         self.amp_envelope_vb.setXLink(host.plot_item.vb)
 
@@ -256,10 +259,12 @@ class PlotContainer(QWidget):
 
         def update_geometry():
             if self.amp_envelope_vb is not None:
-                self.amp_envelope_vb.setGeometry(host.plot_item.vb.sceneBoundingRect())
+                rect = host.plot_item.vb.sceneBoundingRect()
+                if rect.width() > 0 and rect.height() > 0:
+                    self.amp_envelope_vb.setGeometry(rect)
 
-        # Defer initial geometry so Qt layout has settled
         QTimer.singleShot(0, update_geometry)
+        QTimer.singleShot(100, update_geometry)
         host.plot_item.vb.sigResized.connect(update_geometry)
         self._amp_envelope_geometry_updater = update_geometry
 
@@ -784,14 +789,7 @@ class PlotContainer(QWidget):
 
         plots_to_draw = [self.spectrogram_plot, self.audio_trace_plot]
 
-        # Determine line style based on current zoom level
         line_style = self._get_changepoint_line_style()
-
-        # Round times to nearest label sample for alignment
-        label_sr = getattr(self.app_state, 'label_sr', None)
-        if label_sr and label_sr > 0:
-            onsets = np.round(onsets * label_sr) / label_sr
-            offsets = np.round(offsets * label_sr) / label_sr
 
         for plot in plots_to_draw:
             if plot is None:
