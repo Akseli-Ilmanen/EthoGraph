@@ -1,4 +1,5 @@
 # EthoGraph
 
+Still under development. 
 
-Installation instr
+[Documentation](https://ethograph.readthedocs.io/en/latest/)
