@@ -185,50 +185,5 @@ def ds_to_df(ds):
     return pd.DataFrame(df)
 
 
-def build_variable_dict(
-    trees: Dict[str, TrialTree],
-    variable: str,
-    ds_kwargs: Dict[str, str] = None,
-) -> Dict[Tuple[str, int], np.ndarray]:
-    """
-    Build dictionary mapping (session, trial) to pre-computed variable arrays.
 
-    Parameters
-    ----------
-    trees : Dict[str, TrialTree]
-        Same trees dict used for stack_trials.
-    keypoint : str
-        Keypoint to extract angles for (default: "beakTip").
-    individual : str, optional
-        Individual to select. If None, uses first available.
-
-    Returns
-    -------
-    Dict[Tuple[str, int], np.ndarray]
-        Mapping of (session, trial) -> angle_rgb/speed/... array with shape (time,).
-    """
-    variable_dict = {}
-
-    for tree in trees.values():
-        for trial_name in tree.children:
-            if not trial_name.startswith(TrialTree.TRIAL_PREFIX):
-                continue
-
-            trial_ds = tree[trial_name].ds
-            if variable not in trial_ds.data_vars:
-                continue
-
-            session = trial_ds.attrs.get('session')
-            trial_num = TrialTree.trial_id(trial_name)
-
-            if ds_kwargs is None:
-                ds_kwargs = {}
-
-            da = trial_ds[variable].sel(**ds_kwargs)
-
-            variable_dict[(session, trial_num)] = da.values
-
-            
-
-    return variable_dict
 
