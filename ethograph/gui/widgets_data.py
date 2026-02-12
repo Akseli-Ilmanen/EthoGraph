@@ -192,6 +192,8 @@ class DataWidget(DataLoader, QWidget):
 
         load_btn = self.io_widget.load_button
         load_btn.setEnabled(False)
+        self.io_widget.create_nc_button.setEnabled(False)
+        self.io_widget.template_button.setEnabled(False)
         self.changepoints_widget.setEnabled(True)
         self.audio_widget.set_enabled_state(has_audio=False)
 
