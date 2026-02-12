@@ -1,20 +1,27 @@
-data/
 result/
 audian/
 
-# Block all files in data/
-data/**/*
-
-# Except some examples
+# Block all files in data/ except examples and Moll2025
+data/*
 !data/examples/
-!data/examples/**
-!data/Moll2025
-!data/Moll2025/**
+!data/Moll2025/
 
-# Block mp4 everywhere except data/examples
+# Block binary files everywhere
 *.mp4
+*.nc
+*.wav
+
+# Allow binary files in data/examples and data/Moll2025
 !data/examples/**/*.mp4
+!data/examples/**/*.nc
+!data/examples/**/*.wav
 !data/Moll2025/**/*.mp4
+!data/Moll2025/**/*.nc
+!data/Moll2025/**/*.wav
+
+# But still exclude old/orig backup files (must come AFTER negations)
+data/examples/**/*[Oo][Ll][Dd]*
+data/examples/**/*[Oo]rig*
 
 *gui_settings.yaml
 
@@ -28,7 +35,6 @@ __pycache__/
 dist/
 build/
 *.egg-info/
-
 
 
 # IDE
