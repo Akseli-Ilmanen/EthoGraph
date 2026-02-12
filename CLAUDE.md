@@ -177,7 +177,10 @@ def get_time_coord(da: xr.DataArray) -> np.ndarray:
 
 **AppState time variables:**
 - `app_state.time` (np.ndarray): Time array for the currently selected feature. Updated when feature selection changes via `set_key_sel("features", ...)`.
+<<<<<<< HEAD
 - `app_state.label_sr` (float): Derived from the feature time coordinate. Used for audio changepoint quantization in plot_container.
+=======
+>>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
 - `app_state.label_intervals` (pd.DataFrame | None): Working DataFrame for the current trial's interval-based labels.
 
 **Usage pattern:**
@@ -459,6 +462,42 @@ User clicks "All Trials" -> ChangepointsWidget._cp_correction("all_trials")
 
 ---
 
+<<<<<<< HEAD
+=======
+### Changepoint Storage Architecture
+
+Two distinct storage formats for changepoints, reflecting different data characteristics:
+
+**Normal (kinematic) changepoints** — dense binary arrays in the trial dataset:
+- Stored as `int8` DataArrays sharing the feature's time dimension (e.g., `speed_troughs`)
+- `attrs: type="changepoints", target_feature=..., method=...`
+- Per-feature, multi-dimensional (can have space, keypoints dims)
+- Created via `add_changepoints_to_ds()` or ruptures detection
+- Typical size: ~100KB/trial at 30Hz
+
+**Audio changepoints** — onset/offset time pairs in the trial dataset:
+- Stored as two `float64` DataArrays: `audio_cp_onsets`, `audio_cp_offsets` sharing an `audio_cp` dimension
+- `attrs: type="audio_changepoints", target_feature=..., method=...`
+- Times in seconds (not indices), decoupled from any sampling rate
+- Created via VocalPy/VocalSeg detection in `ChangepointsWidget._compute_audio_changepoints()`
+- Typical size: a few KB (hundreds of onset/offset pairs vs ~25MB for dense at 44kHz)
+
+**Why two formats:** Audio rates (44kHz) would make dense binary storage prohibitively large. Onset/offset pairs are compact and naturally map to the seconds-based label system.
+
+**Storage/retrieval in ChangepointsWidget:**
+- `_store_audio_cps_to_ds(onsets, offsets, target_feature, method)` — writes to ds via `_update_trial_dataset()`
+- `_get_audio_cps_from_ds()` — reads `audio_cp_onsets`/`audio_cp_offsets` from ds
+- Audio CPs persist across trial switches (stored in DataTree) and survive save/reload
+
+
+**What if you would like to apply audio changepoint detection on non sound files?**
+- Audio changepoints are in many ways optimized for audio data. However, if you have high SR periodic data, these methods may be helpful. In this case, we would recommend saving this data as `.wav` files using `audioio`. The `plots_audiotrace.py` also uses smart min/max downsampling, hence the GUI will act much faster than if you load in as conventional `pyqtgraph` lineplot.
+
+
+
+---
+
+>>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
 ### Plot Controls: `widgets_plot.py`
 
 **PlotsWidget** - Real-time parameter adjustment:
@@ -595,7 +634,11 @@ See `docs/shortcuts.md`
 
 ### Why interval-based labels?
 
+<<<<<<< HEAD
 EthoGraph labels were originally a dense `np.int8` array of shape `(n_time_samples, n_individuals)` locked to a single sampling rate via `label_sr`. This had three limitations:
+=======
+EthoGraph labels were originally a dense `np.int8` array of shape `(n_time_samples, n_individuals)` locked to a single sampling rate. This had three limitations:
+>>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
 1. **Rate-locked**: Cannot label across data types with different rates (video 30Hz vs audio 44kHz)
 2. **Export friction**: Converting to standard formats (BORIS, crowsetta, Audacity) required index→time conversion
 3. **Memory**: Dense arrays waste space for sparse annotations
@@ -632,6 +675,16 @@ The migration to interval-based labels `(onset_s, offset_s, labels, individual)`
 ### Audio changepoints
 
 Fix envelope plotting, see also https://github.com/issues/created?issue=vocalpy%7Cvocalpy%7C229, test with cricket audio
+<<<<<<< HEAD
+=======
+- wait for Git issue, vocalpy.energy
+
+Audio chagnepoint correction basics working,
+
+TODO
+- unify naming convention, e.g. confusing that we have audio cahngepiotni spectral changepoints, etc. -> common terminology
+- add some functionality that prevents users from applying Audio changepoints with non audio data, and other changepoints to audio.
+>>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
 
 
 ### Testing

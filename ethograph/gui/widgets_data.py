@@ -28,6 +28,7 @@ from qtpy.QtWidgets import (
 from ethograph import downsample_trialtree
 from ethograph.utils.data_utils import get_time_coord, sel_valid
 
+
 from .app_constants import DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_SPACING
 from .data_loader import load_dataset
 from .plots_space import SpacePlot
@@ -120,45 +121,9 @@ class DataWidget(DataLoader, QWidget):
         xmin, xmax = self.plot_container.get_current_xlim()
         self.update_main_plot(t0=xmin, t1=xmax)
 
-    def _get_sampling_rate(self, time_coords: np.ndarray) -> float:
-        """Calculate sampling rate from time coordinates."""
-        dt = np.median(np.diff(time_coords))
-        return 1.0 / dt
 
-    def _set_audio_time(self):
-        """Set app_state.time to an audio-rate time coordinate for Audio Waveform."""
-        ds = self.app_state.ds
-        audio_sr = ds.attrs.get("audio_sr")
-        if audio_sr is None:
-            return
 
-        audio_sr = float(audio_sr)
 
-        # Determine duration from audio file (preferred) or feature time extent
-        n_samples = None
-        audio_path = getattr(self.app_state, 'audio_path', None)
-        if audio_path:
-            loader = SharedAudioCache.get_loader(audio_path)
-            if loader:
-                n_samples = len(loader)
-                audio_sr = float(loader.rate)
-
-        if n_samples is None:
-            features = [v for v in self.type_vars_dict.get("features", [])
-                        if v != "Audio Waveform"]
-            if features:
-                feature_time = get_time_coord(ds[features[0]])
-                duration = float(feature_time.values[-1])
-                n_samples = int(duration * audio_sr) + 1
-            else:
-                return
-
-        time_values = np.arange(n_samples) / audio_sr
-        self.app_state.time = xr.DataArray(
-            time_values, dims=["time_audio"],
-            coords={"time_audio": time_values}, name="time_audio",
-        )
-        self.app_state.label_sr = audio_sr
 
 
 
@@ -212,64 +177,38 @@ class DataWidget(DataLoader, QWidget):
         
         self.app_state.ds = self.app_state.dt.trial(trials[0])
         self.app_state.label_ds = self.app_state.label_dt.trial(trials[0])
-
-        
-    
-        features_list = list(self.type_vars_dict["features"])
-        
-        # TODO: Change later
-        if 'speed' in features_list:
-            setattr(self.app_state, "features_sel", "speed")
-        else:
-            setattr(self.app_state, "features_sel", features_list[0])
-        
-        
-        self.app_state.time = get_time_coord(self.app_state.ds[features_list[0]])
-        
-
-        # Derive label_sr from feature time coord (labels are now interval-based)
-        feature_time = self.app_state.time
-        if feature_time is not None and len(feature_time) > 1:
-            self.app_state.label_sr = self._get_sampling_rate(np.asarray(feature_time))
-
-
         self.app_state.trials = sorted(trials)
-        
-        
         
 
         self._create_trial_controls()
 
-        if self.changepoints_widget:
-            self.changepoints_widget.setEnabled(True)
 
-        if hasattr(self.app_state, 'features_sel_changed'):
-            self.app_state.features_sel_changed.connect(self._on_external_feature_change)
 
         self._restore_or_set_defaults()
         self._set_controls_enabled(True)
         self.app_state.ready = True
 
-        if self.audio_widget:
-            self.audio_widget.set_enabled_state(has_audio=False)
+       
 
         load_btn = self.io_widget.load_button
         load_btn.setEnabled(False)
+        self.io_widget.create_nc_button.setEnabled(False)
+        self.io_widget.template_button.setEnabled(False)
+        self.changepoints_widget.setEnabled(True)
+        self.audio_widget.set_enabled_state(has_audio=False)
 
         # Set initial trial selection before calling on_trial_changed
         if not self.app_state.trials_sel:
             self.app_state.trials_sel = self.app_state.trials[0]
 
-        # Update trials combo after ready=True so it populates correctly
-        self.update_trials_combo()
 
+        self.update_trials_combo() # Update combo without triggering plotting
         self._load_trial_with_fallback()
-
+        
+        
         self.view_mode_combo.show()
-
         self.setVisible(True)
         load_btn.setText("Restart app to load new data")
-
         self._force_layout_update()
         
 
@@ -499,7 +438,7 @@ class DataWidget(DataLoader, QWidget):
         from .spectrogram_sources import build_xarray_source
 
         feature_sel = getattr(self.app_state, 'features_sel', None)
-        if not feature_sel or feature_sel == "Audio Waveform":
+        if not feature_sel:
             return None
 
         try:
@@ -637,13 +576,10 @@ class DataWidget(DataLoader, QWidget):
             self.app_state.set_key_sel(key, selected_value)
 
             if key == "features":
+                self.view_mode_combo.show()
                 if selected_value == "Audio Waveform":
-                    self._set_audio_time()
-                    self.view_mode_combo.show()
                     self._apply_view_mode_for_waveform()
                 else:
-                    self.app_state.time = get_time_coord(self.app_state.ds[selected_value])
-                    self.view_mode_combo.show()
                     self._apply_view_mode_for_feature()
 
                 self._update_audio_overlay_checkboxes()
@@ -670,40 +606,7 @@ class DataWidget(DataLoader, QWidget):
             if key == "pose":
                 self.update_pose()
 
-    def _on_external_feature_change(self):
-        """Handle feature selection change from app_state (e.g., from changepoints widget)."""
-        if not self.app_state.ready:
-            return
 
-        features_combo = self.combos.get("features")
-        if features_combo is None:
-            return
-
-        feature = self.app_state.features_sel
-        if not feature or feature == features_combo.currentText():
-            return
-
-        features_combo.blockSignals(True)
-        idx = features_combo.findText(feature)
-        if idx >= 0:
-            features_combo.setCurrentIndex(idx)
-        features_combo.blockSignals(False)
-
-        if feature == "Audio Waveform":
-            self._set_audio_time()
-            self._apply_view_mode_for_waveform()
-            self._update_audio_overlay_checkboxes()
-            current_plot = self.plot_container.get_current_plot()
-            xmin, xmax = current_plot.get_current_xlim()
-            self.update_main_plot(t0=xmin, t1=xmax)
-        else:
-            self.plot_container.switch_to_lineplot()
-            self.app_state.time = get_time_coord(self.app_state.ds[feature])
-            self._update_audio_overlay_checkboxes()
-            self._update_audio_overlay()
-            current_plot = self.plot_container.get_current_plot()
-            xmin, xmax = current_plot.get_current_xlim()
-            self.update_main_plot(t0=xmin, t1=xmax)
 
     def _on_all_checkbox_changed(self, key: str, state: int):
         """Handle 'All' checkbox state change for a type variable.
@@ -781,8 +684,13 @@ class DataWidget(DataLoader, QWidget):
                         combo.setCurrentText(str(vars[0]))
                         self.app_state.set_key_sel(key, str(vars[0]))
                 else:
-                    combo.setCurrentText(str(vars[0]))
-                    self.app_state.set_key_sel(key, str(vars[0]))
+                    # Speed is good default feature
+                    if key == "features" and "speed" in vars:
+                        combo.setCurrentText("speed")
+                        self.app_state.set_key_sel(key, "speed")                       
+                    else:
+                        combo.setCurrentText(str(vars[0]))
+                        self.app_state.set_key_sel(key, str(vars[0]))
 
 
         if self.app_state.key_sel_exists("trials"):
@@ -831,7 +739,7 @@ class DataWidget(DataLoader, QWidget):
     def on_trial_changed(self):
         """Handle all consequences of a trial change - centralized orchestration."""
         trials_sel = self.app_state.trials_sel
-
+        
         self.app_state.ds = self.app_state.dt.trial(trials_sel)
         self.app_state.label_ds = self.app_state.label_dt.trial(trials_sel)
 
@@ -840,16 +748,16 @@ class DataWidget(DataLoader, QWidget):
 
         self.io_widget.update_device_combos_for_trial(self.app_state.ds)
 
-        default_feature = self.combos["features"].itemText(0)
-        feature_sel = getattr(self.app_state, 'features_sel', default_feature)
-        if feature_sel == "Audio Waveform":
-            self._set_audio_time()
-        elif feature_sel:
-            self.app_state.time = get_time_coord(self.app_state.ds[feature_sel])
+        fallback_feature = self.combos["features"].itemText(0)
+        feature_sel = getattr(self.app_state, 'features_sel', fallback_feature)
+        self.app_state.set_time(feature_sel=feature_sel)
 
-        if hasattr(self, 'view_mode_combo'):
+
+        if feature_sel == "Audio Waveform":
+            self._apply_view_mode_for_waveform()
+        elif hasattr(self, 'view_mode_combo'):
             view_mode = self.view_mode_combo.currentText()
-            if view_mode.startswith("Spectrogram") and feature_sel != "Audio Waveform":
+            if view_mode.startswith("Spectrogram"):
                 source = self._build_xarray_source()
                 if source is not None:
                     self.plot_container.spectrogram_plot.set_source(source)
@@ -898,7 +806,6 @@ class DataWidget(DataLoader, QWidget):
 
             # Handle audio overlay
             if self.plot_container.is_lineplot():
- 
                 self.plot_container.update_audio_overlay()
          
 
@@ -941,13 +848,8 @@ class DataWidget(DataLoader, QWidget):
 
 
 
-
-
-
-
-
     def update_video_audio(self):
-        """Update video and audio."""
+        """Update video data and update video/audio path."""
         if not self.app_state.ready or not self.app_state.video_folder:
             return
 

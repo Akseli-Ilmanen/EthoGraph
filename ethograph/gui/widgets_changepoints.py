@@ -97,7 +97,6 @@ def _run_ruptures_in_process(
 class ChangepointsWidget(QWidget):
     """Changepoints controls - dataset changepoints and audio changepoint detection."""
 
-    audio_changepoints_updated = Signal()
     request_plot_update = Signal()
 
     def __init__(self, napari_viewer: Viewer, app_state, parent=None):
@@ -173,21 +172,30 @@ class ChangepointsWidget(QWidget):
         self.app_state.show_changepoints = True
         self.request_plot_update.emit()
 
-    def _store_detection_results(
-        self, onsets: np.ndarray, offsets: np.ndarray, count_label: QLabel
+    def _store_audio_cps_to_ds(
+        self, onsets: np.ndarray, offsets: np.ndarray, target_feature: str, method: str
     ):
-        self.app_state.audio_changepoint_onsets = onsets
-        self.app_state.audio_changepoint_offsets = offsets
+        ds = self.app_state.ds
+        if ds is None:
+            return
 
-        count_label.setText(f"{len(onsets)}+{len(offsets)}")
-        show_info(f"Detected {len(onsets)} onsets, {len(offsets)} offsets")
+        new_ds = ds.copy()
+        for var in ("audio_cp_onsets", "audio_cp_offsets"):
+            if var in new_ds.data_vars:
+                new_ds = new_ds.drop_vars(var)
 
-        self.audio_changepoints_updated.emit()
+        attrs = {"type": "audio_changepoints", "target_feature": target_feature, "method": method}
+        new_ds["audio_cp_onsets"] = xr.DataArray(onsets, dims=["audio_cp"], attrs=attrs)
+        new_ds["audio_cp_offsets"] = xr.DataArray(offsets, dims=["audio_cp"], attrs=attrs)
+        self._update_trial_dataset(new_ds)
 
-        if self.plot_container:
-            self.plot_container.draw_audio_changepoints(onsets, offsets)
-
-        self._ensure_changepoints_visible()
+    def _get_audio_cps_from_ds(self) -> tuple[np.ndarray, np.ndarray] | None:
+        ds = getattr(self.app_state, "ds", None)
+        if ds is None:
+            return None
+        if "audio_cp_onsets" not in ds.data_vars or "audio_cp_offsets" not in ds.data_vars:
+            return None
+        return ds["audio_cp_onsets"].values, ds["audio_cp_offsets"].values
 
     def _draw_dataset_changepoints_on_plot(self):
         if self.plot_container:
@@ -395,7 +403,7 @@ class ChangepointsWidget(QWidget):
         params_group.setLayout(params_layout)
         layout.addWidget(params_group)
 
-        # --- Row 0: Method combo + Min dur (shared) ---
+        # --- Row 0: Method + Min dur (shared) ---
         self.audio_cp_method_combo = QComboBox()
         self.audio_cp_method_combo.setToolTip(
             "meansquared: Mean-squared energy thresholding (VocalPy)\n"
@@ -417,62 +425,7 @@ class ChangepointsWidget(QWidget):
         params_layout.addWidget(QLabel("Min dur (s):"), row, 2)
         params_layout.addWidget(self.audio_cp_min_dur_edit, row, 3)
 
-        # --- Row 1: meansquared — Min silence + Smooth ---
-        self.ms_min_silent_label = QLabel("Min silence (s):")
-        self.ms_min_silent_dur_edit = QLineEdit("0.002")
-        self.ms_min_silent_dur_edit.setToolTip(
-            "Minimum silent gap between segments (seconds).\n"
-            "Gaps shorter than this are merged."
-        )
-        self.ms_smooth_label = QLabel("Smooth (ms):")
-        self.ms_smooth_win_spin = QSpinBox()
-        self.ms_smooth_win_spin.setRange(1, 100)
-        self.ms_smooth_win_spin.setValue(2)
-        self.ms_smooth_win_spin.setToolTip("Smoothing window size in milliseconds")
-
-        row += 1
-        params_layout.addWidget(self.ms_min_silent_label, row, 0)
-        params_layout.addWidget(self.ms_min_silent_dur_edit, row, 1)
-        params_layout.addWidget(self.ms_smooth_label, row, 2)
-        params_layout.addWidget(self.ms_smooth_win_spin, row, 3)
-
-        # --- Row 2: vocalseg — Min silence + N FFT ---
-        self.vs_silence_label = QLabel("Min silence (s):")
-        self.vs_silence_edit = QLineEdit()
-        self.vs_silence_edit.setToolTip(
-            "Envelope threshold for offset detection (0-1).\n"
-            "Lower = offsets detected later (captures more tail).\n"
-            "Higher = offsets detected earlier."
-        )
-        self.vs_n_fft_label = QLabel("N FFT:")
-        self.vs_n_fft_edit = QLineEdit()
-        self.vs_n_fft_edit.setToolTip(
-            "FFT window size.\n"
-            "Audio default: 1024. For low-rate dataset features (e.g. 30 Hz),\n"
-            "use smaller values like 150-200."
-        )
-
-        row += 1
-        params_layout.addWidget(self.vs_silence_label, row, 0)
-        params_layout.addWidget(self.vs_silence_edit, row, 1)
-        params_layout.addWidget(self.vs_n_fft_label, row, 2)
-        params_layout.addWidget(self.vs_n_fft_edit, row, 3)
-
-        # --- Row 3: ava — nperseg ---
-        self.ava_nperseg_label = QLabel("nperseg:")
-        self.ava_nperseg_spin = QSpinBox()
-        self.ava_nperseg_spin.setRange(4, 8192)
-        self.ava_nperseg_spin.setValue(1024)
-        self.ava_nperseg_spin.setToolTip(
-            "FFT window size for ava segmentation.\n"
-            "noverlap is automatically set to nperseg // 2."
-        )
-
-        row += 1
-        params_layout.addWidget(self.ava_nperseg_label, row, 0)
-        params_layout.addWidget(self.ava_nperseg_spin, row, 1)
-
-        # --- Row 4: Freq range (shared) ---
+        # --- Row 1: Freq range (shared left) + method-specific right ---
         self.audio_cp_freq_range_widget = QWidget()
         freq_layout = QHBoxLayout()
         freq_layout.setContentsMargins(0, 0, 0, 0)
@@ -495,11 +448,48 @@ class ChangepointsWidget(QWidget):
         freq_layout.addWidget(QLabel("\u2013"))
         freq_layout.addWidget(self.audio_cp_freq_max_spin)
 
+        self.ms_min_silent_label = QLabel("Min silence (s):")
+        self.ms_min_silent_dur_edit = QLineEdit("0.002")
+        self.ms_min_silent_dur_edit.setToolTip(
+            "Minimum silent gap between segments (seconds).\n"
+            "Gaps shorter than this are merged."
+        )
+
+        self.vs_silence_label = QLabel("Min silence (s):")
+        self.vs_silence_edit = QLineEdit()
+        self.vs_silence_edit.setToolTip(
+            "Envelope threshold for offset detection (0-1).\n"
+            "Lower = offsets detected later (captures more tail).\n"
+            "Higher = offsets detected earlier."
+        )
+
+        self.ava_nperseg_label = QLabel("nperseg:")
+        self.ava_nperseg_spin = QSpinBox()
+        self.ava_nperseg_spin.setRange(4, 8192)
+        self.ava_nperseg_spin.setValue(1024)
+        self.ava_nperseg_spin.setToolTip(
+            "FFT window size for ava segmentation.\n"
+            "noverlap is automatically set to nperseg // 2."
+        )
+
         row += 1
         params_layout.addWidget(QLabel("Freq (Hz):"), row, 0)
         params_layout.addWidget(self.audio_cp_freq_range_widget, row, 1)
+        params_layout.addWidget(self.ms_min_silent_label, row, 2)
+        params_layout.addWidget(self.ms_min_silent_dur_edit, row, 3)
+        params_layout.addWidget(self.vs_silence_label, row, 2)
+        params_layout.addWidget(self.vs_silence_edit, row, 3)
+        params_layout.addWidget(self.ava_nperseg_label, row, 2)
+        params_layout.addWidget(self.ava_nperseg_spin, row, 3)
 
-        # --- Row 5: meansquared — Threshold ---
+        # --- Row 2: method-specific ---
+        # ms: Smooth + Threshold
+        self.ms_smooth_label = QLabel("Smooth (ms):")
+        self.ms_smooth_win_spin = QSpinBox()
+        self.ms_smooth_win_spin.setRange(1, 100)
+        self.ms_smooth_win_spin.setValue(2)
+        self.ms_smooth_win_spin.setToolTip("Smoothing window size in milliseconds")
+
         self.ms_threshold_label = QLabel("Threshold:")
         self.ms_threshold_spin = QSpinBox()
         self.ms_threshold_spin.setRange(1, 1000000)
@@ -510,29 +500,20 @@ class ChangepointsWidget(QWidget):
             "Higher = less sensitive."
         )
 
-        row += 1
-        params_layout.addWidget(self.ms_threshold_label, row, 0)
-        params_layout.addWidget(self.ms_threshold_spin, row, 1)
+        # vs: Hop + N FFT
+        self.vs_hop_label = QLabel("Hop (ms):")
+        self.vs_hop_edit = QLineEdit()
+        self.vs_hop_edit.setToolTip("Hop length in milliseconds for spectrogram")
 
-        # --- Row 6: vocalseg — Ref dB + Min dB ---
-        self.vs_ref_db_label = QLabel("Ref dB:")
-        self.vs_ref_db_edit = QLineEdit()
-        self.vs_ref_db_edit.setToolTip("Reference level dB of audio (default: 20)")
-
-        self.vs_min_db_label = QLabel("Min dB:")
-        self.vs_min_db_edit = QLineEdit()
-        self.vs_min_db_edit.setToolTip(
-            "Minimum dB level threshold for segmentation.\n"
-            "More negative = more sensitive (detects quieter sounds)."
+        self.vs_n_fft_label = QLabel("N FFT:")
+        self.vs_n_fft_edit = QLineEdit()
+        self.vs_n_fft_edit.setToolTip(
+            "FFT window size.\n"
+            "Audio default: 1024. For low-rate dataset features (e.g. 30 Hz),\n"
+            "use smaller values like 150-200."
         )
 
-        row += 1
-        params_layout.addWidget(self.vs_ref_db_label, row, 0)
-        params_layout.addWidget(self.vs_ref_db_edit, row, 1)
-        params_layout.addWidget(self.vs_min_db_label, row, 2)
-        params_layout.addWidget(self.vs_min_db_edit, row, 3)
-
-        # --- Row 7: ava — Thresh lowest + Thresh min ---
+        # ava: Thresh lowest + Thresh min
         self.ava_thresh_lowest_label = QLabel("Thresh lowest:")
         self.ava_thresh_lowest_spin = QDoubleSpinBox()
         self.ava_thresh_lowest_spin.setRange(0.0, 1.0)
@@ -555,21 +536,33 @@ class ChangepointsWidget(QWidget):
         )
 
         row += 1
+        params_layout.addWidget(self.ms_smooth_label, row, 0)
+        params_layout.addWidget(self.ms_smooth_win_spin, row, 1)
+        params_layout.addWidget(self.ms_threshold_label, row, 2)
+        params_layout.addWidget(self.ms_threshold_spin, row, 3)
+        params_layout.addWidget(self.vs_hop_label, row, 0)
+        params_layout.addWidget(self.vs_hop_edit, row, 1)
+        params_layout.addWidget(self.vs_n_fft_label, row, 2)
+        params_layout.addWidget(self.vs_n_fft_edit, row, 3)
         params_layout.addWidget(self.ava_thresh_lowest_label, row, 0)
         params_layout.addWidget(self.ava_thresh_lowest_spin, row, 1)
         params_layout.addWidget(self.ava_thresh_min_label, row, 2)
         params_layout.addWidget(self.ava_thresh_min_spin, row, 3)
 
-        # --- Row 8: vocalseg — Hop ---
-        self.vs_hop_label = QLabel("Hop (ms):")
-        self.vs_hop_edit = QLineEdit()
-        self.vs_hop_edit.setToolTip("Hop length in milliseconds for spectrogram")
+        # --- Row 3: method-specific ---
+        # vs: Ref dB + Min dB
+        self.vs_ref_db_label = QLabel("Ref dB:")
+        self.vs_ref_db_edit = QLineEdit()
+        self.vs_ref_db_edit.setToolTip("Reference level dB of audio (default: 20)")
 
-        row += 1
-        params_layout.addWidget(self.vs_hop_label, row, 0)
-        params_layout.addWidget(self.vs_hop_edit, row, 1)
+        self.vs_min_db_label = QLabel("Min dB:")
+        self.vs_min_db_edit = QLineEdit()
+        self.vs_min_db_edit.setToolTip(
+            "Minimum dB level threshold for segmentation.\n"
+            "More negative = more sensitive (detects quieter sounds)."
+        )
 
-        # --- Row 9: ava — Thresh max ---
+        # ava: Thresh max
         self.ava_thresh_max_label = QLabel("Thresh max:")
         self.ava_thresh_max_spin = QDoubleSpinBox()
         self.ava_thresh_max_spin.setRange(0.0, 1.0)
@@ -579,10 +572,13 @@ class ChangepointsWidget(QWidget):
         self.ava_thresh_max_spin.setToolTip("Threshold for finding local maxima.")
 
         row += 1
+        params_layout.addWidget(self.vs_ref_db_label, row, 0)
+        params_layout.addWidget(self.vs_ref_db_edit, row, 1)
+        params_layout.addWidget(self.vs_min_db_label, row, 2)
+        params_layout.addWidget(self.vs_min_db_edit, row, 3)
         params_layout.addWidget(self.ava_thresh_max_label, row, 0)
         params_layout.addWidget(self.ava_thresh_max_spin, row, 1)
 
-        # Trigger initial visibility
         self._on_audio_cp_method_changed(self.audio_cp_method_combo.currentText())
 
         # --- Buttons ---
@@ -745,22 +741,30 @@ class ChangepointsWidget(QWidget):
         is_ava = method == "ava"
         is_vs = method == "Dynamic thresholding"
 
-        for w in (self.ms_min_silent_label, self.ms_min_silent_dur_edit,
-                  self.ms_smooth_label, self.ms_smooth_win_spin,
+        # Row 1 right side
+        for w in (self.ms_min_silent_label, self.ms_min_silent_dur_edit):
+            w.setVisible(is_ms)
+        for w in (self.vs_silence_label, self.vs_silence_edit):
+            w.setVisible(is_vs)
+        for w in (self.ava_nperseg_label, self.ava_nperseg_spin):
+            w.setVisible(is_ava)
+
+        # Row 2
+        for w in (self.ms_smooth_label, self.ms_smooth_win_spin,
                   self.ms_threshold_label, self.ms_threshold_spin):
             w.setVisible(is_ms)
-
-        for w in (self.vs_silence_label, self.vs_silence_edit,
-                  self.vs_n_fft_label, self.vs_n_fft_edit,
-                  self.vs_ref_db_label, self.vs_ref_db_edit,
-                  self.vs_min_db_label, self.vs_min_db_edit,
-                  self.vs_hop_label, self.vs_hop_edit):
+        for w in (self.vs_hop_label, self.vs_hop_edit,
+                  self.vs_n_fft_label, self.vs_n_fft_edit):
             w.setVisible(is_vs)
+        for w in (self.ava_thresh_lowest_label, self.ava_thresh_lowest_spin,
+                  self.ava_thresh_min_label, self.ava_thresh_min_spin):
+            w.setVisible(is_ava)
 
-        for w in (self.ava_nperseg_label, self.ava_nperseg_spin,
-                  self.ava_thresh_lowest_label, self.ava_thresh_lowest_spin,
-                  self.ava_thresh_min_label, self.ava_thresh_min_spin,
-                  self.ava_thresh_max_label, self.ava_thresh_max_spin):
+        # Row 3
+        for w in (self.vs_ref_db_label, self.vs_ref_db_edit,
+                  self.vs_min_db_label, self.vs_min_db_edit):
+            w.setVisible(is_vs)
+        for w in (self.ava_thresh_max_label, self.ava_thresh_max_spin):
             w.setVisible(is_ava)
 
         if is_vs:
@@ -934,10 +938,7 @@ class ChangepointsWidget(QWidget):
             "threshold": self.ms_threshold_spin.value(),
             "min_dur": _parse_numeric(self.audio_cp_min_dur_edit.text()),
             "min_silent_dur": _parse_numeric(self.ms_min_silent_dur_edit.text()),
-            "freq_cutoffs": (
-                int(self.audio_cp_freq_min_spin.value()),
-                int(self.audio_cp_freq_max_spin.value()),
-            ),
+            "freq_cutoffs": self._get_freq_range(),
             "smooth_win": self.ms_smooth_win_spin.value(),
         }
 
@@ -954,10 +955,9 @@ class ChangepointsWidget(QWidget):
 
         if self.plot_container:
             if show:
-                onsets = getattr(self.app_state, "audio_changepoint_onsets", None)
-                offsets = getattr(self.app_state, "audio_changepoint_offsets", None)
-                if onsets is not None and offsets is not None:
-                    self.plot_container.draw_audio_changepoints(onsets, offsets)
+                result = self._get_audio_cps_from_ds()
+                if result is not None:
+                    self.plot_container.draw_audio_changepoints(*result)
 
                 self._draw_dataset_changepoints_on_plot()
             else:
@@ -1006,8 +1006,12 @@ class ChangepointsWidget(QWidget):
         return getattr(self.app_state, "features_sel", None) == "Audio Waveform"
 
     def _clear_spectral_changepoints(self):
-        self.app_state.audio_changepoint_onsets = None
-        self.app_state.audio_changepoint_offsets = None
+        ds = getattr(self.app_state, "ds", None)
+        if ds is not None:
+            vars_to_drop = [v for v in ("audio_cp_onsets", "audio_cp_offsets") if v in ds.data_vars]
+            if vars_to_drop:
+                self._update_trial_dataset(ds.drop_vars(vars_to_drop))
+
         self.audio_cp_count_label.setText("")
 
         if self.plot_container:
@@ -1025,18 +1029,17 @@ class ChangepointsWidget(QWidget):
         ds_kwargs = self.app_state.get_ds_kwargs()
         if features_sel == "Audio Waveform":
             audio_path, channel_idx = self.app_state.get_audio_source()
-            data, _ = aio.load_audio(audio_path)
+            data, sample_rate = aio.load_audio(audio_path)
+            sample_rate = float(sample_rate)
             if data.ndim > 1:
-                data = data[:, channel_idx]  
+                data = data[:, channel_idx]
         else:
             data, _ = sel_valid(self.app_state.ds[features_sel], ds_kwargs)
-            
-
+            dt = np.median(np.diff(np.asarray(self.app_state.time)))
+            sample_rate = 1.0 / dt
 
         try:
             with self._busy_button(self.compute_audio_cp_button):
-                dt = np.median(np.diff(np.asarray(self.app_state.time)))
-                sample_rate = 1.0 / dt
                 params = self._get_audio_cp_params()
                 method = params.pop("method")
                 signal_array = np.asarray(data, dtype=np.float64)
@@ -1080,6 +1083,9 @@ class ChangepointsWidget(QWidget):
                     raise ValueError(f"Invalid method: {method}")
 
                 if method == "meansquared" and self.plot_container:
+                    print("Jfdas")
+                    print(env_time.shape)
+                    print(envelope.shape)
                     self.plot_container.draw_amplitude_envelope(
                         env_time, envelope, params["threshold"]
                     )
@@ -1093,7 +1099,14 @@ class ChangepointsWidget(QWidget):
                     show_info("No changepoints detected. Try adjusting parameters.")
                     return
 
-                self._store_detection_results(onsets, offsets, self.audio_cp_count_label)
+                self._store_audio_cps_to_ds(onsets, offsets, features_sel, method)
+                self.audio_cp_count_label.setText(f"{len(onsets)}+{len(offsets)}")
+                show_info(f"Detected {len(onsets)} onsets, {len(offsets)} offsets")
+
+                if self.plot_container:
+                    self.plot_container.draw_audio_changepoints(onsets, offsets)
+
+                self._ensure_changepoints_visible()
 
         except Exception as e:
             show_warning(f"Error detecting changepoints: {e}")

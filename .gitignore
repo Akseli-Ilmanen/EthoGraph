@@ -1,6 +1,7 @@
 data/
 result/
 audian/
+<<<<<<< HEAD
 
 # Block all files in data/
 data/**/*
@@ -15,6 +16,12 @@ data/**/*
 *.mp4
 !data/examples/**/*.mp4
 !data/Moll2025/**/*.mp4
+=======
+*.mp4
+*.wav
+*.nc
+
+>>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
 
 *gui_settings.yaml
 
@@ -44,3 +51,4 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+nul

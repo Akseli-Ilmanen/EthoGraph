@@ -70,11 +70,6 @@ def _prepare_sound(
     return voc.Sound(data=signal.reshape(1, -1), samplerate=int(sample_rate))
 
 
-def _unpack_segment_result(result):
-    """Handle both forked vocalpy (Segments, envelope) and upstream (Segments)."""
-    if isinstance(result, tuple):
-        return result[0], result[1]
-    return result, None
 
 
 def _compute_meansquared_envelope(sound: voc.Sound, **kwargs) -> tuple:
@@ -87,6 +82,8 @@ def _compute_meansquared_envelope(sound: voc.Sound, **kwargs) -> tuple:
     return env_time, envelope
 
 
+# TODO: Replace with vocalpy.energy module when that's available:
+# https://github.com/vocalpy/vocalpy/issues/229
 def _compute_ava_envelope(data_1d: np.ndarray, samplerate: int, **kwargs) -> tuple:
     EPSILON = 1e-9
     nperseg = kwargs.get("nperseg", 1024)
@@ -161,13 +158,18 @@ def vocalpy_segment(
         ((onsets, offsets), time_array, envelope) tuple.
         Returns empty arrays when no segments are found.
     """
+<<<<<<< HEAD
     empty_result = (np.array([]), np.array([])), np.array([]), np.array([])
+=======
+
+>>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
     sound = _prepare_sound(audio_path, signal, sample_rate, channel_idx)
     sr = sound.samplerate
     data_1d = np.squeeze(sound.data, axis=0)
     kwargs = {k: v for k, v in kwargs.items() if v is not None}
 
     if method == "meansquared":
+<<<<<<< HEAD
         result = voc.segment.meansquared(sound, **kwargs)
         segments, envelope = _unpack_segment_result(result)
         if segments is None:
@@ -180,12 +182,17 @@ def vocalpy_segment(
             env_time, envelope = _compute_meansquared_envelope(sound, **kwargs)
         else:
             env_time = np.arange(len(envelope)) / sr
+=======
+        segments = voc.segment.meansquared(sound, **kwargs)
+        env_time, envelope = _compute_meansquared_envelope(sound, **kwargs)
+>>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
 
     elif method == "ava":
         if "spect_min_val" not in kwargs or "spect_max_val" not in kwargs:
             smin, smax = _compute_spect_range(data_1d, sr, **kwargs)
             kwargs.setdefault("spect_min_val", smin)
             kwargs.setdefault("spect_max_val", smax)
+<<<<<<< HEAD
         result = voc.segment.ava(sound, **kwargs)
         segments, envelope = _unpack_segment_result(result)
         if envelope is None:
@@ -195,6 +202,13 @@ def vocalpy_segment(
             noverlap = kwargs.get("noverlap", nperseg // 2)
             hop = nperseg - noverlap
             env_time = (nperseg / 2 + np.arange(len(envelope)) * hop) / sr
+=======
+            
+        
+        segments = voc.segment.ava(sound, **kwargs)
+        env_time, envelope = _compute_ava_envelope(sound, sr, **kwargs)
+
+>>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
 
     else:
         raise ValueError(f"Unknown method: {method!r}. Use 'meansquared' or 'ava'.")

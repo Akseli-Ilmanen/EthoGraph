@@ -12,6 +12,9 @@ import xarray as xr
 from .plots_spectrogram import SharedAudioCache
 
 
+
+
+
 @runtime_checkable
 class SpectrogramSource(Protocol):
     rate: float
