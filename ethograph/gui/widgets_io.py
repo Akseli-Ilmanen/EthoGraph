@@ -112,6 +112,10 @@ class IOWidget(QWidget):
         dialog.exec_()
 
     def _on_select_template_clicked(self):
+        self._clear_all_line_edits()
+        
+        
+        
         dialog = TemplateDialog(self)
         if dialog.exec_() and dialog.selected_template:
             t = dialog.selected_template
