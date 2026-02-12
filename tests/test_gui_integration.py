@@ -35,8 +35,6 @@ class TestDataLoading:
         assert state.trials_sel in state.trials
         assert state.time is not None
         assert len(state.time) > 0
-        assert state.label_sr is not None
-        assert state.label_sr > 0
 
         tvd = meta.data_widget.type_vars_dict
         assert "features" in tvd
@@ -236,9 +234,6 @@ class TestDownsampledData:
         n_time = len(meta.app_state.time)
         original_approx = (n_time // 2) * self.DOWNSAMPLE_FACTOR
         assert n_time < original_approx
-
-        assert meta.app_state.label_sr is not None
-        assert meta.app_state.label_sr > 0
 
         assert not meta.io_widget.downsample_checkbox.isEnabled()
         assert not meta.io_widget.downsample_spin.isEnabled()

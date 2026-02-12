@@ -499,20 +499,3 @@ class SpectrogramWidget(QWidget):
                 if hasattr(current_plot, 'update_plot_content'):
                     current_plot.update_plot_content()
 
-    def get_audio_changepoints_for_snap(self) -> Optional[np.ndarray]:
-        """Get audio changepoints for snap-to-changepoint functionality.
-
-        Returns combined onset/offset times if changepoints are computed
-        and display is enabled, otherwise None.
-        """
-        if not getattr(self.app_state, 'show_changepoints', False):
-            return None
-
-        onsets = getattr(self.app_state, 'audio_changepoint_onsets', None)
-        offsets = getattr(self.app_state, 'audio_changepoint_offsets', None)
-
-        if onsets is None or offsets is None:
-            return None
-
-        all_cp = np.concatenate([onsets, offsets])
-        return np.unique(np.sort(all_cp))

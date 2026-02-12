@@ -60,25 +60,21 @@ def load_dataset(file_path: str) -> Tuple[Optional[xr.Dataset], Optional[dict]]:
 
 
    
-def minimal_dt_from_pose(video_path, fps, tracking_path, source_software):
-    """
-    Create a minimal TrialTree from pose data.
-    
+def minimal_dt_from_pose(video_path, fps, pose_path, source_software):
+    """Create a minimal TrialTree from pose data.
+
     Args:
         video_path: Path to video file
         fps: Frames per second of the video
-        tracking_path: Path to tracking file (e.g. poses.csv/poses.h5)
-        source_software: Software used for tracking (e.g., 'DeepLabCut')
-        
-        
+        pose_path: Path to pose file (e.g. poses.csv/poses.h5)
+        source_software: Software used for pose estimation (e.g., 'DeepLabCut')
+
     Returns:
         TrialTree with minimal structure
     """
-    # Validate inputs: must provide either ds OR (source_software + fps)
-
     ds = load_poses.from_file(
-        file_path=tracking_path, 
-        fps=fps, 
+        file_path=pose_path,
+        fps=fps,
         source_software=source_software
     )
 
@@ -98,9 +94,8 @@ def minimal_dt_from_pose(video_path, fps, tracking_path, source_software):
     ds = set_media_attrs(
         ds,
         cameras=[Path(video_path).name],
-        tracking=[Path(tracking_path).name],
-        tracking_prefix=f"{ds.attrs['source_software']}_1"
-    )            
+        pose=[Path(pose_path).name],
+    )
     dt = minimal_basics(ds, video_motion=False) # Kinematics -> no video motion needed
 
 

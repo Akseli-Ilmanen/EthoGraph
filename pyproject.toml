@@ -21,7 +21,6 @@ ethograph = "ethograph.cli:main"
 
 [project.gui-scripts]
 ethograph-gui = "ethograph.cli:launch"
-ethograph-shortcut = "ethograph.shortcuts:install_shortcut"
 
 [project.entry-points."napari.manifest"]
 ethograph-gui = "ethograph.gui:napari.yaml"

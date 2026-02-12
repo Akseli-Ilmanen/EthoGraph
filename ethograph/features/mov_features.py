@@ -205,7 +205,7 @@ def calculate_movement_angles(data, input_type="position"):
             Only plain arrays supported.
         If input_type="velocity": array of shape (N, 2+) or xarray.DataArray
             with a "space" dimension containing "x", "y" (and optionally "z").
-            Velocity can be computed via ``movement.move_accessor``, e.g.
+            Velocity can be computed via 
             ``ds.move.compute_velocity()``, which uses np.gradient internally.
 
     input_type : str, {"position", "velocity"}
@@ -213,29 +213,24 @@ def calculate_movement_angles(data, input_type="position"):
 
     Returns
     -------
-    azimuth : ndarray of shape (N-1,) for position, (N,) for velocity
+    azimuth : ndarray of shape (N,)
         Angles in degrees from positive y-axis, measured counterclockwise.
-    elevation : ndarray or None
+    elevation : ndarray of shape (N,) or None
         Angle in degrees from the x-y plane. Only returned (non-None) when
         z-data is available. Positive = above the plane, negative = below.
 
     Notes
     -----
-    Both approaches yield very similar angles. The key differences:
-
-    - **position** (uses ``np.diff``): forward differences, returns N-1 values
-      with a 1-sample offset relative to the original timestamps.
-    - **velocity** (uses ``np.gradient``): central differences in the interior,
-      forward/backward at edges, returns N values aligned with original timestamps.
-
-    Since velocity is just displacement scaled by 1/dt, the *direction* (angle)
-    is the same — only the array length and edge handling differ slightly.
+    Both input types use ``np.gradient`` (central differences in the interior,
+    forward/backward at edges) and return N values aligned with the original
+    timestamps. Since velocity is just displacement scaled by 1/dt, the
+    direction (angle) is the same for both approaches.
     """
     if input_type == "position":
         data = np.asarray(data)
-        vectors = np.diff(data[:, :2], axis=0)
-        dx, dy = vectors[:, 0], vectors[:, 1]
-        dz = np.diff(data[:, 2], axis=0) if data.shape[1] > 2 else None
+        dx = np.gradient(data[:, 0])
+        dy = np.gradient(data[:, 1])
+        dz = np.gradient(data[:, 2]) if data.shape[1] > 2 else None
     elif input_type == "velocity":
         if hasattr(data, "sel"):  # xarray DataArray
             dx = data.sel(space="x").values
@@ -294,10 +289,9 @@ def get_angle_rgb(xy_pos, smooth_func=None, smoothing_params=None):
     cm = cmap(np.linspace(0, 1, 256))[:, :3]  # Get RGB, exclude alpha
 
 
-    curr_angles = calculate_movement_angles(xy_pos, "position")
+    curr_angles, _ = calculate_movement_angles(xy_pos, "position")
 
-    # Add 0 at the end (forward scheme)
-    curr_angles = np.append(curr_angles, 0)
+  
 
     # Replace NaN with 0 and clip to [-180, 180]
     curr_angles = np.nan_to_num(curr_angles, 0)

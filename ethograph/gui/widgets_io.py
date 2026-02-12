@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -23,6 +25,7 @@ from ethograph.utils.paths import gui_default_settings_path
 
 from .app_state import AppStateSpec
 from .dialog_create_nc import CreateNCDialog
+from .dialog_select_template import TemplateDialog
 
 class IOWidget(QWidget):
     """Widget to control I/O paths, device selection, and data loading."""
@@ -47,12 +50,20 @@ class IOWidget(QWidget):
         self.reset_button = QPushButton("💡Reset gui_settings.yaml")
         self.reset_button.setObjectName("reset_button")
         self.reset_button.clicked.connect(self._on_reset_gui_clicked)
-        self.layout().addRow(self.reset_button)
 
-        self.create_nc_button = QPushButton("➕Create trials.nc file with own data")
+        self.create_nc_button = QPushButton("➕Create with own data")
         self.create_nc_button.setObjectName("create_nc_button")
         self.create_nc_button.clicked.connect(self._on_create_nc_clicked)
-        self.layout().addRow(self.create_nc_button)
+
+        self.template_button = QPushButton("📋Select template data")
+        self.template_button.setObjectName("template_button")
+        self.template_button.clicked.connect(self._on_select_template_clicked)
+
+        button_row = QHBoxLayout()
+        button_row.addWidget(self.reset_button)
+        button_row.addWidget(self.create_nc_button)
+        button_row.addWidget(self.template_button)
+        self.layout().addRow(button_row)
 
         self._create_path_folder_widgets()
         self._create_device_combos()
@@ -67,8 +78,8 @@ class IOWidget(QWidget):
             self.video_folder_edit.setText(self.app_state.video_folder)
         if self.app_state.audio_folder:
             self.audio_folder_edit.setText(self.app_state.audio_folder)
-        if self.app_state.tracking_folder:
-            self.tracking_folder_edit.setText(self.app_state.tracking_folder)
+        if self.app_state.pose_folder:
+            self.pose_folder_edit.setText(self.app_state.pose_folder)
 
     def _on_reset_gui_clicked(self):
         """Reset the GUI to its initial state."""
@@ -100,6 +111,29 @@ class IOWidget(QWidget):
         dialog = CreateNCDialog(self.app_state, self, self)
         dialog.exec_()
 
+    def _on_select_template_clicked(self):
+        self._clear_all_line_edits()
+        
+        
+        
+        dialog = TemplateDialog(self)
+        if dialog.exec_() and dialog.selected_template:
+            t = dialog.selected_template
+            if t["nc_file_path"]:
+                self.nc_file_path_edit.setText(t["nc_file_path"])
+                self.app_state.nc_file_path = t["nc_file_path"]
+            if t["video_folder"]:
+                self.video_folder_edit.setText(t["video_folder"])
+                self.app_state.video_folder = t["video_folder"]
+            if t["audio_folder"]:
+                self.audio_folder_edit.setText(t["audio_folder"])
+                self.app_state.audio_folder = t["audio_folder"]
+            if t["pose_folder"]:
+                self.pose_folder_edit.setText(t["pose_folder"])
+                self.app_state.pose_folder = t["pose_folder"]
+            if t.get("import_labels"):
+                self.import_labels_checkbox.setChecked(True)
+
     def _clear_all_line_edits(self):
         """Clear all QLineEdit fields in the widget."""
         if hasattr(self, 'nc_file_path_edit'):
@@ -108,8 +142,8 @@ class IOWidget(QWidget):
             self.video_folder_edit.clear()
         if hasattr(self, 'audio_folder_edit'):
             self.audio_folder_edit.clear()
-        if hasattr(self, 'tracking_folder_edit'):
-            self.tracking_folder_edit.clear()
+        if hasattr(self, 'pose_folder_edit'):
+            self.pose_folder_edit.clear()
 
     def _clear_combo_boxes(self):
         """Reset all combo boxes to default state."""
@@ -136,13 +170,12 @@ class IOWidget(QWidget):
 
 
         if object_name == "nc_file_path":
-            import_labels_checkbox = QCheckBox("Import labels")
-            import_labels_checkbox.setObjectName("import_labels_checkbox")
-            import_labels_checkbox.stateChanged.connect(
+            self.import_labels_checkbox = QCheckBox("Import labels")
+            self.import_labels_checkbox.setObjectName("import_labels_checkbox")
+            self.import_labels_checkbox.stateChanged.connect(
                 lambda state: setattr(self.app_state, 'import_labels_nc_data', state == 2)
             )
-            import_labels_checkbox.setChecked(bool(self.app_state.import_labels_nc_data))
-
+            self.import_labels_checkbox.setChecked(bool(self.app_state.import_labels_nc_data))
 
         clear_button = QPushButton("Clear")
         clear_button.setObjectName(f"{object_name}_clear_button")
@@ -152,7 +185,7 @@ class IOWidget(QWidget):
         layout.addWidget(line_edit)
         layout.addWidget(browse_button)
         if object_name == "nc_file_path":
-            layout.addWidget(import_labels_checkbox)
+            layout.addWidget(self.import_labels_checkbox)
         layout.addWidget(clear_button)
         self.layout().addRow(label, layout)
 
@@ -168,8 +201,8 @@ class IOWidget(QWidget):
             self.app_state.video_folder = None
         elif object_name == "audio_folder":
             self.app_state.audio_folder = None
-        elif object_name == "tracking_folder":
-            self.app_state.tracking_folder = None
+        elif object_name == "pose_folder":
+            self.app_state.pose_folder = None
 
     def _create_path_folder_widgets(self):
         """Create file path, video folder, and audio folder selectors."""
@@ -186,10 +219,10 @@ class IOWidget(QWidget):
         )
         
 
-        self.tracking_folder_edit = self._create_path_widget(
-            label="Tracking folder:",
-            object_name="tracking_folder",
-            browse_callback=lambda: self.on_browse_clicked("folder", "tracking"),
+        self.pose_folder_edit = self._create_path_widget(
+            label="Pose folder:",
+            object_name="pose_folder",
+            browse_callback=lambda: self.on_browse_clicked("folder", "pose"),
         )
         
         self.audio_folder_edit = self._create_path_widget(
@@ -201,7 +234,7 @@ class IOWidget(QWidget):
 
 
     def _create_device_combos(self):
-        """Create device combo boxes (cameras, mics, tracking). Called after data is loaded."""
+        """Create device combo boxes (cameras, mics, pose). Called after data is loaded."""
         pass  # Will be populated when data is loaded
 
     def create_device_controls(self, type_vars_dict):
@@ -221,7 +254,7 @@ class IOWidget(QWidget):
 
 
 
-        for key in ['cameras', 'mics', 'tracking']:
+        for key in ['cameras', 'mics', 'pose']:
             if key in self.combos:
                 combo = self.combos[key]
                 combo.setParent(None)
@@ -230,16 +263,9 @@ class IOWidget(QWidget):
                 if combo in self.controls:
                     self.controls.remove(combo)
 
-        if hasattr(self, '_device_row_layout'):
-            while self._device_row_layout.count():
-                self._device_row_layout.takeAt(0)
-        else:
-            self._device_row_layout = QHBoxLayout()
-            self.layout().addRow(self._device_row_layout)
-
-        for key, folder_attr in [("cameras", "video_folder"), ("mics", "audio_folder"), ("tracking", "tracking_folder")]:
+        for key, folder_attr in [("cameras", "video_folder"), ("mics", "audio_folder"), ("pose", "pose_folder")]:
             if key in type_vars_dict and getattr(self.app_state, folder_attr):
-                self._create_combo_widget(key, type_vars_dict[key], self._device_row_layout)
+                self._create_combo_widget(key, type_vars_dict[key])
 
 
 
@@ -273,35 +299,26 @@ class IOWidget(QWidget):
             return expanded_items
 
         for mic in mic_names:
-            mic_str = str(mic)
+            mic_file = str(mic)
             try:
-                audio_file = ds.attrs.get(mic_str)
-                if not audio_file:
-                    display_name = mic_str
-                    self.app_state.audio_source_map[display_name] = (mic_str, 0)
-                    expanded_items.append(display_name)
-                    continue
-
-                audio_path = os.path.join(audio_folder, audio_file)
+                audio_path = os.path.join(audio_folder, mic_file)
                 n_channels = self._get_audio_channel_count(audio_path)
 
                 if n_channels > 1:
                     for ch in range(n_channels):
-                        display_name = f"{mic_str} (Ch {ch + 1})"
-                        self.app_state.audio_source_map[display_name] = (mic_str, ch)
+                        display_name = f"{mic_file} (Ch {ch + 1})"
+                        self.app_state.audio_source_map[display_name] = (mic_file, ch)
                         expanded_items.append(display_name)
                 else:
-                    display_name = mic_str
-                    self.app_state.audio_source_map[display_name] = (mic_str, 0)
-                    expanded_items.append(display_name)
+                    self.app_state.audio_source_map[mic_file] = (mic_file, 0)
+                    expanded_items.append(mic_file)
             except Exception:
-                display_name = mic_str
-                self.app_state.audio_source_map[display_name] = (mic_str, 0)
-                expanded_items.append(display_name)
+                self.app_state.audio_source_map[mic_file] = (mic_file, 0)
+                expanded_items.append(mic_file)
 
         return expanded_items
 
-    def _create_combo_widget(self, key, vars, layout):
+    def _create_combo_widget(self, key, vars):
         """Create a combo box widget for a given info key."""
         combo = QComboBox()
         combo.setObjectName(f"{key}_combo")
@@ -313,11 +330,42 @@ class IOWidget(QWidget):
         else:
             combo.addItems([str(var) for var in vars])
 
-        layout.addWidget(QLabel(f"{key.capitalize()}:"))
-        layout.addWidget(combo)
+        self.layout().addRow(f"{key.capitalize()}:", combo)
         self.combos[key] = combo
         self.controls.append(combo)
         return combo
+
+    def update_device_combos_for_trial(self, ds):
+        """Update device combo boxes to reflect the current trial's file lists."""
+        for key in ['cameras', 'mics', 'pose']:
+            combo = self.combos.get(key)
+            if combo is None:
+                continue
+
+            new_items = ds.attrs.get(key)
+            if new_items is None:
+                continue
+            new_items = np.atleast_1d(new_items).astype(str)
+
+            prev_index = combo.currentIndex()
+
+            combo.blockSignals(True)
+            combo.clear()
+
+            if key == "mics":
+                expanded = self._expand_mics_with_channels(new_items)
+                combo.addItems(expanded)
+            else:
+                combo.addItems(list(new_items))
+
+            if prev_index < combo.count():
+                combo.setCurrentIndex(prev_index)
+            else:
+                combo.setCurrentIndex(0)
+
+            combo.blockSignals(False)
+
+            self.app_state.set_key_sel(key, combo.currentText())
 
     def _on_combo_changed(self):
         """Handle combo box changes and delegate to data widget."""
@@ -417,6 +465,7 @@ class IOWidget(QWidget):
                 if labels_file_path:
                     self.app_state.label_dt = TrialTree.open(labels_file_path)
                     self.app_state.label_ds = self.app_state.label_dt.trial(self.app_state.trials_sel)
+                    self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
 
                     self.label_file_path_edit.setText(labels_file_path)
 
@@ -434,8 +483,8 @@ class IOWidget(QWidget):
                 caption = "Open folder with video files (e.g. mp4, mov)."
             elif media_type == "audio":
                 caption = "Open folder with audio files (e.g. wav, mp3, mp4)."
-            elif media_type == "tracking":
-                caption = "Open folder with tracking files (e.g. .csv, .h5)."
+            elif media_type == "pose":
+                caption = "Open folder with pose files (e.g. .csv, .h5)."
 
             folder_path = QFileDialog.getExistingDirectory(None, caption=caption)
 
@@ -448,9 +497,9 @@ class IOWidget(QWidget):
                 # Clear audio checkbox if it exists in data_widget
                 if hasattr(self.data_widget, 'clear_audio_checkbox'):
                     self.data_widget.clear_audio_checkbox.setChecked(False)
-            elif media_type == "tracking":
-                self.tracking_folder_edit.setText(folder_path)
-                self.app_state.tracking_folder = folder_path
+            elif media_type == "pose":
+                self.pose_folder_edit.setText(folder_path)
+                self.app_state.pose_folder = folder_path
 
     def get_nc_file_path(self):
         """Get the current NetCDF file path from the text field."""

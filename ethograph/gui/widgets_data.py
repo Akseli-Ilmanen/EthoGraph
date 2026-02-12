@@ -17,9 +17,11 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QCompleter,
+    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -27,6 +29,7 @@ from qtpy.QtWidgets import (
 
 from ethograph import downsample_trialtree
 from ethograph.utils.data_utils import get_time_coord, sel_valid
+
 
 from .app_constants import DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_SPACING
 from .data_loader import load_dataset
@@ -120,45 +123,9 @@ class DataWidget(DataLoader, QWidget):
         xmin, xmax = self.plot_container.get_current_xlim()
         self.update_main_plot(t0=xmin, t1=xmax)
 
-    def _get_sampling_rate(self, time_coords: np.ndarray) -> float:
-        """Calculate sampling rate from time coordinates."""
-        dt = np.median(np.diff(time_coords))
-        return 1.0 / dt
 
-    def _set_audio_time(self):
-        """Set app_state.time to an audio-rate time coordinate for Audio Waveform."""
-        ds = self.app_state.ds
-        audio_sr = ds.attrs.get("audio_sr")
-        if audio_sr is None:
-            return
 
-        audio_sr = float(audio_sr)
 
-        # Determine duration from audio file (preferred) or feature time extent
-        n_samples = None
-        audio_path = getattr(self.app_state, 'audio_path', None)
-        if audio_path:
-            loader = SharedAudioCache.get_loader(audio_path)
-            if loader:
-                n_samples = len(loader)
-                audio_sr = float(loader.rate)
-
-        if n_samples is None:
-            features = [v for v in self.type_vars_dict.get("features", [])
-                        if v != "Audio Waveform"]
-            if features:
-                feature_time = get_time_coord(ds[features[0]])
-                duration = float(feature_time.values[-1])
-                n_samples = int(duration * audio_sr) + 1
-            else:
-                return
-
-        time_values = np.arange(n_samples) / audio_sr
-        self.app_state.time = xr.DataArray(
-            time_values, dims=["time_audio"],
-            coords={"time_audio": time_values}, name="time_audio",
-        )
-        self.app_state.label_sr = audio_sr
 
 
 
@@ -212,64 +179,43 @@ class DataWidget(DataLoader, QWidget):
         
         self.app_state.ds = self.app_state.dt.trial(trials[0])
         self.app_state.label_ds = self.app_state.label_dt.trial(trials[0])
-
-        
-    
-        features_list = list(self.type_vars_dict["features"])
-        
-        # TODO: Change later
-        if 'speed' in features_list:
-            setattr(self.app_state, "features_sel", "speed")
-        else:
-            setattr(self.app_state, "features_sel", features_list[0])
-        
-        
-        self.app_state.time = get_time_coord(self.app_state.ds[features_list[0]])
-        
-
-        # Derive label_sr from feature time coord (labels are now interval-based)
-        feature_time = self.app_state.time
-        if feature_time is not None and len(feature_time) > 1:
-            self.app_state.label_sr = self._get_sampling_rate(np.asarray(feature_time))
-
-
         self.app_state.trials = sorted(trials)
-        
-        
         
 
         self._create_trial_controls()
 
-        if self.changepoints_widget:
-            self.changepoints_widget.setEnabled(True)
 
-        if hasattr(self.app_state, 'features_sel_changed'):
-            self.app_state.features_sel_changed.connect(self._on_external_feature_change)
 
         self._restore_or_set_defaults()
         self._set_controls_enabled(True)
         self.app_state.ready = True
 
-        if self.audio_widget:
-            self.audio_widget.set_enabled_state(has_audio=False)
+       
 
         load_btn = self.io_widget.load_button
         load_btn.setEnabled(False)
+        self.io_widget.create_nc_button.setEnabled(False)
+        self.io_widget.template_button.setEnabled(False)
+        self.changepoints_widget.setEnabled(True)
+        self.audio_widget.set_enabled_state(has_audio=False)
 
         # Set initial trial selection before calling on_trial_changed
-        if not self.app_state.trials_sel:
+        trial = self.app_state.trials_sel
+        try:
+            is_nan = np.isnan(trial)
+        except (TypeError, ValueError):
+            is_nan = False
+        if not trial or is_nan:
             self.app_state.trials_sel = self.app_state.trials[0]
 
-        # Update trials combo after ready=True so it populates correctly
-        self.update_trials_combo()
 
+        self.update_trials_combo() # Update combo without triggering plotting
         self._load_trial_with_fallback()
-
+        
+        
         self.view_mode_combo.show()
-
         self.setVisible(True)
         load_btn.setText("Restart app to load new data")
-
         self._force_layout_update()
         
 
@@ -337,7 +283,7 @@ class DataWidget(DataLoader, QWidget):
         self.coords_groupbox_layout.setContentsMargins(DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN)
         self.coords_groupbox.setLayout(self.coords_groupbox_layout)
 
-        non_data_type_vars = ["cameras", "mics", "tracking", "trial_conditions", "changepoints", "rgb"]
+        non_data_type_vars = ["cameras", "mics", "pose", "trial_conditions", "changepoints", "rgb"]
 
         for type_var in self.type_vars_dict.keys():
             if type_var.lower() not in non_data_type_vars:
@@ -373,6 +319,26 @@ class DataWidget(DataLoader, QWidget):
             self.space_plot_combo.addItems(["Layer controls"])
         self.controls.append(self.space_plot_combo)
         view_space_row.addWidget(self.space_plot_combo)
+
+        hide_label = QLabel("Hide markers:")
+        hide_label.setToolTip(
+            "Hide pose markers with confidence below this value (0.0-1.0)"
+        )
+        self.pose_hide_threshold_spin = QDoubleSpinBox()
+        self.pose_hide_threshold_spin.setObjectName("pose_hide_threshold_spin")
+        self.pose_hide_threshold_spin.setRange(0.0, 1.0)
+        self.pose_hide_threshold_spin.setSingleStep(0.1)
+        self.pose_hide_threshold_spin.setDecimals(0.9)
+        self.pose_hide_threshold_spin.setFixedWidth(60)
+        self.pose_hide_threshold_spin.setToolTip(
+            "Hide pose markers with confidence below this value (0.0-1.0)"
+        )
+        self.pose_hide_threshold_spin.setValue(self.app_state.pose_hide_threshold)
+        self.pose_hide_threshold_spin.valueChanged.connect(
+            self._on_pose_hide_threshold_changed
+        )
+        view_space_row.addWidget(hide_label)
+        view_space_row.addWidget(self.pose_hide_threshold_spin)
 
         view_space_row.addStretch()
         self.layout().addRow("Views:", view_space_row)
@@ -499,7 +465,7 @@ class DataWidget(DataLoader, QWidget):
         from .spectrogram_sources import build_xarray_source
 
         feature_sel = getattr(self.app_state, 'features_sel', None)
-        if not feature_sel or feature_sel == "Audio Waveform":
+        if not feature_sel:
             return None
 
         try:
@@ -563,10 +529,10 @@ class DataWidget(DataLoader, QWidget):
         """Create a combo box widget for a given info key.
 
         For qualifying type variables (not features, colors, cameras, mics,
-        tracking), adds an 'All' checkbox that shows all traces.
+        pose), adds an 'All' checkbox that shows all traces.
         Adds widgets to the coords_groupbox_layout.
         """
-        excluded_from_all = {"individuals", "features", "colors", "cameras", "mics", "tracking"}
+        excluded_from_all = {"individuals", "features", "colors", "cameras", "mics", "pose"}
         show_all_checkbox = key not in excluded_from_all
 
         combo = QComboBox()
@@ -637,13 +603,10 @@ class DataWidget(DataLoader, QWidget):
             self.app_state.set_key_sel(key, selected_value)
 
             if key == "features":
+                self.view_mode_combo.show()
                 if selected_value == "Audio Waveform":
-                    self._set_audio_time()
-                    self.view_mode_combo.show()
                     self._apply_view_mode_for_waveform()
                 else:
-                    self.app_state.time = get_time_coord(self.app_state.ds[selected_value])
-                    self.view_mode_combo.show()
                     self._apply_view_mode_for_feature()
 
                 self._update_audio_overlay_checkboxes()
@@ -656,7 +619,7 @@ class DataWidget(DataLoader, QWidget):
             if key in ["cameras", "mics"]:
                 self.update_video_audio()
 
-            if key not in ["cameras", "tracking"]:
+            if key not in ["cameras", "pose"]:
                 current_plot = self.plot_container.get_current_plot()
                 xmin, xmax = current_plot.get_current_xlim()
                 self.update_main_plot(t0=xmin, t1=xmax)
@@ -667,44 +630,10 @@ class DataWidget(DataLoader, QWidget):
             if key == "individuals":
                 self.labels_widget.refresh_labels_shapes_layer()
 
+            if key == "pose":
+                self.update_pose()
 
-            if key == "tracking":
-                self.update_tracking()
 
-    def _on_external_feature_change(self):
-        """Handle feature selection change from app_state (e.g., from changepoints widget)."""
-        if not self.app_state.ready:
-            return
-
-        features_combo = self.combos.get("features")
-        if features_combo is None:
-            return
-
-        feature = self.app_state.features_sel
-        if not feature or feature == features_combo.currentText():
-            return
-
-        features_combo.blockSignals(True)
-        idx = features_combo.findText(feature)
-        if idx >= 0:
-            features_combo.setCurrentIndex(idx)
-        features_combo.blockSignals(False)
-
-        if feature == "Audio Waveform":
-            self._set_audio_time()
-            self._apply_view_mode_for_waveform()
-            self._update_audio_overlay_checkboxes()
-            current_plot = self.plot_container.get_current_plot()
-            xmin, xmax = current_plot.get_current_xlim()
-            self.update_main_plot(t0=xmin, t1=xmax)
-        else:
-            self.plot_container.switch_to_lineplot()
-            self.app_state.time = get_time_coord(self.app_state.ds[feature])
-            self._update_audio_overlay_checkboxes()
-            self._update_audio_overlay()
-            current_plot = self.plot_container.get_current_plot()
-            xmin, xmax = current_plot.get_current_xlim()
-            self.update_main_plot(t0=xmin, t1=xmax)
 
     def _on_all_checkbox_changed(self, key: str, state: int):
         """Handle 'All' checkbox state change for a type variable.
@@ -782,8 +711,13 @@ class DataWidget(DataLoader, QWidget):
                         combo.setCurrentText(str(vars[0]))
                         self.app_state.set_key_sel(key, str(vars[0]))
                 else:
-                    combo.setCurrentText(str(vars[0]))
-                    self.app_state.set_key_sel(key, str(vars[0]))
+                    # Speed is good default feature
+                    if key == "features" and "speed" in vars:
+                        combo.setCurrentText("speed")
+                        self.app_state.set_key_sel(key, "speed")                       
+                    else:
+                        combo.setCurrentText(str(vars[0]))
+                        self.app_state.set_key_sel(key, str(vars[0]))
 
 
         if self.app_state.key_sel_exists("trials"):
@@ -820,6 +754,14 @@ class DataWidget(DataLoader, QWidget):
         current_trial = self.app_state.trials_sel
 
         try:
+            is_nan = np.isnan(current_trial)
+        except (TypeError, ValueError):
+            is_nan = False
+        if not current_trial or is_nan:
+            self.app_state.trials_sel = first_trial
+            current_trial = first_trial
+
+        try:
             self.on_trial_changed()
         except Exception as e:
             if current_trial == first_trial:
@@ -832,24 +774,25 @@ class DataWidget(DataLoader, QWidget):
     def on_trial_changed(self):
         """Handle all consequences of a trial change - centralized orchestration."""
         trials_sel = self.app_state.trials_sel
-
+        
         self.app_state.ds = self.app_state.dt.trial(trials_sel)
         self.app_state.label_ds = self.app_state.label_dt.trial(trials_sel)
 
         if self.app_state.pred_dt is not None:
             self.app_state.pred_ds = self.app_state.pred_dt.trial(trials_sel)
 
+        self.io_widget.update_device_combos_for_trial(self.app_state.ds)
 
-        default_feature = self.combos["features"].itemText(0)
-        feature_sel = getattr(self.app_state, 'features_sel', default_feature)
+        fallback_feature = self.combos["features"].itemText(0)
+        feature_sel = getattr(self.app_state, 'features_sel', fallback_feature)
+        self.app_state.set_time(feature_sel=feature_sel)
+
+
         if feature_sel == "Audio Waveform":
-            self._set_audio_time()
-        elif feature_sel:
-            self.app_state.time = get_time_coord(self.app_state.ds[feature_sel])
-
-        if hasattr(self, 'view_mode_combo'):
+            self._apply_view_mode_for_waveform()
+        elif hasattr(self, 'view_mode_combo'):
             view_mode = self.view_mode_combo.currentText()
-            if view_mode.startswith("Spectrogram") and feature_sel != "Audio Waveform":
+            if view_mode.startswith("Spectrogram"):
                 source = self._build_xarray_source()
                 if source is not None:
                     self.plot_container.spectrogram_plot.set_source(source)
@@ -861,7 +804,7 @@ class DataWidget(DataLoader, QWidget):
 
         self.app_state.current_frame = 0
         self.update_video_audio()
-        self.update_tracking()
+        self.update_pose()
         self.update_label()
         self.update_main_plot()
         self.update_space_plot()
@@ -898,7 +841,6 @@ class DataWidget(DataLoader, QWidget):
 
             # Handle audio overlay
             if self.plot_container.is_lineplot():
- 
                 self.plot_container.update_audio_overlay()
          
 
@@ -941,13 +883,8 @@ class DataWidget(DataLoader, QWidget):
 
 
 
-
-
-
-
-
     def update_video_audio(self):
-        """Update video and audio."""
+        """Update video data and update video/audio path."""
         if not self.app_state.ready or not self.app_state.video_folder:
             return
 
@@ -955,7 +892,7 @@ class DataWidget(DataLoader, QWidget):
 
         # Set up video path
         if self.app_state.video_folder and hasattr(self.app_state, 'cameras_sel'):
-            video_file = self.app_state.ds.attrs[self.app_state.cameras_sel]
+            video_file = self.app_state.cameras_sel
             video_path = os.path.join(self.app_state.video_folder, video_file)
             self.app_state.video_path = os.path.normpath(video_path)
 
@@ -1053,11 +990,10 @@ class DataWidget(DataLoader, QWidget):
                 
                 
                 
-    def update_tracking(self):
-        if not self.app_state.tracking_folder or not hasattr(self.app_state, 'tracking_sel'):
+    def update_pose(self):
+        if not self.app_state.pose_folder or not hasattr(self.app_state, 'pose_sel'):
             return
- 
-        # Remove all previous layers with name "video"
+
         for layer in list(self.viewer.layers):
             if self.file_name and layer.name in [
                 f"tracks: {self.file_name}",
@@ -1070,14 +1006,14 @@ class DataWidget(DataLoader, QWidget):
         self.fps = self.app_state.ds.fps
         self.source_software = self.app_state.ds.source_software
 
-        tracking_file = (
-            self.app_state.ds.attrs[self.app_state.tracking_sel]
-        )
-
-        self.file_path = os.path.join(self.app_state.tracking_folder, tracking_file)
+        pose_file = self.app_state.pose_sel
+        self.file_path = os.path.join(self.app_state.pose_folder, pose_file)
         self.file_name = Path(self.file_path).name
 
         self._format_data_for_layers()
+        self._apply_pose_confidence_filter()
+        if not np.any(self.data_not_nan):
+            return
         self._set_common_color_property()
         self._set_text_property()
         self._add_points_layer()
@@ -1093,8 +1029,14 @@ class DataWidget(DataLoader, QWidget):
         #     self._add_boxes_layer()
         self._set_initial_state()
 
-            
-
+    def _apply_pose_confidence_filter(self):
+        threshold = self.app_state.pose_hide_threshold
+        if threshold <= 0.0 or self.properties is None:
+            return
+        if "confidence" not in self.properties.columns:
+            return
+        low_confidence = self.properties["confidence"].values < threshold
+        self.data_not_nan[low_confidence] = False
 
     def closeEvent(self, event):
         """Clean up video stream and data cache."""
@@ -1105,6 +1047,10 @@ class DataWidget(DataLoader, QWidget):
 
         super().closeEvent(event)
 
+
+    def _on_pose_hide_threshold_changed(self, value: float):
+        self.app_state.pose_hide_threshold = value
+        self.update_pose()
 
     def _on_space_plot_changed(self):
         """Handle space plot combo change."""

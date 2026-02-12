@@ -2,11 +2,12 @@ from typing import List, Literal
 
 import numpy as np
 import xarray as xr
+import pandas as pd
 from scipy.signal import find_peaks
 
 from ethograph.features.preprocessing import z_normalize
 from ethograph.utils.labels import find_blocks, fix_endings, purge_small_blocks, stitch_gaps
-
+from ethograph.utils.label_intervals import purge_short_intervals, stitch_intervals, snap_boundaries
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -107,6 +108,8 @@ def extract_cp_times(ds: xr.Dataset, time_coord: np.ndarray, **cp_kwargs) -> np.
     if len(cp_ds.data_vars) == 0:
         return np.array([], dtype=np.float64)
 
+
+    # TODO: Do I want merging of changepoints
     try:
         ds_merged, _ = merge_changepoints(filtered)
     except (ValueError, KeyError):
@@ -133,59 +136,79 @@ def snap_to_nearest_changepoint_time(
     Works entirely in the time domain — no index conversion needed.
     Also filters changepoints by target_feature matching feature_sel.
     """
-    filtered = ds.sel(**ds_kwargs) if ds_kwargs else ds
-    cp_ds = filtered.filter_by_attrs(type="changepoints")
-    cp_ds = cp_ds.filter_by_attrs(target_feature=feature_sel)
+    
+    # Changepoints in time
+    if feature_sel == "Audio Waveform":
+        cp_ds = ds.filter_by_attrs(type="audio_changepoints")
+        cp_times = np.concatenate([cp_ds["audio_cp_onsets"].values, cp_ds["audio_cp_offsets"].values])
+        
+        if len(cp_times) == 0:
+            return t_clicked    
+        
+    else:
+        # Changepoints in idxs
+        filtered = ds.sel(**ds_kwargs) if ds_kwargs else ds
+        cp_ds = filtered.filter_by_attrs(type="changepoints")
+        cp_ds = cp_ds.filter_by_attrs(target_feature=feature_sel)
+    
+        if len(cp_ds.data_vars) == 0:
+            return t_clicked
 
-    if len(cp_ds.data_vars) == 0:
-        return t_clicked
+        cp_indices = np.concatenate([
+            np.where(cp_ds[var].values)[0] for var in cp_ds.data_vars
+        ])
+        cp_indices = np.unique(cp_indices)
+        if len(cp_indices) == 0:
+            return t_clicked
 
-    cp_indices = np.concatenate([
-        np.where(cp_ds[var].values)[0] for var in cp_ds.data_vars
-    ])
-    cp_indices = np.unique(cp_indices)
-    if len(cp_indices) == 0:
-        return t_clicked
+        valid = cp_indices[cp_indices < len(time_coord)]
+        if len(valid) == 0:
+            return t_clicked
 
-    valid = cp_indices[cp_indices < len(time_coord)]
-    if len(valid) == 0:
-        return t_clicked
+        cp_times = time_coord[valid] 
 
-    cp_times = time_coord[valid]
+
     nearest_idx = np.argmin(np.abs(cp_times - t_clicked))
     return float(cp_times[nearest_idx])
 
 
-# ---------------------------------------------------------------------------
-# Legacy index-domain snap (kept for backward compat)
-# ---------------------------------------------------------------------------
 
-def snap_to_nearest_changepoint(x_clicked, ds, feature_sel, **ds_kwargs):
-    """Snap index to nearest changepoint index (legacy, index-domain)."""
-    cp_ds = ds.sel(**ds_kwargs).filter_by_attrs(type="changepoints")
-    cp_ds = cp_ds.filter_by_attrs(target_feature=feature_sel)
+def correct_changepoints(
+    df: pd.DataFrame,
+    cp_times: np.ndarray,
+    min_duration_s: float,
+    stitch_gap_s: float,
+    max_expansion_s: float,
+    max_shrink_s: float,
+    label_thresholds_s: dict[int, float] | None = None,
+) -> pd.DataFrame:
+    """Full interval-native correction pipeline.
 
-    if len(cp_ds.data_vars) == 0:
-        return x_clicked
+    Steps:
+        1. purge_short_intervals — pre-cleanup
+        2. stitch_intervals — merge same-label across small gaps
+        3. snap_boundaries — snap to changepoint times
+        4. purge_short_intervals — post-cleanup (snapping may create short intervals)
+    """
+    if df.empty:
+        return df.copy()
 
-    changepoint_indices = np.concatenate([
-        np.where(cp_ds[var].values)[0] for var in cp_ds.data_vars
-    ])
-    changepoint_indices = np.unique(changepoint_indices)
+    result = purge_short_intervals(df, min_duration_s, label_thresholds_s)
 
-    if len(changepoint_indices) == 0:
-        return x_clicked
+    result = stitch_intervals(result, stitch_gap_s)
 
-    snapped_idx = np.argmin(np.abs(changepoint_indices - x_clicked))
-    snapped_val = int(round(changepoint_indices[snapped_idx]))
-    return snapped_val
+    result = snap_boundaries(result, cp_times, max_expansion_s, max_shrink_s)
+
+    result = purge_short_intervals(result, min_duration_s, label_thresholds_s)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
 # Dense correction (legacy — kept for ML pipeline)
 # ---------------------------------------------------------------------------
 
-def correct_changepoints_one_trial(labels, ds, all_params):
+def correct_changepoints_dense(labels, ds, all_params):
     """Correct labels with changepoints (dense array, legacy pipeline)."""
     cp_kwargs = all_params["cp_kwargs"]
 

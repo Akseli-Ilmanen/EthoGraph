@@ -40,12 +40,12 @@
      - Download and execute the Anaconda Installer for your operating system (Windows, macOS, or Linux). During installation, make sure you check the box **"Add Anaconda to PATH"**. This enables you to run `conda` commands in your terminal.
      - Restart your terminal.
 
-3. Clone the EthoGraph repository. <br>
+3. Clone the ethograph repository. <br>
     Navigate to an easily accessible folder (e.g., `Documents`) and clone the repository.
 
     ??? note "Cloning the repository"
         === "Windows"
-            1. Open File Explorer and navigate to a folder where you want to store EthoGraph (e.g., `Documents`).
+            1. Open File Explorer and navigate to a folder where you want to store ethograph (e.g., `Documents`).
             2. Click on the address bar, type `cmd`, and press *Enter* to open a terminal in that folder.
             3. Run the following command:
                 ```bash
@@ -61,7 +61,7 @@
                 3. Restart your terminal and try the clone command again.
 
         === "MacOS / Linux"
-            1. Open a terminal and navigate to a folder where you want to store EthoGraph:
+            1. Open a terminal and navigate to a folder where you want to store ethograph:
                 ```bash
                 cd ~/Documents
                 ```
@@ -90,38 +90,22 @@
                     sudo dnf install git
                     ```
 
-4. Install the EthoGraph conda environment. <br>
-    Choose the environment file based on your needs:
+4. Install the ethograph conda environment. <br>
 
-    - **`environment.yml`** - GUI only (recommended for most users)
-    - **`environment-dev.yml`** - GUI + model training (in development)
-
-    ??? note "Installation Steps"
-        **Option 1: Using the batch script (Windows only)**
-        
-        1. Open File Explorer and navigate to the EthoGraph folder.
-        2. Double-click on `Windows install.bat` and follow the steps. Optionally, you can create a Desktop shortcut.
-
-        **Option 2: Manual installation (Windows / MacOS / Linux)**
-        
-        1. Open a terminal and navigate to the EthoGraph folder:
+    Open a terminal and navigate to the ethograph folder:
     ```bash
-            cd /path/to/EthoGraph
+        cd /path/to/ethograph
     ```
-        2. Create the conda environment from the YAML file:
+    Create the conda environment:
     ```bash
-            # Requires conda >= 23.10 (or run: conda config --set solver libmamba)
-
-            # For GUI only
-            conda env create -f environment.yml
-
-            # Or for GUI + model (in development)
-            conda env create -f environment-dev.yml
+        conda env create -f environment.yml && conda activate ethograph && pip install -r requirements.txt
     ```
-        3. Optionally, create a desktop shortcut:
+    Optionally, create a desktop shortcut:
     ```bash
-            ethograph-shortcut
+        ethograph shortcut
     ```
+    
+ 
 
 5. Test it works. <br>
 

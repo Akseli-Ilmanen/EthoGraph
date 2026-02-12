@@ -1,17 +1,10 @@
 data/
 result/
 audian/
-
-# Block all files in data/
-data/**/*
-
-# Allow data/examples/ and its contents
-!data/examples/
-!data/examples/**
-
-# Block mp4 everywhere except data/examples
 *.mp4
-!data/examples/**/*.mp4
+*.wav
+*.nc
+
 
 *gui_settings.yaml
 
@@ -41,3 +34,4 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+nul

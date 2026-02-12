@@ -401,6 +401,7 @@ class LabelsWidget(QWidget):
                 self.changepoints_widget.set_motif_mappings(self._mappings)
             self._populate_labels_table()
             self.refresh_labels_shapes_layer()
+            self.app_state.labels_modified.emit()
             show_info(f"Loaded {len(self._mappings) - 1} labels from {Path(mapping_path).name}")
         except FileNotFoundError:
             show_warning(f"Mapping file not found: {mapping_path}")
@@ -425,6 +426,7 @@ class LabelsWidget(QWidget):
                     self.changepoints_widget.set_motif_mappings(self._mappings)
                 self._populate_labels_table()
                 self.refresh_labels_shapes_layer()
+                self.app_state.labels_modified.emit()
                 show_info(f"Loaded {len(labels)} temporary labels")
 
     def _human_verification_true(self, mode=None):
@@ -655,8 +657,6 @@ class LabelsWidget(QWidget):
 
         Works entirely in the time domain. Also considers audio changepoints.
         """
-        best_time = t_clicked
-        best_distance = float('inf')
 
         ds_kwargs = self.app_state.get_ds_kwargs()
         time_coord = np.asarray(self.app_state.time)
@@ -665,24 +665,8 @@ class LabelsWidget(QWidget):
         snapped = snap_to_nearest_changepoint_time(
             t_clicked, self.app_state.ds, feature_sel, time_coord, **ds_kwargs
         )
-        ds_distance = abs(snapped - t_clicked)
-        if ds_distance < best_distance:
-            best_time = snapped
-            best_distance = ds_distance
-
-        if getattr(self.app_state, 'show_changepoints', False):
-            onsets = getattr(self.app_state, 'audio_changepoint_onsets', None)
-            offsets = getattr(self.app_state, 'audio_changepoint_offsets', None)
-            if onsets is not None and offsets is not None:
-                all_audio_cp_times = np.concatenate([onsets, offsets])
-                if len(all_audio_cp_times) > 0:
-                    nearest_idx = np.argmin(np.abs(all_audio_cp_times - t_clicked))
-                    audio_time = float(all_audio_cp_times[nearest_idx])
-                    audio_distance = abs(audio_time - t_clicked)
-                    if audio_distance < best_distance:
-                        best_time = audio_time
-
-        return best_time
+        
+        return snapped
 
     def _apply_label(self):
         """Apply the selected label to the selected time range using intervals."""

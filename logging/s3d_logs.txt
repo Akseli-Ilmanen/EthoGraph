@@ -1,0 +1,94 @@
+stack_size: 21
+device: cuda:0
+output_path: D:\Akseli\AI_data\rawdata\sub-03_id-CrowF\ses-000_date-20241217_01\behav\s3d
+config: null
+video_paths: null
+file_with_video_paths: d:\Akseli\Code\DLC_scripts\video_list.txt
+feature_type: s3d
+
+Saving features to D:\Akseli\AI_data\rawdata\sub-03_id-CrowF\ses-000_date-20241217_01\behav\s3d
+Device: cuda:0
+stack size:  21
+stack_size: 21
+device: cuda:0
+output_path: D:\Akseli\AI_data\rawdata\sub-03_id-CrowF\ses-000_date-20241217_01\behav\s3d
+config: null
+video_paths: null
+file_with_video_paths: d:\Akseli\Code\DLC_scripts\video_list.txt
+feature_type: s3d
+
+Saving features to D:\Akseli\AI_data\rawdata\sub-03_id-CrowF\ses-000_date-20241217_01\behav\s3d
+Device: cuda:0
+stack size:  21
+stack_size: 21
+device: cuda:0
+output_path: D:\Akseli\AI_data\rawdata\sub-03_id-CrowF\ses-000_date-20241217_01\behav\s3d
+config: null
+video_paths: null
+file_with_video_paths: d:\Akseli\Code\DLC_scripts\video_list.txt
+feature_type: s3d
+
+Saving features to D:\Akseli\AI_data\rawdata\sub-03_id-CrowF\ses-000_date-20241217_01\behav\s3d
+Device: cuda:0
+stack size:  21
+stack_size: 21
+device: cuda:0
+output_path: D:\Akseli\AI_data\rawdata\sub-03_id-CrowF\ses-000_date-20241217_01\behav\s3d
+config: null
+video_paths: null
+file_with_video_paths: d:\Akseli\Code\DLC_scripts\video_list.txt
+feature_type: s3d
+
+Saving features to D:\Akseli\AI_data\rawdata\sub-03_id-CrowF\ses-000_date-20241217_01\behav\s3d
+Device: cuda:0
+stack size:  21
+config yaml path D:\Akseli\Code\ethograph\ethograph\video_features\s3d.yml
+stack_size: 21
+device: cuda:0
+output_path: D:\Akseli\AI_data\rawdata\sub-03_id-CrowF\ses-000_date-20241217_01\behav\s3d
+config: null
+video_paths: null
+file_with_video_paths: d:\Akseli\Code\DLC_scripts\video_list.txt
+feature_type: s3d
+
+Saving features to D:\Akseli\AI_data\rawdata\sub-03_id-CrowF\ses-000_date-20241217_01\behav\s3d
+Device: cuda:0
+stack size:  21
+config yaml path D:\Akseli\Code\ethograph\ethograph\video_features\s3d.yml
+stack_size: 21
+device: cuda:0
+output_path: D:\Akseli\AI_data\rawdata\sub-03_id-CrowF\ses-000_date-20241217_01\behav\s3d
+config: null
+video_paths: null
+file_with_video_paths: D:\Akseli\Code\DLC_scripts\video_list.txt
+feature_type: s3d
+
+Saving features to D:\Akseli\AI_data\rawdata\sub-03_id-CrowF\ses-000_date-20241217_01\behav\s3d
+Device: cuda:0
+stack size:  21
+The number of specified videos: 185
+config yaml path D:\Akseli\Code\ethograph\ethograph\video_features\s3d.yml
+stack_size: 21
+device: cuda:0
+output_path: D:\Akseli\AI_data\rawdata\sub-04_id-Crow1\ses-000_date-20241218_01\behav\s3d
+config: null
+video_paths: null
+file_with_video_paths: d:\Akseli\Code\DLC_scripts\video_list.txt
+feature_type: s3d
+
+Saving features to D:\Akseli\AI_data\rawdata\sub-04_id-Crow1\ses-000_date-20241218_01\behav\s3d
+Device: cuda:0
+stack size:  21
+config yaml path D:\Akseli\Code\ethograph\ethograph\video_features\s3d.yml
+stack_size: 21
+device: cuda:0
+output_path: D:\Akseli\AI_data\rawdata\sub-04_id-CrowF\ses-000_date-20241218_01\behav\s3d
+config: null
+video_paths: null
+file_with_video_paths: D:\Akseli\Code\DLC_scripts\video_list.txt
+feature_type: s3d
+
+Saving features to D:\Akseli\AI_data\rawdata\sub-04_id-CrowF\ses-000_date-20241218_01\behav\s3d
+Device: cuda:0
+stack size:  21
+The number of specified videos: 2
