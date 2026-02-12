@@ -177,7 +177,6 @@ class IOWidget(QWidget):
             )
             self.import_labels_checkbox.setChecked(bool(self.app_state.import_labels_nc_data))
 
-
         clear_button = QPushButton("Clear")
         clear_button.setObjectName(f"{object_name}_clear_button")
         clear_button.clicked.connect(lambda: self._on_clear_path_clicked(object_name, line_edit))

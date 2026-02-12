@@ -9,22 +9,36 @@ _RELEASE_BASE = "https://github.com/Akseli-Ilmanen/EthoGraph/releases/download"
 EXAMPLE_DATASETS = {
     "moll2025": {
         "release_tag": "moll2025",
-        "assets": [
+        "assets_notebook": [
             "Trial_data.nc",
             "2024-12-17_115_Crow1-cam-1.mp4",
             "2024-12-17_115_Crow1-cam-1DLC.csv",
             "2024-12-17_115_Crow1-cam-2DLC.csv",
             "2024-12-17_115_Crow1_DLC_3D.csv",
+            "2024-12-17_115_Crow1-cam-1_s3d.npy",
             "2024-12-18_041_Crow1-cam-1.mp4",
             "2024-12-18_041_Crow1-cam-1DLC.csv",
             "2024-12-18_041_Crow1-cam-2DLC.csv",
             "2024-12-18_041_Crow1_DLC_3D.csv",
+            "2024-12-18_041_Crow1-cam-1_s3d.npy",
         ],
-        "size_mb": 21,
+        "assets_gui": [
+            "Trial_data.nc",
+            "2024-12-17_115_Crow1-cam-1.mp4",
+            "2024-12-17_115_Crow1-cam-1DLC.csv",
+            "2024-12-18_041_Crow1-cam-1.mp4",
+            "2024-12-18_041_Crow1-cam-1DLC.csv",
+        ],
+        "size_mb": 14,
     },
     "birdpark": {
         "release_tag": "birdpark",
-        "assets": [
+        "assets_gui": [
+            "copExpBP08_trim.nc",
+            "copExpBP08_trim.mp4",
+            "copExpBP08_trim.wav",
+        ],
+        "assets_notebook": [
             "copExpBP08_trim.nc",
             "copExpBP08_trim.mp4",
             "copExpBP08_trim.wav",
@@ -33,7 +47,13 @@ EXAMPLE_DATASETS = {
     },
     "philodoptera": {
         "release_tag": "philodoptera",
-        "assets": [
+        "assets_gui": [
+            "philodoptera.nc",
+            "philodoptera.mp4",
+            "philodoptera.wav",
+            "philodoptera.csv",
+        ],
+        "assets_notebook": [
             "philodoptera.nc",
             "philodoptera.mp4",
             "philodoptera.wav",
@@ -87,11 +107,11 @@ def download_assets(
 
 
 def is_downloaded(release_tag: str, dest: Path) -> bool:
-    """Check whether all assets for a dataset are already present."""
+    """Check whether all GUI assets for a dataset are already present."""
     info = EXAMPLE_DATASETS.get(release_tag)
     if info is None:
         return False
-    return all((Path(dest) / name).exists() for name in info["assets"])
+    return all((Path(dest) / name).exists() for name in info["assets_gui"])
 
 
 def download_example_dataset(
@@ -111,9 +131,10 @@ def download_example_dataset(
         Print progress to stdout.
     """
     info = EXAMPLE_DATASETS[key]
+    assets = info["assets_notebook"]
 
     def _print_progress(count: int, name: str) -> None:
-        total = len(info["assets"])
+        total = len(assets)
         if count < total:
             print(f"Downloading {name}... ({count}/{total})")
         else:
@@ -121,7 +142,7 @@ def download_example_dataset(
 
     download_assets(
         release_tag=info["release_tag"],
-        assets=info["assets"],
+        assets=assets,
         dest=dest,
         on_progress=_print_progress if verbose else None,
     )

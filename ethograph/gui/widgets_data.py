@@ -17,9 +17,11 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QCompleter,
+    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -198,7 +200,12 @@ class DataWidget(DataLoader, QWidget):
         self.audio_widget.set_enabled_state(has_audio=False)
 
         # Set initial trial selection before calling on_trial_changed
-        if not self.app_state.trials_sel:
+        trial = self.app_state.trials_sel
+        try:
+            is_nan = np.isnan(trial)
+        except (TypeError, ValueError):
+            is_nan = False
+        if not trial or is_nan:
             self.app_state.trials_sel = self.app_state.trials[0]
 
 
@@ -312,6 +319,26 @@ class DataWidget(DataLoader, QWidget):
             self.space_plot_combo.addItems(["Layer controls"])
         self.controls.append(self.space_plot_combo)
         view_space_row.addWidget(self.space_plot_combo)
+
+        hide_label = QLabel("Hide markers:")
+        hide_label.setToolTip(
+            "Hide pose markers with confidence below this value (0.0-1.0)"
+        )
+        self.pose_hide_threshold_spin = QDoubleSpinBox()
+        self.pose_hide_threshold_spin.setObjectName("pose_hide_threshold_spin")
+        self.pose_hide_threshold_spin.setRange(0.0, 1.0)
+        self.pose_hide_threshold_spin.setSingleStep(0.1)
+        self.pose_hide_threshold_spin.setDecimals(0.9)
+        self.pose_hide_threshold_spin.setFixedWidth(60)
+        self.pose_hide_threshold_spin.setToolTip(
+            "Hide pose markers with confidence below this value (0.0-1.0)"
+        )
+        self.pose_hide_threshold_spin.setValue(self.app_state.pose_hide_threshold)
+        self.pose_hide_threshold_spin.valueChanged.connect(
+            self._on_pose_hide_threshold_changed
+        )
+        view_space_row.addWidget(hide_label)
+        view_space_row.addWidget(self.pose_hide_threshold_spin)
 
         view_space_row.addStretch()
         self.layout().addRow("Views:", view_space_row)
@@ -727,6 +754,14 @@ class DataWidget(DataLoader, QWidget):
         current_trial = self.app_state.trials_sel
 
         try:
+            is_nan = np.isnan(current_trial)
+        except (TypeError, ValueError):
+            is_nan = False
+        if not current_trial or is_nan:
+            self.app_state.trials_sel = first_trial
+            current_trial = first_trial
+
+        try:
             self.on_trial_changed()
         except Exception as e:
             if current_trial == first_trial:
@@ -976,6 +1011,9 @@ class DataWidget(DataLoader, QWidget):
         self.file_name = Path(self.file_path).name
 
         self._format_data_for_layers()
+        self._apply_pose_confidence_filter()
+        if not np.any(self.data_not_nan):
+            return
         self._set_common_color_property()
         self._set_text_property()
         self._add_points_layer()
@@ -991,8 +1029,14 @@ class DataWidget(DataLoader, QWidget):
         #     self._add_boxes_layer()
         self._set_initial_state()
 
-            
-
+    def _apply_pose_confidence_filter(self):
+        threshold = self.app_state.pose_hide_threshold
+        if threshold <= 0.0 or self.properties is None:
+            return
+        if "confidence" not in self.properties.columns:
+            return
+        low_confidence = self.properties["confidence"].values < threshold
+        self.data_not_nan[low_confidence] = False
 
     def closeEvent(self, event):
         """Clean up video stream and data cache."""
@@ -1003,6 +1047,10 @@ class DataWidget(DataLoader, QWidget):
 
         super().closeEvent(event)
 
+
+    def _on_pose_hide_threshold_changed(self, value: float):
+        self.app_state.pose_hide_threshold = value
+        self.update_pose()
 
     def _on_space_plot_changed(self):
         """Handle space plot combo change."""

@@ -158,57 +158,25 @@ def vocalpy_segment(
         ((onsets, offsets), time_array, envelope) tuple.
         Returns empty arrays when no segments are found.
     """
-<<<<<<< HEAD
-    empty_result = (np.array([]), np.array([])), np.array([]), np.array([])
-=======
-
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
     sound = _prepare_sound(audio_path, signal, sample_rate, channel_idx)
     sr = sound.samplerate
     data_1d = np.squeeze(sound.data, axis=0)
     kwargs = {k: v for k, v in kwargs.items() if v is not None}
 
     if method == "meansquared":
-<<<<<<< HEAD
-        result = voc.segment.meansquared(sound, **kwargs)
-        segments, envelope = _unpack_segment_result(result)
-        if segments is None:
-            if envelope is None:
-                envelope_fallback = _compute_meansquared_envelope(sound, **kwargs)
-                return (np.array([]), np.array([])), *envelope_fallback
-            env_time = np.arange(len(envelope)) / sr
-            return (np.array([]), np.array([])), env_time, envelope
-        if envelope is None:
-            env_time, envelope = _compute_meansquared_envelope(sound, **kwargs)
-        else:
-            env_time = np.arange(len(envelope)) / sr
-=======
         segments = voc.segment.meansquared(sound, **kwargs)
         env_time, envelope = _compute_meansquared_envelope(sound, **kwargs)
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
 
     elif method == "ava":
         if "spect_min_val" not in kwargs or "spect_max_val" not in kwargs:
             smin, smax = _compute_spect_range(data_1d, sr, **kwargs)
             kwargs.setdefault("spect_min_val", smin)
             kwargs.setdefault("spect_max_val", smax)
-<<<<<<< HEAD
-        result = voc.segment.ava(sound, **kwargs)
-        segments, envelope = _unpack_segment_result(result)
-        if envelope is None:
-            env_time, envelope = _compute_ava_envelope(data_1d, sr, **kwargs)
-        else:
-            nperseg = kwargs.get("nperseg", 1024)
-            noverlap = kwargs.get("noverlap", nperseg // 2)
-            hop = nperseg - noverlap
-            env_time = (nperseg / 2 + np.arange(len(envelope)) * hop) / sr
-=======
             
         
         segments = voc.segment.ava(sound, **kwargs)
         env_time, envelope = _compute_ava_envelope(sound, sr, **kwargs)
 
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
 
     else:
         raise ValueError(f"Unknown method: {method!r}. Use 'meansquared' or 'ava'.")

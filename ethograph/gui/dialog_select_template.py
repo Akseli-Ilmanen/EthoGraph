@@ -3,22 +3,15 @@
 import webbrowser
 from pathlib import Path
 
-<<<<<<< HEAD
-from qtpy.QtCore import Qt
-=======
 from qtpy.QtCore import QThread, Qt, Signal
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
 from qtpy.QtGui import QPixmap
 from qtpy.QtWidgets import (
     QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
-<<<<<<< HEAD
-=======
     QMessageBox,
     QProgressDialog,
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
     QPushButton,
     QVBoxLayout,
 )
@@ -111,7 +104,7 @@ class _DownloadWorker(QThread):
         try:
             download_assets(
                 release_tag=info["release_tag"],
-                assets=info["assets"],
+                assets=info["assets_gui"],
                 dest=_template_dir(self._template),
                 on_progress=self.progress.emit,
                 cancelled=lambda: self._cancelled,
@@ -178,8 +171,6 @@ class TemplateDialog(QDialog):
             link.clicked.connect(lambda _checked, u=url: webbrowser.open(u))
             card_layout.addWidget(link, alignment=Qt.AlignCenter)
 
-<<<<<<< HEAD
-=======
         status = QLabel()
         status.setAlignment(Qt.AlignCenter)
         if _template_downloaded(template):
@@ -191,15 +182,10 @@ class TemplateDialog(QDialog):
             status.setStyleSheet("color: gray;")
         card_layout.addWidget(status)
 
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
         card.mousePressEvent = lambda event, t=template: self._on_card_clicked(t)
         return card
 
     def _on_card_clicked(self, template: dict):
-<<<<<<< HEAD
-        self.selected_template = template
-        self.accept()
-=======
         if _template_downloaded(template):
             self.selected_template = _resolve_template_paths(template)
             self.accept()
@@ -208,7 +194,7 @@ class TemplateDialog(QDialog):
 
     def _download_and_select(self, template: dict):
         info = EXAMPLE_DATASETS[template["dataset_key"]]
-        assets = info["assets"]
+        assets = info["assets_gui"]
         progress = QProgressDialog(
             "Downloading example data...", "Cancel", 0, len(assets), self
         )
@@ -241,4 +227,3 @@ class TemplateDialog(QDialog):
         progress.canceled.connect(worker.cancel)
 
         worker.start()
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e

@@ -259,19 +259,12 @@ class PlotContainer(QWidget):
 
         def update_geometry():
             if self.amp_envelope_vb is not None:
-<<<<<<< HEAD
-                self.amp_envelope_vb.setGeometry(host.plot_item.vb.sceneBoundingRect())
-
-        # Defer initial geometry so Qt layout has settled
-        QTimer.singleShot(0, update_geometry)
-=======
                 rect = host.plot_item.vb.sceneBoundingRect()
                 if rect.width() > 0 and rect.height() > 0:
                     self.amp_envelope_vb.setGeometry(rect)
 
         QTimer.singleShot(0, update_geometry)
         QTimer.singleShot(100, update_geometry)
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
         host.plot_item.vb.sigResized.connect(update_geometry)
         self._amp_envelope_geometry_updater = update_geometry
 
@@ -796,20 +789,8 @@ class PlotContainer(QWidget):
 
         plots_to_draw = [self.spectrogram_plot, self.audio_trace_plot]
 
-<<<<<<< HEAD
-        # Determine line style based on current zoom level
         line_style = self._get_changepoint_line_style()
 
-        # Round times to nearest label sample for alignment
-        label_sr = getattr(self.app_state, 'label_sr', None)
-        if label_sr and label_sr > 0:
-            onsets = np.round(onsets * label_sr) / label_sr
-            offsets = np.round(offsets * label_sr) / label_sr
-
-=======
-        line_style = self._get_changepoint_line_style()
-
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
         for plot in plots_to_draw:
             if plot is None:
                 continue

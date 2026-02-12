@@ -20,10 +20,7 @@ from ethograph.utils.label_intervals import (
     intervals_to_xr,
     xr_to_intervals,
 )
-<<<<<<< HEAD
-=======
 from .plots_spectrogram import SharedAudioCache
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
 
 
 SIMPLE_SIGNAL_TYPES = (int, float, str, bool)
@@ -96,10 +93,6 @@ class AppStateSpec:
         "import_labels_nc_data": (bool, False, True),
         "fps_playback": (float, 30.0, True),
         "time": (xr.DataArray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
-<<<<<<< HEAD
-        "label_sr": (float | None, None, False), # for labels (e.g. 'time' or 'time_labels')
-=======
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
         "label_intervals": (pd.DataFrame | None, None, False),
         "trials": (list[int | str], [], False),
         "downsample_enabled": (bool, False, True),
@@ -113,6 +106,7 @@ class AppStateSpec:
         "video_path": (str | None, None, True),
         "audio_path": (str | None, None, True),
         "pose_path": (str | None, None, True),
+        "pose_hide_threshold": (float, 0.0, True),
 
         # Plotting
         "ymin": (float | None, None, True),
@@ -213,8 +207,6 @@ class ObservableAppState(QObject):
             value = AppStateSpec.get_default(key)
         return value
 
-<<<<<<< HEAD
-=======
 
     def set_time(self, feature_sel=None):
         """Set app_state.time to an audio-rate time coordinate for Audio Waveform."""
@@ -242,7 +234,6 @@ class ObservableAppState(QObject):
         
 
 
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
     def get_audio_source(self) -> tuple[str | None, int]:
         """Get audio file path and channel index from current mics_sel.
 
@@ -264,11 +255,8 @@ class ObservableAppState(QObject):
         audio_path = os.path.normpath(os.path.join(audio_folder, mic_file))
         return audio_path, channel_idx
 
-<<<<<<< HEAD
-=======
 
 
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
     def __getattr__(self, name):
         if name in AppStateSpec.VARS:
             return self._values[name]
@@ -364,15 +352,9 @@ class ObservableAppState(QObject):
             setattr(self, prev_attr_name, old_value)
         
         if type_key == "features" and self.ds:
-<<<<<<< HEAD
-            if currentValue != "Audio Waveform":
-                self.time = get_time_coord(self.ds[currentValue])
-    
-=======
             self.set_time(feature_sel=currentValue)
             
 
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
 
         setattr(self, attr_name, currentValue)
 
@@ -392,24 +374,7 @@ class ObservableAppState(QObject):
         Special case: type_key="Audio Waveform" toggles the features
         selection to/from Audio Waveform.
         """
-<<<<<<< HEAD
-        if type_key == "Audio Waveform":
-            current = getattr(self, "features_sel", None)
-            if current == "Audio Waveform":
-                previous = getattr(self, "features_sel_previous", None)
-                if previous is not None:
-                    self.set_key_sel("features", previous)
-                    if data_widget is not None:
-                        self._update_combo_box("features", previous, data_widget)
-            else:
-                self.set_key_sel("features", "Audio Waveform")
-                if data_widget is not None:
-                    self._update_combo_box("features", "Audio Waveform", data_widget)
-            return
-
-=======
     
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
         attr_name = f"{type_key}_sel"
         prev_attr_name = f"{type_key}_sel_previous"
 
@@ -424,12 +389,9 @@ class ObservableAppState(QObject):
         elif data_widget is not None:
             self._cycle_combo_box(type_key, data_widget)
             
-<<<<<<< HEAD
-=======
         if type_key == "features":
             self.set_time()
             
->>>>>>> 97696b63f562289ea03abe74c8a93ce4ce0f8b7e
    
     
     def _update_combo_box(self, type_key, new_value, data_widget):
