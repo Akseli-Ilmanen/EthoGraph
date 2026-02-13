@@ -409,6 +409,14 @@ def get_project_root(start: Path | None = None) -> Path:
             if parent.parent.name != "deps":
                 return parent
             continue
+    # Fallback: resolve from this file's location (works for editable installs
+    # when cwd is outside the project tree)
+    fallback = Path(__file__).resolve()
+    for parent in fallback.parents:
+        if (parent / "pyproject.toml").exists():
+            if parent.parent.name != "deps":
+                return parent
+            continue
     raise FileNotFoundError(
         f"Could not find project root starting from {path}"
     )
