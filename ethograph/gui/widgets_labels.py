@@ -376,9 +376,18 @@ class LabelsWidget(QWidget):
         self.save_button.clicked.connect(lambda: self.app_state.save_file())
         bottom_layout.addWidget(self.save_button)
 
+        self.save_tsv_checkbox = QCheckBox("Save CSV")
+        self.save_tsv_checkbox.setToolTip("Also export labels as CSV when saving")
+        self.save_tsv_checkbox.setChecked(self.app_state.save_tsv_enabled)
+        self.save_tsv_checkbox.toggled.connect(self._on_save_tsv_toggled)
+        bottom_layout.addWidget(self.save_tsv_checkbox)
+
         bottom_layout.addStretch()
         layout.addWidget(bottom_row)
 
+
+    def _on_save_tsv_toggled(self, checked: bool):
+        self.app_state.save_tsv_enabled = checked
 
     def _browse_mapping_file(self):
         """Browse for a mapping.txt file and reload  mappings."""

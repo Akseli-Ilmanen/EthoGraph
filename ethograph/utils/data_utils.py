@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 import xarray as xr
-
+from pathlib import Path
 from ethograph import TrialTree
 
 def sel_valid(da, sel_kwargs):
@@ -78,7 +78,7 @@ def stack_trials(
     Parameters
     ----------
     trees : Dict[str, TrialTree]
-        Dictionary mapping tree keys to TrialTree objects.
+        Dictionary mapping dt keys to TrialTree objects.
     keep_vars : List[str]
         Variables to keep from each trial dataset.
     keep_attrs : List[str]
@@ -91,16 +91,16 @@ def stack_trials(
     """
     datasets = []
 
-    for tree in trees.values():
-        for trial in tree.children:
+    for dt in trees.values():
+        for trial in dt.children:
             if not trial.startswith(TrialTree.TRIAL_PREFIX):
                 continue
-            print(tree[trial].ds.data_vars)
-            trial_ds = tree[trial].ds[keep_vars].copy()
+            print(dt[trial].ds.data_vars)
+            trial_ds = dt[trial].ds[keep_vars].copy()
 
             for attr in keep_attrs:
-                if attr in tree[trial].ds.attrs:
-                    trial_ds[attr] = tree[trial].ds.attrs[attr]
+                if attr in dt[trial].ds.attrs:
+                    trial_ds[attr] = dt[trial].ds.attrs[attr]
 
             datasets.append(trial_ds)
 
@@ -108,85 +108,10 @@ def stack_trials(
 
 
 
-
-
-
-def ds_to_df_legacy(ds):
-    """Convert dense-label stacked Dataset to segment DataFrame.
-
-    Parameters
-    ----------
-    ds : xr.Dataset
-        Dataset with 'global_trials' and 'time' dimensions.
-        Expected variables: labels (dense), poscat, num_pellets.
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame with columns: session, trial, label, start, stop, duration,
-        poscat, num_pellets, event_times, sequence.
-    """
-    df = []
-    times = ds.time.values
-
-    for trial_idx in range(ds.sizes['global_trials']):
-        session = ds.session.values[trial_idx]
-        raw_trial_id = ds.trial.values[trial_idx]
-        labels = ds.labels.isel(global_trials=trial_idx).values
-
-
-
-        if isinstance(raw_trial_id, str) and raw_trial_id.startswith(TrialTree.TRIAL_PREFIX):
-            trial_id = TrialTree.trial_id(raw_trial_id)
-        else:
-            trial_id = raw_trial_id
-
-
-
-
-        poscat_value = float(ds.poscat.isel(global_trials=trial_idx).item())
-        num_pellets_value = float(ds.num_pellets.isel(global_trials=trial_idx).item())
-
-        trial_events = []
-        label_sequence = []
-
-
-        for label, group in groupby(enumerate(labels), key=lambda x: x[1]):
-
-            if label > 0 and not np.isnan(label):
-                indices = [i for i, _ in group]
-                start_time = float(times[indices[0]])
-                stop_time = float(times[indices[-1]])
-
-
-                trial_events.extend([start_time, stop_time])
-                label_sequence.append(int(label))
-
-                df.append({
-                    'session': session,
-                    'trial': trial_id,
-                    'label': int(label),
-                    'start': start_time,
-                    'stop': stop_time,
-                    'duration': stop_time - start_time,
-                    'poscat': poscat_value,
-                    'num_pellets': num_pellets_value,
-                })
-
-
-
-
-        for record in df:
-            if record['session'] == session and record['trial'] == trial_id:
-                record['event_times'] = trial_events
-                record['sequence'] = label_sequence
-
-    return pd.DataFrame(df)
-
-
 def trees_to_df(
     trees: Dict[str, TrialTree],
     keep_attrs: List[str],
+    sr: int = 30000,
 ) -> pd.DataFrame:
     """Collect interval labels from trees into a segment DataFrame.
 
@@ -195,8 +120,8 @@ def trees_to_df(
 
     Parameters
     ----------
-    trees : Dict[str, TrialTree]
-        Dictionary mapping tree keys to TrialTree objects.
+    trees : Dict[str, TrialTree] / TrialTree
+        Dictionary mapping dt keys to TrialTree objects or single TrialTree.
     keep_attrs : List[str]
         Trial-level attributes to include as columns (e.g. 'session', 'poscat').
 
@@ -208,43 +133,62 @@ def trees_to_df(
     """
     from ethograph.utils.label_intervals import xr_to_intervals
 
+    if isinstance(trees, TrialTree):
+        trees = {"_single": trees}
+    elif isinstance(trees, (str, Path)):
+        trees = {"tree_0": TrialTree.open(Path(trees))}
+    elif isinstance(trees, list):
+        if trees and isinstance(trees[0], (str, Path)):
+            trees = {f"tree_{i}": TrialTree.open(Path(p)) for i, p in enumerate(trees)}
+        else:
+            trees = {str(i): t for i, t in enumerate(trees)}
+
     rows = []
+    
 
-    for tree in trees.values():
-        label_dt = tree.get_label_dt()
-
-        for trial_name in tree.children:
+    for dt in trees.values():        
+        for trial_name in dt.children:
             if not trial_name.startswith(TrialTree.TRIAL_PREFIX):
                 continue
 
             trial_id = TrialTree.trial_id(trial_name)
-            trial_ds = tree[trial_name].ds
-            intervals = xr_to_intervals(label_dt[trial_name].ds)
+            ds = dt[trial_name].ds
+            intervals = xr_to_intervals(ds)
 
             attrs = {}
             for attr in keep_attrs:
-                if attr in trial_ds.attrs:
-                    attrs[attr] = trial_ds.attrs[attr]
+                if attr in ds.attrs:
+                    attrs[attr] = ds.attrs[attr]
 
             valid = intervals[intervals["labels"] > 0].sort_values("onset_s")
 
-            event_times = [t for _, r in valid.iterrows() for t in (r["onset_s"], r["offset_s"])]
             sequence = valid["labels"].tolist()
 
-            for _, seg in valid.iterrows():
+            for pos, (_, seg) in enumerate(valid.iterrows(), start=1):
                 row = {
-                    'session': attrs.get('session', ''),
+                    'session': ds.attrs.get('session', ''), # optional
                     'trial': trial_id,
-                    'label': int(seg["labels"]),
-                    'start': seg["onset_s"],
-                    'stop': seg["offset_s"],
-                    'duration': seg["offset_s"] - seg["onset_s"],
-                    'event_times': event_times,
-                    'sequence': sequence,
+                    'individual': seg["individual"],
+                    'labels': int(seg["labels"]),
+                    'onset_s': seg["onset_s"],
+                    'offset_s': seg["offset_s"],
+                    'onset_idx': 
+                    'offset_idx':
                 }
+                if 'pulse_onsets' in ds:
+                    trial_onset = float(ds.pulse_onsets.values[0]) / sr
+                    row['trial_onset'] = round(trial_onset, 4)
+                    row['onset_global'] = round(trial_onset + seg["onset_s"], 4)
+                    row['offset_global'] = round(trial_onset + seg["offset_s"], 4)
+                
+                row.update({
+                    'duration': round(seg["offset_s"] - seg["onset_s"], 4),
+                    'sequence_idx': pos,
+                    'sequence': "-".join(str(s) for s in sequence),
+                })
                 row.update(attrs)
                 rows.append(row)
-
+                    
     return pd.DataFrame(rows)
 
 

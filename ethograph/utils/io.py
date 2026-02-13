@@ -82,36 +82,18 @@ class TrialTree(xr.DataTree):
     # -------------------------------------------------------------------------
 
     def save(self, path: str | Path | None = None) -> None:
-        import gc
-        import shutil
-        import time
-
         source_path = getattr(self, '_source_path', None)
-
         if path is None and source_path is None:
             raise ValueError("No path provided and no source path stored.")
 
         path = Path(path) if path else Path(source_path)
+        temp_path = path.with_suffix('.tmp.nc')
 
         self.load()
         self.close()
-        gc.collect()
 
-        if path.exists():
-            temp_path = path.with_suffix('.tmp.nc')
-            self.to_netcdf(temp_path, mode='w')
-            for attempt in range(5):
-                try:
-                    path.unlink()
-                    break
-                except PermissionError:
-                    gc.collect()
-                    time.sleep(0.5)
-            else:
-                path.unlink()
-            shutil.move(str(temp_path), str(path))
-        else:
-            self.to_netcdf(path, mode='w')
+        self.to_netcdf(temp_path, mode='w')
+        temp_path.replace(path)
 
     # -------------------------------------------------------------------------
     # Properties

@@ -145,6 +145,9 @@ class DataWidget(DataLoader, QWidget):
         
         
         self.app_state.dt, label_dt, self.type_vars_dict = load_dataset(nc_file_path)
+        
+        # 
+        self.app_state.trial_conditions = self.type_vars_dict["trial_conditions"]
 
         # Add audio features to type_vars_dict if audio is available
         has_audio = "mics" in self.type_vars_dict or self.app_state.audio_folder

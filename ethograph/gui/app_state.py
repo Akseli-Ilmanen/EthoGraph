@@ -14,7 +14,7 @@ from napari.utils.notifications import show_info
 from qtpy.QtCore import QObject, QTimer, Signal
 
 from ethograph import TrialTree
-from ethograph.utils.data_utils import get_time_coord
+from ethograph.utils.data_utils import get_time_coord, trees_to_df
 from ethograph.utils.label_intervals import (
     empty_intervals,
     intervals_to_xr,
@@ -90,6 +90,7 @@ class AppStateSpec:
         "label_dt": (xr.DataTree | None, None, False),
         "pred_ds": (xr.Dataset | None, None, False),
         "pred_dt": (xr.DataTree | None, None, False),
+        "trial_conditions": (list | None, None, False),
         "import_labels_nc_data": (bool, False, True),
         "fps_playback": (float, 30.0, True),
         "time": (xr.DataArray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
@@ -138,6 +139,7 @@ class AppStateSpec:
         "audio_cp_silence_threshold": (float, 0.1, True),
         "show_changepoints": (bool, True, True),
         "apply_changepoint_correction": (bool, True, True),
+        "save_tsv_enabled": (bool, True, True),
     }
 
     @classmethod
@@ -527,6 +529,13 @@ class ObservableAppState(QObject):
         if self.downsample_factor_used:
             return f"_downsampled_{self.downsample_factor_used}x"
         return ""
+    
+    def _save_labels_tsv(self, nc_path, suffix):        
+        tsv_path = nc_path.parent / f"{nc_path.stem}{suffix}_labels.tsv"        
+        keep_attrs = self.trial_conditions if self.trial_conditions is not None else []
+        df = trees_to_df(self.dt, keep_attrs)
+        df.to_csv(tsv_path, index=False, sep='\t', encoding='utf-8-sig')
+                    
 
     def save_labels(self):
         """Save only updated labels to preserve data integrity of other variables."""
@@ -548,27 +557,29 @@ class ObservableAppState(QObject):
 
 
     def save_file(self) -> None:
-        import time
+
 
         nc_path = Path(self.nc_file_path)
         suffix = self._get_downsampled_suffix()
+        if self.save_tsv_enabled:
+            self._save_labels_tsv(nc_path, suffix)
 
         if suffix:
             save_path = nc_path.parent / f"{nc_path.stem}{suffix}{nc_path.suffix}"
             updated_dt = self.dt.overwrite_with_labels(self.label_dt)
+
+            
             updated_dt.to_netcdf(save_path, mode='w')
             updated_dt.close()
             show_info(f"✅ Saved downsampled: {save_path.name}")
         else:
-            # Load into memory and release file handle FIRST
-            self.dt.load()
-            self.dt.close()
-            gc.collect()
-
-            # Now safe to overwrite
             updated_dt = self.dt.overwrite_with_labels(self.label_dt)
-            updated_dt.to_netcdf(nc_path, mode='w')
-            updated_dt.close()
+            updated_dt.load()
+            self.dt.close()
+            self.label_dt.close()
+
+            updated_dt.save(nc_path)
 
             self.dt = TrialTree.open(nc_path)
+            self.label_dt = self.dt.get_label_dt()
             show_info(f"✅ Saved: {nc_path.name}")
