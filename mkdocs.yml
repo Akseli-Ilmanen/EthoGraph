@@ -30,6 +30,8 @@ theme:
     - search.suggest
     - search.highlight
     - content.code.copy
+  logo: media/icon.png
+  favicon: media/icon.png
   icon:
     repo: fontawesome/brands/github
 

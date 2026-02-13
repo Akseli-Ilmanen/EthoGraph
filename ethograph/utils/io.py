@@ -400,27 +400,18 @@ def set_media_attrs(
 
 
 def get_project_root(start: Path | None = None) -> Path:
-    """Find project root by walking up to find pyproject.toml or .git folder.
-
-    Args:
-        start: Starting path for search. Defaults to this file's location.
-
-    Returns:
-        Path to project root.
-
-    Raises:
-        FileNotFoundError: If no pyproject.toml or .git folder found in any parent.
-    """
-    path = (start or Path(__file__)).resolve()
-    markers = ["pyproject.toml", ".git"]
+    if start is not None:
+        path = start.resolve()
+    else:
+        path = Path.cwd().resolve()
     for parent in [path] + list(path.parents):
-        if any((parent / marker).exists() for marker in markers):
-            return parent
+        if (parent / "pyproject.toml").exists():
+            if parent.parent.name != "deps":
+                return parent
+            continue
     raise FileNotFoundError(
-        f"Could not find project root (pyproject.toml or .git) starting from {path}"
+        f"Could not find project root starting from {path}"
     )
-
-
 
 def downsample_trialtree(dt: "TrialTree", factor: int) -> "TrialTree":
     """Downsample all trials in a TrialTree using min-max envelope.

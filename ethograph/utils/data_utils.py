@@ -95,6 +95,7 @@ def stack_trials(
         for trial in tree.children:
             if not trial.startswith(TrialTree.TRIAL_PREFIX):
                 continue
+            print(tree[trial].ds.data_vars)
             trial_ds = tree[trial].ds[keep_vars].copy()
 
             for attr in keep_attrs:
@@ -110,22 +111,20 @@ def stack_trials(
 
 
 
-def ds_to_df(ds):
-    """Convert xarray Dataset to segment DataFrame with time info.
+def ds_to_df_legacy(ds):
+    """Convert dense-label stacked Dataset to segment DataFrame.
 
     Parameters
     ----------
     ds : xr.Dataset
-        Dataset with 'trials' dimension containing labels and metadata.
-        Expected variables: labels, poscat, num_pellets.
-        Requires: session attribute.
+        Dataset with 'global_trials' and 'time' dimensions.
+        Expected variables: labels (dense), poscat, num_pellets.
 
     Returns
     -------
     pd.DataFrame
         DataFrame with columns: session, trial, label, start, stop, duration,
-        sequence_len, poscat, num_pellets, event_times, sequence.
-        Unique identification via (session, trial) tuple.
+        poscat, num_pellets, event_times, sequence.
     """
     df = []
     times = ds.time.values
@@ -134,8 +133,8 @@ def ds_to_df(ds):
         session = ds.session.values[trial_idx]
         raw_trial_id = ds.trial.values[trial_idx]
         labels = ds.labels.isel(global_trials=trial_idx).values
-        
-        
+
+
 
         if isinstance(raw_trial_id, str) and raw_trial_id.startswith(TrialTree.TRIAL_PREFIX):
             trial_id = TrialTree.trial_id(raw_trial_id)
@@ -144,13 +143,13 @@ def ds_to_df(ds):
 
 
 
-        
+
         poscat_value = float(ds.poscat.isel(global_trials=trial_idx).item())
         num_pellets_value = float(ds.num_pellets.isel(global_trials=trial_idx).item())
-        
+
         trial_events = []
         label_sequence = []
-        
+
 
         for label, group in groupby(enumerate(labels), key=lambda x: x[1]):
 
@@ -158,11 +157,11 @@ def ds_to_df(ds):
                 indices = [i for i, _ in group]
                 start_time = float(times[indices[0]])
                 stop_time = float(times[indices[-1]])
-    
-                        
+
+
                 trial_events.extend([start_time, stop_time])
                 label_sequence.append(int(label))
-                
+
                 df.append({
                     'session': session,
                     'trial': trial_id,
@@ -173,62 +172,81 @@ def ds_to_df(ds):
                     'poscat': poscat_value,
                     'num_pellets': num_pellets_value,
                 })
-        
-     
-    
-        
+
+
+
+
         for record in df:
             if record['session'] == session and record['trial'] == trial_id:
                 record['event_times'] = trial_events
                 record['sequence'] = label_sequence
-        
+
     return pd.DataFrame(df)
 
 
-def build_variable_dict(
+def trees_to_df(
     trees: Dict[str, TrialTree],
-    variable: str,
-    ds_kwargs: Dict[str, str] = None,
-) -> Dict[Tuple[str, int], np.ndarray]:
-    """
-    Build dictionary mapping (session, trial) to pre-computed variable arrays.
+    keep_attrs: List[str],
+) -> pd.DataFrame:
+    """Collect interval labels from trees into a segment DataFrame.
+
+    Reads interval-format labels (onset_s, offset_s, labels, individual)
+    directly from each trial's label_dt, avoiding unnecessary xarray stacking.
 
     Parameters
     ----------
     trees : Dict[str, TrialTree]
-        Same trees dict used for stack_trials.
-    keypoint : str
-        Keypoint to extract angles for (default: "beakTip").
-    individual : str, optional
-        Individual to select. If None, uses first available.
+        Dictionary mapping tree keys to TrialTree objects.
+    keep_attrs : List[str]
+        Trial-level attributes to include as columns (e.g. 'session', 'poscat').
 
     Returns
     -------
-    Dict[Tuple[str, int], np.ndarray]
-        Mapping of (session, trial) -> angle_rgb/speed/... array with shape (time,).
+    pd.DataFrame
+        DataFrame with columns: session, trial, label, start, stop, duration,
+        event_times, sequence, plus any columns from keep_attrs.
     """
-    variable_dict = {}
+    from ethograph.utils.label_intervals import xr_to_intervals
+
+    rows = []
 
     for tree in trees.values():
+        label_dt = tree.get_label_dt()
+
         for trial_name in tree.children:
             if not trial_name.startswith(TrialTree.TRIAL_PREFIX):
                 continue
 
+            trial_id = TrialTree.trial_id(trial_name)
             trial_ds = tree[trial_name].ds
-            if variable not in trial_ds.data_vars:
-                continue
+            intervals = xr_to_intervals(label_dt[trial_name].ds)
 
-            session = trial_ds.attrs.get('session')
-            trial_num = TrialTree.trial_id(trial_name)
+            attrs = {}
+            for attr in keep_attrs:
+                if attr in trial_ds.attrs:
+                    attrs[attr] = trial_ds.attrs[attr]
 
-            if ds_kwargs is None:
-                ds_kwargs = {}
+            valid = intervals[intervals["labels"] > 0].sort_values("onset_s")
 
-            da = trial_ds[variable].sel(**ds_kwargs)
+            event_times = [t for _, r in valid.iterrows() for t in (r["onset_s"], r["offset_s"])]
+            sequence = valid["labels"].tolist()
 
-            variable_dict[(session, trial_num)] = da.values
+            for _, seg in valid.iterrows():
+                row = {
+                    'session': attrs.get('session', ''),
+                    'trial': trial_id,
+                    'label': int(seg["labels"]),
+                    'start': seg["onset_s"],
+                    'stop': seg["offset_s"],
+                    'duration': seg["offset_s"] - seg["onset_s"],
+                    'event_times': event_times,
+                    'sequence': sequence,
+                }
+                row.update(attrs)
+                rows.append(row)
 
-            
+    return pd.DataFrame(rows)
 
-    return variable_dict
+
+
 
