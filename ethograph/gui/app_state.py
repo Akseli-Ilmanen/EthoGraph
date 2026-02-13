@@ -106,7 +106,7 @@ class AppStateSpec:
         "video_path": (str | None, None, True),
         "audio_path": (str | None, None, True),
         "pose_path": (str | None, None, True),
-        "pose_hide_threshold": (float, 0.0, True),
+        "pose_hide_threshold": (float, 0.9, True),
 
         # Plotting
         "ymin": (float | None, None, True),

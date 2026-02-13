@@ -320,25 +320,26 @@ class DataWidget(DataLoader, QWidget):
         self.controls.append(self.space_plot_combo)
         view_space_row.addWidget(self.space_plot_combo)
 
-        hide_label = QLabel("Hide markers:")
-        hide_label.setToolTip(
-            "Hide pose markers with confidence below this value (0.0-1.0)"
-        )
-        self.pose_hide_threshold_spin = QDoubleSpinBox()
-        self.pose_hide_threshold_spin.setObjectName("pose_hide_threshold_spin")
-        self.pose_hide_threshold_spin.setRange(0.0, 1.0)
-        self.pose_hide_threshold_spin.setSingleStep(0.1)
-        self.pose_hide_threshold_spin.setDecimals(0.9)
-        self.pose_hide_threshold_spin.setFixedWidth(60)
-        self.pose_hide_threshold_spin.setToolTip(
-            "Hide pose markers with confidence below this value (0.0-1.0)"
-        )
-        self.pose_hide_threshold_spin.setValue(self.app_state.pose_hide_threshold)
-        self.pose_hide_threshold_spin.valueChanged.connect(
-            self._on_pose_hide_threshold_changed
-        )
-        view_space_row.addWidget(hide_label)
-        view_space_row.addWidget(self.pose_hide_threshold_spin)
+        if 'pose' in self.type_vars_dict:
+            hide_label = QLabel("Hide markers:")
+            hide_label.setToolTip(
+                "Hide pose markers with confidence below this value (0.0-1.0)"
+            )
+            self.pose_hide_threshold_spin = QDoubleSpinBox()
+            self.pose_hide_threshold_spin.setObjectName("pose_hide_threshold_spin")
+            self.pose_hide_threshold_spin.setRange(0.0, 1.0)
+            self.pose_hide_threshold_spin.setSingleStep(0.1)
+            self.pose_hide_threshold_spin.setDecimals(1)
+            self.pose_hide_threshold_spin.setFixedWidth(60)
+            self.pose_hide_threshold_spin.setToolTip(
+                "Hide pose markers with confidence below this value (0.0-1.0)"
+            )
+            self.pose_hide_threshold_spin.setValue(self.app_state.pose_hide_threshold)
+            self.pose_hide_threshold_spin.valueChanged.connect(
+                self._on_pose_hide_threshold_changed
+            )
+            view_space_row.addWidget(hide_label)
+            view_space_row.addWidget(self.pose_hide_threshold_spin)
 
         view_space_row.addStretch()
         self.layout().addRow("Views:", view_space_row)
