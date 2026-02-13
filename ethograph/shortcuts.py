@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import stat
 import sys
 import shutil
 from pathlib import Path
@@ -46,6 +48,7 @@ def install_shortcut() -> int:
     try:
         for src, dst in [(menu_json, target_json), (icon, target_icon)]:
             if dst.exists():
+                dst.chmod(stat.S_IWRITE | stat.S_IREAD)
                 dst.unlink()
             shutil.copy(src, dst)
     except PermissionError as e:
