@@ -76,6 +76,7 @@ def _resolve_template_paths(template: dict) -> dict:
     nc = str(_template_dir(template) / template["nc_filename"])
     return {
         "name": template["name"],
+        "dataset_key": template["dataset_key"],
         "nc_file_path": nc,
         "video_folder": dest if template.get("has_video") else "",
         "audio_folder": dest if template.get("has_audio") else "",

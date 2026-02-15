@@ -248,8 +248,8 @@ class LabelsWidget(QWidget):
     def _refresh_layout(self):
         """Force layout recalculation by toggling the collapsible widget."""
         if self.meta_widget and hasattr(self.meta_widget, 'collapsible_widgets'):
-            # Labels widget is at index 3 (0: Documentation, 1: I/O, 2: Data controls, 3: Label controls)
-            labels_collapsible = self.meta_widget.collapsible_widgets[3]
+            # Labels widget is at index 2 (0: I/O, 1: Data controls, 2: Label controls)
+            labels_collapsible = self.meta_widget.collapsible_widgets[2]
             labels_collapsible.collapse()
             QApplication.processEvents()
             labels_collapsible.expand()

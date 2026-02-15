@@ -140,6 +140,18 @@ class AppStateSpec:
         "show_changepoints": (bool, True, True),
         "apply_changepoint_correction": (bool, True, True),
         "save_tsv_enabled": (bool, True, True),
+
+        # Envelope / energy (general, used by both heatmap and overlay)
+        "energy_metric": (str, "amplitude_envelope", True),
+        "env_rate": (float, 2000.0, True),
+        "env_cutoff": (float, 500.0, True),
+        "freq_cutoffs_min": (float, 500.0, True),
+        "freq_cutoffs_max": (float, 10000.0, True),
+        "smooth_win": (float, 2.0, True),
+
+        # Heatmap-specific display
+        "heatmap_exclusion_percentile": (float, 98.0, True),
+        "heatmap_colormap": (str, "RdBu_r", True),
     }
 
     @classmethod
@@ -217,13 +229,11 @@ class ObservableAppState(QObject):
             feature_sel = self.features_sel
 
         if feature_sel == "Audio Waveform":
-            ds = self.ds
-            audio_sr = float(ds.attrs.get("audio_sr"))
-
             audio_path, _ = self.get_audio_source()
-            
+
             loader = SharedAudioCache.get_loader(audio_path)
             n_samples = len(loader)
+            audio_sr = loader.rate
 
             time_values = np.arange(n_samples) / audio_sr
             self.time = xr.DataArray(

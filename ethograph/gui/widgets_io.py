@@ -84,6 +84,7 @@ class IOWidget(QWidget):
     def _on_reset_gui_clicked(self):
         """Reset the GUI to its initial state."""
 
+        self.downsample_checkbox.setChecked(False)
 
         self.app_state.delete_yaml()
 
@@ -112,7 +113,7 @@ class IOWidget(QWidget):
         dialog.exec_()
 
     def _on_select_template_clicked(self):
-        self._clear_all_line_edits()
+        self._on_reset_gui_clicked()
         
         
         
@@ -133,6 +134,9 @@ class IOWidget(QWidget):
                 self.app_state.pose_folder = t["pose_folder"]
             if t.get("import_labels"):
                 self.import_labels_checkbox.setChecked(True)
+            if t.get("dataset_key") == "birdpark":
+                self.downsample_checkbox.setChecked(True)
+                self.downsample_spin.setValue(100)
 
     def _clear_all_line_edits(self):
         """Clear all QLineEdit fields in the widget."""

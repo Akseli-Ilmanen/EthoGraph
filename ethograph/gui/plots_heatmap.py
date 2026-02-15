@@ -12,7 +12,6 @@ from ethograph.utils.data_utils import sel_valid
 from .app_constants import (
     DEFAULT_BUFFER_MULTIPLIER,
     Z_INDEX_BACKGROUND,
-    HEATMAP_EXCLUSION_PERCENTILE,
 )
 from .plots_base import BasePlot
 
@@ -53,15 +52,27 @@ class HeatmapPlot(BasePlot):
         # Debounce timer for view range changes
         self._debounce_timer = QTimer()
         self._debounce_timer.setSingleShot(True)
-        self._debounce_timer.setInterval(50)
+        self._debounce_timer.setInterval(150)
         self._debounce_timer.timeout.connect(self._debounced_update)
         self._pending_range = None
+        self._rendering = False
 
-        self.vb.sigRangeChanged.connect(self._on_view_range_changed)
+        self.vb.sigXRangeChanged.connect(self._on_view_range_changed)
 
     def _init_colormap(self):
-        cmap = pg.colormap.get('RdBu_r', source='matplotlib')
+        colormap_name = self.app_state.get_with_default('heatmap_colormap')
+        try:
+            cmap = pg.colormap.get(colormap_name, source='matplotlib')
+        except (KeyError, ValueError, TypeError):
+            cmap = pg.colormap.get('RdBu_r', source='matplotlib')
         self.image_item.setColorMap(cmap)
+
+    def update_colormap(self, name: str):
+        try:
+            cmap = pg.colormap.get(name, source='matplotlib')
+            self.image_item.setColorMap(cmap)
+        except (KeyError, ValueError, TypeError):
+            pass
 
     # --- Context tracking (same pattern as LinePlot) ---
 
@@ -90,6 +101,84 @@ class HeatmapPlot(BasePlot):
         self._buffer_t0 = 0.0
         self._buffer_t1 = 0.0
 
+    # --- Audio envelope loading ---
+
+    def _get_buffered_audio_envelope(self, t0: float, t1: float):
+        """Load audio, compute per-channel envelope using selected metric, and cache."""
+        from .plots_spectrogram import SharedAudioCache
+
+        audio_path = getattr(self.app_state, 'audio_path', None)
+        if not audio_path:
+            return None, None
+
+        loader = SharedAudioCache.get_loader(audio_path)
+        if loader is None:
+            return None, None
+
+        fs = loader.rate
+        total_duration = len(loader) / fs
+
+        window_size = t1 - t0
+        buffer_size = window_size * self._buffer_multiplier
+        load_t0 = max(0.0, t0 - buffer_size / 2)
+        load_t1 = min(total_duration, t1 + buffer_size / 2)
+
+        margin = (t1 - t0) * 0.2
+        if (
+            self._buffered_data is not None
+            and self._buffer_t0 <= t0 - margin
+            and self._buffer_t1 >= t1 + margin
+        ):
+            return self._buffered_data, self._buffered_time
+
+        start_idx = max(0, int(load_t0 * fs))
+        stop_idx = min(len(loader), int(load_t1 * fs))
+        if stop_idx <= start_idx:
+            return None, None
+
+        audio_data = np.array(loader[start_idx:stop_idx], dtype=np.float64)
+        if audio_data.ndim == 1:
+            audio_data = audio_data[:, np.newaxis]
+
+        n_channels = audio_data.shape[1]
+        metric = self.app_state.get_with_default('energy_metric')
+
+        if metric == "meansquared":
+            from ethograph.features.audio_features import compute_meansquared_envelope
+            freq_min = self.app_state.get_with_default('freq_cutoffs_min')
+            freq_max = self.app_state.get_with_default('freq_cutoffs_max')
+            smooth = self.app_state.get_with_default('smooth_win')
+        else:
+            from ethograph.features.filter import envelope
+            env_rate = min(self.app_state.get_with_default('env_rate'), fs / 2)
+            cutoff = self.app_state.get_with_default('env_cutoff')
+
+        env_channels = []
+        for ch in range(n_channels):
+            ch_data = audio_data[:, ch]
+            if metric == "meansquared":
+                _, ch_env = compute_meansquared_envelope(
+                    ch_data, fs, freq_cutoffs=(freq_min, freq_max), smooth_win=smooth,
+                )
+            else:
+                ch_env = np.squeeze(envelope(ch_data, rate=fs, cutoff=cutoff, env_rate=env_rate))
+            env_channels.append(ch_env)
+
+        # Align channels to same length (may differ slightly between metrics)
+        min_len = min(len(e) for e in env_channels)
+        env_data = np.stack([e[:min_len] for e in env_channels], axis=1)
+        env_time = np.linspace(load_t0, load_t1, env_data.shape[0])
+
+        self._channel_labels = [f"Ch {i}" for i in range(n_channels)]
+        self._n_channels = n_channels
+
+        self._buffered_data = env_data
+        self._buffered_time = env_time
+        self._buffer_t0 = load_t0
+        self._buffer_t1 = load_t1
+
+        return env_data, env_time
+
     # --- Buffered data loading ---
 
     def _get_buffered_data(self, t0: float, t1: float):
@@ -106,12 +195,13 @@ class HeatmapPlot(BasePlot):
         ):
             return self._buffered_data, self._buffered_time
 
-        ds = self.app_state.ds
-        time = self.app_state.time.values
         feature_sel = self.app_state.features_sel
 
         if feature_sel == "Audio Waveform":
-            return None, None
+            return self._get_buffered_audio_envelope(t0, t1)
+
+        ds = self.app_state.ds
+        time = self.app_state.time.values
 
         window_size = t1 - t0
         buffer_size = window_size * self._buffer_multiplier
@@ -152,11 +242,12 @@ class HeatmapPlot(BasePlot):
     # --- Rendering ---
 
     def _compute_symmetric_levels(self, data: np.ndarray) -> tuple[float, float]:
-        """Compute symmetric color range from 98th percent. of abs. values, clipping extremes."""
+        """Compute symmetric color range using exclusion percentile from app_state."""
+        percentile = self.app_state.get_with_default('heatmap_exclusion_percentile')
         valid = data[np.isfinite(data)]
         if len(valid) == 0:
             return -1.0, 1.0
-        vmax = np.percentile(np.abs(valid), HEATMAP_EXCLUSION_PERCENTILE)
+        vmax = np.percentile(np.abs(valid), percentile)
         if vmax < 1e-10:
             vmax = 1.0
         return -vmax, vmax
@@ -165,39 +256,36 @@ class HeatmapPlot(BasePlot):
         if not hasattr(self.app_state, 'features_sel'):
             return
 
-        feature_sel = self.app_state.features_sel
-        if feature_sel == "Audio Waveform":
-            return
-
         if t0 is None or t1 is None:
             t0, t1 = self.get_current_xlim()
 
         self._render_heatmap(t0, t1)
 
     def _render_heatmap(self, t0: float, t1: float):
-        result = self._get_buffered_data(t0, t1)
-        if result[0] is None:
-            return
+        self._rendering = True
+        try:
+            result = self._get_buffered_data(t0, t1)
+            if result[0] is None:
+                return
 
-        data, time_vals = result
-        normalized = z_normalize(data)
-        vmin, vmax = self._compute_symmetric_levels(normalized)
+            data, time_vals = result
+            normalized = z_normalize(data)
+            vmin, vmax = self._compute_symmetric_levels(normalized)
 
-        # pyqtgraph ImageItem uses img[x, y]: first index = horizontal (time),
-        # second index = vertical (channels). normalized is (n_time, n_channels)
-        # which already matches this convention — no transpose needed.
-        self.image_item.setImage(normalized, autoLevels=False)
-        self.image_item.setLevels([vmin, vmax])
+            self.image_item.setImage(normalized, autoLevels=False)
+            self.image_item.setLevels([vmin, vmax])
 
-        buf_t0 = float(time_vals[0])
-        buf_t1 = float(time_vals[-1])
-        duration = buf_t1 - buf_t0
-        n_channels = self._n_channels
+            buf_t0 = float(time_vals[0])
+            buf_t1 = float(time_vals[-1])
+            duration = buf_t1 - buf_t0
+            n_channels = self._n_channels
 
-        self.image_item.setRect(pg.QtCore.QRectF(buf_t0, 0, duration, n_channels))
-        self.plot_item.setYRange(0, n_channels, padding=0)
+            self.image_item.setRect(pg.QtCore.QRectF(buf_t0, 0, duration, n_channels))
+            self.plot_item.setYRange(0, n_channels, padding=0)
 
-        self._update_y_axis_ticks()
+            self._update_y_axis_ticks()
+        finally:
+            self._rendering = False
 
     def _update_y_axis_ticks(self):
         """Set y-axis tick labels to channel names."""
@@ -207,10 +295,21 @@ class HeatmapPlot(BasePlot):
 
     # --- View range handling ---
 
+    def _buffer_covers(self, t0: float, t1: float) -> bool:
+        if self._buffered_data is None or self._context_changed():
+            return False
+        margin = (t1 - t0) * 0.2
+        return self._buffer_t0 <= t0 - margin and self._buffer_t1 >= t1 + margin
+
     def _on_view_range_changed(self):
+        if self._rendering:
+            return
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
-        self._pending_range = self.get_current_xlim()
+        t0, t1 = self.get_current_xlim()
+        if self._buffer_covers(t0, t1):
+            return
+        self._pending_range = (t0, t1)
         self._debounce_timer.start()
 
     def _debounced_update(self):

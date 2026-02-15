@@ -11,6 +11,7 @@ from qtpy.QtWidgets import QMessageBox
 from ethograph import TrialTree, set_media_attrs, minimal_basics
 from ethograph.features.audio_features import get_envelope
 from ethograph.utils.validation import extract_type_vars, validate_datatree
+from ethograph.utils.audio import get_audio_sr
 from movement.io import load_poses
 from movement.kinematics import compute_acceleration, compute_pairwise_distances, compute_speed, compute_velocity
 
@@ -163,6 +164,7 @@ def minimal_dt_from_audio(video_path, fps, audio_path, audio_sr, individuals=Non
     if individuals is None:
         individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
 
+    
     envelope, gen_wav_path = get_envelope(audio_path, audio_sr, fps)
 
     if gen_wav_path:
@@ -190,7 +192,7 @@ def minimal_dt_from_audio(video_path, fps, audio_path, audio_sr, individuals=Non
         raise ValueError("Envelope must be 1D or 2D array")
                 
 
-    ds.attrs["audio_sr"] = audio_sr
+
     ds.attrs["fps"] = fps
 
     

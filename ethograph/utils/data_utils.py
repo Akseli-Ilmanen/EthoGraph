@@ -172,8 +172,6 @@ def trees_to_df(
                     'labels': int(seg["labels"]),
                     'onset_s': seg["onset_s"],
                     'offset_s': seg["offset_s"],
-                    'onset_idx': 
-                    'offset_idx':
                 }
                 if 'pulse_onsets' in ds:
                     trial_onset = float(ds.pulse_onsets.values[0]) / sr

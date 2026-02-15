@@ -485,9 +485,6 @@ def _downsample_dataset(ds: xr.Dataset, factor: int) -> xr.Dataset:
         data_vars[var_name] = xr.DataArray(interleaved, dims=new_dims, attrs=var_attrs)
 
     new_attrs = ds.attrs.copy()
-    if 'audio_sr' in new_attrs:
-        new_attrs['original_audio_sr'] = new_attrs['audio_sr']
-        new_attrs['audio_sr'] = new_attrs['audio_sr'] / factor * 2
     new_attrs['downsample_factor'] = factor
     new_attrs['downsample_method'] = 'minmax_envelope'
 

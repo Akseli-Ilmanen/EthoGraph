@@ -80,7 +80,8 @@ class DataWidget(DataLoader, QWidget):
         self.labels_widget = None
         self.axes_widget = None
         self.audio_widget = None
-        self.audio_player = None 
+        self.energy_widget = None
+        self.audio_player = None
         self.video_path = None
         self.audio_path = None
         self.space_plot = None  
@@ -104,7 +105,7 @@ class DataWidget(DataLoader, QWidget):
         
         
 
-    def set_references(self, plot_container, labels_widget, axes_widget, navigation_widget, audio_widget=None, changepoints_widget=None):
+    def set_references(self, plot_container, labels_widget, axes_widget, navigation_widget, audio_widget=None, changepoints_widget=None, energy_widget=None):
         """Set references to other widgets after creation."""
         self.plot_container = plot_container
         self.labels_widget = labels_widget
@@ -112,6 +113,7 @@ class DataWidget(DataLoader, QWidget):
         self.navigation_widget = navigation_widget
         self.audio_widget = audio_widget
         self.changepoints_widget = changepoints_widget
+        self.energy_widget = energy_widget
 
         if changepoints_widget is not None:
             changepoints_widget.request_plot_update.connect(self._on_plot_update_request)
@@ -201,6 +203,8 @@ class DataWidget(DataLoader, QWidget):
         self.io_widget.template_button.setEnabled(False)
         self.changepoints_widget.setEnabled(True)
         self.audio_widget.set_enabled_state(has_audio=False)
+        if self.energy_widget:
+            self.energy_widget.setEnabled(True)
 
         # Set initial trial selection before calling on_trial_changed
         trial = self.app_state.trials_sel
@@ -356,6 +360,12 @@ class DataWidget(DataLoader, QWidget):
         self.show_confidence_checkbox.stateChanged.connect(self.refresh_lineplot)
         overlay_row.addWidget(self.show_confidence_checkbox)
 
+        self.show_envelope_checkbox = QCheckBox("Envelope")
+        self.show_envelope_checkbox.setChecked(False)
+        self.show_envelope_checkbox.stateChanged.connect(self._on_envelope_overlay_changed)
+        self.show_envelope_checkbox.hide()
+        overlay_row.addWidget(self.show_envelope_checkbox)
+
         self.show_waveform_checkbox = QCheckBox("Waveform (audio)")
         self.show_waveform_checkbox.setChecked(False)
         self.show_waveform_checkbox.stateChanged.connect(self._on_audio_overlay_changed)
@@ -367,6 +377,8 @@ class DataWidget(DataLoader, QWidget):
         self.show_spectrogram_checkbox.stateChanged.connect(self._on_audio_overlay_changed)
         self.show_spectrogram_checkbox.hide()
         overlay_row.addWidget(self.show_spectrogram_checkbox)
+
+
 
         overlay_row.addStretch()
         self.layout().addRow("Overlays:", overlay_row)
@@ -438,6 +450,9 @@ class DataWidget(DataLoader, QWidget):
         if mode.startswith("Spectrogram"):
             self.plot_container.spectrogram_plot.set_source(None)
             self.plot_container.switch_to_spectrogram()
+        elif mode.startswith("Heatmap"):
+            self.plot_container.spectrogram_plot.set_source(None)
+            self.plot_container.switch_to_heatmap()
         else:
             self.plot_container.spectrogram_plot.set_source(None)
             self.plot_container.switch_to_audiotrace()
@@ -487,19 +502,33 @@ class DataWidget(DataLoader, QWidget):
             print(f"Cannot build xarray spectrogram source: {e}")
             return None
 
+    def _on_envelope_overlay_changed(self):
+        """Handle envelope overlay checkbox toggle."""
+        if not self.plot_container:
+            return
+
+        can_show = self.plot_container.is_lineplot() or self.plot_container.is_audiotrace()
+        if self.show_envelope_checkbox.isChecked() and can_show:
+            self.plot_container.show_envelope_overlay()
+        else:
+            self.plot_container.hide_envelope_overlay()
+
     def _update_audio_overlay_checkboxes(self):
         """Enable/disable audio overlay checkboxes based on feature selection.
 
-        Overlays only make sense when viewing a line plot feature, not when
-        viewing Audio Waveform or Spectrogram directly.
+        Waveform/spectrogram overlays only make sense on line plots of non-audio
+        features.  The envelope overlay is available on both line plots AND the
+        audio waveform (audiotrace) view, where it rides on the same y-axis.
         """
         if not hasattr(self.app_state, 'features_sel'):
             return
 
         feature = self.app_state.features_sel
         view_mode = self.view_mode_combo.currentText() if hasattr(self, 'view_mode_combo') else "Line"
+        is_audio_waveform = feature == "Audio Waveform"
+        is_line_view = view_mode.startswith("Line")
 
-        if feature == "Audio Waveform" or not view_mode.startswith("Line"):
+        if is_audio_waveform or not is_line_view:
             self.show_waveform_checkbox.blockSignals(True)
             self.show_waveform_checkbox.setEnabled(False)
             self.show_waveform_checkbox.setChecked(False)
@@ -509,9 +538,20 @@ class DataWidget(DataLoader, QWidget):
             self.show_spectrogram_checkbox.setEnabled(False)
             self.show_spectrogram_checkbox.setChecked(False)
             self.show_spectrogram_checkbox.blockSignals(False)
+
+        if is_audio_waveform and is_line_view:
+            self.show_envelope_checkbox.setEnabled(True)
+        elif not is_line_view:
+            self.show_envelope_checkbox.blockSignals(True)
+            self.show_envelope_checkbox.setEnabled(False)
+            self.show_envelope_checkbox.setChecked(False)
+            self.show_envelope_checkbox.blockSignals(False)
+            if self.plot_container:
+                self.plot_container.hide_envelope_overlay()
         else:
             self.show_waveform_checkbox.setEnabled(True)
             self.show_spectrogram_checkbox.setEnabled(True)
+            self.show_envelope_checkbox.setEnabled(True)
 
     def _set_controls_enabled(self, enabled: bool):
         """Enable or disable all trial-related controls."""
@@ -846,7 +886,11 @@ class DataWidget(DataLoader, QWidget):
             # Handle audio overlay
             if self.plot_container.is_lineplot():
                 self.plot_container.update_audio_overlay()
-         
+
+            # Re-show envelope overlay if checked (works on both lineplot and audiotrace)
+            if hasattr(self, 'show_envelope_checkbox') and self.show_envelope_checkbox.isChecked():
+                if self.plot_container.is_lineplot() or self.plot_container.is_audiotrace():
+                    self.plot_container.show_envelope_overlay()
 
         except (KeyError, AttributeError, ValueError) as e:
             show_error(f"Error updating plot: {e}")
@@ -916,9 +960,11 @@ class DataWidget(DataLoader, QWidget):
         if self.changepoints_widget:
             self.changepoints_widget.set_enabled_state(has_audio)
 
+        
         if has_audio:
             self.show_waveform_checkbox.show()
             self.show_spectrogram_checkbox.show()
+            
         else:
             self.show_waveform_checkbox.hide()
             self.show_spectrogram_checkbox.hide()

@@ -13,6 +13,9 @@ from .app_constants import (
     SPECTROGRAM_OVERLAY_DEBOUNCE_MS,
     SPECTROGRAM_OVERLAY_ZOOM_OUT_THRESHOLD,
     SPECTROGRAM_OVERLAY_ZOOM_IN_THRESHOLD,
+    ENVELOPE_OVERLAY_DEBOUNCE_MS,
+    ENVELOPE_OVERLAY_COLOR,
+    ENVELOPE_OVERLAY_WIDTH,
     PREDICTION_LABELS_HEIGHT_RATIO,
     SPECTROGRAM_LABELS_HEIGHT_RATIO,
     PREDICTION_FALLBACK_Y_TOP,
@@ -36,6 +39,7 @@ from .plots_audiotrace import AudioTracePlot
 from .plots_heatmap import HeatmapPlot
 from .plots_lineplot import LinePlot
 from .plots_spectrogram import SpectrogramPlot
+from .widgets_plot import OverlayManager
 
 
 class PlotContainer(QWidget):
@@ -70,7 +74,7 @@ class PlotContainer(QWidget):
         self.audio_trace_plot.hide()
         self.heatmap_plot.hide()
 
-        self.confidence_item = None
+        self.overlay_manager = OverlayManager()
 
         self.audio_overlay_type = None
         self.audio_overlay_item = None
@@ -87,6 +91,18 @@ class PlotContainer(QWidget):
         self.amp_threshold_lines: list = []
         self._amp_envelope_geometry_updater = None
         self._amp_envelope_host_plot = None
+
+        # Envelope overlay x-range refresh (data loading/debounce)
+        self._envelope_xrange_updater = None
+        self._envelope_debounce = None
+
+        # Connect sigYRangeChanged to rescale overlays
+        self.line_plot.vb.sigYRangeChanged.connect(
+            lambda: self.overlay_manager.rescale_for_plot(self.line_plot)
+        )
+        self.audio_trace_plot.vb.sigYRangeChanged.connect(
+            lambda: self.overlay_manager.rescale_for_plot(self.audio_trace_plot)
+        )
 
         # Connect zoom events to update changepoint line styles
         self.spectrogram_plot.vb.sigRangeChanged.connect(self._on_audio_plot_zoom)
@@ -105,8 +121,10 @@ class PlotContainer(QWidget):
         if self.current_plot_type == target_type:
             return
 
-        if self.current_plot_type == 'lineplot':
+        if self.current_plot_type in ('lineplot', 'audiotrace'):
             self.hide_audio_overlay()
+            self.hide_envelope_overlay()
+            self.overlay_manager.clear_plot(self.current_plot)
 
         plot_map = {
             'lineplot': self.line_plot,
@@ -151,49 +169,28 @@ class PlotContainer(QWidget):
         self._switch_to_plot('heatmap')
 
     def show_confidence_plot(self, confidence_data):
-        """Display confidence values on a secondary y-axis."""
-        
-    
-        if self.confidence_item is not None:
-            self.current_plot.plot_item.removeItem(self.confidence_item)
-            self.confidence_item = None
+        """Display confidence values as a scaled overlay via OverlayManager."""
+        self.overlay_manager.remove_overlay('confidence')
 
         if confidence_data is None or len(confidence_data) == 0:
             return
 
         time = self.app_state.time.values
-        
-        right_axis = self.current_plot.plot_item.getAxis('right')
-        right_axis.setStyle(showValues=True)
-        right_axis.show()
-        
-        main_range = self.current_plot.plot_item.viewRange()[1]
-        conf_min, conf_max = np.min(confidence_data), np.max(confidence_data)
-        conf_range = conf_max - conf_min if conf_max > conf_min else 1.0
-        
-        scaled_confidence = ((confidence_data - conf_min) / conf_range) * (main_range[1] - main_range[0]) + main_range[0]
-        
-        self.confidence_item = pg.PlotCurveItem(
-            time,
-            scaled_confidence,
+        item = pg.PlotCurveItem(
             pen=pg.mkPen(color='k', width=2, style=pg.QtCore.Qt.DashLine)
         )
-        self.current_plot.plot_item.addItem(self.confidence_item)
-        
-        ticks = []
-        for conf_val in np.linspace(conf_min, conf_max, 5):
-            main_val = ((conf_val - conf_min) / conf_range) * (main_range[1] - main_range[0]) + main_range[0]
-            ticks.append((main_val, f'{conf_val:.2f}'))
-        
-        right_axis.setTicks([ticks])
-    
+        self.overlay_manager.add_scaled_overlay(
+            'confidence',
+            self.current_plot,
+            item,
+            time,
+            np.asarray(confidence_data, dtype=np.float64),
+            tick_format="{:.2f}",
+        )
+
     def hide_confidence_plot(self):
-        """Hide the confidence plot if it exists."""
-        if self.confidence_item is not None:
-            self.current_plot.plot_item.removeItem(self.confidence_item)
-            right_axis = self.current_plot.plot_item.getAxis('right')
-            right_axis.hide()
-            self.confidence_item = None
+        """Hide the confidence overlay."""
+        self.overlay_manager.remove_overlay('confidence')
 
     def draw_amplitude_envelope(
         self,
@@ -921,3 +918,213 @@ class PlotContainer(QWidget):
         if hasattr(self.audio_trace_plot, 'buffer'):
             self.audio_trace_plot.buffer.audio_loader = None
             self.audio_trace_plot.buffer.current_path = None
+
+    # --- Envelope overlay ---
+
+    def _get_envelope_host_plot(self):
+        """Return the plot widget to host the envelope overlay, or None."""
+        if self.is_audiotrace():
+            return self.audio_trace_plot
+        if self.is_lineplot():
+            return self.line_plot
+        return None
+
+
+    def _load_envelope_feature(self, t0, t1):
+        """Load the currently selected feature's 1D data for the envelope.
+
+        Returns (data_1d, time_array, sample_rate) or (None, None, None).
+        """
+        from ethograph.utils.data_utils import sel_valid, get_time_coord
+
+        feature_sel = getattr(self.app_state, 'features_sel', None)
+        ds = getattr(self.app_state, 'ds', None)
+        if not feature_sel or ds is None or feature_sel not in ds:
+            return None, None, None
+
+        da = ds[feature_sel]
+        time_coord = get_time_coord(da)
+        if time_coord is None:
+            return None, None, None
+
+        time_vals = time_coord.values
+        ds_kwargs = self.app_state.get_ds_kwargs()
+        data, _ = sel_valid(da, ds_kwargs)
+
+        if data.ndim > 1:
+            data = data[:, 0]
+
+        mask = (time_vals >= t0) & (time_vals <= t1)
+        if not np.any(mask):
+            return None, None, None
+
+        dt = np.median(np.diff(time_vals[:min(1000, len(time_vals))]))
+        fs = 1.0 / dt if dt > 0 else 1.0
+
+        return data[mask], time_vals[mask], fs
+
+    def _load_envelope_data(self, host, t0, t1):
+        """Load signal data for envelope computation.
+
+        For audiotrace (Audio Waveform): loads from SharedAudioCache.
+        For lineplot: loads from the current dataset feature.
+        Returns (signal_1d, sample_rate, buf_t0) or (None, None, None).
+        buf_t0 is the start time of the (possibly padded) buffer.
+        """
+        if self.is_audiotrace():
+            from .plots_spectrogram import SharedAudioCache
+
+            audio_path = getattr(self.app_state, 'audio_path', None)
+            if not audio_path:
+                return None, None, None
+            loader = SharedAudioCache.get_loader(audio_path)
+            if loader is None:
+                return None, None, None
+            fs = loader.rate
+            _, channel_idx = self.app_state.get_audio_source()
+            audio_data, buf_t0 = self._load_envelope_audio(loader, fs, channel_idx, t0, t1)
+            return audio_data, fs, buf_t0
+
+        feature_data, _, fs = self._load_envelope_feature(t0, t1)
+        return feature_data, fs, t0
+
+    def show_envelope_overlay(self):
+        """Compute and draw an energy envelope overlay via OverlayManager.
+
+        The overlay is added with ``ignoreBounds=True`` so autoscale only
+        considers the primary data.  The OverlayManager rescales the overlay
+        automatically when the y-range changes.
+        """
+        host = self._get_envelope_host_plot()
+        if host is None:
+            return
+
+        self.hide_envelope_overlay()
+
+        t0, t1 = host.get_current_xlim()
+        signal_data, fs, buf_t0 = self._load_envelope_data(host, t0, t1)
+        if signal_data is None:
+            return
+
+        metric = self.app_state.get_with_default('energy_metric')
+        env_time, env_data = self._compute_envelope(signal_data, fs, metric, buf_t0, t0, t1)
+
+        if env_data is None or len(env_data) == 0:
+            return
+
+        item = pg.PlotCurveItem(
+            pen=pg.mkPen(color=ENVELOPE_OVERLAY_COLOR, width=ENVELOPE_OVERLAY_WIDTH),
+        )
+        self.overlay_manager.add_scaled_overlay(
+            'envelope', host, item, env_time, env_data,
+        )
+
+        self._envelope_debounce = QTimer()
+        self._envelope_debounce.setSingleShot(True)
+        self._envelope_debounce.setInterval(ENVELOPE_OVERLAY_DEBOUNCE_MS)
+        self._envelope_debounce.timeout.connect(self._refresh_envelope_data)
+
+        def on_x_range_changed():
+            if self.overlay_manager.has_overlay('envelope'):
+                self._envelope_debounce.start()
+
+        host.vb.sigXRangeChanged.connect(on_x_range_changed)
+        self._envelope_xrange_updater = on_x_range_changed
+
+    def hide_envelope_overlay(self):
+        """Remove envelope overlay from whichever plot hosts it."""
+        if self._envelope_xrange_updater:
+            for plot in (self.line_plot, self.audio_trace_plot):
+                try:
+                    plot.vb.sigXRangeChanged.disconnect(self._envelope_xrange_updater)
+                except (RuntimeError, TypeError):
+                    pass
+            self._envelope_xrange_updater = None
+
+        if self._envelope_debounce:
+            self._envelope_debounce.stop()
+            self._envelope_debounce = None
+
+        self.overlay_manager.remove_overlay('envelope')
+
+    def _refresh_envelope_data(self):
+        """Recompute envelope for the current visible range and update the overlay."""
+        if not self.overlay_manager.has_overlay('envelope'):
+            return
+
+        host = self._get_envelope_host_plot()
+        if host is None:
+            return
+
+        t0, t1 = host.get_current_xlim()
+        signal_data, fs, buf_t0 = self._load_envelope_data(host, t0, t1)
+        if signal_data is None:
+            return
+
+        metric = self.app_state.get_with_default('energy_metric')
+        env_time, env_data = self._compute_envelope(signal_data, fs, metric, buf_t0, t0, t1)
+
+        if env_data is None or len(env_data) == 0:
+            return
+
+        self.overlay_manager.update_overlay_data('envelope', env_time, env_data)
+
+    def _load_envelope_audio(self, loader, fs, channel_idx, t0, t1):
+        """Load audio with padding to avoid edge artifacts from lowpass filtering.
+
+        Returns (audio_1d, actual_t0) where actual_t0 is the start time of the
+        padded buffer.  The caller is responsible for trimming the result.
+        """
+        cutoff = self.app_state.get_with_default('env_cutoff')
+        pad_s = max(0.5, 3.0 / cutoff) if cutoff > 0 else 0.5
+        buf_t0 = max(0.0, t0 - pad_s)
+        buf_t1 = min(len(loader) / fs, t1 + pad_s)
+
+        start_idx = max(0, int(buf_t0 * fs))
+        stop_idx = min(len(loader), int(buf_t1 * fs))
+        if stop_idx <= start_idx:
+            return None, buf_t0
+
+        audio_data = np.array(loader[start_idx:stop_idx], dtype=np.float64)
+        if audio_data.ndim > 1:
+            ch = min(channel_idx, audio_data.shape[1] - 1)
+            audio_data = audio_data[:, ch]
+        return audio_data, buf_t0
+
+    def _compute_envelope(
+        self, signal_1d: np.ndarray, fs: float, metric: str,
+        buf_t0: float, view_t0: float, view_t1: float,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Compute envelope on a signal buffer and trim to the visible window.
+
+        Parameters
+        ----------
+        signal_1d : 1D signal samples.
+        fs : sample rate of the signal.
+        metric : ``"amplitude_envelope"`` or ``"meansquared"``.
+        buf_t0 : start time of the buffer.
+        view_t0, view_t1 : visible window boundaries used for trimming.
+        """
+        nyquist = fs / 2.0
+
+        if metric == "meansquared":
+            from ethograph.features.audio_features import compute_meansquared_envelope
+
+            freq_min = min(self.app_state.get_with_default('freq_cutoffs_min'), nyquist * 0.9)
+            freq_max = min(self.app_state.get_with_default('freq_cutoffs_max'), nyquist * 0.9)
+            smooth = self.app_state.get_with_default('smooth_win')
+            env_time, env_data = compute_meansquared_envelope(
+                signal_1d, fs, freq_cutoffs=(freq_min, freq_max), smooth_win=smooth,
+            )
+        else:
+            from ethograph.features.filter import envelope as amp_envelope
+
+            env_rate = min(self.app_state.get_with_default('env_rate'), fs)
+            cutoff = min(self.app_state.get_with_default('env_cutoff'), nyquist * 0.9)
+            env_data = np.squeeze(amp_envelope(signal_1d, rate=fs, cutoff=cutoff, env_rate=env_rate))
+            env_time = np.linspace(0, len(signal_1d) / fs, len(env_data))
+
+        env_time = env_time + buf_t0
+
+        mask = (env_time >= view_t0) & (env_time <= view_t1)
+        return env_time[mask], env_data[mask]

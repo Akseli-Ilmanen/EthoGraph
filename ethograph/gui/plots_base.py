@@ -114,7 +114,8 @@ class BasePlot(pg.PlotWidget):
             self.set_x_range(mode='default')
 
         # Only apply axis lock after setting the desired range
-        self.toggle_axes_lock(preserve_default_range=(t0 is None and t1 is None))
+        is_new_trial = t0 is None and t1 is None
+        self.toggle_axes_lock(preserve_default_range=is_new_trial)
 
     def update_time_marker(self, time_position: float):
         """Update time marker position for video sync."""

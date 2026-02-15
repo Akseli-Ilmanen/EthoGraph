@@ -1,7 +1,5 @@
 """Widget container for other collapsible widgets."""
 
-import webbrowser
-
 from napari.viewer import Viewer
 from qt_niu.collapsible_widget import CollapsibleWidgetContainer
 from qtpy.QtGui import QFont
@@ -10,12 +8,10 @@ from qtpy.QtWidgets import (
     QApplication,
     QComboBox,
     QCompleter,
-    QHBoxLayout,
     QMenu,
     QMessageBox,
     QPushButton,
     QSizePolicy,
-    QWidget,
 )
 
 from ethograph.utils.paths import gui_default_settings_path
@@ -29,6 +25,7 @@ from .widgets_io import IOWidget
 from .widgets_labels import LabelsWidget
 from .widgets_navigation import NavigationWidget
 from .widgets_plot import AxesWidget
+from .widgets_energy import EnergyWidget
 from .widgets_spectrogram import SpectrogramWidget
 
 
@@ -57,7 +54,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         # Initialize all widgets with app_state
         self._create_widgets()
 
-        self.collapsible_widgets[1].expand()
+        self.collapsible_widgets[0].expand()
 
         self._bind_global_shortcuts(self.labels_widget, self.data_widget)
         
@@ -101,8 +98,8 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.axes_widget = AxesWidget(self.viewer, self.app_state)
         self.audio_widget = SpectrogramWidget(self.viewer, self.app_state)
         self.changepoints_widget = ChangepointsWidget(self.viewer, self.app_state)
+        self.energy_widget = EnergyWidget(self.viewer, self.app_state)
         self.labels_widget = LabelsWidget(self.viewer, self.app_state)
-        self.help_widget = self._create_help_widget()
         self.navigation_widget = NavigationWidget(self.viewer, self.app_state)
 
         # Create I/O widget first, then pass it to data widget
@@ -119,6 +116,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.labels_widget.changepoints_widget = self.changepoints_widget
         self.axes_widget.set_plot_container(self.plot_container)
         self.audio_widget.set_plot_container(self.plot_container)
+        self.energy_widget.set_plot_container(self.plot_container)
         self.changepoints_widget.set_plot_container(self.plot_container)
         self.changepoints_widget.set_meta_widget(self)
         self.changepoints_widget.set_motif_mappings(self.labels_widget._mappings)
@@ -137,28 +135,23 @@ class MetaWidget(CollapsibleWidgetContainer):
         # The one widget to rule them all (loading data, updating plots, managing sync)
         self.data_widget.set_references(
             self.plot_container, self.labels_widget, self.axes_widget,
-            self.navigation_widget, self.audio_widget, self.changepoints_widget
+            self.navigation_widget, self.audio_widget, self.changepoints_widget,
+            self.energy_widget,
         )
 
         for widget in [
-            self.help_widget,
             self.io_widget,
             self.data_widget,
             self.labels_widget,
             self.changepoints_widget,
             self.axes_widget,
             self.audio_widget,
+            self.energy_widget,
             self.navigation_widget,
         ]:
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         # Add widgets to collapsible container
-        self.add_widget(
-            self.help_widget,
-            collapsible=True,
-            widget_title="Documentation",
-        )
-
         self.add_widget(
             self.io_widget,
             collapsible=True,
@@ -196,9 +189,15 @@ class MetaWidget(CollapsibleWidgetContainer):
         )
 
         self.add_widget(
+            self.energy_widget,
+            collapsible=True,
+            widget_title="Energy / Envelope controls",
+        )
+
+        self.add_widget(
             self.navigation_widget,
             collapsible=True,
-            widget_title="Navigation controls",
+            widget_title="Navigation / Help",
         )
 
 
@@ -236,9 +235,9 @@ class MetaWidget(CollapsibleWidgetContainer):
 
     def update_labels_widget_title(self):
         """Update the Label controls title with verification status emoji."""
-        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 3:
-            # Labels widget is at index 3 (0: Documentation, 1: I/O, 2: Data controls, 3: Label controls)
-            labels_collapsible = self.collapsible_widgets[3]
+        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 2:
+            # Labels widget is at index 2 (0: I/O, 1: Data controls, 2: Label controls)
+            labels_collapsible = self.collapsible_widgets[2]
 
             # Get verification status
             verification_emoji = "❌"  # Default to not verified
@@ -264,9 +263,9 @@ class MetaWidget(CollapsibleWidgetContainer):
 
     def update_changepoints_widget_title(self):
         """Update the Changepoints title with correction mode indicator."""
-        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 4:
-            # Changepoints widget is at index 4
-            cp_collapsible = self.collapsible_widgets[4]
+        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 3:
+            # Changepoints widget is at index 3
+            cp_collapsible = self.collapsible_widgets[3]
 
             correction_enabled = self.changepoints_widget.changepoint_correction_checkbox.isChecked()
             indicator = "🎯" if correction_enabled else "⭕"
@@ -320,29 +319,6 @@ class MetaWidget(CollapsibleWidgetContainer):
         if hasattr(self, "app_state") and hasattr(self.app_state, "stop_auto_save"):
             self.app_state.stop_auto_save()
         super().closeEvent(event)
-
-    def _create_help_widget(self) -> QWidget:
-        """Create the help widget with documentation button."""
-        widget = QWidget()
-        layout = QHBoxLayout()
-        widget.setLayout(layout)
-
-        self.docs_button = QPushButton("📚 Documentation")
-        self.docs_button.clicked.connect(lambda: webbrowser.open("https://ethograph.readthedocs.io/en/latest/"))
-        layout.addWidget(self.docs_button)
-        
-        self.github_button = QPushButton("🔗 GitHub Issues")
-        self.github_button.clicked.connect(lambda: webbrowser.open("https://github.com/akseli-ilmanen/ethograph/issues"))
-        layout.addWidget(self.github_button)
-        
-        
-
-        self.docs_dialog = None
-        
-        
-        
-        return widget
-
 
     def _override_napari_shortcuts(self):
         """Aggressively unbind napari shortcuts at all levels."""

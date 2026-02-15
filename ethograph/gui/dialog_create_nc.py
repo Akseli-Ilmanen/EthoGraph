@@ -4,7 +4,7 @@ import webbrowser
 from pathlib import Path
 from typing import Optional, get_args
 
-import audioio as aio
+
 import av
 import xarray as xr
 from movement.io import load_poses
@@ -31,6 +31,8 @@ from ethograph.gui.data_loader import (
     minimal_dt_from_npy_file,
     minimal_dt_from_pose,
 )
+from ethograph.utils.audio import get_audio_sr
+
 
 
 def get_video_fps(video_path: str) -> Optional[int]:
@@ -44,13 +46,6 @@ def get_video_fps(video_path: str) -> Optional[int]:
         return None
 
 
-def get_audio_sample_rate(audio_path: str) -> Optional[int]:
-    """Read sample rate from audio file using audioio, rounded to nearest integer."""
-    try:
-        _, audio_sr = aio.load_audio(audio_path)
-        return round(audio_sr)
-    except Exception:
-        return None
 
 AVAILABLE_SOFTWARES = list(get_args(load_poses.from_file.__annotations__["source_software"]))
 
@@ -495,6 +490,8 @@ class AudioFileDialog(QDialog):
         self.audio_sr_spinbox.setRange(1000, 192000)
         self.audio_sr_spinbox.setValue(44100)
         self.audio_sr_spinbox.setSuffix(" Hz")
+        self.audio_sr_spinbox.setReadOnly(True)
+        self.audio_sr_spinbox.setToolTip("Sample rate determined by audio file.")
         form_layout.addRow("Audio sample rate:", self.audio_sr_spinbox)
 
         self.individuals_edit = QLineEdit()
@@ -550,9 +547,8 @@ class AudioFileDialog(QDialog):
         )
         if result and result[0]:
             self.audio_edit.setText(result[0])
-            audio_sr = get_audio_sample_rate(result[0])
-            if audio_sr is not None:
-                self.audio_sr_spinbox.setValue(audio_sr)
+            audio_sr = get_audio_sr(result[0])
+            self.audio_sr_spinbox.setValue(audio_sr)
 
     def _on_output_browse(self):
         result = QFileDialog.getSaveFileName(

@@ -158,9 +158,6 @@ def validate_dataset(ds: xr.Dataset, type_vars_dict: Dict) -> List[str]:
                 errors.append(f"Feature variable '{feat_name}' must have a coordinate containing 'time'. E.g. 'time', 'time_labels', 'time_aux', etc.")
 
         
-    # Audio requires sample rate
-    if "mics" in type_vars_dict and "audio_sr" not in ds.attrs:
-        errors.append("Xarray dataset ('ds') with 'mics' must have 'audio_sr' (sample rate) attribute")
 
     for file_type in ["cameras", "mics", "pose"]:
         errors.extend(validate_media_files(ds, file_type))

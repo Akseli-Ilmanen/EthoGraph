@@ -7,10 +7,13 @@ from audioio import AudioLoader, PlayAudio
 from napari.utils.notifications import show_error
 from qtpy.QtCore import QObject, QTimer, Signal
 
+from ethograph.utils.audio import get_audio_sr
+
 try:
     from napari._qt._qapp_model.qactions._view import _get_current_play_status
 except ImportError:
     _get_current_play_status = None
+
 
 
 class NapariVideoSync(QObject):
@@ -41,11 +44,8 @@ class NapariVideoSync(QObject):
         self.total_frames = 0
         self.total_duration = 0.0
 
-        self.audio_sr = getattr(app_state.ds, "sr", None) if hasattr(app_state, "ds") else None
-        if self.audio_sr is None and audio_source:
-            with AudioLoader(audio_source) as data:
-                self.audio_sr = data.rate
-
+        self.audio_sr = get_audio_sr(audio_source)
+        
         for layer in self.viewer.layers:
             if layer.name == "video" and hasattr(layer, "data"):
                 self.video_layer = layer
