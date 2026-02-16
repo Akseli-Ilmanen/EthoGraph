@@ -108,6 +108,8 @@ class AppStateSpec:
         "audio_path": (str | None, None, True),
         "pose_path": (str | None, None, True),
         "pose_hide_threshold": (float, 0.9, True),
+        "ephys_folder": (str | None, None, True),
+        "ephys_path": (str | None, None, True),
 
         # Plotting
         "ymin": (float | None, None, True),
@@ -140,6 +142,22 @@ class AppStateSpec:
         "show_changepoints": (bool, True, True),
         "apply_changepoint_correction": (bool, True, True),
         "save_tsv_enabled": (bool, True, True),
+
+        # Envelope / energy (general, used by both heatmap and overlay)
+        "energy_metric": (str, "amplitude_envelope", True),
+        "env_rate": (float, 2000.0, True),
+        "env_cutoff": (float, 500.0, True),
+        "freq_cutoffs_min": (float, 500.0, True),
+        "freq_cutoffs_max": (float, 10000.0, True),
+        "smooth_win": (float, 2.0, True),
+        "band_env_min": (float, 300.0, True),
+        "band_env_max": (float, 6000.0, True),
+        "band_env_rate": (float, 1000.0, True),
+
+        # Heatmap-specific display
+        "heatmap_exclusion_percentile": (float, 98.0, True),
+        "heatmap_colormap": (str, "RdBu_r", True),
+        "heatmap_normalization": (str, "per_channel", True),
     }
 
     @classmethod
@@ -179,6 +197,7 @@ class ObservableAppState(QObject):
             self._values[var] = default
 
         self.audio_source_map: dict[str, tuple[str, int]] = {}
+        self.ephys_source_map: dict[str, tuple[str, str, int]] = {}
 
         self.settings = get_settings()
         self._yaml_path = yaml_path or "gui_settings.yaml"
@@ -217,24 +236,69 @@ class ObservableAppState(QObject):
             feature_sel = self.features_sel
 
         if feature_sel == "Audio Waveform":
-            ds = self.ds
-            audio_sr = float(ds.attrs.get("audio_sr"))
-
             audio_path, _ = self.get_audio_source()
-            
             loader = SharedAudioCache.get_loader(audio_path)
-            n_samples = len(loader)
+            trial_onset = float(self.ds.attrs.get('trial_onset', 0.0))
+            trial_duration = float(self.ds.time.values[-1]) + 1.0 / self.ds.attrs['fps']
 
-            time_values = np.arange(n_samples) / audio_sr
+            start_sample = int(trial_onset * loader.rate)
+            end_sample = int((trial_onset + trial_duration) * loader.rate)
+            n_samples = min(end_sample, len(loader)) - max(0, start_sample)
+
+            time_values = np.arange(n_samples) / loader.rate
             self.time = xr.DataArray(
                 time_values, dims=["time_audio"],
                 coords={"time_audio": time_values}, name="time_audio",
-            ) 
-            
+            )
+
+        elif feature_sel in self.ephys_source_map:
+            from .plots_ephystrace import SharedEphysCache
+
+            ephys_path, stream_id, _ = self.get_ephys_source()
+            loader = SharedEphysCache.get_loader(ephys_path, stream_id)
+            if loader is not None:
+                trial_onset = float(self.ds.attrs.get('trial_onset', 0.0))
+                trial_duration = float(self.ds.time.values[-1]) + 1.0 / self.ds.attrs['fps']
+
+                start_sample = int(trial_onset * loader.rate)
+                end_sample = int((trial_onset + trial_duration) * loader.rate)
+                n_samples = min(end_sample, len(loader)) - max(0, start_sample)
+
+                time_values = np.arange(n_samples) / loader.rate
+                self.time = xr.DataArray(
+                    time_values, dims=["time_ephys"],
+                    coords={"time_ephys": time_values}, name="time_ephys",
+                )
+
         else:
             self.time = get_time_coord(self.ds[feature_sel])  
         
 
+
+    def get_ephys_source(self) -> tuple[str | None, str, int]:
+        """Get ephys file path, stream_id, and channel index from current features_sel.
+
+        Returns (ephys_path, stream_id, channel_idx) tuple. Uses ephys_source_map
+        to resolve the display name.
+        """
+        import os
+
+        feature_sel = getattr(self, 'features_sel', None)
+        if not feature_sel or not self.ephys_source_map:
+            return None, "0", 0
+
+        entry = self.ephys_source_map.get(feature_sel)
+        if entry is None:
+            return None, "0", 0
+
+        filename, stream_id, channel_idx = entry
+
+        ephys_folder = getattr(self, 'ephys_folder', None)
+        if not ephys_folder or not filename:
+            return None, stream_id, channel_idx
+
+        ephys_path = os.path.normpath(os.path.join(ephys_folder, filename))
+        return ephys_path, stream_id, channel_idx
 
     def get_audio_source(self) -> tuple[str | None, int]:
         """Get audio file path and channel index from current mics_sel.
@@ -265,7 +329,7 @@ class ObservableAppState(QObject):
         raise AttributeError(name)
 
     def __setattr__(self, name, value):
-        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map"):
+        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map", "ephys_source_map"):
             super().__setattr__(name, value)
             return
 

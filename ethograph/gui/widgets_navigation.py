@@ -1,5 +1,7 @@
 """Enhanced navigation widget with proper sync mode handling."""
 
+import webbrowser
+
 import numpy as np
 from napari import Viewer
 from qtpy.QtWidgets import (
@@ -25,6 +27,16 @@ class NavigationWidget(QWidget):
         self.viewer = viewer
         self.app_state = app_state
         self.type_vars_dict = {}
+
+        # === Help buttons ===
+        help_layout = QHBoxLayout()
+        self.docs_button = QPushButton("📚 Documentation")
+        self.docs_button.clicked.connect(lambda: webbrowser.open("https://ethograph.readthedocs.io/en/latest/"))
+        help_layout.addWidget(self.docs_button)
+
+        self.github_button = QPushButton("🔗 GitHub Issues")
+        self.github_button.clicked.connect(lambda: webbrowser.open("https://github.com/akseli-ilmanen/ethograph/issues"))
+        help_layout.addWidget(self.github_button)
 
         # === Filter trials group ===
         filter_group = QGroupBox("Filter trials")
@@ -104,6 +116,7 @@ class NavigationWidget(QWidget):
         main_layout = QVBoxLayout()
         main_layout.setSpacing(2)
         main_layout.setContentsMargins(2, 2, 2, 2)
+        main_layout.addLayout(help_layout)
         main_layout.addWidget(filter_group)
         main_layout.addWidget(navigate_group)
         self.setLayout(main_layout)

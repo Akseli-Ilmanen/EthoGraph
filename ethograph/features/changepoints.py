@@ -140,10 +140,12 @@ def snap_to_nearest_changepoint_time(
     # Changepoints in time
     if feature_sel == "Audio Waveform":
         cp_ds = ds.filter_by_attrs(type="audio_changepoints")
+        if len(cp_ds.data_vars) == 0:
+            return t_clicked
         cp_times = np.concatenate([cp_ds["audio_cp_onsets"].values, cp_ds["audio_cp_offsets"].values])
-        
+
         if len(cp_times) == 0:
-            return t_clicked    
+            return t_clicked
         
     else:
         # Changepoints in idxs

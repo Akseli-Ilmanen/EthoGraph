@@ -80,10 +80,13 @@ class IOWidget(QWidget):
             self.audio_folder_edit.setText(self.app_state.audio_folder)
         if self.app_state.pose_folder:
             self.pose_folder_edit.setText(self.app_state.pose_folder)
+        if self.app_state.ephys_folder:
+            self.ephys_folder_edit.setText(self.app_state.ephys_folder)
 
     def _on_reset_gui_clicked(self):
         """Reset the GUI to its initial state."""
 
+        self.downsample_checkbox.setChecked(False)
 
         self.app_state.delete_yaml()
 
@@ -108,11 +111,13 @@ class IOWidget(QWidget):
 
     def _on_create_nc_clicked(self):
         """Open the dialog to create a .nc file from various data sources."""
+        self._on_reset_gui_clicked()
+        
         dialog = CreateNCDialog(self.app_state, self, self)
         dialog.exec_()
 
     def _on_select_template_clicked(self):
-        self._clear_all_line_edits()
+        self._on_reset_gui_clicked()
         
         
         
@@ -133,6 +138,9 @@ class IOWidget(QWidget):
                 self.app_state.pose_folder = t["pose_folder"]
             if t.get("import_labels"):
                 self.import_labels_checkbox.setChecked(True)
+            if t.get("dataset_key") == "birdpark":
+                self.downsample_checkbox.setChecked(True)
+                self.downsample_spin.setValue(100)
 
     def _clear_all_line_edits(self):
         """Clear all QLineEdit fields in the widget."""
@@ -144,6 +152,8 @@ class IOWidget(QWidget):
             self.audio_folder_edit.clear()
         if hasattr(self, 'pose_folder_edit'):
             self.pose_folder_edit.clear()
+        if hasattr(self, 'ephys_folder_edit'):
+            self.ephys_folder_edit.clear()
 
     def _clear_combo_boxes(self):
         """Reset all combo boxes to default state."""
@@ -203,6 +213,8 @@ class IOWidget(QWidget):
             self.app_state.audio_folder = None
         elif object_name == "pose_folder":
             self.app_state.pose_folder = None
+        elif object_name == "ephys_folder":
+            self.app_state.ephys_folder = None
 
     def _create_path_folder_widgets(self):
         """Create file path, video folder, and audio folder selectors."""
@@ -229,6 +241,12 @@ class IOWidget(QWidget):
             label="Audio folder:",
             object_name="audio_folder",
             browse_callback=lambda: self.on_browse_clicked("folder", "audio"),
+        )
+
+        self.ephys_folder_edit = self._create_path_widget(
+            label="Ephys folder:",
+            object_name="ephys_folder",
+            browse_callback=lambda: self.on_browse_clicked("folder", "ephys"),
         )
 
 
@@ -317,6 +335,61 @@ class IOWidget(QWidget):
                 expanded_items.append(mic_file)
 
         return expanded_items
+
+    def _expand_ephys_with_streams(self, ephys_folder, ds) -> list[str]:
+        """Discover ephys files and expand multi-stream files into feature entries.
+
+        Scans ephys_folder for known ephys extensions, probes each file for
+        streams, and populates app_state.ephys_source_map.
+
+        Returns list of feature display names (e.g. "Amplifier Waveform").
+        """
+        from .plots_ephystrace import GenericEphysLoader
+
+        self.app_state.ephys_source_map.clear()
+        feature_names = []
+
+        ephys_files_attr = ds.attrs.get("ephys", []) if ds is not None else []
+        if isinstance(ephys_files_attr, str):
+            ephys_files_attr = [ephys_files_attr]
+
+        if ephys_files_attr:
+            candidates = [os.path.join(ephys_folder, f) for f in ephys_files_attr]
+        else:
+            known_exts = set(GenericEphysLoader.KNOWN_EXTENSIONS.keys()) | {".dat", ".bin", ".raw"}
+            candidates = []
+            try:
+                for entry in os.scandir(ephys_folder):
+                    if entry.is_file() and Path(entry.name).suffix.lower() in known_exts:
+                        candidates.append(entry.path)
+            except OSError:
+                return feature_names
+
+        for filepath in candidates:
+            filename = Path(filepath).name
+            ext = Path(filepath).suffix.lower()
+
+            if ext in (".dat", ".bin", ".raw"):
+                continue
+
+            try:
+                loader = GenericEphysLoader(filepath, stream_id="0")
+                streams = loader.streams
+
+                if streams and len(streams) > 1:
+                    for sid, info in streams.items():
+                        stream_name = info["name"]
+                        display_name = f"{stream_name} Waveform"
+                        self.app_state.ephys_source_map[display_name] = (filename, sid, 0)
+                        feature_names.append(display_name)
+                else:
+                    display_name = "Ephys Waveform"
+                    self.app_state.ephys_source_map[display_name] = (filename, "0", 0)
+                    feature_names.append(display_name)
+            except (OSError, IOError, ValueError) as e:
+                print(f"Skipping ephys file {filename}: {e}")
+
+        return feature_names
 
     def _create_combo_widget(self, key, vars):
         """Create a combo box widget for a given info key."""
@@ -485,6 +558,8 @@ class IOWidget(QWidget):
                 caption = "Open folder with audio files (e.g. wav, mp3, mp4)."
             elif media_type == "pose":
                 caption = "Open folder with pose files (e.g. .csv, .h5)."
+            elif media_type == "ephys":
+                caption = "Open folder with ephys files (e.g. .rhd, .edf, .dat)."
 
             folder_path = QFileDialog.getExistingDirectory(None, caption=caption)
 
@@ -494,12 +569,14 @@ class IOWidget(QWidget):
             elif media_type == "audio":
                 self.audio_folder_edit.setText(folder_path)
                 self.app_state.audio_folder = folder_path
-                # Clear audio checkbox if it exists in data_widget
                 if hasattr(self.data_widget, 'clear_audio_checkbox'):
                     self.data_widget.clear_audio_checkbox.setChecked(False)
             elif media_type == "pose":
                 self.pose_folder_edit.setText(folder_path)
                 self.app_state.pose_folder = folder_path
+            elif media_type == "ephys":
+                self.ephys_folder_edit.setText(folder_path)
+                self.app_state.ephys_folder = folder_path
 
     def get_nc_file_path(self):
         """Get the current NetCDF file path from the text field."""

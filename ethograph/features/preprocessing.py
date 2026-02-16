@@ -5,7 +5,6 @@ import xarray as xr
 from scipy.interpolate import interp1d
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import decimate
-from sklearn.preprocessing import StandardScaler
 
 
 
@@ -61,14 +60,10 @@ def interpolate_nans(arr: np.ndarray, axis: int = 0) -> np.ndarray:
 
 
 def z_normalize(data: np.ndarray) -> np.ndarray:
-    """
-    Apply z-score normalization. Sklearn expects (samples, features) format.
-    Each feature (column) is normalized independently.
-    """
-
-    scaler = StandardScaler()
-    return scaler.fit_transform(data)
-
+    """Apply z-score normalization to each feature (column) independently."""
+    std = data.std(axis=0)
+    std[std == 0] = 1  # Prevent division by zero
+    return (data - data.mean(axis=0)) / std
 
 def clip_by_percentiles(
     features: np.ndarray,
@@ -126,7 +121,3 @@ def gaussian_smoothing(da, **smoothing_params):
     smoothed = smoothed.transpose("time", ...)
     
     return smoothed
-
-
-
-

@@ -1231,10 +1231,12 @@ class ChangepointsWidget(QWidget):
         features_sel = self.app_state.features_sel
         ds_kwargs = self.app_state.get_ds_kwargs()
         if features_sel == "Audio Waveform":
-            audio_path, channel_idx = self.app_state.get_audio_source()
-            data, _ = aio.load_audio(audio_path)
-            if data.ndim > 1:
-                data = data[:, channel_idx]  
+            show_warning(
+                f"Raw audio has {len(signal):,} samples — ruptures will be extremely slow. "
+                "Select a derived feature or use Audio CPs instead."
+            )
+            return
+            
         else:
             data, _ = sel_valid(self.app_state.ds[features_sel], ds_kwargs)
         

@@ -73,13 +73,12 @@ def _prepare_sound(
 
 
 def _compute_meansquared_envelope(sound: voc.Sound, **kwargs) -> tuple:
+    from ethograph.features.energy_features import compute_meansquared_envelope
+
     freq_cutoffs = kwargs.get("freq_cutoffs", (500, 10000))
     smooth_win = kwargs.get("smooth_win", 2)
-    envelope = np.squeeze(
-        voc.signal.audio.meansquared(sound, freq_cutoffs, smooth_win), axis=0
-    )
-    env_time = np.arange(len(envelope)) / sound.samplerate
-    return env_time, envelope
+    data_1d = np.squeeze(sound.data, axis=0)
+    return compute_meansquared_envelope(data_1d, sound.samplerate, freq_cutoffs, smooth_win)
 
 
 # TODO: Replace with vocalpy.energy module when that's available:

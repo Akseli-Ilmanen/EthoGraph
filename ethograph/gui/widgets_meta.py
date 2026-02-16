@@ -1,21 +1,14 @@
 """Widget container for other collapsible widgets."""
 
-import webbrowser
-
 from napari.viewer import Viewer
 from qt_niu.collapsible_widget import CollapsibleWidgetContainer
 from qtpy.QtGui import QFont
 from qtpy.QtWidgets import (
-    QAction,
     QApplication,
-    QComboBox,
-    QCompleter,
-    QHBoxLayout,
     QMenu,
     QMessageBox,
     QPushButton,
     QSizePolicy,
-    QWidget,
 )
 
 from ethograph.utils.paths import gui_default_settings_path
@@ -28,8 +21,8 @@ from .widgets_data import DataWidget
 from .widgets_io import IOWidget
 from .widgets_labels import LabelsWidget
 from .widgets_navigation import NavigationWidget
-from .widgets_plot import AxesWidget
-from .widgets_spectrogram import SpectrogramWidget
+from .widgets_plot_settings import PlotSettingsWidget
+from .widgets_transform import TransformWidget
 
 
 
@@ -57,10 +50,10 @@ class MetaWidget(CollapsibleWidgetContainer):
         # Initialize all widgets with app_state
         self._create_widgets()
 
-        self.collapsible_widgets[1].expand()
+        self.collapsible_widgets[0].expand()
 
         self._bind_global_shortcuts(self.labels_widget, self.data_widget)
-        
+
         # Connect to napari window close event to check for unsaved changes
         if hasattr(self.viewer, 'window') and hasattr(self.viewer.window, '_qt_window'):
             self._original_close_event = self.viewer.window._qt_window.closeEvent
@@ -93,16 +86,15 @@ class MetaWidget(CollapsibleWidgetContainer):
                 dock_widget.setContentsMargins(0, 0, 0, DOCK_WIDGET_BOTTOM_MARGIN)
         except (AttributeError, TypeError):
             pass  # Dock widget doesn't support margin setting
-        
+
         # Ensure napari notifications are positioned correctly
         self._configure_notifications()
 
         # Create all widgets with app_state
-        self.axes_widget = AxesWidget(self.viewer, self.app_state)
-        self.audio_widget = SpectrogramWidget(self.viewer, self.app_state)
+        self.plot_settings_widget = PlotSettingsWidget(self.viewer, self.app_state)
+        self.transform_widget = TransformWidget(self.viewer, self.app_state)
         self.changepoints_widget = ChangepointsWidget(self.viewer, self.app_state)
         self.labels_widget = LabelsWidget(self.viewer, self.app_state)
-        self.help_widget = self._create_help_widget()
         self.navigation_widget = NavigationWidget(self.viewer, self.app_state)
 
         # Create I/O widget first, then pass it to data widget
@@ -117,8 +109,10 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.labels_widget.set_plot_container(self.plot_container)
         self.labels_widget.set_meta_widget(self)
         self.labels_widget.changepoints_widget = self.changepoints_widget
-        self.axes_widget.set_plot_container(self.plot_container)
-        self.audio_widget.set_plot_container(self.plot_container)
+        self.plot_settings_widget.set_plot_container(self.plot_container)
+        self.plot_settings_widget.set_meta_widget(self)
+        self.transform_widget.set_plot_container(self.plot_container)
+        self.transform_widget.set_meta_widget(self)
         self.changepoints_widget.set_plot_container(self.plot_container)
         self.changepoints_widget.set_meta_widget(self)
         self.changepoints_widget.set_motif_mappings(self.labels_widget._mappings)
@@ -136,29 +130,22 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         # The one widget to rule them all (loading data, updating plots, managing sync)
         self.data_widget.set_references(
-            self.plot_container, self.labels_widget, self.axes_widget,
-            self.navigation_widget, self.audio_widget, self.changepoints_widget
+            self.plot_container, self.labels_widget, self.plot_settings_widget,
+            self.navigation_widget, self.transform_widget, self.changepoints_widget,
         )
 
         for widget in [
-            self.help_widget,
             self.io_widget,
             self.data_widget,
             self.labels_widget,
             self.changepoints_widget,
-            self.axes_widget,
-            self.audio_widget,
+            self.plot_settings_widget,
+            self.transform_widget,
             self.navigation_widget,
         ]:
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         # Add widgets to collapsible container
-        self.add_widget(
-            self.help_widget,
-            collapsible=True,
-            widget_title="Documentation",
-        )
-
         self.add_widget(
             self.io_widget,
             collapsible=True,
@@ -184,21 +171,21 @@ class MetaWidget(CollapsibleWidgetContainer):
         )
 
         self.add_widget(
-            self.axes_widget,
+            self.plot_settings_widget,
             collapsible=True,
-            widget_title="Axes controls",
+            widget_title="Plot settings",
         )
 
         self.add_widget(
-            self.audio_widget,
+            self.transform_widget,
             collapsible=True,
-            widget_title="Spectrogram controls",
+            widget_title="Data transformation",
         )
 
         self.add_widget(
             self.navigation_widget,
             collapsible=True,
-            widget_title="Navigation controls",
+            widget_title="Navigation / Help",
         )
 
 
@@ -213,6 +200,25 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         self.update_changepoints_widget_title()
 
+    def _cycle_channel(self, direction: int):
+        if not self.app_state.ready:
+            return
+
+        feature_sel = getattr(self.app_state, 'features_sel', None)
+        is_ephys = feature_sel in getattr(self.app_state, 'ephys_source_map', {})
+
+        if feature_sel == "Audio Waveform":
+            combo = self.io_widget.combos.get("mics")
+            if combo and combo.isVisible() and combo.count() > 1:
+                idx = (combo.currentIndex() + direction) % combo.count()
+                combo.setCurrentIndex(idx)
+        elif is_ephys:
+            spin = self.data_widget.ephys_channel_spin
+            if spin.isVisible():
+                new_val = spin.value() + direction
+                new_val = max(spin.minimum(), min(new_val, spin.maximum()))
+                spin.setValue(new_val)
+
     def _on_labels_redraw_needed(self):
         """Handle label redraw request when switching between plots."""
         if not self.app_state.ready:
@@ -222,8 +228,6 @@ class MetaWidget(CollapsibleWidgetContainer):
 
     def _on_labels_modified(self):
         """Handle label modification - update plots with current view range."""
-        import time
-        
         if not self.app_state.ready:
             return
         xmin, xmax = self.plot_container.get_current_xlim()
@@ -236,9 +240,9 @@ class MetaWidget(CollapsibleWidgetContainer):
 
     def update_labels_widget_title(self):
         """Update the Label controls title with verification status emoji."""
-        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 3:
-            # Labels widget is at index 3 (0: Documentation, 1: I/O, 2: Data controls, 3: Label controls)
-            labels_collapsible = self.collapsible_widgets[3]
+        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 2:
+            # Labels widget is at index 2 (0: I/O, 1: Data controls, 2: Label controls)
+            labels_collapsible = self.collapsible_widgets[2]
 
             # Get verification status
             verification_emoji = "❌"  # Default to not verified
@@ -264,9 +268,9 @@ class MetaWidget(CollapsibleWidgetContainer):
 
     def update_changepoints_widget_title(self):
         """Update the Changepoints title with correction mode indicator."""
-        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 4:
-            # Changepoints widget is at index 4
-            cp_collapsible = self.collapsible_widgets[4]
+        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 3:
+            # Changepoints widget is at index 3
+            cp_collapsible = self.collapsible_widgets[3]
 
             correction_enabled = self.changepoints_widget.changepoint_correction_checkbox.isChecked()
             indicator = "🎯" if correction_enabled else "⭕"
@@ -290,10 +294,10 @@ class MetaWidget(CollapsibleWidgetContainer):
             msg_box.setInformativeText("Would you like to save your changes to labels.nc file before closing?")
             msg_box.setStandardButtons(QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel)
             msg_box.setDefaultButton(QMessageBox.Save)
-            
+
             response = msg_box.exec_()
-            
-            
+
+
             if response == QMessageBox.Save:
                 # Attempt to save
                 try:
@@ -311,9 +315,9 @@ class MetaWidget(CollapsibleWidgetContainer):
                 event.ignore()  # Prevent closing
                 return False  # Don't close
             # If Discard was selected, continue with closing
-        
+
         return True  # OK to close
-    
+
     def closeEvent(self, event):
         """Handle close event by stopping auto-save and saving state one final time."""
         # This method is now mainly for the dock widget itself, not the main napari window
@@ -321,48 +325,25 @@ class MetaWidget(CollapsibleWidgetContainer):
             self.app_state.stop_auto_save()
         super().closeEvent(event)
 
-    def _create_help_widget(self) -> QWidget:
-        """Create the help widget with documentation button."""
-        widget = QWidget()
-        layout = QHBoxLayout()
-        widget.setLayout(layout)
-
-        self.docs_button = QPushButton("📚 Documentation")
-        self.docs_button.clicked.connect(lambda: webbrowser.open("https://ethograph.readthedocs.io/en/latest/"))
-        layout.addWidget(self.docs_button)
-        
-        self.github_button = QPushButton("🔗 GitHub Issues")
-        self.github_button.clicked.connect(lambda: webbrowser.open("https://github.com/akseli-ilmanen/ethograph/issues"))
-        layout.addWidget(self.github_button)
-        
-        
-
-        self.docs_dialog = None
-        
-        
-        
-        return widget
-
-
     def _override_napari_shortcuts(self):
         """Aggressively unbind napari shortcuts at all levels."""
-        
-        
+
+
         number_keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
         qwerty_row = ['q', 'w', 'e', 'r', 't', 'z', 'u', 'i', 'o', 'p']
         home_row = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';']
         control_row = ['e', 'd', 'f', 'i', 'k', 'c', 'm', 't', 'n', 'p']
         other = ['y', 'space', 'Up', 'Down', 'v', 'x']
 
-        combos = ['Ctrl-a', 'Ctrl-s', 'Ctrl-x', 'Ctrl-v', 'Ctrl-l', 'Ctrl-enter', 'Ctrl-d', 
+        combos = ['Ctrl-a', 'Ctrl-s', 'Ctrl-x', 'Ctrl-v', 'Ctrl-l', 'Ctrl-enter', 'Ctrl-d',
                   'Ctrl-e', 'Ctrl-f', 'Ctrl-i', 'Ctrl-k', 'Ctrl-c', 'Ctrl-m', 'Ctrl-t']
 
         all_keys = number_keys + qwerty_row + home_row + control_row + other + combos
-        
+
         from napari.layers import Labels, Points, Shapes, Surface, Tracks, Image
-        
+
         layer_types = [Image, Points, Shapes, Labels, Tracks, Surface]
-        
+
 
         for layer_type in layer_types:
             for key in all_keys:
@@ -375,10 +356,9 @@ class MetaWidget(CollapsibleWidgetContainer):
         for key in all_keys:
             if hasattr(self.viewer, "keymap") and key in self.viewer.keymap:
                 del self.viewer.keymap[key]
-            
+
             if hasattr(self.viewer, "_keymap") and key in self.viewer._keymap:
                 del self.viewer._keymap[key]
-                    
 
 
         if self.viewer.layers.selection.active:
@@ -390,14 +370,14 @@ class MetaWidget(CollapsibleWidgetContainer):
         # Handle application-level shortcuts (File menu, etc.)
         if hasattr(self.viewer, 'window') and self.viewer.window:
             window = self.viewer.window
-            
-    
+
+
             if hasattr(window, 'file_menu'):
                 for action in window.file_menu.actions():
                     if 'save' in action.text().lower():
                         action.setShortcut('')  # Remove shortcut
                         print(f"Removed shortcut from: {action.text()}")
-            
+
             if hasattr(window, '_qt_window'):
                 menubar = window._qt_window.menuBar()
                 for menu in menubar.findChildren(QMenu):
@@ -412,48 +392,56 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         # Manually unbind previous keys.
         self._override_napari_shortcuts()
-        
+
 
         # TO ADD documentation for inbuild pyqgt graph shortcuts
         # Right click hold - pull left/right to adjust xlim, up/down to adjust ylim
 
-        
-        
+
+
         # Pause/play video/audio
         viewer = self.viewer
-        
 
 
-        
+
+
         @viewer.bind_key("ctrl+s", overwrite=True)
         def save_labels(v):
-            self.app_state.save_labels()  
-        
+            self.app_state.save_labels()
+
         @viewer.bind_key("space", overwrite=True)
         def toggle_pause_resume(v):
             self.data_widget.toggle_pause_resume()
-            
+
         @viewer.bind_key("v", overwrite=True)
         def play_segment(v):
-            self.labels_widget._play_segment() 
-        
+            self.labels_widget._play_segment()
+
         # In napari video, can user left, right arrow keys to go back/forward one frame
-        
-        @viewer.bind_key("Down", overwrite=True) 
+
+        @viewer.bind_key("Down", overwrite=True)
         def next_trial(v):
             self.navigation_widget.next_trial()
 
         @viewer.bind_key("Up", overwrite=True)
         def prev_trial(v):
             self.navigation_widget.prev_trial()
-            
+
+        @viewer.bind_key("ctrl+Down", overwrite=True)
+        def next_channel(v):
+            self._cycle_channel(+1)
+
+        @viewer.bind_key("ctrl+Up", overwrite=True)
+        def prev_channel(v):
+            self._cycle_channel(-1)
+
         @viewer.bind_key("ctrl+p", overwrite=True)
         def toggle_sync(v):
             current_index = self.navigation_widget.sync_toggle_btn.currentIndex()
             total_options = self.navigation_widget.sync_toggle_btn.count()
             next_index = (current_index + 1) % total_options
             self.navigation_widget.sync_toggle_btn.setCurrentIndex(next_index)
-            
+
         @viewer.bind_key("ctrl+x", overwrite=True)
         def toggle_label_pred(v):
             status = self.labels_widget.pred_show_predictions.isChecked()
@@ -466,18 +454,18 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         @viewer.bind_key("ctrl+a", overwrite=True)
         def toggle_autoscale(v):
-            autoscale_status = self.axes_widget.autoscale_checkbox.isChecked()
-            self.axes_widget.autoscale_checkbox.setChecked(not autoscale_status)
+            autoscale_status = self.plot_settings_widget.autoscale_checkbox.isChecked()
+            self.plot_settings_widget.autoscale_checkbox.setChecked(not autoscale_status)
 
         @viewer.bind_key("ctrl+l", overwrite=True)
         def toggle_lock(v):
-            lock_status = self.axes_widget.lock_axes_checkbox.isChecked()
-            self.axes_widget.lock_axes_checkbox.setChecked(not lock_status)
+            lock_status = self.plot_settings_widget.lock_axes_checkbox.isChecked()
+            self.plot_settings_widget.lock_axes_checkbox.setChecked(not lock_status)
 
         @viewer.bind_key("ctrl+enter", overwrite=True)
         def apply_plot_settings(v):
-            self.axes_widget.apply_button.click()
-            
+            self.plot_settings_widget.apply_button.click()
+
         @viewer.bind_key("ctrl+v", overwrite=True)
         def human_verified(v):
             self.labels_widget._human_verification_true(mode="single_trial")
@@ -491,31 +479,55 @@ class MetaWidget(CollapsibleWidgetContainer):
         def refresh_lineplot(v):
             self.data_widget.refresh_lineplot()
 
+        @viewer.bind_key("ctrl+=", overwrite=True)
+        def increase_spacing(v):
+            spin = self.data_widget.ephys_spacing_spin
+            if spin.isVisible():
+                spin.setValue(min(spin.value() + 0.5, spin.maximum()))
+
+        @viewer.bind_key("ctrl+-", overwrite=True)
+        def decrease_spacing(v):
+            spin = self.data_widget.ephys_spacing_spin
+            if spin.isVisible():
+                spin.setValue(max(spin.value() - 0.5, spin.minimum()))
+
+        @viewer.bind_key("shift+=", overwrite=True)
+        def increase_gain(v):
+            spin = self.data_widget.ephys_gain_spin
+            if spin.isVisible():
+                spin.setValue(min(spin.value() + 1, spin.maximum()))
+
+        @viewer.bind_key("shift+-", overwrite=True)
+        def decrease_gain(v):
+            spin = self.data_widget.ephys_gain_spin
+            if spin.isVisible():
+                spin.setValue(max(spin.value() - 1, spin.minimum()))
+
         def setup_keybindings_grid_layout(viewer, labels_widget):
             """Setup using grid layout for label activation"""
-            
+
             # Row 1: 1-0 (Labels 1-10)
             number_keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
-            
+
             # Row 2: Q-P (Labels 11-20)
             qwerty_row = ['q', 'w', 'e', 'r', 't', 'z', 'u', 'i', 'o', 'p']
-            
+
             # Row 3: A-; (Labels 21-30)
             home_row = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l']
-            
+
             # Bind number keys for labels 1-10
             for i, key in enumerate(number_keys):
                 labels = i + 1 if key != '0' else 10
                 viewer.bind_key(key, lambda v, mk=labels: labels_widget.activate_label(mk), overwrite=True)
-            
+
             # Bind qwerty row for labels 11-20
             for i, key in enumerate(qwerty_row):
                 viewer.bind_key(key, lambda v, mk=i+11: labels_widget.activate_label(mk), overwrite=True)
-            
+
             # Bind home row for labels 21-30
             for i, key in enumerate(home_row):
                 viewer.bind_key(key, lambda v, mk=i+21: labels_widget.activate_label(mk), overwrite=True)
-            
+
 
         # Call the setup function
         setup_keybindings_grid_layout(viewer, labels_widget)
@@ -523,37 +535,37 @@ class MetaWidget(CollapsibleWidgetContainer):
         # Left click to label a label (Press shortcut, then left-click, left-click)
         # Right click on a label to play it
 
-        @viewer.bind_key("ctrl+e", overwrite=True)  
+        @viewer.bind_key("ctrl+e", overwrite=True)
         def edit_label(v):
             labels_widget._edit_label()
 
         # Delete label (Ctrl+D)
-        @viewer.bind_key("ctrl+d", overwrite=True)  
+        @viewer.bind_key("ctrl+d", overwrite=True)
         def delete_label(v):
             labels_widget._delete_label()
 
         # Toggle features selection (Ctrl+F)
-        @viewer.bind_key("ctrl+f", overwrite=True)  
+        @viewer.bind_key("ctrl+f", overwrite=True)
         def toggle_features(v):
             self.app_state.toggle_key_sel("features", self.data_widget)
 
         # Toggle individuals selection (Ctrl+I)
-        @viewer.bind_key("ctrl+i", overwrite=True) 
+        @viewer.bind_key("ctrl+i", overwrite=True)
         def toggle_individuals(v):
             self.app_state.toggle_key_sel("individuals", self.data_widget)
 
         # Toggle keypoints selection (Ctrl+K)
-        @viewer.bind_key("ctrl+k", overwrite=True)  
+        @viewer.bind_key("ctrl+k", overwrite=True)
         def toggle_keypoints(v):
             self.app_state.toggle_key_sel("keypoints", self.data_widget)
 
         # Toggle cameras selection (Ctrl+C)
-        @viewer.bind_key("ctrl+c", overwrite=True)  
+        @viewer.bind_key("ctrl+c", overwrite=True)
         def toggle_cameras(v):
             self.app_state.toggle_key_sel("cameras", self.data_widget)
 
         # Toggle mics selection (Ctrl+M)
-        @viewer.bind_key("ctrl+m", overwrite=True) 
+        @viewer.bind_key("ctrl+m", overwrite=True)
         def toggle_mics(v):
             self.app_state.toggle_key_sel("mics", self.data_widget)
 
@@ -568,7 +580,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         def cycle_view_mode(v):
             self.data_widget.cycle_view_mode()
 
-        
+
 
     def _set_compact_font(self, font_size: int = 8):
         """Apply compact font to this widget and all children."""
@@ -634,21 +646,21 @@ class MetaWidget(CollapsibleWidgetContainer):
                 border: none;
             }}
         """)
-    
+
     def _configure_notifications(self):
         """Configure napari notifications to be visible above docked widgets."""
         try:
             # Access napari's notification manager
             if hasattr(self.viewer.window, '_qt_viewer'):
                 qt_viewer = self.viewer.window._qt_viewer
-                
+
                 # Try to access the notification overlay
                 if hasattr(qt_viewer, '_overlays'):
                     for overlay in qt_viewer._overlays.values():
                         if hasattr(overlay, 'setContentsMargins'):
                             # Add bottom margin to keep notifications above docked widgets
                             overlay.setContentsMargins(0, 0, 0, 60)
-                        
+
                         # Try to adjust positioning
                         if hasattr(overlay, 'resize') and hasattr(overlay, 'parent'):
                             parent = overlay.parent()
@@ -660,5 +672,4 @@ class MetaWidget(CollapsibleWidgetContainer):
         except (AttributeError, KeyError, TypeError) as e:
             # Silently handle any issues with notification configuration
             print(f"Notification configuration warning: {e}")
-            
 

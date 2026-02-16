@@ -16,7 +16,6 @@ from ethograph.utils.validation import validate_datatree
 from ethograph.features.mov_features import extract_video_motion
 
 
-
 class TrialTree(xr.DataTree):
     """DataTree subclass with trial-specific functionality."""
 
@@ -377,8 +376,9 @@ def set_media_attrs(
     for attr_name, files in [("cameras", cameras), ("mics", mics), ("pose", pose)]:
         if files is not None:
             ds.attrs[attr_name] = list(files)
-
     return ds
+
+
 
 
 def get_project_root(start: Path | None = None) -> Path:
@@ -485,9 +485,6 @@ def _downsample_dataset(ds: xr.Dataset, factor: int) -> xr.Dataset:
         data_vars[var_name] = xr.DataArray(interleaved, dims=new_dims, attrs=var_attrs)
 
     new_attrs = ds.attrs.copy()
-    if 'audio_sr' in new_attrs:
-        new_attrs['original_audio_sr'] = new_attrs['audio_sr']
-        new_attrs['audio_sr'] = new_attrs['audio_sr'] / factor * 2
     new_attrs['downsample_factor'] = factor
     new_attrs['downsample_method'] = 'minmax_envelope'
 

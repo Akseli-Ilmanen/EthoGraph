@@ -9,8 +9,9 @@ from napari import current_viewer
 from qtpy.QtWidgets import QMessageBox
 
 from ethograph import TrialTree, set_media_attrs, minimal_basics
-from ethograph.features.audio_features import get_envelope
+from ethograph.features.energy_features import get_envelope
 from ethograph.utils.validation import extract_type_vars, validate_datatree
+from ethograph.utils.audio import get_audio_sr
 from movement.io import load_poses
 from movement.kinematics import compute_acceleration, compute_pairwise_distances, compute_speed, compute_velocity
 
@@ -158,11 +159,54 @@ def minimal_dt_from_npy_file(video_path, fps, npy_path, data_sr, individuals=Non
 
 
 
+def minimal_dt_from_ephys(
+    video_path, fps, ephys_path, individuals=None,
+    video_motion: bool = False, trial_onset: float | None = None,
+):
+    if individuals is None:
+        individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
+
+    from ethograph.gui.dialog_create_nc import get_video_n_frames
+
+    n_frames = get_video_n_frames(video_path)
+    if n_frames is None:
+        raise ValueError(f"Could not determine frame count from video: {video_path}")
+
+    time_coords = np.arange(n_frames) / fps
+
+    ds = xr.Dataset(
+        data_vars={
+            "labels": (["time", "individuals"], np.zeros((n_frames, len(individuals))))
+        },
+        coords={
+            "time": time_coords,
+            "individuals": individuals,
+        },
+    )
+
+    ds.attrs["fps"] = fps
+    
+    # Ephys & video alignment
+    if trial_onset is not None:
+        ds.attrs["trial_onset"] = float(trial_onset)
+
+    ds = set_media_attrs(
+        ds,
+        cameras=[Path(video_path).name],
+    )
+    
+
+    dt = minimal_basics(ds, video_path=video_path, video_motion=video_motion)
+
+    return dt
+
+
 def minimal_dt_from_audio(video_path, fps, audio_path, audio_sr, individuals=None, video_motion: bool = False):
 
     if individuals is None:
         individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
 
+    
     envelope, gen_wav_path = get_envelope(audio_path, audio_sr, fps)
 
     if gen_wav_path:
@@ -190,7 +234,7 @@ def minimal_dt_from_audio(video_path, fps, audio_path, audio_sr, individuals=Non
         raise ValueError("Envelope must be 1D or 2D array")
                 
 
-    ds.attrs["audio_sr"] = audio_sr
+
     ds.attrs["fps"] = fps
 
     

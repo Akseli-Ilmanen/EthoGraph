@@ -23,6 +23,7 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QSizePolicy,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -78,9 +79,9 @@ class DataWidget(DataLoader, QWidget):
         self.video = None  
         self.plot_container = None
         self.labels_widget = None
-        self.axes_widget = None
-        self.audio_widget = None
-        self.audio_player = None 
+        self.plot_settings_widget = None
+        self.transform_widget = None
+        self.audio_player = None
         self.video_path = None
         self.audio_path = None
         self.space_plot = None  
@@ -104,13 +105,13 @@ class DataWidget(DataLoader, QWidget):
         
         
 
-    def set_references(self, plot_container, labels_widget, axes_widget, navigation_widget, audio_widget=None, changepoints_widget=None):
+    def set_references(self, plot_container, labels_widget, plot_settings_widget, navigation_widget, transform_widget=None, changepoints_widget=None):
         """Set references to other widgets after creation."""
         self.plot_container = plot_container
         self.labels_widget = labels_widget
-        self.axes_widget = axes_widget
+        self.plot_settings_widget = plot_settings_widget
         self.navigation_widget = navigation_widget
-        self.audio_widget = audio_widget
+        self.transform_widget = transform_widget
         self.changepoints_widget = changepoints_widget
 
         if changepoints_widget is not None:
@@ -155,9 +156,16 @@ class DataWidget(DataLoader, QWidget):
             features_list = list(self.type_vars_dict["features"])
             self.type_vars_dict["features"] = features_list + ["Audio Waveform"]
 
+        # Add ephys features to type_vars_dict if ephys folder is available
+        if self.app_state.ephys_folder and "features" in self.type_vars_dict:
+            ephys_features = self.io_widget._expand_ephys_with_streams(
+                self.app_state.ephys_folder, self.app_state.ds,
+            )
+            if ephys_features:
+                features_list = list(self.type_vars_dict["features"])
+                self.type_vars_dict["features"] = features_list + ephys_features
 
 
-        
 
 
         downsample_factor = self.io_widget.get_downsample_factor()
@@ -200,7 +208,9 @@ class DataWidget(DataLoader, QWidget):
         self.io_widget.create_nc_button.setEnabled(False)
         self.io_widget.template_button.setEnabled(False)
         self.changepoints_widget.setEnabled(True)
-        self.audio_widget.set_enabled_state(has_audio=False)
+        self.plot_settings_widget.set_enabled_state(has_audio=False)
+        if self.transform_widget:
+            self.transform_widget.setEnabled(True)
 
         # Set initial trial selection before calling on_trial_changed
         trial = self.app_state.trials_sel
@@ -301,7 +311,7 @@ class DataWidget(DataLoader, QWidget):
         self.view_mode_combo = QComboBox()
         self.view_mode_combo.setObjectName("view_mode_combo")
         self.view_mode_combo.addItems([
-            "Line (N-dim)",
+            "LinePlot (N-dim)",
             "Spectrogram (1-dim)",
             "Heatmap (N-dim)",
         ])
@@ -356,6 +366,12 @@ class DataWidget(DataLoader, QWidget):
         self.show_confidence_checkbox.stateChanged.connect(self.refresh_lineplot)
         overlay_row.addWidget(self.show_confidence_checkbox)
 
+        self.show_envelope_checkbox = QCheckBox("Envelope")
+        self.show_envelope_checkbox.setChecked(False)
+        self.show_envelope_checkbox.stateChanged.connect(self._on_envelope_overlay_changed)
+        self.show_envelope_checkbox.hide()
+        overlay_row.addWidget(self.show_envelope_checkbox)
+
         self.show_waveform_checkbox = QCheckBox("Waveform (audio)")
         self.show_waveform_checkbox.setChecked(False)
         self.show_waveform_checkbox.stateChanged.connect(self._on_audio_overlay_changed)
@@ -368,8 +384,100 @@ class DataWidget(DataLoader, QWidget):
         self.show_spectrogram_checkbox.hide()
         overlay_row.addWidget(self.show_spectrogram_checkbox)
 
+
+
         overlay_row.addStretch()
         self.layout().addRow("Overlays:", overlay_row)
+
+        # Ephys channel spinbox (hidden until an ephys waveform is selected)
+        self.ephys_channel_spin = QSpinBox()
+        self.ephys_channel_spin.setObjectName("ephys_channel_spin")
+        self.ephys_channel_spin.setRange(0, 0)
+        self.ephys_channel_spin.setPrefix("Ch ")
+        self.ephys_channel_spin.setToolTip("Select ephys channel to display")
+        self.ephys_channel_spin.valueChanged.connect(self._on_ephys_channel_changed)
+        self.ephys_channel_spin.hide()
+        self.controls.append(self.ephys_channel_spin)
+
+        self.ephys_channel_label = QLabel("Ephys channel:")
+        self.ephys_channel_label.hide()
+
+        self.ephys_multichannel_cb = QCheckBox("Multi-channel")
+        self.ephys_multichannel_cb.setObjectName("ephys_multichannel_cb")
+        self.ephys_multichannel_cb.setToolTip("Show all channels stacked (MNE/Spike2 style)")
+        self.ephys_multichannel_cb.stateChanged.connect(self._on_ephys_multichannel_changed)
+        self.ephys_multichannel_cb.hide()
+        self.controls.append(self.ephys_multichannel_cb)
+
+        self.ephys_spacing_label = QLabel("Spacing:")
+        self.ephys_spacing_label.hide()
+
+        self.ephys_spacing_spin = QDoubleSpinBox()
+        self.ephys_spacing_spin.setObjectName("ephys_spacing_spin")
+        self.ephys_spacing_spin.setRange(0.5, 20.0)
+        self.ephys_spacing_spin.setSingleStep(0.5)
+        self.ephys_spacing_spin.setValue(3.0)
+        self.ephys_spacing_spin.setToolTip("Vertical spacing between channels (in z-score units)")
+        self.ephys_spacing_spin.valueChanged.connect(self._on_ephys_spacing_changed)
+        self.ephys_spacing_spin.hide()
+        self.controls.append(self.ephys_spacing_spin)
+
+        self.ephys_gain_label = QLabel("Gain:")
+        self.ephys_gain_label.hide()
+
+        self.ephys_gain_spin = QSpinBox()
+        self.ephys_gain_spin.setObjectName("ephys_gain_spin")
+        self.ephys_gain_spin.setRange(-10, 10)
+        self.ephys_gain_spin.setValue(0)
+        self.ephys_gain_spin.setToolTip(
+            "Display gain (NeuroScope style): negative = amplify, positive = attenuate"
+        )
+        self.ephys_gain_spin.valueChanged.connect(self._on_ephys_gain_changed)
+        self.ephys_gain_spin.hide()
+        self.controls.append(self.ephys_gain_spin)
+
+        self.ephys_autocenter_cb = QCheckBox("Autocenter")
+        self.ephys_autocenter_cb.setObjectName("ephys_autocenter_cb")
+        self.ephys_autocenter_cb.setToolTip(
+            "Subtract per-window mean instead of full-cache mean (NeuroScope style)"
+        )
+        self.ephys_autocenter_cb.stateChanged.connect(self._on_ephys_autocenter_changed)
+        self.ephys_autocenter_cb.hide()
+        self.controls.append(self.ephys_autocenter_cb)
+
+        ephys_ch_row = QHBoxLayout()
+        ephys_ch_row.addWidget(self.ephys_channel_label)
+        ephys_ch_row.addWidget(self.ephys_channel_spin)
+        ephys_ch_row.addWidget(self.ephys_multichannel_cb)
+        ephys_ch_row.addWidget(self.ephys_spacing_label)
+        ephys_ch_row.addWidget(self.ephys_spacing_spin)
+        ephys_ch_row.addWidget(self.ephys_gain_label)
+        ephys_ch_row.addWidget(self.ephys_gain_spin)
+        ephys_ch_row.addWidget(self.ephys_autocenter_cb)
+        ephys_ch_row.addStretch()
+        self.layout().addRow(ephys_ch_row)
+
+        # Channel range slider (shown when >10 channels)
+        from superqt import QRangeSlider
+
+        self.ephys_range_slider = QRangeSlider(Qt.Horizontal)
+        self.ephys_range_slider.setObjectName("ephys_range_slider")
+        self.ephys_range_slider.setRange(0, 0)
+        self.ephys_range_slider.setValue((0, 0))
+        self.ephys_range_slider.setToolTip("Select channel range for multi-channel view")
+        self.ephys_range_slider.valueChanged.connect(self._on_ephys_range_changed)
+        self.ephys_range_slider.hide()
+        self.controls.append(self.ephys_range_slider)
+
+        ephys_range_row = QHBoxLayout()
+        self.ephys_range_label = QLabel("Channel range:")
+        self.ephys_range_label.hide()
+        ephys_range_row.addWidget(self.ephys_range_label)
+        ephys_range_row.addWidget(self.ephys_range_slider)
+        self.layout().addRow(ephys_range_row)
+
+        # Track total channel count for slider logic
+        self._ephys_n_channels = 0
 
         # Initially disable trial controls until data is loaded
         self._set_controls_enabled(False)
@@ -423,8 +531,11 @@ class DataWidget(DataLoader, QWidget):
             return
 
         feature_sel = getattr(self.app_state, 'features_sel', None)
+        is_ephys = feature_sel in getattr(self.app_state, 'ephys_source_map', {})
         if feature_sel == "Audio Waveform":
             self._apply_view_mode_for_waveform()
+        elif is_ephys:
+            self._apply_view_mode_for_ephys_waveform()
         else:
             self._apply_view_mode_for_feature()
 
@@ -438,9 +549,158 @@ class DataWidget(DataLoader, QWidget):
         if mode.startswith("Spectrogram"):
             self.plot_container.spectrogram_plot.set_source(None)
             self.plot_container.switch_to_spectrogram()
+        elif mode.startswith("Heatmap"):
+            self.plot_container.spectrogram_plot.set_source(None)
+            self.plot_container.switch_to_heatmap()
         else:
             self.plot_container.spectrogram_plot.set_source(None)
             self.plot_container.switch_to_audiotrace()
+
+    def _apply_view_mode_for_ephys_waveform(self):
+        """Apply current view mode when feature is an ephys waveform."""
+        from .spectrogram_sources import build_ephys_source
+
+        mode = self.view_mode_combo.currentText()
+        if mode.startswith("Spectrogram"):
+            source = build_ephys_source(self.app_state)
+            if source is None:
+                self.view_mode_combo.blockSignals(True)
+                self.view_mode_combo.setCurrentText("Line (N-dim)")
+                self.view_mode_combo.blockSignals(False)
+                self._configure_ephys_trace_plot()
+                self.plot_container.switch_to_ephystrace()
+                return
+            self.plot_container.spectrogram_plot.set_source(source)
+            self.plot_container.switch_to_spectrogram()
+        elif mode.startswith("Heatmap"):
+            self.plot_container.spectrogram_plot.set_source(None)
+            self.plot_container.switch_to_heatmap()
+        else:
+            self.plot_container.spectrogram_plot.set_source(None)
+            self._configure_ephys_trace_plot()
+            self.plot_container.switch_to_ephystrace()
+
+    def _configure_ephys_trace_plot(self):
+        """Configure the ephys trace plot with the current loader and channel."""
+        from .plots_ephystrace import SharedEphysCache
+
+        ephys_path, stream_id, channel_idx = self.app_state.get_ephys_source()
+        if not ephys_path:
+            return
+        loader = SharedEphysCache.get_loader(ephys_path, stream_id)
+        if loader is None:
+            return
+        self.plot_container.ephys_trace_plot.set_loader(loader, channel_idx)
+
+        offset = float(self.app_state.ds.attrs.get('trial_onset', 0.0))
+        trial_duration = float(self.app_state.ds.time.values[-1]) + 1.0 / self.app_state.ds.attrs['fps']
+        self.plot_container.ephys_trace_plot.set_ephys_offset(offset, trial_duration)
+
+        n_ch = loader.n_channels
+        self._ephys_n_channels = n_ch
+        self.ephys_channel_spin.blockSignals(True)
+        self.ephys_channel_spin.setRange(0, max(0, n_ch - 1))
+        self.ephys_channel_spin.setValue(channel_idx)
+        self.ephys_channel_spin.blockSignals(False)
+        self.ephys_channel_label.show()
+        self.ephys_channel_spin.show()
+        self.ephys_gain_label.show()
+        self.ephys_gain_spin.show()
+        self.ephys_autocenter_cb.show()
+        if n_ch > 1:
+            self.ephys_multichannel_cb.show()
+            self.ephys_spacing_label.show()
+            self.ephys_spacing_spin.show()
+        else:
+            self.ephys_multichannel_cb.hide()
+            self.ephys_spacing_label.hide()
+            self.ephys_spacing_spin.hide()
+
+        # Configure range slider (visible when >10 channels, greyed out until multi-ch checked)
+        self.ephys_range_slider.blockSignals(True)
+        self.ephys_range_slider.setRange(0, max(0, n_ch - 1))
+        self.ephys_range_slider.setValue((0, max(0, n_ch - 1)))
+        self.ephys_range_slider.blockSignals(False)
+        if n_ch > 10:
+            self._show_range_slider()
+        else:
+            self.ephys_range_label.hide()
+            self.ephys_range_slider.hide()
+
+    def _on_ephys_channel_changed(self, channel: int):
+        """Handle ephys channel spinbox change."""
+        feature_sel = getattr(self.app_state, 'features_sel', None)
+        source_map = getattr(self.app_state, 'ephys_source_map', {})
+        if feature_sel not in source_map:
+            return
+        filename, stream_id, _ = source_map[feature_sel]
+        source_map[feature_sel] = (filename, stream_id, channel)
+
+        if self.plot_container.is_ephystrace():
+            self.plot_container.ephys_trace_plot.set_channel(channel)
+            xmin, xmax = self.plot_container.get_current_xlim()
+            self.plot_container.ephys_trace_plot.update_plot_content(xmin, xmax)
+
+    def _on_ephys_multichannel_changed(self, state: int):
+        """Toggle multi-channel display for ephys trace."""
+        enabled = state == Qt.Checked
+        self.ephys_channel_label.setVisible(not enabled)
+        self.ephys_channel_spin.setVisible(not enabled)
+        self.ephys_range_slider.setEnabled(enabled)
+
+        if self.plot_container and self.plot_container.is_ephystrace():
+            self.plot_container.ephys_trace_plot.set_multichannel(enabled)
+            xmin, xmax = self.plot_container.get_current_xlim()
+            self.update_main_plot(t0=xmin, t1=xmax)
+
+    def _on_ephys_spacing_changed(self, value: float):
+        """Handle channel spacing spinbox change."""
+        if self.plot_container and self.plot_container.is_ephystrace():
+            self.plot_container.ephys_trace_plot.buffer.channel_spacing = value
+            xmin, xmax = self.plot_container.get_current_xlim()
+            self.plot_container.ephys_trace_plot.update_plot_content(xmin, xmax)
+
+    def _on_ephys_gain_changed(self, value: int):
+        if self.plot_container and self.plot_container.is_ephystrace():
+            self.plot_container.ephys_trace_plot.buffer.display_gain = value
+            xmin, xmax = self.plot_container.get_current_xlim()
+            self.plot_container.ephys_trace_plot.update_plot_content(xmin, xmax)
+
+    def _on_ephys_autocenter_changed(self, state: int):
+        if self.plot_container and self.plot_container.is_ephystrace():
+            self.plot_container.ephys_trace_plot.buffer.autocenter = state == Qt.Checked
+            xmin, xmax = self.plot_container.get_current_xlim()
+            self.plot_container.ephys_trace_plot.update_plot_content(xmin, xmax)
+
+    def _on_ephys_range_changed(self, value):
+        """Handle channel range slider change."""
+        ch_start, ch_end = int(value[0]), int(value[1])
+        if self.plot_container and self.plot_container.is_ephystrace():
+            self.plot_container.ephys_trace_plot.set_channel_range(ch_start, ch_end)
+
+    def _show_range_slider(self):
+        """Show the range slider row (visible but greyed out until multi-channel is checked)."""
+        self.ephys_range_label.show()
+        self.ephys_range_slider.show()
+        self.ephys_range_slider.setEnabled(self.ephys_multichannel_cb.isChecked())
+
+    def _hide_ephys_channel_controls(self):
+        """Hide all ephys channel controls."""
+        self.ephys_channel_label.hide()
+        self.ephys_channel_spin.hide()
+        self.ephys_multichannel_cb.hide()
+        self.ephys_spacing_label.hide()
+        self.ephys_spacing_spin.hide()
+        self.ephys_gain_label.hide()
+        self.ephys_gain_spin.hide()
+        self.ephys_autocenter_cb.hide()
+        self.ephys_range_label.hide()
+        self.ephys_range_slider.hide()
+        if self.plot_container and hasattr(self.plot_container, 'ephys_trace_plot'):
+            self.plot_container.ephys_trace_plot.set_multichannel(False)
+        self.ephys_multichannel_cb.blockSignals(True)
+        self.ephys_multichannel_cb.setChecked(False)
+        self.ephys_multichannel_cb.blockSignals(False)
 
     def _apply_view_mode_for_feature(self):
         """Apply current view mode when feature is a regular xarray variable."""
@@ -487,19 +747,35 @@ class DataWidget(DataLoader, QWidget):
             print(f"Cannot build xarray spectrogram source: {e}")
             return None
 
+    def _on_envelope_overlay_changed(self):
+        """Handle envelope overlay checkbox toggle."""
+        if not self.plot_container:
+            return
+
+        can_show = self.plot_container.is_lineplot() or self.plot_container.is_audiotrace() or self.plot_container.is_ephystrace()
+        if self.show_envelope_checkbox.isChecked() and can_show:
+            self.plot_container.show_envelope_overlay()
+        else:
+            self.plot_container.hide_envelope_overlay()
+
     def _update_audio_overlay_checkboxes(self):
         """Enable/disable audio overlay checkboxes based on feature selection.
 
-        Overlays only make sense when viewing a line plot feature, not when
-        viewing Audio Waveform or Spectrogram directly.
+        Waveform/spectrogram overlays only make sense on line plots of non-audio
+        features.  The envelope overlay is available on both line plots AND the
+        audio waveform (audiotrace) view, where it rides on the same y-axis.
         """
         if not hasattr(self.app_state, 'features_sel'):
             return
 
         feature = self.app_state.features_sel
         view_mode = self.view_mode_combo.currentText() if hasattr(self, 'view_mode_combo') else "Line"
+        is_audio_waveform = feature == "Audio Waveform"
+        is_ephys_waveform = feature in getattr(self.app_state, 'ephys_source_map', {})
+        is_waveform = is_audio_waveform or is_ephys_waveform
+        is_line_view = view_mode.startswith("Line")
 
-        if feature == "Audio Waveform" or not view_mode.startswith("Line"):
+        if is_waveform or not is_line_view:
             self.show_waveform_checkbox.blockSignals(True)
             self.show_waveform_checkbox.setEnabled(False)
             self.show_waveform_checkbox.setChecked(False)
@@ -509,9 +785,20 @@ class DataWidget(DataLoader, QWidget):
             self.show_spectrogram_checkbox.setEnabled(False)
             self.show_spectrogram_checkbox.setChecked(False)
             self.show_spectrogram_checkbox.blockSignals(False)
+
+        if is_waveform and is_line_view:
+            self.show_envelope_checkbox.setEnabled(True)
+        elif not is_line_view:
+            self.show_envelope_checkbox.blockSignals(True)
+            self.show_envelope_checkbox.setEnabled(False)
+            self.show_envelope_checkbox.setChecked(False)
+            self.show_envelope_checkbox.blockSignals(False)
+            if self.plot_container:
+                self.plot_container.hide_envelope_overlay()
         else:
             self.show_waveform_checkbox.setEnabled(True)
             self.show_spectrogram_checkbox.setEnabled(True)
+            self.show_envelope_checkbox.setEnabled(True)
 
     def _set_controls_enabled(self, enabled: bool):
         """Enable or disable all trial-related controls."""
@@ -608,10 +895,15 @@ class DataWidget(DataLoader, QWidget):
 
             if key == "features":
                 self.view_mode_combo.show()
+                is_ephys = selected_value in getattr(self.app_state, 'ephys_source_map', {})
                 if selected_value == "Audio Waveform":
                     self._apply_view_mode_for_waveform()
+                    self._hide_ephys_channel_controls()
+                elif is_ephys:
+                    self._apply_view_mode_for_ephys_waveform()
                 else:
                     self._apply_view_mode_for_feature()
+                    self._hide_ephys_channel_controls()
 
                 self._update_audio_overlay_checkboxes()
                 self._update_audio_overlay()
@@ -792,8 +1084,11 @@ class DataWidget(DataLoader, QWidget):
         self.app_state.set_time(feature_sel=feature_sel)
 
 
+        is_ephys = feature_sel in getattr(self.app_state, 'ephys_source_map', {})
         if feature_sel == "Audio Waveform":
             self._apply_view_mode_for_waveform()
+        elif is_ephys:
+            self._apply_view_mode_for_ephys_waveform()
         elif hasattr(self, 'view_mode_combo'):
             view_mode = self.view_mode_combo.currentText()
             if view_mode.startswith("Spectrogram"):
@@ -846,7 +1141,11 @@ class DataWidget(DataLoader, QWidget):
             # Handle audio overlay
             if self.plot_container.is_lineplot():
                 self.plot_container.update_audio_overlay()
-         
+
+            # Re-show envelope overlay if checked (works on lineplot, audiotrace, and ephystrace)
+            if hasattr(self, 'show_envelope_checkbox') and self.show_envelope_checkbox.isChecked():
+                if self.plot_container.is_lineplot() or self.plot_container.is_audiotrace() or self.plot_container.is_ephystrace():
+                    self.plot_container.show_envelope_overlay()
 
         except (KeyError, AttributeError, ValueError) as e:
             show_error(f"Error updating plot: {e}")
@@ -910,15 +1209,17 @@ class DataWidget(DataLoader, QWidget):
             else:
                 self.app_state.audio_path = None
 
-        if self.audio_widget:
-            self.audio_widget.set_enabled_state(has_audio=has_audio)
+        if self.transform_widget:
+            self.transform_widget.set_enabled_state(has_audio=has_audio)
 
         if self.changepoints_widget:
             self.changepoints_widget.set_enabled_state(has_audio)
 
+        
         if has_audio:
             self.show_waveform_checkbox.show()
             self.show_spectrogram_checkbox.show()
+            
         else:
             self.show_waveform_checkbox.hide()
             self.show_spectrogram_checkbox.hide()
@@ -1044,8 +1345,10 @@ class DataWidget(DataLoader, QWidget):
 
     def closeEvent(self, event):
         """Clean up video stream and data cache."""
+        from .plots_ephystrace import SharedEphysCache
 
         SharedAudioCache.clear_cache()
+        SharedEphysCache.clear_cache()
 
         self.video.stop()
 

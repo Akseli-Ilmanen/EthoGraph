@@ -16,12 +16,14 @@
 |----------|--------|
 | `↑` | Previous trial |
 | `↓` | Next trial |
+| `Ctrl+↑` / `Ctrl+↓` | Previous / next channel (ephys or audio mic) |
 
 ## Mouse Controls
 
 | Action | Function |
 |--------|----------|
 | **Left Click** | Select label (when not in label mode) |
+| **Double Left Click** | Autoscale axes (ephys trace) |
 | **Right Click** | Seek video to clicked time |
 | **Right Click + Drag** | Adjust X/Y axis limits (PyQtGraph built-in) |
 
@@ -58,6 +60,8 @@ You can only toggle via shortcut after having selected two options once.
 | `Ctrl+A` | Toggle autoscale |
 | `Ctrl+L` | Toggle lock axes |
 | `Ctrl+Enter` | Apply current plot settings |
+| `Ctrl++` / `Ctrl+-` | Increase / decrease ephys channel spacing |
+| `Shift++` / `Shift+-` | Increase / decrease ephys display gain |
 
 
 

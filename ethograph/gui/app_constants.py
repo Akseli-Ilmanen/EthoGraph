@@ -47,9 +47,6 @@ SPECTROGRAM_FALLBACK_Y_HEIGHT = 1600
 SPECTROGRAM_OVERLAY_ZOOM_OUT_THRESHOLD = 0.5  # Refresh when width < old * 0.5
 SPECTROGRAM_OVERLAY_ZOOM_IN_THRESHOLD = 2.0   # Refresh when width > old * 2.0
 
-# Percentile filtered in heatmap view
-HEATMAP_EXCLUSION_PERCENTILE = 98
-
 # Changepoint line styles based on zoom level (plot_container.py)
 CP_ZOOM_VERY_OUT_THRESHOLD = 10.0  # seconds visible
 CP_ZOOM_MEDIUM_THRESHOLD = 2.0     # seconds visible
@@ -63,6 +60,7 @@ CP_LINE_WIDTH_THICK = 2.0
 
 SPECTROGRAM_DEBOUNCE_MS = 50
 SPECTROGRAM_OVERLAY_DEBOUNCE_MS = 100
+ENVELOPE_OVERLAY_DEBOUNCE_MS = 100
 
 # =============================================================================
 # AUDIO / SPECTROGRAM
@@ -108,3 +106,7 @@ CP_METHOD_COLORS = {
 # Scatter plot settings
 CP_SCATTER_SIZE = 8
 CP_SCATTER_Y_POSITION_RATIO = 0.05  # 5% from bottom of y-range
+
+# Envelope overlay (plot_container.py)
+ENVELOPE_OVERLAY_COLOR = (255, 165, 0, 120)
+ENVELOPE_OVERLAY_WIDTH = 2

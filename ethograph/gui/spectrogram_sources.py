@@ -126,3 +126,53 @@ def build_xarray_source(
     kwargs_str = str(sorted(ds_kwargs.items()))
     ds_kwargs_hash = hashlib.md5(kwargs_str.encode()).hexdigest()[:12]
     return XarraySource(da, time_coords, variable_name, ds_kwargs_hash)
+
+
+class EphysFileSource:
+    """Wraps SharedEphysCache loader for spectrogram consumption."""
+
+    supports_noise_reduction = False
+
+    def __init__(self, path: str, stream_id: str = "0", channel_idx: int = 0):
+        from .plots_ephystrace import SharedEphysCache
+
+        self._path = path
+        self._stream_id = stream_id
+        self._channel_idx = channel_idx
+        self._loader = SharedEphysCache.get_loader(path, stream_id)
+        if self._loader is None:
+            raise ValueError(f"Failed to load ephys: {path}")
+
+    @property
+    def rate(self) -> float:
+        return self._loader.rate
+
+    @property
+    def duration(self) -> float:
+        return len(self._loader) / self._loader.rate
+
+    def get_data(self, t0: float, t1: float) -> np.ndarray:
+        i0 = max(0, int(t0 * self.rate))
+        i1 = min(len(self._loader), int(t1 * self.rate))
+        if i1 <= i0:
+            return np.array([], dtype=np.float64)
+        data = self._loader[i0:i1]
+        if data.ndim > 1:
+            ch = min(self._channel_idx, data.shape[1] - 1)
+            data = data[:, ch]
+        return np.asarray(data, dtype=np.float64)
+
+    @property
+    def identity(self) -> str:
+        return f"ephys:{self._path}:{self._stream_id}:{self._channel_idx}"
+
+
+def build_ephys_source(app_state) -> EphysFileSource | None:
+    """Build an EphysFileSource from the current app_state."""
+    ephys_path, stream_id, channel_idx = app_state.get_ephys_source()
+    if not ephys_path:
+        return None
+    try:
+        return EphysFileSource(ephys_path, stream_id, channel_idx)
+    except ValueError:
+        return None

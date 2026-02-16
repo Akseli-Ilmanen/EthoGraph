@@ -1,5 +1,17 @@
 import subprocess
+import audioio as aio
 from pathlib import Path
+from typing import Optional
+
+
+
+def get_audio_sr(audio_path: str) -> Optional[int]:
+    """Read sample rate from audio file using audioio, rounded to 3 decimals."""
+    try:
+        _, audio_sr = aio.load_audio(audio_path)
+        return round(audio_sr, 3)
+    except Exception:
+        return None
 
 
 def mp4_to_wav(mp4_path: str | Path, audio_sr: int) -> Path:
