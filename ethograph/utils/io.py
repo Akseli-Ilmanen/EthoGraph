@@ -16,7 +16,6 @@ from ethograph.utils.validation import validate_datatree
 from ethograph.features.mov_features import extract_video_motion
 
 
-
 class TrialTree(xr.DataTree):
     """DataTree subclass with trial-specific functionality."""
 
@@ -377,8 +376,9 @@ def set_media_attrs(
     for attr_name, files in [("cameras", cameras), ("mics", mics), ("pose", pose)]:
         if files is not None:
             ds.attrs[attr_name] = list(files)
-
     return ds
+
+
 
 
 def get_project_root(start: Path | None = None) -> Path:

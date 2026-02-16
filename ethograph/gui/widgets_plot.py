@@ -33,6 +33,15 @@ HEATMAP_COLORMAPS = [
 ]
 
 
+
+_NORM_DISPLAY_TO_KEY = {
+    "Per-channel z-normalization": "per_channel",
+    "Global z-normalization": "global",
+}
+
+_NORM_KEY_TO_DISPLAY = {v: k for k, v in _NORM_DISPLAY_TO_KEY.items()}
+
+
 # ---------------------------------------------------------------------------
 # OverlayManager — manages scaled overlays with independent autoscale
 # ---------------------------------------------------------------------------
@@ -313,6 +322,12 @@ class AxesWidget(QWidget):
         self.heatmap_percentile_spin.valueChanged.connect(self._on_heatmap_percentile_changed)
         hm_layout.addWidget(self.heatmap_percentile_spin, 0, 3)
 
+        hm_layout.addWidget(QLabel("Normalization:"), 1, 0)
+        self.heatmap_norm_combo = QComboBox()
+        self.heatmap_norm_combo.addItems(list(_NORM_DISPLAY_TO_KEY.keys()))
+        self.heatmap_norm_combo.currentTextChanged.connect(self._on_heatmap_normalization_changed)
+        hm_layout.addWidget(self.heatmap_norm_combo, 1, 1)
+
     def _restore_or_set_default_selections(self):
         for attr, edit in [
             ("ymin", self.ymin_edit),
@@ -336,6 +351,10 @@ class AxesWidget(QWidget):
         self.heatmap_percentile_spin.setValue(
             self.app_state.get_with_default("heatmap_exclusion_percentile")
         )
+
+        norm_key = self.app_state.get_with_default("heatmap_normalization")
+        display = _NORM_KEY_TO_DISPLAY.get(norm_key, "Per-channel")
+        self.heatmap_norm_combo.setCurrentText(display)
 
     def _parse_float(self, text: str) -> Optional[float]:
         s = (text or "").strip()
@@ -427,6 +446,13 @@ class AxesWidget(QWidget):
 
     def _on_heatmap_percentile_changed(self, value: float):
         self.app_state.heatmap_exclusion_percentile = value
+        if self.plot_container and self.plot_container.is_heatmap():
+            heatmap = self.plot_container.heatmap_plot
+            heatmap._clear_buffer()
+            heatmap.update_plot_content()
+
+    def _on_heatmap_normalization_changed(self, display_name: str):
+        self.app_state.heatmap_normalization = _NORM_DISPLAY_TO_KEY.get(display_name, "per_channel")
         if self.plot_container and self.plot_container.is_heatmap():
             heatmap = self.plot_container.heatmap_plot
             heatmap._clear_buffer()

@@ -13,6 +13,7 @@ from qtpy.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
@@ -28,6 +29,7 @@ from qtpy.QtWidgets import (
 from ethograph.gui.data_loader import (
     minimal_dt_from_audio,
     minimal_dt_from_ds,
+    minimal_dt_from_ephys,
     minimal_dt_from_npy_file,
     minimal_dt_from_pose,
 )
@@ -42,6 +44,21 @@ def get_video_fps(video_path: str) -> Optional[int]:
             stream = container.streams.video[0]
             fps = float(stream.average_rate)
             return round(fps)
+    except Exception:
+        return None
+
+
+def get_video_n_frames(video_path: str) -> Optional[int]:
+    """Read total frame count from video file using PyAV."""
+    try:
+        with av.open(video_path) as container:
+            stream = container.streams.video[0]
+            if stream.frames > 0:
+                return stream.frames
+            # Fallback: duration (microseconds) -> seconds, then * fps
+            duration = float(container.duration) / 1_000_000
+            fps = float(stream.average_rate)
+            return round(duration * fps)
     except Exception:
         return None
 
@@ -91,7 +108,11 @@ class CreateNCDialog(QDialog):
         self.npy_button.clicked.connect(self._on_npy_clicked)
         layout.addWidget(self.npy_button)
 
-        self.tutorial_button = QPushButton("5) Tutorials for creating custom .nc files")
+        self.ephys_button = QPushButton("5) Generate from ephys file")
+        self.ephys_button.clicked.connect(self._on_ephys_clicked)
+        layout.addWidget(self.ephys_button)
+
+        self.tutorial_button = QPushButton("6) Tutorials for creating custom .nc files")
         self.tutorial_button.clicked.connect(self._on_tutorials_clicked)
         layout.addWidget(self.tutorial_button)
 
@@ -121,6 +142,11 @@ class CreateNCDialog(QDialog):
         if dialog.exec_():
             self.accept()
 
+    def _on_ephys_clicked(self):
+        dialog = EphysFileDialog(self.app_state, self.io_widget, self)
+        if dialog.exec_():
+            self.accept()
+
     def _on_tutorials_clicked(self):
         webbrowser.open(TUTORIALS_URL)
 
@@ -141,6 +167,7 @@ class PoseFileDialog(QDialog):
 
         form_layout = QFormLayout()
 
+
         self.software_combo = QComboBox()
         self.software_combo.addItems(AVAILABLE_SOFTWARES)
         form_layout.addRow("Source software:", self.software_combo)
@@ -156,6 +183,7 @@ class PoseFileDialog(QDialog):
         pose_layout.addWidget(self.pose_edit)
         pose_layout.addWidget(pose_browse)
         form_layout.addRow("Pose file:", pose_widget)
+        
 
         video_widget = QWidget()
         video_layout = QHBoxLayout(video_widget)
@@ -168,6 +196,8 @@ class PoseFileDialog(QDialog):
         video_layout.addWidget(self.video_edit)
         video_layout.addWidget(video_browse)
         form_layout.addRow("Video file:", video_widget)
+
+
 
         self.fps_spinbox = QSpinBox()
         self.fps_spinbox.setRange(1, 1000)
@@ -311,17 +341,6 @@ class XarrayDatasetDialog(QDialog):
 
         form_layout = QFormLayout()
 
-        dataset_widget = QWidget()
-        dataset_layout = QHBoxLayout(dataset_widget)
-        dataset_layout.setContentsMargins(0, 0, 0, 0)
-        self.dataset_edit = QLineEdit()
-        self.dataset_edit.setPlaceholderText("Select Movement dataset (.nc)...")
-        self.dataset_edit.setReadOnly(True)
-        dataset_browse = QPushButton("Browse")
-        dataset_browse.clicked.connect(self._on_dataset_browse)
-        dataset_layout.addWidget(self.dataset_edit)
-        dataset_layout.addWidget(dataset_browse)
-        form_layout.addRow("Dataset file:", dataset_widget)
 
         video_widget = QWidget()
         video_layout = QHBoxLayout(video_widget)
@@ -334,6 +353,21 @@ class XarrayDatasetDialog(QDialog):
         video_layout.addWidget(self.video_edit)
         video_layout.addWidget(video_browse)
         form_layout.addRow("Video file:", video_widget)
+
+
+        dataset_widget = QWidget()
+        dataset_layout = QHBoxLayout(dataset_widget)
+        dataset_layout.setContentsMargins(0, 0, 0, 0)
+        self.dataset_edit = QLineEdit()
+        self.dataset_edit.setPlaceholderText("Select Movement dataset (.nc)...")
+        self.dataset_edit.setReadOnly(True)
+        dataset_browse = QPushButton("Browse")
+        dataset_browse.clicked.connect(self._on_dataset_browse)
+        dataset_layout.addWidget(self.dataset_edit)
+        dataset_layout.addWidget(dataset_browse)
+        form_layout.addRow("Dataset file:", dataset_widget)
+
+
 
         output_widget = QWidget()
         output_layout = QHBoxLayout(output_widget)
@@ -803,3 +837,243 @@ class NpyFileDialog(QDialog):
 
         self.app_state.video_folder = video_folder
         self.io_widget.video_folder_edit.setText(video_folder)
+
+
+class EphysFileDialog(QDialog):
+    """Dialog for generating .nc file from an ephys recording."""
+
+    EPHYS_FILTER = (
+        "Ephys files (*.rhd *.rhs *.oebin *.edf *.bdf *.vhdr *.dat *.bin *.raw)"
+        ";;All files (*)"
+    )
+
+    def __init__(self, app_state, io_widget, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.app_state = app_state
+        self.io_widget = io_widget
+        self.setWindowTitle("Generate from Ephys File")
+        self.setMinimumWidth(550)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        info_label = QLabel(
+            "Generate a .nc file from an electrophysiology recording. "
+            "Supported formats: Intan (.rhd/.rhs), Open Ephys (.oebin), "
+            "EDF (.edf/.bdf), BrainVision (.vhdr), raw binary (.dat/.bin/.raw)."
+        )
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        layout.addSpacing(15)
+
+        form_layout = QFormLayout()
+
+
+        video_widget = QWidget()
+        video_layout = QHBoxLayout(video_widget)
+        video_layout.setContentsMargins(0, 0, 0, 0)
+        self.video_edit = QLineEdit()
+        self.video_edit.setPlaceholderText("Select video file (.mp4, .mov)...")
+        self.video_edit.setReadOnly(True)
+        video_browse = QPushButton("Browse")
+        video_browse.clicked.connect(self._on_video_browse)
+        video_layout.addWidget(self.video_edit)
+        video_layout.addWidget(video_browse)
+        form_layout.addRow("Video file:", video_widget)
+
+
+        ephys_widget = QWidget()
+        ephys_layout = QHBoxLayout(ephys_widget)
+        ephys_layout.setContentsMargins(0, 0, 0, 0)
+        self.ephys_edit = QLineEdit()
+        self.ephys_edit.setPlaceholderText("Select ephys file...")
+        self.ephys_edit.setReadOnly(True)
+        ephys_browse = QPushButton("Browse")
+        ephys_browse.clicked.connect(self._on_ephys_browse)
+        ephys_layout.addWidget(self.ephys_edit)
+        ephys_layout.addWidget(ephys_browse)
+        form_layout.addRow("Ephys file:", ephys_widget)
+
+
+        self.fps_spinbox = QSpinBox()
+        self.fps_spinbox.setRange(1, 1000)
+        self.fps_spinbox.setValue(30)
+        self.fps_spinbox.setSuffix(" fps")
+        form_layout.addRow("Video frame rate:", self.fps_spinbox)
+
+        self.sr_spinbox = QSpinBox()
+        self.sr_spinbox.setRange(1, 200000)
+        self.sr_spinbox.setValue(30000)
+        self.sr_spinbox.setSuffix(" Hz")
+        self.sr_spinbox.setToolTip("Auto-detected for known formats; set manually for raw binary")
+        form_layout.addRow("Sampling rate:", self.sr_spinbox)
+
+        self.n_channels_spinbox = QSpinBox()
+        self.n_channels_spinbox.setRange(1, 10000)
+        self.n_channels_spinbox.setValue(1)
+        self.n_channels_spinbox.setToolTip("Auto-detected for known formats; set manually for raw binary")
+        form_layout.addRow("N channels:", self.n_channels_spinbox)
+
+        self.stream_combo = QComboBox()
+        self.stream_combo.hide()
+        self.stream_label = QLabel("Stream:")
+        self.stream_label.hide()
+        form_layout.addRow(self.stream_label, self.stream_combo)
+
+        self.individuals_edit = QLineEdit()
+        self.individuals_edit.setPlaceholderText("e.g., bird1, bird2 (leave empty for default)")
+        form_layout.addRow("Individuals (optional):", self.individuals_edit)
+
+        self.video_motion_checkbox = QCheckBox("Load video motion features")
+        form_layout.addRow("", self.video_motion_checkbox)
+
+        self.ephys_offset_spinbox = QDoubleSpinBox()
+        self.ephys_offset_spinbox.setRange(-100000.0, 100000.0)
+        self.ephys_offset_spinbox.setDecimals(4)
+        self.ephys_offset_spinbox.setValue(0.0)
+        self.ephys_offset_spinbox.setSuffix(" s")
+        self.ephys_offset_spinbox.setToolTip(
+            "Time (seconds) where the video starts relative to the ephys "
+            "recording start. Negative if video started before ephys."
+        )
+        form_layout.addRow("Video onset in ephys:", self.ephys_offset_spinbox)
+
+        output_widget = QWidget()
+        output_layout = QHBoxLayout(output_widget)
+        output_layout.setContentsMargins(0, 0, 0, 0)
+        self.output_edit = QLineEdit()
+        self.output_edit.setPlaceholderText("Select output location for trials.nc...")
+        self.output_edit.setReadOnly(True)
+        output_browse = QPushButton("Browse")
+        output_browse.clicked.connect(self._on_output_browse)
+        output_layout.addWidget(self.output_edit)
+        output_layout.addWidget(output_browse)
+        form_layout.addRow("Output path:", output_widget)
+
+        layout.addLayout(form_layout)
+        layout.addSpacing(20)
+
+        self.generate_button = QPushButton("Generate .nc file")
+        self.generate_button.clicked.connect(self._on_generate)
+        layout.addWidget(self.generate_button)
+
+        layout.addSpacing(10)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Cancel)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def _on_ephys_browse(self):
+        result = QFileDialog.getOpenFileName(
+            self, caption="Select ephys file", filter=self.EPHYS_FILTER,
+        )
+        if not (result and result[0]):
+            return
+        self.ephys_edit.setText(result[0])
+        self._probe_ephys_file(result[0])
+
+    def _probe_ephys_file(self, path: str):
+        """Probe the ephys file to auto-detect SR, channels, and streams."""
+        from ethograph.gui.plots_ephystrace import GenericEphysLoader
+
+        try:
+            loader = GenericEphysLoader(path)
+        except ValueError:
+            return
+
+        self.sr_spinbox.setValue(int(loader.rate))
+        self.n_channels_spinbox.setValue(loader.n_channels)
+
+        streams = loader.streams
+        if streams and len(streams) > 1:
+            self.stream_combo.clear()
+            for sid, info in streams.items():
+                self.stream_combo.addItem(
+                    f"{info['name']} ({info['n_channels']}ch, {int(info['rate'])}Hz)",
+                    sid,
+                )
+            self.stream_combo.show()
+            self.stream_label.show()
+        else:
+            self.stream_combo.hide()
+            self.stream_label.hide()
+
+    def _on_video_browse(self):
+        result = QFileDialog.getOpenFileName(
+            self, caption="Select video file",
+            filter="Video files (*.mp4 *.mov *.avi);;All files (*)",
+        )
+        if result and result[0]:
+            self.video_edit.setText(result[0])
+            fps = get_video_fps(result[0])
+            if fps is not None:
+                self.fps_spinbox.setValue(fps)
+
+    def _on_output_browse(self):
+        result = QFileDialog.getSaveFileName(
+            self, caption="Save trials.nc file",
+            filter="NetCDF files (*.nc);;All files (*)",
+        )
+        if result and result[0]:
+            path = result[0]
+            if not path.endswith(".nc"):
+                path += ".nc"
+            self.output_edit.setText(path)
+
+    def _on_generate(self):
+        if not self.ephys_edit.text():
+            QMessageBox.warning(self, "Missing Input", "Please select an ephys file.")
+            return
+        if not self.video_edit.text():
+            QMessageBox.warning(self, "Missing Input", "Please select a video file.")
+            return
+        if not self.output_edit.text():
+            QMessageBox.warning(self, "Missing Input", "Please select an output path.")
+            return
+
+        ephys_path = self.ephys_edit.text()
+        video_path = self.video_edit.text()
+        fps = self.fps_spinbox.value()
+        output_path = self.output_edit.text()
+
+        individuals = None
+        if self.individuals_edit.text().strip():
+            individuals = [s.strip() for s in self.individuals_edit.text().split(",")]
+
+        video_motion = self.video_motion_checkbox.isChecked()
+        ephys_offset = self.ephys_offset_spinbox.value()
+
+        try:
+            dt = minimal_dt_from_ephys(
+                video_path=video_path,
+                fps=fps,
+                ephys_path=ephys_path,
+                individuals=individuals,
+                video_motion=video_motion,
+                trial_onset=ephys_offset,
+            )
+            dt.to_netcdf(output_path)
+            self._populate_io_fields(output_path, video_path, ephys_path)
+            QMessageBox.information(
+                self, "Success", f"Successfully created:\n{output_path}",
+            )
+            self.accept()
+        except Exception as e:
+            print(f"Error creating trials.nc file: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to create trials.nc file:\n{e}")
+
+    def _populate_io_fields(self, output_path: str, video_path: str, ephys_path: str):
+        video_folder = str(Path(video_path).parent)
+        ephys_folder = str(Path(ephys_path).parent)
+
+        self.app_state.nc_file_path = output_path
+        self.io_widget.nc_file_path_edit.setText(output_path)
+
+        self.app_state.video_folder = video_folder
+        self.io_widget.video_folder_edit.setText(video_folder)
+
+        self.app_state.ephys_folder = ephys_folder
+        if hasattr(self.io_widget, 'ephys_folder_edit'):
+            self.io_widget.ephys_folder_edit.setText(ephys_folder)

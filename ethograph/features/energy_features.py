@@ -5,7 +5,9 @@ import numpy as np
 import vocalpy as voc
 
 from ethograph.features.filter import envelope
+from scipy.signal import butter, sosfiltfilt, hilbert, resample_poly
 from ethograph.utils.audio import mp4_to_wav
+
 
 
 def compute_meansquared_envelope(
@@ -67,3 +69,19 @@ def get_envelope(audio_path, audio_sr, env_rate):
     return env, wav_path if 'wav_path' in locals() else None
 
 
+
+
+def band_envelope(
+    data: np.ndarray, fs: float, band: tuple[float, float], env_rate: float = 1000.0
+) -> tuple[np.ndarray, float]:
+    """Band-specific power envelope for extracellular data."""
+    
+    sos = butter(4, band, btype="bandpass", fs=fs, output="sos")
+    filtered = sosfiltfilt(sos, data, axis=0)
+    envelope = np.abs(hilbert(filtered, axis=0))
+    
+    down = int(fs // env_rate)
+    if down > 1:
+        envelope = resample_poly(envelope, 1, down, axis=0)
+    
+    return envelope, fs / down

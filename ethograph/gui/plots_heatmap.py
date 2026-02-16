@@ -148,6 +148,11 @@ class HeatmapPlot(BasePlot):
             freq_min = self.app_state.get_with_default('freq_cutoffs_min')
             freq_max = self.app_state.get_with_default('freq_cutoffs_max')
             smooth = self.app_state.get_with_default('smooth_win')
+        elif metric == "band_envelope":
+            from ethograph.features.energy_features import band_envelope
+            be_min = self.app_state.get_with_default('band_env_min')
+            be_max = self.app_state.get_with_default('band_env_max')
+            be_rate = self.app_state.get_with_default('band_env_rate')
         else:
             from ethograph.features.filter import envelope
             env_rate = min(self.app_state.get_with_default('env_rate'), fs / 2)
@@ -160,6 +165,8 @@ class HeatmapPlot(BasePlot):
                 _, ch_env = compute_meansquared_envelope(
                     ch_data, fs, freq_cutoffs=(freq_min, freq_max), smooth_win=smooth,
                 )
+            elif metric == "band_envelope":
+                ch_env, _ = band_envelope(ch_data, fs, band=(be_min, be_max), env_rate=be_rate)
             else:
                 ch_env = np.squeeze(envelope(ch_data, rate=fs, cutoff=cutoff, env_rate=env_rate))
             env_channels.append(ch_env)
@@ -170,6 +177,71 @@ class HeatmapPlot(BasePlot):
         env_time = np.linspace(load_t0, load_t1, env_data.shape[0])
 
         self._channel_labels = [f"Ch {i}" for i in range(n_channels)]
+        self._n_channels = n_channels
+
+        self._buffered_data = env_data
+        self._buffered_time = env_time
+        self._buffer_t0 = load_t0
+        self._buffer_t1 = load_t1
+
+        return env_data, env_time
+
+    # --- Ephys envelope loading ---
+
+    def _get_buffered_ephys_envelope(self, t0: float, t1: float):
+        """Load ephys data, compute per-channel envelope, and cache."""
+        from .plots_ephystrace import SharedEphysCache
+
+        ephys_path, stream_id, _ = self.app_state.get_ephys_source()
+        if not ephys_path:
+            return None, None
+
+        loader = SharedEphysCache.get_loader(ephys_path, stream_id)
+        if loader is None:
+            return None, None
+
+        fs = loader.rate
+        total_duration = len(loader) / fs
+
+        window_size = t1 - t0
+        buffer_size = window_size * self._buffer_multiplier
+        load_t0 = max(0.0, t0 - buffer_size / 2)
+        load_t1 = min(total_duration, t1 + buffer_size / 2)
+
+        margin = (t1 - t0) * 0.2
+        if (
+            self._buffered_data is not None
+            and self._buffer_t0 <= t0 - margin
+            and self._buffer_t1 >= t1 + margin
+        ):
+            return self._buffered_data, self._buffered_time
+
+        start_idx = max(0, int(load_t0 * fs))
+        stop_idx = min(len(loader), int(load_t1 * fs))
+        if stop_idx <= start_idx:
+            return None, None
+
+        raw = np.array(loader[start_idx:stop_idx], dtype=np.float64)
+        if raw.ndim == 1:
+            raw = raw[:, np.newaxis]
+
+        n_channels = raw.shape[1]
+
+        # Compute amplitude envelope per channel via RMS in short windows
+        win_samples = max(1, int(0.01 * fs))  # 10 ms windows
+        n_windows = raw.shape[0] // win_samples
+        if n_windows == 0:
+            return None, None
+
+        usable = n_windows * win_samples
+        reshaped = raw[:usable].reshape(n_windows, win_samples, n_channels)
+        env_data = np.sqrt(np.mean(reshaped ** 2, axis=1))  # (n_windows, n_channels)
+        env_time = np.linspace(load_t0, load_t1, env_data.shape[0])
+
+        if hasattr(loader, 'channel_names'):
+            self._channel_labels = loader.channel_names[:n_channels]
+        else:
+            self._channel_labels = [f"Ch {i}" for i in range(n_channels)]
         self._n_channels = n_channels
 
         self._buffered_data = env_data
@@ -199,6 +271,9 @@ class HeatmapPlot(BasePlot):
 
         if feature_sel == "Audio Waveform":
             return self._get_buffered_audio_envelope(t0, t1)
+
+        if feature_sel in getattr(self.app_state, 'ephys_source_map', {}):
+            return self._get_buffered_ephys_envelope(t0, t1)
 
         ds = self.app_state.ds
         time = self.app_state.time.values
@@ -269,7 +344,15 @@ class HeatmapPlot(BasePlot):
                 return
 
             data, time_vals = result
-            normalized = z_normalize(data)
+            norm_mode = self.app_state.get_with_default('heatmap_normalization')
+            if norm_mode == "global":
+                # Single z-score across all channels
+                mu = np.nanmean(data)
+                std = np.nanstd(data)
+                normalized = (data - mu) / std if std > 0 else data - mu
+            else:
+                # Per-channel z-score (default)
+                normalized = z_normalize(data)
             vmin, vmax = self._compute_symmetric_levels(normalized)
 
             self.image_item.setImage(normalized, autoLevels=False)

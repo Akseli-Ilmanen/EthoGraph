@@ -73,7 +73,7 @@ def _prepare_sound(
 
 
 def _compute_meansquared_envelope(sound: voc.Sound, **kwargs) -> tuple:
-    from ethograph.features.audio_features import compute_meansquared_envelope
+    from ethograph.features.energy_features import compute_meansquared_envelope
 
     freq_cutoffs = kwargs.get("freq_cutoffs", (500, 10000))
     smooth_win = kwargs.get("smooth_win", 2)

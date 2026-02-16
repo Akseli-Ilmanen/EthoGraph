@@ -36,6 +36,7 @@ from .app_constants import (
     Z_INDEX_CHANGEPOINTS,
 )
 from .plots_audiotrace import AudioTracePlot
+from .plots_ephystrace import EphysTracePlot
 from .plots_heatmap import HeatmapPlot
 from .plots_lineplot import LinePlot
 from .plots_spectrogram import SpectrogramPlot
@@ -65,6 +66,7 @@ class PlotContainer(QWidget):
         self.spectrogram_plot = SpectrogramPlot(app_state)
         self.audio_trace_plot = AudioTracePlot(app_state)
         self.heatmap_plot = HeatmapPlot(app_state)
+        self.ephys_trace_plot = EphysTracePlot(app_state)
 
         self.current_plot = self.line_plot
         self.current_plot_type = 'lineplot'
@@ -73,6 +75,7 @@ class PlotContainer(QWidget):
         self.spectrogram_plot.hide()
         self.audio_trace_plot.hide()
         self.heatmap_plot.hide()
+        self.ephys_trace_plot.hide()
 
         self.overlay_manager = OverlayManager()
 
@@ -103,11 +106,15 @@ class PlotContainer(QWidget):
         self.audio_trace_plot.vb.sigYRangeChanged.connect(
             lambda: self.overlay_manager.rescale_for_plot(self.audio_trace_plot)
         )
+        self.ephys_trace_plot.vb.sigYRangeChanged.connect(
+            lambda: self.overlay_manager.rescale_for_plot(self.ephys_trace_plot)
+        )
 
         # Connect zoom events to update changepoint line styles
         self.spectrogram_plot.vb.sigRangeChanged.connect(self._on_audio_plot_zoom)
         self.audio_trace_plot.vb.sigRangeChanged.connect(self._on_audio_plot_zoom)
         self.heatmap_plot.vb.sigRangeChanged.connect(self._on_audio_plot_zoom)
+        self.ephys_trace_plot.vb.sigRangeChanged.connect(self._on_audio_plot_zoom)
 
     def _on_audio_plot_zoom(self):
         """Update changepoint line styles when zoom level changes."""
@@ -131,6 +138,7 @@ class PlotContainer(QWidget):
             'spectrogram': self.spectrogram_plot,
             'audiotrace': self.audio_trace_plot,
             'heatmap': self.heatmap_plot,
+            'ephystrace': self.ephys_trace_plot,
         }
 
         prev_xlim = self.current_plot.get_current_xlim()
@@ -167,6 +175,10 @@ class PlotContainer(QWidget):
     def switch_to_heatmap(self):
         """Switch to heatmap display."""
         self._switch_to_plot('heatmap')
+
+    def switch_to_ephystrace(self):
+        """Switch to ephys trace display."""
+        self._switch_to_plot('ephystrace')
 
     def show_confidence_plot(self, confidence_data):
         """Display confidence values as a scaled overlay via OverlayManager."""
@@ -566,6 +578,10 @@ class PlotContainer(QWidget):
         """Check if currently showing heatmap."""
         return self.current_plot_type == 'heatmap'
 
+    def is_ephystrace(self):
+        """Check if currently showing ephys trace."""
+        return self.current_plot_type == 'ephystrace'
+
     def has_spectrogram_overlay(self) -> bool:
         return self.audio_overlay_type == 'spectrogram' and self.audio_overlay_item is not None
 
@@ -616,7 +632,7 @@ class PlotContainer(QWidget):
         if intervals_df is None or not self.label_mappings:
             return
 
-        all_plots = [self.line_plot, self.spectrogram_plot, self.audio_trace_plot, self.heatmap_plot]
+        all_plots = [self.line_plot, self.spectrogram_plot, self.audio_trace_plot, self.heatmap_plot, self.ephys_trace_plot]
 
         for plot in all_plots:
             if plot is None:
@@ -925,6 +941,8 @@ class PlotContainer(QWidget):
         """Return the plot widget to host the envelope overlay, or None."""
         if self.is_audiotrace():
             return self.audio_trace_plot
+        if self.is_ephystrace():
+            return self.ephys_trace_plot
         if self.is_lineplot():
             return self.line_plot
         return None
@@ -1034,7 +1052,7 @@ class PlotContainer(QWidget):
     def hide_envelope_overlay(self):
         """Remove envelope overlay from whichever plot hosts it."""
         if self._envelope_xrange_updater:
-            for plot in (self.line_plot, self.audio_trace_plot):
+            for plot in (self.line_plot, self.audio_trace_plot, self.ephys_trace_plot):
                 try:
                     plot.vb.sigXRangeChanged.disconnect(self._envelope_xrange_updater)
                 except (RuntimeError, TypeError):
@@ -1108,7 +1126,7 @@ class PlotContainer(QWidget):
         nyquist = fs / 2.0
 
         if metric == "meansquared":
-            from ethograph.features.audio_features import compute_meansquared_envelope
+            from ethograph.features.energy_features import compute_meansquared_envelope
 
             freq_min = min(self.app_state.get_with_default('freq_cutoffs_min'), nyquist * 0.9)
             freq_max = min(self.app_state.get_with_default('freq_cutoffs_max'), nyquist * 0.9)
@@ -1116,6 +1134,14 @@ class PlotContainer(QWidget):
             env_time, env_data = compute_meansquared_envelope(
                 signal_1d, fs, freq_cutoffs=(freq_min, freq_max), smooth_win=smooth,
             )
+        elif metric == "band_envelope":
+            from ethograph.features.energy_features import band_envelope
+
+            be_min = min(self.app_state.get_with_default('band_env_min'), nyquist * 0.9)
+            be_max = min(self.app_state.get_with_default('band_env_max'), nyquist * 0.9)
+            be_rate = self.app_state.get_with_default('band_env_rate')
+            env_data, actual_rate = band_envelope(signal_1d, fs, band=(be_min, be_max), env_rate=be_rate)
+            env_time = np.arange(len(env_data)) / actual_rate
         else:
             from ethograph.features.filter import envelope as amp_envelope
 

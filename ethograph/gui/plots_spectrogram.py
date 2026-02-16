@@ -26,7 +26,12 @@ if TYPE_CHECKING:
 
 
 class SharedAudioCache:
-    """Singleton cache for AudioLoader instances."""
+    """Singleton cache for AudioLoader instances.
+
+    Multiple GUI components (waveform plot, spectrogram, heatmap, envelope
+    overlay, set_time) all need the same audio loader. Without caching, each
+    would open the file independently, wasting file handles and memory.
+    """
 
     _instances = {}
     _lock = threading.Lock()
