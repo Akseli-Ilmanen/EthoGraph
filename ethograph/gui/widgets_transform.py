@@ -368,10 +368,6 @@ class TransformWidget(QWidget):
         ref_label_ks.setOpenExternalLinks(True)
         ephys_layout.addWidget(ref_label_ks)
 
-        note_label = QLabel("Transient visualization only — not persisted to file.")
-        note_label.setStyleSheet("color: #888; font-style: italic;")
-        ephys_layout.addWidget(note_label)
-
         self._enforce_ephys_sequential()
 
         main_layout.addWidget(self.noise_panel)
