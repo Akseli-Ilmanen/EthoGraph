@@ -17,12 +17,73 @@ All loaders expose the same interface consumed by EphysTraceBuffer:
 
 from __future__ import annotations
 
-import threading
-from pathlib import Path
-from typing import Optional, Protocol, runtime_checkable
 
 import numpy as np
+import threading
+import pyqtgraph as pg
+from pathlib import Path
+from typing import Optional, Protocol, runtime_checkable
 from numpy.typing import NDArray
+from qtpy.QtCore import QTimer
+from qtpy.QtWidgets import QApplication
+
+
+from .plots_base import BasePlot
+
+
+def _nice_round(value: float) -> float:
+    if value <= 0:
+        return 1.0
+    magnitude = 10 ** int(np.floor(np.log10(value)))
+    normalized = value / magnitude
+    if normalized < 1.5:
+        return magnitude
+    elif normalized < 3.5:
+        return 2 * magnitude
+    elif normalized < 7.5:
+        return 5 * magnitude
+    return 10 * magnitude
+
+
+_UNIT_TO_VOLTS: dict[str, float] = {
+    "V": 1.0,
+    "mV": 1e-3,
+    "uV": 1e-6,
+    "\u00b5V": 1e-6,
+}
+
+
+def _format_voltage_bar(raw_value: float, loader_units: str) -> tuple[float, str]:
+    factor = _UNIT_TO_VOLTS.get(loader_units)
+    if factor is None:
+        bar = _nice_round(raw_value)
+        return bar, f"{bar:.4g} {loader_units}"
+
+    value_in_v = raw_value * factor
+    abs_v = abs(value_in_v)
+    if abs_v < 1e-4:
+        display_val = value_in_v * 1e6
+        display_unit = "\u00b5V"
+    elif abs_v < 0.1:
+        display_val = value_in_v * 1e3
+        display_unit = "mV"
+    else:
+        display_val = value_in_v
+        display_unit = "V"
+
+    nice_display = _nice_round(abs(display_val))
+    if display_val < 0:
+        nice_display = -nice_display
+
+    if display_unit == "\u00b5V":
+        bar_in_v = nice_display * 1e-6
+    elif display_unit == "mV":
+        bar_in_v = nice_display * 1e-3
+    else:
+        bar_in_v = nice_display
+
+    bar_in_loader = bar_in_v / factor
+    return bar_in_loader, f"{nice_display:g} {display_unit}"
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +147,10 @@ class MemmapLoader:
     @property
     def channel_names(self) -> list[str]:
         return [f"Ch {i}" for i in range(self._n_channels)]
+
+    @property
+    def units(self) -> str:
+        return "a.u."
 
     def __getitem__(self, key) -> NDArray[np.float64]:
         chunk = self._raw[key]
@@ -231,6 +296,17 @@ class GenericEphysLoader:
         return list(channels[mask]["name"])
 
     @property
+    def units(self) -> str:
+        if self._loader is not None:
+            return self._loader.units
+        channels = self._reader.header["signal_channels"]
+        streams = self._reader.header["signal_streams"]
+        stream_id = streams["id"][self._stream_idx]
+        mask = channels["stream_id"] == stream_id
+        unit_str = str(channels[mask]["units"][0])
+        return unit_str if unit_str else "a.u."
+
+    @property
     def streams(self) -> dict | None:
         if self._reader is None:
             return None
@@ -316,86 +392,127 @@ class SharedEphysCache:
 # ---------------------------------------------------------------------------
 # EphysTraceBuffer – min/max envelope downsampling
 # ---------------------------------------------------------------------------
-
 class EphysTraceBuffer:
-    """Audian-style min/max envelope downsampling for ephys traces."""
 
     def __init__(self, loader: EphysLoader | None = None, channel: int = 0):
         self.loader = loader
         self.channel = channel
-        self.fs = loader.rate if loader else 1.0
+        self.ephys_sr: float | None = None
+        self._preproc_flags: dict = {}
+        self._segment_offset: float = 0.0
+        self._segment_duration: float | None = None
+        self._cache: NDArray | None = None
+        self._cache_start: int = 0
+        self._cache_stop: int = 0
+        self._cache_mean: NDArray | None = None
+        self._cache_std: NDArray | None = None
+        self.channel_spacing = 3.0
+        self.display_gain: int = 0
+        self.autocenter: bool = False
 
     def set_loader(self, loader: EphysLoader, channel: int = 0):
         self.loader = loader
         self.channel = channel
-        self.fs = loader.rate
+        self.ephys_sr = loader.rate
+        self._invalidate_cache()
+
+    def set_trial_segment(self, offset: float, duration: float | None):
+        self._segment_offset = offset
+        self._segment_duration = duration
+        self._invalidate_cache()
+
+    def set_preprocessing(self, flags: dict):
+        self._preproc_flags = flags
+        self._invalidate_cache()
+
+    def _invalidate_cache(self):
+        self._cache = None
+        self._cache_mean = None
+        self._cache_std = None
+
+    def _segment_bounds(self) -> tuple[int, int]:
+        start = max(0, int(self._segment_offset * self.ephys_sr))
+        if self._segment_duration is not None:
+            stop = min(len(self.loader),
+                       int((self._segment_offset + self._segment_duration) * self.ephys_sr) + 1)
+        else:
+            stop = len(self.loader)
+        return start, stop
+
+    def _build_cache(self):
+        if self._cache is not None or self.loader is None:
+            return
+        seg_start, seg_stop = self._segment_bounds()
+        if seg_stop <= seg_start:
+            return
+
+        raw = self.loader[seg_start:seg_stop]
+        if raw.ndim == 1:
+            raw = raw[:, np.newaxis]
+
+        if self._any_preprocessing():
+            data = _apply_preprocessing(raw, self.ephys_sr, self._preproc_flags)
+        else:
+            data = raw.astype(np.float64) if raw.dtype != np.float64 else raw
+
+        self._cache = data
+        self._cache_start = seg_start
+        self._cache_stop = seg_stop
+        self._cache_mean = data.mean(axis=0)
+        per_ch_std = data.std(axis=0)
+        per_ch_std[per_ch_std == 0] = 1.0
+        median_std = np.median(per_ch_std)
+        self._cache_std = np.full_like(per_ch_std, median_std)
+
+    def _get_data(self, start: int, stop: int) -> NDArray | None:
+        self._build_cache()
+        if self._cache is None:
+            return None
+        local_start = max(0, start - self._cache_start)
+        local_stop = min(self._cache.shape[0], stop - self._cache_start)
+        if local_stop <= local_start:
+            return None
+        return self._cache[local_start:local_stop]
+
+    def _any_preprocessing(self) -> bool:
+        return any(v for k, v in self._preproc_flags.items() if isinstance(v, bool) and v)
+
+    # -- single channel -----------------------------------------------------
 
     def get_trace_data(
-        self,
-        t0: float,
-        t1: float,
-        screen_width: int = 1920,
+        self, t0: float, t1: float, screen_width: int = 1920,
     ) -> tuple[NDArray, NDArray, int] | None:
         if self.loader is None:
             return None
 
-        start = max(0, int(t0 * self.fs))
-        stop = min(len(self.loader), int(t1 * self.fs) + 1)
+        start = max(0, int(t0 * self.ephys_sr))
+        stop = min(len(self.loader), int(t1 * self.ephys_sr) + 1)
         if stop <= start:
             return None
 
+        data_all = self._get_data(start, stop)
+        if data_all is None:
+            return None
+
+        ch = min(self.channel, data_all.shape[1] - 1)
+        data = data_all[:, ch].copy()
+
+        if self.display_gain != 0:
+            data *= 0.75 ** (-self.display_gain)
+
         step = max(1, (stop - start) // screen_width)
-
         if step > 1:
-            aligned_start = (start // step) * step
-            aligned_stop = min(len(self.loader), ((stop // step) + 1) * step)
+            return _envelope_downsample(data, start, step, self.ephys_sr)
 
-            data = self._load_channel(aligned_start, aligned_stop)
-            n_segments = len(data) // step
-            if n_segments == 0:
-                return None
-
-            usable = n_segments * step
-            data = data[:usable]
-
-            segments = np.arange(0, usable, step)
-            envelope = np.empty(2 * len(segments))
-            np.minimum.reduceat(data, segments, out=envelope[0::2])
-            np.maximum.reduceat(data, segments, out=envelope[1::2])
-
-            half_step = step / 2
-            times = np.arange(
-                aligned_start,
-                aligned_start + len(envelope) * half_step,
-                half_step,
-            ) / self.fs
-
-            return times, envelope, step
-
-        data = self._load_channel(start, stop)
-        times = np.arange(start, start + len(data)) / self.fs
+        times = np.arange(start, start + len(data)) / self.ephys_sr
         return times, data, 1
 
-    channel_spacing = 3.0
+    # -- multi channel ------------------------------------------------------
 
     def get_multichannel_trace_data(
-        self,
-        t0: float,
-        t1: float,
-        screen_width: int = 1920,
+        self, t0: float, t1: float, screen_width: int = 1920,
         channel_range: tuple[int, int] | None = None,
     ) -> tuple[NDArray, NDArray, int, int] | None:
-        """Load channels with min/max envelope, z-normalize, and offset-stack.
-
-        Parameters
-        ----------
-        channel_range
-            ``(start, end)`` inclusive channel indices. ``None`` means all.
-
-        Returns (times, data_2d, step, n_channels) where data_2d is
-        shape (n_points, n_channels), already z-normalized and offset-stacked.
-        Channel 0 at top (highest offset), last channel at bottom (offset 0).
-        """
         if self.loader is None:
             return None
 
@@ -403,312 +520,467 @@ class EphysTraceBuffer:
         if total_ch <= 1:
             return None
 
-        if channel_range is not None:
-            ch_start = max(0, channel_range[0])
-            ch_end = min(total_ch - 1, channel_range[1])
-        else:
-            ch_start, ch_end = 0, total_ch - 1
+        ch_start, ch_end = (channel_range or (0, total_ch - 1))
+        ch_start = max(0, ch_start)
+        ch_end = min(total_ch - 1, ch_end)
         n_ch = ch_end - ch_start + 1
         if n_ch <= 0:
             return None
 
-        start = max(0, int(t0 * self.fs))
-        stop = min(len(self.loader), int(t1 * self.fs) + 1)
+        start = max(0, int(t0 * self.ephys_sr))
+        stop = min(len(self.loader), int(t1 * self.ephys_sr) + 1)
         if stop <= start:
             return None
+
+        data_all = self._get_data(start, stop)
+        if data_all is None or data_all.ndim < 2:
+            return None
+        data_all = data_all[:, ch_start:ch_end + 1]
 
         step = max(1, (stop - start) // screen_width)
 
         if step > 1:
-            aligned_start = (start // step) * step
-            aligned_stop = min(len(self.loader), ((stop // step) + 1) * step)
-
-            raw_all = self.loader[aligned_start:aligned_stop]
-            if raw_all.ndim == 1:
-                return None
-            raw_all = raw_all[:, ch_start:ch_end + 1]
-
-            n_segments = len(raw_all) // step
+            n_segments = len(data_all) // step
             if n_segments == 0:
                 return None
             usable = n_segments * step
-            raw_all = raw_all[:usable]
+            data_all = data_all[:usable]
 
             segments = np.arange(0, usable, step)
             n_env = 2 * len(segments)
-            envelope = np.empty((n_env, n_ch), dtype=np.float64)
-
+            display = np.empty((n_env, n_ch))
             for ch in range(n_ch):
-                col = raw_all[:, ch]
-                np.minimum.reduceat(col, segments, out=envelope[0::2, ch])
-                np.maximum.reduceat(col, segments, out=envelope[1::2, ch])
+                col = data_all[:, ch]
+                np.minimum.reduceat(col, segments, out=display[0::2, ch])
+                np.maximum.reduceat(col, segments, out=display[1::2, ch])
 
+            aligned_start = (start // step) * step
             half_step = step / 2
-            times = np.arange(
-                aligned_start, aligned_start + n_env * half_step, half_step,
-            ) / self.fs
+            times = np.arange(aligned_start, aligned_start + n_env * half_step, half_step) / self.ephys_sr
         else:
-            raw_all = self.loader[start:stop]
-            if raw_all.ndim == 1:
-                return None
-            raw_all = raw_all[:, ch_start:ch_end + 1]
-            envelope = raw_all.astype(np.float64)
-            times = np.arange(start, start + len(envelope)) / self.fs
+            display = data_all.copy()
+            times = np.arange(start, start + len(display)) / self.ephys_sr
 
-        # z-normalize each channel
+        ch_std = self._cache_std[ch_start:ch_end + 1]
+        if self.autocenter:
+            display = (display - display.mean(axis=0)) / ch_std
+        else:
+            display = (display - self._cache_mean[ch_start:ch_end + 1]) / ch_std
+
+        gain_factor = 0.75 ** (-self.display_gain)
+        display *= gain_factor
+
         for ch in range(n_ch):
-            col = envelope[:, ch]
-            mu = np.mean(col)
-            std = np.std(col)
-            if std > 0:
-                envelope[:, ch] = (col - mu) / std
-            else:
-                envelope[:, ch] = 0.0
+            display[:, ch] += (n_ch - 1 - ch) * self.channel_spacing
 
-        # offset-stack: channel 0 at top
-        for ch in range(n_ch):
-            envelope[:, ch] += (n_ch - 1 - ch) * self.channel_spacing
+        return times, display, step, n_ch
 
-        return times, envelope, step, n_ch
 
-    def _load_channel(self, start: int, stop: int) -> NDArray[np.float64]:
-        chunk = self.loader[start:stop]
-        if chunk.ndim > 1:
-            return chunk[:, min(self.channel, chunk.shape[1] - 1)]
-        return chunk
+# -- preprocessing (pure function, no state) --------------------------------
 
+def _apply_preprocessing(data: NDArray, sr: float, flags: dict) -> NDArray:
+    from ethograph.features.filter import sosfilter
+
+    data = data.astype(np.float64, copy=True)
+
+    # if flags.get("subtract_mean"):
+    #     data -= data.mean(axis=0, keepdims=True)
+
+    if flags.get("car") and data.shape[1] > 8:
+        data -= np.median(data, axis=1, keepdims=True)
+
+    if flags.get("temporal_filter"):
+        cutoff = flags.get("hp_cutoff", 300.0)
+        data = sosfilter(data, sr, cutoff, mode='hp', order=3)
+
+    if flags.get("whitening"):
+        CC = (data.T @ data) / data.shape[0]
+        Wrot = _whitening_from_covariance(CC)
+        data = data @ Wrot.T
+
+    return data
+
+
+def _whitening_from_covariance(CC: np.ndarray) -> np.ndarray:
+    E, D, Vt = np.linalg.svd(CC)
+    return (E / np.sqrt(D + 1e-6)) @ E.T
+
+
+def _envelope_downsample(
+    data: NDArray, start: int, step: int, sr: float
+) -> tuple[NDArray, NDArray, int]:
+    aligned_start = (start // step) * step
+    n_segments = len(data) // step
+    usable = n_segments * step
+    data = data[:usable]
+
+    segments = np.arange(0, usable, step)
+    envelope = np.empty(2 * len(segments))
+    np.minimum.reduceat(data, segments, out=envelope[0::2])
+    np.maximum.reduceat(data, segments, out=envelope[1::2])
+
+    half_step = step / 2
+    times = np.arange(aligned_start, aligned_start + len(envelope) * half_step, half_step) / sr
+    return times, envelope, step
 
 # ---------------------------------------------------------------------------
 # EphysTracePlot – BasePlot-based ephys waveform viewer
 # ---------------------------------------------------------------------------
 
-try:
-    import pyqtgraph as pg
-    from qtpy.QtCore import QTimer
-    from qtpy.QtWidgets import QApplication
 
-    _HAS_QT = True
-except ImportError:
-    _HAS_QT = False
+_NEUROSCOPE_BG = '#000000'
+_NEUROSCOPE_TRACE = '#3399FF'
+_NEUROSCOPE_AXIS = '#AAAAAA'
 
+class EphysTracePlot(BasePlot):
+    """Extracellular waveform viewer inheriting BasePlot for full GUI integration."""
 
-if _HAS_QT:
-    from .plots_base import BasePlot
+    def __init__(self, app_state, parent=None):
+        super().__init__(app_state, parent)
 
-    # Default color cycle for multi-channel traces
-    _MULTI_CH_COLORS = [
-        '#2196F3', '#4CAF50', '#FF9800', '#E91E63', '#9C27B0',
-        '#00BCD4', '#CDDC39', '#FF5722', '#607D8B', '#795548',
-        '#3F51B5', '#009688', '#FFC107', '#F44336', '#8BC34A',
-        '#673AB7',
-    ]
+        self.setBackground(_NEUROSCOPE_BG)
+        for axis_name in ('left', 'bottom'):
+            axis = self.plot_item.getAxis(axis_name)
+            axis.setPen(pg.mkPen(_NEUROSCOPE_AXIS))
+            axis.setTextPen(pg.mkPen(_NEUROSCOPE_AXIS))
+        self.time_marker.setPen(pg.mkPen('#FF4444', width=2))
 
-    class EphysTracePlot(BasePlot):
-        """Extracellular waveform viewer inheriting BasePlot for full GUI integration."""
+        self.setLabel('left', 'Amplitude')
 
-        def __init__(self, app_state, parent=None):
-            super().__init__(app_state, parent)
+        self.trace_item = pg.PlotDataItem(
+            connect='all', antialias=False, skipFiniteCheck=True,
+        )
+        self.trace_item.setPen(pg.mkPen(color=_NEUROSCOPE_TRACE, width=1.5))
+        self.addItem(self.trace_item)
 
-            self.setLabel('left', 'Amplitude')
+        self.buffer = EphysTraceBuffer()
+        self.current_range: tuple[float, float] | None = None
 
-            self.trace_item = pg.PlotDataItem(
-                connect='all', antialias=False, skipFiniteCheck=True,
-            )
-            self.trace_item.setPen(pg.mkPen(color='#2196F3', width=1.5))
-            self.addItem(self.trace_item)
+        self.label_items = []
 
-            self.buffer = EphysTraceBuffer()
-            self.current_range: tuple[float, float] | None = None
+        self._debounce_timer = QTimer()
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(50)
+        self._debounce_timer.timeout.connect(self._debounced_update)
+        self._pending_range: tuple[float, float] | None = None
 
-            self.label_items = []
+        self.vb.sigRangeChanged.connect(self._on_view_range_changed)
 
-            self._debounce_timer = QTimer()
-            self._debounce_timer.setSingleShot(True)
-            self._debounce_timer.setInterval(50)
-            self._debounce_timer.timeout.connect(self._debounced_update)
-            self._pending_range: tuple[float, float] | None = None
+        # Multi-channel state
+        self._multichannel = False
+        self._multi_trace_items: list[pg.PlotDataItem] = []
+        self._channel_range: tuple[int, int] | None = None
 
-            self.vb.sigRangeChanged.connect(self._on_view_range_changed)
+        self._ephys_offset: float = 0.0
+        self._trial_duration: float | None = None
 
-            # Multi-channel state
-            self._multichannel = False
-            self._multi_trace_items: list[pg.PlotDataItem] = []
-            self._channel_range: tuple[int, int] | None = None
+        # Calibration scale bars
+        self._scale_v_line: pg.PlotDataItem | None = None
+        self._scale_h_line: pg.PlotDataItem | None = None
+        self._scale_v_text: pg.TextItem | None = None
+        self._scale_h_text: pg.TextItem | None = None
 
-            self._ephys_offset: float = 0.0
-            self._trial_duration: float | None = None
+        self.setToolTip("Double-click or Ctrl+A to autoscale")
+        self.scene().sigMouseClicked.connect(self._handle_double_click)
 
-        def set_ephys_offset(self, offset: float, trial_duration: float | None = None):
-            self._ephys_offset = offset
-            self._trial_duration = trial_duration
+    def set_ephys_offset(self, offset: float, trial_duration: float | None = None):
+        self._ephys_offset = offset
+        self._trial_duration = trial_duration
+        self.buffer.set_trial_segment(offset, trial_duration)
 
-        def set_loader(self, loader: EphysLoader, channel: int = 0):
-            self.buffer.set_loader(loader, channel)
+    def set_loader(self, loader: EphysLoader, channel: int = 0):
+        self.buffer.set_loader(loader, channel)
+        self._update_amplitude_label()
 
-        def set_channel(self, channel: int):
-            self.buffer.channel = channel
-            if self.current_range:
-                self.update_plot_content(*self.current_range)
+    def set_channel(self, channel: int):
+        self.buffer.channel = channel
+        if self.current_range:
+            self.update_plot_content(*self.current_range)
 
-        def set_channel_range(self, ch_start: int, ch_end: int):
-            self._channel_range = (ch_start, ch_end)
-            if self._multichannel and self.current_range:
-                self.update_plot_content(*self.current_range)
+    def set_channel_range(self, ch_start: int, ch_end: int):
+        self._channel_range = (ch_start, ch_end)
+        if self._multichannel and self.current_range:
+            self.update_plot_content(*self.current_range)
 
-        def set_multichannel(self, enabled: bool):
-            if enabled == self._multichannel:
-                return
-            self._multichannel = enabled
-            if enabled:
-                self.trace_item.setData([], [])
-                self.trace_item.hide()
+    def set_multichannel(self, enabled: bool):
+        if enabled == self._multichannel:
+            return
+        self._multichannel = enabled
+        if enabled:
+            self.trace_item.setData([], [])
+            self.trace_item.hide()
+        else:
+            self._clear_multi_traces()
+            self.trace_item.show()
+            self._reset_y_axis_ticks()
+        if self.current_range:
+            self.update_plot_content(*self.current_range)
+
+    def update_plot_content(self, t0: Optional[float] = None, t1: Optional[float] = None):
+        if self.buffer.loader is None:
+            return
+
+        if t0 is None or t1 is None:
+            xmin, xmax = self.get_current_xlim()
+            t0, t1 = xmin, xmax
+
+        # Clamp to trial boundaries
+        t0 = max(0.0, t0)
+        if self._trial_duration is not None:
+            t1 = min(self._trial_duration, t1)
+
+        if self._multichannel:
+            self._update_multichannel(t0, t1)
+        else:
+            self._update_singlechannel(t0, t1)
+
+        self.current_range = (t0, t1)
+
+    def _update_singlechannel(self, t0: float, t1: float):
+        try:
+            screen_width = QApplication.primaryScreen().size().width()
+        except Exception:
+            screen_width = 1920
+
+        # Query buffer in absolute ephys time, display in trial-local time
+        result = self.buffer.get_trace_data(
+            t0 + self._ephys_offset, t1 + self._ephys_offset, screen_width,
+        )
+        if result is None:
+            return
+
+        times, amplitudes, step = result
+        times = times - self._ephys_offset
+        self.trace_item.setData(times, amplitudes)
+
+        if step > 1:
+            self.trace_item.setPen(pg.mkPen(color=_NEUROSCOPE_TRACE, width=1.0))
+            self.trace_item.setSymbol(None)
+        else:
+            self.trace_item.setPen(pg.mkPen(color=_NEUROSCOPE_TRACE, width=2.0))
+            if len(times) < 200:
+                self.trace_item.setSymbol('o')
+                self.trace_item.setSymbolSize(4)
+                self.trace_item.setSymbolBrush(_NEUROSCOPE_TRACE)
             else:
-                self._clear_multi_traces()
-                self.trace_item.show()
-                self._reset_y_axis_ticks()
-            if self.current_range:
-                self.update_plot_content(*self.current_range)
-
-        def update_plot_content(self, t0: Optional[float] = None, t1: Optional[float] = None):
-            if self.buffer.loader is None:
-                return
-
-            if t0 is None or t1 is None:
-                xmin, xmax = self.get_current_xlim()
-                t0, t1 = xmin, xmax
-
-            # Clamp to trial boundaries
-            t0 = max(0.0, t0)
-            if self._trial_duration is not None:
-                t1 = min(self._trial_duration, t1)
-
-            if self._multichannel:
-                self._update_multichannel(t0, t1)
-            else:
-                self._update_singlechannel(t0, t1)
-
-            self.current_range = (t0, t1)
-
-        def _update_singlechannel(self, t0: float, t1: float):
-            try:
-                screen_width = QApplication.primaryScreen().size().width()
-            except Exception:
-                screen_width = 1920
-
-            # Query buffer in absolute ephys time, display in trial-local time
-            result = self.buffer.get_trace_data(
-                t0 + self._ephys_offset, t1 + self._ephys_offset, screen_width,
-            )
-            if result is None:
-                return
-
-            times, amplitudes, step = result
-            times = times - self._ephys_offset
-            self.trace_item.setData(times, amplitudes)
-
-            if step > 1:
-                self.trace_item.setPen(pg.mkPen(color='#2196F3', width=1.0))
                 self.trace_item.setSymbol(None)
-            else:
-                self.trace_item.setPen(pg.mkPen(color='#2196F3', width=2.0))
-                if len(times) < 200:
-                    self.trace_item.setSymbol('o')
-                    self.trace_item.setSymbolSize(4)
-                    self.trace_item.setSymbolBrush('#2196F3')
-                else:
-                    self.trace_item.setSymbol(None)
+                
+        self._update_scale_bars(times)
 
-        def _update_multichannel(self, t0: float, t1: float):
-            try:
-                screen_width = QApplication.primaryScreen().size().width()
-            except Exception:
-                screen_width = 1920
+    def _update_multichannel(self, t0: float, t1: float):
+        try:
+            screen_width = QApplication.primaryScreen().size().width()
+        except Exception:
+            screen_width = 1920
 
-            # Query buffer in absolute ephys time, display in trial-local time
-            result = self.buffer.get_multichannel_trace_data(
-                t0 + self._ephys_offset, t1 + self._ephys_offset,
-                screen_width, channel_range=self._channel_range,
-            )
-            if result is None:
-                return
+        # Query buffer in absolute ephys time, display in trial-local time
+        result = self.buffer.get_multichannel_trace_data(
+            t0 + self._ephys_offset, t1 + self._ephys_offset,
+            screen_width, channel_range=self._channel_range,
+        )
+        if result is None:
+            return
 
-            times, data_2d, step, n_ch = result
-            times = times - self._ephys_offset
+        times, data_2d, step, n_ch = result
+        times = times - self._ephys_offset
 
-            # Grow or shrink trace item pool
-            while len(self._multi_trace_items) < n_ch:
-                item = pg.PlotDataItem(connect='all', antialias=False, skipFiniteCheck=True)
-                self.addItem(item)
-                self._multi_trace_items.append(item)
-            while len(self._multi_trace_items) > n_ch:
-                item = self._multi_trace_items.pop()
-                self.removeItem(item)
+        # Grow or shrink trace item pool
+        while len(self._multi_trace_items) < n_ch:
+            item = pg.PlotDataItem(connect='all', antialias=False, skipFiniteCheck=True)
+            self.addItem(item)
+            self._multi_trace_items.append(item)
+        while len(self._multi_trace_items) > n_ch:
+            item = self._multi_trace_items.pop()
+            self.removeItem(item)
 
-            pen_width = 1.0 if step > 1 else 1.5
-            for ch in range(n_ch):
-                color = _MULTI_CH_COLORS[ch % len(_MULTI_CH_COLORS)]
-                self._multi_trace_items[ch].setData(times, data_2d[:, ch])
-                self._multi_trace_items[ch].setPen(pg.mkPen(color=color, width=pen_width))
-                self._multi_trace_items[ch].setSymbol(None)
+        pen_width = 1.0 if step > 1 else 1.5
+        trace_pen = pg.mkPen(color=_NEUROSCOPE_TRACE, width=pen_width)
+        for ch in range(n_ch):
+            self._multi_trace_items[ch].setData(times, data_2d[:, ch])
+            self._multi_trace_items[ch].setPen(trace_pen)
+            self._multi_trace_items[ch].setSymbol(None)
 
-            # Set y-axis ticks at channel offsets
-            ch_start = self._channel_range[0] if self._channel_range else 0
-            channel_names = self._get_channel_names(n_ch, ch_start)
-            spacing = self.buffer.channel_spacing
-            ticks = [((n_ch - 1 - i) * spacing, channel_names[i]) for i in range(n_ch)]
+        # Set y-axis ticks at channel offsets
+        ch_start = self._channel_range[0] if self._channel_range else 0
+        channel_names = self._get_channel_names(n_ch, ch_start)
+        spacing = self.buffer.channel_spacing
+        ticks = [((n_ch - 1 - i) * spacing, channel_names[i]) for i in range(n_ch)]
 
-            left_axis = self.plot_item.getAxis('left')
-            left_axis.setTicks([ticks])
-            self.setLabel('left', '')
+        left_axis = self.plot_item.getAxis('left')
+        left_axis.setTicks([ticks])
+        self.setLabel('left', '')
 
-            margin = spacing * 0.5
-            self.plot_item.setYRange(-margin, (n_ch - 1) * spacing + margin, padding=0)
+        margin = spacing * 0.5
+        self.plot_item.setYRange(-margin, (n_ch - 1) * spacing + margin, padding=0)
 
-        def _get_channel_names(self, n_ch: int, ch_start: int = 0) -> list[str]:
-            loader = self.buffer.loader
-            if hasattr(loader, 'channel_names'):
-                names = loader.channel_names
-                if len(names) >= ch_start + n_ch:
-                    return names[ch_start:ch_start + n_ch]
-            return [f"Ch {ch_start + i}" for i in range(n_ch)]
+        self._update_scale_bars(times)
 
-        def _clear_multi_traces(self):
-            for item in self._multi_trace_items:
-                self.removeItem(item)
-            self._multi_trace_items.clear()
+    def _update_scale_bars(self, times: NDArray):
+        self._clear_scale_bars()
 
-        def _reset_y_axis_ticks(self):
-            left_axis = self.plot_item.getAxis('left')
-            left_axis.setTicks(None)
+        if len(times) < 2 or self.buffer.ephys_sr is None:
+            return
+
+        t0, t1 = float(times[0]), float(times[-1])
+        time_window = t1 - t0
+        if time_window <= 0:
+            return
+
+        # -- Time bar: ~1/20 of window, rounded to a nice value --
+        raw_time_ms = (time_window / 20.0) * 1000.0
+        time_bar_ms = _nice_round(raw_time_ms)
+        time_bar_s = time_bar_ms / 1000.0
+
+        # -- Voltage bar: fixed 0.2 mV (NeuroScope convention) --
+        # Convert 0.2 mV to loader units, then to display units
+        scale_voltage = 0.2  # mV
+        loader_units = "a.u."
+        if self.buffer.loader is not None and hasattr(self.buffer.loader, 'units'):
+            loader_units = self.buffer.loader.units
+
+        factor = _UNIT_TO_VOLTS.get(loader_units)
+        if factor is not None:
+            voltage_in_loader = (scale_voltage * 1e-3) / factor  # 0.2 mV -> loader units
+        else:
+            voltage_in_loader = scale_voltage
+
+        gain_factor = 0.75 ** (-self.buffer.display_gain)
+        if self._multichannel:
+            # Multichannel: display is z-normalized (divided by median_std), then scaled by gain
+            median_std = self.buffer._cache_std[0] if self.buffer._cache_std is not None else 1.0
+            voltage_per_display_unit = median_std / gain_factor
+        else:
+            # Single channel: display is raw loader units, only gain applied
+            voltage_per_display_unit = 1.0 / gain_factor
+        voltage_bar_display = voltage_in_loader / voltage_per_display_unit
+
+        v_label = "0.2 mV"
+
+        # Position: bottom-right corner
+        y_range = self.plot_item.getViewBox().viewRange()[1]
+        y_span = y_range[1] - y_range[0]
+        x_anchor = t1 - time_window * 0.03
+        y_anchor = y_range[0] + y_span * 0.05
+
+        # Vertical bar (voltage)
+        v_x = [x_anchor, x_anchor]
+        v_y = [y_anchor, y_anchor + voltage_bar_display]
+        self._scale_v_line = pg.PlotDataItem(
+            v_x, v_y, pen=pg.mkPen('#FFFFFF', width=2),
+        )
+        self._scale_v_line.setZValue(900)
+        self.plot_item.addItem(self._scale_v_line)
+
+        self._scale_v_text = pg.TextItem(v_label, color='#FFFFFF', anchor=(1.0, 0.5))
+        self._scale_v_text.setPos(x_anchor - time_window * 0.005, y_anchor + voltage_bar_display / 2)
+        self._scale_v_text.setZValue(900)
+        self.plot_item.addItem(self._scale_v_text)
+
+        # Horizontal bar (time)
+        h_x = [x_anchor - time_bar_s, x_anchor]
+        h_y = [y_anchor, y_anchor]
+        self._scale_h_line = pg.PlotDataItem(
+            h_x, h_y, pen=pg.mkPen('#FFFFFF', width=2),
+        )
+        self._scale_h_line.setZValue(900)
+        self.plot_item.addItem(self._scale_h_line)
+
+        if time_bar_ms >= 1000:
+            h_label = f"{time_bar_ms / 1000:.1f} s"
+        else:
+            h_label = f"{time_bar_ms:.0f} ms"
+        self._scale_h_text = pg.TextItem(h_label, color='#FFFFFF', anchor=(0.5, 1.0))
+        self._scale_h_text.setPos(x_anchor - time_bar_s / 2, y_anchor - (y_range[1] - y_range[0]) * 0.01)
+        self._scale_h_text.setZValue(900)
+        self.plot_item.addItem(self._scale_h_text)
+
+    def _clear_scale_bars(self):
+        for attr in ('_scale_v_line', '_scale_h_line', '_scale_v_text', '_scale_h_text'):
+            item = getattr(self, attr, None)
+            if item is not None:
+                try:
+                    self.plot_item.removeItem(item)
+                except (RuntimeError, ValueError):
+                    pass
+                setattr(self, attr, None)
+
+    def _get_channel_names(self, n_ch: int, ch_start: int = 0) -> list[str]:
+        loader = self.buffer.loader
+        if hasattr(loader, 'channel_names'):
+            names = loader.channel_names
+            if len(names) >= ch_start + n_ch:
+                return names[ch_start:ch_start + n_ch]
+        return [f"Ch {ch_start + i}" for i in range(n_ch)]
+
+    def _clear_multi_traces(self):
+        for item in self._multi_trace_items:
+            self.removeItem(item)
+        self._multi_trace_items.clear()
+
+    def _reset_y_axis_ticks(self):
+        left_axis = self.plot_item.getAxis('left')
+        left_axis.setTicks(None)
+        self._update_amplitude_label()
+
+    def _update_amplitude_label(self):
+        units = ''
+        if self.buffer.loader is not None and hasattr(self.buffer.loader, 'units'):
+            units = self.buffer.loader.units
+        if units and units != 'a.u.':
+            self.setLabel('left', 'Amplitude', units=units)
+        else:
             self.setLabel('left', 'Amplitude')
 
-        def apply_y_range(self, ymin: Optional[float], ymax: Optional[float]):
-            if self._multichannel:
-                return
-            if ymin is not None and ymax is not None:
-                self.plot_item.setYRange(ymin, ymax)
+    def apply_y_range(self, ymin: Optional[float], ymax: Optional[float]):
+        if self._multichannel:
+            return
+        if ymin is not None and ymax is not None:
+            self.plot_item.setYRange(ymin, ymax)
 
-        def _on_view_range_changed(self):
-            if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
-                return
+    def _handle_double_click(self, event):
+        from qtpy.QtCore import Qt
+        if event.double() and event.button() == Qt.LeftButton:
+            self.autoscale()
 
-            self._pending_range = self.get_current_xlim()
-            self._debounce_timer.start()
+    def autoscale(self):
+        if self._multichannel:
+            n_ch = len(self._multi_trace_items)
+            if n_ch > 0:
+                spacing = self.buffer.channel_spacing
+                margin = spacing * 0.5
+                self.plot_item.setYRange(-margin, (n_ch - 1) * spacing + margin, padding=0)
+        else:
+            self.plot_item.enableAutoRange(axis='y')
 
-        def _debounced_update(self):
-            if self._pending_range is None:
-                return
+        if self._trial_duration is not None:
+            self.plot_item.setXRange(0, self._trial_duration, padding=0.02)
+        else:
+            self.plot_item.enableAutoRange(axis='x')
 
-            t0, t1 = self._pending_range
-            self._pending_range = None
-            self.update_plot_content(t0, t1)
+        if self.current_range:
+            self.update_plot_content(*self.get_current_xlim())
 
-        def update_time_marker_and_window(self, frame_number: int):
-            super().update_time_marker_and_window(frame_number)
+    def _on_view_range_changed(self):
+        if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
+            return
 
-            if hasattr(self.app_state, 'ds') and self.app_state.ds is not None:
-                t0, t1 = self.get_current_xlim()
-                current_time = frame_number / self.app_state.ds.fps
+        self._pending_range = self.get_current_xlim()
+        self._debounce_timer.start()
 
-                if self.current_range is None or current_time < self.current_range[0] or current_time > self.current_range[1]:
-                    self.update_plot_content(t0, t1)
+    def _debounced_update(self):
+        if self._pending_range is None:
+            return
+
+        t0, t1 = self._pending_range
+        self._pending_range = None
+        self.update_plot_content(t0, t1)
+
+    def update_time_marker_and_window(self, frame_number: int):
+        super().update_time_marker_and_window(frame_number)
+
+        if hasattr(self.app_state, 'ds') and self.app_state.ds is not None:
+            t0, t1 = self.get_current_xlim()
+            current_time = frame_number / self.app_state.ds.fps
+
+            if self.current_range is None or current_time < self.current_range[0] or current_time > self.current_range[1]:
+                self.update_plot_content(t0, t1)

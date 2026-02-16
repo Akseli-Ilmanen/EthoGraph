@@ -40,7 +40,7 @@ from .plots_ephystrace import EphysTracePlot
 from .plots_heatmap import HeatmapPlot
 from .plots_lineplot import LinePlot
 from .plots_spectrogram import SpectrogramPlot
-from .widgets_plot import OverlayManager
+from .plots_overlay import OverlayManager
 
 
 class PlotContainer(QWidget):
@@ -693,20 +693,30 @@ class PlotContainer(QWidget):
         color = self.label_mappings[labels]["color"]
         color_rgb = tuple(int(c * 255) for c in color)
 
-        # Use bottom strip style for spectrogram or when spectrogram overlay is active
+        # Use bottom strip style for spectrogram, heatmap, ephys, or when spectrogram overlay is active
         use_bottom_strip = (
             plot == self.spectrogram_plot or
             plot == self.heatmap_plot or
+            plot == self.ephys_trace_plot or
             (plot == self.line_plot and self.audio_overlay_type == 'spectrogram')
         )
 
+        # Heatmap has invertY so screen top/bottom are swapped vs view coords
+        inverted_y = plot == self.heatmap_plot
+
         if is_main:
             if use_bottom_strip:
-                self._draw_spectrogram_style_label(plot, start_time, end_time, color_rgb)
+                if inverted_y:
+                    self._draw_label_strip_top(plot, start_time, end_time, color_rgb)
+                else:
+                    self._draw_spectrogram_style_label(plot, start_time, end_time, color_rgb)
             else:
                 self._draw_standard_label(plot, start_time, end_time, color_rgb)
         else:
-            self._draw_prediction_label(plot, start_time, end_time, color_rgb)
+            if inverted_y:
+                self._draw_label_strip_bottom(plot, start_time, end_time, color_rgb)
+            else:
+                self._draw_prediction_label(plot, start_time, end_time, color_rgb)
 
     def _draw_standard_label(self, plot, start_time, end_time, color_rgb):
         """Draw standard semi-transparent rectangle for lineplot/audiotrace."""
@@ -767,6 +777,29 @@ class PlotContainer(QWidget):
             pen=None
         )
         rect.setZValue(Z_INDEX_PREDICTIONS)
+        plot.plot_item.addItem(rect)
+        plot.label_items.append(rect)
+
+    def _draw_label_strip_top(self, plot, start_time, end_time, color_rgb):
+        """Draw small rectangle at top of view range (screen bottom when invertY)."""
+        y_range = plot.plot_item.getViewBox().viewRange()[1]
+        y_top = y_range[1]
+        y_height = (y_range[1] - y_range[0]) * SPECTROGRAM_LABELS_HEIGHT_RATIO
+
+        if y_top <= y_range[0]:
+            y_top = PREDICTION_FALLBACK_Y_TOP
+            y_height = SPECTROGRAM_FALLBACK_Y_HEIGHT
+
+        x_coords = [start_time, end_time, end_time, start_time, start_time]
+        y_coords = [y_top, y_top, y_top - y_height, y_top - y_height, y_top]
+
+        rect = pg.PlotDataItem(
+            x_coords, y_coords,
+            fillLevel=y_top,
+            brush=(*color_rgb, 220),
+            pen=None
+        )
+        rect.setZValue(Z_INDEX_LABELS)
         plot.plot_item.addItem(rect)
         plot.label_items.append(rect)
 

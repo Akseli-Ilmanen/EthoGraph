@@ -121,7 +121,3 @@ def gaussian_smoothing(da, **smoothing_params):
     smoothed = smoothed.transpose("time", ...)
     
     return smoothed
-
-
-
-

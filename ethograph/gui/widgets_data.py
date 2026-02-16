@@ -79,9 +79,8 @@ class DataWidget(DataLoader, QWidget):
         self.video = None  
         self.plot_container = None
         self.labels_widget = None
-        self.axes_widget = None
-        self.audio_widget = None
-        self.energy_widget = None
+        self.plot_settings_widget = None
+        self.transform_widget = None
         self.audio_player = None
         self.video_path = None
         self.audio_path = None
@@ -106,15 +105,14 @@ class DataWidget(DataLoader, QWidget):
         
         
 
-    def set_references(self, plot_container, labels_widget, axes_widget, navigation_widget, audio_widget=None, changepoints_widget=None, energy_widget=None):
+    def set_references(self, plot_container, labels_widget, plot_settings_widget, navigation_widget, transform_widget=None, changepoints_widget=None):
         """Set references to other widgets after creation."""
         self.plot_container = plot_container
         self.labels_widget = labels_widget
-        self.axes_widget = axes_widget
+        self.plot_settings_widget = plot_settings_widget
         self.navigation_widget = navigation_widget
-        self.audio_widget = audio_widget
+        self.transform_widget = transform_widget
         self.changepoints_widget = changepoints_widget
-        self.energy_widget = energy_widget
 
         if changepoints_widget is not None:
             changepoints_widget.request_plot_update.connect(self._on_plot_update_request)
@@ -210,9 +208,9 @@ class DataWidget(DataLoader, QWidget):
         self.io_widget.create_nc_button.setEnabled(False)
         self.io_widget.template_button.setEnabled(False)
         self.changepoints_widget.setEnabled(True)
-        self.audio_widget.set_enabled_state(has_audio=False)
-        if self.energy_widget:
-            self.energy_widget.setEnabled(True)
+        self.plot_settings_widget.set_enabled_state(has_audio=False)
+        if self.transform_widget:
+            self.transform_widget.setEnabled(True)
 
         # Set initial trial selection before calling on_trial_changed
         trial = self.app_state.trials_sel
@@ -424,12 +422,38 @@ class DataWidget(DataLoader, QWidget):
         self.ephys_spacing_spin.hide()
         self.controls.append(self.ephys_spacing_spin)
 
+        self.ephys_gain_label = QLabel("Gain:")
+        self.ephys_gain_label.hide()
+
+        self.ephys_gain_spin = QSpinBox()
+        self.ephys_gain_spin.setObjectName("ephys_gain_spin")
+        self.ephys_gain_spin.setRange(-10, 10)
+        self.ephys_gain_spin.setValue(0)
+        self.ephys_gain_spin.setToolTip(
+            "Display gain (NeuroScope style): negative = amplify, positive = attenuate"
+        )
+        self.ephys_gain_spin.valueChanged.connect(self._on_ephys_gain_changed)
+        self.ephys_gain_spin.hide()
+        self.controls.append(self.ephys_gain_spin)
+
+        self.ephys_autocenter_cb = QCheckBox("Autocenter")
+        self.ephys_autocenter_cb.setObjectName("ephys_autocenter_cb")
+        self.ephys_autocenter_cb.setToolTip(
+            "Subtract per-window mean instead of full-cache mean (NeuroScope style)"
+        )
+        self.ephys_autocenter_cb.stateChanged.connect(self._on_ephys_autocenter_changed)
+        self.ephys_autocenter_cb.hide()
+        self.controls.append(self.ephys_autocenter_cb)
+
         ephys_ch_row = QHBoxLayout()
         ephys_ch_row.addWidget(self.ephys_channel_label)
         ephys_ch_row.addWidget(self.ephys_channel_spin)
         ephys_ch_row.addWidget(self.ephys_multichannel_cb)
         ephys_ch_row.addWidget(self.ephys_spacing_label)
         ephys_ch_row.addWidget(self.ephys_spacing_spin)
+        ephys_ch_row.addWidget(self.ephys_gain_label)
+        ephys_ch_row.addWidget(self.ephys_gain_spin)
+        ephys_ch_row.addWidget(self.ephys_autocenter_cb)
         ephys_ch_row.addStretch()
         self.layout().addRow(ephys_ch_row)
 
@@ -580,6 +604,9 @@ class DataWidget(DataLoader, QWidget):
         self.ephys_channel_spin.blockSignals(False)
         self.ephys_channel_label.show()
         self.ephys_channel_spin.show()
+        self.ephys_gain_label.show()
+        self.ephys_gain_spin.show()
+        self.ephys_autocenter_cb.show()
         if n_ch > 1:
             self.ephys_multichannel_cb.show()
             self.ephys_spacing_label.show()
@@ -633,6 +660,18 @@ class DataWidget(DataLoader, QWidget):
             xmin, xmax = self.plot_container.get_current_xlim()
             self.plot_container.ephys_trace_plot.update_plot_content(xmin, xmax)
 
+    def _on_ephys_gain_changed(self, value: int):
+        if self.plot_container and self.plot_container.is_ephystrace():
+            self.plot_container.ephys_trace_plot.buffer.display_gain = value
+            xmin, xmax = self.plot_container.get_current_xlim()
+            self.plot_container.ephys_trace_plot.update_plot_content(xmin, xmax)
+
+    def _on_ephys_autocenter_changed(self, state: int):
+        if self.plot_container and self.plot_container.is_ephystrace():
+            self.plot_container.ephys_trace_plot.buffer.autocenter = state == Qt.Checked
+            xmin, xmax = self.plot_container.get_current_xlim()
+            self.plot_container.ephys_trace_plot.update_plot_content(xmin, xmax)
+
     def _on_ephys_range_changed(self, value):
         """Handle channel range slider change."""
         ch_start, ch_end = int(value[0]), int(value[1])
@@ -652,6 +691,9 @@ class DataWidget(DataLoader, QWidget):
         self.ephys_multichannel_cb.hide()
         self.ephys_spacing_label.hide()
         self.ephys_spacing_spin.hide()
+        self.ephys_gain_label.hide()
+        self.ephys_gain_spin.hide()
+        self.ephys_autocenter_cb.hide()
         self.ephys_range_label.hide()
         self.ephys_range_slider.hide()
         if self.plot_container and hasattr(self.plot_container, 'ephys_trace_plot'):
@@ -1167,8 +1209,8 @@ class DataWidget(DataLoader, QWidget):
             else:
                 self.app_state.audio_path = None
 
-        if self.audio_widget:
-            self.audio_widget.set_enabled_state(has_audio=has_audio)
+        if self.transform_widget:
+            self.transform_widget.set_enabled_state(has_audio=has_audio)
 
         if self.changepoints_widget:
             self.changepoints_widget.set_enabled_state(has_audio)

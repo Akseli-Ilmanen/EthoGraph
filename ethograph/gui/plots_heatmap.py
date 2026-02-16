@@ -32,6 +32,7 @@ class HeatmapPlot(BasePlot):
         self.image_item = pg.ImageItem(autoDownsample=True)
         self.image_item.setZValue(Z_INDEX_BACKGROUND)
         self.addItem(self.image_item)
+        self.vb.invertY(True)
 
         self._init_colormap()
 
