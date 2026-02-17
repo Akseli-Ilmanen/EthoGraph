@@ -6,14 +6,14 @@ import numpy as np
 import xarray as xr
 from scipy.ndimage import gaussian_filter1d
 
-from ethograph.features.mov_features import get_angle_rgb
+from ethograph.features.move_features import get_angle_rgb
 from ethograph.utils.label_intervals import (
     INTERVAL_COLUMNS,
     empty_intervals,
     intervals_to_xr,
 )
 from ethograph.utils.validation import validate_datatree
-from ethograph.features.mov_features import extract_video_motion
+from ethograph.features.move_features import extract_video_motion
 
 
 class TrialTree(xr.DataTree):

@@ -189,6 +189,29 @@ def compute_distance_to_constant(
     return distances
 
 
+def move_vector_to_rgb(data: np.ndarray) -> np.ndarray:
+    """
+    Source: https://www.s3dlib.org/examples/vectors/rgb_normals.html
+    
+    Map (N,3) direction vectors (e.g. velocity) to RGB using the surface-normal convention.
+    
+    Same as s3dlib's rgbColorXYZ:
+        R = (sqrt(3)*x + 1) / 2
+        G = (sqrt(3)*y + 1) / 2
+        B = (sqrt(3)*z + 1) / 2
+    
+    Vectors are normalized to unit length first.
+    """
+    norms = np.linalg.norm(data, axis=1, keepdims=True)
+    norms[norms == 0] = 1
+    unit = data / norms
+
+    c = np.sqrt(3)
+    rgb = (c * unit + 1) / 2.0
+    return np.clip(rgb, 0, 1)
+
+
+
 def calculate_movement_angles(data, input_type="position"):
     """
     Calculate movement angles in the x-y plane (azimuth), and optionally
@@ -251,6 +274,7 @@ def calculate_movement_angles(data, input_type="position"):
         elevation = None
 
     return azimuth, elevation
+
 
 
 
