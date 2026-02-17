@@ -1,10 +1,9 @@
-from itertools import groupby
 from pathlib import Path
 from typing import Dict, List, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
-import xarray as xr
+import pandas as pd
 from matplotlib import patches
 
 
@@ -318,6 +317,32 @@ def fix_endings(labels, changepoints):
 
     return labels_out
 
+
+def correct_offsets(df: pd.DataFrame, dt: float = 0.005) -> pd.DataFrame:
+    """Fix off-by-one-frame gaps between consecutive action syllables.
+
+    During dense labeling at a fixed frame rate (default 200 Hz, dt=5ms),
+    each frame receives exactly one label. When two syllables are adjacent,
+    the offset of syllable N and the onset of syllable N+1 compete for the
+    same frame, and the onset wins. This leaves a spurious 1-frame gap
+    where offset[N] + dt == onset[N+1], even though the syllables are
+    truly contiguous. This function detects those gaps and snaps offset[N]
+    forward to onset[N+1], correcting offset_s, offset_global, and duration.
+    """
+    df = df.copy().sort_values(["session", "trial", "individual", "sequence_idx"])
+
+    for _, group in df.groupby(["session", "trial", "individual"]):
+        idx = group.index
+        for i in range(len(idx) - 1):
+            current = idx[i]
+            next_row = idx[i + 1]
+            gap = df.loc[next_row, "onset_s"] - df.loc[current, "offset_s"]
+            if abs(gap - dt) < 1e-6:
+                df.loc[current, "offset_s"] = df.loc[next_row, "onset_s"]
+                df.loc[current, "offset_global"] = df.loc[next_row, "onset_global"]
+                df.loc[current, "duration"] = df.loc[current, "offset_s"] - df.loc[current, "onset_s"]
+
+    return df
 
 
 
