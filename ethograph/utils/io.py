@@ -12,6 +12,7 @@ from ethograph.utils.label_intervals import (
     empty_intervals,
     intervals_to_xr,
 )
+from ethograph.utils.data_utils import get_time_coord
 from ethograph.utils.validation import validate_datatree
 from ethograph.features.move_features import extract_video_motion
 
@@ -509,15 +510,14 @@ def add_changepoints_to_ds(ds, target_feature, changepoint_name, changepoint_fun
 
     feature_data = ds[target_feature]
     func = partial(changepoint_func, **func_kwargs)
-    
-    # Core dimension = time. 
-    # This dimension is not broadcast during the operation.
+
+    time_dim = get_time_coord(feature_data).dims[0]
     changepoints = xr.apply_ufunc(
         func,
         feature_data,
-        input_core_dims=[["time"]],
-        output_core_dims=[["time"]],
-        vectorize=True,  
+        input_core_dims=[[time_dim]],
+        output_core_dims=[[time_dim]],
+        vectorize=True,
         dask="parallelized",
         output_dtypes=[np.int8]
     )
@@ -552,13 +552,10 @@ def add_angle_rgb_to_ds(ds, smoothing_params):
     ds : xarray.Dataset
         Dataset with added angle_rgb variable.
     """
-    # Select x-y data
     xy_pos = ds.position.sel(space=["x", "y"])
-
+    time_dim = get_time_coord(xy_pos).dims[0]
 
     def process_angles(xy):
-        
-        # Get angle RGB with smoothing
         _, angles = get_angle_rgb(
             xy,
             smooth_func=gaussian_filter1d,
@@ -566,22 +563,18 @@ def add_angle_rgb_to_ds(ds, smoothing_params):
         )
         return angles
 
-    # Apply transformation
     angles = xr.apply_ufunc(
         process_angles,
         xy_pos,
-        input_core_dims=[["time", "space"]],
-        output_core_dims=[["time"]],
+        input_core_dims=[[time_dim, "space"]],
+        output_core_dims=[[time_dim]],
         vectorize=True,
         dask="parallelized",
         output_dtypes=[np.float64],
     )
     ds["angles"] = angles
 
-
     def process_rgb(xy):
-        
-        # Get angle RGB with smoothing
         rgb, _ = get_angle_rgb(
             xy,
             smooth_func=gaussian_filter1d,
@@ -589,13 +582,11 @@ def add_angle_rgb_to_ds(ds, smoothing_params):
         )
         return rgb
 
-
-    # Apply transformation
     angle_rgb = xr.apply_ufunc(
         process_rgb,
         xy_pos,
-        input_core_dims=[["time", "space"]],
-        output_core_dims=[["time", "RGB"]],
+        input_core_dims=[[time_dim, "space"]],
+        output_core_dims=[[time_dim, "RGB"]],
         vectorize=True,
         dask="parallelized",
         output_dtypes=[np.float64],

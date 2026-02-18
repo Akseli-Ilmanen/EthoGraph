@@ -181,18 +181,6 @@ def minimal_dt_from_ephys(
     if n_frames is None:
         raise ValueError(f"Could not determine frame count from video: {video_path}")
 
-    time_coords = np.arange(n_frames) / fps
-
-    ds = xr.Dataset(
-        data_vars={
-            "labels": (["time", "individuals"], np.zeros((n_frames, len(individuals))))
-        },
-        coords={
-            "time": time_coords,
-            "individuals": individuals,
-        },
-    )
-
     ds.attrs["fps"] = fps
     
     # Ephys & video alignment

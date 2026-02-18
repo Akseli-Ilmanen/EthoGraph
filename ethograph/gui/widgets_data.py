@@ -735,10 +735,16 @@ class DataWidget(DataLoader, QWidget):
         try:
             da = self.app_state.ds[feature_sel]
             ds_kwargs = self.app_state.get_ds_kwargs()
-            data_1d, _ = sel_valid(da, ds_kwargs)
-            time_values = np.asarray(get_time_coord(da))
+            data, _ = sel_valid(da, ds_kwargs)
+            time_coord = get_time_coord(da)
+            time_dim_name = time_coord.dims[0]
+            time_values = np.asarray(time_coord)
+            if data.ndim > 1:
+                data = np.nanmean(data, axis=tuple(range(1, data.ndim)))
+            data = np.asarray(data, dtype=np.float64).ravel()
+            np.nan_to_num(data, copy=False, nan=0.0)
             return build_xarray_source(
-                xr.DataArray(data_1d, dims=["time"], coords={"time": time_values}),
+                xr.DataArray(data, dims=[time_dim_name], coords={time_dim_name: time_values}),
                 time_values,
                 feature_sel,
                 ds_kwargs,

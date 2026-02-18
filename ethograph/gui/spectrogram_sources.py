@@ -97,7 +97,9 @@ class XarraySource:
     def get_data(self, t0: float, t1: float) -> np.ndarray:
         mask = (self._time >= t0) & (self._time <= t1)
         values = np.asarray(self._da, dtype=np.float64)
-        return values[mask]
+        chunk = values[mask]
+        np.nan_to_num(chunk, copy=False, nan=0.0)
+        return chunk
 
     @property
     def identity(self) -> str:

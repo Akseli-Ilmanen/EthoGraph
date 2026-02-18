@@ -61,9 +61,9 @@ def interpolate_nans(arr: np.ndarray, axis: int = 0) -> np.ndarray:
 
 def z_normalize(data: np.ndarray) -> np.ndarray:
     """Apply z-score normalization to each feature (column) independently."""
-    std = data.std(axis=0)
-    std[std == 0] = 1  # Prevent division by zero
-    return (data - data.mean(axis=0)) / std
+    std = np.nanstd(data, axis=0)
+    std[std == 0] = 1
+    return (data - np.nanmean(data, axis=0)) / std
 
 def clip_by_percentiles(
     features: np.ndarray,
@@ -109,15 +109,18 @@ def gaussian_smoothing(da, **smoothing_params):
         data = interpolate_nans(data)
         return gaussian_filter1d(data, **smoothing_params)
     
+    from ethograph.utils.data_utils import get_time_coord
+    time_dim = get_time_coord(da).dims[0]
+
     smoothed = xr.apply_ufunc(
         nan_smooth,
         da,
-        input_core_dims=[["time"]],
-        output_core_dims=[["time"]],
+        input_core_dims=[[time_dim]],
+        output_core_dims=[[time_dim]],
         vectorize=True,
         dask="parallelized",
         output_dtypes=[np.float64]
     )
-    smoothed = smoothed.transpose("time", ...)
+    smoothed = smoothed.transpose(time_dim, ...)
     
     return smoothed
