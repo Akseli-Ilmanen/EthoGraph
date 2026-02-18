@@ -22,8 +22,9 @@ import sys
 from pathlib import Path
 
 import numpy as np
-
+import xarray as xr
 from ethograph import TrialTree
+from ethograph.utils.label_intervals import intervals_to_xr, empty_intervals, dense_to_intervals
 
 
 def detect_label_format(dt: TrialTree) -> str:
@@ -125,6 +126,76 @@ def migrate_media_attrs(ds) -> tuple[dict, list[str]]:
     return attrs, changes
 
 
+def get_label_dt_premigration(dt, empty: bool = False) -> "TrialTree":
+    def filter_node(ds):
+        if ds is None:
+            return xr.Dataset()
+
+        orig_attrs = ds.attrs.copy()
+
+        # New interval format: has onset_s with segment dimension
+        if "onset_s" in ds.data_vars and "segment" in ds.dims:
+            if empty:
+                result = intervals_to_xr(empty_intervals())
+            else:
+                interval_vars = [v for v in ("onset_s", "offset_s", "labels", "individual") if v in ds.data_vars]
+                # Handle legacy column name: label_id -> labels
+                if "label_id" in ds.data_vars and "labels" not in ds.data_vars:
+                    interval_vars = [v for v in ("onset_s", "offset_s", "label_id", "individual") if v in ds.data_vars]
+                result = ds[interval_vars].copy()
+                if "label_id" in result.data_vars:
+                    result = result.rename({"label_id": "labels"})
+                if "labels_confidence" in ds.data_vars:
+                    result["labels_confidence"] = ds["labels_confidence"]
+            result.attrs = orig_attrs
+            return result
+
+        # Legacy dense format: has labels with a time-like dimension
+        # Check for dense 'labels' variable (has time dim, not segment dim)
+        has_dense_labels = False
+        if "labels" in ds.data_vars:
+            da = ds["labels"]
+            has_dense_labels = any("time" in str(d).lower() for d in da.dims)
+
+        if not has_dense_labels:
+            return xr.Dataset()
+
+        if empty:
+            result = intervals_to_xr(empty_intervals())
+            result.attrs = orig_attrs
+            return result
+
+        # Convert dense labels to interval format
+        labels_da = ds["labels"]
+        time_coord_name = next((c for c in labels_da.coords if "time" in c.lower()), None)
+        if time_coord_name is None:
+            result = intervals_to_xr(empty_intervals())
+            result.attrs = orig_attrs
+            return result
+
+        time_vals = labels_da.coords[time_coord_name].values
+        dense = labels_da.values
+
+        # Determine individuals
+        if "individuals" in labels_da.dims:
+            individuals = [str(v) for v in labels_da.coords["individuals"].values]
+        else:
+            individuals = ["default"]
+            if dense.ndim == 1:
+                dense = dense[:, np.newaxis]
+
+        df = dense_to_intervals(dense, time_vals, individuals)
+        result = intervals_to_xr(df)
+
+        if "labels_confidence" in ds.data_vars:
+            result["labels_confidence"] = ds["labels_confidence"]
+
+        result.attrs = orig_attrs
+        return result
+
+    return dt.from_datatree(dt.map_over_datasets(filter_node), attrs=dt.attrs)
+
+
 def migrate_file(path: Path) -> str:
     """Migrate a single .nc file. Returns status string."""
     dt = TrialTree.open(str(path))
@@ -133,13 +204,14 @@ def migrate_file(path: Path) -> str:
     gc.collect()
 
     label_fmt = detect_label_format(dt)
+    print(label_fmt)
     parts = []
     changed = False
 
     # --- Label migration ---
     if label_fmt in ("dense", "old_interval"):
         n_trials = len(dt.trials)
-        label_dt = dt.get_label_dt()
+        label_dt = get_label_dt_premigration(dt)
         dt = dt.overwrite_with_labels(label_dt)
         changed = True
         if label_fmt == "dense":
