@@ -35,6 +35,7 @@ class HeatmapPlot(BasePlot):
         self.vb.invertY(True)
 
         self._init_colormap()
+        self._init_colorbar()
 
         self.label_items = []
         self._n_channels = 1
@@ -63,15 +64,26 @@ class HeatmapPlot(BasePlot):
     def _init_colormap(self):
         colormap_name = self.app_state.get_with_default('heatmap_colormap')
         try:
-            cmap = pg.colormap.get(colormap_name, source='matplotlib')
+            self._cmap = pg.colormap.get(colormap_name, source='matplotlib')
         except (KeyError, ValueError, TypeError):
-            cmap = pg.colormap.get('RdBu_r', source='matplotlib')
-        self.image_item.setColorMap(cmap)
+            self._cmap = pg.colormap.get('RdBu_r', source='matplotlib')
+        self.image_item.setColorMap(self._cmap)
+
+    def _init_colorbar(self):
+        self.colorbar = pg.ColorBarItem(
+            values=(-1, 1),
+            colorMap=self._cmap,
+            interactive=False,
+            width=15,
+        )
+        self.colorbar.setImageItem(self.image_item, insert_in=self.plot_item)
 
     def update_colormap(self, name: str):
         try:
             cmap = pg.colormap.get(name, source='matplotlib')
+            self._cmap = cmap
             self.image_item.setColorMap(cmap)
+            self.colorbar.setColorMap(cmap)
         except (KeyError, ValueError, TypeError):
             pass
 
@@ -346,7 +358,9 @@ class HeatmapPlot(BasePlot):
 
             data, time_vals = result
             norm_mode = self.app_state.get_with_default('heatmap_normalization')
-            if norm_mode == "global":
+            if norm_mode == "none":
+                normalized = data.copy()
+            elif norm_mode == "global":
                 mu = np.nanmean(data)
                 std = np.nanstd(data)
                 normalized = (data - mu) / std if std > 0 else data - mu
@@ -357,6 +371,7 @@ class HeatmapPlot(BasePlot):
 
             self.image_item.setImage(normalized, autoLevels=False)
             self.image_item.setLevels([vmin, vmax])
+            self.colorbar.setLevels(values=(vmin, vmax))
 
             buf_t0 = float(time_vals[0])
             buf_t1 = float(time_vals[-1])

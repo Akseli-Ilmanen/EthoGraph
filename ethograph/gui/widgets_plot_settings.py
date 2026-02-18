@@ -36,6 +36,7 @@ HEATMAP_COLORMAPS = [
 ]
 
 _NORM_DISPLAY_TO_KEY = {
+    "No normalization": "none",
     "Per-channel z-normalization": "per_channel",
     "Global z-normalization": "global",
 }

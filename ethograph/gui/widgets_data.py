@@ -1,7 +1,6 @@
 """Widget for selecting start/stop times and playing a segment in napari."""
 
 import os
-import warnings
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -103,9 +102,6 @@ class DataWidget(DataLoader, QWidget):
         self.app_state.audio_video_sync = None
         # E.g. {keypoints = ["beakTip, StickTip"], trials=[1, 2, 3, 4], ...}
         self.type_vars_dict = {}  # Gets filled by load_dataset
-
-        warnings.filterwarnings("ignore", message="Seek problem", module="napari_pyav")
-        warnings.filterwarnings("ignore", message="Seek overshoot", module="napari_pyav")
 
 
     def set_references(self, plot_container, labels_widget, plot_settings_widget, navigation_widget, transform_widget=None, changepoints_widget=None):

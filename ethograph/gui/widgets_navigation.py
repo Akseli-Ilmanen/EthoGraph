@@ -1,5 +1,6 @@
 """Enhanced navigation widget with proper sync mode handling."""
 
+import warnings
 import webbrowser
 
 import numpy as np
@@ -113,19 +114,30 @@ class NavigationWidget(QWidget):
         self.skip_frames_checkbox.setToolTip(
             "Skip frames during playback to maintain speed.\n"
             "When enabled, frames are dropped so playback\n"
-            "keeps up with the requested FPS instead of\n"
+            "tries to keeps up with the requested FPS instead of\n"
             "slowing down when rendering can't keep pace.\n"
             "Note: For play segment (Press 'v'), audio-video\n"
             "sync may not be accurate during skip frames."
         )
         self.skip_frames_checkbox.toggled.connect(self._on_skip_frames_changed)
 
+        self.filter_warnings_checkbox = QCheckBox("Filter Warnings")
+        self.filter_warnings_checkbox.setObjectName("filter_warnings_checkbox")
+        self.filter_warnings_checkbox.setChecked(app_state.get_with_default("filter_warnings"))
+        self.filter_warnings_checkbox.setToolTip(
+            "Suppress repetitive warnings (e.g. video seek warnings).\n"
+            "When enabled, each warning is shown only once."
+        )
+        self.filter_warnings_checkbox.toggled.connect(self._on_filter_warnings_changed)
+        self._apply_warning_filters(app_state.get_with_default("filter_warnings"))
+
         navigate_layout.addWidget(self.prev_button, 0, 0)
         navigate_layout.addWidget(self.next_button, 0, 1)
         navigate_layout.addWidget(self.trials_combo, 0, 2, 1, 2)
         navigate_layout.addWidget(fps_label, 1, 0)
         navigate_layout.addWidget(self.fps_playback_edit, 1, 1)
-        navigate_layout.addWidget(self.skip_frames_checkbox, 1, 2, 1, 2)
+        navigate_layout.addWidget(self.skip_frames_checkbox, 1, 2)
+        navigate_layout.addWidget(self.filter_warnings_checkbox, 1, 3)
 
         # === Main layout ===
         main_layout = QVBoxLayout()
@@ -231,6 +243,16 @@ class NavigationWidget(QWidget):
 
     def _on_skip_frames_changed(self, checked: bool):
         self.app_state.skip_frames = checked
+
+    def _on_filter_warnings_changed(self, checked: bool):
+        self.app_state.filter_warnings = checked
+        self._apply_warning_filters(checked)
+
+    def _apply_warning_filters(self, enabled: bool):
+        if enabled:
+            warnings.filterwarnings("ignore")
+        else:
+            warnings.resetwarnings()
 
     def setup_trial_conditions(self, type_vars_dict: dict):
         """Populate trial conditions combo with available conditions."""
