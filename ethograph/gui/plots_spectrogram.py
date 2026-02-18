@@ -299,6 +299,12 @@ class SpectrogramBuffer:
         nfft = self.app_state.get_with_default("nfft")
         hop_frac = self.app_state.get_with_default("hop_frac")
 
+        # Clamp nfft to data length (power-of-2) for low sample-rate sources
+        max_nfft = 1 << (len(audio_data).bit_length() - 1)  # largest pow2 <= len
+        if max_nfft < 4:
+            return
+        nfft = min(nfft, max_nfft)
+
         if source.supports_noise_reduction and getattr(self.app_state, 'noise_reduce_enabled', False):
             try:
                 from ethograph.features.audio_changepoints import apply_noise_reduction
@@ -318,7 +324,9 @@ class SpectrogramBuffer:
                 nperseg=nfft, noverlap=nfft - hop
             )
 
-        self.Sxx_db = 10 * np.log10(Sxx + 1e-10)
+        Sxx_db = 10 * np.log10(Sxx + 1e-10)
+        np.nan_to_num(Sxx_db, copy=False, nan=-100.0, posinf=0.0, neginf=-100.0)
+        self.Sxx_db = Sxx_db
         self.freqs = freqs
         self.times = times + self.buffer_t0
         self.fresolution = self.fs / nfft if nfft > 0 else 1.0

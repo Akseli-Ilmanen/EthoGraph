@@ -1,13 +1,14 @@
 """Widget for selecting start/stop times and playing a segment in napari."""
 
 import os
+import warnings
 from pathlib import Path
 from typing import Dict, Optional
 
 import numpy as np
 import xarray as xr
 from movement.napari.loader_widgets import DataLoader
-from napari.utils.notifications import show_error
+from napari.utils.notifications import show_error, show_warning
 from napari.viewer import Viewer
 from napari_pyav._reader import FastVideoReader
 from qtpy.QtCore import QSortFilterProxyModel, Qt, QTimer
@@ -102,8 +103,10 @@ class DataWidget(DataLoader, QWidget):
         self.app_state.audio_video_sync = None
         # E.g. {keypoints = ["beakTip, StickTip"], trials=[1, 2, 3, 4], ...}
         self.type_vars_dict = {}  # Gets filled by load_dataset
-        
-        
+
+        warnings.filterwarnings("ignore", message="Seek problem", module="napari_pyav")
+        warnings.filterwarnings("ignore", message="Seek overshoot", module="napari_pyav")
+
 
     def set_references(self, plot_container, labels_widget, plot_settings_widget, navigation_widget, transform_widget=None, changepoints_widget=None):
         """Set references to other widgets after creation."""
@@ -735,10 +738,16 @@ class DataWidget(DataLoader, QWidget):
         try:
             da = self.app_state.ds[feature_sel]
             ds_kwargs = self.app_state.get_ds_kwargs()
-            data_1d, _ = sel_valid(da, ds_kwargs)
-            time_values = np.asarray(get_time_coord(da))
+            data, _ = sel_valid(da, ds_kwargs)
+            time_coord = get_time_coord(da)
+            time_dim_name = time_coord.dims[0]
+            time_values = np.asarray(time_coord)
+            if data.ndim > 1:
+                data = np.nanmean(data, axis=tuple(range(1, data.ndim)))
+            data = np.asarray(data, dtype=np.float64).ravel()
+            np.nan_to_num(data, copy=False, nan=0.0)
             return build_xarray_source(
-                xr.DataArray(data_1d, dims=["time"], coords={"time": time_values}),
+                xr.DataArray(data, dims=[time_dim_name], coords={time_dim_name: time_values}),
                 time_values,
                 feature_sel,
                 ds_kwargs,
@@ -1191,7 +1200,10 @@ class DataWidget(DataLoader, QWidget):
         if not self.app_state.ready or not self.app_state.video_folder:
             return
 
-        current_frame = getattr(self.app_state, 'current_frame', 0)
+        # Read frame position from plot time marker (most reliable source)
+        current_plot = self.plot_container.get_current_plot()
+        marker_time = current_plot.time_marker.value() if current_plot else 0.0
+        restore_frame = max(0, int(marker_time * self.app_state.ds.fps))
 
         # Set up video path
         if self.app_state.video_folder and hasattr(self.app_state, 'cameras_sel'):
@@ -1224,13 +1236,24 @@ class DataWidget(DataLoader, QWidget):
             self.show_waveform_checkbox.hide()
             self.show_spectrogram_checkbox.hide()
 
+        # Warn once if video is not MP4 (AVI/MOV have unreliable frame seeking)
+        video_ext = Path(self.app_state.video_path).suffix.lower()
+        if video_ext in ('.avi', '.mov') and not getattr(self, '_video_format_warned', False):
+            self._video_format_warned = True
+            show_warning(
+                f"Video format '{video_ext}' may have inaccurate frame seeking. "
+                f"See https://ethograph.readthedocs.io/en/latest/troubleshooting/"
+            )
+
         # Pre-load new video data before any layer operations to avoid race conditions
-        new_video_data = FastVideoReader(self.app_state.video_path, read_format='rgb24')
+        new_video_data = FastVideoReader(
+            self.app_state.video_path, read_format='rgb24',
+        )
 
         # Force the reader to initialize by accessing shape (prevents lazy-load issues during render)
         _ = new_video_data.shape
 
-        # Cleanup old video sync object first (but don't remove layer yet)
+        # Disconnect old sync to prevent dim events from clobbering restore_frame
         if self.video:
             try:
                 self.video.frame_changed.disconnect(self._on_sync_frame_changed)
@@ -1266,7 +1289,11 @@ class DataWidget(DataLoader, QWidget):
             print(f"Error initializing NapariVideoSync: {e}")
             return
 
-        self.video.seek_to_frame(current_frame)
+        # Restore frame position — block dims events so seek doesn't double-fire
+        self.viewer.dims.events.current_step.disconnect(self.video._on_napari_step_change)
+        self.video.seek_to_frame(restore_frame)
+        self.app_state.current_frame = restore_frame
+        self.viewer.dims.events.current_step.connect(self.video._on_napari_step_change)
         self.video.frame_changed.connect(self._on_sync_frame_changed)
 
 

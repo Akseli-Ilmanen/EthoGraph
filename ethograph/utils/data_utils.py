@@ -1,11 +1,15 @@
+from __future__ import annotations
+
 from itertools import groupby
-from typing import Dict, List, Tuple
+from pathlib import Path
+from typing import TYPE_CHECKING, Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from pathlib import Path
-from ethograph import TrialTree
+
+if TYPE_CHECKING:
+    from ethograph.utils.io import TrialTree
 
 def sel_valid(da, sel_kwargs):
     """
@@ -89,6 +93,8 @@ def stack_trials(
     xr.Dataset
         Stacked dataset with all trials.
     """
+    from ethograph.utils.io import TrialTree
+
     datasets = []
 
     for dt in trees.values():
@@ -131,6 +137,7 @@ def trees_to_df(
         DataFrame with columns: session, trial, label, start, stop, duration,
         event_times, sequence, plus any columns from keep_attrs.
     """
+    from ethograph.utils.io import TrialTree
     from ethograph.utils.label_intervals import xr_to_intervals
 
     if isinstance(trees, TrialTree):

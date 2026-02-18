@@ -347,13 +347,12 @@ class HeatmapPlot(BasePlot):
             data, time_vals = result
             norm_mode = self.app_state.get_with_default('heatmap_normalization')
             if norm_mode == "global":
-                # Single z-score across all channels
                 mu = np.nanmean(data)
                 std = np.nanstd(data)
                 normalized = (data - mu) / std if std > 0 else data - mu
             else:
-                # Per-channel z-score (default)
                 normalized = z_normalize(data)
+            np.nan_to_num(normalized, copy=False, nan=0.0)
             vmin, vmax = self._compute_symmetric_levels(normalized)
 
             self.image_item.setImage(normalized, autoLevels=False)

@@ -1,10 +1,9 @@
-from itertools import groupby
 from pathlib import Path
 from typing import Dict, List, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
-import xarray as xr
+import pandas as pd
 from matplotlib import patches
 
 
@@ -25,98 +24,68 @@ def load_mapping(mapping_file):
     return class_to_idx, idx_to_class
 
 
-def load_label_mapping(mapping_file: Union[str, Path] = "mapping.txt") -> Dict[int, Dict[str, np.ndarray]]:
-    """
-    Load label mapping from a text file and return mapping dictionary with colors.
-
-    Args:
-        mapping_file: Path to the mapping file (default: "mapping.txt")
-
-    Returns:
-        Dictionary mapping labels to {'name': str, 'color': np.ndarray}
-
-    Example mapping.txt file:
-        0 background
-        1 beakTip_pullOutStick
-        2 beakTip_pushStick
-        3 beakTip_peck
-        4 beakTip_grasp
-        5 beakTip_release
-        6 beakTip_tap
-        7 beakTip_touch
-        8 beakTip_move
-        9 beakTip_idle
-
-    Example usage:
-        >>> mapping = load_label_mapping("mapping.txt")
-        >>> print(mapping[1]['name'])  # 'beakTip_pullOutStick'
-        >>> print(mapping[1]['color'])  # [1.0, 0.4, 0.698]
-    """
+def load_label_mapping(
+    mapping_file: Union[str, Path] = "mapping.txt",
+) -> Dict[int, Dict]:
     mapping_file = Path(mapping_file)
-   
-    # RGB colours, where adjacent colours are maximally different
-    label_colors = [
-        [1, 1, 1],           # background class
-        [255, 102, 178],     
-        [102, 158, 255],     
-        [153, 51, 255],      
-        [255, 51, 51],  
-        [102, 255, 102],    
-        [255, 153, 102],    
-        [0, 153, 0],       
-        [0, 0, 128],        
-        [255, 255, 0],       
-        [0, 204, 204],      
-        [128, 128, 0],       
-        [255, 0, 255],       
-        [255, 165, 0],       
-        [0, 128, 255],              
-        [  7,   7, 215],
-        [128, 0, 255],
-        [255,  215,  0],
-        [ 73, 113, 233],
-        [255, 128, 0],
-        [138,  34,  34],
-        [103, 176,  29],
-        [  0, 230, 230],
-        [220,  20,  60],
-        [  3, 243,   3],
-        [147,  24, 147],
-        [188,  82, 223],
-        [178, 111,  44],
-        [ 16, 166, 166],
-        [ 71, 197, 238],
-        [255, 149, 114],
-        [ 16,  89, 162],
-        [ 26, 195,  68],
-        [254, 216, 103],
-        [  0, 237, 118],
-        [177, 177,  36],
-        [ 73, 243, 200],
-    ]
-
-    
-    label_mappings = {}
-    
     if not mapping_file.exists():
         raise FileNotFoundError(f"Mapping file not found: {mapping_file}")
-    
-    with open(mapping_file, 'r') as f:
+
+    label_colors = [
+        [1, 1, 1],
+        [255, 102, 178],
+        [102, 158, 255],
+        [153, 51, 255],
+        [255, 51, 51],
+        [102, 255, 102],
+        [255, 153, 102],
+        [0, 153, 0],
+        [0, 0, 128],
+        [255, 255, 0],
+        [0, 204, 204],
+        [128, 128, 0],
+        [255, 0, 255],
+        [255, 165, 0],
+        [0, 128, 255],
+        [7, 7, 215],
+        [128, 0, 255],
+        [255, 215, 0],
+        [73, 113, 233],
+        [255, 128, 0],
+        [138, 34, 34],
+        [103, 176, 29],
+        [0, 230, 230],
+        [220, 20, 60],
+        [3, 243, 3],
+        [147, 24, 147],
+        [188, 82, 223],
+        [178, 111, 44],
+        [16, 166, 166],
+        [71, 197, 238],
+        [255, 149, 114],
+        [16, 89, 162],
+        [26, 195, 68],
+        [254, 216, 103],
+        [0, 237, 118],
+        [177, 177, 36],
+        [73, 243, 200],
+    ]
+
+    label_mappings = {}
+    with open(mapping_file) as f:
         for line in f:
             parts = line.strip().split()
-            if len(parts) >= 2:
-                labels = int(parts[0])
-                name = parts[1]
-                
-                color = np.array(label_colors[labels]) / 255.0
-                
-                label_mappings[labels] = {
-                    'name': name,
-                    'color': color
-                }
-    
-    return label_mappings
+            if len(parts) < 2:
+                continue
+            label_id = int(parts[0])
+            order = int(parts[2]) if len(parts) >= 3 else label_id
+            label_mappings[label_id] = {
+                "name": parts[1],
+                "color": np.array(label_colors[label_id]) / 255.0,
+                "order": order,
+            }
 
+    return label_mappings
 
 
 def labels_to_rgb(
@@ -348,6 +317,32 @@ def fix_endings(labels, changepoints):
 
     return labels_out
 
+
+def correct_offsets(df: pd.DataFrame, dt: float = 0.005) -> pd.DataFrame:
+    """Fix off-by-one-frame gaps between consecutive action syllables.
+
+    During dense labeling at a fixed frame rate (default 200 Hz, dt=5ms),
+    each frame receives exactly one label. When two syllables are adjacent,
+    the offset of syllable N and the onset of syllable N+1 compete for the
+    same frame, and the onset wins. This leaves a spurious 1-frame gap
+    where offset[N] + dt == onset[N+1], even though the syllables are
+    truly contiguous. This function detects those gaps and snaps offset[N]
+    forward to onset[N+1], correcting offset_s, offset_global, and duration.
+    """
+    df = df.copy().sort_values(["session", "trial", "individual", "sequence_idx"])
+
+    for _, group in df.groupby(["session", "trial", "individual"]):
+        idx = group.index
+        for i in range(len(idx) - 1):
+            current = idx[i]
+            next_row = idx[i + 1]
+            gap = df.loc[next_row, "onset_s"] - df.loc[current, "offset_s"]
+            if abs(gap - dt) < 1e-6:
+                df.loc[current, "offset_s"] = df.loc[next_row, "onset_s"]
+                df.loc[current, "offset_global"] = df.loc[next_row, "onset_global"]
+                df.loc[current, "duration"] = df.loc[current, "offset_s"] - df.loc[current, "onset_s"]
+
+    return df
 
 
 
