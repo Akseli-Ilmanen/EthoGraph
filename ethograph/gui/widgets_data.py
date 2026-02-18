@@ -1,6 +1,7 @@
 """Widget for selecting start/stop times and playing a segment in napari."""
 
 import os
+import warnings
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -102,8 +103,10 @@ class DataWidget(DataLoader, QWidget):
         self.app_state.audio_video_sync = None
         # E.g. {keypoints = ["beakTip, StickTip"], trials=[1, 2, 3, 4], ...}
         self.type_vars_dict = {}  # Gets filled by load_dataset
-        
-        
+
+        warnings.filterwarnings("ignore", message="Seek problem", module="napari_pyav")
+        warnings.filterwarnings("ignore", message="Seek overshoot", module="napari_pyav")
+
 
     def set_references(self, plot_container, labels_widget, plot_settings_widget, navigation_widget, transform_widget=None, changepoints_widget=None):
         """Set references to other widgets after creation."""
@@ -1197,7 +1200,10 @@ class DataWidget(DataLoader, QWidget):
         if not self.app_state.ready or not self.app_state.video_folder:
             return
 
-        current_frame = getattr(self.app_state, 'current_frame', 0)
+        # Read frame position from plot time marker (most reliable source)
+        current_plot = self.plot_container.get_current_plot()
+        marker_time = current_plot.time_marker.value() if current_plot else 0.0
+        restore_frame = max(0, int(marker_time * self.app_state.ds.fps))
 
         # Set up video path
         if self.app_state.video_folder and hasattr(self.app_state, 'cameras_sel'):
@@ -1230,32 +1236,24 @@ class DataWidget(DataLoader, QWidget):
             self.show_waveform_checkbox.hide()
             self.show_spectrogram_checkbox.hide()
 
-        # Warn if video is not MP4 (AVI/MOV have unreliable frame seeking)
+        # Warn once if video is not MP4 (AVI/MOV have unreliable frame seeking)
         video_ext = Path(self.app_state.video_path).suffix.lower()
-        if video_ext in ('.avi', '.mov'):
+        if video_ext in ('.avi', '.mov') and not getattr(self, '_video_format_warned', False):
+            self._video_format_warned = True
             show_warning(
                 f"Video format '{video_ext}' may have inaccurate frame seeking. "
-                f"For best results, transcode to MP4:\n"
-                f'ffmpeg -y -i "input{video_ext}" -c:v libx264 -pix_fmt yuv420p -preset superfast -crf 23 "output.mp4"'
-            )
-
-        def _on_seek_suppressed():
-            show_warning(
-                "Multiple frame seek errors detected — further warnings suppressed. "
-                "The displayed frame may be off by 1-2 frames. "
-                "Transcode to MP4 (H.264) for frame-accurate seeking."
+                f"See https://ethograph.readthedocs.io/en/latest/troubleshooting/"
             )
 
         # Pre-load new video data before any layer operations to avoid race conditions
         new_video_data = FastVideoReader(
             self.app_state.video_path, read_format='rgb24',
-            on_seek_warnings_suppressed=_on_seek_suppressed,
         )
 
         # Force the reader to initialize by accessing shape (prevents lazy-load issues during render)
         _ = new_video_data.shape
 
-        # Cleanup old video sync object first (but don't remove layer yet)
+        # Disconnect old sync to prevent dim events from clobbering restore_frame
         if self.video:
             try:
                 self.video.frame_changed.disconnect(self._on_sync_frame_changed)
@@ -1291,7 +1289,11 @@ class DataWidget(DataLoader, QWidget):
             print(f"Error initializing NapariVideoSync: {e}")
             return
 
-        self.video.seek_to_frame(current_frame)
+        # Restore frame position — block dims events so seek doesn't double-fire
+        self.viewer.dims.events.current_step.disconnect(self.video._on_napari_step_change)
+        self.video.seek_to_frame(restore_frame)
+        self.app_state.current_frame = restore_frame
+        self.viewer.dims.events.current_step.connect(self.video._on_napari_step_change)
         self.video.frame_changed.connect(self._on_sync_frame_changed)
 
 

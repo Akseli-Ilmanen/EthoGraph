@@ -397,6 +397,11 @@ class IOWidget(QWidget):
         combo.setObjectName(f"{key}_combo")
         combo.currentTextChanged.connect(self._on_combo_changed)
 
+        if key in ("cameras", "pose"):
+            combo.currentIndexChanged.connect(
+                lambda idx, src=key: self._sync_camera_pose(src, idx)
+            )
+
         if key == "mics":
             expanded_items = self._expand_mics_with_channels(vars)
             combo.addItems(expanded_items)
@@ -407,6 +412,21 @@ class IOWidget(QWidget):
         self.combos[key] = combo
         self.controls.append(combo)
         return combo
+
+    def _sync_camera_pose(self, source: str, index: int):
+        target = "pose" if source == "cameras" else "cameras"
+        target_combo = self.combos.get(target)
+        source_combo = self.combos.get(source)
+        if target_combo is None or source_combo is None:
+            return
+        if source_combo.count() != target_combo.count():
+            return
+        if target_combo.currentIndex() == index:
+            return
+        target_combo.blockSignals(True)
+        target_combo.setCurrentIndex(index)
+        target_combo.blockSignals(False)
+        self.app_state.set_key_sel(target, target_combo.currentText())
 
     def update_device_combos_for_trial(self, ds):
         """Update device combo boxes to reflect the current trial's file lists."""
