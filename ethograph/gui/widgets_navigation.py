@@ -5,6 +5,7 @@ import webbrowser
 import numpy as np
 from napari import Viewer
 from qtpy.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QGridLayout,
     QGroupBox,
@@ -106,11 +107,25 @@ class NavigationWidget(QWidget):
             "Set to recording FPS for normal audio playback."
         )
 
+        self.skip_frames_checkbox = QCheckBox("Skip Frames")
+        self.skip_frames_checkbox.setObjectName("skip_frames_checkbox")
+        self.skip_frames_checkbox.setChecked(app_state.get_with_default("skip_frames"))
+        self.skip_frames_checkbox.setToolTip(
+            "Skip frames during playback to maintain speed.\n"
+            "When enabled, frames are dropped so playback\n"
+            "keeps up with the requested FPS instead of\n"
+            "slowing down when rendering can't keep pace.\n"
+            "Note: For play segment (Press 'v'), audio-video\n"
+            "sync may not be accurate during skip frames."
+        )
+        self.skip_frames_checkbox.toggled.connect(self._on_skip_frames_changed)
+
         navigate_layout.addWidget(self.prev_button, 0, 0)
         navigate_layout.addWidget(self.next_button, 0, 1)
         navigate_layout.addWidget(self.trials_combo, 0, 2, 1, 2)
         navigate_layout.addWidget(fps_label, 1, 0)
-        navigate_layout.addWidget(self.fps_playback_edit, 1, 1, 1, 3)
+        navigate_layout.addWidget(self.fps_playback_edit, 1, 1)
+        navigate_layout.addWidget(self.skip_frames_checkbox, 1, 2, 1, 2)
 
         # === Main layout ===
         main_layout = QVBoxLayout()
@@ -213,6 +228,9 @@ class NavigationWidget(QWidget):
         if qt_dims.slider_widgets:
             slider_widget = qt_dims.slider_widgets[0]
             slider_widget._update_play_settings(fps=fps_playback, loop_mode="once", frame_range=None)
+
+    def _on_skip_frames_changed(self, checked: bool):
+        self.app_state.skip_frames = checked
 
     def setup_trial_conditions(self, type_vars_dict: dict):
         """Populate trial conditions combo with available conditions."""

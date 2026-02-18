@@ -93,6 +93,7 @@ class AppStateSpec:
         "trial_conditions": (list | None, None, False),
         "import_labels_nc_data": (bool, False, True),
         "fps_playback": (float, 30.0, True),
+        "skip_frames": (bool, False, True),
         "time": (xr.DataArray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
         "label_intervals": (pd.DataFrame | None, None, False),
         "trials": (list[int | str], [], False),
