@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Optional, Tuple
 
+import pandas as pd
 import numpy as np
 import xarray as xr
 from napari import current_viewer
@@ -12,7 +13,7 @@ from ethograph import TrialTree, set_media_attrs, minimal_basics
 from ethograph.features.energy_features import get_envelope
 from ethograph.utils.validation import extract_type_vars, validate_datatree
 from ethograph.utils.audio import get_audio_sr
-from movement.io import load_poses
+from movement.io import load_poses, save_poses
 from movement.kinematics import compute_acceleration, compute_pairwise_distances, compute_speed, compute_velocity
 
 
@@ -73,11 +74,19 @@ def minimal_dt_from_pose(video_path, fps, pose_path, source_software):
     Returns:
         TrialTree with minimal structure
     """
-    ds = load_poses.from_file(
-        file_path=pose_path,
-        fps=fps,
-        source_software=source_software
-    )
+    try:
+        ds = load_poses.from_file(
+            file_path=pose_path,
+            fps=fps,
+            source_software=source_software,
+        )
+    except Exception:
+        # Fallback
+        df = pd.read_hdf(pose_path)
+        pose_path = Path(pose_path).with_suffix(".csv")
+        ds = load_poses.from_dlc_style_df(df, fps=fps)
+        save_poses.to_dlc_file(ds, str(pose_path))
+        ds.attrs["source_software"] = source_software
 
 
     ds["velocity"] = compute_velocity(ds.position)

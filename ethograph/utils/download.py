@@ -61,6 +61,20 @@ EXAMPLE_DATASETS = {
         ],
         "size_mb": 4,
     },
+    "lockbox": {
+        "release_tag": "lockbox",
+        "assets_gui": [
+            "lockbox.nc",
+            "lockbox.mp4",
+            "lockbox.csv",
+        ],
+        "assets_notebook": [
+            "lockbox.nc",
+            "lockbox.mp4",
+            "lockbox.csv",
+        ],
+        "size_mb": 70,
+    },
 }
 
 

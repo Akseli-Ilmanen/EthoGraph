@@ -19,6 +19,26 @@ Excel on Windows may not correctly parse `.tsv` files when double-clicked due to
 5. Excel will launch the Text Import Wizard — select **"Tab"** as delimiter
 
 
+### Video seek warnings with `.avi` / `.mov` files
+
+If you see warnings like `Seek problem with frame 206! pts: 208; target: 206`, your video container format has unreliable keyframe indexing. Frame display may be off by 1-2 frames when scrubbing or seeking.
+
+**Fix:** Transcode to MP4 with H.264 for frame-accurate seeking:
+
+Batch — all `.avi` files in a folder:
+
+```bash
+# Linux / macOS / Git Bash
+for f in *.avi; do ffmpeg -y -i "$f" -c:v libx264 -pix_fmt yuv420p -preset superfast -crf 23 "${f%.avi}.mp4"; done
+
+# Windows CMD
+for %f in (*.avi) do ffmpeg -y -i "%f" -c:v libx264 -pix_fmt yuv420p -preset superfast -crf 23 "%~nf.mp4"
+
+# Windows PowerShell
+Get-ChildItem *.avi | ForEach-Object { ffmpeg -y -i $_.FullName -c:v libx264 -pix_fmt yuv420p -preset superfast -crf 23 "$($_.DirectoryName)\$($_.BaseName).mp4" }
+```
+
+
 ## Issues
 
 Feel free to raise any GitHub issues [here](https://github.com/Akseli-Ilmanen/EthoGraph/issues).

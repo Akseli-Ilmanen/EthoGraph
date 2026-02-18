@@ -7,7 +7,7 @@ from typing import Dict, Optional
 import numpy as np
 import xarray as xr
 from movement.napari.loader_widgets import DataLoader
-from napari.utils.notifications import show_error
+from napari.utils.notifications import show_error, show_warning
 from napari.viewer import Viewer
 from napari_pyav._reader import FastVideoReader
 from qtpy.QtCore import QSortFilterProxyModel, Qt, QTimer
@@ -1224,8 +1224,27 @@ class DataWidget(DataLoader, QWidget):
             self.show_waveform_checkbox.hide()
             self.show_spectrogram_checkbox.hide()
 
+        # Warn if video is not MP4 (AVI/MOV have unreliable frame seeking)
+        video_ext = Path(self.app_state.video_path).suffix.lower()
+        if video_ext in ('.avi', '.mov'):
+            show_warning(
+                f"Video format '{video_ext}' may have inaccurate frame seeking. "
+                f"For best results, transcode to MP4:\n"
+                f'ffmpeg -y -i "input{video_ext}" -c:v libx264 -pix_fmt yuv420p -preset superfast -crf 23 "output.mp4"'
+            )
+
+        def _on_seek_suppressed():
+            show_warning(
+                "Multiple frame seek errors detected — further warnings suppressed. "
+                "The displayed frame may be off by 1-2 frames. "
+                "Transcode to MP4 (H.264) for frame-accurate seeking."
+            )
+
         # Pre-load new video data before any layer operations to avoid race conditions
-        new_video_data = FastVideoReader(self.app_state.video_path, read_format='rgb24')
+        new_video_data = FastVideoReader(
+            self.app_state.video_path, read_format='rgb24',
+            on_seek_warnings_suppressed=_on_seek_suppressed,
+        )
 
         # Force the reader to initialize by accessing shape (prevents lazy-load issues during render)
         _ = new_video_data.shape

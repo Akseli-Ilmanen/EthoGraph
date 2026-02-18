@@ -49,8 +49,8 @@ def validate_required_attrs(ds: xr.Dataset) -> List[str]:
     if "trial" not in ds.attrs:
         errors.append("Xarray dataset ('ds') must have 'trial' attribute")
         
-    if "cameras" not in ds.attrs:
-        errors.append("Xarray dataset ('ds') must have 'cameras' attribute")
+    if "cameras" not in ds.attrs or len(ds.attrs["cameras"]) == 0:
+        errors.append("Xarray dataset ('ds') must have 'cameras' List attribute")
 
     return errors
 

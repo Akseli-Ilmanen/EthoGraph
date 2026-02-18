@@ -9,7 +9,7 @@ EthoGraph works with NetCDF (`.nc`) session files. You can either load a pre-mad
 If you already have a `trials.nc` file (e.g. from an ethograph pipeline or custom script):
 
 1. In the `I/O` widget, select your session data **file** (`.nc`)
-2. Select the video **folder** containing camera recordings (`.mp4`, `.mov`, `.avi`)
+2. Select the video **folder** containing camera recordings (`.mp4`) [^4]
 3. [Optional] Select the audio **folder** containing microphone recordings `.wav`, `.mp3`, `.mp4` [^2]
 4. [Optional] Select the tracking **folder** containing pose estimation files (`.h5`, `.csv`) [^3]
 5. Click `Load` to load the dataset and populate the interface
@@ -26,7 +26,7 @@ Use this if you have pose estimation output from tracking software.
 
 - **Source software**: Select the software that generated the file (DeepLabCut, SLEAP, LightningPose, etc.)
 - **Pose file**: Path to the pose file (`.h5`, `.csv`)
-- **Video file**: Path to corresponding video file (`.mp4`, `.mov`, `.avi`)
+- **Video file**: Path to corresponding video file (`.mp4`) [^4]
 - **Video frame rate**
 - **Output path**: Where to save the generated `trials.nc`
 
@@ -37,14 +37,14 @@ After generation, the I/O fields are auto-populated so you can click `Load` imme
 Use this if you have a [Movement](https://movement.neuroinformatics.dev/latest/user_guide/movement_dataset.html)-style xarray dataset saved as `.nc`.
 
 - **Dataset file**: The Movement-style `.nc` file
-- **Video file**: Path to corresponding video file (`.mp4`, `.mov`, `.avi`).
+- **Video file**: Path to corresponding video file (`.mp4`) [^4]
 - **Output path**: Where to save the generated `trials.nc`
 
 ### 3) From an audio file
 
 Use this if you have video and audio data (e.g. animal vocalizations). If your `.mp4` video contains audio, you can use that same file as the audio source.
 
-- **Video file**: Path to video file (`.mp4`, `.mov`, `.avi`)
+- **Video file**: Path to video file (`.mp4`) [^4]
 - **Audio file**: Path to corresponding audio file (`.wav`, `.mp3`, `.mp4`, `.flac`)
 - **Video frame rate**
 - **Audio sample rate**
@@ -56,7 +56,7 @@ Use this if you have video and audio data (e.g. animal vocalizations). If your `
 
 Use this if you have pre-computed features stored as a numpy array. The file should contain a 2D array with shape `(n_samples, n_variables)` or `(n_variables, n_samples)`. Longer dimension is assumed to be `n_samples`.
 
-- **Video file**: Path to corresponding video file (`.mp4`, `.mov`, `.avi`)
+- **Video file**: Path to corresponding video file (`.mp4`) [^4]
 - **Npy file**: Path to `.npy` file containing your feature array
 - **Video frame rate**
 - **Data sampling rate**: The sampling rate of your numpy data (in Hz)
@@ -100,3 +100,4 @@ rawdata/
 [^1]: `trials.nc` is just an example file name, you may call it differently.
 [^2]: If your video files (e.g. `.mp4`) contain audio, the video and audio folder will be the same.
 [^3]: Loading of pose estimation points and tracks occurs via the `movement` library. See [Movement IO](https://movement.neuroinformatics.dev/latest/user_guide/input_output.html).
+[^4]: You can technically also load `.avi` and `.mov` files, but they have inaccurate frame seeking (off by 1-2 frames). For best results, transcode to `.mp4` with H.264. See [Troubleshooting](https://ethograph.readthedocs.io/en/latest/troubleshooting/).

@@ -60,6 +60,17 @@ TEMPLATES = [
         "has_audio": True,
         "has_pose": True,
     },
+    {
+        "name": "Reiske et al., 2025 — Mouse Lockbox",
+        "image": "lockbox1.png",
+        "paper_url": "https://arxiv.org/abs/2505.15408",
+        "dataset_key": "lockbox",
+        "folder": "Lockbox",
+        "nc_filename": "lockbox.nc",
+        "has_video": True,
+        "has_audio": False,
+        "has_pose": True,
+    },
 ]
 
 
