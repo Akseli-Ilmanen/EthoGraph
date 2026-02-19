@@ -276,14 +276,20 @@ class TrialTree(xr.DataTree):
         def merge_func(data_ds, labels_ds):
             if labels_ds is not None and data_ds is not None:
                 tree = data_ds.copy()
-                for var_name in labels_ds.data_vars:
+                label_vars = list(labels_ds.data_vars)
+                existing = [v for v in label_vars if v in tree]
+                if existing:
+                    tree = tree.drop_vars(existing)
+                for var_name in label_vars:
                     tree[var_name] = labels_ds[var_name]
                 tree.attrs.update(labels_ds.attrs)
                 return tree
             return data_ds
+
         tree = self.map_over_datasets(merge_func, labels_tree)
         tree.attrs = labels_tree.attrs.copy()
         return TrialTree(tree)
+
 
     # -------------------------------------------------------------------------
     # Filtering
