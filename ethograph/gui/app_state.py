@@ -302,6 +302,8 @@ class ObservableAppState(QObject):
         ephys_path = os.path.normpath(os.path.join(ephys_folder, filename))
         return ephys_path, stream_id, channel_idx
 
+
+
     def get_audio_source(self) -> tuple[str | None, int]:
         """Get audio file path and channel index from current mics_sel.
 

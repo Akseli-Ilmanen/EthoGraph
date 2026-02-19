@@ -3,8 +3,8 @@
 import webbrowser
 from pathlib import Path
 
-from qtpy.QtCore import QThread, Qt, Signal
-from qtpy.QtGui import QPixmap
+from qtpy.QtCore import QSize, QThread, Qt, Signal
+from qtpy.QtGui import QMovie, QPixmap
 from qtpy.QtWidgets import (
     QDialog,
     QFrame,
@@ -62,7 +62,7 @@ TEMPLATES = [
     },
     {
         "name": "Reiske et al., 2025 — Mouse Lockbox",
-        "image": "lockbox1.png",
+        "image": "lockbox2.gif",
         "paper_url": "https://arxiv.org/abs/2505.15408",
         "dataset_key": "lockbox",
         "folder": "Lockbox",
@@ -159,10 +159,16 @@ class TemplateDialog(QDialog):
         image_label = QLabel()
         image_path = _ASSETS_DIR / template["image"]
         if image_path.exists():
-            pixmap = QPixmap(str(image_path))
-            image_label.setPixmap(
-                pixmap.scaled(220, 160, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            )
+            if image_path.suffix.lower() == ".gif":
+                movie = QMovie(str(image_path))
+                movie.setScaledSize(QSize(220, 160))
+                image_label.setMovie(movie)
+                movie.start()
+            else:
+                pixmap = QPixmap(str(image_path))
+                image_label.setPixmap(
+                    pixmap.scaled(220, 160, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                )
         else:
             image_label.setText("(image not found)")
             image_label.setAlignment(Qt.AlignCenter)

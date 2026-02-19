@@ -37,7 +37,7 @@
 | `Ctrl+E` | Edit selected label boundaries (after selecting label, click twice for new boundaries) |
 | `Ctrl+D` | Delete selected label (after selecting label) |
 | `Ctrl+S` | Save labels `.nc` file. (Save `sesssion` only via button). |
-| `Ctrl+X` | Switch between labels and predictions. |
+| `Ctrl+Y` | Switch between labels and predictions. |
 | `Ctrl+V` | 'Verify predictions' by editing once or this shortcut. | 
 
 ## Selection Toggles
@@ -60,8 +60,12 @@ You can only toggle via shortcut after having selected two options once.
 | `Ctrl+A` | Toggle autoscale |
 | `Ctrl+L` | Toggle lock axes |
 | `Ctrl+Enter` | Apply current plot settings |
-| `Ctrl++` / `Ctrl+-` | Increase / decrease ephys channel spacing |
-| `Shift++` / `Shift+-` | Increase / decrease ephys display gain |
 
+## Ephys Trace
 
-
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+X` | Toggle single / multichannel mode |
+| **Wheel** | Scroll through channels (multichannel mode) |
+| **Ctrl+Wheel** | Adjust display gain |
+| **Shift+Wheel** | Expand / contract visible channel range (multichannel mode) |

@@ -9,6 +9,7 @@ from qtpy.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSizePolicy,
+    QWidget,
 )
 
 from ethograph.utils.paths import gui_default_settings_path
@@ -23,6 +24,7 @@ from .widgets_labels import LabelsWidget
 from .widgets_navigation import NavigationWidget
 from .widgets_plot_settings import PlotSettingsWidget
 from .widgets_transform import TransformWidget
+from .widget_ephys import EphysWidget
 
 
 
@@ -96,6 +98,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.changepoints_widget = ChangepointsWidget(self.viewer, self.app_state)
         self.labels_widget = LabelsWidget(self.viewer, self.app_state)
         self.navigation_widget = NavigationWidget(self.viewer, self.app_state)
+        self.ephys_widget = EphysWidget(self.viewer, self.app_state)
 
         # Create I/O widget first, then pass it to data widget
         self.io_widget = IOWidget(self.app_state, None, self.labels_widget)
@@ -116,6 +119,9 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.changepoints_widget.set_plot_container(self.plot_container)
         self.changepoints_widget.set_meta_widget(self)
         self.changepoints_widget.set_motif_mappings(self.labels_widget._mappings)
+        self.ephys_widget.set_plot_container(self.plot_container)
+        self.ephys_widget.set_meta_widget(self)
+        self.ephys_widget.set_data_widget(self.data_widget)
 
         # Signal connections for decoupled communication
         self.plot_container.labels_redraw_needed.connect(self._on_labels_redraw_needed)
@@ -132,6 +138,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.data_widget.set_references(
             self.plot_container, self.labels_widget, self.plot_settings_widget,
             self.navigation_widget, self.transform_widget, self.changepoints_widget,
+            ephys_widget=self.ephys_widget,
         )
 
         for widget in [
@@ -139,6 +146,7 @@ class MetaWidget(CollapsibleWidgetContainer):
             self.data_widget,
             self.labels_widget,
             self.changepoints_widget,
+            self.ephys_widget,
             self.plot_settings_widget,
             self.transform_widget,
             self.navigation_widget,
@@ -153,15 +161,21 @@ class MetaWidget(CollapsibleWidgetContainer):
         )
 
         self.add_widget(
-            self.data_widget,
+            self.transform_widget,
             collapsible=True,
             widget_title="Data controls",
         )
 
         self.add_widget(
+            self.ephys_widget,
+            collapsible=True,
+            widget_title="Ephys",
+        )
+
+        self.add_widget(
             self.labels_widget,
             collapsible=True,
-            widget_title="Label controls",
+            widget_title="Labelling",
         )
 
         self.add_widget(
@@ -174,12 +188,6 @@ class MetaWidget(CollapsibleWidgetContainer):
             self.plot_settings_widget,
             collapsible=True,
             widget_title="Plot settings",
-        )
-
-        self.add_widget(
-            self.transform_widget,
-            collapsible=True,
-            widget_title="Data transformation",
         )
 
         self.add_widget(
@@ -200,6 +208,16 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         self.update_changepoints_widget_title()
 
+    def refresh_widget_layout(self, widget: QWidget):
+        for collapsible in self.collapsible_widgets:
+            if hasattr(collapsible, "content_widget"):
+                content = collapsible.content_widget
+                if content and widget in content.findChildren(QWidget):
+                    collapsible.collapse()
+                    QApplication.processEvents()
+                    collapsible.expand()
+                    return
+
     def _cycle_channel(self, direction: int):
         if not self.app_state.ready:
             return
@@ -213,7 +231,7 @@ class MetaWidget(CollapsibleWidgetContainer):
                 idx = (combo.currentIndex() + direction) % combo.count()
                 combo.setCurrentIndex(idx)
         elif is_ephys:
-            spin = self.data_widget.ephys_channel_spin
+            spin = self.ephys_widget.ephys_channel_spin
             if spin.isVisible():
                 new_val = spin.value() + direction
                 new_val = max(spin.minimum(), min(new_val, spin.maximum()))
@@ -240,9 +258,9 @@ class MetaWidget(CollapsibleWidgetContainer):
 
     def update_labels_widget_title(self):
         """Update the Label controls title with verification status emoji."""
-        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 2:
-            # Labels widget is at index 2 (0: I/O, 1: Data controls, 2: Label controls)
-            labels_collapsible = self.collapsible_widgets[2]
+        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 3:
+            # Labels widget is at index 3 (0: I/O, 1: Data controls, 3: Label controls)
+            labels_collapsible = self.collapsible_widgets[3]
 
             # Get verification status
             verification_emoji = "❌"  # Default to not verified
@@ -268,9 +286,9 @@ class MetaWidget(CollapsibleWidgetContainer):
 
     def update_changepoints_widget_title(self):
         """Update the Changepoints title with correction mode indicator."""
-        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 3:
-            # Changepoints widget is at index 3
-            cp_collapsible = self.collapsible_widgets[3]
+        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 4:
+            # Changepoints widget is at index 4
+            cp_collapsible = self.collapsible_widgets[4]
 
             correction_enabled = self.changepoints_widget.changepoint_correction_checkbox.isChecked()
             indicator = "🎯" if correction_enabled else "⭕"
@@ -442,7 +460,7 @@ class MetaWidget(CollapsibleWidgetContainer):
             next_index = (current_index + 1) % total_options
             self.navigation_widget.sync_toggle_btn.setCurrentIndex(next_index)
 
-        @viewer.bind_key("ctrl+x", overwrite=True)
+        @viewer.bind_key("ctrl+y", overwrite=True)
         def toggle_label_pred(v):
             status = self.labels_widget.pred_show_predictions.isChecked()
             self.labels_widget.pred_show_predictions.setChecked(not status)
@@ -481,27 +499,58 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         @viewer.bind_key("ctrl+=", overwrite=True)
         def increase_spacing(v):
-            spin = self.data_widget.ephys_spacing_spin
-            if spin.isVisible():
-                spin.setValue(min(spin.value() + 0.5, spin.maximum()))
+            pc = self.plot_container
+            if pc and pc.is_ephystrace():
+                buf = pc.ephys_trace_plot.buffer
+                buf.channel_spacing = min(buf.channel_spacing + 0.5, 20.0)
+                xmin, xmax = pc.get_current_xlim()
+                pc.ephys_trace_plot.update_plot_content(xmin, xmax)
 
         @viewer.bind_key("ctrl+-", overwrite=True)
         def decrease_spacing(v):
-            spin = self.data_widget.ephys_spacing_spin
-            if spin.isVisible():
-                spin.setValue(max(spin.value() - 0.5, spin.minimum()))
+            pc = self.plot_container
+            if pc and pc.is_ephystrace():
+                buf = pc.ephys_trace_plot.buffer
+                buf.channel_spacing = max(buf.channel_spacing - 0.5, 0.5)
+                xmin, xmax = pc.get_current_xlim()
+                pc.ephys_trace_plot.update_plot_content(xmin, xmax)
 
-        @viewer.bind_key("shift+=", overwrite=True)
-        def increase_gain(v):
-            spin = self.data_widget.ephys_gain_spin
-            if spin.isVisible():
-                spin.setValue(min(spin.value() + 1, spin.maximum()))
+        def _jump_spike(delta: int):
+            if not self.plot_container:
+                return
+            ephys_plot = self.plot_container.ephys_trace_plot
+            target_time = ephys_plot.get_spike_target_time(delta)
+            if target_time is None:
+                return
 
-        @viewer.bind_key("shift+-", overwrite=True)
-        def decrease_gain(v):
-            spin = self.data_widget.ephys_gain_spin
-            if spin.isVisible():
-                spin.setValue(max(spin.value() - 1, spin.minimum()))
+            from .phy_bridge import phy_next_spike, phy_previous_spike
+            if delta > 0:
+                phy_next_spike()
+            else:
+                phy_previous_spike()
+
+            if self.plot_container.is_ephystrace():
+                ephys_plot.jump_to_spike(delta)
+
+            new_frame = int(target_time * self.app_state.ds.fps)
+            self.app_state.current_frame = new_frame
+
+            if hasattr(self.app_state, 'video') and self.app_state.video:
+                video = self.app_state.video
+                video.blockSignals(True)
+                video.seek_to_frame(new_frame)
+                video.blockSignals(False)
+
+            if not self.plot_container.is_ephystrace():
+                self.plot_container.update_time_marker_and_window(new_frame)
+
+        @viewer.bind_key("alt+Right", overwrite=True)
+        def next_spike(v):
+            _jump_spike(+1)
+
+        @viewer.bind_key("alt+Left", overwrite=True)
+        def prev_spike(v):
+            _jump_spike(-1)
 
         def setup_keybindings_grid_layout(viewer, labels_widget):
             """Setup using grid layout for label activation"""
