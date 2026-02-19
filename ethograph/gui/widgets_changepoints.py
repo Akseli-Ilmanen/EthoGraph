@@ -285,14 +285,8 @@ class ChangepointsWidget(QWidget):
         self._show_panel("correction" if self.correction_toggle.isChecked() else "audio_cps")
 
     def _refresh_layout(self):
-        if self.meta_widget and hasattr(self.meta_widget, "collapsible_widgets"):
-            for collapsible in self.meta_widget.collapsible_widgets:
-                if hasattr(collapsible, "content_widget"):
-                    content = collapsible.content_widget
-                    if content and self in content.findChildren(QWidget):
-                        collapsible.collapse()
-                        QApplication.processEvents()
-                        collapsible.expand()
+        if self.meta_widget:
+            self.meta_widget.refresh_widget_layout(self)
 
     # =========================================================================
     # Panel creation

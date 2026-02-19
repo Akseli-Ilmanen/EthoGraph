@@ -5,10 +5,14 @@
 # =============================================================================
 
 # Labels table (widgets_labels.py)
-LABELS_TABLE_MAX_HEIGHT = 120
+LABELS_TABLE_MAX_HEIGHT = 150
 LABELS_TABLE_ROW_HEIGHT = 18
 LABELS_TABLE_ID_COLUMN_WIDTH = 20
 LABELS_TABLE_COLOR_COLUMN_WIDTH = 20
+
+# Cluster info table (widgets_plot_settings.py)
+CLUSTER_TABLE_ROW_HEIGHT = 18
+CLUSTER_TABLE_MAX_HEIGHT = 150
 
 # Label overlay box on video (widgets_labels.py)
 LABELS_OVERLAY_BOX_WIDTH = 180

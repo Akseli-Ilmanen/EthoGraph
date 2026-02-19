@@ -843,7 +843,7 @@ class EphysFileDialog(QDialog):
     """Dialog for generating .nc file from an ephys recording."""
 
     EPHYS_FILTER = (
-        "Ephys files (*.rhd *.rhs *.oebin *.edf *.bdf *.vhdr *.dat *.bin *.raw)"
+        "Ephys files (*.rhd *.rhs *.oebin *.edf *.bdf *.vhdr *.dat *.bin *.raw *.nev *.ns5 *.ns6)"
         ";;All files (*)"
     )
 
@@ -861,6 +861,7 @@ class EphysFileDialog(QDialog):
         info_label = QLabel(
             "Generate a .nc file from an electrophysiology recording. "
             "Supported formats: Intan (.rhd/.rhs), Open Ephys (.oebin), "
+            "Blackrock (.nev/.ns5/.ns6), "
             "EDF (.edf/.bdf), BrainVision (.vhdr), raw binary (.dat/.bin/.raw)."
         )
         info_label.setWordWrap(True)

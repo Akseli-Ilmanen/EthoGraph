@@ -1,7 +1,8 @@
-<h1 style="display: flex; align-items: center; gap: 12px;">
-  <img src="media/icon.png" alt="EthoGraph logo" style="height: 56px;">
+<h1 style="display: flex; align-items: center; gap: 12px; font-size: 30px;">
+  <img src="media/icon.png" alt="EthoGraph logo" style="height: 80px;">
   EthoGraph
 </h1>
+
 
 **GUI for segmenting animal behaviour using transformer models and changepoint detection.**
 
