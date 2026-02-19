@@ -1,23 +1,26 @@
-"""Data transformation widget — energy envelopes and noise removal."""
+"""Data controls widget — main data display, energy envelopes, and noise removal."""
 
 from __future__ import annotations
 
 from napari.viewer import Viewer
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
-    QApplication,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFormLayout,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
+
+from .app_constants import DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_SPACING
 
 
 ENERGY_METRICS = {
@@ -28,7 +31,7 @@ ENERGY_METRICS = {
 
 
 class TransformWidget(QWidget):
-    """Data transformation with toggle-button tabs: Energy envelopes | Noise removal."""
+    """Data controls with toggle-button tabs: Main | Energy envelopes | Noise removal."""
 
     def __init__(self, napari_viewer: Viewer, app_state, parent=None):
         super().__init__(parent=parent)
@@ -43,13 +46,14 @@ class TransformWidget(QWidget):
         self.setLayout(main_layout)
 
         self._create_toggle_buttons(main_layout)
+        self._create_main_panel(main_layout)
         self._create_energy_panel(main_layout)
         self._create_noise_panel(main_layout)
 
         self._restore_energy_selections()
         self._restore_noise_selections()
 
-        self._show_panel("energy")
+        self._show_panel("main")
         self.setEnabled(False)
 
     # ------------------------------------------------------------------
@@ -64,6 +68,7 @@ class TransformWidget(QWidget):
         toggle_widget.setLayout(toggle_layout)
 
         toggle_defs = [
+            ("main_toggle", "Main", self._toggle_main),
             ("energy_toggle", "Energy envelopes", self._toggle_energy),
             ("noise_toggle", "Noise removal", self._toggle_noise),
         ]
@@ -78,6 +83,7 @@ class TransformWidget(QWidget):
 
     def _show_panel(self, panel_name: str):
         panels = {
+            "main": (self.main_panel, self.main_toggle),
             "energy": (self.energy_panel, self.energy_toggle),
             "noise": (self.noise_panel, self.noise_toggle),
         }
@@ -90,24 +96,59 @@ class TransformWidget(QWidget):
                 toggle.setChecked(False)
         self._refresh_layout()
 
+    def _toggle_main(self):
+        self._show_panel("main" if self.main_toggle.isChecked() else "energy")
+
     def _toggle_energy(self):
-        self._show_panel("energy" if self.energy_toggle.isChecked() else "noise")
+        self._show_panel("energy" if self.energy_toggle.isChecked() else "main")
 
     def _toggle_noise(self):
-        self._show_panel("noise" if self.noise_toggle.isChecked() else "energy")
+        self._show_panel("noise" if self.noise_toggle.isChecked() else "main")
 
     def _refresh_layout(self):
-        if self.meta_widget and hasattr(self.meta_widget, "collapsible_widgets"):
-            for collapsible in self.meta_widget.collapsible_widgets:
-                if hasattr(collapsible, "content_widget"):
-                    content = collapsible.content_widget
-                    if content and self in content.findChildren(QWidget):
-                        collapsible.collapse()
-                        QApplication.processEvents()
-                        collapsible.expand()
+        if self.meta_widget:
+            self.meta_widget.refresh_widget_layout(self)
 
     # ------------------------------------------------------------------
-    # Energy envelopes panel (from EnergyWidget)
+    # Main panel (xarray coords, view mode, overlays, space plot)
+    # ------------------------------------------------------------------
+
+    def _create_main_panel(self, main_layout):
+        self.main_panel = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(2)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.main_panel.setLayout(layout)
+
+        # Xarray coords group box — populated later by DataWidget._create_trial_controls()
+        self.coords_groupbox = QGroupBox("Xarray coords")
+        self.coords_groupbox_layout = QFormLayout()
+        self.coords_groupbox_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
+        self.coords_groupbox_layout.setContentsMargins(
+            DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN,
+            DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN,
+        )
+        self.coords_groupbox.setLayout(self.coords_groupbox_layout)
+        layout.addWidget(self.coords_groupbox)
+
+        # View mode + space plot row — populated later by DataWidget._create_trial_controls()
+        self.view_space_layout = QHBoxLayout()
+        self.view_space_layout.setSpacing(15)
+        view_space_widget = QWidget()
+        view_space_widget.setLayout(self.view_space_layout)
+        layout.addWidget(view_space_widget)
+
+        # Overlay row — populated later by DataWidget._create_trial_controls()
+        self.overlay_layout = QHBoxLayout()
+        self.overlay_layout.setSpacing(15)
+        overlay_widget = QWidget()
+        overlay_widget.setLayout(self.overlay_layout)
+        layout.addWidget(overlay_widget)
+
+        main_layout.addWidget(self.main_panel)
+
+    # ------------------------------------------------------------------
+    # Energy envelopes panel
     # ------------------------------------------------------------------
 
     def _create_energy_panel(self, main_layout):
@@ -128,7 +169,6 @@ class TransformWidget(QWidget):
         self.metric_combo.currentIndexChanged.connect(self._on_metric_changed)
         grid.addWidget(self.metric_combo, 0, 1, 1, 3)
 
-        # Amplitude envelope params
         self.amp_label_rate = QLabel("Env rate (Hz):")
         grid.addWidget(self.amp_label_rate, 1, 0)
         self.env_rate_spin = QDoubleSpinBox()
@@ -147,7 +187,6 @@ class TransformWidget(QWidget):
         self.env_cutoff_spin.setToolTip("Lowpass cutoff for amplitude envelope")
         grid.addWidget(self.env_cutoff_spin, 1, 3)
 
-        # Meansquared params
         self.ms_label_fmin = QLabel("Freq min (Hz):")
         grid.addWidget(self.ms_label_fmin, 2, 0)
         self.freq_min_spin = QDoubleSpinBox()
@@ -173,7 +212,6 @@ class TransformWidget(QWidget):
         self.smooth_win_spin.setToolTip("Smoothing window for meansquared energy")
         grid.addWidget(self.smooth_win_spin, 3, 1)
 
-        # Band envelope params
         self.be_label_fmin = QLabel("Band min (Hz):")
         grid.addWidget(self.be_label_fmin, 4, 0)
         self.band_env_min_spin = QDoubleSpinBox()
@@ -271,7 +309,7 @@ class TransformWidget(QWidget):
                 self.plot_container._refresh_envelope_data()
 
     # ------------------------------------------------------------------
-    # Noise removal panel (noisereduce + ephys preprocessing)
+    # Noise removal panel (noisereduce only — ephys preprocessing moved to EphysWidget)
     # ------------------------------------------------------------------
 
     def _create_noise_panel(self, main_layout):
@@ -281,7 +319,6 @@ class TransformWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.noise_panel.setLayout(layout)
 
-        # --- noisereduce group ---
         nr_group = QGroupBox("noisereduce")
         nr_layout = QGridLayout()
         nr_group.setLayout(nr_layout)
@@ -315,60 +352,6 @@ class TransformWidget(QWidget):
         nr_layout.addWidget(QLabel("Reduction:"), 0, 1)
         nr_layout.addWidget(self.prop_decrease_spin, 0, 2)
         nr_layout.addWidget(ref_label, 0, 3)
-
-        # --- Ephys pre-processing group ---
-        ephys_group = QGroupBox("Ephys pre-processing")
-        ephys_layout = QVBoxLayout()
-        ephys_group.setLayout(ephys_layout)
-        layout.addWidget(ephys_group)
-
-        self.ephys_subtract_mean_cb = QCheckBox("1. Subtract channel mean")
-        self.ephys_subtract_mean_cb.setToolTip("Remove DC offset from each channel")
-        self.ephys_car_cb = QCheckBox("2. Common average reference (CAR)")
-        self.ephys_car_cb.setToolTip("Subtract median across channels at each time point")
-        self.ephys_temporal_filter_cb = QCheckBox("3. Temporal filtering")
-        self.ephys_temporal_filter_cb.setToolTip("3rd-order Butterworth highpass filter")
-        self.ephys_hp_cutoff_edit = QLineEdit("300")
-        self.ephys_hp_cutoff_edit.setFixedWidth(50)
-        self.ephys_hp_cutoff_edit.setToolTip("Highpass cutoff frequency in Hz")
-        self.ephys_hp_cutoff_label = QLabel("Hz highpass")
-        self.ephys_whitening_cb = QCheckBox("4. (Global) channel whitening")
-        self.ephys_whitening_cb.setToolTip("Decorrelate channels via SVD-based whitening")
-
-        self._ephys_checkboxes = [
-            self.ephys_subtract_mean_cb,
-            self.ephys_car_cb,
-            self.ephys_temporal_filter_cb,
-            self.ephys_whitening_cb,
-        ]
-
-        ephys_layout.addWidget(self.ephys_subtract_mean_cb)
-        ephys_layout.addWidget(self.ephys_car_cb)
-
-        filter_row = QHBoxLayout()
-        filter_row.setContentsMargins(0, 0, 0, 0)
-        filter_row.addWidget(self.ephys_temporal_filter_cb)
-        filter_row.addWidget(self.ephys_hp_cutoff_edit)
-        filter_row.addWidget(self.ephys_hp_cutoff_label)
-        filter_row.addStretch()
-        filter_row_widget = QWidget()
-        filter_row_widget.setLayout(filter_row)
-        ephys_layout.addWidget(filter_row_widget)
-
-        ephys_layout.addWidget(self.ephys_whitening_cb)
-
-        for cb in self._ephys_checkboxes:
-            cb.toggled.connect(self._on_ephys_checkbox_toggled)
-        self.ephys_hp_cutoff_edit.editingFinished.connect(self._on_ephys_checkbox_toggled)
-
-        ref_label_ks = QLabel(
-            '<a href="https://www.nature.com/articles/s41592-024-02232-7#Sec10" '
-            'style="color: #87CEEB; text-decoration: none;">Adapted from Kilosort4 methods</a>'
-        )
-        ref_label_ks.setOpenExternalLinks(True)
-        ephys_layout.addWidget(ref_label_ks)
-
-        self._enforce_ephys_sequential()
 
         main_layout.addWidget(self.noise_panel)
 
@@ -420,47 +403,3 @@ class TransformWidget(QWidget):
                     current_plot.buffer.current_path = None
                 if hasattr(current_plot, 'update_plot_content'):
                     current_plot.update_plot_content()
-
-    # --- Ephys preprocessing ---
-
-    def _on_ephys_checkbox_toggled(self, _checked=None):
-        self._enforce_ephys_sequential()
-        self._apply_ephys_preprocessing()
-
-    def _enforce_ephys_sequential(self):
-        for i, cb in enumerate(self._ephys_checkboxes):
-            if i == 0:
-                cb.setEnabled(True)
-                continue
-            prev_checked = self._ephys_checkboxes[i - 1].isChecked()
-            cb.setEnabled(prev_checked)
-            if not prev_checked and cb.isChecked():
-                cb.blockSignals(True)
-                cb.setChecked(False)
-                cb.blockSignals(False)
-
-    def _parse_hp_cutoff(self) -> float:
-        try:
-            return max(1.0, float(self.ephys_hp_cutoff_edit.text()))
-        except (ValueError, TypeError):
-            return 300.0
-
-    def get_ephys_preprocessing_flags(self) -> dict:
-        return {
-            "subtract_mean": self.ephys_subtract_mean_cb.isChecked(),
-            "car": self.ephys_car_cb.isChecked(),
-            "temporal_filter": self.ephys_temporal_filter_cb.isChecked(),
-            "hp_cutoff": self._parse_hp_cutoff(),
-            "whitening": self.ephys_whitening_cb.isChecked(),
-        }
-
-    def _apply_ephys_preprocessing(self):
-        if not self.plot_container:
-            return
-        ephys_plot = self.plot_container.ephys_trace_plot
-        if ephys_plot is None:
-            return
-        flags = self.get_ephys_preprocessing_flags()
-        ephys_plot.buffer.set_preprocessing(flags)
-        if ephys_plot.current_range:
-            ephys_plot.update_plot_content(*ephys_plot.current_range)

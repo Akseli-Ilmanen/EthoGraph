@@ -24,7 +24,7 @@ import pyqtgraph as pg
 from pathlib import Path
 from typing import Optional, Protocol, runtime_checkable
 from numpy.typing import NDArray
-from qtpy.QtCore import QTimer
+from qtpy.QtCore import QEvent, Qt, QTimer, Signal
 from qtpy.QtWidgets import QApplication
 
 
@@ -407,7 +407,7 @@ class EphysTraceBuffer:
         self._cache_mean: NDArray | None = None
         self._cache_std: NDArray | None = None
         self.channel_spacing = 3.0
-        self.display_gain: int = 0
+        self.display_gain: float = 0.0
         self.autocenter: bool = False
 
     def set_loader(self, loader: EphysLoader, channel: int = 0):
@@ -512,19 +512,13 @@ class EphysTraceBuffer:
     def get_multichannel_trace_data(
         self, t0: float, t1: float, screen_width: int = 1920,
         channel_range: tuple[int, int] | None = None,
+        channel_indices: NDArray | None = None,
     ) -> tuple[NDArray, NDArray, int, int] | None:
         if self.loader is None:
             return None
 
         total_ch = self.loader.n_channels if hasattr(self.loader, 'n_channels') else 1
         if total_ch <= 1:
-            return None
-
-        ch_start, ch_end = (channel_range or (0, total_ch - 1))
-        ch_start = max(0, ch_start)
-        ch_end = min(total_ch - 1, ch_end)
-        n_ch = ch_end - ch_start + 1
-        if n_ch <= 0:
             return None
 
         start = max(0, int(t0 * self.ephys_sr))
@@ -535,7 +529,25 @@ class EphysTraceBuffer:
         data_all = self._get_data(start, stop)
         if data_all is None or data_all.ndim < 2:
             return None
-        data_all = data_all[:, ch_start:ch_end + 1]
+
+        if channel_indices is not None:
+            valid = channel_indices[channel_indices < data_all.shape[1]]
+            if len(valid) == 0:
+                return None
+            data_all = data_all[:, valid]
+            ch_mean = self._cache_mean[valid]
+            ch_std_arr = self._cache_std[valid]
+            n_ch = len(valid)
+        else:
+            ch_start, ch_end = (channel_range or (0, total_ch - 1))
+            ch_start = max(0, ch_start)
+            ch_end = min(total_ch - 1, ch_end)
+            n_ch = ch_end - ch_start + 1
+            if n_ch <= 0:
+                return None
+            data_all = data_all[:, ch_start:ch_end + 1]
+            ch_mean = self._cache_mean[ch_start:ch_end + 1]
+            ch_std_arr = self._cache_std[ch_start:ch_end + 1]
 
         step = max(1, (stop - start) // screen_width)
 
@@ -561,11 +573,10 @@ class EphysTraceBuffer:
             display = data_all.copy()
             times = np.arange(start, start + len(display)) / self.ephys_sr
 
-        ch_std = self._cache_std[ch_start:ch_end + 1]
         if self.autocenter:
-            display = (display - display.mean(axis=0)) / ch_std
+            display = (display - display.mean(axis=0)) / ch_std_arr
         else:
-            display = (display - self._cache_mean[ch_start:ch_end + 1]) / ch_std
+            display = (display - ch_mean) / ch_std_arr
 
         gain_factor = 0.75 ** (-self.display_gain)
         display *= gain_factor
@@ -583,17 +594,17 @@ def _apply_preprocessing(data: NDArray, sr: float, flags: dict) -> NDArray:
 
     data = data.astype(np.float64, copy=True)
 
-    # if flags.get("subtract_mean"):
-    #     data -= data.mean(axis=0, keepdims=True)
+    if flags.get("subtract_mean"):
+        data -= data.mean(axis=0, keepdims=True)
 
-    if flags.get("car") and data.shape[1] > 8:
+    if flags.get("car") and data.shape[1] > 1:
         data -= np.median(data, axis=1, keepdims=True)
 
     if flags.get("temporal_filter"):
         cutoff = flags.get("hp_cutoff", 300.0)
         data = sosfilter(data, sr, cutoff, mode='hp', order=3)
 
-    if flags.get("whitening"):
+    if flags.get("whitening") and data.shape[1] > 1:
         CC = (data.T @ data) / data.shape[0]
         Wrot = _whitening_from_covariance(CC)
         data = data @ Wrot.T
@@ -635,6 +646,10 @@ _NEUROSCOPE_AXIS = '#AAAAAA'
 class EphysTracePlot(BasePlot):
     """Extracellular waveform viewer inheriting BasePlot for full GUI integration."""
 
+    channel_scroll_requested = Signal(int)   # delta: +1 = scroll down, -1 = scroll up
+    gain_scroll_requested = Signal(int)      # delta: +1 = increase, -1 = decrease
+    range_resize_requested = Signal(int)     # delta: +1 = expand, -1 = contract
+
     def __init__(self, app_state, parent=None):
         super().__init__(app_state, parent)
 
@@ -665,6 +680,7 @@ class EphysTracePlot(BasePlot):
         self._pending_range: tuple[float, float] | None = None
 
         self.vb.sigRangeChanged.connect(self._on_view_range_changed)
+        self.vb.installEventFilter(self)
 
         # Multi-channel state
         self._multichannel = False
@@ -680,6 +696,24 @@ class EphysTracePlot(BasePlot):
         self._scale_v_text: pg.TextItem | None = None
         self._scale_h_text: pg.TextItem | None = None
 
+
+        # Hardware (hw) channels vs Kilosort (KS) channels:
+        #   hw = physical channel index in the recording file (e.g. Intan "A-009").
+        #        The loader's __getitem__ and channel_names are indexed by hw.
+        #   KS  = Kilosort's 0-based reindex after dropping dead/reference channels
+        #        via channel_map.npy. KS channel k reads hw channel channel_map[k].
+        # _probe_channel_order contains hw indices sorted by probe y-position
+        # (depth), derived as channel_map[argsort(channel_positions[:, 1])].
+        self._probe_channel_order: NDArray | None = None
+
+        # Spike waveform overlays (from Kilosort)
+        self._spike_times_local: NDArray | None = None
+        self._spike_samples_abs: NDArray | None = None
+        self._spike_channels: list[int] = []  # neighbor channels sorted by proximity
+        self._spike_waveform_items: list[pg.PlotDataItem] = []
+        self._spike_waveform_pool_size = 300
+        self._spike_snippet_ms = 0.5  # ms before and after spike peak (1.0ms total, matches Phy)
+
         self.setToolTip("Double-click or Ctrl+A to autoscale")
         self.scene().sigMouseClicked.connect(self._handle_double_click)
 
@@ -694,13 +728,39 @@ class EphysTracePlot(BasePlot):
 
     def set_channel(self, channel: int):
         self.buffer.channel = channel
+        self._update_amplitude_label()
         if self.current_range:
             self.update_plot_content(*self.current_range)
+
+        
+
 
     def set_channel_range(self, ch_start: int, ch_end: int):
         self._channel_range = (ch_start, ch_end)
         if self._multichannel and self.current_range:
             self.update_plot_content(*self.current_range)
+
+    def set_probe_channel_order(self, order: NDArray | None):
+        self._probe_channel_order = order
+        if self._multichannel and self.current_range:
+            self.update_plot_content(*self.current_range)
+
+    def eventFilter(self, obj, event):
+        if obj is self.vb and event.type() == QEvent.GraphicsSceneWheel:
+            modifiers = event.modifiers()
+            delta = 1 if event.delta() > 0 else -1
+            if modifiers & Qt.ControlModifier:
+                self.gain_scroll_requested.emit(delta)
+                event.accept()
+                return True
+            if self._multichannel:
+                if modifiers & Qt.ShiftModifier:
+                    self.range_resize_requested.emit(delta)
+                else:
+                    self.channel_scroll_requested.emit(-delta)
+                event.accept()
+                return True
+        return super().eventFilter(obj, event)
 
     def set_multichannel(self, enabled: bool):
         if enabled == self._multichannel:
@@ -766,6 +826,7 @@ class EphysTracePlot(BasePlot):
                 self.trace_item.setSymbol(None)
                 
         self._update_scale_bars(times)
+        self._update_spike_waveforms(t0, t1)
 
     def _update_multichannel(self, t0: float, t1: float):
         try:
@@ -773,11 +834,12 @@ class EphysTracePlot(BasePlot):
         except Exception:
             screen_width = 1920
 
-        # Query buffer in absolute ephys time, display in trial-local time
+        ch_indices = self._visible_hw_channels()
         result = self.buffer.get_multichannel_trace_data(
             t0 + self._ephys_offset, t1 + self._ephys_offset,
-            screen_width, channel_range=self._channel_range,
+            screen_width, channel_indices=ch_indices,
         )
+
         if result is None:
             return
 
@@ -801,10 +863,9 @@ class EphysTracePlot(BasePlot):
             self._multi_trace_items[ch].setSymbol(None)
 
         # Set y-axis ticks at channel offsets
-        ch_start = self._channel_range[0] if self._channel_range else 0
-        channel_names = self._get_channel_names(n_ch, ch_start)
+        channel_names = self._get_channel_names(ch_indices)
         spacing = self.buffer.channel_spacing
-        ticks = [((n_ch - 1 - i) * spacing, channel_names[i]) for i in range(n_ch)]
+        ticks = [((n_ch - 1 - i) * spacing, f"{channel_names[i]} (KS: {ch_indices[i]})") for i in range(n_ch)]
 
         left_axis = self.plot_item.getAxis('left')
         left_axis.setTicks([ticks])
@@ -814,6 +875,7 @@ class EphysTracePlot(BasePlot):
         self.plot_item.setYRange(-margin, (n_ch - 1) * spacing + margin, padding=0)
 
         self._update_scale_bars(times)
+        self._update_spike_waveforms(t0, t1)
 
     def _update_scale_bars(self, times: NDArray):
         self._clear_scale_bars()
@@ -862,6 +924,8 @@ class EphysTracePlot(BasePlot):
         x_anchor = t1 - time_window * 0.03
         y_anchor = y_range[0] + y_span * 0.05
 
+        vb = self.plot_item.getViewBox()
+
         # Vertical bar (voltage)
         v_x = [x_anchor, x_anchor]
         v_y = [y_anchor, y_anchor + voltage_bar_display]
@@ -869,12 +933,12 @@ class EphysTracePlot(BasePlot):
             v_x, v_y, pen=pg.mkPen('#FFFFFF', width=2),
         )
         self._scale_v_line.setZValue(900)
-        self.plot_item.addItem(self._scale_v_line)
+        vb.addItem(self._scale_v_line, ignoreBounds=True)
 
         self._scale_v_text = pg.TextItem(v_label, color='#FFFFFF', anchor=(1.0, 0.5))
         self._scale_v_text.setPos(x_anchor - time_window * 0.005, y_anchor + voltage_bar_display / 2)
         self._scale_v_text.setZValue(900)
-        self.plot_item.addItem(self._scale_v_text)
+        vb.addItem(self._scale_v_text, ignoreBounds=True)
 
         # Horizontal bar (time)
         h_x = [x_anchor - time_bar_s, x_anchor]
@@ -883,7 +947,7 @@ class EphysTracePlot(BasePlot):
             h_x, h_y, pen=pg.mkPen('#FFFFFF', width=2),
         )
         self._scale_h_line.setZValue(900)
-        self.plot_item.addItem(self._scale_h_line)
+        vb.addItem(self._scale_h_line, ignoreBounds=True)
 
         if time_bar_ms >= 1000:
             h_label = f"{time_bar_ms / 1000:.1f} s"
@@ -892,25 +956,37 @@ class EphysTracePlot(BasePlot):
         self._scale_h_text = pg.TextItem(h_label, color='#FFFFFF', anchor=(0.5, 1.0))
         self._scale_h_text.setPos(x_anchor - time_bar_s / 2, y_anchor - (y_range[1] - y_range[0]) * 0.01)
         self._scale_h_text.setZValue(900)
-        self.plot_item.addItem(self._scale_h_text)
+        vb.addItem(self._scale_h_text, ignoreBounds=True)
 
     def _clear_scale_bars(self):
+        vb = self.plot_item.getViewBox()
         for attr in ('_scale_v_line', '_scale_h_line', '_scale_v_text', '_scale_h_text'):
             item = getattr(self, attr, None)
             if item is not None:
                 try:
-                    self.plot_item.removeItem(item)
+                    vb.removeItem(item)
                 except (RuntimeError, ValueError):
                     pass
                 setattr(self, attr, None)
 
-    def _get_channel_names(self, n_ch: int, ch_start: int = 0) -> list[str]:
+    def _visible_hw_channels(self) -> NDArray:
+        if self._probe_channel_order is not None:
+            all_ch = self._probe_channel_order
+        else:
+            total = self.buffer.loader.n_channels if hasattr(self.buffer.loader, 'n_channels') else 1
+            all_ch = np.arange(total)
+        if self._channel_range:
+            lo = max(0, self._channel_range[0])
+            hi = min(len(all_ch) - 1, self._channel_range[1])
+            return all_ch[lo:hi + 1]
+        return all_ch
+
+    def _get_channel_names(self, hw_indices: NDArray | None = None) -> list[str]:
+        if hw_indices is None:
+            hw_indices = self._visible_hw_channels()
         loader = self.buffer.loader
-        if hasattr(loader, 'channel_names'):
-            names = loader.channel_names
-            if len(names) >= ch_start + n_ch:
-                return names[ch_start:ch_start + n_ch]
-        return [f"Ch {ch_start + i}" for i in range(n_ch)]
+        all_names = loader.channel_names if hasattr(loader, 'channel_names') else []
+        return [all_names[i] if i < len(all_names) else f"Ch {i}" for i in hw_indices]
 
     def _clear_multi_traces(self):
         for item in self._multi_trace_items:
@@ -923,13 +999,197 @@ class EphysTracePlot(BasePlot):
         self._update_amplitude_label()
 
     def _update_amplitude_label(self):
+        loader = self.buffer.loader
         units = ''
-        if self.buffer.loader is not None and hasattr(self.buffer.loader, 'units'):
-            units = self.buffer.loader.units
-        if units and units != 'a.u.':
-            self.setLabel('left', 'Amplitude', units=units)
+        if loader is not None and hasattr(loader, 'units'):
+            units = loader.units
+
+        channel_name = None
+        if loader is not None and hasattr(loader, 'channel_names'):
+            names = loader.channel_names
+            ch = self.buffer.channel
+            channel_name = f"{names[ch]} (KS:{ch})"
+
+        if channel_name:
+            label = f"Amplitude ({channel_name})"
         else:
-            self.setLabel('left', 'Amplitude')
+            label = "Amplitude"
+
+        if units and units != 'a.u.':
+            self.setLabel('left', label, units=units)
+        else:
+            self.setLabel('left', label)
+
+    def set_spike_data(
+        self,
+        spike_times_local: NDArray,
+        spike_samples_abs: NDArray,
+        channels: list[int] | None = None,
+    ):
+        self.clear_spike_overlays()
+        if len(spike_times_local) == 0:
+            return
+        order = np.argsort(spike_times_local)
+        self._spike_times_local = spike_times_local[order]
+        self._spike_samples_abs = spike_samples_abs[order]
+        self._spike_channels = channels or [self.buffer.channel]
+        t0, t1 = self.get_current_xlim()
+        self._update_spike_waveforms(t0, t1)
+
+    def clear_spike_overlays(self):
+        self._spike_times_local = None
+        self._spike_samples_abs = None
+        self._spike_channels = []
+        vb = self.plot_item.getViewBox()
+        for item in self._spike_waveform_items:
+            try:
+                vb.removeItem(item)
+            except (RuntimeError, ValueError):
+                pass
+        self._spike_waveform_items.clear()
+
+    def _update_spike_waveforms(self, t0: float | None = None, t1: float | None = None):
+        vb = self.plot_item.getViewBox()
+        for item in self._spike_waveform_items:
+            try:
+                vb.removeItem(item)
+            except (RuntimeError, ValueError):
+                pass
+        self._spike_waveform_items.clear()
+
+        if self._spike_times_local is None or len(self._spike_times_local) == 0:
+            return
+        if self.buffer.ephys_sr is None or self.buffer._cache is None:
+            return
+
+        if t0 is None or t1 is None:
+            t0, t1 = self.get_current_xlim()
+
+        if self._multichannel:
+            self._draw_spike_waveforms_multi(t0, t1)
+        else:
+            self._draw_spike_waveforms_single(t0, t1)
+
+    def _draw_spike_waveforms_single(self, t0: float, t1: float):
+        vb = self.plot_item.getViewBox()
+        sr = self.buffer.ephys_sr
+        half_w = int(self._spike_snippet_ms * 0.001 * sr)
+        ch = self._spike_channels[0] if self._spike_channels else self.buffer.channel
+        ch = min(ch, self.buffer._cache.shape[1] - 1)
+        cache_start = self.buffer._cache_start
+        gain_factor = 0.75 ** (-self.buffer.display_gain) if self.buffer.display_gain != 0 else 1.0
+
+        i_start = np.searchsorted(self._spike_times_local, t0, side='left')
+        i_end = np.searchsorted(self._spike_times_local, t1, side='right')
+        visible = slice(i_start, min(i_end, i_start + self._spike_waveform_pool_size))
+
+        spike_pen = pg.mkPen(color=(255, 50, 50, 220), width=2.0)
+
+        for spike_s in self._spike_samples_abs[visible]:
+            local_idx = int(spike_s) - cache_start
+            s0 = max(0, local_idx - half_w)
+            s1 = min(self.buffer._cache.shape[0], local_idx + half_w)
+            if s1 <= s0:
+                continue
+
+            snippet = self.buffer._cache[s0:s1, ch].copy()
+            if gain_factor != 1.0:
+                snippet *= gain_factor
+
+            times = np.arange(s0 + cache_start, s1 + cache_start, dtype=np.float64) / sr
+            times -= self._ephys_offset
+
+            item = pg.PlotDataItem(
+                times, snippet, pen=spike_pen,
+                connect='all', antialias=False, skipFiniteCheck=True,
+            )
+            item.setZValue(800)
+            vb.addItem(item, ignoreBounds=True)
+            self._spike_waveform_items.append(item)
+
+    def _draw_spike_waveforms_multi(self, t0: float, t1: float):
+        vb = self.plot_item.getViewBox()
+        sr = self.buffer.ephys_sr
+        half_w = int(self._spike_snippet_ms * 0.001 * sr)
+        cache_start = self.buffer._cache_start
+        spacing = self.buffer.channel_spacing
+        gain_factor = 0.75 ** (-self.buffer.display_gain)
+
+        displayed_hw_indices = self._visible_hw_channels()
+        n_visible_ch = len(displayed_hw_indices)
+        hw_to_display = {int(hw): i for i, hw in enumerate(displayed_hw_indices)}
+
+        draw_channels = [ch for ch in self._spike_channels if ch in hw_to_display]
+        if not draw_channels:
+            return
+
+        cache_mean = self.buffer._cache_mean
+        cache_std = self.buffer._cache_std
+        if cache_mean is None or cache_std is None:
+            return
+
+        pen_top = pg.mkPen(color=(255, 50, 50, 220), width=2.0)
+        pen_dim = pg.mkPen(color=(255, 80, 80, 100), width=1.5)
+
+        i_start = np.searchsorted(self._spike_times_local, t0, side='left')
+        i_end = np.searchsorted(self._spike_times_local, t1, side='right')
+        max_per_ch = self._spike_waveform_pool_size // max(len(draw_channels), 1)
+        visible = slice(i_start, min(i_end, i_start + max_per_ch))
+
+        for rank, ch in enumerate(draw_channels):
+            display_idx = hw_to_display[ch]
+            y_offset = (n_visible_ch - 1 - display_idx) * spacing
+            ch_mean = cache_mean[ch]
+            ch_std = cache_std[ch]
+            pen = pen_top if rank < 3 else pen_dim
+
+            for spike_s in self._spike_samples_abs[visible]:
+                local_idx = int(spike_s) - cache_start
+                s0 = max(0, local_idx - half_w)
+                s1 = min(self.buffer._cache.shape[0], local_idx + half_w)
+                if s1 <= s0:
+                    continue
+
+                snippet = (self.buffer._cache[s0:s1, ch].copy() - ch_mean) / ch_std
+                snippet *= gain_factor
+                snippet += y_offset
+
+                times = np.arange(s0 + cache_start, s1 + cache_start, dtype=np.float64) / sr
+                times -= self._ephys_offset
+
+                item = pg.PlotDataItem(
+                    times, snippet, pen=pen,
+                    connect='all', antialias=False, skipFiniteCheck=True,
+                )
+                item.setZValue(800)
+                vb.addItem(item, ignoreBounds=True)
+                self._spike_waveform_items.append(item)
+
+    def get_spike_target_time(self, delta: int = +1) -> float | None:
+        if self._spike_times_local is None or len(self._spike_times_local) == 0:
+            return None
+        if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
+            return None
+
+        current_time = self.app_state.current_frame / self.app_state.ds.fps
+        idx = np.searchsorted(self._spike_times_local, current_time)
+        n = len(self._spike_times_local)
+        target_idx = (idx + delta) % n
+        return float(self._spike_times_local[target_idx])
+
+    def jump_to_spike(self, delta: int = +1):
+        target_time = self.get_spike_target_time(delta)
+        if target_time is None:
+            return
+
+        xmin, xmax = self.get_current_xlim()
+        half = (xmax - xmin) / 2
+        new_xmin = target_time - half
+        new_xmax = target_time + half
+
+        self.plot_item.setXRange(new_xmin, new_xmax, padding=0)
+        QApplication.processEvents()
+        self.update_plot_content(new_xmin, new_xmax)
 
     def apply_y_range(self, ymin: Optional[float], ymax: Optional[float]):
         if self._multichannel:
@@ -942,6 +1202,27 @@ class EphysTracePlot(BasePlot):
         if event.double() and event.button() == Qt.LeftButton:
             self.autoscale()
 
+    def auto_channel_spacing(self):
+        cache = self.buffer._cache
+        if cache is None or cache.shape[1] < 2:
+            return
+        ch_indices = self._visible_hw_channels()
+        if len(ch_indices) < 2:
+            return
+        valid = [ch for ch in ch_indices if ch < cache.shape[1]]
+        if len(valid) < 2:
+            return
+        data = cache[:, valid].astype(np.float64)
+        means = data.mean(axis=0)
+        stds = data.std(axis=0)
+        stds[stds == 0] = 1.0
+        normed = (data - means) / stds
+        p_low = np.percentile(normed, 1, axis=0)
+        p_high = np.percentile(normed, 99, axis=0)
+        spans = p_high - p_low
+        max_span = float(np.max(spans))
+        self.buffer.channel_spacing = max_span * 0.80
+
     def autoscale(self):
         if self._multichannel:
             n_ch = len(self._multi_trace_items)
@@ -950,12 +1231,7 @@ class EphysTracePlot(BasePlot):
                 margin = spacing * 0.5
                 self.plot_item.setYRange(-margin, (n_ch - 1) * spacing + margin, padding=0)
         else:
-            self.plot_item.enableAutoRange(axis='y')
-
-        if self._trial_duration is not None:
-            self.plot_item.setXRange(0, self._trial_duration, padding=0.02)
-        else:
-            self.plot_item.enableAutoRange(axis='x')
+            self.vb.enableAutoRange(x=False, y=True)
 
         if self.current_range:
             self.update_plot_content(*self.get_current_xlim())

@@ -9,7 +9,6 @@ from napari.viewer import Viewer
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QDoubleValidator
 from qtpy.QtWidgets import (
-    QApplication,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
@@ -122,17 +121,11 @@ class PlotSettingsWidget(QWidget):
         self._show_panel("heatmap" if self.heatmap_toggle.isChecked() else "lineplot")
 
     def _refresh_layout(self):
-        if self.meta_widget and hasattr(self.meta_widget, "collapsible_widgets"):
-            for collapsible in self.meta_widget.collapsible_widgets:
-                if hasattr(collapsible, "content_widget"):
-                    content = collapsible.content_widget
-                    if content and self in content.findChildren(QWidget):
-                        collapsible.collapse()
-                        QApplication.processEvents()
-                        collapsible.expand()
+        if self.meta_widget:
+            self.meta_widget.refresh_widget_layout(self)
 
     # ------------------------------------------------------------------
-    # LinePlot panel (from AxesWidget)
+    # LinePlot panel
     # ------------------------------------------------------------------
 
     def _create_lineplot_panel(self, main_layout):
@@ -289,7 +282,7 @@ class PlotSettingsWidget(QWidget):
         self._on_axes_edited()
 
     # ------------------------------------------------------------------
-    # Spectrogram panel (from SpectrogramWidget)
+    # Spectrogram panel
     # ------------------------------------------------------------------
 
     def _create_spectrogram_panel(self, main_layout):
@@ -613,7 +606,7 @@ class PlotSettingsWidget(QWidget):
             self.plot_container.update_audio_overlay()
 
     # ------------------------------------------------------------------
-    # HeatMap panel (from AxesWidget heatmap controls)
+    # HeatMap panel
     # ------------------------------------------------------------------
 
     def _create_heatmap_panel(self, main_layout):

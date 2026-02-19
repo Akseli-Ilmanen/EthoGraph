@@ -11,7 +11,6 @@ from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QAbstractItemView,
-    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -247,13 +246,8 @@ class LabelsWidget(QWidget):
         self._refresh_layout()
 
     def _refresh_layout(self):
-        """Force layout recalculation by toggling the collapsible widget."""
-        if self.meta_widget and hasattr(self.meta_widget, 'collapsible_widgets'):
-            # Labels widget is at index 2 (0: I/O, 1: Data controls, 2: Label controls)
-            labels_collapsible = self.meta_widget.collapsible_widgets[2]
-            labels_collapsible.collapse()
-            QApplication.processEvents()
-            labels_collapsible.expand()
+        if self.meta_widget:
+            self.meta_widget.refresh_widget_layout(self)
 
     def _create_labels_table_and_edit_buttons(self):
         """Create the labels table showing available  types in two columns."""
