@@ -644,10 +644,8 @@ class ObservableAppState(QObject):
             updated_dt = self.dt.overwrite_with_labels(self.label_dt)
             updated_dt.load()
             self.dt.close()
-            self.label_dt.close()
 
             updated_dt.save(nc_path)
 
             self.dt = TrialTree.open(nc_path)
-            self.label_dt = self.dt.get_label_dt()
             show_info(f"✅ Saved: {nc_path.name}")
