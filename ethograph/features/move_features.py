@@ -413,6 +413,7 @@ def compute_aux_velocity_and_speed(
     
     dt = 1 / fps
     
+    
     # MATLAB-style outlier detection (median + scaled MAD)
     med = np.median(a_aux_trial, axis=0)
     mad = np.median(np.abs(a_aux_trial - med), axis=0)

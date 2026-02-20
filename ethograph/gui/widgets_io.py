@@ -558,7 +558,6 @@ class IOWidget(QWidget):
                 if labels_file_path:
                     label_dt_full = TrialTree.open(labels_file_path)
                     self.app_state.label_dt = label_dt_full.get_label_dt()
-                    label_dt_full.close()
                     self.app_state.label_ds = self.app_state.label_dt.trial(self.app_state.trials_sel)
                     self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
 

@@ -152,6 +152,15 @@ class TrialTree(xr.DataTree):
     # Data manipulation
     # -------------------------------------------------------------------------
 
+    def strip_variables(self, keep: set[str] = {"pulse_onsets"}) -> "TrialTree":
+        return self.from_datatree(self.map_over_datasets(
+            lambda ds: xr.Dataset(
+                {k: ds[k] for k in ds.data_vars if k in keep},
+                coords=ds.coords, attrs=ds.attrs,
+            )
+        ), attrs=self.attrs)
+
+
     def new_var_like(self, trial: int, new_var: str, new_val: np.ndarray, template_var: str, kwargs: dict = None):
         """
         Update multiple variables for a trial at once.

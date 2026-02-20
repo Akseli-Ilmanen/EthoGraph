@@ -2,24 +2,30 @@ from typing import Tuple
 
 import numpy as np
 import xarray as xr
+from scipy.ndimage import gaussian_filter1d, uniform_filter1d
 from scipy.interpolate import interp1d
-from scipy.ndimage import gaussian_filter1d
-from scipy.signal import decimate
+from ethograph.utils.data_utils import get_time_coord
 
 
+
+def downsample_with_antialiasing(time: np.ndarray, data: np.ndarray, factor: int) -> tuple[np.ndarray, np.ndarray]:
+    """Downsample (T,) or (T, D) array using moving-average low-pass filter before subsampling to prevent aliasing."""
+    smoothed = uniform_filter1d(data, size=factor, axis=0)
+    return time[::factor], smoothed[::factor]
 
 
 def resample_to_frames(
-    data: np.ndarray, 
-    time_original: np.ndarray, 
-    time_target: np.ndarray
+    data: np.ndarray,
+    time_original: np.ndarray,
+    time_target: np.ndarray,
 ) -> np.ndarray:
-    """Interpolate data from original time to target time points."""
-    if data.ndim == 1:
-        return np.interp(time_target, time_original, data)
-    
+    """Resample data to target time points using moving-average anti-aliasing filter before interpolation."""
+    factor = len(time_original) / len(time_target)
+    if factor > 1:
+        data = uniform_filter1d(data, size=int(round(factor)), axis=0)
     f = interp1d(time_original, data, axis=0, fill_value='extrapolate')
     return f(time_target)
+
 
 def interpolate_nans(arr: np.ndarray, axis: int = 0) -> np.ndarray:
     """Interpolate NaNs using NumPy's interp, with leading/trailing NaNs set to zero.
@@ -109,7 +115,7 @@ def gaussian_smoothing(da, **smoothing_params):
         data = interpolate_nans(data)
         return gaussian_filter1d(data, **smoothing_params)
     
-    from ethograph.utils.data_utils import get_time_coord
+    
     time_dim = get_time_coord(da).dims[0]
 
     smoothed = xr.apply_ufunc(
