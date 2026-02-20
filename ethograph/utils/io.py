@@ -89,11 +89,13 @@ class TrialTree(xr.DataTree):
         path = Path(path) if path else Path(source_path)
         temp_path = path.with_suffix('.tmp.nc')
 
-        self.load()
-        self.close()
-
-        self.to_netcdf(temp_path, mode='w')
-        temp_path.replace(path)
+        try:
+            self.load()
+            self.to_netcdf(temp_path, mode='w')
+            temp_path.replace(path)
+            self._source_path = str(path)
+        finally:
+            self.close()
 
     # -------------------------------------------------------------------------
     # Properties
@@ -254,9 +256,9 @@ class TrialTree(xr.DataTree):
                     result = intervals_to_xr(empty_intervals())
                 else:
                     interval_vars = [v for v in ("onset_s", "offset_s", "labels", "individual") if v in ds.data_vars]
-                    result = ds[interval_vars].copy()
+                    result = ds[interval_vars].load()
                     if "labels_confidence" in ds.data_vars:
-                        result["labels_confidence"] = ds["labels_confidence"]
+                        result["labels_confidence"] = ds["labels_confidence"].load()
                 result.attrs = orig_attrs
                 return result
 
@@ -434,16 +436,16 @@ def downsample_trialtree(dt: "TrialTree", factor: int) -> "TrialTree":
         attrs=dt.attrs
     )
 
+def _minmax_envelope(values: np.ndarray, n_segments: int, factor: int) -> np.ndarray:
+    shape_suffix = values.shape[1:]
+    reshaped = values[:n_segments * factor].reshape(n_segments, factor, *shape_suffix)
+    interleaved = np.empty((n_segments * 2, *shape_suffix), dtype=values.dtype)
+    interleaved[0::2] = reshaped.min(axis=1)
+    interleaved[1::2] = reshaped.max(axis=1)
+    return interleaved
+
+
 def _downsample_dataset(ds: xr.Dataset, factor: int) -> xr.Dataset:
-    """Downsample a dataset along the time dimension using min-max envelope.
-
-    Args:
-        ds: xarray Dataset with 'time' dimension
-        factor: Downsample factor (e.g., 100 = keep ~2% of samples as min/max pairs)
-
-    Returns:
-        Downsampled dataset preserving peaks via min-max envelope
-    """
     if 'time' not in ds.dims:
         return ds
 
@@ -454,7 +456,6 @@ def _downsample_dataset(ds: xr.Dataset, factor: int) -> xr.Dataset:
 
     usable_len = n_segments * factor
     time_vals = ds.time.values[:usable_len]
-
     time_downsampled = time_vals[::factor][:n_segments]
     dt = (time_vals[-1] - time_vals[0]) / len(time_vals) if len(time_vals) > 1 else 1.0
     half_step = dt * factor / 2
@@ -474,38 +475,21 @@ def _downsample_dataset(ds: xr.Dataset, factor: int) -> xr.Dataset:
             data_vars[var_name] = var_data
             continue
 
-        var_attrs = var_data.attrs.copy()
-        values = var_data.values[:usable_len] if var_data.dims[0] == 'time' else var_data.values
-
         time_axis = var_data.dims.index('time')
+        values = var_data.values
+        if time_axis != 0:
+            values = np.moveaxis(values, time_axis, 0)
+
         other_dims = [d for d in var_data.dims if d != 'time']
-        new_dims = ['time'] + other_dims
-
-        if time_axis == 0:
-            shape_suffix = values.shape[1:] if len(values.shape) > 1 else ()
-            reshaped = values.reshape(n_segments, factor, *shape_suffix)
-            mins = reshaped.min(axis=1)
-            maxs = reshaped.max(axis=1)
-        else:
-            values_t = np.moveaxis(values, time_axis, 0)[:usable_len]
-            shape_suffix = values_t.shape[1:] if len(values_t.shape) > 1 else ()
-            reshaped = values_t.reshape(n_segments, factor, *shape_suffix)
-            mins = reshaped.min(axis=1)
-            maxs = reshaped.max(axis=1)
-
-        interleaved_shape = (n_segments * 2,) + shape_suffix
-        interleaved = np.empty(interleaved_shape, dtype=values.dtype)
-        interleaved[0::2] = mins
-        interleaved[1::2] = maxs
-
-        data_vars[var_name] = xr.DataArray(interleaved, dims=new_dims, attrs=var_attrs)
+        interleaved = _minmax_envelope(values, n_segments, factor)
+        data_vars[var_name] = xr.DataArray(
+            interleaved, dims=['time'] + other_dims, attrs=var_data.attrs
+        )
 
     new_attrs = ds.attrs.copy()
     new_attrs['downsample_factor'] = factor
     new_attrs['downsample_method'] = 'minmax_envelope'
-
     return xr.Dataset(data_vars, coords=new_coords, attrs=new_attrs)
-
 
 
 def add_changepoints_to_ds(ds, target_feature, changepoint_name, changepoint_func, **func_kwargs):
