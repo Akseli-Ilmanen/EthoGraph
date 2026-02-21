@@ -127,7 +127,7 @@ class BasePlot(pg.PlotWidget):
         if not hasattr(self.app_state, 'current_frame') or not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
 
-        current_time = frame_number / self.app_state.ds.fps
+        current_time = frame_number / self.app_state.effective_fps
         self.update_time_marker(current_time)
 
         
@@ -145,9 +145,9 @@ class BasePlot(pg.PlotWidget):
                 return
 
             if center_on_frame is not None:
-                current_time = center_on_frame / self.app_state.ds.fps
+                current_time = center_on_frame / self.app_state.effective_fps
             else:
-                current_time = self.app_state.current_frame / self.app_state.ds.fps
+                current_time = self.app_state.current_frame / self.app_state.effective_fps
 
             window_size = self.app_state.get_with_default('window_size')
             half_window = window_size / 2.0

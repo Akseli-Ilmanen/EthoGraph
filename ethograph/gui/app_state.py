@@ -81,6 +81,7 @@ class AppStateSpec:
         "_info_data": (dict[str, Any], {}, False),
         "sync_state": (str | None, None, False),
         "window_size": (float, 3.0, True),
+        "no_video_mode": (bool, False, False),
 
         # Data
         "ds": (xr.Dataset | None, None, False),
@@ -93,6 +94,8 @@ class AppStateSpec:
         "trial_conditions": (list | None, None, False),
         "import_labels_nc_data": (bool, False, True),
         "fps_playback": (float, 30.0, True),
+        "audio_playback_speed": (float, 1.0, True),
+        "av_speed_coupled": (bool, True, True),
         "skip_frames": (bool, False, True),
         "filter_warnings": (bool, False, True),
         "time": (xr.DataArray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
@@ -213,7 +216,15 @@ class ObservableAppState(QObject):
         self._auto_save_timer.timeout.connect(self.save_to_yaml)
         self._auto_save_timer.start(auto_save_interval)
 
-
+    @property
+    def effective_fps(self) -> float:
+        """fps if available, else 1.0 (frame_number == seconds)."""
+        ds = self._values.get("ds")
+        if ds is not None:
+            fps = ds.attrs.get("fps", None)
+            if fps and fps > 0:
+                return float(fps)
+        return 1.0
 
     @property
     def sel_attrs(self) -> dict:
@@ -237,22 +248,40 @@ class ObservableAppState(QObject):
         return value
 
 
+    def _get_trial_duration(self) -> float:
+        """Get trial duration in seconds from dataset time coord or audio file."""
+        trial_onset = float(self.ds.attrs.get('trial_onset', 0.0))
+        fps = self.ds.attrs.get('fps', None)
+
+        if 'time' in self.ds.coords and len(self.ds.time.values) > 0:
+            last_t = float(self.ds.time.values[-1])
+            if fps and fps > 0:
+                return last_t + 1.0 / fps - trial_onset
+            return last_t - trial_onset + 0.001
+        return 0.0
+
     def set_time(self, feature_sel=None):
-        """Set app_state.time to an audio-rate time coordinate for Audio Waveform."""
-                
+        """Set app_state.time based on the selected feature."""
         if feature_sel is None:
             feature_sel = self.features_sel
 
         if feature_sel == "Audio Waveform":
             audio_path, _ = self.get_audio_source()
             loader = SharedAudioCache.get_loader(audio_path)
+            if loader is None:
+                return
             trial_onset = float(self.ds.attrs.get('trial_onset', 0.0))
-            trial_duration = float(self.ds.time.values[-1]) + 1.0 / self.ds.attrs['fps']
+            trial_duration = self._get_trial_duration()
 
-            start_sample = int(trial_onset * loader.rate)
-            end_sample = int((trial_onset + trial_duration) * loader.rate)
+            if trial_duration > 0:
+                start_sample = int(trial_onset * loader.rate)
+                end_sample = int((trial_onset + trial_duration) * loader.rate)
+            else:
+                # No time coord (pure audio dataset) — use entire file
+                start_sample = 0
+                end_sample = len(loader)
+
             n_samples = min(end_sample, len(loader)) - max(0, start_sample)
-
             time_values = np.arange(n_samples) / loader.rate
             self.time = xr.DataArray(
                 time_values, dims=["time_audio"],
@@ -266,12 +295,16 @@ class ObservableAppState(QObject):
             loader = SharedEphysCache.get_loader(ephys_path, stream_id)
             if loader is not None:
                 trial_onset = float(self.ds.attrs.get('trial_onset', 0.0))
-                trial_duration = float(self.ds.time.values[-1]) + 1.0 / self.ds.attrs['fps']
+                trial_duration = self._get_trial_duration()
 
-                start_sample = int(trial_onset * loader.rate)
-                end_sample = int((trial_onset + trial_duration) * loader.rate)
+                if trial_duration > 0:
+                    start_sample = int(trial_onset * loader.rate)
+                    end_sample = int((trial_onset + trial_duration) * loader.rate)
+                else:
+                    start_sample = 0
+                    end_sample = len(loader)
+
                 n_samples = min(end_sample, len(loader)) - max(0, start_sample)
-
                 time_values = np.arange(n_samples) / loader.rate
                 self.time = xr.DataArray(
                     time_values, dims=["time_ephys"],

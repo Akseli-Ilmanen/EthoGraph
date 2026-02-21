@@ -8,6 +8,7 @@ from napari import Viewer
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -17,6 +18,8 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from .app_constants import AUDIO_SPEED_DEFAULT, AUDIO_SPEED_MAX, AUDIO_SPEED_MIN, AUDIO_SPEED_STEP
 
 
 
@@ -98,8 +101,8 @@ class NavigationWidget(QWidget):
         fps_playback = app_state.get_with_default("fps_playback")
         self.fps_playback_edit.setText(str(fps_playback))
         self.fps_playback_edit.editingFinished.connect(self._on_fps_changed)
-        fps_label = QLabel("Playback FPS:")
-        fps_label.setObjectName("fps_label")
+        self.fps_label = QLabel("Playback FPS:")
+        self.fps_label.setObjectName("fps_label")
         self.fps_playback_edit.setToolTip(
             "Playback FPS for video.\n"
             "Note: Video decoding typically caps at ~30-50 fps\n"
@@ -107,6 +110,37 @@ class NavigationWidget(QWidget):
             "Audio playback speed is coupled to this setting.\n"
             "Set to recording FPS for normal audio playback."
         )
+
+        # Audio speed control
+        self.audio_speed_label = QLabel("Audio speed:")
+        self.audio_speed_label.setObjectName("audio_speed_label")
+        self.audio_speed_spin = QDoubleSpinBox()
+        self.audio_speed_spin.setObjectName("audio_speed_spin")
+        self.audio_speed_spin.setRange(AUDIO_SPEED_MIN, AUDIO_SPEED_MAX)
+        self.audio_speed_spin.setSingleStep(AUDIO_SPEED_STEP)
+        self.audio_speed_spin.setDecimals(2)
+        self.audio_speed_spin.setSuffix("\u00d7")
+        self.audio_speed_spin.setValue(app_state.get_with_default("audio_playback_speed"))
+        self.audio_speed_spin.setToolTip(
+            "Audio playback speed multiplier.\n"
+            "1.0\u00d7 = normal speed, 2.0\u00d7 = double speed.\n"
+            "Speed is achieved by adjusting sample rate\n"
+            "(pitch changes proportionally)."
+        )
+        self.audio_speed_spin.valueChanged.connect(self._on_audio_speed_changed)
+
+        # Coupling toggle (video + audio speed linked)
+        self.coupling_button = QPushButton("\U0001f517")
+        self.coupling_button.setObjectName("coupling_button")
+        self.coupling_button.setCheckable(True)
+        self.coupling_button.setChecked(app_state.get_with_default("av_speed_coupled"))
+        self.coupling_button.setToolTip(
+            "Link video FPS and audio speed.\n"
+            "When linked, changing one adjusts the other\n"
+            "to maintain synchronized playback."
+        )
+        self.coupling_button.setFixedWidth(30)
+        self.coupling_button.toggled.connect(self._on_coupling_toggled)
 
         self.skip_frames_checkbox = QCheckBox("Skip Frames")
         self.skip_frames_checkbox.setObjectName("skip_frames_checkbox")
@@ -134,10 +168,13 @@ class NavigationWidget(QWidget):
         navigate_layout.addWidget(self.prev_button, 0, 0)
         navigate_layout.addWidget(self.next_button, 0, 1)
         navigate_layout.addWidget(self.trials_combo, 0, 2, 1, 2)
-        navigate_layout.addWidget(fps_label, 1, 0)
+        navigate_layout.addWidget(self.fps_label, 1, 0)
         navigate_layout.addWidget(self.fps_playback_edit, 1, 1)
         navigate_layout.addWidget(self.skip_frames_checkbox, 1, 2)
         navigate_layout.addWidget(self.filter_warnings_checkbox, 1, 3)
+        navigate_layout.addWidget(self.audio_speed_label, 2, 0)
+        navigate_layout.addWidget(self.audio_speed_spin, 2, 1)
+        navigate_layout.addWidget(self.coupling_button, 2, 2)
 
         # === Main layout ===
         main_layout = QVBoxLayout()
@@ -240,6 +277,37 @@ class NavigationWidget(QWidget):
         if qt_dims.slider_widgets:
             slider_widget = qt_dims.slider_widgets[0]
             slider_widget._update_play_settings(fps=fps_playback, loop_mode="once", frame_range=None)
+
+        if self.app_state.av_speed_coupled and not self.app_state.no_video_mode:
+            recording_fps = self.app_state.effective_fps
+            audio_speed = fps_playback / recording_fps
+            self.app_state.audio_playback_speed = audio_speed
+            self.audio_speed_spin.blockSignals(True)
+            self.audio_speed_spin.setValue(audio_speed)
+            self.audio_speed_spin.blockSignals(False)
+
+    def _on_audio_speed_changed(self, value: float):
+        """Handle audio speed spinbox change."""
+        self.app_state.audio_playback_speed = value
+        if self.app_state.av_speed_coupled and not self.app_state.no_video_mode:
+            recording_fps = self.app_state.effective_fps
+            fps_playback = value * recording_fps
+            self.app_state.fps_playback = fps_playback
+            self.fps_playback_edit.blockSignals(True)
+            self.fps_playback_edit.setText(str(fps_playback))
+            self.fps_playback_edit.blockSignals(False)
+
+    def _on_coupling_toggled(self, checked: bool):
+        """Handle coupling toggle between video FPS and audio speed."""
+        self.app_state.av_speed_coupled = checked
+        self.coupling_button.setText("\U0001f517" if checked else "\U0001f513")
+
+    def configure_for_no_video(self):
+        """Hide video-only controls in no-video mode."""
+        self.fps_label.hide()
+        self.fps_playback_edit.hide()
+        self.skip_frames_checkbox.hide()
+        self.coupling_button.hide()
 
     def _on_skip_frames_changed(self, checked: bool):
         self.app_state.skip_frames = checked

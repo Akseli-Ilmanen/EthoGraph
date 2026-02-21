@@ -205,11 +205,18 @@ class PlotSettingsWidget(QWidget):
     def _autoscale_y_toggle(self, checked: bool):
         if not self.plot_container:
             return
+
+        from .multipanel_container import MultiPanelContainer
+        if isinstance(self.plot_container, MultiPanelContainer):
+            target = self.plot_container.get_hovered_plot()
+        else:
+            target = self.plot_container.get_current_plot()
+
         if checked:
-            self.plot_container.vb.enableAutoRange(x=False, y=True)
+            target.vb.enableAutoRange(x=False, y=True)
             self.lock_axes_checkbox.setChecked(False)
         else:
-            self.plot_container.vb.disableAutoRange()
+            target.vb.disableAutoRange()
 
     def _on_lock_axes_toggled(self, checked: bool):
         self.app_state.lock_axes = checked
@@ -261,7 +268,7 @@ class PlotSettingsWidget(QWidget):
             return None, None
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return None, None
-        current_time = self.app_state.current_frame / self.app_state.ds.fps
+        current_time = self.app_state.current_frame / self.app_state.effective_fps
         window_size = self.app_state.get_with_default("window_size")
         half_window = window_size / 2
         return current_time - half_window, current_time + half_window

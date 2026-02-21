@@ -748,9 +748,10 @@ class EphysWidget(QWidget):
         self.plot_container = plot_container
         plot_container.plot_changed.connect(self._on_plot_changed)
         ephys_plot = plot_container.ephys_trace_plot
-        ephys_plot.channel_scroll_requested.connect(self._on_channel_scroll)
-        ephys_plot.gain_scroll_requested.connect(self._on_gain_scroll)
-        ephys_plot.range_resize_requested.connect(self._on_range_resize)
+        if ephys_plot is not None:
+            ephys_plot.channel_scroll_requested.connect(self._on_channel_scroll)
+            ephys_plot.gain_scroll_requested.connect(self._on_gain_scroll)
+            ephys_plot.range_resize_requested.connect(self._on_range_resize)
 
     def set_meta_widget(self, meta_widget):
         self.meta_widget = meta_widget

@@ -2,6 +2,7 @@
 
 from napari.viewer import Viewer
 from qt_niu.collapsible_widget import CollapsibleWidgetContainer
+from qtpy.QtCore import Qt
 from qtpy.QtGui import QFont
 from qtpy.QtWidgets import (
     QApplication,
@@ -16,6 +17,7 @@ from ethograph.utils.paths import gui_default_settings_path
 
 from .app_constants import DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_SPACING, DOCK_WIDGET_BOTTOM_MARGIN, PLOT_CONTAINER_MIN_HEIGHT
 from .app_state import ObservableAppState
+from .multipanel_container import MultiPanelContainer
 from .plot_container import PlotContainer
 from .widgets_changepoints import ChangepointsWidget
 from .widgets_data import DataWidget
@@ -532,7 +534,7 @@ class MetaWidget(CollapsibleWidgetContainer):
             if self.plot_container.is_ephystrace():
                 ephys_plot.jump_to_spike(delta)
 
-            new_frame = int(target_time * self.app_state.ds.fps)
+            new_frame = int(target_time * self.app_state.effective_fps)
             self.app_state.current_frame = new_frame
 
             if hasattr(self.app_state, 'video') and self.app_state.video:
@@ -721,4 +723,87 @@ class MetaWidget(CollapsibleWidgetContainer):
         except (AttributeError, KeyError, TypeError) as e:
             # Silently handle any issues with notification configuration
             print(f"Notification configuration warning: {e}")
+
+    def switch_to_no_video_layout(self):
+        """Replace napari viewer + layer controls with MultiPanelContainer.
+
+        Layout becomes:  [3-panel plots (left)]  [widget sidebar (right)]
+        The napari canvas, layer list, and bottom PlotContainer dock are all removed.
+        """
+        from qtpy.QtWidgets import QDockWidget
+
+        old_container = self.plot_container
+        try:
+            old_container.labels_redraw_needed.disconnect(self._on_labels_redraw_needed)
+        except (RuntimeError, TypeError):
+            pass
+
+        qt_window = self.viewer.window._qt_window
+
+        # 1. Remove the old PlotContainer bottom dock
+        for dock in qt_window.findChildren(QDockWidget):
+            if dock.widget() is old_container:
+                dock.hide()
+                qt_window.removeDockWidget(dock)
+                break
+
+        # 2. Hide napari layer list / layer controls docks
+        for dock in qt_window.findChildren(QDockWidget):
+            title = (dock.windowTitle() or "").lower()
+            if "layer" in title or "control" in title:
+                dock.hide()
+
+        # 3. Hide the napari viewer canvas (central widget)
+        central = qt_window.centralWidget()
+        if central:
+            central.hide()
+
+        # 4. Create the multi-panel container and dock it on the left
+        multi = MultiPanelContainer(self.app_state)
+        multi.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        multi.setMinimumHeight(PLOT_CONTAINER_MIN_HEIGHT)
+
+        panel_dock = QDockWidget("Audio Panels", qt_window)
+        panel_dock.setWidget(multi)
+        panel_dock.setFeatures(QDockWidget.NoDockWidgetFeatures)
+        panel_dock.setTitleBarWidget(QWidget())  # hide title bar
+        qt_window.addDockWidget(Qt.LeftDockWidgetArea, panel_dock)
+
+        self.plot_container = multi
+
+        from qtpy.QtCore import QTimer
+        from .app_constants import NO_VIDEO_PANEL_WIDTH_RATIO
+
+        def _apply_dock_ratio():
+            total_width = qt_window.width()
+            panel_width = int(total_width * NO_VIDEO_PANEL_WIDTH_RATIO)
+            sidebar_width = total_width - panel_width
+            for dock in qt_window.findChildren(QDockWidget):
+                if dock is panel_dock:
+                    continue
+                if dock.isVisible() and dock.widget() is not None:
+                    qt_window.resizeDocks(
+                        [panel_dock, dock], [panel_width, sidebar_width], Qt.Horizontal,
+                    )
+                    break
+
+        QTimer.singleShot(0, _apply_dock_ratio)
+
+        # 5. Re-wire signals and widget references
+        multi.labels_redraw_needed.connect(self._on_labels_redraw_needed)
+
+        for widget in [
+            self.labels_widget,
+            self.plot_settings_widget,
+            self.transform_widget,
+            self.changepoints_widget,
+            self.ephys_widget,
+        ]:
+            if hasattr(widget, "set_plot_container"):
+                widget.set_plot_container(multi)
+
+        self.data_widget.plot_container = multi
+
+        # 6. Configure navigation widget for no-video mode
+        self.navigation_widget.configure_for_no_video()
 

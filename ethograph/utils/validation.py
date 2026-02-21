@@ -80,20 +80,32 @@ def is_integer_array(arr: np.ndarray) -> bool:
     return np.issubdtype(arr.dtype, np.integer)
 
 
-def validate_required_attrs(ds: xr.Dataset) -> List[str]:
-    """Validate required dataset attributes."""
+def validate_required_attrs(
+    ds: xr.Dataset,
+    require_fps: bool = True,
+    require_cameras: bool = True,
+) -> List[str]:
+    """Validate required dataset attributes.
+
+    Args:
+        ds: Dataset to validate.
+        require_fps: When False, missing fps is not an error (audio-only mode).
+        require_cameras: When False, missing cameras is not an error (no-video mode).
+    """
     errors = []
 
-    if "fps" not in ds.attrs:
+    if "fps" in ds.attrs:
+        if not isinstance(ds.attrs["fps"], Number) or ds.attrs["fps"] <= 0:
+            errors.append("'fps' must be a positive number")
+    elif require_fps:
         errors.append("Xarray dataset ('ds') must have 'fps' attribute")
-    elif not isinstance(ds.attrs["fps"], Number) or ds.attrs["fps"] <= 0:
-        errors.append("'fps' must be a positive number")
 
     if "trial" not in ds.attrs:
         errors.append("Xarray dataset ('ds') must have 'trial' attribute")
-        
-    if "cameras" not in ds.attrs or len(ds.attrs["cameras"]) == 0:
-        errors.append("Xarray dataset ('ds') must have 'cameras' List attribute")
+
+    if require_cameras:
+        if "cameras" not in ds.attrs or len(ds.attrs["cameras"]) == 0:
+            errors.append("Xarray dataset ('ds') must have 'cameras' List attribute")
 
     return errors
 
@@ -166,12 +178,19 @@ def validate_colors(ds: xr.Dataset) -> List[str]:
     return errors
 
 
-def validate_dataset(ds: xr.Dataset, type_vars_dict: Dict) -> List[str]:
+def validate_dataset(
+    ds: xr.Dataset,
+    type_vars_dict: Dict,
+    require_fps: bool = True,
+    require_cameras: bool = True,
+) -> List[str]:
     """Validate dataset structure and data types.
 
     Args:
         ds: The xarray Dataset to validate
         type_vars_dict: Dictionary containing categorized variables/coordinates
+        require_fps: When False, missing fps is not an error.
+        require_cameras: When False, missing cameras is not an error.
 
     Returns:
         List of validation error messages (empty if valid)
@@ -179,7 +198,7 @@ def validate_dataset(ds: xr.Dataset, type_vars_dict: Dict) -> List[str]:
     errors = []
 
     # Required attributes
-    errors.extend(validate_required_attrs(ds))
+    errors.extend(validate_required_attrs(ds, require_fps=require_fps, require_cameras=require_cameras))
     
 
     # Required dimensions and coordinates
@@ -343,8 +362,10 @@ def extract_type_vars(ds: xr.Dataset, dt: "TrialTree") -> dict:
 
 
 def validate_datatree(
-    dt: "TrialTree"
-) -> tuple[Dict[str, Set[str]], List[str]]:
+    dt: "TrialTree",
+    require_fps: bool = True,
+    require_cameras: bool = True,
+) -> list[str]:
     """Validate a TrialTree for consistency and data integrity.
 
     Performs two levels of validation:
@@ -355,20 +376,21 @@ def validate_datatree(
 
     Args:
         dt: TrialTree to validate
+        require_fps: When False, missing fps is not an error.
+        require_cameras: When False, missing cameras is not an error.
+
     Returns:
-        Tuple of:
-        - inconsistencies: Dict mapping category to set of inconsistent items
-        - errors: List of validation error messages
+        List of validation error messages (empty if valid)
     """
     ds = dt.itrial(0) # sample
     type_vars_dict = extract_type_vars(ds, dt)
-    
+
     print("Extracted type_vars_dict:", type_vars_dict)
-            
+
     datasets = _extract_trial_datasets(dt)
 
     if not datasets:
-        return {}, ["No trial datasets found in TrialTree"]
+        return ["No trial datasets found in TrialTree"]
 
 
     errors = []
@@ -376,6 +398,9 @@ def validate_datatree(
     sample_size = min(5, len(datasets))
     sample_indices = np.random.choice(len(datasets), size=sample_size, replace=False)
     for idx in sample_indices:
-        errors.extend(validate_dataset(datasets[idx], type_vars_dict))
-        
+        errors.extend(validate_dataset(
+            datasets[idx], type_vars_dict,
+            require_fps=require_fps, require_cameras=require_cameras,
+        ))
+
     return list(set(errors))

@@ -20,8 +20,17 @@ def _show_popup(message: str, title: str = "Load Error") -> None:
     parent = current_viewer().window._qt_window
     QMessageBox.warning(parent, title, message)
 
-def load_dataset(file_path: str) -> Tuple[Optional[xr.Dataset], Optional[dict]]:
+def load_dataset(
+    file_path: str,
+    require_fps: bool = True,
+    require_cameras: bool = True,
+) -> Tuple[Optional[xr.Dataset], Optional[dict]]:
     """Load dataset from file path and cache metadata on the instance.
+
+    Args:
+        file_path: Path to the .nc file.
+        require_fps: When False, missing fps is not an error (audio-only mode).
+        require_cameras: When False, missing cameras is not an error (no-video mode).
 
     Returns:
         Tuple of (dt, label_dt, type_vars_dict) on success.
@@ -43,7 +52,9 @@ def load_dataset(file_path: str) -> Tuple[Optional[xr.Dataset], Optional[dict]]:
     label_dt = dt.get_label_dt()
     ds = dt.itrial(0)
 
-    errors = validate_datatree(dt)
+    errors = validate_datatree(
+        dt, require_fps=require_fps, require_cameras=require_cameras,
+    )
     if errors:
         error_msg = "\n".join(f"• {e}" for e in errors)
         suffix = "\n\nSee documentation: XXX"

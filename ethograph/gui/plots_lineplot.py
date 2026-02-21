@@ -98,12 +98,16 @@ class LinePlot(BasePlot):
     def _on_view_range_changed(self):
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
+        if self.app_state.time is None:
+            return
 
         self._pending_range = self.get_current_xlim()
         self._debounce_timer.start()
 
     def _debounced_update(self):
         if self._pending_range is None:
+            return
+        if self.app_state.time is None:
             return
 
         t0, t1 = self._pending_range

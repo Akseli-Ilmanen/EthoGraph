@@ -141,17 +141,29 @@ class DataWidget(DataLoader, QWidget):
             return
 
         nc_file_path = self.io_widget.get_nc_file_path()
+
+        has_video = bool(self.app_state.video_folder)
+        has_pose = bool(self.app_state.pose_folder)
+        require_fps = has_video or has_pose
+        require_cameras = has_video
+
         try:
-            self.app_state.dt, label_dt, self.type_vars_dict = load_dataset(nc_file_path)
+            self.app_state.dt, label_dt, self.type_vars_dict = load_dataset(
+                nc_file_path,
+                require_fps=require_fps,
+                require_cameras=require_cameras,
+            )
         except Exception:
             self._cleanup_load_state()
             return
 
         self.app_state.trial_conditions = self.type_vars_dict["trial_conditions"]
-        
+
         has_audio = "mics" in self.type_vars_dict and self.app_state.audio_folder
+        no_video = bool(has_audio and not has_video)
+        self.app_state.no_video_mode = no_video
+
         if has_audio and "features" in self.type_vars_dict:
-            
             features_list = list(self.type_vars_dict["features"])
             self.type_vars_dict["features"] = features_list + ["Audio Waveform"]
 
@@ -209,10 +221,15 @@ class DataWidget(DataLoader, QWidget):
         self.plot_settings_widget.set_enabled_state(has_audio=False)
         if self.transform_widget:
             self.transform_widget.setEnabled(True)
+            if no_video:
+                self.transform_widget.show_envelope_target_combo()
         if self.ephys_widget:
             self.ephys_widget.setEnabled(True)
             self.ephys_widget.populate_ephys_default_path()
 
+        # Switch to 3-panel layout when no video is provided
+        if no_video:
+            self.meta_widget.switch_to_no_video_layout()
 
         trial = self.app_state.trials_sel
         try:
@@ -286,11 +303,18 @@ class DataWidget(DataLoader, QWidget):
 
         self.view_mode_combo = QComboBox()
         self.view_mode_combo.setObjectName("view_mode_combo")
-        self.view_mode_combo.addItems([
-            "LinePlot (N-dim)",
-            "Spectrogram (1-dim)",
-            "Heatmap (N-dim)",
-        ])
+        if self.app_state.no_video_mode:
+            # Spectrogram is always visible in its own panel
+            self.view_mode_combo.addItems([
+                "LinePlot (N-dim)",
+                "Heatmap (N-dim)",
+            ])
+        else:
+            self.view_mode_combo.addItems([
+                "LinePlot (N-dim)",
+                "Spectrogram (1-dim)",
+                "Heatmap (N-dim)",
+            ])
         self.view_mode_combo.currentTextChanged.connect(self._on_view_mode_changed)
         self.view_mode_combo.hide()
         self.controls.append(self.view_mode_combo)
@@ -351,6 +375,12 @@ class DataWidget(DataLoader, QWidget):
 
         overlay_layout.addStretch()
 
+        # In no-video mode, audio waveform/spectrogram have dedicated panels
+        # so overlay checkboxes are not needed.
+        if self.app_state.no_video_mode:
+            self.show_waveform_checkbox.setVisible(False)
+            self.show_spectrogram_checkbox.setVisible(False)
+
         self._set_controls_enabled(False)
 
     # ------------------------------------------------------------------
@@ -390,6 +420,37 @@ class DataWidget(DataLoader, QWidget):
             self.plot_container.hide_audio_overlay()
         xmin, xmax = self.plot_container.get_current_xlim()
         self.update_main_plot(t0=xmin, t1=xmax)
+
+    def _update_view_mode_items(self, feature_sel: str):
+        """Update view_mode_combo items based on selected feature.
+
+        When Audio Waveform is selected, LinePlot is not applicable — the
+        dedicated AudioTracePlot panel already shows the waveform.  Only
+        Heatmap (and Spectrogram in video mode) remain as options.
+        """
+        is_audio = feature_sel == "Audio Waveform"
+        current_text = self.view_mode_combo.currentText()
+
+        self.view_mode_combo.blockSignals(True)
+        self.view_mode_combo.clear()
+
+        if self.app_state.no_video_mode:
+            if is_audio:
+                self.view_mode_combo.addItems(["Heatmap (N-dim)"])
+            else:
+                self.view_mode_combo.addItems(["LinePlot (N-dim)", "Heatmap (N-dim)"])
+        else:
+            if is_audio:
+                self.view_mode_combo.addItems(["Spectrogram (1-dim)", "Heatmap (N-dim)"])
+            else:
+                self.view_mode_combo.addItems([
+                    "LinePlot (N-dim)", "Spectrogram (1-dim)", "Heatmap (N-dim)",
+                ])
+
+        idx = self.view_mode_combo.findText(current_text)
+        if idx >= 0:
+            self.view_mode_combo.setCurrentIndex(idx)
+        self.view_mode_combo.blockSignals(False)
 
     def _on_view_mode_changed(self, mode: str):
         if not self.app_state.ready or not self.plot_container:
@@ -617,6 +678,7 @@ class DataWidget(DataLoader, QWidget):
             self.app_state.set_key_sel(key, selected_value)
 
             if key == "features":
+                self._update_view_mode_items(selected_value)
                 self.view_mode_combo.show()
                 is_ephys = selected_value in getattr(self.app_state, 'ephys_source_map', {})
                 if selected_value == "Audio Waveform":
@@ -635,7 +697,10 @@ class DataWidget(DataLoader, QWidget):
                 xmin, xmax = current_plot.get_current_xlim()
 
             if key in ["cameras", "mics"]:
-                self.update_video_audio()
+                if self.app_state.no_video_mode and key == "mics":
+                    self._update_audio_only()
+                else:
+                    self.update_video_audio()
 
             if key not in ["cameras", "pose"]:
                 current_plot = self.plot_container.get_current_plot()
@@ -830,6 +895,8 @@ class DataWidget(DataLoader, QWidget):
         feature_sel = getattr(self.app_state, 'features_sel', fallback_feature)
         self.app_state.set_time(feature_sel=feature_sel)
 
+        if hasattr(self, 'view_mode_combo'):
+            self._update_view_mode_items(feature_sel)
         is_ephys = feature_sel in getattr(self.app_state, 'ephys_source_map', {})
         if feature_sel == "Audio Waveform":
             self._apply_view_mode_for_waveform()
@@ -848,10 +915,16 @@ class DataWidget(DataLoader, QWidget):
 
         self.app_state.current_frame = 0
         self.update_video_audio()
-        self.update_pose()
+        if not self.app_state.no_video_mode:
+            self.update_pose()
         self.update_label()
         self.update_main_plot()
         self.update_space_plot()
+
+        from .multipanel_container import MultiPanelContainer
+        if isinstance(self.plot_container, MultiPanelContainer):
+            self.plot_container.update_time_range_from_data()
+
         self.app_state.verification_changed.emit()
 
     # ------------------------------------------------------------------
@@ -925,8 +998,33 @@ class DataWidget(DataLoader, QWidget):
     # Video / audio / pose / space
     # ------------------------------------------------------------------
 
+    def _update_audio_only(self):
+        """Update audio path and refresh multi-panel audio panels (no-video mode)."""
+        if not self.app_state.ready:
+            return
+        if self.app_state.audio_folder and hasattr(self.app_state, 'mics_sel'):
+            audio_path, _ = self.app_state.get_audio_source()
+            if audio_path:
+                self.app_state.audio_path = audio_path
+            else:
+                self.app_state.audio_path = None
+
+        if self.transform_widget:
+            self.transform_widget.set_enabled_state(has_audio=True)
+        if self.changepoints_widget:
+            self.changepoints_widget.set_enabled_state(True)
+
+        from .multipanel_container import MultiPanelContainer
+        if isinstance(self.plot_container, MultiPanelContainer):
+            self.plot_container.update_audio_panels()
+
     def update_video_audio(self):
-        if not self.app_state.ready or not self.app_state.video_folder:
+        if not self.app_state.ready:
+            return
+        if self.app_state.no_video_mode:
+            self._update_audio_only()
+            return
+        if not self.app_state.video_folder:
             return
 
         current_plot = self.plot_container.get_current_plot()
@@ -1016,6 +1114,10 @@ class DataWidget(DataLoader, QWidget):
         self.labels_widget.refresh_labels_shapes_layer()
 
     def toggle_pause_resume(self):
+        from .multipanel_container import MultiPanelContainer
+        if isinstance(self.plot_container, MultiPanelContainer):
+            self.plot_container.toggle_pause_resume()
+            return
         if not self.video:
             return
         self.video.toggle_pause_resume()
@@ -1024,7 +1126,7 @@ class DataWidget(DataLoader, QWidget):
         self.app_state.current_frame = frame_number
         self.plot_container.update_time_marker_and_window(frame_number)
 
-        current_time = frame_number / self.app_state.ds.fps
+        current_time = frame_number / self.app_state.effective_fps
         xlim = self.plot_container.get_current_xlim()
         if current_time < xlim[0] or current_time > xlim[1]:
             self.plot_container.set_x_range(mode='center', center_on_frame=frame_number)

@@ -138,7 +138,10 @@ class NapariVideoSync(QObject):
                 channel_idx = min(channel_idx, n_channels - 1)
                 segment = segment[:, channel_idx]
 
-            rate = (self.fps_playback / self.fps) * self.audio_sr
+            if self.app_state.av_speed_coupled:
+                rate = (self.fps_playback / self.fps) * self.audio_sr
+            else:
+                rate = self.app_state.audio_playback_speed * self.audio_sr
             self._audio_player = PlayAudio()
             self._audio_player.play(data=segment, rate=float(rate), blocking=False)
 

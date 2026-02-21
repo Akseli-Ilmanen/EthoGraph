@@ -210,6 +210,19 @@ class TransformWidget(QWidget):
         self.energy_configure_btn.clicked.connect(self._open_energy_params)
         grid.addWidget(self.energy_configure_btn, 1, 0, 1, 3)
 
+        self.envelope_target_label = QLabel("Show envelope on:")
+        self.envelope_target_combo = QComboBox()
+        self.envelope_target_combo.addItems(["Audio (top panel)", "Feature (bottom panel)"])
+        self.envelope_target_combo.setToolTip(
+            "Choose which panel displays the envelope:\n"
+            "Audio — computes from audio, shows on top waveform panel\n"
+            "Feature — computes from current feature, shows on bottom panel"
+        )
+        self.envelope_target_label.hide()
+        self.envelope_target_combo.hide()
+        grid.addWidget(self.envelope_target_label, 2, 0)
+        grid.addWidget(self.envelope_target_combo, 2, 1, 1, 2)
+
         main_layout.addWidget(self.energy_panel)
 
     def _open_energy_params(self):
@@ -311,6 +324,25 @@ class TransformWidget(QWidget):
     def set_meta_widget(self, meta_widget):
         self.meta_widget = meta_widget
 
+    def show_envelope_target_combo(self):
+        """Show the envelope target combo (called when entering no-video mode)."""
+        self.envelope_target_label.show()
+        self.envelope_target_combo.show()
+        self.envelope_target_combo.currentIndexChanged.connect(self._on_envelope_target_changed)
+        self._on_envelope_target_changed()
+
+    def _on_envelope_target_changed(self):
+        text = self.envelope_target_combo.currentText()
+        target = "audio" if "Audio" in text else "feature"
+        self.app_state._envelope_target = target
+
+    def get_envelope_target(self) -> str:
+        """Return 'audio' or 'feature' based on combo selection."""
+        if self.envelope_target_combo.isVisible():
+            text = self.envelope_target_combo.currentText()
+            return "audio" if "Audio" in text else "feature"
+        return "audio"
+
     def set_enabled_state(self, has_audio: bool = False):
         self.setEnabled(True)
         self.noise_reduce_checkbox.setEnabled(has_audio)
@@ -323,9 +355,14 @@ class TransformWidget(QWidget):
             return
 
         from .dialog_busy_progress import BusyProgressDialog
+        from .multipanel_container import MultiPanelContainer
 
         def _apply():
             self.plot_container.clear_audio_cache()
+            if isinstance(self.plot_container, MultiPanelContainer):
+                # Refresh both audio panels
+                self.plot_container.update_audio_panels()
+                return
             if self.plot_container.is_spectrogram():
                 current_plot = self.plot_container.get_current_plot()
                 if hasattr(current_plot, 'buffer') and hasattr(current_plot.buffer, '_clear_buffer'):

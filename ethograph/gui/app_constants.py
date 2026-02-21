@@ -21,6 +21,9 @@ LABELS_OVERLAY_BOX_MARGIN = 5
 LABELS_OVERLAY_TEXT_SIZE = 18
 LABELS_OVERLAY_FALLBACK_SIZE = (100, 100)
 
+# No-video mode panel layout (widgets_meta.py)
+NO_VIDEO_PANEL_WIDTH_RATIO = 0.7  # panels take 70%, sidebar takes 30%
+
 # Plot container (plot_container.py, widgets_meta.py)
 PLOT_CONTAINER_MIN_HEIGHT = 250
 PLOT_CONTAINER_SIZE_HINT_HEIGHT = 300
@@ -114,3 +117,11 @@ CP_SCATTER_Y_POSITION_RATIO = 0.05  # 5% from bottom of y-range
 # Envelope overlay (plot_container.py)
 ENVELOPE_OVERLAY_COLOR = (255, 165, 0, 120)
 ENVELOPE_OVERLAY_WIDTH = 2
+
+# =============================================================================
+# AUDIO PLAYBACK (widgets_navigation.py, multipanel_container.py)
+# =============================================================================
+AUDIO_SPEED_MIN = 0.1
+AUDIO_SPEED_MAX = 10.0
+AUDIO_SPEED_STEP = 0.25
+AUDIO_SPEED_DEFAULT = 1.0

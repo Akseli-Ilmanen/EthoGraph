@@ -383,6 +383,8 @@ class HeatmapPlot(BasePlot):
             return
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
+        if self.app_state.time is None:
+            return
         t0, t1 = self.get_current_xlim()
         if self._buffer_covers(t0, t1):
             return
@@ -391,6 +393,8 @@ class HeatmapPlot(BasePlot):
 
     def _debounced_update(self):
         if self._pending_range is None:
+            return
+        if self.app_state.time is None:
             return
         t0, t1 = self._pending_range
         self._pending_range = None

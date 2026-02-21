@@ -611,9 +611,16 @@ class LabelsWidget(QWidget):
             print(f"Error in plot click handling: {e}")
             return
 
+        # In no-video mode, any click (not in label mode) jumps the time marker
+        if self.app_state.no_video_mode and not self.ready_for_label_click:
+            if self.plot_container is not None:
+                self.plot_container.update_time_marker_by_time(t_clicked)
+            if button == Qt.LeftButton:
+                return
+
         # Handle right-click - seek video to clicked position
-        if button == Qt.RightButton and self.app_state.video_folder is not None:
-            frame = int(t_clicked * self.app_state.ds.fps)
+        if button == Qt.RightButton and not self.app_state.no_video_mode and self.app_state.video_folder is not None:
+            frame = int(t_clicked * self.app_state.effective_fps)
             if hasattr(self.app_state, 'video') and self.app_state.video:
                 self.app_state.video.seek_to_frame(frame)
 
@@ -718,10 +725,10 @@ class LabelsWidget(QWidget):
     def _seek_to_frame(self, time_s: float):
         """Seek video and update time marker to the specified time in seconds."""
         if hasattr(self.app_state, 'video') and self.app_state.video:
-            video_frame = int(time_s * self.app_state.ds.fps)
+            video_frame = int(time_s * self.app_state.effective_fps)
             self.app_state.video.seek_to_frame(video_frame)
         elif self.plot_container:
-            self.plot_container.current_plot.update_time_marker(time_s)
+            self.plot_container.update_time_marker_by_time(time_s)
 
 
     def _delete_label(self):
@@ -767,13 +774,73 @@ class LabelsWidget(QWidget):
             return
 
         onset_s, offset_s, _ = get_interval_bounds(df, self.current_labels_pos)
-        start_frame = int(onset_s * self.app_state.ds.fps)
-        end_frame = int(offset_s * self.app_state.ds.fps)
+
+        if self.app_state.no_video_mode:
+            self._play_audio_segment(onset_s, offset_s)
+            return
+
+        start_frame = int(onset_s * self.app_state.effective_fps)
+        end_frame = int(offset_s * self.app_state.effective_fps)
 
         if hasattr(self.app_state, 'video') and self.app_state.video:
             self.app_state.video.play_segment(start_frame, end_frame)
         else:
             print("No video available for playback.")
+
+    def _play_audio_segment(self, onset_s: float, offset_s: float):
+        """Play an audio segment directly (no-video mode) with time marker tracking."""
+        try:
+            import sounddevice as sd
+            import time as _time
+        except ImportError:
+            print("sounddevice not installed — cannot play audio segment.")
+            return
+
+        from .plots_spectrogram import SharedAudioCache
+
+        audio_path = getattr(self.app_state, 'audio_path', None)
+        if not audio_path:
+            print("No audio path set.")
+            return
+
+        loader = SharedAudioCache.get_loader(audio_path)
+        if loader is None:
+            return
+
+        fs = loader.rate
+        start_sample = max(0, int(onset_s * fs))
+        end_sample = min(len(loader), int(offset_s * fs))
+        if end_sample <= start_sample:
+            return
+
+        audio_data = loader[start_sample:end_sample]
+        _, channel_idx = self.app_state.get_audio_source()
+        if audio_data.ndim > 1:
+            ch = min(channel_idx, audio_data.shape[1] - 1)
+            audio_data = audio_data[:, ch]
+
+        speed = self.app_state.audio_playback_speed
+        sd.stop()
+        sd.play(audio_data, samplerate=int(fs * speed))
+
+        # Track playback with time marker
+        if self.plot_container:
+            from .multipanel_container import MultiPanelContainer
+            if isinstance(self.plot_container, MultiPanelContainer):
+                pc = self.plot_container
+                pc._playback_start_time = onset_s
+                pc._playback_start_wall = _time.perf_counter()
+                pc._playback_playing = True
+
+                def _stop_at_end():
+                    elapsed = _time.perf_counter() - pc._playback_start_wall
+                    if onset_s + elapsed * speed >= offset_s:
+                        pc._stop_playback()
+
+                pc._playback_timer.timeout.disconnect()
+                pc._playback_timer.timeout.connect(pc._advance_playback_marker)
+                pc._playback_timer.timeout.connect(_stop_at_end)
+                pc._playback_timer.start()
 
 
 
@@ -814,7 +881,7 @@ class LabelsWidget(QWidget):
 
         shapes_layer.z_index = Z_INDEX_LABELS_OVERLAY
 
-        video_fps = self.app_state.ds.fps if hasattr(self.app_state, 'ds') and self.app_state.ds else 30.0
+        video_fps = self.app_state.effective_fps
         individual = self._current_individual()
 
         shapes_layer.metadata = {
@@ -861,6 +928,8 @@ class LabelsWidget(QWidget):
 
     def refresh_labels_shapes_layer(self):
         """Refresh intervals data without recreating the layer."""
+        if self.app_state.no_video_mode:
+            return
         if "_labels" not in self.viewer.layers:
             self._add_labels_shapes_layer()
             return

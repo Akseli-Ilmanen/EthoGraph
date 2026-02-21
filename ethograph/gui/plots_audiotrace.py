@@ -117,7 +117,7 @@ class AudioTracePlot(BasePlot):
 
         if hasattr(self.app_state, 'ds') and self.app_state.ds is not None:
             t0, t1 = self.get_current_xlim()
-            current_time = frame_number / self.app_state.ds.fps
+            current_time = frame_number / self.app_state.effective_fps
 
             if self.current_range is None or current_time < self.current_range[0] or current_time > self.current_range[1]:
                 self.update_plot_content(t0, t1)
