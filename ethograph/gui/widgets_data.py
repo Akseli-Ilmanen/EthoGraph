@@ -808,7 +808,7 @@ class DataWidget(DataLoader, QWidget):
                     "You selected a pose folder, although the .nc"
                     "contains no pose data.") 
             else:  
-                for pose_file in poses
+                for pose_file in poses:
                     path = os.path.join(pose_folder, str(pose_file))
                     if not os.path.isfile(path):
                         missing.append(f"Pose: {path}")

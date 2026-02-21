@@ -6,6 +6,7 @@ audian/
 *.wav
 *.nc
 *.nwb
+*.npy
 
 
 *gui_settings.yaml

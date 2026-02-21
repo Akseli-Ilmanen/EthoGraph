@@ -952,6 +952,10 @@ class FunctionParamsDialog(QDialog):
             docs_btn.clicked.connect(lambda: webbrowser.open(self._spec.doc_url))
             btn_layout.addWidget(docs_btn)
 
+        reset_btn = QPushButton("Reset to defaults")
+        reset_btn.clicked.connect(self._on_reset)
+        btn_layout.addWidget(reset_btn)
+
         copy_btn = QPushButton("Copy code to clipboard")
         copy_btn.clicked.connect(self._on_copy)
         btn_layout.addWidget(copy_btn)
@@ -961,6 +965,11 @@ class FunctionParamsDialog(QDialog):
         btn_layout.addWidget(apply_btn)
 
         layout.addLayout(btn_layout)
+
+    def _on_reset(self):
+        default_params = {pi.name: pi.default for pi in self._param_infos}
+        editor_text = _build_editor_text(self._spec, self._param_infos, default_params)
+        self._editor.setPlainText(editor_text)
 
     def _on_apply(self):
         raw = _parse_editor_text(

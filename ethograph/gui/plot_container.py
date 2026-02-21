@@ -226,6 +226,10 @@ class PlotContainer(QWidget):
             host = self.line_plot
         elif self.is_audiotrace():
             host = self.audio_trace_plot
+        elif self.is_spectrogram():
+            host = self.spectrogram_plot
+        elif self.is_ephystrace():
+            host = self.ephys_trace_plot
         else:
             return
 

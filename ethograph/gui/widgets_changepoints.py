@@ -429,20 +429,20 @@ class ChangepointsWidget(QWidget):
     def _open_kinematic_params(self):
         method = self.method_combo.currentText()
         key = _KINEMATIC_REGISTRY_MAP.get(method)
-        if key:
-            open_function_params_dialog(key, self.app_state, parent=self)
+        if key and open_function_params_dialog(key, self.app_state, parent=self) is not None:
+            self._compute_dataset_changepoints()
 
     def _open_audio_cp_params(self):
         method = self.audio_cp_method_combo.currentText()
         key = _AUDIO_CP_REGISTRY_MAP.get(method)
-        if key:
-            open_function_params_dialog(key, self.app_state, parent=self)
+        if key and open_function_params_dialog(key, self.app_state, parent=self) is not None:
+            self._compute_audio_changepoints()
 
     def _open_ruptures_params(self):
         method = self.ruptures_method_combo.currentText()
         key = _RUPTURES_REGISTRY_MAP.get(method)
-        if key:
-            open_function_params_dialog(key, self.app_state, parent=self)
+        if key and open_function_params_dialog(key, self.app_state, parent=self) is not None:
+            self._compute_ruptures_changepoints()
 
     # =========================================================================
     # Reference label update

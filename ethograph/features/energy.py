@@ -155,6 +155,7 @@ def env_meansquared(
     rate: float,
     freq_cutoffs: tuple | None = None,
     smooth_win: int = 2,
+    **kwargs,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute meansquared energy envelope from a 1-D audio array.
 
@@ -162,13 +163,13 @@ def env_meansquared(
     envelope is the meansquared energy at the original sample rate.
     """
     sound = _to_sound(data, rate)
-    kwargs = {}
+    ms_kwargs = {}
     if freq_cutoffs is not None:
-        kwargs["freq_cutoffs"] = freq_cutoffs
+        ms_kwargs["freq_cutoffs"] = freq_cutoffs
     if smooth_win != 2:
-        kwargs["smooth_win"] = smooth_win
+        ms_kwargs["smooth_win"] = smooth_win
     envelope = np.squeeze(
-        voc.signal.energy.meansquared(sound, **kwargs),
+        voc.signal.energy.meansquared(sound, **ms_kwargs),
         axis=0,
     )
     env_time = np.arange(len(envelope)) / rate

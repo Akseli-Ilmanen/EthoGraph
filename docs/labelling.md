@@ -33,9 +33,6 @@ You can edit or delete existing labels using the labels widget interface:
 
 ## Changepoint Correction
 
-- Note how in the video above you can turn off/on the Changepoint correction. 
+- Note how in the video above you can turn off/on the Changepoint correction.
 
-
-ADD scehmatic image changepoint correction
-
-S
+See [Changepoints](changepoints.md) for full documentation on detection methods and correction parameters.
