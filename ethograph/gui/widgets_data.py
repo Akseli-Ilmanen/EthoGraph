@@ -20,6 +20,7 @@ from qtpy.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QSizePolicy,
     QWidget,
 )
@@ -119,28 +120,53 @@ class DataWidget(DataLoader, QWidget):
     # Load
     # ------------------------------------------------------------------
 
+    def _cleanup_load_state(self):
+        dt = getattr(self.app_state, 'dt', None)
+        if dt is not None:
+            dt.close()
+            self.app_state.dt = None
+        self.app_state.ds = None
+        self.app_state.label_dt = None
+        self.app_state.label_ds = None
+        self.type_vars_dict = {}
+        self.app_state.ready = False
+
+    def _cancel_load(self, reason: str):
+        QMessageBox.warning(self, "Load cancelled", reason)
+        self._cleanup_load_state()
+
     def on_load_clicked(self):
         if not self.app_state.nc_file_path:
-            show_error("Please select a path ending with .nc")
+            QMessageBox.warning(self, "Load cancelled", "Please select a path ending with .nc")
             return
 
         nc_file_path = self.io_widget.get_nc_file_path()
-        self.app_state.dt, label_dt, self.type_vars_dict = load_dataset(nc_file_path)
-        self.app_state.trial_conditions = self.type_vars_dict["trial_conditions"]
+        try:
+            self.app_state.dt, label_dt, self.type_vars_dict = load_dataset(nc_file_path)
+        except Exception:
+            self._cleanup_load_state()
+            return
 
-        has_audio = "mics" in self.type_vars_dict or self.app_state.audio_folder
+        self.app_state.trial_conditions = self.type_vars_dict["trial_conditions"]
+        
+        has_audio = "mics" in self.type_vars_dict and self.app_state.audio_folder
         if has_audio and "features" in self.type_vars_dict:
+            
             features_list = list(self.type_vars_dict["features"])
             self.type_vars_dict["features"] = features_list + ["Audio Waveform"]
 
         if self.app_state.ephys_folder and "features" in self.type_vars_dict:
-            ephys_features = self.io_widget._expand_ephys_with_streams(
-                self.app_state.ephys_folder, self.app_state.ds,
-            )
+            try:
+                ephys_features = self.io_widget._expand_ephys_with_streams(
+                    self.app_state.ephys_folder, self.app_state.ds,
+                )
+            except Exception as e:
+                self._cancel_load(f"Failed to load ephys features: {e}")
+                return
             if ephys_features:
                 features_list = list(self.type_vars_dict["features"])
                 self.type_vars_dict["features"] = features_list + ephys_features
- 
+
         downsample_factor = self.io_widget.get_downsample_factor()
         if downsample_factor is not None:
             self.app_state.dt = downsample_trialtree(self.app_state.dt, downsample_factor)
@@ -161,6 +187,13 @@ class DataWidget(DataLoader, QWidget):
         self.app_state.ds = self.app_state.dt.trial(trials[0])
         self.app_state.label_ds = self.app_state.label_dt.trial(trials[0])
         self.app_state.trials = sorted(trials)
+
+        missing = self._validate_media_files(self.app_state.ds)
+        if missing:
+            self._cancel_load(
+                "Missing media files for first trial:\n" + "\n".join(missing)
+            )
+            return
 
         self._create_trial_controls()
 
@@ -388,7 +421,7 @@ class DataWidget(DataLoader, QWidget):
             self.plot_container.switch_to_audiotrace()
 
     def _apply_view_mode_for_ephys_waveform(self):
-        from .spectrogram_sources import build_ephys_source
+        from .data_sources import build_ephys_source
 
         mode = self.view_mode_combo.currentText()
         if mode.startswith("Spectrogram"):
@@ -440,7 +473,7 @@ class DataWidget(DataLoader, QWidget):
             self._update_audio_overlay()
 
     def _build_xarray_source(self):
-        from .spectrogram_sources import build_xarray_source
+        from .data_sources import build_xarray_source
 
         feature_sel = getattr(self.app_state, 'features_sel', None)
         if not feature_sel:
@@ -688,6 +721,11 @@ class DataWidget(DataLoader, QWidget):
                         combo.setCurrentText(str(vars[0]))
                         self.app_state.set_key_sel(key, str(vars[0]))
 
+                previous = getattr(self.app_state, f"{key}_sel_previous", None)
+                if previous not in vars_str:
+                    fallback = vars_str[1] if len(vars_str) > 1 else vars_str[0] if vars_str else None
+                    self.app_state.set_key_sel_previous(key, fallback)
+
         if self.app_state.key_sel_exists("trials"):
             saved_trial = self.app_state.get_key_sel("trials")
             self.app_state.set_key_sel("trials", saved_trial)
@@ -736,6 +774,46 @@ class DataWidget(DataLoader, QWidget):
             print(f"Error loading trial {current_trial}: {e}\nReverting to first trial.")
             self.app_state.trials_sel = first_trial
             self.on_trial_changed()
+
+    def _validate_media_files(self, ds) -> list[str]:
+        missing = []
+        attrs = ds.attrs
+
+        video_folder = self.app_state.video_folder
+        if video_folder:
+            for cam in np.atleast_1d(attrs.get("cameras", [])):
+                path = os.path.join(video_folder, str(cam))
+                if not os.path.isfile(path):
+                    missing.append(f"Video: {path}")
+
+        audio_folder = self.app_state.audio_folder
+        if audio_folder:
+            mics = np.atleast_1d(attrs.get("mics", []))
+            if mics.size == 0:
+                show_warning(
+                "You selected an audio folder, although the .nc "
+                "contains no media attrs of audio data."
+            )
+            else:      
+                for mic in mics:
+                    path = os.path.join(audio_folder, str(mic))
+                    if not os.path.isfile(path):
+                        missing.append(f"Audio: {path}")
+
+        pose_folder = self.app_state.pose_folder
+        if pose_folder:
+            poses = np.atleast_1d(attrs.get("pose", []))
+            if poses.size == 0:
+                show_warning(
+                    "You selected a pose folder, although the .nc"
+                    "contains no pose data.") 
+            else:  
+                for pose_file in poses
+                    path = os.path.join(pose_folder, str(pose_file))
+                    if not os.path.isfile(path):
+                        missing.append(f"Pose: {path}")
+
+        return missing
 
     def on_trial_changed(self):
         trials_sel = self.app_state.trials_sel
@@ -788,8 +866,6 @@ class DataWidget(DataLoader, QWidget):
         current_plot = self.plot_container.get_current_plot()
 
         self.plot_container.clear_amplitude_envelope()
-        if self.changepoints_widget:
-            self.changepoints_widget.update_frequency_limits()
 
         try:
             current_plot.update_plot(**kwargs)
@@ -877,7 +953,9 @@ class DataWidget(DataLoader, QWidget):
         if self.changepoints_widget:
             self.changepoints_widget.set_enabled_state(has_audio)
 
+        self.show_envelope_checkbox.show()
         if has_audio:
+            
             self.show_waveform_checkbox.show()
             self.show_spectrogram_checkbox.show()
         else:

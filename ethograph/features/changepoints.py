@@ -68,9 +68,36 @@ def find_troughs_binary(x, **kwargs):
     troughs, _ = find_peaks(-np.asarray(x), **kwargs)
     return add_NaN_boundaries(x, troughs)
 
+         
+        
+def find_nearest_turning_points_binary(x, threshold=1, max_value=None, prominence=0.5, distance=2, **kwargs):
+    """Convert a 1D signal into a binary mask marking boundaries of peak regions.
 
-def find_nearest_turning_points_binary(x, threshold=1, max_value=None, **kwargs):
-    """Nearest turning points around peaks + NaN boundaries -> binary mask."""
+    Identifies peaks in the signal, then finds the nearest "turning points"
+    (where the gradient is near zero) on either side of each peak. These
+    turning points define the boundaries of peak regions. The result is a
+    binary mask where 1 indicates a turning-point boundary.
+
+    The algorithm works in four steps:
+        1. Compute the gradient of x and find indices where |gradient| < threshold,
+           treating these as candidate turning points (near-stationary regions).
+        2. Find peaks in x using scipy.signal.find_peaks with any additional kwargs.
+        3. For each peak, select the closest turning point to its left and right.
+        4. Add boundaries at NaN transitions in the original signal.
+
+    Args:
+        x: Input 1D signal.
+        threshold: Maximum absolute gradient value to qualify as a turning point.
+            Lower values select only very flat regions. Default is 1.
+        max_value: If set, discard turning points where x exceeds this value.
+            Useful for ignoring turning points on high plateaus.
+        **kwargs: Passed to scipy.signal.find_peaks (e.g. height, distance,
+            prominence).
+
+    Returns:
+        Binary array of same length as x, with 1 at turning-point boundaries
+        and NaN-transition boundaries, 0 elsewhere.
+    """
     x = np.asarray(x, dtype=float)
     grad = np.gradient(x)
     turning_points = np.where((grad > -threshold) & (grad < threshold))[0]
@@ -78,7 +105,7 @@ def find_nearest_turning_points_binary(x, threshold=1, max_value=None, **kwargs)
     if max_value is not None:
         turning_points = turning_points[x[turning_points] < max_value]
 
-    peaks, _ = find_peaks(x, **kwargs)
+    peaks, _ = find_peaks(x, prominence, distance, **kwargs)
     turning_points = np.setdiff1d(turning_points, peaks)
 
     nearest = []

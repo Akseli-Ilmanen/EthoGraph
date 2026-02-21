@@ -382,7 +382,7 @@ class PlotContainer(QWidget):
 
     def _show_spectrogram_overlay(self):
         """Add spectrogram as overlay on line plot with separate frequency Y-axis."""
-        from .spectrogram_sources import build_audio_source
+        from .data_sources import build_audio_source
 
         source = build_audio_source(self.app_state)
         if source is None:
@@ -480,7 +480,7 @@ class PlotContainer(QWidget):
 
     def _refresh_spectrogram_data(self):
         """Refresh spectrogram data for current X range."""
-        from .spectrogram_sources import build_audio_source
+        from .data_sources import build_audio_source
 
         if self.audio_overlay_item is None or self.audio_overlay_vb is None:
             return
@@ -1100,25 +1100,37 @@ class PlotContainer(QWidget):
 
     def _refresh_envelope_data(self):
         """Recompute envelope for the current visible range and update the overlay."""
-        if not self.overlay_manager.has_overlay('envelope'):
+        result = self._compute_current_envelope()
+        if result is None:
             return
+        env_time, env_data = result
+        self.overlay_manager.update_overlay_data('envelope', env_time, env_data)
+
+    def _compute_current_envelope(self):
+        """Compute envelope for the visible range without touching the overlay.
+
+        Returns ``(env_time, env_data)`` or ``None``.
+        Thread-safe (no Qt writes).
+        """
+        if not self.overlay_manager.has_overlay('envelope'):
+            return None
 
         host = self._get_envelope_host_plot()
         if host is None:
-            return
+            return None
 
         t0, t1 = host.get_current_xlim()
         signal_data, fs, buf_t0 = self._load_envelope_data(host, t0, t1)
         if signal_data is None:
-            return
+            return None
 
         metric = self.app_state.get_with_default('energy_metric')
         env_time, env_data = self._compute_envelope(signal_data, fs, metric, buf_t0, t0, t1)
 
         if env_data is None or len(env_data) == 0:
-            return
+            return None
 
-        self.overlay_manager.update_overlay_data('envelope', env_time, env_data)
+        return env_time, env_data
 
     def _load_envelope_audio(self, loader, fs, channel_idx, t0, t1):
         """Load audio with padding to avoid edge artifacts from lowpass filtering.
@@ -1152,37 +1164,13 @@ class PlotContainer(QWidget):
         ----------
         signal_1d : 1D signal samples.
         fs : sample rate of the signal.
-        metric : ``"amplitude_envelope"`` or ``"meansquared"``.
+        metric : energy metric key (e.g. ``"energy_lowpass"``, ``"energy_meansquared"``).
         buf_t0 : start time of the buffer.
         view_t0, view_t1 : visible window boundaries used for trimming.
         """
-        nyquist = fs / 2.0
+        from .widgets_transform import compute_energy_envelope
 
-        if metric == "meansquared":
-            from ethograph.features.energy_features import compute_meansquared_envelope
-
-            freq_min = min(self.app_state.get_with_default('freq_cutoffs_min'), nyquist * 0.9)
-            freq_max = min(self.app_state.get_with_default('freq_cutoffs_max'), nyquist * 0.9)
-            smooth = self.app_state.get_with_default('smooth_win')
-            env_time, env_data = compute_meansquared_envelope(
-                signal_1d, fs, freq_cutoffs=(freq_min, freq_max), smooth_win=smooth,
-            )
-        elif metric == "band_envelope":
-            from ethograph.features.energy_features import band_envelope
-
-            be_min = min(self.app_state.get_with_default('band_env_min'), nyquist * 0.9)
-            be_max = min(self.app_state.get_with_default('band_env_max'), nyquist * 0.9)
-            be_rate = self.app_state.get_with_default('band_env_rate')
-            env_data, actual_rate = band_envelope(signal_1d, fs, band=(be_min, be_max), env_rate=be_rate)
-            env_time = np.arange(len(env_data)) / actual_rate
-        else:
-            from ethograph.features.filter import envelope as amp_envelope
-
-            env_rate = min(self.app_state.get_with_default('env_rate'), fs)
-            cutoff = min(self.app_state.get_with_default('env_cutoff'), nyquist * 0.9)
-            env_data = np.squeeze(amp_envelope(signal_1d, rate=fs, cutoff=cutoff, env_rate=env_rate))
-            env_time = np.linspace(0, len(signal_1d) / fs, len(env_data))
-
+        env_time, env_data = compute_energy_envelope(signal_1d, fs, metric, self.app_state)
         env_time = env_time + buf_t0
 
         mask = (env_time >= view_t0) & (env_time <= view_t1)

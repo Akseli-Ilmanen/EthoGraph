@@ -2,32 +2,72 @@
 
 from __future__ import annotations
 
+import numpy as np
 from napari.viewer import Viewer
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDoubleSpinBox,
     QFormLayout,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
 from .app_constants import DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_SPACING
+from .dialog_function_params import open_function_params_dialog
 
 
-ENERGY_METRICS = {
-    "amplitude_envelope": "Amplitude envelope",
-    "meansquared": "Meansquared energy",
-    "band_envelope": "Band envelope",
+ENERGY_DISPLAY_NAMES = {
+    "energy_lowpass": "SOS lowpass envelope",
+    "energy_highpass": "SOS highpass envelope",
+    "energy_band": "SOS bandpass envelope",
+    "energy_meansquared": "Vocalpy meansquared (amplitude)",
+    "energy_ava": "Vocalpy AVA (spectral power)",
 }
+
+
+def compute_energy_envelope(
+    data: np.ndarray, rate: float, metric: str, app_state,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute energy envelope using registry-driven dispatch.
+
+    Looks up the wrapper function and cached user params for the given metric,
+    then returns (env_time, envelope).
+    """
+    import inspect
+
+    from ethograph.features.energy import (
+        bandpass_envelope,
+        env_ava,
+        env_meansquared,
+        highpass_envelope,
+        lowpass_envelope,
+    )
+
+    _METRIC_FUNCS = {
+        "energy_lowpass": lowpass_envelope,
+        "energy_highpass": highpass_envelope,
+        "energy_band": bandpass_envelope,
+        "energy_meansquared": env_meansquared,
+        "energy_ava": env_ava,
+    }
+
+    func = _METRIC_FUNCS.get(metric, lowpass_envelope)
+    registry_key = metric
+
+    cache = getattr(app_state, "function_params_cache", None) or {}
+    cached = cache.get(registry_key, {})
+
+    sig = inspect.signature(func)
+    valid_keys = set(sig.parameters) - {"data", "rate"}
+    params = {k: v for k, v in cached.items() if k in valid_keys}
+
+    return func(data, rate, **params)
 
 
 class TransformWidget(QWidget):
@@ -120,7 +160,6 @@ class TransformWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.main_panel.setLayout(layout)
 
-        # Xarray coords group box — populated later by DataWidget._create_trial_controls()
         self.coords_groupbox = QGroupBox("Xarray coords")
         self.coords_groupbox_layout = QFormLayout()
         self.coords_groupbox_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
@@ -131,14 +170,12 @@ class TransformWidget(QWidget):
         self.coords_groupbox.setLayout(self.coords_groupbox_layout)
         layout.addWidget(self.coords_groupbox)
 
-        # View mode + space plot row — populated later by DataWidget._create_trial_controls()
         self.view_space_layout = QHBoxLayout()
         self.view_space_layout.setSpacing(15)
         view_space_widget = QWidget()
         view_space_widget.setLayout(self.view_space_layout)
         layout.addWidget(view_space_widget)
 
-        # Overlay row — populated later by DataWidget._create_trial_controls()
         self.overlay_layout = QHBoxLayout()
         self.overlay_layout.setSpacing(15)
         overlay_widget = QWidget()
@@ -148,7 +185,7 @@ class TransformWidget(QWidget):
         main_layout.addWidget(self.main_panel)
 
     # ------------------------------------------------------------------
-    # Energy envelopes panel
+    # Energy envelopes panel — simplified with Configure... button
     # ------------------------------------------------------------------
 
     def _create_energy_panel(self, main_layout):
@@ -165,148 +202,59 @@ class TransformWidget(QWidget):
 
         grid.addWidget(QLabel("Energy metric:"), 0, 0)
         self.metric_combo = QComboBox()
-        self.metric_combo.addItems(ENERGY_METRICS.values())
-        self.metric_combo.currentIndexChanged.connect(self._on_metric_changed)
-        grid.addWidget(self.metric_combo, 0, 1, 1, 3)
+        self.metric_combo.addItems(ENERGY_DISPLAY_NAMES.values())
+        grid.addWidget(self.metric_combo, 0, 1, 1, 2)
 
-        self.amp_label_rate = QLabel("Env rate (Hz):")
-        grid.addWidget(self.amp_label_rate, 1, 0)
-        self.env_rate_spin = QDoubleSpinBox()
-        self.env_rate_spin.setRange(100.0, 44100.0)
-        self.env_rate_spin.setSingleStep(100.0)
-        self.env_rate_spin.setDecimals(0)
-        self.env_rate_spin.setToolTip("Output sample rate for amplitude envelope")
-        grid.addWidget(self.env_rate_spin, 1, 1)
-
-        self.amp_label_cutoff = QLabel("Cutoff (Hz):")
-        grid.addWidget(self.amp_label_cutoff, 1, 2)
-        self.env_cutoff_spin = QDoubleSpinBox()
-        self.env_cutoff_spin.setRange(10.0, 22050.0)
-        self.env_cutoff_spin.setSingleStep(50.0)
-        self.env_cutoff_spin.setDecimals(0)
-        self.env_cutoff_spin.setToolTip("Lowpass cutoff for amplitude envelope")
-        grid.addWidget(self.env_cutoff_spin, 1, 3)
-
-        self.ms_label_fmin = QLabel("Freq min (Hz):")
-        grid.addWidget(self.ms_label_fmin, 2, 0)
-        self.freq_min_spin = QDoubleSpinBox()
-        self.freq_min_spin.setRange(0.0, 44100.0)
-        self.freq_min_spin.setSingleStep(100.0)
-        self.freq_min_spin.setDecimals(0)
-        grid.addWidget(self.freq_min_spin, 2, 1)
-
-        self.ms_label_fmax = QLabel("Freq max (Hz):")
-        grid.addWidget(self.ms_label_fmax, 2, 2)
-        self.freq_max_spin = QDoubleSpinBox()
-        self.freq_max_spin.setRange(0.0, 44100.0)
-        self.freq_max_spin.setSingleStep(100.0)
-        self.freq_max_spin.setDecimals(0)
-        grid.addWidget(self.freq_max_spin, 2, 3)
-
-        self.ms_label_smooth = QLabel("Smooth win:")
-        grid.addWidget(self.ms_label_smooth, 3, 0)
-        self.smooth_win_spin = QDoubleSpinBox()
-        self.smooth_win_spin.setRange(0.1, 100.0)
-        self.smooth_win_spin.setSingleStep(0.5)
-        self.smooth_win_spin.setDecimals(1)
-        self.smooth_win_spin.setToolTip("Smoothing window for meansquared energy")
-        grid.addWidget(self.smooth_win_spin, 3, 1)
-
-        self.be_label_fmin = QLabel("Band min (Hz):")
-        grid.addWidget(self.be_label_fmin, 4, 0)
-        self.band_env_min_spin = QDoubleSpinBox()
-        self.band_env_min_spin.setRange(0.1, 22050.0)
-        self.band_env_min_spin.setSingleStep(50.0)
-        self.band_env_min_spin.setDecimals(0)
-        self.band_env_min_spin.setToolTip("Lower frequency of the bandpass filter")
-        grid.addWidget(self.band_env_min_spin, 4, 1)
-
-        self.be_label_fmax = QLabel("Band max (Hz):")
-        grid.addWidget(self.be_label_fmax, 4, 2)
-        self.band_env_max_spin = QDoubleSpinBox()
-        self.band_env_max_spin.setRange(0.1, 22050.0)
-        self.band_env_max_spin.setSingleStep(50.0)
-        self.band_env_max_spin.setDecimals(0)
-        self.band_env_max_spin.setToolTip("Upper frequency of the bandpass filter")
-        grid.addWidget(self.band_env_max_spin, 4, 3)
-
-        self.be_label_rate = QLabel("Env rate (Hz):")
-        grid.addWidget(self.be_label_rate, 5, 0)
-        self.band_env_rate_spin = QDoubleSpinBox()
-        self.band_env_rate_spin.setRange(10.0, 44100.0)
-        self.band_env_rate_spin.setSingleStep(100.0)
-        self.band_env_rate_spin.setDecimals(0)
-        self.band_env_rate_spin.setToolTip("Output sample rate for band envelope")
-        grid.addWidget(self.band_env_rate_spin, 5, 1)
-
-        self.energy_apply_button = QPushButton("Apply")
-        self.energy_apply_button.clicked.connect(self._on_energy_apply)
-        grid.addWidget(self.energy_apply_button, 5, 2, 1, 2)
-
-        self._amp_widgets = [self.amp_label_rate, self.env_rate_spin, self.amp_label_cutoff, self.env_cutoff_spin]
-        self._ms_widgets = [self.ms_label_fmin, self.freq_min_spin, self.ms_label_fmax, self.freq_max_spin,
-                            self.ms_label_smooth, self.smooth_win_spin]
-        self._be_widgets = [self.be_label_fmin, self.band_env_min_spin, self.be_label_fmax, self.band_env_max_spin,
-                            self.be_label_rate, self.band_env_rate_spin]
+        self.energy_configure_btn = QPushButton("Configure...")
+        self.energy_configure_btn.setToolTip("Open parameter editor for selected energy metric")
+        self.energy_configure_btn.clicked.connect(self._open_energy_params)
+        grid.addWidget(self.energy_configure_btn, 1, 0, 1, 3)
 
         main_layout.addWidget(self.energy_panel)
 
+    def _open_energy_params(self):
+        key = self._display_to_key(self.metric_combo.currentText())
+        if key:
+            result = open_function_params_dialog(key, self.app_state, parent=self)
+            if result is not None:
+                self._on_energy_apply()
+
     def _restore_energy_selections(self):
         metric = self.app_state.get_with_default("energy_metric")
-        display = ENERGY_METRICS.get(metric, "Amplitude envelope")
+        display = ENERGY_DISPLAY_NAMES.get(metric, "SOS lowpass envelope")
         self.metric_combo.setCurrentText(display)
 
-        self.env_rate_spin.setValue(self.app_state.get_with_default("env_rate"))
-        self.env_cutoff_spin.setValue(self.app_state.get_with_default("env_cutoff"))
-        self.freq_min_spin.setValue(self.app_state.get_with_default("freq_cutoffs_min"))
-        self.freq_max_spin.setValue(self.app_state.get_with_default("freq_cutoffs_max"))
-        self.smooth_win_spin.setValue(self.app_state.get_with_default("smooth_win"))
-        self.band_env_min_spin.setValue(self.app_state.get_with_default("band_env_min"))
-        self.band_env_max_spin.setValue(self.app_state.get_with_default("band_env_max"))
-        self.band_env_rate_spin.setValue(self.app_state.get_with_default("band_env_rate"))
-
-        self._update_conditional_visibility()
-
-    def _on_metric_changed(self, _index):
-        self._update_conditional_visibility()
-
-    def _update_conditional_visibility(self):
-        current = self.metric_combo.currentText()
-        is_amplitude = current == "Amplitude envelope"
-        is_meansquared = current == "Meansquared energy"
-        is_band = current == "Band envelope"
-        for w in self._amp_widgets:
-            w.setVisible(is_amplitude)
-        for w in self._ms_widgets:
-            w.setVisible(is_meansquared)
-        for w in self._be_widgets:
-            w.setVisible(is_band)
-
-    def _display_to_internal(self, display_text: str) -> str:
-        for key, val in ENERGY_METRICS.items():
+    def _display_to_key(self, display_text: str) -> str:
+        for key, val in ENERGY_DISPLAY_NAMES.items():
             if val == display_text:
                 return key
-        return "amplitude_envelope"
+        return "energy_lowpass"
 
     def _on_energy_apply(self):
-        self.app_state.energy_metric = self._display_to_internal(self.metric_combo.currentText())
-        self.app_state.env_rate = self.env_rate_spin.value()
-        self.app_state.env_cutoff = self.env_cutoff_spin.value()
-        self.app_state.freq_cutoffs_min = self.freq_min_spin.value()
-        self.app_state.freq_cutoffs_max = self.freq_max_spin.value()
-        self.app_state.smooth_win = self.smooth_win_spin.value()
-        self.app_state.band_env_min = self.band_env_min_spin.value()
-        self.app_state.band_env_max = self.band_env_max_spin.value()
-        self.app_state.band_env_rate = self.band_env_rate_spin.value()
+        metric_key = self._display_to_key(self.metric_combo.currentText())
+        self.app_state.energy_metric = metric_key
 
-        if self.plot_container:
-            heatmap = self.plot_container.heatmap_plot
-            heatmap._clear_buffer()
-            if self.plot_container.is_heatmap():
-                heatmap.update_plot_content()
+        if not self.plot_container:
+            return
 
-            if self.plot_container.overlay_manager.has_overlay('envelope'):
-                self.plot_container._refresh_envelope_data()
+        from .dialog_busy_progress import BusyProgressDialog
+
+        pc = self.plot_container
+        heatmap = pc.heatmap_plot
+        heatmap._clear_buffer()
+
+        if pc.is_heatmap():
+            dialog = BusyProgressDialog("Computing heatmap...", parent=self)
+            dialog.execute_blocking(heatmap.update_plot_content)
+
+        if pc.overlay_manager.has_overlay('envelope'):
+            dialog = BusyProgressDialog("Computing energy envelope...", parent=self)
+            result, error = dialog.execute(pc._compute_current_envelope)
+            if dialog.was_cancelled or error:
+                return
+            if result:
+                env_time, env_data = result
+                pc.overlay_manager.update_overlay_data('envelope', env_time, env_data)
 
     # ------------------------------------------------------------------
     # Noise removal panel (noisereduce only — ephys preprocessing moved to EphysWidget)
@@ -331,16 +279,9 @@ class TransformWidget(QWidget):
         )
         self.noise_reduce_checkbox.stateChanged.connect(self._on_noise_reduce_changed)
 
-        self.prop_decrease_spin = QDoubleSpinBox()
-        self.prop_decrease_spin.setRange(0.0, 1.0)
-        self.prop_decrease_spin.setSingleStep(0.1)
-        self.prop_decrease_spin.setValue(1.0)
-        self.prop_decrease_spin.setDecimals(2)
-        self.prop_decrease_spin.setToolTip(
-            "Proportion to reduce noise by (0.0-1.0).\n"
-            "1.0 = 100% reduction (default)"
-        )
-        self.prop_decrease_spin.valueChanged.connect(self._on_noise_reduce_changed)
+        self.noise_configure_btn = QPushButton("Configure...")
+        self.noise_configure_btn.setToolTip("Configure noisereduce parameters")
+        self.noise_configure_btn.clicked.connect(self._open_noise_params)
 
         ref_label = QLabel(
             '<a href="https://github.com/timsainb/noisereduce" '
@@ -349,11 +290,13 @@ class TransformWidget(QWidget):
         ref_label.setOpenExternalLinks(True)
 
         nr_layout.addWidget(self.noise_reduce_checkbox, 0, 0)
-        nr_layout.addWidget(QLabel("Reduction:"), 0, 1)
-        nr_layout.addWidget(self.prop_decrease_spin, 0, 2)
-        nr_layout.addWidget(ref_label, 0, 3)
+        nr_layout.addWidget(self.noise_configure_btn, 0, 1)
+        nr_layout.addWidget(ref_label, 0, 2)
 
         main_layout.addWidget(self.noise_panel)
+
+    def _open_noise_params(self):
+        open_function_params_dialog("noise_reduction", self.app_state, parent=self)
 
     def _restore_noise_selections(self):
         noise_reduce = getattr(self.app_state, 'noise_reduce_enabled', None)
@@ -361,12 +304,6 @@ class TransformWidget(QWidget):
             noise_reduce = self.app_state.get_with_default('noise_reduce_enabled')
             self.app_state.noise_reduce_enabled = noise_reduce
         self.noise_reduce_checkbox.setChecked(noise_reduce)
-
-        prop_decrease = getattr(self.app_state, 'noise_reduce_prop_decrease', None)
-        if prop_decrease is None:
-            prop_decrease = self.app_state.get_with_default('noise_reduce_prop_decrease')
-            self.app_state.noise_reduce_prop_decrease = prop_decrease
-        self.prop_decrease_spin.setValue(prop_decrease)
 
     def set_plot_container(self, plot_container):
         self.plot_container = plot_container
@@ -377,19 +314,18 @@ class TransformWidget(QWidget):
     def set_enabled_state(self, has_audio: bool = False):
         self.setEnabled(True)
         self.noise_reduce_checkbox.setEnabled(has_audio)
-        self.prop_decrease_spin.setEnabled(has_audio)
+        self.noise_configure_btn.setEnabled(has_audio)
 
     def _on_noise_reduce_changed(self, state=None):
         self.app_state.noise_reduce_enabled = self.noise_reduce_checkbox.isChecked()
 
-        prop_decrease = self.prop_decrease_spin.value()
-        if prop_decrease is not None:
-            prop_decrease = max(0.0, min(1.0, prop_decrease))
-            self.app_state.noise_reduce_prop_decrease = prop_decrease
+        if not self.plot_container:
+            return
 
-        if self.plot_container:
+        from .dialog_busy_progress import BusyProgressDialog
+
+        def _apply():
             self.plot_container.clear_audio_cache()
-
             if self.plot_container.is_spectrogram():
                 current_plot = self.plot_container.get_current_plot()
                 if hasattr(current_plot, 'buffer') and hasattr(current_plot.buffer, '_clear_buffer'):
@@ -403,3 +339,6 @@ class TransformWidget(QWidget):
                     current_plot.buffer.current_path = None
                 if hasattr(current_plot, 'update_plot_content'):
                     current_plot.update_plot_content()
+
+        dialog = BusyProgressDialog("Applying noise reduction...", parent=self)
+        dialog.execute_blocking(_apply)

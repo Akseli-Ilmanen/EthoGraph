@@ -15,6 +15,7 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QWidget,
@@ -22,6 +23,10 @@ from qtpy.QtWidgets import (
 
 from ethograph import TrialTree
 from ethograph.utils.paths import gui_default_settings_path
+from ethograph.utils.validation import (
+    EPHYS_EXTENSIONS,
+    EPHYS_EXTENSIONS_STR,
+)
 
 from .app_state import AppStateSpec
 from .dialog_create_nc import CreateNCDialog
@@ -596,8 +601,25 @@ class IOWidget(QWidget):
                 self.pose_folder_edit.setText(folder_path)
                 self.app_state.pose_folder = folder_path
             elif media_type == "ephys":
+                if not self._folder_has_ephys_files(folder_path):
+                    QMessageBox.warning(
+                        self,
+                        "No ephys files found",
+                        f"No supported ephys files found in:\n{folder_path}\n\n"
+                        f"Supported extensions:\n{EPHYS_EXTENSIONS_STR}",
+                    )
+                    return
                 self.ephys_folder_edit.setText(folder_path)
                 self.app_state.ephys_folder = folder_path
+
+    def _folder_has_ephys_files(self, folder_path: str) -> bool:
+        try:
+            for entry in os.scandir(folder_path):
+                if entry.is_file() and Path(entry.name).suffix.lower() in EPHYS_EXTENSIONS:
+                    return True
+        except OSError:
+            pass
+        return False
 
     def get_nc_file_path(self):
         """Get the current NetCDF file path from the text field."""

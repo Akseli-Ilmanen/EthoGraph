@@ -10,52 +10,48 @@ from napari import current_viewer
 from qtpy.QtWidgets import QMessageBox
 
 from ethograph import TrialTree, set_media_attrs, minimal_basics
-from ethograph.features.energy_features import get_envelope
 from ethograph.utils.validation import extract_type_vars, validate_datatree
-from ethograph.utils.audio import get_audio_sr
 from movement.io import load_poses, save_poses
 from movement.kinematics import compute_acceleration, compute_pairwise_distances, compute_speed, compute_velocity
 
 
 
-def show_error_dialog(message: str, title: str = ".nc File Error") -> None:
-    QMessageBox.critical(current_viewer().window._qt_window, title, message)
+def _show_popup(message: str, title: str = "Load Error") -> None:
+    parent = current_viewer().window._qt_window
+    QMessageBox.warning(parent, title, message)
 
 def load_dataset(file_path: str) -> Tuple[Optional[xr.Dataset], Optional[dict]]:
     """Load dataset from file path and cache metadata on the instance.
 
     Returns:
-        Tuple of (dt, label_dt, type_vars_dict) or (None, None, None) on error
+        Tuple of (dt, label_dt, type_vars_dict) on success.
+
+    Raises:
+        ValueError: On validation or format errors (popup shown before raising).
     """
     if Path(file_path).suffix != '.nc':
-        error_msg = (
+        msg = (
             f"Unsupported file type: {Path(file_path).suffix}. Expected .nc file.\n"
             "See documentation:\n"
             "https://movement.neuroinformatics.dev/user_guide/input_output.html#native-saving-and-loading-with-netcdf"
         )
-        raise ValueError(error_msg)
+        _show_popup(msg, title=".nc File Error")
+        raise ValueError(msg)
 
     dt = TrialTree.open(file_path)
-    
-    
+
     label_dt = dt.get_label_dt()
     ds = dt.itrial(0)
-
 
     errors = validate_datatree(dt)
     if errors:
         error_msg = "\n".join(f"• {e}" for e in errors)
-        
-        suffix = "\n\n See documentation: XXX"
-        
-        # Display twice to ensure visibility in napari
-        show_error_dialog("Validation failed: \n" + error_msg + suffix)
-        raise ValueError("Validation failed: \n" + error_msg + suffix)
+        suffix = "\n\nSee documentation: XXX"
+        msg = "Validation failed:\n" + error_msg + suffix
+        _show_popup(msg, title="Validation Error")
+        raise ValueError(msg)
 
-
-    # Build type_vars_dict from first trial
     type_vars_dict = extract_type_vars(ds, dt)
-    
 
     return dt, label_dt, type_vars_dict
 
@@ -198,40 +194,17 @@ def minimal_dt_from_ephys(
     return dt
 
 
-def minimal_dt_from_audio(video_path, fps, audio_path, audio_sr, individuals=None, video_motion: bool = False):
+def minimal_dt_from_audio(video_path, fps, audio_path, individuals=None, video_motion: bool = False):
 
     if individuals is None:
         individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
 
-    
-    envelope, gen_wav_path = get_envelope(audio_path, audio_sr, fps)
-
-    if gen_wav_path:
-        audio_path = gen_wav_path
-    
-    n_frames = len(envelope)
-    time_coords = np.arange(n_frames) / fps
-    
 
     ds = xr.Dataset(
-        data_vars={
-            "labels": (["time", "individuals"], np.zeros((n_frames, len(individuals))))
-        },
         coords={
-            "time": time_coords,
             "individuals": individuals  
         }
     )    
-    
-    if envelope.ndim == 1:
-        ds["audio_envelope"] = (["time"], envelope)
-    elif envelope.ndim == 2:
-        ds["audio_envelope"] = (["time", "channels"], envelope)
-    else:
-        raise ValueError("Envelope must be 1D or 2D array")
-                
-
-
     ds.attrs["fps"] = fps
 
     

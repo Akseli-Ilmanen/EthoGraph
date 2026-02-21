@@ -13,6 +13,49 @@ if TYPE_CHECKING:
     from ethograph import TrialTree
 
 
+# ---------------------------------------------------------------------------
+# Supported file extensions (single source of truth)
+# ---------------------------------------------------------------------------
+
+# Not all tested 
+VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov"}
+
+AUDIO_EXTENSIONS = {
+    ".wav", ".flac", ".ogg", ".mp3", ".aac",
+    ".mp4", ".avi", ".mov",
+}
+
+POSE_EXTENSIONS = {".h5", ".csv", ".nwb"}
+
+EPHYS_EXTENSIONS_KNOWN = {
+    ".rhd", ".rhs", ".oebin", ".nwb", ".ns5", ".ns6", ".nev",
+    ".abf", ".edf", ".bdf", ".vhdr",
+}
+EPHYS_EXTENSIONS_RAW = {".dat", ".bin", ".raw"}
+EPHYS_EXTENSIONS = EPHYS_EXTENSIONS_KNOWN | EPHYS_EXTENSIONS_RAW
+
+
+def _fmt_extensions(exts: set[str]) -> str:
+    return ", ".join(sorted(exts))
+
+
+VIDEO_EXTENSIONS_STR = _fmt_extensions(VIDEO_EXTENSIONS)
+AUDIO_EXTENSIONS_STR = _fmt_extensions(AUDIO_EXTENSIONS)
+POSE_EXTENSIONS_STR = _fmt_extensions(POSE_EXTENSIONS)
+EPHYS_EXTENSIONS_STR = _fmt_extensions(EPHYS_EXTENSIONS)
+
+
+def _qt_filter(label: str, exts: set[str]) -> str:
+    globs = " ".join(f"*{e}" for e in sorted(exts))
+    return f"{label} ({globs});;All files (*)"
+
+
+VIDEO_FILE_FILTER = _qt_filter("Video files", VIDEO_EXTENSIONS)
+AUDIO_FILE_FILTER = _qt_filter("Audio files", AUDIO_EXTENSIONS)
+POSE_FILE_FILTER = _qt_filter("Pose files", POSE_EXTENSIONS)
+EPHYS_FILE_FILTER = _qt_filter("Ephys files", EPHYS_EXTENSIONS)
+
+
 
 
 def find_temporal_dims(ds: xr.Dataset) -> set[str]:

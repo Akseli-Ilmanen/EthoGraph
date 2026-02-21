@@ -34,6 +34,12 @@ from ethograph.gui.data_loader import (
     minimal_dt_from_pose,
 )
 from ethograph.utils.audio import get_audio_sr
+from ethograph.utils.validation import (
+    AUDIO_FILE_FILTER,
+    EPHYS_EXTENSIONS_STR,
+    EPHYS_FILE_FILTER,
+    VIDEO_FILE_FILTER,
+)
 
 
 
@@ -243,7 +249,7 @@ class PoseFileDialog(QDialog):
         result = QFileDialog.getOpenFileName(
             self,
             caption="Select video file",
-            filter="Video files (*.mp4 *.mov *.avi);;All files (*)",
+            filter=VIDEO_FILE_FILTER,
         )
         if result and result[0]:
             self.video_edit.setText(result[0])
@@ -407,7 +413,7 @@ class XarrayDatasetDialog(QDialog):
         result = QFileDialog.getOpenFileName(
             self,
             caption="Select video file",
-            filter="Video files (*.mp4 *.mov *.avi);;All files (*)",
+            filter=VIDEO_FILE_FILTER,
         )
         if result and result[0]:
             self.video_edit.setText(result[0])
@@ -565,7 +571,7 @@ class AudioFileDialog(QDialog):
         result = QFileDialog.getOpenFileName(
             self,
             caption="Select video file",
-            filter="Video files (*.mp4 *.mov *.avi);;All files (*)",
+            filter=VIDEO_FILE_FILTER,
         )
         if result and result[0]:
             self.video_edit.setText(result[0])
@@ -577,7 +583,7 @@ class AudioFileDialog(QDialog):
         result = QFileDialog.getOpenFileName(
             self,
             caption="Select audio file",
-            filter="Audio files (*.wav *.mp3 *.mp4 *.flac);;All files (*)",
+            filter=AUDIO_FILE_FILTER,
         )
         if result and result[0]:
             self.audio_edit.setText(result[0])
@@ -754,7 +760,7 @@ class NpyFileDialog(QDialog):
         result = QFileDialog.getOpenFileName(
             self,
             caption="Select video file",
-            filter="Video files (*.mp4 *.mov *.avi);;All files (*)",
+            filter=VIDEO_FILE_FILTER,
         )
         if result and result[0]:
             self.video_edit.setText(result[0])
@@ -842,10 +848,7 @@ class NpyFileDialog(QDialog):
 class EphysFileDialog(QDialog):
     """Dialog for generating .nc file from an ephys recording."""
 
-    EPHYS_FILTER = (
-        "Ephys files (*.rhd *.rhs *.oebin *.edf *.bdf *.vhdr *.dat *.bin *.raw *.nev *.ns5 *.ns6)"
-        ";;All files (*)"
-    )
+    EPHYS_FILTER = EPHYS_FILE_FILTER
 
     def __init__(self, app_state, io_widget, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -859,10 +862,8 @@ class EphysFileDialog(QDialog):
         layout = QVBoxLayout(self)
 
         info_label = QLabel(
-            "Generate a .nc file from an electrophysiology recording. "
-            "Supported formats: Intan (.rhd/.rhs), Open Ephys (.oebin), "
-            "Blackrock (.nev/.ns5/.ns6), "
-            "EDF (.edf/.bdf), BrainVision (.vhdr), raw binary (.dat/.bin/.raw)."
+            "Generate a .nc file from an electrophysiology recording.\n"
+            f"Supported extensions: {EPHYS_EXTENSIONS_STR}"
         )
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
@@ -1004,7 +1005,7 @@ class EphysFileDialog(QDialog):
     def _on_video_browse(self):
         result = QFileDialog.getOpenFileName(
             self, caption="Select video file",
-            filter="Video files (*.mp4 *.mov *.avi);;All files (*)",
+            filter=VIDEO_FILE_FILTER,
         )
         if result and result[0]:
             self.video_edit.setText(result[0])

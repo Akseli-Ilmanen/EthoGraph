@@ -1,9 +1,11 @@
 data/
+data2/
 result/
 audian/
 *.mp4
 *.wav
 *.nc
+*.nwb
 
 
 *gui_settings.yaml

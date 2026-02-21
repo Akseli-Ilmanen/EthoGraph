@@ -98,6 +98,9 @@ rawdata/
         └── ...
 ```
 [^1]: `trials.nc` is just an example file name, you may call it differently.
+
 [^2]: If your video files (e.g. `.mp4`) contain audio, the video and audio folder will be the same.
+
 [^3]: Loading of pose estimation points and tracks occurs via the `movement` library. See [Movement IO](https://movement.neuroinformatics.dev/latest/user_guide/input_output.html).
+
 [^4]: You can technically also load `.avi` and `.mov` files, but they have inaccurate frame seeking (off by 1-2 frames). For best results, transcode to `.mp4` with H.264. See [Troubleshooting](https://ethograph.readthedocs.io/en/latest/troubleshooting/).

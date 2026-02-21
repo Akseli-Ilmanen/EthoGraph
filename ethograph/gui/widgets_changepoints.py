@@ -1,11 +1,6 @@
 """Changepoints widget - dataset changepoints and audio changepoint detection."""
 
-from concurrent.futures import Future, ProcessPoolExecutor
-from contextlib import contextmanager
-from typing import Optional
-
 import numpy as np
-import pandas as pd
 import ruptures as rpt
 import xarray as xr
 import yaml
@@ -13,7 +8,7 @@ import audioio as aio
 
 from napari.utils.notifications import show_info, show_warning
 from napari.viewer import Viewer
-from qtpy.QtCore import Qt, QTimer, Signal
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -25,42 +20,54 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QLineEdit,
     QPushButton,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
-    QApplication,
 )
 
 from ethograph import TrialTree, get_project_root
 from ethograph.utils.data_utils import get_time_coord, sel_valid
-from ethograph.utils.label_intervals import empty_intervals
 from ethograph.features.changepoints import extract_cp_times, correct_changepoints
-from ethograph.features.audio_changepoints import (
-    vocalseg_from_array,
-    vocalpy_segment,
-)
+from ethograph.features.audio_changepoints import get_audio_changepoints
+
+from .dialog_function_params import open_function_params_dialog, get_registry
 
 
-def _parse_numeric(text: str, type_: type = float):
-    try:
-        return type_(text)
-    except (ValueError, TypeError):
-        return None
+# Maps UI combo text → registry key
+_AUDIO_CP_REGISTRY_MAP = {
+    "VocalPy meansquared": "meansquared_cp",
+    "VocalPy ava": "ava_cp",
+    "VocalSeg dynamic thresholding": "vocalseg_cp",
+    "VocalSeg continuity filtering": "continuity_cp",
+}
+
+_RUPTURES_REGISTRY_MAP = {
+    "Pelt": "ruptures_pelt",
+    "Binseg": "ruptures_binseg",
+    "BottomUp": "ruptures_bottomup",
+    "Window": "ruptures_window",
+    "Dynp": "ruptures_dynp",
+}
+
+_KINEMATIC_REGISTRY_MAP = {
+    "troughs": "find_troughs",
+    "turning_points": "find_turning_points",
+}
 
 
 def _run_ruptures_in_process(
     signal: np.ndarray,
     method: str,
-    model: str,
-    min_size: int,
-    jump: int,
     params: dict,
 ) -> tuple[list[int] | None, str | None]:
     try:
+        model = params.get("model", "l2")
+        min_size = params.get("min_size", 2)
+        jump = params.get("jump", 5)
+
         algo_map = {
             "Pelt": lambda: rpt.Pelt(model=model, min_size=min_size, jump=jump),
             "Binseg": lambda: rpt.Binseg(model=model, min_size=min_size, jump=jump),
@@ -77,14 +84,13 @@ def _run_ruptures_in_process(
         algo = algo_map[method]().fit(signal)
 
         if method == "Pelt":
-            bkps = algo.predict(pen=params.get("penalty", 1.0))
+            bkps = algo.predict(pen=params.get("pen", 1.0))
         elif method == "Binseg":
-            if params.get("penalty") is not None:
-                bkps = algo.predict(pen=params["penalty"])
-            elif params.get("n_bkps") is not None:
-                bkps = algo.predict(n_bkps=params["n_bkps"])
+            pen = params.get("pen")
+            if pen is not None:
+                bkps = algo.predict(pen=pen)
             else:
-                bkps = algo.predict(n_bkps=5)
+                bkps = algo.predict(n_bkps=params.get("n_bkps", 5))
         else:
             bkps = algo.predict(n_bkps=params.get("n_bkps", 5))
 
@@ -106,11 +112,6 @@ class ChangepointsWidget(QWidget):
         self.plot_container = None
         self.meta_widget = None
         self._has_audio = False
-
-        self._ruptures_executor: Optional[ProcessPoolExecutor] = None
-        self._ruptures_future: Optional[Future] = None
-        self._ruptures_context = None
-        self._ruptures_poll_timer: Optional[QTimer] = None
 
         self.setAttribute(Qt.WA_AlwaysShowToolTips)
 
@@ -141,23 +142,6 @@ class ChangepointsWidget(QWidget):
 
         self._restore_or_set_defaults()
         self.setEnabled(False)
-
-    # =========================================================================
-    # Helpers to eliminate repeated patterns
-    # =========================================================================
-
-    @contextmanager
-    def _busy_button(self, button: QPushButton, label: str = "Detect"):
-        button.setEnabled(False)
-        button.setText("Computing...")
-        QApplication.processEvents()
-        try:
-            yield
-        finally:
-            button.setEnabled(True)
-            button.setText(label)
-
-
 
     def _update_trial_dataset(self, new_ds: xr.Dataset):
         trial = self.app_state.trials_sel
@@ -289,7 +273,7 @@ class ChangepointsWidget(QWidget):
             self.meta_widget.refresh_widget_layout(self)
 
     # =========================================================================
-    # Panel creation
+    # Panel creation — simplified with "Configure..." buttons
     # =========================================================================
 
     def _create_changepoints_panel(self):
@@ -298,65 +282,21 @@ class ChangepointsWidget(QWidget):
         layout.setContentsMargins(0, 5, 0, 0)
         self.changepoints_panel.setLayout(layout)
 
-        params_group = QGroupBox("Kinematic detection parameters")
-        params_layout = QGridLayout()
-        params_group.setLayout(params_layout)
-        layout.addWidget(params_group)
-
+        row_layout = QHBoxLayout()
+        row_layout.addWidget(QLabel("Method:"))
         self.method_combo = QComboBox()
         self.method_combo.setToolTip(
             "Troughs: local minima\n"
             "Turning points: points where gradient is near zero around peaks"
         )
         self.method_combo.addItems(["troughs", "turning_points"])
-        self.method_combo.currentTextChanged.connect(self._on_method_changed)
+        row_layout.addWidget(self.method_combo)
 
-        row = 0
-        params_layout.addWidget(QLabel("Method:"), row, 0)
-        params_layout.addWidget(self.method_combo, row, 1, 1, 3)
-
-        self.prominence_edit = QLineEdit("0.5")
-        self.prominence_edit.setToolTip(
-            "Minimum prominence of peaks (scipy.signal.find_peaks)"
-        )
-
-        self.distance_edit = QLineEdit("2")
-        self.distance_edit.setToolTip(
-            "Minimum horizontal distance between peaks in samples"
-        )
-
-        self.width_edit = QLineEdit("")
-        self.width_edit.setToolTip("Minimum width of peaks in samples (optional)")
-
-        row += 1
-        params_layout.addWidget(QLabel("Prominence:"), row, 0)
-        params_layout.addWidget(self.prominence_edit, row, 1)
-        params_layout.addWidget(QLabel("Distance (samples):"), row, 2)
-        params_layout.addWidget(self.distance_edit, row, 3)
-
-        self.threshold_label = QLabel("Threshold:")
-        self.threshold_edit = QLineEdit("1.0")
-        self.threshold_edit.setToolTip(
-            "Gradient threshold for turning point detection (only for turning_points)"
-        )
-
-        self.max_value_label = QLabel("Max value:")
-        self.max_value_edit = QLineEdit("")
-        self.max_value_edit.setToolTip(
-            "Maximum value to qualify as turning point (optional)"
-        )
-
-        row += 1
-        params_layout.addWidget(QLabel("Width:"), row, 0)
-        params_layout.addWidget(self.width_edit, row, 1)
-        params_layout.addWidget(self.threshold_label, row, 2)
-        params_layout.addWidget(self.threshold_edit, row, 3)
-
-        row += 1
-        params_layout.addWidget(self.max_value_label, row, 0)
-        params_layout.addWidget(self.max_value_edit, row, 1)
-
-        self._on_method_changed(self.method_combo.currentText())
+        self.kinematic_configure_btn = QPushButton("Configure...")
+        self.kinematic_configure_btn.setToolTip("Open parameter editor for selected method")
+        self.kinematic_configure_btn.clicked.connect(self._open_kinematic_params)
+        row_layout.addWidget(self.kinematic_configure_btn)
+        layout.addLayout(row_layout)
 
         button_layout = QHBoxLayout()
 
@@ -378,7 +318,6 @@ class ChangepointsWidget(QWidget):
         button_layout.addWidget(self.ds_cp_count_label)
 
         button_layout.addStretch()
-
         layout.addLayout(button_layout)
 
     def _create_audio_cp_panel(self):
@@ -387,195 +326,22 @@ class ChangepointsWidget(QWidget):
         layout.setContentsMargins(0, 4, 0, 0)
         self.audio_cp_panel.setLayout(layout)
 
-        params_group = QGroupBox("Audio changepoint parameters")
-        params_layout = QGridLayout()
-        params_layout.setVerticalSpacing(6)
-        params_layout.setColumnMinimumWidth(0, 90)
-        params_layout.setColumnMinimumWidth(2, 90)
-        params_layout.setColumnStretch(1, 1)
-        params_layout.setColumnStretch(3, 1)
-        params_group.setLayout(params_layout)
-        layout.addWidget(params_group)
-
-        # --- Row 0: Method + Min dur (shared) ---
+        row_layout = QHBoxLayout()
+        row_layout.addWidget(QLabel("Method:"))
         self.audio_cp_method_combo = QComboBox()
-        self.audio_cp_method_combo.setToolTip(
-            "meansquared: Mean-squared energy thresholding (VocalPy)\n"
-            "ava: Autoencoded Vocal Analysis, 3-threshold amplitude segmentation (VocalPy)\n"
-            "Dynamic thresholding: Spectral segmentation (VocalSeg)"
-        )
-        self.audio_cp_method_combo.addItems(["meansquared", "ava", "Dynamic thresholding"])
+        self.audio_cp_method_combo.addItems([
+            "VocalPy meansquared", "VocalPy ava",
+            "VocalSeg dynamic thresholding", "VocalSeg continuity filtering",
+        ])
         self.audio_cp_method_combo.currentTextChanged.connect(self._on_audio_cp_method_changed)
+        row_layout.addWidget(self.audio_cp_method_combo)
 
-        self.audio_cp_ref_label = QLabel()
-        self.audio_cp_ref_label.setOpenExternalLinks(True)
+        self.audio_cp_configure_btn = QPushButton("Configure...")
+        self.audio_cp_configure_btn.setToolTip("Open parameter editor for selected method")
+        self.audio_cp_configure_btn.clicked.connect(self._open_audio_cp_params)
+        row_layout.addWidget(self.audio_cp_configure_btn)
+        layout.addLayout(row_layout)
 
-        self.audio_cp_min_dur_edit = QLineEdit("0.02")
-        self.audio_cp_min_dur_edit.setToolTip("Minimum segment duration in seconds")
-
-        row = 0
-        params_layout.addWidget(QLabel("Method:"), row, 0)
-        params_layout.addWidget(self.audio_cp_method_combo, row, 1)
-        params_layout.addWidget(QLabel("Min dur (s):"), row, 2)
-        params_layout.addWidget(self.audio_cp_min_dur_edit, row, 3)
-
-        # --- Row 1: Freq range (shared left) + method-specific right ---
-        self.audio_cp_freq_range_widget = QWidget()
-        freq_layout = QHBoxLayout()
-        freq_layout.setContentsMargins(0, 0, 0, 0)
-        freq_layout.setSpacing(2)
-        self.audio_cp_freq_range_widget.setLayout(freq_layout)
-
-        self.audio_cp_freq_min_spin = QDoubleSpinBox()
-        self.audio_cp_freq_min_spin.setRange(1, 100000)
-        self.audio_cp_freq_min_spin.setDecimals(0)
-        self.audio_cp_freq_min_spin.setMaximumWidth(75)
-        self.audio_cp_freq_min_spin.setToolTip("Minimum frequency in Hz (0 = no filter)")
-
-        self.audio_cp_freq_max_spin = QDoubleSpinBox()
-        self.audio_cp_freq_max_spin.setRange(2, 100000)
-        self.audio_cp_freq_max_spin.setDecimals(0)
-        self.audio_cp_freq_max_spin.setMaximumWidth(75)
-        self.audio_cp_freq_max_spin.setToolTip("Maximum frequency in Hz (0 = no filter)")
-
-        freq_layout.addWidget(self.audio_cp_freq_min_spin)
-        freq_layout.addWidget(QLabel("\u2013"))
-        freq_layout.addWidget(self.audio_cp_freq_max_spin)
-
-        self.ms_min_silent_label = QLabel("Min silence (s):")
-        self.ms_min_silent_dur_edit = QLineEdit("0.002")
-        self.ms_min_silent_dur_edit.setToolTip(
-            "Minimum silent gap between segments (seconds).\n"
-            "Gaps shorter than this are merged."
-        )
-
-        self.vs_silence_label = QLabel("Min silence (s):")
-        self.vs_silence_edit = QLineEdit()
-        self.vs_silence_edit.setToolTip(
-            "Envelope threshold for offset detection (0-1).\n"
-            "Lower = offsets detected later (captures more tail).\n"
-            "Higher = offsets detected earlier."
-        )
-
-        self.ava_nperseg_label = QLabel("nperseg:")
-        self.ava_nperseg_spin = QSpinBox()
-        self.ava_nperseg_spin.setRange(4, 8192)
-        self.ava_nperseg_spin.setValue(1024)
-        self.ava_nperseg_spin.setToolTip(
-            "FFT window size for ava segmentation.\n"
-            "noverlap is automatically set to nperseg // 2."
-        )
-
-        row += 1
-        params_layout.addWidget(QLabel("Freq (Hz):"), row, 0)
-        params_layout.addWidget(self.audio_cp_freq_range_widget, row, 1)
-        params_layout.addWidget(self.ms_min_silent_label, row, 2)
-        params_layout.addWidget(self.ms_min_silent_dur_edit, row, 3)
-        params_layout.addWidget(self.vs_silence_label, row, 2)
-        params_layout.addWidget(self.vs_silence_edit, row, 3)
-        params_layout.addWidget(self.ava_nperseg_label, row, 2)
-        params_layout.addWidget(self.ava_nperseg_spin, row, 3)
-
-        # --- Row 2: method-specific ---
-        # ms: Smooth + Threshold
-        self.ms_smooth_label = QLabel("Smooth (ms):")
-        self.ms_smooth_win_spin = QSpinBox()
-        self.ms_smooth_win_spin.setRange(1, 100)
-        self.ms_smooth_win_spin.setValue(2)
-        self.ms_smooth_win_spin.setToolTip("Smoothing window size in milliseconds")
-
-        self.ms_threshold_label = QLabel("Threshold:")
-        self.ms_threshold_spin = QSpinBox()
-        self.ms_threshold_spin.setRange(1, 1000000)
-        self.ms_threshold_spin.setValue(5000)
-        self.ms_threshold_spin.setToolTip(
-            "Minimum mean-squared energy to count as a segment.\n"
-            "Lower = more sensitive (detects quieter sounds).\n"
-            "Higher = less sensitive."
-        )
-
-        # vs: Hop + N FFT
-        self.vs_hop_label = QLabel("Hop (ms):")
-        self.vs_hop_edit = QLineEdit()
-        self.vs_hop_edit.setToolTip("Hop length in milliseconds for spectrogram")
-
-        self.vs_n_fft_label = QLabel("N FFT:")
-        self.vs_n_fft_edit = QLineEdit()
-        self.vs_n_fft_edit.setToolTip(
-            "FFT window size.\n"
-            "Audio default: 1024. For low-rate dataset features (e.g. 30 Hz),\n"
-            "use smaller values like 150-200."
-        )
-
-        # ava: Thresh lowest + Thresh min
-        self.ava_thresh_lowest_label = QLabel("Thresh lowest:")
-        self.ava_thresh_lowest_spin = QDoubleSpinBox()
-        self.ava_thresh_lowest_spin.setRange(0.0, 1.0)
-        self.ava_thresh_lowest_spin.setDecimals(3)
-        self.ava_thresh_lowest_spin.setSingleStep(0.01)
-        self.ava_thresh_lowest_spin.setValue(0.1)
-        self.ava_thresh_lowest_spin.setToolTip(
-            "Lowest threshold for onset/offset detection.\n"
-            "Must be <= thresh_min <= thresh_max."
-        )
-
-        self.ava_thresh_min_label = QLabel("Thresh min:")
-        self.ava_thresh_min_spin = QDoubleSpinBox()
-        self.ava_thresh_min_spin.setRange(0.0, 1.0)
-        self.ava_thresh_min_spin.setDecimals(3)
-        self.ava_thresh_min_spin.setSingleStep(0.01)
-        self.ava_thresh_min_spin.setValue(0.2)
-        self.ava_thresh_min_spin.setToolTip(
-            "Threshold for finding local minima relative to local maxima."
-        )
-
-        row += 1
-        params_layout.addWidget(self.ms_smooth_label, row, 0)
-        params_layout.addWidget(self.ms_smooth_win_spin, row, 1)
-        params_layout.addWidget(self.ms_threshold_label, row, 2)
-        params_layout.addWidget(self.ms_threshold_spin, row, 3)
-        params_layout.addWidget(self.vs_hop_label, row, 0)
-        params_layout.addWidget(self.vs_hop_edit, row, 1)
-        params_layout.addWidget(self.vs_n_fft_label, row, 2)
-        params_layout.addWidget(self.vs_n_fft_edit, row, 3)
-        params_layout.addWidget(self.ava_thresh_lowest_label, row, 0)
-        params_layout.addWidget(self.ava_thresh_lowest_spin, row, 1)
-        params_layout.addWidget(self.ava_thresh_min_label, row, 2)
-        params_layout.addWidget(self.ava_thresh_min_spin, row, 3)
-
-        # --- Row 3: method-specific ---
-        # vs: Ref dB + Min dB
-        self.vs_ref_db_label = QLabel("Ref dB:")
-        self.vs_ref_db_edit = QLineEdit()
-        self.vs_ref_db_edit.setToolTip("Reference level dB of audio (default: 20)")
-
-        self.vs_min_db_label = QLabel("Min dB:")
-        self.vs_min_db_edit = QLineEdit()
-        self.vs_min_db_edit.setToolTip(
-            "Minimum dB level threshold for segmentation.\n"
-            "More negative = more sensitive (detects quieter sounds)."
-        )
-
-        # ava: Thresh max
-        self.ava_thresh_max_label = QLabel("Thresh max:")
-        self.ava_thresh_max_spin = QDoubleSpinBox()
-        self.ava_thresh_max_spin.setRange(0.0, 1.0)
-        self.ava_thresh_max_spin.setDecimals(3)
-        self.ava_thresh_max_spin.setSingleStep(0.01)
-        self.ava_thresh_max_spin.setValue(0.3)
-        self.ava_thresh_max_spin.setToolTip("Threshold for finding local maxima.")
-
-        row += 1
-        params_layout.addWidget(self.vs_ref_db_label, row, 0)
-        params_layout.addWidget(self.vs_ref_db_edit, row, 1)
-        params_layout.addWidget(self.vs_min_db_label, row, 2)
-        params_layout.addWidget(self.vs_min_db_edit, row, 3)
-        params_layout.addWidget(self.ava_thresh_max_label, row, 0)
-        params_layout.addWidget(self.ava_thresh_max_spin, row, 1)
-
-        self._on_audio_cp_method_changed(self.audio_cp_method_combo.currentText())
-
-        # --- Buttons ---
         button_layout = QHBoxLayout()
 
         self.compute_audio_cp_button = QPushButton("Detect")
@@ -596,9 +362,14 @@ class ChangepointsWidget(QWidget):
         button_layout.addWidget(self.audio_cp_count_label)
 
         button_layout.addStretch()
+
+        self.audio_cp_ref_label = QLabel()
+        self.audio_cp_ref_label.setOpenExternalLinks(True)
         button_layout.addWidget(self.audio_cp_ref_label)
 
         layout.addLayout(button_layout)
+
+        self._on_audio_cp_method_changed(self.audio_cp_method_combo.currentText())
 
     def _create_ruptures_panel(self):
         self.ruptures_panel = QWidget()
@@ -606,11 +377,8 @@ class ChangepointsWidget(QWidget):
         layout.setContentsMargins(0, 4, 0, 0)
         self.ruptures_panel.setLayout(layout)
 
-        params_group = QGroupBox("Ruptures detection parameters")
-        params_layout = QGridLayout()
-        params_group.setLayout(params_layout)
-        layout.addWidget(params_group)
-
+        row_layout = QHBoxLayout()
+        row_layout.addWidget(QLabel("Method:"))
         self.ruptures_method_combo = QComboBox()
         self.ruptures_method_combo.setToolTip(
             "Pelt: Fast, penalty-based (unknown # of changepoints)\n"
@@ -622,72 +390,13 @@ class ChangepointsWidget(QWidget):
         self.ruptures_method_combo.addItems(
             ["Pelt", "Binseg", "BottomUp", "Window", "Dynp"]
         )
-        self.ruptures_method_combo.currentTextChanged.connect(
-            self._on_ruptures_method_changed
-        )
+        row_layout.addWidget(self.ruptures_method_combo)
 
-        row = 0
-        params_layout.addWidget(QLabel("Method:"), row, 0)
-        params_layout.addWidget(self.ruptures_method_combo, row, 1, 1, 3)
-
-        self.ruptures_model_combo = QComboBox()
-        self.ruptures_model_combo.setToolTip(
-            "Cost function for segment homogeneity:\n"
-            "l1: Least absolute deviation\n"
-            "l2: Least squared deviation (default)\n"
-            "rbf: Radial basis function (kernel)\n"
-            "linear: Linear regression\n"
-            "normal: Gaussian likelihood\n"
-            "ar: Autoregressive model"
-        )
-        self.ruptures_model_combo.addItems(["l2", "l1", "rbf", "linear", "normal", "ar"])
-
-        row += 1
-        params_layout.addWidget(QLabel("Model:"), row, 0)
-        params_layout.addWidget(self.ruptures_model_combo, row, 1, 1, 3)
-
-        self.ruptures_min_size_edit = QLineEdit("2")
-        self.ruptures_min_size_edit.setToolTip("Minimum segment length (samples)")
-
-        self.ruptures_jump_edit = QLineEdit("5")
-        self.ruptures_jump_edit.setToolTip(
-            "Subsampling factor (higher = faster but less precise)"
-        )
-
-        row += 1
-        params_layout.addWidget(QLabel("Min dur (samples):"), row, 0)
-        params_layout.addWidget(self.ruptures_min_size_edit, row, 1)
-        params_layout.addWidget(QLabel("Jump (samples):"), row, 2)
-        params_layout.addWidget(self.ruptures_jump_edit, row, 3)
-
-        self.ruptures_penalty_label = QLabel("Penalty:")
-        self.ruptures_penalty_edit = QLineEdit("1.0")
-        self.ruptures_penalty_edit.setToolTip(
-            "Penalty value for adding a changepoint.\n"
-            "Higher = fewer changepoints, Lower = more changepoints."
-        )
-
-        self.ruptures_n_bkps_label = QLabel("N breakpoints:")
-        self.ruptures_n_bkps_edit = QLineEdit("5")
-        self.ruptures_n_bkps_edit.setToolTip("Number of breakpoints to detect")
-
-        row += 1
-        params_layout.addWidget(self.ruptures_penalty_label, row, 0)
-        params_layout.addWidget(self.ruptures_penalty_edit, row, 1)
-        params_layout.addWidget(self.ruptures_n_bkps_label, row, 2)
-        params_layout.addWidget(self.ruptures_n_bkps_edit, row, 3)
-
-        self.ruptures_width_label = QLabel("Width:")
-        self.ruptures_width_edit = QLineEdit("100")
-        self.ruptures_width_edit.setToolTip(
-            "Window width for Window method (samples)"
-        )
-
-        row += 1
-        params_layout.addWidget(self.ruptures_width_label, row, 0)
-        params_layout.addWidget(self.ruptures_width_edit, row, 1)
-
-        self._on_ruptures_method_changed(self.ruptures_method_combo.currentText())
+        self.ruptures_configure_btn = QPushButton("Configure...")
+        self.ruptures_configure_btn.setToolTip("Open parameter editor for selected method")
+        self.ruptures_configure_btn.clicked.connect(self._open_ruptures_params)
+        row_layout.addWidget(self.ruptures_configure_btn)
+        layout.addLayout(row_layout)
 
         button_layout = QHBoxLayout()
 
@@ -697,19 +406,6 @@ class ChangepointsWidget(QWidget):
         )
         self.compute_ruptures_button.clicked.connect(self._compute_ruptures_changepoints)
         button_layout.addWidget(self.compute_ruptures_button)
-
-        self.cancel_ruptures_button = QPushButton("Cancel")
-        self.cancel_ruptures_button.setToolTip("Cancel detection in progress")
-        self.cancel_ruptures_button.clicked.connect(self._cancel_ruptures_detection)
-        self.cancel_ruptures_button.hide()
-        button_layout.addWidget(self.cancel_ruptures_button)
-
-        self.clear_ruptures_button = QPushButton("Clear")
-        self.clear_ruptures_button.setToolTip(
-            "Remove all changepoints for current feature"
-        )
-        self.clear_ruptures_button.clicked.connect(self._clear_current_feature_changepoints)
-        button_layout.addWidget(self.clear_ruptures_button)
 
         self.ruptures_count_label = QLabel("")
         button_layout.addWidget(self.ruptures_count_label)
@@ -727,41 +423,33 @@ class ChangepointsWidget(QWidget):
         layout.addLayout(button_layout)
 
     # =========================================================================
-    # Visibility toggles for method-specific widgets
+    # Configure... dialog openers
+    # =========================================================================
+
+    def _open_kinematic_params(self):
+        method = self.method_combo.currentText()
+        key = _KINEMATIC_REGISTRY_MAP.get(method)
+        if key:
+            open_function_params_dialog(key, self.app_state, parent=self)
+
+    def _open_audio_cp_params(self):
+        method = self.audio_cp_method_combo.currentText()
+        key = _AUDIO_CP_REGISTRY_MAP.get(method)
+        if key:
+            open_function_params_dialog(key, self.app_state, parent=self)
+
+    def _open_ruptures_params(self):
+        method = self.ruptures_method_combo.currentText()
+        key = _RUPTURES_REGISTRY_MAP.get(method)
+        if key:
+            open_function_params_dialog(key, self.app_state, parent=self)
+
+    # =========================================================================
+    # Reference label update
     # =========================================================================
 
     def _on_audio_cp_method_changed(self, method: str):
-        is_ms = method == "meansquared"
-        is_ava = method == "ava"
-        is_vs = method == "Dynamic thresholding"
-
-        # Row 1 right side
-        for w in (self.ms_min_silent_label, self.ms_min_silent_dur_edit):
-            w.setVisible(is_ms)
-        for w in (self.vs_silence_label, self.vs_silence_edit):
-            w.setVisible(is_vs)
-        for w in (self.ava_nperseg_label, self.ava_nperseg_spin):
-            w.setVisible(is_ava)
-
-        # Row 2
-        for w in (self.ms_smooth_label, self.ms_smooth_win_spin,
-                  self.ms_threshold_label, self.ms_threshold_spin):
-            w.setVisible(is_ms)
-        for w in (self.vs_hop_label, self.vs_hop_edit,
-                  self.vs_n_fft_label, self.vs_n_fft_edit):
-            w.setVisible(is_vs)
-        for w in (self.ava_thresh_lowest_label, self.ava_thresh_lowest_spin,
-                  self.ava_thresh_min_label, self.ava_thresh_min_spin):
-            w.setVisible(is_ava)
-
-        # Row 3
-        for w in (self.vs_ref_db_label, self.vs_ref_db_edit,
-                  self.vs_min_db_label, self.vs_min_db_edit):
-            w.setVisible(is_vs)
-        for w in (self.ava_thresh_max_label, self.ava_thresh_max_spin):
-            w.setVisible(is_ava)
-
-        if is_vs:
+        if method.startswith("VocalSeg"):
             self.audio_cp_ref_label.setText(
                 '<a href="https://github.com/timsainb/vocalization-segmentation" '
                 'style="color: #87CEEB; text-decoration: none;">VocalSeg (Sainburg et al., 2020)</a>'
@@ -773,26 +461,6 @@ class ChangepointsWidget(QWidget):
                 'style="color: #87CEEB; text-decoration: none;">VocalPy (Nicholson et al.)</a>'
             )
             self.audio_cp_ref_label.setToolTip("Open VocalPy documentation")
-
-    def _on_ruptures_method_changed(self, method: str):
-        uses_penalty = method in ["Pelt", "Binseg"]
-        self.ruptures_penalty_label.setVisible(uses_penalty)
-        self.ruptures_penalty_edit.setVisible(uses_penalty)
-
-        uses_n_bkps = method in ["Binseg", "BottomUp", "Window", "Dynp"]
-        self.ruptures_n_bkps_label.setVisible(uses_n_bkps)
-        self.ruptures_n_bkps_edit.setVisible(uses_n_bkps)
-
-        uses_width = method == "Window"
-        self.ruptures_width_label.setVisible(uses_width)
-        self.ruptures_width_edit.setVisible(uses_width)
-
-    def _on_method_changed(self, method: str):
-        is_turning_points = method == "turning_points"
-        self.threshold_label.setVisible(is_turning_points)
-        self.threshold_edit.setVisible(is_turning_points)
-        self.max_value_label.setVisible(is_turning_points)
-        self.max_value_edit.setVisible(is_turning_points)
 
     # =========================================================================
     # Setters / state
@@ -808,133 +476,49 @@ class ChangepointsWidget(QWidget):
         self._has_audio = enabled
 
     # =========================================================================
-    # Frequency / Nyquist
-    # =========================================================================
-
-    def update_frequency_limits(self):
-        nyquist = self._get_current_nyquist()
-        if nyquist is None:
-            return
-
-        nyquist_int = int(nyquist)
-        for spin in (self.audio_cp_freq_min_spin, self.audio_cp_freq_max_spin):
-            spin.setMaximum(nyquist_int)
-
-        self.audio_cp_freq_min_spin.setValue(0)
-        self.audio_cp_freq_max_spin.setValue(nyquist_int - 1)
-
-    def _get_current_nyquist(self) -> float | None:
-        if self._is_audio_waveform_selected():
-            audio_path, _ = self.app_state.get_audio_source()
-            if not audio_path:
-                return None
-            try:
-                
-                _, sr = aio.load_audio(audio_path)
-                return sr / 2.0
-            except Exception:
-                return None
-
-        ds = getattr(self.app_state, "ds", None)
-        feature = getattr(self.app_state, "features_sel", None)
-        if ds is None or not feature or feature not in ds.data_vars:
-            return None
-        try:
-            time_array = get_time_coord(ds[feature])
-            dt = np.median(np.diff(time_array))
-            return (1.0 / dt) / 2.0
-        except Exception:
-            return None
-
-    # =========================================================================
     # Defaults / parameter persistence
     # =========================================================================
 
     def _restore_or_set_defaults(self):
-        defaults = [
-            ("audio_cp_hop_length_ms", self.vs_hop_edit, 5.0),
-            ("audio_cp_min_level_db", self.vs_min_db_edit, -70.0),
-            ("audio_cp_min_syllable_length_s", self.audio_cp_min_dur_edit, 0.02),
-            ("audio_cp_silence_threshold", self.vs_silence_edit, 0.1),
-            ("audio_cp_ref_level_db", self.vs_ref_db_edit, 20),
-        ]
-        for attr, edit, default in defaults:
-            value = getattr(self.app_state, attr, None)
-            if value is None:
-                value = default
-                setattr(self.app_state, attr, value)
-            edit.setText(str(value))
-
-        spectral_range = getattr(self.app_state, "audio_cp_spectral_range", None)
-        if spectral_range is not None:
-            self.audio_cp_freq_min_spin.setValue(spectral_range[0])
-            self.audio_cp_freq_max_spin.setValue(spectral_range[1])
-        else:
-            self.audio_cp_freq_min_spin.setValue(0)
-            self.audio_cp_freq_max_spin.setValue(0)
-
-        n_fft = self.app_state.get_with_default("nfft") if hasattr(self.app_state, "get_with_default") else 1024
-        self.vs_n_fft_edit.setText(str(n_fft))
-
         show_cp = getattr(self.app_state, "show_changepoints", False)
         self.show_cp_checkbox.setChecked(show_cp)
-
         self._load_correction_params_from_file()
 
     # =========================================================================
-    # Parameter extraction
+    # Parameter extraction from cache
     # =========================================================================
 
-    def _get_freq_range(self) -> Optional[tuple]:
-        min_val = self.audio_cp_freq_min_spin.value()
-        max_val = self.audio_cp_freq_max_spin.value()
-        if min_val == 0 and max_val == 0:
-            return None
-        if min_val == 0:
-            min_val = None
-        if max_val == 0:
-            max_val = None
-        if min_val is None and max_val is None:
-            return None
-        return (min_val, max_val)
+    def _get_cached_params(self, registry_key: str) -> dict:
+        cache = getattr(self.app_state, "function_params_cache", None) or {}
+        return dict(cache.get(registry_key, {}))
 
     def _get_audio_cp_params(self) -> dict:
         method = self.audio_cp_method_combo.currentText()
+        key = _AUDIO_CP_REGISTRY_MAP.get(method)
+        params = self._get_cached_params(key) if key else {}
 
-        if method == "Dynamic thresholding":
-            return {
-                "method": "vocalseg",
-                "hop_length_ms": _parse_numeric(self.vs_hop_edit.text()) or 5.0,
-                "min_level_db": _parse_numeric(self.vs_min_db_edit.text()) or -70.0,
-                "min_syllable_length_s": _parse_numeric(self.audio_cp_min_dur_edit.text()) or 0.02,
-                "silence_threshold": _parse_numeric(self.vs_silence_edit.text()) or 0.1,
-                "ref_level_db": _parse_numeric(self.vs_ref_db_edit.text()) or 20,
-                "spectral_range": self._get_freq_range(),
-                "n_fft": _parse_numeric(self.vs_n_fft_edit.text(), int) or 1024,
-            }
+        if method == "VocalSeg dynamic thresholding":
+            params["method"] = "vocalseg"
+        elif method == "VocalSeg continuity filtering":
+            params["method"] = "continuity"
+        elif method == "VocalPy ava":
+            params["method"] = "ava"
+            nperseg = params.get("nperseg", 1024)
+            params["noverlap"] = nperseg // 2
+        else:
+            params["method"] = "meansquared"
 
-        if method == "ava":
-            nperseg = self.ava_nperseg_spin.value()
-            return {
-                "method": "ava",
-                "thresh_lowest": self.ava_thresh_lowest_spin.value(),
-                "thresh_min": self.ava_thresh_min_spin.value(),
-                "thresh_max": self.ava_thresh_max_spin.value(),
-                "min_dur": _parse_numeric(self.audio_cp_min_dur_edit.text()),
-                "min_freq": int(self.audio_cp_freq_min_spin.value()),
-                "max_freq": int(self.audio_cp_freq_max_spin.value()),
-                "nperseg": nperseg,
-                "noverlap": nperseg // 2,
-            }
+        return params
 
-        return {
-            "method": "meansquared",
-            "threshold": self.ms_threshold_spin.value(),
-            "min_dur": _parse_numeric(self.audio_cp_min_dur_edit.text()),
-            "min_silent_dur": _parse_numeric(self.ms_min_silent_dur_edit.text()),
-            "freq_cutoffs": self._get_freq_range(),
-            "smooth_win": self.ms_smooth_win_spin.value(),
-        }
+    def _get_kinematic_params(self) -> dict:
+        method = self.method_combo.currentText()
+        key = _KINEMATIC_REGISTRY_MAP.get(method)
+        return self._get_cached_params(key) if key else {}
+
+    def _get_ruptures_params(self) -> dict:
+        method = self.ruptures_method_combo.currentText()
+        key = _RUPTURES_REGISTRY_MAP.get(method)
+        return self._get_cached_params(key) if key else {}
 
     # =========================================================================
     # Show / clear changepoints on plot
@@ -1018,6 +602,7 @@ class ChangepointsWidget(QWidget):
     # =========================================================================
 
     def _compute_audio_changepoints(self):
+        from .dialog_busy_progress import BusyProgressDialog
 
         features_sel = self.app_state.features_sel
         ds_kwargs = self.app_state.get_ds_kwargs()
@@ -1032,145 +617,118 @@ class ChangepointsWidget(QWidget):
             dt = np.median(np.diff(np.asarray(self.app_state.time)))
             sample_rate = 1.0 / dt
 
-        try:
-            with self._busy_button(self.compute_audio_cp_button):
-                params = self._get_audio_cp_params()
-                method = params.pop("method")
-                signal_array = np.asarray(data, dtype=np.float64)
+        params = self._get_audio_cp_params()
+        method = params.pop("method")
+        signal_array = np.asarray(data, dtype=np.float64)
 
-                if method == "vocalseg":
-                    min_n_fft = int(np.ceil(0.005 * sample_rate))
-                    if params["n_fft"] < min_n_fft:
-                        params["n_fft"] = min_n_fft
-                        self.vs_n_fft_edit.setText(str(min_n_fft))
-                        show_info(f"n_fft raised to {min_n_fft} (minimum for sample rate {sample_rate:.0f} Hz)")
+        if method in ("vocalseg", "continuity"):
+            n_fft = params.get("n_fft", 1024)
+            min_n_fft = int(np.ceil(0.005 * sample_rate))
+            if n_fft < min_n_fft:
+                params["n_fft"] = min_n_fft
+                show_info(f"n_fft raised to {min_n_fft} (minimum for sample rate {sample_rate:.0f} Hz)")
+        elif method == "ava":
+            nperseg = params.get("nperseg", 1024)
+            max_nperseg = max(4, len(signal_array) // 4)
+            if nperseg > max_nperseg:
+                params["nperseg"] = max_nperseg
+            params["noverlap"] = params["nperseg"] // 2
 
-                    onsets, offsets = vocalseg_from_array(
-                        signal=signal_array,
-                        sample_rate=sample_rate,
-                        hop_length_ms=params["hop_length_ms"],
-                        min_level_db=params["min_level_db"],
-                        min_syllable_length_s=params["min_syllable_length_s"],
-                        silence_threshold=params["silence_threshold"],
-                        ref_level_db=params["ref_level_db"],
-                        n_fft=params["n_fft"],
-                    )
+        def _run():
+            return get_audio_changepoints(
+                method=method,
+                signal=signal_array,
+                sr=sample_rate,
+                **params,
+            )
 
-                elif method == "ava":
-                    max_nperseg = max(4, len(signal_array) // 4)
-                    if params["nperseg"] > max_nperseg:
-                        params["nperseg"] = max_nperseg
-                    params["noverlap"] = params["nperseg"] // 2
+        dialog = BusyProgressDialog(f"Detecting audio changepoints ({method})...", parent=self)
+        result, error = dialog.execute(_run)
 
-                    (onsets, offsets), env_time, envelope = vocalpy_segment(
-                        method=method, signal=signal_array,
-                        sample_rate=sample_rate, **params,
-                    )
+        if dialog.was_cancelled:
+            return
+        if error:
+            show_warning(f"Error detecting changepoints: {error}")
+            return
 
-                elif method == "meansquared":
-                    (onsets, offsets), env_time, envelope = vocalpy_segment(
-                        method=method, signal=signal_array,
-                        sample_rate=sample_rate, **params,
-                    )
+        (onsets, offsets), env_time, envelope = result
 
-                else:
-                    raise ValueError(f"Invalid method: {method}")
+        if method == "meansquared" and self.plot_container:
+            threshold = params.get("threshold", 5000)
+            self.plot_container.draw_amplitude_envelope(env_time, envelope, threshold)
+        elif method == "ava" and self.plot_container:
+            self.plot_container.draw_amplitude_envelope(
+                env_time, envelope,
+                (params.get("thresh_lowest", 0.1),
+                 params.get("thresh_min", 0.2),
+                 params.get("thresh_max", 0.3)),
+            )
 
-                if method == "meansquared" and self.plot_container:
-                    print("Jfdas")
-                    print(env_time.shape)
-                    print(envelope.shape)
-                    self.plot_container.draw_amplitude_envelope(
-                        env_time, envelope, params["threshold"]
-                    )
-                elif method == "ava" and self.plot_container:
-                    self.plot_container.draw_amplitude_envelope(
-                        env_time, envelope,
-                        (params["thresh_lowest"], params["thresh_min"], params["thresh_max"]),
-                    )
+        if len(onsets) == 0 and len(offsets) == 0:
+            show_info("No changepoints detected. Try adjusting parameters.")
+            return
 
-                if len(onsets) == 0 and len(offsets) == 0:
-                    show_info("No changepoints detected. Try adjusting parameters.")
-                    return
+        self._store_audio_cps_to_ds(onsets, offsets, features_sel, method)
+        self.audio_cp_count_label.setText(f"{len(onsets)}+{len(offsets)}")
+        show_info(f"Detected {len(onsets)} onsets, {len(offsets)} offsets")
 
-                self._store_audio_cps_to_ds(onsets, offsets, features_sel, method)
-                self.audio_cp_count_label.setText(f"{len(onsets)}+{len(offsets)}")
-                show_info(f"Detected {len(onsets)} onsets, {len(offsets)} offsets")
+        if self.plot_container:
+            self.plot_container.draw_audio_changepoints(onsets, offsets)
 
-                if self.plot_container:
-                    self.plot_container.draw_audio_changepoints(onsets, offsets)
-
-                self._ensure_changepoints_visible()
-
-        except Exception as e:
-            show_warning(f"Error detecting changepoints: {e}")
+        self._ensure_changepoints_visible()
 
     # =========================================================================
     # Kinematic (dataset) changepoint detection
     # =========================================================================
 
-    def _compute_dataset_changepoints(self):            
-            
-        method = self.method_combo.currentText()
+    def _compute_dataset_changepoints(self):
+        from ethograph import add_changepoints_to_ds
+        from ethograph.features.changepoints import (
+            find_troughs_binary,
+            find_nearest_turning_points_binary,
+        )
+        from .dialog_busy_progress import BusyProgressDialog
 
-        try:
-            from ethograph import add_changepoints_to_ds
-            from ethograph.features.changepoints import (
-                find_troughs_binary,
-                find_nearest_turning_points_binary,
+        method = self.method_combo.currentText()
+        func_kwargs = self._get_kinematic_params()
+
+        if method == "troughs":
+            changepoint_func = find_troughs_binary
+            changepoint_name = "troughs"
+        else:
+            changepoint_func = find_nearest_turning_points_binary
+            changepoint_name = "turning_points"
+
+        ds_copy = self.app_state.ds.copy()
+        feature = self.app_state.features_sel
+
+        def _run():
+            return add_changepoints_to_ds(
+                ds=ds_copy,
+                target_feature=feature,
+                changepoint_name=changepoint_name,
+                changepoint_func=changepoint_func,
+                **func_kwargs,
             )
 
-            with self._busy_button(self.compute_ds_cp_button):
-                func_kwargs = {}
+        dialog = BusyProgressDialog(f"Detecting {changepoint_name}...", parent=self)
+        new_ds, error = dialog.execute(_run)
 
-                prominence = _parse_numeric(self.prominence_edit.text())
-                if prominence is not None:
-                    func_kwargs["prominence"] = prominence
+        if dialog.was_cancelled:
+            return
+        if error:
+            show_warning(f"Error computing changepoints: {error}")
+            return
 
-                distance = _parse_numeric(self.distance_edit.text(), int)
-                if distance is not None:
-                    func_kwargs["distance"] = distance
+        cp_var_name = f"{feature}_{changepoint_name}"
+        self._update_trial_dataset(new_ds)
 
-                width = _parse_numeric(self.width_edit.text(), int)
-                if width is not None:
-                    func_kwargs["width"] = width
+        n_changepoints = np.sum(new_ds[cp_var_name].values > 0)
+        self.ds_cp_count_label.setText(f"{n_changepoints} changepoints")
+        show_info(f"Added '{cp_var_name}' with {n_changepoints} changepoints")
 
-                if method == "troughs":
-                    changepoint_func = find_troughs_binary
-                    changepoint_name = "troughs"
-                else:
-                    changepoint_func = find_nearest_turning_points_binary
-                    changepoint_name = "turning_points"
-
-                    threshold = _parse_numeric(self.threshold_edit.text())
-                    if threshold is not None:
-                        func_kwargs["threshold"] = threshold
-
-                    max_value = _parse_numeric(self.max_value_edit.text())
-                    if max_value is not None:
-                        func_kwargs["max_value"] = max_value
-
-                ds = self.app_state.ds
-                new_ds = add_changepoints_to_ds(
-                    ds=ds.copy(),
-                    target_feature=self.app_state.features_sel,
-                    changepoint_name=changepoint_name,
-                    changepoint_func=changepoint_func,
-                    **func_kwargs,
-                )
-
-                cp_var_name = f"{self.app_state.features_sel}_{changepoint_name}"
-                self._update_trial_dataset(new_ds)
-
-                n_changepoints = np.sum(new_ds[cp_var_name].values > 0)
-                self.ds_cp_count_label.setText(f"{n_changepoints} changepoints")
-                show_info(f"Added '{cp_var_name}' with {n_changepoints} changepoints")
-
-                self._ensure_changepoints_visible()
-                self._draw_dataset_changepoints_on_plot()
-
-        except Exception as e:
-            show_warning(f"Error computing changepoints: {e}")
+        self._ensure_changepoints_visible()
+        self._draw_dataset_changepoints_on_plot()
 
     def _clear_current_feature_changepoints(self):
         ds = getattr(self.app_state, "ds", None)
@@ -1217,118 +775,49 @@ class ChangepointsWidget(QWidget):
         return len(vars_to_remove)
 
     # =========================================================================
-    # Ruptures detection (async via ProcessPoolExecutor)
+    # Ruptures detection (via BusyProgressDialog + ProcessPoolExecutor)
     # =========================================================================
 
     def _compute_ruptures_changepoints(self):
-        
+        from .dialog_busy_progress import BusyProgressDialog
+
         features_sel = self.app_state.features_sel
         ds_kwargs = self.app_state.get_ds_kwargs()
         if features_sel == "Audio Waveform":
             show_warning(
-                f"Raw audio has {len(signal):,} samples — ruptures will be extremely slow. "
+                "Raw audio is too large for ruptures. "
                 "Select a derived feature or use Audio CPs instead."
             )
             return
-            
-        else:
-            data, _ = sel_valid(self.app_state.ds[features_sel], ds_kwargs)
-        
+
+        data, _ = sel_valid(self.app_state.ds[features_sel], ds_kwargs)
+
         signal = np.asarray(data).reshape(-1, 1)
         method = self.ruptures_method_combo.currentText()
-        model = self.ruptures_model_combo.currentText()
-        min_size = _parse_numeric(self.ruptures_min_size_edit.text(), int) or 2
-        jump = _parse_numeric(self.ruptures_jump_edit.text(), int) or 5
+        params = self._get_ruptures_params()
 
-        params = {
-            "penalty": _parse_numeric(self.ruptures_penalty_edit.text()),
-            "n_bkps": _parse_numeric(self.ruptures_n_bkps_edit.text(), int),
-            "width": _parse_numeric(self.ruptures_width_edit.text(), int) or 100,
-        }
-
-        time_coord_name = self.app_state.time.name
-        self._ruptures_context = (features_sel, time_coord_name, len(signal), method, model)
-
-        self._set_ruptures_ui_running(True)
-
-        self._ruptures_executor = ProcessPoolExecutor(max_workers=1)
-        self._ruptures_future = self._ruptures_executor.submit(
-            _run_ruptures_in_process,
-            signal,
-            method,
-            model,
-            min_size,
-            jump,
-            params,
+        dialog = BusyProgressDialog(
+            f"Detecting ruptures ({method})...", parent=self, use_process=True,
+        )
+        result, error = dialog.execute(
+            _run_ruptures_in_process, signal, method, params,
         )
 
-        self._ruptures_poll_timer = QTimer()
-        self._ruptures_poll_timer.timeout.connect(self._poll_ruptures_result)
-        self._ruptures_poll_timer.start(100)
-
-    def _poll_ruptures_result(self):
-        if self._ruptures_future is None:
-            self._stop_polling()
+        if dialog.was_cancelled:
+            self.ruptures_count_label.setText("Cancelled")
+            return
+        if error:
+            show_warning(f"Error computing ruptures changepoints: {error}")
             return
 
-        if self._ruptures_future.done():
-            self._stop_polling()
-            try:
-                result = self._ruptures_future.result()
-                self._on_ruptures_finished(result)
-            except Exception as e:
-                self._on_ruptures_error(e)
-            finally:
-                self._cleanup_ruptures_executor()
-
-    def _stop_polling(self):
-        if self._ruptures_poll_timer is not None:
-            self._ruptures_poll_timer.stop()
-            self._ruptures_poll_timer = None
-
-    def _cleanup_ruptures_executor(self):
-        if self._ruptures_executor is not None:
-            self._ruptures_executor.shutdown(wait=False, cancel_futures=True)
-            self._ruptures_executor = None
-        self._ruptures_future = None
-
-    def _cancel_ruptures_detection(self):
-        self._stop_polling()
-
-        if self._ruptures_future is not None:
-            self._ruptures_future.cancel()
-
-        if self._ruptures_executor is not None:
-            self._ruptures_executor.shutdown(wait=False, cancel_futures=True)
-            self._ruptures_executor = None
-
-        self._ruptures_future = None
-        self._ruptures_context = None
-
-        self._set_ruptures_ui_running(False)
-        self.ruptures_count_label.setText("Cancelled")
-
-    def _on_ruptures_error(self, exc: Exception):
-        self._set_ruptures_ui_running(False)
-        show_warning(f"Error computing ruptures changepoints: {exc}")
-        self.ruptures_count_label.setText("")
-
-    def _on_ruptures_finished(self, result: tuple[list[int] | None, str | None]):
         bkps, error_msg = result
-
-        self._set_ruptures_ui_running(False)
-
         if error_msg:
             show_warning(f"Error computing ruptures changepoints: {error_msg}")
-            self.ruptures_count_label.setText("")
+            return
+        if bkps is None:
             return
 
-        if bkps is None or not self._ruptures_context:
-            return
-
-        feature, time_coord_name, signal_len, method, model = self._ruptures_context
-        self._ruptures_context = None
-
+        signal_len = len(signal)
         if bkps and bkps[-1] == signal_len:
             bkps = bkps[:-1]
 
@@ -1337,19 +826,20 @@ class ChangepointsWidget(QWidget):
             if 0 <= bkp < signal_len:
                 cp_array[bkp] = 1
 
-        ds = self.app_state.ds
-        cp_var_name = f"{feature}_ruptures"
+        time_coord_name = self.app_state.time.name
+        cp_var_name = f"{features_sel}_ruptures"
 
-        new_ds = ds.copy()
+        new_ds = self.app_state.ds.copy()
         if cp_var_name in new_ds.data_vars:
             new_ds = new_ds.drop_vars(cp_var_name)
 
+        model = params.get("model", "l2")
         new_ds[cp_var_name] = xr.Variable(
             dims=[time_coord_name],
             data=cp_array,
             attrs={
                 "type": "changepoints",
-                "target_feature": feature,
+                "target_feature": features_sel,
                 "method": f"ruptures_{method}",
                 "model": model,
             },
@@ -1364,20 +854,8 @@ class ChangepointsWidget(QWidget):
         self._ensure_changepoints_visible()
         self._draw_dataset_changepoints_on_plot()
 
-    def _set_ruptures_ui_running(self, running: bool):
-        if running:
-            self.compute_ruptures_button.hide()
-            self.cancel_ruptures_button.show()
-            self.clear_ruptures_button.setEnabled(False)
-            self.ruptures_count_label.setText("Computing...")
-        else:
-            self.cancel_ruptures_button.hide()
-            self.compute_ruptures_button.show()
-            self.compute_ruptures_button.setEnabled(True)
-            self.clear_ruptures_button.setEnabled(True)
-
     # =========================================================================
-    # Correction Parameters Panel
+    # Correction Parameters Panel (unchanged)
     # =========================================================================
 
     def _create_correction_params_panel(self):
@@ -1732,7 +1210,6 @@ class ChangepointsWidget(QWidget):
             self.per_label_btn.setText("Per-label thresholds...")
 
     def closeEvent(self, event):
-        self._cancel_ruptures_detection()
         super().closeEvent(event)
 
 

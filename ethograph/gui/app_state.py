@@ -136,7 +136,6 @@ class AppStateSpec:
 
         # Audio processing
         "noise_reduce_enabled": (bool, False, True),
-        "noise_reduce_prop_decrease": (float, 1.0, True),
         "audio_cp_hop_length_ms": (float, 5.0, True),
         "audio_cp_min_level_db": (float, -70.0, True),
         "audio_cp_min_syllable_length_s": (float, 0.02, True),
@@ -146,7 +145,7 @@ class AppStateSpec:
         "save_tsv_enabled": (bool, True, True),
 
         # Envelope / energy (general, used by both heatmap and overlay)
-        "energy_metric": (str, "amplitude_envelope", True),
+        "energy_metric": (str, "energy_lowpass", True),
         "env_rate": (float, 2000.0, True),
         "env_cutoff": (float, 500.0, True),
         "freq_cutoffs_min": (float, 500.0, True),
@@ -155,11 +154,18 @@ class AppStateSpec:
         "band_env_min": (float, 300.0, True),
         "band_env_max": (float, 6000.0, True),
         "band_env_rate": (float, 1000.0, True),
+        "ava_min_freq": (float, 30000.0, True),
+        "ava_max_freq": (float, 110000.0, True),
+        "ava_smoothing_timescale": (float, 0.007, True),
+        "ava_use_softmax_amp": (bool, True, True),
 
         # Heatmap-specific display
         "heatmap_exclusion_percentile": (float, 98.0, True),
         "heatmap_colormap": (str, "RdBu_r", True),
         "heatmap_normalization": (str, "per_channel", True),
+
+        # Function params cache (dialog_function_params.py)
+        "function_params_cache": (dict, {}, True),
     }
 
     @classmethod
@@ -492,6 +498,8 @@ class ObservableAppState(QObject):
             print(f"Error cycling combo box for {type_key}: {e}")
 
     # --- Save/Load methods ---
+    PATH_SUFFIXES = ("_path", "_folder")
+
     def _to_native(self, value):
         """Convert numpy types to native Python types for YAML serialization."""
         if hasattr(value, 'item'):
@@ -518,6 +526,31 @@ class ObservableAppState(QObject):
                     print(f"Error accessing {attr}: {exc}")
         return state_dict
 
+    def _sort_state_dict(self, state_dict: dict) -> dict:
+        """Sort state dict by category: paths, bools, _sel, strings, numbers, nested dicts."""
+        def _category_key(item):
+            key, value = item
+            is_nested = isinstance(value, dict)
+            is_path = any(key.endswith(s) for s in self.PATH_SUFFIXES)
+            is_sel = key.endswith("_sel") or key.endswith("_sel_previous")
+            is_bool = isinstance(value, bool)
+            is_str = isinstance(value, str)
+
+            if is_nested:
+                order = 5
+            elif is_path:
+                order = 0
+            elif is_bool:
+                order = 2
+            elif is_sel:
+                order = 1
+            elif is_str:
+                order = 3
+            else:
+                order = 4
+            return (order, key)
+
+        return dict(sorted(state_dict.items(), key=_category_key))
 
     def load_from_dict(self, state_dict: dict):
         for key, value in state_dict.items():
@@ -529,7 +562,7 @@ class ObservableAppState(QObject):
     def save_to_yaml(self, yaml_path: str | None = None) -> bool:
         try:
             path = yaml_path or self._yaml_path
-            state_dict = self.get_saveable_state_dict()
+            state_dict = self._sort_state_dict(self.get_saveable_state_dict())
             with open(path, "w", encoding="utf-8") as f:
                 yaml.dump(state_dict, f, default_flow_style=False, sort_keys=False)
             return True

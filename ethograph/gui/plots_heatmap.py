@@ -156,32 +156,11 @@ class HeatmapPlot(BasePlot):
         n_channels = audio_data.shape[1]
         metric = self.app_state.get_with_default('energy_metric')
 
-        if metric == "meansquared":
-            from ethograph.features.audio_features import compute_meansquared_envelope
-            freq_min = self.app_state.get_with_default('freq_cutoffs_min')
-            freq_max = self.app_state.get_with_default('freq_cutoffs_max')
-            smooth = self.app_state.get_with_default('smooth_win')
-        elif metric == "band_envelope":
-            from ethograph.features.energy_features import band_envelope
-            be_min = self.app_state.get_with_default('band_env_min')
-            be_max = self.app_state.get_with_default('band_env_max')
-            be_rate = self.app_state.get_with_default('band_env_rate')
-        else:
-            from ethograph.features.filter import envelope
-            env_rate = min(self.app_state.get_with_default('env_rate'), fs / 2)
-            cutoff = self.app_state.get_with_default('env_cutoff')
+        from .widgets_transform import compute_energy_envelope
 
         env_channels = []
         for ch in range(n_channels):
-            ch_data = audio_data[:, ch]
-            if metric == "meansquared":
-                _, ch_env = compute_meansquared_envelope(
-                    ch_data, fs, freq_cutoffs=(freq_min, freq_max), smooth_win=smooth,
-                )
-            elif metric == "band_envelope":
-                ch_env, _ = band_envelope(ch_data, fs, band=(be_min, be_max), env_rate=be_rate)
-            else:
-                ch_env = np.squeeze(envelope(ch_data, rate=fs, cutoff=cutoff, env_rate=env_rate))
+            _, ch_env = compute_energy_envelope(audio_data[:, ch], fs, metric, self.app_state)
             env_channels.append(ch_env)
 
         # Align channels to same length (may differ slightly between metrics)

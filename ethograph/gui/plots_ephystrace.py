@@ -26,7 +26,7 @@ from typing import Optional, Protocol, runtime_checkable
 from numpy.typing import NDArray
 from qtpy.QtCore import QEvent, Qt, QTimer, Signal
 from qtpy.QtWidgets import QApplication
-
+from ethograph.features.energy import _sosfilter
 
 from .plots_base import BasePlot
 
@@ -590,7 +590,6 @@ class EphysTraceBuffer:
 # -- preprocessing (pure function, no state) --------------------------------
 
 def _apply_preprocessing(data: NDArray, sr: float, flags: dict) -> NDArray:
-    from ethograph.features.filter import sosfilter
 
     data = data.astype(np.float64, copy=True)
 
@@ -602,7 +601,7 @@ def _apply_preprocessing(data: NDArray, sr: float, flags: dict) -> NDArray:
 
     if flags.get("temporal_filter"):
         cutoff = flags.get("hp_cutoff", 300.0)
-        data = sosfilter(data, sr, cutoff, mode='hp', order=3)
+        data = _sosfilter(data, sr, cutoff, mode='hp', order=3)
 
     if flags.get("whitening") and data.shape[1] > 1:
         CC = (data.T @ data) / data.shape[0]

@@ -22,7 +22,7 @@ from .app_constants import (
 )
 
 if TYPE_CHECKING:
-    from .spectrogram_sources import SpectrogramSource
+    from .data_sources import SpectrogramSource
 
 
 class SharedAudioCache:
@@ -142,7 +142,7 @@ class SpectrogramPlot(BasePlot):
 
     def _build_fallback_audio_source(self):
         """Build AudioFileSource from app_state as backward-compat fallback."""
-        from .spectrogram_sources import build_audio_source
+        from .data_sources import build_audio_source
 
         audio_path = getattr(self.app_state, 'audio_path', None)
         if not audio_path:
@@ -307,9 +307,10 @@ class SpectrogramBuffer:
 
         if source.supports_noise_reduction and getattr(self.app_state, 'noise_reduce_enabled', False):
             try:
-                from ethograph.features.audio_changepoints import apply_noise_reduction
-                prop_decrease = getattr(self.app_state, 'noise_reduce_prop_decrease', 1.0)
-                audio_data = apply_noise_reduction(audio_data, int(self.fs), nfft, hop_frac, prop_decrease=prop_decrease)
+                import noisereduce as nr
+                cache = getattr(self.app_state, 'function_params_cache', None) or {}
+                nr_params = cache.get('noise_reduction', {})
+                audio_data = nr.reduce_noise(y=audio_data, sr=int(self.fs), **nr_params)
             except ImportError:
                 pass
 
