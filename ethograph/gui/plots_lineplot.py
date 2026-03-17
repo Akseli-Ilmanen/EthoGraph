@@ -93,9 +93,13 @@ class LinePlot(BasePlot):
         load_t1 = min(bounds[1], t1 + buffer_size / 2)
 
         time_coord = self.app_state.time_coord
+        if time_coord is None:
+            return None        
         time_vars = [v for v in ds.data_vars if time_coord.name in ds[v].dims]
         if not time_vars:
             return None
+
+
         sliceable = ds[time_vars]
         
         
@@ -114,7 +118,6 @@ class LinePlot(BasePlot):
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
 
-
         self._pending_range = self.get_current_xlim()
         self._debounce_timer.start()
 
@@ -124,7 +127,6 @@ class LinePlot(BasePlot):
         if not self.isVisible():
             self._pending_range = None
             return
-
 
         t0, t1 = self._pending_range
         self._pending_range = None
@@ -354,7 +356,6 @@ def plot_ds_variable(plot_item, ds, ds_kwargs, variable, color_variable=None, sh
     if not hasattr(plot_ds_variable, "_call_counter"):
         plot_ds_variable._call_counter = 0
     plot_ds_variable._call_counter += 1
-    print(f"[plot_ds_variable] call #{plot_ds_variable._call_counter}: variable={variable}, ds_kwargs={ds_kwargs}, ds id={id(ds)}")
 
     # Clear existing legend if present
     if hasattr(plot_item, 'legend') and plot_item.legend is not None:

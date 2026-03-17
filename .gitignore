@@ -11,6 +11,13 @@ neurosift/
 *.nwb
 *.npy
 
+# Ignore all Jupyter notebooks
+*.ipynb
+
+# But allow notebooks in these folders
+!scripts/*.ipynb
+!tutorials/*.ipynb
+
 
 *gui_settings.yaml
 

@@ -264,6 +264,8 @@ class TemplateDialog(QDialog):
 
         resolved = _resolve_template_paths(template)
         resolved["nc_file_path"] = nc_path
+        resolved["audio_folder"] = str(dest)
+        print("[DEBUG] Canary template resolved paths:", resolved)
         self.selected_template = resolved
         self.accept()
 

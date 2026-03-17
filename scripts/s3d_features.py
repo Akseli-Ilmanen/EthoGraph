@@ -41,7 +41,7 @@ if __name__ == '__main__':
 
 
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    log_file_path = os.path.join(project_root, "logging", "s3d_logs.txt")
+    log_file_path = os.path.join(project_root, "ethograph", "model", "logging", "s3d_logs.txt")
     os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
     
     # Redirect stdout to the log file

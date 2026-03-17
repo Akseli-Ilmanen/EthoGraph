@@ -92,6 +92,7 @@ class BasePlot(pg.PlotWidget):
 
         Subclasses should override this method.
         """
+        print(f"[plots_base] update_plot_content called in {self.__class__.__name__} (id={id(self)}) t0={t0}, t1={t1}")
         raise NotImplementedError("Subclasses must implement update_plot_content")
 
     def apply_y_range(self, ymin: Optional[float], ymax: Optional[float]):

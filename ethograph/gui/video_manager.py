@@ -129,16 +129,14 @@ class VideoManager:
     def secondary_fps(self) -> float:
         return self._secondary_fps
 
-    def update_video_audio(self, plot_container, transform_widget):
+    def update_video(self, plot_container, transform_widget):
         if not self.app_state.ready:
             return
-
         camera_sel = getattr(self.app_state, 'cameras_sel', None)
         video_file = None
         if camera_sel:
             dt = self.app_state.dt
             video_file = dt.get_video(self.app_state.trials_sel, camera_sel)
-
         if video_file and is_url(video_file):
             self.app_state.video_path = video_file
         elif video_file and self.app_state.video_folder:
@@ -147,17 +145,18 @@ class VideoManager:
             )
         else:
             self.app_state.video_path = None
-
-        self._update_audio_path()
-        self._update_audio_ui(plot_container, transform_widget)
-
         if not self.app_state.video_path:
             return
-
         restore_frame = max(0, int(getattr(self.app_state, 'current_frame', 0) or 0))
         self._warn_video_format()
         self._cleanup_primary_video()
         self._setup_primary_video(restore_frame)
+
+    def update_audio(self, plot_container, transform_widget):
+        if not self.app_state.ready:
+            return
+        self._update_audio_path()
+        self._update_audio_ui(plot_container, transform_widget)
 
     def _update_audio_path(self) -> None:
         self.app_state.audio_path = None

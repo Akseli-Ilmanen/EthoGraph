@@ -370,26 +370,29 @@ class TrialTree(xr.DataTree):
     def _get_media_file(
         self, trial, var_name: str, coord_name: str, device=None,
     ) -> str | None:
+        """
+        Simplified: Only two scenarios.
+        - Per-trial mode: media array has 'trial' dim.
+        - Session-long mode: media array has only device dim (no 'trial').
+        """
         if self.session is None or var_name not in self.session:
             return None
         da = self.session[var_name]
         try:
             if "trial" in da.dims:
+                # Per-trial mode
                 if device is not None:
-                    val = str(da.sel(trial=trial, **{coord_name: device}).item())
+                    val = da.sel(trial=trial, **{coord_name: device}).item()
                 else:
-                    val = str(da.sel(trial=trial).values.flat[0])
+                    val = da.sel(trial=trial).values.flat[0]
             else:
-                file_dim = self._file_dim_for_var(var_name)
-                file_idx = self._file_index_for_trial(trial, var_name)
+                # Session-long mode: just device selection
                 if device is not None:
-                    val = str(
-                        da.isel(**{file_dim: file_idx})
-                        .sel(**{coord_name: device}).item()
-                    )
+                    val = da.sel(**{coord_name: device}).item()
                 else:
-                    val = str(da.isel(**{file_dim: file_idx}).values.flat[0])
-        except (KeyError, ValueError, IndexError):
+                    val = da.values.flat[0]
+            val = str(val)
+        except (KeyError, ValueError, IndexError, AttributeError):
             return None
         return val if val else None
 
@@ -406,22 +409,11 @@ class TrialTree(xr.DataTree):
         return self._get_media_file(trial, "pose", "cameras", camera)
 
     def get_media_start(self, trial, stream: str, device=None) -> float:
-        """Get the effective start time for a media file.
-
-        Combines the per-file start time (set via ``video_start`` /
-        ``audio_start`` in :meth:`set_media_files`) with the global
-        stream offset (set via :meth:`set_stream_offset`).
-
-        Works in both per-trial and session-file modes.
-
-        Parameters
-        ----------
-        trial
-            Trial identifier.
-        stream
-            ``"video"`` or ``"audio"``.
-        device
-            Camera or mic label.  When ``None`` the first device is used.
+        """
+        Simplified: Only two scenarios.
+        - Per-trial mode: start array has 'trial' dim.
+        - Session-long mode: start array has only device dim (no 'trial').
+        Returns start time plus global stream offset.
         """
         raw = 0.0
         start_var = f"{stream}_start"
@@ -435,16 +427,11 @@ class TrialTree(xr.DataTree):
                     else:
                         raw = float(da.sel(trial=trial).values.flat[0])
                 else:
-                    file_dim = self._file_dim_for_var(stream)
-                    file_idx = self._file_index_for_trial(trial, stream)
                     if device is not None:
-                        raw = float(
-                            da.isel(**{file_dim: file_idx})
-                            .sel(**{coord: device}).item()
-                        )
+                        raw = float(da.sel(**{coord: device}).item())
                     else:
-                        raw = float(da.isel(**{file_dim: file_idx}).values.flat[0])
-            except (KeyError, ValueError, IndexError):
+                        raw = float(da.values.flat[0])
+            except (KeyError, ValueError, IndexError, AttributeError):
                 pass
         offset = self.get_stream_offset(trial, stream) or 0.0
         return raw + offset
@@ -452,53 +439,33 @@ class TrialTree(xr.DataTree):
     def lookup_file(
         self, global_t: float, stream: str, device: str | None = None,
     ) -> tuple[str, float] | None:
-        """Map session-absolute time to ``(filename, local_time)``.
-
-        Only works in session-file mode (``per_trial=False``).
-        Returns ``None`` when no session-file storage exists for
-        *stream*.
-
-        Parameters
-        ----------
-        global_t
-            Time in session-absolute seconds.
-        stream
-            ``"video"``, ``"audio"``, or ``"pose"``.
-        device
-            Camera or mic label.  When ``None`` the first device is
-            used.
+        """
+        Simplified: Only session-long mode supported.
+        Returns (filename, local_time) for session-absolute time.
+        Returns None if not available.
         """
         if self.session is None or stream not in self.session:
             return None
         start_var = f"{'video' if stream == 'pose' else stream}_start"
         if start_var not in self.session:
             return None
-        file_dim = self._file_dim_for_var(stream)
         da_files = self.session[stream]
-        if file_dim not in da_files.dims:
-            return None
-
         da_starts = self.session[start_var]
         coord = "cameras" if stream in ("video", "pose") else "mics"
 
-        if device is not None and da_starts.ndim > 1:
+        # Only session-long mode: starts_1d is 1D
+        if device is not None and coord in da_starts.coords:
             starts_1d = da_starts.sel(**{coord: device}).values
-        elif da_starts.ndim > 1:
-            starts_1d = da_starts.isel(**{coord: 0}).values
+            files_1d = da_files.sel(**{coord: device}).values
         else:
             starts_1d = da_starts.values
+            files_1d = da_files.values
 
         idx = int(np.searchsorted(starts_1d, global_t, side="right")) - 1
         idx = max(0, min(idx, len(starts_1d) - 1))
 
         try:
-            if device is not None:
-                filename = str(
-                    da_files.isel(**{file_dim: idx})
-                    .sel(**{coord: device}).item()
-                )
-            else:
-                filename = str(da_files.isel(**{file_dim: idx}).values.flat[0])
+            filename = str(files_1d[idx])
         except (KeyError, ValueError, IndexError):
             return None
 

@@ -403,54 +403,8 @@ class DataWidget(DataLoader, QWidget):
         QMessageBox.warning(self, "Load cancelled", reason)
         self._cleanup_load_state()
 
-    def _add_placeholder_feature(self):
-        for trial_id, ds in self.app_state.dt.trial_items():
-            time_name = None
-            time_arr = None
-            for var_name in ds.data_vars:
-                tc = eto.get_time_coord(ds[var_name])
-                if tc is not None:
-                    time_name = tc.dims[0] if hasattr(tc, 'dims') else tc.name
-                    time_arr = np.asarray(tc)
-                    break
-            if time_name is None or time_arr is None:
-                time_arr = self._build_time_from_ephys()
-                if time_arr is not None:
-                    time_name = "time"
-            if time_name is None or time_arr is None:
-                continue
 
-            placeholder = xr.DataArray(
-                np.ones(len(time_arr), dtype=np.float32),
-                dims=[time_name],
-                coords={time_name: time_arr},
-                attrs={"type": "features"},
-            )
 
-            def add_placeholder(old_ds, ph=placeholder):
-                new_ds = old_ds.copy()
-                new_ds["placeholder"] = ph
-                return new_ds
-
-            self.app_state.dt.update_trial(trial_id, add_placeholder)
-
-        self.app_state.ds = self.app_state.dt.trial(self.app_state.trials[0])
-        self.type_vars_dict.setdefault("features", [])
-        if "placeholder" not in self.type_vars_dict["features"]:
-            self.type_vars_dict["features"].append("placeholder")
-
-    def _build_time_from_ephys(self) -> np.ndarray | None:
-        ephys_path, stream_id, _ = self.app_state.get_ephys_source()
-        if not ephys_path:
-            return None
-        from .plots_ephystrace import SharedEphysCache
-        loader = SharedEphysCache.get_loader(ephys_path, stream_id)
-        if loader is None or len(loader) == 0 or loader.rate <= 0:
-            return None
-        duration = len(loader) / loader.rate
-        placeholder_sr = min(loader.rate, 1000.0)
-        n_samples = int(duration * placeholder_sr)
-        return np.arange(n_samples) / placeholder_sr
 
     def on_load_clicked(self):
         if not self.app_state.nc_file_path:
@@ -461,7 +415,6 @@ class DataWidget(DataLoader, QWidget):
 
         self.app_state.has_video = bool(self.app_state.video_folder) or bool(self.app_state.remote_video)
         self.app_state.has_pose = bool(self.app_state.pose_folder)
-        self.app_state.has_audio = bool(self.app_state.audio_folder)
         require_fps = self.app_state.has_video or self.app_state.has_pose
 
         try:
@@ -541,8 +494,6 @@ class DataWidget(DataLoader, QWidget):
         self.app_state.label_ds = self.app_state.label_dt.trial(trials[0])
         self.app_state.trials = sorted(trials)
 
-        if "features" not in self.type_vars_dict or not self.type_vars_dict["features"]:
-            self._add_placeholder_feature()
 
         missing = self._validate_media_files()
         if missing:
@@ -627,13 +578,13 @@ class DataWidget(DataLoader, QWidget):
     # Create controls (populates main panel groupboxes)
     # ------------------------------------------------------------------
 
+
     def _create_trial_controls(self):
         self.io_widget.create_device_controls(self.type_vars_dict)
         self.navigation_widget.setup_trial_conditions(self.type_vars_dict)
         self.navigation_widget.set_data_widget(self)
 
         non_data_type_vars = ["mics", "trial_conditions", "changepoints", "rgb"]
-
         for type_var in self.type_vars_dict.keys():
             if type_var.lower() not in non_data_type_vars:
                 vars_list = self.type_vars_dict[type_var]
@@ -641,9 +592,7 @@ class DataWidget(DataLoader, QWidget):
                     continue
                 self._create_combo_widget(type_var, vars_list)
 
-        # ------------------------------------------------------------------
-        # Row 1: Slot combos (only visible if video/pose loaded)
-        # ------------------------------------------------------------------
+        # Restore camera combos
         has_nwb_pose = "nwb_source" in self.app_state.dt.attrs and (
             "position" in self.app_state.ds.data_vars
             or any(k.startswith("position_") for k in self.app_state.ds.data_vars)
@@ -688,62 +637,67 @@ class DataWidget(DataLoader, QWidget):
         if "keypoints" in self.app_state.ds.coords:
             keypoint_names = strip_common_prefix([str(k) for k in self.app_state.ds.coords["keypoints"].values])
             self.populate_keypoints(keypoint_names)
-            
 
         slot_layout.addStretch()
-
-        if self.app_state.has_video:
+        if self.app_state.has_video or self.app_state.has_audio:
             self.slot_groupbox.show()
 
-        # ------------------------------------------------------------------
-        # Plot panels (three rows inside QGroupBox)
-        # ------------------------------------------------------------------
+        self._setup_panel_checkboxes()
+
+    def _setup_panel_checkboxes(self):
+        # Centralized setup for panel checkboxes
         row1 = self.panels_row1_layout
         row2 = self.panels_row2_layout
         row3 = self.panels_row3_layout
-        # Row 1: AudioTrace | Spectrogram | Mics combo (hidden when no audio)
         self._audio_row_widgets = []
 
+        # AudioTrace
+        show_audio = bool(self.app_state.has_audio)
         self.audiotrace_checkbox = QCheckBox("AudioTrace")
-        self.audiotrace_checkbox.setChecked(self.app_state.audiotrace_visible)
+        self.audiotrace_checkbox.setChecked(show_audio)
         self.audiotrace_checkbox.stateChanged.connect(self._on_audiotrace_toggled)
         row1.addWidget(self.audiotrace_checkbox)
         self._audio_row_widgets.append(self.audiotrace_checkbox)
 
+        # Spectrogram
         self.spectrogram_checkbox = QCheckBox("Spectrogram")
-        self.spectrogram_checkbox.setChecked(self.app_state.spectrogram_visible)
+        self.spectrogram_checkbox.setChecked(show_audio)
         self.spectrogram_checkbox.stateChanged.connect(self._on_spectrogram_toggled)
         row1.addWidget(self.spectrogram_checkbox)
         self._audio_row_widgets.append(self.spectrogram_checkbox)
 
+        # EphysTrace
+        show_ephys = bool(self.app_state.has_ephys)
         self.ephys_checkbox = QCheckBox("EphysTrace")
-        self.ephys_checkbox.setChecked(self.app_state.ephys_visible)
+        self.ephys_checkbox.setChecked(show_ephys)
         self.ephys_checkbox.stateChanged.connect(self._on_ephys_toggled)
         row1.addWidget(self.ephys_checkbox)
-        if not self.app_state.has_ephys:
+        if not show_ephys:
             self.ephys_checkbox.hide()
 
+        # FeaturePlot
+        no_features = self.type_vars_dict.get("features") == []
         self.featureplot_checkbox = QCheckBox("FeaturePlot")
-        only_placeholder = self.type_vars_dict.get("features") == ["placeholder"]
-        if only_placeholder:
-            self.featureplot_checkbox.setChecked(False)
-            self.app_state.featureplot_visible = False
-        else:
-            self.featureplot_checkbox.setChecked(self.app_state.featureplot_visible)
+        self.featureplot_checkbox.setChecked(not no_features)
         self.featureplot_checkbox.stateChanged.connect(self._on_featureplot_toggled)
         row1.addWidget(self.featureplot_checkbox)
 
+        # VideoViewer
+        show_video = bool(self.app_state.has_video)
         self.video_viewer_checkbox = QCheckBox("VideoViewer")
-        self.video_viewer_checkbox.setChecked(self.app_state.video_viewer_visible)
+        self.video_viewer_checkbox.setChecked(show_video)
         self.video_viewer_checkbox.stateChanged.connect(self._on_video_viewer_toggled)
         row1.addWidget(self.video_viewer_checkbox)
 
+        # PoseMarkers
+        show_pose = bool(self.app_state.has_pose)
         self.pose_markers_checkbox = QCheckBox("PoseMarkers")
-        self.pose_markers_checkbox.setChecked(self.app_state.pose_markers_visible)
+        self.pose_markers_checkbox.setChecked(show_pose)
         self.pose_markers_checkbox.stateChanged.connect(self._on_pose_markers_toggled)
         row1.addWidget(self.pose_markers_checkbox)
 
-        if self.app_state.has_audio:
+        # Mics combo
+        if show_audio:
             mic_names = self.type_vars_dict.get("mics", [])
             expanded = self._expand_mics_with_channels(mic_names)
             self.mics_combo = QComboBox()
@@ -761,11 +715,9 @@ class DataWidget(DataLoader, QWidget):
                 self.app_state.set_key_sel("mics", expanded[0])
 
         row1.addStretch()
-
-        if not self.app_state.has_audio:
+        if not show_audio:
             for w in self._audio_row_widgets:
                 w.hide()
-
         self.video_mgr.set_audio_row_widgets(self._audio_row_widgets)
 
         # Row 3: Feature view | Sort channels | Ephys stream
@@ -793,18 +745,15 @@ class DataWidget(DataLoader, QWidget):
         self._neural_view_label.hide()
         self.neural_view_combo.hide()
 
-        if self.app_state.has_ephys and self.ephys_widget:
+        if show_ephys and self.ephys_widget:
             self.ephys_widget.populate_stream_combo()
             self._neural_view_label.show()
             self.neural_view_combo.show()
 
         row3.addStretch()
 
-        # ------------------------------------------------------------------
-        # Overlays: Confidence, Envelope
-        # ------------------------------------------------------------------
+        # Overlays
         overlays_layout = self.overlays_layout
-
         self.show_labels_checkbox = QCheckBox("Labels")
         self.show_labels_checkbox.setChecked(self.app_state.labels_visible)
         self.show_labels_checkbox.stateChanged.connect(self._on_labels_overlay_toggled)
@@ -822,7 +771,6 @@ class DataWidget(DataLoader, QWidget):
         overlays_layout.addWidget(self.show_envelope_checkbox)
 
         overlays_layout.addStretch()
-
         self._set_controls_enabled(False)
 
     # ------------------------------------------------------------------
@@ -855,7 +803,7 @@ class DataWidget(DataLoader, QWidget):
         if not self.app_state.ready or not mic_name:
             return
         self.app_state.set_key_sel("mics", mic_name)
-        self.update_video_audio()
+        self.update_audio()
         self.plot_container.clear_audio_cache()
         self.plot_container.update_audio_panels()
         current_plot = self.plot_container.get_current_plot()
@@ -1507,8 +1455,9 @@ class DataWidget(DataLoader, QWidget):
         self._build_trial_alignment(trials_sel)
 
         self.app_state.current_frame = 0
-        self.update_video_audio()
+        self.update_video()
         self._init_or_update_secondary_video()
+        self.update_audio()  
         self.update_pose()
         self.update_label()
         if self.ephys_widget:
@@ -1595,14 +1544,23 @@ class DataWidget(DataLoader, QWidget):
     # Video / audio / pose / space
     # ------------------------------------------------------------------
 
-    def update_video_audio(self):
+    def update_video(self):
         if not self.app_state.ready:
             return
         self.show_envelope_checkbox.show()
-        self.video_mgr.update_video_audio(
+        self.video_mgr.update_video(
             plot_container=self.plot_container,
             transform_widget=self.transform_widget,
         )
+
+    def update_audio(self):
+        if not self.app_state.ready:
+            return
+        self.video_mgr.update_audio(
+            plot_container=self.plot_container,
+            transform_widget=self.transform_widget,
+        )
+
 
     def update_label(self):
         self.labels_widget.refresh_labels_shapes_layer()
@@ -1660,7 +1618,7 @@ class DataWidget(DataLoader, QWidget):
             return
         self.app_state.slot2_sel = camera_name
         self.app_state.set_key_sel("cameras", camera_name)
-        self.update_video_audio()
+        self.update_video()
         self.update_pose()
 
     def _on_secondary_camera_changed(self, camera_name):

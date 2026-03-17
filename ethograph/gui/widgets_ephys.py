@@ -718,6 +718,7 @@ class EphysWidget(QWidget):
         if self.plot_container.is_ephystrace():
             self.plot_container.ephys_trace_plot.set_channel(channel)
             xmin, xmax = self.plot_container.get_current_xlim()
+            print(f"[widgets_ephys] update_plot_content called (ephys_trace_plot) xmin={xmin}, xmax={xmax}")
             self.plot_container.ephys_trace_plot.update_plot_content(xmin, xmax)
 
     def set_neural_view(self, mode: str):
@@ -1750,6 +1751,7 @@ class EphysWidget(QWidget):
         flags = self.get_ephys_preprocessing_flags()
         ephys_plot.buffer.set_preprocessing(flags)
         if ephys_plot.current_range:
+            print(f"[widgets_ephys] update_plot_content called (ephys_plot) current_range={ephys_plot.current_range}")
             ephys_plot.update_plot_content(*ephys_plot.current_range)
 
     # ------------------------------------------------------------------
