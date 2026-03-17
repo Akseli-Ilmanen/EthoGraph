@@ -1,0 +1,47 @@
+data/
+logging/
+result/
+neurosift/
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.wav
+*.nc
+*.nwb
+*.npy
+
+
+*gui_settings.yaml
+
+
+# Byte-compiled
+__pycache__/
+*.py[cod]
+*$py.class
+
+# MkDocs build output
+site/
+docs/tutorials/
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+
+
+# IDE
+.idea/
+.vscode/
+.claude/
+*.swp
+
+# Jupyter
+.ipynb_checkpoints/
+
+
+# OS
+.DS_Store
+Thumbs.db
+nul

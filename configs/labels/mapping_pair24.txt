@@ -1,0 +1,12 @@
+00 Background
+01 Idle
+02 SmallMovement
+03 HeadTilt
+04 Groom
+05 Sniff
+06 Investigate
+07 RearUp
+08 RearDown
+09 CrouchExplore
+10 Amble
+11 Locomotion

@@ -1,0 +1,16 @@
+# Larger stack size -> run time longer, more context, feature more spread in time
+# Smaller stack size -> run time shorter, less context, feature more compressed in time
+
+# For 200fps, I tested 20 and 50. 20 lead to better performance and also shorter run time.
+stack_size: 21 # Feature time span in fps. 
+device: 'cuda:0'  # device as in `torch`, can be 'cpu'
+output_path: './data/' # where to store output features
+
+
+# config
+config: null # Not sure what this does
+
+# Video paths
+video_paths: null # e.g. "./sample/video1.mp4" or  "[video1.mp4, video2.mp4]"
+file_with_video_paths: null # e.g. video_paths.txt
+
