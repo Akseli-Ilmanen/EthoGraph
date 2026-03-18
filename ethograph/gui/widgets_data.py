@@ -55,7 +55,7 @@ from .makepretty import (
     get_combo_value,
     set_combo_to_value,
 )
-from .plots_ephystrace import SharedEphysCache
+from .plots_ephystrace import get_loader as get_ephys_loader
 from .plots_space import SpacePlot
 from .plots_spectrogram import SharedAudioCache
 from .pose_render import (
@@ -666,14 +666,23 @@ class DataWidget(DataLoader, QWidget):
         row1.addWidget(self.spectrogram_checkbox)
         self._audio_row_widgets.append(self.spectrogram_checkbox)
 
-        # EphysTrace
-        show_ephys = bool(self.app_state.has_ephys)
-        self.ephys_checkbox = QCheckBox("EphysTrace")
-        self.ephys_checkbox.setChecked(show_ephys)
-        self.ephys_checkbox.stateChanged.connect(self._on_ephys_toggled)
-        row1.addWidget(self.ephys_checkbox)
-        if not show_ephys:
-            self.ephys_checkbox.hide()
+        # Neo-Viewer (generic ephys streams via Neo)
+        has_neo_streams = bool(self.app_state.ephys_path)
+        self.neo_viewer_checkbox = QCheckBox("Neo-Viewer")
+        self.neo_viewer_checkbox.setChecked(has_neo_streams)
+        self.neo_viewer_checkbox.stateChanged.connect(self._on_neo_viewer_toggled)
+        row1.addWidget(self.neo_viewer_checkbox)
+        if not has_neo_streams:
+            self.neo_viewer_checkbox.hide()
+
+        # Phy-Viewer (kilosort/.dat via phylib)
+        has_phy = bool(self.app_state.kilosort_folder)
+        self.phy_viewer_checkbox = QCheckBox("Phy-Viewer")
+        self.phy_viewer_checkbox.setChecked(has_phy)
+        self.phy_viewer_checkbox.stateChanged.connect(self._on_phy_viewer_toggled)
+        row1.addWidget(self.phy_viewer_checkbox)
+        if not has_phy:
+            self.phy_viewer_checkbox.hide()
 
         # FeaturePlot
         no_features = self.type_vars_dict.get("features") == []
@@ -745,6 +754,20 @@ class DataWidget(DataLoader, QWidget):
         self._neural_view_label.hide()
         self.neural_view_combo.hide()
 
+        # Neo stream combo (for Neo-Viewer panel)
+        self._neo_stream_label = QLabel("Neo stream:")
+        self.neo_stream_combo = QComboBox()
+        self.neo_stream_combo.setObjectName("neo_stream_combo")
+        self.neo_stream_combo.currentTextChanged.connect(self._on_neo_stream_changed)
+        row3.addWidget(self._neo_stream_label)
+        row3.addWidget(self.neo_stream_combo)
+        self._neo_stream_label.hide()
+        self.neo_stream_combo.hide()
+
+        if has_neo_streams and self.ephys_widget:
+            self._populate_neo_stream_combo()
+
+        show_ephys = bool(self.app_state.has_ephys)
         if show_ephys and self.ephys_widget:
             self.ephys_widget.populate_stream_combo()
             self._neural_view_label.show()
@@ -792,6 +815,94 @@ class DataWidget(DataLoader, QWidget):
             return
         if self.ephys_widget:
             self.ephys_widget.set_neural_view(mode)
+
+    # ------------------------------------------------------------------
+    # Neo-Viewer panel
+    # ------------------------------------------------------------------
+
+    def _populate_neo_stream_combo(self):
+        """Populate the Neo stream combo with available streams, greying out
+        any stream that matches kilosort params (n_channels, sample_rate)."""
+        source_map = getattr(self.app_state, 'ephys_source_map', {})
+        if not source_map:
+            self._neo_stream_label.hide()
+            self.neo_stream_combo.hide()
+            return
+
+        ks_params = None
+        if self.ephys_widget:
+            ks_params = getattr(self.ephys_widget, '_kilosort_params', None)
+
+        self.neo_stream_combo.blockSignals(True)
+        self.neo_stream_combo.clear()
+
+        for display_name, (filepath, stream_id, _ch) in source_map.items():
+            self.neo_stream_combo.addItem(display_name)
+
+            # Grey out streams matching kilosort params
+            if ks_params:
+                loader = get_ephys_loader(filepath, stream_id)
+                if loader is not None:
+                    ks_sr = ks_params.get("sample_rate", 0)
+                    ks_nch = ks_params.get("n_channels_dat", 0)
+                    if (loader.n_channels == ks_nch
+                            and abs(loader.rate - ks_sr) < 1.0):
+                        idx = self.neo_stream_combo.count() - 1
+                        model = self.neo_stream_combo.model()
+                        item = model.item(idx)
+                        if item:
+                            item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
+
+        self.neo_stream_combo.blockSignals(False)
+
+        show_combo = self.neo_stream_combo.count() > 0
+        self._neo_stream_label.setVisible(show_combo)
+        self.neo_stream_combo.setVisible(show_combo)
+
+        if show_combo:
+            # Select first enabled item
+            for i in range(self.neo_stream_combo.count()):
+                item = self.neo_stream_combo.model().item(i)
+                if item and (item.flags() & Qt.ItemIsEnabled):
+                    self.neo_stream_combo.setCurrentIndex(i)
+                    break
+
+    def _on_neo_stream_changed(self, stream_name: str):
+        if not self.app_state.ready or not stream_name:
+            return
+        self._configure_neo_panel(stream_name)
+
+    def _configure_neo_panel(self, stream_name: str | None = None):
+        """Configure the Neo-Viewer panel with the selected stream."""
+        if not self.plot_container:
+            return
+
+        if stream_name is None:
+            stream_name = self.neo_stream_combo.currentText() if hasattr(self, 'neo_stream_combo') else ""
+        if not stream_name:
+            return
+
+        source_map = getattr(self.app_state, 'ephys_source_map', {})
+        if stream_name not in source_map:
+            return
+
+        filepath, stream_id, channel_idx = source_map[stream_name]
+        loader = get_ephys_loader(filepath, stream_id)
+        if loader is None:
+            return
+
+        neo_plot = self.plot_container.neo_trace_plot
+        neo_plot.set_loader(loader, channel_idx)
+
+        offset = self.app_state.dt.get_start_time(self.app_state.trials_sel)
+        bounds = self.app_state.get_trial_bounds()
+        if bounds is not None:
+            duration = bounds[1] - bounds[0]
+            neo_plot.set_ephys_offset(offset, duration)
+
+        if self.plot_container._neo_visible:
+            xmin, xmax = self.plot_container.get_current_xlim()
+            neo_plot.update_plot_content(xmin, xmax)
 
     def cycle_view_mode(self):
         if not hasattr(self, 'view_mode_combo') or not self.view_mode_combo.isVisible():
@@ -938,7 +1049,14 @@ class DataWidget(DataLoader, QWidget):
             if visible and self._is_autoscale_on():
                 self.plot_container.spectrogram_plot.vb.enableAutoRange(x=False, y=True)
 
-    def _on_ephys_toggled(self, state):
+    def _on_neo_viewer_toggled(self, state):
+        visible = state == Qt.Checked
+        if self.plot_container:
+            self.plot_container.set_neo_visible(visible)
+            if visible:
+                self._configure_neo_panel()
+
+    def _on_phy_viewer_toggled(self, state):
         visible = state == Qt.Checked
         self.app_state.ephys_visible = visible
         if self.plot_container:
@@ -952,6 +1070,10 @@ class DataWidget(DataLoader, QWidget):
                     self.plot_container.ephys_trace_plot.vb.enableAutoRange(x=False, y=True)
             else:
                 self.plot_container.hide_ephys_panel()
+
+    # Keep backward compat
+    def _on_ephys_toggled(self, state):
+        self._on_phy_viewer_toggled(state)
 
     def _on_featureplot_toggled(self, state):
         visible = state == Qt.Checked
@@ -1462,6 +1584,9 @@ class DataWidget(DataLoader, QWidget):
         self.update_label()
         if self.ephys_widget:
             self.ephys_widget.on_trial_changed()
+        # Update Neo panel for new trial
+        if hasattr(self, 'neo_viewer_checkbox') and self.neo_viewer_checkbox.isChecked():
+            self._configure_neo_panel()
         self.update_main_plot()
         self.update_space_plot()
 
@@ -1593,7 +1718,8 @@ class DataWidget(DataLoader, QWidget):
 
     def closeEvent(self, event):
         SharedAudioCache.clear_cache()
-        SharedEphysCache.clear_cache()
+        from .plots_ephystrace import clear_loader_cache
+        clear_loader_cache()
         if getattr(self.app_state, 'video', None):
             self.app_state.video.stop()
         super().closeEvent(event)

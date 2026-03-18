@@ -127,6 +127,7 @@ class LabelsWidget(QWidget):
                      plot_container.spectrogram_plot,
                      plot_container.audio_trace_plot,
                      plot_container.heatmap_plot,
+                     plot_container.neo_trace_plot,
                      plot_container.ephys_trace_plot]:
             if plot is not None:
                 plot.plot_clicked.connect(self._on_plot_clicked)

@@ -48,7 +48,7 @@ class LabelDrawingMixin:
         """Return all plot widgets that exist on this container."""
         candidates = []
         for attr in ("line_plot", "spectrogram_plot", "audio_trace_plot",
-                      "heatmap_plot", "ephys_trace_plot"):
+                      "heatmap_plot", "neo_trace_plot", "ephys_trace_plot"):
             plot = getattr(self, attr, None)
             if plot is not None:
                 candidates.append(plot)

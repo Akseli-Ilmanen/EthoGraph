@@ -261,8 +261,8 @@ def bind_global_shortcuts(meta_widget):
 
     @viewer.bind_key("shift+e", overwrite=True)
     def toggle_ephys(v):
-        cb = data_widget.ephys_checkbox
-        if cb.isVisible():
+        cb = getattr(data_widget, 'phy_viewer_checkbox', None)
+        if cb and cb.isVisible():
             cb.setChecked(not cb.isChecked())
 
     @viewer.bind_key("shift+f", overwrite=True)

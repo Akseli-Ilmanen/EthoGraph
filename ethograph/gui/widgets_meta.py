@@ -454,6 +454,14 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.plot_container.set_audiotrace_visible(self.app_state.audiotrace_visible)
         self.plot_container.set_spectrogram_visible(self.app_state.spectrogram_visible)
         self.plot_container.set_featureplot_visible(self.app_state.featureplot_visible)
+        # Neo-Viewer: configure if ephys file is available
+        if self.app_state.ephys_path:
+            self.data_widget._configure_neo_panel()
+            neo_visible = getattr(self.data_widget, 'neo_viewer_checkbox', None)
+            if neo_visible and neo_visible.isChecked():
+                self.plot_container.set_neo_visible(True)
+
+        # Phy-Viewer: configure if ephys/kilosort is available
         if self.app_state.has_ephys and self.app_state.ephys_visible:
             self.data_widget._configure_ephys_trace_plot()
             self.plot_container.show_ephys_panel()

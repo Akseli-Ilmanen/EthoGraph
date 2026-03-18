@@ -607,9 +607,9 @@ def discover_trial_sources(
 
     if ephys_path:
         try:
-            from ethograph.gui.plots_ephystrace import SharedEphysCache
+            from ethograph.gui.plots_ephystrace import get_loader as get_ephys_loader
 
-            loader = SharedEphysCache.get_loader(ephys_path, ephys_stream_id)
+            loader = get_ephys_loader(ephys_path, ephys_stream_id)
             if loader is not None and len(loader) > 0:
                 if ephys_timestamps is not None and len(ephys_timestamps) > 0:
                     data = loader[:len(ephys_timestamps)]

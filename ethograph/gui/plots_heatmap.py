@@ -266,12 +266,12 @@ class HeatmapPlot(BasePlot):
             total_duration = ephys_src.time_range.duration
             loader = ephys_src._loader
         else:
-            from .plots_ephystrace import SharedEphysCache
+            from .plots_ephystrace import get_loader as get_ephys_loader
 
             ephys_path, stream_id, _ = self.app_state.get_ephys_source()
             if not ephys_path:
                 return None, None
-            loader = SharedEphysCache.get_loader(ephys_path, stream_id)
+            loader = get_ephys_loader(ephys_path, stream_id)
             if loader is None:
                 return None, None
             fs = loader.rate
