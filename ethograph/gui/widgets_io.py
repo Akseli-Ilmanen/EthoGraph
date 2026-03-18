@@ -723,6 +723,11 @@ class IOWidget(QWidget):
         return float(sr_value), int(n_channels_value)
 
     def _expand_ephys_with_streams(self, ephys_path, ds):
+        """Discover Neo streams from the ephys file for the Neo-Viewer.
+
+        Raw binary formats (.dat, .bin, .raw) are skipped here — they are
+        handled by the Phy-Viewer via kilosort params.py.
+        """
         from .plots_ephystrace import GenericEphysLoader
 
         self.app_state.ephys_source_map.clear()
@@ -731,42 +736,29 @@ class IOWidget(QWidget):
         if not ephys_path:
             return feature_names
 
-        candidates = [os.path.normpath(str(ephys_path))]
+        filepath = os.path.normpath(str(ephys_path))
+        ext = Path(filepath).suffix.lower()
 
-        for filepath in candidates:
-            filename = Path(filepath).name
-            ext = Path(filepath).suffix.lower()
+        # Raw binary handled by Phy-Viewer, skip for Neo
+        if ext in (".dat", ".bin", ".raw"):
+            return feature_names
 
-            dat_sr = None
-            dat_n_channels = None
-            if ext == ".dat":
-                dat_sr, dat_n_channels = self._ensure_dat_metadata(filepath)
-                if dat_sr is None or dat_n_channels is None:
-                    continue
-            elif ext in (".bin", ".raw"):
-                continue
+        try:
+            loader = GenericEphysLoader(filepath, stream_id="0")
+            streams = loader.streams
 
-            try:
-                loader = GenericEphysLoader(
-                    filepath,
-                    stream_id="0",
-                    n_channels=dat_n_channels,
-                    sampling_rate=dat_sr,
-                )
-                streams = loader.streams
-
-                if streams and len(streams) > 1:
-                    for sid, info in streams.items():
-                        stream_name = info["name"]
-                        display_name = f"{stream_name} Waveform"
-                        self.app_state.ephys_source_map[display_name] = (filepath, sid, 0)
-                        feature_names.append(display_name)
-                else:
-                    display_name = "Ephys Waveform"
-                    self.app_state.ephys_source_map[display_name] = (filepath, "0", 0)
+            if streams and len(streams) > 1:
+                for sid, info in streams.items():
+                    stream_name = info["name"]
+                    display_name = f"{stream_name} Waveform"
+                    self.app_state.ephys_source_map[display_name] = (filepath, sid, 0)
                     feature_names.append(display_name)
-            except (OSError, IOError, ValueError) as e:
-                print(f"Skipping ephys file {filename}: {e}")
+            else:
+                display_name = "Ephys Waveform"
+                self.app_state.ephys_source_map[display_name] = (filepath, "0", 0)
+                feature_names.append(display_name)
+        except (OSError, IOError, ValueError) as e:
+            print(f"Skipping ephys file {Path(filepath).name}: {e}")
 
         return feature_names
 

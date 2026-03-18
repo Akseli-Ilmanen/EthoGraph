@@ -51,6 +51,23 @@ def _nice_round(value: float) -> float:
     return 10 * magnitude
 
 
+def select_traces(traces, interval, sample_rate):
+    """Load traces in an interval (in seconds) with median subtraction.
+
+    Mirrors phy's ``select_traces`` for simple time-based indexing.
+    """
+    start, end = interval
+    i, j = int(round(sample_rate * start)), int(round(sample_rate * end))
+    i = max(0, i)
+    if hasattr(traces, '__len__'):
+        j = min(j, len(traces))
+    data = traces[i:j]
+    if hasattr(data, 'astype'):
+        data = np.asarray(data, dtype=np.float32)
+    data = data - np.median(data, axis=0)
+    return data
+
+
 _UNIT_TO_VOLTS: dict[str, float] = {
     "V": 1.0,
     "mV": 1e-3,
@@ -388,7 +405,7 @@ class GenericEphysLoader:
         else:
             start, stop = key, key + 1
 
-        if self._loader is not None:
+        if getattr(self, '_loader', None) is not None:  # ← safe fallback
             return self._loader[start:stop]
 
         raw = self._reader.get_analogsignal_chunk(
@@ -404,51 +421,47 @@ class GenericEphysLoader:
 
 
 # ---------------------------------------------------------------------------
-# SharedEphysCache – thread-safe singleton for GenericEphysLoader instances
+# Module-level loader cache (replaces SharedEphysCache)
 # ---------------------------------------------------------------------------
 
+_loader_cache: dict[tuple[str, str], GenericEphysLoader] = {}
+_loader_lock = threading.Lock()
+
+
+def get_loader(
+    path: str | Path,
+    stream_id: str = "0",
+    n_channels: int | None = None,
+    sampling_rate: float | None = None,
+) -> GenericEphysLoader | None:
+    """Get or create a GenericEphysLoader for the given path/stream."""
+    key = (str(path), stream_id)
+    with _loader_lock:
+        if key not in _loader_cache:
+            try:
+                _loader_cache[key] = GenericEphysLoader(
+                    path,
+                    n_channels=n_channels,
+                    sampling_rate=sampling_rate,
+                    stream_id=stream_id,
+                )
+            except Exception as e:
+                print(f"Failed to load ephys file {path}: {type(e).__name__}: {e}")
+                import traceback
+                traceback.print_exc()
+                return None
+        return _loader_cache[key]
+
+
+def clear_loader_cache():
+    with _loader_lock:
+        _loader_cache.clear()
+
+
+# Backward-compat alias
 class SharedEphysCache:
-    """Singleton cache for GenericEphysLoader instances.
-
-    Multiple GUI components (waveform plot, spectrogram, heatmap, set_time,
-    stream discovery) all need the same ephys loader. Without caching, each
-    would re-parse file headers and allocate buffers independently.
-    Cache key is (path, stream_id) so the same file can yield different
-    loaders per stream.
-    """
-
-    _instances: dict[tuple[str, str], GenericEphysLoader] = {}
-    _lock = threading.Lock()
-
-    @classmethod
-    def get_loader(
-        cls,
-        path: str | Path,
-        stream_id: str = "0",
-        n_channels: int | None = None,
-        sampling_rate: float | None = None,
-    ) -> GenericEphysLoader | None:
-        key = (str(path), stream_id)
-        with cls._lock:
-            if key not in cls._instances:
-                try:
-                    cls._instances[key] = GenericEphysLoader(
-                        path,
-                        n_channels=n_channels,
-                        sampling_rate=sampling_rate,
-                        stream_id=stream_id,
-                    )
-                except Exception as e:
-                    print(f"Failed to load ephys file {path}: {type(e).__name__}: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    return None
-            return cls._instances[key]
-
-    @classmethod
-    def clear_cache(cls):
-        with cls._lock:
-            cls._instances.clear()
+    get_loader = staticmethod(get_loader)
+    clear_cache = staticmethod(clear_loader_cache)
 
 
 # ---------------------------------------------------------------------------
@@ -509,17 +522,10 @@ class EphysTraceBuffer:
             view_stop = min(seg_stop, seg_start + default_window)
 
         n_view = view_stop - view_start
-        # Asymmetric prefetching: extend more in scroll direction
-        from .app_constants import DEFAULT_BUFFER_MULTIPLIER
-        buffer_multiplier = DEFAULT_BUFFER_MULTIPLIER  # Use constant from app_constants.py
-        if scroll_direction == "right":
-            buffer_left = int(n_view * 1.0)
-            buffer_right = int(n_view * buffer_multiplier)
-        else:
-            buffer_left = int(n_view * buffer_multiplier)
-            buffer_right = int(n_view * 1.0)
-        cache_start = max(seg_start, view_start - buffer_left)
-        cache_stop = min(seg_stop, view_stop + buffer_right)
+        # Simple symmetric margin (1x view on each side)
+        margin = n_view
+        cache_start = max(seg_start, view_start - margin)
+        cache_stop = min(seg_stop, view_stop + margin)
 
         if cache_stop <= cache_start:
             return

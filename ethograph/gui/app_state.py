@@ -94,6 +94,7 @@ class AppStateSpec:
         "window_size": (float, 5.0, True),
         "audiotrace_visible": (bool, True, True, SCOPE_LOCAL),
         "spectrogram_visible": (bool, True, True, SCOPE_LOCAL),
+        "neo_visible": (bool, True, True, SCOPE_LOCAL),
         "ephys_visible": (bool, True, True, SCOPE_LOCAL),
         "featureplot_visible": (bool, True, True, SCOPE_LOCAL),
         "video_viewer_visible": (bool, True, True, SCOPE_LOCAL),

@@ -805,12 +805,12 @@ class ChangepointsWidget(QWidget):
         params = self._get_cached_params(key) if key else {}
 
         if source == "Ephys Trace":
-            from .plots_ephystrace import SharedEphysCache
+            from .plots_ephystrace import get_loader as get_ephys_loader
             ephys_path, stream_id, channel_idx = self.app_state.get_ephys_source()
             if not ephys_path:
                 show_warning("No ephys data loaded")
                 return
-            loader = SharedEphysCache.get_loader(ephys_path, stream_id=stream_id)
+            loader = get_ephys_loader(ephys_path, stream_id=stream_id)
             if loader is None:
                 show_warning("Could not open ephys file")
                 return

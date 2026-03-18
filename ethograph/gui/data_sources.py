@@ -136,12 +136,12 @@ class EphysFileSource:
     supports_noise_reduction = False
 
     def __init__(self, path: str, stream_id: str = "0", channel_idx: int = 0):
-        from .plots_ephystrace import SharedEphysCache
+        from .plots_ephystrace import get_loader as get_ephys_loader
 
         self._path = path
         self._stream_id = stream_id
         self._channel_idx = channel_idx
-        loader = SharedEphysCache.get_loader(path, stream_id)
+        loader = get_ephys_loader(path, stream_id)
         if loader is None:
             raise ValueError(f"Failed to load ephys: {path}")
         self._ts = RegularTimeseriesSource(

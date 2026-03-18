@@ -38,7 +38,7 @@ from .audio_player import AudioPlayer
 from .data_sources import build_audio_source_from_alignment
 from .label_drawing_mixin import LabelDrawingMixin
 from .plots_audiotrace import AudioTracePlot
-from .plots_ephystrace import EphysTracePlot, SharedEphysCache
+from .plots_ephystrace import EphysTracePlot, get_loader as get_ephys_loader
 from .plots_heatmap import HeatmapPlot
 from .plots_lineplot import LinePlot
 from .plots_overlay import OverlayManager
@@ -112,11 +112,11 @@ class TimeSlider(QWidget):
 # Values: dict mapping panel_name -> fraction of splitter height
 _PANEL_RATIOS = {
     # audio + ephys
-    (True, True): {"audiotrace": 0.12, "spectrogram": 0.18, "ephys": 0.25, "raster": 0.15, "feature": 0.30},
+    (True, True): {"audiotrace": 0.10, "spectrogram": 0.15, "neo": 0.15, "ephys": 0.20, "raster": 0.10, "feature": 0.30},
     # audio only
     (True, False): {"audiotrace": 0.20, "spectrogram": 0.30, "feature": 0.50},
     # ephys only
-    (False, True): {"ephys": 0.35, "raster": 0.20, "feature": 0.45},
+    (False, True): {"neo": 0.20, "ephys": 0.30, "raster": 0.15, "feature": 0.35},
     # nothing extra
     (False, False): {"feature": 1.0},
 }
@@ -143,7 +143,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.spectrogram_plot = SpectrogramPlot(app_state)
         self.line_plot = LinePlot(napari_viewer, app_state)
         self.heatmap_plot = HeatmapPlot(app_state)
-        self.ephys_trace_plot = EphysTracePlot(app_state)
+        self.neo_trace_plot = EphysTracePlot(app_state)   # Neo-Viewer panel
+        self.ephys_trace_plot = EphysTracePlot(app_state)  # Phy-Viewer panel
         self.raster_plot = RasterPlot(app_state)
 
         # Feature panel: line_plot or heatmap_plot
@@ -157,6 +158,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # --- Panel visibility state ---
         self._audiotrace_visible = False
         self._spectrogram_visible = False
+        self._neo_visible = False
         self._ephys_visible = False
         self._raster_visible = False
         self._featureplot_visible = True
@@ -174,6 +176,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         )
         self.audio_trace_plot.vb.sigYRangeChanged.connect(
             lambda: self.overlay_manager.rescale_for_plot(self.audio_trace_plot)
+        )
+        self.neo_trace_plot.vb.sigYRangeChanged.connect(
+            lambda: self.overlay_manager.rescale_for_plot(self.neo_trace_plot)
         )
         self.ephys_trace_plot.vb.sigYRangeChanged.connect(
             lambda: self.overlay_manager.rescale_for_plot(self.ephys_trace_plot)
@@ -215,7 +220,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         # Connect zoom events for changepoint line style updates
         for plot in (self.spectrogram_plot, self.audio_trace_plot,
-                     self.heatmap_plot, self.ephys_trace_plot, self.raster_plot):
+                     self.heatmap_plot, self.neo_trace_plot, self.ephys_trace_plot, self.raster_plot):
             plot.vb.sigRangeChanged.connect(self._on_plot_zoom)
 
         # Bidirectional y-axis sync between ephys trace and raster
@@ -230,6 +235,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.spectrogram_plot.plot_clicked.connect(lambda _: setattr(self, '_last_clicked_panel', 'audio'))
         self.line_plot.plot_clicked.connect(lambda _: setattr(self, '_last_clicked_panel', 'feature'))
         self.heatmap_plot.plot_clicked.connect(lambda _: setattr(self, '_last_clicked_panel', 'feature'))
+        self.neo_trace_plot.plot_clicked.connect(lambda _: setattr(self, '_last_clicked_panel', 'neo'))
         self.ephys_trace_plot.plot_clicked.connect(lambda _: setattr(self, '_last_clicked_panel', 'ephys'))
         self.raster_plot.plot_clicked.connect(lambda _: setattr(self, '_last_clicked_panel', 'raster'))
 
@@ -238,6 +244,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.heatmap_plot.hide()
         self.audio_trace_plot.hide()
         self.spectrogram_plot.hide()
+        self.neo_trace_plot.hide()
         self.ephys_trace_plot.hide()
         self.raster_plot.hide()
 
@@ -277,6 +284,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             panels_in_order.append(("audiotrace", self.audio_trace_plot))
         if self.app_state.has_audio and self._spectrogram_visible:
             panels_in_order.append(("spectrogram", self.spectrogram_plot))
+        if self._neo_visible:
+            panels_in_order.append(("neo", self.neo_trace_plot))
         if self.app_state.has_ephys and self._ephys_visible:
             panels_in_order.append(("ephys", self.ephys_trace_plot))
         if self.app_state.has_ephys and self._raster_visible:
@@ -319,7 +328,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
                 widget.plotItem.setXLink(master.plotItem)
 
         # Also link hidden plots that might be swapped in later
-        for plot in (self.line_plot, self.heatmap_plot):
+        for plot in (self.line_plot, self.heatmap_plot, self.neo_trace_plot):
             if plot not in [w for _, w in panels_in_order]:
                 plot.plotItem.setXLink(master.plotItem)
 
@@ -331,7 +340,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         visible_audio = self.app_state.has_audio and self._audiotrace_visible
         visible_spec = self.app_state.has_audio and self._spectrogram_visible
         visible_ephys = self.app_state.has_ephys and self._ephys_visible
-        visible_neural = visible_ephys or (self.app_state.has_ephys and self._raster_visible)
+        visible_neo = self._neo_visible
+        visible_neural = visible_ephys or visible_neo or (self.app_state.has_ephys and self._raster_visible)
 
         ratios = _PANEL_RATIOS.get(
             (visible_audio or visible_spec, visible_neural),
@@ -345,6 +355,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             raw.append(ratios.get("audiotrace", 0.2))
         if visible_spec:
             raw.append(ratios.get("spectrogram", 0.3))
+        if visible_neo:
+            raw.append(ratios.get("neo", 0.2))
         if visible_ephys:
             raw.append(ratios.get("ephys", 0.3))
         if visible_raster:
@@ -416,6 +428,12 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     # ------------------------------------------------------------------
     # Ephys panel show/hide
     # ------------------------------------------------------------------
+
+    def set_neo_visible(self, visible: bool):
+        if self._neo_visible == visible:
+            return
+        self._neo_visible = visible
+        self._rebuild_splitter()
 
     def show_ephys_panel(self):
         if self._ephys_visible or self._raster_visible:
@@ -686,7 +704,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         ephys_path, stream_id, _ = self.app_state.get_ephys_source()
         if ephys_path:
-            loader = SharedEphysCache.get_loader(ephys_path, stream_id=stream_id)
+            loader = get_ephys_loader(ephys_path, stream_id=stream_id)
             if loader is not None and len(loader) > 0:
                 duration = len(loader) / loader.rate
                 self.time_slider.set_time_range(0.0, duration)
@@ -871,7 +889,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     def hide_envelope_overlay(self):
         updater = getattr(self, '_envelope_xrange_updater', None)
         if updater:
-            for plot in (self.audio_trace_plot, self.ephys_trace_plot):
+            for plot in (self.audio_trace_plot, self.neo_trace_plot, self.ephys_trace_plot):
                 try:
                     plot.vb.sigXRangeChanged.disconnect(updater)
                 except (RuntimeError, TypeError):
@@ -880,7 +898,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         y_updater = getattr(self, '_envelope_y_updater', None)
         if y_updater:
-            for plot in (self.audio_trace_plot, self.ephys_trace_plot):
+            for plot in (self.audio_trace_plot, self.neo_trace_plot, self.ephys_trace_plot):
                 try:
                     plot.vb.sigYRangeChanged.disconnect(y_updater)
                 except (RuntimeError, TypeError):
@@ -956,7 +974,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             ephys_path, stream_id, _ = self.app_state.get_ephys_source()
             if not ephys_path:
                 return None, None, None
-            loader = SharedEphysCache.get_loader(ephys_path, stream_id=stream_id)
+            loader = get_ephys_loader(ephys_path, stream_id=stream_id)
             if loader is None:
                 return None, None, None
             fs = loader.rate

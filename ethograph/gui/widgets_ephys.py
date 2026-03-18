@@ -42,7 +42,7 @@ from ethograph.features.neural import build_tsgroup, compute_pca, firing_rate_to
 
 from .app_constants import CLUSTER_TABLE_MAX_HEIGHT, CLUSTER_TABLE_ROW_HEIGHT
 from .makepretty import find_combo_index, get_combo_value, set_combo_to_value, styled_link
-from .plots_ephystrace import SharedEphysCache
+from .plots_ephystrace import get_loader as get_ephys_loader
 
 _CLUSTER_COLORS = [
     (228, 26, 28),    # red
@@ -334,6 +334,108 @@ class ProbeChannelDialog(QDialog):
         return self._channel_map[selected_list].astype(int)
 
 
+class ParamsDialog(QDialog):
+    """Dialog to collect params.py fields when the file is missing or dat_path is invalid."""
+
+    def __init__(self, parent=None, defaults: dict | None = None):
+        super().__init__(parent)
+        self.setWindowTitle("Ephys params.py configuration")
+        self.resize(500, 260)
+        defaults = defaults or {}
+
+        layout = QVBoxLayout(self)
+
+        form = QVBoxLayout()
+
+        # dat_path
+        dat_row = QHBoxLayout()
+        dat_row.addWidget(QLabel("dat_path:"))
+        self.dat_path_edit = QLineEdit(defaults.get("dat_path", ""))
+        dat_row.addWidget(self.dat_path_edit)
+        browse_btn = QPushButton("Browse")
+        browse_btn.clicked.connect(self._browse_dat)
+        dat_row.addWidget(browse_btn)
+        form.addLayout(dat_row)
+
+        # n_channels_dat
+        nch_row = QHBoxLayout()
+        nch_row.addWidget(QLabel("n_channels_dat:"))
+        self.n_channels_spin = QSpinBox()
+        self.n_channels_spin.setRange(1, 10000)
+        self.n_channels_spin.setValue(defaults.get("n_channels_dat", 64))
+        nch_row.addWidget(self.n_channels_spin)
+        nch_row.addStretch()
+        form.addLayout(nch_row)
+
+        # sample_rate
+        sr_row = QHBoxLayout()
+        sr_row.addWidget(QLabel("sample_rate:"))
+        self.sample_rate_spin = QDoubleSpinBox()
+        self.sample_rate_spin.setRange(1.0, 1_000_000.0)
+        self.sample_rate_spin.setDecimals(1)
+        self.sample_rate_spin.setValue(defaults.get("sample_rate", 30000.0))
+        sr_row.addWidget(self.sample_rate_spin)
+        sr_row.addStretch()
+        form.addLayout(sr_row)
+
+        # offset
+        off_row = QHBoxLayout()
+        off_row.addWidget(QLabel("offset:"))
+        self.offset_spin = QSpinBox()
+        self.offset_spin.setRange(0, 1_000_000)
+        self.offset_spin.setValue(defaults.get("offset", 0))
+        off_row.addWidget(self.offset_spin)
+        off_row.addStretch()
+        form.addLayout(off_row)
+
+        # dtype
+        dt_row = QHBoxLayout()
+        dt_row.addWidget(QLabel("dtype:"))
+        self.dtype_combo = QComboBox()
+        self.dtype_combo.addItems(["int16", "float32", "float64", "int32", "uint16"])
+        self.dtype_combo.setCurrentText(defaults.get("dtype", "int16"))
+        dt_row.addWidget(self.dtype_combo)
+        dt_row.addStretch()
+        form.addLayout(dt_row)
+
+        layout.addLayout(form)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def _browse_dat(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select raw ephys data file", "",
+            "Raw data (*.dat *.bin *.raw);;All files (*)",
+        )
+        if path:
+            self.dat_path_edit.setText(path)
+
+    def get_params(self) -> dict:
+        return {
+            "dat_path": self.dat_path_edit.text().strip(),
+            "n_channels_dat": self.n_channels_spin.value(),
+            "sample_rate": self.sample_rate_spin.value(),
+            "offset": self.offset_spin.value(),
+            "dtype": self.dtype_combo.currentText(),
+        }
+
+
+def _write_params_py(folder: Path, params: dict):
+    """Write a params.py file to the given folder."""
+    lines = [
+        f"dat_path = r'{params.get('dat_path', '')}'",
+        f"n_channels_dat = {params.get('n_channels_dat', 64)}",
+        f"dtype = '{params.get('dtype', 'int16')}'",
+        f"offset = {params.get('offset', 0)}",
+        f"sample_rate = {params.get('sample_rate', 30000.0)}",
+        f"hp_filtered = False",
+    ]
+    (folder / "params.py").write_text("\n".join(lines) + "\n")
+
+
 _SORT_ROLE = Qt.UserRole + 1
 _ALL_FILTER = "All"
 
@@ -413,6 +515,9 @@ class EphysWidget(QWidget):
         self._kilosort_sr: float | None = None
         self._fr_cache_key: tuple | None = None
         self._kilosort_params: dict | None = None
+        self._phy_reader = None
+        self._phy_sr: float | None = None
+        self._phy_n_channels: int | None = None
 
         main_layout = QVBoxLayout()
         main_layout.setSpacing(2)
@@ -662,16 +767,26 @@ class EphysWidget(QWidget):
             self.plot_container.show_ephys_panel()
 
     def configure_ephys_trace_plot(self):
-        ephys_path, stream_id, channel_idx = self.app_state.get_ephys_source()
-        if not ephys_path:
-            return
+        """Configure the Phy-Viewer ephys trace plot.
 
-        alignment = getattr(self.app_state, 'trial_alignment', None)
-        if alignment and "ephys" in alignment.continuous:
-            loader = alignment.continuous["ephys"]._loader
+        Uses the phylib reader when available (from kilosort .dat),
+        otherwise falls back to GenericEphysLoader.
+        """
+        # Prefer phylib reader if available
+        phy_reader = getattr(self, '_phy_reader', None)
+        if phy_reader is not None:
+            loader = phy_reader
+            channel_idx = 0
         else:
-            from .plots_ephystrace import SharedEphysCache
-            loader = SharedEphysCache.get_loader(ephys_path, stream_id)
+            ephys_path, stream_id, channel_idx = self.app_state.get_ephys_source()
+            if not ephys_path:
+                return
+
+            alignment = getattr(self.app_state, 'trial_alignment', None)
+            if alignment and "ephys" in alignment.continuous:
+                loader = alignment.continuous["ephys"]._loader
+            else:
+                loader = get_ephys_loader(ephys_path, stream_id)
 
         if loader is None:
             return
@@ -911,9 +1026,33 @@ class EphysWidget(QWidget):
 
         ks_params = self._parse_kilosort_params(folder)
         if ks_params is None:
-            show_warning("No sample_rate found in params.py — cannot load kilosort folder.")
+            # No params.py — prompt user to create one
+            dialog = ParamsDialog(self)
+            if dialog.exec_() != QDialog.Accepted:
+                return
+            ks_params = dialog.get_params()
+            _write_params_py(folder, ks_params)
+            show_info(f"Saved params.py to {folder}")
+
+        # Validate / fix dat_path
+        dat_path_str = ks_params.get("dat_path", "")
+        if dat_path_str and not Path(dat_path_str).is_file():
+            show_warning(
+                f"dat_path not found on this machine:\n{dat_path_str}\n\n"
+                "Please update the path to the raw data file."
+            )
+            dialog = ParamsDialog(self, defaults=ks_params)
+            if dialog.exec_() != QDialog.Accepted:
+                return
+            ks_params = dialog.get_params()
+            _write_params_py(folder, ks_params)
+            show_info(f"Updated params.py in {folder}")
+
+        ks_sr = ks_params.get("sample_rate")
+        if ks_sr is None:
+            show_warning("No sample_rate in params — cannot load kilosort folder.")
             return
-        ks_sr = ks_params["sample_rate"]
+        ks_sr = float(ks_sr)
         if not self._validate_kilosort_sr(ks_sr):
             return
         self._kilosort_sr = ks_sr
@@ -952,6 +1091,16 @@ class EphysWidget(QWidget):
         if self._spike_times is not None and self._spike_clusters is not None:
             self._register_kilosort_features()
             self._populate_raster_all_spikes()
+
+        # Show Phy-Viewer checkbox and update Neo stream greying
+        if self.data_widget:
+            phy_cb = getattr(self.data_widget, 'phy_viewer_checkbox', None)
+            if phy_cb:
+                phy_cb.show()
+                phy_cb.setChecked(True)
+            # Re-populate Neo combo to grey out matching streams
+            if hasattr(self.data_widget, '_populate_neo_stream_combo'):
+                self.data_widget._populate_neo_stream_combo()
 
     def _populate_raster_all_spikes(self):
         if not self.plot_container or self._spike_times is None or self._spike_clusters is None:
@@ -1048,9 +1197,7 @@ class EphysWidget(QWidget):
         return None
 
     def _register_dat_fallback(self, ks_folder: Path):
-        if self.app_state.ephys_source_map:
-            return
-
+        """Set up the Phy-Viewer panel using phylib reader for the raw .dat file."""
         if not self._kilosort_params:
             return
 
@@ -1066,27 +1213,34 @@ class EphysWidget(QWidget):
             n_channels = int(self._channel_map.max()) + 1
 
         if n_channels is None:
-            show_warning("Cannot determine n_channels_dat for .dat fallback — skipping ephys trace.")
+            show_warning("Cannot determine n_channels_dat — skipping Phy viewer.")
             return
 
-        loader = SharedEphysCache.get_loader(
+        # Create loader via GenericEphysLoader (uses phylib memmap internally)
+        loader = get_ephys_loader(
             dat_path, stream_id="0",
             n_channels=n_channels, sampling_rate=sr,
         )
         if loader is None:
+            show_warning(f"Failed to open .dat file: {dat_path}")
             return
 
-        display_name = "Ephys Waveform"
-        self.app_state.ephys_source_map[display_name] = (str(dat_path), "0", 0)
-        self.app_state.ephys_stream_sel = display_name
+        self._phy_reader = loader
+        self._phy_sr = sr
+        self._phy_n_channels = n_channels
 
-        self.populate_stream_combo()
+        # Also register in source map for backward compat
+        if not self.app_state.ephys_source_map:
+            display_name = "Ephys Waveform"
+            self.app_state.ephys_source_map[display_name] = (str(dat_path), "0", 0)
+            self.app_state.ephys_stream_sel = display_name
+
         self.configure_ephys_trace_plot()
 
         if self.plot_container:
             self.plot_container.show_ephys_panel()
 
-        show_info(f"Loaded .dat ephys: {dat_path.name} ({n_channels} ch, {sr:.0f} Hz)")
+        show_info(f"Phy viewer: {dat_path.name} ({n_channels} ch, {sr:.0f} Hz)")
 
     def _get_hardware_label(self) -> str:
         from .plots_ephystrace import GenericEphysLoader
@@ -1103,7 +1257,7 @@ class EphysWidget(QWidget):
         ephys_path, stream_id, _ = self.app_state.get_ephys_source()
         if not ephys_path:
             return None
-        loader = SharedEphysCache.get_loader(ephys_path, stream_id)
+        loader = get_ephys_loader(ephys_path, stream_id)
         if loader is None or not hasattr(loader, 'channel_names'):
             return None
         channel_names = loader.channel_names
@@ -1975,7 +2129,7 @@ class EphysWidget(QWidget):
             ephys_path = os.path.normpath(
                 os.path.join(os.path.dirname(base_ephys_path), filename)
             )
-        return SharedEphysCache.get_loader(ephys_path, stream_id)
+        return get_ephys_loader(ephys_path, stream_id)
 
     # ------------------------------------------------------------------
     # Bidirectional cluster_id sync
