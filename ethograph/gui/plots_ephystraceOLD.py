@@ -28,14 +28,10 @@ from numpy.typing import NDArray
 from qtpy.QtCore import QEvent, Qt, QTimer, Signal
 from qtpy.QtWidgets import QApplication
 import warnings
-from phylib.io.traces import get_ephys_reader
 
-from ethograph.utils.validation import EPHYS_EXNTENSIONS_RAW
-
-from .app_constants import BUFFER_COVERAGE_MARGIN
+from .app_constants import BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER
 from .plots_base import BasePlot
 from .video_manager import is_url
-
 
 def _nice_round(value: float) -> float:
     if value <= 0:
@@ -103,6 +99,66 @@ class EphysLoader(Protocol):
     def __len__(self) -> int: ...
     def __getitem__(self, key) -> NDArray: ...
 
+
+# ---------------------------------------------------------------------------
+# MemmapLoader – raw binary backend
+# ---------------------------------------------------------------------------
+
+class MemmapLoader:
+    """Zero-copy loader for flat interleaved binary files.
+
+    Parameters
+    ----------
+    path
+        Path to the raw binary file.
+    n_channels
+        Number of interleaved channels.
+    sampling_rate
+        Sampling rate in Hz.
+    dtype
+        Sample dtype on disk (typically int16).
+    gain
+        Scaling factor applied on read (e.g. 0.195e-6 for Intan uV/bit).
+    offset
+        Byte offset to skip file header.
+    """
+
+    def __init__(
+        self,
+        path: str | Path,
+        n_channels: int,
+        sampling_rate: float,
+        dtype: np.dtype | str = np.int16,
+        gain: float = 1.0,
+        offset: int = 0,
+    ):
+        self.rate = sampling_rate
+        self._gain = gain
+        raw = np.memmap(str(path), dtype=np.dtype(dtype), mode="r", offset=offset)
+        total_samples = len(raw) // n_channels
+        self._raw = raw[: total_samples * n_channels].reshape(total_samples, n_channels)
+        self._n_channels = n_channels
+
+    def __len__(self) -> int:
+        return self._raw.shape[0]
+
+    @property
+    def n_channels(self) -> int:
+        return self._n_channels
+
+    @property
+    def channel_names(self) -> list[str]:
+        return [f"Ch {i}" for i in range(self._n_channels)]
+
+    @property
+    def units(self) -> str:
+        return "a.u."
+
+    def __getitem__(self, key) -> NDArray[np.float64]:
+        chunk = self._raw[key]
+        if self._gain != 1.0:
+            return chunk.astype(np.float64) * self._gain
+        return chunk.astype(np.float64) if chunk.dtype != np.float64 else chunk
 
 
 
@@ -213,8 +269,7 @@ class GenericEphysLoader:
         Which Neo stream to load (e.g. "0" for amplifier, "1" for aux).
     """
 
-    KNOWN_EXTENSIONS: dict[str, str] = {
-        ".nwb": "NWBIO",
+    KNOWN_EXTENSIONS = {
         ".rhd": "IntanRawIO",
         ".rhs": "IntanRawIO",
         ".oebin": "OpenEphysBinaryRawIO",
@@ -222,30 +277,47 @@ class GenericEphysLoader:
         ".continuous": "OpenEphysRawIO",
         ".spikes": "OpenEphysRawIO",
         ".events": "OpenEphysRawIO",
-        ".ns1": "BlackrockRawIO", ".ns2": "BlackrockRawIO", ".ns3": "BlackrockRawIO",
-        ".ns4": "BlackrockRawIO", ".ns5": "BlackrockRawIO", ".ns6": "BlackrockRawIO",
-        ".nev": "BlackrockRawIO", ".sif": "BlackrockRawIO", ".ccf": "BlackrockRawIO",
+        ".ns1": "BlackrockRawIO",
+        ".ns2": "BlackrockRawIO",
+        ".ns3": "BlackrockRawIO",
+        ".ns4": "BlackrockRawIO",
+        ".ns5": "BlackrockRawIO",
+        ".ns6": "BlackrockRawIO",
+        ".nev": "BlackrockRawIO",
+        ".sif": "BlackrockRawIO",
+        ".ccf": "BlackrockRawIO",
         ".abf": "AxonRawIO",
-        ".axgx": "AxographRawIO", ".axgd": "AxographRawIO",
-        ".edf": "EDFRawIO", ".bdf": "EDFRawIO",
+        ".axgx": "AxographRawIO",
+        ".axgd": "AxographRawIO",
+        ".edf": "EDFRawIO",
+        ".bdf": "EDFRawIO",
         ".vhdr": "BrainVisionRawIO",
-        ".smr": "Spike2RawIO", ".smrx": "Spike2RawIO",
-        ".ncs": "NeuralynxRawIO", ".nse": "NeuralynxRawIO", ".ntt": "NeuralynxRawIO",
-        ".nvt": "NeuralynxRawIO", ".nrd": "NeuralynxRawIO",
+        ".smr": "Spike2RawIO",
+        ".smrx": "Spike2RawIO",
+        ".ncs": "NeuralynxRawIO",
+        ".nse": "NeuralynxRawIO",
+        ".ntt": "NeuralynxRawIO",
+        ".nvt": "NeuralynxRawIO",
+        ".nrd": "NeuralynxRawIO",
         ".trc": "MicromedRawIO",
-        ".plx": "PlexonRawIO", ".pl2": "Plexon2RawIO",
+        ".plx": "PlexonRawIO",
+        ".pl2": "Plexon2RawIO",
         ".rec": "SpikeGadgetsRawIO",
         ".meta": "SpikeGLXRawIO",
-        ".medd": "MedRawIO", ".rdat": "MedRawIO", ".ridx": "MedRawIO",
-        ".edr": "WinEdrRawIO", ".wcp": "WinWcpRawIO",
+        ".medd": "MedRawIO",
+        ".rdat": "MedRawIO",
+        ".ridx": "MedRawIO",
+        ".edr": "WinEdrRawIO",
+        ".wcp": "WinWcpRawIO",
         ".xdat": "NeuroNexusRawIO",
-        ".tbk": "TdtRawIO", ".tdx": "TdtRawIO", ".tev": "TdtRawIO",
-        ".tin": "TdtRawIO", ".tnt": "TdtRawIO", ".tsq": "TdtRawIO", ".sev": "TdtRawIO",
+        ".tbk": "TdtRawIO",
+        ".tdx": "TdtRawIO",
+        ".tev": "TdtRawIO",
+        ".tin": "TdtRawIO",
+        ".tnt": "TdtRawIO",
+        ".tsq": "TdtRawIO",
+        ".sev": "TdtRawIO",
     }
-
-    _DIR_BASED_RAWIO: frozenset[str] = frozenset({
-        "OpenEphysBinaryRawIO", "OpenEphysRawIO", "SpikeGLXRawIO", "TdtRawIO",
-    })
 
     def __init__(
         self,
@@ -258,91 +330,92 @@ class GenericEphysLoader:
     ):
         self.path = Path(path)
         self._reader = None
-        self._loader:  None 
-
-        self.rate: float = 0.0
-        self.dtype: str = dtype
-        self.starting_time: float = 0.0
-        self._n_channels: int = 0
-        self._n_samples: int = 0
+        self._loader: MemmapLoader | NWBLoader | None = None
+        self.starting_time: float = 0.0  # session-time offset of sample 0
 
         ext = self.path.suffix.lower()
+        rawio_name = self.KNOWN_EXTENSIONS.get(ext)
 
-        if ext == ".nwb" and is_url(str(self.path)):
-            self._init_remote_nwb()
-        elif rawio_name := self.KNOWN_EXTENSIONS.get(ext):
+        if ext == ".nwb":
+            self._init_nwb()
+        elif rawio_name:
             self._init_neo(rawio_name, stream_id)
-        elif ext in EPHYS_EXNTENSIONS_RAW:
+        elif ext in (".dat", ".bin", ".raw"):
             if n_channels is None or sampling_rate is None:
-                raise ValueError(f"Raw binary '{ext}' requires n_channels and sampling_rate.")
-            self._phylib_memmap(n_channels, sampling_rate, dtype, gain)
+                raise ValueError(
+                    f"Raw binary '{ext}' requires n_channels and sampling_rate. "
+                )
+            self._init_memmap(n_channels, sampling_rate, dtype, gain)
         else:
-            supported = ", ".join(sorted(self.KNOWN_EXTENSIONS))
-            raise ValueError(f"Unsupported format '{ext}'. Supported: {supported}, {', '.join(EPHYS_EXNTENSIONS_RAW)}")
+            supported = ", ".join(sorted(self.KNOWN_EXTENSIONS.keys()))
+            raise ValueError(
+                f"Unsupported format '{ext}'. "
+                f"Supported: {supported}, .nwb, .dat, .bin, .raw"
+            )
 
-    # -- backends -----------------------------------------------------------
+    # -- NWB backend --------------------------------------------------------
 
-    def _init_remote_nwb(self):
-        loader = RemoteNWBLoader(str(self.path))
+    def _init_nwb(self):
+        if is_url(str(self.path)):
+            loader = RemoteNWBLoader(str(self.path))
+        else:
+            loader = NWBLoader(self.path)
         self._loader = loader
         self._n_channels = loader.n_channels
         self._n_samples = len(loader)
         self.rate = loader.rate
         self.starting_time = loader.starting_time
 
+    # -- Neo backend --------------------------------------------------------
+
     def _init_neo(self, rawio_name: str, stream_id: str):
         import neo.rawio
+
         rawio_cls = getattr(neo.rawio, rawio_name, None)
         if rawio_cls is None:
-            raise ValueError(f"Neo rawio class '{rawio_name}' not available in this Neo installation.")
+            raise ValueError(f"Neo rawio class '{rawio_name}' is not available in this Neo installation.")
 
-        path_kwarg = "dirname" if rawio_name in self._DIR_BASED_RAWIO else "filename"
-        self._reader = rawio_cls(**{path_kwarg: str(self.path if path_kwarg == "filename" else self.path.parent)})
+        if rawio_name in {"OpenEphysBinaryRawIO", "OpenEphysRawIO", "SpikeGLXRawIO", "TdtRawIO"}:
+            self._reader = rawio_cls(dirname=str(self.path.parent))
+        else:
+            self._reader = rawio_cls(filename=str(self.path))
+
         self._reader.parse_header()
-        self._init_neo_stream(stream_id)
+        self._resolve_stream(stream_id)
 
-    def _init_neo_stream(self, stream_id: str):
-        stream_ids = list(self._reader.header["signal_streams"]["id"])
+    def _resolve_stream(self, stream_id: str):
+        streams = self._reader.header["signal_streams"]
+        stream_ids = list(streams["id"])
+
         if stream_id not in stream_ids:
             stream_id = stream_ids[0]
-        self._stream_idx = stream_ids.index(stream_id)
 
-        ch = self._stream_channels
-        self._n_channels = len(ch)
-        self.rate = float(ch["sampling_rate"][0])
-        self.dtype = str(ch["dtype"][0])
+        self._stream_idx = stream_ids.index(stream_id)
         self._n_samples = self._reader.get_signal_size(
             block_index=0, seg_index=0, stream_index=self._stream_idx,
         )
-        self.starting_time = float(
-            self._reader.get_signal_t_start(
-                block_index=0, seg_index=0, stream_index=self._stream_idx,
-            )
-        )
-        
-    def _phylib_memmap(self, n_channels: int, sampling_rate: float, dtype: str, gain: float):
-        memmap = get_ephys_reader(
-            self.path, sample_rate=sampling_rate, dtype=dtype, gain=gain
-        )
-        if memmap.ndim == 1:
-            memmap = memmap[:, np.newaxis]
-        self._loader = memmap
-        self._n_channels = memmap.shape[1]
-        self._n_samples = memmap.shape[0]
-        self.rate = sampling_rate
-        self.dtype = str(memmap.dtype) if memmap.dtype != np.dtype('int16') else "int16"
 
-
-
-    # -- Neo helpers --------------------------------------------------------
-
-    @property
-    def _stream_channels(self) -> np.ndarray:
         channels = self._reader.header["signal_channels"]
-        stream_id = self._reader.header["signal_streams"]["id"][self._stream_idx]
-        return channels[channels["stream_id"] == stream_id]
+        mask = channels["stream_id"] == stream_id
+        self._n_channels = int(np.sum(mask))
+        self.rate = float(channels[mask]["sampling_rate"][0])
+        self.starting_time = float(
+            self._reader.get_signal_t_start(block_index=0, seg_index=0, stream_index=self._stream_idx)
+        )
 
-    # -- public interface ---------------------------------------------------
+    # -- Memmap backend -----------------------------------------------------
+
+    def _init_memmap(
+        self, n_channels: int, sampling_rate: float, dtype: str, gain: float,
+    ):
+        self._loader = MemmapLoader(
+            self.path, n_channels, sampling_rate, np.dtype(dtype), gain=gain,
+        )
+        self._n_channels = n_channels
+        self._n_samples = len(self._loader)
+        self.rate = sampling_rate
+
+    # -- Public interface ---------------------------------------------------
 
     def __len__(self) -> int:
         return self._n_samples
@@ -355,33 +428,39 @@ class GenericEphysLoader:
     def channel_names(self) -> list[str]:
         if self._loader is not None:
             return self._loader.channel_names
-        return list(self._stream_channels["name"])
+        channels = self._reader.header["signal_channels"]
+        streams = self._reader.header["signal_streams"]
+        stream_id = streams["id"][self._stream_idx]
+        mask = channels["stream_id"] == stream_id
+        return list(channels[mask]["name"])
 
     @property
     def units(self) -> str:
         if self._loader is not None:
             return self._loader.units
-        unit_str = str(self._stream_channels["units"][0])
-        return unit_str or "a.u."
+        channels = self._reader.header["signal_channels"]
+        streams = self._reader.header["signal_streams"]
+        stream_id = streams["id"][self._stream_idx]
+        mask = channels["stream_id"] == stream_id
+        unit_str = str(channels[mask]["units"][0])
+        return unit_str if unit_str else "a.u."
 
     @property
     def streams(self) -> dict | None:
         if self._reader is None:
             return None
-        all_channels = self._reader.header["signal_channels"]
-        return {
-            sid: {
-                "name": str(name),
-                "n_channels": int(np.sum(mask := all_channels["stream_id"] == sid)),
-                "rate": float(all_channels[mask]["sampling_rate"][0]),
-                "dtype": str(all_channels[mask]["dtype"][0]),
+        streams = self._reader.header["signal_streams"]
+        channels = self._reader.header["signal_channels"]
+        info = {}
+        for sid, name in zip(streams["id"], streams["name"]):
+            mask = channels["stream_id"] == sid
+            info[sid] = {
+                "name": name,
+                "n_channels": int(np.sum(mask)),
+                "rate": float(channels[mask]["sampling_rate"][0]),
             }
-            for sid, name in zip(
-                self._reader.header["signal_streams"]["id"],
-                self._reader.header["signal_streams"]["name"],
-            )
-        }
-        
+        return info
+
     def __getitem__(self, key) -> NDArray[np.float64]:
         if isinstance(key, slice):
             start, stop, _ = key.indices(self._n_samples)
@@ -394,10 +473,8 @@ class GenericEphysLoader:
         raw = self._reader.get_analogsignal_chunk(
             block_index=0, seg_index=0,
             i_start=start, i_stop=stop,
-            stream_index=self._stream_idx,    
+            stream_index=self._stream_idx,
         )
-        
-        
         return self._reader.rescale_signal_raw_to_float(
             raw, dtype="float64", stream_index=self._stream_idx,
         )
@@ -784,9 +861,6 @@ _PHY_TRACE_SINGLE = '#808080'        # neutral gray for single-channel mode
 _PHY_AXIS = '#AAAAAA'
 
 class EphysTracePlot(BasePlot):
-    _initializing = False
-    _set_loader_call_count = 0
-    _update_plot_content_call_count = 0
     """Extracellular waveform viewer inheriting BasePlot for full GUI integration."""
 
     gain_scroll_requested = Signal(int)      # delta: +1 = increase, -1 = decrease
@@ -895,19 +969,13 @@ class EphysTracePlot(BasePlot):
         self._trial_duration = trial_duration
 
     def set_loader(self, loader: EphysLoader, channel: int = 0):
-        type(self)._set_loader_call_count += 1
-        print(f"[EphysTracePlot] set_loader called for loader={loader}, channel={channel}, call_count={type(self)._set_loader_call_count}")
-        type(self)._initializing = True
         self.buffer.set_loader(loader, channel)
         self._update_amplitude_label()
-        type(self)._initializing = False
-        if self.current_range:
-            self.update_plot_content(*self.current_range)
 
     def set_channel(self, channel: int):
         self.buffer.channel = channel
         self._update_amplitude_label()
-        if self.current_range and not type(self)._initializing:
+        if self.current_range:
             self.update_plot_content(*self.current_range)
 
         
@@ -930,7 +998,7 @@ class EphysTracePlot(BasePlot):
         needs_rebuild = hw_indices is not None or was_custom
         if self._multichannel and needs_rebuild:
             self._setup_global_y_space()
-            if self.current_range and not type(self)._initializing:
+            if self.current_range:
                 self.update_plot_content(*self.current_range)
 
     def set_probe_channel_order(self, order: NDArray | None):
@@ -938,7 +1006,7 @@ class EphysTracePlot(BasePlot):
         self._last_n_ch = 0
         if self._multichannel:
             self._setup_global_y_space()
-            if self.current_range and not type(self)._initializing:
+            if self.current_range:
                 self.update_plot_content(*self.current_range)
 
     def eventFilter(self, obj, event):
@@ -1029,12 +1097,10 @@ class EphysTracePlot(BasePlot):
             self.vb.setLimits(yMin=None, yMax=None)
             self.vb.setMouseEnabled(x=True, y=False)
             self._last_visible_hw = set()
-        if self.current_range and not type(self)._initializing:
+        if self.current_range:
             self.update_plot_content(*self.current_range)
 
     def update_plot_content(self, t0: Optional[float] = None, t1: Optional[float] = None):
-        type(self)._update_plot_content_call_count += 1
-        print(f"[EphysTracePlot] update_plot_content called, call_count={type(self)._update_plot_content_call_count}")
         if self.buffer.loader is None:
             return
 
@@ -1072,11 +1138,8 @@ class EphysTracePlot(BasePlot):
         self._update_spike_waveforms(t0, t1)
 
     def _update_multichannel(self, t0: float, t1: float):
-        import time
-        t0_time = time.time()
         ch_indices, y_positions = self._channels_in_viewport()
         if len(ch_indices) == 0:
-            print(f"[EphysTracePlot] _update_multichannel: No channels in viewport for t0={t0}, t1={t1}")
             return
 
         # Buffer returns data with y_positions already baked in
@@ -1087,14 +1150,11 @@ class EphysTracePlot(BasePlot):
         )
 
         if result is None:
-            print(f"[EphysTracePlot] _update_multichannel: No data for t0={t0}, t1={t1}, channels={ch_indices}")
             return
 
         times, data_2d, step, n_ch = result
         times = times - self._ephys_offset
         n_t = data_2d.shape[0]
-
-        print(f"[EphysTracePlot] _update_multichannel: n_channels={n_ch}, n_samples={n_t}, step={step}, channels={ch_indices}, time={time.time()-t0_time:.3f}s")
 
         # --- Single batched draw call (Phy-style) ---
         # Build interleaved x/y with NaN separators between channels.

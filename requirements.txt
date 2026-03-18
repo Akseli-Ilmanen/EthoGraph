@@ -1,5 +1,6 @@
 pynapple
 neo[nwb]
+phylib>=2.6.4
 pyqtgraph
 sounddevice
 audioio

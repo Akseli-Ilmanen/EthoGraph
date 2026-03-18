@@ -4,6 +4,10 @@ Never hardcode frame rates (e.g., 30 fps) anywhere in the codebase. Always use a
 
 # CLAUDE.md
 
+## Continue
+
+You always keep proposing things, and not implementing. Stop waiting for me to say 'yes go'.
+
 
 ## System prompt
 

@@ -8,7 +8,6 @@ import numpy as np
 import xarray as xr
 
 
-
 if TYPE_CHECKING:
     from ethograph.utils.trialtree import TrialTree
 
@@ -36,8 +35,9 @@ EPHYS_EXTENSIONS_KNOWN = {
     ".smrx", ".spikes", ".tbk", ".tdx", ".tev", ".tin", ".tnt", ".trc",
     ".tsq", ".vhdr", ".wcp", ".xdat",
 }
-EPHYS_EXTENSIONS_RAW = {".dat", ".bin", ".raw"}
-EPHYS_EXTENSIONS = EPHYS_EXTENSIONS_KNOWN | EPHYS_EXTENSIONS_RAW
+
+EPHYS_EXNTENSIONS_RAW = {'.dat', '.bin', '.raw', '.mda'} # phylib.io.traces
+EPHYS_EXTENSIONS = EPHYS_EXTENSIONS_KNOWN | EPHYS_EXNTENSIONS_RAW
 
 
 def _fmt_extensions(exts: set[str]) -> str:
