@@ -1,4 +1,4 @@
-"""Ephys widget — trace controls, Kilosort neuron jumping, and preprocessing."""
+"""Ephys widget — trace controls, Kilosort neuron jumping."""
 
 from __future__ import annotations
 
@@ -388,7 +388,7 @@ class _MultiColumnFilterProxy(QSortFilterProxyModel):
 
 
 class EphysWidget(QWidget):
-    """Ephys controls with toggle-button tabs: Ephys trace | Neuron jumping | Preprocessing."""
+    """Ephys controls with toggle-button tabs: Ephys trace | Neuron jumping."""
 
     def __init__(self, napari_viewer: Viewer, app_state, parent=None):
         super().__init__(parent=parent)
@@ -421,10 +421,8 @@ class EphysWidget(QWidget):
 
         self._create_toggle_buttons(main_layout)
         self._create_traceview_panel(main_layout)
-        self._create_preprocessing_panel(main_layout)
         self._create_firing_rate_panel(main_layout)
 
-        self._enforce_ephys_sequential()
         self._show_panel("traceview")
         self.setEnabled(False)
 
@@ -441,7 +439,6 @@ class EphysWidget(QWidget):
 
         toggle_defs = [
             ("traceview_toggle", "TraceView", self._toggle_traceview),
-            ("preproc_toggle", "Preprocessing", self._toggle_preproc),
             ("firing_rate_toggle", "Firing rates", self._toggle_firing_rate),
         ]
         for attr, label, callback in toggle_defs:
@@ -456,7 +453,6 @@ class EphysWidget(QWidget):
     def _show_panel(self, panel_name: str):
         panels = {
             "traceview": (self.traceview_panel, self.traceview_toggle),
-            "preproc": (self.preproc_panel, self.preproc_toggle),
             "firing_rate": (self.firing_rate_panel, self.firing_rate_toggle),
         }
         for name, (panel, toggle) in panels.items():
@@ -469,10 +465,7 @@ class EphysWidget(QWidget):
         self._refresh_layout()
 
     def _toggle_traceview(self):
-        self._show_panel("traceview" if self.traceview_toggle.isChecked() else "preproc")
-
-    def _toggle_preproc(self):
-        self._show_panel("preproc" if self.preproc_toggle.isChecked() else "traceview")
+        self._show_panel("traceview" if self.traceview_toggle.isChecked() else "firing_rate")
 
     def _toggle_firing_rate(self):
         self._show_panel("firing_rate" if self.firing_rate_toggle.isChecked() else "traceview")
@@ -685,8 +678,11 @@ class EphysWidget(QWidget):
         self.plot_container.ephys_trace_plot.set_loader(loader, channel_idx)
 
         offset = self.app_state.dt.get_start_time(self.app_state.trials_sel)
-        t_min, t_max = self.app_state.get_time_bounds()
-        duration = t_max - t_min
+        bounds = self.app_state.get_trial_bounds()
+        if bounds is not None:
+            duration = bounds[1] - bounds[0]
+        else: 
+            return 
         self.plot_container.ephys_trace_plot.set_ephys_offset(offset, duration)
 
         n_ch = loader.n_channels
@@ -1645,114 +1641,7 @@ class EphysWidget(QWidget):
             xmin, xmax = self.plot_container.get_current_xlim()
             self.plot_container.ephys_trace_plot.update_plot_content(xmin, xmax)
 
-    # ------------------------------------------------------------------
-    # Ephys preprocessing panel
-    # ------------------------------------------------------------------
 
-    def _create_preprocessing_panel(self, main_layout):
-        self.preproc_panel = QWidget()
-        layout = QVBoxLayout()
-        layout.setSpacing(2)
-        layout.setContentsMargins(0, 0, 0, 0)
-        self.preproc_panel.setLayout(layout)
-
-        ephys_group = QGroupBox("Ephys pre-processing")
-        ephys_layout = QVBoxLayout()
-        ephys_layout.setSpacing(6)
-        ephys_layout.setContentsMargins(8, 12, 8, 8)
-        ephys_group.setLayout(ephys_layout)
-        layout.addWidget(ephys_group)
-
-        self.ephys_subtract_mean_cb = QCheckBox("1. Subtract channel mean")
-        self.ephys_subtract_mean_cb.setToolTip("Remove DC offset from each channel")
-        self.ephys_car_cb = QCheckBox("2. Common average reference (CAR)")
-        self.ephys_car_cb.setToolTip("Subtract median across channels at each time point")
-        self.ephys_temporal_filter_cb = QCheckBox("3. Temporal filtering")
-        self.ephys_temporal_filter_cb.setToolTip("3rd-order Butterworth highpass filter")
-        self.ephys_hp_cutoff_edit = QLineEdit("300")
-        self.ephys_hp_cutoff_edit.setFixedWidth(50)
-        self.ephys_hp_cutoff_edit.setToolTip("Highpass cutoff frequency in Hz")
-        self.ephys_hp_cutoff_label = QLabel("Hz highpass")
-        self.ephys_whitening_cb = QCheckBox("4. (Global) channel whitening")
-        self.ephys_whitening_cb.setToolTip("Decorrelate channels via SVD-based whitening")
-
-        self._ephys_checkboxes = [
-            self.ephys_subtract_mean_cb,
-            self.ephys_car_cb,
-            self.ephys_temporal_filter_cb,
-            self.ephys_whitening_cb,
-        ]
-
-        ephys_layout.addWidget(self.ephys_subtract_mean_cb)
-        ephys_layout.addWidget(self.ephys_car_cb)
-
-        filter_row = QHBoxLayout()
-        filter_row.setContentsMargins(0, 0, 0, 0)
-        filter_row.addWidget(self.ephys_temporal_filter_cb)
-        filter_row.addWidget(self.ephys_hp_cutoff_edit)
-        filter_row.addWidget(self.ephys_hp_cutoff_label)
-        filter_row.addStretch()
-        filter_row_widget = QWidget()
-        filter_row_widget.setLayout(filter_row)
-        ephys_layout.addWidget(filter_row_widget)
-
-        ephys_layout.addWidget(self.ephys_whitening_cb)
-
-        for cb in self._ephys_checkboxes:
-            cb.toggled.connect(self._on_ephys_checkbox_toggled)
-        self.ephys_hp_cutoff_edit.editingFinished.connect(self._on_ephys_checkbox_toggled)
-
-        ref_label_ks = QLabel(styled_link(
-            "https://www.nature.com/articles/s41592-024-02232-7#Sec10",
-            "Adapted from Kilosort4 methods",
-        ))
-        ref_label_ks.setOpenExternalLinks(True)
-        ephys_layout.addWidget(ref_label_ks)
-
-        main_layout.addWidget(self.preproc_panel)
-
-    def _on_ephys_checkbox_toggled(self, _checked=None):
-        self._enforce_ephys_sequential()
-        self._apply_ephys_preprocessing()
-
-    def _enforce_ephys_sequential(self):
-        for i, cb in enumerate(self._ephys_checkboxes):
-            if i == 0:
-                cb.setEnabled(True)
-                continue
-            prev_checked = self._ephys_checkboxes[i - 1].isChecked()
-            cb.setEnabled(prev_checked)
-            if not prev_checked and cb.isChecked():
-                cb.blockSignals(True)
-                cb.setChecked(False)
-                cb.blockSignals(False)
-
-    def _parse_hp_cutoff(self) -> float:
-        try:
-            return max(1.0, float(self.ephys_hp_cutoff_edit.text()))
-        except (ValueError, TypeError):
-            return 300.0
-
-    def get_ephys_preprocessing_flags(self) -> dict:
-        return {
-            "subtract_mean": self.ephys_subtract_mean_cb.isChecked(),
-            "car": self.ephys_car_cb.isChecked(),
-            "temporal_filter": self.ephys_temporal_filter_cb.isChecked(),
-            "hp_cutoff": self._parse_hp_cutoff(),
-            "whitening": self.ephys_whitening_cb.isChecked(),
-        }
-
-    def _apply_ephys_preprocessing(self):
-        if not self.plot_container:
-            return
-        ephys_plot = self.plot_container.ephys_trace_plot
-        if ephys_plot is None:
-            return
-        flags = self.get_ephys_preprocessing_flags()
-        ephys_plot.buffer.set_preprocessing(flags)
-        if ephys_plot.current_range:
-            print(f"[widgets_ephys] update_plot_content called (ephys_plot) current_range={ephys_plot.current_range}")
-            ephys_plot.update_plot_content(*ephys_plot.current_range)
 
     # ------------------------------------------------------------------
     # Firing rate panel
@@ -1917,14 +1806,15 @@ class EphysWidget(QWidget):
 
         ds = self.app_state.dt.trial(trial)
         start_time = self.app_state.dt.get_start_time(trial)
-        _, stop_time = self.app_state.get_trial_bounds()
-
+        bounds = self.app_state.get_trial_bounds()
+        if bounds is None:
+            return
             
             
 
         da = firing_rate_to_xarray(
             spike_times_s, self._spike_clusters, bin_size,
-            t_start=start_time, t_stop=stop_time,
+            t_start=start_time, t_stop=bounds[1],
             _tsgroup=self._tsgroup,
         )
 

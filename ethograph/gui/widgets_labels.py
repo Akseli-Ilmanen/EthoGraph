@@ -357,7 +357,8 @@ class LabelsWidget(QWidget):
                 self.changepoints_widget.set_motif_mappings(self._mappings)
             self._populate_labels_table()
             self.refresh_labels_shapes_layer()
-            self.app_state.labels_modified.emit()
+            if self.data_widget:
+                self.data_widget.update_main_plot()
             show_info(f"Loaded {len(self._mappings) - 1} labels from {Path(mapping_path).name}")
         except FileNotFoundError:
             show_warning(f"Mapping file not found: {mapping_path}")
@@ -382,7 +383,8 @@ class LabelsWidget(QWidget):
                     self.changepoints_widget.set_motif_mappings(self._mappings)
                 self._populate_labels_table()
                 self.refresh_labels_shapes_layer()
-                self.app_state.labels_modified.emit()
+                if self.data_widget:
+                    self.data_widget.update_main_plot()
                 show_info(f"Loaded {len(labels)} temporary labels")
 
     def _human_verification_true(self, mode=None):
@@ -396,7 +398,7 @@ class LabelsWidget(QWidget):
                 self.app_state.label_dt.trial(trial).attrs['human_verified'] = np.int8(1)
 
         self._update_human_verified_status()
-        self.app_state.verification_changed.emit()
+        self._update_human_verified_status()
 
         
     def _update_human_verified_status(self):
@@ -437,11 +439,13 @@ class LabelsWidget(QWidget):
             self.io_widget.pred_show_predictions.setChecked(True)
             self.io_widget.pred_file_path_edit.setText(file_path)
 
-        self.app_state.labels_modified.emit()
+        if self.data_widget:
+            self.data_widget.update_main_plot()
         self.refresh_labels_shapes_layer()
 
     def _on_pred_show_predictions_changed(self):
-        self.app_state.labels_modified.emit()
+        if self.data_widget:
+            self.data_widget.update_main_plot()
             
             
 
@@ -672,7 +676,8 @@ class LabelsWidget(QWidget):
 
         self._human_verification_true(mode="single_trial")
         self._mark_changes_unsaved()
-        self.app_state.labels_modified.emit()
+        if self.data_widget:
+            self.data_widget.update_main_plot()
         self._seek_to_frame(onset_s)
         self.refresh_labels_shapes_layer()
 
@@ -708,7 +713,8 @@ class LabelsWidget(QWidget):
         self.current_labels_is_prediction = False
 
         self._mark_changes_unsaved()
-        self.app_state.labels_modified.emit()
+        if self.data_widget:
+            self.data_widget.update_main_plot()
         self.refresh_labels_shapes_layer()
 
     def _edit_label(self):

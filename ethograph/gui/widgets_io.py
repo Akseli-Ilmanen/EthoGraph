@@ -436,7 +436,8 @@ class IOWidget(QWidget):
             self.labels_widget._mark_changes_unsaved()
             self.labels_widget.refresh_labels_shapes_layer()
         self.app_state.verification_changed.emit()
-        self.app_state.labels_modified.emit()
+        if self.data_widget:
+            self.data_widget.update_main_plot()
 
     # ------------------------------------------------------------------
     # Post-load behavior
@@ -670,7 +671,8 @@ class IOWidget(QWidget):
             self.app_state.ephys_dat_sr = None
             self.app_state.ephys_dat_nchannels = None
 
-    # ------------------------------------------------------------------
+        if self.labels_widget:
+            self.labels_widget._update_human_verified_status()
     # Device controls (populated after load)
     # ------------------------------------------------------------------
 
@@ -688,7 +690,6 @@ class IOWidget(QWidget):
             return float(sr), int(n_channels)
 
         QMessageBox.information(
-            self,
             "Raw .dat Metadata Required",
             "This .dat file needs sampling rate and channel count before loading.",
         )
@@ -881,7 +882,8 @@ class IOWidget(QWidget):
                     if self.labels_widget:
                         self.labels_widget._mark_changes_unsaved()
                         self.labels_widget.refresh_labels_shapes_layer()
-                    self.app_state.verification_changed.emit()
+                    if self.labels_widget:
+                        self.labels_widget._update_human_verified_status()
                     self.app_state.labels_modified.emit()
 
             elif media_type == "ephys":

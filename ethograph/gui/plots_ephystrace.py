@@ -1,3 +1,207 @@
+# ---------------------------------------------------------------------
+# FAST BUFFER (Phy-style)
+# ---------------------------------------------------------------------
+
+import numpy as np
+import pyqtgraph as pg
+
+class FastEphysBuffer:
+    """Fast min/max pyramid buffer for ephys data, Phy-style."""
+    def __init__(self, loader=None, channel=0):
+        self.loader = loader
+        self.channel = channel
+        self.sr = None
+        self.starting_time = 0.0
+        self.data = None
+        self.start = 0
+        self.stop = 0
+        self.pyramid = {}
+        self.channel_spacing = 3.0
+        self.display_gain = 0.0
+        self.autocenter = False
+        self._probe_order = None
+
+    def set_loader(self, loader, channel=0):
+        self.loader = loader
+        self.channel = channel
+        self.sr = loader.rate
+        self.starting_time = float(getattr(loader, "starting_time", 0.0))
+        self.data = None
+        self.pyramid.clear()
+
+    def set_probe_channel_order(self, order):
+        self._probe_order = order
+
+    def load_chunk(self, start, stop):
+        raw = self.loader[start:stop]
+        if raw.ndim == 1:
+            raw = raw[:, None]
+        self.data = raw.astype(np.float32)
+        self.start = start
+        self.stop = stop
+        self._build_pyramid()
+
+    def _build_pyramid(self):
+        data = self.data
+        self.pyramid = {}
+        levels = [1, 4, 16, 64]
+        for level in levels:
+            if level == 1:
+                self.pyramid[level] = data
+                continue
+            n = len(data) // level
+            if n == 0:
+                continue
+            reshaped = data[:n * level].reshape(n, level, data.shape[1])
+            minv = reshaped.min(axis=1)
+            maxv = reshaped.max(axis=1)
+            out = np.empty((2 * n, data.shape[1]), dtype=np.float32)
+            out[0::2] = minv
+            out[1::2] = maxv
+            self.pyramid[level] = out
+
+    def get(self, start, stop, screen_width):
+        if self.data is None or start < self.start or stop > self.stop:
+            span = stop - start
+            pad = span * 5
+            self.load_chunk(
+                max(0, start - pad),
+                min(len(self.loader), stop + pad),
+            )
+        rel_start = start - self.start
+        rel_stop = stop - self.start
+        samples = rel_stop - rel_start
+        spp = samples / max(screen_width, 1)
+        level = 1
+        for l in [64, 16, 4, 1]:
+            if spp >= l:
+                level = l
+                break
+        data = self.pyramid[level]
+        step = level
+        i0 = rel_start // step
+        i1 = rel_stop // step
+        return data[i0:i1], step
+
+    def get_trace_data(self, t0, t1, screen_width=1920):
+        if self.loader is None:
+            return None
+        start = int((t0 - self.starting_time) * self.sr)
+        stop = int((t1 - self.starting_time) * self.sr)
+        data, step = self.get(start, stop, screen_width)
+        if data is None or len(data) == 0:
+            return None
+        ch = min(self.channel, data.shape[1] - 1)
+        trace = data[:, ch].copy()
+        if self.display_gain != 0:
+            trace *= 0.75 ** (-self.display_gain)
+        times = self.starting_time + np.arange(len(trace)) * step / self.sr + start / self.sr
+        return times, trace, step
+
+    def get_multichannel_trace_data(self, t0, t1, screen_width=1920, channel_range=None, channel_indices=None, y_positions=None):
+        if self.loader is None:
+            return None
+        total_ch = self.loader.n_channels if hasattr(self.loader, 'n_channels') else 1
+        if total_ch <= 1:
+            return None
+        start = int((t0 - self.starting_time) * self.sr)
+        stop = int((t1 - self.starting_time) * self.sr)
+        data, step = self.get(start, stop, screen_width)
+        if data is None or data.ndim < 2:
+            return None
+        if channel_indices is not None:
+            valid = channel_indices[channel_indices < data.shape[1]]
+            if len(valid) == 0:
+                return None
+            data = data[:, valid]
+            n_ch = len(valid)
+        else:
+            ch_start, ch_end = (channel_range or (0, total_ch - 1))
+            ch_start = max(0, ch_start)
+            ch_end = min(total_ch - 1, ch_end)
+            n_ch = ch_end - ch_start + 1
+            if n_ch <= 0:
+                return None
+            data = data[:, ch_start:ch_end + 1]
+        # Normalize
+        data = data - data.mean(axis=0, keepdims=True)
+        std = data.std(axis=0, keepdims=True)
+        std[std == 0] = 1
+        data /= std
+        gain = 0.75 ** (-self.display_gain)
+        data *= gain
+        # Vertical offsets
+        if y_positions is not None:
+            for ch in range(n_ch):
+                data[:, ch] += y_positions[ch]
+        else:
+            for ch in range(n_ch):
+                data[:, ch] += (n_ch - 1 - ch) * self.channel_spacing
+        times = self.starting_time + np.arange(len(data)) * step / self.sr + start / self.sr
+        return times, data, step, n_ch
+
+# ---------------------------------------------------------------------
+# FAST PLOT (single draw call, Phy-style)
+# ---------------------------------------------------------------------
+
+class FastEphysPlot(pg.PlotWidget):
+    """Fast ephys plot using single draw call, Phy-style."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setBackground('k')
+        self.trace = pg.PlotDataItem(
+            connect='finite',
+            antialias=False,
+            skipFiniteCheck=True,
+            pen=pg.mkPen('#AAAAAA', width=1),
+        )
+        self.addItem(self.trace)
+        self.buffer = FastEphysBuffer()
+        self.channel_spacing = 3.0
+        self.display_gain = 0.0
+        self._probe_order = None
+        self._multichannel = False
+
+    def set_loader(self, loader, channel=0):
+        self.buffer.set_loader(loader, channel)
+
+    def set_probe_channel_order(self, order):
+        self._probe_order = order
+        self.buffer.set_probe_channel_order(order)
+
+    def set_multichannel(self, enabled: bool):
+        self._multichannel = enabled
+
+    def set_channel(self, channel: int):
+        self.buffer.channel = channel
+
+    def set_channel_range(self, ch_start: int, ch_end: int):
+        self._channel_range = (ch_start, ch_end)
+
+    def update_plot(self, t0, t1):
+        if self.buffer.loader is None:
+            return
+        sr = self.buffer.sr
+        if self._multichannel:
+            total_ch = self.buffer.loader.n_channels if hasattr(self.buffer.loader, 'n_channels') else 1
+            ch_indices = self._probe_order if self._probe_order is not None else np.arange(total_ch)
+            y_pos = (total_ch - 1 - np.arange(total_ch)) * self.channel_spacing
+            result = self.buffer.get_multichannel_trace_data(t0, t1, self.width(), channel_indices=ch_indices, y_positions=y_pos)
+            if result is None:
+                return
+            times, data, step, n_ch = result
+            x = np.repeat(times, n_ch)
+            y = data.reshape(-1)
+            sep = np.full(n_ch, np.nan, dtype=np.float32)
+            x = np.concatenate([x, sep])
+            y = np.concatenate([y, sep])
+            self.trace.setData(x, y)
+        else:
+            result = self.buffer.get_trace_data(t0, t1, self.width())
+            if result is None:
+                return
+            times, trace, step = result
+            self.trace.setData(times, trace)
 """Extracellular ephys waveform trace plot with smart downsampling.
 
 Mirrors the AudioTracePlot / AudioTraceBuffer pattern for raw ephys data.
@@ -89,6 +293,8 @@ def _format_voltage_bar(raw_value: float, loader_units: str) -> tuple[float, str
     return bar_in_loader, f"{nice_display:g} {display_unit}"
 
 
+
+
 # ---------------------------------------------------------------------------
 # Loader protocol
 # ---------------------------------------------------------------------------
@@ -166,62 +372,69 @@ class MemmapLoader:
 # NWBLoader – lazy HDF5 backend for Neurodata Without Borders files
 # ---------------------------------------------------------------------------
 
+# TODO: Do i need this class, can the generic ephys loader not handle it?
 class NWBLoader:
-    """Lazy loader for NWB files via pynwb.
-
-    Neo lacks an NWBRawIO, so its NWBIO loads entire signals into RAM.
-    This loader uses pynwb directly — h5py datasets are lazy by default,
-    so ``data[start:stop]`` only reads that slice from disk.
-
-    Parameters
-    ----------
-    path
-        Path to the .nwb file.
-    electrical_series_name
-        Name of the ElectricalSeries in ``nwb.acquisition``.
-        If None, auto-detects the first ElectricalSeries.
-    """
+    """Loader for NWB files using Neo's NWBIO interface."""
 
     def __init__(self, path: str | Path, electrical_series_name: str | None = None):
-        import pynwb
+        import neo
+        self._reader = neo.NWBIO(str(path))
+        self._reader.parse_header()
 
-        self._io = pynwb.NWBHDF5IO(str(path), "r")
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message=".*manufacturer.*deprecated", category=DeprecationWarning)
-            nwb = self._io.read()
-
+        # Find stream index for the requested ElectricalSeries
+        streams = self._reader.header["signal_streams"]
+        channels = self._reader.header["signal_channels"]
         if electrical_series_name:
-            es = nwb.acquisition[electrical_series_name]
+            stream_idx = None
+            for idx, name in enumerate(streams["name"]):
+                if name == electrical_series_name:
+                    stream_idx = idx
+                    break
+            if stream_idx is None:
+                raise ValueError(f"ElectricalSeries '{electrical_series_name}' not found in NWB file.")
         else:
-            es = next(
-                (v for v in nwb.acquisition.values()
-                 if isinstance(v, pynwb.ecephys.ElectricalSeries)),
-                None,
-            )
-            if es is None:
-                raise ValueError(
-                    f"No ElectricalSeries found in {path}. "
-                    f"Available acquisition keys: {list(nwb.acquisition.keys())}"
-                )
+            stream_idx = 0  # Default to first stream
 
-        self._data = es.data  # lazy h5py dataset
-        self._conversion = float(es.conversion) if es.conversion else 1.0
-        self.rate = float(es.rate)
-        self.starting_time = float(es.starting_time) if es.starting_time else 0.0
-        self._n_channels = self._data.shape[1] if self._data.ndim > 1 else 1
+        self._stream_idx = stream_idx
+        stream_id = streams["id"][stream_idx]
+        mask = channels["stream_id"] == stream_id
+        self._n_channels = int(np.sum(mask))
+        self.rate = float(channels[mask]["sampling_rate"][0])
+        self.starting_time = float(self._reader.get_signal_t_start(block_index=0, seg_index=0, stream_index=stream_idx))
+        self._n_samples = self._reader.get_signal_size(block_index=0, seg_index=0, stream_index=stream_idx)
+        self._channel_names = list(channels[mask]["name"])
+        unit_str = str(channels[mask]["units"][0])
+        self._units = unit_str if unit_str else "V"
 
-        electrodes = es.electrodes
-        if electrodes is not None and hasattr(electrodes, "table"):
-            table = electrodes.table
-            indices = electrodes.data[:]
-            if "label" in table.colnames:
-                self._channel_names = [str(table["label"][i]) for i in indices]
-            else:
-                self._channel_names = [f"Ch {i}" for i in indices]
-            self._units = "V"  # NWB convention: conversion factor maps to volts
+
+    def __len__(self) -> int:
+        return self._n_samples
+
+    @property
+    def n_channels(self) -> int:
+        return self._n_channels
+
+    @property
+    def channel_names(self) -> list[str]:
+        return self._channel_names
+
+    @property
+    def units(self) -> str:
+        return self._units
+
+    def __getitem__(self, key) -> NDArray[np.float64]:
+        if isinstance(key, slice):
+            start, stop, _ = key.indices(self._n_samples)
         else:
-            self._channel_names = [f"Ch {i}" for i in range(self._n_channels)]
-            self._units = "V"
+            start, stop = key, key + 1
+        raw = self._reader.get_analogsignal_chunk(
+            block_index=0, seg_index=0,
+            i_start=start, i_stop=stop,
+            stream_index=self._stream_idx,
+        )
+        return self._reader.rescale_signal_raw_to_float(
+            raw, dtype="float64", stream_index=self._stream_idx,
+        )
 
     def __len__(self) -> int:
         return self._data.shape[0]
@@ -417,6 +630,7 @@ class GenericEphysLoader:
         gain: float = 1.0,
         stream_id: str = "0",
     ):
+        print(f"GenericEphysLoader: path={path}, n_channels={n_channels}, sampling_rate={sampling_rate}, dtype={dtype}, gain={gain}, stream_id={stream_id}")
         self.path = Path(path)
         self._reader = None
         self._loader: MemmapLoader | NWBLoader | None = None
@@ -594,20 +808,21 @@ class SharedEphysCache:
         n_channels: int | None = None,
         sampling_rate: float | None = None,
     ) -> GenericEphysLoader | None:
-        path_str = str(path)
-        key = (path_str, stream_id)
-
+        print(f"SharedEphysCache.get_loader called with path={path}, stream_id={stream_id}, n_channels={n_channels}, sampling_rate={sampling_rate}")
+        key = (str(path), stream_id)
         with cls._lock:
             if key not in cls._instances:
                 try:
                     cls._instances[key] = GenericEphysLoader(
-                        path_str,
+                        path,
                         n_channels=n_channels,
                         sampling_rate=sampling_rate,
                         stream_id=stream_id,
                     )
-                except (OSError, IOError, ValueError) as e:
-                    print(f"Failed to load ephys file {path_str}: {e}")
+                except Exception as e:
+                    print(f"Failed to load ephys file {path}: {type(e).__name__}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     return None
             return cls._instances[key]
 
@@ -660,7 +875,7 @@ class EphysTraceBuffer:
         margin = int(n_view * BUFFER_COVERAGE_MARGIN)
         return self._cache_start <= start - margin and self._cache_stop >= stop + margin
 
-    def _build_cache(self, view_start: int | None = None, view_stop: int | None = None):
+    def _build_cache(self, view_start: int | None = None, view_stop: int | None = None, scroll_direction: str = "right"):
         if self.loader is None:
             return
         seg_start = 0
@@ -674,9 +889,17 @@ class EphysTraceBuffer:
             view_stop = min(seg_stop, seg_start + default_window)
 
         n_view = view_stop - view_start
-        buffer_extra = int(n_view * DEFAULT_BUFFER_MULTIPLIER / 2)
-        cache_start = max(seg_start, view_start - buffer_extra)
-        cache_stop = min(seg_stop, view_stop + buffer_extra)
+        # Asymmetric prefetching: extend more in scroll direction
+        from .app_constants import DEFAULT_BUFFER_MULTIPLIER
+        buffer_multiplier = DEFAULT_BUFFER_MULTIPLIER  # Use constant from app_constants.py
+        if scroll_direction == "right":
+            buffer_left = int(n_view * 1.0)
+            buffer_right = int(n_view * buffer_multiplier)
+        else:
+            buffer_left = int(n_view * buffer_multiplier)
+            buffer_right = int(n_view * 1.0)
+        cache_start = max(seg_start, view_start - buffer_left)
+        cache_stop = min(seg_stop, view_stop + buffer_right)
 
         if cache_stop <= cache_start:
             return
@@ -685,10 +908,7 @@ class EphysTraceBuffer:
         if raw.ndim == 1:
             raw = raw[:, np.newaxis]
 
-        if self._any_preprocessing():
-            data = _apply_preprocessing(raw, self.ephys_sr, self._preproc_flags)
-        else:
-            data = raw.astype(np.float64) if raw.dtype != np.float64 else raw
+        data = raw.astype(np.float64) if raw.dtype != np.float64 else raw
 
         self._cache = data
         self._cache_start = cache_start
@@ -701,13 +921,13 @@ class EphysTraceBuffer:
             median_std = np.median(per_ch_std)
             self._cache_std = np.full_like(per_ch_std, median_std)
 
-    def ensure_cache(self, t0_s: float, t1_s: float):
+    def ensure_cache(self, t0_s: float, t1_s: float, scroll_direction: str = "right"):
         if self.loader is None or self.ephys_sr is None:
             return
         start = max(0, int((t0_s - self._starting_time) * self.ephys_sr))
         stop = min(len(self.loader), int((t1_s - self._starting_time) * self.ephys_sr) + 1)
         if not self._covers_range(start, stop):
-            self._build_cache(start, stop)
+            self._build_cache(start, stop, scroll_direction)
 
     def _get_data(self, start: int, stop: int) -> NDArray | None:
         if self._cache is None:
@@ -718,8 +938,6 @@ class EphysTraceBuffer:
             return None
         return self._cache[local_start:local_stop]
 
-    def _any_preprocessing(self) -> bool:
-        return any(v for k, v in self._preproc_flags.items() if isinstance(v, bool) and v)
 
     # -- single channel -----------------------------------------------------
 
@@ -810,17 +1028,17 @@ class EphysTraceBuffer:
             usable = n_segments * step
             data_all = data_all[:usable]
 
-            segments = np.arange(0, usable, step)
-            n_env = 2 * len(segments)
-            display = np.empty((n_env, n_ch))
-            for ch in range(n_ch):
-                col = data_all[:, ch]
-                np.minimum.reduceat(col, segments, out=display[0::2, ch])
-                np.maximum.reduceat(col, segments, out=display[1::2, ch])
+            # Vectorized min/max downsampling across channels
+            data_reshaped = data_all.reshape(n_segments, step, n_ch)
+            min_vals = data_reshaped.min(axis=1)
+            max_vals = data_reshaped.max(axis=1)
+            display = np.empty((2 * n_segments, n_ch))
+            display[0::2, :] = min_vals
+            display[1::2, :] = max_vals
 
             aligned_start = (start // step) * step
             half_step = step / 2
-            times = self._starting_time + np.arange(aligned_start, aligned_start + n_env * half_step, half_step) / self.ephys_sr
+            times = self._starting_time + np.arange(aligned_start, aligned_start + 2 * n_segments * half_step, half_step) / self.ephys_sr
         else:
             display = data_all.copy()
             times = self._starting_time + np.arange(start, start + len(display)) / self.ephys_sr
@@ -842,52 +1060,6 @@ class EphysTraceBuffer:
 
         return times, display, step, n_ch
 
-
-# -- preprocessing (pure function, no state) --------------------------------
-
-def _apply_preprocessing(data: NDArray, sr: float, flags: dict) -> NDArray:
-
-    data = data.astype(np.float64, copy=True)
-
-    if flags.get("subtract_mean"):
-        data -= data.mean(axis=0, keepdims=True)
-
-    if flags.get("car") and data.shape[1] > 1:
-        data -= np.median(data, axis=1, keepdims=True)
-
-    if flags.get("temporal_filter"):
-        cutoff = flags.get("hp_cutoff", 300.0)
-        data = _sosfilter(data, sr, cutoff, mode='hp', order=3)
-
-    if flags.get("whitening") and data.shape[1] > 1:
-        CC = (data.T @ data) / data.shape[0]
-        Wrot = _whitening_from_covariance(CC)
-        data = data @ Wrot.T
-
-    return data
-
-
-def _whitening_from_covariance(CC: np.ndarray) -> np.ndarray:
-    E, D, Vt = np.linalg.svd(CC)
-    return (E / np.sqrt(D + 1e-6)) @ E.T
-
-
-def _envelope_downsample(
-    data: NDArray, start: int, step: int, sr: float
-) -> tuple[NDArray, NDArray, int]:
-    aligned_start = (start // step) * step
-    n_segments = len(data) // step
-    usable = n_segments * step
-    data = data[:usable]
-
-    segments = np.arange(0, usable, step)
-    envelope = np.empty(2 * len(segments))
-    np.minimum.reduceat(data, segments, out=envelope[0::2])
-    np.maximum.reduceat(data, segments, out=envelope[1::2])
-
-    half_step = step / 2
-    times = np.arange(aligned_start, aligned_start + len(envelope) * half_step, half_step) / sr
-    return times, envelope, step
 
 # ---------------------------------------------------------------------------
 # EphysTracePlot – BasePlot-based ephys waveform viewer
@@ -922,6 +1094,7 @@ class EphysTracePlot(BasePlot):
 
         self.setLabel('left', 'Amplitude')
 
+                    
         self.trace_item = pg.PlotDataItem(
             connect='all', antialias=False, skipFiniteCheck=True,
         )
@@ -933,8 +1106,9 @@ class EphysTracePlot(BasePlot):
         self.label_items = []
 
         self._debounce_timer = QTimer()
+        from .app_constants import EPHYSTRACE_DEBOUNCE_MS
         self._debounce_timer.setSingleShot(True)
-        self._debounce_timer.setInterval(50)
+        self._debounce_timer.setInterval(EPHYSTRACE_DEBOUNCE_MS)
         self._debounce_timer.timeout.connect(self._debounced_update)
         self._pending_range: tuple[float, float] | None = None
 
@@ -1169,28 +1343,23 @@ class EphysTracePlot(BasePlot):
     _pen_single_thick = pg.mkPen(color=_PHY_TRACE_SINGLE, width=2.0)
 
     def _update_singlechannel(self, t0: float, t1: float):
-        result = self.buffer.get_trace_data(
-            t0 + self._ephys_offset, t1 + self._ephys_offset, max(self.width(), 400),
-        )
-        if result is None:
+        # Use Neo RawIO for direct, fast single-channel access
+        loader = self.buffer.loader
+        if loader is None or not hasattr(loader, 'rawio'):
             return
-
-        times, amplitudes, step = result
-        times = times - self._ephys_offset
+        rawio = loader.rawio
+        ch = self.buffer.channel
+        sr = loader.sampling_rate if hasattr(loader, 'sampling_rate') else rawio.get_signal_sampling_rate()
+        i_start = int((t0 + self._ephys_offset) * sr)
+        i_stop = int((t1 + self._ephys_offset) * sr)
+        chunk = rawio.get_analogsignal_chunk(channel_indexes=[ch], i_start=i_start, i_stop=i_stop)
+        if chunk is None or chunk.shape[0] == 0:
+            return
+        times = np.arange(i_start, i_stop) / sr - self._ephys_offset
+        amplitudes = chunk[:, 0]
         self.trace_item.setData(times, amplitudes)
-
-        if step > 1:
-            self.trace_item.setPen(self._pen_single_thin)
-            self.trace_item.setSymbol(None)
-        else:
-            self.trace_item.setPen(self._pen_single_thick)
-            if len(times) < 200:
-                self.trace_item.setSymbol('o')
-                self.trace_item.setSymbolSize(4)
-                self.trace_item.setSymbolBrush(_PHY_TRACE_SINGLE)
-            else:
-                self.trace_item.setSymbol(None)
-                
+        self.trace_item.setPen(self._pen_single_thick)
+        self.trace_item.setSymbol(None)
         self._update_scale_bars(times)
         self._update_spike_waveforms(t0, t1)
 
@@ -1220,10 +1389,22 @@ class EphysTracePlot(BasePlot):
             item = self._multi_trace_items.pop()
             self.removeItem(item)
 
-        pens = self._pen_multi if step > 1 else self._pen_multi_thick
+        all_x = []
+        all_y = []
+
         for ch in range(n_ch):
-            self._multi_trace_items[ch].setData(times, data_2d[:, ch])
-            self._multi_trace_items[ch].setPen(pens[ch % 2])
+            y = data_2d[:, ch] + y_positions[ch]
+            all_x.append(times)
+            all_y.append(y)
+
+            # separator
+            all_x.append([np.nan])
+            all_y.append([np.nan])
+
+        x = np.concatenate(all_x)
+        y = np.concatenate(all_y)
+
+        self.trace_item.setData(x, y)
 
         # Rebuild ticks when visible channel set changes
         current_visible = set(int(c) for c in ch_indices)

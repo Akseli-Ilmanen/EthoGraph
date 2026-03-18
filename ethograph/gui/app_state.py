@@ -260,8 +260,7 @@ class ObservableAppState(QObject):
         locals()[f"{var}_changed"] = Signal(get_signal_type(type_hint))
 
 
-    labels_modified = Signal()
-    verification_changed = Signal()
+    # Removed labels_modified and verification_changed signals for simplification
     trial_changed = Signal()
     GLOBAL_SETTINGS_FILENAME = "gui_settings.yaml"
     LOCAL_SETTINGS_FILENAME = "local_settings.yaml"

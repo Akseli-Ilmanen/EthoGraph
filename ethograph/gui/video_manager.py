@@ -340,31 +340,25 @@ class VideoManager:
             self._secondary_widget.seek_to_frame(frame)
         else:
             self._secondary_widget.seek_to_frame(int(frame / primary_fps * self._secondary_fps))
-
-    def init_or_update_secondary_video(self, secondary_camera_combo):
-        if secondary_camera_combo is None:
-            return
-        camera_name = secondary_camera_combo.currentText()
-        if not camera_name or camera_name == "None":
-            return
-        video_path = _resolve_video_path(camera_name, self.app_state.video_folder)
-        if not video_path:
-            return
-        if self._secondary_widget is not None and self._secondary_widget.isVisible():
-            video_data = self._load_secondary_video_data(video_path)
-            self._secondary_widget.set_video(video_data)
-            return camera_name
-        return None
-
+            
     def cleanup(self):
+        # Centralized cleanup for both primary and secondary video
         if getattr(self.app_state, 'video', None):
             self.app_state.video.stop()
+            self.app_state.video = None
+        self._cleanup_primary_video()
+        self.hide_secondary_video()
+        self._secondary_widget = None
+        self._central_splitter = None
 
 
-def _resolve_video_path(camera_name: str, video_folder: str | None) -> str | None:
-    if is_url(camera_name):
-        return camera_name
-    if video_folder:
-        path = os.path.join(video_folder, camera_name)
-        return path if os.path.isfile(path) else None
-    return None
+    def _resolve_video_path(self, camera_name: str, video_folder: str | None) -> str | None:
+        if is_url(camera_name):
+            return camera_name
+        if video_folder:
+        
+            video_file = self.app_state.dt.get_video(self.app_state.trials_sel, camera_name)
+            if video_file:
+                path = os.path.normpath(os.path.join(video_folder, video_file))
+                return path if os.path.isfile(path) else None
+        return None

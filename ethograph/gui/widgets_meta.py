@@ -153,9 +153,7 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         # Signal connections for decoupled communication
         self.plot_container.labels_redraw_needed.connect(self._on_labels_redraw_needed)
-        self.app_state.labels_modified.connect(self._on_labels_modified)
-        self.app_state.verification_changed.connect(self._on_verification_changed)
-        self.app_state.verification_changed.connect(self.labels_widget._update_human_verified_status)
+        # Removed labels_modified and verification_changed signal connections
         self.app_state.trial_changed.connect(self.data_widget.on_trial_changed)
         self.app_state.trial_changed.connect(self.changepoints_widget._update_cp_status)
         self.changepoints_widget.changepoint_correction_checkbox.stateChanged.connect(
@@ -308,16 +306,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         ds_kwargs = self.app_state.get_ds_kwargs()
         self.data_widget.update_label_plot(ds_kwargs)
 
-    def _on_labels_modified(self):
-        """Handle label modification - update plots with current view range."""
-        if not self.app_state.ready:
-            return
-        xmin, xmax = self.plot_container.get_current_xlim()
-        self.data_widget.update_main_plot(t0=xmin, t1=xmax)
-
-    def _on_verification_changed(self):
-        """Handle verification status change - update UI indicators."""
-        self.update_labels_widget_title()
+    # Removed _on_labels_modified and _on_verification_changed handlers
         self.data_widget.update_trials_combo()
 
     def update_labels_widget_title(self):

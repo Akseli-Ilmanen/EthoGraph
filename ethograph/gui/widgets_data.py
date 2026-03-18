@@ -62,7 +62,7 @@ from .pose_render import (
     PoseDisplayManager,
     strip_common_prefix,
 )
-from .video_manager import VideoManager, _resolve_video_path, is_url
+from .video_manager import VideoManager,  is_url
 
 
 
@@ -1467,7 +1467,8 @@ class DataWidget(DataLoader, QWidget):
 
         self.plot_container.update_time_range_from_data()
 
-        self.app_state.verification_changed.emit()
+        if self.labels_widget:
+            self.labels_widget._update_human_verified_status()
 
     # ------------------------------------------------------------------
     # Plot updates
@@ -1628,9 +1629,11 @@ class DataWidget(DataLoader, QWidget):
         if camera_name == "None":
             self.video_mgr.hide_secondary_video()
             return
-        video_path = _resolve_video_path(camera_name, self.app_state.video_folder)
+        video_path = self.video_mgr._resolve_video_path(camera_name, self.app_state.video_folder)
         if not video_path:
+            self.video_mgr.hide_secondary_video()
             return
+        # Always show secondary video when combo changes
         self.video_mgr.show_secondary_video(
             video_path=video_path,
             layout_mgr=self.layout_mgr,
@@ -1650,7 +1653,7 @@ class DataWidget(DataLoader, QWidget):
 
         secondary_widget = self.video_mgr.secondary_widget
         if secondary_widget is None or not secondary_widget.isVisible():
-            video_path = _resolve_video_path(camera_name, self.app_state.video_folder)
+            video_path = self.video_mgr._resolve_video_path(camera_name, self.app_state.video_folder)
             if not video_path:
                 return
             self.video_mgr.show_secondary_video(

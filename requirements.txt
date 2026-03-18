@@ -1,6 +1,6 @@
 pynapple
+neo[nwb]
 pyqtgraph
-neo
 sounddevice
 audioio
 vocalpy

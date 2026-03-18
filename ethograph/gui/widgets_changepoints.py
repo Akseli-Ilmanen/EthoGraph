@@ -111,7 +111,7 @@ def _run_ruptures_in_process(
 
 class ChangepointsWidget(QWidget):
     """Changepoints controls - dataset changepoints and audio changepoint detection."""
-
+    
     request_plot_update = Signal()
 
     def __init__(self, napari_viewer: Viewer, app_state, parent=None):
@@ -1299,7 +1299,8 @@ class ChangepointsWidget(QWidget):
         
         self._correction_snapshot = None
         self.cp_undo_btn.setEnabled(False)
-        self.app_state.labels_modified.emit()
+        if self.data_widget:
+            self.data_widget.update_main_plot()
         show_info("Reverted correction")
 
     def _correct_trial_intervals(self, trial, ds, all_params, ds_kwargs):
@@ -1392,7 +1393,8 @@ class ChangepointsWidget(QWidget):
                 self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
                 self._update_cp_status()
 
-            self.app_state.labels_modified.emit()
+            if self.data_widget:
+                self.data_widget.update_main_plot()
         except Exception as e:
             import traceback
             traceback.print_exc()

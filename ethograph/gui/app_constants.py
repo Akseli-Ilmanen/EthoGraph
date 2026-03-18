@@ -74,8 +74,8 @@ CP_LINE_WIDTH_THICK = 2.0
 # =============================================================================
 
 SPECTROGRAM_DEBOUNCE_MS = 50
-SPECTROGRAM_OVERLAY_DEBOUNCE_MS = 100
 ENVELOPE_OVERLAY_DEBOUNCE_MS = 100
+EPHYSTRACE_DEBOUNCE_MS = 100
 
 # =============================================================================
 # AUDIO / SPECTROGRAM
