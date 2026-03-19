@@ -277,9 +277,10 @@ class LabelsWidget(QWidget):
         self.labels_table.verticalHeader().setDefaultSectionSize(LABELS_TABLE_ROW_HEIGHT)
         self.labels_table.setMaximumHeight(LABELS_TABLE_MAX_HEIGHT)
         self.labels_table.setStyleSheet("""
-            QTableWidget { gridline-color: transparent; }
-            QTableWidget::item { padding: 0px 2px; }
-            QHeaderView::section { padding: 0px 2px; }
+            QTableWidget { gridline-color: transparent; background: #444; color: #fff; }
+            QTableWidget::item { padding: 0px 2px; background: #444; color: #fff; }
+            QTableWidget::item:selected { background: #ffe066; color: #000; }
+            QHeaderView::section { padding: 0px 2px; background: #888; color: #fff; }
         """)
 
         self.labels_table.itemSelectionChanged.connect(self._on_table_selection_changed)

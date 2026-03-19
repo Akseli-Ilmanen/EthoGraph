@@ -41,6 +41,7 @@ from .plots_audiotrace import AudioTracePlot
 from .plots_ephystrace import EphysTracePlot, get_loader as get_ephys_loader
 from .plots_heatmap import HeatmapPlot
 from .plots_lineplot import LinePlot
+from .plots_base import ThrottleDebounce
 from .plots_overlay import OverlayManager
 from .plots_raster import RasterPlot
 from .plots_spectrogram import SharedAudioCache, SpectrogramPlot
@@ -184,8 +185,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             lambda: self.overlay_manager.rescale_for_plot(self.ephys_trace_plot)
         )
 
-        # Envelope debounce timer for x-range data refresh
-        self._envelope_debounce = None
+        # Envelope throttle+debounce for x-range data refresh
+        self._envelope_td = None
         self._envelope_xrange_updater = None
         self._envelope_y_updater = None
 
@@ -868,14 +869,15 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         host.vb.sigYRangeChanged.connect(on_host_y_changed)
         self._envelope_y_updater = on_host_y_changed
 
-        self._envelope_debounce = QTimer()
-        self._envelope_debounce.setSingleShot(True)
-        self._envelope_debounce.setInterval(ENVELOPE_OVERLAY_DEBOUNCE_MS)
-        self._envelope_debounce.timeout.connect(self._refresh_envelope_data)
+        self._envelope_td = ThrottleDebounce(
+            debounce_ms=ENVELOPE_OVERLAY_DEBOUNCE_MS,
+            throttle_cb=self._refresh_envelope_data,
+            debounce_cb=self._refresh_envelope_data,
+        )
 
         def on_x_range_changed():
             if self.overlay_manager.has_overlay('energy_envelope'):
-                self._envelope_debounce.start()
+                self._envelope_td.trigger()
 
         host.vb.sigXRangeChanged.connect(on_x_range_changed)
         self._envelope_xrange_updater = on_x_range_changed
@@ -905,10 +907,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
                     pass
             self._envelope_y_updater = None
 
-        debounce = getattr(self, '_envelope_debounce', None)
-        if debounce:
-            debounce.stop()
-            self._envelope_debounce = None
+        td = getattr(self, '_envelope_td', None)
+        if td:
+            td.stop()
+            self._envelope_td = None
 
         self.overlay_manager.remove_overlay('energy_envelope')
 

@@ -5,12 +5,12 @@ from typing import Optional
 import numpy as np
 import pyqtgraph as pg
 import matplotlib.pyplot as plt
-from qtpy.QtCore import QTimer
+from .app_constants import LINEPLOT_DEBOUNCE_MS
 
 import ethograph as eto
 
 from .makepretty import clean_display_labels
-from .plots_base import BasePlot
+from .plots_base import BasePlot, ThrottleDebounce
 
 
 
@@ -36,12 +36,11 @@ class LinePlot(BasePlot):
         self._current_trial = None
         self._current_ds_kwargs_hash = None
 
-        # Debounce timer for view range changes
-        self._debounce_timer = QTimer()
-        self._debounce_timer.setSingleShot(True)
-        self._debounce_timer.setInterval(50)
-        self._debounce_timer.timeout.connect(self._debounced_update)
-        self._pending_range = None
+        self._td = ThrottleDebounce(
+            debounce_ms=LINEPLOT_DEBOUNCE_MS,
+            throttle_cb=self._do_range_update,
+            debounce_cb=self._do_range_update,
+        )
 
         self.vb.sigRangeChanged.connect(self._on_view_range_changed)
 
@@ -117,19 +116,12 @@ class LinePlot(BasePlot):
             return
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
+        self._td.trigger()
 
-        self._pending_range = self.get_current_xlim()
-        self._debounce_timer.start()
-
-    def _debounced_update(self):
-        if self._pending_range is None:
-            return
+    def _do_range_update(self):
         if not self.isVisible():
-            self._pending_range = None
             return
-
-        t0, t1 = self._pending_range
-        self._pending_range = None
+        t0, t1 = self.get_current_xlim()
         self._update_plot(t0, t1)
 
     def update_plot_content(self, t0: Optional[float] = None, t1: Optional[float] = None):
@@ -145,6 +137,9 @@ class LinePlot(BasePlot):
 
     def _update_plot(self, t0: float, t1: float):
         clear_plot_items(self.plot_item, self.plot_items)
+
+        if not hasattr(self.app_state, 'features_sel'):
+            return
 
         ds_kwargs = self.app_state.get_ds_kwargs()
         feature_sel = self.app_state.features_sel

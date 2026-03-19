@@ -4,7 +4,8 @@ from typing import Optional, Tuple
 
 import numpy as np
 import pyqtgraph as pg
-from qtpy.QtCore import Signal
+from qtpy.QtCore import QTimer, QRunnable, QThreadPool, QObject, Signal, Qt
+
 
 from .app_constants import (
     LOCKED_RANGE_MIN_FACTOR,
@@ -12,6 +13,120 @@ from .app_constants import (
     AXIS_LIMIT_PADDING_RATIO,
     Z_INDEX_TIME_MARKER,
 )
+
+# -------------------------------
+# Worker helper
+# -------------------------------
+class WorkerSignals(QObject):
+    """Signals for worker completion."""
+    finished = Signal(object)  # emit computation result
+
+class Worker(QRunnable):
+    """Run a function in a background thread."""
+    def __init__(self, fn, *args, **kwargs):
+        super().__init__()
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+        self.signals = WorkerSignals()
+
+    def run(self):
+        result = self.fn(*self.args, **self.kwargs)
+        self.signals.finished.emit(result)
+
+
+# -------------------------------
+# ThrottleDebounce (GUI-thread safe)
+# -------------------------------
+class ThrottleDebounce(QObject):
+    """Throttle + debounce helper for rate-limiting expensive plot updates.
+
+    All callbacks are invoked on the GUI (main) thread — safe to call any
+    Qt operation inside them.
+
+    For callbacks that do heavy computation (numpy/IO), split them into a
+    pure-compute function and a render function, then use ``run_async``
+    inside the callback so that only the Qt rendering touches the main thread.
+
+    Usage::
+
+        self._td = ThrottleDebounce(
+            throttle_ms=16,
+            debounce_ms=40,
+            throttle_cb=self._on_throttle,   # called on main thread
+            debounce_cb=self._on_debounce,   # called on main thread
+        )
+        self._td.trigger()   # call from any GUI event
+    """
+
+    def __init__(self,
+                 throttle_ms: int = 16,
+                 debounce_ms: int = 40,
+                 throttle_cb=None,
+                 debounce_cb=None):
+        super().__init__()
+        self._throttle_cb = throttle_cb
+        self._debounce_cb = debounce_cb
+
+        # Timers live in the main thread (created here, which is the main thread).
+        self._throttle_timer = QTimer(self)
+        self._throttle_timer.setInterval(max(throttle_ms, 1))
+        self._throttle_timer.timeout.connect(self._run_throttle)
+
+        self._debounce_timer = QTimer(self)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(debounce_ms)
+        self._debounce_timer.timeout.connect(self._on_debounce)
+
+    def trigger(self):
+        """Call from a GUI-thread event (e.g. sigRangeChanged handler)."""
+        if not self._throttle_timer.isActive():
+            self._throttle_timer.start()
+        self._debounce_timer.start()
+
+    def _run_throttle(self):
+        # Runs on main thread via QTimer — safe for any Qt operation.
+        if self._throttle_cb is not None:
+            self._throttle_cb()
+
+    def _on_debounce(self):
+        # Drag stopped: stop throttle, fire final update.
+        self._throttle_timer.stop()
+        if self._debounce_cb is not None:
+            self._debounce_cb()
+
+    def stop(self):
+        self._throttle_timer.stop()
+        self._debounce_timer.stop()
+
+
+def run_async(compute_fn, render_fn):
+    """Run ``compute_fn`` in a background thread; deliver its return value to
+    ``render_fn`` on the main (GUI) thread.
+
+    ``compute_fn`` must not touch any Qt objects.
+    ``render_fn(result)`` may freely update the GUI.
+
+    Example inside a plot callback::
+
+        def _do_range_update(self):
+            if self._busy:
+                return
+            self._busy = True
+            t0, t1 = self.get_current_xlim()
+            run_async(
+                lambda: self._compute_data(t0, t1),   # background thread
+                lambda data: self._render(data),      # main thread
+            )
+    """
+    worker = Worker(compute_fn)
+    # WorkerSignals was created in the main thread, so this connection is
+    # automatically a Qt.QueuedConnection → render_fn runs on the main thread.
+    worker.signals.finished.connect(render_fn, Qt.QueuedConnection)
+    QThreadPool.globalInstance().start(worker)
+        
+        
+
 
 
 class TimeAxisItem(pg.AxisItem):
@@ -135,9 +250,14 @@ class BasePlot(pg.PlotWidget):
         self.update_time_marker(current_time)
 
         if hasattr(self.app_state, 'ds') and self.app_state.ds is not None:
-            t0, t1 = self.get_current_xlim()
-            if self.current_range is None or current_time < self.current_range[0] or current_time > self.current_range[1]:
+            if getattr(self.app_state, 'center_playback', False):
+                self.set_x_range(mode='center', center_on_frame=frame_number)
+                t0, t1 = self.get_current_xlim()
                 self.update_plot_content(t0, t1)
+            else:
+                t0, t1 = self.get_current_xlim()
+                if self.current_range is None or current_time < self.current_range[0] or current_time > self.current_range[1]:
+                    self.update_plot_content(t0, t1)
 
 
 

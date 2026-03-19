@@ -580,7 +580,7 @@ class EphysWidget(QWidget):
             self.meta_widget.refresh_widget_layout(self)
 
     # ------------------------------------------------------------------
-    # Ephys trace panel (channel, multichannel, gain, range)
+    # Ephys trace panel (channel,  gain, range)
     # ------------------------------------------------------------------
 
     def _create_traceview_panel(self, main_layout):
@@ -595,21 +595,6 @@ class EphysWidget(QWidget):
         group.setLayout(group_layout)
         layout.addWidget(group)
 
-        # Stream combo (populated later via populate_stream_combo)
-        self._stream_row = QWidget()
-        stream_layout = QHBoxLayout()
-        stream_layout.setContentsMargins(0, 0, 0, 0)
-        stream_layout.setSpacing(5)
-        self._stream_row.setLayout(stream_layout)
-        self._stream_label = QLabel("Stream:")
-        stream_layout.addWidget(self._stream_label)
-        self.ephys_stream_combo = QComboBox()
-        self.ephys_stream_combo.setObjectName("ephys_stream_combo")
-        self.ephys_stream_combo.currentTextChanged.connect(self._on_ephys_stream_changed)
-        stream_layout.addWidget(self.ephys_stream_combo)
-        stream_layout.addStretch()
-        group_layout.addWidget(self._stream_row)
-        self._stream_row.hide()
 
         # Channel spinbox
         self.ephys_channel_label = QLabel("Ephys channel:")
@@ -641,8 +626,6 @@ class EphysWidget(QWidget):
         self.ephys_auto_gain_cb.toggled.connect(self._on_auto_gain_toggled)
 
         ch_row = QHBoxLayout()
-        ch_row.addWidget(self.ephys_channel_label)
-        ch_row.addWidget(self.ephys_channel_spin)
         ch_row.addWidget(self.ephys_gain_label)
         ch_row.addWidget(self.ephys_gain_spin)
         ch_row.addWidget(self.ephys_auto_gain_cb)
@@ -730,9 +713,10 @@ class EphysWidget(QWidget):
         header.setStretchLastSection(True)
 
         self.cluster_table.setStyleSheet("""
-            QTableView { gridline-color: transparent; }
-            QTableView::item { padding: 0px 2px; }
-            QHeaderView::section { padding: 0px 2px; }
+            QTableView { gridline-color: transparent; background: #f5f5f5; color: #222; }
+            QTableView::item { padding: 0px 2px; background: #f5f5f5; color: #222; }
+            QTableView::item:selected { background: #a7c7e7; color: #222; }
+            QHeaderView::section { padding: 0px 2px; background: #e0e0e0; color: #222; }
         """)
         self.cluster_table.selectionModel().selectionChanged.connect(self._on_cluster_row_selected)
         layout.addWidget(self.cluster_table)
@@ -743,28 +727,6 @@ class EphysWidget(QWidget):
     # Ephys trace handlers
     # ------------------------------------------------------------------
 
-    def populate_stream_combo(self):
-        stream_names = self.get_stream_names()
-        if not stream_names:
-            self._stream_row.hide()
-            return
-        self.ephys_stream_combo.blockSignals(True)
-        self.ephys_stream_combo.clear()
-        self.ephys_stream_combo.addItems(stream_names)
-        self.app_state.ephys_stream_sel = stream_names[0]
-        self.ephys_stream_combo.blockSignals(False)
-        self._stream_row.setVisible(len(stream_names) > 1)
-
-    def _on_ephys_stream_changed(self, stream_name):
-        if not self.app_state.ready or not stream_name:
-            return
-        source_map = getattr(self.app_state, 'ephys_source_map', {})
-        if stream_name not in source_map:
-            return
-        self.app_state.ephys_stream_sel = stream_name
-        self.configure_ephys_trace_plot()
-        if self.plot_container:
-            self.plot_container.show_ephys_panel()
 
     def configure_ephys_trace_plot(self):
         """Configure the Phy-Viewer ephys trace plot.
@@ -802,12 +764,6 @@ class EphysWidget(QWidget):
 
         n_ch = loader.n_channels
         self._ephys_n_channels = n_ch
-        self.ephys_channel_spin.blockSignals(True)
-        self.ephys_channel_spin.setRange(0, max(0, n_ch - 1))
-        self.ephys_channel_spin.setValue(channel_idx)
-        self.ephys_channel_spin.blockSignals(False)
-        self.ephys_channel_label.show()
-        self.ephys_channel_spin.show()
         self.ephys_gain_label.show()
         self.ephys_gain_spin.show()
 
@@ -839,14 +795,10 @@ class EphysWidget(QWidget):
 
         ephys_plot = self.plot_container.ephys_trace_plot
 
-        if mode == "1-ch Trace":
-            self.plot_container.set_neural_panel_mode("trace")
-            ephys_plot.set_multichannel(False)
-            self.ephys_channel_spin.setEnabled(True)
 
-        elif mode == "Multi Trace":
+
+        if mode == "Multi Trace":
             self.plot_container.set_neural_panel_mode("trace")
-            ephys_plot.set_multichannel(True)
             ephys_plot.auto_channel_spacing()
             if self.ephys_auto_gain_cb.isChecked():
                 self._apply_auto_gain()
@@ -855,9 +807,7 @@ class EphysWidget(QWidget):
 
         elif mode == "Raster":
             self.ephys_channel_spin.setEnabled(False)
-            if not ephys_plot._multichannel:
-                ephys_plot.set_multichannel(True)
-                ephys_plot.auto_channel_spacing()
+            ephys_plot.auto_channel_spacing()
             self.plot_container.set_neural_panel_mode("raster")
 
         if self.data_widget:
@@ -938,8 +888,7 @@ class EphysWidget(QWidget):
         self.ephys_channel_spin.hide()
         self.ephys_gain_label.hide()
         self.ephys_gain_spin.hide()
-        if self.plot_container and getattr(self.plot_container, 'ephys_trace_plot', None) is not None:
-            self.plot_container.ephys_trace_plot.set_multichannel(False)
+
 
     # ------------------------------------------------------------------
     # Neuron jumping panel (Kilosort)
@@ -2000,7 +1949,7 @@ class EphysWidget(QWidget):
         if self.app_state.ready:
             features_combo = self.data_widget.combos.get("features")
             if features_combo is not None:
-                set_combo_to_value(features_combo, "Firing rate")
+                set_combo_to_value(features_combo, "firing_rate")
                 self.app_state.set_key_sel("features", get_combo_value(features_combo))
                 self.data_widget._update_view_mode_items(get_combo_value(features_combo))
                 self.data_widget.view_mode_combo.show()
@@ -2014,11 +1963,12 @@ class EphysWidget(QWidget):
         features_list = self.data_widget.type_vars_dict.get("features", [])
         features_combo = self.data_widget.combos.get("features")
 
-        for display_name in ("Firing rate", "PCA"):
+        _display_to_var = {"Firing rate": "firing_rate", "PCA": "pca"}
+        for display_name, var_name in _display_to_var.items():
             if display_name not in features_list:
                 features_list.append(display_name)
-            if features_combo is not None and find_combo_index(features_combo, display_name) < 0:
-                features_combo.addItem(display_name, display_name)
+            if features_combo is not None and find_combo_index(features_combo, var_name) < 0:
+                features_combo.addItem(display_name, var_name)
                 self._set_combo_item_enabled(features_combo, display_name, False)
 
         slot1 = getattr(self.data_widget, 'space_view_combo', None)
@@ -2109,7 +2059,7 @@ class EphysWidget(QWidget):
         if self.app_state.ready:
             features_combo = self.data_widget.combos.get("features")
             if features_combo is not None:
-                set_combo_to_value(features_combo, "PCA")
+                set_combo_to_value(features_combo, "pca")
                 self.app_state.set_key_sel("features", get_combo_value(features_combo))
             self.data_widget.update_main_plot()
 
@@ -2204,7 +2154,7 @@ class EphysWidget(QWidget):
         self.pca_status_label.setText("")
 
         features_combo = self.data_widget.combos.get("features")
-        if features_combo is not None and get_combo_value(features_combo) in ("Firing rate", "PCA"):
+        if features_combo is not None and get_combo_value(features_combo) in ("firing_rate", "pca"):
             features_combo.setCurrentIndex(0)
 
     def _on_plot_changed(self, plot_type: str):

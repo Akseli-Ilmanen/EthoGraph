@@ -165,6 +165,15 @@ class NavigationWidget(QWidget):
         self.filter_warnings_checkbox.toggled.connect(self._on_filter_warnings_changed)
         self._apply_warning_filters(app_state.get_with_default("filter_warnings"))
 
+        self.center_playback_checkbox = QCheckBox("Center playback")
+        self.center_playback_checkbox.setObjectName("center_playback_checkbox")
+        self.center_playback_checkbox.setChecked(app_state.get_with_default("center_playback"))
+        self.center_playback_checkbox.setToolTip(
+            "When enabled, the view continuously scrolls to keep\n"
+            "the current playback position centered."
+        )
+        self.center_playback_checkbox.toggled.connect(self._on_center_playback_changed)
+
         # Time jump step control (no-video mode: Left/Right arrow jump amount)
         self.time_jump_label = QLabel("Jump step (ms):")
         self.time_jump_label.setObjectName("time_jump_label")
@@ -196,6 +205,7 @@ class NavigationWidget(QWidget):
         navigate_layout.addWidget(self.audio_speed_label, 2, 0)
         navigate_layout.addWidget(self.audio_speed_spin, 2, 1)
         navigate_layout.addWidget(self.coupling_button, 2, 2)
+        navigate_layout.addWidget(self.center_playback_checkbox, 2, 3)
         navigate_layout.addWidget(self.time_jump_label, 3, 0)
         navigate_layout.addWidget(self.time_jump_spin, 3, 1)
 
@@ -340,6 +350,9 @@ class NavigationWidget(QWidget):
     def _on_filter_warnings_changed(self, checked: bool):
         self.app_state.filter_warnings = checked
         self._apply_warning_filters(checked)
+
+    def _on_center_playback_changed(self, checked: bool):
+        self.app_state.center_playback = checked
 
     def _apply_warning_filters(self, enabled: bool):
         if enabled:

@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING, Optional
 import numpy as np
 import pyqtgraph as pg
 from audioio import AudioLoader
-from qtpy.QtCore import QTimer, Signal
+from qtpy.QtCore import Signal
 from scipy.signal import spectrogram
 
-from .plots_base import BasePlot
+from .plots_base import BasePlot, ThrottleDebounce
 from .app_constants import (
     SPECTROGRAM_DEBOUNCE_MS,
     DEFAULT_BUFFER_MULTIPLIER,
@@ -78,11 +78,10 @@ class SpectrogramPlot(BasePlot):
 
         self._set_frequency_limits()
 
-        self._debounce_timer = QTimer()
-        self._debounce_timer.setSingleShot(True)
-        self._debounce_timer.setInterval(SPECTROGRAM_DEBOUNCE_MS)
-        self._debounce_timer.timeout.connect(self._debounced_update)
-        self._pending_range = None
+        self._td = ThrottleDebounce(
+            debounce_ms=SPECTROGRAM_DEBOUNCE_MS,
+            debounce_cb=self._do_range_update,
+        )
 
         self.vb.sigRangeChanged.connect(self._on_view_range_changed)
 
@@ -185,20 +184,12 @@ class SpectrogramPlot(BasePlot):
         self.buffer.update_buffer_size()
 
     def _on_view_range_changed(self):
-        """Handle view range changes with debouncing."""
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
+        self._td.trigger()
 
-        self._pending_range = self.get_current_xlim()
-        self._debounce_timer.start()
-
-    def _debounced_update(self):
-        """Execute debounced spectrogram update."""
-        if self._pending_range is None:
-            return
-
-        t0, t1 = self._pending_range
-        self._pending_range = None
+    def _do_range_update(self):
+        t0, t1 = self.get_current_xlim()
         self.update_plot_content(t0, t1)
 
 

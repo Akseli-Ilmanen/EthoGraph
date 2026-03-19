@@ -6,12 +6,11 @@ from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 import pyqtgraph as pg
-from qtpy.QtCore import QTimer
 
 from ethograph.gui.plots_timeseriessource import RegularTimeseriesSource, TimeseriesSource
 
-from .app_constants import BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER
-from .plots_base import BasePlot
+from .app_constants import AUDIOTRACE_DEBOUNCE_MS, BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER
+from .plots_base import BasePlot, ThrottleDebounce
 from .plots_spectrogram import SharedAudioCache
 
 if TYPE_CHECKING:
@@ -43,11 +42,11 @@ class AudioTracePlot(BasePlot):
 
         self.label_items = []
 
-        self._debounce_timer = QTimer()
-        self._debounce_timer.setSingleShot(True)
-        self._debounce_timer.setInterval(50)
-        self._debounce_timer.timeout.connect(self._debounced_update)
-        self._pending_range = None
+        self._td = ThrottleDebounce(
+            debounce_ms=AUDIOTRACE_DEBOUNCE_MS,
+            throttle_cb=self._do_range_update,
+            debounce_cb=self._do_range_update,
+        )
 
         self.vb.sigRangeChanged.connect(self._on_view_range_changed)
 
@@ -149,16 +148,10 @@ class AudioTracePlot(BasePlot):
     def _on_view_range_changed(self):
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
+        self._td.trigger()
 
-        self._pending_range = self.get_current_xlim()
-        self._debounce_timer.start()
-
-    def _debounced_update(self):
-        if self._pending_range is None:
-            return
-
-        t0, t1 = self._pending_range
-        self._pending_range = None
+    def _do_range_update(self):
+        t0, t1 = self.get_current_xlim()
         self.update_plot_content(t0, t1)
 
 

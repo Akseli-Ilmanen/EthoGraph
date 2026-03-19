@@ -73,9 +73,13 @@ CP_LINE_WIDTH_THICK = 2.0
 # TIMING / DEBOUNCE
 # =============================================================================
 
+LINEPLOT_DEBOUNCE_MS = 20
+AUDIOTRACE_DEBOUNCE_MS = 30
+ENVELOPE_OVERLAY_DEBOUNCE_MS = 30
 SPECTROGRAM_DEBOUNCE_MS = 50
-ENVELOPE_OVERLAY_DEBOUNCE_MS = 100
-EPHYSTRACE_DEBOUNCE_MS = 100
+HEATMAP_DEBOUNCE_MS = 50
+EPHYSTRACE_DEBOUNCE_MS = 10
+RASTER_DEBOUNCE_MS = 10
 
 # =============================================================================
 # AUDIO / SPECTROGRAM
@@ -83,7 +87,7 @@ EPHYSTRACE_DEBOUNCE_MS = 100
 
 # Buffer settings (plots_spectrogram.py)
 DEFAULT_BUFFER_MULTIPLIER = 5.0
-BUFFER_COVERAGE_MARGIN = 0.1  # 10% margin for buffer coverage check
+BUFFER_COVERAGE_MARGIN = 0.2  # 20% margin for buffer coverage check
 
 # Frequency limits (plots_spectrogram.py)
 DEFAULT_FALLBACK_MAX_FREQUENCY = 25000  # Hz, fallback when audio not loaded
@@ -91,6 +95,19 @@ DEFAULT_FALLBACK_MAX_FREQUENCY = 25000  # Hz, fallback when audio not loaded
 # =============================================================================
 # DATA PROCESSING
 # =============================================================================
+
+# Multi-resolution pyramid (plots using timeseries pyramid)
+
+# Multi-resolution pyramid levels for ephys/audio downsampling
+# Controls the zoom strategy for envelope downsampling in trace plots.
+# Each value is a downsampling factor: e.g., 64 means min/max pairs for every 64 samples.
+# Used in plots_ephystrace.py to select pyramid level based on zoom.
+
+# at 30kHz
+# 262144 = ~8.7s window -> collapsed to min/max range
+# 16 = ~0.0005s, 4 = ~0.00013s (1ms window)
+PYRAMID_LEVELS = (262144, 65536, 16384, 4096, 1024, 256, 64, 16, 4)
+PYRAMID_RAW_DATA_THRESHOLD_S = 2  # Below this window size, always use raw data (level 0)
 
 
 # Z-index values for layering

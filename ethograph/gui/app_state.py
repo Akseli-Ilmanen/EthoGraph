@@ -117,6 +117,7 @@ class AppStateSpec:
         "av_speed_coupled": (bool, True, True),
         "skip_frames": (bool, False, True),
         "filter_warnings": (bool, False, True),
+        "center_playback": (bool, False, True),
         "time_jump_ms": (float, 100.0, True),
         "time": (xr.DataArray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
         "label_intervals": (pd.DataFrame | None, None, False),

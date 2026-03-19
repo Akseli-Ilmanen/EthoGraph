@@ -835,7 +835,7 @@ class ChangepointsWidget(QWidget):
 
         else:  # Current Feature
             features_sel = self.app_state.features_sel
-            if not features_sel or features_sel in ("Audio Waveform", "Ephys trace", "Firing rate"):
+            if not features_sel or features_sel in ("Audio Waveform", "Ephys trace", "firing_rate"):
                 show_warning("Select a standard dataset feature (not Audio/Ephys/Firing rate)")
                 return
             ds_kwargs = self.app_state.get_ds_kwargs()

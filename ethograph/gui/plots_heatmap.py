@@ -4,17 +4,17 @@ from typing import Optional
 
 import numpy as np
 import pyqtgraph as pg
-from qtpy.QtCore import QTimer
 
 from ethograph.features.preprocessing import z_normalize
 import ethograph as eto
 
 from .app_constants import (
     DEFAULT_BUFFER_MULTIPLIER,
+    HEATMAP_DEBOUNCE_MS,
     Z_INDEX_BACKGROUND,
 )
 from .makepretty import clean_display_labels
-from .plots_base import BasePlot
+from .plots_base import BasePlot, ThrottleDebounce
 
 
 class HeatmapPlot(BasePlot):
@@ -63,12 +63,12 @@ class HeatmapPlot(BasePlot):
         # Track last-rendered labels to skip redundant axis updates
         self._last_visible_labels: list[str] | None = None
 
-        # Debounce timer for view range changes (panning past buffer edge)
-        self._debounce_timer = QTimer()
-        self._debounce_timer.setSingleShot(True)
-        self._debounce_timer.setInterval(60)
-        self._debounce_timer.timeout.connect(self._debounced_update)
-        self._pending_range = None
+        # Debounce-only (no throttle) — render is expensive; buffer check gates triggers
+        self._td = ThrottleDebounce(
+            debounce_ms=HEATMAP_DEBOUNCE_MS,
+            throttle_cb=self._do_range_update,
+            debounce_cb=self._do_range_update,
+        )
         self._rendering = False
 
         self.vb.sigXRangeChanged.connect(self._on_view_range_changed)
@@ -494,20 +494,13 @@ class HeatmapPlot(BasePlot):
             return
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
-
-
         t0, t1 = self.get_current_xlim()
         if self._buffer_covers(t0, t1):
             return
-        self._pending_range = (t0, t1)
-        self._debounce_timer.start()
+        self._td.trigger()
 
-    def _debounced_update(self):
-        if self._pending_range is None:
-            return
-
-        t0, t1 = self._pending_range
-        self._pending_range = None
+    def _do_range_update(self):
+        t0, t1 = self.get_current_xlim()
         self._render_heatmap(t0, t1)
 
     # --- Y-axis management ---

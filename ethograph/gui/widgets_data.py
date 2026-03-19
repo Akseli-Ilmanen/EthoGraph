@@ -747,7 +747,7 @@ class DataWidget(DataLoader, QWidget):
         self._neural_view_label = QLabel("Neural view:")
         self.neural_view_combo = QComboBox()
         self.neural_view_combo.setObjectName("neural_view_combo")
-        self.neural_view_combo.addItems(["1-ch Trace", "Multi Trace", "Raster"])
+        self.neural_view_combo.addItems(["Multi Trace", "Raster"])
         self.neural_view_combo.currentTextChanged.connect(self._on_neural_view_changed)
         row3.addWidget(self._neural_view_label)
         row3.addWidget(self.neural_view_combo)
@@ -769,9 +769,16 @@ class DataWidget(DataLoader, QWidget):
 
         show_ephys = bool(self.app_state.has_ephys)
         if show_ephys and self.ephys_widget:
-            self.ephys_widget.populate_stream_combo()
+
+            
+
             self._neural_view_label.show()
             self.neural_view_combo.show()
+            
+            self.ephys_widget.configure_ephys_trace_plot()
+            if self.plot_container:
+                self.plot_container.show_ephys_panel()
+
 
         row3.addStretch()
 
@@ -903,6 +910,8 @@ class DataWidget(DataLoader, QWidget):
         if self.plot_container._neo_visible:
             xmin, xmax = self.plot_container.get_current_xlim()
             neo_plot.update_plot_content(xmin, xmax)
+            neo_plot.auto_channel_spacing()
+            neo_plot.autoscale()
 
     def cycle_view_mode(self):
         if not hasattr(self, 'view_mode_combo') or not self.view_mode_combo.isVisible():
@@ -1061,7 +1070,7 @@ class DataWidget(DataLoader, QWidget):
         self.app_state.ephys_visible = visible
         if self.plot_container:
             if visible:
-                mode = self.neural_view_combo.currentText() if hasattr(self, 'neural_view_combo') else "1-ch Trace"
+                mode = self.neural_view_combo.currentText() if hasattr(self, 'neural_view_combo') else "Multi Trace"
                 if mode == "Raster":
                     self.plot_container.set_neural_panel_mode("raster")
                 else:
@@ -1704,7 +1713,7 @@ class DataWidget(DataLoader, QWidget):
         primary_fps = self.app_state.video_fps
         current_time = frame_number / primary_fps
         xlim = self.plot_container.get_current_xlim()
-        if current_time < xlim[0] or current_time > xlim[1]:
+        if getattr(self.app_state, 'center_playback', False) or current_time < xlim[0] or current_time > xlim[1]:
             self.plot_container.set_x_range(mode='center', center_on_frame=frame_number)
 
     def update_pose(self):
