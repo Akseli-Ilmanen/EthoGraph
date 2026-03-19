@@ -333,57 +333,12 @@ class ObservableAppState(QObject):
 
     
 
-    def get_trial_bounds(self) -> tuple[float, float]:
-        """Get trial start and end times in seconds, using multiple fallbacks."""
-        
-        
-        dt = getattr(self, 'dt', None)
-        trials_sel = getattr(self, 'trials_sel', None)
-        if dt is not None and trials_sel is not None:
-            try:
-                t_start = dt.get_start_time(trials_sel)
-                t_stop = dt.get_stop_time(trials_sel)
-                if t_start is not None and t_stop is not None and t_stop > t_start:
-                    return float(t_start), float(t_stop)
-            except (KeyError, ValueError):
-                pass
-            
-            
-        video = getattr(self, 'video', None)
-        if video is not None and getattr(video, 'total_duration', 0) > 0:
-            return 0.0, float(video.total_duration)
-
-        # TODO. check if exceptions types make sense
-        video_path = getattr(self, 'video_path', None)
-        if video_path:
-            try:
-                from napari_pyav._reader import FastVideoReader
-                reader = FastVideoReader(video_path, read_format='rgb24')
-                n_frames = reader.shape[0]
-                fps = float(reader.stream.guessed_rate)
-                if n_frames > 0 and fps > 0:
-                    return 0.0, float(n_frames / fps)
-            except Exception:
-                pass
-            
-        audio_path = getattr(self, 'audio_path', None)
-        if audio_path:
-            try:
-                from .plots_spectrogram import SharedAudioCache
-                loader = SharedAudioCache.get_loader(audio_path)
-                if loader is not None and len(loader) > 0:
-                    return 0.0, float(len(loader) / loader.rate)
-            except (OSError, IOError, AttributeError):
-                pass
-
-
-        trial_alignment = getattr(self, 'trial_alignment', None)
-        if trial_alignment is not None and trial_alignment.global_range is not None:
-            tr = trial_alignment.global_range
+    def get_trial_bounds(self) -> tuple[float, float] | None:
+        alignment = getattr(self, 'trial_alignment', None)
+        if alignment is not None and alignment.global_range is not None:
+            tr = alignment.global_range
             return (tr.start_s, tr.end_s)
-        
         return None
-
 
  
         

@@ -37,7 +37,7 @@ from qtpy.QtWidgets import (
 
 import ethograph as eto
 from ethograph.utils.label_intervals import dense_to_intervals, get_interval_bounds
-from ethograph.gui.plots_timeseriessource import discover_trial_sources
+from ethograph.gui.plots_timeseriessource import discover_trial_sources, TimeRange
 
 
 
@@ -955,7 +955,7 @@ class DataWidget(DataLoader, QWidget):
             return expanded_items
 
         for mic_label in mic_labels:
-            mic_file = dt.get_audio(trial_id, str(mic_label)) if trial_id is not None else str(mic_label)
+            mic_file = dt.get_media(trial_id, "audio", str(mic_label))
             if not mic_file:
                 continue
             try:
@@ -1480,7 +1480,7 @@ class DataWidget(DataLoader, QWidget):
         video_folder = self.app_state.video_folder
         if video_folder:
             for cam in dt.cameras:
-                vid = dt.get_video(first_trial, cam)
+                vid = dt.get_media(first_trial, "video", device=cam) 
                 if not vid or is_url(vid):
                     continue
                 path = os.path.join(video_folder, vid)
@@ -1497,7 +1497,7 @@ class DataWidget(DataLoader, QWidget):
                 )
             else:
                 for mic in mics:
-                    aud = dt.get_audio(first_trial, mic)
+                    aud = dt.get_media(first_trial, "audio", device=mic)
                     if not aud:
                         continue
                     path = os.path.join(audio_folder, aud)
@@ -1514,7 +1514,7 @@ class DataWidget(DataLoader, QWidget):
                 )
             else:
                 for cam in cameras:
-                    pose_file = dt.get_pose(first_trial, cam)
+                    pose_file = dt.get_media(first_trial, "pose", device=cam)
                     if not pose_file:
                         continue
                     path = os.path.join(pose_folder, pose_file)
@@ -1523,31 +1523,45 @@ class DataWidget(DataLoader, QWidget):
 
         return missing
 
+
+
     def _build_trial_alignment(self, trial_id) -> None:
         ds = self.app_state.ds
         dt = self.app_state.dt
-        audio_path = getattr(self.app_state, 'audio_path', None)
-        _, audio_ch = self.app_state.get_audio_source()
-        ephys_path, ephys_stream, _ = self.app_state.get_ephys_source()
+
+        # Session-absolute trial window (for setting extra_ranges / view bounds)
+        trial_start = dt.get_start_time(trial_id)
+        trial_stop = dt.get_stop_time(trial_id) or trial_start + float(ds.time[-1])
+
+        # File resolution: works for both per-trial and session-long
+        video_path = dt.get_media(trial_id, "video", self.app_state.cameras_sel)
+        
+        audio_path = dt.get_media(trial_id, "audio", device=dt.devices("audio")) # Assumes same time range across channels
+        ephys_path = dt.get_media(trial_id, "ephys")
+
+        # Stream offsets: where does sample 0 of this file sit on the session clock?
+        # For session-long files this is typically just the global offset (e.g. 0.23).
+        # For per-trial files this is trial_start + offset.
         video_offset = dt.get_stream_offset(trial_id, "video") or 0.0
         audio_offset = dt.get_stream_offset(trial_id, "audio") or 0.0
         ephys_offset = dt.get_stream_offset(trial_id, "ephys") or 0.0
-        # audio_timestamps = dt.get_aligned_timestamps("audio")
-        # ephys_timestamps = dt.get_aligned_timestamps("ephys")
-        self.app_state.trial_alignment = discover_trial_sources(
+
+        alignment = discover_trial_sources(
             str(trial_id),
             ds,
+            video_path=video_path,
             video_offset=video_offset,
             audio_path=audio_path,
-            audio_channel=audio_ch,
             audio_offset=audio_offset,
-            #audio_timestamps=audio_timestamps,
             ephys_path=ephys_path,
-            ephys_stream_id=ephys_stream,
             ephys_offset=ephys_offset,
-            #ephys_timestamps=ephys_timestamps,
-            label_intervals=self.app_state.label_intervals,
         )
+
+        # Tell the alignment what the trial's session-absolute window is
+        alignment.extra_ranges.append(TimeRange(trial_start, trial_stop))
+        self.app_state.trial_alignment = alignment
+
+
 
     def on_trial_changed(self):
         trials_sel = self.app_state.trials_sel

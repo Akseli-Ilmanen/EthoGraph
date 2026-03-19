@@ -88,24 +88,13 @@ class AudioTracePlot(BasePlot):
     def _resolve_source(self) -> TimeseriesSource | None:
         if self.buffer.source is not None:
             return self.buffer.source
-        audio_path = self._get_audio_path()
+        audio_path, _ = self.app_state.get_audio_source()
         if not audio_path:
             return None
         self.buffer.set_source_from_path(audio_path)
         return self.buffer.source
 
-    def _get_audio_path(self):
-        import os
-        audio_path = getattr(self.app_state, 'audio_path', None)
-        if not audio_path:
-            if (hasattr(self.app_state, 'audio_folder') and
-                hasattr(self.app_state, 'mics_sel')):
-                trial = self.app_state.trials_sel if hasattr(self.app_state, 'trials_sel') else None
-                audio_file = self.app_state.dt.get_audio(trial, self.app_state.mics_sel)
-                if audio_file:
-                    audio_path = os.path.join(self.app_state.audio_folder, audio_file)
-                    self.app_state.audio_path = audio_path
-        return audio_path
+
 
     def _get_time_bounds(self):
         if self.buffer.source is not None:

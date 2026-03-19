@@ -136,7 +136,8 @@ class VideoManager:
         video_file = None
         if camera_sel:
             dt = self.app_state.dt
-            video_file = dt.get_video(self.app_state.trials_sel, camera_sel)
+
+            video_file = dt.get_media(self.app_state.trials_sel, "video", device=camera_sel)
         if video_file and is_url(video_file):
             self.app_state.video_path = video_file
         elif video_file and self.app_state.video_folder:
@@ -356,8 +357,8 @@ class VideoManager:
         if is_url(camera_name):
             return camera_name
         if video_folder:
-        
-            video_file = self.app_state.dt.get_video(self.app_state.trials_sel, camera_name)
+
+            video_file = self.app_state.dt.get_media(self.app_state.trials_sel, "video", device=camera_name)
             if video_file:
                 path = os.path.normpath(os.path.join(video_folder, video_file))
                 return path if os.path.isfile(path) else None

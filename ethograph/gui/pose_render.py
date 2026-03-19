@@ -159,9 +159,6 @@ def apply_keypoint_filter(pr: PoseRenderData, hidden: set[str]) -> PoseRenderDat
 class PoseDisplayManager:
     """Manages pose loading, filtering, and napari layer display.
 
-    Camera index determines pose index — ``dt.cameras[i]`` corresponds
-    to ``dt.get_pose(trial, cameras[i])`` (file-based) or ``position``
-    view *i* / ``position_{nwb_pose_keys[i]}`` (NWB-embedded).
 
     Delegates to DataLoader (movement) for the actual layer creation via
     ``_set_common_color_property``, ``_set_text_property``, ``_add_points_layer``,
@@ -189,7 +186,7 @@ class PoseDisplayManager:
         cameras = dt.cameras
 
         if self.app_state.pose_folder and camera_idx < len(cameras):
-            pose_file = dt.get_pose(trial_id, cameras[camera_idx])
+            pose_file = dt.get_media(trial_id, "pose", device=cameras[camera_idx])
             if not pose_file:
                 return None
             pose_path = os.path.join(self.app_state.pose_folder, pose_file)

@@ -220,6 +220,8 @@ class RegularTimeseriesSource:
 
         timestamps = self._start_time + np.arange(i0, i1) / self._rate
         return timestamps.astype(np.float64), np.asarray(data, dtype=np.float64)
+    
+    
 
 
 # ---------------------------------------------------------------------------
@@ -446,7 +448,6 @@ class TrialAlignment:
     >>> alignment = TrialAlignment(trial_id="1")
     >>> alignment.continuous["speed"] = ArrayTimeseriesSource.from_xarray(ds["speed"])
     >>> alignment.continuous["audio"] = RegularTimeseriesSource("audio", loader)
-    >>> alignment.events["spikes"] = SpikeEventSource("spikes", spike_times)
     >>> print(alignment.summary())
     """
 
@@ -502,35 +503,19 @@ def discover_trial_sources(
     trial_id: str,
     ds: xr.Dataset,
     *,
+    video_path: str | None = None,
     video_offset: float = 0.0,
     audio_path: str | None = None,
-    audio_channel: int = 0,
+    audio_channel: int = 0, # just take first channel
     audio_offset: float = 0.0,
-    audio_timestamps: np.ndarray | None = None,
     ephys_path: str | None = None,
     ephys_stream_id: str = "0",
     ephys_offset: float = 0.0,
-    ephys_timestamps: np.ndarray | None = None,
-    spike_times: np.ndarray | None = None,
-    spike_clusters: np.ndarray | None = None,
-    spike_channels: np.ndarray | None = None,
-    label_intervals: pd.DataFrame | None = None,
 ) -> TrialAlignment:
     """Build a :class:`TrialAlignment` by discovering all available sources.
 
-    Scans the dataset for feature variables with time coordinates and
-    optionally adds file-based audio/ephys sources and spike event data.
-
-    For audio and ephys streams, alignment can be specified in two ways
-    (mutually exclusive per stream, timestamps take priority):
-
-    1. **Scalar offset** — a single ``start_time`` shift applied via
-       :class:`RegularTimeseriesSource`.
-    2. **Aligned timestamps** — an explicit 1-D array of corrected
-       sample times (e.g. computed via TTL interpolation / neuroconv).
-       When provided, the stream is wrapped in an
-       :class:`ArrayTimeseriesSource` instead, giving per-sample
-       irregular timing.
+    Hierarchy of fallbacks:
+    Determine time range by 1) trial start/stop, 2) video duration, 3) audio duration, 4) ephys duration.
 
     Parameters
     ----------
@@ -538,6 +523,8 @@ def discover_trial_sources(
         Trial identifier.
     ds
         The trial's xarray Dataset.
+    video_path
+        Path to video file (Primary video viewer.)
     video_offset
         Video stream offset in seconds (stored on TrialAlignment).
     audio_path
@@ -545,23 +532,12 @@ def discover_trial_sources(
     audio_channel
         Channel index within the audio file.
     audio_offset
-        Scalar offset for audio (ignored when *audio_timestamps* given).
-    audio_timestamps
-        Explicit aligned timestamps for every audio sample.
+        Scalar offset for audio.
     ephys_path
         Path to ephys recording file.
-    ephys_stream_id
-        Stream identifier for multi-stream ephys formats.
     ephys_offset
-        Scalar offset for ephys (ignored when *ephys_timestamps* given).
-    ephys_timestamps
-        Explicit aligned timestamps for every ephys sample.
-    spike_times
-        1-D array of spike times in seconds.
-    spike_clusters, spike_channels
-        Optional per-spike metadata arrays.
-    label_intervals
-        DataFrame with ``onset_s``, ``offset_s``, ``labels``, ``individual``.
+        Scalar offset for ephys.
+
     """
     from ethograph.utils.xr_utils import get_time_coord
 
@@ -580,6 +556,22 @@ def discover_trial_sources(
                 )
             except (ValueError, IndexError):
                 continue
+         
+
+    if video_path:
+        try:
+            from napari_pyav._reader import FastVideoReader
+
+            reader = FastVideoReader(video_path, read_format="rgb24")
+            n_frames = reader.shape[0]
+            fps = float(reader.stream.guessed_rate)
+            if n_frames > 0 and fps > 0:
+                duration = n_frames / fps
+                alignment.extra_ranges.append(
+                    TimeRange(video_offset, video_offset + duration)
+                )
+        except Exception:
+            pass
 
     if audio_path:
         try:
@@ -587,21 +579,12 @@ def discover_trial_sources(
 
             loader = SharedAudioCache.get_loader(audio_path)
             if loader is not None and len(loader) > 0:
-                if audio_timestamps is not None and len(audio_timestamps) > 0:
-                    data = loader[:len(audio_timestamps)]
-                    if data.ndim > 1:
-                        ch = min(audio_channel, data.shape[1] - 1)
-                        data = data[:, ch]
-                    alignment.continuous["audio"] = ArrayTimeseriesSource(
-                        "audio", audio_timestamps, data
-                    )
-                else:
-                    alignment.continuous["audio"] = RegularTimeseriesSource(
-                        "audio",
-                        loader,
-                        start_time=audio_offset,
-                        channel=audio_channel,
-                    )
+                alignment.continuous["audio"] = RegularTimeseriesSource(
+                    "audio",
+                    loader,
+                    start_time=audio_offset,
+                    channel=audio_channel,
+                )
         except (ImportError, OSError):
             pass
 
@@ -611,38 +594,10 @@ def discover_trial_sources(
 
             loader = get_ephys_loader(ephys_path, ephys_stream_id)
             if loader is not None and len(loader) > 0:
-                if ephys_timestamps is not None and len(ephys_timestamps) > 0:
-                    data = loader[:len(ephys_timestamps)]
-                    alignment.continuous["ephys"] = ArrayTimeseriesSource(
-                        "ephys", ephys_timestamps, data
-                    )
-                else:
-                    alignment.continuous["ephys"] = RegularTimeseriesSource(
-                        "ephys", loader, start_time=ephys_offset
-                    )
+                alignment.continuous["ephys"] = RegularTimeseriesSource(
+                    "ephys", loader, start_time=ephys_offset
+                )
         except (ImportError, OSError):
             pass
-
-    if spike_times is not None and len(spike_times) > 0:
-        alignment.events["spikes"] = SpikeEventSource(
-            "spikes",
-            spike_times,
-            cluster_ids=spike_clusters,
-            channels=spike_channels,
-        )
-
-    if "audio_cp_onsets" in ds and "audio_cp_offsets" in ds:
-        onsets = ds["audio_cp_onsets"].values.astype(np.float64)
-        offsets = ds["audio_cp_offsets"].values.astype(np.float64)
-        if len(onsets) > 0:
-            alignment.extra_ranges.append(TimeRange(float(onsets.min()), float(offsets.max())))
-
-    if label_intervals is not None:
-        import pandas as pd
-
-        if isinstance(label_intervals, pd.DataFrame) and not label_intervals.empty:
-            alignment.extra_ranges.append(
-                TimeRange(float(label_intervals["onset_s"].min()), float(label_intervals["offset_s"].max()))
-            )
 
     return alignment

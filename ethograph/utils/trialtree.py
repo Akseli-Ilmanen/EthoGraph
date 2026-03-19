@@ -27,30 +27,33 @@ def _attrs_equal(a: Any, b: Any) -> bool:
 SESSION_NODE = "session"
 
 
-@dataclass(frozen=True)
-class ExternalFileIndex:
-    """Session-level file index for long recordings or gapped multi-file sessions.
-
-    Maps a global timestamp to the file that contains it and the
-    local time within that file.
-
-    Parameters
-    ----------
-    files
-        Ordered list of filenames.
-    start_times
-        Sorted 1-D array of global start times, one per file.
+def _select_from_da(
+    da: xr.DataArray,
+    trial=None,
+    device: str | None = None,
+) -> str | None:
+    """Pick a scalar value from a media DataArray.
+ 
+    Handles both per-trial (has 'trial' dim) and session-long layouts
+    in one place — the branching that was duplicated across every old method.
     """
-
-    files: list[str]
-    start_times: np.ndarray
-
-    def lookup(self, global_t: float) -> tuple[str, float]:
-        """Return ``(filename, local_time)`` for a global timestamp."""
-        idx = int(np.searchsorted(self.start_times, global_t, side="right")) - 1
-        idx = max(0, min(idx, len(self.files) - 1))
-        return self.files[idx], global_t - float(self.start_times[idx])
-
+    try:
+        sel: dict = {}
+        if "trial" in da.dims and trial is not None:
+            sel["trial"] = trial
+ 
+        device_dims = [d for d in da.dims if d != "trial"]
+        if device is not None and device_dims:
+            sel[device_dims[0]] = device
+ 
+        val = da.sel(**sel) if sel else da
+        scalar = val.values.flat[0] if val.ndim > 0 else val.item()
+        result = str(scalar)
+        return result if result else None
+    except (KeyError, ValueError, IndexError):
+        return None
+    
+    
 
 class TrialTree(xr.DataTree):
     """DataTree subclass with trial-specific functionality."""
@@ -349,128 +352,42 @@ class TrialTree(xr.DataTree):
     # Media files
     # -------------------------------------------------------------------------
 
-
-    def _file_dim_for_var(self, var_name: str) -> str:
-        return "video_file" if var_name in ("video", "pose") else "audio_file"
-
-    def _file_index_for_trial(self, trial, var_name: str) -> int:
-        """Find the session-file index covering a trial's start time."""
-        start_var = "video_start" if var_name in ("video", "pose") else "audio_start"
-        if self.session is None or start_var not in self.session:
-            return 0
-        starts = self.session[start_var].values
-        if starts.ndim > 1:
-            starts = starts[:, 0]
-        trial_start = self.get_start_time(trial)
-        if trial_start is None:
-            trial_start = 0.0
-        idx = int(np.searchsorted(starts, trial_start, side="right")) - 1
-        return max(0, idx)
-
-    def _get_media_file(
-        self, trial, var_name: str, coord_name: str, device=None,
-    ) -> str | None:
-        """
-        Simplified: Only two scenarios.
-        - Per-trial mode: media array has 'trial' dim.
-        - Session-long mode: media array has only device dim (no 'trial').
-        """
-        if self.session is None or var_name not in self.session:
-            return None
-        da = self.session[var_name]
-        try:
-            if "trial" in da.dims:
-                # Per-trial mode
-                if device is not None:
-                    val = da.sel(trial=trial, **{coord_name: device}).item()
-                else:
-                    val = da.sel(trial=trial).values.flat[0]
-            else:
-                # Session-long mode: just device selection
-                if device is not None:
-                    val = da.sel(**{coord_name: device}).item()
-                else:
-                    val = da.values.flat[0]
-            val = str(val)
-        except (KeyError, ValueError, IndexError, AttributeError):
-            return None
-        return val if val else None
-
-    def get_video(self, trial, camera=None) -> str | None:
-        """Get video filename for a trial (and optional camera)."""
-        return self._get_media_file(trial, "video", "cameras", camera)
-
-    def get_audio(self, trial, mic=None) -> str | None:
-        """Get audio filename for a trial (and optional mic)."""
-        return self._get_media_file(trial, "audio", "mics", mic)
-
-    def get_pose(self, trial, camera=None) -> str | None:
-        """Get pose filename for a trial (and optional camera)."""
-        return self._get_media_file(trial, "pose", "cameras", camera)
-
-    def get_media_start(self, trial, stream: str, device=None) -> float:
-        """
-        Simplified: Only two scenarios.
-        - Per-trial mode: start array has 'trial' dim.
-        - Session-long mode: start array has only device dim (no 'trial').
-        Returns start time plus global stream offset.
-        """
-        raw = 0.0
-        start_var = f"{stream}_start"
-        coord = "cameras" if stream in ("video", "pose") else "mics"
-        if self.session is not None and start_var in self.session:
-            da = self.session[start_var]
-            try:
-                if "trial" in da.dims:
-                    if device is not None:
-                        raw = float(da.sel(trial=trial, **{coord: device}).item())
-                    else:
-                        raw = float(da.sel(trial=trial).values.flat[0])
-                else:
-                    if device is not None:
-                        raw = float(da.sel(**{coord: device}).item())
-                    else:
-                        raw = float(da.values.flat[0])
-            except (KeyError, ValueError, IndexError, AttributeError):
-                pass
-        offset = self.get_stream_offset(trial, stream) or 0.0
-        return raw + offset
-
-    def lookup_file(
-        self, global_t: float, stream: str, device: str | None = None,
-    ) -> tuple[str, float] | None:
-        """
-        Simplified: Only session-long mode supported.
-        Returns (filename, local_time) for session-absolute time.
-        Returns None if not available.
-        """
+    def _resolve_media_da(self, stream: str) -> xr.DataArray | None:
         if self.session is None or stream not in self.session:
             return None
-        start_var = f"{'video' if stream == 'pose' else stream}_start"
-        if start_var not in self.session:
+        return self.session[stream]
+    
+    
+    def get_media(
+        self, trial, stream: str, device: str | None = None,
+    ) -> str | None:
+        """Get media filename for a trial and stream.
+    
+        >>> dt.get_media(1, "video", device="cam-1")
+        'trial001_cam-1.mp4'
+        """
+        da = self._resolve_media_da(stream)
+        if da is None:
             return None
-        da_files = self.session[stream]
-        da_starts = self.session[start_var]
-        coord = "cameras" if stream in ("video", "pose") else "mics"
+        return _select_from_da(da, trial=trial, device=device)
+    
+    
+    
 
-        # Only session-long mode: starts_1d is 1D
-        if device is not None and coord in da_starts.coords:
-            starts_1d = da_starts.sel(**{coord: device}).values
-            files_1d = da_files.sel(**{coord: device}).values
-        else:
-            starts_1d = da_starts.values
-            files_1d = da_files.values
-
-        idx = int(np.searchsorted(starts_1d, global_t, side="right")) - 1
-        idx = max(0, min(idx, len(starts_1d) - 1))
-
-        try:
-            filename = str(files_1d[idx])
-        except (KeyError, ValueError, IndexError):
-            return None
-
-        local_t = global_t - float(starts_1d[idx])
-        return filename, local_t
+    
+    def devices(self, stream: str) -> list[str]:
+        """Device labels for a stream, inferred from its non-trial dim.
+    
+        >>> dt.devices("video")   # ["cam-1", "cam-2"]
+        >>> dt.devices("audio")   # ["mic-1", "mic-2"]
+        """
+        da = self._resolve_media_da(stream)
+        if da is None:
+            return []
+        device_dims = [d for d in da.dims if d != "trial"]
+        if not device_dims:
+            return []
+        return [str(v) for v in da.coords[device_dims[0]].values]
 
     @property
     def cameras(self) -> list[str]:
@@ -486,37 +403,6 @@ class TrialTree(xr.DataTree):
             return [str(m) for m in self.session.coords["mics"].values]
         return []
 
-    def set_file_index(
-        self,
-        stream: str,
-        files: list[str],
-        start_times: list[float] | np.ndarray,
-    ) -> None:
-        """Set an :class:`ExternalFileIndex` for a stream.
-
-        Use for long recordings or gapped multi-file sessions where
-        files don't map 1:1 to trials.
-        """
-        self._ensure_session()
-        session_ds = self[SESSION_NODE].to_dataset()
-        start_arr = np.asarray(start_times, dtype=np.float64)
-        dim = f"file_{stream}"
-        session_ds[f"{stream}_files"] = xr.DataArray(list(files), dims=[dim])
-        session_ds[f"{stream}_file_starts"] = xr.DataArray(start_arr, dims=[dim])
-        self[SESSION_NODE] = xr.DataTree(session_ds)
-
-    def get_file_index(self, stream: str) -> ExternalFileIndex | None:
-        """Retrieve an :class:`ExternalFileIndex` for a stream, or None."""
-        if self.session is None:
-            return None
-        key_files = f"{stream}_files"
-        key_starts = f"{stream}_file_starts"
-        if key_files not in self.session or key_starts not in self.session:
-            return None
-        return ExternalFileIndex(
-            files=[str(f) for f in self.session[key_files].values],
-            start_times=self.session[key_starts].values.astype(np.float64),
-        )
 
     # -------------------------------------------------------------------------
     # Trial access

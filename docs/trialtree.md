@@ -244,23 +244,6 @@ dt.get_stream_offset(1, "audio")  # 0.2
 
 Stored as a session attribute (`session.attrs["offset_audio"]`).
 
-**Level 2: Aligned timestamps** (clock drift / TTL correction)
-
-An explicit array of corrected sample times. Use when a scalar offset is insufficient, e.g. due to clock drift between acquisition systems. The user is responsible for computing corrected timestamps externally (e.g. via [neuroconv](https://neuroconv.readthedocs.io/en/main/user_guide/temporal_alignment.html) TTL interpolation).
-
-```python
-import numpy as np
-
-# User computes corrected timestamps (e.g. from TTL sync pulses)
-corrected_times = np.array([0.0, 0.001003, 0.002005, ...])
-dt.set_aligned_timestamps("ephys", corrected_times)
-
-# Retrieve
-dt.get_aligned_timestamps("ephys")   # np.ndarray or None
-dt.get_aligned_timestamps("audio")   # None (not set)
-```
-
-Stored as a session variable (`session["timestamps_ephys"]` with a `sample_ephys` dimension). When present, the GUI wraps the stream in an `ArrayTimeseriesSource` (per-sample timing via binary search) instead of a `RegularTimeseriesSource` (uniform math).
 
 ### Creating a session table
 
@@ -342,7 +325,7 @@ ds.coords["individuals"]     # ["bird1", "bird2"]
 
 # Media files are stored at session level, not in trial attrs
 dt.cameras                   # ["left", "right"]
-dt.get_video(1, "left")      # "camera1_trial001.mp4"
+dt.get_media(1, 'video', "left")      # "camera1_trial001.mp4"
 ```
 
 ---
