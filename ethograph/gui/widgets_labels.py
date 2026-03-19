@@ -66,7 +66,9 @@ class LabelsWidget(QWidget):
         self.viewer = napari_viewer
         self.app_state = app_state
 
-
+        self.data_widget = None  # Will be set after creation
+        
+        
 
         self.plot_container = None  # Will be set after creation
         self.meta_widget = None  # Will be set after creation
@@ -112,6 +114,9 @@ class LabelsWidget(QWidget):
         self._mappings = load_label_mapping(mapping_path)
         self._populate_labels_table()
 
+    def set_data_widget(self, data_widget):
+        """Set reference to the data widget for plot updates."""
+        self.data_widget = data_widget
 
 
     def _mark_changes_unsaved(self):
