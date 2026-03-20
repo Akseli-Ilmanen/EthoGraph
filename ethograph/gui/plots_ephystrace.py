@@ -23,16 +23,19 @@ import numpy as np
 import threading
 import pyqtgraph as pg
 from pathlib import Path
-from typing import Optional, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Optional, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from .plots_timeseriessource import TimeseriesSource
 from numpy.typing import NDArray
 from qtpy.QtCore import QEvent, Qt, Signal
-from qtpy.QtWidgets import QApplication
+
 import warnings
 from phylib.io.traces import get_ephys_reader
 
 from ethograph.utils.validation import EPHYS_EXNTENSIONS_RAW
 
-from .app_constants import BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER, EPHYSTRACE_DEBOUNCE_MS
+from .app_constants import BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER_EPHYS, EPHYSTRACE_DEBOUNCE_MS
 from .plots_base import BasePlot, ThrottleDebounce
 from .video_manager import is_url
 
@@ -339,7 +342,7 @@ class GenericEphysLoader:
         
     def _phylib_memmap(self, n_channels: int, sampling_rate: float, dtype: str, gain: float):
         memmap = get_ephys_reader(
-            self.path, sample_rate=sampling_rate, dtype=dtype, gain=gain
+            self.path, n_channels=n_channels, sample_rate=sampling_rate, dtype=dtype, gain=gain
         )
         if memmap.ndim == 1:
             memmap = memmap[:, np.newaxis]
@@ -522,7 +525,7 @@ class EphysTraceBuffer:
             view_stop = min(seg_stop, seg_start + default_window)
 
         n_view = view_stop - view_start
-        buffer_extra = int(n_view * DEFAULT_BUFFER_MULTIPLIER / 2)
+        buffer_extra = int(n_view * DEFAULT_BUFFER_MULTIPLIER_EPHYS / 2)
         cache_start = max(seg_start, view_start - buffer_extra)
         cache_stop = min(seg_stop, view_stop + buffer_extra)
 
@@ -579,66 +582,6 @@ class EphysTraceBuffer:
         return self._cache[local_start:local_stop]
 
 
-    # -- single channel -----------------------------------------------------
-
-    def get_trace_data(
-        self, t0: float, t1: float, screen_width: int = 1920,
-    ) -> tuple[NDArray, NDArray, int] | None:
-        if self.loader is None:
-            return None
-
-        start = max(0, int((t0 - self._starting_time) * self.ephys_sr))
-        stop = min(len(self.loader), int((t1 - self._starting_time) * self.ephys_sr) + 1)
-        if stop <= start:
-            return None
-
-        if not self._covers_range(start, stop):
-            self._build_cache(start, stop)
-
-        data_all = self._get_data(start, stop)
-        if data_all is None:
-            return None
-
-        ch = min(self.channel, data_all.shape[1] - 1)
-        step = max(1, (stop - start) // screen_width)
-
-        from .app_constants import PYRAMID_LEVELS
-        if step >= 4:
-            # Try precomputed pyramid first (instant lookup, no computation)
-            local_start = max(0, start - self._cache_start)
-            local_stop = min(self._cache.shape[0], stop - self._cache_start)
-            level = 1
-            if hasattr(self, '_pyramid'):
-                for lv in PYRAMID_LEVELS:
-                    if step >= lv and lv in self._pyramid:
-                        level = lv
-                        break
-
-            if level > 1:
-                pyr_data = self._pyramid[level]
-                pyr_i0 = local_start // level
-                pyr_i1 = local_stop // level
-                if pyr_i1 <= pyr_i0:
-                    return None
-                envelope = pyr_data[pyr_i0 * 2:pyr_i1 * 2, ch]
-                n_display = pyr_i1 - pyr_i0
-                aligned_start = self._cache_start + pyr_i0 * level
-                half_level = level / 2
-                times = self._starting_time + np.arange(
-                    aligned_start, aligned_start + 2 * n_display * half_level, half_level
-                ) / self.ephys_sr
-                if len(times) > len(envelope):
-                    times = times[:len(envelope)]
-                if self.display_gain != 0:
-                    envelope = envelope * (0.75 ** (-self.display_gain))
-                return times, envelope, step
-
-        # step < 4: raw samples (no downsampling — clean traces at high zoom)
-        data = data_all[:, ch].copy()
-        if self.display_gain != 0:
-            data *= 0.75 ** (-self.display_gain)
-        times = self._starting_time + np.arange(start, start + len(data)) / self.ephys_sr
-        return times, data, 1
 
     # -- multi channel ------------------------------------------------------
 
@@ -776,8 +719,6 @@ _PHY_AXIS = '#AAAAAA'
 
 class EphysTracePlot(BasePlot):
     _initializing = False
-    _set_loader_call_count = 0
-    _update_plot_content_call_count = 0
     """Extracellular waveform viewer inheriting BasePlot for full GUI integration."""
 
     gain_scroll_requested = Signal(int)      # delta: +1 = increase, -1 = decrease
@@ -845,6 +786,7 @@ class EphysTracePlot(BasePlot):
 
         self._ephys_offset: float = 0.0
         self._trial_duration: float | None = None
+        self._source: TimeseriesSource | None = None
 
         # Calibration scale bars
         self._scale_v_line: pg.PlotDataItem | None = None
@@ -887,13 +829,15 @@ class EphysTracePlot(BasePlot):
 
         self.setToolTip("Double-click or Ctrl+A to autoscale")
 
+    def set_source(self, source: TimeseriesSource | None):
+        self._source = source
+
     def set_ephys_offset(self, offset: float, trial_duration: float | None = None):
         self._ephys_offset = offset
         self._trial_duration = trial_duration
+        self.buffer._invalidate_cache()
 
     def set_loader(self, loader: EphysLoader, channel: int = 0):
-        type(self)._set_loader_call_count += 1
-        print(f"[EphysTracePlot] set_loader called for loader={loader}, channel={channel}, call_count={type(self)._set_loader_call_count}")
         type(self)._initializing = True
         self.buffer.set_loader(loader, channel)
         self._setup_global_y_space()
@@ -1029,8 +973,6 @@ class EphysTracePlot(BasePlot):
             self.update_plot_content(*self.current_range)
 
     def update_plot_content(self, t0: Optional[float] = None, t1: Optional[float] = None):
-        type(self)._update_plot_content_call_count += 1
-        print(f"[EphysTracePlot] update_plot_content called, call_count={type(self)._update_plot_content_call_count}")
         if self.buffer.loader is None:
             return
 
@@ -1053,8 +995,6 @@ class EphysTracePlot(BasePlot):
 
 
     def _update_multichannel(self, t0: float, t1: float):
-        import time
-        t0_time = time.time()
         visible_t0, visible_t1 = t0, t1
 
         ch_indices, y_positions = self._channels_in_viewport()
@@ -1065,7 +1005,7 @@ class EphysTracePlot(BasePlot):
         # Expand draw range beyond the viewport so the trace is pre-rendered
         # for upcoming positions (eliminates black blinking during playback).
         window = visible_t1 - visible_t0
-        buf_s = window * DEFAULT_BUFFER_MULTIPLIER / 2
+        buf_s = window * DEFAULT_BUFFER_MULTIPLIER_EPHYS / 2
         t0_draw = max(0.0, visible_t0 - buf_s)
         t1_draw = visible_t1 + buf_s
         if self._trial_duration is not None:
@@ -1091,7 +1031,6 @@ class EphysTracePlot(BasePlot):
         times = times - self._ephys_offset
         n_t = data_2d.shape[0]
 
-        print(f"[EphysTracePlot] _update_multichannel: n_channels={n_ch}, n_samples={n_t}, step={step}, channels={ch_indices}, time={time.time()-t0_time:.3f}s")
 
         # --- Two batched draw calls (alternating purple/teal per channel) ---
         # Split even channels -> trace_item (purple), odd -> trace_item2 (teal)
@@ -1589,10 +1528,13 @@ class EphysTracePlot(BasePlot):
         new_xmax = target_time + half
 
         self.plot_item.setXRange(new_xmin, new_xmax, padding=0)
-        QApplication.processEvents()
         self.update_plot_content(new_xmin, new_xmax)
 
     def _get_time_bounds(self):
+        if self._source is not None:
+            tr = self._source.time_range
+            if tr.duration > 0:
+                return tr.start_s, tr.end_s
         if self._trial_duration is not None and self._trial_duration > 0:
             return 0.0, self._trial_duration
         return super()._get_time_bounds()

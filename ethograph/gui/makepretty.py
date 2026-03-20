@@ -7,11 +7,11 @@ from qtpy.QtWidgets import QComboBox, QDockWidget, QStyledItemDelegate, QWidget
 from .app_constants import (
     LAYER_DOCK_WIDTH_RATIO,
     LAYOUT_RELEASE_DELAY_MS,
+    MAX_WIDGET_SIZE,
     NO_VIDEO_PANEL_WIDTH_RATIO,
+    SIDEBAR_MIN_WIDTH_PX,
     VERTICAL_SPLIT_RATIO,
 )
-
-_MAX_WIDGET_SIZE = 16777215
 
 _LINK_COLOR = "#87CEEB"
 
@@ -225,7 +225,7 @@ class LayoutManager:
 
         def _release():
             for d in self._layer_docks:
-                d.setMaximumWidth(_MAX_WIDGET_SIZE)
+                d.setMaximumWidth(MAX_WIDGET_SIZE)
 
         QTimer.singleShot(LAYOUT_RELEASE_DELAY_MS, _release)
 
@@ -238,7 +238,7 @@ class LayoutManager:
 
         def _release():
             for d in self._layer_docks:
-                d.setMaximumWidth(_MAX_WIDGET_SIZE)
+                d.setMaximumWidth(MAX_WIDGET_SIZE)
 
         QTimer.singleShot(LAYOUT_RELEASE_DELAY_MS, _release)
 
@@ -297,7 +297,7 @@ class LayoutManager:
             return
         if visible:
             central.show()
-            central.setMaximumHeight(_MAX_WIDGET_SIZE)
+            central.setMaximumHeight(MAX_WIDGET_SIZE)
         else:
             central.setMaximumHeight(0)
             central.hide()
@@ -326,8 +326,7 @@ class LayoutManager:
                 avail = screen.availableGeometry().width()
                 target_w = min(target_w, int(avail * 0.7))
 
-            min_w = max(120, sidebar_widget.minimumSizeHint().width())
-            target_w = max(min_w, target_w)
+            target_w = max(SIDEBAR_MIN_WIDTH_PX, target_w)
             self._qt_window.resizeDocks([sidebar_dock], [target_w], Qt.Horizontal)
 
         # Apply once after the initial layout settles to avoid repeated dock churn.

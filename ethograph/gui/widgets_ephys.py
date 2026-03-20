@@ -43,6 +43,7 @@ from ethograph.features.neural import build_tsgroup, compute_pca, firing_rate_to
 from .app_constants import CLUSTER_TABLE_MAX_HEIGHT, CLUSTER_TABLE_ROW_HEIGHT
 from .makepretty import find_combo_index, get_combo_value, set_combo_to_value, styled_link
 from .plots_ephystrace import get_loader as get_ephys_loader
+from .plots_timeseriessource import RegularTimeseriesSource
 
 _CLUSTER_COLORS = [
     (228, 26, 28),    # red
@@ -728,39 +729,61 @@ class EphysWidget(QWidget):
     # ------------------------------------------------------------------
 
 
-    def configure_ephys_trace_plot(self):
-        """Configure the Phy-Viewer ephys trace plot.
+    def _resolve_phy_loader(self) -> tuple:
+        """Return (loader, channel_idx) for the Phy-Viewer panel, or (None, 0).
 
-        Uses the phylib reader when available (from kilosort .dat),
-        otherwise falls back to GenericEphysLoader.
+        Resolution order:
+        1. Kilosort .dat reader (_phy_reader) — most specific, set on kilosort load.
+        2. Trial alignment — authoritative when session table has ephys media.
+        3. Generic loader with kilosort params — when _phy_reader wasn't set but params exist.
+        4. Generic loader — any other Neo-supported ephys file.
         """
-        # Prefer phylib reader if available
-        phy_reader = getattr(self, '_phy_reader', None)
-        if phy_reader is not None:
-            loader = phy_reader
-            channel_idx = 0
-        else:
-            ephys_path, stream_id, channel_idx = self.app_state.get_ephys_source()
-            if not ephys_path:
-                return
+        if self._phy_reader is not None:
+            return self._phy_reader, 0
 
-            alignment = getattr(self.app_state, 'trial_alignment', None)
-            if alignment and "ephys" in alignment.continuous:
-                loader = alignment.continuous["ephys"]._loader
-            else:
-                loader = get_ephys_loader(ephys_path, stream_id)
+        ephys_path, stream_id, channel_idx = self.app_state.get_ephys_source()
+        if not ephys_path:
+            return None, 0
+
+        alignment = getattr(self.app_state, 'trial_alignment', None)
+        if alignment and "ephys" in alignment.continuous:
+            return alignment.continuous["ephys"]._loader, channel_idx
+
+        if (
+            self._kilosort_params
+            and Path(ephys_path).suffix.lower() in {".dat", ".bin", ".raw"}
+        ):
+            n_ch = self._kilosort_params.get("n_channels_dat")
+            if n_ch is None and self._channel_map is not None:
+                n_ch = int(self._channel_map.max()) + 1
+            if n_ch is None:
+                return None, 0
+            return get_ephys_loader(
+                ephys_path, stream_id,
+                n_channels=n_ch,
+                sampling_rate=self._kilosort_params.get("sample_rate"),
+            ), channel_idx
+
+        return get_ephys_loader(ephys_path, stream_id), channel_idx
+
+    def configure_ephys_trace_plot(self):
+        loader, channel_idx = self._resolve_phy_loader()
 
         if loader is None:
             return
-        self.plot_container.ephys_trace_plot.set_loader(loader, channel_idx)
 
-        offset = self.app_state.dt.get_start_time(self.app_state.trials_sel)
-        bounds = self.app_state.get_trial_bounds()
-        if bounds is not None:
-            duration = bounds[1] - bounds[0]
-        else: 
-            return 
-        self.plot_container.ephys_trace_plot.set_ephys_offset(offset, duration)
+        trial = getattr(self.app_state, 'trials_sel', None)
+        if not trial:
+            trial = self.app_state.trials[0] if hasattr(self.app_state, 'trials') and self.app_state.trials else None
+        offset = self.app_state.dt.get_start_time(trial)
+        bounds = self.app_state.trial_bounds
+        if bounds is None:
+            return
+        self.plot_container.ephys_trace_plot.set_ephys_offset(offset, bounds.duration)
+        self.plot_container.ephys_trace_plot.set_loader(loader, channel_idx)
+        ephys_source = RegularTimeseriesSource("ephys", loader, start_time=0.0)
+        self.plot_container.ephys_trace_plot.set_source(ephys_source)
+        self.plot_container.raster_plot.set_source(ephys_source)
 
         n_ch = loader.n_channels
         self._ephys_n_channels = n_ch
@@ -785,7 +808,6 @@ class EphysWidget(QWidget):
         if self.plot_container.is_ephystrace():
             self.plot_container.ephys_trace_plot.set_channel(channel)
             xmin, xmax = self.plot_container.get_current_xlim()
-            print(f"[widgets_ephys] update_plot_content called (ephys_trace_plot) xmin={xmin}, xmax={xmax}")
             self.plot_container.ephys_trace_plot.update_plot_content(xmin, xmax)
 
     def set_neural_view(self, mode: str):
@@ -1036,6 +1058,9 @@ class EphysWidget(QWidget):
             self._probe_row.show()
 
         self._register_dat_fallback(folder)
+        if self._phy_reader is not None and self.plot_container:
+            self.plot_container.set_ephys_visible(True)
+            self.configure_ephys_trace_plot()
 
         if self._spike_times is not None and self._spike_clusters is not None:
             self._register_kilosort_features()
@@ -1155,7 +1180,6 @@ class EphysWidget(QWidget):
             return
 
         sr = self._kilosort_params["sample_rate"]
-        dtype = self._kilosort_params.get("dtype", "int16")
         n_channels = self._kilosort_params.get("n_channels_dat")
 
         if n_channels is None and self._channel_map is not None:
@@ -1165,7 +1189,6 @@ class EphysWidget(QWidget):
             show_warning("Cannot determine n_channels_dat — skipping Phy viewer.")
             return
 
-        # Create loader via GenericEphysLoader (uses phylib memmap internally)
         loader = get_ephys_loader(
             dat_path, stream_id="0",
             n_channels=n_channels, sampling_rate=sr,
@@ -1178,17 +1201,12 @@ class EphysWidget(QWidget):
         self._phy_sr = sr
         self._phy_n_channels = n_channels
 
-        # Also register in source map for backward compat
         if not self.app_state.ephys_source_map:
             display_name = "Ephys Waveform"
             self.app_state.ephys_source_map[display_name] = (str(dat_path), "0", 0)
             self.app_state.ephys_stream_sel = display_name
 
-        self.configure_ephys_trace_plot()
-
-        if self.plot_container:
-            self.plot_container.show_ephys_panel()
-
+        self.app_state.has_ephys = True
         show_info(f"Phy viewer: {dat_path.name} ({n_channels} ch, {sr:.0f} Hz)")
 
     def _get_hardware_label(self) -> str:
@@ -1457,7 +1475,7 @@ class EphysWidget(QWidget):
             self._cluster_proxy.set_visible_channel_filter(None, None)
             return
         ephys_plot = self.plot_container.ephys_trace_plot
-        visible_hw = set(int(ch) for ch in ephys_plot._visible_hw_channels())
+        visible_hw = ephys_plot._last_visible_hw
         ch_col = (
             self._find_col_by_header("", exact="ch")
             or self._find_col_by_header("", exact="ch (KS)")
@@ -1909,15 +1927,13 @@ class EphysWidget(QWidget):
 
         ds = self.app_state.dt.trial(trial)
         start_time = self.app_state.dt.get_start_time(trial)
-        bounds = self.app_state.get_trial_bounds()
+        bounds = self.app_state.trial_bounds
         if bounds is None:
             return
-            
-            
 
         da = firing_rate_to_xarray(
             spike_times_s, self._spike_clusters, bin_size,
-            t_start=start_time, t_stop=bounds[1],
+            t_start=start_time, t_stop=bounds.end_s,
             _tsgroup=self._tsgroup,
         )
 
@@ -2156,6 +2172,10 @@ class EphysWidget(QWidget):
         features_combo = self.data_widget.combos.get("features")
         if features_combo is not None and get_combo_value(features_combo) in ("firing_rate", "pca"):
             features_combo.setCurrentIndex(0)
+
+        self.configure_ephys_trace_plot()
+        if self.data_widget:
+            self.data_widget._configure_neo_panel()
 
     def _on_plot_changed(self, plot_type: str):
         if plot_type == 'ephystrace':

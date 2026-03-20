@@ -15,7 +15,7 @@ from napari.utils.notifications import show_info
 from qtpy.QtCore import QObject, QTimer, Signal
 
 import ethograph as eto
-from ethograph.gui.plots_timeseriessource import TrialAlignment
+from ethograph.gui.plots_timeseriessource import TrialAlignment, TimeRange
 
 from .makepretty import find_combo_index
 from ethograph.utils.label_intervals import (
@@ -178,7 +178,6 @@ class AppStateSpec:
         "all_checkbox_states": (dict[str, bool], {}, True),
 
         # Audio processing
-        "noise_reduce_enabled": (bool, False, True),
         "audio_cp_hop_length_ms": (float, 5.0, True),
         "audio_cp_min_level_db": (float, -70.0, True),
         "audio_cp_min_syllable_length_s": (float, 0.02, True),
@@ -310,9 +309,12 @@ class ObservableAppState(QObject):
         return result
     
     @property
-    def trial_bounds(self) -> tuple[float, float]:
-        """Get trial start and end times in seconds, using multiple fallbacks."""
-        return self.get_trial_bounds()
+    def trial_bounds(self) -> TimeRange | None:
+        """Time range for the current trial, sourced from TrialAlignment.global_range."""
+        alignment = getattr(self, 'trial_alignment', None)
+        if alignment is not None:
+            return alignment.global_range
+        return None
 
     @property
     def time_coord(self) -> xr.DataArray | None:
@@ -333,15 +335,6 @@ class ObservableAppState(QObject):
 
     
 
-    def get_trial_bounds(self) -> tuple[float, float] | None:
-        alignment = getattr(self, 'trial_alignment', None)
-        if alignment is not None and alignment.global_range is not None:
-            tr = alignment.global_range
-            return (tr.start_s, tr.end_s)
-        return None
-
- 
-        
     def get_feature_sr(self, position: bool = False) -> float | None:
         ds = getattr(self, "ds", None)
         feature_sel = getattr(self, "features_sel", None)

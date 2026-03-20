@@ -16,6 +16,7 @@ Key types:
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -24,6 +25,7 @@ import xarray as xr
 
 if TYPE_CHECKING:
     import pandas as pd
+    from ethograph.utils.trialtree import TrialTree
 
 
 # ---------------------------------------------------------------------------
@@ -495,109 +497,131 @@ class TrialAlignment:
 
 
 # ---------------------------------------------------------------------------
-# Discovery: build TrialAlignment from a trial dataset + file paths
+# Alignment builder — handles per-trial and session-wide streams
 # ---------------------------------------------------------------------------
 
 
-def discover_trial_sources(
-    trial_id: str,
+def _try_add_regular_source(
+    alignment: TrialAlignment, name: str, loader, start_time: float
+) -> None:
+    """Add a RegularTimeseriesSource to alignment when loader is valid."""
+    if loader is not None and len(loader) > 0:
+        alignment.continuous[name] = RegularTimeseriesSource(
+            name, loader, start_time=start_time
+        )
+
+
+def build_trial_alignment(
+    dt: TrialTree,
+    trial_id,
     ds: xr.Dataset,
     *,
-    video_path: str | None = None,
-    video_offset: float = 0.0,
-    audio_path: str | None = None,
-    audio_channel: int = 0, # just take first channel
-    audio_offset: float = 0.0,
-    ephys_path: str | None = None,
-    ephys_stream_id: str = "0",
-    ephys_offset: float = 0.0,
+    video_folder: str | None = None,
+    audio_folder: str | None = None,
+    cameras_sel: str | None = None,
 ) -> TrialAlignment:
-    """Build a :class:`TrialAlignment` by discovering all available sources.
+    """Build a :class:`TrialAlignment` from a :class:`TrialTree`.
 
-    Hierarchy of fallbacks:
-    Determine time range by 1) trial start/stop, 2) video duration, 3) audio duration, 4) ephys duration.
+    Handles three media layouts transparently:
+
+    * **Per-trial files** — each trial has its own file starting at t=0
+      (most common; DLC/video recordings per trial).
+    * **Session-wide files** — one long file covers all trials (e.g. a
+      continuous ephys recording).
+    * **Mixed** — e.g. per-trial videos with a session-wide ephys file.
+
+    All timestamps in the returned alignment are **trial-relative**
+    (t = 0 is the start of this trial).  For session-wide files the
+    source's ``start_time`` is shifted by ``-trial_start_abs`` so that
+    ``source.get_data(0, duration)`` reads the correct slice of the file.
 
     Parameters
     ----------
+    dt
+        TrialTree with session table and media references.
     trial_id
         Trial identifier.
     ds
-        The trial's xarray Dataset.
-    video_path
-        Path to video file (Primary video viewer.)
-    video_offset
-        Video stream offset in seconds (stored on TrialAlignment).
-    audio_path
-        Path to audio file.
-    audio_channel
-        Channel index within the audio file.
-    audio_offset
-        Scalar offset for audio.
-    ephys_path
-        Path to ephys recording file.
-    ephys_offset
-        Scalar offset for ephys.
-
+        xarray Dataset for this trial (xarray-based sources).
+    video_folder
+        Directory containing video files.
+    audio_folder
+        Directory containing audio files.
+    cameras_sel
+        Selected camera label (resolves the primary video file).
     """
     from ethograph.utils.xr_utils import get_time_coord
 
-    alignment = TrialAlignment(trial_id=trial_id, video_offset=video_offset)
+    trial_stop_abs = dt.get_stop_time(trial_id)
+
+    alignment = TrialAlignment(trial_id=str(trial_id))
 
     for var_name in ds.data_vars:
         da = ds[var_name]
         tc = get_time_coord(da)
         if tc is None:
             continue
-        var_type = da.attrs.get("type", "")
-        if var_type in ("features", "colors", ""):
+        if da.attrs.get("type", "") in ("features", "colors", ""):
             try:
                 alignment.continuous[var_name] = ArrayTimeseriesSource.from_xarray(
                     da, name=var_name
                 )
             except (ValueError, IndexError):
                 continue
-         
 
-    if video_path:
+    # Priority: session table stop_time > xarray data > 0
+    if trial_stop_abs is not None:
+        trial_duration = trial_stop_abs - dt.get_start_time(trial_id)
+    elif alignment.continuous:
+        trial_duration = max(s.time_range.end_s for s in alignment.continuous.values())
+    else:
+        trial_duration = 0.0
+
+    if trial_duration > 0:
+        alignment.extra_ranges.append(TimeRange(0.0, trial_duration))
+
+    # Video
+    video_file = dt.get_media(trial_id, "video", cameras_sel)
+    if video_file:
+        video_path = os.path.join(video_folder, video_file) if (video_folder and not os.path.isabs(video_file)) else video_file
+        video_start = dt.get_display_start(trial_id, "video") or 0.0
+        alignment.video_offset = video_start
         try:
             from napari_pyav._reader import FastVideoReader
-
             reader = FastVideoReader(video_path, read_format="rgb24")
             n_frames = reader.shape[0]
             fps = float(reader.stream.guessed_rate)
             if n_frames > 0 and fps > 0:
-                duration = n_frames / fps
-                alignment.extra_ranges.append(
-                    TimeRange(video_offset, video_offset + duration)
-                )
+                # Only per-trial files contribute a range; session-wide covered by trial_duration.
+                if dt.stream_is_per_trial("video"):
+                    alignment.extra_ranges.append(
+                        TimeRange(video_start, video_start + n_frames / fps)
+                    )
         except Exception:
             pass
 
-    if audio_path:
-        try:
-            from ethograph.gui.plots_spectrogram import SharedAudioCache
+    # Audio
+    audio_devices = dt.devices("audio")
+    audio_file = dt.get_media(trial_id, "audio", audio_devices[0] if audio_devices else None)
+    if audio_file and audio_folder:
+        audio_path = os.path.join(audio_folder, audio_file) if not os.path.isabs(audio_file) else audio_file
+        audio_start = dt.get_display_start(trial_id, "audio")
+        if audio_start is not None:
+            try:
+                from ethograph.gui.plots_spectrogram import SharedAudioCache
+                _try_add_regular_source(alignment, "audio", SharedAudioCache.get_loader(audio_path), audio_start)
+            except Exception:
+                pass
 
-            loader = SharedAudioCache.get_loader(audio_path)
-            if loader is not None and len(loader) > 0:
-                alignment.continuous["audio"] = RegularTimeseriesSource(
-                    "audio",
-                    loader,
-                    start_time=audio_offset,
-                    channel=audio_channel,
-                )
-        except (ImportError, OSError):
-            pass
-
-    if ephys_path:
-        try:
-            from ethograph.gui.plots_ephystrace import get_loader as get_ephys_loader
-
-            loader = get_ephys_loader(ephys_path, ephys_stream_id)
-            if loader is not None and len(loader) > 0:
-                alignment.continuous["ephys"] = RegularTimeseriesSource(
-                    "ephys", loader, start_time=ephys_offset
-                )
-        except (ImportError, OSError):
-            pass
+    # Ephys
+    ephys_file = dt.get_media(trial_id, "ephys")
+    if ephys_file:
+        ephys_start = dt.get_display_start(trial_id, "ephys")
+        if ephys_start is not None:
+            try:
+                from ethograph.gui.plots_ephystrace import get_loader as get_ephys_loader
+                _try_add_regular_source(alignment, "ephys", get_ephys_loader(ephys_file, "0"), ephys_start)
+            except Exception:
+                pass
 
     return alignment

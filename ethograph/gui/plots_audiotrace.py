@@ -83,8 +83,6 @@ class AudioTracePlot(BasePlot):
                 else:
                     self.trace_item.setSymbol(None)
 
-        self.current_range = (t0, t1)
-
     def _resolve_source(self) -> TimeseriesSource | None:
         if self.buffer.source is not None:
             return self.buffer.source
@@ -162,7 +160,6 @@ class AudioTraceBuffer:
         self._raw_cache: np.ndarray | None = None
         self._cache_start: int = 0
         self._cache_stop: int = 0
-        self._noise_reduced: bool = False
 
     def set_source(self, source: TimeseriesSource | None):
         new_identity = source.identity if source else None
@@ -222,20 +219,9 @@ class AudioTraceBuffer:
             self._raw_cache = None
             return
 
-        nr_enabled = getattr(self.app_state, 'noise_reduce_enabled', False)
-        if nr_enabled:
-            try:
-                import noisereduce as nr
-                params_cache = getattr(self.app_state, 'function_params_cache', None) or {}
-                nr_params = params_cache.get('noise_reduction', {})
-                audio_data = nr.reduce_noise(y=audio_data, sr=int(fs), **nr_params)
-            except ImportError:
-                pass
-
         self._raw_cache = audio_data
         self._cache_start = cache_start
         self._cache_stop = cache_start + len(audio_data)
-        self._noise_reduced = nr_enabled
 
     def get_trace_data(
         self, t0: float, t1: float, pixel_width: int = 400,
@@ -262,10 +248,6 @@ class AudioTraceBuffer:
             actual_start = start
             actual_stop = stop
 
-        nr_enabled = getattr(self.app_state, 'noise_reduce_enabled', False)
-        if self._raw_cache is not None and nr_enabled != self._noise_reduced:
-            self._clear_cache()
-
         if not self._covers_range(actual_start, actual_stop):
             self._build_raw_cache(actual_start, actual_stop)
 
@@ -278,6 +260,10 @@ class AudioTraceBuffer:
             return None
 
         audio_data = self._raw_cache[local_start:local_stop]
+        if audio_data.ndim == 2:
+            _, channel_idx = self.app_state.get_audio_source()
+            channel_idx = min(channel_idx, audio_data.shape[1] - 1)
+            audio_data = audio_data[:, channel_idx]
 
         if step > 1:
             n_segments = len(audio_data) // step

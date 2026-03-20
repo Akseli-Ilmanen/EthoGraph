@@ -16,11 +16,11 @@ from numpy.typing import NDArray
 from qtpy.QtCore import Signal
 from qtpy.QtGui import QColor
 
-from .app_constants import Z_INDEX_TIME_MARKER, RASTER_DEBOUNCE_MS, DEFAULT_BUFFER_MULTIPLIER, BUFFER_COVERAGE_MARGIN
+from .app_constants import Z_INDEX_TIME_MARKER, RASTER_DEBOUNCE_MS, DEFAULT_BUFFER_MULTIPLIER_EPHYS, BUFFER_COVERAGE_MARGIN
 from .plots_base import BasePlot, ThrottleDebounce
 
 if TYPE_CHECKING:
-    from ethograph.gui.plots_timeseriessource import SpikeEventSource
+    from ethograph.gui.plots_timeseriessource import SpikeEventSource, TimeseriesSource
 
 _PHY_BG = '#000000'
 _PHY_AXIS = '#AAAAAA'
@@ -58,6 +58,8 @@ class RasterPlot(BasePlot):
         self._scatter_items: list[pg.ScatterPlotItem] = []
         self._scatter_t0: float | None = None
         self._scatter_t1: float | None = None
+
+        self._source: TimeseriesSource | None = None
 
         # Full sorted spike arrays (source of truth).
         self._spike_times: NDArray | None = None
@@ -168,7 +170,14 @@ class RasterPlot(BasePlot):
             y_max = (self._total_channels - 1) * self._channel_spacing + margin
             self.vb.setLimits(yMin=-margin, yMax=y_max)
 
+    def set_source(self, source: TimeseriesSource | None):
+        self._source = source
+
     def _get_time_bounds(self):
+        if self._source is not None:
+            tr = self._source.time_range
+            if tr.duration > 0:
+                return tr.start_s, tr.end_s
         if self._spike_times is not None and len(self._spike_times) > 0:
             return float(self._spike_times[0]), float(self._spike_times[-1])
         return super()._get_time_bounds()
@@ -222,7 +231,7 @@ class RasterPlot(BasePlot):
         self._clear_scatter_items()
 
         x_span = x_hi - x_lo
-        x_buf = x_span * DEFAULT_BUFFER_MULTIPLIER / 2
+        x_buf = x_span * DEFAULT_BUFFER_MULTIPLIER_EPHYS / 2
         draw_x0 = x_lo - x_buf
         draw_x1 = x_hi + x_buf
         self._scatter_t0 = draw_x0

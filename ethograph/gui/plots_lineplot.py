@@ -80,16 +80,14 @@ class LinePlot(BasePlot):
             return self._buffered_ds
 
         ds = self.app_state.ds
-        bounds = self.app_state.get_trial_bounds()
+        bounds = self.app_state.trial_bounds
         if ds is None or bounds is None:
             return None
 
-        
-
         window_size = t1 - t0
         buffer_size = window_size * self._buffer_multiplier
-        load_t0 = max(bounds[0], t0 - buffer_size / 2)
-        load_t1 = min(bounds[1], t1 + buffer_size / 2)
+        load_t0 = max(bounds.start_s, t0 - buffer_size / 2)
+        load_t1 = min(bounds.end_s, t1 + buffer_size / 2)
 
         time_coord = self.app_state.time_coord
         if time_coord is None:

@@ -195,7 +195,6 @@ DOC_URLS: dict[str, str] = {
     "ruptures_bottomup": "https://centre-borelli.github.io/ruptures-docs/user-guide/detection/bottomup/",
     "ruptures_window": "https://centre-borelli.github.io/ruptures-docs/user-guide/detection/window/",
     "ruptures_dynp": "https://centre-borelli.github.io/ruptures-docs/user-guide/detection/dynp/",
-    "noise_reduction": "https://github.com/timsainb/noisereduce",
     "energy_lowpass": "https://github.com/Akseli-Ilmanen/EthoGraph/blob/main/ethograph/features/energy.py",
     "energy_highpass": "https://github.com/Akseli-Ilmanen/EthoGraph/blob/main/ethograph/features/energy.py",
     "energy_band": "https://github.com/Akseli-Ilmanen/EthoGraph/blob/main/ethograph/features/energy.py",
@@ -245,10 +244,6 @@ _ENERGY_VOCALPY_PREAMBLE = _audio_preamble(
     "from ethograph.features.energy import {func}",
 )
 
-_NOISE_PREAMBLE = _audio_preamble(
-    "import noisereduce as nr",
-)
-
 _RUPTURES_PREAMBLE = (
     "import numpy as np\n"
     "import ruptures as rpt\n"
@@ -278,7 +273,6 @@ def _build_registry() -> dict[str, FunctionSpec]:
     from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
     from vocalseg.continuity_filtering import continuity_segmentation
 
-    import noisereduce as nr
     from ethograph.features.changepoints import find_nearest_turning_points_binary, find_troughs_binary
     from ethograph.features.energy import (
         bandpass_envelope, highpass_envelope, lowpass_envelope,
@@ -353,15 +347,6 @@ def _build_registry() -> dict[str, FunctionSpec]:
             copy_preamble=_RUPTURES_PREAMBLE,
             import_path="rpt.Dynp",
             copy_template="algo = rpt.Dynp(model={model}, min_size={min_size}, jump={jump}).fit(data)\nbkps = algo.predict(n_bkps={n_bkps})",
-        ),
-        # --- Noise reduction ---
-        "noise_reduction": FunctionSpec(
-            func=nr.reduce_noise,
-            doc_url=DOC_URLS["noise_reduction"],
-            return_hint="reduced",
-            fixed_params={"stationary": True},
-            copy_preamble=_NOISE_PREAMBLE,
-            import_path="nr.reduce_noise",
         ),
         # --- Energy envelopes ---
         "energy_lowpass": FunctionSpec(

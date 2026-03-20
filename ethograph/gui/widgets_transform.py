@@ -1,4 +1,4 @@
-"""Energy envelopes and noise removal controls."""
+"""Energy envelope controls."""
 
 from __future__ import annotations
 
@@ -7,11 +7,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 from napari.viewer import Viewer
 from qtpy.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QPushButton,
     QVBoxLayout,
@@ -22,7 +20,6 @@ if TYPE_CHECKING:
     from .widgets_data import DataWidget
 
 from .dialog_function_params import open_function_params_dialog
-from .makepretty import styled_link
 
 
 ENERGY_DISPLAY_NAMES = {
@@ -74,7 +71,7 @@ def compute_energy_envelope(
 
 
 class TransformWidget(QWidget):
-    """Energy envelopes and noise removal controls."""
+    """Energy envelope controls."""
 
     def __init__(self, napari_viewer: Viewer, app_state, parent=None):
         super().__init__(parent=parent)
@@ -89,66 +86,12 @@ class TransformWidget(QWidget):
         main_layout.setContentsMargins(2, 2, 2, 2)
         self.setLayout(main_layout)
 
-        self._create_toggle_buttons(main_layout)
         self._create_energy_panel(main_layout)
-        self._create_noise_panel(main_layout)
-
         self._restore_energy_selections()
-        self._restore_noise_selections()
-
-        self._show_panel("energy")
         self.setEnabled(False)
 
     # ------------------------------------------------------------------
-    # Toggle buttons
-    # ------------------------------------------------------------------
-
-    def _create_toggle_buttons(self, main_layout):
-        toggle_widget = QWidget()
-        toggle_layout = QHBoxLayout()
-        toggle_layout.setSpacing(2)
-        toggle_layout.setContentsMargins(0, 0, 0, 0)
-        toggle_widget.setLayout(toggle_layout)
-
-        toggle_defs = [
-            ("energy_toggle", "Energy envelopes", self._toggle_energy),
-            ("noise_toggle", "Noise removal", self._toggle_noise),
-        ]
-        for attr, label, callback in toggle_defs:
-            btn = QPushButton(label)
-            btn.setCheckable(True)
-            btn.clicked.connect(callback)
-            toggle_layout.addWidget(btn)
-            setattr(self, attr, btn)
-
-        main_layout.addWidget(toggle_widget)
-
-    def _show_panel(self, panel_name: str):
-        panels = {
-            "energy": (self.energy_panel, self.energy_toggle),
-            "noise": (self.noise_panel, self.noise_toggle),
-        }
-        for name, (panel, toggle) in panels.items():
-            if name == panel_name:
-                panel.show()
-                toggle.setChecked(True)
-            else:
-                panel.hide()
-                toggle.setChecked(False)
-        self._refresh_layout()
-
-    def _toggle_energy(self):
-        self._show_panel("energy" if self.energy_toggle.isChecked() else "noise")
-
-    def _toggle_noise(self):
-        self._show_panel("noise" if self.noise_toggle.isChecked() else "energy")
-
-    def _refresh_layout(self):
-        if self.meta_widget:
-            self.meta_widget.refresh_widget_layout(self)
-
-    # ------------------------------------------------------------------
-    # Energy envelopes panel — simplified with Configure... button
+    # Energy envelopes panel
     # ------------------------------------------------------------------
 
     def _create_energy_panel(self, main_layout):
@@ -229,55 +172,6 @@ class TransformWidget(QWidget):
         dialog = BusyProgressDialog("Computing energy envelope...", parent=self)
         dialog.execute_blocking(pc.show_envelope_overlay)
 
-    # ------------------------------------------------------------------
-    # Noise removal panel (noisereduce only — ephys preprocessing moved to EphysWidget)
-    # ------------------------------------------------------------------
-
-    def _create_noise_panel(self, main_layout):
-        self.noise_panel = QWidget()
-        layout = QVBoxLayout()
-        layout.setSpacing(2)
-        layout.setContentsMargins(0, 0, 0, 0)
-        self.noise_panel.setLayout(layout)
-
-        nr_group = QGroupBox("noisereduce")
-        nr_layout = QGridLayout()
-        nr_group.setLayout(nr_layout)
-        layout.addWidget(nr_group)
-
-        self.noise_reduce_checkbox = QCheckBox("Enable")
-        self.noise_reduce_checkbox.setToolTip(
-            "Apply spectral gating noise reduction to audio.\n"
-            "Affects spectrogram and waveform display."
-        )
-        self.noise_reduce_checkbox.stateChanged.connect(self._on_noise_reduce_changed)
-
-        self.noise_configure_btn = QPushButton("Configure...")
-        self.noise_configure_btn.setToolTip("Configure noisereduce parameters")
-        self.noise_configure_btn.clicked.connect(self._open_noise_params)
-
-        ref_label = QLabel(styled_link(
-            "https://github.com/timsainb/noisereduce",
-            "noisereduce (Sainburg, 2020)",
-        ))
-        ref_label.setOpenExternalLinks(True)
-
-        nr_layout.addWidget(self.noise_reduce_checkbox, 0, 0)
-        nr_layout.addWidget(self.noise_configure_btn, 0, 1)
-        nr_layout.addWidget(ref_label, 0, 2)
-
-        main_layout.addWidget(self.noise_panel)
-
-    def _open_noise_params(self):
-        open_function_params_dialog("noise_reduction", self.app_state, parent=self)
-
-    def _restore_noise_selections(self):
-        noise_reduce = getattr(self.app_state, 'noise_reduce_enabled', None)
-        if noise_reduce is None:
-            noise_reduce = self.app_state.get_with_default('noise_reduce_enabled')
-            self.app_state.noise_reduce_enabled = noise_reduce
-        self.noise_reduce_checkbox.setChecked(noise_reduce)
-
     def set_plot_container(self, plot_container):
         self.plot_container = plot_container
 
@@ -307,20 +201,3 @@ class TransformWidget(QWidget):
 
     def set_enabled_state(self, has_audio: bool = False):
         self.setEnabled(True)
-        self.noise_reduce_checkbox.setEnabled(has_audio)
-        self.noise_configure_btn.setEnabled(has_audio)
-
-    def _on_noise_reduce_changed(self, state=None):
-        self.app_state.noise_reduce_enabled = self.noise_reduce_checkbox.isChecked()
-
-        if not self.plot_container:
-            return
-
-        from .dialog_busy_progress import BusyProgressDialog
-
-        def _apply():
-            self.plot_container.clear_audio_cache()
-            self.plot_container.update_audio_panels()
-
-        dialog = BusyProgressDialog("Applying noise reduction...", parent=self)
-        dialog.execute_blocking(_apply)

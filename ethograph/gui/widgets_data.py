@@ -3,6 +3,7 @@
 import logging
 import os
 import time as _time
+from dataclasses import dataclass
 from typing import Dict
 
 import numpy as np
@@ -37,13 +38,14 @@ from qtpy.QtWidgets import (
 
 import ethograph as eto
 from ethograph.utils.label_intervals import dense_to_intervals, get_interval_bounds
-from ethograph.gui.plots_timeseriessource import discover_trial_sources, TimeRange
+from ethograph.gui.plots_timeseriessource import RegularTimeseriesSource, build_trial_alignment
 
 
 
 from .app_constants import (
     DEFAULT_LAYOUT_MARGIN,
     DEFAULT_LAYOUT_SPACING,
+    MAX_WIDGET_SIZE,
     SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
 )
 from .data_loader import load_dataset
@@ -64,6 +66,46 @@ from .pose_render import (
 )
 from .video_manager import VideoManager,  is_url
 
+
+@dataclass
+class _PanelDef:
+    """Declarative description of a panel toggle checkbox."""
+    name: str                           # internal identifier / checkbox attr prefix
+    label: str                          # displayed checkbox text
+    row: int                            # UI row in panels_groupbox (1, 2, or 3)
+    state_attr: str | None = None       # app_state attribute to sync with visibility
+    container_method: str | None = None # plot_container.method(visible) to call
+    autoscale_plot: str | None = None   # plot_container.X for autoscale on show
+    audio_row: bool = False             # part of the hidden-when-no-audio widget group
+    on_toggle: str | None = None        # self.method(visible) called after standard actions
+
+
+_PANEL_DEFS: list[_PanelDef] = [
+    _PanelDef("audiotrace",   "AudioTrace",   row=1, audio_row=True,
+              state_attr="audiotrace_visible",
+              container_method="set_audiotrace_visible",
+              autoscale_plot="audio_trace_plot"),
+    _PanelDef("spectrogram",  "Spectrogram",  row=1, audio_row=True,
+              state_attr="spectrogram_visible",
+              container_method="set_spectrogram_visible",
+              autoscale_plot="spectrogram_plot"),
+    _PanelDef("neo_viewer",   "Neo-Viewer",   row=1,
+              container_method="set_neo_visible",
+              on_toggle="_on_neo_panel_toggle"),
+    _PanelDef("phy_viewer",   "Phy-Viewer",   row=1,
+              state_attr="ephys_visible",
+              container_method="set_ephys_visible",
+              on_toggle="_on_phy_panel_toggle"),
+    _PanelDef("featureplot",  "FeaturePlot",  row=1,
+              state_attr="featureplot_visible",
+              container_method="set_featureplot_visible"),
+    _PanelDef("video_viewer", "VideoViewer",  row=1,
+              state_attr="video_viewer_visible",
+              on_toggle="_on_video_viewer_toggle"),
+    _PanelDef("pose_markers", "PoseMarkers",  row=1,
+              state_attr="pose_markers_visible",
+              on_toggle="_on_pose_markers_toggle"),
+]
 
 
 def make_searchable(combo_box: QComboBox) -> None:
@@ -108,9 +150,16 @@ class DataPanel(QWidget):
         parent_layout.addWidget(self.coords_groupbox)
 
         self.slot_groupbox = QGroupBox("Space/Cameras")
+        slot_vbox = QVBoxLayout()
+        slot_vbox.setSpacing(2)
+        slot_vbox.setContentsMargins(4, 4, 4, 4)
         self.slot_layout = QHBoxLayout()
         self.slot_layout.setSpacing(5)
-        self.slot_groupbox.setLayout(self.slot_layout)
+        self.slot_row2_layout = QHBoxLayout()
+        self.slot_row2_layout.setSpacing(5)
+        slot_vbox.addLayout(self.slot_layout)
+        slot_vbox.addLayout(self.slot_row2_layout)
+        self.slot_groupbox.setLayout(slot_vbox)
         self.slot_groupbox.hide()
         parent_layout.addWidget(self.slot_groupbox)
 
@@ -120,17 +169,11 @@ class DataPanel(QWidget):
         panels_vbox.setContentsMargins(4, 4, 4, 4)
         self.panels_groupbox.setLayout(panels_vbox)
 
-        self.panels_row1_layout = QHBoxLayout()
-        self.panels_row1_layout.setSpacing(10)
-        panels_vbox.addLayout(self.panels_row1_layout)
-
-        self.panels_row2_layout = QHBoxLayout()
-        self.panels_row2_layout.setSpacing(10)
-        panels_vbox.addLayout(self.panels_row2_layout)
-
-        self.panels_row3_layout = QHBoxLayout()
-        self.panels_row3_layout.setSpacing(10)
-        panels_vbox.addLayout(self.panels_row3_layout)
+        for i in range(1, 6):
+            row = QHBoxLayout()
+            row.setSpacing(10)
+            setattr(self, f"panels_row{i}_layout", row)
+            panels_vbox.addLayout(row)
 
         parent_layout.addWidget(self.panels_groupbox)
 
@@ -220,7 +263,7 @@ class DataPanel(QWidget):
         layout.addLayout(btn_row)
 
         layout.addWidget(self.keypoints_table)
-        self.keypoints_table.setMaximumHeight(16777215)
+        self.keypoints_table.setMaximumHeight(MAX_WIDGET_SIZE)
         dialog.exec_()
         layout.removeWidget(self.keypoints_table)
         self.keypoints_table.setParent(self.pose_groupbox)
@@ -291,10 +334,13 @@ class DataWidget(DataLoader, QWidget):
         self.coords_groupbox_layout = panel.coords_groupbox_layout
         self.slot_groupbox = panel.slot_groupbox
         self.slot_layout = panel.slot_layout
+        self.slot_row2_layout = panel.slot_row2_layout
         self.panels_groupbox = panel.panels_groupbox
         self.panels_row1_layout = panel.panels_row1_layout
         self.panels_row2_layout = panel.panels_row2_layout
         self.panels_row3_layout = panel.panels_row3_layout
+        self.panels_row4_layout = panel.panels_row4_layout
+        self.panels_row5_layout = panel.panels_row5_layout
         self.overlays_groupbox = panel.overlays_groupbox
         self.overlays_layout = panel.overlays_layout
         self.pose_groupbox = panel.pose_groupbox
@@ -645,68 +691,51 @@ class DataWidget(DataLoader, QWidget):
         self._setup_panel_checkboxes()
 
     def _setup_panel_checkboxes(self):
-        # Centralized setup for panel checkboxes
-        row1 = self.panels_row1_layout
-        row2 = self.panels_row2_layout
-        row3 = self.panels_row3_layout
         self._audio_row_widgets = []
 
-        # AudioTrace
-        show_audio = bool(self.app_state.has_audio)
-        self.audiotrace_checkbox = QCheckBox("AudioTrace")
-        self.audiotrace_checkbox.setChecked(show_audio)
-        self.audiotrace_checkbox.stateChanged.connect(self._on_audiotrace_toggled)
-        row1.addWidget(self.audiotrace_checkbox)
-        self._audio_row_widgets.append(self.audiotrace_checkbox)
-
-        # Spectrogram
-        self.spectrogram_checkbox = QCheckBox("Spectrogram")
-        self.spectrogram_checkbox.setChecked(show_audio)
-        self.spectrogram_checkbox.stateChanged.connect(self._on_spectrogram_toggled)
-        row1.addWidget(self.spectrogram_checkbox)
-        self._audio_row_widgets.append(self.spectrogram_checkbox)
-
-        # Neo-Viewer (generic ephys streams via Neo)
-        has_neo_streams = bool(self.app_state.ephys_path)
-        self.neo_viewer_checkbox = QCheckBox("Neo-Viewer")
-        self.neo_viewer_checkbox.setChecked(has_neo_streams)
-        self.neo_viewer_checkbox.stateChanged.connect(self._on_neo_viewer_toggled)
-        row1.addWidget(self.neo_viewer_checkbox)
-        if not has_neo_streams:
-            self.neo_viewer_checkbox.hide()
-
-        # Phy-Viewer (kilosort/.dat via phylib)
+        has_audio = bool(self.app_state.has_audio)
+        has_neo = bool(self.app_state.ephys_path)
         has_phy = bool(self.app_state.kilosort_folder)
-        self.phy_viewer_checkbox = QCheckBox("Phy-Viewer")
-        self.phy_viewer_checkbox.setChecked(has_phy)
-        self.phy_viewer_checkbox.stateChanged.connect(self._on_phy_viewer_toggled)
-        row1.addWidget(self.phy_viewer_checkbox)
-        if not has_phy:
-            self.phy_viewer_checkbox.hide()
 
-        # FeaturePlot
-        no_features = self.type_vars_dict.get("features") == []
-        self.featureplot_checkbox = QCheckBox("FeaturePlot")
-        self.featureplot_checkbox.setChecked(not no_features)
-        self.featureplot_checkbox.stateChanged.connect(self._on_featureplot_toggled)
-        row1.addWidget(self.featureplot_checkbox)
+        initial_checked = {
+            "video_viewer": bool(self.app_state.has_video),
+            "pose_markers": bool(self.app_state.has_pose),
+            "featureplot":  self.type_vars_dict.get("features") != [],
+            "audiotrace":   has_audio,
+            "spectrogram":  has_audio,
+            "neo_viewer":   has_neo,
+            "phy_viewer":   has_phy,
+        }
+        initial_shown = {
+            "video_viewer": True,
+            "pose_markers": True,
+            "featureplot":  True,
+            "audiotrace":   True,
+            "spectrogram":  True,
+            "neo_viewer":   has_neo,
+            "phy_viewer":   has_phy,
+        }
 
-        # VideoViewer
-        show_video = bool(self.app_state.has_video)
-        self.video_viewer_checkbox = QCheckBox("VideoViewer")
-        self.video_viewer_checkbox.setChecked(show_video)
-        self.video_viewer_checkbox.stateChanged.connect(self._on_video_viewer_toggled)
-        row1.addWidget(self.video_viewer_checkbox)
+        for defn in _PANEL_DEFS:
+            checkbox = QCheckBox(defn.label)
+            checkbox.setObjectName(f"{defn.name}_checkbox")
+            checkbox.setChecked(initial_checked[defn.name])
+            checkbox.stateChanged.connect(
+                lambda state, n=defn.name: self._on_panel_toggled(n, state)
+            )
+            setattr(self, f"{defn.name}_checkbox", checkbox)
+            if not initial_shown[defn.name]:
+                checkbox.hide()
+            if defn.audio_row:
+                self._audio_row_widgets.append(checkbox)
 
-        # PoseMarkers
-        show_pose = bool(self.app_state.has_pose)
-        self.pose_markers_checkbox = QCheckBox("PoseMarkers")
-        self.pose_markers_checkbox.setChecked(show_pose)
-        self.pose_markers_checkbox.stateChanged.connect(self._on_pose_markers_toggled)
-        row1.addWidget(self.pose_markers_checkbox)
+        # Row 1: audio panel checkboxes
+        self.panels_row1_layout.addWidget(self.audiotrace_checkbox)
+        self.panels_row1_layout.addWidget(self.spectrogram_checkbox)
+        self.panels_row1_layout.addStretch()
 
-        # Mics combo
-        if show_audio:
+        # Row 2: mic selector
+        if has_audio:
             mic_names = self.type_vars_dict.get("mics", [])
             expanded = self._expand_mics_with_channels(mic_names)
             self.mics_combo = QComboBox()
@@ -714,73 +743,74 @@ class DataWidget(DataLoader, QWidget):
             self.mics_combo.addItems(expanded)
             self.mics_combo.currentTextChanged.connect(self._on_mics_changed)
             self.controls.append(self.mics_combo)
-
             self._mic_label = QLabel("Mic:")
-            row2.addWidget(self._mic_label)
-            row2.addWidget(self.mics_combo)
-            row2.addStretch()
+            self.panels_row2_layout.addWidget(self._mic_label)
+            self.panels_row2_layout.addWidget(self.mics_combo)
+            self.panels_row2_layout.addStretch()
             self._audio_row_widgets.extend([self._mic_label, self.mics_combo])
             if expanded:
                 self.app_state.set_key_sel("mics", expanded[0])
 
-        row1.addStretch()
-        if not show_audio:
-            for w in self._audio_row_widgets:
-                w.hide()
-        self.video_mgr.set_audio_row_widgets(self._audio_row_widgets)
-
-        # Row 3: Feature view | Sort channels | Ephys stream
-        row3.addWidget(QLabel("Feature view:"))
+        # Row 3: feature panel checkbox + view controls
+        self.panels_row3_layout.addWidget(self.featureplot_checkbox)
+        self.panels_row3_layout.addWidget(QLabel("View:"))
         self.view_mode_combo = QComboBox()
         self.view_mode_combo.setObjectName("view_mode_combo")
         self.view_mode_combo.currentTextChanged.connect(self._on_view_mode_changed)
         self.view_mode_combo.hide()
         self.controls.append(self.view_mode_combo)
-        row3.addWidget(self.view_mode_combo)
-
+        self.panels_row3_layout.addWidget(self.view_mode_combo)
         self.sort_channels_btn = QPushButton("Sort channels")
         self.sort_channels_btn.setToolTip("Sort heatmap channels by activity in selected label interval")
         self.sort_channels_btn.setEnabled(False)
         self.sort_channels_btn.clicked.connect(self._on_sort_channels_clicked)
-        row3.addWidget(self.sort_channels_btn)
+        self.panels_row3_layout.addWidget(self.sort_channels_btn)
+        self.panels_row3_layout.addStretch()
 
-        self._neural_view_label = QLabel("Neural view:")
+        # Row 4: Neo-Viewer checkbox + Neo stream combo
+        self.panels_row4_layout.addWidget(self.neo_viewer_checkbox)
+        self._neo_stream_label = QLabel("Stream:")
+        self.neo_stream_combo = QComboBox()
+        self.neo_stream_combo.setObjectName("neo_stream_combo")
+        self.neo_stream_combo.currentTextChanged.connect(self._on_neo_stream_changed)
+        self.panels_row4_layout.addWidget(self._neo_stream_label)
+        self.panels_row4_layout.addWidget(self.neo_stream_combo)
+        self._neo_stream_label.hide()
+        self.neo_stream_combo.hide()
+        self.panels_row4_layout.addStretch()
+
+        # Row 5: Phy-Viewer checkbox + neural view combo
+        self.panels_row5_layout.addWidget(self.phy_viewer_checkbox)
+        self._neural_view_label = QLabel("View:")
         self.neural_view_combo = QComboBox()
         self.neural_view_combo.setObjectName("neural_view_combo")
         self.neural_view_combo.addItems(["Multi Trace", "Raster"])
         self.neural_view_combo.currentTextChanged.connect(self._on_neural_view_changed)
-        row3.addWidget(self._neural_view_label)
-        row3.addWidget(self.neural_view_combo)
+        self.panels_row5_layout.addWidget(self._neural_view_label)
+        self.panels_row5_layout.addWidget(self.neural_view_combo)
         self._neural_view_label.hide()
         self.neural_view_combo.hide()
+        self.panels_row5_layout.addStretch()
 
-        # Neo stream combo (for Neo-Viewer panel)
-        self._neo_stream_label = QLabel("Neo stream:")
-        self.neo_stream_combo = QComboBox()
-        self.neo_stream_combo.setObjectName("neo_stream_combo")
-        self.neo_stream_combo.currentTextChanged.connect(self._on_neo_stream_changed)
-        row3.addWidget(self._neo_stream_label)
-        row3.addWidget(self.neo_stream_combo)
-        self._neo_stream_label.hide()
-        self.neo_stream_combo.hide()
+        # slot_groupbox row 2: video viewer + pose markers
+        self.slot_row2_layout.addWidget(self.video_viewer_checkbox)
+        self.slot_row2_layout.addWidget(self.pose_markers_checkbox)
+        self.slot_row2_layout.addStretch()
 
-        if has_neo_streams and self.ephys_widget:
+        if has_neo and self.ephys_widget:
             self._populate_neo_stream_combo()
 
-        show_ephys = bool(self.app_state.has_ephys)
-        if show_ephys and self.ephys_widget:
-
-            
-
+        if bool(self.app_state.has_ephys) and self.ephys_widget:
             self._neural_view_label.show()
             self.neural_view_combo.show()
-            
             self.ephys_widget.configure_ephys_trace_plot()
             if self.plot_container:
-                self.plot_container.show_ephys_panel()
+                self.plot_container.set_ephys_visible(True)
 
-
-        row3.addStretch()
+        if not has_audio:
+            for w in self._audio_row_widgets:
+                w.hide()
+        self.video_mgr.set_audio_row_widgets(self._audio_row_widgets)
 
         # Overlays
         overlays_layout = self.overlays_layout
@@ -883,6 +913,9 @@ class DataWidget(DataLoader, QWidget):
         """Configure the Neo-Viewer panel with the selected stream."""
         if not self.plot_container:
             return
+        neo_cb = getattr(self, 'neo_viewer_checkbox', None)
+        if neo_cb is not None and not neo_cb.isChecked():
+            return
 
         if stream_name is None:
             stream_name = self.neo_stream_combo.currentText() if hasattr(self, 'neo_stream_combo') else ""
@@ -902,10 +935,10 @@ class DataWidget(DataLoader, QWidget):
         neo_plot.set_loader(loader, channel_idx)
 
         offset = self.app_state.dt.get_start_time(self.app_state.trials_sel)
-        bounds = self.app_state.get_trial_bounds()
+        bounds = self.app_state.trial_bounds
         if bounds is not None:
-            duration = bounds[1] - bounds[0]
-            neo_plot.set_ephys_offset(offset, duration)
+            neo_plot.set_ephys_offset(offset, bounds.duration)
+            neo_plot.set_source(RegularTimeseriesSource("neo", loader, start_time=0.0))
 
         if self.plot_container._neo_visible:
             xmin, xmax = self.plot_container.get_current_xlim()
@@ -1041,68 +1074,50 @@ class DataWidget(DataLoader, QWidget):
             and self.plot_settings_widget.autoscale_checkbox.isChecked()
         )
 
-    def _on_audiotrace_toggled(self, state):
+    def _on_panel_toggled(self, name: str, state: int):
+        """Central handler for all panel visibility checkboxes."""
         visible = state == Qt.Checked
-        self.app_state.audiotrace_visible = visible
-        if self.plot_container:
-            self.plot_container.set_audiotrace_visible(visible)
-            if visible and self._is_autoscale_on():
-                self.plot_container.audio_trace_plot.vb.enableAutoRange(x=False, y=True)
-                self.plot_container.audio_trace_plot._apply_y_constraints()
+        defn = next(d for d in _PANEL_DEFS if d.name == name)
 
-    def _on_spectrogram_toggled(self, state):
-        visible = state == Qt.Checked
-        self.app_state.spectrogram_visible = visible
-        if self.plot_container:
-            self.plot_container.set_spectrogram_visible(visible)
-            if visible and self._is_autoscale_on():
-                self.plot_container.spectrogram_plot.vb.enableAutoRange(x=False, y=True)
+        if defn.state_attr:
+            setattr(self.app_state, defn.state_attr, visible)
 
-    def _on_neo_viewer_toggled(self, state):
-        visible = state == Qt.Checked
-        if self.plot_container:
-            self.plot_container.set_neo_visible(visible)
-            if visible:
-                self._configure_neo_panel()
+        if defn.container_method and self.plot_container:
+            getattr(self.plot_container, defn.container_method)(visible)
 
-    def _on_phy_viewer_toggled(self, state):
-        visible = state == Qt.Checked
-        self.app_state.ephys_visible = visible
-        if self.plot_container:
-            if visible:
-                mode = self.neural_view_combo.currentText() if hasattr(self, 'neural_view_combo') else "Multi Trace"
-                if mode == "Raster":
-                    self.plot_container.set_neural_panel_mode("raster")
-                else:
-                    self.plot_container.set_neural_panel_mode("trace")
-                if self._is_autoscale_on():
-                    self.plot_container.ephys_trace_plot.vb.enableAutoRange(x=False, y=True)
-            else:
-                self.plot_container.hide_ephys_panel()
+        if visible and defn.autoscale_plot and self._is_autoscale_on() and self.plot_container:
+            plot = getattr(self.plot_container, defn.autoscale_plot)
+            plot.vb.enableAutoRange(x=False, y=True)
+            if hasattr(plot, '_apply_y_constraints'):
+                plot._apply_y_constraints()
 
-    # Keep backward compat
-    def _on_ephys_toggled(self, state):
-        self._on_phy_viewer_toggled(state)
+        if defn.on_toggle:
+            getattr(self, defn.on_toggle)(visible)
 
-    def _on_featureplot_toggled(self, state):
-        visible = state == Qt.Checked
-        self.app_state.featureplot_visible = visible
-        if self.plot_container:
-            self.plot_container.set_featureplot_visible(visible)
+    def _on_neo_panel_toggle(self, visible: bool):
+        if visible and self.plot_container:
+            self._configure_neo_panel()
 
-    def _on_video_viewer_toggled(self, state):
-        visible = state == Qt.Checked
-        self.app_state.video_viewer_visible = visible
+    def _on_phy_panel_toggle(self, visible: bool):
+        if not visible or not self.plot_container:
+            return
+        mode = self.neural_view_combo.currentText() if hasattr(self, 'neural_view_combo') else "Multi Trace"
+        self.plot_container.set_neural_panel_mode("raster" if mode == "Raster" else "trace")
+        if self._is_autoscale_on():
+            self.plot_container.ephys_trace_plot.vb.enableAutoRange(x=False, y=True)
+
+    def _on_video_viewer_toggle(self, visible: bool):
         if hasattr(self, 'layout_mgr') and self.layout_mgr:
             self.layout_mgr.set_video_viewer_visible(visible)
 
-    def _on_pose_markers_toggled(self, state):
-        visible = state == Qt.Checked
-        self.app_state.pose_markers_visible = visible
+    def _on_pose_markers_toggle(self, visible: bool):
         if visible:
             self.update_pose()
         elif self.pose_mgr is not None:
             self.pose_mgr._remove_pose_layers()
+
+    def _on_ephys_toggled(self, state):
+        self._on_panel_toggled("phy_viewer", state)
 
     def _update_view_mode_items(self, feature_sel: str):
         """Update view_mode_combo items based on available data.
@@ -1258,18 +1273,8 @@ class DataWidget(DataLoader, QWidget):
             return
 
         combo = self.sender()
-        key = None
-
-        for io_key, io_value in self.io_widget.combos.items():
-            if io_value is combo:
-                key = io_key
-                break
-
-        if key is None:
-            for data_key, data_value in self.combos.items():
-                if data_value is combo:
-                    key = data_key
-                    break
+        name = combo.objectName()
+        key = name[:-6] if name.endswith("_combo") else None
 
         if key:
             selected_value = get_combo_value(combo)
@@ -1526,40 +1531,14 @@ class DataWidget(DataLoader, QWidget):
 
 
     def _build_trial_alignment(self, trial_id) -> None:
-        ds = self.app_state.ds
-        dt = self.app_state.dt
-
-        # Session-absolute trial window (for setting extra_ranges / view bounds)
-        trial_start = dt.get_start_time(trial_id)
-        trial_stop = dt.get_stop_time(trial_id) or trial_start + float(ds.time[-1])
-
-        # File resolution: works for both per-trial and session-long
-        video_path = dt.get_media(trial_id, "video", self.app_state.cameras_sel)
-        
-        audio_path = dt.get_media(trial_id, "audio", device=dt.devices("audio")) # Assumes same time range across channels
-        ephys_path = dt.get_media(trial_id, "ephys")
-
-        # Stream offsets: where does sample 0 of this file sit on the session clock?
-        # For session-long files this is typically just the global offset (e.g. 0.23).
-        # For per-trial files this is trial_start + offset.
-        video_offset = dt.get_stream_offset(trial_id, "video") or 0.0
-        audio_offset = dt.get_stream_offset(trial_id, "audio") or 0.0
-        ephys_offset = dt.get_stream_offset(trial_id, "ephys") or 0.0
-
-        alignment = discover_trial_sources(
-            str(trial_id),
-            ds,
-            video_path=video_path,
-            video_offset=video_offset,
-            audio_path=audio_path,
-            audio_offset=audio_offset,
-            ephys_path=ephys_path,
-            ephys_offset=ephys_offset,
+        self.app_state.trial_alignment = build_trial_alignment(
+            self.app_state.dt,
+            trial_id,
+            self.app_state.ds,
+            video_folder=self.app_state.video_folder,
+            audio_folder=self.app_state.audio_folder,
+            cameras_sel=getattr(self.app_state, "cameras_sel", None),
         )
-
-        # Tell the alignment what the trial's session-absolute window is
-        alignment.extra_ranges.append(TimeRange(trial_start, trial_stop))
-        self.app_state.trial_alignment = alignment
 
 
 
@@ -1607,9 +1586,6 @@ class DataWidget(DataLoader, QWidget):
         self.update_label()
         if self.ephys_widget:
             self.ephys_widget.on_trial_changed()
-        # Update Neo panel for new trial
-        if hasattr(self, 'neo_viewer_checkbox') and self.neo_viewer_checkbox.isChecked():
-            self._configure_neo_panel()
         self.update_main_plot()
         self.update_space_plot()
 

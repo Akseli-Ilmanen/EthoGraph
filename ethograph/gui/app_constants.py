@@ -21,10 +21,13 @@ LABELS_OVERLAY_BOX_MARGIN = 5
 LABELS_OVERLAY_TEXT_SIZE = 18
 LABELS_OVERLAY_FALLBACK_SIZE = (100, 100)
 
+# Qt maximum size sentinel (QWIDGETSIZE_MAX) used to un-cap widget dimensions.
+MAX_WIDGET_SIZE = 16777215
+
 # No-video mode panel layout (widgets_meta.py)
 NO_VIDEO_PANEL_WIDTH_RATIO = 0.75
 SIDEBAR_DEFAULT_WIDTH_RATIO = 0.40
-SIDEBAR_AFTER_LOAD_WIDTH_RATIO = 0.25
+SIDEBAR_AFTER_LOAD_WIDTH_RATIO = 0.20
 SIDEBAR_MIN_WIDTH_PX = 280
 
 # Dock layout (layout_manager.py)
@@ -73,13 +76,13 @@ CP_LINE_WIDTH_THICK = 2.0
 # TIMING / DEBOUNCE
 # =============================================================================
 
-LINEPLOT_DEBOUNCE_MS = 20
+LINEPLOT_DEBOUNCE_MS = 10
 AUDIOTRACE_DEBOUNCE_MS = 30
 ENVELOPE_OVERLAY_DEBOUNCE_MS = 30
-SPECTROGRAM_DEBOUNCE_MS = 50
+SPECTROGRAM_DEBOUNCE_MS = 30
 HEATMAP_DEBOUNCE_MS = 50
-EPHYSTRACE_DEBOUNCE_MS = 10
-RASTER_DEBOUNCE_MS = 10
+EPHYSTRACE_DEBOUNCE_MS = 30
+RASTER_DEBOUNCE_MS = 30
 
 # =============================================================================
 # AUDIO / SPECTROGRAM
@@ -87,6 +90,7 @@ RASTER_DEBOUNCE_MS = 10
 
 # Buffer settings (plots_spectrogram.py)
 DEFAULT_BUFFER_MULTIPLIER = 5.0
+DEFAULT_BUFFER_MULTIPLIER_EPHYS = 2.0
 BUFFER_COVERAGE_MARGIN = 0.2  # 20% margin for buffer coverage check
 
 # Frequency limits (plots_spectrogram.py)

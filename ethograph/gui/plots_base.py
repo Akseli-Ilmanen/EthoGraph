@@ -196,7 +196,7 @@ class BasePlot(pg.PlotWidget):
         # Store interaction state
         self._interaction_enabled = True
 
-
+        # Last-rendered time range; subclasses update this to know when to re-render
         self.current_range: tuple[float, float] | None = None
 
         # Connect click handler
@@ -256,8 +256,7 @@ class BasePlot(pg.PlotWidget):
                 self.update_plot_content(t0, t1)
             else:
                 t0, t1 = self.get_current_xlim()
-                if self.current_range is None or current_time < self.current_range[0] or current_time > self.current_range[1]:
-                    self.update_plot_content(t0, t1)
+                self.update_plot_content(t0, t1)
 
 
 
@@ -267,10 +266,10 @@ class BasePlot(pg.PlotWidget):
         Subclasses override to provide their own time source.
         Default uses app_state.time (current feature's time coord).
         """
-        bounds = self.app_state.get_trial_bounds()
+        bounds = self.app_state.trial_bounds
         if bounds is None:
             return None
-        return float(bounds[0]), float(bounds[1])
+        return bounds.start_s, bounds.end_s
 
 
     def set_x_range(self, mode='default', curr_xlim=None, center_on_frame=None):
@@ -286,17 +285,14 @@ class BasePlot(pg.PlotWidget):
         data_tmin, data_tmax = bounds
 
         if mode == 'center':
-            if not hasattr(self.app_state, 'window_size'):
-                return
-
             video = getattr(self.app_state, 'video', None)
             if center_on_frame is not None:
                 current_time = video.frame_to_time(center_on_frame) if video else center_on_frame / self.app_state.video_fps
             else:
                 current_time = video.frame_to_time(self.app_state.current_frame) if video else self.app_state.current_frame / self.app_state.video_fps
 
-            window_size = self.app_state.get_with_default('window_size')
-            half_window = window_size / 2.0
+            xlim = self.get_current_xlim()
+            half_window = (xlim[1] - xlim[0]) / 2.0
             t0 = current_time - half_window
             t1 = current_time + half_window
 

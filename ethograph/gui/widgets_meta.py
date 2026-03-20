@@ -410,13 +410,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         apply_compact_widget_style(self, font_size=font_size)
 
     def _set_sidebar_default_width(self):
-        min_width = SIDEBAR_MIN_WIDTH_PX
-        if hasattr(self.viewer, 'window') and hasattr(self.viewer.window, '_qt_window'):
-            screen = self.viewer.window._qt_window.screen()
-            if screen is not None:
-                # Keep sidebar readable but avoid over-constraining narrow displays.
-                min_width = min(min_width, int(screen.availableGeometry().width() * 0.4))
-        self.setMinimumWidth(max(120, min_width))
+        self.setMinimumWidth(SIDEBAR_MIN_WIDTH_PX)
         if not hasattr(self.viewer, 'window') or not hasattr(self.viewer.window, '_qt_window'):
             return
         QTimer.singleShot(
@@ -466,9 +460,9 @@ class MetaWidget(CollapsibleWidgetContainer):
         # Phy-Viewer: configure if ephys/kilosort is available
         if self.app_state.has_ephys and self.app_state.ephys_visible:
             self.data_widget._configure_ephys_trace_plot()
-            self.plot_container.show_ephys_panel()
+            self.plot_container.set_ephys_visible(True)
         elif self.app_state.has_ephys and not self.app_state.ephys_visible:
-            self.plot_container.hide_ephys_panel()
+            self.plot_container.set_ephys_visible(False)
 
         self.layout_mgr.register_docks()
 

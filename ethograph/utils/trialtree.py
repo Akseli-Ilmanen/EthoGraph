@@ -259,7 +259,9 @@ class TrialTree(xr.DataTree):
         """
         if self.session is not None and "start_time" in self.session:
             try:
-                return float(self.session.start_time.sel(trial=trial))
+                val = float(self.session.start_time.sel(trial=trial))
+                if not np.isnan(val):
+                    return val
             except (KeyError, ValueError):
                 pass
             
@@ -279,10 +281,12 @@ class TrialTree(xr.DataTree):
         """
         if self.session is not None and "stop_time" in self.session:
             try:
-                return float(self.session.stop_time.sel(trial=trial))
+                val = float(self.session.stop_time.sel(trial=trial))
+                if not np.isnan(val):
+                    return val
             except (KeyError, ValueError):
                 pass
-        
+
         return None
 
     # TODO: rewrite to work with offset_video, or offset_video_camera -> or better way to do this?
@@ -313,29 +317,39 @@ class TrialTree(xr.DataTree):
         Lookup order:
         1. Global session attr ``offset_<stream>`` (set via
            :meth:`set_stream_offset`).
-        2. Per-trial session column ``offset_<stream>`` (legacy /
-           per-trial override).
-        3. Per-trial dataset attr ``offset_<stream>``.
-        4. Default ``0.0``.
+        2. Per-trial session column ``offset_<stream>`` (per-trial override).
+        3. Default ``0.0``.
 
         Returns ``None`` when the stream is explicitly marked
         unavailable (NaN in the per-trial column).
         """
         col = f"offset_{stream}"
         if self.session is not None:
-            # 1. Global attr
             if col in self.session.attrs:
                 return float(self.session.attrs[col])
-            # 2. Per-trial column
             if col in self.session:
                 try:
                     val = float(self.session[col].sel(trial=trial))
                     return None if np.isnan(val) else val
                 except (KeyError, ValueError):
                     pass
-        # 3. Per-trial dataset attr
-        ds = self.trial(trial)
-        return float(ds.attrs.get(col, 0.0))
+        return 0.0
+
+    def get_display_start(self, trial_id, stream: str) -> float | None:
+        """Trial-relative start time for sample 0 of a stream.
+
+        Per-trial files: the stream offset is applied as-is.
+        Session-wide files: subtracts ``trial_start_abs`` so that
+        ``source.get_data(0, dur)`` reads the correct window of the file.
+
+        Returns ``None`` when the stream is explicitly unavailable.
+        """
+        calib = self.get_stream_offset(trial_id, stream)
+        if calib is None:
+            return None
+        if self.stream_is_per_trial(stream):
+            return calib
+        return calib - self.get_start_time(trial_id)
 
     def _ensure_session(self) -> None:
         """Create an empty session node if one does not exist."""
@@ -356,8 +370,20 @@ class TrialTree(xr.DataTree):
         if self.session is None or stream not in self.session:
             return None
         return self.session[stream]
-    
-    
+
+    def stream_is_per_trial(self, stream: str) -> bool:
+        """True if this stream has per-trial files (media DA is indexed by trial).
+
+        Per-trial: each trial has its own file starting at t=0.
+        Session-wide: one file covers the whole session; must be offset by
+        ``-trial_start_abs`` to convert file-relative time to display time.
+        Returns True (per-trial) when no session table entry exists.
+        """
+        da = self._resolve_media_da(stream)
+        if da is None:
+            return True
+        return "trial" in da.dims
+
     def get_media(
         self, trial, stream: str, device: str | None = None,
     ) -> str | None:

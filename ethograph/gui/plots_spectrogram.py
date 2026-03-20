@@ -274,15 +274,6 @@ class SpectrogramBuffer:
             return
         nfft = min(nfft, max_nfft)
 
-        if source.supports_noise_reduction and getattr(self.app_state, 'noise_reduce_enabled', False):
-            try:
-                import noisereduce as nr
-                cache = getattr(self.app_state, 'function_params_cache', None) or {}
-                nr_params = cache.get('noise_reduction', {})
-                audio_data = nr.reduce_noise(y=audio_data, sr=int(self.fs), **nr_params)
-            except ImportError:
-                pass
-
         hop = int(nfft * hop_frac)
 
         if len(audio_data) < nfft:

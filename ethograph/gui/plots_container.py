@@ -189,6 +189,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._envelope_td = None
         self._envelope_xrange_updater = None
         self._envelope_y_updater = None
+        self._envelope_host = None
 
         # --- Layout ---
         main_layout = QVBoxLayout()
@@ -436,17 +437,12 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._neo_visible = visible
         self._rebuild_splitter()
 
-    def show_ephys_panel(self):
-        if self._ephys_visible or self._raster_visible:
+    def set_ephys_visible(self, visible: bool):
+        if self._ephys_visible == visible:
             return
-        self._ephys_visible = True
-        self._rebuild_splitter()
-
-    def hide_ephys_panel(self):
-        if not self._ephys_visible and not self._raster_visible:
-            return
-        self._ephys_visible = False
-        self._raster_visible = False
+        self._ephys_visible = visible
+        if not visible:
+            self._raster_visible = False
         self._rebuild_splitter()
 
     def set_raster_visible(self, visible: bool):
@@ -881,6 +877,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         host.vb.sigXRangeChanged.connect(on_x_range_changed)
         self._envelope_xrange_updater = on_x_range_changed
+        self._envelope_host = host
 
     @staticmethod
     def _sync_envelope_axis_to_host(host, env_vb):
@@ -889,25 +886,26 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             env_vb.setYRange(ymin, ymax, padding=0)
 
     def hide_envelope_overlay(self):
-        updater = getattr(self, '_envelope_xrange_updater', None)
-        if updater:
-            for plot in (self.audio_trace_plot, self.neo_trace_plot, self.ephys_trace_plot):
-                try:
-                    plot.vb.sigXRangeChanged.disconnect(updater)
-                except (RuntimeError, TypeError):
-                    pass
-            self._envelope_xrange_updater = None
+        host = self._envelope_host
 
-        y_updater = getattr(self, '_envelope_y_updater', None)
-        if y_updater:
-            for plot in (self.audio_trace_plot, self.neo_trace_plot, self.ephys_trace_plot):
-                try:
-                    plot.vb.sigYRangeChanged.disconnect(y_updater)
-                except (RuntimeError, TypeError):
-                    pass
-            self._envelope_y_updater = None
+        updater = self._envelope_xrange_updater
+        if updater and host:
+            try:
+                host.vb.sigXRangeChanged.disconnect(updater)
+            except (RuntimeError, TypeError):
+                pass
+        self._envelope_xrange_updater = None
 
-        td = getattr(self, '_envelope_td', None)
+        y_updater = self._envelope_y_updater
+        if y_updater and host:
+            try:
+                host.vb.sigYRangeChanged.disconnect(y_updater)
+            except (RuntimeError, TypeError):
+                pass
+        self._envelope_y_updater = None
+        self._envelope_host = None
+
+        td = self._envelope_td
         if td:
             td.stop()
             self._envelope_td = None

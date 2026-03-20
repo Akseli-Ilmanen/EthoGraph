@@ -153,7 +153,7 @@ class LabelDrawingMixin:
                 if inverted_y:
                     self._draw_label_strip_top(plot, start_time, end_time, color_rgb)
                 else:
-                    self._draw_spectrogram_style_label(plot, start_time, end_time, color_rgb)
+                    self._draw_label_strip_bottom(plot, start_time, end_time, color_rgb)
             else:
                 self._draw_standard_label(plot, start_time, end_time, color_rgb)
         else:
@@ -178,9 +178,6 @@ class LabelDrawingMixin:
         rect.setZValue(Z_INDEX_LABELS)
         plot.plot_item.addItem(rect)
         plot.label_items.append(rect)
-
-    def _draw_spectrogram_style_label(self, plot, start_time, end_time, color_rgb):
-        self._draw_label_strip_bottom(plot, start_time, end_time, color_rgb)
 
     def _draw_prediction_label(self, plot, start_time, end_time, color_rgb):
         y_range = plot.plot_item.getViewBox().viewRange()[1]
