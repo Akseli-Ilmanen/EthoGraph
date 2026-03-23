@@ -2,7 +2,7 @@
 
 __version__ = "0.1.0"
 
-from ethograph.utils.trialtree import SESSION_NODE,TrialTree
+from ethograph.utils.trialtree import SESSION_NODE, SessionIO, TrialTree
 from ethograph.utils.io import (
     add_angle_rgb_to_ds,
     add_changepoints_to_ds,

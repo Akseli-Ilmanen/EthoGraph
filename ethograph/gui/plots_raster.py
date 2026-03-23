@@ -20,7 +20,7 @@ from .app_constants import Z_INDEX_TIME_MARKER, RASTER_DEBOUNCE_MS, DEFAULT_BUFF
 from .plots_base import BasePlot, ThrottleDebounce
 
 if TYPE_CHECKING:
-    from ethograph.gui.plots_timeseriessource import SpikeEventSource, TimeseriesSource
+    from ethograph.gui.plots_timeseriessource import TimeseriesSource
 
 _PHY_BG = '#000000'
 _PHY_AXIS = '#AAAAAA'
@@ -140,13 +140,6 @@ class RasterPlot(BasePlot):
         self._scatter_t0 = None
         self._update_visible_dots()
 
-    def set_spike_source(self, source: SpikeEventSource):
-        """Populate from a SpikeEventSource (from TrialAlignment)."""
-        if source.channels is not None:
-            self.set_spike_data(source._times, source.channels)
-        else:
-            self.set_spike_data(source._times, np.zeros(len(source._times), dtype=int))
-
     def clear_spike_data(self):
         self._spike_times = None
         self._best_channels = None
@@ -172,15 +165,6 @@ class RasterPlot(BasePlot):
 
     def set_source(self, source: TimeseriesSource | None):
         self._source = source
-
-    def _get_time_bounds(self):
-        if self._source is not None:
-            tr = self._source.time_range
-            if tr.duration > 0:
-                return tr.start_s, tr.end_s
-        if self._spike_times is not None and len(self._spike_times) > 0:
-            return float(self._spike_times[0]), float(self._spike_times[-1])
-        return super()._get_time_bounds()
 
     # ------------------------------------------------------------------
     # Internal – scatter management

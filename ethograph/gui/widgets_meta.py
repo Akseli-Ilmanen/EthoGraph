@@ -199,7 +199,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.add_widget(
             self.ephys_widget,
             collapsible=True,
-            widget_title="Ephys",
+            widget_title="Phy extension",
         )
 
         self.add_widget(
@@ -217,7 +217,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.add_widget(
             self.transform_widget,
             collapsible=True,
-            widget_title="Energy / Noise",
+            widget_title="Energy envelopes",
         )
         
         self.add_widget(
@@ -458,10 +458,10 @@ class MetaWidget(CollapsibleWidgetContainer):
                 self.plot_container.set_neo_visible(True)
 
         # Phy-Viewer: configure if ephys/kilosort is available
-        if self.app_state.has_ephys and self.app_state.ephys_visible:
+        if self.app_state.has_kilosort and self.app_state.ephys_visible:
             self.data_widget._configure_ephys_trace_plot()
             self.plot_container.set_ephys_visible(True)
-        elif self.app_state.has_ephys and not self.app_state.ephys_visible:
+        elif self.app_state.has_kilosort and not self.app_state.ephys_visible:
             self.plot_container.set_ephys_visible(False)
 
         self.layout_mgr.register_docks()

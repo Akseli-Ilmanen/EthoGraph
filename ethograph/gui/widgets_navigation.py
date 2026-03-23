@@ -2,12 +2,14 @@
 
 import warnings
 import webbrowser
+from collections import defaultdict
 
 import numpy as np
 from napari import Viewer
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
     QGridLayout,
     QGroupBox,
@@ -21,6 +23,37 @@ from qtpy.QtWidgets import (
 
 from .app_constants import AUDIO_SPEED_DEFAULT, AUDIO_SPEED_MAX, AUDIO_SPEED_MIN, AUDIO_SPEED_STEP
 
+
+
+class _DataAlignmentDialog(QDialog):
+    """Wraps TimelinePage for standalone use from the navigation widget."""
+
+    def __init__(self, app_state, parent=None):
+        from .wizard_multi_timeline import TimelinePage
+
+        super().__init__(parent)
+        self.setWindowTitle("Data Alignment")
+        self.resize(1100, 640)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+
+        self._page = TimelinePage(self)
+        self._page.configure_for_standalone()
+        layout.addWidget(self._page, stretch=1)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        close_btn = QPushButton("Close")
+        close_btn.setFixedWidth(100)
+        close_btn.clicked.connect(self.accept)
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
+
+        dt = getattr(app_state, "dt", None)
+        if dt is not None and getattr(dt, "trials", None):
+            self._page.populate_from_trialtree(dt, app_state)
 
 
 class NavigationWidget(QWidget):
@@ -39,9 +72,24 @@ class NavigationWidget(QWidget):
         self.docs_button.clicked.connect(lambda: webbrowser.open("https://ethograph.readthedocs.io/en/latest/"))
         help_layout.addWidget(self.docs_button)
 
+        self.print_debug_button = QPushButton("🖨 Print for debugging")
+        self.print_debug_button.setToolTip("Print app state, session, and trial alignment to console for debugging")
+        self.print_debug_button.clicked.connect(self._on_print_debug)
+        help_layout.addWidget(self.print_debug_button)
+
         self.github_button = QPushButton("🔗 GitHub Issues")
         self.github_button.clicked.connect(lambda: webbrowser.open("https://github.com/akseli-ilmanen/ethograph/issues"))
         help_layout.addWidget(self.github_button)
+
+        help_layout2 = QHBoxLayout()
+        self.alignment_button = QPushButton("📊 Visualize data alignment")
+        self.alignment_button.setToolTip(
+            "Show a timeline of how all loaded data sources (video, audio, features, pose)\n"
+            "align across trials.  Useful for verifying session-level timing setup."
+        )
+        self.alignment_button.clicked.connect(self._on_show_alignment)
+        help_layout2.addWidget(self.alignment_button)
+        help_layout2.addStretch()
 
         # === Filter trials group ===
         filter_group = QGroupBox("Filter trials")
@@ -214,6 +262,7 @@ class NavigationWidget(QWidget):
         main_layout.setSpacing(2)
         main_layout.setContentsMargins(2, 2, 2, 2)
         main_layout.addLayout(help_layout)
+        main_layout.addLayout(help_layout2)
         main_layout.addWidget(filter_group)
         main_layout.addWidget(navigate_group)
         self.setLayout(main_layout)
@@ -484,6 +533,57 @@ class NavigationWidget(QWidget):
     def step_backward(self):
         self._step_time(-1)
 
+    def _on_print_debug(self):
+        SEP = "\n" * 4
+
+        print(SEP)
+        print("=" * 60)
+        print("  APP STATE  (yaml-persisted)")
+        print("=" * 60)
+        self.app_state.print_state()
+
+        print(SEP)
+        print("=" * 60)
+        print("  SESSION  attrs")
+        print("=" * 60)
+        dt = getattr(self.app_state, 'dt', None)
+        session = dt.session if dt is not None else None
+        if session is None:
+            print("  No session table.")
+        else:
+            if session.attrs:
+                for k, v in session.attrs.items():
+                    print(f"  {k}: {v}")
+            else:
+                print("  (no attrs)")
+
+        print(SEP)
+        print("=" * 60)
+        print("  SESSION  data_vars")
+        print("=" * 60)
+        if session is None:
+            print("  No session table.")
+        else:
+            groups: dict[str, list[str]] = defaultdict(list)
+            for name, var in session.data_vars.items():
+                key = var.dims[0] if var.dims else "(scalar)"
+                groups[key].append(name)
+            for dim, names in groups.items():
+                print(f"\n  -- dim: {dim} --")
+                for name in names:
+                    print(f"\n  [{name}]")
+                    print(session[name].values)
+
+        print(SEP)
+        print("=" * 60)
+        print("  TRIAL ALIGNMENT")
+        print("=" * 60)
+        alignment = getattr(self.app_state, 'trial_alignment', None)
+        if alignment is None:
+            print("  No trial alignment available.")
+        else:
+            print(alignment.summary())
+
     def _step_time(self, direction: int):
         if not self.app_state.ready:
             return
@@ -510,10 +610,15 @@ class NavigationWidget(QWidget):
         new_time = max(slider._t_min, min(new_time, slider._t_max))
         slider.set_slider_time(new_time)
         self.plot_container.update_time_marker_by_time(new_time)
+        center = getattr(self.app_state, 'center_playback', False)
         xlim = self.plot_container.get_current_xlim()
-        if new_time < xlim[0] or new_time > xlim[1]:
+        if center or new_time < xlim[0] or new_time > xlim[1]:
             window_size = self.app_state.get_with_default("window_size")
             half = window_size / 2.0
             master = self.plot_container._xlink_master or self.plot_container._feature_plot
             master.vb.setXRange(new_time - half, new_time + half, padding=0)
+
+    def _on_show_alignment(self):
+        dlg = _DataAlignmentDialog(self.app_state, parent=self)
+        dlg.exec()
 

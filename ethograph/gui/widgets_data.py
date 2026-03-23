@@ -4,6 +4,7 @@ import logging
 import os
 import time as _time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict
 
 import numpy as np
@@ -38,7 +39,7 @@ from qtpy.QtWidgets import (
 
 import ethograph as eto
 from ethograph.utils.label_intervals import dense_to_intervals, get_interval_bounds
-from ethograph.gui.plots_timeseriessource import RegularTimeseriesSource, build_trial_alignment
+from ethograph.gui.plots_timeseriessource import RegularTimeseriesSource, compute_trial_alignment
 
 
 
@@ -49,7 +50,6 @@ from .app_constants import (
     SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
 )
 from .data_loader import load_dataset
-from .data_sources import build_xarray_source
 from .makepretty import (
     ElidedDelegate,
     clean_display_labels,
@@ -505,7 +505,8 @@ class DataWidget(DataLoader, QWidget):
             self.app_state.ephys_stream_sel = display_name
 
         self.app_state.has_audio = bool("mics" in self.type_vars_dict and self.app_state.audio_folder)
-        self.app_state.has_ephys = bool(self.app_state.ephys_path) or bool(nwb_ephys_series and nwb_ephys_path)
+        self.app_state.has_neo = bool(self.app_state.ephys_path) or bool(nwb_ephys_series and nwb_ephys_path)
+        self.app_state.has_kilosort = bool(self.app_state.kilosort_folder)
 
         # Populate ephys_source_map (streams are NOT added to features list)
         if self.app_state.ephys_path:
@@ -516,6 +517,7 @@ class DataWidget(DataLoader, QWidget):
             except Exception as e:
                 self._cancel_load(f"Failed to load ephys features: {e}")
                 return
+            self.app_state.dt.set_media_files(ephys=self.app_state.ephys_path)
 
         downsample_factor = self.io_widget.get_downsample_factor()
         if downsample_factor is not None:
@@ -555,11 +557,12 @@ class DataWidget(DataLoader, QWidget):
         self.app_state.ready = True
 
         self.io_widget.on_load_complete()
+        self.labels_widget.refresh_mapping_for_data_dir(Path(nc_file_path).parent)
         self.changepoints_widget.setEnabled(True)
         self.plot_settings_widget.set_enabled_state()
         if self.transform_widget:
             self.transform_widget.setEnabled(True)
-            if self.app_state.has_audio or self.app_state.has_ephys:
+            if self.app_state.has_audio or self.app_state.has_neo:
                 self.transform_widget.show_envelope_target_combo()
         if self.ephys_widget:
             self.ephys_widget.setEnabled(True)
@@ -694,8 +697,8 @@ class DataWidget(DataLoader, QWidget):
         self._audio_row_widgets = []
 
         has_audio = bool(self.app_state.has_audio)
-        has_neo = bool(self.app_state.ephys_path)
-        has_phy = bool(self.app_state.kilosort_folder)
+        has_neo = bool(self.app_state.has_neo)
+        has_phy = bool(self.app_state.has_kilosort)
 
         initial_checked = {
             "video_viewer": bool(self.app_state.has_video),
@@ -800,7 +803,7 @@ class DataWidget(DataLoader, QWidget):
         if has_neo and self.ephys_widget:
             self._populate_neo_stream_combo()
 
-        if bool(self.app_state.has_ephys) and self.ephys_widget:
+        if has_phy and self.ephys_widget:
             self._neural_view_label.show()
             self.neural_view_combo.show()
             self.ephys_widget.configure_ephys_trace_plot()
@@ -931,19 +934,19 @@ class DataWidget(DataLoader, QWidget):
         if loader is None:
             return
 
+        if self.app_state.dt is not None:
+            self.app_state.dt.set_ephys_stream_id(stream_id)
+
         neo_plot = self.plot_container.neo_trace_plot
         neo_plot.set_loader(loader, channel_idx)
 
-        offset = self.app_state.dt.get_start_time(self.app_state.trials_sel)
-        bounds = self.app_state.trial_bounds
-        if bounds is not None:
-            neo_plot.set_ephys_offset(offset, bounds.duration)
-            neo_plot.set_source(RegularTimeseriesSource("neo", loader, start_time=0.0))
+        neo_plot.set_source(RegularTimeseriesSource("neo", loader, start_time=0.0))
 
         if self.plot_container._neo_visible:
             xmin, xmax = self.plot_container.get_current_xlim()
             neo_plot.update_plot_content(xmin, xmax)
             neo_plot.auto_channel_spacing()
+            neo_plot.auto_gain()
             neo_plot.autoscale()
 
     def cycle_view_mode(self):
@@ -1132,7 +1135,7 @@ class DataWidget(DataLoader, QWidget):
         items = ["LinePlot", "Heatmap"]
         if self.app_state.has_audio:
             items.append("Heatmap (Audio)")
-        if self.app_state.has_ephys:
+        if self.app_state.has_neo:
             items.append("Heatmap (Ephys)")
         self.view_mode_combo.addItems(items)
 
@@ -1531,7 +1534,7 @@ class DataWidget(DataLoader, QWidget):
 
 
     def _build_trial_alignment(self, trial_id) -> None:
-        self.app_state.trial_alignment = build_trial_alignment(
+        self.app_state.trial_alignment = compute_trial_alignment(
             self.app_state.dt,
             trial_id,
             self.app_state.ds,
@@ -1581,7 +1584,7 @@ class DataWidget(DataLoader, QWidget):
         self.app_state.current_frame = 0
         self.update_video()
         self._init_or_update_secondary_video()
-        self.update_audio()  
+        self.update_audio()
         self.update_pose()
         self.update_label()
         if self.ephys_widget:
@@ -1590,6 +1593,7 @@ class DataWidget(DataLoader, QWidget):
         self.update_space_plot()
 
         self.plot_container.update_time_range_from_data()
+        self.plot_container.update_time_marker_by_time(0.0)
 
         if self.labels_widget:
             self.labels_widget._update_human_verified_status()
@@ -1790,9 +1794,7 @@ class DataWidget(DataLoader, QWidget):
                 self.pose_mgr.update_secondary_pose(self.get_hidden_keypoints(), camera_name)
             return
 
-        camera_name = self.video_mgr.init_or_update_secondary_video(secondary_camera_combo)
-        if camera_name and self.pose_mgr is not None:
-            self.pose_mgr.update_secondary_pose(self.get_hidden_keypoints(), camera_name)
+
 
     def update_space_plot(self):
         if not self.app_state.ready:

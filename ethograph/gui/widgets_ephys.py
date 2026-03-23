@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
-import xarray as xr
 from napari.utils.notifications import show_info, show_warning
 from napari.viewer import Viewer
 from scipy.ndimage import gaussian_filter1d
-from qtpy.QtCore import Qt, QRectF, QSortFilterProxyModel
+from qtpy.QtCore import Qt, QRect, QRectF, QSortFilterProxyModel, Signal
 from qtpy.QtGui import QBrush, QColor, QPen, QStandardItem, QStandardItemModel
 from qtpy.QtWidgets import (
     QAbstractItemView,
@@ -30,6 +30,7 @@ from qtpy.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QSplitter,
+    QStyledItemDelegate,
     QTableView,
     QTableWidget,
     QTableWidgetItem,
@@ -37,12 +38,11 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-import ethograph as eto
 from ethograph.features.neural import build_tsgroup, compute_pca, firing_rate_to_xarray
 
 from .app_constants import CLUSTER_TABLE_MAX_HEIGHT, CLUSTER_TABLE_ROW_HEIGHT
-from .makepretty import find_combo_index, get_combo_value, set_combo_to_value, styled_link
-from .plots_ephystrace import get_loader as get_ephys_loader
+from .makepretty import find_combo_index, get_combo_value, set_combo_to_value
+from .plots_ephystrace import GenericEphysLoader, get_loader as get_ephys_loader
 from .plots_timeseriessource import RegularTimeseriesSource
 
 _CLUSTER_COLORS = [
@@ -438,23 +438,31 @@ def _write_params_py(folder: Path, params: dict):
 
 
 _SORT_ROLE = Qt.UserRole + 1
-_ALL_FILTER = "All"
+_COLOR_ROLE = Qt.UserRole + 2
 
 
 class _MultiColumnFilterProxy(QSortFilterProxyModel):
-    """Proxy that filters rows by exact match on multiple columns independently."""
+    """Proxy that filters rows by categorical or numeric criteria on multiple columns."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._col_filters: dict[int, str] = {}
+        self._cat_filters: dict[int, set[str]] = {}
+        self._num_filters: dict[int, tuple[str, float]] = {}
         self._visible_channels: set[int] | None = None
         self._ch_col: int | None = None
 
-    def set_column_filter(self, col: int, value: str):
-        if value == _ALL_FILTER or not value:
-            self._col_filters.pop(col, None)
+    def set_cat_filter(self, col: int, allowed: set[str]):
+        if not allowed:
+            self._cat_filters.pop(col, None)
         else:
-            self._col_filters[col] = value
+            self._cat_filters[col] = allowed
+        self.invalidateFilter()
+
+    def set_numeric_filter(self, col: int, op: str | None, value: float | None):
+        if op is None or value is None:
+            self._num_filters.pop(col, None)
+        else:
+            self._num_filters[col] = (op, value)
         self.invalidateFilter()
 
     def set_visible_channel_filter(self, channels: set[int] | None, ch_col: int | None):
@@ -464,11 +472,23 @@ class _MultiColumnFilterProxy(QSortFilterProxyModel):
 
     def filterAcceptsRow(self, source_row: int, source_parent):
         model = self.sourceModel()
-        for col, value in self._col_filters.items():
+        for col, allowed in self._cat_filters.items():
             item = model.item(source_row, col)
             if item is None:
                 return False
-            if item.text() != value:
+            if item.text() not in allowed:
+                return False
+        for col, (op, threshold) in self._num_filters.items():
+            item = model.item(source_row, col)
+            if item is None:
+                return False
+            try:
+                val = float(item.data(_SORT_ROLE))
+            except (ValueError, TypeError):
+                return False
+            if op == ">=" and val < threshold:
+                return False
+            if op == "<=" and val > threshold:
                 return False
         if self._visible_channels is not None and self._ch_col is not None:
             item = model.item(source_row, self._ch_col)
@@ -488,6 +508,190 @@ class _MultiColumnFilterProxy(QSortFilterProxyModel):
         if left_val is not None and right_val is not None:
             return float(left_val) < float(right_val)
         return super().lessThan(left, right)
+
+
+class _CatFilterDialog(QDialog):
+    """Checkbox popup for categorical column filtering."""
+
+    def __init__(self, col: int, all_values: list[str], active: set[str], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Filter")
+        self._col = col
+        layout = QVBoxLayout(self)
+        layout.setSpacing(2)
+        layout.setContentsMargins(8, 8, 8, 8)
+        self._all_cb = QCheckBox("(All)")
+        self._all_cb.setChecked(not active)
+        layout.addWidget(self._all_cb)
+        self._checks: list[tuple[str, QCheckBox]] = []
+        for val in sorted(all_values):
+            cb = QCheckBox(val)
+            cb.setChecked(not active or val in active)
+            layout.addWidget(cb)
+            self._checks.append((val, cb))
+        self._all_cb.toggled.connect(self._on_all)
+        for _, cb in self._checks:
+            cb.toggled.connect(self._on_item)
+        btn = QPushButton("OK")
+        btn.clicked.connect(self.accept)
+        layout.addWidget(btn)
+
+    def _on_all(self, checked: bool):
+        for _, cb in self._checks:
+            cb.blockSignals(True)
+            cb.setChecked(checked)
+            cb.blockSignals(False)
+
+    def _on_item(self, _):
+        self._all_cb.blockSignals(True)
+        self._all_cb.setChecked(all(cb.isChecked() for _, cb in self._checks))
+        self._all_cb.blockSignals(False)
+
+    def get_allowed(self) -> set[str]:
+        checked = {v for v, cb in self._checks if cb.isChecked()}
+        return set() if checked == {v for v, _ in self._checks} else checked
+
+
+class _NumFilterDialog(QDialog):
+    """Threshold filter dialog for numeric columns."""
+
+    def __init__(self, col: int, current: tuple[str, float] | None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Filter")
+        self._col = col
+        self._cleared = False
+        layout = QVBoxLayout(self)
+        layout.setSpacing(6)
+        layout.setContentsMargins(8, 8, 8, 8)
+        op_row = QHBoxLayout()
+        self._op_combo = QComboBox()
+        self._op_combo.addItems(["\u2265", "\u2264"])
+        op_row.addWidget(self._op_combo)
+        self._spin = QDoubleSpinBox()
+        self._spin.setRange(-1e9, 1e9)
+        self._spin.setDecimals(3)
+        op_row.addWidget(self._spin)
+        layout.addLayout(op_row)
+        if current:
+            op, val = current
+            self._op_combo.setCurrentText("\u2265" if op == ">=" else "\u2264")
+            self._spin.setValue(val)
+        btn_row = QHBoxLayout()
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(self.accept)
+        clear_btn = QPushButton("Remove filter")
+        clear_btn.clicked.connect(self._clear)
+        btn_row.addWidget(ok_btn)
+        btn_row.addWidget(clear_btn)
+        layout.addLayout(btn_row)
+
+    def _clear(self):
+        self._cleared = True
+        self.accept()
+
+    def get_filter(self) -> tuple[str, float] | None:
+        if self._cleared:
+            return None
+        return (">=" if self._op_combo.currentText() == "\u2265" else "<=", self._spin.value())
+
+
+class _FilterHeaderView(QHeaderView):
+    """Column header that draws filter icons for filterable columns.
+
+    A dedicated zone of width _FILTER_ZONE_W is reserved on the right side of
+    each filterable column.  Clicking anywhere in that zone triggers the filter
+    dialog; clicking elsewhere triggers the normal sort.
+    """
+
+    filter_requested = Signal(int)
+    _FILTER_ZONE_W = 20  # px reserved on the right of filterable columns
+
+    def __init__(self, cat_cols: set[int], num_cols: set[int], parent=None):
+        super().__init__(Qt.Horizontal, parent)
+        self._cat_cols = cat_cols
+        self._num_cols = num_cols
+        self._active: set[int] = set()
+        self.setSectionsClickable(True)
+
+    def set_filterable(self, cat_cols: set[int], num_cols: set[int]):
+        self._cat_cols = cat_cols
+        self._num_cols = num_cols
+        self.viewport().update()
+
+    def set_active_filters(self, active: set[int]):
+        self._active = active
+        self.viewport().update()
+
+    @property
+    def _all_filterable(self) -> set[int]:
+        return self._cat_cols | self._num_cols
+
+    def _filter_zone_x(self, logical: int) -> int:
+        """Left edge of the filter zone for *logical* column."""
+        return self.sectionViewportPosition(logical) + self.sectionSize(logical) - self._FILTER_ZONE_W
+
+    def _icon_rect(self, logical: int) -> QRect:
+        s = 11
+        zone_x = self._filter_zone_x(logical)
+        h = self.height()
+        x = zone_x + (self._FILTER_ZONE_W - s) // 2
+        return QRect(x, (h - s) // 2, s, s)
+
+    def paintSection(self, painter, rect, logical):
+        painter.save()
+        super().paintSection(painter, rect, logical)
+        painter.restore()
+        if logical not in self._all_filterable:
+            return
+        # Subtle separator at the start of the filter zone
+        zone_x = self._filter_zone_x(logical)
+        painter.save()
+        painter.setPen(QPen(QColor(120, 120, 120, 80), 1))
+        painter.drawLine(zone_x, rect.top() + 3, zone_x, rect.bottom() - 3)
+        painter.restore()
+        # Filter icon (funnel) centred in the zone
+        ir = self._icon_rect(logical)
+        x, y, s = ir.x(), ir.y(), ir.width()
+        color = QColor(255, 215, 0) if logical in self._active else QColor(180, 180, 180)
+        painter.save()
+        painter.setPen(QPen(color, 1.5))
+        painter.drawLine(x, y, x + s, y)
+        painter.drawLine(x + 2, y + 4, x + s - 2, y + 4)
+        painter.drawLine(x + 4, y + 8, x + s - 4, y + 8)
+        painter.restore()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            logical = self.logicalIndexAt(event.pos())
+            if logical in self._all_filterable:
+                if event.pos().x() >= self._filter_zone_x(logical):
+                    self.filter_requested.emit(logical)
+                    return
+        super().mousePressEvent(event)
+
+
+class _ClusterIdDelegate(QStyledItemDelegate):
+    """Paints cluster_id cells with a solid background color stored in _COLOR_ROLE.
+
+    This bypasses the QSS `QTableView::item` rules that would otherwise ignore
+    the model's BackgroundRole.
+    """
+
+    def paint(self, painter, option, index):
+        color: QColor | None = index.data(_COLOR_ROLE)
+        if color is not None:
+            painter.save()
+            painter.fillRect(option.rect, QBrush(color))
+            if option.state & 0x0002:  # QStyle.State_Selected
+                painter.fillRect(option.rect, QBrush(QColor(255, 255, 255, 50)))
+            r, g, b = color.red(), color.green(), color.blue()
+            text_color = QColor(0, 0, 0) if (r * 0.299 + g * 0.587 + b * 0.114) > 150 else QColor(255, 255, 255)
+            painter.setPen(text_color)
+            text = str(index.data(Qt.DisplayRole) or "")
+            painter.drawText(option.rect.adjusted(4, 0, -2, 0), Qt.AlignVCenter | Qt.AlignLeft, text)
+            painter.restore()
+        else:
+            super().paint(painter, option, index)
 
 
 class EphysWidget(QWidget):
@@ -647,50 +851,39 @@ class EphysWidget(QWidget):
         probe_row_layout.addWidget(QLabel("N closest:"))
         self.n_closest_spin = QSpinBox()
         self.n_closest_spin.setRange(1, 384)
-        self.n_closest_spin.setValue(12)
-        self.n_closest_spin.setToolTip("Number of spatially closest channels for waveform display")
+        self.n_closest_spin.setValue(5)
+        self.n_closest_spin.setToolTip("Number of spatially closest channels for waveform display. Only works for non split/merged clusters.")
+        self.n_closest_spin.valueChanged.connect(self._update_highlight_label)
         probe_row_layout.addWidget(self.n_closest_spin)
         probe_row_layout.addStretch()
 
         self._probe_row.hide()
         group_layout.addWidget(self._probe_row)
 
-        # Filter + Show all good neurons row
-        _good_row = QHBoxLayout()
-        _good_row.setContentsMargins(0, 0, 0, 0)
-        _good_row.setSpacing(4)
+        _sel_row = QHBoxLayout()
+        _sel_row.setSpacing(4)
+        _sel_row.setContentsMargins(0, 0, 0, 0)
 
-        self._filter_visible_cb = QCheckBox("Filter to visible")
-        self._filter_visible_cb.setToolTip("Only show clusters whose best channel is currently visible in the ephys trace")
-        self._filter_visible_cb.toggled.connect(self._on_filter_visible_toggled)
-        _good_row.addWidget(self._filter_visible_cb)
+        self._highlight_label = QLabel()
+        self._update_highlight_label()
+        _sel_row.addWidget(self._highlight_label)
 
-        self._show_all_good_btn = QPushButton("Show all good neurons")
-        self._show_all_good_btn.setToolTip("Overlay spikes from all 'good' clusters with distinct colors")
-        self._show_all_good_btn.setCheckable(True)
-        self._show_all_good_btn.clicked.connect(self._toggle_show_all_good)
-        _good_row.addWidget(self._show_all_good_btn)
 
-        group_layout.addLayout(_good_row)
+        self._select_visible_btn = QPushButton("All visible rows")
+        self._select_visible_btn.setToolTip(
+            "Highlight all rows currently visible after filtering, then disable auto-highlight"
+        )
+        self._select_visible_btn.clicked.connect(self._select_clusters_all_visible)
+        _sel_row.addWidget(self._select_visible_btn)
+
+        self._unselect_btn = QPushButton("Unselect")
+        self._unselect_btn.setToolTip("Clear spike overlays and table selection")
+        self._unselect_btn.clicked.connect(self._unselect_clusters)
+        _sel_row.addWidget(self._unselect_btn)
+
+        group_layout.addLayout(_sel_row)
 
         self._multi_cluster_colors: dict[int, tuple] = {}
-
-        # Cluster table with filters
-        self._filter_row = QWidget()
-        self._filter_layout = QHBoxLayout()
-        self._filter_layout.setContentsMargins(0, 0, 0, 0)
-        self._filter_layout.setSpacing(2)
-        self._filter_row.setLayout(self._filter_layout)
-        self._filter_combos: list[QComboBox] = []
-        self._filter_row.hide()
-        layout.addWidget(self._filter_row)
-
-        ref_label_phy = QLabel(styled_link(
-            "https://phy.readthedocs.io/en/latest/",
-            "TraceView from Phy",
-        ))
-        ref_label_phy.setOpenExternalLinks(True)
-        layout.addWidget(ref_label_phy)
 
         self._cluster_model = QStandardItemModel()
         self._cluster_proxy = _MultiColumnFilterProxy()
@@ -707,17 +900,37 @@ class EphysWidget(QWidget):
         self.cluster_table.verticalHeader().setDefaultSectionSize(CLUSTER_TABLE_ROW_HEIGHT)
         self.cluster_table.setMaximumHeight(CLUSTER_TABLE_MAX_HEIGHT)
 
-        header = self.cluster_table.horizontalHeader()
-        header.setDefaultSectionSize(40)
-        header.setMinimumSectionSize(20)
-        header.setSectionResizeMode(QHeaderView.ResizeToContents)
-        header.setStretchLastSection(True)
+        self._filter_col_cats: dict[int, list[str]] = {}
+        self._filter_cat_active: dict[int, set[str]] = {}
+        self._filter_num_active: dict[int, tuple[str, float]] = {}
+        self._filter_cat_cols: set[int] = set()
+        self._filter_num_cols: set[int] = set()
+
+        self._cluster_id_delegate = _ClusterIdDelegate(self.cluster_table)
+
+        self._filter_header = _FilterHeaderView(set(), set())
+        self._filter_header.setDefaultSectionSize(40)
+        self._filter_header.setMinimumSectionSize(20)
+        self._filter_header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        self._filter_header.setStretchLastSection(False)
+        self._filter_header.filter_requested.connect(self._on_filter_header_clicked)
+        self.cluster_table.setHorizontalHeader(self._filter_header)
+        self.cluster_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
         self.cluster_table.setStyleSheet("""
-            QTableView { gridline-color: transparent; background: #f5f5f5; color: #222; }
-            QTableView::item { padding: 0px 2px; background: #f5f5f5; color: #222; }
-            QTableView::item:selected { background: #a7c7e7; color: #222; }
-            QHeaderView::section { padding: 0px 2px; background: #e0e0e0; color: #222; }
+            QTableView { gridline-color: transparent; background: #444; color: #fff; }
+            QTableView::item { padding: 0px 2px; color: #fff; }
+            QTableView::item:selected { background: #3a5070; color: #fff; }
+            QHeaderView::section {
+                padding: 2px 4px;
+                background: #888;
+                color: #fff;
+                border: none;
+                border-right: 1px solid #666;
+                font-family: sans-serif;
+                font-size: 11px;
+            }
+            QHeaderView::section:last { border-right: none; }
         """)
         self.cluster_table.selectionModel().selectionChanged.connect(self._on_cluster_row_selected)
         layout.addWidget(self.cluster_table)
@@ -745,10 +958,6 @@ class EphysWidget(QWidget):
         if not ephys_path:
             return None, 0
 
-        alignment = getattr(self.app_state, 'trial_alignment', None)
-        if alignment and "ephys" in alignment.continuous:
-            return alignment.continuous["ephys"]._loader, channel_idx
-
         if (
             self._kilosort_params
             and Path(ephys_path).suffix.lower() in {".dat", ".bin", ".raw"}
@@ -772,14 +981,6 @@ class EphysWidget(QWidget):
         if loader is None:
             return
 
-        trial = getattr(self.app_state, 'trials_sel', None)
-        if not trial:
-            trial = self.app_state.trials[0] if hasattr(self.app_state, 'trials') and self.app_state.trials else None
-        offset = self.app_state.dt.get_start_time(trial)
-        bounds = self.app_state.trial_bounds
-        if bounds is None:
-            return
-        self.plot_container.ephys_trace_plot.set_ephys_offset(offset, bounds.duration)
         self.plot_container.ephys_trace_plot.set_loader(loader, channel_idx)
         ephys_source = RegularTimeseriesSource("ephys", loader, start_time=0.0)
         self.plot_container.ephys_trace_plot.set_source(ephys_source)
@@ -889,9 +1090,11 @@ class EphysWidget(QWidget):
             self._custom_channel_set = None
             if self.plot_container and self.plot_container.is_ephystrace():
                 self.plot_container.ephys_trace_plot.set_custom_channel_set(None)
+            self._apply_probe_channel_filter()
             return
 
         self._custom_channel_set = hw_channels
+        self._apply_probe_channel_filter()
 
         if self.data_widget and hasattr(self.data_widget, 'neural_view_combo'):
             if self.data_widget.neural_view_combo.currentText() != "Multi Trace":
@@ -1030,14 +1233,10 @@ class EphysWidget(QWidget):
         self._kilosort_params = ks_params
 
         cluster_info_path = folder / "cluster_info.tsv"
-        cluster_group_path = folder / "cluster_group.tsv"
         if cluster_info_path.exists():
             self._cluster_df = self._load_file(cluster_info_path, pd.read_csv, sep='\t')
-        elif cluster_group_path.exists():
-            self._cluster_df = self._load_file(cluster_group_path, pd.read_csv, sep='\t')
-            show_info("Using cluster_group.tsv (cluster_info.tsv not found)")
         else:
-            show_warning("No cluster_info.tsv or cluster_group.tsv found — cluster table will be empty.")
+            show_warning("No cluster_info.tsv found — cluster table will be empty.")
             self._cluster_df = None
 
 
@@ -1065,7 +1264,7 @@ class EphysWidget(QWidget):
         if self._spike_times is not None and self._spike_clusters is not None:
             self._register_kilosort_features()
             self._populate_raster_all_spikes()
-
+ 
         # Show Phy-Viewer checkbox and update Neo stream greying
         if self.data_widget:
             phy_cb = getattr(self.data_widget, 'phy_viewer_checkbox', None)
@@ -1085,9 +1284,10 @@ class EphysWidget(QWidget):
         if sr is None or sr <= 0:
             return
 
-        ephys_offset = ephys_plot._ephys_offset
-        trial_duration = ephys_plot._trial_duration
-        trial_end = ephys_offset + trial_duration if trial_duration else np.inf
+        alignment = self.app_state.trial_alignment
+        ephys_offset = alignment.ephys_offset if alignment is not None else 0.0
+        trial_bounds = self.app_state.trial_bounds
+        trial_end = ephys_offset + trial_bounds.duration if trial_bounds is not None else np.inf
 
         spike_times_s = self._spike_times.astype(np.float64) / sr
         in_trial = (spike_times_s >= ephys_offset) & (spike_times_s < trial_end)
@@ -1206,11 +1406,11 @@ class EphysWidget(QWidget):
             self.app_state.ephys_source_map[display_name] = (str(dat_path), "0", 0)
             self.app_state.ephys_stream_sel = display_name
 
-        self.app_state.has_ephys = True
+        self.app_state.has_neo = True
+        self.app_state.has_kilosort = True
         show_info(f"Phy viewer: {dat_path.name} ({n_channels} ch, {sr:.0f} Hz)")
 
     def _get_hardware_label(self) -> str:
-        from .plots_ephystrace import GenericEphysLoader
         ephys_path, stream_id, _ = self.app_state.get_ephys_source()
         if not ephys_path:
             return "Hardware"
@@ -1242,98 +1442,208 @@ class EphysWidget(QWidget):
             item.setData(user_data, Qt.UserRole)
         return item
 
-    def _populate_cluster_table(self, df: pd.DataFrame):
-        display_cols = ["cluster_id", "ch", "group", "fr", "Amplitude", "n_spikes"]
-        numeric_cols = {"cluster_id", "ch", "fr", "Amplitude", "n_spikes"}
-        available_cols = [c for c in display_cols if c in df.columns]
+    @staticmethod
+    def _format_value(value) -> tuple[str, float | None]:
+        """Return (display_text, numeric_sort_value_or_None).
 
-        has_ch = "ch" in available_cols
+        Integers display without decimals; floats display with 3 d.p.
+        Non-numeric values return (str, None).
+        """
+        if pd.isna(value):
+            return "", None
+        try:
+            fval = float(value)
+            if fval == int(fval):
+                return str(int(fval)), fval
+            return f"{fval:.3f}", fval
+        except (ValueError, TypeError):
+            return str(value), None
+
+    def get_spike_times(self, cluster_id: int) -> np.ndarray:
+        """Spike times in seconds for *cluster_id*, sorted ascending."""
+        if self._spike_times is None or self._spike_clusters is None or self._kilosort_sr is None:
+            return np.array([], dtype=np.float64)
+        mask = self._spike_clusters == cluster_id
+        return np.sort(self._spike_times[mask].astype(np.float64) / float(self._kilosort_sr))
+
+    def _compute_isi_per_cluster(self) -> dict[int, float]:
+        """Mean ISI in ms for each cluster."""
+        if self._spike_times is None or self._spike_clusters is None or self._kilosort_sr is None:
+            return {}
+        isi_map: dict[int, float] = {}
+        for cid in np.unique(self._spike_clusters):
+            st = self.get_spike_times(int(cid))
+            intervals = np.diff(st)
+            isi_map[int(cid)] = float(np.mean(intervals) * 1000.0) if len(intervals) > 0 else np.nan
+        return isi_map
+
+    def _populate_cluster_table(self, df: pd.DataFrame):
+        _PRIORITY = ["cluster_id", "ch", "sh", "KSLabel", "group", "fr", "Amplitude", "n_spikes"]
+        _EXCLUDE = {"amp", "id_orig", "group_order"} | {c for c in df.columns if c.startswith("Unnamed")}
+
+        ordered_cols = [c for c in _PRIORITY if c in df.columns]
+        extra_cols = [c for c in df.columns if c not in set(_PRIORITY) and c not in _EXCLUDE]
+        ordered_cols.extend(extra_cols)
+
+        # Insert ISI column after n_spikes (or after last priority col)
+        isi_map = self._compute_isi_per_cluster()
+        if isi_map:
+            insert_at = ordered_cols.index("n_spikes") + 1 if "n_spikes" in ordered_cols else len(ordered_cols)
+            ordered_cols.insert(insert_at, "ISI (ms)")
+
+        has_ch = "ch" in ordered_cols
         hw_names = self.get_hw_names(self._channel_map) if has_ch else None
         has_distinct_hw = hw_names is not None and any(
             name != f"Ch {hw}" for hw, name in hw_names.items()
         )
-        if has_ch and has_distinct_hw:
-            hw_label = self._get_hardware_label()
-            ch_idx = available_cols.index("ch")
-            available_cols[ch_idx] = "ch (KS)"
-            available_cols.insert(ch_idx + 1, f"ch ({hw_label})")
+        hw_label = self._get_hardware_label() if has_distinct_hw else ""
+
+        # Build header labels (group → Human, KSLabel → KS, cluster_id → id, ch → ch(KS) + ch(hw))
+        # Trailing space creates a small gap between text and the filter-zone separator.
+        header_labels: list[str] = []
+        for col in ordered_cols:
+            if col == "group":
+                header_labels.append("Human  ")
+            elif col == "KSLabel":
+                header_labels.append("KS  ")
+            elif col == "cluster_id":
+                header_labels.append("id  ")
+            elif col == "ch" and has_distinct_hw:
+                header_labels.append("ch (KS)  ")
+                header_labels.append(f"ch ({hw_label})  ")
+            else:
+                header_labels.append(col + "  ")
 
         self.cluster_table.setSortingEnabled(False)
         model = self._cluster_model
         model.clear()
-        model.setHorizontalHeaderLabels(available_cols)
+        model.setHorizontalHeaderLabels(header_labels)
 
-        for row_idx in range(len(df)):
+        for _, row in df.iterrows():
+            cluster_id = int(row["cluster_id"]) if "cluster_id" in row.index and pd.notna(row["cluster_id"]) else None
             row_items: list[QStandardItem] = []
-            for col_name in display_cols:
-                if col_name not in df.columns:
-                    continue
-                value = df.iloc[row_idx][col_name]
-
-                if col_name == "ch" and has_ch and has_distinct_hw:
+            for col in ordered_cols:
+                if col == "ISI (ms)":
+                    isi_val = isi_map.get(cluster_id, np.nan) if cluster_id is not None else np.nan
+                    if pd.isna(isi_val):
+                        row_items.append(self._make_item(""))
+                    else:
+                        text, sv = self._format_value(isi_val)
+                        row_items.append(self._make_item(text, sv))
+                elif col == "ch" and has_distinct_hw:
+                    value = row[col]
                     ks_ch = int(value) if pd.notna(value) else 0
                     hw_name = hw_names.get(ks_ch) if hw_names else None
                     hw_display = hw_name if hw_name else str(ks_ch)
-
                     row_items.append(self._make_item(str(ks_ch), float(ks_ch)))
                     row_items.append(self._make_item(hw_display, float(ks_ch), user_data=ks_ch))
-                elif col_name in numeric_cols and pd.notna(value):
-                    display = f"{float(value):.2f}" if col_name == "fr" else str(int(value))
-                    row_items.append(self._make_item(display, float(value)))
-                elif pd.isna(value):
-                    row_items.append(self._make_item(""))
                 else:
-                    row_items.append(self._make_item(str(value)))
+                    value = row[col] if col in row.index else None
+                    text, sv = self._format_value(value)
+                    row_items.append(self._make_item(text, sv))
             model.appendRow(row_items)
 
         self.cluster_table.setSortingEnabled(True)
-        self._build_filter_combos(available_cols)
+        self._setup_filter_header(header_labels)
+        self._apply_default_human_label_filter(header_labels)
+        stripped = [h.strip() for h in header_labels]
+        cid_view_col = stripped.index("id") if "id" in stripped else None
+        if cid_view_col is not None:
+            self.cluster_table.setItemDelegateForColumn(cid_view_col, self._cluster_id_delegate)
 
-    def _build_filter_combos(self, col_names: list[str]):
-        for combo in self._filter_combos:
-            combo.setParent(None)
-            combo.deleteLater()
-        self._filter_combos.clear()
-        self._cluster_proxy.set_column_filter(-1, "")
-
-        filterable = {"KSLabel", "group"}
+    def _setup_filter_header(self, col_names: list[str]):
+        # ch/sh/id are always categorical even though they hold integers
+        _force_cat = {"ch", "sh", "id"}
         model = self._cluster_model
+        cat_cols: set[int] = set()
+        num_cols: set[int] = set()
+        self._filter_col_cats.clear()
 
         for col_idx, col_name in enumerate(col_names):
-            if col_name not in filterable:
-                spacer = QComboBox()
-                spacer.setVisible(False)
-                spacer.setFixedWidth(0)
-                self._filter_layout.addWidget(spacer)
-                self._filter_combos.append(spacer)
-                continue
+            name = col_name.strip()
+            force_cat = name in _force_cat or name.startswith("ch (")
+            if force_cat:
+                unique_vals: list[str] = []
+                for row in range(model.rowCount()):
+                    item = model.item(row, col_idx)
+                    if item and item.text() and item.text() not in unique_vals:
+                        unique_vals.append(item.text())
+                self._filter_col_cats[col_idx] = sorted(unique_vals)
+                cat_cols.add(col_idx)
+            else:
+                # Check whether the column has numeric sort values
+                is_numeric = any(
+                    model.item(row, col_idx) is not None
+                    and model.item(row, col_idx).data(_SORT_ROLE) is not None
+                    for row in range(model.rowCount())
+                )
+                if is_numeric:
+                    num_cols.add(col_idx)
+                else:
+                    unique_vals = []
+                    for row in range(model.rowCount()):
+                        item = model.item(row, col_idx)
+                        if item and item.text() and item.text() not in unique_vals:
+                            unique_vals.append(item.text())
+                    self._filter_col_cats[col_idx] = sorted(unique_vals)
+                    cat_cols.add(col_idx)
 
-            unique_vals = set()
-            for row in range(model.rowCount()):
-                item = model.item(row, col_idx)
-                if item and item.text():
-                    unique_vals.add(item.text())
+        self._filter_cat_cols = cat_cols
+        self._filter_num_cols = num_cols
+        self._filter_header.set_filterable(cat_cols, num_cols)
+        self._update_header_active_filters()
 
-            combo = QComboBox()
-            combo.addItem(_ALL_FILTER)
-            combo.addItems(sorted(unique_vals))
-            combo.setToolTip(f"Filter by {col_name}")
-            combo.setProperty("filter_col", col_idx)
-            combo.currentTextChanged.connect(self._on_filter_changed)
-            self._filter_layout.addWidget(combo)
-            self._filter_combos.append(combo)
-
-        has_visible = any(c.isVisible() for c in self._filter_combos)
-        self._filter_row.setVisible(has_visible)
-
-    def _on_filter_changed(self, value: str):
-        combo = self.sender()
-        if combo is None:
+    def _apply_default_human_label_filter(self, col_names: list[str]):
+        stripped = [h.strip() for h in col_names]
+        if "Human" not in stripped:
             return
-        col = combo.property("filter_col")
-        if col is None:
+        col_idx = stripped.index("Human")
+        if col_idx not in self._filter_cat_cols:
             return
-        self._cluster_proxy.set_column_filter(int(col), value)
+        vals = self._filter_col_cats.get(col_idx, [])
+        if not any(v for v in vals):
+            return
+        if "good" in vals:
+            allowed = {"good"}
+            self._filter_cat_active[col_idx] = allowed
+            self._cluster_proxy.set_cat_filter(col_idx, allowed)
+            self._update_header_active_filters()
+
+    def _on_filter_header_clicked(self, logical_col: int):
+        header_item = self._cluster_model.horizontalHeaderItem(logical_col)
+        col_name = (header_item.text() if header_item else "").strip()
+        if col_name in {"ch", "ch (KS)"} or (col_name.startswith("ch (") and not col_name.startswith("ch (KS")):
+            self._open_probe_channel_dialog()
+            return
+        if logical_col in self._filter_cat_cols:
+            values = self._filter_col_cats.get(logical_col, [])
+            active = self._filter_cat_active.get(logical_col, set())
+            dialog = _CatFilterDialog(logical_col, values, active, self)
+            if dialog.exec_() == QDialog.Accepted:
+                allowed = dialog.get_allowed()
+                if allowed:
+                    self._filter_cat_active[logical_col] = allowed
+                else:
+                    self._filter_cat_active.pop(logical_col, None)
+                self._cluster_proxy.set_cat_filter(logical_col, allowed)
+                self._update_header_active_filters()
+        elif logical_col in self._filter_num_cols:
+            current = self._filter_num_active.get(logical_col)
+            dialog = _NumFilterDialog(logical_col, current, self)
+            if dialog.exec_() == QDialog.Accepted:
+                f = dialog.get_filter()
+                if f is None:
+                    self._filter_num_active.pop(logical_col, None)
+                    self._cluster_proxy.set_numeric_filter(logical_col, None, None)
+                else:
+                    op, val = f
+                    self._filter_num_active[logical_col] = f
+                    self._cluster_proxy.set_numeric_filter(logical_col, op, val)
+                self._update_header_active_filters()
+
+    def _update_header_active_filters(self):
+        active = set(self._filter_cat_active.keys()) | set(self._filter_num_active.keys())
+        self._filter_header.set_active_filters(active)
 
     def _find_col_by_header(self, prefix: str, exact: str | None = None) -> int | None:
         model = self._cluster_model
@@ -1341,7 +1651,7 @@ class EphysWidget(QWidget):
             h = model.horizontalHeaderItem(col)
             if h is None:
                 continue
-            text = h.text()
+            text = h.text().strip()
             if exact is not None and text == exact:
                 return col
             if exact is None and text.startswith(prefix) and text != "ch (KS)":
@@ -1360,7 +1670,7 @@ class EphysWidget(QWidget):
 
         hw_col_idx = self._find_col_by_header("ch (")
         ch_col_idx = hw_col_idx or self._find_col_by_header("", exact="ch")
-        cluster_id_col_idx = self._find_col_by_header("", exact="cluster_id")
+        cluster_id_col_idx = self._find_col_by_header("", exact="id")
 
         # Navigate ephys channel to first selected row
         first_row = indexes[0].row()
@@ -1380,9 +1690,9 @@ class EphysWidget(QWidget):
             return
 
         if len(indexes) == 1:
-            self._on_single_cluster_selected(first_row, cluster_id_col_idx, hw_col_idx)
+            self._on_single_cluster_selected(first_row, cluster_id_col_idx, ch_col_idx)
         else:
-            self._on_multi_cluster_selected(indexes, cluster_id_col_idx, hw_col_idx)
+            self._on_multi_cluster_selected(indexes, cluster_id_col_idx, ch_col_idx)
 
     def _on_single_cluster_selected(self, proxy_row: int, cid_col: int, hw_col_idx: int | None):
         cid_item = self._source_item(proxy_row, cid_col)
@@ -1393,8 +1703,8 @@ class EphysWidget(QWidget):
         except (ValueError, TypeError):
             return
 
-        self._show_all_good_btn.setChecked(False)
         self._multi_cluster_colors.clear()
+        self._multi_cluster_colors[cluster_id] = _CLUSTER_COLORS[0]
         self._apply_cluster_colors_to_table()
 
         ks_ch = self._get_ks_channel_for_row(proxy_row, hw_col_idx)
@@ -1403,7 +1713,6 @@ class EphysWidget(QWidget):
         self._sync_cluster_id_to_combo(cluster_id)
 
     def _on_multi_cluster_selected(self, indexes, cid_col: int, hw_col_idx: int | None):
-        self._show_all_good_btn.setChecked(False)
         if not self.plot_container or not self.plot_container.is_ephystrace():
             return
         ephys_plot = self.plot_container.ephys_trace_plot
@@ -1411,9 +1720,10 @@ class EphysWidget(QWidget):
         if sr is None or sr <= 0:
             return
 
-        ephys_offset = ephys_plot._ephys_offset
-        trial_duration = ephys_plot._trial_duration
-        trial_end = ephys_offset + trial_duration if trial_duration else np.inf
+        alignment = self.app_state.trial_alignment
+        ephys_offset = alignment.ephys_offset if alignment is not None else 0.0
+        trial_bounds = self.app_state.trial_bounds
+        trial_end = ephys_offset + trial_bounds.duration if trial_bounds is not None else np.inf
 
         self._multi_cluster_colors.clear()
         cluster_entries = []
@@ -1460,102 +1770,39 @@ class EphysWidget(QWidget):
         raster.set_multi_cluster_spike_data(raster_entries)
 
 
-    def _on_filter_visible_toggled(self, checked: bool):
-        if checked:
-            self._apply_visible_channel_filter()
-        else:
-            self._cluster_proxy.set_visible_channel_filter(None, None)
-
     def _on_visible_channels_changed(self, _first: int, _last: int):
-        if self._filter_visible_cb.isChecked():
-            self._apply_visible_channel_filter()
+        pass
 
-    def _apply_visible_channel_filter(self):
-        if not self.plot_container or not self.plot_container.is_ephystrace():
-            self._cluster_proxy.set_visible_channel_filter(None, None)
-            return
-        ephys_plot = self.plot_container.ephys_trace_plot
-        visible_hw = ephys_plot._last_visible_hw
+    def _apply_probe_channel_filter(self):
         ch_col = (
             self._find_col_by_header("", exact="ch")
             or self._find_col_by_header("", exact="ch (KS)")
         )
-        self._cluster_proxy.set_visible_channel_filter(visible_hw, ch_col)
-
-    def _toggle_show_all_good(self):
-        if self._show_all_good_btn.isChecked():
-            self._show_all_good_neurons()
+        if self._custom_channel_set is not None and ch_col is not None:
+            self._cluster_proxy.set_visible_channel_filter(
+                set(int(c) for c in self._custom_channel_set), ch_col
+            )
         else:
-            self._clear_multi_cluster_mode()
+            self._cluster_proxy.set_visible_channel_filter(None, None)
 
-    def _show_all_good_neurons(self):
-        if self._cluster_df is None or "group" not in self._cluster_df.columns:
-            show_warning("No cluster table loaded or 'group' column missing.")
-            self._show_all_good_btn.setChecked(False)
+    def _select_clusters_all_visible(self):
+        """Select all filtered-visible rows, highlight their spikes, then disable auto-highlight."""
+        if self._cluster_proxy.rowCount() == 0:
+            show_info("No clusters in current view.")
             return
-        if not self.plot_container or not self.plot_container.is_ephystrace():
-            show_warning("Switch to ephys trace view first.")
-            self._show_all_good_btn.setChecked(False)
-            return
+        self.cluster_table.selectAll()
 
-        good_mask = self._cluster_df["group"] == "good"
-        good_df = self._cluster_df[good_mask]
-        if len(good_df) == 0:
-            show_warning("No clusters with group 'good' found.")
-            self._show_all_good_btn.setChecked(False)
-            return
+    def _update_highlight_label(self, _=None):
+        n = self.n_closest_spin.value()
+        self._highlight_label.setText(f"Highlight clusters (on {n} closest):")
 
-        ephys_plot = self.plot_container.ephys_trace_plot
-        sr = ephys_plot.buffer.ephys_sr
-        if sr is None or sr <= 0:
-            return
-
-        ephys_offset = ephys_plot._ephys_offset
-        trial_duration = ephys_plot._trial_duration
-        trial_end = ephys_offset + trial_duration if trial_duration else np.inf
-
-        self._multi_cluster_colors.clear()
-        cluster_entries = []
-
-        for i, (_, row) in enumerate(good_df.iterrows()):
-            cluster_id = int(row["cluster_id"])
-            color = _CLUSTER_COLORS[i % len(_CLUSTER_COLORS)]
-            self._multi_cluster_colors[cluster_id] = color
-
-            mask = self._spike_clusters == cluster_id
-            spike_samples = self._spike_times[mask]
-            spike_times_s = spike_samples.astype(np.float64) / sr
-
-            in_trial = (spike_times_s >= ephys_offset) & (spike_times_s < trial_end)
-            trial_spike_times = spike_times_s[in_trial] - ephys_offset
-            trial_spike_samples = spike_samples[in_trial]
-
-            order = np.argsort(trial_spike_times)
-            trial_spike_times = trial_spike_times[order]
-            trial_spike_samples = trial_spike_samples[order]
-
-            ks_ch = int(row["ch"]) if "ch" in row.index and pd.notna(row["ch"]) else 0
-            channels = self._best_channels_for_cluster(cluster_id, ks_ch)
-
-            cluster_entries.append((trial_spike_times, trial_spike_samples, channels, color))
-
-        self._apply_cluster_colors_to_table()
-        ephys_plot.set_multi_cluster_spike_data(cluster_entries)
-
-        raster = self.plot_container.raster_plot
-        raster_entries = []
-        for spike_t, _spike_s, channels, color in cluster_entries:
-            best_ch = channels[0] if channels else 0
-            best_arr = np.full(len(spike_t), best_ch, dtype=np.int32)
-            raster_entries.append((spike_t, best_arr, color))
-        raster.set_multi_cluster_spike_data(raster_entries)
-
-        n = len(good_df)
-        show_info(f"Showing spikes from {n} good neuron{'s' if n != 1 else ''}")
+    def _unselect_clusters(self):
+        """Clear spike overlays, table selection, and disable auto-highlight."""
+        self.cluster_table.clearSelection()
+        self._clear_multi_cluster_mode()
 
     def _clear_multi_cluster_mode(self):
         self._multi_cluster_colors.clear()
-        self._show_all_good_btn.setChecked(False)
         self._apply_cluster_colors_to_table()
         if self.plot_container and self.plot_container.is_ephystrace():
             self.plot_container.ephys_trace_plot.clear_spike_overlays()
@@ -1565,7 +1812,7 @@ class EphysWidget(QWidget):
 
     def _apply_cluster_colors_to_table(self):
         model = self._cluster_model
-        cid_col = self._find_col_by_header("", exact="cluster_id")
+        cid_col = self._find_col_by_header("", exact="id")
         if cid_col is None:
             return
 
@@ -1579,21 +1826,9 @@ class EphysWidget(QWidget):
                 continue
 
             color = self._multi_cluster_colors.get(cluster_id)
-            if color:
-                brush = QBrush(QColor(*color))
-                r, g, b = color[:3]
-                text_color = QColor(0, 0, 0) if (r * 0.299 + g * 0.587 + b * 0.114) > 150 else QColor(255, 255, 255)
-                for col in range(model.columnCount()):
-                    col_item = model.item(row, col)
-                    if col_item:
-                        col_item.setBackground(brush)
-                        col_item.setForeground(QBrush(text_color))
-            else:
-                for col in range(model.columnCount()):
-                    col_item = model.item(row, col)
-                    if col_item:
-                        col_item.setBackground(QBrush())
-                        col_item.setForeground(QBrush())
+            cid_item = model.item(row, cid_col)
+            if cid_item:
+                cid_item.setData(QColor(*color[:3]) if color else None, _COLOR_ROLE)
 
     def _jump_to_first_spike(self):
         if not self.plot_container or not self.plot_container.is_ephystrace():
@@ -1700,12 +1935,11 @@ class EphysWidget(QWidget):
         spike_samples = self._spike_times[mask]
         spike_times_s = spike_samples.astype(np.float64) / sr
 
-        ephys_offset = ephys_plot._ephys_offset
-        trial_duration = ephys_plot._trial_duration
-
-        start_time = ephys_offset
-        trial_end = ephys_offset + trial_duration if trial_duration else np.inf
-        in_trial = (spike_times_s >= start_time) & (spike_times_s < trial_end)
+        alignment = self.app_state.trial_alignment
+        ephys_offset = alignment.ephys_offset if alignment is not None else 0.0
+        trial_bounds = self.app_state.trial_bounds
+        trial_end = ephys_offset + trial_bounds.duration if trial_bounds is not None else np.inf
+        in_trial = (spike_times_s >= ephys_offset) & (spike_times_s < trial_end)
         trial_spike_times = spike_times_s[in_trial] - ephys_offset
         trial_spike_samples = spike_samples[in_trial]
 
@@ -1721,14 +1955,18 @@ class EphysWidget(QWidget):
         if (
             self._templates is not None
             and self._channel_positions is not None
+            and self._channel_map is not None
             and cluster_id < self._templates.shape[0]
         ):
             template = self._templates[cluster_id]
             n_closest = self.n_closest_spin.value()
-            channel_ids, _amp, _best = self._find_best_channels(
+            site_indices, _amp, _best = self._find_best_channels(
                 template, n_closest_channels=n_closest,
             )
-            return channel_ids.tolist()
+            hw_channels = [
+                int(self._channel_map[i]) for i in site_indices if i < len(self._channel_map)
+            ]
+            return hw_channels if hw_channels else [fallback_channel]
         return [fallback_channel]
 
     def _get_ks_channel_for_row(self, proxy_row: int, hw_col_idx: int | None) -> int:
@@ -1877,7 +2115,7 @@ class EphysWidget(QWidget):
         return ids
 
     def _get_table_selected_cluster_ids(self) -> np.ndarray | None:
-        cid_col = self._find_col_by_header("", exact="cluster_id")
+        cid_col = self._find_col_by_header("", exact="id")
         if cid_col is None:
             return None
         indexes = self.cluster_table.selectionModel().selectedRows()
@@ -1926,7 +2164,7 @@ class EphysWidget(QWidget):
             self._tsgroup_ephys_sr = ephys_sr
 
         ds = self.app_state.dt.trial(trial)
-        start_time = self.app_state.dt.get_start_time(trial)
+        start_time = self.app_state.dt.session_io.start_time(trial)
         bounds = self.app_state.trial_bounds
         if bounds is None:
             return
@@ -2080,8 +2318,6 @@ class EphysWidget(QWidget):
             self.data_widget.update_main_plot()
 
     def _get_any_ephys_loader(self):
-        import os
-
         source_map = getattr(self.app_state, 'ephys_source_map', {})
         if not source_map:
             return None
@@ -2115,7 +2351,7 @@ class EphysWidget(QWidget):
         self.app_state.set_key_sel("cluster_id", str(cluster_id))
 
     def select_cluster_in_table(self, cluster_id: int):
-        cid_col = self._find_col_by_header("", exact="cluster_id")
+        cid_col = self._find_col_by_header("", exact="id")
         if cid_col is None:
             return
         sel_model = self.cluster_table.selectionModel()

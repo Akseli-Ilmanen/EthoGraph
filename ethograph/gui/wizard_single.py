@@ -1147,9 +1147,6 @@ class EphysFileDialog(QDialog):
             self.app_state.ephys_path = ephys_path
             if hasattr(self.io_widget, 'ephys_path_edit'):
                 self.io_widget.ephys_path_edit.setText(ephys_path)
-            if Path(ephys_path).suffix.lower() == ".dat":
-                self.app_state.ephys_dat_sr = float(self.sr_spinbox.value())
-                self.app_state.ephys_dat_nchannels = int(self.n_channels_spinbox.value())
 
         if kilosort_folder:
             self.app_state.kilosort_folder = kilosort_folder

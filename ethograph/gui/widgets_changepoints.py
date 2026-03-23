@@ -498,14 +498,11 @@ class ChangepointsWidget(QWidget):
         self._update_oscillatory_source_state()
 
     def _update_oscillatory_source_state(self):
-        has_ephys = bool(
-            getattr(self.app_state, "ephys_path", None)
-            or getattr(self.app_state, "kilosort_folder", None)
-        )
+        has_raw_ephys = bool(self.app_state.has_neo or self.app_state.has_kilosort)
         model = self.osc_source_combo.model()
         ephys_item = model.item(0)  # "Ephys Trace"
-        ephys_item.setEnabled(has_ephys)
-        if not has_ephys and self.osc_source_combo.currentIndex() == 0:
+        ephys_item.setEnabled(has_raw_ephys)
+        if not has_raw_ephys and self.osc_source_combo.currentIndex() == 0:
             self.osc_source_combo.setCurrentIndex(1)
 
     # =========================================================================

@@ -116,7 +116,7 @@ class TransformWidget(QWidget):
         self.energy_configure_btn.clicked.connect(self._open_energy_params)
         grid.addWidget(self.energy_configure_btn, 1, 0, 1, 3)
 
-        self.envelope_target_label = QLabel("Show envelope on:")
+        self.envelope_target_label = QLabel("Compute for:")
         self.envelope_target_combo = QComboBox()
         self.envelope_target_combo.addItems(["Audio trace", "Ephys trace"])
         self.envelope_target_combo.setToolTip(

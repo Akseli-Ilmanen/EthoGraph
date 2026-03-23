@@ -23,12 +23,8 @@ from qtpy.QtWidgets import (
 )
 
 import ethograph as eto
-from ethograph.utils.paths import gui_default_settings_path
-from ethograph.utils.validation import (
-    EPHYS_FILE_FILTER,
-    EPHYS_EXTENSIONS,
-    EPHYS_EXTENSIONS_STR,
-)
+from ethograph.utils.paths import find_mapping_file, gui_default_settings_path
+from ethograph.utils.validation import EPHYS_FILE_FILTER
 
 from .app_state import AppStateSpec
 from .wizard_overview import NCWizardDialog
@@ -235,28 +231,17 @@ class IOWidget(QWidget):
             browse_callback=lambda: self.on_browse_clicked("file", "ephys"),
         )
 
-        # Kilosort folder row
-        self._create_kilosort_row(self._load_layout)
+        self.kilosort_folder_edit = self._create_path_widget(
+            self._load_layout,
+            label="Kilosort folder:",
+            object_name="kilosort_folder",
+            browse_callback=lambda: self.on_browse_clicked("folder", "kilosort"),
+        )
 
         # Downsample + Load button
         self._create_load_button(self._load_layout)
 
         main_layout.addWidget(self.load_panel)
-
-    def _create_kilosort_row(self, target_layout):
-        ks_row = QHBoxLayout()
-        ks_row.addWidget(QLabel("Kilosort folder:"))
-
-        self.kilosort_folder_edit = QLineEdit()
-        ks_row.addWidget(self.kilosort_folder_edit)
-
-        self.cluster_browse_btn = QPushButton("Browse")
-        ks_row.addWidget(self.cluster_browse_btn)
-
-        self.cluster_load_btn = QPushButton("Load")
-        ks_row.addWidget(self.cluster_load_btn)
-
-        target_layout.addRow(ks_row)
 
     # ------------------------------------------------------------------
     # Controls panel
@@ -281,8 +266,8 @@ class IOWidget(QWidget):
         mapping_row.setLayout(mapping_layout)
 
         self.mapping_file_path_edit = QLineEdit()
-        default_mapping_path = str(eto.get_project_root() / "configs" / "mapping.txt")
-        self.mapping_file_path_edit.setText(default_mapping_path)
+        default_mapping = find_mapping_file()
+        self.mapping_file_path_edit.setText(str(default_mapping) if default_mapping else "")
         self.mapping_file_path_edit.setToolTip("Path to mapping.txt file")
         mapping_layout.addWidget(self.mapping_file_path_edit)
 
@@ -435,7 +420,6 @@ class IOWidget(QWidget):
         if self.labels_widget:
             self.labels_widget._mark_changes_unsaved()
             self.labels_widget.refresh_labels_shapes_layer()
-        self.app_state.verification_changed.emit()
         if self.data_widget:
             self.data_widget.update_main_plot()
 
@@ -663,14 +647,11 @@ class IOWidget(QWidget):
             "audio_folder": "audio_folder",
             "pose_folder": "pose_folder",
             "ephys_path": "ephys_path",
+            "kilosort_folder": "kilosort_folder",
         }
         attr = attr_map.get(object_name)
         if attr:
             setattr(self.app_state, attr, None)
-        if object_name == "ephys_path":
-            self.app_state.ephys_dat_sr = None
-            self.app_state.ephys_dat_nchannels = None
-
         if self.labels_widget:
             self.labels_widget._update_human_verified_status()
     # Device controls (populated after load)
@@ -680,54 +661,8 @@ class IOWidget(QWidget):
         self._create_labels_row(self._controls_layout)
         self.controls.append(self.label_file_path_edit)
 
-    def _ensure_dat_metadata(self, ephys_path: str) -> tuple[float | None, int | None]:
-        if Path(ephys_path).suffix.lower() != ".dat":
-            return None, None
-
-        sr = getattr(self.app_state, "ephys_dat_sr", None)
-        n_channels = getattr(self.app_state, "ephys_dat_nchannels", None)
-        if sr is not None and n_channels is not None:
-            return float(sr), int(n_channels)
-
-        QMessageBox.information(
-            "Raw .dat Metadata Required",
-            "This .dat file needs sampling rate and channel count before loading.",
-        )
-
-        sr_value, ok = QInputDialog.getDouble(
-            self,
-            "Ephys .dat Sampling Rate",
-            "Sampling rate (Hz):",
-            30000.0,
-            1.0,
-            1_000_000.0,
-            2,
-        )
-        if not ok:
-            return None, None
-
-        n_channels_value, ok = QInputDialog.getInt(
-            self,
-            "Ephys .dat Channel Count",
-            "Number of channels:",
-            1,
-            1,
-            100_000,
-            1,
-        )
-        if not ok:
-            return None, None
-
-        self.app_state.ephys_dat_sr = float(sr_value)
-        self.app_state.ephys_dat_nchannels = int(n_channels_value)
-        return float(sr_value), int(n_channels_value)
-
     def _expand_ephys_with_streams(self, ephys_path, ds):
-        """Discover Neo streams from the ephys file for the Neo-Viewer.
-
-        Raw binary formats (.dat, .bin, .raw) are skipped here — they are
-        handled by the Phy-Viewer via kilosort params.py.
-        """
+        """Discover Neo streams from the ephys file for the Neo-Viewer."""
         from .plots_ephystrace import GenericEphysLoader
 
         self.app_state.ephys_source_map.clear()
@@ -737,11 +672,6 @@ class IOWidget(QWidget):
             return feature_names
 
         filepath = os.path.normpath(str(ephys_path))
-        ext = Path(filepath).suffix.lower()
-
-        # Raw binary handled by Phy-Viewer, skip for Neo
-        if ext in (".dat", ".bin", ".raw"):
-            return feature_names
 
         try:
             loader = GenericEphysLoader(filepath, stream_id="0")
@@ -749,8 +679,7 @@ class IOWidget(QWidget):
 
             if streams and len(streams) > 1:
                 for sid, info in streams.items():
-                    stream_name = info["name"]
-                    display_name = f"{stream_name} Waveform"
+                    display_name = info["name"]
                     self.app_state.ephys_source_map[display_name] = (filepath, sid, 0)
                     feature_names.append(display_name)
             else:
@@ -888,13 +817,10 @@ class IOWidget(QWidget):
                 if not ephys_path:
                     return
 
-                if Path(ephys_path).suffix.lower() == ".dat":
-                    dat_sr, dat_n_channels = self._ensure_dat_metadata(ephys_path)
-                    if dat_sr is None or dat_n_channels is None:
-                        return
-
                 self.ephys_path_edit.setText(ephys_path)
                 self.app_state.ephys_path = ephys_path
+                if self.app_state.dt is not None:
+                    self.app_state.dt.set_media_files(ephys=ephys_path)
                 self._auto_detect_kilosort(ephys_path)
 
         elif browse_type == "folder":
@@ -904,6 +830,8 @@ class IOWidget(QWidget):
                 caption = "Open folder with audio files (e.g. wav, mp3, mp4)."
             elif media_type == "pose":
                 caption = "Open folder with pose files (e.g. .csv, .h5)."
+            elif media_type == "kilosort":
+                caption = "Select Kilosort output folder."
 
             folder_path = QFileDialog.getExistingDirectory(None, caption=caption)
 
@@ -918,6 +846,10 @@ class IOWidget(QWidget):
             elif media_type == "pose":
                 self.pose_folder_edit.setText(folder_path)
                 self.app_state.pose_folder = folder_path
+            elif media_type == "kilosort":
+                if folder_path:
+                    self.kilosort_folder_edit.setText(folder_path)
+                    self.app_state.kilosort_folder = folder_path
 
     def _auto_detect_kilosort(self, ephys_path: str):
         ephys_parent = Path(ephys_path).parent
@@ -929,16 +861,6 @@ class IOWidget(QWidget):
                 return
         self.kilosort_folder_edit.clear()
         self.app_state.kilosort_folder = None
-
-    def _folder_has_ephys_files(self, folder_path):
-        try:
-            with os.scandir(folder_path) as entries:
-                for entry in entries:
-                    if entry.is_file() and Path(entry.name).suffix.lower() in EPHYS_EXTENSIONS:
-                        return True
-        except OSError:
-            pass
-        return False
 
     def get_nc_file_path(self):
         return self.nc_file_path_edit.text().strip()
@@ -960,5 +882,3 @@ class IOWidget(QWidget):
     def wire_ephys_signals(self, ephys_widget):
         """Connect kilosort UI to EphysWidget methods."""
         self.kilosort_folder_edit.returnPressed.connect(ephys_widget._load_kilosort_folder)
-        self.cluster_browse_btn.clicked.connect(ephys_widget._browse_kilosort_folder)
-        self.cluster_load_btn.clicked.connect(ephys_widget._load_kilosort_folder)

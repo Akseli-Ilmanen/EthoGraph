@@ -33,8 +33,6 @@ from qtpy.QtCore import QEvent, Qt, Signal
 import warnings
 from phylib.io.traces import get_ephys_reader
 
-from ethograph.utils.validation import EPHYS_EXNTENSIONS_RAW
-
 from .app_constants import BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER_EPHYS, EPHYSTRACE_DEBOUNCE_MS
 from .plots_base import BasePlot, ThrottleDebounce
 from .video_manager import is_url
@@ -207,6 +205,11 @@ class RemoteNWBLoader:
 
 
 
+# Raw binary formats loaded via phylib (kilosort .dat files).
+# Not user-selectable via the ephys file browser — only loaded internally via Kilosort folder/phylib.
+_RAW_BINARY_EXTENSIONS = frozenset({'.dat', '.bin', '.raw', '.mda'})
+
+
 # ---------------------------------------------------------------------------
 # GenericEphysLoader – auto-detecting unified loader
 # ---------------------------------------------------------------------------
@@ -292,13 +295,13 @@ class GenericEphysLoader:
             self._init_remote_nwb()
         elif rawio_name := self.KNOWN_EXTENSIONS.get(ext):
             self._init_neo(rawio_name, stream_id)
-        elif ext in EPHYS_EXNTENSIONS_RAW:
+        elif ext in _RAW_BINARY_EXTENSIONS:
             if n_channels is None or sampling_rate is None:
                 raise ValueError(f"Raw binary '{ext}' requires n_channels and sampling_rate.")
             self._phylib_memmap(n_channels, sampling_rate, dtype, gain)
         else:
             supported = ", ".join(sorted(self.KNOWN_EXTENSIONS))
-            raise ValueError(f"Unsupported format '{ext}'. Supported: {supported}, {', '.join(EPHYS_EXNTENSIONS_RAW)}")
+            raise ValueError(f"Unsupported format '{ext}'. Supported: {supported}, {', '.join(_RAW_BINARY_EXTENSIONS)}")
 
     # -- backends -----------------------------------------------------------
 
@@ -461,6 +464,26 @@ def clear_loader_cache():
         _loader_cache.clear()
 
 
+def get_all_stream_ids(path: str | Path) -> dict[str, str]:
+    """Return ``{stream_id: display_name}`` for every stream in *path*.
+
+    For Neo-supported formats the display name comes from the
+    ``signal_streams`` header (e.g. ``"RHD2000 amplifier channel"``).
+    For raw-binary formats handled by phylib there is no stream concept,
+    so the file stem is used as the display name (e.g. ``"continuous"``
+    for ``continuous.dat``).  Falls back to ``{"0": "0"}`` when the
+    header cannot be inspected.
+    """
+    path = Path(path)
+    ext = path.suffix.lower()
+    if ext in _RAW_BINARY_EXTENSIONS:
+        return {"raw": path.stem}
+    loader = get_loader(path, stream_id="0")
+    if loader is None or loader.streams is None:
+        return {"0": "0"}
+    return {sid: info["name"] for sid, info in loader.streams.items()}
+
+
 # Backward-compat alias
 class SharedEphysCache:
     get_loader = staticmethod(get_loader)
@@ -595,7 +618,7 @@ class EphysTraceBuffer:
             return None
 
         total_ch = self.loader.n_channels if hasattr(self.loader, 'n_channels') else 1
-        if total_ch <= 1:
+        if total_ch < 1:
             return None
 
         start = max(0, int((t0 - self._starting_time) * self.ephys_sr))
@@ -724,6 +747,7 @@ class EphysTracePlot(BasePlot):
     gain_scroll_requested = Signal(int)      # delta: +1 = increase, -1 = decrease
     visible_channels_changed = Signal(int, int)  # (first_visible_index, last_visible_index)
     y_space_changed = Signal()  # emitted when global y-coordinate space is rebuilt
+    seek_time_requested = Signal(float)      # emitted by jump_to_spike with exact spike time
 
     def __init__(self, app_state, parent=None):
         super().__init__(app_state, parent)
@@ -784,8 +808,6 @@ class EphysTracePlot(BasePlot):
         self._hw_to_order_idx: dict[int, int] = {}
         self._last_visible_hw: set[int] = set()
 
-        self._ephys_offset: float = 0.0
-        self._trial_duration: float | None = None
         self._source: TimeseriesSource | None = None
 
         # Calibration scale bars
@@ -831,11 +853,17 @@ class EphysTracePlot(BasePlot):
 
     def set_source(self, source: TimeseriesSource | None):
         self._source = source
+        self._apply_zoom_constraints()
 
-    def set_ephys_offset(self, offset: float, trial_duration: float | None = None):
-        self._ephys_offset = offset
-        self._trial_duration = trial_duration
-        self.buffer._invalidate_cache()
+    @property
+    def _ephys_offset(self) -> float:
+        alignment = getattr(self.app_state, 'trial_alignment', None)
+        return alignment.ephys_offset if alignment is not None else 0.0
+
+    @property
+    def _trial_duration(self) -> float | None:
+        bounds = self.app_state.trial_bounds
+        return bounds.duration if bounds is not None else None
 
     def set_loader(self, loader: EphysLoader, channel: int = 0):
         type(self)._initializing = True
@@ -1205,11 +1233,22 @@ class EphysTracePlot(BasePlot):
         self._hw_to_order_idx = {
             int(hw): i for i, hw in enumerate(self._total_ordered_channels)
         }
-        margin = spacing * 0.5
+        margin = spacing * 1.5
         y_max = (total - 1) * spacing + margin
-        self.vb.setLimits(yMin=-margin, yMax=y_max)
+        max_y_range = 0.70 * total * spacing
+        self.vb.setLimits(yMin=-margin, yMax=y_max, maxYRange=max_y_range)
         self.plot_item.setYRange(-margin, y_max, padding=0)
         self.y_space_changed.emit()
+
+    def _apply_y_constraints(self):
+        total = len(self._total_ordered_channels)
+        if total == 0:
+            return
+        spacing = self.buffer.channel_spacing
+        margin = spacing * 1.5
+        y_max = (total - 1) * spacing + margin
+        max_y_range = 0.70 * total * spacing
+        self.vb.setLimits(yMin=-margin, yMax=y_max, maxYRange=max_y_range)
 
     def _channels_in_viewport(self) -> tuple[NDArray, NDArray]:
         y_lo, y_hi = self.vb.viewRange()[1]
@@ -1507,11 +1546,8 @@ class EphysTracePlot(BasePlot):
     def get_spike_target_time(self, delta: int = +1) -> float | None:
         if self._spike_times_local is None or len(self._spike_times_local) == 0:
             return None
-        if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
-            return None
 
-        video = getattr(self.app_state, 'video', None)
-        current_time = video.frame_to_time(self.app_state.current_frame) if video else self.app_state.current_frame / self.app_state.video_fps
+        current_time = self.time_marker.value()
         idx = np.searchsorted(self._spike_times_local, current_time)
         n = len(self._spike_times_local)
         target_idx = (idx + delta) % n
@@ -1524,21 +1560,9 @@ class EphysTracePlot(BasePlot):
 
         xmin, xmax = self.get_current_xlim()
         half = (xmax - xmin) / 2
-        new_xmin = target_time - half
-        new_xmax = target_time + half
-
-        self.plot_item.setXRange(new_xmin, new_xmax, padding=0)
-        self.update_plot_content(new_xmin, new_xmax)
-
-    def _get_time_bounds(self):
-        if self._source is not None:
-            tr = self._source.time_range
-            if tr.duration > 0:
-                return tr.start_s, tr.end_s
-        if self._trial_duration is not None and self._trial_duration > 0:
-            return 0.0, self._trial_duration
-        return super()._get_time_bounds()
-
+        self.plot_item.setXRange(target_time - half, target_time + half, padding=0)
+        self.update_plot_content(target_time - half, target_time + half)
+        self.seek_time_requested.emit(target_time)
 
     def auto_channel_spacing(self):
         cache = self.buffer._cache
@@ -1559,7 +1583,14 @@ class EphysTracePlot(BasePlot):
         p_high = np.percentile(normed, 99, axis=0)
         spans = p_high - p_low
         max_span = float(np.max(spans))
-        self.buffer.channel_spacing = max_span * 0.80
+        # For few channels (e.g. 3-axis accelerometer), scale spacing down
+        # proportionally so channels appear as compact as a dense array.
+        # auto_gain() adjusts signal amplitude to match, keeping the visual
+        # density (channels/pixel) constant regardless of channel count.
+        _N_DENSE_REF = 16
+        density_scale = min(1.0, len(valid) / _N_DENSE_REF)
+        self.buffer.channel_spacing = max_span * 0.80 * density_scale
+        self._setup_global_y_space()
 
     def auto_gain(self) -> float:
         """Compute optimal display_gain using Phy's quantile-based approach.
@@ -1625,11 +1656,18 @@ class EphysTracePlot(BasePlot):
 
     def autoscale(self):
         total = len(self._total_ordered_channels)
-        if total > 0:
-            spacing = self.buffer.channel_spacing
-            margin = spacing * 0.5
-            self.plot_item.setYRange(-margin, (total - 1) * spacing + margin, padding=0)
-
+        if total == 0:
+            return
+        spacing = self.buffer.channel_spacing
+        margin = spacing * 1.5
+        hw_visible, y_offsets = self._channels_in_viewport()
+        if len(y_offsets) > 0:
+            y_lo = y_offsets.min() - margin
+            y_hi = y_offsets.max() + margin
+        else:
+            y_lo = -margin
+            y_hi = (total - 1) * spacing + margin
+        self.plot_item.setYRange(y_lo, y_hi, padding=0)
 
         if self.current_range:
             self.update_plot_content(*self.get_current_xlim())

@@ -130,7 +130,8 @@ class AppStateSpec:
         "has_video": (bool, False, False),
         "has_pose": (bool, False, False),
         "has_audio": (bool, False, False),
-        "has_ephys": (bool, False, False),
+        "has_neo": (bool, False, False),
+        "has_kilosort": (bool, False, False),
         
 
         # Paths 
@@ -141,8 +142,6 @@ class AppStateSpec:
         "pose_folder": (str | None, None, True, SCOPE_LOCAL),
         "ephys_path": (str | None, None, True, SCOPE_LOCAL),
         "kilosort_folder": (str | None, None, True, SCOPE_LOCAL),
-        "ephys_dat_sr": (float | None, None, True, SCOPE_LOCAL), # for .dat files
-        "ephys_dat_nchannels": (int | None, None, True, SCOPE_LOCAL),
         
 
         "video_path": (str | None, None, False),
@@ -310,10 +309,10 @@ class ObservableAppState(QObject):
     
     @property
     def trial_bounds(self) -> TimeRange | None:
-        """Time range for the current trial, sourced from TrialAlignment.global_range."""
+        """Time range for the current trial, sourced from TrialAlignment.trial_range."""
         alignment = getattr(self, 'trial_alignment', None)
         if alignment is not None:
-            return alignment.global_range
+            return alignment.trial_range
         return None
 
     @property
@@ -659,6 +658,35 @@ class ObservableAppState(QObject):
             return (order, key)
 
         return dict(sorted(state_dict.items(), key=_category_key))
+
+    def print_state(self) -> None:
+        """Print all yaml-persisted app state vars, grouped by category."""
+        _CATEGORY_LABELS = {0: "Paths", 1: "Selections", 2: "Booleans", 3: "Strings", 4: "Numbers", 5: "Dicts"}
+
+        def _category_key(item):
+            key, value = item
+            if isinstance(value, dict):
+                return 5
+            if any(key.endswith(s) for s in self.PATH_SUFFIXES):
+                return 0
+            if key.endswith("_sel") or key.endswith("_sel_previous"):
+                return 1
+            if isinstance(value, bool):
+                return 2
+            if isinstance(value, str):
+                return 3
+            return 4
+
+        state = self.get_saveable_state_dict()
+        current_cat = None
+        for key, value in sorted(state.items(), key=lambda item: (_category_key(item), item[0])):
+            cat = _category_key((key, value))
+            if cat != current_cat:
+                print(f"\n{'='*50}")
+                print(f"  {_CATEGORY_LABELS[cat]}")
+                print(f"{'='*50}")
+                current_cat = cat
+            print(f"  {key}: {value}")
 
     def load_from_dict(self, state_dict: dict):
         self._suspend_local_autoload = True

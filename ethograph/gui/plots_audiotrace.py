@@ -94,13 +94,6 @@ class AudioTracePlot(BasePlot):
 
 
 
-    def _get_time_bounds(self):
-        if self.buffer.source is not None:
-            tr = self.buffer.source.time_range
-            if tr.duration > 0:
-                return tr.start_s, tr.end_s
-        return super()._get_time_bounds()
-
     def _apply_y_constraints(self):
         y_min, y_max = self._get_data_y_range()
         y_range = y_max - y_min

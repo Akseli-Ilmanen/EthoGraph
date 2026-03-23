@@ -39,6 +39,7 @@ from ethograph.utils.label_intervals import (
     get_interval_bounds,
 )
 from ethograph.utils.labels import load_label_mapping
+from ethograph.utils.paths import find_mapping_file
 
 
 from .app_constants import (
@@ -110,9 +111,28 @@ class LabelsWidget(QWidget):
 
 
 
-        mapping_path = eto.get_project_root() / "configs" / "mapping.txt"
-        self._mappings = load_label_mapping(mapping_path)
+        mapping_path = find_mapping_file()
+        self._mappings = load_label_mapping(mapping_path) if mapping_path else {}
         self._populate_labels_table()
+
+    def refresh_mapping_for_data_dir(self, data_dir: Path | str):
+        """Re-resolve mapping.txt now that a data directory is known.
+
+        Called by DataWidget after loading a .nc file so that a local
+        ``data_dir/.ethograph/mapping.txt`` is picked up when present.
+        """
+        mapping_path = find_mapping_file(data_dir)
+        if mapping_path is None:
+            return
+        current_path = (
+            Path(self.io_widget.mapping_file_path_edit.text())
+            if self.io_widget else None
+        )
+        if current_path == mapping_path:
+            return
+        self._reload_mapping(str(mapping_path))
+        if self.io_widget:
+            self.io_widget.mapping_file_path_edit.setText(str(mapping_path))
 
     def set_data_widget(self, data_widget):
         """Set reference to the data widget for plot updates."""
@@ -283,7 +303,7 @@ class LabelsWidget(QWidget):
         self.labels_table.setMaximumHeight(LABELS_TABLE_MAX_HEIGHT)
         self.labels_table.setStyleSheet("""
             QTableWidget { gridline-color: transparent; background: #444; color: #fff; }
-            QTableWidget::item { padding: 0px 2px; background: #444; color: #fff; }
+            QTableWidget::item { padding: 0px 2px; color: #fff; }
             QTableWidget::item:selected { background: #ffe066; color: #000; }
             QHeaderView::section { padding: 0px 2px; background: #888; color: #fff; }
         """)
@@ -344,10 +364,12 @@ class LabelsWidget(QWidget):
         self.app_state.save_tsv_enabled = checked
 
     def _browse_mapping_file(self):
-        """Browse for a mapping.txt file and reload  mappings."""
+        """Browse for a mapping.txt file and reload mappings."""
+        current = find_mapping_file()
+        start_dir = str(current.parent) if current else str(Path.home() / ".ethograph")
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Select mapping.txt file",
-            str(eto.get_project_root() / "configs"),
+            start_dir,
             "Text files (*.txt);;All Files (*)"
         )
         if file_path:
@@ -376,7 +398,8 @@ class LabelsWidget(QWidget):
         if dialog.exec_():
             labels = dialog.get_labels()
             if labels:
-                mapping_path = eto.get_project_root() / "configs" / "mapping_temporary.txt"
+                mapping_path = Path.home() / ".ethograph" / "mapping_temporary.txt"
+                mapping_path.parent.mkdir(exist_ok=True)
                 with open(mapping_path, "w") as f:
                     f.write("0 background\n")
                     for i, label in enumerate(labels, start=1):

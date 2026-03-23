@@ -70,12 +70,19 @@ def sel_valid(da, sel_kwargs):
     return data, filt_kwargs
 
 def get_time_coord(da: xr.DataArray) -> xr.DataArray | None:
-    """Select whichever time coord is available for a given data array."""
-    coords = da.coords
-    time_coord = next((c for c in coords if 'time' in c.lower()), None)
+    """Select whichever time coord is available for a given data array.
+
+    Dimension coordinates are preferred over non-dimension coordinates so
+    that auxiliary coords (e.g. ``time_labels``, ``time_aux``) with fewer
+    samples do not shadow the primary time axis.
+    """
+    time_dims = [d for d in da.dims if 'time' in d.lower()]
+    if time_dims:
+        return da.coords[time_dims[0]]
+    time_coord = next((c for c in da.coords if 'time' in c.lower()), None)
     if time_coord is None:
         return None
-    return coords[time_coord]
+    return da.coords[time_coord]
 
 
 def trees_to_df(

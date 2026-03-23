@@ -232,7 +232,7 @@ Inspired by [neuroconv](https://neuroconv.readthedocs.io/en/main/user_guide/temp
 A single time shift applied globally to all trials. Use when a stream consistently starts before or after the reference clock.
 
 ```python
-# Audio starts 0.2s after video for every trial
+# Audio starts 0.2s after video 
 dt.set_stream_offset("audio", 0.2)
 
 # Ephys started 1.5s before video

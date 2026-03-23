@@ -26,7 +26,7 @@ AUDIO_EXTENSIONS = {
 
 POSE_EXTENSIONS = {".h5", ".hdf5", ".csv", ".slp", ".nwb"}
 
-EPHYS_EXTENSIONS_KNOWN = {
+EPHYS_EXTENSIONS = {
     ".abf", ".axgd", ".axgx", ".bdf", ".ccf", ".continuous",
     ".edr", ".edf", ".events", ".medd", ".meta", ".ncs", ".nev",
     ".nrd", ".nse", ".ns1", ".ns2", ".ns3", ".ns4", ".ns5", ".ns6",
@@ -35,9 +35,6 @@ EPHYS_EXTENSIONS_KNOWN = {
     ".smrx", ".spikes", ".tbk", ".tdx", ".tev", ".tin", ".tnt", ".trc",
     ".tsq", ".vhdr", ".wcp", ".xdat",
 }
-
-EPHYS_EXNTENSIONS_RAW = {'.dat', '.bin', '.raw', '.mda'} # phylib.io.traces
-EPHYS_EXTENSIONS = EPHYS_EXTENSIONS_KNOWN | EPHYS_EXNTENSIONS_RAW
 
 
 def _fmt_extensions(exts: set[str]) -> str:
@@ -254,6 +251,7 @@ def _possible_trial_conditions(ds: xr.Dataset, dt: "TrialTree") -> List[str]:
         | AUDIO_EXTENSIONS
         | POSE_EXTENSIONS
         | EPHYS_EXTENSIONS
+        | {'.dat', '.bin', '.raw', '.mda'}
         | {'.csv', '.h5', '.hdf5', '.npy'}
     )
 

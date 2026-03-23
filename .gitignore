@@ -2,6 +2,7 @@ data/
 logging/
 result/
 neurosift/
+pynaviz/
 *.mp4
 *.avi
 *.mkv

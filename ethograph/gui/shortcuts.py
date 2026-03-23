@@ -166,27 +166,9 @@ def bind_global_shortcuts(meta_widget):
             pc.ephys_trace_plot.update_plot_content(xmin, xmax)
 
     def _jump_spike(delta: int):
-        if not plot_container:
+        if not plot_container or not plot_container.is_ephystrace():
             return
-        ephys_plot = plot_container.ephys_trace_plot
-        target_time = ephys_plot.get_spike_target_time(delta)
-        if target_time is None:
-            return
-
-        if plot_container.is_ephystrace():
-            ephys_plot.jump_to_spike(delta)
-
-        video = getattr(app_state, 'video', None)
-        new_frame = video.time_to_frame(target_time) if video else int(target_time * app_state.video_fps)
-        app_state.current_frame = new_frame
-
-        if hasattr(app_state, 'video') and app_state.video:
-            video = app_state.video
-            video.blockSignals(True)
-            video.seek_to_frame(new_frame)
-            video.blockSignals(False)
-
-        plot_container.update_time_marker_by_time(target_time)
+        plot_container.ephys_trace_plot.jump_to_spike(delta)
 
     @viewer.bind_key("alt+Right", overwrite=True)
     def next_spike(v):

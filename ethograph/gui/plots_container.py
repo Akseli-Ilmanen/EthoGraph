@@ -35,7 +35,7 @@ from .app_constants import (
 
 import ethograph as eto
 from .audio_player import AudioPlayer
-from .data_sources import build_audio_source_from_alignment
+from .data_sources import build_audio_source
 from .label_drawing_mixin import LabelDrawingMixin
 from .plots_audiotrace import AudioTracePlot
 from .plots_ephystrace import EphysTracePlot, get_loader as get_ephys_loader
@@ -109,7 +109,7 @@ class TimeSlider(QWidget):
             self._label.setText(f"{sign}{seconds:.2f} s")
 
 
-# Panel size ratios keyed by (has_audio, has_ephys)
+# Panel size ratios keyed by (has_audio, has_kilosort_or_neo)
 # Values: dict mapping panel_name -> fraction of splitter height
 _PANEL_RATIOS = {
     # audio + ephys
@@ -230,6 +230,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.ephys_trace_plot.vb.sigYRangeChanged.connect(self._sync_raster_y_from_ephys)
         self.raster_plot.y_range_changed.connect(self._sync_ephys_y_from_raster)
         self.ephys_trace_plot.y_space_changed.connect(self._on_ephys_y_space_changed)
+        self.ephys_trace_plot.seek_time_requested.connect(self._on_seek_time_requested)
 
         # Track which panel was last clicked (for changepoint navigation)
         self._last_clicked_panel = "feature"
@@ -288,9 +289,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             panels_in_order.append(("spectrogram", self.spectrogram_plot))
         if self._neo_visible:
             panels_in_order.append(("neo", self.neo_trace_plot))
-        if self.app_state.has_ephys and self._ephys_visible:
+        if self.app_state.has_kilosort and self._ephys_visible:
             panels_in_order.append(("ephys", self.ephys_trace_plot))
-        if self.app_state.has_ephys and self._raster_visible:
+        if self.app_state.has_kilosort and self._raster_visible:
             panels_in_order.append(("raster", self.raster_plot))
 
         if self._featureplot_visible:
@@ -341,16 +342,16 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         visible_audio = self.app_state.has_audio and self._audiotrace_visible
         visible_spec = self.app_state.has_audio and self._spectrogram_visible
-        visible_ephys = self.app_state.has_ephys and self._ephys_visible
+        visible_ephys = self.app_state.has_kilosort and self._ephys_visible
         visible_neo = self._neo_visible
-        visible_neural = visible_ephys or visible_neo or (self.app_state.has_ephys and self._raster_visible)
+        visible_neural = visible_ephys or visible_neo or (self.app_state.has_kilosort and self._raster_visible)
 
         ratios = _PANEL_RATIOS.get(
             (visible_audio or visible_spec, visible_neural),
             {"feature": 1.0}
         )
 
-        visible_raster = self.app_state.has_ephys and self._raster_visible
+        visible_raster = self.app_state.has_kilosort and self._raster_visible
 
         raw = []
         if visible_audio:
@@ -365,6 +366,29 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             raw.append(ratios.get("raster", 0.15))
         if self._featureplot_visible:
             raw.append(ratios.get("feature", 0.5))
+
+        # When neo and phy panels coexist, enforce a 1:5 size ratio between them.
+        if visible_neo and (visible_ephys or visible_raster):
+            panel_names = []
+            if visible_audio:
+                panel_names.append("audio")
+            if visible_spec:
+                panel_names.append("spec")
+            if visible_neo:
+                panel_names.append("neo")
+            if visible_ephys:
+                panel_names.append("ephys")
+            if visible_raster:
+                panel_names.append("raster")
+            if self._featureplot_visible:
+                panel_names.append("feature")
+            neo_i = panel_names.index("neo")
+            phy_indices = [i for i, n in enumerate(panel_names) if n in ("ephys", "raster")]
+            neo_phy_total = raw[neo_i] + sum(raw[j] for j in phy_indices)
+            raw[neo_i] = neo_phy_total / 6
+            phy_raw_total = sum(raw[j] for j in phy_indices)
+            for j in phy_indices:
+                raw[j] = raw[j] / phy_raw_total * (neo_phy_total * 5 / 6)
 
         if raw and len(raw) == self._splitter.count():
             scale = 1.0 / sum(raw)
@@ -421,8 +445,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._splitter.setSizes(sizes)
         new_plot.set_x_range(mode="preserve", curr_xlim=prev_xlim)
         new_plot.update_time_marker(prev_marker)
-        tight_bounds = self._compute_tight_x_bounds()
-        new_plot._apply_zoom_constraints(x_bounds_override=tight_bounds)
+        new_plot._apply_zoom_constraints(x_bounds_override=self._trial_bounds_tuple())
 
         self.plot_changed.emit(new_type)
         self.labels_redraw_needed.emit()
@@ -550,6 +573,16 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             plot.update_time_marker(time_s)
         self.time_slider.set_slider_time(time_s)
 
+    def _on_seek_time_requested(self, time_s: float):
+        self.update_time_marker_by_time(time_s)
+        video = getattr(self.app_state, 'video', None)
+        if video:
+            frame = video.time_to_frame(time_s)
+            video.blockSignals(True)
+            video.seek_to_frame(frame)
+            video.blockSignals(False)
+            self.app_state.current_frame = frame
+
     def update_time_marker_and_window(self, frame_number):
         video = getattr(self.app_state, 'video', None)
         if video:
@@ -564,33 +597,21 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         return self._feature_plot.apply_y_range(ymin, ymax)
 
     def toggle_axes_lock(self):
-        tight_bounds = self._compute_tight_x_bounds()
+        bounds = self._trial_bounds_tuple()
         for plot in self._visible_plots():
-            plot.toggle_axes_lock(x_bounds_override=tight_bounds)
+            plot.toggle_axes_lock(x_bounds_override=bounds)
 
     def _apply_all_zoom_constraints(self):
-        
-        tight_bounds = self._compute_tight_x_bounds()
+        bounds = self._trial_bounds_tuple()
         for plot in self._visible_plots():
-            plot._apply_zoom_constraints(x_bounds_override=tight_bounds)
+            plot._apply_zoom_constraints(x_bounds_override=bounds)
 
-    def _compute_tight_x_bounds(self):
-        """Compute the tightest x-bounds across all visible panels.
-
-        Uses the intersection so no panel scrolls past another's data.
-        """
-        result: TimeRange | None = None
-        for plot in self._visible_plots():
-            bounds = plot._get_time_bounds()
-            if bounds is None:
-                continue
-            tr = TimeRange(*bounds)
-            result = tr if result is None else result.intersect(tr)
-            if result is None:
-                return None
-        if result is not None:
-            return (result.start_s, result.end_s)
-        return None
+    def _trial_bounds_tuple(self):
+        """Return (start_s, end_s) from TrialAlignment.trial_range, or None."""
+        tr = self.app_state.trial_bounds
+        if tr is None:
+            return None
+        return (tr.start_s, tr.end_s)
 
     # --- Bottom panel switching ---
 
@@ -639,14 +660,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def update_audio_panels(self):
         """Refresh audio-driven panels (waveform + spectrogram) after mic change."""
-        source = build_audio_source_from_alignment(self.app_state)
+        source = build_audio_source(self.app_state)
         self.spectrogram_plot.set_source(source)
-
-        alignment = getattr(self.app_state, 'trial_alignment', None)
-        if alignment and "audio" in alignment.continuous:
-            self.audio_trace_plot.set_source(alignment.continuous["audio"])
-        else:
-            self.audio_trace_plot.set_source(None)
+        self.audio_trace_plot.set_source(source.timeseries_source if source else None)
 
         t0, t1 = self.get_current_xlim()
         time = self.app_state.time
@@ -677,14 +693,22 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def _on_slider_time(self, time_s: float):
         self.update_time_marker_by_time(time_s)
+        center = getattr(self.app_state, 'center_playback', False)
         visible = TimeRange(*self.get_current_xlim())
-        if not visible.contains(time_s):
+        if center or not visible.contains(time_s):
             window_size = self.app_state.get_with_default("window_size")
             half = window_size / 2.0
             master = self._xlink_master or self._feature_plot
             master.vb.setXRange(time_s - half, time_s + half, padding=0)
 
     def update_time_range_from_data(self):
+        alignment = getattr(self.app_state, 'trial_alignment', None)
+        if alignment is not None:
+            gr = alignment.trial_range
+            if gr is not None and gr.duration > 0:
+                self.time_slider.set_time_range(gr.start_s, gr.end_s)
+                return
+
         time = self.app_state.time
         if time is not None:
             vals = np.asarray(time)

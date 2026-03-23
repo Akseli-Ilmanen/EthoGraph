@@ -190,23 +190,16 @@ class HeatmapPlot(BasePlot):
 
     def _get_buffered_audio_envelope(self, t0: float, t1: float):
         """Load audio, compute per-channel envelope using selected metric, and cache."""
-        alignment = getattr(self.app_state, 'trial_alignment', None)
-        if alignment and "audio" in alignment.continuous:
-            audio_src = alignment.continuous["audio"]
-            fs = audio_src.sampling_rate
-            total_duration = audio_src.time_range.duration
-            loader = audio_src._loader
-        else:
-            from .plots_spectrogram import SharedAudioCache
+        from .plots_spectrogram import SharedAudioCache
 
-            audio_path = getattr(self.app_state, 'audio_path', None)
-            if not audio_path:
-                return None, None
-            loader = SharedAudioCache.get_loader(audio_path)
-            if loader is None:
-                return None, None
-            fs = loader.rate
-            total_duration = len(loader) / fs
+        audio_path = getattr(self.app_state, 'audio_path', None)
+        if not audio_path:
+            return None, None
+        loader = SharedAudioCache.get_loader(audio_path)
+        if loader is None:
+            return None, None
+        fs = loader.rate
+        total_duration = len(loader) / fs
 
         window_size = t1 - t0
         buffer_size = window_size * self._buffer_multiplier
@@ -259,23 +252,16 @@ class HeatmapPlot(BasePlot):
 
     def _get_buffered_ephys_envelope(self, t0: float, t1: float):
         """Load ephys data, compute per-channel envelope, and cache."""
-        alignment = getattr(self.app_state, 'trial_alignment', None)
-        if alignment and "ephys" in alignment.continuous:
-            ephys_src = alignment.continuous["ephys"]
-            fs = ephys_src.sampling_rate
-            total_duration = ephys_src.time_range.duration
-            loader = ephys_src._loader
-        else:
-            from .plots_ephystrace import get_loader as get_ephys_loader
+        from .plots_ephystrace import get_loader as get_ephys_loader
 
-            ephys_path, stream_id, _ = self.app_state.get_ephys_source()
-            if not ephys_path:
-                return None, None
-            loader = get_ephys_loader(ephys_path, stream_id)
-            if loader is None:
-                return None, None
-            fs = loader.rate
-            total_duration = len(loader) / fs
+        ephys_path, stream_id, _ = self.app_state.get_ephys_source()
+        if not ephys_path:
+            return None, None
+        loader = get_ephys_loader(ephys_path, stream_id)
+        if loader is None:
+            return None, None
+        fs = loader.rate
+        total_duration = len(loader) / fs
 
         window_size = t1 - t0
         buffer_size = window_size * self._buffer_multiplier

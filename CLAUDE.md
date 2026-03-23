@@ -181,23 +181,6 @@ ethograph/utils/
 - `dt.get_label_dt()`: Extract label TrialTree (auto-converts legacy dense labels to interval format)
 - `dt[int_key]` / `dt[int_key] = ds`: Integer indexing supported, auto-wraps Dataset in DataTree
 
-**Session table** (optional `"session"` child node):
-- `dt.session -> xr.Dataset | None`: Access session timing table
-- `dt.set_session_table(ds_or_df)`: Set from xr.Dataset or pd.DataFrame
-- `dt.get_start_time(trial) -> float`: Session-absolute trial onset (falls back to ds.attrs)
-- `dt.set_stream_offset("audio", 0.2)`: Global offset for a stream (stored as session attr)
-- `dt.set_aligned_timestamps("audio", timestamps)`: Explicit corrected timestamps for a stream (for clock drift / TTL interpolation)
-- `dt.get_aligned_timestamps("audio") -> np.ndarray | None`: Retrieve aligned timestamps
-- `dt.get_stream_offset(trial, "audio") -> float | None`: Resolve offset — checks global attr → per-trial column → ds attr → 0.0. Returns None for NaN (unavailable).
-- `dt.session_to_dataframe() -> pd.DataFrame | None`: Full table view
-
-**Stream alignment (neuroconv-inspired, two levels):**
-1. **Scalar offset** (simple, covers 90% of cases): `dt.set_stream_offset("audio", 0.2)` — stored as `session.attrs["offset_audio"]`. Applied globally to all trials.
-2. **Aligned timestamps** (clock drift): `dt.set_aligned_timestamps("ephys", corrected_times)` — stored as `session["timestamps_ephys"]`. User computes corrected times externally (e.g. via neuroconv TTL interpolation). When present, `build_trial_alignment` wraps the stream in `ArrayTimeseriesSource` instead of `RegularTimeseriesSource`.
-
-Session table structure: `trial` dimension with `start_time`, `stop_time`. Stream offsets stored as **session attrs** (global) or optional per-trial columns (legacy override). Aligned timestamps stored as session variables with `sample_<stream>` dimension.
-
-**Backward compatibility:** `_trial_node_name()` handles both new bare node names (`"1"`) and legacy `trial_*` names (`"trial_1"`). `get_start_time()` falls back to `ds.attrs["start_time"]` / `"video_onset"` / `"trial_onset"` when no session table exists.
 
 **When to use `dt.trial()` vs `dt.update_trial()`:**
 - `dt.trial(id)` returns a mutable Dataset reference — in-place mutations (e.g., `ds["var"].values[:] = ...`) work directly
@@ -232,10 +215,8 @@ Session table structure: `trial` dimension with `start_time`, `stop_time`. Strea
 - `set_key_sel(type_key, value)`: Sets selection for a given dimension key
 - `cycle_key_sel(type_key, data_widget)`: Cycles to the next combo box item
 - `save_to_yaml()` / `load_from_yaml()`: YAML persistence
-- `get_trial_intervals(trial) -> pd.DataFrame`: Extracts interval labels from label_dt for a trial
-- `set_trial_intervals(trial, df)`: Writes interval DataFrame back to label_dt via `label_dt.update_trial()`
 - `video_fps` (property): Returns `video.fps` (read from video file via PyAV) or 30.0 if no video loaded
-- `set_time()`: Handles special features ("Audio Waveform", "Ephys trace", "Firing rate", "PCA") in addition to normal dataset variables
+
 
 **Notable state variables (added recently):**
 - `audio_playback_speed` / `av_speed_coupled`: Audio playback rate control
@@ -258,7 +239,6 @@ def get_time_coord(da: xr.DataArray) -> xr.DataArray | None:
 ```
 
 **AppState time variables:**
-- `app_state.time` (np.ndarray): Time array for the currently selected feature. Updated when feature selection changes via `set_key_sel("features", ...)`.
 - `app_state.label_intervals` (pd.DataFrame | None): Working DataFrame for the current trial's interval-based labels.
 
 **Usage pattern:**
@@ -275,55 +255,7 @@ Labels (intervals)   ->  onset_s/offset_s in seconds       ->  app_state.label_i
 
 Labels are decoupled from any specific sampling rate since they store onset/offset in seconds.
 
----
 
-### Data Source Abstractions: `timeseries_source.py`
-
-Neurosift-inspired module providing a uniform interface for accessing time-aligned data from different backends (xarray, audio files, ephys files, spike data). Each source keeps its native sampling rate — no resampling.
-
-**Core types:**
-- `TimeRange(start_s, end_s)`: Frozen dataclass with `duration`, `overlaps()`, `union()`, `intersect()`, `contains()`
-- `TimeseriesSource` (Protocol): Continuous sampled data — `time_range`, `sampling_rate`, `n_channels`, `n_samples`, `get_data(t0, t1) -> (timestamps, data)`, `index_for_time(t)`, `time_for_index(i)`, `identity`
-- `EventSource` (Protocol): Discrete events — `time_range`, `get_events(t0, t1)`, `identity`
-- `TrialAlignment`: Dataclass holding `video_offset`, `continuous: dict[str, TimeseriesSource]` and `events: dict[str, EventSource]` for a trial, with `global_range` property and `summary()` display
-
-**Continuous source implementations:**
-- `RegularTimeseriesSource(name, loader, *, start_time, channel)`: Wraps any file loader with `rate`/`__len__`/`__getitem__` (AudioLoader, EphysLoader, MemmapLoader, NWBLoader). Time↔index via pure math. `start_time` is the stream offset in seconds (from `dt.set_stream_offset()`).
-- `ArrayTimeseriesSource(name, timestamps, data)`: Wraps explicit arrays. Time↔index via `np.searchsorted`. Factory: `ArrayTimeseriesSource.from_xarray(da, sel_kwargs=)` auto-extracts time coord. Also used for streams with aligned timestamps (clock-drift-corrected).
-
-**Event source implementations:**
-- `SpikeEventSource(name, spike_times, *, cluster_ids, channels)`: Sorted spike times with optional per-spike metadata. `get_events_with_metadata()` returns `(times, clusters, channels)`.
-- `IntervalEventSource(name, onsets, offsets, *, labels, individuals)`: Onset/offset pairs. Factory: `IntervalEventSource.from_dataframe(name, df)`. `get_intervals()` returns `(onsets, offsets, labels, individuals)`.
-
-**Alignment builder:**
-```python
-from ethograph.gui.plots_timeseriessource import build_trial_alignment
-alignment = build_trial_alignment(
-    dt, trial_id, ds,
-    video_folder=..., audio_folder=..., cameras_sel=...,
-)
-print(alignment.summary())
-# TrialAlignment(trial='1')
-#   Global: TimeRange(0.000s .. 45.200s, dur=45.200s)
-#   Continuous:
-#     speed                 TimeRange(0.000s .. 30.000s)  rate=30.0 Hz  ch=1  n=900
-#     audio                 TimeRange(0.000s .. 45.200s)  rate=44100.0 Hz  ch=1  n=1993320
-```
-
-Scans dataset for xarray variables with time coordinates, adds file-based audio/ephys sources from the TrialTree session table. Handles per-trial and session-wide file layouts transparently via `TrialTree.get_display_start()`.
-
-**Integration with GUI (migration in progress):**
-- `app_state.trial_alignment` (TrialAlignment | None): Built on each trial change by `DataWidget._build_trial_alignment()`
-- `data_sources.py`: `AudioFileSource`, `XarraySource`, `EphysFileSource` now delegate internally to `RegularTimeseriesSource`/`ArrayTimeseriesSource`. All expose `.timeseries_source` property. `SpectrogramSourceAdapter` wraps any `TimeseriesSource` for spectrogram use.
-- `AudioTracePlot`: Migrated — accepts `TimeseriesSource` via `set_source()`, `AudioTraceBuffer` uses source for data access. Falls back to constructing from `SharedAudioCache` if no source set.
-- `plots_container.update_audio_panels()`: Passes audio source from alignment to `AudioTracePlot`.
-
-**Phase 2 (all plots):**
-- `SpectrogramPlot`: Container uses `build_audio_source_from_alignment()` → `SpectrogramSourceAdapter` when alignment available.
-- `EphysTracePlot`: `widget_ephys` gets loader from alignment when available.
-- `RasterPlot`: Added `set_spike_source(SpikeEventSource)`. Existing `set_spike_data()` preserved.
-- `HeatmapPlot`: Audio/ephys envelope modes use alignment sources when available.
-- `LinePlot`: Rendering stays Dataset-based (needs `xr.Dataset` for changepoints, colors, coordinates via `plot_ds_variable()`).
 
 **X-axis limit enforcement:**
 - `_apply_zoom_constraints(x_bounds_override=)` and `toggle_axes_lock(x_bounds_override=)` accept an optional bounds tuple to override each plot's own `_get_time_bounds()`.

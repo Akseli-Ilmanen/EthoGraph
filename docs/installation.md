@@ -40,10 +40,12 @@
      - Download and execute the Anaconda Installer for your operating system (Windows, macOS, or Linux). During installation, make sure you check the box **"Add Anaconda to PATH"**. This enables you to run `conda` commands in your terminal.
      - Restart your terminal.
 
-3. Clone the ethograph repository. <br>
-    Navigate to an easily accessible folder (e.g., `Documents`) and clone the repository.
+3.  ```bash
+    git clone https://github.com/Akseli-Ilmanen/ethograph
+    ```
+    <br>
 
-    ??? note "Cloning the repository"
+    ??? note "How to clone a git repository:"
         === "Windows"
             1. Open File Explorer and navigate to a folder where you want to store ethograph (e.g., `Documents`).
             2. Click on the address bar, type `cmd`, and press *Enter* to open a terminal in that folder.
@@ -53,7 +55,7 @@
                 ```
             4. Wait for the download to complete. You will now have an `ethograph` folder in your chosen location.
 
-            !!! tipp "Don't have Git installed?"
+            ??? question "Don't have Git installed?"
                 If the `git` command is not recognized, you need to install Git first:
 
                 1. Download Git from [git-scm.com](https://git-scm.com/download/win).
@@ -74,21 +76,12 @@
                 cd ethograph
                 ```
 
-            !!! tipp "Don't have Git installed?"
-                === "MacOS"
-                    Install Git using Homebrew:
-                    ```bash
-                    brew install git
-                    ```
-                === "Linux"
-                    Install Git using your package manager:
-                    ```bash
-                    # Ubuntu/Debian
-                    sudo apt install git
+            ??? question "Don't have Git installed?"
+                If the `git` command is not recognized, you need to install Git first:
 
-                    # Fedora
-                    sudo dnf install git
-                    ```
+                1. Download Git from [git-scm.com](https://git-scm.com/download/win).
+                2. Run the installer and follow the prompts (default options are fine).
+                3. Restart your terminal and try the clone command again.
 
 4. Install the ethograph conda environment. <br>
 

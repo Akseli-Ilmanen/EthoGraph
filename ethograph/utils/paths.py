@@ -118,6 +118,35 @@ def check_paths_exist(nc_paths):
 
 
 
+def find_mapping_file(data_dir: Path | str | None = None) -> Path | None:
+    """Find mapping.txt using priority hierarchy.
+
+    Search order:
+    1. ``data_dir/.ethograph/mapping.txt``  (local, next to loaded data)
+    2. ``~/.ethograph/mapping.txt``          (global user config)
+    3. ``project_root/configs/mapping.txt``  (project fallback)
+
+    Parameters
+    ----------
+    data_dir
+        Directory of the loaded data file.  Pass ``None`` to skip the local
+        search (e.g. at application startup before any file is loaded).
+
+    Returns
+    -------
+    First existing path, or ``None`` if none are found.
+    """
+    candidates: list[Path] = []
+    if data_dir is not None:
+        candidates.append(Path(data_dir) / ".ethograph" / "mapping.txt")
+    candidates.append(Path.home() / ".ethograph" / "mapping.txt")
+    try:
+        candidates.append(eto.get_project_root() / "configs" / "mapping.txt")
+    except FileNotFoundError:
+        pass
+    return next((p for p in candidates if p.exists()), None)
+
+
 def gui_default_settings_path() -> Path:
     """Get the default path for gui_settings.yaml in the project root."""
     settings_path = eto.get_project_root() / "configs" / "gui_settings.yaml"

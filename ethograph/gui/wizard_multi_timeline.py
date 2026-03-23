@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import xarray as xr
 import pyqtgraph as pg
 from qtpy.QtCore import QRegularExpression, QRectF, Qt
 from qtpy.QtGui import QColor, QBrush, QFont, QPainterPath, QPen, QSyntaxHighlighter, QTextCharFormat
@@ -27,8 +29,10 @@ from qtpy.QtWidgets import (
 
 from ethograph.gui.wizard_multi_codegen import generate_alignment_code
 from ethograph.gui.dialog_function_params import _do_open_source
+from ethograph.gui.plots_timeseriessource import compute_trial_alignment, TimeRange, TrialAlignment
 from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
+from ethograph.utils.xr_utils import get_time_coord
 
 # Colors per modality (matching dialog_media_files.py palette)
 MODALITY_COLORS = {
@@ -366,7 +370,13 @@ class TimelinePage(QWidget):
         self._slider.valueChanged.connect(self._on_slider)
         slider_row.addWidget(self._slider)
         viz_layout.addLayout(slider_row)
-        
+
+        self._note_label = QLabel("")
+        self._note_label.setWordWrap(True)
+        self._note_label.setStyleSheet("font-size: 11px; color: #555; padding: 2px 4px;")
+        self._note_label.hide()
+        viz_layout.addWidget(self._note_label)
+
         self._tabs.addTab(viz_tab, "1: Visualization")
         
         # Tab 2: Python code
@@ -408,17 +418,19 @@ class TimelinePage(QWidget):
 
         layout.addSpacing(8)
 
-        # Output path (shared across tabs)
-        out_row = QHBoxLayout()
-        out_row.addWidget(QLabel("Output path:"))
+        # Output path (shared across tabs) — wrapped so configure_for_standalone() can hide it
+        self._out_widget = QWidget()
+        _out_row = QHBoxLayout(self._out_widget)
+        _out_row.setContentsMargins(0, 0, 0, 0)
+        _out_row.addWidget(QLabel("Output path:"))
         self._output_edit = QLineEdit()
         self._output_edit.setPlaceholderText("Select output location for trials.nc...")
         self._output_edit.setReadOnly(True)
         out_browse = QPushButton("Browse")
         out_browse.clicked.connect(self._browse_output)
-        out_row.addWidget(self._output_edit)
-        out_row.addWidget(out_browse)
-        layout.addLayout(out_row)
+        _out_row.addWidget(self._output_edit)
+        _out_row.addWidget(out_browse)
+        layout.addWidget(self._out_widget)
 
         self._total_duration = 1.0
         self._items: list = []
@@ -699,22 +711,211 @@ class TimelinePage(QWidget):
     def _on_open_in_editor(self):
         """Save code to .ethograph folder in home directory and open in user's code editor."""
         from datetime import datetime
-        
+
         code = self._code_editor.toPlainText()
         if not code.strip():
             return
-        
+
         # Convert Python code to Jupyter notebook format
         notebook = _code_to_notebook(code)
-        
+
         # Save to home/.ethograph directory
         wizard_dir = Path.home() / ".ethograph" / "alignment_wizard"
         wizard_dir.mkdir(exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_file = wizard_dir / f"ethograph_alignment_setup_{timestamp}.ipynb"
-        
+
         output_file.write_text(json.dumps(notebook, indent=1), encoding="utf-8")
-        
+
         # Use the editor selection dialog from dialog_function_params.py pattern
         _do_open_source(str(output_file), self)
+
+    # ------------------------------------------------------------------
+    # Standalone (non-wizard) entry point
+    # ------------------------------------------------------------------
+
+    def configure_for_standalone(self):
+        """Hide wizard-specific controls; call before populate_from_trialtree()."""
+        self._out_widget.hide()
+
+    def populate_from_trialtree(self, dt, app_state):
+        """Populate timeline from a loaded TrialTree.
+
+        Uses :func:`compute_trial_alignment` (from ``plots_timeseriessource``) to
+        derive each trial's absolute time range and available modalities.
+        """
+        self._clear()
+        self._state = None
+        self._code_editor.setPlainText(
+            "# Open via the New Dataset Wizard to generate alignment code."
+        )
+
+        cameras = list(getattr(dt, "cameras", None) or [])
+        mics = list(getattr(dt, "mics", None) or [])
+
+        has_ephys = bool(getattr(app_state, "ephys_stream_sel", None))
+
+        rows: list[tuple[str, str, str | None]] = []
+        for cam in cameras:
+            rows.append((f"video: {cam}", "video", cam))
+        for cam in cameras:
+            if self._has_pose_data(dt, cam):
+                rows.append((f"pose: {cam}", "pose", cam))
+        for mic in mics:
+            rows.append((f"audio: {mic}", "audio", mic))
+        if has_ephys:
+            rows.append(("ephys", "ephys", None))
+        rows.append(("features", "features", None))
+
+        n_rows = len(rows)
+        rows_rev = list(reversed(rows))
+        y_ticks = [(i + 0.5, rows_rev[i][0]) for i in range(n_rows)]
+        self._plot.getAxis("left").setTicks([y_ticks])
+        self._plot.setYRange(-0.2, n_rows + 0.2)
+
+        video_folder = getattr(app_state, "video_folder", None)
+        audio_folder = getattr(app_state, "audio_folder", None)
+        cameras_sel = getattr(app_state, "cameras_sel", None)
+
+        end_sources: list[tuple[str, str]] = []
+        max_t = 0.0
+        t_cursor = 0.0
+
+        for trial_id in dt.trials:
+            ds = None
+            try:
+                ds = dt.trial(trial_id)
+            except Exception:
+                pass
+
+            alignment: TrialAlignment | None = None
+            try:
+                alignment = compute_trial_alignment(
+                    dt, trial_id, ds or xr.Dataset(),
+                    video_folder=video_folder,
+                    audio_folder=audio_folder,
+                    cameras_sel=cameras_sel,
+                )
+                t_start = alignment.ephys_offset
+                dur = alignment.trial_range.duration if alignment.trial_range else 0.0
+            except Exception:
+                t_start = t_cursor
+                dur = 0.0
+
+            t_end = t_start + dur if dur > 0 else t_start + 10.0
+            t_cursor = t_end
+            max_t = max(max_t, t_end)
+
+            src = self._get_end_source(dt, trial_id, ds, alignment)
+            end_sources.append((str(trial_id), src))
+
+            for row_idx, (_label, modality, device) in enumerate(rows_rev):
+                if not self._trial_has_modality(dt, trial_id, modality, device, ds):
+                    continue
+                y_base = row_idx
+                color = pg.mkColor(MODALITY_COLORS.get(modality, "#888888"))
+                color.setAlpha(160)
+                bar = _make_rounded_bar(
+                    t_start, t_end, y_base + 0.3, y_base + 0.7,
+                    pg.mkBrush(color), pg.mkPen(color.lighter(130), width=1),
+                )
+                self._plot.addItem(bar)
+                self._items.append(bar)
+
+            line = pg.InfiniteLine(
+                pos=t_start, angle=90,
+                pen=pg.mkPen("#aaaaaa", width=1, style=Qt.PenStyle.DotLine),
+            )
+            self._plot.addItem(line)
+            self._items.append(line)
+
+            lbl = pg.TextItem(str(trial_id), color="#aaaaaa", anchor=(0.5, 1.0))
+            lbl.setPos(t_start + (t_end - t_start) / 2, n_rows + 0.1)
+            self._plot.addItem(lbl)
+            self._items.append(lbl)
+
+        self._total_duration = max(max_t, 1.0)
+        self._plot.setXRange(0, min(self._total_duration, 120), padding=0.02)
+        self._update_note(end_sources)
+
+    @staticmethod
+    def _trial_has_modality(dt, trial_id, modality: str, device, ds) -> bool:
+        if modality == "features":
+            return ds is not None and bool(ds.data_vars)
+        if modality == "ephys":
+            return True  # row only added when ephys_stream_sel is set
+        if device is None:
+            return False
+        try:
+            if modality == "video":
+                return bool(dt.get_video(trial_id, device))
+            if modality == "audio":
+                return bool(dt.get_audio(trial_id, device))
+            if modality == "pose":
+                return bool(dt.get_pose(trial_id, device))
+        except Exception:
+            pass
+        return False
+
+    @staticmethod
+    def _has_pose_data(dt, cam: str) -> bool:
+        for trial_id in (dt.trials or [])[:5]:
+            try:
+                if dt.get_pose(trial_id, cam):
+                    return True
+            except Exception:
+                pass
+        return False
+
+    @staticmethod
+    def _get_end_source(dt, trial_id, ds, alignment: TrialAlignment | None) -> str:
+        session_io = getattr(dt, "session_io", None)
+        if session_io is not None:
+            try:
+                if session_io.stop_time(trial_id) is not None:
+                    return "session stop_time"
+            except Exception:
+                pass
+        if ds is not None:
+            for var_name in ds.data_vars:
+                da = ds[var_name]
+                if da.attrs.get("type", "") in ("features", "colors", ""):
+                    tc = get_time_coord(da)
+                    if tc is not None:
+                        vals = getattr(tc, "values", tc)
+                        if len(vals) > 0 and float(vals[-1]) > 0:
+                            return "feature last timestamp"
+        if alignment is not None and alignment.trial_range is not None:
+            return "video/audio file length"
+        return "unknown (10 s placeholder)"
+
+    def _update_note(self, end_sources: list[tuple[str, str]]):
+        src_count = Counter(src for _, src in end_sources)
+        src_colors = {
+            "session stop_time":       "#2a8a2a",
+            "feature last timestamp":  "#2255cc",
+            "video/audio file length": "#aa6600",
+            "unknown (10 s placeholder)": "#cc4400",
+        }
+        parts = []
+        for src, n in src_count.most_common():
+            c = src_colors.get(src, "#555")
+            parts.append(f"<span style='color:{c}'>■</span>&nbsp;{n} trial(s):&nbsp;<b>{src}</b>")
+
+        needs_fallback = any(s != "session stop_time" for _, s in end_sources)
+        priority = ""
+        if needs_fallback:
+            priority = (
+                "<br><span style='color:#888; font-size:10px;'>"
+                "Trial end priority: "
+                "(1)&nbsp;session&nbsp;stop_time &rarr; "
+                "(2)&nbsp;feature&nbsp;last&nbsp;timestamp &rarr; "
+                "(3)&nbsp;video/audio&nbsp;file&nbsp;length."
+                "</span>"
+            )
+
+        self._note_label.setText(
+            "Trial end: &nbsp;" + "&nbsp;&nbsp;|&nbsp;&nbsp;".join(parts) + priority
+        )
+        self._note_label.show()
 

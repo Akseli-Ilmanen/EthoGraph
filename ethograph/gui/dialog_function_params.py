@@ -201,7 +201,7 @@ DOC_URLS: dict[str, str] = {
     "energy_meansquared": "https://vocalpy.readthedocs.io/",
     "energy_ava": "https://vocalpy.readthedocs.io/",
     "find_troughs": "https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.find_peaks.html",
-    "find_turning_points": "https://github.com/Akseli-Ilmanen/EthoGraph/blob/main/ethograph/features/changepoints.py",
+    "find_turning_points": "https://ethograph.readthedocs.io/en/latest/changepoints/#kinematic-changepoints",
     "continuity_cp": "https://github.com/timsainb/vocalization-segmentation",
     "oscillatory_events": "https://pynapple.org/user_guide/12_filtering.html#detecting-oscillatory-events",
 }
