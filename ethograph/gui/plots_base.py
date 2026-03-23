@@ -217,22 +217,26 @@ class BasePlot(pg.PlotWidget):
         """
         raise NotImplementedError("Subclasses must implement apply_y_range")
 
-    def update_plot(self, t0: Optional[float] = None, t1: Optional[float] = None):
+    def update_plot(self, t0: Optional[float] = None, t1: Optional[float] = None,
+                    preserve_x_range: bool = False):
         """Update plot with current data and time window."""
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
 
+        if preserve_x_range:
+            saved_xlim = self.get_current_xlim()
 
         self.update_plot_content(t0, t1)
 
-
-        if t0 is not None and t1 is not None:
+        if preserve_x_range:
+            self.set_x_range(mode='preserve', curr_xlim=saved_xlim)
+        elif t0 is not None and t1 is not None:
             self.set_x_range(mode='preserve', curr_xlim=(t0, t1))
         else:
             self.set_x_range(mode='default')
 
         # Only apply axis lock after setting the desired range
-        is_new_trial = t0 is None and t1 is None
+        is_new_trial = t0 is None and t1 is None and not preserve_x_range
         self.toggle_axes_lock(preserve_default_range=is_new_trial)
 
     def update_time_marker(self, time_position: float):

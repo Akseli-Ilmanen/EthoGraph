@@ -15,7 +15,6 @@ class TestMetaWidgetCreation:
             assert getattr(meta, attr) is not None
 
         assert meta.app_state.ready is False
-        assert meta.app_state.labels_modified is not None
         assert meta.app_state.trial_changed is not None
         assert meta.app_state.verification_changed is not None
 

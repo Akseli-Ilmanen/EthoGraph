@@ -155,7 +155,6 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         # Signal connections for decoupled communication
         self.plot_container.labels_redraw_needed.connect(self._on_labels_redraw_needed)
-        # Removed labels_modified and verification_changed signal connections
         self.app_state.trial_changed.connect(self.data_widget.on_trial_changed)
         self.app_state.trial_changed.connect(self.changepoints_widget._update_cp_status)
         self.changepoints_widget.changepoint_correction_checkbox.stateChanged.connect(
@@ -308,7 +307,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         ds_kwargs = self.app_state.get_ds_kwargs()
         self.data_widget.update_label_plot(ds_kwargs)
 
-    # Removed _on_labels_modified and _on_verification_changed handlers
+
         self.data_widget.update_trials_combo()
 
     def update_labels_widget_title(self):

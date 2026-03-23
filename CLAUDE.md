@@ -207,7 +207,6 @@ ethograph/utils/
 
 **Event signals for decoupled widget communication:**
 - `trial_changed`: Emitted by NavigationWidget when trial changes
-- `labels_modified`: Emitted by LabelsWidget when labels are created/deleted/modified
 - `verification_changed`: Emitted when human verification status changes
 
 **Key methods:**
@@ -291,7 +290,6 @@ Central coordinator that creates and wires all widgets together.
 **Signal connections (decoupled communication):**
 - `app_state.trial_changed` -> `data_widget.on_trial_changed()`
 - `app_state.trial_changed` -> `changepoints_widget._update_cp_status()`
-- `app_state.labels_modified` -> `MetaWidget._on_labels_modified()` -> updates plots
 - `app_state.verification_changed` -> `MetaWidget._on_verification_changed()` -> updates UI indicators
 - `app_state.verification_changed` -> `labels_widget._update_human_verified_status()`
 - `plot_container.labels_redraw_needed` -> `MetaWidget._on_labels_redraw_needed()`
@@ -516,7 +514,7 @@ User clicks "All Trials" -> ChangepointsWidget._cp_correction("all_trials")
     |
     _update_cp_status() -> green status
     |
-    app_state.labels_modified.emit() -> plots refresh
+    UPDATES PLOT (new logic)
 ```
 
 ---

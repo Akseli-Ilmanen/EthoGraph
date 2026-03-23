@@ -387,7 +387,7 @@ class LabelsWidget(QWidget):
             self._populate_labels_table()
             self.refresh_labels_shapes_layer()
             if self.data_widget:
-                self.data_widget.update_main_plot()
+                self.data_widget.update_main_plot(preserve_x_range=True)
             show_info(f"Loaded {len(self._mappings) - 1} labels from {Path(mapping_path).name}")
         except FileNotFoundError:
             show_warning(f"Mapping file not found: {mapping_path}")
@@ -414,7 +414,7 @@ class LabelsWidget(QWidget):
                 self._populate_labels_table()
                 self.refresh_labels_shapes_layer()
                 if self.data_widget:
-                    self.data_widget.update_main_plot()
+                    self.data_widget.update_main_plot(preserve_x_range=True)
                 show_info(f"Loaded {len(labels)} temporary labels")
 
     def _human_verification_true(self, mode=None):
@@ -470,12 +470,12 @@ class LabelsWidget(QWidget):
             self.io_widget.pred_file_path_edit.setText(file_path)
 
         if self.data_widget:
-            self.data_widget.update_main_plot()
+            self.data_widget.update_main_plot(preserve_x_range=True)
         self.refresh_labels_shapes_layer()
 
     def _on_pred_show_predictions_changed(self):
         if self.data_widget:
-            self.data_widget.update_main_plot()
+            self.data_widget.update_main_plot(preserve_x_range=True)
             
             
 
@@ -707,7 +707,7 @@ class LabelsWidget(QWidget):
         self._human_verification_true(mode="single_trial")
         self._mark_changes_unsaved()
         if self.data_widget:
-            self.data_widget.update_main_plot()
+            self.data_widget.update_main_plot(preserve_x_range=True)
         self._seek_to_frame(onset_s)
         self.refresh_labels_shapes_layer()
 
@@ -734,6 +734,7 @@ class LabelsWidget(QWidget):
             self.current_labels_pos = None
             return
 
+        onset_s, _, _ = get_interval_bounds(df, self.current_labels_pos)
         df = delete_interval(df, self.current_labels_pos)
         self.app_state.label_intervals = df
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
@@ -744,7 +745,7 @@ class LabelsWidget(QWidget):
 
         self._mark_changes_unsaved()
         if self.data_widget:
-            self.data_widget.update_main_plot()
+            self.data_widget.update_main_plot(preserve_x_range=True)
         self.refresh_labels_shapes_layer()
 
     def _edit_label(self):
