@@ -6,14 +6,16 @@ import numpy as np
 import pyqtgraph as pg
 from qtpy.QtCore import Qt, Signal
 
-_BG        = "#111111"
-_TICK_PEN  = pg.mkPen(120, 200, 255, 200, width=1)
-_SEL_BRUSH = pg.mkBrush(255, 220, 0, 55)
-_SEL_PEN   = pg.mkPen(255, 220, 0, 200)
-_HOVER_PEN = pg.mkPen(80, 160, 255, 180, width=1, style=Qt.DashLine)
-_REF_PEN   = pg.mkPen("#FF6600", width=1.5, style=Qt.DashLine)
-_BAR_BRUSH = pg.mkBrush(100, 180, 255, 200)
-_SEP_PEN   = pg.mkPen(100, 100, 100, 160, width=1, style=Qt.DashLine)
+_BG         = "#ffffff"
+_AXIS_PEN   = pg.mkPen(40, 40, 40, 255)
+_TICK_PEN   = pg.mkPen(30, 30, 30, 210, width=1)     # single-condition raster: near-black
+_SEL_BRUSH  = pg.mkBrush(255, 180, 0, 60)
+_SEL_PEN    = pg.mkPen(200, 120, 0, 200)
+_HOVER_PEN  = pg.mkPen(0, 100, 200, 160, width=1, style=Qt.DashLine)
+_CURSOR_PEN = pg.mkPen(80, 80, 80, 120, width=1, style=Qt.DotLine)
+_REF_PEN    = pg.mkPen("#CC4400", width=1.5, style=Qt.DashLine)
+_BAR_BRUSH  = pg.mkBrush(50, 50, 50, 190)            # single-condition PSTH: dark gray
+_SEP_PEN    = pg.mkPen(140, 140, 140, 180, width=1, style=Qt.DashLine)
 
 _TICK_HALF = 0.4   # half-height of each raster tick in trial-row units
 
@@ -24,12 +26,21 @@ _CONDITION_PALETTE: list[tuple[int, int, int]] = [
     (77,  175, 74),   # green
     (152, 78,  163),  # purple
     (255, 127, 0),    # orange
-    (0,   210, 213),  # cyan
+    (0,   180, 185),  # cyan
     (240, 60,  100),  # magenta
-    (180, 210, 36),   # lime
-    (200, 130, 0),    # amber
-    (100, 180, 255),  # sky
+    (150, 180, 20),   # lime
+    (160, 100, 0),    # amber
+    (80,  140, 220),  # sky
 ]
+
+
+def _style_axis(ax: pg.AxisItem, label: str | None = None):
+    """Apply dark-on-white styling to a pyqtgraph axis."""
+    ax.setPen(_AXIS_PEN)
+    ax.setTextPen(_AXIS_PEN)
+    ax.setStyle(tickFont=None)
+    if label is not None:
+        ax.setLabel(label, color="#222222")
 
 
 class TrialAxisItem(pg.AxisItem):
@@ -60,12 +71,16 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
 
     Signals
     -------
-    trial_hovered(int)  : original trial index under cursor, or -1
-    trial_selected(int) : original trial index that was clicked
+    trial_hovered(int)          : original trial index under cursor, or -1
+    trial_selected(int)         : original trial index that was single-clicked
+    hover_info(int, float)      : (trial_idx, rel_time_s) on every raster mouse move
+    trial_time_requested(int, float) : (trial_idx, rel_time_s) on double-click
     """
 
-    trial_hovered  = Signal(int)
-    trial_selected = Signal(int)
+    trial_hovered        = Signal(int)
+    trial_selected       = Signal(int)
+    hover_info           = Signal(int, float)    # trial_idx, rel_time_s
+    trial_time_requested = Signal(int, float)    # trial_idx, rel_time_s (double-click)
 
     def __init__(self, trial_ids: list[str], parent=None):
         super().__init__(parent)
@@ -75,12 +90,14 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
         self._selected   = -1
         self._sort_order: list[int] = list(range(self._n_trials))
 
+        self._spike_width: float = 1.0
+
         # ---- raster ----
         self._axis = TrialAxisItem(self._trial_ids)
         self.raster = self.addPlot(row=0, col=0, axisItems={"left": self._axis})
-        self.raster.setLabel("bottom", "Time from event (s)")
-        self.raster.showGrid(x=True, y=False, alpha=0.15)
         self.raster.addItem(pg.InfiniteLine(pos=0, angle=90, pen=_REF_PEN))
+        _style_axis(self.raster.getAxis("bottom"), "Time from event (s)")
+        _style_axis(self.raster.getAxis("left"))
 
         self._highlight = pg.LinearRegionItem(
             values=[0, 1], orientation="horizontal",
@@ -93,14 +110,18 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
         self._hover_line.setVisible(False)
         self.raster.addItem(self._hover_line)
 
+        self._cursor_vline = pg.InfiniteLine(pos=0, angle=90, pen=_CURSOR_PEN)
+        self._cursor_vline.setVisible(False)
+        self.raster.addItem(self._cursor_vline)
+
         # ---- psth ----
         self.psth = self.addPlot(row=1, col=0)
-        self.psth.setLabel("left", "Rate (Hz)")
-        self.psth.setLabel("bottom", "Time (s)")
-        self.psth.showGrid(x=True, y=True, alpha=0.15)
+        self.psth.showGrid(x=True, y=True, alpha=0.25)
         self.psth.setMaximumHeight(160)
         self.psth.setXLink(self.raster)
         self.psth.addItem(pg.InfiniteLine(pos=0, angle=90, pen=_REF_PEN))
+        _style_axis(self.psth.getAxis("left"), "Rate (Hz)")
+        _style_axis(self.psth.getAxis("bottom"), "Time (s)")
 
         # Dynamic items — cleared and rebuilt on each set_data call
         self._scatter_items: list[pg.ScatterPlotItem] = []
@@ -239,7 +260,8 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
             [(r, s) for r, s in rows_spikes if len(s)]
         )
         if len(xs):
-            curve = pg.PlotCurveItem(x=xs, y=ys, pen=_TICK_PEN, connect="finite")
+            pen = pg.mkPen(30, 30, 30, 210, width=self._spike_width)
+            curve = pg.PlotCurveItem(x=xs, y=ys, pen=pen, connect="finite")
             self.raster.addItem(curve)
             self._scatter_items.append(curve)
 
@@ -279,7 +301,7 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
                 xs, ys = self._make_tick_arrays(group_rows[g])
                 curve = pg.PlotCurveItem(
                     x=xs, y=ys,
-                    pen=pg.mkPen(r, gr, b, 200, width=1),
+                    pen=pg.mkPen(r, gr, b, 210, width=self._spike_width),
                     connect="finite",
                 )
                 self.raster.addItem(curve)
@@ -299,7 +321,7 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
 
         # PSTH: one filled step curve per group + legend
         self._legend = self.psth.addLegend(offset=(10, 5))
-        self._legend.setLabelTextColor("w")
+        self._legend.setLabelTextColor("#111111")
 
         for g in range(n_groups):
             r, gr, b = _CONDITION_PALETTE[g % len(_CONDITION_PALETTE)]
@@ -325,28 +347,49 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
     # Mouse handling
     # ------------------------------------------------------------------
 
-    def _scene_y(self, scene_pos) -> float | None:
+    def _raster_view_pos(self, scene_pos):
+        """Return (x, y) in raster view-coordinates, or None if outside."""
         if not self.raster.vb.sceneBoundingRect().contains(scene_pos):
             return None
-        return self.raster.vb.mapSceneToView(scene_pos).y()
+        pt = self.raster.vb.mapSceneToView(scene_pos)
+        return pt.x(), pt.y()
 
     def _on_mouse_moved(self, scene_pos):
-        y = self._scene_y(scene_pos)
-        if y is None:
+        result = self._raster_view_pos(scene_pos)
+        if result is None:
             self._hover_line.setVisible(False)
+            self._cursor_vline.setVisible(False)
             self.trial_hovered.emit(-1)
             return
+
+        x, y = result
         row = int(round(y))
+
         self._hover_line.setValue(row)
         self._hover_line.setVisible(True)
-        self.trial_hovered.emit(self._sort_order[row] if 0 <= row < self._n_trials else -1)
+        self._cursor_vline.setValue(x)
+        self._cursor_vline.setVisible(True)
+
+        trial_idx = self._sort_order[row] if 0 <= row < self._n_trials else -1
+        self.trial_hovered.emit(trial_idx)
+        self.hover_info.emit(trial_idx, x)
 
     def _on_mouse_clicked(self, event):
         if event.button() != Qt.LeftButton:
             return
-        y = self._scene_y(event.scenePos())
-        if y is not None:
-            self.select_row(int(round(y)))
+        result = self._raster_view_pos(event.scenePos())
+        if result is None:
+            return
+        x, y = result
+        row = int(round(y))
+        if not (0 <= row < self._n_trials):
+            return
+
+        if event.double():
+            trial_idx = self._sort_order[row]
+            self.trial_time_requested.emit(trial_idx, x)
+        else:
+            self.select_row(row)
 
 
 # ---------------------------------------------------------------------------

@@ -482,6 +482,17 @@ class TrialTree(xr.DataTree):
                         starts[i] = v
                 except (KeyError, ValueError):
                     pass
+        # Legacy compatibility
+        elif "video_start" in sess:
+            da = sess["video_start"]
+            for i, t in enumerate(trials_list):
+                try:
+                    row = da.sel(trial=t)
+                    v = float(row.values.flat[0])
+                    if not np.isnan(v):
+                        starts[i] = v
+                except (KeyError, ValueError):
+                    pass
 
         ends = np.full(n, _SENTINEL_END, dtype=np.float64)
         if "stop_time" in sess:

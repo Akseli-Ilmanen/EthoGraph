@@ -11,7 +11,7 @@ import pyqtgraph as pg
 from napari.utils.notifications import show_info, show_warning
 from napari.viewer import Viewer
 from scipy.ndimage import gaussian_filter1d
-from qtpy.QtCore import Qt, QRect, QRectF, QSortFilterProxyModel, Signal
+from qtpy.QtCore import Qt, QItemSelectionModel, QRect, QRectF, QSortFilterProxyModel, Signal
 from qtpy.QtGui import QBrush, QColor, QPen, QStandardItem, QStandardItemModel
 from qtpy.QtWidgets import (
     QAbstractItemView,
@@ -2441,8 +2441,34 @@ class EphysWidget(QWidget):
             features_combo.setCurrentIndex(0)
 
         self.configure_ephys_trace_plot()
+        self._redraw_selected_clusters()
         if self.data_widget:
             self.data_widget._configure_neo_panel()
+
+    def _redraw_selected_clusters(self):
+        if not self._multi_cluster_colors:
+            return
+        cid_col = self._find_col_by_header("", exact="id")
+        if cid_col is None:
+            return
+
+        target_ids = set(self._multi_cluster_colors.keys())
+        proxy = self._cluster_proxy
+        sel_model = self.cluster_table.selectionModel()
+        sel_model.blockSignals(True)
+        sel_model.clearSelection()
+        for row in range(proxy.rowCount()):
+            val = proxy.data(proxy.index(row, cid_col))
+            try:
+                if int(val) in target_ids:
+                    sel_model.select(
+                        proxy.index(row, 0),
+                        QItemSelectionModel.Select | QItemSelectionModel.Rows,
+                    )
+            except (ValueError, TypeError):
+                pass
+        sel_model.blockSignals(False)
+        self._on_cluster_row_selected()
 
     def _on_plot_changed(self, plot_type: str):
         if plot_type == 'ephystrace':

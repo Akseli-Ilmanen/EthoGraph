@@ -587,6 +587,13 @@ class NavigationWidget(QWidget):
             print("  No trial alignment available.")
         else:
             print(alignment.summary())
+        
+        print(SEP)
+        print("=" * 60)
+        print(f"Trial Interval set")
+        print("=" * 60)
+        df = self.app_state.dt.session_io.trials_ep.as_dataframe()
+        print(df.to_string())
 
     def _step_time(self, direction: int):
         if not self.app_state.ready:

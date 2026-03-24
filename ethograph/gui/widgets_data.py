@@ -1615,7 +1615,9 @@ class DataWidget(DataLoader, QWidget):
         self.update_label()
         if self.ephys_widget:
             self.ephys_widget.on_trial_changed()
-        self.update_main_plot()
+        preserve = getattr(self.app_state, '_preserve_x_range_next', False)
+        self.app_state._preserve_x_range_next = False
+        self.update_main_plot(preserve_x_range=preserve)
         self.update_space_plot()
 
         self.plot_container.update_time_range_from_data()

@@ -213,93 +213,12 @@ TrialTree (root)
 └── ...
 ```
 
-```python
-# Access the session table
-dt.session                        # xr.Dataset or None
-dt.session_to_dataframe()         # pd.DataFrame or None
+TODO add ntoes
 
-# Query timing for a specific trial
-dt.get_start_time(1)              # 10.0 (session-absolute seconds)
-dt.get_stream_offset(1, "audio")  # 0.2 (audio starts 0.2s after reference)
-```
+## Stream alignment
 
-### Stream alignment
+TODO add notes.
 
-Inspired by [neuroconv](https://neuroconv.readthedocs.io/en/main/user_guide/temporal_alignment.html), stream alignment supports two levels:
-
-**Level 1: Scalar offset** (covers most cases)
-
-A single time shift applied globally to all trials. Use when a stream consistently starts before or after the reference clock.
-
-```python
-# Audio starts 0.2s after video 
-dt.set_stream_offset("audio", 0.2)
-
-# Ephys started 1.5s before video
-dt.set_stream_offset("ephys", -1.5)
-
-# Query (works for any trial)
-dt.get_stream_offset(1, "audio")  # 0.2
-```
-
-Stored as a session attribute (`session.attrs["offset_audio"]`).
-
-
-### Creating a session table
-
-For simple cases, just set offsets directly — a session node is created automatically:
-
-```python
-dt = eto.from_datasets(ds_list)
-dt.set_stream_offset("audio", 0.2)
-dt.set_stream_offset("video", 0.0)
-```
-
-For trial timing (start/stop), pass a table:
-
-```python
-import xarray as xr
-
-session_table = xr.Dataset(
-    {
-        "start_time": ("trial", [10.0, 45.0]),
-        "stop_time":  ("trial", [25.0, 58.0]),
-    },
-    coords={"trial": [1, 2]},
-)
-dt = eto.from_datasets(ds_list, session_table=session_table)
-
-# Or set after creation
-dt.set_session_table(session_table)
-
-# Also accepts a pandas DataFrame
-import pandas as pd
-df = pd.DataFrame({
-    "trial": [1, 2],
-    "start_time": [10.0, 45.0],
-    "stop_time": [25.0, 58.0],
-})
-dt.set_session_table(df)
-```
-
-### When to use it
-
-- **NWB import**: Auto-created from the NWB trials table
-- **Ephys + video/audio**: Store stream offsets for alignment
-- **Clock drift**: Store aligned timestamps computed via TTL interpolation
-- **Simple workflows** (single DLC file + video): Not needed — helpers return 0.0 by default
-
-
-### NWB interop
-
-```python
-# Export to NWB: session-absolute time for any stream
-t_session = t_local + dt.get_start_time(trial) + dt.get_stream_offset(trial, "audio")
-
-# Import from NWB: store offset
-offset_audio = audio_ts.starting_time - nwb_start_time
-dt.set_stream_offset("audio", offset_audio)
-```
 
 ---
 

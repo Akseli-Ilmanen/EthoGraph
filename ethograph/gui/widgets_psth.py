@@ -136,6 +136,8 @@ class PSTHDialog(QDialog):
         self._current_cluster_id: int | None = None
         self._perievent: dict[int, np.ndarray] = {}
         self._current_trials: list[str] = []   # trial IDs in current PSTH
+        self._ref_times_abs_map: dict[str, float] = {}   # trial_id → session-abs ref time
+        self._start_map: dict[str, float] = {}           # trial_id → session-abs start
 
         self._build_ui()
         self._populate_align_combo()
@@ -167,6 +169,8 @@ class PSTHDialog(QDialog):
         self._plot = PSTHPlot([])   # populated on first cluster select
         self._plot.trial_selected.connect(self._on_trial_selected)
         self._plot.trial_hovered.connect(self._on_trial_hovered)
+        self._plot.hover_info.connect(self._on_hover_info)
+        self._plot.trial_time_requested.connect(self._on_trial_time_requested)
         self._loading_overlay = _LoadingOverlay(self._plot)
         body_layout.addWidget(self._plot)
         root.addWidget(body)
@@ -274,6 +278,17 @@ class PSTHDialog(QDialog):
         self._bin_spin.setValue(0.025)
         self._bin_spin.valueChanged.connect(self._replot)
         gl.addWidget(self._bin_spin)
+        layout.addWidget(g)
+
+        g = QGroupBox("Spike width (px)")
+        gl = QVBoxLayout(g)
+        self._spike_width_spin = QDoubleSpinBox()
+        self._spike_width_spin.setRange(0.5, 8.0)
+        self._spike_width_spin.setSingleStep(0.5)
+        self._spike_width_spin.setDecimals(1)
+        self._spike_width_spin.setValue(1.0)
+        self._spike_width_spin.valueChanged.connect(self._on_spike_width_changed)
+        gl.addWidget(self._spike_width_spin)
         layout.addWidget(g)
 
         g = QGroupBox("Sort trials by")
@@ -452,7 +467,24 @@ class PSTHDialog(QDialog):
     def _on_cluster_selected(self, cluster_id: int):
         self._current_cluster_id = cluster_id
         self._update_title()
+        self._select_cluster_in_table(cluster_id)
         self._recompute()
+
+    def _select_cluster_in_table(self, cluster_id: int):
+        cid_col = self.ephys_widget._find_col_by_header("", exact="id")
+        if cid_col is None:
+            return
+        proxy = self.ephys_widget._cluster_proxy
+        for row in range(proxy.rowCount()):
+            val = proxy.data(proxy.index(row, cid_col))
+            try:
+                if int(val) == cluster_id:
+                    table = self.ephys_widget.cluster_table
+                    table.selectRow(row)
+                    table.scrollTo(proxy.index(row, 0))
+                    return
+            except (ValueError, TypeError):
+                pass
 
     def _update_title(self):
         cid   = self._current_cluster_id
@@ -607,6 +639,13 @@ class PSTHDialog(QDialog):
                 if i not in self._perievent:
                     self._perievent[i] = np.array([], dtype=np.float64)
 
+            # Store maps needed for double-click seek
+            self._start_map = start_map
+            self._ref_times_abs_map = {
+                trials[valid_display[k]]: ref_times_abs[k]
+                for k in range(len(ref_times_abs))
+            }
+
             self._current_trials = trials
             try:
                 trial_ints = [int(t) for t in trials]
@@ -649,10 +688,51 @@ class PSTHDialog(QDialog):
     # UI event handlers
     # ------------------------------------------------------------------
 
+    def _on_spike_width_changed(self, w: float):
+        self._plot._spike_width = w
+        self._replot()
+
     def _on_trial_hovered(self, trial_idx: int):
         if trial_idx < 0 or trial_idx >= len(self._current_trials):
             return
-        self._sel_label.setText(f"Hover: {self._current_trials[trial_idx]}")
+        self._sel_label.setText(f"Hover: trial {self._current_trials[trial_idx]}")
+
+    def _on_hover_info(self, trial_idx: int, rel_time: float):
+        if trial_idx < 0 or trial_idx >= len(self._current_trials):
+            return
+        trial_id = self._current_trials[trial_idx]
+        sign = "+" if rel_time >= 0 else ""
+        self._sel_label.setText(
+            f"Trial {trial_id}  ·  t = {sign}{rel_time:.3f} s  (double-click to navigate)"
+        )
+
+    def _on_trial_time_requested(self, trial_idx: int, rel_time: float):
+        """Double-click: navigate to trial and seek to the clicked time point."""
+        if trial_idx < 0 or trial_idx >= len(self._current_trials):
+            return
+        trial_id = self._current_trials[trial_idx]
+
+        # Navigate to trial
+        if self.navigation_widget is not None:
+            self.app_state._preserve_x_range_next = True
+            self.navigation_widget.navigate_to_trial(trial_id)
+
+        # Convert rel_time (relative to event) → trial-relative time
+        trial_start_abs = self._start_map.get(trial_id, 0.0)
+        ref_abs = self._ref_times_abs_map.get(trial_id)
+        if ref_abs is None:
+            return
+        trial_relative_time = (ref_abs - trial_start_abs) + rel_time
+
+        video = getattr(self.app_state, "video", None)
+        if video is not None:
+            video.seek_to_frame(video.time_to_frame(trial_relative_time))
+
+        sign = "+" if rel_time >= 0 else ""
+        self._status.setText(
+            f"Navigated → trial {trial_id}  ·  t = {sign}{rel_time:.3f} s from event  "
+            f"(trial-relative: {trial_relative_time:.3f} s)"
+        )
 
     def _on_trial_selected(self, trial_idx: int):
         if trial_idx >= len(self._current_trials):
@@ -685,6 +765,7 @@ class PSTHDialog(QDialog):
             return
         trial_id = str(self._current_trials[trial_idx])
         if self.navigation_widget is not None:
+            self.app_state._preserve_x_range_next = True
             self.navigation_widget.navigate_to_trial(trial_id)
         self._status.setText(f"Navigated → {trial_id}")
 
