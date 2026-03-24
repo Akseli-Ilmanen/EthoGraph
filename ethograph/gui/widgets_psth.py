@@ -43,7 +43,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from .plots_psth import PSTHPlot, compute_perievent, sort_trials
+from .plots_psth import PSTHPlot, sort_trials
 
 
 # ---------------------------------------------------------------------------
@@ -521,15 +521,9 @@ class PSTHDialog(QDialog):
             stop = session_io.stop_time(trial_id)
             if stop is not None:
                 return stop
-        # fallback: read from dataset time coord
-        try:
-            ds = self.app_state.dt.trial(trial_id)
-            for c in ds.coords:
-                if "time" in c:
-                    return float(ds.coords[c].values[-1])
-        except Exception:
-            pass
-        return self._trial_abs_start(trial_id) + 30.0
+        else:
+            print("fdas")
+
 
     def _get_label_local_t(self, trial_id: str, label_id: int, use_offset: bool) -> float | None:
         df = self.app_state.get_trial_intervals(trial_id)

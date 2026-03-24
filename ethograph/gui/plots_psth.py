@@ -396,21 +396,6 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
 # Standalone helpers (shared with demo + dialog)
 # ---------------------------------------------------------------------------
 
-def compute_perievent(
-    tsgroup,
-    cluster_id: int,
-    ref_times_s: np.ndarray,
-    pre_s: float,
-    post_s: float,
-) -> dict[int, np.ndarray]:
-    """Return {trial_idx: relative_spike_times} via pynapple compute_perievent."""
-    import pynapple as nap
-
-    ref_ts = nap.Ts(t=ref_times_s)
-    peri   = nap.compute_perievent(tsgroup[cluster_id], ref_ts, minmax=(-pre_s, post_s))
-    return {i: (peri[i].t if i in peri else np.array([], dtype=np.float64))
-            for i in range(len(ref_times_s))}
-
 
 def sort_trials(
     perievent: dict[int, np.ndarray],
