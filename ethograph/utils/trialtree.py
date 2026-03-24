@@ -212,13 +212,23 @@ class SessionIO:
             and "trial" in self.trials_ep.metadata.columns
         )
 
+    def trial_row(self, trial) -> int:
+        """Row index of *trial* in ``trials_ep`` (0-based position)."""
+        return self._trial_idx(trial)
+
+    def trial_at_row(self, row_idx: int):
+        """Trial ID at position *row_idx* in ``trials_ep``."""
+        return self.trials_ep.metadata["trial"].iloc[row_idx]
+
     def _trial_idx(self, trial) -> int:
-        metadata = self.trials_ep.metadata["trial"]
+        if not hasattr(self, "_idx_cache"):
+            metadata = self.trials_ep.metadata["trial"]
+            object.__setattr__(self, "_idx_cache", {str(t): i for i, t in enumerate(metadata)})
         trial_str = str(trial)
-        matches = np.where(np.array([str(t) for t in metadata]) == trial_str)[0]
-        if len(matches) == 0:
+        try:
+            return self._idx_cache[trial_str]
+        except KeyError:
             raise KeyError(f"Trial {trial} not found in SessionIO")
-        return int(matches[0])
 
 
 # ---------------------------------------------------------------------------

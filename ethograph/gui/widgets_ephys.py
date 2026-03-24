@@ -38,6 +38,8 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+import pynapple as nap
+
 from ethograph.features.neural import build_tsgroup, compute_pca, firing_rate_to_xarray
 
 from .app_constants import CLUSTER_TABLE_MAX_HEIGHT, CLUSTER_TABLE_ROW_HEIGHT
@@ -697,6 +699,8 @@ class _ClusterIdDelegate(QStyledItemDelegate):
 class EphysWidget(QWidget):
     """Ephys controls with toggle-button tabs: Ephys trace | Neuron jumping."""
 
+    cluster_selected = Signal(int)   # emitted when a single cluster row is selected
+
     def __init__(self, napari_viewer: Viewer, app_state, parent=None):
         super().__init__(parent=parent)
         self.app_state = app_state
@@ -708,7 +712,8 @@ class EphysWidget(QWidget):
 
         self._cluster_df: pd.DataFrame | None = None
         self._spike_clusters: np.ndarray | None = None
-        self._spike_times: np.ndarray | None = None
+        self._spike_samples: np.ndarray | None = None   # raw integer Kilosort sample indices
+        self._spike_times_s: np.ndarray | None = None   # float64 seconds, derived on load
         self._channel_positions: np.ndarray | None = None
         self._channel_map: np.ndarray | None = None
         self._probe_channel_order: np.ndarray | None = None
@@ -716,7 +721,8 @@ class EphysWidget(QWidget):
         self._templates: np.ndarray | None = None
         self._ephys_n_channels = 0
         self._tsgroup = None
-        self._tsgroup_ephys_sr: float | None = None
+        self._current_cluster_id_for_psth: int | None = None
+        self._psth_dialog = None
         self._kilosort_sr: float | None = None
         self._fr_cache_key: tuple | None = None
         self._kilosort_params: dict | None = None
@@ -779,6 +785,27 @@ class EphysWidget(QWidget):
 
     def _toggle_firing_rate(self):
         self._show_panel("firing_rate" if self.firing_rate_toggle.isChecked() else "traceview")
+
+    def _open_psth(self):
+        from .widgets_psth import PSTHDialog
+
+        if self._psth_dialog is None or not self._psth_dialog.isVisible():
+            nav = getattr(self.data_widget, "navigation_widget", None)
+            labels_w = getattr(self.data_widget, "labels_widget", None) if self.data_widget else None
+            self._psth_dialog = PSTHDialog(
+                self.app_state, self, labels_w, nav, parent=self
+            )
+            self._psth_dialog.trial_jump_requested.connect(self._on_psth_trial_jump)
+
+        self._show_panel("traceview")
+        self._psth_dialog.show()
+        self._psth_dialog.raise_()
+        self._psth_dialog.activateWindow()
+
+    def _on_psth_trial_jump(self, trial_id: str):
+        nav = getattr(self.data_widget, "navigation_widget", None)
+        if nav is not None:
+            nav.navigate_to_trial(trial_id)
 
     def _refresh_layout(self):
         if self.meta_widget:
@@ -933,7 +960,18 @@ class EphysWidget(QWidget):
             QHeaderView::section:last { border-right: none; }
         """)
         self.cluster_table.selectionModel().selectionChanged.connect(self._on_cluster_row_selected)
+
+        cluster_table_header = QLabel("Cluster Table")
+        cluster_table_header.setStyleSheet(
+            "font-size: 11px; font-weight: bold; color: #aaa; padding: 2px 0px 0px 2px;"
+        )
+        layout.addWidget(cluster_table_header)
         layout.addWidget(self.cluster_table)
+
+        psth_btn = QPushButton("Open interactive PSTH →")
+        psth_btn.setToolTip("Open PSTH popup aligned to labels or trial events.")
+        psth_btn.clicked.connect(self._open_psth)
+        layout.addWidget(psth_btn)
 
         main_layout.addWidget(self.traceview_panel)
 
@@ -995,7 +1033,7 @@ class EphysWidget(QWidget):
             xmin, xmax = self.plot_container.get_current_xlim()
             self.plot_container.ephys_trace_plot.update_plot_content(xmin, xmax)
 
-        if self._spike_times is not None and self._spike_clusters is not None:
+        if self._tsgroup is not None:
             self._populate_raster_all_spikes()
 
     def _on_ephys_channel_changed(self, channel: int):
@@ -1242,7 +1280,10 @@ class EphysWidget(QWidget):
 
 
         self._spike_clusters = self._load_file(folder / "spike_clusters.npy", np.load, flatten=True)
-        self._spike_times = self._load_file(folder / "spike_times.npy", np.load, flatten=True)
+        self._spike_samples = self._load_file(folder / "spike_times.npy", np.load, flatten=True)
+        if self._spike_samples is not None and self._spike_clusters is not None:
+            self._spike_times_s = self._spike_samples.astype(np.float64) / ks_sr
+            self._tsgroup = build_tsgroup(self._spike_times_s, self._spike_clusters)
         self._channel_positions = self._load_file(folder / "channel_positions.npy", np.load)
         self._channel_map = self._load_file(folder / "channel_map.npy", np.load, flatten=True)
         self._templates = self._load_file(folder / "templates.npy", np.load)
@@ -1261,7 +1302,7 @@ class EphysWidget(QWidget):
             self.plot_container.set_ephys_visible(True)
             self.configure_ephys_trace_plot()
 
-        if self._spike_times is not None and self._spike_clusters is not None:
+        if self._tsgroup is not None:
             self._register_kilosort_features()
             self._populate_raster_all_spikes()
  
@@ -1275,8 +1316,31 @@ class EphysWidget(QWidget):
             if hasattr(self.data_widget, '_populate_neo_stream_combo'):
                 self.data_widget._populate_neo_stream_combo()
 
+    def _trial_ep(self) -> nap.IntervalSet | None:
+        alignment = self.app_state.trial_alignment
+        ephys_offset = alignment.ephys_offset if alignment is not None else 0.0
+        trial_bounds = self.app_state.trial_bounds
+        if trial_bounds is None:
+            return None
+        return nap.IntervalSet(ephys_offset, ephys_offset + trial_bounds.duration)
+
+    def _ephys_offset(self) -> float:
+        alignment = self.app_state.trial_alignment
+        return alignment.ephys_offset if alignment is not None else 0.0
+
+    def _restrict_to_trial(self, cluster_id: int, sr: float) -> tuple[np.ndarray, np.ndarray]:
+        """Return (times_local_s, samples_abs) for cluster_id restricted to current trial."""
+        trial_ep = self._trial_ep()
+        if trial_ep is None or self._tsgroup is None or cluster_id not in self._tsgroup:
+            return np.array([], dtype=np.float64), np.array([], dtype=np.int64)
+        offset = self._ephys_offset()
+        times_global = self._tsgroup[cluster_id].restrict(trial_ep).times()
+        times_local = times_global - offset
+        samples_abs = np.round(times_global * sr).astype(np.int64)
+        return times_local, samples_abs
+
     def _populate_raster_all_spikes(self):
-        if not self.plot_container or self._spike_times is None or self._spike_clusters is None:
+        if not self.plot_container or self._tsgroup is None:
             return
 
         ephys_plot = self.plot_container.ephys_trace_plot
@@ -1284,22 +1348,20 @@ class EphysWidget(QWidget):
         if sr is None or sr <= 0:
             return
 
-        alignment = self.app_state.trial_alignment
-        ephys_offset = alignment.ephys_offset if alignment is not None else 0.0
-        trial_bounds = self.app_state.trial_bounds
-        trial_end = ephys_offset + trial_bounds.duration if trial_bounds is not None else np.inf
+        trial_ep = self._trial_ep()
+        offset = self._ephys_offset()
+        if trial_ep is None:
+            return
 
-        spike_times_s = self._spike_times.astype(np.float64) / sr
-        in_trial = (spike_times_s >= ephys_offset) & (spike_times_s < trial_end)
-        trial_spike_times = spike_times_s[in_trial] - ephys_offset
-        trial_clusters = self._spike_clusters[in_trial]
-
+        trial_tsg = self._tsgroup.restrict(trial_ep)
         best_ch_map = self._build_cluster_best_channel_map()
 
-        best_channels = np.array(
-            [best_ch_map.get(int(c), 0) for c in trial_clusters],
-            dtype=np.int32,
-        )
+        times_list, channels_list = [], []
+        for cid, ts in trial_tsg.items():
+            t = ts.times() - offset
+            if len(t):
+                times_list.append(t)
+                channels_list.append(np.full(len(t), best_ch_map.get(int(cid), 0), dtype=np.int32))
 
         raster = self.plot_container.raster_plot
 
@@ -1307,13 +1369,14 @@ class EphysWidget(QWidget):
         total = len(all_ch)
         if total > 0:
             spacing = ephys_plot.buffer.channel_spacing
-            hw_to_y = {
-                int(hw): (total - 1 - i) * spacing
-                for i, hw in enumerate(all_ch)
-            }
+            hw_to_y = {int(hw): (total - 1 - i) * spacing for i, hw in enumerate(all_ch)}
             raster.sync_y_axis(hw_to_y, spacing, total)
 
-        raster.set_spike_data(trial_spike_times, best_channels)
+        if times_list:
+            all_times = np.concatenate(times_list)
+            all_channels = np.concatenate(channels_list)
+            order = np.argsort(all_times)
+            raster.set_spike_data(all_times[order], all_channels[order])
 
     def _build_cluster_best_channel_map(self) -> dict[int, int]:
         if self._templates is None or self._channel_map is None:
@@ -1460,20 +1523,18 @@ class EphysWidget(QWidget):
             return str(value), None
 
     def get_spike_times(self, cluster_id: int) -> np.ndarray:
-        """Spike times in seconds for *cluster_id*, sorted ascending."""
-        if self._spike_times is None or self._spike_clusters is None or self._kilosort_sr is None:
+        """All spike times in seconds for *cluster_id* (global, not trial-restricted)."""
+        if self._tsgroup is None or cluster_id not in self._tsgroup:
             return np.array([], dtype=np.float64)
-        mask = self._spike_clusters == cluster_id
-        return np.sort(self._spike_times[mask].astype(np.float64) / float(self._kilosort_sr))
+        return self._tsgroup[cluster_id].times()
 
     def _compute_isi_per_cluster(self) -> dict[int, float]:
         """Mean ISI in ms for each cluster."""
-        if self._spike_times is None or self._spike_clusters is None or self._kilosort_sr is None:
+        if self._tsgroup is None:
             return {}
         isi_map: dict[int, float] = {}
-        for cid in np.unique(self._spike_clusters):
-            st = self.get_spike_times(int(cid))
-            intervals = np.diff(st)
+        for cid in self._tsgroup.keys():
+            intervals = np.diff(self._tsgroup[cid].times())
             isi_map[int(cid)] = float(np.mean(intervals) * 1000.0) if len(intervals) > 0 else np.nan
         return isi_map
 
@@ -1712,6 +1773,9 @@ class EphysWidget(QWidget):
         self._jump_to_first_spike()
         self._sync_cluster_id_to_combo(cluster_id)
 
+        self._current_cluster_id_for_psth = cluster_id
+        self.cluster_selected.emit(cluster_id)
+
     def _on_multi_cluster_selected(self, indexes, cid_col: int, hw_col_idx: int | None):
         if not self.plot_container or not self.plot_container.is_ephystrace():
             return
@@ -1719,11 +1783,6 @@ class EphysWidget(QWidget):
         sr = ephys_plot.buffer.ephys_sr
         if sr is None or sr <= 0:
             return
-
-        alignment = self.app_state.trial_alignment
-        ephys_offset = alignment.ephys_offset if alignment is not None else 0.0
-        trial_bounds = self.app_state.trial_bounds
-        trial_end = ephys_offset + trial_bounds.duration if trial_bounds is not None else np.inf
 
         self._multi_cluster_colors.clear()
         cluster_entries = []
@@ -1744,24 +1803,14 @@ class EphysWidget(QWidget):
             self._multi_cluster_colors[cluster_id] = color
             cluster_ids.append(cluster_id)
 
-            mask = self._spike_clusters == cluster_id
-            spike_samples = self._spike_times[mask]
-            spike_times_s = spike_samples.astype(np.float64) / sr
-
-            in_trial = (spike_times_s >= ephys_offset) & (spike_times_s < trial_end)
-            trial_spike_times = spike_times_s[in_trial] - ephys_offset
-            trial_spike_samples = spike_samples[in_trial]
-
-            order = np.argsort(trial_spike_times)
-            trial_spike_times = trial_spike_times[order]
-            trial_spike_samples = trial_spike_samples[order]
+            times_local, samples_abs = self._restrict_to_trial(cluster_id, sr)
 
             ks_ch = self._get_ks_channel_for_row(proxy_row, hw_col_idx)
             channels = self._best_channels_for_cluster(cluster_id, ks_ch)
-            cluster_entries.append((trial_spike_times, trial_spike_samples, channels, color))
+            cluster_entries.append((times_local, samples_abs, channels, color))
 
             best_ch = channels[0] if channels else ks_ch
-            raster_entries.append((trial_spike_times, np.full(len(trial_spike_times), best_ch, dtype=np.int32), color))
+            raster_entries.append((times_local, np.full(len(times_local), best_ch, dtype=np.int32), color))
 
         self._apply_cluster_colors_to_table()
         ephys_plot.set_multi_cluster_spike_data(cluster_entries)
@@ -1921,7 +1970,7 @@ class EphysWidget(QWidget):
         return channel_ids, amplitude_out, best_channel
 
     def _draw_spikes_for_cluster(self, cluster_id: int, channel: int):
-        if self._spike_times is None or self._spike_clusters is None:
+        if self._tsgroup is None:
             return
         if not self.plot_container or not self.plot_container.is_ephystrace():
             return
@@ -1931,25 +1980,13 @@ class EphysWidget(QWidget):
         if sr is None or sr <= 0:
             return
 
-        mask = self._spike_clusters == cluster_id
-        spike_samples = self._spike_times[mask]
-        spike_times_s = spike_samples.astype(np.float64) / sr
-
-        alignment = self.app_state.trial_alignment
-        ephys_offset = alignment.ephys_offset if alignment is not None else 0.0
-        trial_bounds = self.app_state.trial_bounds
-        trial_end = ephys_offset + trial_bounds.duration if trial_bounds is not None else np.inf
-        in_trial = (spike_times_s >= ephys_offset) & (spike_times_s < trial_end)
-        trial_spike_times = spike_times_s[in_trial] - ephys_offset
-        trial_spike_samples = spike_samples[in_trial]
-
+        times_local, samples_abs = self._restrict_to_trial(cluster_id, sr)
         channels = self._best_channels_for_cluster(cluster_id, channel)
-        ephys_plot.set_spike_data(trial_spike_times, trial_spike_samples, channels)
+        ephys_plot.set_spike_data(times_local, samples_abs, channels)
 
         best_ch = channels[0] if channels else channel
         raster = self.plot_container.raster_plot
-        best_channels_arr = np.full(len(trial_spike_times), best_ch, dtype=np.int32)
-        raster.set_spike_data(trial_spike_times, best_channels_arr)
+        raster.set_spike_data(times_local, np.full(len(times_local), best_ch, dtype=np.int32))
 
     def _best_channels_for_cluster(self, cluster_id: int, fallback_channel: int) -> list[int]:
         if (
@@ -2132,7 +2169,7 @@ class EphysWidget(QWidget):
         return np.array(ids) if ids else None
 
     def _compute_firing_rates(self, force: bool = False):
-        if self._spike_times is None or self._spike_clusters is None:
+        if self._tsgroup is None:
             return
 
         trial = self.app_state.trials_sel
@@ -2157,12 +2194,6 @@ class EphysWidget(QWidget):
             return
         self._fr_cache_key = cache_key
 
-        spike_times_s = self._spike_times.astype(np.float64) / ephys_sr
-
-        if self._tsgroup is None or self._tsgroup_ephys_sr != ephys_sr:
-            self._tsgroup = build_tsgroup(spike_times_s, self._spike_clusters)
-            self._tsgroup_ephys_sr = ephys_sr
-
         ds = self.app_state.dt.trial(trial)
         start_time = self.app_state.dt.session_io.start_time(trial)
         bounds = self.app_state.trial_bounds
@@ -2170,7 +2201,7 @@ class EphysWidget(QWidget):
             return
 
         da = firing_rate_to_xarray(
-            spike_times_s, self._spike_clusters, bin_size,
+            self._spike_times_s, self._spike_clusters, bin_size,
             t_start=start_time, t_stop=bounds.end_s,
             _tsgroup=self._tsgroup,
         )

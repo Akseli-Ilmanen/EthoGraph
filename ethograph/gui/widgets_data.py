@@ -350,6 +350,7 @@ class DataWidget(DataLoader, QWidget):
         self.keypoints_table = panel.keypoints_table
 
         self.pose_mgr = PoseDisplayManager(self, self.app_state, self.video_mgr)
+        self.app_state.keypoints_changed.connect(self.populate_keypoints)
 
         panel.pose_hide_threshold_spin.valueChanged.connect(self._on_pose_hide_threshold_changed)
         panel.pose_show_text_checkbox.stateChanged.connect(self._on_pose_text_toggled)
@@ -699,15 +700,30 @@ class DataWidget(DataLoader, QWidget):
         has_audio = bool(self.app_state.has_audio)
         has_neo = bool(self.app_state.has_neo)
         has_phy = bool(self.app_state.has_kilosort)
+        has_features = self.type_vars_dict.get("features") != []
 
-        initial_checked = {
+        # Whether this panel's data is available in the current session.
+        # When data is NOT available the checkbox is forced unchecked and signals are
+        # blocked so the saved preference is preserved for future sessions with that data.
+        data_available = {
             "video_viewer": bool(self.app_state.has_video),
             "pose_markers": bool(self.app_state.has_pose),
-            "featureplot":  self.type_vars_dict.get("features") != [],
+            "featureplot":  has_features,
             "audiotrace":   has_audio,
             "spectrogram":  has_audio,
             "neo_viewer":   has_neo,
             "phy_viewer":   has_phy,
+        }
+        # Saved user preference (ignored when data unavailable).
+        # neo_viewer has no state_attr so always defaults to True when available.
+        saved_checked = {
+            "video_viewer": self.app_state.video_viewer_visible,
+            "pose_markers": self.app_state.pose_markers_visible,
+            "featureplot":  self.app_state.featureplot_visible,
+            "audiotrace":   self.app_state.audiotrace_visible,
+            "spectrogram":  self.app_state.spectrogram_visible,
+            "neo_viewer":   True,
+            "phy_viewer":   self.app_state.ephys_visible,
         }
         initial_shown = {
             "video_viewer": True,
@@ -722,11 +738,21 @@ class DataWidget(DataLoader, QWidget):
         for defn in _PANEL_DEFS:
             checkbox = QCheckBox(defn.label)
             checkbox.setObjectName(f"{defn.name}_checkbox")
-            checkbox.setChecked(initial_checked[defn.name])
+            # Connect signal first so the initial setChecked fires it for available panels.
             checkbox.stateChanged.connect(
                 lambda state, n=defn.name: self._on_panel_toggled(n, state)
             )
             setattr(self, f"{defn.name}_checkbox", checkbox)
+
+            if data_available[defn.name]:
+                # Fires signal → updates app_state + container visibility.
+                checkbox.setChecked(saved_checked[defn.name])
+            else:
+                # Block signal so the saved preference is not overwritten.
+                checkbox.blockSignals(True)
+                checkbox.setChecked(False)
+                checkbox.blockSignals(False)
+
             if not initial_shown[defn.name]:
                 checkbox.hide()
             if defn.audio_row:
@@ -942,7 +968,7 @@ class DataWidget(DataLoader, QWidget):
 
         neo_plot.set_source(RegularTimeseriesSource("neo", loader, start_time=0.0))
 
-        if self.plot_container._neo_visible:
+        if self.plot_container._panel_visible["neo"]:
             xmin, xmax = self.plot_container.get_current_xlim()
             neo_plot.update_plot_content(xmin, xmax)
             neo_plot.auto_channel_spacing()

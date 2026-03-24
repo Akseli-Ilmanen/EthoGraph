@@ -142,25 +142,33 @@ class LabelDrawingMixin:
     def _draw_single_label(self, plot, start_time, end_time, labels, is_main=True):
         if labels not in self.label_mappings:
             return
-        color = self.label_mappings[labels]["color"]
-        color_rgb = tuple(int(c * 255) for c in color)
+        color_rgb = tuple(int(c * 255) for c in self.label_mappings[labels]["color"])
 
-        use_bottom_strip = self._is_bottom_strip_plot(plot)
+        if is_main and not self._is_bottom_strip_plot(plot):
+            self._draw_standard_label(plot, start_time, end_time, color_rgb)
+            return
+
         inverted_y = self._is_inverted_y_plot(plot)
+        y_lo, y_hi = plot.plot_item.getViewBox().viewRange()[1]
+        degenerate = y_hi <= y_lo
 
-        if is_main:
-            if use_bottom_strip:
-                if inverted_y:
-                    self._draw_label_strip_top(plot, start_time, end_time, color_rgb)
-                else:
-                    self._draw_label_strip_bottom(plot, start_time, end_time, color_rgb)
-            else:
-                self._draw_standard_label(plot, start_time, end_time, color_rgb)
+        if is_main and inverted_y:
+            # Main label on inverted plot (heatmap): top strip
+            height = SPECTROGRAM_FALLBACK_Y_HEIGHT if degenerate else (y_hi - y_lo) * SPECTROGRAM_LABELS_HEIGHT_RATIO
+            y_top = PREDICTION_FALLBACK_Y_TOP if degenerate else y_hi
+            y0, y1, z, alpha = y_top - height, y_top, Z_INDEX_LABELS, 220
+        elif not is_main and not inverted_y:
+            # Prediction label on normal plot: smaller top strip
+            height = PREDICTION_FALLBACK_Y_HEIGHT if degenerate else (y_hi - y_lo) * PREDICTION_LABELS_HEIGHT_RATIO
+            y_top = PREDICTION_FALLBACK_Y_TOP if degenerate else y_hi
+            y0, y1, z, alpha = y_top - height, y_top, Z_INDEX_PREDICTIONS, 200
         else:
-            if inverted_y:
-                self._draw_label_strip_bottom(plot, start_time, end_time, color_rgb)
-            else:
-                self._draw_prediction_label(plot, start_time, end_time, color_rgb)
+            # Bottom strip: main-on-normal or prediction-on-inverted
+            height = SPECTROGRAM_FALLBACK_Y_HEIGHT if degenerate else (y_hi - y_lo) * SPECTROGRAM_LABELS_HEIGHT_RATIO
+            y_bottom = 0 if degenerate else y_lo
+            y0, y1, z, alpha = y_bottom, y_bottom + height, Z_INDEX_PREDICTIONS, 220
+
+        self._draw_label_region(plot, start_time, end_time, color_rgb, y0, y1, z, alpha)
 
     def _draw_standard_label(self, plot, start_time, end_time, color_rgb):
         rect = pg.LinearRegionItem(
@@ -170,8 +178,6 @@ class LabelDrawingMixin:
             pen=pg.mkPen(None),
             movable=False,
         )
-        # InfiniteLine pens are cosmetic (screen-pixel width), so this separator
-        # is always visible at exactly 1px regardless of the zoom level.
         sep_pen = pg.mkPen(color=(255, 255, 255, 180), width=1)
         for line in rect.lines:
             line.setPen(sep_pen)
@@ -179,57 +185,16 @@ class LabelDrawingMixin:
         plot.plot_item.addItem(rect)
         plot.label_items.append(rect)
 
-    def _draw_prediction_label(self, plot, start_time, end_time, color_rgb):
-        y_range = plot.plot_item.getViewBox().viewRange()[1]
-        y_top = y_range[1]
-        y_height = (y_range[1] - y_range[0]) * PREDICTION_LABELS_HEIGHT_RATIO
-        if y_top <= y_range[0]:
-            y_top = PREDICTION_FALLBACK_Y_TOP
-            y_height = PREDICTION_FALLBACK_Y_HEIGHT
-        x_coords = [start_time, end_time, end_time, start_time, start_time]
-        y_coords = [y_top, y_top, y_top - y_height, y_top - y_height, y_top]
-        sep_pen = pg.mkPen(color=(255, 255, 255, 180), width=0)  # width=0 → cosmetic 1px
+    def _draw_label_region(self, plot, start_time, end_time, color_rgb, y0, y1, z_value, alpha=220):
+        sep_pen = pg.mkPen(color=(255, 255, 255, 180), width=0)
         rect = pg.PlotDataItem(
-            x_coords, y_coords, fillLevel=y_top - y_height,
-            brush=(*color_rgb, 200), pen=sep_pen,
+            [start_time, end_time, end_time, start_time, start_time],
+            [y0, y0, y1, y1, y0],
+            fillLevel=y0,
+            brush=(*color_rgb, alpha),
+            pen=sep_pen,
         )
-        rect.setZValue(Z_INDEX_PREDICTIONS)
-        plot.plot_item.addItem(rect)
-        plot.label_items.append(rect)
-
-    def _draw_label_strip_bottom(self, plot, start_time, end_time, color_rgb):
-        y_range = plot.plot_item.getViewBox().viewRange()[1]
-        y_bottom = y_range[0]
-        y_height = (y_range[1] - y_range[0]) * SPECTROGRAM_LABELS_HEIGHT_RATIO
-        if y_range[1] <= y_bottom:
-            y_bottom = 0
-            y_height = SPECTROGRAM_FALLBACK_Y_HEIGHT
-        x_coords = [start_time, end_time, end_time, start_time, start_time]
-        y_coords = [y_bottom, y_bottom, y_bottom + y_height, y_bottom + y_height, y_bottom]
-        sep_pen = pg.mkPen(color=(255, 255, 255, 180), width=0)  # width=0 → cosmetic 1px
-        rect = pg.PlotDataItem(
-            x_coords, y_coords, fillLevel=y_bottom,
-            brush=(*color_rgb, 220), pen=sep_pen,
-        )
-        rect.setZValue(Z_INDEX_PREDICTIONS)
-        plot.plot_item.addItem(rect)
-        plot.label_items.append(rect)
-
-    def _draw_label_strip_top(self, plot, start_time, end_time, color_rgb):
-        y_range = plot.plot_item.getViewBox().viewRange()[1]
-        y_top = y_range[1]
-        y_height = (y_range[1] - y_range[0]) * SPECTROGRAM_LABELS_HEIGHT_RATIO
-        if y_top <= y_range[0]:
-            y_top = PREDICTION_FALLBACK_Y_TOP
-            y_height = SPECTROGRAM_FALLBACK_Y_HEIGHT
-        x_coords = [start_time, end_time, end_time, start_time, start_time]
-        y_coords = [y_top, y_top, y_top - y_height, y_top - y_height, y_top]
-        sep_pen = pg.mkPen(color=(255, 255, 255, 180), width=0)  # width=0 → cosmetic 1px
-        rect = pg.PlotDataItem(
-            x_coords, y_coords, fillLevel=y_top,
-            brush=(*color_rgb, 220), pen=sep_pen,
-        )
-        rect.setZValue(Z_INDEX_LABELS)
+        rect.setZValue(z_value)
         plot.plot_item.addItem(rect)
         plot.label_items.append(rect)
 

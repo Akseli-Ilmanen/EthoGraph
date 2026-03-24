@@ -122,6 +122,26 @@ _PANEL_RATIOS = {
     (False, False): {"feature": 1.0},
 }
 
+# Ordered list of (panel_name, app_state_guard_attr | None)
+# guard_attr: app_state boolean that must be True for the panel to appear; None = always allowed
+_PANEL_ORDER = [
+    ("audiotrace", "has_audio"),
+    ("spectrogram", "has_audio"),
+    ("neo", None),
+    ("ephys", "has_kilosort"),
+    ("raster", "has_kilosort"),
+    ("feature", None),
+]
+
+# Maps panel name -> widget attribute name on the container (except "feature" which is dynamic)
+_PANEL_PLOT_ATTR = {
+    "audiotrace": "audio_trace_plot",
+    "spectrogram": "spectrogram_plot",
+    "neo": "neo_trace_plot",
+    "ephys": "ephys_trace_plot",
+    "raster": "raster_plot",
+}
+
 
 class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     """Unified container with dynamic panel visibility.
@@ -157,12 +177,14 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.current_plot_type = self._feature_type
 
         # --- Panel visibility state ---
-        self._audiotrace_visible = False
-        self._spectrogram_visible = False
-        self._neo_visible = False
-        self._ephys_visible = False
-        self._raster_visible = False
-        self._featureplot_visible = True
+        self._panel_visible: dict[str, bool] = {
+            "audiotrace": False,
+            "spectrogram": False,
+            "neo": False,
+            "ephys": False,
+            "raster": False,
+            "feature": True,
+        }
 
         # --- Mixin state ---
         self.label_mappings: Dict[int, Dict[str, Any]] = {}
@@ -273,29 +295,25 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # Rebuild splitter contents
         self._rebuild_splitter()
 
+    def _get_panel_widget(self, name: str):
+        if name == "feature":
+            return self._feature_plot
+        return getattr(self, _PANEL_PLOT_ATTR[name])
+
     def _rebuild_splitter(self):
         """Rebuild the splitter with currently visible panels."""
-        # Remove all widgets from splitter
         while self._splitter.count():
             w = self._splitter.widget(0)
             w.hide()
             w.setParent(None)
 
         panels_in_order = []
-
-        if self.app_state.has_audio and self._audiotrace_visible:
-            panels_in_order.append(("audiotrace", self.audio_trace_plot))
-        if self.app_state.has_audio and self._spectrogram_visible:
-            panels_in_order.append(("spectrogram", self.spectrogram_plot))
-        if self._neo_visible:
-            panels_in_order.append(("neo", self.neo_trace_plot))
-        if self.app_state.has_kilosort and self._ephys_visible:
-            panels_in_order.append(("ephys", self.ephys_trace_plot))
-        if self.app_state.has_kilosort and self._raster_visible:
-            panels_in_order.append(("raster", self.raster_plot))
-
-        if self._featureplot_visible:
-            panels_in_order.append(("feature", self._feature_plot))
+        for name, guard in _PANEL_ORDER:
+            if guard and not getattr(self.app_state, guard, False):
+                continue
+            if not self._panel_visible[name]:
+                continue
+            panels_in_order.append((name, self._get_panel_widget(name)))
 
         for _, widget in panels_in_order:
             self._splitter.addWidget(widget)
@@ -340,50 +358,26 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         if total <= 0:
             return
 
-        visible_audio = self.app_state.has_audio and self._audiotrace_visible
-        visible_spec = self.app_state.has_audio and self._spectrogram_visible
-        visible_ephys = self.app_state.has_kilosort and self._ephys_visible
-        visible_neo = self._neo_visible
-        visible_neural = visible_ephys or visible_neo or (self.app_state.has_kilosort and self._raster_visible)
+        v = self._panel_visible
+        has_audio_panel = self.app_state.has_audio and (v["audiotrace"] or v["spectrogram"])
+        has_neural_panel = v["neo"] or (self.app_state.has_kilosort and (v["ephys"] or v["raster"]))
+        ratios = _PANEL_RATIOS.get((has_audio_panel, has_neural_panel), {"feature": 1.0})
 
-        ratios = _PANEL_RATIOS.get(
-            (visible_audio or visible_spec, visible_neural),
-            {"feature": 1.0}
-        )
-
-        visible_raster = self.app_state.has_kilosort and self._raster_visible
-
+        visible_names = []
         raw = []
-        if visible_audio:
-            raw.append(ratios.get("audiotrace", 0.2))
-        if visible_spec:
-            raw.append(ratios.get("spectrogram", 0.3))
-        if visible_neo:
-            raw.append(ratios.get("neo", 0.2))
-        if visible_ephys:
-            raw.append(ratios.get("ephys", 0.3))
-        if visible_raster:
-            raw.append(ratios.get("raster", 0.15))
-        if self._featureplot_visible:
-            raw.append(ratios.get("feature", 0.5))
+        for name, guard in _PANEL_ORDER:
+            if guard and not getattr(self.app_state, guard, False):
+                continue
+            if not v[name]:
+                continue
+            visible_names.append(name)
+            raw.append(ratios.get(name, 0.2))
 
         # When neo and phy panels coexist, enforce a 1:5 size ratio between them.
-        if visible_neo and (visible_ephys or visible_raster):
-            panel_names = []
-            if visible_audio:
-                panel_names.append("audio")
-            if visible_spec:
-                panel_names.append("spec")
-            if visible_neo:
-                panel_names.append("neo")
-            if visible_ephys:
-                panel_names.append("ephys")
-            if visible_raster:
-                panel_names.append("raster")
-            if self._featureplot_visible:
-                panel_names.append("feature")
-            neo_i = panel_names.index("neo")
-            phy_indices = [i for i, n in enumerate(panel_names) if n in ("ephys", "raster")]
+        phy_names = {"ephys", "raster"}
+        if "neo" in visible_names and any(n in phy_names for n in visible_names):
+            neo_i = visible_names.index("neo")
+            phy_indices = [i for i, n in enumerate(visible_names) if n in phy_names]
             neo_phy_total = raw[neo_i] + sum(raw[j] for j in phy_indices)
             raw[neo_i] = neo_phy_total / 6
             phy_raw_total = sum(raw[j] for j in phy_indices)
@@ -399,17 +393,17 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     # Panel visibility toggles
     # ------------------------------------------------------------------
 
-    def set_audiotrace_visible(self, visible: bool):
-        if self._audiotrace_visible == visible:
+    def _set_panel_visible(self, name: str, visible: bool):
+        if self._panel_visible[name] == visible:
             return
-        self._audiotrace_visible = visible
+        self._panel_visible[name] = visible
         self._rebuild_splitter()
 
+    def set_audiotrace_visible(self, visible: bool):
+        self._set_panel_visible("audiotrace", visible)
+
     def set_spectrogram_visible(self, visible: bool):
-        if self._spectrogram_visible == visible:
-            return
-        self._spectrogram_visible = visible
-        self._rebuild_splitter()
+        self._set_panel_visible("spectrogram", visible)
 
     def set_feature_view(self, mode: str):
         """Switch the feature (bottom) panel.
@@ -455,30 +449,21 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     # ------------------------------------------------------------------
 
     def set_neo_visible(self, visible: bool):
-        if self._neo_visible == visible:
-            return
-        self._neo_visible = visible
-        self._rebuild_splitter()
+        self._set_panel_visible("neo", visible)
 
     def set_ephys_visible(self, visible: bool):
-        if self._ephys_visible == visible:
+        if self._panel_visible["ephys"] == visible:
             return
-        self._ephys_visible = visible
+        self._panel_visible["ephys"] = visible
         if not visible:
-            self._raster_visible = False
+            self._panel_visible["raster"] = False
         self._rebuild_splitter()
 
     def set_raster_visible(self, visible: bool):
-        if self._raster_visible == visible:
-            return
-        self._raster_visible = visible
-        self._rebuild_splitter()
+        self._set_panel_visible("raster", visible)
 
     def set_neural_panel_mode(self, mode: str):
-        """Switch between 'trace' and 'raster' for the neural panel slot.
-
-        Both panels share the same y-axis space. Only one is visible at a time.
-        """
+        """Switch between 'trace' and 'raster' for the neural panel slot."""
         if mode == "trace":
             show_ephys, show_raster = True, False
         elif mode == "raster":
@@ -486,28 +471,21 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         else:
             return
 
-        changed = False
-        if self._ephys_visible != show_ephys:
-            self._ephys_visible = show_ephys
-            changed = True
-        if self._raster_visible != show_raster:
-            self._raster_visible = show_raster
-            changed = True
-        if changed:
+        v = self._panel_visible
+        if v["ephys"] != show_ephys or v["raster"] != show_raster:
+            v["ephys"] = show_ephys
+            v["raster"] = show_raster
             self._rebuild_splitter()
 
     def set_featureplot_visible(self, visible: bool):
-        if self._featureplot_visible == visible:
-            return
-        self._featureplot_visible = visible
-        self._rebuild_splitter()
+        self._set_panel_visible("feature", visible)
 
     # ------------------------------------------------------------------
     # Bidirectional y-axis sync: ephys <-> raster
     # ------------------------------------------------------------------
 
     def _sync_raster_y_from_ephys(self):
-        if self._syncing_y or not self._raster_visible:
+        if self._syncing_y or not self._panel_visible["raster"]:
             return
         self._syncing_y = True
         try:
@@ -517,7 +495,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             self._syncing_y = False
 
     def _sync_ephys_y_from_raster(self):
-        if self._syncing_y or not self._raster_visible:
+        if self._syncing_y or not self._panel_visible["raster"]:
             return
         self._syncing_y = True
         try:
@@ -640,7 +618,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         return False  # audio trace is always its own panel
 
     def is_ephystrace(self):
-        return self._ephys_visible or self._raster_visible
+        return self._panel_visible["ephys"] or self._panel_visible["raster"]
 
     def has_spectrogram_overlay(self) -> bool:
         return False  # no overlay system — dedicated panel instead
@@ -678,11 +656,11 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
                 master = self._xlink_master or self._feature_plot
                 master.vb.setXRange(t0, t1, padding=0)
 
-        if self._audiotrace_visible:
+        if self._panel_visible["audiotrace"]:
             self.audio_trace_plot.update_plot(t0=t0, t1=t1)
             self.audio_trace_plot.vb.enableAutoRange(x=False, y=True)
             self.audio_trace_plot._apply_y_constraints()
-        if self._spectrogram_visible:
+        if self._panel_visible["spectrogram"]:
             self.spectrogram_plot.update_plot(t0=t0, t1=t1)
 
         self._apply_all_zoom_constraints()
@@ -820,9 +798,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.overlay_manager.remove_overlay('amplitude_envelope')
 
     def _get_amp_envelope_host(self):
-        if self._audiotrace_visible and self.audio_trace_plot.isVisible():
+        if self._panel_visible["audiotrace"] and self.audio_trace_plot.isVisible():
             return self.audio_trace_plot
-        if self._ephys_visible and self.ephys_trace_plot.isVisible():
+        if self._panel_visible["ephys"] and self.ephys_trace_plot.isVisible():
             return self.ephys_trace_plot
         if self._feature_type == "lineplot":
             return self.line_plot
@@ -836,11 +814,11 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     def _get_envelope_host_plot(self):
         target = self._get_envelope_target()
         if target == "audio":
-            if self._audiotrace_visible and self.audio_trace_plot.isVisible():
+            if self._panel_visible["audiotrace"] and self.audio_trace_plot.isVisible():
                 return self.audio_trace_plot
             return None
         if target == "ephys":
-            if not self._ephys_visible or not self.ephys_trace_plot.isVisible():
+            if not self._panel_visible["ephys"] or not self.ephys_trace_plot.isVisible():
                 return None
             if self.ephys_trace_plot._multichannel:
                 return None

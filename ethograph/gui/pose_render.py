@@ -32,11 +32,13 @@ class PoseRenderData:
     properties   : DataFrame with per-point metadata (keypoint, individual, confidence, ...)
     data_not_nan : bool mask shape (N,) — True for points that should be shown
     file_name    : label used as the napari layer name base
+    keypoints    : optional list of keypoint names for populating the keypoint filter UI
     """
     data: np.ndarray
     properties: pd.DataFrame
     data_not_nan: np.ndarray
     file_name: str
+    keypoints: list[str] | None = None
 
 
 def strip_common_prefix(names: list[str]) -> list[str]:
@@ -65,12 +67,18 @@ def load_pose_from_file(file_path: str, source_software: str, fps: float) -> Pos
     """Load a pose file via movement and return a PoseRenderData."""
     
     ds = load_dataset(file_path, source_software, fps)
+    
+    kp_coord = ds.coords.get("keypoints")
+    keypoints = kp_coord.values.astype(str).tolist() if kp_coord is not None else None
+    
+    
     data, _,  properties = ds_to_napari_layers(ds)
     return PoseRenderData(
         data=data,
         properties=_strip_keypoint_prefix(properties),
         data_not_nan=~np.any(np.isnan(data), axis=1),
         file_name=Path(file_path).name,
+        keypoints=keypoints,
     )
 
 
@@ -131,6 +139,7 @@ def _pose_arrays_to_render_data(
         properties=_strip_keypoint_prefix(properties),
         data_not_nan=~np.any(np.isnan(data), axis=1),
         file_name=f"NWB_pose_{label_suffix}",
+        keypoints=None,
     )
 
 
@@ -222,6 +231,8 @@ class PoseDisplayManager:
     # Display (primary uses DataLoader pipeline, secondary uses widget)
     # ------------------------------------------------------------------
 
+
+
     def update_pose(self, hidden_keypoints: set[str]) -> None:
         primary_combo = getattr(self._dl, "primary_camera_combo", None)
         primary_name = primary_combo.currentText() if primary_combo else None
@@ -232,12 +243,19 @@ class PoseDisplayManager:
         if secondary_combo is None:
             return
         self._display_pose_on_secondary(secondary_combo.currentText(), hidden_keypoints)
+        
+        return 
 
     def _display_pose_on_primary(self, camera_idx: int, hidden_keypoints: set[str]) -> None:
         self._remove_pose_layers()
         pr = self._prepare_pose(camera_idx, hidden_keypoints)
         if pr is None:
             return
+        new_keys = pr.keypoints or []
+        existing = self.app_state.keypoints
+        merged = existing + [k for k in new_keys if k not in existing]
+        if merged != existing:
+            self.app_state.keypoints = merged
         self._dl.file_name = pr.file_name
         self._dl.data = pr.data
         self._dl.properties = pr.properties

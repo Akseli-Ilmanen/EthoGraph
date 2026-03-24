@@ -290,6 +290,10 @@ class NavigationWidget(QWidget):
         except ValueError:
             return
 
+    def navigate_to_trial(self, trial_id: str):
+        """Navigate to a specific trial by ID (same as selecting it in the combo)."""
+        self.trials_combo.setCurrentText(str(trial_id))
+
     def next_trial(self):
         """Go to the next trial."""
         self._update_trial(1)
@@ -451,7 +455,7 @@ class NavigationWidget(QWidget):
         self.trial_conditions_value_combo.clear()
 
         if filter_condition in self.type_vars_dict.get("trial_conditions", []):
-            filter_values = [node.ds.attrs[filter_condition] for node in self.app_state.dt.children.values()]
+            filter_values = [ds.attrs[filter_condition] for _, ds in self.app_state.dt.trial_items() if filter_condition in ds.attrs]
             unique_values = np.unique(filter_values)
             sorted_values = sorted(unique_values, key=str)
             self.trial_conditions_value_combo.addItems(["None"] + [str(v) for v in sorted_values])

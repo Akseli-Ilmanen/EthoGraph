@@ -1358,54 +1358,6 @@ class EphysTracePlot(BasePlot):
         self._draw_spike_waveforms_multi(t0, t1)
 
 
-    def _draw_spike_waveforms_single(self, t0: float, t1: float):
-        sr = self.buffer.ephys_sr
-        half_w = int(self._spike_snippet_ms * 0.001 * sr)
-        ch = self._spike_channels[0] if self._spike_channels else self.buffer.channel
-        ch = min(ch, self.buffer._cache.shape[1] - 1)
-        cache_start = self.buffer._cache_start
-        cache_n = self.buffer._cache.shape[0]
-        gain_factor = 0.75 ** (-self.buffer.display_gain) if self.buffer.display_gain != 0 else 1.0
-
-        i_start = np.searchsorted(self._spike_times_local, t0, side='left')
-        i_end = np.searchsorted(self._spike_times_local, t1, side='right')
-        spike_samples = self._spike_samples_abs[i_start:i_end]
-        if len(spike_samples) == 0:
-            return
-
-        cache_data = self.buffer._cache
-        ephys_offset = self._ephys_offset
-        max_snippet = 2 * half_w
-        all_t = np.empty(len(spike_samples) * (max_snippet + 1))
-        all_y = np.empty(len(spike_samples) * (max_snippet + 1))
-        pos = 0
-
-        for spike_s in spike_samples:
-            local_idx = int(spike_s) - cache_start
-            s0 = max(0, local_idx - half_w)
-            s1 = min(cache_n, local_idx + half_w)
-            if s1 <= s0:
-                continue
-            n = s1 - s0
-            all_y[pos:pos + n] = cache_data[s0:s1, ch]
-            all_t[pos:pos + n] = np.arange(s0 + cache_start, s1 + cache_start, dtype=np.float64) / sr - ephys_offset
-            pos += n
-            all_t[pos] = np.nan
-            all_y[pos] = np.nan
-            pos += 1
-
-        if pos == 0:
-            return
-        all_t = all_t[:pos]
-        all_y = all_y[:pos]
-        if gain_factor != 1.0:
-            all_y *= gain_factor
-
-        item = pg.PlotDataItem(all_t, all_y, pen=self._pen_spike, connect='finite', antialias=False)
-        item.setZValue(800)
-        self.plot_item.getViewBox().addItem(item, ignoreBounds=True)
-        self._spike_waveform_items.append(item)
-
     def _draw_spike_waveforms_multi(self, t0: float, t1: float):
         sr = self.buffer.ephys_sr
         half_w = int(self._spike_snippet_ms * 0.001 * sr)

@@ -443,25 +443,24 @@ class MetaWidget(CollapsibleWidgetContainer):
             print(f"Notification configuration warning: {e}")
 
     def configure_layout_for_data(self):
-        """Configure panel visibility and napari canvas after data load."""
+        """Configure panel visibility and napari canvas after data load.
+
+        Standard panel visibility (audio, feature, phy) is already applied by
+        _setup_panel_checkboxes via _on_panel_toggled signals.  This method only
+        handles the additional *configuration* steps that panels like Neo/Phy require
+        (loading streams, setting up loaders) before they can be shown.
+        """
         self.plot_container.configure_panels()
 
-        self.plot_container.set_audiotrace_visible(self.app_state.audiotrace_visible)
-        self.plot_container.set_spectrogram_visible(self.app_state.spectrogram_visible)
-        self.plot_container.set_featureplot_visible(self.app_state.featureplot_visible)
-        # Neo-Viewer: configure if ephys file is available
+        # Neo-Viewer: run loader setup then sync container to checkbox state.
         if self.app_state.ephys_path:
             self.data_widget._configure_neo_panel()
-            neo_visible = getattr(self.data_widget, 'neo_viewer_checkbox', None)
-            if neo_visible and neo_visible.isChecked():
-                self.plot_container.set_neo_visible(True)
+            neo_cb = getattr(self.data_widget, 'neo_viewer_checkbox', None)
+            self.plot_container.set_neo_visible(bool(neo_cb and neo_cb.isChecked()))
 
-        # Phy-Viewer: configure if ephys/kilosort is available
+        # Phy-Viewer: run loader setup if panel should be shown.
         if self.app_state.has_kilosort and self.app_state.ephys_visible:
             self.data_widget._configure_ephys_trace_plot()
-            self.plot_container.set_ephys_visible(True)
-        elif self.app_state.has_kilosort and not self.app_state.ephys_visible:
-            self.plot_container.set_ephys_visible(False)
 
         self.layout_mgr.register_docks()
 

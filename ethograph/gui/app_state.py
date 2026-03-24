@@ -111,6 +111,7 @@ class AppStateSpec:
         "pred_ds": (xr.Dataset | None, None, False),
         "pred_dt": (xr.DataTree | None, None, False),
         "trial_conditions": (list | None, None, False),
+        "keypoints": (list[str], [], False),
         "import_labels_nc_data": (bool, False, True),
         "fps_playback": (float, 30.0, True),
         "audio_playback_speed": (float, 1.0, True),
