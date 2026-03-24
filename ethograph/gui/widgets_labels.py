@@ -428,7 +428,10 @@ class LabelsWidget(QWidget):
                 self.app_state.label_dt.trial(trial).attrs['human_verified'] = np.int8(1)
 
         self._update_human_verified_status()
-        self._update_human_verified_status()
+        if self.data_widget:
+            self.data_widget.update_trials_combo()
+        if self.meta_widget:
+            self.meta_widget.update_labels_widget_title()
 
         
     def _update_human_verified_status(self):
@@ -471,6 +474,8 @@ class LabelsWidget(QWidget):
 
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
+            if self.data_widget.plot_container:
+                self.data_widget.plot_container.labels_redraw_needed.emit()
         self.refresh_labels_shapes_layer()
 
     def _on_pred_show_predictions_changed(self):

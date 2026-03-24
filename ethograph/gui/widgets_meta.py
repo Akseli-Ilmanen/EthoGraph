@@ -157,6 +157,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.plot_container.labels_redraw_needed.connect(self._on_labels_redraw_needed)
         self.app_state.trial_changed.connect(self.data_widget.on_trial_changed)
         self.app_state.trial_changed.connect(self.changepoints_widget._update_cp_status)
+        self.app_state.trial_changed.connect(self.update_labels_widget_title)
         self.changepoints_widget.changepoint_correction_checkbox.stateChanged.connect(
             self.update_changepoints_widget_title
         )
@@ -242,6 +243,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         )
 
         self.update_changepoints_widget_title()
+        self.update_labels_widget_title()
 
     def _connect_collapsible_layout_refresh(self):
         from qtpy.QtCore import QEvent

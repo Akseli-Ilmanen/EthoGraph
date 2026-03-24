@@ -422,6 +422,8 @@ class IOWidget(QWidget):
             self.labels_widget.refresh_labels_shapes_layer()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
+            if self.data_widget.plot_container:
+                self.data_widget.plot_container.labels_redraw_needed.emit()
 
     # ------------------------------------------------------------------
     # Post-load behavior
@@ -803,8 +805,9 @@ class IOWidget(QWidget):
                     if self.labels_widget:
                         self.labels_widget._mark_changes_unsaved()
                         self.labels_widget.refresh_labels_shapes_layer()
-                    if self.labels_widget:
                         self.labels_widget._update_human_verified_status()
+                    if self.data_widget and self.data_widget.plot_container:
+                        self.data_widget.plot_container.labels_redraw_needed.emit()
 
             elif media_type == "ephys":
                 result = QFileDialog.getOpenFileName(
