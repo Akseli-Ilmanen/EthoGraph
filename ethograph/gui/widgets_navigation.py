@@ -6,6 +6,7 @@ from collections import defaultdict
 
 import numpy as np
 from napari import Viewer
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -134,6 +135,7 @@ class NavigationWidget(QWidget):
         self.trials_combo.setEditable(True)
         self.trials_combo.setObjectName("trials_combo")
         self.trials_combo.currentTextChanged.connect(self._on_trial_changed)
+        self.trials_combo.currentIndexChanged.connect(self._sync_trials_combo_color)
 
         self.next_button = QPushButton("Next")
         self.next_button.setObjectName("next_button")
@@ -528,6 +530,18 @@ class NavigationWidget(QWidget):
     def set_plot_container(self, plot_container):
         self.plot_container = plot_container
 
+    def _sync_trials_combo_color(self):
+        idx = self.trials_combo.currentIndex()
+        le = self.trials_combo.lineEdit()
+        if le is None:
+            return
+        bg = self.trials_combo.itemData(idx, Qt.BackgroundRole)
+        fg = self.trials_combo.itemData(idx, Qt.ForegroundRole)
+        if bg and fg:
+            le.setStyleSheet(f"background-color: {bg.name()}; color: {fg.name()};")
+        else:
+            le.setStyleSheet("")
+
     def _on_time_jump_changed(self, value: float):
         self.app_state.time_jump_ms = value
 
@@ -577,6 +591,49 @@ class NavigationWidget(QWidget):
                 for name in names:
                     print(f"\n  [{name}]")
                     print(session[name].values)
+
+        print(SEP)
+        print("=" * 60)
+        print("  dt")
+        print("=" * 60)
+        if dt is None:
+            print("  No dt loaded.")
+        else:
+            print(dt)
+            print("\n  dt.attrs:")
+            for k, v in dt.attrs.items():
+                print(f"    {k}: {v!r}  (type: {type(v).__name__})")
+
+        print(SEP)
+        print("=" * 60)
+        print("  label_dt")
+        print("=" * 60)
+        label_dt = getattr(self.app_state, 'label_dt', None)
+        if label_dt is None:
+            print("  No label_dt loaded.")
+        else:
+            print(label_dt)
+            print("\n  label_dt.attrs:")
+            for k, v in label_dt.attrs.items():
+                print(f"    {k}: {v!r}  (type: {type(v).__name__})")
+
+        print(SEP)
+        print("=" * 60)
+        print("  CURRENT TRIAL  dataset + attrs")
+        print("=" * 60)
+        trial = getattr(self.app_state, 'trials_sel', None)
+        if label_dt is None or trial is None:
+            print("  No label_dt or trial selected.")
+        else:
+            try:
+                trial_ds = label_dt.trial(trial)
+                print(f"  label_dt.trial({trial!r}):")
+                print(trial_ds)
+                print(f"\n  label_dt.trial({trial!r}).attrs:")
+                for k, v in trial_ds.attrs.items():
+                    print(f"    {k}: {v!r}  (type: {type(v).__name__})")
+            except Exception as e:
+                print(f"  Error reading trial: {e}")
 
         print(SEP)
         print("=" * 60)
