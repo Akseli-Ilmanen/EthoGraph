@@ -1,6 +1,6 @@
 import numpy as np
 import vocalpy as voc
-from scipy.signal import butter, sosfiltfilt, stft
+from scipy.signal import butter, decimate, sosfiltfilt, stft
 
 
 def _sosfilter(data, rate, cutoff, mode, order=4, axis=0):
@@ -101,6 +101,7 @@ def highpass_envelope(
     return env_time, envelope
 
 
+#TODO: change the order, first downsample, then bandpass? (faster)
 def bandpass_envelope(
     data: np.ndarray,
     rate: float,
@@ -141,6 +142,41 @@ def bandpass_envelope(
     envelope, actual_rate = _downsample(envelope, rate, env_rate)
     env_time = np.arange(len(envelope)) / actual_rate
     return env_time, envelope
+
+
+def ripple_bandpass_envelope(
+    data: np.ndarray,
+    rate: float,
+    band: tuple = (100.0, 200.0),
+    target_rate: float = 1000.0,
+    smooth_sigma: float = 4.0,
+):
+    """SWR-optimized envelope extraction."""
+
+    # -----------------------
+    # 1. Downsample first
+    # -----------------------
+    decim = int(rate / target_rate)
+    data_ds = decimate(data, decim)
+    fs_ds = rate / decim
+
+
+    filtered = _sosfilter(data_ds, fs_ds, band, mode='bp')
+
+    # -----------------------
+    # 3. Hilbert envelope
+    # -----------------------
+    envelope = np.abs(hilbert(filtered))
+
+    # -----------------------
+    # 4. Smooth
+    # -----------------------
+    envelope = gaussian_filter1d(envelope, sigma=smooth_sigma)
+
+    # Time axis
+    t = np.arange(len(envelope)) / fs_ds
+
+    return t, envelope
 
 
 def _to_sound(audio_data_1d: np.ndarray, sample_rate: float) -> voc.Sound:
