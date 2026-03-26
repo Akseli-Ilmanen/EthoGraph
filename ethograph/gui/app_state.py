@@ -865,8 +865,8 @@ class ObservableAppState(QObject):
 
         nc_path = Path(self.nc_file_path)
         suffix = self._get_downsampled_suffix()
-        if self.save_tsv_enabled:
-            self._save_labels_tsv(nc_path, suffix)
+        
+
 
         if suffix:
             save_path = nc_path.parent / f"{nc_path.stem}{suffix}{nc_path.suffix}"
@@ -885,3 +885,8 @@ class ObservableAppState(QObject):
 
             self.dt = eto.open(nc_path)
             show_info(f"✅ Saved: {nc_path.name}")
+            
+            
+        if self.save_tsv_enabled:
+            self._save_labels_tsv(nc_path, suffix)
+            show_info(f"✅ Saved TSV: {nc_path.stem}{suffix}_labels.tsv")
