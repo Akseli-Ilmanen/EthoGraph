@@ -146,7 +146,7 @@ def get_segments(col, bg_class=0):
     """
     Example: [0,1,1,1,0,2,2] → [(1,1,4), (2,5,7)]
     """
-    padded = np.concatenate([[bg_class - 1], col, [bg_class - 1]])
+    padded = np.concatenate([[-1], col, [-1]])
     change_indices = np.nonzero(padded[:-1] != padded[1:])[0]
     
     segments = []

@@ -239,7 +239,8 @@ if args.action in ["train", "CV", "feature_ablation"]:
     batch_gen_tst.read_data(vid_list_file_tst)
 
     model_dir = results_dir
-    trainer.train(model_dir, batch_gen, num_epochs, bz, lr, batch_gen_tst, all_params)
+    loaded_trees = {hk: eto.open(info["nc_path"]) for hk, info in json.load(open(trial_mapping_path)).items()}
+    trainer.train(model_dir, batch_gen, num_epochs, bz, lr, batch_gen_tst, all_params, loaded_trees=loaded_trees)
     
 
 

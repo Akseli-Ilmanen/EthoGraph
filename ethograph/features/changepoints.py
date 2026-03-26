@@ -250,6 +250,7 @@ def correct_changepoints_automatic(
 def correct_changepoints_dense(labels, ds, all_params):
     """Correct labels with changepoints (dense array, legacy pipeline)."""
     cp_kwargs = all_params["cp_kwargs"]
+    
 
     # FIX to work with min_label_length_
     min_label_length = all_params.get("min_label_length_s")
@@ -278,6 +279,9 @@ def correct_changepoints_dense(labels, ds, all_params):
 
     labels = purge_small_blocks(labels, min_label_length, label_thresholds)
     labels = stitch_gaps(labels, stitch_gap_len)
+
+    if len(changepoint_idxs) == 0:
+        return labels
 
     for label in np.unique(labels):
         if label == 0:

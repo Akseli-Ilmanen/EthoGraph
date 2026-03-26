@@ -77,7 +77,7 @@ if __name__ == "__main__":
    
    
    nc_paths = [
-      r"C:\Users\Julius\Desktop\Poppy_train\Trial_data_20260308_01.nc"
+      r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260308_01\behav\Trial_data.nc"
    ]
 
 

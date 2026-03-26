@@ -52,15 +52,15 @@
   },
   "trainDataReady": false,
   "train_nc_paths": [
-    "C:\\Users\\Julius\\Desktop\\Poppy_train\\Trial_data_20260308_01.nc"
+    "D:\\Akseli\\AI_data\\derivatives\\sub-02_id-Poppy\\ses-000_date-20260308_01\\behav\\Trial_data.nc"
   ],
   "test_nc_paths": [
-    "C:\\Users\\Julius\\Desktop\\Poppy_train\\Trial_data_20260308_01.nc"
+    "D:\\Akseli\\AI_data\\derivatives\\sub-02_id-Poppy\\ses-000_date-20260308_01\\behav\\Trial_data.nc"
   ],
-  "config": "configs/model\\Poppy_train_20260326_134106.json",
+  "config": "configs/model\\Poppy_train_20260326_190925.json",
   "split": "1",
-  "result_dir": "D:\\Akseli\\Code\\ethograph\\result\\Poppy_train_20260326_134106\\split_1",
-  "dataset_dir": "D:\\Akseli\\Code\\ethograph\\data\\Poppy_train_20260326_134106",
+  "result_dir": "D:\\Akseli\\Code\\ethograph\\result\\Poppy_train_20260326_190925\\split_1",
+  "dataset_dir": "D:\\Akseli\\Code\\ethograph\\data\\Poppy_train_20260326_190925",
   "feature_dim": 70,
   "min_label_length_s": 0.05,
   "label_thresholds": {

@@ -354,7 +354,7 @@ class Trainer:
         return boundary_mask
 
 
-    def train(self, save_dir, batch_gen, num_epochs, batch_size, learning_rate, batch_gen_tst=None, all_params=None):
+    def train(self, save_dir, batch_gen, num_epochs, batch_size, learning_rate, batch_gen_tst=None, all_params=None, loaded_trees=None):
         self.model.train()
         self.model.to(device)
 
@@ -446,26 +446,26 @@ class Trainer:
 
 
             if (epoch + 1) % all_params.get("log_freq") == 0 and batch_gen_tst is not None or epoch == 0:
-                self.test(batch_gen_tst, epoch+1, all_params)
+                self.test(batch_gen_tst, epoch+1, all_params, loaded_trees=loaded_trees)
                 torch.save(self.model.state_dict(), save_dir + "/epoch-" + str(epoch + 1) + ".model")
                 torch.save(optimizer.state_dict(), save_dir + "/epoch-" + str(epoch + 1) + ".opt")
 
 
        
-    def test(self, batch_gen_tst, epoch, all_params):
+    def test(self, batch_gen_tst, epoch, all_params, loaded_trees=None):
         self.model.eval()
         self.model.to(device)
         if_warp = False  # When testing, always false
-            
+
         ground_truth_dict = dict()
         pred_dict = dict()
         corr_pred_dict = dict()
         video_list = []
-        previous_hash = None
         trial_mapping = json.load(open(os.path.join(all_params["dataset_dir"], 'trial_mapping.json')))
-        
-        
-        
+
+        if loaded_trees is None:
+            loaded_trees = {hk: eto.open(info["nc_path"]) for hk, info in trial_mapping.items()}
+
         with torch.no_grad():
             while batch_gen_tst.has_next():
                 batch_input, batch_target, mask, vids = batch_gen_tst.next_batch(1, if_warp)
@@ -473,27 +473,19 @@ class Trainer:
                 p, _ = self.model(batch_input, mask)
                 _, predicted = torch.max(p.data[0], 1)
                 predicted = predicted.squeeze().cpu().numpy()
-                
 
                 vid = vids[0].split('.')[0]
                 ground_truth_dict[vid] = batch_target.squeeze().cpu().numpy()
                 pred_dict[vid] = predicted
                 video_list.append(vid)
-                
                 hash_key, trial = vid.split('_')
-                
-                # Prevent from re-loading the same TrialTree multiple times
-                if hash_key != previous_hash:
-                    previous_hash = hash_key
-                    nc_path = trial_mapping[hash_key]["nc_path"]
-                    dt = eto.open(nc_path)
-                    
 
-    
+                dt = loaded_trees[hash_key]
                 ds = dt.trial(trial)
                 corr_pred = correct_changepoints_dense(predicted, ds, all_params)               
                 corr_pred_dict[vid] = corr_pred
                 
+       
                 
                 
 
