@@ -7,8 +7,8 @@
 |----------|--------|
 | `Space` | Toggle play/pause video and audio (or audio-only in no-video mode) |
 | `v` | Play selected label segment |
-| `←` | Previous frame (NapariVideo) |
-| `→` | Next frame (NapariVideo) |
+| `←` / `→` | Jump backward / forward by customizable time step (see "Jump step (ms)" in Navigation) |
+| `Shift+←` / `Shift+→` | Step one frame backward / forward (video mode) or one time-step (no-video mode) |
 
 ## Navigation
 
@@ -72,8 +72,8 @@
 
 | Shortcut | Action |
 |----------|--------|
-| `Shift+→` | Jump to next changepoint (audio CPs if audio/spectrogram panel was last clicked, otherwise kinematic CPs) |
-| `Shift+←` | Jump to previous changepoint (same panel context) |
+| `Ctrl+→` | Jump to next changepoint (audio CPs if audio/spectrogram panel was last clicked, otherwise kinematic CPs) |
+| `Ctrl+←` | Jump to previous changepoint (same panel context) |
 
 ## Ephys Trace
 

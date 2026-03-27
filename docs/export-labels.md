@@ -42,6 +42,8 @@ are included as extra columns.
 Given a session with 3 trials, two individuals, and a `stimulus` trial
 condition:
 
+TODO: Does this logic work given dt.session is not necessarily stored in label_dt?, check
+
 ```python
 import ethograph as eto
 

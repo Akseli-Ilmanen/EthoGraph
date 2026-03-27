@@ -518,7 +518,7 @@ class DataWidget(DataLoader, QWidget):
             except Exception as e:
                 self._cancel_load(f"Failed to load ephys features: {e}")
                 return
-            self.app_state.dt.set_media_files(ephys=self.app_state.ephys_path)
+            
 
         downsample_factor = self.io_widget.get_downsample_factor()
         if downsample_factor is not None:

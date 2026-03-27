@@ -240,8 +240,7 @@ class NavigationWidget(QWidget):
             "In video mode, arrows step one frame."
         )
         self.time_jump_spin.valueChanged.connect(self._on_time_jump_changed)
-        self.time_jump_label.hide()
-        self.time_jump_spin.hide()
+
 
         self.plot_container = None
 
@@ -390,14 +389,8 @@ class NavigationWidget(QWidget):
         self.app_state.av_speed_coupled = checked
         self.coupling_button.setText("\U0001f517" if checked else "\U0001f513")
 
-    def configure_for_no_video(self):
-        """Hide video-only controls, show time jump in no-video mode."""
-        self.fps_label.hide()
-        self.fps_playback_edit.hide()
-        self.skip_frames_checkbox.hide()
-        self.coupling_button.hide()
-        self.time_jump_label.show()
-        self.time_jump_spin.show()
+ 
+
 
     def _on_skip_frames_changed(self, checked: bool):
         self.app_state.skip_frames = checked
@@ -545,11 +538,61 @@ class NavigationWidget(QWidget):
     def _on_time_jump_changed(self, value: float):
         self.app_state.time_jump_ms = value
 
-    def step_forward(self):
-        self._step_time(+1)
+    def step_frame_forward(self):
+        self._step_frame(+1)
 
-    def step_backward(self):
-        self._step_time(-1)
+    def step_frame_backward(self):
+        self._step_frame(-1)
+
+    def step_window_forward(self):
+        self._step_window(+1)
+
+    def step_window_backward(self):
+        self._step_window(-1)
+
+    def _step_frame(self, direction: int):
+        if not self.app_state.ready:
+            return
+        if self.app_state.video:
+            self._step_frame_video(direction)
+        else:
+            self._step_time_no_video(direction)
+
+    def _step_window(self, direction: int):
+        if not self.app_state.ready:
+            return
+        self._step_time_no_video(direction)
+
+    def _step_frame_video(self, direction: int):
+        video = getattr(self.app_state, 'video', None)
+        if not video:
+            return
+        new_frame = self.app_state.current_frame + direction
+        new_frame = max(0, min(new_frame, self.app_state.num_frames - 1))
+        video.seek_to_frame(new_frame)
+
+    def _step_time_no_video(self, direction: int):
+        if not self.plot_container:
+            return
+        slider = self.plot_container.time_slider
+        jump_s = self.app_state.time_jump_ms / 1000.0
+        new_time = slider.current_time + direction * jump_s
+        new_time = max(slider._t_min, min(new_time, slider._t_max))
+        slider.set_slider_time(new_time)
+        self.plot_container.update_time_marker_by_time(new_time)
+        center = getattr(self.app_state, 'center_playback', False)
+        xlim = self.plot_container.get_current_xlim()
+        if center or new_time < xlim[0] or new_time > xlim[1]:
+            window_size = self.app_state.get_with_default("window_size")
+            half = window_size / 2.0
+            master = self.plot_container._xlink_master or self.plot_container._feature_plot
+            master.vb.setXRange(new_time - half, new_time + half, padding=0)
+
+    def _on_show_alignment(self):
+        dlg = _DataAlignmentDialog(self.app_state, parent=self)
+        dlg.exec()
+
+
 
     def _on_print_debug(self):
         SEP = "\n" * 4
@@ -562,47 +605,13 @@ class NavigationWidget(QWidget):
 
         print(SEP)
         print("=" * 60)
-        print("  SESSION  attrs")
+        print("  SESSION  media info")
         print("=" * 60)
-        dt = getattr(self.app_state, 'dt', None)
-        session = dt.session if dt is not None else None
-        if session is None:
-            print("  No session table.")
-        else:
-            if session.attrs:
-                for k, v in session.attrs.items():
-                    print(f"  {k}: {v}")
-            else:
-                print("  (no attrs)")
+        dt = self.app_state.dt
+        dt.print_session()        
+        
+        
 
-        print(SEP)
-        print("=" * 60)
-        print("  SESSION  data_vars")
-        print("=" * 60)
-        if session is None:
-            print("  No session table.")
-        else:
-            groups: dict[str, list[str]] = defaultdict(list)
-            for name, var in session.data_vars.items():
-                key = var.dims[0] if var.dims else "(scalar)"
-                groups[key].append(name)
-            for dim, names in groups.items():
-                print(f"\n  -- dim: {dim} --")
-                for name in names:
-                    print(f"\n  [{name}]")
-                    print(session[name].values)
-
-        print(SEP)
-        print("=" * 60)
-        print("  dt")
-        print("=" * 60)
-        if dt is None:
-            print("  No dt loaded.")
-        else:
-            print(dt)
-            print("\n  dt.attrs:")
-            for k, v in dt.attrs.items():
-                print(f"    {k}: {v!r}  (type: {type(v).__name__})")
 
         print(SEP)
         print("=" * 60)
@@ -649,44 +658,5 @@ class NavigationWidget(QWidget):
         print("=" * 60)
         print(f"Trial Interval set")
         print("=" * 60)
-        df = self.app_state.dt.session_io.trials_ep.as_dataframe()
+        df = self.app_state.dt.trials_ep.as_dataframe()
         print(df.to_string())
-
-    def _step_time(self, direction: int):
-        if not self.app_state.ready:
-            return
-
-        if self.app_state.video:
-            self._step_frame_video(direction)
-        else:
-            self._step_time_no_video(direction)
-
-    def _step_frame_video(self, direction: int):
-        video = getattr(self.app_state, 'video', None)
-        if not video:
-            return
-        new_frame = self.app_state.current_frame + direction
-        new_frame = max(0, min(new_frame, self.app_state.num_frames - 1))
-        video.seek_to_frame(new_frame)
-
-    def _step_time_no_video(self, direction: int):
-        if not self.plot_container:
-            return
-        slider = self.plot_container.time_slider
-        jump_s = self.app_state.time_jump_ms / 1000.0
-        new_time = slider.current_time + direction * jump_s
-        new_time = max(slider._t_min, min(new_time, slider._t_max))
-        slider.set_slider_time(new_time)
-        self.plot_container.update_time_marker_by_time(new_time)
-        center = getattr(self.app_state, 'center_playback', False)
-        xlim = self.plot_container.get_current_xlim()
-        if center or new_time < xlim[0] or new_time > xlim[1]:
-            window_size = self.app_state.get_with_default("window_size")
-            half = window_size / 2.0
-            master = self.plot_container._xlink_master or self.plot_container._feature_plot
-            master.vb.setXRange(new_time - half, new_time + half, padding=0)
-
-    def _on_show_alignment(self):
-        dlg = _DataAlignmentDialog(self.app_state, parent=self)
-        dlg.exec()
-

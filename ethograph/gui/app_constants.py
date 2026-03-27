@@ -89,7 +89,8 @@ RASTER_DEBOUNCE_MS = 30
 # =============================================================================
 
 # Buffer settings (plots_spectrogram.py)
-DEFAULT_BUFFER_MULTIPLIER = 5.0
+DEFAULT_BUFFER_MULTIPLIER = 4.0
+DEFAULT_BUFFER_MULTIPLIER_AUDIO = 2.0
 DEFAULT_BUFFER_MULTIPLIER_EPHYS = 2.0
 BUFFER_COVERAGE_MARGIN = 0.2  # 20% margin for buffer coverage check
 

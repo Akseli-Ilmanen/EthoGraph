@@ -2195,7 +2195,7 @@ class EphysWidget(QWidget):
         self._fr_cache_key = cache_key
 
         ds = self.app_state.dt.trial(trial)
-        start_time = self.app_state.dt.session_io.start_time(trial)
+        start_time = self.app_state.dt.start_time(trial)
         bounds = self.app_state.trial_bounds
         if bounds is None:
             return

@@ -15,7 +15,7 @@ from scipy.signal import spectrogram
 from .plots_base import BasePlot, ThrottleDebounce
 from .app_constants import (
     SPECTROGRAM_DEBOUNCE_MS,
-    DEFAULT_BUFFER_MULTIPLIER,
+    DEFAULT_BUFFER_MULTIPLIER_AUDIO,
     BUFFER_COVERAGE_MARGIN,
     DEFAULT_FALLBACK_MAX_FREQUENCY,
     Z_INDEX_BACKGROUND,
@@ -220,9 +220,9 @@ class SpectrogramBuffer:
             return spec_buffer
         try:
             val = self.app_state.get_with_default("buffer_multiplier")
-            return val if val is not None else DEFAULT_BUFFER_MULTIPLIER
+            return val if val is not None else DEFAULT_BUFFER_MULTIPLIER_AUDIO
         except (KeyError, AttributeError):
-            return DEFAULT_BUFFER_MULTIPLIER
+            return DEFAULT_BUFFER_MULTIPLIER_AUDIO
 
     def _covers_range(self, t0, t1):
         """Check if current buffer covers requested range with margin."""

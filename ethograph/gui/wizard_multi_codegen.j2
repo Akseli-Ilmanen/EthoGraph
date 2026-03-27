@@ -1,0 +1,184 @@
+{# wizard_multi_codegen.py.j2 — Jinja2 template for ethograph alignment setup code #}
+# conda activate ethograph
+import re
+import natsort
+import numpy as np
+import pandas as pd
+import xarray as xr
+from pathlib import Path
+import ethograph as eto
+from movement.io import load_poses
+from movement.kinematics import compute_velocity, compute_speed
+
+# ─── 1. Find media files ───
+# Regex patterns may not always work directly, update for your needs.
+{% for mod in modalities %}
+
+{% if mod.file_mode == "single" %}
+{{ mod.name }}_file = Path("{{ mod.single_file_path }}")
+{% elif mod.folder_path %}
+{{ mod.name }}_folder = Path("{{ mod.folder_path }}")
+{% if mod.extensions | length == 1 %}
+{% if mod.nested_subfolders %}
+{{ mod.name }}_files = natsort.natsorted({{ mod.name }}_folder.glob("**/*{{ mod.extensions[0] }}"))
+{% else %}
+{{ mod.name }}_files = natsort.natsorted({{ mod.name }}_folder.glob("*{{ mod.extensions[0] }}"))
+{% endif %}
+{% else %}
+{% set glob_prefix = "**/*" if mod.nested_subfolders else "*" %}
+{{ mod.name }}_files = natsort.natsorted(
+    p for pattern in [{{ mod.extensions | map('format_glob', glob_prefix) | join(', ') }}]
+    for p in {{ mod.name }}_folder.glob(pattern)
+)
+{% endif %}
+{% if mod.regex %}
+
+{{ mod.name }}_pattern = re.compile(r"{{ mod.regex }}")
+{% if mod.has_trial_role and mod.file_mode == "multi_regular" %}
+{{ mod.name }}_by_trial = {}
+for file_path in {{ mod.name }}_files:
+    match = {{ mod.name }}_pattern.search(file_path.stem)
+    if match:
+        trial = int(match["trial"]) if match["trial"].isdigit() else match["trial"]
+        {{ mod.name }}_by_trial.setdefault(trial, []).append(file_path)
+{% else %}
+{{ mod.name }}_metadata = []
+for f in {{ mod.name }}_files:
+    match = {{ mod.name }}_pattern.search(f.stem)
+    if match:
+        groups = match.groupdict()
+        groups = {k: int(v) if v.isdigit() else v for k, v in groups.items()}
+        {{ mod.name }}_metadata.append(groups)
+{% endif %}
+{% endif %}
+{% endif %}
+{% endfor %}
+
+# ─── 2. Create session table ───
+
+{% if session_table_source == "csv" %}
+# Load session table from imported file
+session_table = pd.read_csv("{{ trial_table_path }}", sep="{{ trial_table_sep }}")
+{% elif session_table_source == "inline" %}
+session_table = pd.DataFrame({
+{% for col, vals in trial_table_inline.items() %}
+    '{{ col }}': {{ vals }},
+{% endfor %}
+})
+{% elif session_table_source == "programmatic" %}
+# {{ n_trials }} trials - construct programmatically
+session_table = pd.DataFrame({
+    'trial': list(range(1, {{ n_trials + 1 }})),
+{% if has_start_stop %}
+    'start_time': ...,  # Your trial start times
+    'stop_time': ...,   # Your trial stop times
+{% endif %}
+})
+{% elif session_table_source == "metadata" %}
+# Extract unique trials from {{ trial_metadata_source }} metadata
+unique_trials = sorted(set(m['trial'] for m in {{ trial_metadata_source }}_metadata))
+session_table = pd.DataFrame({
+    'trial': unique_trials,
+})
+{% elif session_table_source == "infer" %}
+# Infer number of trials from file count
+n_trials = len({{ file_count_source }}_files)
+session_table = pd.DataFrame({
+    'trial': list(range(1, n_trials + 1)),
+})
+{% else %}
+# TODO: Specify number of trials
+n_trials = ...  # Set your trial count
+session_table = pd.DataFrame({
+    'trial': list(range(1, n_trials + 1)),
+})
+{% endif %}
+
+# ─── 3. Load trial datasets ───
+
+# TODO: Replace with your actual dataset loading logic
+ds_list = []
+{% if pose_has_trial_metadata %}
+for trial in session_table['trial']:
+    # Find pose file(s) for this trial
+    trial_pose_files = [
+        pose_files[i] for i, m in enumerate(pose_metadata)
+        if m.get('trial') == trial
+    ]
+    if not trial_pose_files:
+        continue
+
+    # Load first camera/view (adjust if multi-camera)
+    ds = load_poses.from_dlc_file(trial_pose_files[0], fps=30)
+    ds["velocity"] = compute_velocity(ds.position)
+    ds["speed"] = compute_speed(ds.position)
+    ds.attrs["trial"] = trial
+    ds_list.append(ds)
+{% else %}
+for idx, file in enumerate(pose_files, start=1):
+    ds = load_poses.from_dlc_file(file, fps=30)
+    ds["velocity"] = compute_velocity(ds.position)
+    ds["speed"] = compute_speed(ds.position)
+    ds.attrs["trial"] = idx
+    ds_list.append(ds)
+{% endif %}
+
+# ─── 4. Create TrialTree ───
+
+{% if has_session_table %}
+dt = eto.from_datasets(ds_list, session_table=session_table)
+{% else %}
+dt = eto.from_datasets(ds_list)
+{% endif %}
+# Inspect first trial of TrialTree
+dt.itrial(0)
+
+# ─── 5. Store media files in session table ───
+
+{% for mod in media_modalities %}
+{% if mod.file_mode == "multi_regular" %}
+# {{ mod.name }}: per-trial files
+{{ mod.name }}_filenames = [
+    [f.name for f in {{ mod.name }}_by_trial.get(trial, [])]
+    for trial in session_table["trial"]
+]
+{% if mod.device_labels %}
+dt.set_media("{{ mod.name }}", {{ mod.name }}_filenames, device_labels={{ mod.device_labels }})
+{% else %}
+dt.set_media("{{ mod.name }}", {{ mod.name }}_filenames)
+{% endif %}
+
+{% elif mod.file_mode == "multi_irregular" %}
+# {{ mod.name }}: session-wide (continuous recording)
+{% if mod.device_labels %}
+{{ mod.name }}_filenames = [f.name for f in {{ mod.name }}_files[:len({{ mod.device_labels }})]]
+dt.set_media("{{ mod.name }}", {{ mod.name }}_filenames, device_labels={{ mod.device_labels }}, per_trial=False)
+{% else %}
+dt.set_media("{{ mod.name }}", {{ mod.name }}_files[0].name, per_trial=False)
+{% endif %}
+
+{% elif mod.file_mode == "single" %}
+# {{ mod.name }}: single session file
+dt.set_media("{{ mod.name }}", str({{ mod.name }}_file), per_trial=False)
+
+{% endif %}
+{% endfor %}
+{% for mod in modalities if mod.name == "ephys" %}
+dt.set_media("ephys", str(ephys_file))
+{% endfor %}
+
+# ─── 6. Set stream offsets (temporal alignment) ───
+
+{% if offsets %}
+{% for stream, offset in offsets %}
+dt.set_stream_offset("{{ stream }}", {{ offset }})
+{% endfor %}
+{% else %}
+# No stream offsets configured
+{% endif %}
+{% if output_path %}
+
+# ─── 7. Save to NetCDF ───
+
+dt.save("{{ output_path }}")
+{% endif %}

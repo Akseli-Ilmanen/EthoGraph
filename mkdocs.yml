@@ -69,15 +69,18 @@ nav:
   - Getting Started:
       - Installation: installation.md
       - Loading data: data-loading.md
-      - Data requirements: data-requirements.md
       - TrialTree: trialtree.md
+      - Data requirements: data-requirements.md
+      - Ephys data: ephys-data.md
       - Dataset tutorials: tutorials.md
       - Export/Import of labels: export-labels.md
+
   - GUI User Guide:
       - Keyboard Shortcuts: shortcuts.md
       - Labelling: labelling.md
       - Changepoints: changepoints.md
       - Plot Settings: plot-settings.md
+
   - Help:
       - Troubleshooting: troubleshooting.md
 

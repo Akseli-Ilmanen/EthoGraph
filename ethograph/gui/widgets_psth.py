@@ -7,7 +7,7 @@ here); the dialog listens to EphysWidget.cluster_selected signal.
 Label-aligned PSTH
 ------------------
 For each trial the dialog:
-1. Gets the session-absolute start via ``dt.session_io.start_time(trial)``
+1. Gets the session-absolute start via ``dt.start_time(trial)``
    (falls back to 0 if no session timing is available).
 2. Reads label intervals from ``app_state.get_trial_intervals(trial)`` and
    finds the onset/offset of the chosen label class in trial-relative time.

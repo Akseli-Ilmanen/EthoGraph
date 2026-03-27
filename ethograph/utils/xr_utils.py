@@ -162,12 +162,19 @@ def trees_to_df(
                     'onset_s': seg["onset_s"],
                     'offset_s': seg["offset_s"],
                 }
-                t_start = None
+                
                 if hasattr(dt, 'session') and dt.session is not None and "start_time" in dt.session:
                     try:
                         t_start = float(dt.session.start_time.sel(trial=trial_id))
                     except (KeyError, ValueError):
-                        pass
+                        t_start = None
+                    if "stop_time" in dt.session:
+                        try:
+                            t_stop = float(dt.session.stop_time.sel(trial=trial_id))
+                        except (KeyError, ValueError):
+                            t_stop = None
+                    
+                    
                 elif 'pulse_onsets' in ds:
                     t_start = float(ds.pulse_onsets.values[0]) / 30_000  # Legacy crow lab
 
@@ -175,6 +182,8 @@ def trees_to_df(
                     row['trial_onset'] =  t_start
                     row['onset_global'] = t_start + seg["onset_s"]
                     row['offset_global'] = t_start + seg["offset_s"]
+                if t_stop is not None:
+                    row['trial_offset'] = t_stop
                     
                     
                 

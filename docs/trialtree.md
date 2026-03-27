@@ -1,11 +1,12 @@
 # TrialTree
 
-`TrialTree` ([source code](https://github.com/Akseli-Ilmanen/EthoGraph/blob/main/ethograph/utils/trialtree.py)) is a thin wrapper around [xarray.DataTree](https://docs.xarray.dev/en/stable/user-guide/data-structures.html#datatree) (`dt`) that makes it easier to work with multi-trial behavioural datasets. Each trial is stored as a child node containing an `xr.Dataset`, and the tree provides convenience methods for accessing, iterating, and modifying trials.
+`TrialTree` ([source code](https://github.com/Akseli-Ilmanen/EthoGraph/blob/main/ethograph/utils/trialtree.py)) is a thin wrapper around [xarray.DataTree](https://docs.xarray.dev/en/stable/user-guide/data-structures.html#datatree) that makes it easier to work with multi-trial behavioural datasets. Each trial is stored as a child node containing an `xr.Dataset`, and the tree provides convenience methods for accessing, iterating, and modifying trials.
 
-The dataset format builds on [Movement](https://movement.neuroinformatics.dev/latest/user_guide/movement_dataset.html) conventions for representing pose estimation and behavioural time series.
+The dataset format builds on [Movement](https://movement.neuroinformatics.dev/latest/user_guide/movement_dataset.html) conventions for representing pose estimation and behavioural time series. For the xarray Dataset structure expected inside each trial (dimensions, coordinates, `attrs["type"]`, etc.), see [Data Format](data_format.md).
 
 ```
 TrialTree (root)
+├── "session"  →  xr.Dataset  (timing, media filenames, stream offsets)
 ├── "1"  →  xr.Dataset  (trial 1: features, coords, attrs)
 ├── "2"  →  xr.Dataset  (trial 2)
 ├── "3"  →  xr.Dataset  (trial 3)
@@ -20,38 +21,44 @@ TrialTree (root)
 import ethograph as eto
 
 # Open an existing .nc file
-dt = eto.open("path/to/trials.nc") # dt = datatree
+dt = eto.open("path/to/trials.nc")
 
 # Access trial list
 dt.trials  # [1, 2, 3, ...]
 ```
 
-To create a TrialTree from scratch (single-trial, e.g. from a Movement dataset or numpy array):
+To create a TrialTree from scratch (single-trial, e.g. from a [Movement dataset](https://movement.neuroinformatics.dev/latest/user_guide/movement_dataset.html) or numpy array):
 
 ```python
-import ethograph as eto
-
 ds = ...  # your xr.Dataset with a time dimension
 
 # Wraps a single dataset into a TrialTree, adds empty label placeholders,
 # and marks all non-label variables as features
 dt = eto.dataset_to_basic_trialtree(ds)
+```
 
-# For multi-trial data, set attrs and build from a list of datasets
+For multi-trial data, set `attrs["trial"]` on each dataset and build from a list:
+
+```python
 datasets = [ds1, ds2]
 for i, ds in enumerate(datasets):
     ds.attrs["trial"] = i + 1
+
 dt = eto.from_datasets(datasets)
 ```
 
-To attach media file paths (video, audio, pose) after creating the tree:
+To include a session table with trial timing:
 
 ```python
-dt.set_media_files(
-    video=[["camera1_trial001.mp4"]],
-    audio=[["mic1_trial001.wav"]],
-    pose=[["dlc_trial001.h5"]],
-)
+import pandas as pd
+
+session_table = pd.DataFrame({
+    "trial": [1, 2],
+    "start_time": [0.0, 120.5],
+    "stop_time": [120.0, 245.0],
+})
+
+dt = eto.from_datasets(datasets, session_table=session_table)
 ```
 
 See the [tutorials](https://github.com/Akseli-Ilmanen/EthoGraph/tree/main/tutorials) for full worked examples of creating `.nc` files from different data sources.
@@ -60,165 +67,137 @@ See the [tutorials](https://github.com/Akseli-Ilmanen/EthoGraph/tree/main/tutori
 
 ## Media files
 
-Use one of these three alignment modes.
+Media filenames are stored in the session node via `dt.set_media()`. Call it once per stream. The available streams and their device dimensions are fixed:
 
-### Mode 1: Per-trial files
+| Stream | Default layout | Device dimension | Notes |
+|--------|---------------|-----------------|-------|
+| `"video"` | per-trial | `"camera"` | |
+| `"audio"` | per-trial | `"microphone"` | |
+| `"pose"` | per-trial | `"camera"` | |
+| `"ephys"` | session-wide | *(none)* | Selected in GUI; no `set_media()` call needed. See [Ephys data](ephys-data.md). |
 
-Each trial has its own media files. This is the standard case when acquisition already exports trial-split files.
+### Per-trial files
+
+Each trial has its own media files. This is the default for video, audio, and pose.
 
 ```python
-import xarray as xr
-
-session = xr.Dataset(
-    coords={
-        "trial": [1, 2, 3],
-        "cameras": ["cam-1", "cam-2"],
-    }
+# Two cameras, three trials
+dt.set_media("video",
+    [["trial001_cam1.mp4", "trial001_cam2.mp4"],
+     ["trial002_cam1.mp4", "trial002_cam2.mp4"],
+     ["trial003_cam1.mp4", "trial003_cam2.mp4"]],
+    device_labels=["left", "right"],
 )
 
-session["video"] = xr.DataArray(
-    [
-        ["trial001_cam-1.mp4", "trial001_cam-2.mp4"],
-        ["trial002_cam-1.mp4", "trial002_cam-2.mp4"],
-        ["trial003_cam-1.mp4", "trial003_cam-2.mp4"],
-    ],
-    dims=["trial", "cameras"],
-    coords={"trial": [1, 2, 3], "cameras": ["cam-1", "cam-2"]},
+# Recommendation: pose files share the same camera labels
+dt.set_media("pose",
+    [["dlc_trial001_cam1.csv", "dlc_trial001_cam2.csv"],
+     ["dlc_trial002_cam1.csv", "dlc_trial002_cam2.csv"],
+     ["dlc_trial003_cam1.csv", "dlc_trial003_cam2.csv"]],
+    device_labels=["left", "right"],
 )
 
-session["pose"] = xr.DataArray(
-    [
-        ["trial001_cam-1.csv", "trial001_cam-2.csv"],
-        ["trial002_cam-1.csv", "trial002_cam-2.csv"],
-        ["trial003_cam-1.csv", "trial003_cam-2.csv"],
-    ],
-    dims=["trial", "cameras"],
-    coords={"trial": [1, 2, 3], "cameras": ["cam-1", "cam-2"]},
+# Single microphone
+dt.set_media("audio",
+    [["mic_trial001.wav"],
+     ["mic_trial002.wav"],
+     ["mic_trial003.wav"]],
 )
-
-dt["session"] = xr.DataTree(session)
 ```
 
-### Mode 2: Session-long files per device
+### Session-wide files
 
-Use when each device has one long file covering many trials.
-Example: one long video file per camera for the full session.
+When a stream covers the entire session (one file, not split by trial), pass `per_trial=False`:
 
 ```python
-import xarray as xr
+# Single continuous video
+dt.set_media("video", "full_session.mp4", per_trial=False)
 
-session = xr.Dataset(
-    coords={
-        "video_file": [0],
-        "cameras": ["cam-1", "2"],
-        "trial": [1, 2, 3],
-    }
+# Session-wide with multiple cameras
+dt.set_media("video",
+    ["session_cam1.mp4", "session_cam2.mp4"],
+    device_labels=["left", "right"],
+    per_trial=False,
 )
-
-# One file per camera for the full session
-session["video"] = xr.DataArray(
-    ["session_cam-1.mp4", "session_cam-2.mp4"],
-    dims=["cameras"],
-)
-
-# Trial boundaries in session time
-session["start_time"] = xr.DataArray([0.0, 30.0, 60.0], dims=["trial"])
-session["stop_time"] = xr.DataArray([30.0, 60.0, 90.0], dims=["trial"])
-
-dt["session"] = xr.DataTree(session)
 ```
 
+### Mixed alignment
 
-### Mode 3: Real-world example (mixed trial/session alignment)
-
-Use this when some modalities are trial-aligned and others are session-long:
-
-- Video and pose are trial-aligned (one file per trial, per camera).
-- Ephys is one session-long file.
-- Audio files (from two microphones) are two session-long files.
-- Audio has a constant offset relative to the reference timeline.
+A common real-world pattern: video and pose are per-trial, while audio runs continuously across the session. Ephys is always session-wide and is selected directly in the GUI — no `set_media("ephys", ...)` call needed. If the ephys clock differs from the reference, set a stream offset (see [Ephys data](ephys-data.md) and [Stream offsets](#stream-offsets)).
 
 ```python
-import xarray as xr
-import ethograph as eto
+dt = eto.from_datasets(ds_list, session_table=session_table)
 
-# Trial datasets are already loaded and include attrs["trial"]
-dt = eto.from_datasets(ds_list)
+# Per-trial video and pose
+dt.set_media("video", video_filenames, device_labels=["cam-1", "cam-2"])
+dt.set_media("pose", pose_filenames, device_labels=["cam-1", "cam-2"])
 
-# Trial table defines trial windows on the shared session clock
-session = xr.Dataset(
-    coords={
-        "trial": [1, 2, 3],
-        "cameras": ["cam-1", "cam-2"],
-        "mics": ["mic-1", "mic-2"],
-        "ephys_file": [0],
-    }
+# Session-wide audio
+dt.set_media("audio",
+    ["session_ch1.wav", "session_ch2.wav"],
+    device_labels=["mic-1", "mic-2"],
+    per_trial=False,
 )
 
-session["start_time"] = xr.DataArray([0.0, 30.0, 60.0], dims=["trial"])
-session["stop_time"] = xr.DataArray([20.0, 50.0, 90.0], dims=["trial"])
-
-# Trial-aligned media
-session["video"] = xr.DataArray(
-    [
-        ["trial001_cam-1.mp4", "trial001_cam-2.mp4"],
-        ["trial002_cam-1.mp4", "trial002_cam-2.mp4"],
-        ["trial003_cam-1.mp4", "trial003_cam-2.mp4"],
-    ],
-    dims=["trial", "cameras"],
-)
-session["pose"] = xr.DataArray(
-    [
-        ["trial001_cam-1.csv", "trial001_cam-2.csv"],
-        ["trial002_cam-1.csv", "trial002_cam-2.csv"],
-        ["trial003_cam-1.csv", "trial003_cam-2.csv"],
-    ],
-    dims=["trial", "cameras"],
-)
-
-# Session-long modalities (stored once)
-session["audio"] = xr.DataArray(
-    ["session_audio_ch1.wav", "session_audio_ch2.wav"],
-    dims=["mics"],
-)
-session["ephys"] = xr.DataArray(["session_ephys.rhd"], dims=["ephys_file"])
-
-dt["session"] = xr.DataTree(session)
-
-# Constant stream offset: audio starts 230 ms after reference clock
+# Audio starts 230 ms after the reference clock
 dt.set_stream_offset("audio", 0.23)
+# Ephys offset (if needed):
+dt.set_stream_offset("ephys", 0.0)
 ```
 
-This pattern is common in real experiments where behavior tracking is trial-based, while acquisition systems for ephys/audio run continuously across the session.
+### Querying media
+
+```python
+dt.get_media(1, "video", device="left")   # "trial001_cam1.mp4"
+dt.devices("video")                        # ["left", "right"]
+dt.cameras                                 # ["left", "right"]  (shortcut)
+dt.mics                                    # ["mic-1", "mic-2"] (shortcut)
+```
 
 ---
 
-## Session table
+## Session table and timing
 
-The optional session table stores timing and alignment information at the tree level, separate from trial data. It lives as a child node named `"session"`.
+The session table is an `xr.Dataset` in the `"session"` child node. It holds trial timing (`start_time`, `stop_time`), media filenames, and stream offset attributes. Set it via `from_datasets(session_table=...)` or `dt.set_session_table()`.
 
-```
-TrialTree (root)
-├── "session"  →  xr.Dataset
-│   ├── start_time:  [10.0, 45.0]        (per-trial, trial dim)
-│   ├── stop_time:   [25.0, 58.0]        (per-trial, trial dim)
-│   ├── timestamps_ephys: [0.0, 0.001, ...]  (aligned timestamps, sample_ephys dim)
-│   └── attrs:
-│       ├── offset_audio: 0.2            (global stream offset)
-│       ├── offset_video: 0.0
-│       └── session_start_time, timestamps_reference
-│
-├── "1"  →  xr.Dataset (trial data, local time from 0)
-├── "2"  →  xr.Dataset
-└── ...
+```python
+dt.session                    # the xr.Dataset, or None
+dt.print_session()            # formatted summary
+dt.session_to_dataframe()     # as a pandas DataFrame
 ```
 
-TODO add ntoes
+### Trial timing
 
-## Stream alignment
+When `start_time` and `stop_time` are present, the timing API is available directly on the tree:
 
-TODO add notes.
+```python
+dt.start_time(1)              # 0.0
+dt.stop_time(1)               # 120.0 (or None if not known)
+dt.trial_duration(1)          # 120.0
+```
 
+### Pynapple integration
+
+Trial epochs are exposed as [pynapple](https://pynapple.org/) `IntervalSet` objects for restricting neural data:
+
+```python
+epoch = dt.trial_epoch(1)     # pynapple IntervalSet
+spikes_t1 = dt.restrict(spikes, 1)  # restrict a TsGroup/Tsd to trial 1
+```
+
+### Stream offsets
+
+For session-wide streams, `set_stream_offset()` specifies when sample 0 of the file occurs in session-absolute time. `source_start_time()` then computes the trial-relative offset:
+
+```python
+dt.set_stream_offset("ephys", 0.0)
+
+# Per-trial streams always return 0
+dt.source_start_time(1, "video")   # 0.0
+
+# Session-wide: offset - trial_start
+dt.source_start_time(2, "ephys")   # e.g. -120.5
+```
 
 ---
 
@@ -228,7 +207,7 @@ Inspired by [xarray's](https://docs.xarray.dev/en/stable/getting-started-guide/q
 
 ```python
 # By trial number (label-based, like .sel)
-ds = dt.trial(1) # Equivalent to dt[1].ds
+ds = dt.trial(1)
 
 # By position (index-based, like .isel)
 ds = dt.itrial(0)   # first trial
@@ -241,10 +220,6 @@ ds = dt.trial(1)
 ds["speed"]                  # xr.DataArray
 ds.attrs["fps"]              # 30.0
 ds.coords["individuals"]     # ["bird1", "bird2"]
-
-# Media files are stored at session level, not in trial attrs
-dt.cameras                   # ["left", "right"]
-dt.get_media(1, 'video', "left")      # "camera1_trial001.mp4"
 ```
 
 ---
@@ -290,6 +265,16 @@ dt.update_trial(1, lambda _: new_dataset)
 
 ---
 
+## Filtering
+
+```python
+# Filter to trials matching a condition
+dt_tone_a = dt.filter_by_attr("stimulus", "tone_A")
+dt_tone_a.trials  # subset of trials where stimulus == "tone_A"
+```
+
+---
+
 ## Saving
 
 ```python
@@ -306,7 +291,7 @@ dt.save()
 Labels (segment annotations) are stored inside each trial dataset as interval variables (`onset_s`, `offset_s`, `labels`, `individual`) on a `segment` dimension. `get_label_dt()` extracts just the label data into a lightweight TrialTree, stripping all feature variables:
 
 ```python
-label_dt = dt.get_label_dt()        # extract existing labels
+label_dt = dt.get_label_dt()            # extract existing labels
 empty_dt = dt.get_label_dt(empty=True)  # same structure, no label data
 ```
 

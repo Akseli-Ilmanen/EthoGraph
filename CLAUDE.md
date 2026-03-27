@@ -111,7 +111,7 @@ time = eto.get_time_coord(da)               # xr_utils.get_time_coord()
 data, filt = eto.sel_valid(da, kwargs)       # xr_utils.sel_valid()
 align = build_trial_alignment(dt, "1", ds)   # plots_timeseriessource.build_trial_alignment()
 dt_new = eto.dataset_to_basic_trialtree(ds) # io.dataset_to_basic_trialtree()
-dt.set_media_files(video=..., audio=...)     # trialtree.set_media_files()
+dt.set_media(video=..., audio=...)     # trialtree.set_media()
 eto.add_changepoints_to_ds(ds, ...)         # io.add_changepoints_to_ds()
 ```
 
@@ -713,7 +713,7 @@ See `docs/shortcuts.md`
 - Time coordinates: Can be `time`, `time_aux`, `time_labels`, etc. (any coord containing 'time')
   - Different variables can use different time coordinates with different sampling rates
 - Expected coordinates: `keypoints`, `individuals`, `features`
-- **Media files at session level:** Video, audio, and pose filenames stored via `dt.set_media_files()` in the session node as 2-D arrays indexed by `(trial, cameras)` or `(trial, mics)`. Access via `dt.get_video(trial, camera)`, `dt.get_audio(trial, mic)`, `dt.get_pose(trial, camera)`. Camera/mic labels via `dt.cameras`, `dt.mics`.
+- **Media files at session level:** Video, audio, and pose filenames stored via `dt.set_media()` in the session node as 2-D arrays indexed by `(trial, cameras)` or `(trial, mics)`. Access via `dt.get_video(trial, camera)`, `dt.get_audio(trial, mic)`, `dt.get_pose(trial, camera)`. Camera/mic labels via `dt.cameras`, `dt.mics`.
 - Variables with `type='features'` attribute for feature selection (features are optional — audio-only datasets supported)
 - Video files matched by filename in session table to video folder (video is optional — no-video mode supported)
 - **Camera–pose ordering:** `dt.cameras[i]` corresponds to `dt.get_pose(trial, cameras[i])`. Camera index determines pose index — no separate pose combo. Empty string at a pose index means no pose for that camera. For NWB-embedded pose, camera index selects `view=i` or `position_{nwb_pose_keys[i]}`.

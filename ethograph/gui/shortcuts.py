@@ -15,6 +15,7 @@ def override_napari_shortcuts(viewer):
     combos = [
         'Ctrl-a', 'Ctrl-s', 'Ctrl-x', 'Ctrl-v', 'Ctrl-l', 'Ctrl-enter', 'Ctrl-d',
         'Ctrl-e', 'Ctrl-f', 'Ctrl-i', 'Ctrl-k', 'Ctrl-c', 'Ctrl-m', 'Ctrl-t',
+        'Ctrl-Left', 'Ctrl-Right',
     ]
 
     all_keys = number_keys + qwerty_row + home_row + control_row + other + combos
@@ -81,12 +82,20 @@ def bind_global_shortcuts(meta_widget):
         labels_widget._play_segment()
 
     @viewer.bind_key("Left", overwrite=True)
-    def step_backward(v):
-        navigation_widget.step_backward()
+    def step_window_backward(v):
+        navigation_widget.step_window_backward()
 
     @viewer.bind_key("Right", overwrite=True)
-    def step_forward(v):
-        navigation_widget.step_forward()
+    def step_window_forward(v):
+        navigation_widget.step_window_forward()
+
+    @viewer.bind_key("shift+Left", overwrite=True)
+    def step_frame_backward(v):
+        navigation_widget.step_frame_backward()
+
+    @viewer.bind_key("shift+Right", overwrite=True)
+    def step_frame_forward(v):
+        navigation_widget.step_frame_forward()
 
     @viewer.bind_key("Down", overwrite=True)
     def next_trial(v):
@@ -258,10 +267,10 @@ def bind_global_shortcuts(meta_widget):
         cb = data_widget.video_viewer_checkbox
         cb.setChecked(not cb.isChecked())
 
-    @viewer.bind_key("shift+Right", overwrite=True)
+    @viewer.bind_key("ctrl+Right", overwrite=True)
     def next_changepoint(v):
         changepoints_widget.jump_changepoint(+1)
 
-    @viewer.bind_key("shift+Left", overwrite=True)
+    @viewer.bind_key("ctrl+Left", overwrite=True)
     def prev_changepoint(v):
         changepoints_widget.jump_changepoint(-1)

@@ -12,6 +12,8 @@ The quickest way to "try out" the GUI is click **Select templates** in the I/O w
 
 ---
 
+
+
 ## Option 1: Load a pre-made trials.nc
 
 If you already have a `trials.nc` file (e.g. from an ethograph pipeline or [custom scripts](#6-tutorials-for-custom-nc-files):
@@ -20,8 +22,12 @@ If you already have a `trials.nc` file (e.g. from an ethograph pipeline or [cust
 2. Select the video **folder** containing camera recordings (`.mp4`) [^4]
 3. [Optional] Select the audio **folder** containing microphone recordings `.wav`, `.mp3`, `.mp4` [^2]
 4. [Optional] Select the tracking **folder** containing pose estimation files (`.h5`, `.csv`) [^3]
-5. [Optional] Select the ephys **file** (`.rhd`, `.dat`, `.bin`, `.raw`, `.edf`, ...) if you want waveform / spike-linked ephys viewing
-6. [Optional] Confirm or edit the auto-detected **Kilosort folder**
+
+TODO:
+- rewrite with clearer logic for ephys, vs kilosort
+
+5. [Optional] Select the ephys **file** (`.rhd`, `.abf`) 
+6. [Optional] Select the kilosort folder
 5. Click `Load` to load the dataset and populate the interface
 
 ---
