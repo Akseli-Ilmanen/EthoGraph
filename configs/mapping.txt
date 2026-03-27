@@ -9,7 +9,7 @@
 8 swoopOut
 9 stickToDisp
 10 stickInDisp
-11 rightToPellet
+11 lookToPellet
 12 snapPellet
 13 eat
 14 reachRightCorner
@@ -23,4 +23,5 @@
 22 shiftLeft
 23 pullOutLeft
 24 swoopOutLeft
+25 lookgToFallingPellet
 

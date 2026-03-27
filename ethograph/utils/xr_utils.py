@@ -162,17 +162,18 @@ def trees_to_df(
                     'onset_s': seg["onset_s"],
                     'offset_s': seg["offset_s"],
                 }
-                
+                t_start = None
+                t_stop = None
                 if hasattr(dt, 'session') and dt.session is not None and "start_time" in dt.session:
                     try:
                         t_start = float(dt.session.start_time.sel(trial=trial_id))
                     except (KeyError, ValueError):
-                        t_start = None
+                        pass
                     if "stop_time" in dt.session:
                         try:
                             t_stop = float(dt.session.stop_time.sel(trial=trial_id))
                         except (KeyError, ValueError):
-                            t_stop = None
+                            pass
                     
                     
                 elif 'pulse_onsets' in ds:
