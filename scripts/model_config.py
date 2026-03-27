@@ -51,13 +51,14 @@ if __name__ == "__main__":
 
 
    # need to comment out for train-all
-   action="train" # "train", "inference", "CV", "ablation"
+   action="inference" # "train", "inference", "CV", "ablation"
    # eval run manually via terminal
    
    trainDataReady = False
    
    # model_path = r"D:\Akseli\Code\ethograph\configs\model\Freddy_train_20251021_164220.json" # only for inference mode
    # model_path = os.path.join(eto.get_project_root(), "configs", "model", "Ivy_train_20260202_191138_epoch-100.model")
+   model_path = r"D:\Akseli\Code\ethograph\result\Poppy_train_20260326_190925\split_1\epoch-100.model"
 
 
    target_individual = "Poppy" # predict labels for this individual
@@ -77,7 +78,7 @@ if __name__ == "__main__":
    
    
    nc_paths = [
-      r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260308_01\behav\Trial_data.nc"
+      r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260309_01\behav\Trial_data.nc"
    ]
 
 

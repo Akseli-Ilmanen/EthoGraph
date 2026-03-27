@@ -42,8 +42,6 @@ def create_classification_probabilities_pdf(label_dt, output_path: Union[str, Pa
         if 'labels_confidence' not in trial_ds:
             continue
         
-        df = xr_to_intervals(trial_ds)
-        labels = intervals_to_dense(df, np.arange(len(trial_ds.labels.values.squeeze())))
 
         # TODO: update to hadnle not 'time' coordinate, (get_time_coord)
         intervals_df = xr_to_intervals(label_dt.trial(trial_num))
@@ -51,7 +49,7 @@ def create_classification_probabilities_pdf(label_dt, output_path: Union[str, Pa
         n_samples = len(time_coord)
         sr = 1.0 / np.median(np.diff(time_coord))
         duration = float(time_coord[-1] - time_coord[0])
-        labels = intervals_to_dense(intervals_df, sr, duration, [trial_ds.individuals.values], n_samples=n_samples)[:, 0]
+        labels = intervals_to_dense(intervals_df, sr, duration, trial_ds.individuals.values.tolist(), n_samples=n_samples)[:, 0]
 
         
         labels_confidence = trial_ds.labels_confidence.values.squeeze()

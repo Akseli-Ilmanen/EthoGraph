@@ -34,9 +34,9 @@ class StreamSpec:
 
 
 STREAMS: dict[str, StreamSpec] = {
-    "video": StreamSpec("video", StreamLayout.PER_TRIAL, device_dim="cam"),
-    "audio": StreamSpec("audio", StreamLayout.PER_TRIAL, device_dim="mic"),
-    "pose": StreamSpec("pose", StreamLayout.PER_TRIAL, device_dim="cam"),
+    "video": StreamSpec("video", StreamLayout.PER_TRIAL, device_dim="cameras"),
+    "audio": StreamSpec("audio", StreamLayout.PER_TRIAL, device_dim="microphones"),
+    "pose": StreamSpec("pose", StreamLayout.PER_TRIAL, device_dim="cameras"),
     "ephys": StreamSpec("ephys", StreamLayout.SESSION_WIDE),
 }
 
@@ -331,6 +331,10 @@ class TrialTree(xr.DataTree):
         if stop is None:
             raise ValueError(f"Trial {trial} has no known stop time")
         return stop - self.start_time(trial)
+
+    @property
+    def trials_ep(self) -> nap.IntervalSet | None:
+        return self._trials_ep
 
     def trial_epoch(self, trial) -> nap.IntervalSet:
         ep = self._trials_ep
