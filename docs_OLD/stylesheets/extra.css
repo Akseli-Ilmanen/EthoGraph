@@ -1,0 +1,102 @@
+/* ── mkdocstrings polish ──────────────────────────────────────────────── */
+
+/* Breathing room + separator between documented objects */
+.doc-object {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.doc-object:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+/* Signature block */
+.doc-signature {
+  background: var(--md-code-bg-color);
+  border-left: 3px solid var(--md-primary-fg-color);
+  border-radius: 0 4px 4px 0;
+  padding: 0.5em 1em;
+  font-size: 0.85em;
+  overflow-x: auto;
+  margin: 0.4em 0 0.8em;
+}
+
+/* Section headers: Parameters, Returns, Raises, Examples */
+.doc-section-title {
+  font-weight: 600;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--md-default-fg-color--lighter);
+  margin: 1rem 0 0.5rem;
+}
+
+/* Parameter / return tables */
+.doc-contents table {
+  font-size: 0.84em;
+}
+
+.doc-contents td:first-child {
+  white-space: nowrap;
+  min-width: 9em;
+}
+
+/* Type annotations inline */
+.doc-contents td:first-child code,
+.doc-contents td:nth-child(2) code {
+  background: none;
+  padding: 0;
+  font-size: 0.95em;
+}
+
+/* Object-type badges */
+.doc-label {
+  display: inline-block;
+  font-size: 0.65em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.12em 0.45em;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 0.4em;
+  opacity: 0.85;
+}
+
+/* Method / function badge — teal tint (matches primary) */
+.doc-label[data-kind="function"],
+.doc-label[data-kind="method"] {
+  background: rgba(0, 150, 136, 0.12);  /* teal-ish */
+  color: #00897b;
+}
+
+[data-md-color-scheme="slate"] .doc-label[data-kind="function"],
+[data-md-color-scheme="slate"] .doc-label[data-kind="method"] {
+  background: rgba(0, 188, 170, 0.15);
+  color: #4db6ac;
+}
+
+/* Class badge — amber tint */
+.doc-label[data-kind="class"] {
+  background: rgba(255, 160, 0, 0.12);
+  color: #f57c00;
+}
+
+[data-md-color-scheme="slate"] .doc-label[data-kind="class"] {
+  background: rgba(255, 193, 7, 0.15);
+  color: #ffc107;
+}
+
+/* Tighten doc headings */
+.doc h2 { margin-top: 1.5rem; }
+.doc h3 { margin-top: 1.0rem; }
+
+/* Source-code toggle link */
+.doc-source-link {
+  font-size: 0.75em;
+  opacity: 0.6;
+}

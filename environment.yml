@@ -1,0 +1,13 @@
+name: ethograph
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - movement>=0.14
+  - napari
+  - pyqt
+  - numpy
+  - xarray
+  - netcdf4
+  - menuinst
+  - pip
