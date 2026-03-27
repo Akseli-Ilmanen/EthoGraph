@@ -1007,7 +1007,7 @@ class NWBImportDialog(QDialog):
                 [f"{cam}_trial_{trial_id}.mp4" for cam in camera_stems]
                 for trial_id in trials
             ]
-            dt.set_media_files(video=video_files, cameras=camera_stems, per_trial=True)
+            dt.set_media(video=video_files, cameras=camera_stems, per_trial=True)
             return
 
         camera_urls = self._get_video_urls()
@@ -1019,7 +1019,7 @@ class NWBImportDialog(QDialog):
             return
         
         video_offsets = {cam: self._video_info.get(cam).get("start", 0.0) for cam in camera_stems}
-        dt.set_media_files(video=camera_urls, cameras=camera_stems, 
+        dt.set_media(video=camera_urls, cameras=camera_stems, 
                            per_trial=False, 
                            video_start=video_offsets)
 

@@ -289,7 +289,7 @@ class LayoutManager:
 
             QTimer.singleShot(0, _apply_dock_ratio)
 
-        navigation_widget.configure_for_no_video()
+
 
     def set_video_viewer_visible(self, visible: bool) -> None:
         central = self._qt_window.centralWidget()

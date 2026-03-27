@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 import numpy as np
 import xarray as xr
 
-from ethograph.utils.trialtree import SessionIO
 
 if TYPE_CHECKING:
     from ethograph.utils.trialtree import TrialTree
@@ -241,7 +240,7 @@ class TrialAlignment:
 
 
 def compute_trial_alignment(
-    dt: TrialTree | SessionIO,
+    dt: TrialTree,
     trial_id,
     ds: xr.Dataset,
     *,
@@ -257,25 +256,21 @@ def compute_trial_alignment(
     3. Video length (frames / fps).
     4. Per-trial audio length.
     """
-    session: SessionIO = (
-        dt if isinstance(dt, SessionIO)
-        else (dt.session_io or SessionIO.empty())
-    )
 
     video_path: str | None = None
     video_offset = 0.0
-    video_file = session.get_media(trial_id, "video", cameras_sel)
+    video_file = dt.get_media(trial_id, "video", cameras_sel)
     if video_file:
         video_path = (
             os.path.join(video_folder, video_file)
             if (video_folder and not os.path.isabs(video_file))
             else video_file
         )
-        video_offset = session.source_start_time(trial_id, "video")
+        video_offset = dt.source_start_time(trial_id, "video")
 
-    audio_devices = session.devices("audio")
+    audio_devices = dt.devices("audio")
     audio_device = audio_devices[0] if audio_devices else None
-    audio_file = session.get_media(trial_id, "audio", audio_device)
+    audio_file = dt.get_media(trial_id, "audio", audio_device)
     audio_path: str | None = None
     if audio_file and audio_folder:
         audio_path = (
@@ -286,12 +281,12 @@ def compute_trial_alignment(
 
     ephys_offset = 0.0
     try:
-        ephys_offset = session.start_time(str(trial_id))
+        ephys_offset = dt.start_time(str(trial_id))
     except (KeyError, AttributeError):
         pass
 
     trial_end = _compute_trial_end(
-        session, trial_id, ds, video_path, video_offset, audio_path
+        dt, trial_id, ds, video_path, video_offset, audio_path
     )
     trial_range = TimeRange(0.0, trial_end) if trial_end and trial_end > 0 else None
     return TrialAlignment(
@@ -303,7 +298,7 @@ def compute_trial_alignment(
 
 
 def _compute_trial_end(
-    session: SessionIO,
+    dt: TrialTree,
     trial_id,
     ds: xr.Dataset,
     video_path: str | None,
@@ -315,9 +310,9 @@ def _compute_trial_end(
 
     # 1. Session stop_time
     try:
-        stop = session.stop_time(trial_id)
+        stop = dt.stop_time(trial_id)
         if stop is not None:
-            return stop - session.start_time(trial_id)
+            return stop - dt.start_time(trial_id)
     except (KeyError, AttributeError):
         pass
 
@@ -350,7 +345,7 @@ def _compute_trial_end(
         try:
             from ethograph.gui.plots_spectrogram import SharedAudioCache
             loader = SharedAudioCache.get_loader(audio_path)
-            audio_start = session.source_start_time(trial_id, "audio")
+            audio_start = dt.source_start_time(trial_id, "audio")
             if loader is not None and len(loader) > 0 and audio_start >= -0.5:
                 return len(loader) / loader.rate
         except Exception:

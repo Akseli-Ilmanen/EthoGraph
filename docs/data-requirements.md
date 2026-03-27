@@ -79,56 +79,21 @@ created.
 
 ---
 
-## Media file attributes
+## Media files, session table, and timing
 
-Media files (video, audio, pose) are stored as **filename-only lists** in
-dataset attributes -- never as full paths. At runtime the GUI combines each
-filename with a user-selected folder to resolve the full path:
+Media filenames, trial timing, and stream offsets are stored at the session
+level on the TrialTree, not inside individual trial datasets. Filenames are
+stored as **filename-only strings** (never full paths) so that datasets remain
+valid when folders are moved or accessed from a different machine.
 
-```
-full_path = os.path.join(video_folder, cameras[i])
-```
-
-This design means:
-
-- Datasets remain valid when folders are moved or accessed from a different PC.
-- If the **raw files are renamed** on disk, the stored filenames no longer
-  match and loading will fail.
-
-Use `dt.set_media_files()` after creating the TrialTree to store media at session level:
-
-```python
-dt.set_media_files(
-    video=[["cam1_trial001.mp4", "cam2_trial001.mp4"], ...],
-    audio=[["mic1_trial001.wav"], ...],
-    pose=[["dlc_cam1_trial001.h5", "dlc_cam2_trial001.h5"], ...],
-    cameras=["left", "right"],
-    mics=["mic0"],
-)
-```
-
-At load time the GUI validates that every entry is a non-empty string
-(`validate_media_files()` in `validation.py`). Missing entries are reported
-as warnings when the user points to a folder.
+For full documentation of `dt.set_media()`, `dt.set_stream_offset()`,
+`dt.start_time()`, and related methods, see
+[TrialTree — Media files](trialtree.md#media-files) and
+[TrialTree — Session table and timing](trialtree.md#session-table-and-timing).
 
 ---
 
 ## Scenario-specific requirements
-
-The table below summarises which attributes and coordinates are needed for
-each modality.
-
-| Attribute / Coordinate | Video + Pose | Audio only | Ephys | Ephys + Video/Audio |
-|------------------------|:------------:|:----------:|:-----:|:-------------------:|
-| `attrs["trial"]` | yes | yes | yes | yes |
-| `coords["individuals"]` | yes | yes | yes | yes |
-| `attrs["fps"]` | yes | no | no | no |
-| `attrs["cameras"]` | yes | no | no | (opt) |
-| `attrs["mics"]` | (opt) | yes | no | (opt) |
-| `attrs["pose"]` | (opt) | no | no | no |
-| `attrs["video_onset"]` | no | no | (opt) | yes |
-| `attrs["audio_onset"]` | no | no | no | yes |
-| Feature variables with `type="features"` | yes | (opt) | (opt) | (opt) |
 
 ### Video + Pose
 
@@ -157,7 +122,8 @@ ds.attrs["trial"] = 1
 ds.attrs["fps"] = 30.0
 
 dt = eto.from_datasets([ds])
-dt.set_media_files(video=[["trial001.mp4"]], pose=[["trial001.h5"]])
+dt.set_media("video", [["trial001.mp4"]])
+dt.set_media("pose", [["trial001.h5"]])
 ```
 
 ### Audio only (no video)
@@ -172,24 +138,18 @@ ds = xr.Dataset(coords={"individuals": ["bird1"]})
 ds.attrs["trial"] = 1
 
 dt = eto.from_datasets([ds])
-dt.set_media_files(audio=[["song_trial001.wav"]])
+dt.set_media("audio", [["song_trial001.wav"]])
 ```
 
 ### Ephys with video/audio alignment
 
-When ephys data is recorded on a separate clock from video or audio, use
-`video_onset` and `audio_onset` to specify the time offsets (in seconds) at
-which each trial's video and audio start within the global ephys timeline.
+Ephys is a session-wide stream (one file covering all trials). The raw recording file is selected directly in the GUI — you do not need to call `dt.set_media("ephys", ...)` in your dataset creation script. If the ephys clock differs from the behavioural reference, record the offset so the trace aligns correctly:
 
 ```python
-ds.attrs["video_onset"] = 60.0   # video starts at 60s after ephys recording
-ds.attrs["audio_onset"] = -30.0  # audio starts 30s before ephys recording
+dt.set_stream_offset("ephys", 0.0)   # seconds; adjust to match your setup
 ```
 
-The GUI reads `video_onset` via `get_video_onset()` in `app_state.py`. During firing-rate computation
-(`widget_ephys.py`), spike times from Kilosort (in absolute seconds) are
-windowed to `[video_onset, video_onset + duration]` and then shifted back to
-trial-relative coordinates so they align with video frames.
+See [Ephys data](ephys-data.md) for supported file formats, Kilosort folder setup, and channel mapping details. See [TrialTree — Stream offsets](trialtree.md#stream-offsets) for the full offset API.
 
 ---
 
@@ -219,8 +179,9 @@ ds = add_angle_rgb_to_ds(ds, smoothing_params={"sigma": 3})
 # Creates ds["angles"] (type="features") and ds["angle_rgb"] (type="colors")
 ```
 
-This function computes frame-to-frame angles changes in the xy plane. `get_angle_rgb()` via `xr.apply_ufunc` across all
-individuals and keypoints, with optional Gaussian smoothing.
+This function computes frame-to-frame angle changes in the xy plane via
+`xr.apply_ufunc` across all individuals and keypoints, with optional Gaussian
+smoothing.
 
 ---
 
@@ -252,13 +213,7 @@ To compute changepoints programmatically, use `add_changepoints_to_ds()` from
 
 ```python
 from ethograph.utils.io import add_changepoints_to_ds
-from scipy.signal import argrelextrema
-import numpy as np
-
-def find_troughs_binary(x, **kwargs):
-    """Find troughs (local minima) + NaN boundaries -> binary mask."""
-    troughs, _ = find_peaks(-np.asarray(x), **kwargs)
-    return add_NaN_boundaries(x, troughs)
+from ethograph.features.changepoitns import find_troughs_binary
 
 
 ds = add_changepoints_to_ds(
@@ -303,7 +258,7 @@ These are typically computed by the GUI's audio changepoint detection
 
 Any dimension that co-occurs with a time dimension in at least one feature
 variable is automatically discovered by `find_temporal_dims()` in
-`validation.py` and gets a selection combo box in the GUI. For example, a
+`validation.py` and gets a selection [combo box](https://www.pythonguis.com/docs/qcombobox/) in the GUI. For example, a
 `channels` dimension:
 
 ```python
@@ -369,19 +324,19 @@ data, used_kwargs = eto.sel_valid(
 
 Any dataset attribute that is **not** in the set `{trial, pose, cameras, mics}`
 and is **not** a common attribute across all trials (e.g. `fps`) is treated as
-a **trial condition**. In the following example, you played tone A in the first 
+a **trial condition**. In the following example, you played tone A in the first
 10 trials, and tone B in the second 10 trials. Adding trial conditions in the trial
 attributes is helpful for two reasons. In 'Navigation/Help', you can filter to trials
-that match a certain trial condition. And in [Export Labels](export-labels.md), you
-the exported `.tsv` file will include these trial conditions as meta data per label 
+that match a certain trial condition. And in [Export Labels](export-labels.md), the
+exported `.tsv` file will include these trial conditions as metadata per label
 in that trial.
 
 
 ```python
-for trial_id in dt.trials[:10]
+for trial_id in dt.trials[:10]:
     ds = dt.trial(trial_id)
     ds.attrs["stimulus"] = "tone_A"
-for trial_id in dt.trials[10:20]
+for trial_id in dt.trials[10:20]:
     ds = dt.trial(trial_id)
     ds.attrs["stimulus"] = "tone_B"
 ```
@@ -393,9 +348,9 @@ for trial_id in dt.trials[10:20]
 
 ```python
 import numpy as np
+import pandas as pd
 import xarray as xr
 import ethograph as eto
-from ethograph.utils.io import add_changepoints_to_ds
 
 datasets = []
 for trial_id in range(1, 11):
@@ -428,12 +383,29 @@ for trial_id in range(1, 11):
 
     datasets.append(ds)
 
-dt = eto.from_datasets(datasets)
-dt.set_media_files(
-    video=[[f"cam1_trial{tid:03d}.mp4"] for tid in range(1, 11)],
-    pose=[[f"dlc_trial{tid:03d}.h5"] for tid in range(1, 11)],
+# Session table with timing
+session_table = pd.DataFrame({
+    "trial": list(range(1, 11)),
+    "start_time": [i * 300.0 for i in range(10)],
+    "stop_time": [(i + 1) * 300.0 - 0.5 for i in range(10)],
+})
+
+dt = eto.from_datasets(datasets, session_table=session_table)
+
+# Store media per stream
+dt.set_media("video",
+    [[f"cam1_trial{tid:03d}.mp4", f"cam2_trial{tid:03d}.mp4"] for tid in range(1, 11)],
+    device_labels=["left", "right"],
 )
-dt.to_netcdf("trials.nc")
+dt.set_media("pose",
+    [[f"dlc_cam1_trial{tid:03d}.h5", f"dlc_cam2_trial{tid:03d}.h5"] for tid in range(1, 11)],
+    device_labels=["left", "right"],
+)
+# Ephys file is selected in the GUI, not stored here.
+# If the ephys clock differs from the reference, set the offset:
+dt.set_stream_offset("ephys", 0.0)
+
+dt.save("trials.nc")
 ```
 
 ---
@@ -453,14 +425,21 @@ dt.to_netcdf("trials.nc")
 
 | Function | Module | Purpose |
 |----------|--------|---------|
-| `dt.set_media_files(video, audio, pose, cameras, mics)` | `ethograph/utils/trialtree.py` | Store media filenames at session level |
-| `dataset_to_basic_trialtree(ds, video_path)` | `ethograph/utils/io.py` | Convert a single dataset into a TrialTree, auto-tagging features |
+| `TrialTree.from_datasets(datasets, session_table)` | `ethograph/utils/trialtree.py` | Build a TrialTree from a list of Datasets |
+| `dt.set_media(stream, files, device_labels, per_trial)` | `ethograph/utils/trialtree.py` | Store media filenames for a stream |
+| `dt.get_media(trial, stream, device)` | `ethograph/utils/trialtree.py` | Retrieve a media filename |
+| `dt.devices(stream)` | `ethograph/utils/trialtree.py` | List device labels for a stream |
+| `dt.set_session_table(table)` | `ethograph/utils/trialtree.py` | Set session timing table |
+| `dt.start_time(trial)` | `ethograph/utils/trialtree.py` | Session-absolute start time of a trial |
+| `dt.stop_time(trial)` | `ethograph/utils/trialtree.py` | Session-absolute stop time (or `None`) |
+| `dt.trial_epoch(trial)` | `ethograph/utils/trialtree.py` | Pynapple `IntervalSet` for a trial |
+| `dt.restrict(obj, trial)` | `ethograph/utils/trialtree.py` | Restrict a pynapple object to a trial window |
+| `dt.source_start_time(trial, stream)` | `ethograph/utils/trialtree.py` | Trial-relative time of sample 0 for a stream |
+| `dt.set_stream_offset(stream, offset)` | `ethograph/utils/trialtree.py` | Set session-absolute offset for a stream |
+| `dataset_to_basic_trialtree(ds, video_path)` | `ethograph/utils/io.py` | Convert a single dataset into a TrialTree |
 | `add_changepoints_to_ds(ds, ...)` | `ethograph/utils/io.py` | Compute and store changepoints for a feature |
 | `add_angle_rgb_to_ds(ds, smoothing_params)` | `ethograph/utils/io.py` | Compute angle-based RGB colours from pose |
 | `validate_dataset(ds, type_vars_dict)` | `ethograph/utils/validation.py` | Validate dataset structure and content |
 | `validate_datatree(dt)` | `ethograph/utils/validation.py` | Validate an entire TrialTree |
-| `extract_type_vars(ds, dt)` | `ethograph/utils/validation.py` | Discover features, colors, changepoints, and custom dimensions |
-| `find_temporal_dims(ds)` | `ethograph/utils/validation.py` | Identify non-time dims that co-occur with time |
-| `sel_valid(da, sel_kwargs)` | `ethograph/utils/xr_utils.py` | Select data using only valid dims; ignores irrelevant keys |
+| `sel_valid(da, sel_kwargs)` | `ethograph/utils/xr_utils.py` | Select data using only valid dims |
 | `get_time_coord(da)` | `ethograph/utils/xr_utils.py` | Get whichever time coordinate a DataArray uses |
-| `TrialTree.from_datasets(datasets)` | `ethograph/utils/trialtree.py` | Build a TrialTree from a list of Datasets |

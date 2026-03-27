@@ -9,7 +9,7 @@ import pyqtgraph as pg
 
 from ethograph.gui.plots_timeseriessource import RegularTimeseriesSource, TimeseriesSource
 
-from .app_constants import AUDIOTRACE_DEBOUNCE_MS, BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER
+from .app_constants import AUDIOTRACE_DEBOUNCE_MS, BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER_AUDIO
 from .plots_base import BasePlot, ThrottleDebounce
 from .plots_spectrogram import SharedAudioCache
 
@@ -196,7 +196,7 @@ class AudioTraceBuffer:
         start_s = self.source.time_range.start_s
 
         n_view = view_stop - view_start
-        buffer_extra = int(n_view * DEFAULT_BUFFER_MULTIPLIER / 2)
+        buffer_extra = int(n_view * DEFAULT_BUFFER_MULTIPLIER_AUDIO / 2)
         cache_start = max(0, view_start - buffer_extra)
         cache_stop = min(n_total, view_stop + buffer_extra)
 

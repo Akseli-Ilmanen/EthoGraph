@@ -338,7 +338,7 @@ class HeatmapPlot(BasePlot):
             return self._get_buffered_ephys_envelope(t0, t1)
 
         ds = self.app_state.ds
-        time_coord = self.app_state
+        time_coord = self.app_state.time_coord
         if ds is None or time_coord is None:
             return None, None
 

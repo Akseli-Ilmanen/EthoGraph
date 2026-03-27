@@ -44,7 +44,7 @@ def build_multi_trial_dt(state: WizardState) -> TrialTree:
     dt = TrialTree.from_datasets(datasets, validate=True)
 
     # Set media files
-    _set_media_files(dt, state, trial_table, trial_ids)
+    _set_media(dt, state, trial_table, trial_ids)
 
     # Set stream offsets
     _set_stream_offsets(dt, state)
@@ -125,7 +125,7 @@ def _load_pose_into_ds(
 
 
 
-def _set_media_files(
+def _set_media(
     dt: TrialTree,
     state: WizardState,
     trial_table: pd.DataFrame,

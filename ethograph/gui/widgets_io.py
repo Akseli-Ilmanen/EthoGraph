@@ -821,8 +821,6 @@ class IOWidget(QWidget):
 
                 self.ephys_path_edit.setText(ephys_path)
                 self.app_state.ephys_path = ephys_path
-                if self.app_state.dt is not None:
-                    self.app_state.dt.set_media_files(ephys=ephys_path)
                 self._auto_detect_kilosort(ephys_path)
 
         elif browse_type == "folder":
