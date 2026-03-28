@@ -28,7 +28,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ethograph.utils.validation import (
+from ethograph.io.validation import (
     VIDEO_EXTENSIONS,
     AUDIO_EXTENSIONS,
     POSE_EXTENSIONS,
@@ -47,6 +47,10 @@ COLOR_TRIAL = "#50c8b4"
 COLOR_CAMERA = "#e8737a"
 COLOR_MIC = "#e8c75a"
 
+# Roles are filename-segment labels used by the pattern parser to identify
+# what each part of a filename represents (e.g. "camera" = this segment
+# identifies which camera).  These are NOT the xarray dimension names —
+# the actual dims ("cameras", "mics") are defined in trialtree.STREAMS.
 ROLE_COLORS = {
     "trial": COLOR_TRIAL,
     "camera": COLOR_CAMERA,

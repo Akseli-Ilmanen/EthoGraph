@@ -9,10 +9,17 @@ import webbrowser
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Optional
 
-import av
 import numpy as np
-from pynwb import NWBFile
-from pynwb.image import ImageSeries
+
+try:
+    import av
+    from pynwb import NWBFile
+    from pynwb.image import ImageSeries
+except ImportError as e:
+    raise ImportError(
+        "av and pynwb are required for NWB video utilities. "
+        "Install them with: uv pip install \"ethograph[nwb]\""
+    ) from e
 
 from ethograph.utils.nwb import open_nwb_dandi
 

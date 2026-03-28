@@ -31,14 +31,14 @@ from qtpy.QtWidgets import (
 
 import ethograph as eto
 from ethograph.features.changepoints import snap_to_nearest_changepoint_time
-from ethograph.utils.label_intervals import (
+from ethograph.labels.core import load_label_mapping
+from ethograph.labels.intervals import (
     add_interval,
     delete_interval,
     empty_intervals,
     find_interval_at,
     get_interval_bounds,
 )
-from ethograph.utils.labels import load_label_mapping
 from ethograph.utils.paths import find_mapping_file
 
 

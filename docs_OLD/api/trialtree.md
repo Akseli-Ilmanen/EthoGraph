@@ -6,7 +6,7 @@ See also:
 - {mod}movement for movement analysis workflows
 - {mod}pyqt for Qt-based GUI components
 
-::: ethograph.utils.trialtree.TrialTree
+::: ethograph.io.trialtree.TrialTree
     options:
       show_root_heading: true
       show_bases: false

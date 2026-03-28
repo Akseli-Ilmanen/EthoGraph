@@ -41,7 +41,7 @@ from qtpy.QtWidgets import (
 
 from ethograph.gui.dialog_busy_progress import BusyProgressDialog
 from ethograph.gui.dialog_pose_video_matcher import PoseVideoMatcherWidget
-from ethograph.utils.label_intervals import NWBLabelConverter
+from ethograph.labels.converters import NWBLabelConverter
 from ethograph.utils.nwb import (
     download_clip,
     format_file_size,

@@ -142,4 +142,4 @@ If your data format is not covered by the options above:
 
 - [TrialTree API](trialtree.md) — `from_datasets()`, `set_media()`, offsets, timing, iteration
 - [Data Format Requirements](data-requirements.md) — xarray Dataset structure and `attrs["type"]` conventions
-- [Dataset tutorials](tutorials.md) — notebooks with real data
+- [Dataset examples](examples.md) — notebooks with real data

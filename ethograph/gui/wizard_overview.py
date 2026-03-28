@@ -176,8 +176,8 @@ class _ModeSelectionPage(QWidget):
         tut_lay.addWidget(tut_text)
         tut_lay.addSpacing(5)
         tut_link = QLabel(styled_link(
-            "https://github.com/Akseli-Ilmanen/EthoGraph/tree/main/tutorials",
-            "View tutorials for creating custom .nc files"
+            "https://github.com/Akseli-Ilmanen/EthoGraph/tree/main/examples",
+            "View examples for creating custom .nc files"
         ))
         tut_link.setOpenExternalLinks(True)
         tut_link.setTextFormat(Qt.RichText)

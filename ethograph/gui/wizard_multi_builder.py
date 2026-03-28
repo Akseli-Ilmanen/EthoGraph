@@ -13,8 +13,8 @@ from natsort import natsorted
 from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
 from ethograph.utils.io import dataset_to_basic_trialtree
-from ethograph.utils.label_intervals import empty_intervals, intervals_to_xr
-from ethograph.utils.trialtree import TrialTree
+from ethograph.labels.intervals import empty_intervals, intervals_to_xr
+from ethograph.io.trialtree import TrialTree
 
 INTERVAL_COLUMNS = {"onset_s", "offset_s", "labels", "individual"}
 

@@ -37,7 +37,7 @@ from ethograph.gui.data_loader import (
 )
 from ethograph.gui.wizard_nwb import NWBImportDialog
 from ethograph.utils.audio import get_audio_sr
-from ethograph.utils.validation import (
+from ethograph.io.validation import (
     AUDIO_FILE_FILTER,
     EPHYS_EXTENSIONS_STR,
     EPHYS_FILE_FILTER,
@@ -61,7 +61,7 @@ def get_video_fps(video_path: str) -> Optional[int]:
 AVAILABLE_SOFTWARES = list(get_args(load_poses.from_file.__annotations__["source_software"]))
 
 MOVEMENT_DOCS_URL = "https://movement.neuroinformatics.dev/latest/user_guide/movement_dataset.html"
-TUTORIALS_URL = "https://github.com/Akseli-Ilmanen/EthoGraph/tree/main/tutorials"
+examples_URL = "https://github.com/Akseli-Ilmanen/EthoGraph/tree/main/examples"
 
 
 class PoseFileDialog(QDialog):

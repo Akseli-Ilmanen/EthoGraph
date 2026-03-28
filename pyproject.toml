@@ -1,15 +1,12 @@
 [project]
 name = "ethograph"
-authors = [{name = "Akseli Ilmanen", email= "akseli.ilmanen@gmail.com"}]
+authors = [{name = "Akseli Ilmanen", email = "akseli.ilmanen@gmail.com"}]
 description = "A multimodal timeseries GUI for neuroethology"
 readme = "README.md"
-requires-python = ">=3.11.0"
+requires-python = ">=3.11"
 dynamic = ["version"]
 
-dependencies = []
-
 license = "BSD-3-Clause"
-
 license-files = ["LICENSE"]
 
 classifiers = [
@@ -20,27 +17,115 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+    "Intended Audience :: Science/Research",
+]
+
+# Core dependencies — TrialTree, I/O, features, labels, and CLI
+dependencies = [
+    "numpy",
+    "pandas",
+    "xarray",
+    "netcdf4",
+    "scipy",
+    "matplotlib",
+    "pynapple",
+    "pyyaml",
+    "crowsetta",
 ]
 
 [project.urls]
 "Homepage" = "https://github.com/Akseli-Ilmanen/ethograph"
 "Bug Tracker" = "https://github.com/Akseli-Ilmanen/ethograph/issues"
 "Documentation" = "https://Akseli-Ilmanen.github.io/ethograph"
-
 "Source Code" = "https://github.com/Akseli-Ilmanen/ethograph"
 "User Support" = "https://github.com/Akseli-Ilmanen/ethograph/issues"
 
+[project.scripts]
+ethograph = "ethograph.cli:main"
+
+[project.gui-scripts]
+ethograph-gui = "ethograph.cli:launch"
+
+[project.entry-points."napari.manifest"]
+ethograph-gui = "ethograph.gui:napari.yaml"
+
 [project.optional-dependencies]
-dev = [
-  "pytest",
-  "pytest-cov",
-  "coverage",
-  "tox",
-  "mypy",
-  "pre-commit",
-  "ruff",
-  "setuptools-scm",
+# Audio: waveform display, spectrograms, audio changepoint detection
+audio = [
+    "audioio",
+    "soundfile",
+    "vocalpy",
+    "vocalseg @ git+https://github.com/timsainb/vocalization-segmentation.git",
+    "sounddevice",
 ]
+
+# NWB: read/write NWB files, DANDI integration
+nwb = [
+    "pynwb",
+    "h5py",
+    "av",
+    "dandi",
+    "remfile",
+    "lindi",
+    "movement>=0.14",
+]
+
+# Neural: spike sorting, firing rates, ephys analysis
+neural = [
+    "phylib>=2.6.4",
+    "neo",
+    "h5py",
+]
+
+# GUI: napari-based graphical interface with all plot types
+gui = [
+    "napari",
+    "pyqt5",
+    "qtpy",
+    "pyqtgraph",
+    "av",
+    "soundfile",
+    "napari-pyav @ https://github.com/horsto/napari-pyav/releases/download/v0.0.10.1/napari_pyav-0.0.10-py3-none-any.whl",
+    "movement>=0.14",
+    "ruptures",
+    "jinja2",
+    "natsort",
+    "tqdm",
+    "ethograph[audio]",
+    "ethograph[neural]",
+]
+
+# Everything
+all = [
+    "ethograph[gui]",
+    "ethograph[nwb]",
+]
+
+# Development
+dev = [
+    "pytest",
+    "pytest-cov",
+    "coverage",
+    "tox",
+    "mypy",
+    "pre-commit",
+    "ruff",
+    "setuptools-scm",
+]
+
+# Documentation
+docs = [
+    "sphinx",
+    "pydata-sphinx-theme",
+    "sphinx-autodoc-typehints",
+    "sphinx-sitemap",
+    "myst-parser",
+    "nbsphinx",
+    "linkify-it-py",
+    "setuptools-scm",
+]
+
 
 [build-system]
 requires = [
@@ -57,6 +142,11 @@ include-package-data = true
 include = ["ethograph*"]
 exclude = ["tests", "docs*"]
 
+[tool.setuptools.package-data]
+"ethograph.gui" = ["*.yaml"]
+ethograph = ["assets/*"]
+
+[tool.setuptools_scm]
 
 [tool.pytest.ini_options]
 addopts = "--cov=ethograph"
@@ -64,38 +154,29 @@ filterwarnings = [
     "error",
 ]
 
-[tool.setuptools_scm]
-
 [tool.check-manifest]
 ignore = [
-  ".yaml",
-  "tox.ini",
-  "tests/",
-  "tests/test_unit/",
-  "tests/test_integration/",
-  "docs/",
-  "docs/source/",
+    ".yaml",
+    "tox.ini",
+    "tests/",
+    "tests/test_unit/",
+    "tests/test_integration/",
+    "docs/",
+    "docs/source/",
 ]
-
 
 [tool.ruff]
 line-length = 79
 exclude = ["__init__.py", "build", ".eggs"]
 lint.select = [
-  "E",   # pycodestyle errors
-  "F",   # Pyflakes
-  "I",   # isort
-  # You can see what all the rules do here: https://docs.astral.sh/ruff/rules/
-  # Some additional ruff rules that might be useful (uncomment to enable)
-  #"UP",  # pyupgrade
-  #"B",   # flake8 bugbear
-  #"SIM", # flake8 simplify
-  #"C90", # McCabe complexity
+    "E",
+    "F",
+    "I",
 ]
 fix = true
 
 [tool.ruff.format]
-docstring-code-format = true # Also format code in docstrings (e.g. examples)
+docstring-code-format = true
 
 [tool.tox]
 legacy_tox_ini = """
@@ -118,7 +199,6 @@ extras =
 commands =
     pytest -v --color=yes --cov=ethograph --cov-report=xml
 """
-
 
 [tool.codespell]
 skip = '.git'

@@ -5,14 +5,17 @@
   "menu_items": [
     {
       "name": "ethograph",
-      "command": ["ethograph", "launch"],
+      "command": ["{{ PYTHON }}", "-m", "ethograph", "launch"],
       "activate": true,
       "terminal": true,
       "platforms": {
         "win": {
-          "icon": "{{ MENU_DIR }}/icon.ico"
+          "desktop": true,
+          "icon": "{{ MENU_DIR }}/icon.ico",
+          "command": ["cmd", "/k", "{{ PYTHON }}", "-m", "ethograph", "launch"]
         },
         "linux": {
+          "Categories": ["Science", "Education"],
           "icon": "{{ MENU_DIR }}/icon.png"
         },
         "osx": {

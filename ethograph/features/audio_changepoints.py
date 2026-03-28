@@ -4,16 +4,23 @@ Uses vocalseg library for detecting vocal onset/offset candidates in audio files
 Reference: https://github.com/timsainb/vocalization-segmentation
 """
 
-import audioio as aio
 import numpy as np
-import vocalpy as voc
 from scipy.signal import stft
 
 if not hasattr(np, "product"):
     np.product = np.prod
 
-from vocalseg.continuity_filtering import continuity_segmentation
-from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
+try:
+    import audioio as aio
+    import vocalpy as voc
+    from vocalseg.continuity_filtering import continuity_segmentation
+    from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
+except ImportError as e:
+    raise ImportError(
+        "audioio, vocalpy, and vocalization-segmentation are required for "
+        "audio changepoint detection. "
+        "Install them with: uv pip install \"ethograph[audio]\""
+    ) from e
 
 from ethograph.features.energy import _to_sound, env_ava, env_meansquared
 
@@ -83,7 +90,7 @@ def get_audio_changepoints(
         ``"vocalseg"``, ``"continuity"``.
     audio_path : str, optional
         Path to an audio file (any format supported by audioio).
-    signal : np.ndarray, optional
+    signal : numpy.ndarray, optional
         Raw 1-D audio array. Required when ``audio_path`` is None.
     sr : float, optional
         Sample rate in Hz. Required when ``signal`` is provided.
@@ -94,11 +101,11 @@ def get_audio_changepoints(
 
     Returns
     -------
-    (onsets, offsets) : tuple[np.ndarray, np.ndarray]
+    (onsets, offsets) : tuple[numpy.ndarray, numpy.ndarray]
         Event onset and offset times in seconds.
-    env_time : np.ndarray
+    env_time : numpy.ndarray
         Time axis for the energy envelope in seconds.
-    envelope : np.ndarray
+    envelope : numpy.ndarray
         Energy amplitude envelope aligned with ``env_time``.
     """
     data_1d, sr = _prepare_audio(audio_path, signal, sr, channel_idx)

@@ -61,7 +61,7 @@ session_table = pd.DataFrame({
 dt = eto.from_datasets(datasets, session_table=session_table)
 ```
 
-See the [tutorials](tutorials.md) for full worked examples of creating `.nc` files from different data sources.
+See the [examples](examples.md) for full worked examples of creating `.nc` files from different data sources.
 
 ---
 

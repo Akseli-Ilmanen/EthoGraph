@@ -3,8 +3,8 @@ from typing import Union
 import numpy as np
 import matplotlib.pyplot as plt
 import ethograph as eto
-from ethograph.utils.labels import load_label_mapping
-from ethograph.utils.label_intervals import xr_to_intervals, intervals_to_dense
+from ethograph.labels.core import load_label_mapping
+from ethograph.labels.intervals import intervals_to_dense, xr_to_intervals
 
 def create_classification_probabilities_pdf(label_dt, output_path: Union[str, Path],
                                            confidence_threshold: float = 0.95,

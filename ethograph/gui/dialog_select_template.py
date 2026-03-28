@@ -23,7 +23,7 @@ from ethograph.utils.download import (
     is_downloaded,
 )
 
-_ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "tutorials" / "assets"
+_ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "examples" / "assets"
 _DOWNLOAD_BASE = Path.home() / ".ethograph" / "example_data"
 
 TEMPLATES = [

@@ -2,7 +2,7 @@
 
 Dataset and TrialTree validation helpers for checking required attributes, changepoints, and data structure.
 
-::: ethograph.utils.validation
+::: ethograph.io.validation
     options:
       members:
         - validate_dataset

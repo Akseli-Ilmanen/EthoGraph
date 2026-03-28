@@ -20,11 +20,7 @@ The **Create dialog** handles single recordings. For multiple separate microphon
 6. Click **Generate .nc file**
 7. The I/O widget auto-populates → click **Load**
 
----
 
-## No-video mode
-
-When no video is provided EthoGraph enters **no-video mode**: a time slider replaces the napari video player, and playback uses `sounddevice`. All labelling and changepoint features work the same way.
 
 ---
 

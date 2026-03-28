@@ -27,7 +27,7 @@ from qtpy.QtWidgets import (
 
 from ethograph.gui.wizard_media_files import StreamPanel, extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
-from ethograph.utils.validation import (
+from ethograph.io.validation import (
     AUDIO_FILE_FILTER,
     EPHYS_FILE_FILTER,
     VIDEO_EXTENSIONS,

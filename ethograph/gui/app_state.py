@@ -18,7 +18,7 @@ import ethograph as eto
 from ethograph.gui.plots_timeseriessource import TrialAlignment, TimeRange
 
 from .makepretty import find_combo_index
-from ethograph.utils.label_intervals import (
+from ethograph.labels.intervals import (
     empty_intervals,
     intervals_to_xr,
     xr_to_intervals,

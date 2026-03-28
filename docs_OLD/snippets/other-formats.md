@@ -11,7 +11,7 @@ See [From a numpy file](loading-numpy.md) for full steps.
 
 ## Option B — High sampling-rate periodic data → `.wav`
 
-For signals you want to visualise quickly (e.g. 1 kHz pressure sensor, LFP, EMG), convert to `.wav` with [`audioio`](https://github.com/bendalab/audioio):
+For signals you want to visualise quickly (e.g. 1 kHz pressure sensor, EMG), convert to `.wav` with [`audioio`](https://github.com/bendalab/audioio):
 
 ```python
 import audioio

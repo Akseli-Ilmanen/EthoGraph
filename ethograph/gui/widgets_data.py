@@ -38,7 +38,7 @@ from qtpy.QtWidgets import (
 
 
 import ethograph as eto
-from ethograph.utils.label_intervals import dense_to_intervals, get_interval_bounds
+from ethograph.labels.intervals import dense_to_intervals, get_interval_bounds
 from ethograph.gui.plots_timeseriessource import RegularTimeseriesSource, compute_trial_alignment
 
 

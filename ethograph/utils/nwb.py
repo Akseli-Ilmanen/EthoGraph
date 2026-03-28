@@ -7,24 +7,31 @@ from pathlib import Path
 from typing import Any, Callable
 
 import subprocess
+from urllib.parse import parse_qs, urlparse
 
-import h5py
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+try:
+    import h5py
+    import pynwb
+    import remfile
+    from dandi.dandiapi import DandiAPIClient
+    from movement.io import load_poses
+    from pynwb import NWBFile
+except ImportError as e:
+    raise ImportError(
+        "h5py, pynwb, remfile, dandi, and movement are required for "
+        "NWB support. Install them with: uv pip install \"ethograph[nwb]\""
+    ) from e
+
 try:
     import lindi as _lindi
     _LINDI_AVAILABLE = True
 except Exception:
     _lindi = None
     _LINDI_AVAILABLE = False
-
-import numpy as np
-import pandas as pd
-import pynwb
-import remfile
-import xarray as xr
-from dandi.dandiapi import DandiAPIClient
-from movement.io import load_poses
-from pynwb import NWBFile
-from urllib.parse import parse_qs, urlparse
 
 import ethograph as eto
 from ethograph import TrialTree, get_time_coord

@@ -1,25 +1,46 @@
-API
-===
+.. _target-api:
 
-math
-----
+API reference
+=============
 
-.. currentmodule:: ethograph.math
+.. toctree::
+   :hidden:
 
-.. autosummary::
-    :toctree: api_generated
-    :template: function.rst
+   api/trialtree
 
-    add_two_integers
-    subtract_two_integers
 
-greetings
+TrialTree
 ---------
 
-.. currentmodule:: ethograph.greetings
+The core data structure — see the full :doc:`TrialTree API <api/trialtree>`
+for detailed documentation with interleaved examples.
+
+
+Top-level functions
+-------------------
+
+.. currentmodule:: ethograph
 
 .. autosummary::
-    :toctree: api_generated
-    :template: class.rst
+   :toctree: api
+   :nosignatures:
 
-    Greetings
+   open
+   from_datasets
+
+
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree: api
+   :recursive:
+   :nosignatures:
+
+   ethograph.io.dataset
+   ethograph.labels.core
+   ethograph.labels.dense
+   ethograph.labels.intervals
+   ethograph.labels.converters
+   ethograph.labels.export
+   ethograph.labels.plots
+   ethograph.utils.xr_utils

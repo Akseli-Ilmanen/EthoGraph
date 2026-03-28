@@ -97,6 +97,8 @@ C:\Users\Admin\anaconda3\envs\ethograph-gui
 
 ethograph-GUI is a napari plugin for labeling start/stop times of animal movements. It integrates with ethograph, a workflow using action segmentation transformers to predict movement segments. The GUI loads NetCDF datasets containing behavioral features, displays synchronized video/audio, and allows interactive labeling.
 
+NOTE, some things about thsi claude.md are outdated, if something seems to be outdated here, and ask me and update this claude.md file, o kjeeo uptodate, you can also trim it to the fundamentals, so your context window is shorter.
+
 
 ## Import Convention
 

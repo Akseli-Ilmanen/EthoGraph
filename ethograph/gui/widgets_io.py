@@ -25,7 +25,7 @@ from qtpy.QtWidgets import (
 
 import ethograph as eto
 from ethograph.utils.paths import find_mapping_file, gui_default_settings_path
-from ethograph.utils.validation import EPHYS_FILE_FILTER
+from ethograph.io.validation import EPHYS_FILE_FILTER
 
 from .app_state import AppStateSpec
 from .wizard_overview import NCWizardDialog
@@ -313,7 +313,7 @@ class IOWidget(QWidget):
         self.labels_format_combo = QComboBox()
         self.labels_format_combo.addItem(".nc file")
         if self.app_state.audio_folder:
-            from ethograph.utils.label_intervals import CROWSETTA_SEQ_FORMATS
+            from ethograph.labels.converters import CROWSETTA_SEQ_FORMATS
             for fmt in CROWSETTA_SEQ_FORMATS:
                 self.labels_format_combo.addItem(fmt)
         self.labels_format_combo.setToolTip("Label file format to import")
@@ -367,7 +367,7 @@ class IOWidget(QWidget):
         self._do_crowsetta_import(format_name, file_path)
 
     def _do_crowsetta_import(self, format_name, file_path):
-        from ethograph.utils.label_intervals import (
+        from ethograph.labels.converters import (
             crowsetta_to_intervals,
             resolve_crowsetta_mapping,
         )
@@ -473,7 +473,7 @@ class IOWidget(QWidget):
         if not epoch_mapping or not isinstance(epoch_mapping, dict):
             return
 
-        from ethograph.utils.label_intervals import write_mapping_file
+        from ethograph.labels.converters import write_mapping_file
 
         configs_dir = eto.get_project_root() / "configs"
         mapping_path = configs_dir / "mapping_nwb_epochs.txt"
@@ -487,7 +487,7 @@ class IOWidget(QWidget):
 
     def _ensure_crowsetta_formats(self):
         """Add crowsetta formats to labels combo if not already present."""
-        from ethograph.utils.label_intervals import CROWSETTA_SEQ_FORMATS
+        from ethograph.labels.converters import CROWSETTA_SEQ_FORMATS
 
         existing = [self.labels_format_combo.itemText(i)
                      for i in range(self.labels_format_combo.count())]

@@ -24,7 +24,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 import ethograph as eto
-from ethograph.utils.label_intervals import intervals_to_xr, empty_intervals, dense_to_intervals
+from ethograph.labels.intervals import dense_to_intervals, empty_intervals, intervals_to_xr
 
 
 def detect_label_format(dt: eto.TrialTree) -> str:

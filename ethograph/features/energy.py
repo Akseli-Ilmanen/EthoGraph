@@ -1,6 +1,13 @@
 import numpy as np
-import vocalpy as voc
 from scipy.signal import butter, decimate, sosfiltfilt, stft
+
+try:
+    import vocalpy as voc
+except ImportError as e:
+    raise ImportError(
+        "vocalpy is required for energy envelope features. "
+        "Install it with: uv pip install \"ethograph[audio]\""
+    ) from e
 
 
 def _sosfilter(data, rate, cutoff, mode, order=4, axis=0):
@@ -43,7 +50,7 @@ def lowpass_envelope(
 
     Parameters
     ----------
-    data : np.ndarray
+    data : numpy.ndarray
         Single-channel audio signal.
     rate : float
         Sampling rate of ``data`` in Hz.
@@ -54,9 +61,9 @@ def lowpass_envelope(
 
     Returns
     -------
-    env_time : np.ndarray
+    env_time : numpy.ndarray
         Time axis for the envelope in seconds.
-    envelope : np.ndarray
+    envelope : numpy.ndarray
         Amplitude envelope at ``env_rate``.
     """
     _validate_envelope_params(cutoff, env_rate)
@@ -77,7 +84,7 @@ def highpass_envelope(
 
     Parameters
     ----------
-    data : np.ndarray
+    data : numpy.ndarray
         Single-channel audio signal.
     rate : float
         Sampling rate of ``data`` in Hz.
@@ -88,9 +95,9 @@ def highpass_envelope(
 
     Returns
     -------
-    env_time : np.ndarray
+    env_time : numpy.ndarray
         Time axis for the envelope in seconds.
-    envelope : np.ndarray
+    envelope : numpy.ndarray
         Amplitude envelope at ``env_rate``.
     """
     _validate_envelope_params(cutoff, env_rate)
@@ -117,7 +124,7 @@ def bandpass_envelope(
 
     Parameters
     ----------
-    data : np.ndarray
+    data : numpy.ndarray
         Single-channel audio signal.
     rate : float
         Sampling rate of ``data`` in Hz.
@@ -131,9 +138,9 @@ def bandpass_envelope(
 
     Returns
     -------
-    env_time : np.ndarray
+    env_time : numpy.ndarray
         Time axis for the envelope in seconds.
-    envelope : np.ndarray
+    envelope : numpy.ndarray
         Amplitude envelope at ``env_rate``.
     """
     _validate_envelope_params(cutoff, env_rate)
@@ -195,8 +202,25 @@ def env_meansquared(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute meansquared energy envelope from a 1-D audio array.
 
-    Returns (env_time, envelope) where env_time is seconds and
-    envelope is the meansquared energy at the original sample rate.
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Single-channel audio signal.
+    rate : float
+        Sample rate in Hz.
+    freq_cutoffs : tuple, optional
+        Frequency cutoffs forwarded to vocalpy.
+    smooth_win : int
+        Smoothing window size.
+    **kwargs
+        Extra keyword arguments forwarded to vocalpy.
+
+    Returns
+    -------
+    env_time : numpy.ndarray
+        Time axis in seconds.
+    envelope : numpy.ndarray
+        Meansquared energy envelope.
     """
     sound = _to_sound(data, rate)
     ms_kwargs = {}
@@ -225,7 +249,33 @@ def env_ava(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute AVA amplitude envelope from a 1-D audio array.
 
-    Returns (env_time, envelope).
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Single-channel audio signal.
+    rate : float
+        Sample rate in Hz.
+    nperseg : int
+        STFT segment length.
+    noverlap : int
+        STFT overlap.
+    min_freq : float
+        Minimum frequency in Hz.
+    max_freq : float
+        Maximum frequency in Hz.
+    smoothing_timescale : float
+        Smoothing timescale in seconds.
+    use_softmax_amp : bool
+        Whether to use softmax amplitude.
+    **kwargs
+        Extra keyword arguments forwarded to vocalpy.
+
+    Returns
+    -------
+    env_time : numpy.ndarray
+        Time axis in seconds.
+    envelope : numpy.ndarray
+        AVA amplitude envelope.
     """
     energy_kwargs = {
         "nperseg": nperseg,
@@ -303,7 +353,7 @@ def get_lowpass_envelope(audio_path: str, audio_sr: int | None, fps: float):
 
     Returns
     -------
-    envelope : np.ndarray
+    envelope : numpy.ndarray
         Amplitude envelope resampled to ``fps``, length = n_frames.
     gen_wav_path : str or None
         Path to a temporary WAV file created from MP4, or None if no

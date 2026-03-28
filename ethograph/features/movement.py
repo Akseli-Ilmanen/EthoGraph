@@ -1,12 +1,13 @@
 """Features related to movements/kinematics."""
 
+from __future__ import annotations
+
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -114,7 +115,7 @@ class Position3DCalibration:
 
 def compute_distance_to_constant(
     data: xr.Dataset,
-    reference_point: Union[np.ndarray, list, tuple],
+    reference_point: np.ndarray | list | tuple,
     keypoint: str = None,
     individual: str = None,
     metric: str = "euclidean",
@@ -125,9 +126,9 @@ def compute_distance_to_constant(
     
     Parameters
     ----------
-    data : xr.Dataset
-        Dataset containing position data with dims: time, individuals, keypoints, space
-        Space dimension must contain either ['x', 'y'] or ['x', 'y', 'z']
+    data : xarray.Dataset
+        Dataset containing position data with dims: time, individuals, keypoints, space.
+        Space dimension must contain either ``['x', 'y']`` or ``['x', 'y', 'z']``.
     reference_point : array-like
         Constant reference point [x, y] for 2D or [x, y, z] for 3D
     keypoint : str, optional
@@ -141,8 +142,8 @@ def compute_distance_to_constant(
     
     Returns
     -------
-    xr.DataArray
-        Distances with preserved dimensions
+    xarray.DataArray
+        Distances with preserved dimensions.
     
     Raises
     ------
@@ -368,7 +369,7 @@ def extract_video_motion(
 
     Returns
     -------
-    xr.DataArray
+    xarray.DataArray
         1-D array of motion values with a time coordinate in seconds.
     """
     video_path = Path(video_path)
@@ -439,10 +440,10 @@ def compute_aux_velocity_and_speed(
 
     Parameters
     ----------
-    a_aux_trial : np.ndarray
-        (N, D) accelerometer array — N time samples, D axes.
-    time_intan : np.ndarray
-        (N,) timestamps in seconds.
+    a_aux_trial : numpy.ndarray
+        Accelerometer array of shape ``(N, D)`` — N time samples, D axes.
+    time_intan : numpy.ndarray
+        Timestamps in seconds, shape ``(N,)``.
     fps : float
         Sampling rate of the recording in Hz.
     mov_mean_window1 : int
@@ -452,12 +453,12 @@ def compute_aux_velocity_and_speed(
 
     Returns
     -------
-    a_corr : np.ndarray
-        Drift-corrected acceleration (N, D).
-    v_corr : np.ndarray
-        Drift-corrected velocity (N, D).
-    speed : np.ndarray
-        L2 norm of ``v_corr`` — scalar speed at each time point (N,).
+    a_corr : numpy.ndarray
+        Drift-corrected acceleration, shape ``(N, D)``.
+    v_corr : numpy.ndarray
+        Drift-corrected velocity, shape ``(N, D)``.
+    speed : numpy.ndarray
+        L2 norm of ``v_corr`` — scalar speed at each time point, shape ``(N,)``.
     """
     if a_aux_trial.shape[0] != len(time_intan):
         raise ValueError(

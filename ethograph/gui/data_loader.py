@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import ethograph as eto
-from ethograph.utils.validation import extract_type_vars, validate_datatree
+from ethograph.io.validation import extract_type_vars, validate_datatree
 from movement.io import load_poses, save_poses
 from movement.io import load
 from movement.kinematics import compute_acceleration, compute_pairwise_distances, compute_speed, compute_velocity

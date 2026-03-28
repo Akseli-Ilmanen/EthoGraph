@@ -14,7 +14,7 @@ from tqdm import tqdm
 import ethograph as eto
 from ethograph.features.changepoints import merge_changepoints, more_changepoint_features
 from ethograph.features.preprocessing import clip_by_percentiles, interpolate_nans, z_normalize
-from ethograph.utils.label_intervals import intervals_to_dense, xr_to_intervals
+from ethograph.labels.intervals import intervals_to_dense, xr_to_intervals
 
 def save_config(all_params, folder='configs', action="train"):
     if not os.path.exists(folder):

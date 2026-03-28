@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import jinja2
 
-from ethograph.utils.validation import (
+from ethograph.io.validation import (
     VIDEO_EXTENSIONS,
     AUDIO_EXTENSIONS,
     POSE_EXTENSIONS,

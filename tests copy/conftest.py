@@ -33,7 +33,7 @@ def first_trial_ds(trial_tree):
 
 @pytest.fixture
 def type_vars_dict(first_trial_ds, trial_tree):
-    from ethograph.utils.validation import extract_type_vars
+    from ethograph.io.validation import extract_type_vars
     return extract_type_vars(first_trial_ds, trial_tree)
 
 

@@ -170,10 +170,12 @@ class NapariVideoSync(QObject):
 
         self.seek_to_frame(start_frame)
 
-        if self.audio_source and self.audio_sr:
-            with AudioLoader(self.audio_source) as data:
-                start_sample = int(start_frame / self.fps * self.audio_sr)
-                end_sample = int(end_frame / self.fps * self.audio_sr)
+        audio_path = self.app_state.audio_path or self.audio_source
+        if audio_path:
+            with AudioLoader(audio_path) as data:
+                audio_sr = data.rate
+                start_sample = int(start_frame / self.fps * audio_sr)
+                end_sample = int(end_frame / self.fps * audio_sr)
                 segment = data[start_sample:end_sample]
 
             if segment.ndim > 1:
@@ -183,9 +185,9 @@ class NapariVideoSync(QObject):
                 segment = segment[:, channel_idx]
 
             if self.app_state.av_speed_coupled:
-                rate = (self.fps_playback / self.fps) * self.audio_sr
+                rate = (self.fps_playback / self.fps) * audio_sr
             else:
-                rate = self.app_state.audio_playback_speed * self.audio_sr
+                rate = self.app_state.audio_playback_speed * audio_sr
             self._audio_player = PlayAudio()
             self._audio_player.play(data=segment, rate=float(rate), blocking=False)
 
@@ -222,6 +224,7 @@ class NapariVideoSync(QObject):
         if self._segment_end_actual_frame is not None:
             self._segment_end_actual_frame = None
             self.stop()
+            self._stop_audio()
 
 
     def _start_skip_playback(self):

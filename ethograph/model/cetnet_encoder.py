@@ -16,7 +16,7 @@ from torch import Tensor, optim
 import ethograph as eto
 from ethograph.features.changepoints import correct_changepoints_dense
 from ethograph.model.eval_metrics import func_eval, func_eval_labelwise
-from ethograph.utils.label_intervals import dense_to_intervals, intervals_to_xr
+from ethograph.labels.intervals import dense_to_intervals, intervals_to_xr
 from ethograph.model.model_confidence import create_classification_probabilities_pdf
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

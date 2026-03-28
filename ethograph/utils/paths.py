@@ -6,11 +6,51 @@ import os
 from pathlib import Path
 import re
 import ethograph as eto
-from ethograph.utils.validation import (
-    VIDEO_EXTENSIONS,
-    AUDIO_EXTENSIONS,
-    POSE_EXTENSIONS,
-)
+
+
+def get_project_root(start: Path | None = None) -> Path:
+    """Find the repository root by walking up from *start* until ``pyproject.toml`` is found.
+
+    Parameters
+    ----------
+    start : Path, optional
+        Directory to start searching from.  Defaults to the current
+        working directory.
+
+    Returns
+    -------
+    Path
+        Absolute path to the project root.
+
+    Raises
+    ------
+    FileNotFoundError
+        If no ``pyproject.toml`` is found in any ancestor directory.
+
+    Examples
+    --------
+    >>> import ethograph as eto
+    >>> eto.get_project_root()
+    PosixPath('/home/user/code/ethograph')
+    """
+    if start is not None:
+        path = start.resolve()
+    else:
+        path = Path.cwd().resolve()
+    for parent in [path] + list(path.parents):
+        if (parent / "pyproject.toml").exists():
+            if parent.parent.name != "deps":
+                return parent
+            continue
+    fallback = Path(__file__).resolve()
+    for parent in fallback.parents:
+        if (parent / "pyproject.toml").exists():
+            if parent.parent.name != "deps":
+                return parent
+            continue
+    raise FileNotFoundError(
+        f"Could not find project root starting from {path}"
+    )
 
 
 def find_media_files(folder: str | Path, extensions: set[str] | list[str], recursive: bool = False) -> list[Path]:

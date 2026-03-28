@@ -227,8 +227,8 @@ def bind_global_shortcuts(meta_widget):
         app_state.cycle_key_sel("cameras", data_widget)
 
     @viewer.bind_key("ctrl+m", overwrite=True)
-    def cycle_mics(v):
-        app_state.cycle_key_sel("mics", data_widget)
+    def toggle_mics(v):
+        app_state.toggle_key_sel("mics", data_widget)
 
     @viewer.bind_key("ctrl+h", overwrite=True)
     def cycle_neural_view(v):

@@ -18,7 +18,7 @@ import xarray as xr
 
 
 if TYPE_CHECKING:
-    from ethograph.utils.trialtree import TrialTree
+    from ethograph.io.trialtree import TrialTree
 
 
 # ---------------------------------------------------------------------------
