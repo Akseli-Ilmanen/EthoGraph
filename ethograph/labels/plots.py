@@ -29,14 +29,13 @@ def plot_label_segments(
     Example::
 
         import ethograph as eto
-        from ethograph.labels.intervals import xr_to_intervals
-        from ethograph.labels.core import load_label_mapping
+        from ethograph.labels.intervals import load_label_mapping
 
         dt = eto.open("data.nc")
         label_mappings = load_label_mapping("mapping.txt")
 
         fig, ax = plt.subplots()
-        df = xr_to_intervals(dt.trial(0))
+        # df is an intervals DataFrame with onset_s, offset_s, labels, individual
         plot_label_segments(ax, df, label_mappings)
         plt.show()
     """
@@ -125,8 +124,7 @@ def plot_label_segments_multirow(
     Example::
 
         import ethograph as eto
-        from ethograph.labels.intervals import xr_to_intervals
-        from ethograph.labels.core import load_label_mapping
+        from ethograph.labels.intervals import load_label_mapping
 
         dt = eto.open("data.nc")
         pred_dt = eto.open("predictions.nc")
@@ -136,8 +134,9 @@ def plot_label_segments_multirow(
         ax.set_yticks([0, 0.8])
         ax.set_yticklabels(["ground truth", "predictions"])
 
-        gt_df = xr_to_intervals(dt.trial(0))
-        pred_df = xr_to_intervals(pred_dt.trial(0))
+        # gt_df, pred_df are intervals DataFrames with onset_s, offset_s, labels, individual
+        gt_df = ...
+        pred_df = ...
 
         plot_label_segments_multirow(ax, gt_df, label_mappings, row_index=0)
         plot_label_segments_multirow(ax, pred_df, label_mappings, row_index=1)

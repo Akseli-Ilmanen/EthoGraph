@@ -2,5 +2,3 @@
 =======================================
 
 .. currentmodule:: ethograph.utils.xr_utils
-
-.. autofunction:: trees_to_df

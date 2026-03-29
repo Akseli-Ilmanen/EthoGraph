@@ -1,19 +1,21 @@
-"""Interval-based label representation for EthoGraph.
+"""Interval-based label representation and core primitives for EthoGraph.
 
 Labels are stored as a pandas DataFrame with columns:
-    onset_s   (float64) - start time in seconds
-    offset_s  (float64) - end time in seconds
-    labels  (int)     - label class ID (nonzero)
-    individual (str)    - individual identifier
+    onset_s    (float64) - start time in seconds
+    offset_s   (float64) - end time in seconds
+    labels     (int32)   - label class ID (nonzero)
+    individual (str)     - individual identifier
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Dict
+
 import numpy as np
 import pandas as pd
-import xarray as xr
 
-from ethograph.labels.core import get_segments
+# ── Constants ────────────────────────────────────────────────────────────
 
 INTERVAL_COLUMNS = ["onset_s", "offset_s", "labels", "individual"]
 
@@ -25,154 +27,163 @@ INTERVAL_DTYPES = {
 }
 
 
+# ── Empty DataFrame ──────────────────────────────────────────────────────
+
 def empty_intervals() -> pd.DataFrame:
+    """Create an empty intervals DataFrame with the correct columns and dtypes.
+
+    Returns
+    -------
+    pd.DataFrame
+        Empty DataFrame with columns ``onset_s``, ``offset_s``, ``labels``,
+        ``individual``.
+
+    Examples
+    --------
+    >>> from ethograph.labels.intervals import empty_intervals
+    >>> df = empty_intervals()
+    >>> df.columns.tolist()
+    ['onset_s', 'offset_s', 'labels', 'individual']
+    >>> len(df)
+    0
+    """
     return pd.DataFrame(
         {col: pd.Series(dtype=INTERVAL_DTYPES[col]) for col in INTERVAL_COLUMNS}
     )
 
 
-def get_labels_start_end_times(col, time_coord, individual, bg_class=0):
-    """Returns time intervals for storage (inclusive end).
+# ── Mapping loaders ─────────────────────────────────────────────────────
 
-    Returns:
-        List of dicts with onset_s, offset_s (both inclusive), labels, individual.
-        Example at 10Hz: [0,1,1,1,0,2,2] →
-            [{'onset_s': 0.1, 'offset_s': 0.3, 'labels': 1, 'individual': 'crow_A'},
-             {'onset_s': 0.5, 'offset_s': 0.6, 'labels': 2, 'individual': 'crow_A'}]
-    """
-    segments = get_segments(col, bg_class)
-    return [{
-        "onset_s": float(time_coord[start]),
-        "offset_s": float(time_coord[end - 1]),
-        "labels": label,
-        "individual": individual,
-    } for label, start, end in segments]
+def load_mapping(mapping_file: str | Path) -> tuple[dict[str, int], dict[int, str]]:
+    """Load a class-name ↔ index mapping file.
 
-
-def dense_to_intervals(
-    dense_array: np.ndarray,
-    time_coord: np.ndarray,
-    individuals: list[str],
-) -> pd.DataFrame:
-    """Convert dense (time, individuals) label array to intervals DataFrame.
+    The file is whitespace-delimited with lines ``<index> <name>``.
 
     Parameters
     ----------
-    dense_array : np.ndarray
-        Dense label array of shape (n_samples, n_individuals) or (n_samples,).
-    time_coord : np.ndarray
-        Array of time values corresponding to the first axis of `dense_array`.
-    individuals : list of str
-        List of individual identifiers, length must match n_individuals.
+    mapping_file : str or Path
+        Path to the mapping file.
 
     Returns
     -------
-    pd.DataFrame
-        Intervals DataFrame with columns: onset_s, offset_s, labels, individual.
+    class_to_idx : dict[str, int]
+    idx_to_class : dict[int, str]
+
+    Examples
+    --------
+    >>> class_to_idx, idx_to_class = load_mapping("mapping.txt")
+    >>> class_to_idx["walk"]
+    1
+    >>> idx_to_class[1]
+    'walk'
     """
-    dense_array = np.asarray(dense_array)
-    time_coord = np.asarray(time_coord)
-
-    if dense_array.ndim == 1:
-        dense_array = dense_array[:, np.newaxis]
-
-    if dense_array.shape[1] != len(individuals):
-        raise ValueError(
-            f"dense_array has {dense_array.shape[1]} columns but "
-            f"{len(individuals)} individuals given"
-        )
-
-    rows = []
-    for ind_idx, ind_name in enumerate(individuals):
-        col = dense_array[:, ind_idx]
-        rows.extend(get_labels_start_end_times(col, time_coord, str(ind_name)))
-
-    return _rows_to_df(rows)
+    class_to_idx: dict[str, int] = {}
+    idx_to_class: dict[int, str] = {}
+    with open(mapping_file, "r") as f:
+        for line in f:
+            if line.strip():
+                parts = line.strip().split()
+                idx = int(parts[0])
+                class_name = parts[1]
+                class_to_idx[class_name] = idx
+                idx_to_class[idx] = class_name
+    return class_to_idx, idx_to_class
 
 
-def intervals_to_dense(
-    df: pd.DataFrame,
-    sample_rate: float,
-    duration: float,
-    individuals: list[str],
-    n_samples: int | None = None,
-) -> np.ndarray:
-    """Convert intervals DataFrame to dense (n_samples, n_individuals) array.
+_LABEL_COLORS = [
+    [1, 1, 1], [255, 102, 178], [102, 158, 255], [153, 51, 255],
+    [255, 51, 51], [102, 255, 102], [255, 153, 102], [0, 153, 0],
+    [0, 0, 128], [255, 255, 0], [0, 204, 204], [128, 128, 0],
+    [255, 0, 255], [255, 165, 0], [0, 128, 255], [7, 7, 215],
+    [128, 0, 255], [255, 215, 0], [73, 113, 233], [255, 128, 0],
+    [138, 34, 34], [188, 82, 223], [103, 176, 29], [220, 20, 60],
+    [3, 243, 3], [147, 24, 147], [178, 111, 44], [16, 166, 166],
+    [71, 197, 238], [255, 149, 114], [16, 89, 162], [26, 195, 68],
+    [254, 216, 103], [0, 237, 118], [177, 177, 36], [73, 243, 200],
+]
+
+_GAP_COLOR = [128 / 255.0, 128 / 255.0, 128 / 255.0]
+
+
+def load_label_mapping(mapping_file: str | Path = "mapping.txt") -> Dict[int, Dict]:
+    """Load a label mapping with colors for visualization.
 
     Parameters
     ----------
-    df : pd.DataFrame
-        Intervals DataFrame with columns: onset_s, offset_s, labels, individual.
-    sample_rate : float
-        Sampling rate in Hz.
-    duration : float
-        Total duration in seconds.
-    individuals : list of str
-        List of individual identifiers.
-    n_samples : int, optional
-        If given, overrides the duration-based calculation for number of samples.
+    mapping_file : str or Path
+        Path to the mapping file.  Each line is ``<id> <name> [<order>]``.
 
     Returns
     -------
-    np.ndarray
-        Dense label array of shape (n_samples, n_individuals).
+    dict[int, dict]
+        ``{label_id: {"name": str, "color": ndarray(3,), "order": int}}``.
+
+    Raises
+    ------
+    FileNotFoundError
+        If *mapping_file* does not exist.
+
+    Examples
+    --------
+    >>> mappings = load_label_mapping("mapping.txt")
+    >>> mappings[1]["name"]
+    'walk'
+    >>> mappings[1]["color"].shape
+    (3,)
+
+    Use the RGB colors to draw labelled rectangles on a plot::
+
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+
+        mappings = load_label_mapping("mapping.txt")
+        fig, ax = plt.subplots()
+        ax.plot(time, signal)
+
+        for _, row in intervals_df.iterrows():
+            color = mappings[int(row["labels"])]["color"]  # (3,) RGB in [0, 1]
+            ax.axvspan(row["onset_s"], row["offset_s"], alpha=0.5, color=color)
+
+        # Build a legend from the mapping
+        handles = [
+            mpatches.Patch(color=m["color"], label=m["name"])
+            for m in mappings.values()
+        ]
+        ax.legend(handles=handles)
+        plt.show()
     """
-    if n_samples is None:
-        n_samples = int(round(duration * sample_rate)) + 1
-    dense = np.zeros((n_samples, len(individuals)), dtype=np.int8)
+    mapping_file = Path(mapping_file)
+    if not mapping_file.exists():
+        raise FileNotFoundError(f"Mapping file not found: {mapping_file}")
 
-    ind_to_idx = {name: i for i, name in enumerate(individuals)}
+    label_mappings: dict = {}
+    with open(mapping_file) as f:
+        for line in f:
+            parts = line.strip().split()
+            if len(parts) < 2:
+                continue
+            if parts[0].startswith("("):
+                nums = parts[0].strip("()").split(",")
+                label_id = (int(nums[0]), int(nums[1]))
+                order = int(parts[-1])
+                label_mappings[label_id] = {
+                    "name": parts[1],
+                    "color": _GAP_COLOR,
+                    "order": order,
+                }
+            else:
+                label_id = int(parts[0])
+                order = int(parts[-1]) if len(parts) >= 3 else label_id
+                label_mappings[label_id] = {
+                    "name": parts[1],
+                    "color": np.array(_LABEL_COLORS[label_id]) / 255.0,
+                    "order": order,
+                }
 
-    for _, row in df.iterrows():
-        ind_idx = ind_to_idx.get(row["individual"])
-        if ind_idx is None:
-            continue
-        start_idx = int(round(row["onset_s"] * sample_rate))
-        end_idx = int(round(row["offset_s"] * sample_rate))
-        start_idx = max(0, start_idx)
-        end_idx = min(n_samples - 1, end_idx)
-        dense[start_idx : end_idx + 1, ind_idx] = int(row["labels"])
-
-    return dense
-
-
-def intervals_to_xr(df: pd.DataFrame) -> xr.Dataset:
-    """Convert an intervals DataFrame to an xarray Dataset."""
-    if df.empty:
-        return xr.Dataset(
-            {
-                "onset_s": ("segment", np.array([], dtype=np.float64)),
-                "offset_s": ("segment", np.array([], dtype=np.float64)),
-                "labels": ("segment", np.array([], dtype=np.int32)),
-                "individual": ("segment", np.array([], dtype="<U1")),
-            }
-        )
-    df_reset = df.reset_index(drop=True)
-    ind_values = np.array(df_reset["individual"].tolist(), dtype="U")
-    return xr.Dataset(
-        {
-            "onset_s": ("segment", df_reset["onset_s"].values.astype(np.float64)),
-            "offset_s": ("segment", df_reset["offset_s"].values.astype(np.float64)),
-            "labels": ("segment", df_reset["labels"].values.astype(np.int32)),
-            "individual": ("segment", ind_values),
-        }
-    )
+    return label_mappings
 
 
-def xr_to_intervals(ds: xr.Dataset) -> pd.DataFrame:
-    """Convert an xarray Dataset back to an intervals DataFrame."""
-    if "onset_s" not in ds.data_vars:
-        return empty_intervals()
-    df = pd.DataFrame(
-        {
-            "onset_s": ds["onset_s"].values.astype(np.float64),
-            "offset_s": ds["offset_s"].values.astype(np.float64),
-            "labels": ds["labels"].values.astype(np.int32),
-            "individual": ds["individual"].values.astype(str),
-        }
-    )
-    return df
-
+# ── Interval operations ─────────────────────────────────────────────────
 
 def add_interval(
     df: pd.DataFrame,
@@ -181,7 +192,37 @@ def add_interval(
     labels: int,
     individual: str,
 ) -> pd.DataFrame:
-    """Add an interval, resolving overlaps for the same individual."""
+    """Add an interval, resolving overlaps for the same individual.
+
+    If the new interval overlaps existing intervals for the same individual,
+    the existing intervals are trimmed or split.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Current intervals DataFrame.
+    onset_s, offset_s : float
+        Start and end times in seconds.
+    labels : int
+        Label class ID.
+    individual : str
+        Individual identifier.
+
+    Returns
+    -------
+    pd.DataFrame
+        Updated intervals DataFrame sorted by ``onset_s``.
+
+    Examples
+    --------
+    >>> df = empty_intervals()
+    >>> df = add_interval(df, 0.0, 1.0, 1, "crow_A")
+    >>> df = add_interval(df, 0.5, 1.5, 2, "crow_A")
+    >>> len(df)
+    2
+    >>> float(df.iloc[0]["offset_s"])  # first interval trimmed
+    0.499
+    """
     if onset_s > offset_s:
         onset_s, offset_s = offset_s, onset_s
 
@@ -225,7 +266,10 @@ def delete_interval(df: pd.DataFrame, idx: int) -> pd.DataFrame:
 
 
 def find_interval_at(df: pd.DataFrame, time_s: float, individual: str) -> int | None:
-    """Return DataFrame index of interval containing time_s for given individual."""
+    """Return DataFrame index of interval containing *time_s* for *individual*.
+
+    Returns ``None`` if no non-background interval contains the time.
+    """
     mask = (
         (df["individual"] == individual)
         & (df["onset_s"] <= time_s)
@@ -239,7 +283,7 @@ def find_interval_at(df: pd.DataFrame, time_s: float, individual: str) -> int | 
 
 
 def get_interval_bounds(df: pd.DataFrame, idx: int) -> tuple[float, float, int]:
-    """Return (onset_s, offset_s, labels) for interval at index."""
+    """Return ``(onset_s, offset_s, labels)`` for interval at *idx*."""
     row = df.loc[idx]
     return float(row["onset_s"]), float(row["offset_s"]), int(row["labels"])
 
@@ -249,7 +293,30 @@ def purge_short_intervals(
     min_duration_s: float,
     label_thresholds_s: dict[int, float] | None = None,
 ) -> pd.DataFrame:
-    """Drop intervals shorter than threshold (in seconds)."""
+    """Drop intervals shorter than a threshold.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Intervals DataFrame.
+    min_duration_s : float
+        Default minimum duration in seconds.
+    label_thresholds_s : dict[int, float], optional
+        Per-label minimum durations (overrides *min_duration_s*).
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered DataFrame.
+
+    Examples
+    --------
+    >>> df = add_interval(empty_intervals(), 0.0, 0.01, 1, "A")
+    >>> df = add_interval(df, 1.0, 2.0, 2, "A")
+    >>> purged = purge_short_intervals(df, min_duration_s=0.1)
+    >>> len(purged)
+    1
+    """
     if label_thresholds_s is None:
         label_thresholds_s = {}
 
@@ -266,7 +333,32 @@ def stitch_intervals(
     max_gap_s: float,
     individual: str | None = None,
 ) -> pd.DataFrame:
-    """Merge adjacent same-label intervals where gap <= threshold."""
+    """Merge adjacent same-label intervals where gap <= *max_gap_s*.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Intervals DataFrame.
+    max_gap_s : float
+        Maximum gap (seconds) between intervals to merge.
+    individual : str, optional
+        If given, only stitch intervals for this individual.
+
+    Returns
+    -------
+    pd.DataFrame
+        Stitched intervals DataFrame.
+
+    Examples
+    --------
+    >>> df = add_interval(empty_intervals(), 0.0, 1.0, 1, "A")
+    >>> df = add_interval(df, 1.05, 2.0, 1, "A")
+    >>> stitched = stitch_intervals(df, max_gap_s=0.1)
+    >>> len(stitched)
+    1
+    >>> float(stitched.iloc[0]["offset_s"])
+    2.0
+    """
     if df.empty:
         return df.copy()
 
@@ -313,7 +405,24 @@ def snap_boundaries(
     max_expansion_s: float,
     max_shrink_s: float,
 ) -> pd.DataFrame:
-    """Snap interval onset/offset to nearest changepoint times."""
+    """Snap interval onset/offset to nearest changepoint times.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Intervals DataFrame.
+    cp_times : np.ndarray
+        Candidate changepoint times.
+    max_expansion_s : float
+        Maximum allowed expansion (seconds).
+    max_shrink_s : float
+        Maximum allowed shrinkage (seconds).
+
+    Returns
+    -------
+    pd.DataFrame
+        Snapped intervals with overlaps resolved.
+    """
     if df.empty or len(cp_times) == 0:
         return df.copy()
 
@@ -346,14 +455,9 @@ def snap_boundaries(
     return result
 
 
-# ---------------------------------------------------------------------------
-# Private helpers
-# ---------------------------------------------------------------------------
+# ── Private helpers ──────────────────────────────────────────────────────
 
-def _snap_onset(
-    boundary: float, cp_times: np.ndarray, max_expansion_s: float, max_shrink_s: float
-) -> float:
-    """Snap an onset boundary. Expanding = moving earlier, shrinking = moving later."""
+def _snap_onset(boundary, cp_times, max_expansion_s, max_shrink_s):
     nearest_idx = np.argmin(np.abs(cp_times - boundary))
     cp_val = float(cp_times[nearest_idx])
     expansion = boundary - cp_val
@@ -363,10 +467,7 @@ def _snap_onset(
     return cp_val
 
 
-def _snap_offset(
-    boundary: float, cp_times: np.ndarray, max_expansion_s: float, max_shrink_s: float
-) -> float:
-    """Snap an offset boundary. Expanding = moving later, shrinking = moving earlier."""
+def _snap_offset(boundary, cp_times, max_expansion_s, max_shrink_s):
     nearest_idx = np.argmin(np.abs(cp_times - boundary))
     cp_val = float(cp_times[nearest_idx])
     expansion = cp_val - boundary
@@ -377,7 +478,6 @@ def _snap_offset(
 
 
 def _resolve_overlaps(df: pd.DataFrame, eps: float = 1e-3) -> pd.DataFrame:
-    """Trim overlaps between adjacent intervals of different labels per individual."""
     if df.empty:
         return df
 

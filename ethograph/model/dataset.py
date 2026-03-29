@@ -14,8 +14,9 @@ from tqdm import tqdm
 import ethograph as eto
 from ethograph.features.changepoints import merge_changepoints, more_changepoint_features
 from ethograph.features.preprocessing import clip_by_percentiles, interpolate_nans, z_normalize
-from ethograph.labels.intervals import empty_intervals, intervals_to_dense, xr_to_intervals
-from ethograph.labels.tsv_store import get_trial_from_tsv, labels_tsv_path, load_labels_tsv, migrate_label_dt_to_tsv
+from ethograph.labels.intervals import empty_intervals
+from ethograph.labels.ml import intervals_to_dense
+from ethograph.labels.tsv_store import get_trial_from_tsv, init_empty_labels, labels_tsv_path, load_labels_tsv
 
 def save_config(all_params, folder='configs', action="train"):
     if not os.path.exists(folder):
@@ -164,8 +165,7 @@ def get_data_dict(all_params, nc_paths, trial_dict, features_path=None, gt_path=
         if tsv_path.exists():
             _all_labels = load_labels_tsv(tsv_path)
         else:
-            label_dt = dt.get_label_dt(empty=(all_params["action"] == "inference"))
-            _all_labels = migrate_label_dt_to_tsv(label_dt)
+            _all_labels = init_empty_labels(dt.trials)
 
         for trial_num in tqdm(trial_dict[hash_key]['trials']):
 
@@ -177,8 +177,7 @@ def get_data_dict(all_params, nc_paths, trial_dict, features_path=None, gt_path=
             time_coord = ds.time.values
             n_samples = len(time_coord)
             sr = 1.0 / np.median(np.diff(time_coord))
-            duration = float(time_coord[-1] - time_coord[0])
-            labels = intervals_to_dense(intervals_df, sr, duration, [individual], n_samples=n_samples)[:, 0]
+            labels = intervals_to_dense(intervals_df, sr, [individual], n_samples)[:, 0]
 
 
             # B - Batch, T - Time, F - Feature
@@ -253,7 +252,7 @@ def get_trial_dict(all_params, nc_paths) -> dict:
         if tsv_path.exists():
             _all_labels = load_labels_tsv(tsv_path)
         else:
-            _all_labels = migrate_label_dt_to_tsv(dt.get_label_dt())
+            _all_labels = init_empty_labels(dt.trials)
 
         valid_trials = []
         for trial in dt.trials:

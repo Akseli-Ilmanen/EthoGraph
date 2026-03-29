@@ -19,7 +19,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ethograph.labels.intervals import dense_to_intervals, empty_intervals
+from ethograph.labels.intervals import empty_intervals
+from ethograph.labels.ml import dense_to_intervals
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,7 @@ def load_predictions_folder(
         time_coord = ds.time.values if "time" in ds.coords else np.arange(len(labels)) / 30.0
         time_coord = time_coord[:len(labels)]
 
-        intervals = dense_to_intervals(labels, time_coord, [individual])
+        intervals = dense_to_intervals(labels, [individual], time_coord=time_coord)
         if not intervals.empty:
             intervals.insert(0, "trial", trial)
             intervals["prediction_source"] = str(pred_file)

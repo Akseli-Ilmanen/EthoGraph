@@ -13,7 +13,7 @@ from natsort import natsorted
 from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
 from ethograph.utils.io import dataset_to_basic_trialtree
-from ethograph.labels.intervals import empty_intervals, intervals_to_xr
+from ethograph.labels.intervals import INTERVAL_COLUMNS
 from ethograph.io.trialtree import TrialTree
 
 INTERVAL_COLUMNS = {"onset_s", "offset_s", "labels", "individual"}
@@ -75,12 +75,6 @@ def _build_single_trial_ds(
         pose_path = _get_file_for_trial(row, "pose")
         if pose_path:
             ds = _load_pose_into_ds(ds, pose_path, state.pose)
-
-    # Ensure labels exist
-    if "onset_s" not in ds.data_vars:
-        interval_ds = intervals_to_xr(empty_intervals())
-        for var_name in interval_ds.data_vars:
-            ds[var_name] = interval_ds[var_name]
 
     # Tag all data variables (except labels and confidence) as features
     for var in list(ds.data_vars):

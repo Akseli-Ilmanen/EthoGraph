@@ -13,7 +13,7 @@ import xarray as xr
 
 import pynapple as nap
 
-from ethograph.labels.intervals import empty_intervals, intervals_to_xr
+from ethograph.labels.intervals import empty_intervals
 from ethograph.io.validation import validate_datatree
 
 
@@ -939,133 +939,8 @@ class TrialTree(xr.DataTree):
         return common
 
     # ------------------------------------------------------------------
-    # Label operations
+    # Label operations (labels are now stored in TSV files, not in .nc)
     # ------------------------------------------------------------------
-
-    def get_label_dt(self, empty: bool = False, empty_confidence: bool = False) -> TrialTree:
-        """Return a TrialTree containing only label interval data.
-
-        Strips all feature variables, keeping only onset_s / offset_s /
-        labels / individual.  Dense legacy label arrays are auto-converted
-        to interval format on the fly.
-
-        Parameters
-        ----------
-        empty : bool
-            If True, return an empty interval dataset for every trial.
-        empty_confidence : bool
-            If True and no ``labels_confidence`` column exists, inject a
-            column of ones.
-
-        Returns
-        -------
-        TrialTree
-        """
-        def filter_node(ds):
-            if ds is None:
-                return xr.Dataset()
-
-            orig_attrs = ds.attrs.copy()
-
-            if "onset_s" in ds.data_vars and "segment" in ds.dims:
-                if empty:
-                    result = intervals_to_xr(empty_intervals())
-                else:
-                    interval_vars = [
-                        v for v in ("onset_s", "offset_s", "labels", "individual") if v in ds.data_vars
-                    ]
-                    result = ds[interval_vars].load()
-                    if "labels_confidence" in ds.data_vars:
-                        result["labels_confidence"] = ds["labels_confidence"].load()
-                    elif empty_confidence:
-                        result["labels_confidence"] = xr.DataArray(
-                            np.ones(len(result["onset_s"])),
-                            dims=["segment"],
-                        )
-
-                result.attrs = orig_attrs
-                return result
-
-            result = xr.Dataset()
-            result.attrs = orig_attrs
-            return result
-
-        tree = self.from_datatree(self.map_over_datasets(filter_node), attrs=self.attrs)
-        tree.ds = xr.Dataset(attrs=tree.ds.attrs if tree.ds is not None else {})
-        return tree
-
-    def overwrite_with_attrs(self, labels_tree: xr.DataTree) -> TrialTree:
-        """Merge attributes (not data variables) from *labels_tree* into this tree.
-
-        Parameters
-        ----------
-        labels_tree : xarray.DataTree
-            Source tree whose ``ds.attrs`` are copied into each matching node.
-
-        Returns
-        -------
-        TrialTree
-            New tree with updated attributes.
-        """
-        def merge_func(self_ds, labels_ds):
-            self_ds.attrs.update(labels_ds.attrs)
-            return self_ds
-
-        tree = self.map_over_datasets(merge_func, labels_tree)
-        tree.attrs = labels_tree.attrs.copy()
-        return TrialTree(tree)
-
-    def overwrite_with_labels(self, labels_tree: xr.DataTree) -> TrialTree:
-        """Merge label variables from *labels_tree* into this TrialTree.
-
-        Replaces any existing label variables (``onset_s``, ``offset_s``,
-        ``labels``, ``individual``) in each trial's dataset with those from
-        *labels_tree*.  Returns a **new** tree; the original is unchanged.
-
-        In the GUI this is called when the user clicks
-        **"Merge labels and save session"**, rejoining the editable
-        ``label_dt`` back into the main ``dt`` before overwriting the
-        ``.nc`` file.
-
-        Parameters
-        ----------
-        labels_tree : xarray.DataTree
-            A label-only tree (typically from :meth:`get_label_dt`).
-
-        Returns
-        -------
-        TrialTree
-            New tree with updated labels merged in.
-
-        Examples
-        --------
-        .. code-block:: python
-
-            import ethograph as eto
-
-            dt = eto.open("trials.nc")
-            label_dt = dt.get_label_dt()
-
-            # ... user edits labels in the GUI or programmatically ...
-
-            dt_merged = dt.overwrite_with_labels(label_dt)
-            dt_merged.save("trials.nc")
-        """
-        def merge_func(data_ds, labels_ds):
-            if labels_ds is not None and data_ds is not None:
-                tree = data_ds.copy()
-                existing = [v for v in labels_ds.data_vars if v in tree]
-                if existing:
-                    tree = tree.drop_vars(existing)
-                for var_name in labels_ds.data_vars:
-                    tree[var_name] = labels_ds[var_name]
-                tree.attrs.update(labels_ds.attrs)
-                return tree
-            return data_ds
-
-        tree = self.map_over_datasets(merge_func, labels_tree)
-        tree.attrs = labels_tree.attrs.copy()
-        return TrialTree(tree)
 
     # ------------------------------------------------------------------
     # Filtering

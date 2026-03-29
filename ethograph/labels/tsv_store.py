@@ -9,6 +9,7 @@ File format:
     human_verified          - per-trial flag (0/1), repeated per row
     changepoint_corrected   - per-trial flag (0/1), repeated per row
     prediction_source       - path to prediction file that produced this label (empty if human)
+    n_samples               - per-trial sample count for dense conversion (int, 0 if unknown)
 
 Label names are managed centrally in mapping.txt.
 """
@@ -31,16 +32,17 @@ logger = logging.getLogger(__name__)
 
 TSV_COLUMNS = [
     "onset_s", "offset_s", "labels", "individual", "trial",
-    "human_verified", "changepoint_corrected", "prediction_source",
+    "human_verified", "changepoint_corrected", "prediction_source", "n_samples",
 ]
 
 # Per-trial metadata columns (same value for all rows in a trial)
-TRIAL_META_COLUMNS = ["human_verified", "changepoint_corrected", "prediction_source"]
+TRIAL_META_COLUMNS = ["human_verified", "changepoint_corrected", "prediction_source", "n_samples"]
 
 TRIAL_META_DEFAULTS = {
     "human_verified": 0,
     "changepoint_corrected": 0,
     "prediction_source": "",
+    "n_samples": 0,
 }
 
 
@@ -124,6 +126,7 @@ def load_labels_tsv(path: str | Path) -> pd.DataFrame:
         if col not in df.columns:
             df[col] = default
     df["prediction_source"] = df["prediction_source"].fillna("").astype(str)
+    df["n_samples"] = df["n_samples"].fillna(0).astype(int)
 
     return df
 
@@ -144,7 +147,7 @@ def save_labels_tsv(path: str | Path, df: pd.DataFrame) -> None:
     out = df.copy()
     preferred = [
         "onset_s", "offset_s", "labels", "individual", "trial",
-        "human_verified", "changepoint_corrected", "prediction_source",
+        "human_verified", "changepoint_corrected", "prediction_source", "n_samples",
     ]
     cols = [c for c in preferred if c in out.columns]
     cols += [c for c in out.columns if c not in cols]
@@ -161,6 +164,8 @@ def _empty_all_labels() -> pd.DataFrame:
     for col, default in TRIAL_META_DEFAULTS.items():
         df[col] = pd.Series(dtype=type(default))
     return df
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -235,39 +240,6 @@ def set_trial_meta_attr(all_df: pd.DataFrame, trial, key: str, value) -> pd.Data
     mask = all_df["trial"] == trial
     if mask.any():
         all_df.loc[mask, key] = value
-    return all_df
-
-
-# ---------------------------------------------------------------------------
-# Migration from label_dt (xr.DataTree) to TSV
-# ---------------------------------------------------------------------------
-
-def migrate_label_dt_to_tsv(label_dt) -> pd.DataFrame:
-    """Extract all intervals + per-trial metadata from a label DataTree.
-
-    Returns all_labels_df with meta columns.
-    """
-    from ethograph.labels.intervals import xr_to_intervals
-
-    rows = []
-
-    for trial_id, ds in label_dt.trial_items():
-        intervals = xr_to_intervals(ds)
-        if not intervals.empty:
-            trial_rows = intervals.copy()
-            trial_rows.insert(0, "trial", trial_id)
-
-            # Migrate per-trial attrs to columns
-            trial_rows["human_verified"] = int(ds.attrs.get("human_verified", 0))
-            trial_rows["changepoint_corrected"] = int(ds.attrs.get("changepoint_corrected", 0))
-            trial_rows["prediction_source"] = ""
-            rows.append(trial_rows)
-
-    if rows:
-        all_df = pd.concat(rows, ignore_index=True)
-    else:
-        all_df = _empty_all_labels()
-
     return all_df
 
 

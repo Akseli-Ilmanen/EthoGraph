@@ -99,14 +99,13 @@ ethograph/gui/
     widgets_transform.py      # Energy envelope + noise reduction
 
 ethograph/labels/
-    intervals.py              # Core interval operations (add, delete, dense↔interval conversion)
-    tsv_store.py              # TSV file I/O, per-trial access, validation, migration
+    intervals.py              # Interval operations, mapping loaders, find_blocks (merged from core.py)
+    ml.py                     # Dense↔interval conversion, ML post-processing (stitch_gaps, purge_small_blocks, fix_endings)
+    tsv_store.py              # TSV file I/O, per-trial access, validation (n_samples per-trial metadata)
     predictions.py            # Load model predictions (.npy/.pickle), confidence via 1-entropy
     crowsetta_format.py       # EthographSeq Crowsetta format (export adapter, int→string labels)
     converters.py             # Crowsetta/NWB import converters
-    export.py                 # trees_to_df() analysis export
-    dense.py                  # Dense label operations (fix_endings, purge, stitch)
-    core.py                   # Primitives (get_segments, load_mapping)
+    export.py                 # enrich_labels_df(), correct_offsets_trial()
 
 ethograph/utils/
     trialtree.py              # TrialTree (xr.DataTree subclass)
@@ -165,7 +164,9 @@ All plots inherit `BasePlot` (pyqtgraph `PlotWidget`): time marker, x-axis range
 
 ### Labels
 
-**Storage:** TSV file (`{name}_labels.tsv`) alongside the `.nc`. Columns: `onset_s, offset_s, labels (int), individual, trial, human_verified, changepoint_corrected, prediction_source`. Label names managed centrally in `mapping.txt`.
+**Storage:** TSV file (`{name}_labels.tsv`) alongside the `.nc`. Columns: `onset_s, offset_s, labels (int), individual, trial, human_verified, changepoint_corrected, prediction_source, n_samples`. The `n_samples` column stores per-trial sample count for dense conversion. Label names managed centrally in `mapping.txt`.
+
+**Module structure:** `intervals.py` has interval operations + mapping loaders + `find_blocks`. `ml.py` has dense↔interval conversion + ML post-processing (`stitch_gaps`, `purge_small_blocks`, `fix_endings`). Old `core.py` merged into `intervals.py`; old `dense.py` renamed to `ml.py`.
 
 **In-memory:** `app_state._all_labels_df` (all trials), `app_state.label_intervals` (current trial view). Per-trial metadata stored as columns, not a separate dict.
 

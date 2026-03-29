@@ -16,7 +16,6 @@ from ethograph.io.dataset import (
 )
 from ethograph.utils.xr_utils import get_time_coord, sel_valid
 from ethograph.utils.paths import get_project_root
-from ethograph.labels.export import trees_to_df
 
 
 def open(path: str) -> TrialTree:

@@ -10,7 +10,7 @@ from scipy.ndimage import gaussian_filter1d
 from ethograph.features.movement import get_angle_rgb, extract_video_motion
 
 from ethograph.utils.xr_utils import get_time_coord
-from ethograph.labels.intervals import INTERVAL_COLUMNS, empty_intervals, intervals_to_xr
+from ethograph.labels.intervals import INTERVAL_COLUMNS
 from ethograph.io.trialtree import TrialTree
 
 
@@ -57,11 +57,6 @@ def dataset_to_basic_trialtree(ds, video_path: str | None = None, video_motion: 
     >>> dt = eto.dataset_to_basic_trialtree(ds)
     >>> dt.save("quick_look.nc")
     """
-
-    if "labels" not in ds.data_vars and "onset_s" not in ds.data_vars:
-        interval_ds = intervals_to_xr(empty_intervals())
-        for var_name in interval_ds.data_vars:
-            ds[var_name] = interval_ds[var_name]
 
     if video_motion and video_path is not None:
         ds["video_motion"] = extract_video_motion(video_path, fps=ds.fps, time_coord_name="time_video")

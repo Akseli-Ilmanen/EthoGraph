@@ -3,8 +3,8 @@ from typing import Union
 import numpy as np
 import matplotlib.pyplot as plt
 import ethograph as eto
-from ethograph.labels.core import load_label_mapping
-from ethograph.labels.intervals import intervals_to_dense, xr_to_intervals
+from ethograph.labels.intervals import load_label_mapping
+from ethograph.labels.ml import intervals_to_dense
 
 def create_classification_probabilities_pdf(label_dt, output_path: Union[str, Path],
                                            confidence_threshold: float = 0.95,
@@ -44,12 +44,12 @@ def create_classification_probabilities_pdf(label_dt, output_path: Union[str, Pa
         
 
         # TODO: update to hadnle not 'time' coordinate, (get_time_coord)
-        intervals_df = xr_to_intervals(label_dt.trial(trial_num))
+        from ethograph.crowlab.legacy import _xr_to_intervals
+        intervals_df = _xr_to_intervals(label_dt.trial(trial_num))
         time_coord = trial_ds.time.values
         n_samples = len(time_coord)
         sr = 1.0 / np.median(np.diff(time_coord))
-        duration = float(time_coord[-1] - time_coord[0])
-        labels = intervals_to_dense(intervals_df, sr, duration, trial_ds.individuals.values.tolist(), n_samples=n_samples)[:, 0]
+        labels = intervals_to_dense(intervals_df, sr, trial_ds.individuals.values.tolist(), n_samples)[:, 0]
 
         
         labels_confidence = trial_ds.labels_confidence.values.squeeze()

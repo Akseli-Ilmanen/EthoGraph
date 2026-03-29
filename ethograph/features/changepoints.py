@@ -6,9 +6,8 @@ import pandas as pd
 from scipy.signal import find_peaks
 
 from ethograph.features.preprocessing import z_normalize
-from ethograph.labels.core import find_blocks
-from ethograph.labels.dense import fix_endings, purge_small_blocks, stitch_gaps
 from ethograph.labels.intervals import purge_short_intervals, snap_boundaries, stitch_intervals
+from ethograph.labels.ml import find_blocks, fix_endings, purge_small_blocks, stitch_gaps
 
 
 # ---------------------------------------------------------------------------

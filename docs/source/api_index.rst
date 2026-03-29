@@ -37,9 +37,8 @@ Top-level functions
    :nosignatures:
 
    ethograph.io.dataset
-   ethograph.labels.core
-   ethograph.labels.dense
    ethograph.labels.intervals
+   ethograph.labels.ml
    ethograph.labels.tsv_store
    ethograph.labels.predictions
    ethograph.labels.crowsetta_format

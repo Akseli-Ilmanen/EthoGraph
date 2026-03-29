@@ -34,7 +34,7 @@ from qtpy.QtWidgets import (
 import ethograph as eto
 from ethograph.gui.notify import notify
 from ethograph.features.changepoints import snap_to_nearest_changepoint_time
-from ethograph.labels.core import load_label_mapping
+from ethograph.labels.intervals import load_label_mapping
 from ethograph.labels.predictions import load_predictions_folder
 from ethograph.labels.intervals import (
     add_interval,

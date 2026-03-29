@@ -25,7 +25,7 @@ from qtpy.QtWidgets import (
 import ethograph as eto
 from ethograph.utils.paths import find_mapping_file, gui_default_settings_path
 from ethograph.io.validation import EPHYS_FILE_FILTER
-from ethograph.labels.tsv_store import load_labels_tsv, migrate_label_dt_to_tsv
+from ethograph.labels.tsv_store import load_labels_tsv
 
 from .app_state import AppStateSpec
 from .notify import notify_dialog
@@ -811,16 +811,15 @@ class IOWidget(QWidget):
 
                 result = QFileDialog.getOpenFileName(
                     None,
-                    caption="Load labels from legacy .nc file",
+                    caption="Load labels TSV file",
                     dir=str(nc_parent),
-                    filter="NetCDF files (*.nc)",
+                    filter="TSV files (*.tsv)",
                 )
                 labels_file_path = result[0] if result and len(result) >= 1 else ""
                 if not labels_file_path:
                     return
 
-                label_dt_full = eto.open(labels_file_path)
-                self.app_state._all_labels_df = migrate_label_dt_to_tsv(label_dt_full.get_label_dt())
+                self.app_state._all_labels_df = load_labels_tsv(labels_file_path)
 
                 self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
                 self.label_file_path_edit.setText(labels_file_path)

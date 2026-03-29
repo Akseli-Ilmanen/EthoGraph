@@ -3,17 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-import xarray as xr
 
-from ethograph.labels.core import load_mapping
-from ethograph.labels.intervals import _rows_to_df, empty_intervals, intervals_to_xr
-
-if TYPE_CHECKING:
-    from ethograph.io.trialtree import TrialTree
+from ethograph.labels.intervals import _rows_to_df, empty_intervals, load_mapping
 
 CROWSETTA_SEQ_FORMATS = [
     "aud-seq",
@@ -159,33 +153,40 @@ class NWBLabelConverter:
             sorted({e["label_name"] for e in self._epochs})
         )
 
-    def from_nwb(self, nwb, trials_df: pd.DataFrame) -> TrialTree:
-        from ethograph.utils.nwb import _assign_individual  # circular
+    def from_nwb(self, nwb, trials_df: pd.DataFrame) -> pd.DataFrame:
+        """Extract labels from NWB and return a TSV-compatible all-labels DataFrame."""
+        from ethograph.labels.tsv_store import TRIAL_META_DEFAULTS
 
         if self._epochs is None:
             self._load(nwb)
 
-        ds_list = []
+        individual = _get_nwb_individual(nwb)
+        all_rows = []
         for _, row in trials_df.iterrows():
             t_start, t_stop = row["start_time"], row["stop_time"]
-            rows = [
+            trial_rows = [
                 {
                     "onset_s": max(0.0, ep["onset_s"] - t_start),
                     "offset_s": min(t_stop - t_start, ep["offset_s"] - t_start),
                     "labels": self._label_map.get(ep["label_name"], 0),
-                    "individual": ep["individual"],
+                    "individual": ep.get("individual", individual),
+                    "trial": row["trial"],
                 }
                 for ep in self._epochs
                 if ep["offset_s"] > t_start
                 and ep["onset_s"] < t_stop
                 and self._label_map.get(ep["label_name"], 0) != 0
             ]
-            ds = intervals_to_xr(_rows_to_df(rows)) if rows else xr.Dataset()
-            ds = _assign_individual(ds, nwb)
-            ds_list.append(ds.assign_attrs(trial=row["trial"]))
+            all_rows.extend(trial_rows)
 
-        import ethograph as eto  # circular
-        return eto.from_datasets(ds_list)
+        if not all_rows:
+            from ethograph.labels.tsv_store import init_empty_labels
+            return init_empty_labels([])
+
+        df = pd.DataFrame(all_rows)
+        for col, default in TRIAL_META_DEFAULTS.items():
+            df[col] = default
+        return df
 
     def _extract_behavioral_epochs(self, nwb) -> list[dict]:
         import pynwb

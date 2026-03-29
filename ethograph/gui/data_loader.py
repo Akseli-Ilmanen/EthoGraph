@@ -17,7 +17,6 @@ from ethograph.labels.tsv_store import (
     init_empty_labels,
     labels_tsv_path,
     load_labels_tsv,
-    migrate_label_dt_to_tsv,
     save_labels_tsv,
 )
 
@@ -59,18 +58,7 @@ def load_dataset(
     if tsv_path.exists():
         all_labels_df = load_labels_tsv(tsv_path)
         logger.info("Loaded labels from %s", tsv_path.name)
-    elif import_labels:
-        label_dt = dt.get_label_dt()
-        has_labels = any(
-            "onset_s" in ds.data_vars
-            for _, ds in label_dt.trial_items()
-        )
-        if has_labels:
-            all_labels_df = migrate_label_dt_to_tsv(label_dt)
-            save_labels_tsv(tsv_path, all_labels_df)
-            logger.info("Migrated labels from .nc to %s", tsv_path.name)
-        else:
-            all_labels_df = init_empty_labels(dt.trials)
+    
     else:
         all_labels_df = init_empty_labels(dt.trials)
 

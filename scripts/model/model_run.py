@@ -19,7 +19,7 @@ from datetime import datetime
 from ethograph.model.dataset import get_trial_dict, get_data_dict, write_bundle_list, save_config
 from ethograph.model.eval_plotting import plot_metrics_best_model
 import ethograph as eto
-from ethograph.labels.core import load_mapping
+from ethograph.labels.intervals import load_mapping
 from ethograph.model.cetnet_encoder import *
 from ethograph.model.batch_gen import BatchGenerator
 
