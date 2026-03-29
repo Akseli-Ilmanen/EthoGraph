@@ -14,6 +14,7 @@ from .app_constants import (
     Z_INDEX_BACKGROUND,
 )
 from .makepretty import clean_display_labels
+from .modality import WindowedBuffer, XarraySource
 from .plots_base import BasePlot, ThrottleDebounce
 
 
@@ -44,8 +45,8 @@ class HeatmapPlot(BasePlot):
         self._channel_labels = []
         self._sort_order: np.ndarray | None = None
 
-        # Buffer state for lazy loading
-        self._buffer_multiplier = DEFAULT_BUFFER_MULTIPLIER
+        # Unified buffer for xarray feature data
+        self._buffer = WindowedBuffer(buffer_multiplier=DEFAULT_BUFFER_MULTIPLIER)
         self._buffered_data = None
         self._buffered_time = None
         self._buffer_t0 = 0.0
@@ -146,6 +147,7 @@ class HeatmapPlot(BasePlot):
         self._current_ds_kwargs_hash = self._get_ds_kwargs_hash()
 
     def _clear_buffer(self):
+        self._buffer.invalidate()
         self._buffered_data = None
         self._buffered_time = None
         self._buffer_t0 = 0.0
@@ -313,6 +315,16 @@ class HeatmapPlot(BasePlot):
 
     # --- Buffered data loading ---
 
+    def _ensure_xarray_source(self):
+        ds = self.app_state.ds
+        time_coord = self.app_state.time_coord
+        if ds is None or time_coord is None:
+            self._buffer.set_source(None)
+            return
+        bounds = self.app_state.trial_bounds
+        source = XarraySource(ds, time_coord.name)
+        self._buffer.set_source(source, bounds=bounds)
+
     def _get_buffered_data(self, t0: float, t1: float):
         """Load and cache feature data for the visible time range with buffer."""
         if self._context_changed():
@@ -337,20 +349,15 @@ class HeatmapPlot(BasePlot):
         if view_mode == "Heatmap (Ephys)":
             return self._get_buffered_ephys_envelope(t0, t1)
 
-        ds = self.app_state.ds
-        time_coord = self.app_state.time_coord
-        if ds is None or time_coord is None:
+        if self._buffer.source is None:
+            self._ensure_xarray_source()
+
+        buffered_ds = self._buffer.get(t0, t1)
+        if buffered_ds is None:
             return None, None
 
-
-        window_size = t1 - t0
-        buffer_size = window_size * self._buffer_multiplier
-        load_t0 = max(float(time_coord.values[0]), t0 - buffer_size / 2)
-        load_t1 = min(float(time_coord.values[-1]), t1 + buffer_size / 2)
-
-
-        buffered_ds = ds.sel({time_coord.name: slice(load_t0, load_t1)})
-
+        ds = self.app_state.ds
+        time_coord = self.app_state.time_coord
         ds_kwargs = self.app_state.get_ds_kwargs()
         da = buffered_ds[feature_sel]
         data, _ = eto.sel_valid(da, ds_kwargs)
@@ -358,7 +365,6 @@ class HeatmapPlot(BasePlot):
         if data.ndim == 1:
             data = data[:, np.newaxis]
 
-        # Extract channel labels from coordinates
         da_full = ds[feature_sel]
         dims_after_sel = [d for d in da_full.dims if 'time' not in d and d not in ds_kwargs]
         if dims_after_sel and dims_after_sel[0] in da_full.coords:
@@ -376,8 +382,8 @@ class HeatmapPlot(BasePlot):
 
         self._buffered_data = data
         self._buffered_time = buffered_time
-        self._buffer_t0 = load_t0
-        self._buffer_t1 = load_t1
+        self._buffer_t0 = self._buffer.cache_range[0]
+        self._buffer_t1 = self._buffer.cache_range[1]
 
         return data, buffered_time
 

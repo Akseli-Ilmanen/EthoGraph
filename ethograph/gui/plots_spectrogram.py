@@ -15,6 +15,7 @@ from audioio import AudioLoader
 from qtpy.QtCore import Signal
 from scipy.signal import spectrogram
 
+from .modality import ModalitySource
 from .plots_base import BasePlot, ThrottleDebounce
 from .app_constants import (
     SPECTROGRAM_DEBOUNCE_MS,
@@ -23,9 +24,6 @@ from .app_constants import (
     DEFAULT_FALLBACK_MAX_FREQUENCY,
     Z_INDEX_BACKGROUND,
 )
-
-if TYPE_CHECKING:
-    from .data_sources import SpectrogramSource
 
 
 class SharedAudioCache:
@@ -77,7 +75,7 @@ class SpectrogramPlot(BasePlot):
 
         self.init_colorbar()
         self.buffer = SpectrogramBuffer(app_state)
-        self.source: SpectrogramSource | None = None
+        self.source: ModalitySource | None = None
 
         self._set_frequency_limits()
 
@@ -109,8 +107,8 @@ class SpectrogramPlot(BasePlot):
             vmax = self.app_state.get_with_default("vmax_db")
         self.spec_item.setLevels([vmin, vmax])
 
-    def set_source(self, source: SpectrogramSource | None):
-        """Set a custom spectrogram source (e.g. XarraySource). Clears buffer."""
+    def set_source(self, source: ModalitySource | None):
+        """Set a ModalitySource for spectrogram data. Clears buffer."""
         self.source = source
         self.buffer._clear_buffer()
         if source is not None:
@@ -150,7 +148,7 @@ class SpectrogramPlot(BasePlot):
         nyquist_freq = DEFAULT_FALLBACK_MAX_FREQUENCY
 
         if self.source is not None:
-            nyquist_freq = self.source.rate / 2
+            nyquist_freq = self.source.sampling_rate / 2
         else:
             audio_path = getattr(self.app_state, 'audio_path', None)
             if audio_path:
@@ -234,7 +232,7 @@ class SpectrogramBuffer:
         margin = (t1 - t0) * BUFFER_COVERAGE_MARGIN
         return self.buffer_t0 <= t0 - margin and self.buffer_t1 >= t1 + margin
 
-    def get_spectrogram(self, source: SpectrogramSource, t0: float, t1: float):
+    def get_spectrogram(self, source: ModalitySource, t0: float, t1: float):
         """Get spectrogram data, computing only if necessary."""
         if source.identity != self.current_identity:
             self._clear_buffer()
@@ -250,20 +248,21 @@ class SpectrogramBuffer:
 
         return self.Sxx_db, self._get_spec_rect()
 
-    def _compute_buffer(self, source: SpectrogramSource, t0: float, t1: float):
+    def _compute_buffer(self, source: ModalitySource, t0: float, t1: float):
         """Compute spectrogram for buffered range."""
-        self.fs = source.rate
+        self.fs = source.sampling_rate
 
         window_size = t1 - t0
         buffer_size = window_size * self.buffer_multiplier
         self.buffer_t0 = max(0.0, t0 - buffer_size / 2)
         self.buffer_t1 = t1 + buffer_size / 2
 
-        max_time = source.duration
+        max_time = source.time_range.duration
         if self.buffer_t1 > max_time:
             self.buffer_t1 = max_time
 
-        audio_data = source.get_data(self.buffer_t0, self.buffer_t1)
+        result = source.get_data(self.buffer_t0, self.buffer_t1)
+        audio_data = result.values if hasattr(result, 'values') else result
 
         if len(audio_data) == 0:
             return

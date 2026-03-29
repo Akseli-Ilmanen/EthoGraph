@@ -15,20 +15,6 @@ from ethograph.gui.notify import notify_dialog
 from ethograph.io.trialtree import TrialTree
 
 
-def _migrate_video_fps_to_session(dt: TrialTree) -> None:
-    """Populate session ``video_fps`` from ``ds.attrs["fps"]`` for old files."""
-    sess = dt.session
-    if sess is not None and "video_fps" in sess:
-        return
-    fps = dt.itrial(0).attrs.get("fps")
-    if fps is None:
-        return
-    cameras = dt.cameras
-    if cameras:
-        dt.set_video_fps(float(fps), device_labels=cameras)
-    else:
-        dt.set_video_fps(float(fps))
-
 
 def load_dataset(
     file_path: str,
@@ -54,7 +40,7 @@ def load_dataset(
 
     dt = eto.open(file_path)
 
-    _migrate_video_fps_to_session(dt)
+
 
     label_dt = dt.get_label_dt()
     type_vars_dict = extract_type_vars(dt.itrial(0), dt)

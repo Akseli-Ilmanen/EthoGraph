@@ -640,7 +640,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         """Refresh audio-driven panels (waveform + spectrogram) after mic change."""
         source = build_audio_source(self.app_state)
         self.spectrogram_plot.set_source(source)
-        self.audio_trace_plot.set_source(source.timeseries_source if source else None)
+        self.audio_trace_plot.set_source(source)
 
         t0, t1 = self.get_current_xlim()
         time = self.app_state.time
@@ -1000,5 +1000,4 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         SharedAudioCache.clear_cache()
         if hasattr(self.spectrogram_plot, "buffer"):
             self.spectrogram_plot.buffer._clear_buffer()
-        if hasattr(self.audio_trace_plot, "buffer"):
-            self.audio_trace_plot.buffer.set_source(None)
+        self.audio_trace_plot.set_source(None)

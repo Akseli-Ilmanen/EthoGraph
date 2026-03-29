@@ -38,6 +38,7 @@ from phylib.io.traces import get_ephys_reader
 from ethograph.utils.nwb import resolve_timeseries_timing
 
 from .app_constants import BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER_EPHYS, EPHYSTRACE_DEBOUNCE_MS
+from .modality import FileSource, ModalitySource
 from .plots_base import BasePlot, ThrottleDebounce
 from .video_manager import is_url
 
@@ -545,13 +546,19 @@ class EphysTraceBuffer:
         self.channel_spacing = 3.0
         self.display_gain: float = 0.0
         self.autocenter: bool = False
+        self._source: FileSource | None = None
 
     def set_loader(self, loader: EphysLoader, channel: int = 0):
         self.loader = loader
         self.channel = channel
         self.ephys_sr = loader.rate
         self._starting_time = float(getattr(loader, "starting_time", 0.0))
+        self._source = FileSource("ephys", loader, start_time=self._starting_time)
         self._invalidate_cache()
+
+    @property
+    def source(self) -> FileSource | None:
+        return self._source
 
     def set_preprocessing(self, flags: dict):
         self._preproc_flags = flags
@@ -844,7 +851,7 @@ class EphysTracePlot(BasePlot):
         self._hw_to_order_idx: dict[int, int] = {}
         self._last_visible_hw: set[int] = set()
 
-        self._source: TimeseriesSource | None = None
+        self._source: ModalitySource | None = None
 
         # Calibration scale bars
         self._scale_v_line: pg.PlotDataItem | None = None
@@ -887,7 +894,7 @@ class EphysTracePlot(BasePlot):
 
         self.setToolTip("Double-click or Ctrl+A to autoscale")
 
-    def set_source(self, source: TimeseriesSource | None):
+    def set_source(self, source: ModalitySource | None):
         self._source = source
         self._apply_zoom_constraints()
 
