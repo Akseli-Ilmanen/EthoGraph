@@ -2,6 +2,7 @@
 
 import gc
 import logging
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Any, get_args, get_origin
@@ -19,10 +20,15 @@ from ethograph.gui.notify import notify
 from ethograph.gui.plots_timeseriessource import TrialAlignment, TimeRange
 
 from .makepretty import find_combo_index
-from ethograph.labels.intervals import (
-    empty_intervals,
-    intervals_to_xr,
-    xr_to_intervals,
+from ethograph.labels.intervals import empty_intervals
+from ethograph.labels.tsv_store import (
+    get_trial_from_tsv,
+    get_trial_meta,
+    labels_tsv_path,
+    load_labels_tsv,
+    save_labels_tsv,
+    set_trial_in_tsv,
+    set_trial_meta_attr,
 )
 
 
@@ -31,6 +37,37 @@ logger = logging.getLogger(__name__)
 SIMPLE_SIGNAL_TYPES = (int, float, str, bool)
 
 
+
+
+def _auto_git_commit(label_path: Path) -> None:
+    """Auto-commit a label file if the parent folder is a git repository."""
+    repo_dir = str(label_path.parent)
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_dir, "rev-parse", "--is-inside-work-tree"],
+            capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        raise ValueError("git is not installed or not found on PATH.")
+
+    if result.returncode != 0:
+        raise ValueError(
+            f"Remote backup folder is not a git repository: {repo_dir}\n"
+            "Run 'git init' in that folder first, or use 'Save with timestamp' mode."
+        )
+
+    try:
+        subprocess.run(
+            ["git", "-C", repo_dir, "add", label_path.name],
+            check=True, capture_output=True, text=True,
+        )
+        subprocess.run(
+            ["git", "-C", repo_dir, "commit", "-m", f"Labels updated: {label_path.name}"],
+            check=True, capture_output=True, text=True,
+        )
+        logger.info("Auto-committed %s to git", label_path.name)
+    except subprocess.CalledProcessError as e:
+        raise ValueError(f"git commit failed: {e.stderr.strip() or e.stdout.strip() or str(e)}")
 
 
 def get_signal_type(type_hint):
@@ -109,10 +146,9 @@ class AppStateSpec:
         "ds": (xr.Dataset | None, None, False),
         "ds_temp": (xr.Dataset | None, None, False),
         "dt": (xr.DataTree | None, None, False),
-        "label_ds": (xr.Dataset | None, None, False),
-        "label_dt": (xr.DataTree | None, None, False),
-        "pred_ds": (xr.Dataset | None, None, False),
-        "pred_dt": (xr.DataTree | None, None, False),
+        "labels_confidence_ds": (xr.Dataset | None, None, False),
+        "pred_labels_df": (pd.DataFrame | None, None, False),
+        "pred_confidence_map": (dict | None, None, False),
         "trial_conditions": (list | None, None, False),
         "keypoints": (list[str], [], False),
         "import_labels_nc_data": (bool, False, True),
@@ -141,7 +177,6 @@ class AppStateSpec:
         # Paths 
         "nc_file_path": (str | None, None, False),
         "video_folder": (str | None, None, True, SCOPE_LOCAL),
-        "remote_video": (bool, False, True),
         "audio_folder": (str | None, None, True, SCOPE_LOCAL),
         "pose_folder": (str | None, None, True, SCOPE_LOCAL),
         "ephys_path": (str | None, None, True, SCOPE_LOCAL),
@@ -190,7 +225,8 @@ class AppStateSpec:
         "apply_changepoint_correction": (bool, True, True),
         "automatic_min_label_length_s": (float, 1e-3, True),
         "automatic_stitch_gap_s": (float, 0.0, True),
-        "save_tsv_enabled": (bool, True, True),
+        "remote_backup_path": (str | None, None, True),
+        "remote_backup_mode": (str, "timestamp", True),
 
         # Envelope / energy (general, used by both heatmap and overlay)
         "energy_metric": (str, "energy_lowpass", True),
@@ -283,6 +319,8 @@ class ObservableAppState(QObject):
         self.ephys_source_map: dict[str, tuple[str, str, int]] = {}
         self.ephys_stream_sel: str | None = None
         self._suspend_local_autoload = False
+        self._all_labels_df: pd.DataFrame | None = None
+        self._label_mappings: dict | None = None
 
         self.settings = get_settings()
         self._yaml_path = yaml_path or "gui_settings.yaml"
@@ -428,7 +466,7 @@ class ObservableAppState(QObject):
         raise AttributeError(name)
 
     def __setattr__(self, name, value):
-        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map", "ephys_source_map", "ephys_stream_sel", "_suspend_local_autoload"):
+        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map", "ephys_source_map", "ephys_stream_sel", "_suspend_local_autoload", "_all_labels_df", "_label_mappings"):
             super().__setattr__(name, value)
             return
 
@@ -813,87 +851,81 @@ class ObservableAppState(QObject):
 
     # --- Interval label helpers ---
     def get_trial_intervals(self, trial) -> pd.DataFrame:
-        if self.label_dt is None:
-            return empty_intervals()
-        trial_ds = self.label_dt.trial(trial)
-        if "onset_s" in trial_ds.data_vars:
-            return xr_to_intervals(trial_ds)
-        return empty_intervals()
+        return get_trial_from_tsv(self._all_labels_df, trial)
 
     def set_trial_intervals(self, trial, df: pd.DataFrame) -> None:
-        if self.label_dt is None:
-            return
-        interval_ds = intervals_to_xr(df)
-        old_ds = self.label_dt.trial(trial)
-        interval_ds.attrs = old_ds.attrs.copy()
-        if "labels_confidence" in old_ds.data_vars:
-            interval_ds["labels_confidence"] = old_ds["labels_confidence"]
-        self.label_dt.update_trial(trial, lambda _: interval_ds)
+        self._all_labels_df = set_trial_in_tsv(self._all_labels_df, trial, df)
+
+    def get_trial_meta(self, trial) -> dict:
+        return get_trial_meta(self._all_labels_df, trial)
+
+    def set_trial_meta_attr(self, trial, key: str, value) -> None:
+        self._all_labels_df = set_trial_meta_attr(self._all_labels_df, trial, key, value)
+
+    def get_global_meta_attr(self, key: str, default=0):
+        """Check if ALL trials have a meta attr set to truthy."""
+        if self._all_labels_df is None or self._all_labels_df.empty:
+            return default
+        for trial in self.trials:
+            meta = get_trial_meta(self._all_labels_df, trial)
+            if not meta.get(key, 0):
+                return default
+        return 1
+
+    def set_global_meta_attr(self, key: str, value) -> None:
+        """Set a meta attr on ALL trials."""
+        for trial in self.trials:
+            self._all_labels_df = set_trial_meta_attr(self._all_labels_df, trial, key, value)
 
     def _get_downsampled_suffix(self) -> str:
-        """Get suffix for downsampled files."""
         if self.downsample_factor_used:
             return f"_downsampled_{self.downsample_factor_used}x"
         return ""
-    
-    def _save_labels_tsv(self, nc_path, suffix):        
-        tsv_path = nc_path.parent / f"{nc_path.stem}{suffix}_labels.tsv"        
-        keep_attrs = self.trial_conditions if self.trial_conditions is not None else []
-        df = eto.trees_to_df(self.dt, keep_attrs, correct_offsets_enabled=False)
-        df.to_csv(tsv_path, index=False, sep='\t', encoding='utf-8-sig')
-                    
 
-    def save_labels(self):
-        """Save only updated labels to preserve data integrity of other variables."""
+    def save_labels(self, remote_path: str | None = None, remote_mode: str = "timestamp") -> None:
+        """Save labels to canonical TSV + local backup + optional remote backup.
 
-        nc_path = Path(self.nc_file_path)
-        suffix = self._get_downsampled_suffix()
-
-        # Save label seperately as backup
-        labels_dir = nc_path.parent / "labels"
-        labels_dir.mkdir(exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        versioned_filename = f"{nc_path.stem}{suffix}_labels_{timestamp}{nc_path.suffix}"
-        versioned_path = labels_dir / versioned_filename
-
-        self.label_dt.save(versioned_path)
-        notify(f"Saved: {Path(versioned_path).name}")
-
-        self.changes_saved = True
-
-
-    def save_file(self) -> None:
-        if getattr(self.dt, "attrs", {}).get("nwb_source_path", "").startswith(("http://", "https://", "s3://")):
-            notify(
-                "Full save is unavailable for remote NWB files. "
-                "Use 'Save labels' instead."
-            )
+        Parameters
+        ----------
+        remote_path : str, optional
+            Folder path for remote backup (cloud/git/...).
+        remote_mode : str
+            "timestamp" (default) appends timestamp suffix, "overwrite" saves as single file.
+        """
+        if self._all_labels_df is None:
             return
 
         nc_path = Path(self.nc_file_path)
         suffix = self._get_downsampled_suffix()
-        
+        stem = f"{nc_path.stem}{suffix}"
 
+        # Enrich with computed columns (duration, sequence, global timing, trial attrs)
+        from ethograph.labels.export import enrich_labels_df
+        keep_attrs = self.trial_conditions if self.trial_conditions else []
+        enriched = enrich_labels_df(self._all_labels_df, self.dt, keep_attrs)
+        save_df = enriched if not enriched.empty else self._all_labels_df
 
-        if suffix:
-            save_path = nc_path.parent / f"{nc_path.stem}{suffix}{nc_path.suffix}"
-            updated_dt = self.dt.overwrite_with_labels(self.label_dt)
+        # 1. Canonical location (sibling to .nc)
+        canonical_tsv = labels_tsv_path(nc_path, suffix)
+        save_labels_tsv(canonical_tsv, save_df)
 
-            
-            updated_dt.save(save_path)
-            updated_dt.close()
-            notify(f"Saved downsampled: {save_path.name}")
-        else:
-            updated_dt = self.dt.overwrite_with_labels(self.label_dt)
-            updated_dt.load()
-            self.dt.close()
+        # 2. Local backup with timestamp
+        backup_dir = nc_path.parent / "label_backups"
+        backup_dir.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_labels_tsv(backup_dir / f"{stem}_labels_{timestamp}.tsv", save_df)
 
-            updated_dt.save(nc_path)
+        # 3. Remote backup (optional)
+        if remote_path:
+            remote_dir = Path(remote_path)
+            remote_dir.mkdir(parents=True, exist_ok=True)
+            remote_file = remote_dir / f"{stem}_labels.tsv"
+            if remote_mode in ("overwrite", "git"):
+                save_labels_tsv(remote_file, save_df)
+                if remote_mode == "git":
+                    _auto_git_commit(remote_file)
+            else:
+                save_labels_tsv(remote_dir / f"{stem}_labels_{timestamp}.tsv", save_df)
 
-            self.dt = eto.open(nc_path)
-            notify(f"Saved: {nc_path.name}")
-            
-            
-        if self.save_tsv_enabled:
-            self._save_labels_tsv(nc_path, suffix)
-            notify(f"Saved TSV: {nc_path.stem}{suffix}_labels.tsv")
+        notify(f"Saved labels: {canonical_tsv.name}")
+        self.changes_saved = True

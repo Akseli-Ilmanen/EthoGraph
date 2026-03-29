@@ -266,19 +266,22 @@ when sample 0 of the file occurs in session-absolute time.
 Labels
 ------
 
-Labels (segment annotations) are stored as interval variables (``onset_s``,
-``offset_s``, ``labels``, ``individual``) on a ``segment`` dimension.
-:meth:`~TrialTree.get_label_dt` extracts just the label data into a
-lightweight :class:`TrialTree`, stripping all feature variables.
+Labels are stored in a **TSV file** alongside the ``.nc`` file (see
+:doc:`Label Storage <../user_guide/export_labels>` for the full format spec).
+The TSV uses columns ``onset_s``, ``offset_s``, ``labels`` (int), ``individual``,
+and ``trial``, plus per-trial metadata columns.
 
 .. code-block:: python
 
-   label_dt = dt.get_label_dt()
-   empty_dt = dt.get_label_dt(empty=True)
+   from ethograph.labels.tsv_store import load_labels_tsv, save_labels_tsv
+
+   df = load_labels_tsv("data_labels.tsv")
+   print(df[df["trial"] == 1])  # labels for trial 1
+
+For backward compatibility with older ``.nc`` files that embed labels,
+:meth:`~TrialTree.get_label_dt` can extract them for migration:
 
 .. automethod:: TrialTree.get_label_dt
-
-.. automethod:: TrialTree.overwrite_with_labels
 
 ----
 

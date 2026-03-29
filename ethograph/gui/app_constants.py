@@ -5,7 +5,7 @@
 # =============================================================================
 
 # Labels table (widgets_labels.py)
-LABELS_TABLE_MAX_HEIGHT = 300
+LABELS_TABLE_MAX_HEIGHT = 400
 LABELS_TABLE_ROW_HEIGHT = 20
 LABELS_TABLE_ID_COLUMN_WIDTH = 20
 LABELS_TABLE_COLOR_COLUMN_WIDTH = 20

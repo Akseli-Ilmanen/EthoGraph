@@ -21,6 +21,7 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
@@ -34,6 +35,7 @@ import ethograph as eto
 from ethograph.gui.notify import notify
 from ethograph.features.changepoints import snap_to_nearest_changepoint_time
 from ethograph.labels.core import load_label_mapping
+from ethograph.labels.predictions import load_predictions_folder
 from ethograph.labels.intervals import (
     add_interval,
     delete_interval,
@@ -117,6 +119,7 @@ class LabelsWidget(QWidget):
 
         mapping_path = find_mapping_file()
         self._mappings = load_label_mapping(mapping_path) if mapping_path else {}
+        self.app_state._label_mappings = self._mappings
         self._populate_labels_table()
 
     def refresh_mapping_for_data_dir(self, data_dir: Path | str):
@@ -181,9 +184,7 @@ class LabelsWidget(QWidget):
         show_predictions = (
             predictions_df is not None and
             self.io_widget is not None and
-            self.io_widget.pred_show_predictions.isChecked() and
-            hasattr(self.app_state, 'pred_ds') and
-            self.app_state.pred_ds is not None
+            self.io_widget.pred_show_predictions.isChecked()
         )
 
         self.plot_container.draw_all_labels(
@@ -376,32 +377,85 @@ class LabelsWidget(QWidget):
         purge_row.addStretch()
         layout.addLayout(purge_row)
 
-        bottom_row = QWidget()
-        bottom_layout = QHBoxLayout()
-        bottom_row.setLayout(bottom_layout)
+        # --- Save button ---
+        self.save_labels_button = QPushButton("Save labels (Ctrl+S)")
+        self.save_labels_button.setToolTip("Save labels TSV + local backup + optional remote backup")
+        self.save_labels_button.clicked.connect(self._save_labels)
+        layout.addWidget(self.save_labels_button)
 
-        self.save_labels_button = QPushButton("Save labels file")
-        self.save_labels_button.setToolTip("Shortcut: (Ctrl + S). Save file in labels\\... folder")
-        self.save_labels_button.clicked.connect(lambda: self.app_state.save_labels())
-        bottom_layout.addWidget(self.save_labels_button)
+        # --- Local backup (read-only display) ---
+        local_backup_row = QHBoxLayout()
+        local_backup_label = QLabel("Local backup:")
+        local_backup_label.setFixedWidth(90)
+        local_backup_row.addWidget(local_backup_label)
+        self.local_backup_edit = QLineEdit()
+        self.local_backup_edit.setReadOnly(True)
+        self.local_backup_edit.setPlaceholderText("label_backups/")
+        if self.app_state.nc_file_path:
+            backup_dir = str(Path(self.app_state.nc_file_path).parent / "label_backups")
+            self.local_backup_edit.setText(backup_dir)
+        local_backup_row.addWidget(self.local_backup_edit)
+        layout.addLayout(local_backup_row)
 
-        self.save_button = QPushButton("Merge labels and save sesssion")
-        self.save_button.setToolTip("Takes current labels and saves to original sesssion file")
-        self.save_button.clicked.connect(lambda: self.app_state.save_file())
-        bottom_layout.addWidget(self.save_button)
+        # --- Remote backup (optional) ---
+        remote_row = QHBoxLayout()
+        remote_label = QLabel("Remote backup:")
+        remote_label.setFixedWidth(90)
+        remote_row.addWidget(remote_label)
+        self.remote_backup_edit = QLineEdit()
+        self.remote_backup_edit.setPlaceholderText("(optional) cloud/git folder...")
+        self.remote_backup_edit.setToolTip(
+            "Optional path to a remote folder for label backups.\n"
+            "Useful for syncing labels via cloud storage or a git repository."
+        )
+        if self.app_state.remote_backup_path:
+            self.remote_backup_edit.setText(self.app_state.remote_backup_path)
+        self.remote_backup_edit.editingFinished.connect(
+            lambda: setattr(self.app_state, 'remote_backup_path', self.remote_backup_edit.text().strip() or None)
+        )
+        remote_row.addWidget(self.remote_backup_edit)
 
-        self.save_tsv_checkbox = QCheckBox("Save tsv")
-        self.save_tsv_checkbox.setToolTip("Also export labels as tsv when saving")
-        self.save_tsv_checkbox.setChecked(self.app_state.save_tsv_enabled)
-        self.save_tsv_checkbox.toggled.connect(self._on_save_tsv_toggled)
-        bottom_layout.addWidget(self.save_tsv_checkbox)
+        remote_browse_btn = QPushButton("Browse")
+        remote_browse_btn.clicked.connect(self._browse_remote_backup)
+        remote_row.addWidget(remote_browse_btn)
 
-        bottom_layout.addStretch()
-        layout.addWidget(bottom_row)
+        self.remote_save_mode_combo = QComboBox()
+        self.remote_save_mode_combo.addItem("Save with timestamp")
+        self.remote_save_mode_combo.addItem("Overwrite file")
+        self.remote_save_mode_combo.addItem("Overwrite + git commit")
+        self.remote_save_mode_combo.setToolTip(
+            "Timestamp: each save creates a new file (safe, auditable).\n"
+            "Overwrite: saves a single file, no version control.\n"
+            "Overwrite + git commit: saves a single file and auto-commits.\n"
+            "  Requires the remote folder to be a git repo (run 'git init' once)."
+        )
+        mode_map = {"timestamp": 0, "overwrite": 1, "git": 2}
+        self.remote_save_mode_combo.setCurrentIndex(mode_map.get(self.app_state.remote_backup_mode, 0))
 
+        def _on_mode_changed(text):
+            if text == "Overwrite + git commit":
+                self.app_state.remote_backup_mode = "git"
+            elif text == "Overwrite file":
+                self.app_state.remote_backup_mode = "overwrite"
+            else:
+                self.app_state.remote_backup_mode = "timestamp"
+        self.remote_save_mode_combo.currentTextChanged.connect(_on_mode_changed)
+        remote_row.addWidget(self.remote_save_mode_combo)
+        layout.addLayout(remote_row)
 
-    def _on_save_tsv_toggled(self, checked: bool):
-        self.app_state.save_tsv_enabled = checked
+    def _save_labels(self):
+        from ethograph.gui.notify import notify_dialog
+        remote_path = self.remote_backup_edit.text().strip() or None
+        remote_mode = self.app_state.remote_backup_mode
+        try:
+            self.app_state.save_labels(remote_path=remote_path, remote_mode=remote_mode)
+        except ValueError as e:
+            notify_dialog(str(e), "error", "Save Error", self)
+
+    def _browse_remote_backup(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select remote backup folder")
+        if folder:
+            self.remote_backup_edit.setText(folder)
 
     def _browse_mapping_file(self):
         """Browse for a mapping.txt file and reload mappings."""
@@ -420,6 +474,7 @@ class LabelsWidget(QWidget):
         """Reload  mappings from the specified path."""
         try:
             self._mappings = load_label_mapping(Path(mapping_path))
+            self.app_state._label_mappings = self._mappings
             if self.plot_container:
                 self.plot_container.set_label_mappings(self._mappings)
             if self.changepoints_widget:
@@ -447,6 +502,7 @@ class LabelsWidget(QWidget):
 
                 self.io_widget.mapping_file_path_edit.setText(str(mapping_path))
                 self._mappings = load_label_mapping(mapping_path)
+                self.app_state._label_mappings = self._mappings
                 if self.plot_container:
                     self.plot_container.set_label_mappings(self._mappings)
                 if self.changepoints_widget:
@@ -459,13 +515,13 @@ class LabelsWidget(QWidget):
 
     def _human_verification_true(self, mode=None):
         """Mark current trial as human verified."""
-        if self.app_state.label_dt is None or self.app_state.trials_sel is None:
+        if self.app_state.trials_sel is None:
             return
         if mode == "single_trial":
-            self.app_state.label_dt.trial(self.app_state.trials_sel).attrs['human_verified'] = np.int8(1)
+            self.app_state.set_trial_meta_attr(self.app_state.trials_sel, 'human_verified', 1)
         elif mode == "all_trials":
-            for trial in self.app_state.label_dt.trials:
-                self.app_state.label_dt.trial(trial).attrs['human_verified'] = np.int8(1)
+            for trial in self.app_state.trials:
+                self.app_state.set_trial_meta_attr(trial, 'human_verified', 1)
 
         self._update_human_verified_status()
         if self.data_widget:
@@ -473,34 +529,34 @@ class LabelsWidget(QWidget):
         if self.meta_widget:
             self.meta_widget.update_labels_widget_title()
 
-        
+
     def _update_human_verified_status(self):
         default_style = ""
         verified_style = "background-color: green; color: white;"
 
-        if self.app_state.label_dt is None or self.app_state.trials_sel is None:
+        if self.app_state.trials_sel is None:
             self.human_verify_trial_btn.setStyleSheet(default_style)
             self.human_verify_all_trials_btn.setStyleSheet(default_style)
             return
 
-        attrs = self.app_state.label_dt.trial(self.app_state.trials_sel).attrs
-        if attrs.get('human_verified', None) == True:
+        trial_meta = self.app_state.get_trial_meta(self.app_state.trials_sel)
+        if trial_meta.get('human_verified', 0):
             self.human_verify_trial_btn.setStyleSheet(verified_style)
         else:
             self.human_verify_trial_btn.setStyleSheet(default_style)
 
         all_verified = all(
-            self.app_state.label_dt.trial(t).attrs.get('human_verified', None) == True
-            for t in self.app_state.label_dt.trials
+            self.app_state.get_trial_meta(t).get('human_verified', 0)
+            for t in self.app_state.trials
         )
-        if all_verified:
+        if all_verified and self.app_state.trials:
             self.human_verify_all_trials_btn.setStyleSheet(verified_style)
         else:
             self.human_verify_all_trials_btn.setStyleSheet(default_style)
 
     def _apply_correct_offsets(self, mode: str):
         from ethograph.labels.export import correct_offsets_trial
-        if self.app_state.label_dt is None or self.app_state.trials_sel is None:
+        if self.app_state.trials_sel is None:
             return
 
         if mode == "single_trial":
@@ -508,12 +564,12 @@ class LabelsWidget(QWidget):
             df = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
             self.app_state.set_trial_intervals(trial, df)
             self.app_state.label_intervals = df
-            self.app_state.label_dt.trial(trial).attrs["offsets_corrected"] = np.int8(1)
+            self.app_state.set_trial_meta_attr(trial, "offsets_corrected", 1)
         elif mode == "all_trials":
-            for trial in self.app_state.label_dt.trials:
+            for trial in self.app_state.trials:
                 df = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
                 self.app_state.set_trial_intervals(trial, df)
-                self.app_state.label_dt.trial(trial).attrs["offsets_corrected"] = np.int8(1)
+                self.app_state.set_trial_meta_attr(trial, "offsets_corrected", 1)
             self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
 
         self._update_correct_offsets_status()
@@ -527,22 +583,22 @@ class LabelsWidget(QWidget):
         default_style = ""
         applied_style = "background-color: green; color: white;"
 
-        if self.app_state.label_dt is None or self.app_state.trials_sel is None:
+        if self.app_state.trials_sel is None:
             self.correct_offsets_trial_btn.setStyleSheet(default_style)
             self.correct_offsets_all_trials_btn.setStyleSheet(default_style)
             return
 
-        trial_corrected = self.app_state.label_dt.trial(self.app_state.trials_sel).attrs.get("offsets_corrected", 0)
+        trial_corrected = self.app_state.get_trial_meta(self.app_state.trials_sel).get("offsets_corrected", 0)
         self.correct_offsets_trial_btn.setStyleSheet(applied_style if trial_corrected else default_style)
 
         all_corrected = all(
-            self.app_state.label_dt.trial(t).attrs.get("offsets_corrected", 0)
-            for t in self.app_state.label_dt.trials
+            self.app_state.get_trial_meta(t).get("offsets_corrected", 0)
+            for t in self.app_state.trials
         )
         self.correct_offsets_all_trials_btn.setStyleSheet(applied_style if all_corrected else default_style)
 
     def _apply_purge_small_labels(self, mode: str):
-        if self.app_state.label_dt is None or self.app_state.trials_sel is None:
+        if self.app_state.trials_sel is None:
             return
 
         min_duration = self.purge_min_duration_spin.value()
@@ -558,12 +614,12 @@ class LabelsWidget(QWidget):
             df = purge(self.app_state.get_trial_intervals(trial))
             self.app_state.set_trial_intervals(trial, df)
             self.app_state.label_intervals = df
-            self.app_state.label_dt.trial(trial).attrs["small_labels_purged"] = np.int8(1)
+            self.app_state.set_trial_meta_attr(trial, "small_labels_purged", 1)
         elif mode == "all_trials":
-            for trial in self.app_state.label_dt.trials:
+            for trial in self.app_state.trials:
                 df = purge(self.app_state.get_trial_intervals(trial))
                 self.app_state.set_trial_intervals(trial, df)
-                self.app_state.label_dt.trial(trial).attrs["small_labels_purged"] = np.int8(1)
+                self.app_state.set_trial_meta_attr(trial, "small_labels_purged", 1)
             self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
 
         self._update_purge_small_labels_status()
@@ -577,28 +633,38 @@ class LabelsWidget(QWidget):
         default_style = ""
         applied_style = "background-color: green; color: white;"
 
-        if self.app_state.label_dt is None or self.app_state.trials_sel is None:
+        if self.app_state.trials_sel is None:
             self.purge_trial_btn.setStyleSheet(default_style)
             self.purge_all_trials_btn.setStyleSheet(default_style)
             return
 
-        trial_purged = self.app_state.label_dt.trial(self.app_state.trials_sel).attrs.get("small_labels_purged", 0)
+        trial_purged = self.app_state.get_trial_meta(self.app_state.trials_sel).get("small_labels_purged", 0)
         self.purge_trial_btn.setStyleSheet(applied_style if trial_purged else default_style)
 
         all_purged = all(
-            self.app_state.label_dt.trial(t).attrs.get("small_labels_purged", 0)
-            for t in self.app_state.label_dt.trials
+            self.app_state.get_trial_meta(t).get("small_labels_purged", 0)
+            for t in self.app_state.trials
         )
         self.purge_all_trials_btn.setStyleSheet(applied_style if all_purged else default_style)
 
-    def _import_predictions_from_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select prediction .nc file", "", "NetCDF files (*.nc);;All Files (*)")
-        if file_path:
-            self.app_state.pred_dt = eto.open(file_path)
-            self.app_state.pred_ds = self.app_state.pred_dt.trial(self.app_state.trials_sel)
-            self.io_widget.pred_show_predictions.setEnabled(True)
-            self.io_widget.pred_show_predictions.setChecked(True)
-            self.io_widget.pred_file_path_edit.setText(file_path)
+    def _import_predictions_from_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select predictions folder (.npy files)")
+        if not folder:
+            return
+        individual = self.app_state.individuals_sel or "default"
+        try:
+            labels_df, confidence_map = load_predictions_folder(
+                folder, self.app_state.dt, individual,
+            )
+        except (FileNotFoundError, ValueError) as e:
+            notify(str(e), severity="error")
+            return
+
+        self.app_state.pred_labels_df = labels_df
+        self.app_state.pred_confidence_map = confidence_map
+        self.io_widget.pred_show_predictions.setEnabled(True)
+        self.io_widget.pred_show_predictions.setChecked(True)
+        self.io_widget.pred_file_path_edit.setText(folder)
 
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
@@ -786,15 +852,17 @@ class LabelsWidget(QWidget):
 
         Works entirely in the time domain. Also considers audio changepoints.
         """
+        time_coord = self.app_state.time_coord
+        if time_coord is None:
+            return t_clicked
 
         ds_kwargs = self.app_state.get_ds_kwargs()
-        time_coord = self.app_state.time_coord
         feature_sel = self.app_state.features_sel
 
         snapped = snap_to_nearest_changepoint_time(
             t_clicked, self.app_state.ds, feature_sel, time_coord.values, **ds_kwargs
         )
-        
+
         return snapped
 
     def _apply_label(self):

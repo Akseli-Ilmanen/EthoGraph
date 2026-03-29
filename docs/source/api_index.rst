@@ -40,6 +40,9 @@ Top-level functions
    ethograph.labels.core
    ethograph.labels.dense
    ethograph.labels.intervals
+   ethograph.labels.tsv_store
+   ethograph.labels.predictions
+   ethograph.labels.crowsetta_format
    ethograph.labels.converters
    ethograph.labels.export
    ethograph.labels.plots

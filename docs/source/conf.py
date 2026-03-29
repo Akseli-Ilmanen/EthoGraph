@@ -6,7 +6,6 @@
 import os
 import sys
 
-from importlib.metadata import version as get_version
 
 # Used when building API docs, put the dependencies
 # of any class you are documenting here
@@ -52,11 +51,7 @@ sys.path.insert(0, os.path.abspath("../.."))
 project = "ethograph"
 copyright = "2022, Akseli Ilmanen"
 author = "Akseli Ilmanen"
-try:
-    full_version = get_version(project)
-    release = full_version.split("+", 1)[0]
-except LookupError:
-    release = "0.0.0"
+release = ""
 
 # -- General configuration ---------------------------------------------------
 
@@ -148,7 +143,7 @@ html_theme_options = {
     "logo": {
         "image_light": "media/icon.png",
         "image_dark": "media/icon.png",
-        "text": f"{project} v{release}",
+        "text": project,
     },
 }
 

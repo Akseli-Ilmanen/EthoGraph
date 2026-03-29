@@ -34,6 +34,7 @@ from .app_constants import (
 )
 
 import ethograph as eto
+from ethograph.labels.intervals import find_interval_at, get_interval_bounds
 from .audio_player import AudioPlayer
 from .data_sources import build_audio_source
 from .label_drawing_mixin import LabelDrawingMixin
@@ -143,6 +144,52 @@ _PANEL_PLOT_ATTR = {
 }
 
 
+class CurrentLabelIndicator(QLabel):
+    """Floating badge showing the label name + color at the current time position."""
+
+    _MARGIN = 8
+    _PAD_H = 10
+    _PAD_V = 4
+
+    def __init__(self, parent: QWidget):
+        super().__init__(parent)
+        self.setAlignment(Qt.AlignCenter)
+        self.hide()
+
+    def update_label(self, name: str, color_rgb: tuple | list | None):
+        if not name:
+            self.hide()
+            return
+        self._apply_style(name, color_rgb)
+        self.show()
+        self.raise_()
+        self._reposition()
+
+    def _apply_style(self, text: str, color_rgb: tuple | list | None):
+        if color_rgb is not None:
+            scale = max(color_rgb[:3]) <= 1.0
+            r, g, b = (int(c * 255) if scale else int(c) for c in color_rgb[:3])
+            lum = 0.299 * r + 0.587 * g + 0.114 * b
+            fg = "#000" if lum > 140 else "#fff"
+            bg = f"rgb({r},{g},{b})"
+        else:
+            fg, bg = "#000", "rgba(255,255,255,200)"
+        self.setText(text)
+        self.setStyleSheet(
+            f"QLabel {{ color: {fg}; background: {bg}; border: 1px solid #555;"
+            f" border-radius: 4px; padding: {self._PAD_V}px {self._PAD_H}px;"
+            f" font-size: 13px; font-weight: bold; }}"
+        )
+        self.adjustSize()
+
+    def _reposition(self):
+        p = self.parent()
+        if p is None:
+            return
+        x = p.width() - self.width() - self._MARGIN
+        self.move(max(0, x), self._MARGIN)
+
+
 class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     """Unified container with dynamic panel visibility.
 
@@ -237,6 +284,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             update_marker=self.update_time_marker_by_time,
         )
 
+        # --- Current-label floating indicator (top-right corner) ---
+        self._label_indicator = CurrentLabelIndicator(self)
+
         # --- X-axis linking: all panels link to the x-axis master ---
         # The master is whichever panel is first visible; we use audio_trace_plot
         # if audio is present, otherwise the feature plot.
@@ -280,6 +330,37 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def sizeHint(self):
         return QSize(self.width(), PLOT_CONTAINER_SIZE_HINT_HEIGHT)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._label_indicator._reposition()
+
+    def _update_label_indicator(self, time_s: float):
+        df = self.app_state.label_intervals
+        mappings = self.label_mappings
+        if df is None or df.empty or not mappings:
+            self._label_indicator.hide()
+            return
+
+        ind = getattr(self.app_state, 'individuals_sel', None)
+        if ind is None or ind in ("", "None"):
+            ds = self.app_state.ds
+            if ds is not None and 'individuals' in ds.coords:
+                ind = str(ds.coords['individuals'].values[0])
+            else:
+                ind = "default"
+
+        idx = find_interval_at(df, time_s, ind)
+        if idx is not None:
+            _, _, label_id = get_interval_bounds(df, idx)
+            if label_id in mappings and label_id != 0:
+                entry = mappings[label_id]
+                color = entry["color"]
+                color_list = color.tolist() if hasattr(color, 'tolist') else list(color)
+                self._label_indicator.update_label(entry["name"], color_list)
+                return
+
+        self._label_indicator.hide()
 
     def _on_plot_zoom(self):
         self.update_audio_changepoint_styles()
@@ -589,6 +670,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         for plot in self._visible_plots():
             plot.update_time_marker(time_s)
         self.time_slider.set_slider_time(time_s)
+        self._update_label_indicator(time_s)
 
     def _on_seek_time_requested(self, time_s: float):
         self.update_time_marker_by_time(time_s)
@@ -609,6 +691,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         for plot in self._visible_plots():
             plot.update_time_marker(current_time)
         self.time_slider.set_slider_time(current_time)
+        self._update_label_indicator(current_time)
 
     def apply_y_range(self, ymin, ymax):
         return self._feature_plot.apply_y_range(ymin, ymax)

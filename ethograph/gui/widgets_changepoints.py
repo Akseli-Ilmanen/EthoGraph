@@ -1274,9 +1274,9 @@ class ChangepointsWidget(QWidget):
             snapshot["intervals_df"] = self.app_state.get_trial_intervals(trial).copy()
         elif mode == "all_trials":
             snapshot["trials"] = {}
-            for trial in self.app_state.label_dt.trials:
+            for trial in self.app_state.trials:
                 snapshot["trials"][trial] = self.app_state.get_trial_intervals(trial).copy()
-            snapshot["old_cp_corrected"] = self.app_state.label_dt.attrs.get("changepoint_corrected", 0)
+            snapshot["old_cp_corrected"] = self.app_state.get_global_meta_attr("changepoint_corrected", 0)
         self._correction_snapshot = snapshot
         self.cp_undo_btn.setEnabled(True)
 
@@ -1294,7 +1294,7 @@ class ChangepointsWidget(QWidget):
         elif mode == "all_trials":
             for trial, df in snapshot["trials"].items():
                 self.app_state.set_trial_intervals(trial, df)
-            self.app_state.label_dt.attrs["changepoint_corrected"] = snapshot["old_cp_corrected"]
+            self.app_state.set_global_meta_attr("changepoint_corrected", snapshot["old_cp_corrected"])
             self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
             self._update_cp_status()
         
@@ -1375,22 +1375,22 @@ class ChangepointsWidget(QWidget):
                 corrected_df = self._correct_trial_intervals(trial, self.app_state.ds, all_params, ds_kwargs)
                 self.app_state.set_trial_intervals(trial, corrected_df)
                 self.app_state.label_intervals = corrected_df
-                self.app_state.label_dt.trial(trial).attrs['changepoint_corrected'] = np.int8(1)
+                self.app_state.set_trial_meta_attr(trial, 'changepoint_corrected', 1)
                 self._update_cp_status()
 
             if mode == "all_trials":
-                if self.app_state.label_dt.attrs.get("changepoint_corrected", 0) == 1:
+                if self.app_state.get_global_meta_attr("changepoint_corrected", 0) == 1:
                     notify("Changepoint correction has already been applied to all trials. Don't re-apply.", "warning")
                     return
 
                 # TODO: Mention in documentation, only Ctrl+Z functionality of the GUI.
                 self._save_correction_snapshot(mode)
-                for trial in self.app_state.label_dt.trials:
+                for trial in self.app_state.trials:
                     ds = self.app_state.dt.trial(trial)
                     corrected_df = self._correct_trial_intervals(trial, ds, all_params, ds_kwargs)
                     self.app_state.set_trial_intervals(trial, corrected_df)
-                    self.app_state.label_dt.trial(trial).attrs['changepoint_corrected'] = np.int8(1)
-                self.app_state.label_dt.attrs["changepoint_corrected"] = np.int8(1)
+                    self.app_state.set_trial_meta_attr(trial, 'changepoint_corrected', 1)
+                self.app_state.set_global_meta_attr("changepoint_corrected", 1)
                 self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
                 self._update_cp_status()
 
@@ -1404,7 +1404,7 @@ class ChangepointsWidget(QWidget):
         default_style = ""
         corrected_style = "background-color: green; color: white;"
 
-        if self.app_state.label_dt is None or self.app_state.trials_sel is None:
+        if self.app_state.trials_sel is None:
             self.cp_correction_trial_btn.setStyleSheet(default_style)
             self.cp_correction_all_trials_btn.setStyleSheet(default_style)
             return
@@ -1413,10 +1413,10 @@ class ChangepointsWidget(QWidget):
         self.cp_correction_all_trials_btn.setEnabled(apply_cp)
         self.cp_correction_all_trials_btn.setToolTip("")
 
-        trial_corrected = self.app_state.label_dt.trial(self.app_state.trials_sel).attrs.get('changepoint_corrected', 0)
+        trial_corrected = self.app_state.get_trial_meta(self.app_state.trials_sel).get('changepoint_corrected', 0)
         self.cp_correction_trial_btn.setStyleSheet(corrected_style if trial_corrected else default_style)
 
-        global_corrected = self.app_state.label_dt.attrs.get('changepoint_corrected', 0)
+        global_corrected = self.app_state.get_global_meta_attr('changepoint_corrected', 0)
         self.cp_correction_all_trials_btn.setStyleSheet(corrected_style if global_corrected else default_style)
 
     def get_correction_params(self) -> dict:

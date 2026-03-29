@@ -47,6 +47,7 @@ from ethograph.gui.makepretty import styled_link
 from ethograph.gui.notify import notify_dialog
 from ethograph.gui.wizard_multi_timeline import draw_session_timeline
 from ethograph.labels.converters import NWBLabelConverter
+from ethograph.labels.tsv_store import init_empty_labels, labels_tsv_path, migrate_label_dt_to_tsv, save_labels_tsv
 from ethograph.utils.nwb import (
     download_clip,
     find_video_assets,
@@ -1242,12 +1243,16 @@ class NWBImportDialog(QDialog):
             self._build_session_table(dt, trials_df)
             self._set_ephys_attrs(dt, ephys_series, source_info)
             self._set_raw_asset_attr(dt, source_info)
-            label_dt = NWBLabelConverter().from_nwb(self._nwb, trials_df) if label_source else dt.get_label_dt(empty=True)
-            dt = dt.overwrite_with_labels(label_dt)
+            if label_source:
+                label_dt = NWBLabelConverter().from_nwb(self._nwb, trials_df)
+                all_labels_df = migrate_label_dt_to_tsv(label_dt)
+            else:
+                all_labels_df = init_empty_labels(dt.trials)
             self._set_video_files(dt, matching, output_dir, include_pose)
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             dt.to_netcdf(output_path)
-            return dt, label_dt
+            save_labels_tsv(labels_tsv_path(Path(output_path)), all_labels_df)
+            return dt, all_labels_df
 
         progress = BusyProgressDialog("Downloading NWB data. This may take a few minutes.", parent=self)
         (result, error) = progress.execute(_build)

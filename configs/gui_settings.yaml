@@ -10,7 +10,6 @@ import_labels_nc_data: true
 labels_visible: true
 noise_reduce_enabled: false
 pose_markers_visible: true
-remote_video: false
 save_tsv_enabled: false
 show_changepoints: true
 skip_frames: false

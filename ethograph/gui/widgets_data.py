@@ -35,7 +35,7 @@ from qtpy.QtWidgets import (
 
 import ethograph as eto
 from ethograph.gui.notify import notify, notify_dialog
-from ethograph.labels.intervals import dense_to_intervals, get_interval_bounds
+from ethograph.labels.intervals import get_interval_bounds
 from ethograph.gui.plots_timeseriessource import RegularTimeseriesSource, compute_trial_alignment
 
 
@@ -434,8 +434,8 @@ class DataWidget(QWidget):
             dt.close()
             self.app_state.dt = None
         self.app_state.ds = None
-        self.app_state.label_dt = None
-        self.app_state.label_ds = None
+        self.app_state._all_labels_df = None
+        self.app_state.labels_confidence_ds = None
         self.type_vars_dict = {}
         self.app_state.ready = False
 
@@ -453,16 +453,17 @@ class DataWidget(QWidget):
 
         nc_file_path = self.io_widget.get_nc_file_path()
 
-        self.app_state.has_video = bool(self.app_state.video_folder) or bool(self.app_state.remote_video)
+        self.app_state.has_video = bool(self.app_state.video_folder)
         self.app_state.has_pose = bool(self.app_state.pose_folder)
 
         try:
-            self.app_state.dt, label_dt, self.type_vars_dict = load_dataset(
+            self.app_state.dt, all_labels_df, self.type_vars_dict = load_dataset(
                 nc_file_path,
                 require_fps=self.app_state.has_pose,
                 progress_callback=getattr(self.app_state, "_progress_callback", None),
                 max_trials=getattr(self.app_state, "_dandi_max_trials", None),
                 dandiset_id=getattr(self.app_state, "_dandi_dandiset_id", None),
+                import_labels=self.io_widget.import_labels_checkbox.isChecked(),
             )
             nwb_video_folder = self.app_state.dt.attrs.get("nwb_video_folder")
             if nwb_video_folder and not self.app_state.video_folder:
@@ -524,15 +525,9 @@ class DataWidget(QWidget):
 
         trials = self.app_state.dt.trials
 
-        
-        
-        if self.io_widget.import_labels_checkbox.isChecked():
-            self.app_state.label_dt = label_dt
-        else:
-            self.app_state.label_dt = self.app_state.dt.get_label_dt(empty=True)
+        self.app_state._all_labels_df = all_labels_df
 
         self.app_state.ds = self.app_state.dt.trial(trials[0])
-        self.app_state.label_ds = self.app_state.label_dt.trial(trials[0])
         self.app_state.trials = sorted(trials)
 
 
@@ -613,7 +608,7 @@ class DataWidget(QWidget):
     def _collect_trial_status(self) -> Dict[int, int]:
         trial_status = {}
         for trial in self.app_state.trials:
-            is_verified = self.app_state.label_dt.trial(trial).attrs.get('human_verified', 0)
+            is_verified = self.app_state.get_trial_meta(trial).get('human_verified', 0)
             trial_status[trial] = bool(is_verified)
         return trial_status
 
@@ -1576,10 +1571,7 @@ class DataWidget(QWidget):
         
 
         self.app_state.ds = self.app_state.dt.trial(trials_sel)
-        self.app_state.label_ds = self.app_state.label_dt.trial(trials_sel)
 
-        if self.app_state.pred_dt is not None:
-            self.app_state.pred_ds = self.app_state.pred_dt.trial(trials_sel)
 
         self._update_device_sels_for_trial(self.app_state.ds)
         self.update_mics_combo_for_trial(self.app_state.ds)
@@ -1638,7 +1630,7 @@ class DataWidget(QWidget):
         if self.show_confidence_checkbox.isChecked():
             self.plot_container.hide_confidence_plot()
 
-            label_ds = getattr(self.app_state, "label_ds", None)
+            label_ds = getattr(self.app_state, "labels_confidence_ds", None)
             if label_ds is not None and "labels_confidence" in getattr(label_ds, "data_vars", {}):
                 try:
                     label_confidence, _ = eto.sel_valid(label_ds.labels_confidence, ds_kwargs)
@@ -1672,22 +1664,11 @@ class DataWidget(QWidget):
 
         if (
             self.io_widget.pred_show_predictions.isChecked()
-            and hasattr(self.app_state, 'pred_ds')
-            and self.app_state.pred_ds is not None
+            and self.app_state.pred_labels_df is not None
         ):
-            pred_ds = self.app_state.pred_ds
-            predictions, _ = eto.sel_valid(pred_ds.labels, ds_kwargs)
-            pred_time = eto.get_time_coord(pred_ds.labels).values
-            individuals = (
-                list(pred_ds.coords['individuals'].values)
-                if 'individuals' in pred_ds.coords
-                else ["default"]
-            )
-            predictions_df = dense_to_intervals(
-                np.asarray(predictions).reshape(-1, 1) if np.asarray(predictions).ndim == 1 else np.asarray(predictions),
-                pred_time,
-                individuals,
-            )
+            trial = self.app_state.trials_sel
+            df = self.app_state.pred_labels_df
+            predictions_df = df[df["trial"] == trial] if "trial" in df.columns else df
 
         self.labels_widget.plot_all_labels(intervals_df, predictions_df)
 

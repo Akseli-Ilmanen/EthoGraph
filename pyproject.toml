@@ -117,6 +117,7 @@ dev = [
 # Documentation
 docs = [
     "sphinx",
+    "sphinx-autobuild",
     "pydata-sphinx-theme",
     "sphinx-autodoc-typehints",
     "sphinx-sitemap",

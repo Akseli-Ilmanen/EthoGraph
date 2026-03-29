@@ -25,6 +25,7 @@ from qtpy.QtWidgets import (
 import ethograph as eto
 from ethograph.utils.paths import find_mapping_file, gui_default_settings_path
 from ethograph.io.validation import EPHYS_FILE_FILTER
+from ethograph.labels.tsv_store import load_labels_tsv, migrate_label_dt_to_tsv
 
 from .app_state import AppStateSpec
 from .notify import notify_dialog
@@ -95,7 +96,7 @@ class IOWidget(QWidget):
         self.app_state.kilosort_folder_changed.connect(
             lambda value: self.kilosort_folder_edit.setText(value or "")
         )
-        self.app_state.remote_video_changed.connect(self.remote_video_checkbox.setChecked)
+
 
     def _wire_path_edit_signals(self):
         self.nc_file_path_edit.editingFinished.connect(
@@ -213,7 +214,6 @@ class IOWidget(QWidget):
             object_name="video_folder",
             browse_callback=lambda: self.on_browse_clicked("folder", "video"),
         )
-        self.remote_video_checkbox.setChecked(bool(self.app_state.remote_video))
         self.pose_folder_edit = self._create_path_widget(
             self._load_layout,
             label="Pose folder:",
@@ -296,7 +296,7 @@ class IOWidget(QWidget):
         pred_layout.addWidget(self.pred_file_path_edit)
 
         self.import_predictions_btn = QPushButton("Browse")
-        self.import_predictions_btn.setToolTip("Import predictions.nc file from labels\\... folder")
+        self.import_predictions_btn.setToolTip("Import predictions folder containing per-trial .npy files")
         pred_layout.addWidget(self.import_predictions_btn)
 
         self.pred_show_predictions = QCheckBox("Show predictions")
@@ -313,7 +313,8 @@ class IOWidget(QWidget):
         labels_row.setLayout(labels_layout)
 
         self.labels_format_combo = QComboBox()
-        self.labels_format_combo.addItem(".nc file")
+        self.labels_format_combo.addItem(".tsv")
+        self.labels_format_combo.addItem(".nc (legacy)")
         if self.app_state.audio_folder:
             from ethograph.labels.converters import CROWSETTA_SEQ_FORMATS
             for fmt in CROWSETTA_SEQ_FORMATS:
@@ -334,10 +335,45 @@ class IOWidget(QWidget):
 
     def _on_labels_browse_clicked(self):
         fmt = self.labels_format_combo.currentText()
-        if fmt == ".nc file":
+        if fmt == ".tsv":
+            self._import_tsv_labels()
+            return
+        if fmt == ".nc (legacy)":
             self.on_browse_clicked("file", "labels")
             return
         self._import_crowsetta_labels(fmt)
+
+    def _import_tsv_labels(self):
+        nc_parent = ""
+        if self.app_state.nc_file_path:
+            nc_parent = str(Path(self.app_state.nc_file_path).parent)
+
+        result = QFileDialog.getOpenFileName(
+            self,
+            caption="Open labels TSV file",
+            dir=nc_parent,
+            filter="TSV files (*.tsv)",
+        )
+        file_path = result[0] if result and result[0] else ""
+        if not file_path:
+            return
+
+        self.app_state._all_labels_df = load_labels_tsv(file_path)
+        self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
+        self.label_file_path_edit.setText(file_path)
+
+        if hasattr(self, "changepoints_widget") and self.changepoints_widget:
+            self.changepoints_widget._update_cp_status()
+        if self.labels_widget:
+            self.labels_widget._mark_changes_unsaved()
+            self.labels_widget.refresh_labels_shapes_layer()
+            self.labels_widget._update_human_verified_status()
+            self.labels_widget._update_correct_offsets_status()
+            self.labels_widget._update_purge_small_labels_status()
+        if self.data_widget:
+            self.data_widget.update_main_plot(preserve_x_range=True)
+            if self.data_widget.plot_container:
+                self.data_widget.plot_container.labels_redraw_needed.emit()
 
     def _import_crowsetta_labels(self, format_name):
         filter_map = {
@@ -414,11 +450,9 @@ class IOWidget(QWidget):
 
         self.app_state.label_intervals = intervals_df
 
-        label_dt = getattr(self.app_state, "label_dt", None)
-        if label_dt is not None:
-            trial = getattr(self.app_state, "trials_sel", None)
-            if trial is not None:
-                self.app_state.set_trial_intervals(trial, intervals_df)
+        trial = getattr(self.app_state, "trials_sel", None)
+        if trial is not None:
+            self.app_state.set_trial_intervals(trial, intervals_df)
 
         if hasattr(self, "changepoints_widget") and self.changepoints_widget:
             self.changepoints_widget._update_cp_status()
@@ -500,7 +534,7 @@ class IOWidget(QWidget):
         """If a crowsetta format and path are set, auto-import after load."""
         fmt = self.labels_format_combo.currentText()
         file_path = self.label_file_path_edit.text().strip()
-        if fmt == ".nc file" or not file_path or not Path(file_path).exists():
+        if fmt in (".tsv", ".nc (legacy)") or not file_path or not Path(file_path).exists():
             return
         self._do_crowsetta_import(fmt, file_path)
 
@@ -608,21 +642,15 @@ class IOWidget(QWidget):
         if object_name == "nc_file_path":
             self.import_labels_checkbox = QCheckBox("Import labels")
             self.import_labels_checkbox.setObjectName("import_labels_checkbox")
+            self.import_labels_checkbox.setToolTip(
+                "Load labels from {name}_labels.tsv alongside the .nc file.\n"
+                "Falls back to labels inside the .nc (legacy) if no .tsv exists."
+            )
             self.import_labels_checkbox.stateChanged.connect(
                 lambda state: setattr(self.app_state, 'import_labels_nc_data', state == 2)
             )
             self.import_labels_checkbox.setChecked(bool(self.app_state.import_labels_nc_data))
             
-
-        if object_name == "video_folder":
-            self.remote_video_checkbox = QCheckBox("Remote")
-            self.remote_video_checkbox.setObjectName("remote_video_checkbox")
-            self.remote_video_checkbox.setToolTip(
-                "Video URLs are stored in the dataset (e.g. DANDI). No local folder needed."
-            )
-            self.remote_video_checkbox.stateChanged.connect(
-                lambda state: self._on_remote_video_toggled(state == 2, line_edit, browse_button)
-            )
 
         clear_button = QPushButton("Clear")
         clear_button.setObjectName(f"{object_name}_clear_button")
@@ -633,18 +661,10 @@ class IOWidget(QWidget):
         row_layout.addWidget(browse_button)
         if object_name == "nc_file_path":
             row_layout.addWidget(self.import_labels_checkbox)
-        if object_name == "video_folder":
-            row_layout.addWidget(self.remote_video_checkbox)
         row_layout.addWidget(clear_button)
         target_layout.addRow(label, row_layout)
 
         return line_edit
-
-    def _on_remote_video_toggled(self, checked, line_edit, browse_button):
-        self.app_state.remote_video = checked
-        line_edit.setEnabled(not checked)
-        browse_button.setEnabled(not checked)
-
 
     def _on_clear_path_clicked(self, object_name, line_edit):
         line_edit.setText("")
@@ -791,7 +811,7 @@ class IOWidget(QWidget):
 
                 result = QFileDialog.getOpenFileName(
                     None,
-                    caption="Open file in ./labels/data_labels.nc",
+                    caption="Load labels from legacy .nc file",
                     dir=str(nc_parent),
                     filter="NetCDF files (*.nc)",
                 )
@@ -799,23 +819,23 @@ class IOWidget(QWidget):
                 if not labels_file_path:
                     return
 
-                if labels_file_path:
-                    label_dt_full = eto.open(labels_file_path)
-                    self.app_state.label_dt = label_dt_full.get_label_dt()
-                    self.app_state.label_ds = self.app_state.label_dt.trial(self.app_state.trials_sel)
-                    self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
+                label_dt_full = eto.open(labels_file_path)
+                self.app_state._all_labels_df = migrate_label_dt_to_tsv(label_dt_full.get_label_dt())
 
-                    self.label_file_path_edit.setText(labels_file_path)
+                self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
+                self.label_file_path_edit.setText(labels_file_path)
 
-                    if hasattr(self, "changepoints_widget") and self.changepoints_widget:
-                        self.changepoints_widget._update_cp_status()
-                    if self.labels_widget:
-                        self.labels_widget._mark_changes_unsaved()
-                        self.labels_widget.refresh_labels_shapes_layer()
-                        self.labels_widget._update_human_verified_status()
-                        self.labels_widget._update_correct_offsets_status()
-                        self.labels_widget._update_purge_small_labels_status()
-                    if self.data_widget and self.data_widget.plot_container:
+                if hasattr(self, "changepoints_widget") and self.changepoints_widget:
+                    self.changepoints_widget._update_cp_status()
+                if self.labels_widget:
+                    self.labels_widget._mark_changes_unsaved()
+                    self.labels_widget.refresh_labels_shapes_layer()
+                    self.labels_widget._update_human_verified_status()
+                    self.labels_widget._update_correct_offsets_status()
+                    self.labels_widget._update_purge_small_labels_status()
+                if self.data_widget:
+                    self.data_widget.update_main_plot(preserve_x_range=True)
+                    if self.data_widget.plot_container:
                         self.data_widget.plot_container.labels_redraw_needed.emit()
 
             elif media_type == "ephys":
@@ -885,7 +905,7 @@ class IOWidget(QWidget):
         )
         self.browse_mapping_btn.clicked.connect(self.labels_widget._browse_mapping_file)
         self.temp_labels_button.clicked.connect(self.labels_widget._create_temporary_labels)
-        self.import_predictions_btn.clicked.connect(self.labels_widget._import_predictions_from_file)
+        self.import_predictions_btn.clicked.connect(self.labels_widget._import_predictions_from_folder)
         self.pred_show_predictions.stateChanged.connect(self.labels_widget._on_pred_show_predictions_changed)
 
     def wire_ephys_signals(self, ephys_widget):

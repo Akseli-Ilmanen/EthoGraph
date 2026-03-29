@@ -317,7 +317,7 @@ class NavigationWidget(QWidget):
             new_trial = self.app_state.trials[new_idx]
             
          
-            trial_attrs = self.app_state.label_dt.trial(new_trial).attrs
+            trial_attrs = self.app_state.get_trial_meta(new_trial)
             
             if "model_confidence" not in trial_attrs:
                 break
@@ -486,11 +486,11 @@ class NavigationWidget(QWidget):
 
         # Apply confidence filter
         confidence_mode = self.confidence_skip_combo.currentText()
-        if confidence_mode != "Show all" and hasattr(self.app_state, "label_dt") and self.app_state.label_dt:
+        if confidence_mode != "Show all" and self.app_state._all_labels_df is not None:
             confidence_filtered = []
             target_confidence = "low" if confidence_mode == "Low confidence only" else "high"
             for trial in filtered_trials:
-                trial_attrs = self.app_state.label_dt.trial(trial).attrs
+                trial_attrs = self.app_state.get_trial_meta(trial)
                 if trial_attrs.get("model_confidence") == target_confidence:
                     confidence_filtered.append(trial)
             filtered_trials = set(confidence_filtered)
@@ -616,34 +616,38 @@ class NavigationWidget(QWidget):
 
         print(SEP)
         print("=" * 60)
-        print("  label_dt")
+        print("  Labels (TSV store)")
         print("=" * 60)
-        label_dt = getattr(self.app_state, 'label_dt', None)
-        if label_dt is None:
-            print("  No label_dt loaded.")
+        all_labels = getattr(self.app_state, '_all_labels_df', None)
+        if all_labels is None or all_labels.empty:
+            print("  No labels loaded.")
         else:
-            print(label_dt)
-            print("\n  label_dt.attrs:")
-            for k, v in label_dt.attrs.items():
-                print(f"    {k}: {v!r}  (type: {type(v).__name__})")
+            print(f"  {len(all_labels)} label rows across trials")
+            print(f"  Trials in labels: {sorted(all_labels['trial'].unique())}")
+
+        if all_labels is not None and not all_labels.empty:
+            print("\n  Per-trial metadata columns:")
+            for col in ["human_verified", "changepoint_corrected", "prediction_source"]:
+                if col in all_labels.columns:
+                    print(f"    {col}: {all_labels.groupby('trial')[col].first().to_dict()}")
 
         print(SEP)
         print("=" * 60)
-        print("  CURRENT TRIAL  dataset + attrs")
+        print("  CURRENT TRIAL  labels + meta")
         print("=" * 60)
         trial = getattr(self.app_state, 'trials_sel', None)
-        if label_dt is None or trial is None:
-            print("  No label_dt or trial selected.")
+        if trial is None:
+            print("  No trial selected.")
         else:
-            try:
-                trial_ds = label_dt.trial(trial)
-                print(f"  label_dt.trial({trial!r}):")
-                print(trial_ds)
-                print(f"\n  label_dt.trial({trial!r}).attrs:")
-                for k, v in trial_ds.attrs.items():
-                    print(f"    {k}: {v!r}  (type: {type(v).__name__})")
-            except Exception as e:
-                print(f"  Error reading trial: {e}")
+            trial_intervals = self.app_state.get_trial_intervals(trial)
+            print(f"  Trial {trial!r}: {len(trial_intervals)} intervals")
+            if not trial_intervals.empty:
+                print(trial_intervals)
+            trial_meta = self.app_state.get_trial_meta(trial)
+            if trial_meta:
+                print(f"\n  Trial {trial!r} metadata:")
+                for k, v in trial_meta.items():
+                    print(f"    {k}: {v!r}")
 
         print(SEP)
         print("=" * 60)

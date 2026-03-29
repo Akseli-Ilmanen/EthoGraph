@@ -13,7 +13,17 @@ from movement.kinematics import compute_acceleration, compute_pairwise_distances
 
 from ethograph.gui.notify import notify_dialog
 from ethograph.io.trialtree import TrialTree
+from ethograph.labels.tsv_store import (
+    init_empty_labels,
+    labels_tsv_path,
+    load_labels_tsv,
+    migrate_label_dt_to_tsv,
+    save_labels_tsv,
+)
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def load_dataset(
@@ -22,32 +32,20 @@ def load_dataset(
     progress_callback: Callable[[str], None] | None = None,
     max_trials: int | None = None,
     dandiset_id: str | None = None,
-) -> Tuple[Optional[xr.Dataset], Optional[dict]]:
-    """Load dataset from file path and cache metadata on the instance.
-
-    Args:
-        file_path: Path to the .nc file.
-        require_fps: When False, missing fps is not an error (audio-only mode).
-        progress_callback: Called with status strings during slow loading steps.
-        max_trials: If set, limit NWB loading to the first N trials.
+    import_labels: bool = True,
+) -> tuple:
+    """Load dataset from file path.
 
     Returns:
-        Tuple of (dt, label_dt, type_vars_dict) on success.
+        Tuple of (dt, all_labels_df, type_vars_dict) on success.
 
     Raises:
         ValueError: On validation or format errors (popup shown before raising).
     """
-
     dt = eto.open(file_path)
-
-
-
-    label_dt = dt.get_label_dt()
     type_vars_dict = extract_type_vars(dt.itrial(0), dt)
 
-    errors = validate_datatree(
-        dt, require_fps=require_fps,
-    )
+    errors = validate_datatree(dt, require_fps=require_fps)
     if errors:
         error_msg = "\n".join(f"• {e}" for e in errors)
         suffix_msg = "\n\nSee documentation: XXX"
@@ -55,7 +53,28 @@ def load_dataset(
         notify_dialog(msg, "error", "Validation Error")
         raise ValueError(msg)
 
-    return dt, label_dt, type_vars_dict
+    nc_path = Path(file_path)
+    tsv_path = labels_tsv_path(nc_path)
+
+    if tsv_path.exists():
+        all_labels_df = load_labels_tsv(tsv_path)
+        logger.info("Loaded labels from %s", tsv_path.name)
+    elif import_labels:
+        label_dt = dt.get_label_dt()
+        has_labels = any(
+            "onset_s" in ds.data_vars
+            for _, ds in label_dt.trial_items()
+        )
+        if has_labels:
+            all_labels_df = migrate_label_dt_to_tsv(label_dt)
+            save_labels_tsv(tsv_path, all_labels_df)
+            logger.info("Migrated labels from .nc to %s", tsv_path.name)
+        else:
+            all_labels_df = init_empty_labels(dt.trials)
+    else:
+        all_labels_df = init_empty_labels(dt.trials)
+
+    return dt, all_labels_df, type_vars_dict
 
 
 def _wizard_single_media_helper(

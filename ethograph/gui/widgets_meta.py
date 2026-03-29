@@ -145,6 +145,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.transform_widget.set_meta_widget(self)
         self.changepoints_widget.set_plot_container(self.plot_container)
         self.changepoints_widget.set_meta_widget(self)
+        self.changepoints_widget.data_widget = self.data_widget
         self.changepoints_widget.set_motif_mappings(self.labels_widget._mappings)
         self.navigation_widget.set_plot_container(self.plot_container)
         self.ephys_widget.set_plot_container(self.plot_container)
@@ -323,14 +324,10 @@ class MetaWidget(CollapsibleWidgetContainer):
 
             # Get verification status
             verification_emoji = "❌"  # Default to not verified
-            if (hasattr(self.app_state, 'label_dt') and self.app_state.label_dt is not None and
-                hasattr(self.app_state, 'trials_sel') and self.app_state.trials_sel is not None):
-                try:
-                    attrs = self.app_state.label_dt.trial(self.app_state.trials_sel).attrs
-                    if attrs.get('human_verified', None) == True:
-                        verification_emoji = "✅"
-                except (KeyError, AttributeError):
-                    pass
+            if hasattr(self.app_state, 'trials_sel') and self.app_state.trials_sel is not None:
+                trial_meta = self.app_state.get_trial_meta(self.app_state.trials_sel)
+                if trial_meta.get('human_verified', 0):
+                    verification_emoji = "✅"
 
             # Update the title
             new_title = f"Label controls {verification_emoji}"

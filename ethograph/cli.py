@@ -6,14 +6,13 @@ import os
 import sys
 import warnings
 
-warnings.filterwarnings(
-    "ignore",
-    message=".*__array__ implementation doesn't accept a copy keyword.*"
-)
-warnings.filterwarnings(
-    "ignore",
-    message=".*The 'warn' method is deprecated.*"
-)
+# Suppress noisy dependency warnings before any imports trigger them
+warnings.filterwarnings("ignore", category=DeprecationWarning, module=r"logging")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module=r"vispy\.")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module=r"numpy\.")
+
+# PyOpenGL info message goes through logging, not warnings
+logging.getLogger("OpenGL.acceleratesupport").setLevel(logging.WARNING)
 
 def _ensure_qt_plugins():
     """Set QT_PLUGIN_PATH for conda-forge Qt installs (needed by menuinst shortcuts)."""

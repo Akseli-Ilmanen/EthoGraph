@@ -7,7 +7,7 @@ except PackageNotFoundError:
     pass
 
     
-from ethograph.io.trialtree import SESSION_NODE, TrialTree
+from ethograph.io.trialtree import TrialTree
 from ethograph.io.dataset import (
     add_angle_rgb_to_ds,
     add_changepoints_to_ds,

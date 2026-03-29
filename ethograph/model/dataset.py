@@ -14,7 +14,8 @@ from tqdm import tqdm
 import ethograph as eto
 from ethograph.features.changepoints import merge_changepoints, more_changepoint_features
 from ethograph.features.preprocessing import clip_by_percentiles, interpolate_nans, z_normalize
-from ethograph.labels.intervals import intervals_to_dense, xr_to_intervals
+from ethograph.labels.intervals import empty_intervals, intervals_to_dense, xr_to_intervals
+from ethograph.labels.tsv_store import get_trial_from_tsv, labels_tsv_path, load_labels_tsv, migrate_label_dt_to_tsv
 
 def save_config(all_params, folder='configs', action="train"):
     if not os.path.exists(folder):
@@ -159,10 +160,12 @@ def get_data_dict(all_params, nc_paths, trial_dict, features_path=None, gt_path=
         print(f"Processing {nc_path}, hash key: {hash_key}")
         dt = eto.open(nc_path)
         
-        if all_params["action"] == "inference":
-            label_dt = dt.get_label_dt(empty=True)
+        tsv_path = labels_tsv_path(nc_path)
+        if tsv_path.exists():
+            _all_labels = load_labels_tsv(tsv_path)
         else:
-            label_dt = dt.get_label_dt()
+            label_dt = dt.get_label_dt(empty=(all_params["action"] == "inference"))
+            _all_labels = migrate_label_dt_to_tsv(label_dt)
 
         for trial_num in tqdm(trial_dict[hash_key]['trials']):
 
@@ -170,7 +173,7 @@ def get_data_dict(all_params, nc_paths, trial_dict, features_path=None, gt_path=
             ds = dt.trial(trial_num)
 
             individual = all_params["target_individual"]
-            intervals_df = xr_to_intervals(label_dt.trial(trial_num))
+            intervals_df = get_trial_from_tsv(_all_labels, trial_num) if all_params["action"] != "inference" else empty_intervals()
             time_coord = ds.time.values
             n_samples = len(time_coord)
             sr = 1.0 / np.median(np.diff(time_coord))
@@ -246,17 +249,21 @@ def get_trial_dict(all_params, nc_paths) -> dict:
     for nc_path in nc_paths:
         hash_key = get_file_hash(nc_path)
         dt = eto.open(nc_path)
-        label_dt = dt.get_label_dt()
+        tsv_path = labels_tsv_path(nc_path)
+        if tsv_path.exists():
+            _all_labels = load_labels_tsv(tsv_path)
+        else:
+            _all_labels = migrate_label_dt_to_tsv(dt.get_label_dt())
 
         valid_trials = []
         for trial in dt.trials:
-            
+
             ds = dt.trial(trial)
-                 
+
             individual = all_params["target_individual"]
 
             if all_params["action"] in ['train', 'eval']:
-                intervals_df = xr_to_intervals(label_dt.trial(trial))
+                intervals_df = get_trial_from_tsv(_all_labels, trial)
                 ind_labels = intervals_df[intervals_df["individual"] == individual]
                 if ind_labels.empty:
                     continue

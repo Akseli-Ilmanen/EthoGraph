@@ -32,6 +32,8 @@ You are a Python expert specializing in clean, performant, and idiomatic Python 
 ## Philosophy for adding comments
 Self-documenting code. Comments only when logic is not obvious, which should be very rare.
 
+Never remove human-authored comments (TODO, FIXME, NOTE, explanatory comments). These represent decisions or reminders from the developer. Only remove comments that you yourself added.
+
 ## Error Handling: Fail Fast
 
 - BUG (wrong type, missing key, None where value expected) → Let it crash
@@ -96,11 +98,20 @@ ethograph/gui/
     widgets_plot_settings.py  # Plot settings controls
     widgets_transform.py      # Energy envelope + noise reduction
 
+ethograph/labels/
+    intervals.py              # Core interval operations (add, delete, dense↔interval conversion)
+    tsv_store.py              # TSV file I/O, per-trial access, validation, migration
+    predictions.py            # Load model predictions (.npy/.pickle), confidence via 1-entropy
+    crowsetta_format.py       # EthographSeq Crowsetta format (export adapter, int→string labels)
+    converters.py             # Crowsetta/NWB import converters
+    export.py                 # trees_to_df() analysis export
+    dense.py                  # Dense label operations (fix_endings, purge, stitch)
+    core.py                   # Primitives (get_segments, load_mapping)
+
 ethograph/utils/
     trialtree.py              # TrialTree (xr.DataTree subclass)
     io.py                     # Standalone I/O functions
     xr_utils.py               # sel_valid(), get_time_coord()
-    label_intervals.py        # Interval-based labels + crowsetta I/O
 ```
 
 ## Architecture
@@ -154,7 +165,15 @@ All plots inherit `BasePlot` (pyqtgraph `PlotWidget`): time marker, x-axis range
 
 ### Labels
 
-Interval-based: `pd.DataFrame` with `onset_s, offset_s, labels, individual`. Stored as xr.Dataset with `segment` dim. Dense arrays generated on demand for ML/changepoint correction.
+**Storage:** TSV file (`{name}_labels.tsv`) alongside the `.nc`. Columns: `onset_s, offset_s, labels (int), individual, trial, human_verified, changepoint_corrected, prediction_source`. Label names managed centrally in `mapping.txt`.
+
+**In-memory:** `app_state._all_labels_df` (all trials), `app_state.label_intervals` (current trial view). Per-trial metadata stored as columns, not a separate dict.
+
+**Predictions:** Per-trial `.npy`/`.pickle` files in prediction folders. Shape `(T, n_classes)` → confidence via `1 - normalized_entropy`, labels via `argmax`. Confidence stays in memory for GUI overlay, never stored in our format.
+
+**Crowsetta interop:** `EthographSeq` format registered at import time. Export adapter converts int→string labels via mapping for sharing. Internal storage stays integer-based.
+
+**Migration:** Old `.nc` files with embedded labels auto-migrate to TSV on first load.
 
 ### Widget Orchestration
 
@@ -177,7 +196,7 @@ Bridge pattern: intervals→dense→correct→intervals. Kinematic CPs stored as
 - NetCDF with trials. Time coords: `time`, `time_aux`, etc. (any containing 'time')
 - Variables with `type='features'` for feature selection
 - Media at session level via `dt.set_media()`
-- Labels: interval-based (onset_s/offset_s in seconds), auto-converted from legacy dense format
+- Labels: stored in `_labels.tsv` (not inside `.nc`). Legacy `.nc` labels auto-migrate on first load.
 
 ## Roadmap
 
