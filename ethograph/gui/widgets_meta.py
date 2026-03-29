@@ -24,7 +24,6 @@ from .app_constants import (
 )
 from .app_state import ObservableAppState
 from .makepretty import LayoutManager, apply_compact_widget_style, normalize_child_layouts
-from .notify import set_filter_warnings
 from .shortcuts import bind_global_shortcuts
 from .plots_container import UnifiedPanelContainer
 from .widgets_changepoints import ChangepointsWidget
@@ -56,7 +55,6 @@ class MetaWidget(CollapsibleWidgetContainer):
         logger.info("Settings file: %s", yaml_path)
 
         self.app_state = ObservableAppState(yaml_path=str(yaml_path))
-        set_filter_warnings(self.app_state.get_with_default("filter_warnings"))
 
         # Try to load previous settings
         self.app_state.load_from_yaml()

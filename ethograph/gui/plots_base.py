@@ -267,24 +267,13 @@ class BasePlot(pg.PlotWidget):
 
 
 
-    def _get_time_bounds(self) -> Optional[Tuple[float, float]]:
-        """Return (t_min, t_max) for this plot's time domain.
-
-        Subclasses override to provide their own time source.
-        Default uses app_state.time (current feature's time coord).
-        """
-        bounds = self.app_state.trial_bounds
-        if bounds is None:
-            return None
-        return bounds.start_s, bounds.end_s
-
-
     def set_x_range(self, mode='default', curr_xlim=None, center_on_frame=None):
         """Set plot x-range with different behaviors."""
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
 
-        bounds = self._get_time_bounds()
+        tr = self.app_state.trial_bounds
+        bounds = (tr.start_s, tr.end_s) if tr is not None else None
         if bounds is None:
             if mode == 'preserve' and curr_xlim:
                 self.vb.setXRange(curr_xlim[0], curr_xlim[1], padding=0)
@@ -332,7 +321,8 @@ class BasePlot(pg.PlotWidget):
             current_ylim = self.vb.viewRange()[1]
             x_range = current_xlim[1] - current_xlim[0]
 
-            bounds = x_bounds_override or self._get_time_bounds()
+            tr = self.app_state.trial_bounds
+            bounds = x_bounds_override or ((tr.start_s, tr.end_s) if tr is not None else None)
             if hasattr(self.app_state, 'ds') and self.app_state.ds is not None and bounds is not None:
                 data_xmin, data_xmax = bounds
                 data_range = data_xmax - data_xmin
@@ -367,7 +357,7 @@ class BasePlot(pg.PlotWidget):
         ----------
         x_bounds_override
             Optional ``(xMin, xMax)`` to use instead of this plot's own
-            ``_get_time_bounds()``.  The container passes the tightest
+            ``app_state.trial_bounds``.  The container passes the tightest
             bounds across all visible panels so that no panel scrolls past
             another's data.
         """
@@ -378,7 +368,8 @@ class BasePlot(pg.PlotWidget):
         )
 
         if hasattr(self.app_state, 'ds') and self.app_state.ds is not None:
-            bounds = x_bounds_override or self._get_time_bounds()
+            tr = self.app_state.trial_bounds
+            bounds = x_bounds_override or ((tr.start_s, tr.end_s) if tr is not None else None)
             if bounds is not None:
                 xMin, xMax = bounds
                 xRange = xMax - xMin

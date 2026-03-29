@@ -17,11 +17,10 @@ def correct_offsets(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy().sort_values(["session", "trial", "individual", "sequence_idx"])
 
-    # Pynapple can resolve up to 1e-6 intervals, so we must set lower. 
+    # Pynapple can resolve up to 1e-6 intervals, so we must set lower.
     eps = 1e-3
-    
-    
-    # Pass 1: check all pairwise combinations for offset == onset
+
+    idx = df.index.tolist()
     for i in range(len(idx)):
         for j in range(len(idx)):
             if i == j:
@@ -50,7 +49,6 @@ def correct_offsets(df: pd.DataFrame) -> pd.DataFrame:
         
         idx = group.index
         
-        # Pass 1: fix 1-frame gaps
         for i in range(len(idx) - 1):
             current = idx[i]
             next_row = idx[i + 1]
@@ -71,10 +69,32 @@ def correct_offsets(df: pd.DataFrame) -> pd.DataFrame:
 
 
 
+def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply gap correction to a single trial's interval DataFrame.
+
+    For each individual, pulls back ``offset_s`` when the gap to the next onset
+    is smaller than ``eps`` so pynapple can resolve all intervals.
+
+    Works on the compact per-trial format (columns: onset_s, offset_s, labels,
+    individual) returned by ``app_state.get_trial_intervals()``.
+    """
+    if df.empty:
+        return df
+    eps = 1e-3
+    df = df.copy().sort_values(["individual", "onset_s"]).reset_index(drop=True)
+    for _, group in df.groupby("individual"):
+        idx = group.index.tolist()
+        for i in range(len(idx) - 1):
+            gap = df.loc[idx[i + 1], "onset_s"] - df.loc[idx[i], "offset_s"]
+            if abs(gap) < eps:
+                df.loc[idx[i], "offset_s"] = df.loc[idx[i + 1], "onset_s"] - eps
+    return df
+
+
 def trees_to_df(
     trees: dict[str, "TrialTree"],
     keep_attrs: list[str],
-    correct_offsets_enabled: bool = True,
+    correct_offsets_enabled: bool = False,
 ) -> pd.DataFrame:
     """Flatten labelled segments from one or more TrialTrees into a tidy pd.DataFrame.
 

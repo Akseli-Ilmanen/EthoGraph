@@ -15,6 +15,7 @@ from qtpy.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
@@ -337,7 +338,43 @@ class LabelsWidget(QWidget):
         hv_row.addStretch()
         layout.addLayout(hv_row)
 
+        # Correct offsets row
+        co_row = QHBoxLayout()
+        co_row.addWidget(QLabel("Apply offset correction to:"))
 
+        self.correct_offsets_trial_btn = QPushButton("Single Trial")
+        self.correct_offsets_trial_btn.clicked.connect(lambda: self._apply_correct_offsets("single_trial"))
+        co_row.addWidget(self.correct_offsets_trial_btn)
+
+        self.correct_offsets_all_trials_btn = QPushButton("All Trials")
+        self.correct_offsets_all_trials_btn.clicked.connect(lambda: self._apply_correct_offsets("all_trials"))
+        co_row.addWidget(self.correct_offsets_all_trials_btn)
+
+        co_row.addStretch()
+        layout.addLayout(co_row)
+
+        # Purge small labels row
+        purge_row = QHBoxLayout()
+        purge_row.addWidget(QLabel("Purge labels shorter than:"))
+
+        self.purge_min_duration_spin = QDoubleSpinBox()
+        self.purge_min_duration_spin.setRange(0.001, 10.0)
+        self.purge_min_duration_spin.setValue(0.01)
+        self.purge_min_duration_spin.setSuffix(" s")
+        self.purge_min_duration_spin.setSingleStep(0.01)
+        self.purge_min_duration_spin.setDecimals(3)
+        purge_row.addWidget(self.purge_min_duration_spin)
+
+        self.purge_trial_btn = QPushButton("Single Trial")
+        self.purge_trial_btn.clicked.connect(lambda: self._apply_purge_small_labels("single_trial"))
+        purge_row.addWidget(self.purge_trial_btn)
+
+        self.purge_all_trials_btn = QPushButton("All Trials")
+        self.purge_all_trials_btn.clicked.connect(lambda: self._apply_purge_small_labels("all_trials"))
+        purge_row.addWidget(self.purge_all_trials_btn)
+
+        purge_row.addStretch()
+        layout.addLayout(purge_row)
 
         bottom_row = QWidget()
         bottom_layout = QHBoxLayout()
@@ -359,21 +396,12 @@ class LabelsWidget(QWidget):
         self.save_tsv_checkbox.toggled.connect(self._on_save_tsv_toggled)
         bottom_layout.addWidget(self.save_tsv_checkbox)
 
-        self.correct_offsets_checkbox = QCheckBox("Correct offsets")
-        self.correct_offsets_checkbox.setToolTip("Fix near-zero gaps between consecutive intervals for pynapple compatibility")
-        self.correct_offsets_checkbox.setChecked(self.app_state.correct_offsets_enabled)
-        self.correct_offsets_checkbox.toggled.connect(self._on_correct_offsets_toggled)
-        bottom_layout.addWidget(self.correct_offsets_checkbox)
-
         bottom_layout.addStretch()
         layout.addWidget(bottom_row)
 
 
     def _on_save_tsv_toggled(self, checked: bool):
         self.app_state.save_tsv_enabled = checked
-
-    def _on_correct_offsets_toggled(self, checked: bool):
-        self.app_state.correct_offsets_enabled = checked
 
     def _browse_mapping_file(self):
         """Browse for a mapping.txt file and reload mappings."""
@@ -468,9 +496,100 @@ class LabelsWidget(QWidget):
         if all_verified:
             self.human_verify_all_trials_btn.setStyleSheet(verified_style)
         else:
-            self.human_verify_all_trials_btn.setStyleSheet(default_style)  
-        
+            self.human_verify_all_trials_btn.setStyleSheet(default_style)
 
+    def _apply_correct_offsets(self, mode: str):
+        from ethograph.labels.export import correct_offsets_trial
+        if self.app_state.label_dt is None or self.app_state.trials_sel is None:
+            return
+
+        if mode == "single_trial":
+            trial = self.app_state.trials_sel
+            df = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
+            self.app_state.set_trial_intervals(trial, df)
+            self.app_state.label_intervals = df
+            self.app_state.label_dt.trial(trial).attrs["offsets_corrected"] = np.int8(1)
+        elif mode == "all_trials":
+            for trial in self.app_state.label_dt.trials:
+                df = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
+                self.app_state.set_trial_intervals(trial, df)
+                self.app_state.label_dt.trial(trial).attrs["offsets_corrected"] = np.int8(1)
+            self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
+
+        self._update_correct_offsets_status()
+        self._mark_changes_unsaved()
+        if self.data_widget:
+            self.data_widget.update_main_plot(preserve_x_range=True)
+            if self.data_widget.plot_container:
+                self.data_widget.plot_container.labels_redraw_needed.emit()
+
+    def _update_correct_offsets_status(self):
+        default_style = ""
+        applied_style = "background-color: green; color: white;"
+
+        if self.app_state.label_dt is None or self.app_state.trials_sel is None:
+            self.correct_offsets_trial_btn.setStyleSheet(default_style)
+            self.correct_offsets_all_trials_btn.setStyleSheet(default_style)
+            return
+
+        trial_corrected = self.app_state.label_dt.trial(self.app_state.trials_sel).attrs.get("offsets_corrected", 0)
+        self.correct_offsets_trial_btn.setStyleSheet(applied_style if trial_corrected else default_style)
+
+        all_corrected = all(
+            self.app_state.label_dt.trial(t).attrs.get("offsets_corrected", 0)
+            for t in self.app_state.label_dt.trials
+        )
+        self.correct_offsets_all_trials_btn.setStyleSheet(applied_style if all_corrected else default_style)
+
+    def _apply_purge_small_labels(self, mode: str):
+        if self.app_state.label_dt is None or self.app_state.trials_sel is None:
+            return
+
+        min_duration = self.purge_min_duration_spin.value()
+
+        def purge(df):
+            if df.empty:
+                return df
+            mask = (df["offset_s"] - df["onset_s"]) >= min_duration
+            return df[mask].copy().reset_index(drop=True)
+
+        if mode == "single_trial":
+            trial = self.app_state.trials_sel
+            df = purge(self.app_state.get_trial_intervals(trial))
+            self.app_state.set_trial_intervals(trial, df)
+            self.app_state.label_intervals = df
+            self.app_state.label_dt.trial(trial).attrs["small_labels_purged"] = np.int8(1)
+        elif mode == "all_trials":
+            for trial in self.app_state.label_dt.trials:
+                df = purge(self.app_state.get_trial_intervals(trial))
+                self.app_state.set_trial_intervals(trial, df)
+                self.app_state.label_dt.trial(trial).attrs["small_labels_purged"] = np.int8(1)
+            self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
+
+        self._update_purge_small_labels_status()
+        self._mark_changes_unsaved()
+        if self.data_widget:
+            self.data_widget.update_main_plot(preserve_x_range=True)
+            if self.data_widget.plot_container:
+                self.data_widget.plot_container.labels_redraw_needed.emit()
+
+    def _update_purge_small_labels_status(self):
+        default_style = ""
+        applied_style = "background-color: green; color: white;"
+
+        if self.app_state.label_dt is None or self.app_state.trials_sel is None:
+            self.purge_trial_btn.setStyleSheet(default_style)
+            self.purge_all_trials_btn.setStyleSheet(default_style)
+            return
+
+        trial_purged = self.app_state.label_dt.trial(self.app_state.trials_sel).attrs.get("small_labels_purged", 0)
+        self.purge_trial_btn.setStyleSheet(applied_style if trial_purged else default_style)
+
+        all_purged = all(
+            self.app_state.label_dt.trial(t).attrs.get("small_labels_purged", 0)
+            for t in self.app_state.label_dt.trials
+        )
+        self.purge_all_trials_btn.setStyleSheet(applied_style if all_purged else default_style)
 
     def _import_predictions_from_file(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select prediction .nc file", "", "NetCDF files (*.nc);;All Files (*)")

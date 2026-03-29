@@ -9,8 +9,6 @@ from typing import Dict
 
 import numpy as np
 import xarray as xr
-from movement.napari.loader_widgets import DataLoader
-from movement.napari.layer_styles import PointsStyle
 from napari.viewer import Viewer
 from qtpy.QtCore import QSortFilterProxyModel, Qt, QTimer
 from qtpy.QtGui import QColor
@@ -279,7 +277,7 @@ class DataPanel(QWidget):
         self.keypoints_table.blockSignals(False)
 
 
-class DataWidget(DataLoader, QWidget):
+class DataWidget(QWidget):
     """Orchestrator widget — loads data, manages selections, updates plots."""
 
     def __init__(
@@ -290,8 +288,7 @@ class DataWidget(DataLoader, QWidget):
         io_widget,
         parent=None,
     ):
-        DataLoader.__init__(self, napari_viewer)
-        QWidget.__init__(self, parent=parent)
+        super().__init__(parent=parent)
         self.viewer = napari_viewer
         layout = QFormLayout()
         layout.setSpacing(DEFAULT_LAYOUT_SPACING)
@@ -309,18 +306,13 @@ class DataWidget(DataLoader, QWidget):
         self.video_path = None
         self.audio_path = None
         self.space_plot = None
-        self.properties = None
-        self.data = None
-        self.data_not_nan = None
 
         self.combos = {}
         self.all_checkboxes = {}
         self.controls = []
 
-        self.fps = None
         self.source_software = None
         self.file_path = None
-        self.file_name = None
 
         self.video_mgr = VideoManager(napari_viewer, app_state)
         self.video_mgr.set_frame_changed_callback(self._on_primary_frame_changed)
@@ -350,7 +342,7 @@ class DataWidget(DataLoader, QWidget):
         self.pose_point_size_spin = panel.pose_point_size_spin
         self.keypoints_table = panel.keypoints_table
 
-        self.pose_mgr = PoseDisplayManager(self, self.app_state, self.video_mgr)
+        self.pose_mgr = PoseDisplayManager(self.viewer, self.app_state, self.video_mgr, self)
         self.app_state.keypoints_changed.connect(self.populate_keypoints)
 
         panel.pose_hide_threshold_spin.valueChanged.connect(self._on_pose_hide_threshold_changed)
@@ -1764,13 +1756,7 @@ class DataWidget(DataLoader, QWidget):
 
         show_layers = text == "Layers"
 
-        def _toggle():
-            if show_layers:
-                self.layout_mgr.show_layer_docks()
-            else:
-                self.layout_mgr.hide_layer_docks()
-
-        self.layout_mgr.with_preserved_height(_toggle)
+        self.layout_mgr.toggle_layer_docks_with_anchor(show_layers)
         self.update_space_plot()
 
     def _on_primary_camera_changed(self, camera_name):
@@ -1793,6 +1779,8 @@ class DataWidget(DataLoader, QWidget):
 
         for name in current - desired:
             self.video_mgr.remove_camera(name)
+            if self.pose_mgr is not None:
+                self.pose_mgr.on_camera_removed(name)
 
         for name in desired - current:
             video_path = self.video_mgr._resolve_video_path(name, self.app_state.video_folder)

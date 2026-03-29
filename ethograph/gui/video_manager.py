@@ -58,9 +58,11 @@ class TrialVideoSlice:
 
     def __getitem__(self, index):
         if isinstance(index, (int, np.integer)):
-            return self._reader.read_frame(int(index) + self._start)
+            clamped = max(0, min(int(index), self._n - 1))
+            return self._reader.read_frame(clamped + self._start)
         if isinstance(index, tuple) and len(np.r_[index]) == 1:
-            return self._reader.read_frame(np.r_[index][0] + self._start)[None]
+            clamped = max(0, min(int(np.r_[index][0]), self._n - 1))
+            return self._reader.read_frame(clamped + self._start)[None]
         if isinstance(index, slice):
             frames = [self._reader.read_frame(i + self._start) for i in range(*index.indices(self._n))]
             return np.array(frames)
@@ -74,7 +76,11 @@ class TrialVideoSlice:
         return self._start
 
 class ExtraCameraWidget(QWidget):
-    """Displays an extra camera feed with pose overlay via a napari canvas."""
+    """Self-contained camera view with pose overlay via a napari canvas.
+
+    Owns its own FPS — the mediator (VideoManager) broadcasts time in seconds
+    and each widget converts to frames internally.
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -88,8 +94,13 @@ class ExtraCameraWidget(QWidget):
 
         self._hide_dims_slider()
 
+        self._fps: float = 0.0
         self._video_layer = None
         self._points_layer = None
+
+    @property
+    def fps(self) -> float:
+        return self._fps
 
     def _hide_dims_slider(self):
         from napari._qt.widgets.qt_dims import QtDims
@@ -97,7 +108,8 @@ class ExtraCameraWidget(QWidget):
         for widget in self._qt_viewer.findChildren(QtDims):
             widget.setVisible(False)
 
-    def set_video(self, video_data):
+    def set_video(self, video_data, fps: float = 0.0):
+        self._fps = fps
         if self._video_layer is not None:
             old_data = getattr(self._video_layer, "data", None)
             try:
@@ -120,14 +132,21 @@ class ExtraCameraWidget(QWidget):
             self._hide_dims_slider()
             self.seek_to_frame(0)
 
-    def set_pose_layer(self, data, properties, style_kwargs):
+    def set_pose(self, data, properties, shown, style_kwargs):
         self.clear_pose()
-        if data is not None and len(data) > 0:
-            self._points_layer = self._viewer_model.add_points(
-                data,
-                properties=properties,
-                **style_kwargs,
-            )
+        if data is None or len(data) == 0:
+            return
+        self._points_layer = self._viewer_model.add_points(
+            data, properties=properties, shown=shown, **style_kwargs,
+        )
+
+    def seek_to_time(self, t_seconds: float):
+        if self._fps <= 0 or self._video_layer is None:
+            return
+        frame = int(t_seconds * self._fps)
+        n_frames = self._video_layer.data.shape[0]
+        frame = max(0, min(frame, n_frames - 1))
+        self._viewer_model.dims.set_point(0, frame)
 
     def seek_to_frame(self, frame: int):
         n_frames = 0
@@ -166,8 +185,8 @@ class ExtraCameraWidget(QWidget):
 class VideoManager:
     """Manages primary and extra video layers, audio path resolution, and frame sync.
 
-    Owns the video layer lifecycle on behalf of DataWidget. Does NOT own
-    plot_container, labels, combos, or any UI controls — those stay in DataWidget.
+    Acts as a mediator: broadcasts time in seconds to extra cameras, each of
+    which converts to frames internally using its own FPS.
 
     Supports up to MAX_EXTRA_CAMERAS additional camera views displayed in a
     vertical stack alongside the primary napari viewer.
@@ -177,7 +196,6 @@ class VideoManager:
         self.viewer = viewer
         self.app_state = app_state
         self._extra_widgets: dict[str, ExtraCameraWidget] = {}
-        self._extra_fps: dict[str, float] = {}
         self._central_splitter: QSplitter | None = None
         self._extra_splitter: QSplitter | None = None
         self._original_central = None
@@ -186,9 +204,6 @@ class VideoManager:
     @property
     def extra_widgets(self) -> dict[str, ExtraCameraWidget]:
         return self._extra_widgets
-
-    def get_camera_fps(self, camera_name: str) -> float:
-        return self._extra_fps.get(camera_name, 0.0)
 
     def update_video(self, plot_container, transform_widget):
         if not self.app_state.ready:
@@ -278,34 +293,25 @@ class VideoManager:
         _ = reader.shape
 
         detected_fps = float(reader.stream.guessed_rate) if reader.stream.guessed_rate else None
-        if detected_fps is not None:
-            dt = getattr(self.app_state, 'dt', None)
+        if detected_fps is not None and self.app_state.dt is not None:
             camera = self.app_state.primary_camera
-            if dt is not None:
-                cameras = dt.cameras
-                if cameras:
-                    existing_fps = dt.get_video_fps(camera)
-                    if existing_fps is None:
-                        dt.set_video_fps(detected_fps, device_labels=cameras)
-                    elif camera:
-                        sess = dt.session
-                        if sess is not None and "video_fps" in sess:
-                            da = sess["video_fps"]
-                            if "cameras" in da.dims:
-                                da.loc[{"cameras": camera}] = detected_fps
-                else:
-                    dt.set_video_fps(detected_fps)
+            if camera:
+                self._store_camera_fps_in_session(camera, detected_fps)
+            else:
+                self.app_state.dt.set_video_fps(detected_fps)
 
         alignment = getattr(self.app_state, 'trial_alignment', None)
         video_time_offset = alignment.video_offset if alignment else 0.0
 
-        # For session-wide videos, slice to the trial's time range so napari
-        # only shows frames belonging to the current trial.
+        # Slice the reader to the trial's time range so napari's slider is
+        # bounded to trial frames.  This prevents StopIteration crashes when
+        # codecs over-report nframes (common with AVI/MOV) and also enforces
+        # the trial stop_time for session-wide videos with a non-zero offset.
         video_data = reader
-        if alignment and alignment.trial_range and video_time_offset != 0.0:
+        if alignment and alignment.trial_range:
             fps = self.app_state.video_fps
             trial_start_in_video = -video_time_offset
-            start_frame = int(trial_start_in_video * fps)
+            start_frame = max(0, int(trial_start_in_video * fps))
             end_frame = int((trial_start_in_video + alignment.trial_range.duration) * fps)
             if start_frame > 0 or end_frame < reader.nframes:
                 video_data = TrialVideoSlice(reader, start_frame, end_frame)
@@ -372,34 +378,39 @@ class VideoManager:
             notify(f"Maximum {MAX_EXTRA_CAMERAS} extra cameras supported.", "warning")
             return
 
-        video_data = FastVideoReader(video_path, read_format='rgb24')
-        _ = video_data.shape
-        detected_fps = float(video_data.stream.guessed_rate)
-        self._extra_fps[camera_name] = detected_fps
-        self._store_camera_fps_in_session(camera_name, detected_fps)
+        reader = FastVideoReader(video_path, read_format='rgb24')
+        _ = reader.shape
+        fps = float(reader.stream.guessed_rate)
+        self._store_camera_fps_in_session(camera_name, fps)
 
         widget = ExtraCameraWidget()
-        widget.set_video(video_data)
+        widget.set_video(reader, fps=fps)
         self._extra_widgets[camera_name] = widget
         self._rebuild_camera_layout(layout_mgr, meta_widget)
 
         self._connect_extra_sync()
-        widget.seek_to_frame(self.viewer.dims.current_step[0])
+        self._sync_widget_to_current_time(widget)
 
     def _update_existing_camera(self, camera_name: str, video_path: str):
-        video_data = FastVideoReader(video_path, read_format='rgb24')
-        _ = video_data.shape
-        detected_fps = float(video_data.stream.guessed_rate)
-        self._extra_fps[camera_name] = detected_fps
-        self._store_camera_fps_in_session(camera_name, detected_fps)
+        reader = FastVideoReader(video_path, read_format='rgb24')
+        _ = reader.shape
+        fps = float(reader.stream.guessed_rate)
+        self._store_camera_fps_in_session(camera_name, fps)
         widget = self._extra_widgets[camera_name]
-        widget.set_video(video_data)
+        widget.set_video(reader, fps=fps)
         widget.show()
-        widget.seek_to_frame(self.viewer.dims.current_step[0])
+        self._sync_widget_to_current_time(widget)
+
+    def _sync_widget_to_current_time(self, widget: ExtraCameraWidget):
+        video = getattr(self.app_state, 'video', None)
+        if video is not None:
+            frame = self.viewer.dims.current_step[0]
+            widget.seek_to_time(video.frame_to_time(frame))
+        else:
+            widget.seek_to_frame(0)
 
     def remove_camera(self, camera_name: str):
         widget = self._extra_widgets.pop(camera_name, None)
-        self._extra_fps.pop(camera_name, None)
         if widget is None:
             return
 
@@ -421,7 +432,6 @@ class VideoManager:
             widget.clear()
             widget.setParent(None)
         self._extra_widgets.clear()
-        self._extra_fps.clear()
         self._teardown_camera_layout()
 
     def _rebuild_camera_layout(self, layout_mgr, meta_widget):
@@ -497,16 +507,10 @@ class VideoManager:
     def _on_extra_frame_sync(self, event=None):
         if not self._extra_widgets or getattr(self.app_state, 'video', None) is None:
             return
-
-        primary_fps = self.app_state.video_fps
-        dt = getattr(self.app_state, 'dt', None)
         frame = self.viewer.dims.current_step[0]
-        for camera_name, widget in self._extra_widgets.items():
-            fps = (dt.get_video_fps(camera_name) if dt else None) or self._extra_fps.get(camera_name, primary_fps)
-            if abs(fps - primary_fps) < 0.01:
-                widget.seek_to_frame(frame)
-            else:
-                widget.seek_to_frame(int(frame / primary_fps * fps))
+        t_seconds = self.app_state.video.frame_to_time(frame)
+        for widget in self._extra_widgets.values():
+            widget.seek_to_time(t_seconds)
 
     def _store_camera_fps_in_session(self, camera_name: str, fps: float):
         dt = getattr(self.app_state, 'dt', None)

@@ -205,12 +205,13 @@ class NavigationWidget(QWidget):
         )
         self.skip_frames_checkbox.toggled.connect(self._on_skip_frames_changed)
 
-        self.filter_warnings_checkbox = QCheckBox("Filter Warnings")
+        self.filter_warnings_checkbox = QCheckBox("Suppress library warnings")
         self.filter_warnings_checkbox.setObjectName("filter_warnings_checkbox")
         self.filter_warnings_checkbox.setChecked(app_state.get_with_default("filter_warnings"))
         self.filter_warnings_checkbox.setToolTip(
-            "Suppress repetitive warnings (e.g. video seek warnings).\n"
-            "When enabled, each warning is shown only once."
+            "Suppress Python warnings from third-party libraries\n"
+            "(e.g. NumPy deprecation notices, codec warnings).\n"
+            "Does not affect ethograph's own notifications."
         )
         self.filter_warnings_checkbox.toggled.connect(self._on_filter_warnings_changed)
         self._apply_warning_filters(app_state.get_with_default("filter_warnings"))

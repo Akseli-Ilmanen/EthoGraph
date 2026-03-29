@@ -15,7 +15,7 @@ from napari.settings import get_settings
 from qtpy.QtCore import QObject, QTimer, Signal
 
 import ethograph as eto
-from ethograph.gui.notify import notify, set_filter_warnings
+from ethograph.gui.notify import notify
 from ethograph.gui.plots_timeseriessource import TrialAlignment, TimeRange
 
 from .makepretty import find_combo_index
@@ -120,7 +120,7 @@ class AppStateSpec:
         "audio_playback_speed": (float, 1.0, True),
         "av_speed_coupled": (bool, True, True),
         "skip_frames": (bool, False, True),
-        "filter_warnings": (bool, False, True),
+        "filter_warnings": (bool, True, True),
         "center_playback": (bool, False, True),
         "time_jump_ms": (float, 100.0, True),
         "time": (xr.DataArray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
@@ -191,7 +191,6 @@ class AppStateSpec:
         "automatic_min_label_length_s": (float, 1e-3, True),
         "automatic_stitch_gap_s": (float, 0.0, True),
         "save_tsv_enabled": (bool, True, True),
-        "correct_offsets_enabled": (bool, True, True),
 
         # Envelope / energy (general, used by both heatmap and overlay)
         "energy_metric": (str, "energy_lowpass", True),
@@ -444,9 +443,6 @@ class ObservableAppState(QObject):
             signal = getattr(self, f"{name}_changed", None)
             if signal and old_value is not value:
                 signal.emit(value)
-
-            if name == "filter_warnings":
-                set_filter_warnings(value)
 
             if name == "nc_file_path" and not self._suspend_local_autoload:
                 self.load_local_settings()
@@ -843,7 +839,7 @@ class ObservableAppState(QObject):
     def _save_labels_tsv(self, nc_path, suffix):        
         tsv_path = nc_path.parent / f"{nc_path.stem}{suffix}_labels.tsv"        
         keep_attrs = self.trial_conditions if self.trial_conditions is not None else []
-        df = eto.trees_to_df(self.dt, keep_attrs, correct_offsets_enabled=self.correct_offsets_enabled)
+        df = eto.trees_to_df(self.dt, keep_attrs, correct_offsets_enabled=False)
         df.to_csv(tsv_path, index=False, sep='\t', encoding='utf-8-sig')
                     
 

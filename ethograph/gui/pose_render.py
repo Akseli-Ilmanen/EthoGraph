@@ -1,9 +1,9 @@
 """Pose rendering pipeline: pure loading/filtering functions + display manager.
 
 Pure functions are stateless — they load and filter pose data into PoseRenderData.
-PoseDisplayManager orchestrates display: loading, filtering, napari layer management,
-and secondary-video pose sync. It writes into DataLoader attributes only when needed
-by movement's layer-creation methods.
+PoseDisplayManager orchestrates display using a single code path for all cameras
+(primary and extra). Each camera's keypoints are tracked independently; the UI
+shows the union across all loaded cameras.
 """
 
 from __future__ import annotations
@@ -18,8 +18,7 @@ import pandas as pd
 import xarray as xr
 from movement.io import load_dataset
 from movement.napari.convert import ds_to_napari_layers
-from movement.napari.layer_styles import PointsStyle
-from movement.napari.loader_widgets import SUPPORTED_POSES_FILES
+from movement.napari.layer_styles import PointsStyle, _sample_colormap
 
 from ethograph.gui.notify import notify
 from ethograph.utils.xr_utils import get_time_coord
@@ -65,14 +64,10 @@ def _strip_keypoint_prefix(properties: pd.DataFrame) -> pd.DataFrame:
 
 def load_pose_from_file(file_path: str, source_software: str, fps: float) -> PoseRenderData:
     """Load a pose file via movement and return a PoseRenderData."""
-    
     ds = load_dataset(file_path, source_software, fps)
-    
     kp_coord = ds.coords.get("keypoints")
     keypoints = kp_coord.values.astype(str).tolist() if kp_coord is not None else None
-    
-    
-    data, _,  properties = ds_to_napari_layers(ds)
+    data, _, properties = ds_to_napari_layers(ds)
     return PoseRenderData(
         data=data,
         properties=_strip_keypoint_prefix(properties),
@@ -133,7 +128,7 @@ def _pose_arrays_to_render_data(
     mv_ds = xr.Dataset({"position": pos_mv, "confidence": conf_mv}).rename({time_name: "time"})
     mv_ds.attrs["ds_type"] = "poses"
 
-    data, _,  properties = ds_to_napari_layers(mv_ds)
+    data, _, properties = ds_to_napari_layers(mv_ds)
     return PoseRenderData(
         data=data,
         properties=_strip_keypoint_prefix(properties),
@@ -141,8 +136,6 @@ def _pose_arrays_to_render_data(
         file_name=f"NWB_pose_{label_suffix}",
         keypoints=None,
     )
-
-
 
 
 def apply_confidence_filter(pr: PoseRenderData, threshold: float) -> PoseRenderData:
@@ -163,31 +156,48 @@ def apply_keypoint_filter(pr: PoseRenderData, hidden: set[str]) -> PoseRenderDat
     return PoseRenderData(pr.data, pr.properties, mask, pr.file_name)
 
 
-
-
 class PoseDisplayManager:
     """Manages pose loading, filtering, and napari layer display.
 
-
-    Delegates to DataLoader (movement) for the actual layer creation via
-    ``_set_common_color_property``, ``_set_text_property``, ``_add_points_layer``,
-    and ``_set_initial_state``. Owns the pose lifecycle on behalf of DataWidget.
+    Uses a single rendering path for all cameras (primary and extra) via
+    direct ``add_points()`` calls with ``shown`` mask to preserve the frame
+    dimension. Tracks per-camera keypoints and exposes their union for the
+    UI filter table.
     """
 
-    def __init__(self, data_loader, app_state, video_manager):
-        self._dl = data_loader
+    def __init__(self, viewer, app_state, video_manager, data_widget):
+        self.viewer = viewer
         self.app_state = app_state
         self.video_mgr = video_manager
+        self._data_widget = data_widget
+        self._primary_points_layer = None
+        self._primary_file_name: str = ""
+        self._camera_keypoints: dict[str, list[str]] = {}
+
+    @property
+    def all_keypoints(self) -> list[str]:
+        seen: set[str] = set()
+        result: list[str] = []
+        for kps in self._camera_keypoints.values():
+            for k in kps:
+                if k not in seen:
+                    seen.add(k)
+                    result.append(k)
+        return result
 
     def _camera_index(self, camera_name: str | None = None) -> int:
+        return self.app_state.dt.cameras.index(camera_name)
+
+    def _camera_name_for_index(self, camera_idx: int) -> str:
         cameras = self.app_state.dt.cameras
-        return cameras.index(camera_name)
+        return cameras[camera_idx] if camera_idx < len(cameras) else str(camera_idx)
 
     def _resolve_camera_fps(self, camera_idx: int) -> float:
-        cameras = self.app_state.dt.cameras
+        dt = self.app_state.dt
+        cameras = dt.cameras
         if camera_idx < len(cameras):
-            fps = self.video_mgr.get_camera_fps(cameras[camera_idx])
-            if fps > 0:
+            fps = dt.get_video_fps(cameras[camera_idx])
+            if fps is not None and fps > 0:
                 return fps
         return self.app_state.video_fps
 
@@ -236,13 +246,42 @@ class PoseDisplayManager:
         return pr if np.any(pr.data_not_nan) else None
 
     # ------------------------------------------------------------------
-    # Display (primary uses DataLoader pipeline, secondary uses widget)
+    # Per-camera keypoint tracking
     # ------------------------------------------------------------------
 
+    def _register_keypoints(self, camera_name: str, keypoints: list[str] | None):
+        if keypoints:
+            self._camera_keypoints[camera_name] = keypoints
+        self._sync_global_keypoints()
 
+    def _sync_global_keypoints(self):
+        merged = self.all_keypoints
+        if merged != self.app_state.keypoints:
+            self.app_state.keypoints = merged
+
+    def on_camera_removed(self, camera_name: str):
+        self._camera_keypoints.pop(camera_name, None)
+        self._sync_global_keypoints()
+
+    # ------------------------------------------------------------------
+    # Unified display — same path for primary and extra cameras
+    # ------------------------------------------------------------------
+
+    def _display_pose_direct(self, viewer_model, pr: PoseRenderData) -> Any | None:
+        """Add pose points to any napari viewer, preserving the frame dimension.
+
+        ``ds_to_napari_layers`` returns Tracks format (track_id, frame, y, x).
+        napari Points needs only the last 3 columns (frame, y, x).
+        Uses ``shown`` mask so napari handles per-frame visibility.
+        """
+        points_data = pr.data[:, 1:] if pr.data.shape[1] > 3 else pr.data
+        style_kwargs = self._build_pose_style_kwargs(pr.properties)
+        return viewer_model.add_points(
+            points_data, properties=pr.properties, shown=pr.data_not_nan, **style_kwargs,
+        )
 
     def update_pose(self, hidden_keypoints: set[str]) -> None:
-        primary_combo = getattr(self._dl, "primary_camera_combo", None)
+        primary_combo = getattr(self._data_widget, "primary_camera_combo", None)
         primary_name = primary_combo.currentText() if primary_combo else None
         if primary_name is not None:
             self._display_pose_on_primary(self._camera_index(primary_name), hidden_keypoints)
@@ -255,20 +294,11 @@ class PoseDisplayManager:
         pr = self._prepare_pose(camera_idx, hidden_keypoints)
         if pr is None:
             return
-        new_keys = pr.keypoints or []
-        existing = self.app_state.keypoints
-        merged = existing + [k for k in new_keys if k not in existing]
-        if merged != existing:
-            self.app_state.keypoints = merged
-        self._dl.file_name = pr.file_name
-        self._dl.data = pr.data
-        self._dl.properties = pr.properties
-        self._dl.data_not_nan = pr.data_not_nan
-        self._dl._set_common_color_property()
-        self._dl._set_text_property()
-        self._dl._add_points_layer()
+        camera_name = self._camera_name_for_index(camera_idx)
+        self._register_keypoints(camera_name, pr.keypoints)
+        self._primary_file_name = pr.file_name
+        self._primary_points_layer = self._display_pose_direct(self.viewer, pr)
         self.apply_pose_style()
-        self._dl._set_initial_state()
 
     def _display_pose_on_extra(
         self,
@@ -283,19 +313,11 @@ class PoseDisplayManager:
         if pr is None:
             widget.clear_pose()
             return
-        visible_data = pr.data[pr.data_not_nan, 1:]
-        visible_props = pr.properties.iloc[pr.data_not_nan, :].reset_index(drop=True)
+        self._register_keypoints(camera_name, pr.keypoints)
+        points_data = pr.data[:, 1:] if pr.data.shape[1] > 3 else pr.data
         style_kwargs = self._build_pose_style_kwargs(pr.properties)
-        try:
-            widget.set_pose_layer(
-                data=visible_data,
-                properties=visible_props,
-                style_kwargs=style_kwargs,
-            )
-            self.apply_pose_style()
-        except (OSError, ValueError, KeyError) as e:
-            notify(f"Failed to set pose on extra camera '{camera_name}': {e}", "warning")
-            widget.clear_pose()
+        widget.set_pose(points_data, pr.properties, pr.data_not_nan, style_kwargs)
+        self.apply_pose_style()
 
     def update_extra_camera_pose(self, camera_name: str, hidden_keypoints: set[str]) -> None:
         widget = self.video_mgr.extra_widgets.get(camera_name)
@@ -304,18 +326,23 @@ class PoseDisplayManager:
         self._display_pose_on_extra(camera_name, hidden_keypoints, widget)
 
     def _remove_pose_layers(self) -> None:
-        file_name = self._dl.file_name
+        if self._primary_points_layer is not None:
+            try:
+                self.viewer.layers.remove(self._primary_points_layer)
+            except ValueError:
+                pass
+            self._primary_points_layer = None
+        file_name = self._primary_file_name
         if not file_name:
             return
-        viewer = self._dl.viewer
-        for layer in list(viewer.layers):
+        for layer in list(self.viewer.layers):
             if layer.name in [
                 f"tracks: {file_name}",
                 f"points: {file_name}",
                 f"boxes: {file_name}",
                 f"skeleton: {file_name}",
             ]:
-                viewer.layers.remove(layer)
+                self.viewer.layers.remove(layer)
 
     def _build_pose_style_kwargs(self, properties: pd.DataFrame) -> dict[str, Any]:
         color_prop = "individual"
@@ -326,18 +353,37 @@ class PoseDisplayManager:
         if "keypoint" in properties.columns and len(properties["keypoint"].unique()) > 1:
             text_prop = "keypoint"
 
-        style = PointsStyle(name="secondary_pose")
+        style = PointsStyle(name="pose")
         style.set_text_by(property=text_prop)
-        style.set_color_by(property=color_prop, properties_df=properties)
+
+        if color_prop == "keypoint":
+            global_cycle = self._build_global_color_cycle()
+            if global_cycle is not None:
+                style.face_color = color_prop
+                style.face_color_cycle = global_cycle
+                if "color" in style.text:
+                    style.text["color"].update({"feature": color_prop, "colormap": global_cycle})
+                else:
+                    style.text["color"] = {"feature": color_prop, "colormap": global_cycle}
+            else:
+                style.set_color_by(property=color_prop, properties_df=properties)
+        else:
+            style.set_color_by(property=color_prop, properties_df=properties)
+
         return style.as_kwargs()
 
+    def _build_global_color_cycle(self) -> list[tuple] | None:
+        all_kps = self.all_keypoints
+        if not all_kps:
+            return None
+        return _sample_colormap(len(all_kps), "turbo")
+
     def apply_pose_style(self) -> None:
-        visible = self._dl.pose_show_text_checkbox.isChecked()
-        size = self._dl.pose_point_size_spin.value()
-        points_layer = getattr(self._dl, 'points_layer', None)
-        if points_layer is not None:
-            points_layer.text.visible = visible
-            points_layer.size = size
+        visible = self._data_widget.pose_show_text_checkbox.isChecked()
+        size = self._data_widget.pose_point_size_spin.value()
+        if self._primary_points_layer is not None:
+            self._primary_points_layer.text.visible = visible
+            self._primary_points_layer.size = size
         for widget in self.video_mgr.extra_widgets.values():
             if widget._points_layer is not None:
                 widget._points_layer.text.visible = visible
@@ -349,7 +395,7 @@ class PoseDisplayManager:
         cos_t, sin_t = np.cos(theta), np.sin(theta)
         rot_2d = np.array([[cos_t, -sin_t], [sin_t, cos_t]])
 
-        for layer in self._dl.viewer.layers:
+        for layer in self.viewer.layers:
             affine = np.eye(layer.ndim + 1)
             affine[-3:-1, -3:-1] = rot_2d
             layer.affine = affine
@@ -359,4 +405,3 @@ class PoseDisplayManager:
                 affine = np.eye(layer.ndim + 1)
                 affine[-3:-1, -3:-1] = rot_2d
                 layer.affine = affine
-

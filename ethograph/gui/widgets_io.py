@@ -661,6 +661,8 @@ class IOWidget(QWidget):
             setattr(self.app_state, attr, None)
         if self.labels_widget:
             self.labels_widget._update_human_verified_status()
+            self.labels_widget._update_correct_offsets_status()
+            self.labels_widget._update_purge_small_labels_status()
     # Device controls (populated after load)
     # ------------------------------------------------------------------
 
@@ -811,6 +813,8 @@ class IOWidget(QWidget):
                         self.labels_widget._mark_changes_unsaved()
                         self.labels_widget.refresh_labels_shapes_layer()
                         self.labels_widget._update_human_verified_status()
+                        self.labels_widget._update_correct_offsets_status()
+                        self.labels_widget._update_purge_small_labels_status()
                     if self.data_widget and self.data_widget.plot_container:
                         self.data_widget.plot_container.labels_redraw_needed.emit()
 

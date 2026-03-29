@@ -1,13 +1,19 @@
 #!/usr/bin/env python
 """Command-line interface for ethograph."""
 
+import logging
 import os
 import sys
 import warnings
 
-warnings.filterwarnings("ignore", module="vispy")
-warnings.filterwarnings("ignore", message=".*__array__.*copy keyword.*")
-
+warnings.filterwarnings(
+    "ignore",
+    message=".*__array__ implementation doesn't accept a copy keyword.*"
+)
+warnings.filterwarnings(
+    "ignore",
+    message=".*The 'warn' method is deprecated.*"
+)
 
 def _ensure_qt_plugins():
     """Set QT_PLUGIN_PATH for conda-forge Qt installs (needed by menuinst shortcuts)."""
@@ -26,6 +32,11 @@ def _ensure_qt_plugins():
 
 def launch():
     """Launch the ethograph GUI."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(name)s - %(levelname)s - %(message)s",
+    )
+    logging.getLogger("napari").setLevel(logging.WARNING)
     _ensure_qt_plugins()
     import napari
     from ethograph.gui.widgets_meta import MetaWidget

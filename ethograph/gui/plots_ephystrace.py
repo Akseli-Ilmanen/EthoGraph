@@ -318,7 +318,7 @@ class GenericEphysLoader:
     ):
         self.path = Path(path)
         self._reader = None
-        self._loader:  None 
+        self._loader = None
 
         self.rate: float = 0.0
         self.dtype: str = dtype
@@ -932,8 +932,8 @@ class EphysTracePlot(BasePlot):
             return
         spacing = self.buffer.channel_spacing
         total = len(self._total_ordered_channels)
-        y_lo = (total - 1 - ch_end) * spacing - spacing * 0.5
-        y_hi = (total - 1 - ch_start) * spacing + spacing * 0.5
+        y_lo = (total - 1 - ch_end) * spacing - spacing * 1.0
+        y_hi = (total - 1 - ch_start) * spacing + spacing * 1.0
         self.plot_item.setYRange(y_lo, y_hi, padding=0)
 
     def set_custom_channel_set(self, hw_indices: NDArray | None):
