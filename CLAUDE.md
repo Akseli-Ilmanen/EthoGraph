@@ -49,6 +49,10 @@ After making major design changes, update this file to match the current state.
 
 Claude Code has permission to make any necessary changes to files in this repository.
 
+## Writing docs
+
+Don't mention indivdiuals Poppy, Freddy, Ivy anywhere in docstrings, docs.
+
 ## Project Overview
 
 ethograph-GUI is a napari plugin for labeling start/stop times of animal movements. It integrates with ethograph, a workflow using action segmentation transformers to predict movement segments. The GUI loads NetCDF datasets, displays synchronized video/audio/ephys, and allows interactive labeling.

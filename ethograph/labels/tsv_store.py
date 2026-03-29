@@ -1,15 +1,16 @@
 """TSV-based label storage for EthoGraph.
 
 File format:
+    trial                   - trial identifier
+    individual              - individual identifier
+    labels                  - integer label class ID
     onset_s                 - start time in seconds (trial-relative)
     offset_s                - end time in seconds (trial-relative)
-    labels                  - integer label class ID
-    individual              - individual identifier
-    trial                   - trial identifier
+    n_samples               - per-trial sample count for dense conversion (int, 0 if unknown)
     human_verified          - per-trial flag (0/1), repeated per row
     changepoint_corrected   - per-trial flag (0/1), repeated per row
     prediction_source       - path to prediction file that produced this label (empty if human)
-    n_samples               - per-trial sample count for dense conversion (int, 0 if unknown)
+    
 
 Label names are managed centrally in mapping.txt.
 """
@@ -31,7 +32,7 @@ from ethograph.labels.intervals import (
 logger = logging.getLogger(__name__)
 
 TSV_COLUMNS = [
-    "onset_s", "offset_s", "labels", "individual", "trial",
+    "trial", "individual", "labels", "onset_s", "offset_s", 
     "human_verified", "changepoint_corrected", "prediction_source", "n_samples",
 ]
 
@@ -108,8 +109,8 @@ def load_labels_tsv(path: str | Path) -> pd.DataFrame:
     >>> df = load_labels_tsv("experiment/data_labels.tsv")
     >>> df[["trial", "onset_s", "offset_s", "labels", "individual"]].head()
        trial  onset_s  offset_s  labels individual
-    0      1     0.41     0.505       1      Poppy
-    1      1     0.51     0.620       2      Poppy
+    0      1     0.41     0.505       1      crow1
+    1      1     0.51     0.620       2      crow1
     """
     path = Path(path)
     if not path.exists():
@@ -146,7 +147,7 @@ def save_labels_tsv(path: str | Path, df: pd.DataFrame) -> None:
 
     out = df.copy()
     preferred = [
-        "onset_s", "offset_s", "labels", "individual", "trial",
+        "individual", "trial", "labels", "onset_s", "offset_s", 
         "human_verified", "changepoint_corrected", "prediction_source", "n_samples",
     ]
     cols = [c for c in preferred if c in out.columns]

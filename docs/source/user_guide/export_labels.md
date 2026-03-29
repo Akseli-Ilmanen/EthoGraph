@@ -90,9 +90,9 @@ These columns convert trial-relative times to session-absolute times. They only 
 
 | onset_s | offset_s | labels | individual | trial | duration | sequence_idx | sequence | onset_global |
 |---------|----------|--------|------------|-------|----------|--------------|----------|--------------|
-| 0.41    | 0.505    | 1      | Poppy      | 1     | 0.095    | 0            | 1-2-3    | 120.41       |
-| 0.51    | 0.620    | 2      | Poppy      | 1     | 0.110    | 1            | 1-2-3    | 120.51       |
-| 0.77    | 0.885    | 3      | Poppy      | 1     | 0.115    | 2            | 1-2-3    | 120.77       |
+| 0.41    | 0.505    | 1      | mouse1      | 1     | 0.095    | 0            | 1-2-3    | 120.41       |
+| 0.51    | 0.620    | 2      | mouse1      | 1     | 0.110    | 1            | 1-2-3    | 120.51       |
+| 0.77    | 0.885    | 3      | mouse1      | 1     | 0.115    | 2            | 1-2-3    | 120.77       |
 
 Here trial 1 starts at 120s into the session, so `onset_global = 120 + onset_s`.
 
