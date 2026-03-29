@@ -6,8 +6,8 @@ from typing import Optional
 import napari
 from audioio import AudioLoader, PlayAudio
 from qtpy.QtCore import QObject, QTimer, Signal
-from napari.utils.notifications import show_error
 
+from ethograph.gui.notify import notify
 from ethograph.utils.audio import get_audio_sr
 
 try:
@@ -66,7 +66,7 @@ class NapariVideoSync(QObject):
                 break
 
         if not self.video_layer:
-            show_error("Video layer not found. Load video first.")
+            notify("Video layer not found. Load video first.", "error")
             return
 
         self.total_frames = self.video_layer.data.shape[0]
@@ -82,12 +82,7 @@ class NapariVideoSync(QObject):
 
     @property
     def fps(self) -> float:
-        if self.video_layer is not None:
-            try:
-                return float(self.video_layer.data.stream.guessed_rate)
-            except (AttributeError, ZeroDivisionError):
-                pass
-        return 30.0
+        return self.app_state.video_fps
 
     @property
     def fps_playback(self) -> float:

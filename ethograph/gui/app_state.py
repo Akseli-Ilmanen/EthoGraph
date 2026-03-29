@@ -1,6 +1,7 @@
 """Settings that the user can modify and are saved in gui_settings.yaml"""
 
 import gc
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, get_args, get_origin
@@ -11,10 +12,10 @@ import pandas as pd
 import xarray as xr
 import yaml
 from napari.settings import get_settings
-from napari.utils.notifications import show_info
 from qtpy.QtCore import QObject, QTimer, Signal
 
 import ethograph as eto
+from ethograph.gui.notify import notify, set_filter_warnings
 from ethograph.gui.plots_timeseriessource import TrialAlignment, TimeRange
 
 from .makepretty import find_combo_index
@@ -24,6 +25,8 @@ from ethograph.labels.intervals import (
     xr_to_intervals,
 )
 
+
+logger = logging.getLogger(__name__)
 
 SIMPLE_SIGNAL_TYPES = (int, float, str, bool)
 
@@ -168,8 +171,9 @@ class AppStateSpec:
         "buffer_multiplier": (float, 5.0, True),
         "percentile_ylim": (float, 99.5, True),
         "space_plot_type": (str, "Layers", True),
-        "slot2_sel": (str | None, None, True),
-        "extra_cameras_sel": (str | None, None, True),
+        "primary_camera": (str | None, None, True),
+        "primary_camera_previous": (str | None, None, False),
+        "extra_cameras": (list[str], [], True),
         "lock_axes": (bool, False, False),
         "spec_colormap": (str, "CET-R4", True),
         "spec_levels_mode": (str, "auto", True),
@@ -289,11 +293,14 @@ class ObservableAppState(QObject):
 
     @property
     def video_fps(self) -> float:
-        video = getattr(self, 'video', None)
-        if video is None:
-            return 1
-        else:
-            return video.fps
+        dt = getattr(self, 'dt', None)
+        if dt is not None:
+            camera = self.primary_camera
+            fps = dt.get_video_fps(camera)
+            if fps is not None:
+                return fps
+        logger.warning("video_fps: no FPS metadata found, falling back to 1.0")
+        return 1.0
 
     @property
     def sel_attrs(self) -> dict:
@@ -438,6 +445,9 @@ class ObservableAppState(QObject):
             if signal and old_value is not value:
                 signal.emit(value)
 
+            if name == "filter_warnings":
+                set_filter_warnings(value)
+
             if name == "nc_file_path" and not self._suspend_local_autoload:
                 self.load_local_settings()
 
@@ -568,7 +578,7 @@ class ObservableAppState(QObject):
                 if index >= 0:
                     combo.setCurrentIndex(index)
         except (AttributeError, TypeError) as e:
-            print(f"Error updating combo box for {type_key}: {e}")
+            logger.error("Error updating combo box for %s: %s", type_key, e)
 
     def _cycle_combo_box(self, type_key, data_widget):
         """Cycle the combo box to the next item when no previous selection exists."""
@@ -578,7 +588,7 @@ class ObservableAppState(QObject):
                 next_index = (combo.currentIndex() + 1) % combo.count()
                 combo.setCurrentIndex(next_index)
         except (AttributeError, TypeError) as e:
-            print(f"Error cycling combo box for {type_key}: {e}")
+            logger.error("Error cycling combo box for %s: %s", type_key, e)
 
     # --- Save/Load methods ---
     PATH_SUFFIXES = ("_path", "_folder")
@@ -631,7 +641,7 @@ class ObservableAppState(QObject):
                             if isinstance(value, (str, float, int, bool)):
                                 state_dict[attr] = self._to_native(value)
                     except (AttributeError, TypeError) as exc:
-                        print(f"Error accessing {attr}: {exc}")
+                        logger.error("Error accessing %s: %s", attr, exc)
         return state_dict
 
     def _sort_state_dict(self, state_dict: dict) -> dict:
@@ -709,10 +719,10 @@ class ObservableAppState(QObject):
             if not state_dict:
                 return False
             self.load_from_dict(state_dict)
-            print(f"Local state loaded from {local_path}")
+            logger.info("Local state loaded from %s", local_path)
             return True
         except (OSError, yaml.YAMLError) as e:
-            print(f"Error loading local state from YAML: {e}")
+            logger.error("Error loading local state from YAML: %s", e)
             return False
 
     def save_to_yaml(self, yaml_path: str | None = None) -> bool:
@@ -735,7 +745,7 @@ class ObservableAppState(QObject):
 
             return True
         except (OSError, yaml.YAMLError) as e:
-            print(f"Error saving state to YAML: {e}")
+            logger.error("Error saving state to YAML: %s", e)
             return False
 
     def load_from_yaml(self, yaml_path: str | None = None) -> bool:
@@ -743,11 +753,11 @@ class ObservableAppState(QObject):
             if yaml_path is not None:
                 path = Path(yaml_path)
                 if not path.exists():
-                    print(f"YAML file {path} not found, using defaults\n")
+                    logger.warning("YAML file %s not found, using defaults", path)
                     return False
                 state_dict = self._yaml_read(path)
                 self.load_from_dict(state_dict)
-                print(f"State loaded from {path}\n")
+                logger.info("State loaded from %s", path)
                 return True
 
             loaded_any = False
@@ -756,17 +766,17 @@ class ObservableAppState(QObject):
             global_state = self._yaml_read(global_path)
             if global_state:
                 self.load_from_dict(global_state)
-                print(f"Global state loaded from {global_path}")
+                logger.info("Global state loaded from %s", global_path)
                 loaded_any = True
 
             if self.load_local_settings():
                 loaded_any = True
 
             if not loaded_any:
-                print("No settings YAML found, using defaults\n")
+                logger.warning("No settings YAML found, using defaults")
             return loaded_any
         except (OSError, yaml.YAMLError) as e:
-            print(f"Error loading state from YAML: {e}")
+            logger.error("Error loading state from YAML: %s", e)
             return False
         
     def delete_yaml(self, yaml_path: str | None = None) -> bool:
@@ -775,29 +785,29 @@ class ObservableAppState(QObject):
                 p = Path(yaml_path)
                 if p.exists():
                     p.unlink()
-                    print(f"Deleted YAML file {yaml_path}")
+                    logger.info("Deleted YAML file %s", yaml_path)
                     return True
-                print(f"YAML file {yaml_path} does not exist")
+                logger.warning("YAML file %s does not exist", yaml_path)
                 return False
 
             deleted_any = False
             global_path = self._global_settings_path()
             if global_path.exists():
                 global_path.unlink()
-                print(f"Deleted YAML file {global_path}")
+                logger.info("Deleted YAML file %s", global_path)
                 deleted_any = True
 
             local_path = self._local_settings_path()
             if local_path is not None and local_path.exists():
                 local_path.unlink()
-                print(f"Deleted YAML file {local_path}")
+                logger.info("Deleted YAML file %s", local_path)
                 deleted_any = True
 
             if not deleted_any:
-                print("No YAML settings files found to delete")
+                logger.warning("No YAML settings files found to delete")
             return deleted_any
         except OSError as e:
-            print(f"Error deleting YAML file: {e}")
+            logger.error("Error deleting YAML file: %s", e)
             return False
     
     def stop_auto_save(self):
@@ -851,14 +861,14 @@ class ObservableAppState(QObject):
         versioned_path = labels_dir / versioned_filename
 
         self.label_dt.save(versioned_path)
-        show_info(f"✅ Saved: {Path(versioned_path).name}")
+        notify(f"Saved: {Path(versioned_path).name}")
 
         self.changes_saved = True
 
 
     def save_file(self) -> None:
         if getattr(self.dt, "attrs", {}).get("nwb_source_path", "").startswith(("http://", "https://", "s3://")):
-            show_info(
+            notify(
                 "Full save is unavailable for remote NWB files. "
                 "Use 'Save labels' instead."
             )
@@ -876,7 +886,7 @@ class ObservableAppState(QObject):
             
             updated_dt.save(save_path)
             updated_dt.close()
-            show_info(f"✅ Saved downsampled: {save_path.name}")
+            notify(f"Saved downsampled: {save_path.name}")
         else:
             updated_dt = self.dt.overwrite_with_labels(self.label_dt)
             updated_dt.load()
@@ -885,9 +895,9 @@ class ObservableAppState(QObject):
             updated_dt.save(nc_path)
 
             self.dt = eto.open(nc_path)
-            show_info(f"✅ Saved: {nc_path.name}")
+            notify(f"Saved: {nc_path.name}")
             
             
         if self.save_tsv_enabled:
             self._save_labels_tsv(nc_path, suffix)
-            show_info(f"✅ Saved TSV: {nc_path.stem}{suffix}_labels.tsv")
+            notify(f"Saved TSV: {nc_path.stem}{suffix}_labels.tsv")

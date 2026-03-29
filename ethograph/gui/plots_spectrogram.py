@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from typing import TYPE_CHECKING, Optional
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 import pyqtgraph as pg
@@ -46,7 +49,7 @@ class SharedAudioCache:
                 try:
                     cls._instances[audio_path] = AudioLoader(audio_path, buffersize=buffer_size)
                 except (OSError, IOError, ValueError) as e:
-                    print(f"Failed to load audio file {audio_path}: {e}")
+                    logger.error("Failed to load audio file %s: %s", audio_path, e)
                     return None
             return cls._instances[audio_path]
 

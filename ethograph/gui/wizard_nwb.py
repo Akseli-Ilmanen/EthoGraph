@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +44,7 @@ from qtpy.QtWidgets import (
 from ethograph.gui.dialog_busy_progress import BusyProgressDialog
 from ethograph.gui.dialog_pose_video_matcher import PoseVideoMatcherWidget
 from ethograph.gui.makepretty import styled_link
+from ethograph.gui.notify import notify_dialog
 from ethograph.gui.wizard_multi_timeline import draw_session_timeline
 from ethograph.labels.converters import NWBLabelConverter
 from ethograph.utils.nwb import (
@@ -63,6 +66,8 @@ from ethograph.utils.nwb_video import (
     probe_local_video_metadata,
     stream_video_in_browser,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _network_error_message(error: Exception) -> str | None:
@@ -101,7 +106,7 @@ class _SourcePage(QWidget):
         source_group = QGroupBox("Source type")
         sg_layout = QVBoxLayout(source_group)
         self._rb_local = QRadioButton("Local .nwb file")
-        self._rb_dandi = QRadioButton("DANDI archive (streaming)")
+        self._rb_dandi = QRadioButton("DANDI archive (downloading individual trials/ streaming)")
         self._rb_local.setChecked(True)
         self._rb_group = QButtonGroup(self)
         self._rb_group.addButton(self._rb_local)
@@ -237,10 +242,18 @@ class _VideoPosePage(QWidget):
         # --- Video matching ---
         self._video_group = QGroupBox("Video")
         vg = QVBoxLayout(self._video_group)
-        self._video_checkbox = QCheckBox("Download video clips (uses ffmpeg to extract trial clips)")
+        self._video_checkbox = QCheckBox("Download video clips locally (recommended for fast navigation)")
         self._video_checkbox.setChecked(True)
         self._video_checkbox.toggled.connect(self._on_video_toggled)
         vg.addWidget(self._video_checkbox)
+        self._stream_note = QLabel(
+            "Unchecked = stream from DANDI. Playback works but seeking/jumping "
+            "may be slow."
+        )
+        self._stream_note.setWordWrap(True)
+        self._stream_note.setStyleSheet("color: #888; font-style: italic; margin-left: 20px;")
+        self._stream_note.setVisible(False)
+        vg.addWidget(self._stream_note)
         vg.addWidget(QLabel("Match pose cameras (left) to video sources (right). Reorder if needed."))
         self._matcher = PoseVideoMatcherWidget()
         vg.addWidget(self._matcher)
@@ -319,6 +332,7 @@ class _VideoPosePage(QWidget):
 
     def _on_video_toggled(self, checked: bool):
         self._download_row.setVisible(checked)
+        self._stream_note.setVisible(not checked)
 
     def _browse_download_dir(self):
         folder = QFileDialog.getExistingDirectory(self, "Select download folder")
@@ -344,12 +358,14 @@ class _VideoPosePage(QWidget):
         if video_items:
             self._matcher.set_items_direct(video_items, cameras_with_pose)
             self._video_checkbox.setVisible(not is_local)
-            self._download_row.setVisible(not is_local)
+            self._download_row.setVisible(not is_local and self._video_checkbox.isChecked())
+            self._stream_note.setVisible(not is_local and not self._video_checkbox.isChecked())
             self._video_group.show()
         elif video_info:
             self._matcher.set_items_direct(list(video_info.keys()), cameras_with_pose)
             self._video_checkbox.setVisible(not is_local)
-            self._download_row.setVisible(not is_local)
+            self._download_row.setVisible(not is_local and self._video_checkbox.isChecked())
+            self._stream_note.setVisible(not is_local and not self._video_checkbox.isChecked())
             self._video_group.show()
 
         # Pose
@@ -855,6 +871,12 @@ class _NWBTimelinePage(QWidget):
                 np.array(start_times, dtype=np.float64),
                 dims=["cameras"], coords={"cameras": camera_names},
             )
+            fps_values = [video_info[c].get("fps", 0.0) for c in camera_names]
+            if any(f > 0 for f in fps_values):
+                session_vars["video_fps"] = xr.DataArray(
+                    np.array(fps_values, dtype=np.float64),
+                    dims=["cameras"], coords={"cameras": camera_names},
+                )
 
         if cameras_with_pose:
             pose_starts = []
@@ -967,7 +989,7 @@ class NWBImportDialog(QDialog):
         if page == 0:
             err = self._page_source.validate()
             if err:
-                QMessageBox.warning(self, "Input error", err)
+                notify_dialog(err, "warning", "Input error", self)
                 return
             self._connect_to_nwb()
         elif page == 1:
@@ -977,7 +999,7 @@ class NWBImportDialog(QDialog):
         elif page == 2:
             err = self._page_trials.validate()
             if err:
-                QMessageBox.warning(self, "Input error", err)
+                notify_dialog(err, "warning", "Input error", self)
                 return
             self._populate_timeline_page()
             self._stack.setCurrentIndex(3)
@@ -985,7 +1007,7 @@ class NWBImportDialog(QDialog):
         elif page == 3:
             err = self._page_timeline.validate()
             if err:
-                QMessageBox.warning(self, "Input error", err)
+                notify_dialog(err, "warning", "Input error", self)
                 return
             self._load_all()
 
@@ -1036,12 +1058,9 @@ class NWBImportDialog(QDialog):
                 dandiset = client.get_dandiset(dandiset_id, "draft")
                 session_assets = [asset for asset in dandiset.get_assets() if session_eid in asset.path]
 
-                print(
-                    f"\n{'=' * 60}\n"
-                    f"  DANDI session assets for {session_eid}\n"
-                    f"  Found {len(session_assets)} file(s) in dandiset {dandiset_id}\n"
-                    f"{'=' * 60}",
-                    flush=True,
+                logger.info(
+                    "\n%s\n  DANDI session assets for %s\n  Found %d file(s) in dandiset %s\n%s",
+                    "=" * 60, session_eid, len(session_assets), dandiset_id, "=" * 60,
                 )
                 for asset in session_assets:
                     neurosift_url = (
@@ -1049,12 +1068,11 @@ class NWBImportDialog(QDialog):
                         f"/api/assets/{asset.identifier}/download/"
                         f"&dandisetId={dandiset_id}&dandisetVersion=draft"
                     )
-                    print(f"  {asset.path}", flush=True)
-                    print(f"    {neurosift_url}", flush=True)
-                print(
-                    f"\nBrowse all data on Neurosift:\n"
-                    f"  https://neurosift.app/?dandisetId={dandiset_id}&dandisetVersion=draft\n",
-                    flush=True,
+                    logger.info("  %s", asset.path)
+                    logger.info("    %s", neurosift_url)
+                logger.info(
+                    "\nBrowse all data on Neurosift:\n  https://neurosift.app/?dandisetId=%s&dandisetVersion=draft\n",
+                    dandiset_id,
                 )
 
                 raw_asset = next((asset for asset in session_assets if "desc-raw" in asset.path), None)
@@ -1118,8 +1136,7 @@ class NWBImportDialog(QDialog):
         if progress.was_cancelled or error:
             if error:
                 msg = _network_error_message(error) or f"Failed to open NWB:\n{error}"
-                print(f"[ERROR] {msg}", flush=True)
-                QMessageBox.critical(self, "Error", msg)
+                notify_dialog(msg, "error", "Error", self)
             return
 
         (
@@ -1140,15 +1157,16 @@ class NWBImportDialog(QDialog):
         if self._video_info:
             self._page_video_pose.populate_videos(self._video_info)
 
+        nc_name = self._default_nc_filename()
         if source["type"] == "dandi":
             default_dir = self._default_download_dir(source)
             if self._video_info:
                 self._page_video_pose.download_dir_edit.setText(str(default_dir))
-            default_nc = default_dir / "trials.nc"
+            default_nc = default_dir / nc_name
             self._page_timeline.output_edit.setText(str(default_nc))
         else:
             nwb_dir = Path(source["path"]).parent
-            default_nc = nwb_dir / "trials.nc"
+            default_nc = nwb_dir / nc_name
             self._page_timeline.output_edit.setText(str(default_nc))
 
         self._stack.setCurrentIndex(1)
@@ -1191,7 +1209,11 @@ class NWBImportDialog(QDialog):
             if not download_dir:
                 reply = QMessageBox.question(
                     self, "No download folder",
-                    "No video download folder selected. Continue without downloading videos?",
+                    "No download folder selected. Videos will be streamed from DANDI.\n\n"
+                    "Streaming works for playback, but seeking and jumping between "
+                    "frames may be slow for long recordings or files without trials.\n\n"
+                    "Recommendation: Download the video files locally for fast navigation.\n\n"
+                    "Continue with streaming?",
                     QMessageBox.Yes | QMessageBox.No,
                 )
                 if reply == QMessageBox.No:
@@ -1221,18 +1243,18 @@ class NWBImportDialog(QDialog):
             self._set_ephys_attrs(dt, ephys_series, source_info)
             self._set_raw_asset_attr(dt, source_info)
             label_dt = NWBLabelConverter().from_nwb(self._nwb, trials_df) if label_source else dt.get_label_dt(empty=True)
+            dt = dt.overwrite_with_labels(label_dt)
             self._set_video_files(dt, matching, output_dir, include_pose)
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             dt.to_netcdf(output_path)
             return dt, label_dt
 
-        progress = BusyProgressDialog("Loading NWB data. This may take a few minutes.", parent=self)
+        progress = BusyProgressDialog("Downloading NWB data. This may take a few minutes.", parent=self)
         (result, error) = progress.execute(_build)
 
         if progress.was_cancelled or error:
             if error:
-                print(f"[ERROR] Failed to load NWB data: {error}", flush=True)
-                QMessageBox.critical(self, "Error", f"Failed to load data:\n{error}")
+                notify_dialog(f"Failed to load data:\n{error}", "error", "Error", self)
             return
 
         self._output_path = output_path
@@ -1248,7 +1270,7 @@ class NWBImportDialog(QDialog):
         if output_dir:
             msg += f"\n\nVideos saved to:\n{output_dir}"
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(output_dir)))
-        QMessageBox.information(self, "Success", msg)
+        notify_dialog(msg, "info", "Success", self)
         self.accept()
 
     # ------------------------------------------------------------------
@@ -1317,12 +1339,12 @@ class NWBImportDialog(QDialog):
         stored = [(dl, f) for dl, f in zip(device_labels, camera_files) if f]
         missing = [dl for dl, f in zip(device_labels, camera_files) if not f]
         if missing:
-            print(f"[WARNING] No video path/URL found for cameras: {missing}", flush=True)
+            logger.warning("No video path/URL found for cameras: %s", missing)
         if not any(camera_files):
             return
 
         for dl, f in stored:
-            print(f"  video '{dl}' -> {f[:80]}{'...' if len(f) > 80 else ''}", flush=True)
+            logger.info("  video '%s' -> %s", dl, f[:80] + ("..." if len(f) > 80 else ""))
 
         camera_start_times = [
             self._video_info.get(vk, {}).get("start", 0.0)
@@ -1334,6 +1356,10 @@ class NWBImportDialog(QDialog):
             start_times=camera_start_times if has_start_times else None,
         )
 
+        fps_values = [self._video_info.get(vk, {}).get("fps", 0.0) for vk in video_keys]
+        if any(f > 0 for f in fps_values):
+            dt.set_video_fps(fps_values, device_labels=device_labels)
+
     # ------------------------------------------------------------------
     # Video download
     # ------------------------------------------------------------------
@@ -1341,6 +1367,11 @@ class NWBImportDialog(QDialog):
     @staticmethod
     def _sanitize_path_component(s: str) -> str:
         return re.sub(r'[<>:"/\\|?*\s]+', "_", s).strip("_") or "unknown"
+
+    @staticmethod
+    def _default_nc_filename() -> str:
+        stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        return f"trials_{stamp}.nc"
 
     def _default_download_dir(self, source: dict) -> Path:
         lab = getattr(self._nwb, "lab", "") or "unknown_lab"
@@ -1378,8 +1409,7 @@ class NWBImportDialog(QDialog):
 
         if progress.was_cancelled or error:
             if error:
-                print(f"[ERROR] Download failed: {error}", flush=True)
-                QMessageBox.critical(self, "Error", f"Download failed:\n{error}")
+                notify_dialog(f"Download failed:\n{error}", "error", "Error", self)
             return None
 
         return output_dir

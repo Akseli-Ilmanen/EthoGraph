@@ -8,14 +8,27 @@ import pandas as pd
 import xarray as xr
 import ethograph as eto
 from ethograph.io.validation import extract_type_vars, validate_datatree
-from movement.io import load_poses, save_poses
-from movement.io import load
+from movement.io import load, load_poses, save_poses
 from movement.kinematics import compute_acceleration, compute_pairwise_distances, compute_speed, compute_velocity
 
+from ethograph.gui.notify import notify_dialog
+from ethograph.io.trialtree import TrialTree
 
 
-def _show_popup(message: str, title: str = "Load Error") -> None:
-    print(f"[{title}] {message}", flush=True)
+def _migrate_video_fps_to_session(dt: TrialTree) -> None:
+    """Populate session ``video_fps`` from ``ds.attrs["fps"]`` for old files."""
+    sess = dt.session
+    if sess is not None and "video_fps" in sess:
+        return
+    fps = dt.itrial(0).attrs.get("fps")
+    if fps is None:
+        return
+    cameras = dt.cameras
+    if cameras:
+        dt.set_video_fps(float(fps), device_labels=cameras)
+    else:
+        dt.set_video_fps(float(fps))
+
 
 def load_dataset(
     file_path: str,
@@ -40,9 +53,11 @@ def load_dataset(
     """
 
     dt = eto.open(file_path)
+
+    _migrate_video_fps_to_session(dt)
+
     label_dt = dt.get_label_dt()
     type_vars_dict = extract_type_vars(dt.itrial(0), dt)
-
 
     errors = validate_datatree(
         dt, require_fps=require_fps,
@@ -51,7 +66,7 @@ def load_dataset(
         error_msg = "\n".join(f"• {e}" for e in errors)
         suffix_msg = "\n\nSee documentation: XXX"
         msg = "Validation failed:\n" + error_msg + suffix_msg
-        _show_popup(msg, title="Validation Error")
+        notify_dialog(msg, "error", "Validation Error")
         raise ValueError(msg)
 
     return dt, label_dt, type_vars_dict
@@ -85,6 +100,11 @@ def _wizard_single_media_helper(
     )
 
     dt["session"] = xr.DataTree(session)
+
+    fps = dt.itrial(0).attrs.get("fps")
+    if fps is not None and "cameras" in coords:
+        dt.set_video_fps(float(fps), device_labels=coords["cameras"])
+
     return dt
 
    
@@ -113,7 +133,7 @@ def wizard_single_from_pose(
             source_software=source_software,
         )
     except (OSError, ValueError, KeyError):
-        _show_popup(f"Failed to load pose data from {pose_path}. Please check the file and try again.", title="Pose Load Error")
+        notify_dialog(f"Failed to load pose data from {pose_path}. Please check the file and try again.", "error", "Pose Load Error")
         raise
 
 

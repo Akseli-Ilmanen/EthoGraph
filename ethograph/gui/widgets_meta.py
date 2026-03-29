@@ -1,5 +1,7 @@
 """Widget container for other collapsible widgets."""
 
+import logging
+
 from napari.viewer import Viewer
 from qt_niu.collapsible_widget import CollapsibleWidgetContainer
 from qtpy.QtCore import Qt, QTimer
@@ -22,6 +24,7 @@ from .app_constants import (
 )
 from .app_state import ObservableAppState
 from .makepretty import LayoutManager, apply_compact_widget_style, normalize_child_layouts
+from .notify import set_filter_warnings
 from .shortcuts import bind_global_shortcuts
 from .plots_container import UnifiedPanelContainer
 from .widgets_changepoints import ChangepointsWidget
@@ -33,6 +36,7 @@ from .widgets_plot_settings import PlotSettingsWidget
 from .widgets_transform import TransformWidget
 from .widgets_ephys import EphysWidget
 
+logger = logging.getLogger(__name__)
 
 
 class MetaWidget(CollapsibleWidgetContainer):
@@ -49,9 +53,10 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         # Create centralized app_state with YAML persistence
         yaml_path = gui_default_settings_path()
-        print(f"Settings file: {yaml_path}")
+        logger.info("Settings file: %s", yaml_path)
 
         self.app_state = ObservableAppState(yaml_path=str(yaml_path))
+        set_filter_warnings(self.app_state.get_with_default("filter_warnings"))
 
         # Try to load previous settings
         self.app_state.load_from_yaml()
@@ -378,7 +383,7 @@ class MetaWidget(CollapsibleWidgetContainer):
                     self.app_state.save_labels()
                     # If save was successful, changes_saved will be True now
                     return True  # OK to close
-                except Exception as e:
+                except (OSError, PermissionError) as e:
                     error_msg = QMessageBox()
                     error_msg.setWindowTitle("Save Error")
                     error_msg.setText(f"Failed to save changes: {str(e)}")
@@ -442,7 +447,7 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         except (AttributeError, KeyError, TypeError) as e:
             # Silently handle any issues with notification configuration
-            print(f"Notification configuration warning: {e}")
+            logger.warning("Notification configuration warning: %s", e)
 
     def configure_layout_for_data(self):
         """Configure panel visibility and napari canvas after data load.

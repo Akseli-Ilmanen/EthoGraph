@@ -1,11 +1,11 @@
 """Widget for labeling segments in movement data."""
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-from napari.utils.notifications import show_info, show_warning
 from napari.viewer import Viewer
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QColor
@@ -30,6 +30,7 @@ from qtpy.QtWidgets import (
 )
 
 import ethograph as eto
+from ethograph.gui.notify import notify
 from ethograph.features.changepoints import snap_to_nearest_changepoint_time
 from ethograph.labels.core import load_label_mapping
 from ethograph.labels.intervals import (
@@ -41,6 +42,8 @@ from ethograph.labels.intervals import (
 )
 from ethograph.utils.paths import find_mapping_file
 
+
+logger = logging.getLogger(__name__)
 
 from .app_constants import (
     LABELS_TABLE_MAX_HEIGHT,
@@ -397,9 +400,9 @@ class LabelsWidget(QWidget):
             self.refresh_labels_shapes_layer()
             if self.data_widget:
                 self.data_widget.update_main_plot(preserve_x_range=True)
-            show_info(f"Loaded {len(self._mappings) - 1} labels from {Path(mapping_path).name}")
+            notify(f"Loaded {len(self._mappings) - 1} labels from {Path(mapping_path).name}")
         except FileNotFoundError:
-            show_warning(f"Mapping file not found: {mapping_path}")
+            notify(f"Mapping file not found: {mapping_path}", "warning")
 
     def _create_temporary_labels(self):
         """Open dialog to create temporary labels for this session."""
@@ -424,7 +427,7 @@ class LabelsWidget(QWidget):
                 self.refresh_labels_shapes_layer()
                 if self.data_widget:
                     self.data_widget.update_main_plot(preserve_x_range=True)
-                show_info(f"Loaded {len(labels)} temporary labels")
+                notify(f"Loaded {len(labels)} temporary labels")
 
     def _human_verification_true(self, mode=None):
         """Mark current trial as human verified."""
@@ -472,9 +475,6 @@ class LabelsWidget(QWidget):
     def _import_predictions_from_file(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select prediction .nc file", "", "NetCDF files (*.nc);;All Files (*)")
         if file_path:
-            if 'predictions' not in os.path.basename(file_path):
-                show_warning("Filename must include 'predictions' .")
-                return
             self.app_state.pred_dt = eto.open(file_path)
             self.app_state.pred_ds = self.app_state.pred_dt.trial(self.app_state.trials_sel)
             self.io_widget.pred_show_predictions.setEnabled(True)
@@ -608,7 +608,7 @@ class LabelsWidget(QWidget):
                 self._check_labels_click(t_clicked, individual)
 
         except (KeyError, IndexError, ValueError, AttributeError) as e:
-            print(f"Error in plot click handling: {e}")
+            logger.error("Error in plot click handling: %s", e)
             return
 
         # Without video, any click (not in label mode) jumps the time marker
@@ -765,7 +765,7 @@ class LabelsWidget(QWidget):
     def _edit_label(self):
         """Enter edit mode for adjusting interval boundaries."""
         if self.current_labels_pos is None:
-            print("No label selected. Click on a label first to select it.")
+            logger.warning("No label selected. Click on a label first to select it.")
             return
 
         self.old_labels_pos = self.current_labels_pos
@@ -777,7 +777,7 @@ class LabelsWidget(QWidget):
 
     def _play_segment(self):
         if self.current_labels_pos is None:
-            print("No label selected for playback")
+            logger.warning("No label selected for playback")
             return
 
         df = self.app_state.label_intervals
@@ -811,7 +811,7 @@ class LabelsWidget(QWidget):
             else:
                 height, width = LABELS_OVERLAY_FALLBACK_SIZE
         except (IndexError, AttributeError):
-            print("No video layer found for label shapes overlay.")
+            logger.warning("No video layer found for label shapes overlay.")
             return None
 
         box_width, box_height = LABELS_OVERLAY_BOX_WIDTH, LABELS_OVERLAY_BOX_HEIGHT

@@ -6,6 +6,7 @@ Dock in napari:  viewer.window.add_dock_widget(MediaDiscoveryWidget(viewer))
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +34,8 @@ from ethograph.io.validation import (
     AUDIO_EXTENSIONS,
     POSE_EXTENSIONS,
 )
+
+logger = logging.getLogger(__name__)
 
 BG = "#1a1d21"
 BG_PANEL = "#22262c"
@@ -981,7 +984,7 @@ def main():
     app = QApplication.instance() or QApplication(sys.argv)
     root = Path(tempfile.mkdtemp(prefix="media_demo_"))
     create_demo_files(root)
-    print(f"Demo files: {root}")
+    logger.info("Demo files: %s", root)
 
     w = MediaDiscoveryWidget()
     w.resize(640, 860)

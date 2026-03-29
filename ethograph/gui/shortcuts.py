@@ -1,8 +1,12 @@
 """Global keyboard shortcut bindings for the ethograph GUI."""
 
+import logging
+
 import numpy as np
 from napari.layers import Image, Labels, Points, Shapes, Surface, Tracks
 from qtpy.QtWidgets import QMenu
+
+logger = logging.getLogger(__name__)
 
 
 def override_napari_shortcuts(viewer):
@@ -27,7 +31,7 @@ def override_napari_shortcuts(viewer):
                 if hasattr(layer_type, 'bind_key'):
                     layer_type.bind_key(key, None)
             except (KeyError, ValueError, AttributeError) as e:
-                print(f"Could not unbind {key} from {layer_type.__name__}: {e}")
+                logger.warning("Could not unbind %s from %s: %s", key, layer_type.__name__, e)
 
     for key in all_keys:
         if hasattr(viewer, "keymap") and key in viewer.keymap:
@@ -224,7 +228,10 @@ def bind_global_shortcuts(meta_widget):
 
     @viewer.bind_key("ctrl+c", overwrite=True)
     def cycle_cameras(v):
-        app_state.cycle_key_sel("cameras", data_widget)
+        combo = getattr(data_widget, 'primary_camera_combo', None)
+        if combo is not None and combo.count() > 1:
+            next_index = (combo.currentIndex() + 1) % combo.count()
+            combo.setCurrentIndex(next_index)
 
     @viewer.bind_key("ctrl+m", overwrite=True)
     def toggle_mics(v):

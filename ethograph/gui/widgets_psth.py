@@ -20,7 +20,10 @@ NavigationWidget uses) — no logic is duplicated.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 import pynapple as nap
@@ -35,13 +38,14 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QRadioButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
 )
+
+from ethograph.gui.notify import notify_dialog
 
 from .plots_psth import PSTHPlot, sort_trials
 
@@ -450,7 +454,7 @@ class PSTHDialog(QDialog):
                 ds = self.app_state.dt.trial(trial_id)
                 val = ds.attrs.get(key)
                 group[trial_i] = val_to_idx.get(val, 0)
-            except Exception:
+            except (KeyError, AttributeError):
                 group[trial_i] = 0
 
         return group, [str(v) for v in all_vals]
@@ -522,7 +526,7 @@ class PSTHDialog(QDialog):
             if stop is not None:
                 return stop
         else:
-            print("fdas")
+            return None
 
 
     def _get_label_local_t(self, trial_id: str, label_id: int, use_offset: bool) -> float | None:
@@ -603,11 +607,10 @@ class PSTHDialog(QDialog):
 
             if not ref_times_abs:
                 label_name = self._align_combo.currentText()
-                print(f"[WARNING] Label '{label_name}' has no occurrences in any trial. Falling back to Trial start alignment.", flush=True)
-                QMessageBox.warning(
-                    self, "No events found",
+                notify_dialog(
                     f"Label '{label_name}' has no occurrences in any trial.\n"
                     "Falling back to Trial start alignment.",
+                    "warning", "No events found", self,
                 )
                 self._align_combo.blockSignals(True)
                 self._align_combo.setCurrentIndex(0)  # "Trial start"

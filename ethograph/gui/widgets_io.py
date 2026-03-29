@@ -1,7 +1,7 @@
 """Widget for input/output controls and data loading."""
 
+import logging
 import os
-import traceback
 from pathlib import Path
 
 import numpy as np
@@ -16,7 +16,6 @@ from qtpy.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -28,9 +27,12 @@ from ethograph.utils.paths import find_mapping_file, gui_default_settings_path
 from ethograph.io.validation import EPHYS_FILE_FILTER
 
 from .app_state import AppStateSpec
+from .notify import notify_dialog
 from .wizard_overview import NCWizardDialog
 from .makepretty import ElidedDelegate, clean_display_labels
 from .dialog_select_template import TemplateDialog
+
+logger = logging.getLogger(__name__)
 
 
 class IOWidget(QWidget):
@@ -379,14 +381,13 @@ class IOWidget(QWidget):
             name_to_id, new_mapping_path, warning = resolve_crowsetta_mapping(
                 file_path, format_name, mapping_path, configs_dir,
             )
-        except Exception as e:
-            traceback.print_exc()
-            QMessageBox.critical(self, "Mapping error", str(e))
+        except (OSError, ValueError, KeyError) as e:
+            logger.exception("Crowsetta mapping resolution failed")
+            notify_dialog(str(e), "error", "Mapping error", self)
             return
 
         if warning:
-            print(f"[WARNING] Mapping warning: {warning}", flush=True)
-            QMessageBox.warning(self, "Mapping warning", warning)
+            notify_dialog(warning, "warning", "Mapping warning", self)
 
         if new_mapping_path:
             self.mapping_file_path_edit.setText(new_mapping_path)
@@ -402,13 +403,13 @@ class IOWidget(QWidget):
             intervals_df = crowsetta_to_intervals(
                 file_path, format_name, name_to_id, individual,
             )
-        except Exception as e:
-            traceback.print_exc()
-            QMessageBox.critical(self, "Import error", f"Failed to parse {format_name} file:\n{e}")
+        except (OSError, ValueError, KeyError) as e:
+            logger.exception("Failed to parse %s file", format_name)
+            notify_dialog(f"Failed to parse {format_name} file:\n{e}", "error", "Import error", self)
             return
 
         if intervals_df.empty:
-            QMessageBox.information(self, "No labels", "No non-background labels found in file.")
+            notify_dialog("No non-background labels found in file.", "info", "No labels", self)
             return
 
         self.app_state.label_intervals = intervals_df
@@ -462,7 +463,7 @@ class IOWidget(QWidget):
             return
         self.video_folder_edit.setText(str(video_folder))
         self.app_state.video_folder = str(video_folder)
-        print(f"[NWB] Auto-set video folder: {video_folder}")
+        logger.info("NWB auto-set video folder: %s", video_folder)
 
     def _apply_nwb_epoch_mapping(self):
         """If NWB epochs were imported, write mapping file and load into labels widget."""
@@ -483,7 +484,7 @@ class IOWidget(QWidget):
             self.labels_widget._reload_mapping(str(mapping_path))
 
         n_labels = len(epoch_mapping) - 1  # exclude background
-        print(f"[NWB] Auto-created mapping with {n_labels} epoch labels: {mapping_path}")
+        logger.info("NWB auto-created mapping with %d epoch labels: %s", n_labels, mapping_path)
 
     def _ensure_crowsetta_formats(self):
         """Add crowsetta formats to labels combo if not already present."""
@@ -693,7 +694,7 @@ class IOWidget(QWidget):
                 self.app_state.ephys_source_map[display_name] = (filepath, "0", 0)
                 feature_names.append(display_name)
         except (OSError, IOError, ValueError) as e:
-            print(f"Skipping ephys file {Path(filepath).name}: {e}")
+            logger.error("Skipping ephys file %s: %s", Path(filepath).name, e)
 
         return feature_names
 

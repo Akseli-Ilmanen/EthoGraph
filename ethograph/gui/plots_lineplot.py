@@ -1,11 +1,14 @@
 """Enhanced line plot inheriting from BasePlot."""
 
+import logging
 from typing import Optional
 
 import numpy as np
 import pyqtgraph as pg
 import matplotlib.pyplot as plt
 from .app_constants import LINEPLOT_DEBOUNCE_MS
+
+logger = logging.getLogger(__name__)
 
 import ethograph as eto
 
@@ -410,7 +413,7 @@ def plot_ds_variable(plot_item, ds, ds_kwargs, variable, color_variable=None, sh
             show_changepoints=show_changepoints
         )
     else:
-        print(f"Variable '{variable}' not supported for plotting.")
+        logger.warning("Variable '%s' not supported for plotting", variable)
     
     # Add boundary events as vertical lines
     if hasattr(ds, "boundary_events"):

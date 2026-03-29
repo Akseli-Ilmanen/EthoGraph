@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import traceback
+import io
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -18,7 +19,6 @@ from qtpy.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -28,8 +28,11 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ethograph.gui.notify import notify_dialog
 from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
+
+logger = logging.getLogger(__name__)
 
 
 def _build_modality_df(
@@ -422,31 +425,29 @@ class TrialsPage(QWidget):
         try:
             df = pd.read_csv(path, sep=sep)
             self._imported_df = df
-            self._imported_path = path  # Store path for code generation
+            self._imported_path = path
             self._update_import_table()
             self._refresh_table()
-        except Exception as e:
-            traceback.print_exc()
-            QMessageBox.critical(self, "Import error", f"Failed to read file:\n{e}")
+        except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError) as e:
+            logger.exception("Failed to read file")
+            notify_dialog(f"Failed to read file:\n{e}", "error", "Import error", self)
 
     def _paste_from_clipboard(self):
         clipboard = QApplication.clipboard()
         text = clipboard.text()
         if not text.strip():
             return
-        import io
-        # Auto-detect separator: tab or comma
         first_line = text.strip().split("\n")[0]
         sep = "\t" if "\t" in first_line else ","
         try:
             df = pd.read_csv(io.StringIO(text), sep=sep)
             self._imported_df = df
-            self._imported_path = None  # Pasted data has no file path
+            self._imported_path = None
             self._update_import_table()
             self._refresh_table()
-        except Exception as e:
-            traceback.print_exc()
-            QMessageBox.critical(self, "Paste error", f"Failed to parse clipboard:\n{e}")
+        except (pd.errors.ParserError, pd.errors.EmptyDataError) as e:
+            logger.exception("Failed to parse clipboard")
+            notify_dialog(f"Failed to parse clipboard:\n{e}", "error", "Paste error", self)
 
     def _clear_imported(self):
         self._imported_df = None

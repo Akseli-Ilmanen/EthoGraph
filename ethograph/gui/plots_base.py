@@ -1,10 +1,13 @@
 """Shared base class for plot widgets with sync and marker functionality."""
 
+import logging
 from typing import Optional, Tuple
 
 import numpy as np
 import pyqtgraph as pg
 from qtpy.QtCore import QTimer, QRunnable, QThreadPool, QObject, Signal, Qt
+
+logger = logging.getLogger(__name__)
 
 
 from .app_constants import (
@@ -207,7 +210,7 @@ class BasePlot(pg.PlotWidget):
 
         Subclasses should override this method.
         """
-        print(f"[plots_base] update_plot_content called in {self.__class__.__name__} (id={id(self)}) t0={t0}, t1={t1}")
+        logger.debug("update_plot_content called in %s (id=%s) t0=%s, t1=%s", self.__class__.__name__, id(self), t0, t1)
         raise NotImplementedError("Subclasses must implement update_plot_content")
 
     def apply_y_range(self, ymin: Optional[float], ymax: Optional[float]):

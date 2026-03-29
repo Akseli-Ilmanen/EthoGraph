@@ -5,13 +5,13 @@ from pathlib import Path
 
 from napari._qt.qt_viewer import QtViewer
 from napari.components.viewer_model import ViewerModel
-from napari.utils.notifications import show_warning
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
 import numpy as np
 from napari_pyav._reader import FastVideoReader
 
+from .notify import notify
 from .video_sync import NapariVideoSync
 
 MAX_EXTRA_CAMERAS = 4
@@ -112,7 +112,11 @@ class ExtraCameraWidget(QWidget):
                     pass
 
         if video_data is not None:
-            self._video_layer = self._viewer_model.add_image(video_data, name="video", rgb=True)
+            try:
+                self._video_layer = self._viewer_model.add_image(video_data, name="video", rgb=True)
+            except StopIteration:
+                notify("Video file could not be loaded (frame read failed).", "warning")
+                return
             self._hide_dims_slider()
             self.seek_to_frame(0)
 
@@ -189,12 +193,11 @@ class VideoManager:
     def update_video(self, plot_container, transform_widget):
         if not self.app_state.ready:
             return
-        camera_sel = getattr(self.app_state, 'cameras_sel', None)
+        camera = self.app_state.primary_camera
         video_file = None
-        if camera_sel:
+        if camera:
             dt = self.app_state.dt
-
-            video_file = dt.get_media(self.app_state.trials_sel, "video", device=camera_sel)
+            video_file = dt.get_media(self.app_state.trials_sel, "video", device=camera)
         if video_file and is_url(video_file):
             self.app_state.video_path = video_file
         elif video_file and self.app_state.video_folder:
@@ -242,9 +245,10 @@ class VideoManager:
         ext = Path(video_path).suffix.lower()
         if ext in ('.avi', '.mov') and not self._video_format_warned:
             self._video_format_warned = True
-            show_warning(
+            notify(
                 f"Video format '{ext}' may have inaccurate frame seeking. "
-                f"See https://ethograph.readthedocs.io/en/latest/troubleshooting/"
+                f"See https://ethograph.readthedocs.io/en/latest/troubleshooting/",
+                "warning",
             )
 
     def _cleanup_primary_video(self):
@@ -273,6 +277,25 @@ class VideoManager:
         )
         _ = reader.shape
 
+        detected_fps = float(reader.stream.guessed_rate) if reader.stream.guessed_rate else None
+        if detected_fps is not None:
+            dt = getattr(self.app_state, 'dt', None)
+            camera = self.app_state.primary_camera
+            if dt is not None:
+                cameras = dt.cameras
+                if cameras:
+                    existing_fps = dt.get_video_fps(camera)
+                    if existing_fps is None:
+                        dt.set_video_fps(detected_fps, device_labels=cameras)
+                    elif camera:
+                        sess = dt.session
+                        if sess is not None and "video_fps" in sess:
+                            da = sess["video_fps"]
+                            if "cameras" in da.dims:
+                                da.loc[{"cameras": camera}] = detected_fps
+                else:
+                    dt.set_video_fps(detected_fps)
+
         alignment = getattr(self.app_state, 'trial_alignment', None)
         video_time_offset = alignment.video_offset if alignment else 0.0
 
@@ -280,7 +303,7 @@ class VideoManager:
         # only shows frames belonging to the current trial.
         video_data = reader
         if alignment and alignment.trial_range and video_time_offset != 0.0:
-            fps = float(reader.stream.guessed_rate) if reader.stream.guessed_rate else 30.0
+            fps = self.app_state.video_fps
             trial_start_in_video = -video_time_offset
             start_frame = int(trial_start_in_video * fps)
             end_frame = int((trial_start_in_video + alignment.trial_range.duration) * fps)
@@ -294,7 +317,11 @@ class VideoManager:
         else:
             restore_frame = 0
 
-        video_layer = self.viewer.add_image(video_data, name="video", rgb=True)
+        try:
+            video_layer = self.viewer.add_image(video_data, name="video", rgb=True)
+        except StopIteration:
+            notify("Video file could not be loaded (frame read failed).", "warning")
+            return
         video_index = self.viewer.layers.index(video_layer)
         self.viewer.layers.move(video_index, 0)
 
@@ -310,7 +337,7 @@ class VideoManager:
             self.app_state.video = sync
             self.app_state.num_frames = sync.total_frames
         except (OSError, ValueError) as e:
-            show_warning(f"Failed to initialize video sync: {e}")
+            notify(f"Failed to initialize video sync: {e}", "warning")
             return
 
         sync.frame_changed.connect(self._on_primary_frame_changed)
@@ -342,12 +369,14 @@ class VideoManager:
             return
 
         if len(self._extra_widgets) >= MAX_EXTRA_CAMERAS:
-            show_warning(f"Maximum {MAX_EXTRA_CAMERAS} extra cameras supported.")
+            notify(f"Maximum {MAX_EXTRA_CAMERAS} extra cameras supported.", "warning")
             return
 
         video_data = FastVideoReader(video_path, read_format='rgb24')
         _ = video_data.shape
-        self._extra_fps[camera_name] = float(video_data.stream.guessed_rate)
+        detected_fps = float(video_data.stream.guessed_rate)
+        self._extra_fps[camera_name] = detected_fps
+        self._store_camera_fps_in_session(camera_name, detected_fps)
 
         widget = ExtraCameraWidget()
         widget.set_video(video_data)
@@ -360,7 +389,9 @@ class VideoManager:
     def _update_existing_camera(self, camera_name: str, video_path: str):
         video_data = FastVideoReader(video_path, read_format='rgb24')
         _ = video_data.shape
-        self._extra_fps[camera_name] = float(video_data.stream.guessed_rate)
+        detected_fps = float(video_data.stream.guessed_rate)
+        self._extra_fps[camera_name] = detected_fps
+        self._store_camera_fps_in_session(camera_name, detected_fps)
         widget = self._extra_widgets[camera_name]
         widget.set_video(video_data)
         widget.show()
@@ -468,13 +499,24 @@ class VideoManager:
             return
 
         primary_fps = self.app_state.video_fps
+        dt = getattr(self.app_state, 'dt', None)
         frame = self.viewer.dims.current_step[0]
         for camera_name, widget in self._extra_widgets.items():
-            fps = self._extra_fps.get(camera_name, primary_fps)
+            fps = (dt.get_video_fps(camera_name) if dt else None) or self._extra_fps.get(camera_name, primary_fps)
             if abs(fps - primary_fps) < 0.01:
                 widget.seek_to_frame(frame)
             else:
                 widget.seek_to_frame(int(frame / primary_fps * fps))
+
+    def _store_camera_fps_in_session(self, camera_name: str, fps: float):
+        dt = getattr(self.app_state, 'dt', None)
+        if dt is None:
+            return
+        sess = dt.session
+        if sess is not None and "video_fps" in sess:
+            da = sess["video_fps"]
+            if "cameras" in da.dims and camera_name in da.coords["cameras"].values:
+                da.loc[{"cameras": camera_name}] = fps
 
     def cleanup(self):
         if getattr(self.app_state, 'video', None):

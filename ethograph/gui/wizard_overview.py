@@ -19,7 +19,6 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QRadioButton,
     QStackedWidget,
@@ -28,6 +27,7 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.gui.makepretty import styled_link
+from ethograph.gui.notify import notify_dialog
 
 if TYPE_CHECKING:
     from ethograph.gui.wizard_media_files import FilePattern
@@ -159,7 +159,7 @@ class _ModeSelectionPage(QWidget):
         nwb_box = QGroupBox("NWB file")
         nb_lay = QVBoxLayout(nwb_box)
         self._rb_nwb_local = QRadioButton("1) Local .nwb file")
-        self._rb_nwb_dandi = QRadioButton("2) DANDI archive (streaming)")
+        self._rb_nwb_dandi = QRadioButton("2) DANDI archive (downloading individual trials/ streaming)")
         self._top_group.addButton(self._rb_nwb_local)
         self._top_group.addButton(self._rb_nwb_dandi)
         nb_lay.addWidget(self._rb_nwb_local)
@@ -385,7 +385,7 @@ class NCWizardDialog(QDialog):
         elif page == 1:
             err = self._page_modality.validate()
             if err:
-                QMessageBox.warning(self, "Input error", err)
+                notify_dialog(err, "warning", "Input error", self)
                 return
             self._page_modality.collect_state(self._state)
             self._ensure_config_page()
@@ -394,7 +394,7 @@ class NCWizardDialog(QDialog):
         elif page == 2:
             err = self._page_config.validate(self._state)
             if err:
-                QMessageBox.warning(self, "Input error", err)
+                notify_dialog(err, "warning", "Input error", self)
                 return
             self._page_config.collect_state(self._state)
             self._ensure_trials_page()
@@ -404,7 +404,7 @@ class NCWizardDialog(QDialog):
         elif page == 3:
             err = self._page_trials.validate(self._state)
             if err:
-                QMessageBox.warning(self, "Input error", err)
+                notify_dialog(err, "warning", "Input error", self)
                 return
             self._page_trials.collect_state(self._state)
             self._ensure_timeline_page()
@@ -412,8 +412,7 @@ class NCWizardDialog(QDialog):
             progress = BusyProgressDialog("Scanning files…", parent=self)
             _, err = progress.execute(self._page_timeline.populate_from_state, self._state)
             if err:
-                print(f"[ERROR] Failed to scan files: {err}", flush=True)
-                QMessageBox.critical(self, "Error", f"Failed to scan files:\n{err}")
+                notify_dialog(f"Failed to scan files:\n{err}", "error", "Error", self)
                 return
             self._stack.setCurrentIndex(4)
             self._update_nav()
@@ -511,7 +510,7 @@ class NCWizardDialog(QDialog):
 
         output_path = self._state.output_path
         if not output_path:
-            QMessageBox.warning(self, "Missing output", "Please select an output path.")
+            notify_dialog("Please select an output path.", "warning", "Missing output", self)
             return
 
         def _build():
@@ -522,19 +521,17 @@ class NCWizardDialog(QDialog):
 
         if progress.was_cancelled or error:
             if error:
-                print(f"[ERROR] Failed to build TrialTree: {error}", flush=True)
-                QMessageBox.critical(self, "Error", f"Failed to ➕Create with own data:\n{error}")
+                notify_dialog(f"Failed to ➕Create with own data:\n{error}", "error", "Error", self)
             return
 
         save_progress = BusyProgressDialog("Saving .nc file…", parent=self)
         _, save_error = save_progress.execute(dt.to_netcdf, output_path)
         if save_error:
-            print(f"[ERROR] Failed to save: {save_error}", flush=True)
-            QMessageBox.critical(self, "Error", f"Failed to save:\n{save_error}")
+            notify_dialog(f"Failed to save:\n{save_error}", "error", "Error", self)
             return
 
         self._populate_io_fields()
-        QMessageBox.information(self, "Success", f"Successfully created:\n{output_path}")
+        notify_dialog(f"Successfully created:\n{output_path}", "info", "Success", self)
         self.accept()
 
     def _populate_io_fields(self):

@@ -1,6 +1,6 @@
 """Dialog for creating .nc files from various data sources."""
 
-import traceback
+import logging
 import webbrowser
 from pathlib import Path
 from typing import Optional, get_args
@@ -21,7 +21,6 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -35,15 +34,17 @@ from ethograph.gui.data_loader import (
     wizard_single_from_npy_file,
     wizard_single_from_pose,
 )
+from ethograph.gui.notify import notify_dialog
 from ethograph.gui.wizard_nwb import NWBImportDialog
-from ethograph.utils.audio import get_audio_sr
 from ethograph.io.validation import (
     AUDIO_FILE_FILTER,
     EPHYS_EXTENSIONS_STR,
     EPHYS_FILE_FILTER,
     VIDEO_FILE_FILTER,
 )
+from ethograph.utils.audio import get_audio_sr
 
+logger = logging.getLogger(__name__)
 
 
 def get_video_fps(video_path: str) -> Optional[int]:
@@ -192,10 +193,10 @@ class PoseFileDialog(QDialog):
 
     def _on_generate(self):
         if not self.pose_edit.text():
-            QMessageBox.warning(self, "Missing Input", "Please select a pose file.")
+            notify_dialog("Please select a pose file.", "warning", "Missing Input", self)
             return
         if not self.output_edit.text():
-            QMessageBox.warning(self, "Missing Input", "Please select an output path.")
+            notify_dialog("Please select an output path.", "warning", "Missing Input", self)
             return
 
         software = self.software_combo.currentText()
@@ -217,15 +218,11 @@ class PoseFileDialog(QDialog):
 
             self._populate_io_fields(output_path, video_path, pose_path=pose_path)
 
-            QMessageBox.information(
-                self,
-                "Success",
-                f"Successfully created:\n{output_path}",
-            )
+            notify_dialog(f"Successfully created:\n{output_path}", "info", "Success", self)
             self.accept()
-        except Exception as e:
-            traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to ➕Create with own data file:\n{e}")
+        except (OSError, ValueError, KeyError) as e:
+            logger.exception("Failed to create from pose file")
+            notify_dialog(f"Failed to ➕Create with own data file:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(self, output_path: str, video_path: Optional[str], pose_path: str):
         pose_folder = str(Path(pose_path).parent)
@@ -368,10 +365,10 @@ class XarrayDatasetDialog(QDialog):
 
     def _on_generate(self):
         if not self.dataset_edit.text():
-            QMessageBox.warning(self, "Missing Input", "Please select a dataset file.")
+            notify_dialog("Please select a dataset file.", "warning", "Missing Input", self)
             return
         if not self.output_edit.text():
-            QMessageBox.warning(self, "Missing Input", "Please select an output path.")
+            notify_dialog("Please select an output path.", "warning", "Missing Input", self)
             return
 
         dataset_path = self.dataset_edit.text()
@@ -386,15 +383,11 @@ class XarrayDatasetDialog(QDialog):
 
             self._populate_io_fields(output_path, video_path)
 
-            QMessageBox.information(
-                self,
-                "Success",
-                f"Successfully created:\n{output_path}",
-            )
+            notify_dialog(f"Successfully created:\n{output_path}", "info", "Success", self)
             self.accept()
-        except Exception as e:
-            traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to ➕Create with own data file:\n{e}")
+        except (OSError, ValueError, KeyError) as e:
+            logger.exception("Failed to create from xarray dataset")
+            notify_dialog(f"Failed to ➕Create with own data file:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(self, output_path: str, video_path: Optional[str]):
 
@@ -555,10 +548,10 @@ class AudioFileDialog(QDialog):
 
     def _on_generate(self):
         if not self.audio_edit.text():
-            QMessageBox.warning(self, "Missing Input", "Please select an audio file.")
+            notify_dialog("Please select an audio file.", "warning", "Missing Input", self)
             return
         if not self.output_edit.text():
-            QMessageBox.warning(self, "Missing Input", "Please select an output path.")
+            notify_dialog("Please select an output path.", "warning", "Missing Input", self)
             return
 
         video_path = self.video_edit.text() or None
@@ -588,15 +581,11 @@ class AudioFileDialog(QDialog):
 
             self._populate_io_fields(output_path, video_path, audio_path)
 
-            QMessageBox.information(
-                self,
-                "Success",
-                f"Successfully created:\n{output_path}",
-            )
+            notify_dialog(f"Successfully created:\n{output_path}", "info", "Success", self)
             self.accept()
-        except Exception as e:
-            traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to ➕Create with own data file:\n{e}")
+        except (OSError, ValueError, KeyError) as e:
+            logger.exception("Failed to create from audio file")
+            notify_dialog(f"Failed to ➕Create with own data file:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(self, output_path: str, video_path: Optional[str], audio_path: str):
         audio_folder = str(Path(audio_path).parent)
@@ -756,10 +745,10 @@ class NpyFileDialog(QDialog):
 
     def _on_generate(self):
         if not self.npy_edit.text():
-            QMessageBox.warning(self, "Missing Input", "Please select a npy file.")
+            notify_dialog("Please select a npy file.", "warning", "Missing Input", self)
             return
         if not self.output_edit.text():
-            QMessageBox.warning(self, "Missing Input", "Please select an output path.")
+            notify_dialog("Please select an output path.", "warning", "Missing Input", self)
             return
 
         video_path = self.video_edit.text() or None
@@ -789,15 +778,11 @@ class NpyFileDialog(QDialog):
 
             self._populate_io_fields(output_path, video_path)
 
-            QMessageBox.information(
-                self,
-                "Success",
-                f"Successfully created:\n{output_path}",
-            )
+            notify_dialog(f"Successfully created:\n{output_path}", "info", "Success", self)
             self.accept()
-        except Exception as e:
-            traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to ➕Create with own data file:\n{e}")
+        except (OSError, ValueError, KeyError) as e:
+            logger.exception("Failed to create from npy file")
+            notify_dialog(f"Failed to ➕Create with own data file:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(self, output_path: str, video_path: Optional[str]):
 
@@ -1083,13 +1068,13 @@ class EphysFileDialog(QDialog):
         has_ephys = bool(self.ephys_edit.text())
         has_kilosort = bool(self.kilosort_edit.text())
         if not has_ephys and not has_kilosort:
-            QMessageBox.warning(
-                self, "Missing Input",
+            notify_dialog(
                 "Please select at least one of: ephys file or kilosort folder.",
+                "warning", "Missing Input", self,
             )
             return
         if not self.output_edit.text():
-            QMessageBox.warning(self, "Missing Input", "Please select an output path.")
+            notify_dialog("Please select an output path.", "warning", "Missing Input", self)
             return
 
         ephys_path = self.ephys_edit.text() or None
@@ -1122,13 +1107,11 @@ class EphysFileDialog(QDialog):
             self._populate_io_fields(
                 output_path, video_path, ephys_path, kilosort_folder, audio_path,
             )
-            QMessageBox.information(
-                self, "Success", f"Successfully created:\n{output_path}",
-            )
+            notify_dialog(f"Successfully created:\n{output_path}", "info", "Success", self)
             self.accept()
-        except Exception as e:
-            traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to ➕Create with own data file:\n{e}")
+        except (OSError, ValueError, KeyError) as e:
+            logger.exception("Failed to create from ephys file")
+            notify_dialog(f"Failed to ➕Create with own data file:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(
         self, output_path: str, video_path: Optional[str],

@@ -11,7 +11,6 @@ import numpy as np
 import xarray as xr
 from movement.napari.loader_widgets import DataLoader
 from movement.napari.layer_styles import PointsStyle
-from napari.utils.notifications import show_warning
 from napari.viewer import Viewer
 from qtpy.QtCore import QSortFilterProxyModel, Qt, QTimer
 from qtpy.QtGui import QColor
@@ -26,7 +25,6 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QMessageBox,
     QPushButton,
     QSizePolicy,
     QTableWidget,
@@ -38,6 +36,7 @@ from qtpy.QtWidgets import (
 
 
 import ethograph as eto
+from ethograph.gui.notify import notify, notify_dialog
 from ethograph.labels.intervals import dense_to_intervals, get_interval_bounds
 from ethograph.gui.plots_timeseriessource import RegularTimeseriesSource, compute_trial_alignment
 
@@ -65,6 +64,8 @@ from .pose_render import (
     strip_common_prefix,
 )
 from .video_manager import VideoManager,  is_url
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -447,7 +448,7 @@ class DataWidget(DataLoader, QWidget):
         self.app_state.ready = False
 
     def _cancel_load(self, reason: str):
-        QMessageBox.warning(self, "Load cancelled", reason)
+        notify_dialog(reason, "warning", "Load cancelled", self)
         self._cleanup_load_state()
 
 
@@ -455,19 +456,18 @@ class DataWidget(DataLoader, QWidget):
 
     def on_load_clicked(self):
         if not self.app_state.nc_file_path:
-            QMessageBox.warning(self, "Load cancelled", "Please select a path ending with .nc")
+            notify_dialog("Please select a path ending with .nc", "warning", "Load cancelled", self)
             return
 
         nc_file_path = self.io_widget.get_nc_file_path()
 
         self.app_state.has_video = bool(self.app_state.video_folder) or bool(self.app_state.remote_video)
         self.app_state.has_pose = bool(self.app_state.pose_folder)
-        require_fps = self.app_state.has_video or self.app_state.has_pose
 
         try:
             self.app_state.dt, label_dt, self.type_vars_dict = load_dataset(
                 nc_file_path,
-                require_fps=require_fps,
+                require_fps=self.app_state.has_pose,
                 progress_callback=getattr(self.app_state, "_progress_callback", None),
                 max_trials=getattr(self.app_state, "_dandi_max_trials", None),
                 dandiset_id=getattr(self.app_state, "_dandi_dandiset_id", None),
@@ -475,7 +475,7 @@ class DataWidget(DataLoader, QWidget):
             nwb_video_folder = self.app_state.dt.attrs.get("nwb_video_folder")
             if nwb_video_folder and not self.app_state.video_folder:
                 self.app_state.video_folder = nwb_video_folder
-        except Exception as e:
+        except (OSError, ValueError, KeyError) as e:
             self._cancel_load(f"Failed to load dataset: {e}")
             return
 
@@ -515,7 +515,7 @@ class DataWidget(DataLoader, QWidget):
                 self.io_widget._expand_ephys_with_streams(
                     self.app_state.ephys_path, self.app_state.ds,
                 )
-            except Exception as e:
+            except (OSError, ValueError, KeyError) as e:
                 self._cancel_load(f"Failed to load ephys features: {e}")
                 return
             
@@ -524,7 +524,7 @@ class DataWidget(DataLoader, QWidget):
         if downsample_factor is not None:
             self.app_state.dt = eto.downsample_trialtree(self.app_state.dt, downsample_factor)
             self.app_state.downsample_factor_used = downsample_factor
-            print(f"Downsampled data by factor {downsample_factor}")
+            logger.info("Downsampled data by factor %d", downsample_factor)
         else:
             self.app_state.downsample_factor_used = None
 
@@ -546,10 +546,7 @@ class DataWidget(DataLoader, QWidget):
 
         missing = self._validate_media_files()
         if missing:
-            print(f"Trials: {self.app_state.trials}")
-            print(f"Current trial: {self.app_state.trials_sel}")
-            print(f"First trial: {self.app_state.trials[0]}")
-            
+
             self._cancel_load(
                 "Missing media files for first trial:\n" + "\n".join(missing)
             )
@@ -582,7 +579,7 @@ class DataWidget(DataLoader, QWidget):
                 lambda: self.layout_mgr.set_sidebar_default_width(self.meta_widget, SIDEBAR_AFTER_LOAD_WIDTH_RATIO),
             )
 
-        trial = self.app_state.trials_sel
+        trial = getattr(self.app_state, 'trials_sel', None)
         try:
             is_nan = np.isnan(trial)
         except (TypeError, ValueError):
@@ -1082,7 +1079,7 @@ class DataWidget(DataLoader, QWidget):
             else:
                 primary.setCurrentIndex(0)
             primary.blockSignals(False)
-            self.app_state.set_key_sel("cameras", primary.currentText())
+            self.app_state.primary_camera = primary.currentText()
 
         self._update_extra_camera_combo_items(cameras)
 
@@ -1203,12 +1200,12 @@ class DataWidget(DataLoader, QWidget):
 
         idx = self.labels_widget.current_labels_pos
         if idx is None:
-            show_warning("Select a label interval first")
+            notify("Select a label interval first", "warning")
             return
 
         df = self.app_state.label_intervals
         if df is None or idx not in df.index:
-            show_warning("Select a label interval first")
+            notify("Select a label interval first", "warning")
             return
 
         onset_s, offset_s, _ = get_interval_bounds(df, idx)
@@ -1216,7 +1213,7 @@ class DataWidget(DataLoader, QWidget):
         heatmap = self.plot_container.heatmap_plot
         data = heatmap.get_normalized_data_for_range(onset_s, offset_s)
         if data is None or data.size == 0:
-            show_warning("No heatmap data available for the selected interval")
+            notify("No heatmap data available for the selected interval", "warning")
             return
 
         channel_sums = np.nansum(np.abs(data), axis=0)
@@ -1424,17 +1421,15 @@ class DataWidget(DataLoader, QWidget):
         if hasattr(self, 'space_view_combo'):
             self.space_view_combo.setCurrentText(space_plot_type)
 
-        saved_slot2 = self.app_state.slot2_sel
-        if saved_slot2 and hasattr(self, 'primary_camera_combo'):
-            idx = self.primary_camera_combo.findText(saved_slot2)
+        saved_camera = self.app_state.primary_camera
+        if saved_camera and hasattr(self, 'primary_camera_combo'):
+            idx = self.primary_camera_combo.findText(saved_camera)
             if idx >= 0:
                 self.primary_camera_combo.setCurrentIndex(idx)
-                self.app_state.set_key_sel("cameras", saved_slot2)
 
-        saved_extra = self.app_state.extra_cameras_sel
+        saved_extra = self.app_state.extra_cameras
         if saved_extra and hasattr(self, '_extra_camera_combos'):
-            cam_names = [c.strip() for c in saved_extra.split(",") if c.strip()]
-            for i, cam_name in enumerate(cam_names):
+            for i, cam_name in enumerate(saved_extra):
                 if i >= len(self._extra_camera_combos):
                     break
                 combo = self._extra_camera_combos[i]
@@ -1471,7 +1466,7 @@ class DataWidget(DataLoader, QWidget):
                 return
             combo.setCurrentIndex(0)
             fallback = get_combo_value(combo)
-            print(f"Saved {key}_sel '{saved_value}' not found; reverting to '{fallback}'.")
+            logger.warning("Saved %s_sel '%s' not found; reverting to '%s'", key, saved_value, fallback)
             self.app_state.set_key_sel(key, fallback)
 
         for key, combo in self.combos.items():
@@ -1480,8 +1475,10 @@ class DataWidget(DataLoader, QWidget):
             _normalize_from_combo(key, combo)
 
         primary_combo = getattr(self, "primary_camera_combo", None)
-        if isinstance(primary_combo, QComboBox):
-            _normalize_from_combo("cameras", primary_combo)
+        if isinstance(primary_combo, QComboBox) and primary_combo.count() > 0:
+            saved = self.app_state.primary_camera
+            if saved is None or find_combo_index(primary_combo, saved) < 0:
+                self.app_state.primary_camera = get_combo_value(primary_combo)
 
         mics_combo = getattr(self, "mics_combo", None)
         if isinstance(mics_combo, QComboBox):
@@ -1495,7 +1492,7 @@ class DataWidget(DataLoader, QWidget):
 
     def _load_trial_with_fallback(self) -> None:
         first_trial = self.app_state.trials[0]
-        current_trial = self.app_state.trials_sel
+        current_trial = getattr(self.app_state, 'trials_sel', None)
 
         try:
             is_nan = np.isnan(current_trial)
@@ -1504,7 +1501,7 @@ class DataWidget(DataLoader, QWidget):
 
         if not current_trial or is_nan or current_trial not in self.app_state.trials:
             if current_trial and not is_nan:
-                print(f"Saved trial {current_trial} not in dataset, using {first_trial}.")
+                logger.warning("Saved trial %s not in dataset, using %s", current_trial, first_trial)
             self.app_state.trials_sel = first_trial
 
         self.on_trial_changed()
@@ -1528,9 +1525,10 @@ class DataWidget(DataLoader, QWidget):
         if audio_folder:
             mics = dt.mics
             if not mics:
-                show_warning(
+                notify(
                     "You selected an audio folder, although the .nc "
-                    "contains no audio media entries."
+                    "contains no audio media entries.",
+                    "warning",
                 )
             else:
                 for mic in mics:
@@ -1545,9 +1543,10 @@ class DataWidget(DataLoader, QWidget):
         if pose_folder:
             cameras = dt.cameras
             if not cameras:
-                show_warning(
+                notify(
                     "You selected a pose folder, although the .nc "
-                    "contains no pose data."
+                    "contains no pose data.",
+                    "warning",
                 )
             else:
                 for cam in cameras:
@@ -1569,7 +1568,7 @@ class DataWidget(DataLoader, QWidget):
             self.app_state.ds,
             video_folder=self.app_state.video_folder,
             audio_folder=self.app_state.audio_folder,
-            cameras_sel=getattr(self.app_state, "cameras_sel", None),
+            cameras_sel=self.app_state.primary_camera,
         )
 
 
@@ -1578,7 +1577,7 @@ class DataWidget(DataLoader, QWidget):
         trials_sel = self.app_state.trials_sel
         
         if trials_sel not in self.app_state.trials:
-            print(f"Selected trial '{trials_sel}' not found in dataset. Reverting to first trial '{self.app_state.trials[0]}'.")
+            logger.warning("Selected trial '%s' not found in dataset, reverting to first trial '%s'", trials_sel, self.app_state.trials[0])
             trials_sel = self.app_state.trials[0]
             self.app_state.trials_sel = trials_sel
             return
@@ -1777,8 +1776,8 @@ class DataWidget(DataLoader, QWidget):
     def _on_primary_camera_changed(self, camera_name):
         if not self.app_state.ready or not camera_name:
             return
-        self.app_state.slot2_sel = camera_name
-        self.app_state.set_key_sel("cameras", camera_name)
+        self.app_state.primary_camera_previous = self.app_state.primary_camera
+        self.app_state.primary_camera = camera_name
         self.update_video()
         self.update_pose()
 
@@ -1786,7 +1785,7 @@ class DataWidget(DataLoader, QWidget):
         if not self.app_state.ready:
             return
         self._apply_extra_cameras()
-        self._save_extra_cameras_sel()
+        self._save_extra_cameras()
 
     def _apply_extra_cameras(self):
         desired = self._get_desired_extra_cameras()
@@ -1818,12 +1817,11 @@ class DataWidget(DataLoader, QWidget):
                 names.add(text)
         return names
 
-    def _save_extra_cameras_sel(self):
+    def _save_extra_cameras(self):
         if not hasattr(self, '_extra_camera_combos'):
             return
         values = [combo.currentText() for combo in self._extra_camera_combos]
-        active = [v for v in values if v and v != "None"]
-        self.app_state.extra_cameras_sel = ",".join(active) if active else None
+        self.app_state.extra_cameras = [v for v in values if v and v != "None"]
 
     def _update_extra_camera_combo_items(self, cameras: list[str]):
         if not hasattr(self, '_extra_camera_combos'):

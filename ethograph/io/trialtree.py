@@ -605,6 +605,74 @@ class TrialTree(xr.DataTree):
         self._update_session(_set)
         self._invalidate_timing_cache()
 
+    def set_video_fps(
+        self,
+        fps: float | list[float],
+        device_labels: list[str] | None = None,
+    ) -> None:
+        """Store per-camera video FPS in the session node.
+
+        Parameters
+        ----------
+        fps
+            A single float (applied to all cameras) or a list of floats
+            matching *device_labels*.
+        device_labels
+            Camera labels.  When ``None`` and *fps* is scalar, the value
+            is stored without a ``cameras`` dimension.
+        """
+        def _set(ds: xr.Dataset) -> xr.Dataset:
+            if isinstance(fps, (list, np.ndarray)):
+                labels = device_labels or [f"cameras-{i + 1}" for i in range(len(fps))]
+                ds["video_fps"] = xr.DataArray(
+                    np.array(fps, dtype=np.float64),
+                    dims=["cameras"],
+                    coords={"cameras": labels},
+                )
+            elif device_labels is not None and len(device_labels) > 0:
+                ds["video_fps"] = xr.DataArray(
+                    np.full(len(device_labels), float(fps), dtype=np.float64),
+                    dims=["cameras"],
+                    coords={"cameras": device_labels},
+                )
+            else:
+                ds["video_fps"] = xr.DataArray(float(fps))
+            return ds
+
+        self._update_session(_set)
+
+    def get_video_fps(self, camera: str | None = None) -> float | None:
+        """Return video FPS from session, falling back to ``ds.attrs["fps"]``.
+
+        Parameters
+        ----------
+        camera
+            Camera label.  When ``None``, returns the first camera's FPS
+            (or the scalar value if no ``cameras`` dimension).
+
+        Returns
+        -------
+        float or None
+            ``None`` only when no FPS information is available at all.
+        """
+        sess = self.session
+        if sess is not None and "video_fps" in sess:
+            da = sess["video_fps"]
+            if camera and "cameras" in da.dims:
+                try:
+                    return float(da.sel(cameras=camera).item())
+                except KeyError:
+                    pass
+            return float(da.values.flat[0])
+
+        try:
+            ds = self.itrial(0)
+            if "fps" in ds.attrs:
+                return float(ds.attrs["fps"])
+        except (StopIteration, IndexError):
+            pass
+        return None
+
     def set_ephys_stream_id(self, stream_id: str) -> None:
         """Store the selected ephys stream identifier in the session.
 
@@ -1156,9 +1224,10 @@ class TrialTree(xr.DataTree):
         ds = self.itrial(0)
         has_cameras = len(self.cameras) > 0
         has_fps = "fps" in ds.attrs
+        has_session_fps = self.session is not None and "video_fps" in self.session
         errors = validate_datatree(
             self,
-            require_fps=has_fps or has_cameras,
+            require_fps=(has_fps or has_cameras) and not has_session_fps,
         )
         if errors:
             raise ValueError(

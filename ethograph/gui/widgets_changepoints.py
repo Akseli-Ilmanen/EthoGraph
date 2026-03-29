@@ -1,12 +1,13 @@
 """Changepoints widget - dataset changepoints and audio changepoint detection."""
 
+import logging
+
 import numpy as np
 import ruptures as rpt
 import xarray as xr
 import yaml
 import audioio as aio
 
-from napari.utils.notifications import show_info, show_warning
 from napari.viewer import Viewer
 from qtpy.QtCore import Qt, QLocale, Signal
 from qtpy.QtWidgets import (
@@ -29,6 +30,7 @@ from qtpy.QtWidgets import (
 )
 
 import ethograph as eto
+from ethograph.gui.notify import notify
 from ethograph.features.changepoints import (
     correct_changepoints,
     correct_changepoints_automatic,
@@ -40,6 +42,7 @@ from ethograph.features.audio_changepoints import get_audio_changepoints
 from .dialog_function_params import open_function_params_dialog, get_registry
 from .makepretty import styled_link
 
+logger = logging.getLogger(__name__)
 
 # Maps UI combo text → registry key
 _AUDIO_CP_REGISTRY_MAP = {
@@ -105,7 +108,7 @@ def _run_ruptures_in_process(
 
         return (bkps, None)
 
-    except Exception as e:
+    except (ValueError, RuntimeError) as e:
         return (None, str(e))
 
 
@@ -697,7 +700,7 @@ class ChangepointsWidget(QWidget):
 
         audio_path, channel_idx = self.app_state.get_audio_source()
         if not audio_path:
-            show_warning("No audio data loaded. Audio CPs require an audio file.")
+            notify("No audio data loaded. Audio CPs require an audio file.", "warning")
             return
         data, sample_rate = aio.load_audio(audio_path)
         sample_rate = float(sample_rate)
@@ -713,7 +716,7 @@ class ChangepointsWidget(QWidget):
             min_n_fft = int(np.ceil(0.005 * sample_rate))
             if n_fft < min_n_fft:
                 params["n_fft"] = min_n_fft
-                show_info(f"n_fft raised to {min_n_fft} (minimum for sample rate {sample_rate:.0f} Hz)")
+                notify(f"n_fft raised to {min_n_fft} (minimum for sample rate {sample_rate:.0f} Hz)")
         elif method == "ava":
             nperseg = params.get("nperseg", 1024)
             max_nperseg = max(4, len(signal_array) // 4)
@@ -736,7 +739,7 @@ class ChangepointsWidget(QWidget):
         if dialog.was_cancelled:
             return
         if error:
-            show_warning(f"Error detecting changepoints: {error}")
+            notify(f"Error detecting changepoints: {error}", "warning")
             return
 
         (onsets, offsets), env_time, envelope = result
@@ -753,12 +756,12 @@ class ChangepointsWidget(QWidget):
             )
 
         if len(onsets) == 0 and len(offsets) == 0:
-            show_info("No changepoints detected. Try adjusting parameters.")
+            notify("No changepoints detected. Try adjusting parameters.")
             return
 
         self._store_audio_cps_to_ds(onsets, offsets, "Audio Waveform", method)
         self.audio_cp_count_label.setText(f"{len(onsets)}+{len(offsets)}")
-        show_info(f"Detected {len(onsets)} onsets, {len(offsets)} offsets")
+        notify(f"Detected {len(onsets)} onsets, {len(offsets)} offsets")
 
         if self.plot_container:
             self.plot_container.draw_audio_changepoints(onsets, offsets)
@@ -805,11 +808,11 @@ class ChangepointsWidget(QWidget):
             from .plots_ephystrace import get_loader as get_ephys_loader
             ephys_path, stream_id, channel_idx = self.app_state.get_ephys_source()
             if not ephys_path:
-                show_warning("No ephys data loaded")
+                notify("No ephys data loaded", "warning")
                 return
             loader = get_ephys_loader(ephys_path, stream_id=stream_id)
             if loader is None:
-                show_warning("Could not open ephys file")
+                notify("Could not open ephys file", "warning")
                 return
             sample_rate = float(loader.rate)
             raw = loader[:]
@@ -821,7 +824,7 @@ class ChangepointsWidget(QWidget):
         elif source == "Audio Trace":
             audio_path, channel_idx = self.app_state.get_audio_source()
             if not audio_path:
-                show_warning("No audio data loaded")
+                notify("No audio data loaded", "warning")
                 return
             data, sample_rate = aio.load_audio(audio_path)
             sample_rate = float(sample_rate)
@@ -833,14 +836,14 @@ class ChangepointsWidget(QWidget):
         else:  # Current Feature
             features_sel = self.app_state.features_sel
             if not features_sel or features_sel in ("Audio Waveform", "Ephys trace", "firing_rate"):
-                show_warning("Select a standard dataset feature (not Audio/Ephys/Firing rate)")
+                notify("Select a standard dataset feature (not Audio/Ephys/Firing rate)", "warning")
                 return
             ds_kwargs = self.app_state.get_ds_kwargs()
             data, _ = eto.sel_valid(self.app_state.ds[features_sel], ds_kwargs)
             feature_sr = self.app_state.get_feature_sr()
             
             if np.asarray(data).ndim > 1:
-                show_warning("Oscillatory event detection requires 1-D data. Select a single dimension.")
+                notify("Oscillatory event detection requires 1-D data. Select a single dimension.", "warning")
                 return
             
 
@@ -858,17 +861,17 @@ class ChangepointsWidget(QWidget):
         if dialog.was_cancelled:
             return
         if error:
-            show_warning(f"Error detecting oscillatory events: {error}")
+            notify(f"Error detecting oscillatory events: {error}", "warning")
             return
 
         onsets, offsets = result
         if len(onsets) == 0:
-            show_info("No oscillatory events detected. Try adjusting parameters (freq_band, thresh_band).")
+            notify("No oscillatory events detected. Try adjusting parameters (freq_band, thresh_band).")
             return
 
         self._store_oscillatory_events_to_ds(onsets, offsets, target_feature, method)
         self.osc_count_label.setText(f"{len(onsets)} events")
-        show_info(f"Detected {len(onsets)} oscillatory events")
+        notify(f"Detected {len(onsets)} oscillatory events")
 
         if self.plot_container:
             self.plot_container.draw_oscillatory_events(onsets, offsets)
@@ -928,7 +931,7 @@ class ChangepointsWidget(QWidget):
         if dialog.was_cancelled:
             return
         if error:
-            show_warning(f"Error computing changepoints: {error}")
+            notify(f"Error computing changepoints: {error}", "warning")
             return
 
         cp_var_name = f"{feature}_{changepoint_name}"
@@ -936,7 +939,7 @@ class ChangepointsWidget(QWidget):
 
         n_changepoints = np.sum(new_ds[cp_var_name].values > 0)
         self.ds_cp_count_label.setText(f"{n_changepoints} changepoints")
-        show_info(f"Added '{cp_var_name}' with {n_changepoints} changepoints")
+        notify(f"Added '{cp_var_name}' with {n_changepoints} changepoints")
 
         self._ensure_changepoints_visible()
         self._draw_dataset_changepoints_on_plot()
@@ -944,23 +947,23 @@ class ChangepointsWidget(QWidget):
     def _clear_current_feature_changepoints(self):
         ds = getattr(self.app_state, "ds", None)
         if ds is None:
-            show_warning("No dataset loaded")
+            notify("No dataset loaded", "warning")
             return
 
         feature = getattr(self.app_state, "features_sel", None)
         if not feature:
-            show_warning("No feature selected in Data Controls")
+            notify("No feature selected in Data Controls", "warning")
             return
 
         n_removed = self._clear_all_changepoints_for_feature(feature)
 
         if n_removed == 0:
-            show_info(f"No changepoints found for '{feature}'")
+            notify(f"No changepoints found for '{feature}'")
             return
 
         self.ds_cp_count_label.setText("")
         self.ruptures_count_label.setText("")
-        show_info(f"Removed {n_removed} changepoint variable(s) for '{feature}'")
+        notify(f"Removed {n_removed} changepoint variable(s) for '{feature}'")
 
         if self.plot_container:
             self.plot_container.clear_dataset_changepoints()
@@ -995,9 +998,10 @@ class ChangepointsWidget(QWidget):
         features_sel = self.app_state.features_sel
         ds_kwargs = self.app_state.get_ds_kwargs()
         if features_sel == "Audio Waveform":
-            show_warning(
+            notify(
                 "Raw audio is too large for ruptures. "
-                "Select a derived feature or use Audio CPs instead."
+                "Select a derived feature or use Audio CPs instead.",
+                "warning",
             )
             return
 
@@ -1018,12 +1022,12 @@ class ChangepointsWidget(QWidget):
             self.ruptures_count_label.setText("Cancelled")
             return
         if error:
-            show_warning(f"Error computing ruptures changepoints: {error}")
+            notify(f"Error computing ruptures changepoints: {error}", "warning")
             return
 
         bkps, error_msg = result
         if error_msg:
-            show_warning(f"Error computing ruptures changepoints: {error_msg}")
+            notify(f"Error computing ruptures changepoints: {error_msg}", "warning")
             return
         if bkps is None:
             return
@@ -1061,7 +1065,7 @@ class ChangepointsWidget(QWidget):
 
         n_changepoints = len(bkps)
         self.ruptures_count_label.setText(f"{n_changepoints} changepoints")
-        show_info(f"Added '{cp_var_name}' with {n_changepoints} changepoints")
+        notify(f"Added '{cp_var_name}' with {n_changepoints} changepoints")
 
         self._ensure_changepoints_visible()
         self._draw_dataset_changepoints_on_plot()
@@ -1230,7 +1234,7 @@ class ChangepointsWidget(QWidget):
 
     def _open_label_thresholds_dialog(self):
         if not self._motif_mappings:
-            show_warning("No label mappings loaded yet")
+            notify("No label mappings loaded yet", "warning")
             return
 
         dialog = LabelThresholdsDialog(
@@ -1298,7 +1302,7 @@ class ChangepointsWidget(QWidget):
         self.cp_undo_btn.setEnabled(False)
         if self.data_widget:
             self.data_widget.update_main_plot()
-        show_info("Reverted correction")
+        notify("Reverted correction")
 
     def _correct_trial_intervals(self, trial, ds, all_params, ds_kwargs):
         """Interval-native correction: purge -> stitch -> snap -> purge."""
@@ -1376,7 +1380,7 @@ class ChangepointsWidget(QWidget):
 
             if mode == "all_trials":
                 if self.app_state.label_dt.attrs.get("changepoint_corrected", 0) == 1:
-                    show_warning("Changepoint correction has already been applied to all trials. Don't re-apply.")
+                    notify("Changepoint correction has already been applied to all trials. Don't re-apply.", "warning")
                     return
 
                 # TODO: Mention in documentation, only Ctrl+Z functionality of the GUI.
@@ -1392,10 +1396,9 @@ class ChangepointsWidget(QWidget):
 
             if self.data_widget:
                 self.data_widget.update_main_plot()
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            show_warning(f"Changepoint correction failed: {e}")
+        except (ValueError, IndexError, RuntimeError) as e:
+            logger.exception("Changepoint correction failed")
+            notify(f"Changepoint correction failed: {e}", "warning")
 
     def _update_cp_status(self):
         default_style = ""
@@ -1450,17 +1453,17 @@ class ChangepointsWidget(QWidget):
         params_path = eto.get_project_root() / "configs" / "changepoint_settings.yaml"
         with open(params_path, "w") as f:
             yaml.dump(params, f, default_flow_style=False, sort_keys=False)
-        show_info(f"Saved correction parameters to {params_path.name}")
+        notify(f"Saved correction parameters to {params_path.name}")
 
     def _load_correction_params(self):
         params_path = eto.get_project_root() / "configs" / "changepoint_settings.yaml"
         if not params_path.exists():
-            show_warning(f"No settings file found at {params_path}")
+            notify(f"No settings file found at {params_path}", "warning")
             return
         with open(params_path, "r") as f:
             params = yaml.safe_load(f)
         self._apply_correction_params(params)
-        show_info(f"Loaded correction parameters from {params_path.name}")
+        notify(f"Loaded correction parameters from {params_path.name}")
 
     def _load_correction_params_from_file(self):
         params_path = eto.get_project_root() / "configs" / "changepoint_settings.yaml"
@@ -1515,7 +1518,7 @@ class ChangepointsWidget(QWidget):
         current_time = self._get_current_time()
         cp_times = self._get_jump_cp_times()
         if cp_times is None or len(cp_times) == 0:
-            show_info("No changepoints available. Detect changepoints first.")
+            notify("No changepoints available. Detect changepoints first.")
             return
 
         target = self._find_adjacent_cp(cp_times, current_time, direction)

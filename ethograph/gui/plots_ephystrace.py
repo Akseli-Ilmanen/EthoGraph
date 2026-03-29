@@ -18,12 +18,14 @@ All loaders expose the same interface consumed by EphysTraceBuffer:
 
 from __future__ import annotations
 
-
+import logging
 import numpy as np
 import threading
 import pyqtgraph as pg
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Protocol, runtime_checkable
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .plots_timeseriessource import TimeseriesSource
@@ -487,10 +489,8 @@ def get_loader(
                     sampling_rate=sampling_rate,
                     stream_id=stream_id,
                 )
-            except Exception as e:
-                print(f"Failed to load ephys file {path}: {type(e).__name__}: {e}")
-                import traceback
-                traceback.print_exc()
+            except (OSError, ValueError, KeyError) as e:
+                logger.error("Failed to load ephys file %s: %s: %s", path, type(e).__name__, e, exc_info=True)
                 return None
         return _loader_cache[key]
 
@@ -1063,7 +1063,7 @@ class EphysTracePlot(BasePlot):
 
         ch_indices, y_positions = self._channels_in_viewport()
         if len(ch_indices) == 0:
-            print(f"[EphysTracePlot] _update_multichannel: No channels in viewport for t0={t0}, t1={t1}")
+            logger.debug("_update_multichannel: No channels in viewport for t0=%s, t1=%s", t0, t1)
             return
 
         # Expand draw range beyond the viewport so the trace is pre-rendered
@@ -1088,7 +1088,7 @@ class EphysTracePlot(BasePlot):
         )
 
         if result is None:
-            print(f"[EphysTracePlot] _update_multichannel: No data for t0={t0_draw}, t1={t1_draw}, channels={ch_indices}")
+            logger.debug("_update_multichannel: No data for t0=%s, t1=%s, channels=%s", t0_draw, t1_draw, ch_indices)
             return
 
         times, data_2d, step, n_ch = result

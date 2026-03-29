@@ -1,8 +1,11 @@
 """Dialog for selecting a template dataset to pre-fill IO paths."""
 
+import logging
 import traceback
 import webbrowser
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from qtpy.QtCore import QSize, QThread, Qt, Signal
 from qtpy.QtGui import QMovie, QPixmap
@@ -11,11 +14,12 @@ from qtpy.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QProgressDialog,
     QPushButton,
     QVBoxLayout,
 )
+
+from ethograph.gui.notify import notify_dialog
 
 from ethograph.utils.download import (
     EXAMPLE_DATASETS,
@@ -261,13 +265,13 @@ class TemplateDialog(QDialog):
                 dt.to_netcdf(nc_path)
             except Exception as e:
                 traceback.print_exc()
-                QMessageBox.critical(self, "Error", f"Failed to generate .nc from audio:\n{e}")
+                notify_dialog(f"Failed to generate .nc from audio:\n{e}", "error", "Error", self)
                 return
 
         resolved = _resolve_template_paths(template)
         resolved["nc_file_path"] = nc_path
         resolved["audio_folder"] = str(dest)
-        print("[DEBUG] Canary template resolved paths:", resolved)
+        logger.debug("Canary template resolved paths: %s", resolved)
         self.selected_template = resolved
         self.accept()
 
@@ -297,8 +301,7 @@ class TemplateDialog(QDialog):
         def on_error(msg):
             progress.close()
             worker.deleteLater()
-            print(f"[ERROR] Download Error: {msg}", flush=True)
-            QMessageBox.warning(self, "Download Error", msg)
+            notify_dialog(msg, "warning", "Download Error", self)
 
         worker.progress.connect(on_progress)
         worker.finished.connect(on_finished)

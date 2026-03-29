@@ -20,8 +20,8 @@ from movement.io import load_dataset
 from movement.napari.convert import ds_to_napari_layers
 from movement.napari.layer_styles import PointsStyle
 from movement.napari.loader_widgets import SUPPORTED_POSES_FILES
-from napari.utils.notifications import show_warning
 
+from ethograph.gui.notify import notify
 from ethograph.utils.xr_utils import get_time_coord
 
 @dataclass
@@ -216,7 +216,7 @@ class PoseDisplayManager:
                     self._resolve_camera_fps(camera_idx),
                 )
             except (OSError, ValueError, KeyError) as e:
-                show_warning(f"Failed to load pose for camera {camera_idx}: {e}")
+                notify(f"Failed to load pose for camera {camera_idx}: {e}", "warning")
                 return None
         if self._has_embedded_pose():
             ds = self.app_state.ds
@@ -294,7 +294,7 @@ class PoseDisplayManager:
             )
             self.apply_pose_style()
         except (OSError, ValueError, KeyError) as e:
-            show_warning(f"Failed to set pose on extra camera '{camera_name}': {e}")
+            notify(f"Failed to set pose on extra camera '{camera_name}': {e}", "warning")
             widget.clear_pose()
 
     def update_extra_camera_pose(self, camera_name: str, hidden_keypoints: set[str]) -> None:

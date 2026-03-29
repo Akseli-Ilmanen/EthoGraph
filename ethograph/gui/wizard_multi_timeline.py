@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections import Counter
 from pathlib import Path
 
@@ -34,6 +35,8 @@ from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
 from ethograph.utils.stream_durations import get_audio_duration, get_ephys_duration, get_pose_duration, get_video_duration
 from ethograph.utils.xr_utils import get_time_coord
+
+logger = logging.getLogger(__name__)
 
 # Colors per modality (matching dialog_media_files.py palette)
 MODALITY_COLORS = {
@@ -226,13 +229,10 @@ def draw_session_timeline(
     # Features: show if any trial has feature data variables
     has_features = False
     for trial_id in trials:
-        try:
-            ds = dt.trial(trial_id)
-            if any(ds[v].attrs.get("type") == "features" for v in ds.data_vars):
-                has_features = True
-                break
-        except Exception:
-            pass
+        ds = dt.trial(trial_id)
+        if any(ds[v].attrs.get("type") == "features" for v in ds.data_vars):
+            has_features = True
+            break
     if has_features:
         streams_to_draw.append(("features", "features", []))
 
@@ -345,13 +345,10 @@ def draw_session_timeline(
                 # Bar extends from media start to last trial stop
                 t_end = max_t if max_t > t_start else t_start + 60.0
                 if has_stop:
-                    try:
-                        stops = sess["stop_time"].values
-                        finite = stops[np.isfinite(stops)]
-                        if len(finite) > 0:
-                            t_end = float(finite.max())
-                    except Exception:
-                        pass
+                    stops = sess["stop_time"].values
+                    finite = stops[np.isfinite(stops)]
+                    if len(finite) > 0:
+                        t_end = float(finite.max())
 
                 if t_end > t_start:
                     bar = _make_rounded_bar(
@@ -858,8 +855,8 @@ class TimelinePage(QWidget):
                 return bool(dt.get_audio(trial_id, device))
             if modality == "pose":
                 return bool(dt.get_pose(trial_id, device))
-        except Exception:
-            pass
+        except (KeyError, IndexError):
+            return False
         return False
 
     @staticmethod
@@ -868,7 +865,7 @@ class TimelinePage(QWidget):
             try:
                 if dt.get_pose(trial_id, cam):
                     return True
-            except Exception:
+            except (KeyError, IndexError):
                 pass
         return False
 
@@ -879,7 +876,7 @@ class TimelinePage(QWidget):
             try:
                 if session_io.stop_time(trial_id) is not None:
                     return "session stop_time"
-            except Exception:
+            except (KeyError, AttributeError):
                 pass
         if ds is not None:
             for var_name in ds.data_vars:

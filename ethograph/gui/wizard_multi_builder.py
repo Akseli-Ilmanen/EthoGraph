@@ -267,6 +267,15 @@ def _set_media(
             )
     
 
+    video_cfg = state.video if state.video.enabled else (state.pose if state.pose.enabled else None)
+    if cameras and video_cfg and video_cfg.fps is not None:
+        fps_values = [float(video_cfg.fps_by_camera.get(c, video_cfg.fps)) for c in cameras]
+        session["video_fps"] = xr.DataArray(
+            np.array(fps_values, dtype=np.float64),
+            dims=["cameras"],
+            coords={"cameras": cameras},
+        )
+
     dt["session"] = xr.DataTree(session)
 
 
