@@ -10,7 +10,7 @@ Expected shape: `(n_samples, n_variables)` or `(n_variables, n_samples)`. The lo
 ## Steps
 
 ```{tip}
-{doc}`Install EthoGraph <../getting_started/installation>` if you haven't already, then launch:
+{doc}`Install EthoGraph <../getting_started/installation>` if you haven't already, then launch via shortcut or:
 `conda activate ethograph && ethograph launch`
 In the **I/O widget**, click **Create with own data** — the wizard opens.
 ```

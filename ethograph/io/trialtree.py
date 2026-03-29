@@ -498,57 +498,108 @@ class TrialTree(xr.DataTree):
     # Stream offsets & source timing
     # ------------------------------------------------------------------
 
-    def _stream_offset(self, stream: str) -> float:
-        sess = self.session
-        if sess is None:
-            return 0.0
-        return float(sess.attrs.get(f"offset_{stream}", 0.0))
+    def source_start_time(self, trial, stream: str, device: str | None = None) -> float:
+        """Session-absolute time of sample 0 for this stream's file.
 
-    def source_start_time(self, trial, stream: str) -> float:
-        """Trial-relative time of sample 0 for this stream's file.
-
-        Per-trial streams (``"trial"`` in dims) always return 0.
-        Session-wide streams return ``stream_offset - trial_start``.
+        Reads from the ``start_time_{stream}`` DataArray in the session
+        node.  For ``"features"``, falls back to ``features_aligned_to``
+        (default ``"video"``) when no explicit start time is stored.
 
         Parameters
         ----------
         trial : int or str
             Trial identifier.
         stream : str
-            Stream name (e.g. ``"ephys"``, ``"audio"``).
+            Stream name (e.g. ``"video"``, ``"audio"``, ``"ephys"``,
+            ``"features"``).
+        device : str, optional
+            Device label (e.g. ``"left"``).
 
         Returns
         -------
         float
-            Time offset in seconds for sample 0 of the stream's file,
-            relative to the trial's start.
+            Session-absolute start time in seconds (0.0 if unknown).
         """
         sess = self.session
-        if sess is None or stream not in sess:
+        if sess is None:
             return 0.0
-        if "trial" in sess[stream].dims:
+
+        key = f"start_time_{stream}"
+        if key in sess:
+            da = sess[key]
+            sel: dict[str, Any] = {}
+            if "trial" in da.dims:
+                sel["trial"] = trial
+            spec = STREAMS.get(stream)
+            if device and spec and spec.device_dim and spec.device_dim in da.dims:
+                sel[spec.device_dim] = device
+            try:
+                val = float(da.sel(**sel)) if sel else float(da)
+                if not np.isnan(val):
+                    return val
+            except (KeyError, ValueError):
+                pass
+
+        return 0.0
+
+
+
+
+
+    def source_start_time_trial_relative(self, trial, stream: str, device: str | None = None) -> float:
+        """Trial-relative time of sample 0 for this stream's file.
+
+        Convenience wrapper: ``source_start_time(...) - trial_start``.
+        Per-trial media (``"trial"`` in dims) always returns 0.
+
+        Parameters
+        ----------
+        trial : int or str
+            Trial identifier.
+        stream : str
+            Stream name.
+        device : str, optional
+            Device label.
+
+        Returns
+        -------
+        float
+        """
+        sess = self.session
+        if sess is not None and stream in sess and "trial" in sess[stream].dims:
             return 0.0
         ep = self._trials_ep
         if ep is None:
             return 0.0
-        offset = self._stream_offset(stream)
-        return offset - float(ep.start[self._trial_ep_idx(trial)])
+        abs_start = self.source_start_time(trial, stream, device)
+        return abs_start - float(ep.start[self._trial_ep_idx(trial)])
 
-    def set_stream_offset(self, stream: str, offset: float) -> None:
-        """Set the session-absolute offset for a stream in seconds.
+    def set_stream_offset(self, stream: str, offset: float, device: str | None = None) -> None:
+        """Set the session-absolute start time for a stream.
 
-        Sample 0 of the stream's file is at this time in session-absolute
-        coordinates.
+        Stores (or updates) a ``start_time_{stream}`` DataArray in the
+        session node.  When *device* is given, only that device's entry
+        is updated; other devices keep their existing values.
+
+        For new code, prefer passing ``start_times=`` to :meth:`set_media`
+        instead.
 
         Parameters
         ----------
         stream : str
-            Stream name (e.g. ``"ephys"``, ``"audio"``).
+            Stream name (e.g. ``"video"``, ``"audio"``, ``"ephys"``).
         offset : float
-            Offset in seconds.
+            Session-absolute time in seconds of the stream's first sample.
+        device : str, optional
+            Device label.  Required when the stream has multiple devices.
         """
+        key = f"start_time_{stream}"
+
         def _set(ds):
-            ds.attrs[f"offset_{stream}"] = offset
+            if key in ds and device is not None:
+                ds[key].loc[{STREAMS[stream].device_dim: device}] = offset
+            else:
+                ds[key] = xr.DataArray(offset)
             return ds
 
         self._update_session(_set)
@@ -578,8 +629,9 @@ class TrialTree(xr.DataTree):
         files: str | list[str] | list[list[str]],
         device_labels: list[str] | None = None,
         per_trial: bool | None = None,
+        start_times: float | list[float] | list[list[float]] | None = None,
     ) -> None:
-        """Store media file paths for a stream.
+        """Store media file paths (and optional start times) for a stream.
 
         Parameters
         ----------
@@ -596,6 +648,29 @@ class TrialTree(xr.DataTree):
             ``StreamSpec.layout``.  Pass ``False`` to store a normally
             per-trial stream (e.g. video) as session-wide, or ``True``
             to store a normally session-wide stream as per-trial.
+        start_times
+            Session-absolute start time(s) for the media files, in seconds.
+            Shape must match *files*.  Stored as ``start_time_{stream}``
+            DataArray with the same dims/coords as the file path array.
+            ``None`` means no start times are stored (equivalent to 0.0).
+        Examples
+        --------
+        Session-wide, 3 cameras with known start times::
+
+            dt.set_media("video",
+                ["left.mp4", "right.mp4", "body.mp4"],
+                device_labels=["left", "right", "body"],
+                per_trial=False,
+                start_times=[6.5, 6.5, 6.6],
+            )
+
+        Per-trial, no start times needed (files are aligned to trials)::
+
+            dt.set_media("video",
+                [["left_t1.mp4", "right_t1.mp4"], ["left_t2.mp4", "right_t2.mp4"]],
+                device_labels=["left", "right"],
+                per_trial=True,
+            )
         """
         spec = STREAMS[stream]
 
@@ -642,6 +717,10 @@ class TrialTree(xr.DataTree):
 
         def _set(ds):
             ds[stream] = xr.DataArray(np.array(files, dtype=str), dims=dims, coords=coords)
+            if start_times is not None:
+                ds[f"start_time_{stream}"] = xr.DataArray(
+                    np.array(start_times, dtype=np.float64), dims=dims, coords=coords,
+                )
             return ds
 
         self._update_session(_set)

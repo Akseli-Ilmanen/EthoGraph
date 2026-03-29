@@ -179,6 +179,20 @@ Combine extras with commas:
 uv pip install "ethograph[nwb,gui]"
 ```
 
+## Install from source (before PyPI release)
+
+If ethograph is not yet published on PyPI, install directly from your local
+clone:
+
+```bash
+git clone https://github.com/Akseli-Ilmanen/ethograph.git
+cd ethograph
+uv pip install -e ".[gui]"
+```
+
+The `-e` flag installs in **editable mode** — code changes take effect
+immediately without reinstalling.
+
 ## For developers
 
 To install ethograph in editable mode with all optional dependencies and

@@ -16,15 +16,42 @@ import xarray as xr
 try:
     import h5py
     import pynwb
-    import remfile
-    from dandi.dandiapi import DandiAPIClient
-    from movement.io import load_poses
     from pynwb import NWBFile
-except ImportError as e:
-    raise ImportError(
-        "h5py, pynwb, remfile, dandi, and movement are required for "
-        "NWB support. Install them with: uv pip install \"ethograph[nwb]\""
-    ) from e
+except ImportError:
+    h5py = None
+    pynwb = None
+    NWBFile = None
+
+try:
+    import remfile
+except ImportError:
+    remfile = None
+
+try:
+    from dandi.dandiapi import DandiAPIClient
+except ImportError:
+    DandiAPIClient = None
+
+try:
+    from movement.io import load_poses
+except ImportError:
+    load_poses = None
+
+
+def _require_nwb():
+    if pynwb is None:
+        raise ImportError(
+            "h5py and pynwb are required for NWB support. "
+            "Install them with: uv pip install \"ethograph[nwb]\""
+        )
+
+
+def _require_dandi():
+    if DandiAPIClient is None:
+        raise ImportError(
+            "dandi is required for DANDI support. "
+            "Install with: uv pip install \"ethograph[nwb]\""
+        )
 
 try:
     import lindi as _lindi
@@ -94,6 +121,7 @@ def parse_dandi_url(url: str) -> dict | None:
 
 def open_nwb_local(path: str) -> tuple:
     """Open a local NWB file. Returns (nwb, io, h5_file, None)."""
+    _require_nwb()
     h5_file = h5py.File(path, "r")
     io = pynwb.NWBHDF5IO(file=h5_file, mode="r", load_namespaces=True)
     return io.read(), io, h5_file, None
@@ -108,6 +136,8 @@ def open_nwb_dandi(dandiset_id: str, asset_id: str) -> tuple:
 
     Returns (nwb, io, h5_file, rf) where rf=None when lindi is used.
     """
+    _require_nwb()
+    _require_dandi()
     if _LINDI_AVAILABLE:
         lindi_url = (
             f"https://lindi.neurosift.org/dandi/dandisets/{dandiset_id}"
@@ -135,6 +165,7 @@ def find_video_assets(
     asset_id: str | None = None,
     progress_callback: Callable[[str], None] | None = None,
 ) -> list[tuple[str, str]]:
+    _require_dandi()
     video_extensions = frozenset({".mp4", ".avi", ".mov", ".mkv"})
 
     for item in getattr(nwb, "acquisition", {}).values():
@@ -405,6 +436,7 @@ def load_nwb_session(
     include_pose: bool = True,
     behavioral_sources: set[str] | None = None,
 ) -> tuple[TrialTree, pd.DataFrame]:
+    _require_nwb()
     trials_df = read_trials_table(nwb_file)
     if trial_indices is not None:
         trials_df = trials_df.iloc[trial_indices].reset_index(drop=True)
@@ -533,6 +565,29 @@ def load_nwb_session(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def resolve_timeseries_timing(iface: Any) -> tuple[float, float]:
+    """Extract (rate_hz, starting_time_s) from any NWB TimeSeries.
+
+    Handles both NWB timing schemes:
+    - ``rate`` + ``starting_time``: returns them directly.
+    - ``timestamps``: derives rate from median inter-sample interval,
+      starting_time from ``timestamps[0]``.
+
+    Raises ``ValueError`` if neither scheme is available.
+    """
+    if getattr(iface, "rate", None) is not None and iface.rate:
+        t0 = float(iface.starting_time) if getattr(iface, "starting_time", None) is not None else 0.0
+        return float(iface.rate), t0
+    ts = getattr(iface, "timestamps", None)
+    if ts is not None and len(ts) >= 2:
+        ts_arr = np.asarray(ts[:min(len(ts), 10_000)], dtype=np.float64)
+        rate = 1.0 / float(np.median(np.diff(ts_arr)))
+        return rate, float(ts_arr[0])
+    raise ValueError(
+        f"TimeSeries '{getattr(iface, 'name', '?')}' has neither rate nor timestamps."
+    )
 
 
 def _has_valid_timing(iface: Any) -> bool:

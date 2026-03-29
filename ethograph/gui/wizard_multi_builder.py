@@ -292,20 +292,9 @@ def _set_stream_offsets(
                 # Constant offset across all devices
                 dt.set_stream_offset(stream, cfg.constant_offset)
             elif cfg.device_offsets:
-                # Per-device offsets stored as session variables
-                if dt.session is not None:
-                    session_ds = dt["session"].to_dataset()
-                else:
-                    session_ds = xr.Dataset()
-                
                 for device, offset in cfg.device_offsets.items():
                     if offset != 0.0:
-                        session_ds[f"offset_{stream}_{device}"] = xr.DataArray(
-                            offset, attrs={"units": "seconds"}
-                        )
-                
-                if session_ds.data_vars:
-                    dt["session"] = xr.DataTree(session_ds)
+                        dt.set_stream_offset(stream, offset, device=device)
         else:
             # Aligned mode
             if cfg.constant_offset != 0.0:

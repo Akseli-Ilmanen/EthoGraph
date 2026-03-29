@@ -546,6 +546,10 @@ class DataWidget(DataLoader, QWidget):
 
         missing = self._validate_media_files()
         if missing:
+            print(f"Trials: {self.app_state.trials}")
+            print(f"Current trial: {self.app_state.trials_sel}")
+            print(f"First trial: {self.app_state.trials[0]}")
+            
             self._cancel_load(
                 "Missing media files for first trial:\n" + "\n".join(missing)
             )
@@ -675,14 +679,22 @@ class DataWidget(DataLoader, QWidget):
             slot_layout.addWidget(self.primary_camera_combo)
 
         if len(cameras) > 1:
-            self.secondary_camera_combo = QComboBox()
-            self.secondary_camera_combo.setObjectName("secondary_camera_combo")
-            self.secondary_camera_combo.addItems(["None"] + [str(c) for c in cameras])
-            self.secondary_camera_combo.setItemDelegate(ElidedDelegate(parent=self.secondary_camera_combo))
-            self.secondary_camera_combo.setCurrentIndex(0)
-            self.secondary_camera_combo.currentTextChanged.connect(self._on_secondary_camera_changed)
-            self.controls.append(self.secondary_camera_combo)
-            slot_layout.addWidget(self.secondary_camera_combo)
+            from .video_manager import MAX_EXTRA_CAMERAS
+            cam_names = [str(c) for c in cameras]
+            n_extra = min(MAX_EXTRA_CAMERAS, len(cameras) - 1)
+            self._extra_camera_combos: list[QComboBox] = []
+            for i in range(n_extra):
+                combo = QComboBox()
+                combo.setObjectName(f"extra_camera_combo_{i}")
+                combo.addItems(["None"] + cam_names)
+                combo.setItemDelegate(ElidedDelegate(parent=combo))
+                combo.setCurrentIndex(0)
+                combo.currentTextChanged.connect(
+                    lambda _text, idx=i: self._on_extra_camera_combo_changed(idx)
+                )
+                self._extra_camera_combos.append(combo)
+                self.controls.append(combo)
+                slot_layout.addWidget(combo)
 
         if "keypoints" in self.app_state.ds.coords:
             keypoint_names = strip_common_prefix([str(k) for k in self.app_state.ds.coords["keypoints"].values])
@@ -1072,17 +1084,7 @@ class DataWidget(DataLoader, QWidget):
             primary.blockSignals(False)
             self.app_state.set_key_sel("cameras", primary.currentText())
 
-        secondary = getattr(self, 'secondary_camera_combo', None)
-        if secondary is not None and len(cameras) > 1:
-            prev_index = secondary.currentIndex()
-            secondary.blockSignals(True)
-            secondary.clear()
-            secondary.addItems(["None"] + cameras)
-            if prev_index < secondary.count():
-                secondary.setCurrentIndex(prev_index)
-            else:
-                secondary.setCurrentIndex(0)
-            secondary.blockSignals(False)
+        self._update_extra_camera_combo_items(cameras)
 
 
 
@@ -1429,17 +1431,18 @@ class DataWidget(DataLoader, QWidget):
                 self.primary_camera_combo.setCurrentIndex(idx)
                 self.app_state.set_key_sel("cameras", saved_slot2)
 
-        saved_slot3 = self.app_state.slot3_sel
-        if saved_slot3 and hasattr(self, 'secondary_camera_combo'):
-            idx = self.secondary_camera_combo.findText(saved_slot3)
-            if idx >= 0:
-                self.secondary_camera_combo.setCurrentIndex(idx)
-
-        template_idx = getattr(self.app_state, '_template_slot3_index', None)
-        if template_idx is not None and hasattr(self, 'secondary_camera_combo'):
-            resolved = template_idx % self.secondary_camera_combo.count()
-            self.secondary_camera_combo.setCurrentIndex(resolved)
-            del self.app_state._template_slot3_index
+        saved_extra = self.app_state.extra_cameras_sel
+        if saved_extra and hasattr(self, '_extra_camera_combos'):
+            cam_names = [c.strip() for c in saved_extra.split(",") if c.strip()]
+            for i, cam_name in enumerate(cam_names):
+                if i >= len(self._extra_camera_combos):
+                    break
+                combo = self._extra_camera_combos[i]
+                idx = combo.findText(cam_name)
+                if idx >= 0:
+                    combo.blockSignals(True)
+                    combo.setCurrentIndex(idx)
+                    combo.blockSignals(False)
 
         # Normalize stale *_sel values against currently loaded options.
         self._normalize_saved_sel_values()
@@ -1609,7 +1612,7 @@ class DataWidget(DataLoader, QWidget):
 
         self.app_state.current_frame = 0
         self.update_video()
-        self._init_or_update_secondary_video()
+        self._init_or_update_extra_cameras()
         self.update_audio()
         self.update_pose()
         self.update_label()
@@ -1739,7 +1742,7 @@ class DataWidget(DataLoader, QWidget):
             self.plot_container.set_x_range(mode='center', center_on_frame=frame_number)
 
     def update_pose(self):
-        """Refresh primary and secondary pose layers through PoseDisplayManager."""
+        """Refresh primary and extra camera pose layers through PoseDisplayManager."""
         if self.pose_mgr is None or not self.app_state.has_pose:
             return
         if not self.app_state.pose_markers_visible:
@@ -1779,48 +1782,81 @@ class DataWidget(DataLoader, QWidget):
         self.update_video()
         self.update_pose()
 
-    def _on_secondary_camera_changed(self, camera_name):
+    def _on_extra_camera_combo_changed(self, combo_idx: int):
         if not self.app_state.ready:
             return
-        self.app_state.slot3_sel = camera_name
-        if camera_name == "None":
-            self.video_mgr.hide_secondary_video()
-            return
-        video_path = self.video_mgr._resolve_video_path(camera_name, self.app_state.video_folder)
-        if not video_path:
-            self.video_mgr.hide_secondary_video()
-            return
-        # Always show secondary video when combo changes
-        self.video_mgr.show_secondary_video(
-            video_path=video_path,
-            layout_mgr=self.layout_mgr,
-            meta_widget=self.meta_widget,
-        )
-        if self.pose_mgr is not None:
-            self.pose_mgr.update_secondary_pose(self.get_hidden_keypoints(), camera_name)
+        self._apply_extra_cameras()
+        self._save_extra_cameras_sel()
 
-    def _init_or_update_secondary_video(self):
-        secondary_camera_combo = getattr(self, 'secondary_camera_combo', None)
-        if secondary_camera_combo is None:
-            return
+    def _apply_extra_cameras(self):
+        desired = self._get_desired_extra_cameras()
+        current = set(self.video_mgr.extra_widgets.keys())
 
-        camera_name = secondary_camera_combo.currentText()
-        if not camera_name or camera_name == "None":
-            return
+        for name in current - desired:
+            self.video_mgr.remove_camera(name)
 
-        secondary_widget = self.video_mgr.secondary_widget
-        if secondary_widget is None or not secondary_widget.isVisible():
-            video_path = self.video_mgr._resolve_video_path(camera_name, self.app_state.video_folder)
+        for name in desired - current:
+            video_path = self.video_mgr._resolve_video_path(name, self.app_state.video_folder)
             if not video_path:
-                return
-            self.video_mgr.show_secondary_video(
+                continue
+            self.video_mgr.add_camera(
+                camera_name=name,
                 video_path=video_path,
                 layout_mgr=self.layout_mgr,
                 meta_widget=self.meta_widget,
             )
             if self.pose_mgr is not None:
-                self.pose_mgr.update_secondary_pose(self.get_hidden_keypoints(), camera_name)
+                self.pose_mgr.update_extra_camera_pose(name, self.get_hidden_keypoints())
+
+    def _get_desired_extra_cameras(self) -> set[str]:
+        if not hasattr(self, '_extra_camera_combos'):
+            return set()
+        names = set()
+        for combo in self._extra_camera_combos:
+            text = combo.currentText()
+            if text and text != "None":
+                names.add(text)
+        return names
+
+    def _save_extra_cameras_sel(self):
+        if not hasattr(self, '_extra_camera_combos'):
             return
+        values = [combo.currentText() for combo in self._extra_camera_combos]
+        active = [v for v in values if v and v != "None"]
+        self.app_state.extra_cameras_sel = ",".join(active) if active else None
+
+    def _update_extra_camera_combo_items(self, cameras: list[str]):
+        if not hasattr(self, '_extra_camera_combos'):
+            return
+        cam_names = [str(c) for c in cameras]
+        for combo in self._extra_camera_combos:
+            prev_text = combo.currentText()
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItems(["None"] + cam_names)
+            idx = combo.findText(prev_text)
+            combo.setCurrentIndex(idx if idx >= 0 else 0)
+            combo.blockSignals(False)
+
+    def _init_or_update_extra_cameras(self):
+        if not hasattr(self, '_extra_camera_combos'):
+            return
+        desired = self._get_desired_extra_cameras()
+        for camera_name in desired:
+            widget = self.video_mgr.extra_widgets.get(camera_name)
+            if widget is not None and widget.isVisible():
+                continue
+            video_path = self.video_mgr._resolve_video_path(camera_name, self.app_state.video_folder)
+            if not video_path:
+                continue
+            self.video_mgr.add_camera(
+                camera_name=camera_name,
+                video_path=video_path,
+                layout_mgr=self.layout_mgr,
+                meta_widget=self.meta_widget,
+            )
+            if self.pose_mgr is not None:
+                self.pose_mgr.update_extra_camera_pose(camera_name, self.get_hidden_keypoints())
 
 
 

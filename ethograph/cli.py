@@ -1,29 +1,12 @@
 #!/usr/bin/env python
 """Command-line interface for ethograph."""
 
-import io
 import os
 import sys
+import warnings
 
-
-def _get_log_path():
-    log_dir = os.path.join(os.path.expanduser("~"), ".ethograph")
-    os.makedirs(log_dir, exist_ok=True)
-    return os.path.join(log_dir, "ethograph.log")
-
-
-def _fix_std_streams():
-    """Redirect stdout/stderr to a log file when running via pythonw.exe."""
-    if sys.stderr is not None and sys.stdout is not None:
-        return
-    log_file = open(_get_log_path(), "a")
-    if sys.stdout is None:
-        sys.stdout = log_file
-    if sys.stderr is None:
-        sys.stderr = log_file
-
-
-_fix_std_streams()
+warnings.filterwarnings("ignore", module="vispy")
+warnings.filterwarnings("ignore", message=".*__array__.*copy keyword.*")
 
 
 def _ensure_qt_plugins():
@@ -41,42 +24,15 @@ def _ensure_qt_plugins():
             return
 
 
-def _show_error_dialog(title: str, message: str):
-    """Show a Qt error dialog for fatal startup errors."""
-    from qtpy.QtWidgets import QApplication, QMessageBox
-
-    app = QApplication.instance() or QApplication(sys.argv)
-    box = QMessageBox()
-    box.setIcon(QMessageBox.Critical)
-    box.setWindowTitle(title)
-    box.setText(message)
-    box.exec_()
-
-
 def launch():
     """Launch the ethograph GUI."""
-    try:
-        from ethograph.shortcuts import ensure_shortcut_on_first_launch
-        ensure_shortcut_on_first_launch()
-        _ensure_qt_plugins()
-        import napari
-        from ethograph.gui.widgets_meta import MetaWidget
+    _ensure_qt_plugins()
+    import napari
+    from ethograph.gui.widgets_meta import MetaWidget
 
-        viewer = napari.Viewer()
-        viewer.window.add_dock_widget(
-            MetaWidget(viewer), name="ethograph GUI"
-        )
-        napari.run()
-    except Exception:
-        import traceback
-
-        tb = traceback.format_exc()
-        try:
-            sys.stderr.write(tb)
-        except Exception:
-            pass
-        _show_error_dialog("ethograph - startup error", tb)
-        sys.exit(1)
+    viewer = napari.Viewer()
+    viewer.window.add_dock_widget(MetaWidget(viewer), name="ethograph GUI")
+    napari.run()
 
 
 def main():
@@ -85,6 +41,7 @@ def main():
         print("Usage: ethograph <command>")
         print("Commands:")
         print("  launch    Launch the ethograph GUI")
+        print("  shortcut  Install desktop/Start Menu shortcut")
         sys.exit(1)
 
     command = sys.argv[1]
@@ -93,7 +50,7 @@ def main():
         launch()
     elif command == "shortcut":
         from ethograph.shortcuts import install_shortcut
-        install_shortcut()
+        sys.exit(install_shortcut())
     else:
         print(f"Unknown command: {command}")
         print("Available commands: launch, shortcut")

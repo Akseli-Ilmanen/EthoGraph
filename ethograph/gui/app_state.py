@@ -169,7 +169,7 @@ class AppStateSpec:
         "percentile_ylim": (float, 99.5, True),
         "space_plot_type": (str, "Layers", True),
         "slot2_sel": (str | None, None, True),
-        "slot3_sel": (str | None, None, True),
+        "extra_cameras_sel": (str | None, None, True),
         "lock_axes": (bool, False, False),
         "spec_colormap": (str, "CET-R4", True),
         "spec_levels_mode": (str, "auto", True),
@@ -187,6 +187,7 @@ class AppStateSpec:
         "automatic_min_label_length_s": (float, 1e-3, True),
         "automatic_stitch_gap_s": (float, 0.0, True),
         "save_tsv_enabled": (bool, True, True),
+        "correct_offsets_enabled": (bool, True, True),
 
         # Envelope / energy (general, used by both heatmap and overlay)
         "energy_metric": (str, "energy_lowpass", True),
@@ -832,7 +833,7 @@ class ObservableAppState(QObject):
     def _save_labels_tsv(self, nc_path, suffix):        
         tsv_path = nc_path.parent / f"{nc_path.stem}{suffix}_labels.tsv"        
         keep_attrs = self.trial_conditions if self.trial_conditions is not None else []
-        df = eto.trees_to_df(self.dt, keep_attrs)
+        df = eto.trees_to_df(self.dt, keep_attrs, correct_offsets_enabled=self.correct_offsets_enabled)
         df.to_csv(tsv_path, index=False, sep='\t', encoding='utf-8-sig')
                     
 

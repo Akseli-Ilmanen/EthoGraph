@@ -183,6 +183,14 @@ class PoseDisplayManager:
         cameras = self.app_state.dt.cameras
         return cameras.index(camera_name)
 
+    def _resolve_camera_fps(self, camera_idx: int) -> float:
+        cameras = self.app_state.dt.cameras
+        if camera_idx < len(cameras):
+            fps = self.video_mgr.get_camera_fps(cameras[camera_idx])
+            if fps > 0:
+                return fps
+        return self.app_state.video_fps
+
     def _has_embedded_pose(self) -> bool:
         ds = self.app_state.ds
         if "position" in ds.data_vars:
@@ -205,7 +213,7 @@ class PoseDisplayManager:
                 return load_pose_from_file(
                     pose_path,
                     self.app_state.ds.source_software,
-                    self.video_mgr.secondary_fps or self.app_state.video_fps,
+                    self._resolve_camera_fps(camera_idx),
                 )
             except (OSError, ValueError, KeyError) as e:
                 show_warning(f"Failed to load pose for camera {camera_idx}: {e}")
@@ -239,12 +247,8 @@ class PoseDisplayManager:
         if primary_name is not None:
             self._display_pose_on_primary(self._camera_index(primary_name), hidden_keypoints)
 
-        secondary_combo = getattr(self._dl, "secondary_camera_combo", None)
-        if secondary_combo is None:
-            return
-        self._display_pose_on_secondary(secondary_combo.currentText(), hidden_keypoints)
-        
-        return 
+        for camera_name, widget in self.video_mgr.extra_widgets.items():
+            self._display_pose_on_extra(camera_name, hidden_keypoints, widget)
 
     def _display_pose_on_primary(self, camera_idx: int, hidden_keypoints: set[str]) -> None:
         self._remove_pose_layers()
@@ -266,36 +270,38 @@ class PoseDisplayManager:
         self.apply_pose_style()
         self._dl._set_initial_state()
 
-    def _display_pose_on_secondary(self, camera_name: str | None, hidden_keypoints: set[str]) -> None:
-        sw = self.video_mgr.secondary_widget
-        if sw is None:
-            return
-        if not camera_name or camera_name == "None":
-            sw.clear_pose()
+    def _display_pose_on_extra(
+        self,
+        camera_name: str,
+        hidden_keypoints: set[str],
+        widget: Any,
+    ) -> None:
+        if not camera_name:
+            widget.clear_pose()
             return
         pr = self._prepare_pose(self._camera_index(camera_name), hidden_keypoints)
         if pr is None:
-            sw.clear_pose()
+            widget.clear_pose()
             return
         visible_data = pr.data[pr.data_not_nan, 1:]
         visible_props = pr.properties.iloc[pr.data_not_nan, :].reset_index(drop=True)
         style_kwargs = self._build_pose_style_kwargs(pr.properties)
         try:
-            sw.set_pose_layer(
+            widget.set_pose_layer(
                 data=visible_data,
                 properties=visible_props,
                 style_kwargs=style_kwargs,
             )
             self.apply_pose_style()
         except (OSError, ValueError, KeyError) as e:
-            show_warning(f"Failed to set secondary pose layer: {e}")
-            sw.clear_pose()
+            show_warning(f"Failed to set pose on extra camera '{camera_name}': {e}")
+            widget.clear_pose()
 
-    def update_secondary_pose(self, hidden_keypoints: set[str], camera_name: str | None = None) -> None:
-        if camera_name is None:
-            combo = getattr(self._dl, "secondary_camera_combo", None)
-            camera_name = combo.currentText() if combo else None
-        self._display_pose_on_secondary(camera_name, hidden_keypoints)
+    def update_extra_camera_pose(self, camera_name: str, hidden_keypoints: set[str]) -> None:
+        widget = self.video_mgr.extra_widgets.get(camera_name)
+        if widget is None:
+            return
+        self._display_pose_on_extra(camera_name, hidden_keypoints, widget)
 
     def _remove_pose_layers(self) -> None:
         file_name = self._dl.file_name
@@ -332,10 +338,10 @@ class PoseDisplayManager:
         if points_layer is not None:
             points_layer.text.visible = visible
             points_layer.size = size
-        sw = self.video_mgr.secondary_widget
-        if sw is not None and sw._points_layer is not None:
-            sw._points_layer.text.visible = visible
-            sw._points_layer.size = size
+        for widget in self.video_mgr.extra_widgets.values():
+            if widget._points_layer is not None:
+                widget._points_layer.text.visible = visible
+                widget._points_layer.size = size
 
     def on_rotate_video_pose(self) -> None:
         self._rotation_count = (getattr(self, '_rotation_count', 0) + 1) % 4
@@ -348,9 +354,8 @@ class PoseDisplayManager:
             affine[-3:-1, -3:-1] = rot_2d
             layer.affine = affine
 
-        sw = self.video_mgr.secondary_widget
-        if sw is not None:
-            for layer in sw._viewer_model.layers:
+        for widget in self.video_mgr.extra_widgets.values():
+            for layer in widget._viewer_model.layers:
                 affine = np.eye(layer.ndim + 1)
                 affine[-3:-1, -3:-1] = rot_2d
                 layer.affine = affine

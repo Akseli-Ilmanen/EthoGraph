@@ -3,50 +3,67 @@ from ethograph import TrialTree
 from pathlib import Path
 
 
-def correct_offsets(df: pd.DataFrame, dt: float = 0.005) -> pd.DataFrame:
-    """Fix off-by-one-frame gaps between consecutive action syllables.
+def correct_offsets(df: pd.DataFrame) -> pd.DataFrame:
+    """Insert artificial gaps where consecutive intervals are too close.
 
-    During dense labeling at a fixed frame rate (default 200 Hz, dt=5ms),
-    each frame receives exactly one label. When two syllables are adjacent,
-    the offset of syllable N and the onset of syllable N+1 compete for the
-    same frame, and the onset wins. This leaves a spurious 1-frame gap
-    where offset[N] + dt == onset[N+1], even though the syllables are
-    truly contiguous. This function detects those gaps and snaps offset[N]
-    forward to onset[N+1], correcting offset_s, offset_global, and duration.
+    Pynapple cannot resolve intervals separated by less than ~1e-6 s. When
+    an offset and the next onset are within ``eps`` of each other (or
+    exactly equal), pynapple raises or silently merges them. This function
+    pulls back the earlier offset by ``eps`` so every pair of intervals has
+    a resolvable gap.
+
+    Columns updated: ``offset_s``, ``offset_global`` (if present),
+    ``duration``.
     """
     df = df.copy().sort_values(["session", "trial", "individual", "sequence_idx"])
 
     # Pynapple can resolve up to 1e-6 intervals, so we must set lower. 
     eps = 1e-3
     
+    
+    # Pass 1: check all pairwise combinations for offset == onset
+    for i in range(len(idx)):
+        for j in range(len(idx)):
+            if i == j:
+                continue
+            row_i = idx[i]
+            row_j = idx[j]
+            if abs(df.loc[row_i, "offset_s"] - df.loc[row_j, "onset_s"]) < eps:
+                print(f"Corrected gap (size: {abs(df.loc[row_i, 'offset_s'] - df.loc[row_j, 'onset_s'])}), at labels: {df.loc[row_i, 'labels']}, {df.loc[row_j, 'labels']}")
+                df.loc[row_i, "offset_s"] = df.loc[row_j, "onset_s"] - eps
+                df.loc[row_i, "offset_global"] = df.loc[row_j, "onset_global"] - eps
+                df.loc[row_i, "duration"] = df.loc[row_i, "offset_s"] - df.loc[row_i, "onset_s"]
+
+
+
+
+    # Internal to crow lab, we had a legacy labeling system that was frame-wise(200 Hz), and this correction should fix those labels.
+    dt = 1 / 200  # 5 ms frame rate
     for _, group in df.groupby(["session", "trial", "individual"]):
-        print(f"Processing session {group['session'].iloc[0]}, trial {group['trial'].iloc[0]}")
+        individual = group["individual"].iloc[0]
+        
+        # Won't affect other users.
+        if not any(name in individual for name in ["Ivy", "Freddy"]):
+            continue
+
+        print(f"Processing session {group['session'].iloc[0]}, trial {group['trial'].iloc[0]}, individual {individual}")
         
         idx = group.index
+        
         # Pass 1: fix 1-frame gaps
         for i in range(len(idx) - 1):
             current = idx[i]
             next_row = idx[i + 1]
+            
             gap = df.loc[next_row, "onset_s"] - df.loc[current, "offset_s"]
+            
             if abs(gap - dt) < eps:
                 df.loc[current, "offset_s"] = df.loc[next_row, "onset_s"] - eps
                 df.loc[current, "offset_global"] = df.loc[next_row, "onset_global"] - eps
-                df.loc[current, "duration"] = df.loc[current, "offset_s"] - df.loc[current, "onset_s"]
+                df.loc[current, "duration"] = (
+                    df.loc[current, "offset_s"] - df.loc[current, "onset_s"]
+                )
 
-
-
-        # Pass 2: check all pairwise combinations for offset == onset
-        for i in range(len(idx)):
-            for j in range(len(idx)):
-                if i == j:
-                    continue
-                row_i = idx[i]
-                row_j = idx[j]
-                if abs(df.loc[row_i, "offset_s"] - df.loc[row_j, "onset_s"]) < eps:
-                    print(f"Corrected gap (size: {abs(df.loc[row_i, 'offset_s'] - df.loc[row_j, 'onset_s'])}), at labels: {df.loc[row_i, 'labels']}, {df.loc[row_j, 'labels']}")
-                    df.loc[row_i, "offset_s"] = df.loc[row_j, "onset_s"] - eps
-                    df.loc[row_i, "offset_global"] = df.loc[row_j, "onset_global"] - eps
-                    df.loc[row_i, "duration"] = df.loc[row_i, "offset_s"] - df.loc[row_i, "onset_s"]
 
     return df
 
@@ -57,12 +74,12 @@ def correct_offsets(df: pd.DataFrame, dt: float = 0.005) -> pd.DataFrame:
 def trees_to_df(
     trees: dict[str, "TrialTree"],
     keep_attrs: list[str],
+    correct_offsets_enabled: bool = True,
 ) -> pd.DataFrame:
-    """Flatten labelled segments from one or more TrialTrees into a tidy DataFrame.
+    """Flatten labelled segments from one or more TrialTrees into a tidy pd.DataFrame.
 
     Each non-background interval (``labels > 0``) becomes one row. This is
-    the standard way to export ethograph labels for analysis or ML
-    pipelines.
+    the standard way to export ethograph labels for analysis.
 
     Parameters
     ----------
@@ -199,10 +216,7 @@ def trees_to_df(
                 
     df = pd.DataFrame(rows)      
     
-    # Correction of legacy label system that was frame-wise. 
-    # Unless you have offset, onset exactly 5ms, thsi correction shouldnt affect your data.
-    corrected_df = correct_offsets(df)
-    
-    
-                    
-    return corrected_df
+    if correct_offsets_enabled:
+        df = correct_offsets(df)
+
+    return df

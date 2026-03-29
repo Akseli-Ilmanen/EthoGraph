@@ -33,6 +33,8 @@ from qtpy.QtCore import QEvent, Qt, Signal
 import warnings
 from phylib.io.traces import get_ephys_reader
 
+from ethograph.utils.nwb import resolve_timeseries_timing
+
 from .app_constants import BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER_EPHYS, EPHYSTRACE_DEBOUNCE_MS
 from .plots_base import BasePlot, ThrottleDebounce
 from .video_manager import is_url
@@ -125,55 +127,85 @@ class EphysLoader(Protocol):
 
 
 
-class RemoteNWBLoader:
-    def __init__(self, url: str, electrical_series_name: str | None = None):
+class NWBEphysLoader:
+    """Unified NWB ephys loader for local and remote files.
+
+    Each ElectricalSeries in nwb.acquisition becomes a "stream".
+    Use stream_id (the series name) to select which one to load.
+    """
+
+    def __init__(self, path: str, stream_id: str | None = None):
         import h5py
-        import remfile
         import pynwb
 
-        self._rf = remfile.File(url)
-        self._h5 = h5py.File(self._rf, "r")
-        self._io = pynwb.NWBHDF5IO(file=self._h5, load_namespaces=True)
+        self._rf = None
+        if is_url(path):
+            import remfile
+            self._rf = remfile.File(path)
+            self._h5 = h5py.File(self._rf, "r")
+        else:
+            self._h5 = h5py.File(path, "r")
 
+        self._io = pynwb.NWBHDF5IO(file=self._h5, load_namespaces=True)
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message=".*manufacturer.*deprecated", category=DeprecationWarning)
-            nwb = self._io.read()
+            self._nwb = self._io.read()
 
-        es = self._resolve_electrical_series(nwb, electrical_series_name)
+        self._all_series = self._discover_electrical_series(self._nwb)
+        if not self._all_series:
+            raise ValueError(
+                f"No ElectricalSeries found in acquisition. "
+                f"Available keys: {list(self._nwb.acquisition.keys())}"
+            )
+
+        if stream_id is None or stream_id not in self._all_series:
+            stream_id = next(iter(self._all_series))
+        self._select_stream(stream_id)
+
+    @staticmethod
+    def _discover_electrical_series(nwb) -> dict:
+        import pynwb
+        return {
+            name: es
+            for name, es in nwb.acquisition.items()
+            if isinstance(es, pynwb.ecephys.ElectricalSeries)
+        }
+
+    def _select_stream(self, stream_id: str):
+        es = self._all_series[stream_id]
+        self._stream_id = stream_id
         self._data = es.data
         self._conversion = float(es.conversion) if es.conversion else 1.0
-        self.rate = float(es.rate)
-        self.starting_time = float(es.starting_time) if es.starting_time else 0.0
         self._n_channels = self._data.shape[1] if self._data.ndim > 1 else 1
+        self._channel_names = self._extract_channel_names(es, self._n_channels)
+        self._units = str(es.unit) if hasattr(es, "unit") and es.unit else "V"
+        self.rate, self.starting_time = resolve_timeseries_timing(es)
 
+    @staticmethod
+    def _extract_channel_names(es, n_channels: int) -> list[str]:
         electrodes = es.electrodes
         if electrodes is not None and hasattr(electrodes, "table"):
             table = electrodes.table
             indices = electrodes.data[:]
             if "label" in table.colnames:
-                self._channel_names = [str(table["label"][i]) for i in indices]
-            else:
-                self._channel_names = [f"Ch {i}" for i in indices]
-        else:
-            self._channel_names = [f"Ch {i}" for i in range(self._n_channels)]
-        self._units = "V"
+                return [str(table["label"][i]) for i in indices]
+            return [f"Ch {i}" for i in indices]
+        return [f"Ch {i}" for i in range(n_channels)]
 
-    def _resolve_electrical_series(self, nwb, name: str | None):
-        import pynwb
-
-        if name:
-            return nwb.acquisition[name]
-        es = next(
-            (v for v in nwb.acquisition.values()
-             if isinstance(v, pynwb.ecephys.ElectricalSeries)),
-            None,
-        )
-        if es is None:
-            raise ValueError(
-                f"No ElectricalSeries found. "
-                f"Available acquisition keys: {list(nwb.acquisition.keys())}"
-            )
-        return es
+    @property
+    def streams(self) -> dict[str, dict]:
+        result = {}
+        for name, es in self._all_series.items():
+            n_ch = es.data.shape[1] if es.data.ndim > 1 else 1
+            rate, t0 = resolve_timeseries_timing(es)
+            result[name] = {
+                "name": name,
+                "n_channels": n_ch,
+                "rate": rate,
+                "starting_time": t0,
+                "dtype": str(es.data.dtype),
+            }
+        return result
 
     def __len__(self) -> int:
         return self._data.shape[0]
@@ -197,7 +229,10 @@ class RemoteNWBLoader:
         return chunk.astype(np.float64) * self._conversion
 
     def __del__(self):
-        for resource in (self._io, self._h5, self._rf):
+        resources = [self._io, self._h5]
+        if self._rf is not None:
+            resources.append(self._rf)
+        for resource in resources:
             try:
                 resource.close()
             except Exception:
@@ -237,7 +272,6 @@ class GenericEphysLoader:
     """
 
     KNOWN_EXTENSIONS: dict[str, str] = {
-        ".nwb": "NWBIO",
         ".rhd": "IntanRawIO",
         ".rhs": "IntanRawIO",
         ".oebin": "OpenEphysBinaryRawIO",
@@ -291,8 +325,8 @@ class GenericEphysLoader:
 
         ext = self.path.suffix.lower()
 
-        if ext == ".nwb" and is_url(str(self.path)):
-            self._init_remote_nwb()
+        if ext == ".nwb":
+            self._init_nwb(stream_id)
         elif rawio_name := self.KNOWN_EXTENSIONS.get(ext):
             self._init_neo(rawio_name, stream_id)
         elif ext in _RAW_BINARY_EXTENSIONS:
@@ -300,13 +334,13 @@ class GenericEphysLoader:
                 raise ValueError(f"Raw binary '{ext}' requires n_channels and sampling_rate.")
             self._phylib_memmap(n_channels, sampling_rate, dtype, gain)
         else:
-            supported = ", ".join(sorted(self.KNOWN_EXTENSIONS))
+            supported = ", ".join(sorted([".nwb", *self.KNOWN_EXTENSIONS]))
             raise ValueError(f"Unsupported format '{ext}'. Supported: {supported}, {', '.join(_RAW_BINARY_EXTENSIONS)}")
 
     # -- backends -----------------------------------------------------------
 
-    def _init_remote_nwb(self):
-        loader = RemoteNWBLoader(str(self.path))
+    def _init_nwb(self, stream_id: str):
+        loader = NWBEphysLoader(str(self.path), stream_id=stream_id)
         self._loader = loader
         self._n_channels = loader.n_channels
         self._n_samples = len(loader)
@@ -389,6 +423,8 @@ class GenericEphysLoader:
 
     @property
     def streams(self) -> dict | None:
+        if isinstance(self._loader, NWBEphysLoader):
+            return self._loader.streams
         if self._reader is None:
             return None
         all_channels = self._reader.header["signal_channels"]

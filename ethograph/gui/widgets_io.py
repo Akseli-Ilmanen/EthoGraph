@@ -597,7 +597,7 @@ class IOWidget(QWidget):
         line_edit.setObjectName(f"{object_name}_edit")
         if object_name == "nc_file_path":
             line_edit.setPlaceholderText(
-                "Path to .nc/.nwb file"
+                "Path to .nc file"
             )
 
         browse_button = QPushButton("Browse")

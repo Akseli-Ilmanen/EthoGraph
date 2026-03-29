@@ -3,6 +3,7 @@ logging/
 result/
 neurosift/
 pynaviz/
+docs_OLD/
 *.mp4
 *.avi
 *.mkv

@@ -1,7 +1,6 @@
 -e .
 linkify-it-py
-myst-parser
-nbsphinx
+myst-nb
 pydata-sphinx-theme
 setuptools-scm
 sphinx

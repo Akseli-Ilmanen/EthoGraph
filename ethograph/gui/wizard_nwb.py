@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import os
 import re
-import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pyqtgraph as pg
 import xarray as xr
 from dandi.dandiapi import DandiAPIClient
 
-from qtpy.QtCore import Qt, QUrl
+from qtpy.QtCore import Qt, QRectF, QUrl
 from qtpy.QtGui import QDesktopServices
 from qtpy.QtWidgets import (
     QAbstractItemView,
@@ -41,22 +41,26 @@ from qtpy.QtWidgets import (
 
 from ethograph.gui.dialog_busy_progress import BusyProgressDialog
 from ethograph.gui.dialog_pose_video_matcher import PoseVideoMatcherWidget
+from ethograph.gui.makepretty import styled_link
+from ethograph.gui.wizard_multi_timeline import draw_session_timeline
 from ethograph.labels.converters import NWBLabelConverter
 from ethograph.utils.nwb import (
     download_clip,
+    find_video_assets,
     format_file_size,
     load_nwb_session,
-    open_nwb_dandi,
     open_nwb_local,
     probe_behavioral_series,
     probe_electrical_series,
     probe_label_sources,
     read_trials_table,
 )
-from ethograph.gui.makepretty import styled_link
 from ethograph.utils.nwb_video import (
     NWBDANDIPoseEstimationWidget,
+    discover_pose_estimation_cameras,
+    get_local_video_info,
     probe_dandi_video_metadata,
+    probe_local_video_metadata,
     stream_video_in_browser,
 )
 
@@ -80,6 +84,10 @@ class _NumericTableItem(QTableWidgetItem):
         return super().__lt__(other)
 
 
+# =====================================================================
+# Page 0: Source selection
+# =====================================================================
+
 class _SourcePage(QWidget):
     """Page 0: Select local file or DANDI source."""
 
@@ -87,7 +95,7 @@ class _SourcePage(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
 
-        layout.addWidget(QLabel("<b>Step 1 of 2 — Select NWB Source</b>"))
+        layout.addWidget(QLabel("<b>Step 1 of 4 — Select NWB Source</b>"))
         layout.addSpacing(8)
 
         source_group = QGroupBox("Source type")
@@ -194,13 +202,18 @@ class _SourcePage(QWidget):
         return None
 
 
-class _SelectionPage(QWidget):
-    """Page 1: Combined trial selection + video matching + data options + output."""
+# =====================================================================
+# Page 1: Video / Pose matching + data options
+# =====================================================================
+
+class _VideoPosePage(QWidget):
+    """Page 1: Video/pose matching, behavioral series, labels, ephys."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._is_local = False
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("<b>Step 2 of 2 — Configure Import</b>"))
+        layout.addWidget(QLabel("<b>Step 2 of 4 — Video & Data Options</b>"))
         layout.addSpacing(4)
 
         scroll = QScrollArea()
@@ -221,51 +234,19 @@ class _SelectionPage(QWidget):
         self._nwb_files_group.hide()
         self._inner_layout.addWidget(self._nwb_files_group)
 
-        # --- Trial selection ---
-        self._trial_group = QGroupBox("Trial selection")
-        trial_group = self._trial_group
-        tg = QVBoxLayout(trial_group)
-        self._rb_all = QRadioButton("All trials")
-        self._rb_first_n = QRadioButton("First N trials:")
-        self._rb_select = QRadioButton("Select specific trials from table below")
-        self._rb_all.setChecked(True)
-        rb_grp = QButtonGroup(self)
-        for rb in (self._rb_all, self._rb_first_n, self._rb_select):
-            rb_grp.addButton(rb)
-            tg.addWidget(rb)
-
-        n_row = QHBoxLayout()
-        self.n_spin = QSpinBox()
-        self.n_spin.setRange(1, 100000)
-        self.n_spin.setValue(5)
-        n_row.addWidget(QLabel("  N ="))
-        n_row.addWidget(self.n_spin)
-        n_row.addStretch()
-        tg.addLayout(n_row)
-
-        self.trials_table = QTableWidget(0, 0)
-        self.trials_table.setSelectionMode(QAbstractItemView.MultiSelection)
-        self.trials_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.trials_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.trials_table.hide()
-        tg.addWidget(self.trials_table)
-        self._rb_select.toggled.connect(lambda checked: self.trials_table.setVisible(checked))
-        self._inner_layout.addWidget(trial_group)
-
-        # --- Video matching (shown only if DANDI videos are detected) ---
+        # --- Video matching ---
         self._video_group = QGroupBox("Video")
         vg = QVBoxLayout(self._video_group)
         self._video_checkbox = QCheckBox("Download video clips (uses ffmpeg to extract trial clips)")
         self._video_checkbox.setChecked(True)
         self._video_checkbox.toggled.connect(self._on_video_toggled)
         vg.addWidget(self._video_checkbox)
-        self._video_details = QWidget()
-        vd = QVBoxLayout(self._video_details)
-        vd.setContentsMargins(0, 0, 0, 0)
-        vd.addWidget(QLabel("Match pose cameras (left) to video sources (right). Reorder if needed."))
+        vg.addWidget(QLabel("Match pose cameras (left) to video sources (right). Reorder if needed."))
         self._matcher = PoseVideoMatcherWidget()
-        vd.addWidget(self._matcher)
-        dir_row = QHBoxLayout()
+        vg.addWidget(self._matcher)
+        self._download_row = QWidget()
+        dir_row = QHBoxLayout(self._download_row)
+        dir_row.setContentsMargins(0, 0, 0, 0)
         dir_row.addWidget(QLabel("Download folder:"))
         self.download_dir_edit = QLineEdit()
         self.download_dir_edit.setPlaceholderText("Select folder to save video clips...")
@@ -274,23 +255,22 @@ class _SelectionPage(QWidget):
         dir_btn.clicked.connect(self._browse_download_dir)
         dir_row.addWidget(self.download_dir_edit)
         dir_row.addWidget(dir_btn)
-        vd.addLayout(dir_row)
-        vg.addWidget(self._video_details)
+        vg.addWidget(self._download_row)
         self._video_group.hide()
         self._inner_layout.addWidget(self._video_group)
 
         # --- Pose estimation ---
         pose_group = QGroupBox("Pose estimation")
-        pg = QVBoxLayout(pose_group)
+        pg_layout = QVBoxLayout(pose_group)
         self.pose_checkbox = QCheckBox("Include pose estimation data")
         self.pose_checkbox.setChecked(True)
-        pg.addWidget(self.pose_checkbox)
+        pg_layout.addWidget(self.pose_checkbox)
         self._pose_label = QLabel("")
         self._pose_label.setWordWrap(True)
-        pg.addWidget(self._pose_label)
+        pg_layout.addWidget(self._pose_label)
         self._inner_layout.addWidget(pose_group)
 
-        # --- Behavioral time series (shown only if any detected) ---
+        # --- Behavioral time series ---
         self._behavior_group = QGroupBox("Behavioral time series")
         bg = QVBoxLayout(self._behavior_group)
         bg.addWidget(QLabel("Select series to include as features:"))
@@ -300,7 +280,7 @@ class _SelectionPage(QWidget):
         self._behavior_group.hide()
         self._inner_layout.addWidget(self._behavior_group)
 
-        # --- Behavioral labels (shown only if any detected) ---
+        # --- Behavioral labels ---
         self._labels_group = QGroupBox("Behavioral labels")
         lg2 = QVBoxLayout(self._labels_group)
         lg2.addWidget(QLabel("Select label source to import (or none):"))
@@ -310,7 +290,7 @@ class _SelectionPage(QWidget):
         self._labels_group.hide()
         self._inner_layout.addWidget(self._labels_group)
 
-        # --- Electrophysiology (shown only if ElectricalSeries detected) ---
+        # --- Electrophysiology ---
         self._ephys_group = QGroupBox("Electrophysiology")
         eg = QVBoxLayout(self._ephys_group)
         eg.addWidget(QLabel("Select ElectricalSeries to link for ephys viewing (or none):"))
@@ -331,77 +311,45 @@ class _SelectionPage(QWidget):
         self._info_note.hide()
         self._inner_layout.addWidget(self._info_note)
 
-        # --- Output ---
-        out_group = QGroupBox("Output")
-        outg = QHBoxLayout(out_group)
-        self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText("Save trials.nc to...")
-        self.output_edit.setReadOnly(True)
-        out_browse = QPushButton("Browse")
-        out_browse.clicked.connect(self._browse_output)
-        outg.addWidget(self.output_edit)
-        outg.addWidget(out_browse)
-        self._inner_layout.addWidget(out_group)
-
         self._inner_layout.addStretch()
         scroll.setWidget(inner)
         layout.addWidget(scroll)
 
+    # -- Callbacks --
+
     def _on_video_toggled(self, checked: bool):
-        self._video_details.setVisible(checked)
+        self._download_row.setVisible(checked)
 
     def _browse_download_dir(self):
         folder = QFileDialog.getExistingDirectory(self, "Select download folder")
         if folder:
             self.download_dir_edit.setText(folder)
 
-    def _browse_output(self):
-        result = QFileDialog.getSaveFileName(self, "Save trials.nc", "", "NetCDF files (*.nc);;All files (*)")
-        if result and result[0]:
-            path = result[0]
-            if not path.endswith(".nc"):
-                path += ".nc"
-            self.output_edit.setText(path)
-            if not self.download_dir_edit.text():
-                self.download_dir_edit.setText(str(Path(path).parent))
+    # -- Populate --
 
     def populate(
         self,
         nwb,
         cameras_with_pose: list[str],
-        video_urls: dict[str, str],
+        video_info: dict[str, dict],
         behavioral_series: list[dict],
         label_sources: list[dict],
         electrical_series: list[dict] | None = None,
+        is_local: bool = False,
     ) -> None:
-        # Trials table
-        total_trials = len(nwb.trials) if nwb.trials is not None and len(nwb.trials) > 0 else 1
-        self._trial_group.setVisible(total_trials > 1)
+        self._is_local = is_local
 
-        if nwb.trials is not None and len(nwb.trials) > 0:
-            df = nwb.trials.to_dataframe()
-            self.trials_table.setSortingEnabled(False)
-            self.trials_table.setRowCount(len(df))
-            self.trials_table.setColumnCount(len(df.columns))
-            self.trials_table.setHorizontalHeaderLabels(list(df.columns))
-            for r, (_, row) in enumerate(df.iterrows()):
-                for c, val in enumerate(row):
-                    if isinstance(val, (int, float)):
-                        item = _NumericTableItem(f"{val:.3f}" if isinstance(val, float) else str(val))
-                        item.setData(_SORT_VALUE_ROLE, float(val))
-                    else:
-                        item = QTableWidgetItem(str(val))
-                    if c == 0:
-                        item.setData(Qt.UserRole, r)
-                    item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-                    self.trials_table.setItem(r, c, item)
-            self.trials_table.setSortingEnabled(True)
-            self.n_spin.setMaximum(len(df))
-
-        # Video matching (only for DANDI sources with video URLs)
-        video_items = [cam for cam in cameras_with_pose if cam in video_urls]
+        # Video matching
+        video_items = [cam for cam in cameras_with_pose if cam in video_info]
         if video_items:
             self._matcher.set_items_direct(video_items, cameras_with_pose)
+            self._video_checkbox.setVisible(not is_local)
+            self._download_row.setVisible(not is_local)
+            self._video_group.show()
+        elif video_info:
+            self._matcher.set_items_direct(list(video_info.keys()), cameras_with_pose)
+            self._video_checkbox.setVisible(not is_local)
+            self._download_row.setVisible(not is_local)
             self._video_group.show()
 
         # Pose
@@ -473,50 +421,7 @@ class _SelectionPage(QWidget):
         else:
             self._ephys_group.hide()
 
-    def get_trial_indices(self, total: int) -> list[int]:
-        if self._rb_all.isChecked():
-            return list(range(total))
-        if self._rb_first_n.isChecked():
-            return list(range(min(self.n_spin.value(), total)))
-        visual_rows = sorted({idx.row() for idx in self.trials_table.selectedIndexes()})
-        if not visual_rows:
-            return list(range(total))
-        return sorted(
-            self.trials_table.item(r, 0).data(Qt.UserRole) for r in visual_rows
-        )
-
-    def get_selected_behavioral_sources(self) -> set[str] | None:
-        if not self._behavior_checkboxes:
-            return None
-        selected = {cb._source for cb in self._behavior_checkboxes if cb.isChecked()}
-        return selected if selected else None
-
-    def get_selected_label_source(self) -> str | None:
-        for rb in self._label_radios:
-            if rb.isChecked():
-                return rb._source
-        return None
-
-    def get_selected_ephys_series(self) -> str | None:
-        for rb in self._ephys_radios:
-            if rb.isChecked():
-                return rb._series_name
-        return None
-
-    def has_videos(self) -> bool:
-        return (
-            self._video_group.isVisible()
-            and self._video_checkbox.isChecked()
-            and bool(self._matcher._video_list.get_items())
-        )
-
-    def get_video_matching(self) -> list[tuple[str, str]]:
-        return self._matcher.get_mapping()
-
-    def validate(self) -> str | None:
-        if not self.output_edit.text():
-            return "Please select an output path."
-        return None
+    # -- Session NWB overview (DANDI) --
 
     def populate_session_overview(self, session_assets: dict) -> None:
         for entry in self._nwb_file_widgets:
@@ -569,6 +474,19 @@ class _SelectionPage(QWidget):
 
         self._nwb_files_group.show()
         self._info_note.show()
+
+    # -- Video assets display --
+
+    def populate_videos(self, video_info: dict[str, dict]) -> None:
+        if self._video_section is not None:
+            self._video_section.deleteLater()
+            self._video_section = None
+        self._video_check_widgets.clear()
+        self._video_table = None
+        self._dandi_video_info = video_info
+        if video_info:
+            self._build_video_section(video_info)
+            self._nwb_files_group.show()
 
     def _build_video_section(self, video_info: dict[str, dict]) -> None:
         section = QWidget()
@@ -684,23 +602,45 @@ class _SelectionPage(QWidget):
             dur = info["end"] - info["start"]
         return dur if dur and dur > 0 else None
 
-    def populate_videos(self, video_info: dict[str, dict]) -> None:
-        if self._video_section is not None:
-            self._video_section.deleteLater()
-            self._video_section = None
-        self._video_check_widgets.clear()
-        self._video_table = None
-        self._dandi_video_info = video_info
-        if video_info:
-            self._build_video_section(video_info)
-            self._nwb_files_group.show()
-
     def _set_all_video_selected(self, selected: bool) -> None:
         if self._video_table is not None:
             if selected:
                 self._video_table.selectAll()
             else:
                 self._video_table.clearSelection()
+
+    # -- Accessors --
+
+    def has_video_matching(self) -> bool:
+        return bool(self._matcher._video_list.get_items())
+
+    def needs_video_download(self) -> bool:
+        return (
+            self.has_video_matching()
+            and not self._is_local
+            and self._video_checkbox.isChecked()
+        )
+
+    def get_video_matching(self) -> list[tuple[str, str]]:
+        return self._matcher.get_mapping()
+
+    def get_selected_behavioral_sources(self) -> set[str] | None:
+        if not self._behavior_checkboxes:
+            return None
+        selected = {cb._source for cb in self._behavior_checkboxes if cb.isChecked()}
+        return selected if selected else None
+
+    def get_selected_label_source(self) -> str | None:
+        for rb in self._label_radios:
+            if rb.isChecked():
+                return rb._source
+        return None
+
+    def get_selected_ephys_series(self) -> str | None:
+        for rb in self._ephys_radios:
+            if rb.isChecked():
+                return rb._series_name
+        return None
 
     def get_selected_video_names(self) -> list[str]:
         if self._video_check_widgets:
@@ -720,8 +660,245 @@ class _SelectionPage(QWidget):
         return None
 
 
+# =====================================================================
+# Page 2: Trial selection
+# =====================================================================
+
+class _NWBTrialsPage(QWidget):
+    """Page 2: Select which NWB trials to import."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("<b>Step 3 of 4 — Trial Selection</b>"))
+        layout.addSpacing(8)
+
+        self._trial_group = QGroupBox("Trial selection")
+        tg = QVBoxLayout(self._trial_group)
+
+        self._rb_all = QRadioButton("All trials")
+        self._rb_first_n = QRadioButton("First N trials:")
+        self._rb_select = QRadioButton("Select specific trials from table below")
+        self._rb_all.setChecked(True)
+        rb_grp = QButtonGroup(self)
+        for rb in (self._rb_all, self._rb_first_n, self._rb_select):
+            rb_grp.addButton(rb)
+            tg.addWidget(rb)
+
+        n_row = QHBoxLayout()
+        self.n_spin = QSpinBox()
+        self.n_spin.setRange(1, 100000)
+        self.n_spin.setValue(5)
+        n_row.addWidget(QLabel("  N ="))
+        n_row.addWidget(self.n_spin)
+        n_row.addStretch()
+        tg.addLayout(n_row)
+
+        self.trials_table = QTableWidget(0, 0)
+        self.trials_table.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.trials_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.trials_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        tg.addWidget(self.trials_table)
+        self._rb_select.toggled.connect(self._on_select_toggled)
+
+        layout.addWidget(self._trial_group)
+
+        self._summary_label = QLabel("")
+        self._summary_label.setStyleSheet("color: #888; font-style: italic; padding: 4px;")
+        layout.addWidget(self._summary_label)
+        layout.addStretch()
+
+    def _on_select_toggled(self, checked: bool):
+        self.trials_table.setSelectionMode(
+            QAbstractItemView.MultiSelection if checked else QAbstractItemView.NoSelection
+        )
+
+    def populate(self, nwb) -> None:
+        total = len(nwb.trials) if nwb.trials is not None and len(nwb.trials) > 0 else 1
+        self._trial_group.setVisible(total > 1)
+
+        if nwb.trials is not None and len(nwb.trials) > 0:
+            df = nwb.trials.to_dataframe()
+            self.trials_table.setSortingEnabled(False)
+            self.trials_table.setRowCount(len(df))
+            self.trials_table.setColumnCount(len(df.columns))
+            self.trials_table.setHorizontalHeaderLabels(list(df.columns))
+            for r, (_, row) in enumerate(df.iterrows()):
+                for c, val in enumerate(row):
+                    if isinstance(val, (int, float)):
+                        item = _NumericTableItem(f"{val:.3f}" if isinstance(val, float) else str(val))
+                        item.setData(_SORT_VALUE_ROLE, float(val))
+                    else:
+                        item = QTableWidgetItem(str(val))
+                    if c == 0:
+                        item.setData(Qt.UserRole, r)
+                    item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                    self.trials_table.setItem(r, c, item)
+            self.trials_table.setSortingEnabled(True)
+            self.n_spin.setMaximum(len(df))
+            self._summary_label.setText(f"{len(df)} trials available")
+        else:
+            self._summary_label.setText("No trials table found — single trial will be created.")
+
+    def get_trial_indices(self, total: int) -> list[int]:
+        if self._rb_all.isChecked():
+            return list(range(total))
+        if self._rb_first_n.isChecked():
+            return list(range(min(self.n_spin.value(), total)))
+        visual_rows = sorted({idx.row() for idx in self.trials_table.selectedIndexes()})
+        if not visual_rows:
+            return list(range(total))
+        return sorted(
+            self.trials_table.item(r, 0).data(Qt.UserRole) for r in visual_rows
+        )
+
+    def validate(self) -> str | None:
+        return None
+
+
+# =====================================================================
+# Page 3: Timeline visualization + output path
+# =====================================================================
+
+class _NWBTimelinePage(QWidget):
+    """Page 3: Timeline visualization and output path selection."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("<b>Step 4 of 4 — Timeline & Output</b>"))
+        layout.addSpacing(4)
+
+        layout.addWidget(QLabel(
+            "Review how video, pose, and behavioral data align across trials. "
+            "Colored bars show data time ranges; dotted lines mark trial boundaries."
+        ))
+        layout.addSpacing(4)
+
+        self._plot = pg.PlotWidget()
+        self._plot.setBackground("#1a1d21")
+        self._plot.showGrid(x=True, y=False, alpha=0.15)
+        self._plot.setLabel("bottom", "Time (s)")
+        self._plot.setMouseEnabled(x=True, y=False)
+        self._plot.getAxis("left").setTicks([])
+        layout.addWidget(self._plot, stretch=1)
+
+        # --- Output ---
+        out_group = QGroupBox("Output")
+        outg = QHBoxLayout(out_group)
+        self.output_edit = QLineEdit()
+        self.output_edit.setPlaceholderText("Save trials.nc to...")
+        self.output_edit.setReadOnly(True)
+        out_browse = QPushButton("Browse")
+        out_browse.clicked.connect(self._browse_output)
+        outg.addWidget(self.output_edit)
+        outg.addWidget(out_browse)
+        layout.addWidget(out_group)
+
+        self._items: list = []
+
+    def _browse_output(self):
+        result = QFileDialog.getSaveFileName(self, "Save trials.nc", "", "NetCDF files (*.nc);;All files (*)")
+        if result and result[0]:
+            path = result[0]
+            if not path.endswith(".nc"):
+                path += ".nc"
+            self.output_edit.setText(path)
+
+    def populate(
+        self,
+        trials_df,
+        video_info: dict[str, dict],
+        cameras_with_pose: list[str],
+        pose_containers: dict[str, Any] | None,
+        behavioral_series: list[dict],
+        selected_trial_indices: list[int],
+        matching: list[tuple[str, str]] | None = None,
+    ) -> None:
+        self._clear()
+
+        selected_df = trials_df.iloc[selected_trial_indices].reset_index(drop=True) if trials_df is not None else None
+
+        # Build video→pose mapping; video names are canonical for `cameras` dim.
+        pose_to_video = {}
+        if matching:
+            pose_to_video = {pose_cam: video_cam for video_cam, pose_cam in matching}
+
+        # Build a temporary TrialTree with session data so
+        # draw_session_timeline can render from a single source of truth.
+        from ethograph import TrialTree
+        dt = TrialTree()
+        has_behavior = bool(behavioral_series)
+        if selected_df is not None and not selected_df.empty:
+            for _, row in selected_df.iterrows():
+                tid = int(row["trial"]) if "trial" in row.index else row.name
+                ds = xr.Dataset(attrs={"trial": tid})
+                if has_behavior:
+                    ds["_features_placeholder"] = xr.DataArray(0, attrs={"type": "features"})
+                dt[str(tid)] = xr.DataTree(ds)
+
+        session_vars: dict[str, Any] = {}
+        trial_ids = dt.trials if dt.children else []
+
+        if selected_df is not None and "start_time" in selected_df.columns:
+            session_vars["start_time"] = ("trial", selected_df["start_time"].astype(float).values)
+        if selected_df is not None and "stop_time" in selected_df.columns:
+            session_vars["stop_time"] = ("trial", selected_df["stop_time"].astype(float).values)
+
+        camera_names = list(video_info.keys())
+        if camera_names:
+            session_vars["video"] = xr.DataArray(
+                camera_names, dims=["cameras"], coords={"cameras": camera_names},
+            )
+            start_times = [video_info[c].get("start", 0.0) for c in camera_names]
+            session_vars["start_time_video"] = xr.DataArray(
+                np.array(start_times, dtype=np.float64),
+                dims=["cameras"], coords={"cameras": camera_names},
+            )
+
+        if cameras_with_pose:
+            pose_starts = []
+            canonical_names = []
+            for cam in cameras_with_pose:
+                canonical_names.append(pose_to_video.get(cam, cam))
+                t = 0.0
+                container = (pose_containers or {}).get(cam)
+                if container:
+                    first_series = next(iter(container.pose_estimation_series.values()), None)
+                    if first_series and first_series.timestamps is not None and len(first_series.timestamps) > 0:
+                        t = float(first_series.timestamps[0])
+                pose_starts.append(t)
+            session_vars["pose"] = xr.DataArray(
+                canonical_names, dims=["cameras"], coords={"cameras": canonical_names},
+            )
+            session_vars["start_time_pose"] = xr.DataArray(
+                np.array(pose_starts, dtype=np.float64),
+                dims=["cameras"], coords={"cameras": canonical_names},
+            )
+
+        coords = {"trial": trial_ids} if trial_ids else {}
+        sess_ds = xr.Dataset(session_vars, coords=coords)
+        dt["session"] = xr.DataTree(sess_ds)
+
+        draw_session_timeline(self._plot, dt, items_out=self._items)
+
+    def _clear(self):
+        for item in self._items:
+            self._plot.removeItem(item)
+        self._items.clear()
+
+    def validate(self) -> str | None:
+        if not self.output_edit.text():
+            return "Please select an output path."
+        return None
+
+
+# =====================================================================
+# Main wizard dialog
+# =====================================================================
+
 class NWBImportDialog(QDialog):
-    """2-step wizard: NWB source → configure import (trials + video + data + output)."""
+    """4-step wizard: NWB source → video/data options → trials → timeline/output."""
 
     def __init__(self, app_state, io_widget, parent=None):
         super().__init__(parent)
@@ -737,9 +914,11 @@ class NWBImportDialog(QDialog):
         self._nwb_rf = None
         self._cameras_with_pose: list[str] = []
         self._pose_containers: dict[str, Any] | None = None
-        self._video_info: dict[str, dict]  = {}
+        self._video_info: dict[str, dict] = {}
         self._session_assets: dict | None = None
         self._output_path: str = ""
+        self._behavioral_series: list[dict] = []
+        self._trials_df = None
 
         self._setup_ui()
 
@@ -748,17 +927,21 @@ class NWBImportDialog(QDialog):
 
         self._stack = QStackedWidget()
         self._page_source = _SourcePage()
-        self._page_selection = _SelectionPage()
+        self._page_video_pose = _VideoPosePage()
+        self._page_trials = _NWBTrialsPage()
+        self._page_timeline = _NWBTimelinePage()
         self._stack.addWidget(self._page_source)
-        self._stack.addWidget(self._page_selection)
+        self._stack.addWidget(self._page_video_pose)
+        self._stack.addWidget(self._page_trials)
+        self._stack.addWidget(self._page_timeline)
         layout.addWidget(self._stack)
 
         nav = QHBoxLayout()
-        self._prev_btn = QPushButton("← Previous")
+        self._prev_btn = QPushButton("\u2190 Previous")
         self._prev_btn.clicked.connect(self._on_previous)
         self._prev_btn.setEnabled(False)
 
-        self._next_btn = QPushButton("Connect & Preview →")
+        self._next_btn = QPushButton("Connect & Preview \u2192")
         self._next_btn.clicked.connect(self._on_next)
 
         cancel_btn = QPushButton("Cancel")
@@ -788,7 +971,19 @@ class NWBImportDialog(QDialog):
                 return
             self._connect_to_nwb()
         elif page == 1:
-            err = self._page_selection.validate()
+            self._populate_trials_page()
+            self._stack.setCurrentIndex(2)
+            self._update_nav()
+        elif page == 2:
+            err = self._page_trials.validate()
+            if err:
+                QMessageBox.warning(self, "Input error", err)
+                return
+            self._populate_timeline_page()
+            self._stack.setCurrentIndex(3)
+            self._update_nav()
+        elif page == 3:
+            err = self._page_timeline.validate()
             if err:
                 QMessageBox.warning(self, "Input error", err)
                 return
@@ -798,60 +993,119 @@ class NWBImportDialog(QDialog):
         page = self._current_page()
         self._prev_btn.setEnabled(page > 0)
         if page == 0:
-            self._next_btn.setText("Connect & Preview →")
+            self._next_btn.setText("Connect & Preview \u2192")
+        elif page == 3:
+            self._next_btn.setText("Download data")
         else:
-            self._next_btn.setText("Load data")
+            self._next_btn.setText("Next \u2192")
+
+    # ------------------------------------------------------------------
+    # Page transitions
+    # ------------------------------------------------------------------
 
     def _connect_to_nwb(self):
         source = self._page_source.get_source()
 
         def _open():
-            nwb = None
-            
-
-            if source["type"] == "local":          
+            if source["type"] == "local":
                 nwb, io, h5, rf = open_nwb_local(source["path"])
-                raise NotImplementedError("Will be added later.")
-                
+                self._nwb_io, self._nwb_h5, self._nwb_rf = io, h5, rf
+
+                pose_containers = discover_pose_estimation_cameras(nwb)
+                cameras_with_pose = list(pose_containers.keys())
+
+                video_info = get_local_video_info(nwb, source["path"])
+                if video_info:
+                    with ThreadPoolExecutor(max_workers=max(1, len(video_info))) as pool:
+                        futures = {
+                            name: pool.submit(probe_local_video_metadata, info["path"])
+                            for name, info in video_info.items() if info.get("path") and os.path.isfile(info["path"])
+                        }
+                        for name, future in futures.items():
+                            try:
+                                video_info[name].update(future.result(timeout=30))
+                            except Exception:
+                                pass
+
+                session_assets_dict = None
             else:
-                
                 dandiset_id = source["dandiset_id"]
                 session_eid = source["session_eid"]
-                
+
                 client = DandiAPIClient()
                 dandiset = client.get_dandiset(dandiset_id, "draft")
                 session_assets = [asset for asset in dandiset.get_assets() if session_eid in asset.path]
 
+                print(
+                    f"\n{'=' * 60}\n"
+                    f"  DANDI session assets for {session_eid}\n"
+                    f"  Found {len(session_assets)} file(s) in dandiset {dandiset_id}\n"
+                    f"{'=' * 60}",
+                    flush=True,
+                )
+                for asset in session_assets:
+                    neurosift_url = (
+                        f"https://neurosift.app/nwb?url=https://api.dandiarchive.org"
+                        f"/api/assets/{asset.identifier}/download/"
+                        f"&dandisetId={dandiset_id}&dandisetVersion=draft"
+                    )
+                    print(f"  {asset.path}", flush=True)
+                    print(f"    {neurosift_url}", flush=True)
+                print(
+                    f"\nBrowse all data on Neurosift:\n"
+                    f"  https://neurosift.app/?dandisetId={dandiset_id}&dandisetVersion=draft\n",
+                    flush=True,
+                )
+
                 raw_asset = next((asset for asset in session_assets if "desc-raw" in asset.path), None)
                 processed_asset = next((asset for asset in session_assets if "desc-processed" in asset.path), None)
-                
 
                 widget = NWBDANDIPoseEstimationWidget(
                     processed_asset=processed_asset,
                     raw_asset=raw_asset,
                 )
 
-            nwb = widget.nwbfile
-            cameras_with_pose = widget.available_cameras
-            video_info = widget.video_info
-            pose_containers = widget.pose_containers
+                nwb = widget.nwbfile
+                cameras_with_pose = widget.available_cameras
+                video_info = widget.video_info
+                pose_containers = widget.pose_containers
 
-            if video_info:
-                with ThreadPoolExecutor(max_workers=len(video_info)) as pool:
-                    futures = {
-                        name: pool.submit(probe_dandi_video_metadata, info["url"])
-                        for name, info in video_info.items() if info.get("url")
-                    }
-                    for name, future in futures.items():
-                        try:
-                            video_info[name].update(future.result(timeout=30))
-                        except Exception:
-                            pass
+                # Fallback: discover video assets from DANDI when NWB has
+                # no ImageSeries or the URL resolution failed (e.g. IBL-style
+                # datasets where external_file paths don't match DANDI paths).
+                has_usable_urls = any(info.get("url") for info in video_info.values())
+                if not has_usable_urls:
+                    asset_id = processed_asset.identifier if processed_asset else None
+                    dandi_videos = find_video_assets(dandiset_id, nwb, asset_id=asset_id)
+                    if dandi_videos:
+                        # Merge discovered URLs into existing entries by matching
+                        # video stems to ImageSeries names, or add new entries.
+                        discovered = {stem: url for stem, url in dandi_videos}
+                        for name, info in video_info.items():
+                            for stem, url in discovered.items():
+                                if name.lower() in stem.lower() or stem.lower() in name.lower():
+                                    info["url"] = url
+                                    discovered.pop(stem)
+                                    break
+                        for stem, url in discovered.items():
+                            video_info[stem] = {"url": url, "start": 0.0, "end": 0.0}
 
-            session_assets_dict = {
-                "raw": raw_asset,
-                "processed": processed_asset,
-            }
+                if video_info:
+                    with ThreadPoolExecutor(max_workers=max(1, len(video_info))) as pool:
+                        futures = {
+                            name: pool.submit(probe_dandi_video_metadata, info["url"])
+                            for name, info in video_info.items() if info.get("url")
+                        }
+                        for name, future in futures.items():
+                            try:
+                                video_info[name].update(future.result(timeout=30))
+                            except Exception:
+                                pass
+
+                session_assets_dict = {
+                    "raw": raw_asset,
+                    "processed": processed_asset,
+                }
 
             behavioral = probe_behavioral_series(nwb)
             labels = probe_label_sources(nwb)
@@ -872,37 +1126,68 @@ class NWBImportDialog(QDialog):
             self._nwb, self._cameras_with_pose, self._video_info, self._pose_containers,
             behavioral, labels, ephys, self._session_assets,
         ) = result
+        self._behavioral_series = behavioral
 
-        self._page_selection.populate(
+        self._page_video_pose.populate(
             self._nwb, self._cameras_with_pose, self._video_info,
             behavioral, labels, ephys,
+            is_local=(source["type"] == "local"),
         )
 
         if self._session_assets:
-            self._page_selection.populate_session_overview(self._session_assets)
+            self._page_video_pose.populate_session_overview(self._session_assets)
 
         if self._video_info:
-            self._page_selection.populate_videos(self._video_info)
+            self._page_video_pose.populate_videos(self._video_info)
 
-        if source["type"] == "dandi" and self._video_info:
+        if source["type"] == "dandi":
             default_dir = self._default_download_dir(source)
-            self._page_selection.download_dir_edit.setText(str(default_dir))
+            if self._video_info:
+                self._page_video_pose.download_dir_edit.setText(str(default_dir))
+            default_nc = default_dir / "trials.nc"
+            self._page_timeline.output_edit.setText(str(default_nc))
+        else:
+            nwb_dir = Path(source["path"]).parent
+            default_nc = nwb_dir / "trials.nc"
+            self._page_timeline.output_edit.setText(str(default_nc))
 
         self._stack.setCurrentIndex(1)
         self._update_nav()
 
+    def _populate_trials_page(self):
+        self._page_trials.populate(self._nwb)
+        self._trials_df = read_trials_table(self._nwb)
+
+    def _populate_timeline_page(self):
+        total = len(self._nwb.trials) if self._nwb.trials is not None and len(self._nwb.trials) > 0 else 1
+        selected_indices = self._page_trials.get_trial_indices(total)
+        matching = self._page_video_pose.get_video_matching() if self._page_video_pose.has_video_matching() else []
+        self._page_timeline.populate(
+            self._trials_df,
+            self._video_info,
+            self._cameras_with_pose,
+            self._pose_containers,
+            self._behavioral_series,
+            selected_indices,
+            matching,
+        )
+
+    # ------------------------------------------------------------------
+    # Final load
+    # ------------------------------------------------------------------
+
     def _load_all(self):
-        output_path = self._page_selection.output_edit.text()
+        output_path = self._page_timeline.output_edit.text()
         total_trials = len(self._nwb.trials) if self._nwb.trials is not None and len(self._nwb.trials) > 0 else 1
-        trial_indices = self._page_selection.get_trial_indices(total_trials)
-        include_pose = self._page_selection.pose_checkbox.isChecked()
-        behavioral_sources = self._page_selection.get_selected_behavioral_sources()
-        label_source = self._page_selection.get_selected_label_source()
-        ephys_series = self._page_selection.get_selected_ephys_series()
+        trial_indices = self._page_trials.get_trial_indices(total_trials)
+        include_pose = self._page_video_pose.pose_checkbox.isChecked()
+        behavioral_sources = self._page_video_pose.get_selected_behavioral_sources()
+        label_source = self._page_video_pose.get_selected_label_source()
+        ephys_series = self._page_video_pose.get_selected_ephys_series()
 
         output_dir = None
-        if self._page_selection.has_videos():
-            download_dir = self._page_selection.download_dir_edit.text()
+        if self._page_video_pose.needs_video_download():
+            download_dir = self._page_video_pose.download_dir_edit.text()
             if not download_dir:
                 reply = QMessageBox.question(
                     self, "No download folder",
@@ -921,7 +1206,7 @@ class NWBImportDialog(QDialog):
             source_info["path"] if source_info["type"] == "local"
             else f"dandiset-{source_info['dandiset_id']}_session-{source_info['session_eid']}"
         )
-        matching = self._page_selection.get_video_matching() if self._page_selection.has_videos() else []
+        matching = self._page_video_pose.get_video_matching() if self._page_video_pose.has_video_matching() else []
 
         def _build():
             dt, trials_df = load_nwb_session(
@@ -937,6 +1222,7 @@ class NWBImportDialog(QDialog):
             self._set_raw_asset_attr(dt, source_info)
             label_dt = NWBLabelConverter().from_nwb(self._nwb, trials_df) if label_source else dt.get_label_dt(empty=True)
             self._set_video_files(dt, matching, output_dir, include_pose)
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             dt.to_netcdf(output_path)
             return dt, label_dt
 
@@ -950,7 +1236,12 @@ class NWBImportDialog(QDialog):
             return
 
         self._output_path = output_path
-        video_folder = str(output_dir) if output_dir else None
+        if output_dir:
+            video_folder = str(output_dir)
+        elif source_info["type"] == "local":
+            video_folder = str(Path(source_info["path"]).parent)
+        else:
+            video_folder = None
         self._populate_io_fields(video_folder=video_folder)
 
         msg = f"Successfully created:\n{output_path}"
@@ -993,38 +1284,55 @@ class NWBImportDialog(QDialog):
     def _set_raw_asset_attr(self, dt, source_info: dict):
         if source_info["type"] != "dandi":
             return
-        raw_asset = self._page_selection.get_raw_nwb_asset()
+        raw_asset = self._page_video_pose.get_raw_nwb_asset()
         if raw_asset:
             dt.attrs["nwb_raw_asset_id"] = raw_asset.identifier
 
-    def _get_video_urls(self) -> list[str]:
-        return [info["url"] for info in self._video_info.values() if info.get("url")]
-
     def _set_video_files(self, dt, matching: list[tuple[str, str]], output_dir: Path | None, include_pose: bool):
         trials = dt.trials
-        
-        camera_stems = [video_cam for video_cam, _ in matching]
-        if output_dir is not None:
-            
-            video_files = [
-                [f"{cam}_trial_{trial_id}.mp4" for cam in camera_stems]
-                for trial_id in trials
-            ]
-            dt.set_media(video=video_files, cameras=camera_stems, per_trial=True)
+
+        # matching = [(video_name, pose_name), ...]
+        # Use video names as canonical device labels for the `cameras` coord.
+        if matching:
+            video_keys = [video_cam for video_cam, _ in matching]
+            device_labels = video_keys
+        elif self._video_info:
+            video_keys = list(self._video_info.keys())
+            device_labels = video_keys
+        else:
             return
 
-        camera_urls = self._get_video_urls()
-        if not camera_urls and include_pose:
-            pose_keys = dt.attrs.get("nwb_pose_keys")
-            if pose_keys:
-                camera_urls = list(pose_keys)
-        if not camera_urls:
+        if output_dir is not None:
+            video_files = [
+                [f"{dl}_trial_{trial_id}.mp4" for dl in device_labels]
+                for trial_id in trials
+            ]
+            dt.set_media("video", video_files, device_labels=device_labels, per_trial=True)
             return
-        
-        video_offsets = {cam: self._video_info.get(cam).get("start", 0.0) for cam in camera_stems}
-        dt.set_media(video=camera_urls, cameras=camera_stems, 
-                           per_trial=False, 
-                           video_start=video_offsets)
+
+        camera_files = [
+            self._video_info.get(vk, {}).get("path") or self._video_info.get(vk, {}).get("url", "")
+            for vk in video_keys
+        ]
+        stored = [(dl, f) for dl, f in zip(device_labels, camera_files) if f]
+        missing = [dl for dl, f in zip(device_labels, camera_files) if not f]
+        if missing:
+            print(f"[WARNING] No video path/URL found for cameras: {missing}", flush=True)
+        if not any(camera_files):
+            return
+
+        for dl, f in stored:
+            print(f"  video '{dl}' -> {f[:80]}{'...' if len(f) > 80 else ''}", flush=True)
+
+        camera_start_times = [
+            self._video_info.get(vk, {}).get("start", 0.0)
+            for vk in video_keys
+        ]
+        has_start_times = any(t != 0.0 for t in camera_start_times)
+        dt.set_media(
+            "video", camera_files, device_labels=device_labels, per_trial=False,
+            start_times=camera_start_times if has_start_times else None,
+        )
 
     # ------------------------------------------------------------------
     # Video download
@@ -1039,14 +1347,14 @@ class NWBImportDialog(QDialog):
         subject_id = getattr(getattr(self._nwb, "subject", None), "subject_id", "") or "unknown_subject"
         session_eid = source.get("session_eid", "unknown_session")
         sanitize = self._sanitize_path_component
-        return Path.home() / ".ethograph" / "dandi_videos" / sanitize(lab) / sanitize(subject_id) / sanitize(session_eid)
+        return Path.home() / ".ethograph" / "dandi" / sanitize(lab) / sanitize(subject_id) / sanitize(session_eid)
 
     def _download_videos(self, download_dir: str, trial_indices: list[int]) -> Path | None:
         output_dir = Path(download_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         video_info = self._video_info
-        matching = self._page_selection.get_video_matching()
+        matching = self._page_video_pose.get_video_matching()
         trials_df = read_trials_table(self._nwb)
         trials_df = trials_df.iloc[trial_indices].reset_index(drop=True)
 

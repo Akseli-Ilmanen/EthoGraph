@@ -276,48 +276,49 @@ If the dimension has coordinates (string or numeric), those labels appear in
 the combo box. If it has no coordinates, integer indices (0, 1, 2, ...) are
 shown instead.
 
-Dimensions **do not need to match across features**. For example, `speed` may
-have `(time, keypoints, individuals)` while `emg` has `(time, channels)`. The
-GUI creates combo boxes for the union of all discovered dimensions. When a
-feature doesn't have a selected dimension, that selection is silently ignored.
-This is handled by {func}`~ethograph.utils.xr_utils.sel_valid`, which
-filters selection kwargs to only those dimensions present on the current
-DataArray:
+Dimensions **do not need to match across features**. For example, `position`
+may have `(time, keypoints, space, individuals)` while `speed` — a scalar
+derived from position — only has `(time, keypoints, individuals)` because the
+spatial direction was already collapsed during computation. The GUI creates
+combo boxes for the union of all discovered dimensions. When a feature doesn't
+have a selected dimension, that selection is silently ignored. This is handled
+by {func}`~ethograph.utils.xr_utils.sel_valid`, which filters selection kwargs
+to only those dimensions present on the current DataArray:
 
 ```python
 import ethograph as eto
 
 ds = xr.Dataset(
     data_vars={
+        "position": xr.DataArray(
+            np.random.randn(1000, 4, 3, 2),
+            dims=["time", "keypoints", "space", "individuals"],
+            attrs={"type": "features"},
+        ),
         "speed": xr.DataArray(
             np.random.randn(1000, 4, 2),
             dims=["time", "keypoints", "individuals"],
-            attrs={"type": "features"},
-        ),
-        "emg": xr.DataArray(
-            np.random.randn(1000, 2, 2),
-            dims=["time", "channels", "individuals"],
             attrs={"type": "features"},
         ),
     },
     coords={
         "time": np.arange(1000) / 30.0,
         "keypoints": ["nose", "left_ear", "right_ear", "tail"],
+        "space": ["x", "y", "z"],
         "individuals": ["mouse1", "mouse2"],
-        "channels": ["biceps", "triceps"],
     },
 )
 
-# The GUI creates combos for: keypoints, individuals, channels
-# When "speed" is selected, the "channels" combo is ignored.
-# When "emg" is selected, the "keypoints" combo is ignored.
-# "individuals" applies to both since both features have that dimension.
+# The GUI creates combos for: keypoints, space, individuals
+# When "position" is selected, all three combos apply.
+# When "speed" is selected, the "space" combo is silently ignored
+# because speed has no space dimension.
 # This is handled internally by sel_valid():
 data, used_kwargs = eto.sel_valid(
-    ds["emg"],
-    {"keypoints": "nose", "channels": "biceps", "individuals": "mouse1"},
+    ds["speed"],
+    {"keypoints": "nose", "space": "x", "individuals": "mouse1"},
 )
-# "channels" and "individuals" are applied; "keypoints" is silently skipped.
+# "keypoints" and "individuals" are applied; "space" is silently dropped.
 ```
 
 ---

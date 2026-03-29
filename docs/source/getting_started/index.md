@@ -10,12 +10,6 @@
 How to install ethograph.
 :::
 
-:::{grid-item-card} {fas}`rocket` Quick start
-:link: quick_start
-:link-type: doc
-
-A quick tour of the main features.
-:::
 
 :::{grid-item-card} {fas}`hat-wizard` Setup wizard
 :link: wizard
@@ -31,8 +25,8 @@ Answer a few questions to get personalised setup instructions for your data.
 :hidden:
 
 installation
-quick_start
 wizard
 data_requirements
+trialtree
 data_loading
 ```

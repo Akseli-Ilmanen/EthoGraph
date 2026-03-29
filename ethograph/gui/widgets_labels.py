@@ -356,12 +356,21 @@ class LabelsWidget(QWidget):
         self.save_tsv_checkbox.toggled.connect(self._on_save_tsv_toggled)
         bottom_layout.addWidget(self.save_tsv_checkbox)
 
+        self.correct_offsets_checkbox = QCheckBox("Correct offsets")
+        self.correct_offsets_checkbox.setToolTip("Fix near-zero gaps between consecutive intervals for pynapple compatibility")
+        self.correct_offsets_checkbox.setChecked(self.app_state.correct_offsets_enabled)
+        self.correct_offsets_checkbox.toggled.connect(self._on_correct_offsets_toggled)
+        bottom_layout.addWidget(self.correct_offsets_checkbox)
+
         bottom_layout.addStretch()
         layout.addWidget(bottom_row)
 
 
     def _on_save_tsv_toggled(self, checked: bool):
         self.app_state.save_tsv_enabled = checked
+
+    def _on_correct_offsets_toggled(self, checked: bool):
+        self.app_state.correct_offsets_enabled = checked
 
     def _browse_mapping_file(self):
         """Browse for a mapping.txt file and reload mappings."""

@@ -69,31 +69,12 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     "sphinx_sitemap",
-    "myst_parser",
-    "nbsphinx",
+    "myst_nb",
     "sphinx_design",
 ]
 
 # Don't execute notebooks during build
-nbsphinx_execute = "never"
-
-nbsphinx_prolog = r"""
-{% set docname = env.doc2path(env.docname, base=None).replace("\\", "/") %}
-
-.. raw:: html
-
-    <div style="float: right; margin-bottom: 1em;">
-        <a href="https://github.com/Akseli-Ilmanen/ethograph/tree/main/examples"
-           style="text-decoration: none; margin-right: 0.5em;">
-            View on GitHub
-        </a>
-        &middot;
-        <a href="{{ docname.split('/')[-1] }}.ipynb" download
-           style="text-decoration: none;">
-            ⬇ Download notebook
-        </a>
-    </div>
-"""
+nb_execution_mode = "off"
 
 # Configure the myst parser to enable cool markdown features
 myst_enable_extensions = [

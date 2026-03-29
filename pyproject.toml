@@ -120,8 +120,7 @@ docs = [
     "pydata-sphinx-theme",
     "sphinx-autodoc-typehints",
     "sphinx-sitemap",
-    "myst-parser",
-    "nbsphinx",
+    "myst-nb",
     "linkify-it-py",
     "setuptools-scm",
 ]

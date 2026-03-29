@@ -658,5 +658,9 @@ class NavigationWidget(QWidget):
         print("=" * 60)
         print(f"Trial Interval set")
         print("=" * 60)
-        df = self.app_state.dt.trials_ep.as_dataframe()
+        trials_ep = getattr(self.app_state.dt, 'trials_ep', None)
+        if trials_ep is None:
+            print("  No trials_ep available.")
+        else:
+            df = trials_ep.as_dataframe()
         print(df.to_string())

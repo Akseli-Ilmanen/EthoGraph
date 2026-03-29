@@ -266,7 +266,7 @@ def compute_trial_alignment(
             if (video_folder and not os.path.isabs(video_file))
             else video_file
         )
-        video_offset = dt.source_start_time(trial_id, "video")
+        video_offset = dt.source_start_time_trial_relative(trial_id, "video", cameras_sel)
 
     audio_devices = dt.devices("audio")
     audio_device = audio_devices[0] if audio_devices else None
@@ -286,7 +286,7 @@ def compute_trial_alignment(
         pass
 
     trial_end = _compute_trial_end(
-        dt, trial_id, ds, video_path, video_offset, audio_path
+        dt, trial_id, ds, video_path, video_offset, audio_path, audio_device
     )
     trial_range = TimeRange(0.0, trial_end) if trial_end and trial_end > 0 else None
     return TrialAlignment(
@@ -304,6 +304,7 @@ def _compute_trial_end(
     video_path: str | None,
     video_offset: float,
     audio_path: str | None,
+    audio_device: str | None = None,
 ) -> float | None:
     """Return trial duration in seconds using the highest-priority source."""
     from ethograph.utils.xr_utils import get_time_coord
@@ -345,7 +346,7 @@ def _compute_trial_end(
         try:
             from ethograph.gui.plots_spectrogram import SharedAudioCache
             loader = SharedAudioCache.get_loader(audio_path)
-            audio_start = dt.source_start_time(trial_id, "audio")
+            audio_start = dt.source_start_time_trial_relative(trial_id, "audio", audio_device)
             if loader is not None and len(loader) > 0 and audio_start >= -0.5:
                 return len(loader) / loader.rate
         except Exception:

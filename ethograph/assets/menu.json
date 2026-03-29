@@ -12,7 +12,7 @@
         "win": {
           "desktop": true,
           "icon": "{{ MENU_DIR }}/icon.ico",
-          "command": ["cmd", "/k", "{{ PYTHON }}", "-m", "ethograph", "launch"]
+          "command": ["{{ PYTHON }}", "-m", "ethograph", "launch", "--keep-open"]
         },
         "linux": {
           "Categories": ["Science", "Education"],
