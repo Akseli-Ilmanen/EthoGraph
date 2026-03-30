@@ -1,3 +1,5 @@
+"""Custom lab-internal legacy code"""
+
 import pandas as pd
 from ethograph import TrialTree
 from pathlib import Path
