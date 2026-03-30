@@ -124,7 +124,6 @@ class NapariVideoSync(QObject):
             actual_frame = frame + self._frame_offset
             actual_frame = max(0, min(actual_frame, self.total_frames - 1))
             self.viewer.dims.current_step = (actual_frame,) + self.viewer.dims.current_step[1:]
-            self._on_napari_step_change()
 
     def start(self):
         if not self.is_playing:
@@ -236,12 +235,9 @@ class NapariVideoSync(QObject):
             max_frame = min(max_frame, self._segment_end_actual_frame)
 
         next_frame = current_frame + self._skip_step
-        if next_frame >= max_frame:
-            self.viewer.dims.current_step = (max_frame,) + self.viewer.dims.current_step[1:]
-            self._on_napari_step_change()
-            return
+        next_frame = min(next_frame, max_frame)
         self.viewer.dims.current_step = (next_frame,) + self.viewer.dims.current_step[1:]
-        self._on_napari_step_change()
+        # dims.events.current_step fires synchronously → _on_napari_step_change handles segment stop
 
 
 

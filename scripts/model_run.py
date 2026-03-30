@@ -19,7 +19,7 @@ from datetime import datetime
 from ethograph.model.dataset import get_trial_dict, get_data_dict, write_bundle_list, save_config
 from ethograph.model.eval_plotting import plot_metrics_best_model
 import ethograph as eto
-from ethograph.utils.labels import load_mapping
+from ethograph.labels.intervals import load_mapping
 from ethograph.model.cetnet_encoder import *
 from ethograph.model.batch_gen import BatchGenerator
 
@@ -163,8 +163,6 @@ print("num_classes:"+str(num_classes))
 
 
 
-
-
 # Only relevant for training/cross-validation
 if all_params["action"] in ["CV", "train", "feature_ablation"] and not all_params.get("trainDataReady"):  # Skip reloading train data if already converted o
     train_trial_dict = get_trial_dict(all_params, train_nc_paths)
@@ -229,6 +227,11 @@ if not all_params["action"] == "inference":
 
 
 
+
+if all_params["action"] == "inference":
+    _ckpt = torch.load(all_params["model_path"], weights_only=True)
+    num_classes = _ckpt["encoder.conv_out.weight"].shape[0]
+    print(f"num_classes from checkpoint: {num_classes}")
 
 trainer = Trainer(num_layers, 2, 2, num_f_maps, features_dim, num_classes, channel_mask_rate, f1_thresholds, boundary_weight_schedule, boundary_radius)
 if args.action in ["train", "CV", "feature_ablation"]:

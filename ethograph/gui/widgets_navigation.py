@@ -317,14 +317,16 @@ class NavigationWidget(QWidget):
             new_trial = self.app_state.trials[new_idx]
             
          
-            trial_attrs = self.app_state.get_trial_meta(new_trial)
-            
-            if "model_confidence" not in trial_attrs:
-                break
-            
-            trial_confidence = trial_attrs["model_confidence"]
             confidence_mode = self.confidence_skip_combo.currentText()
-            
+            confidence_levels = getattr(self.app_state, "pred_confidence_levels", {})
+
+            if not confidence_levels or confidence_mode == "Show all":
+                break
+
+            trial_confidence = confidence_levels.get(new_trial)
+            if trial_confidence is None:
+                break
+
             should_skip = (
                 (confidence_mode == "Low confidence only" and trial_confidence == "high") or
                 (confidence_mode == "High confidence only" and trial_confidence == "low")
@@ -486,14 +488,10 @@ class NavigationWidget(QWidget):
 
         # Apply confidence filter
         confidence_mode = self.confidence_skip_combo.currentText()
-        if confidence_mode != "Show all" and self.app_state._all_labels_df is not None:
-            confidence_filtered = []
+        confidence_levels = getattr(self.app_state, "pred_confidence_levels", {})
+        if confidence_mode != "Show all" and confidence_levels:
             target_confidence = "low" if confidence_mode == "Low confidence only" else "high"
-            for trial in filtered_trials:
-                trial_attrs = self.app_state.get_trial_meta(trial)
-                if trial_attrs.get("model_confidence") == target_confidence:
-                    confidence_filtered.append(trial)
-            filtered_trials = set(confidence_filtered)
+            filtered_trials = {t for t in filtered_trials if confidence_levels.get(t) == target_confidence}
 
         # Sort trials numerically if possible
         try:

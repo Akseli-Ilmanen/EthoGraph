@@ -844,9 +844,15 @@ class DataWidget(QWidget):
         self.show_labels_checkbox.stateChanged.connect(self._on_labels_overlay_toggled)
         overlays_layout.addWidget(self.show_labels_checkbox)
 
+        self.pred_show_predictions = QCheckBox("Predictions")
+        self.pred_show_predictions.setChecked(False)
+        self.pred_show_predictions.setEnabled(False)
+        self.pred_show_predictions.stateChanged.connect(self._on_pred_show_predictions_changed)
+        overlays_layout.addWidget(self.pred_show_predictions)
+
         self.show_confidence_checkbox = QCheckBox("Confidence")
         self.show_confidence_checkbox.setChecked(False)
-        self.show_confidence_checkbox.stateChanged.connect(self.refresh_lineplot)
+        self.show_confidence_checkbox.stateChanged.connect(self._update_confidence_overlay)
         overlays_layout.addWidget(self.show_confidence_checkbox)
 
         self.show_envelope_checkbox = QCheckBox("Envelope")
@@ -865,6 +871,36 @@ class DataWidget(QWidget):
     def refresh_lineplot(self):
         xmin, xmax = self.plot_container.get_current_xlim()
         self.update_main_plot(t0=xmin, t1=xmax)
+
+    def _update_confidence_overlay(self):
+        if not self.app_state.ready or self.plot_container is None:
+            return
+        if not self.show_confidence_checkbox.isChecked():
+            self.plot_container.hide_confidence_plot()
+            return
+        trial = self.app_state.trials_sel
+        store = getattr(self.app_state, "pred_store", None)
+        if store is not None:
+            trial_confidence = store.get_confidence(trial, self.app_state.dt)
+            if trial_confidence is not None:
+                time_coord = self.app_state.time_coord.values
+                n = min(len(trial_confidence), len(time_coord))
+                self.plot_container.show_confidence_plot(trial_confidence[:n], time_coord[:n])
+                return
+        label_ds = getattr(self.app_state, "labels_confidence_ds", None)
+        if label_ds is not None and "labels_confidence" in getattr(label_ds, "data_vars", {}):
+            ds_kwargs = self.app_state.get_ds_kwargs()
+            try:
+                label_confidence, _ = eto.sel_valid(label_ds.labels_confidence, ds_kwargs)
+            except (KeyError, AttributeError, ValueError):
+                label_confidence = None
+            if label_confidence is not None and len(label_confidence) > 0:
+                self.plot_container.show_confidence_plot(label_confidence)
+                return
+        self.plot_container.hide_confidence_plot()
+
+    def _on_pred_show_predictions_changed(self):
+        self.refresh_lineplot()
 
     def cycle_neural_view(self):
         if not hasattr(self, 'neural_view_combo') or not self.neural_view_combo.isVisible():
@@ -1609,6 +1645,8 @@ class DataWidget(QWidget):
         self.plot_container.update_time_range_from_data()
         self.plot_container.update_time_marker_by_time(0.0)
 
+        self._update_confidence_overlay()
+
         if self.labels_widget:
             self.labels_widget._update_human_verified_status()
 
@@ -1627,20 +1665,6 @@ class DataWidget(QWidget):
 
         current_plot.update_plot(**kwargs)
 
-        if self.show_confidence_checkbox.isChecked():
-            self.plot_container.hide_confidence_plot()
-
-            label_ds = getattr(self.app_state, "labels_confidence_ds", None)
-            if label_ds is not None and "labels_confidence" in getattr(label_ds, "data_vars", {}):
-                try:
-                    label_confidence, _ = eto.sel_valid(label_ds.labels_confidence, ds_kwargs)
-                except (KeyError, AttributeError, ValueError):
-                    label_confidence = None
-
-                if label_confidence is not None and len(label_confidence) > 0:
-                    self.plot_container.show_confidence_plot(label_confidence)
-        else:
-            self.plot_container.hide_confidence_plot()
 
         if self.show_envelope_checkbox.isChecked():
             self.plot_container.show_envelope_overlay()
@@ -1663,7 +1687,7 @@ class DataWidget(QWidget):
         predictions_df = None
 
         if (
-            self.io_widget.pred_show_predictions.isChecked()
+            self.pred_show_predictions.isChecked()
             and self.app_state.pred_labels_df is not None
         ):
             trial = self.app_state.trials_sel

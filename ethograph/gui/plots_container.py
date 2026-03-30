@@ -815,15 +815,15 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     # --- Confidence overlay ---
 
-    def show_confidence_plot(self, confidence_data):
+    def show_confidence_plot(self, confidence_data, time_coord=None):
         self.overlay_manager.remove_overlay('confidence')
 
         if confidence_data is None or len(confidence_data) == 0:
             return
 
-        time_coord = self.app_state.time_coord
-        
-        
+        if time_coord is None:
+            time_coord = self.app_state.time_coord.values
+
         item = pg.PlotCurveItem(
             pen=pg.mkPen(color='k', width=2, style=pg.QtCore.Qt.DashLine)
         )
@@ -831,7 +831,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             'confidence',
             self.current_plot,
             item,
-            time_coord.values,
+            time_coord,
             np.asarray(confidence_data, dtype=np.float64),
             tick_format="{:.2f}",
         )

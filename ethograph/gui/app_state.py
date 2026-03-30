@@ -152,7 +152,10 @@ class AppStateSpec:
         "dt": (xr.DataTree | None, None, False),
         "labels_confidence_ds": (xr.Dataset | None, None, False),
         "pred_labels_df": (pd.DataFrame | None, None, False),
-        "pred_confidence_map": (dict | None, None, False),
+        "pred_store": (object, None, False),
+        "pred_confidence_levels": (dict, {}, False),
+        "pred_confidence_threshold": (float, 0.75, True),
+        "pred_segment_confidence_threshold": (float, 0.6, True),
         "trial_conditions": (list | None, None, False),
         "keypoints": (list[str], [], False),
         "import_labels_nc_data": (bool, False, True),
@@ -868,10 +871,15 @@ class ObservableAppState(QObject):
         self._all_labels_df = set_trial_meta_attr(self._all_labels_df, trial, key, value)
 
     def get_global_meta_attr(self, key: str, default=0):
-        """Check if ALL trials have a meta attr set to truthy."""
+        """Check if ALL trials with labels have a meta attr set to truthy."""
         if self._all_labels_df is None or self._all_labels_df.empty:
             return default
+        trials_with_labels = set(self._all_labels_df["trial"].unique())
+        if not trials_with_labels:
+            return default
         for trial in self.trials:
+            if trial not in trials_with_labels:
+                continue  # no labels → nothing to correct, skip
             meta = get_trial_meta(self._all_labels_df, trial)
             if not meta.get(key, 0):
                 return default

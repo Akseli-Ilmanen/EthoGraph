@@ -10,8 +10,10 @@ from qtpy.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -284,27 +286,59 @@ class IOWidget(QWidget):
         target_layout.addRow("Mapping:", mapping_row)
 
     def _create_predictions_row(self, target_layout):
-        pred_row = QWidget()
-        pred_layout = QHBoxLayout()
-        pred_layout.setContentsMargins(0, 0, 0, 0)
-        pred_row.setLayout(pred_layout)
+        pred_group = QGroupBox("Predictions")
+        pred_group_layout = QVBoxLayout()
+        pred_group_layout.setContentsMargins(4, 4, 4, 4)
+        pred_group_layout.setSpacing(2)
+        pred_group.setLayout(pred_group_layout)
 
-        pred_layout.addWidget(QLabel("Predictions:"))
-
+        # Row 1: folder path + browse
+        folder_row = QHBoxLayout()
+        folder_row.setContentsMargins(0, 0, 0, 0)
         self.pred_file_path_edit = QLineEdit()
         self.pred_file_path_edit.setReadOnly(True)
-        pred_layout.addWidget(self.pred_file_path_edit)
-
+        self.pred_file_path_edit.setPlaceholderText("No predictions folder selected")
+        folder_row.addWidget(self.pred_file_path_edit)
         self.import_predictions_btn = QPushButton("Browse")
-        self.import_predictions_btn.setToolTip("Import predictions folder containing per-trial .npy files")
-        pred_layout.addWidget(self.import_predictions_btn)
+        self.import_predictions_btn.setToolTip("Select predictions folder (corr/ or uncorr/ subfolder)")
+        folder_row.addWidget(self.import_predictions_btn)
+        pred_group_layout.addLayout(folder_row)
 
-        self.pred_show_predictions = QCheckBox("Show predictions")
-        self.pred_show_predictions.setEnabled(False)
-        self.pred_show_predictions.setChecked(False)
-        pred_layout.addWidget(self.pred_show_predictions)
+        # Row 2: show checkbox + threshold + PDF button
+        controls_row = QHBoxLayout()
+        controls_row.setContentsMargins(0, 0, 0, 0)
 
-        target_layout.addRow(pred_row)
+        controls_row.addWidget(QLabel("Frame thr:"))
+        self.pred_confidence_threshold_spin = QDoubleSpinBox()
+        self.pred_confidence_threshold_spin.setRange(0.0, 1.0)
+        self.pred_confidence_threshold_spin.setSingleStep(0.05)
+        self.pred_confidence_threshold_spin.setDecimals(2)
+        self.pred_confidence_threshold_spin.setValue(0.75)
+        self.pred_confidence_threshold_spin.setToolTip(
+            "Frame-level confidence threshold — frames below this are marked red."
+        )
+        controls_row.addWidget(self.pred_confidence_threshold_spin)
+
+        controls_row.addWidget(QLabel("Segment thr:"))
+        self.pred_segment_confidence_threshold_spin = QDoubleSpinBox()
+        self.pred_segment_confidence_threshold_spin.setRange(0.0, 1.0)
+        self.pred_segment_confidence_threshold_spin.setSingleStep(0.05)
+        self.pred_segment_confidence_threshold_spin.setDecimals(2)
+        self.pred_segment_confidence_threshold_spin.setValue(0.6)
+        self.pred_segment_confidence_threshold_spin.setToolTip(
+            "Segment-level mean confidence threshold — segments below this are highlighted red."
+        )
+        controls_row.addWidget(self.pred_segment_confidence_threshold_spin)
+
+        self.pred_confidence_pdf_btn = QPushButton("Update confidence (+ PDF)")
+        self.pred_confidence_pdf_btn.setToolTip(
+            "Regenerate confidence PDF with current thresholds and update low/high confidence classification."
+        )
+        self.pred_confidence_pdf_btn.setEnabled(False)
+        controls_row.addWidget(self.pred_confidence_pdf_btn)
+
+        pred_group_layout.addLayout(controls_row)
+        target_layout.addRow(pred_group)
 
     def _create_labels_row(self, target_layout):
         labels_row = QWidget()
@@ -910,7 +944,9 @@ class IOWidget(QWidget):
         self.browse_mapping_btn.clicked.connect(self.labels_widget._browse_mapping_file)
         self.temp_labels_button.clicked.connect(self.labels_widget._create_temporary_labels)
         self.import_predictions_btn.clicked.connect(self.labels_widget._import_predictions_from_folder)
-        self.pred_show_predictions.stateChanged.connect(self.labels_widget._on_pred_show_predictions_changed)
+        self.pred_confidence_pdf_btn.clicked.connect(self.labels_widget._plot_confidence_pdf)
+        self.pred_confidence_threshold_spin.valueChanged.connect(self.labels_widget._on_confidence_threshold_changed)
+        self.pred_segment_confidence_threshold_spin.valueChanged.connect(self.labels_widget._on_confidence_threshold_changed)
 
     def wire_ephys_signals(self, ephys_widget):
         """Connect kilosort UI to EphysWidget methods."""

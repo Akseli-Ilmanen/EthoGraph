@@ -26,10 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 def load_prediction_file(path: str | Path) -> np.ndarray:
-    """Load a prediction file (.npy or .pickle). Returns a numpy array."""
+    """Load a prediction file (.npy or .pickle). Returns a numpy array.
+
+    For .npy files with shape (T,) (confidence or dense labels), uses
+    memory-mapping (mmap_mode='r') so no data is copied into RAM until accessed.
+    """
     path = Path(path)
     if path.suffix == ".npy":
-        return np.load(path)
+        arr = np.load(path, mmap_mode='r')
+        return arr
     elif path.suffix in (".pickle", ".pkl"):
         with open(path, "rb") as f:
             data = pickle.load(f)
@@ -84,88 +89,149 @@ def prediction_to_labels_and_confidence(
     return pred.astype(int), None
 
 
-def load_predictions_folder(
-    folder: str | Path,
-    dt,
-    individual: str,
-) -> tuple[pd.DataFrame, dict[int | str, np.ndarray | None]]:
-    """Load all prediction files from a folder, convert to intervals + confidence.
+class PredictionsStore:
+    """Lazy per-trial loader for a predictions folder.
+
+    Scans the folder at construction time (fast — filesystem only, no file reads).
+    Individual trial data is loaded on demand via :meth:`get_confidence`.
+
+    Supports ``.npy`` (memory-mapped when shape is 1-D) and ``.pkl``/``.pickle``
+    formats. Additional formats can be added to ``load_prediction_file``.
 
     Parameters
     ----------
-    folder : Path
+    folder : str or Path
         Folder containing per-trial prediction files.
-    dt : TrialTree
-        The data tree (needed for time coordinates to build intervals).
-    individual : str
-        Individual identifier to assign to predicted labels.
 
-    Returns
+    Example
     -------
-    all_labels_df : pd.DataFrame
-        Labels in the standard TSV format with prediction_source column.
-    confidence_map : dict
-        {trial: confidence_array_or_None} for GUI overlay.
+    ::
+
+        store = PredictionsStore("predictions_cetnet_20260330/uncorr")
+        confidence = store.get_confidence(trial=5, dt=dt)
+        labels_df, levels = store.load_all(dt, individual="Poppy", threshold=0.75)
     """
-    folder = Path(folder)
-    if not folder.exists():
-        raise FileNotFoundError(f"Predictions folder not found: {folder}")
 
-    pred_files = sorted(
-        p for p in folder.iterdir()
-        if p.suffix in (".npy", ".pickle", ".pkl")
-    )
+    def __init__(self, folder: str | Path):
+        self.folder = Path(folder)
+        if not self.folder.exists():
+            raise FileNotFoundError(f"Predictions folder not found: {self.folder}")
+        self._files: list[Path] = sorted(
+            p for p in self.folder.iterdir()
+            if p.suffix in (".npy", ".pickle", ".pkl")
+        )
+        self._index: dict = {}  # {trial: Path} — populated lazily on first access
 
-    if not pred_files:
-        raise FileNotFoundError(f"No prediction files found in {folder}")
+    def _resolve(self, trial_list: list) -> None:
+        """Build the trial→file index if not already done."""
+        if self._index:
+            return
+        for p in self._files:
+            trial = _extract_trial_from_filename(p, trial_list)
+            if trial is not None:
+                self._index[trial] = p
 
-    rows = []
-    confidence_map = {}
+    def get_file(self, trial, trial_list: list) -> Path | None:
+        """Return the prediction file path for a trial, or None."""
+        self._resolve(trial_list)
+        return self._index.get(trial)
 
-    for pred_file in pred_files:
-        # Match file to trial — try extracting trial ID from filename
-        trial = _extract_trial_from_filename(pred_file, dt.trials)
-        if trial is None:
-            logger.warning("Could not match %s to a trial, skipping", pred_file.name)
-            continue
+    def get_confidence(self, trial, dt) -> np.ndarray | None:
+        """Load and return the confidence array for one trial.
 
-        pred = load_prediction_file(pred_file)
-        labels, confidence = prediction_to_labels_and_confidence(pred)
-        confidence_map[trial] = confidence
+        For ``.npy`` probability files the array is memory-mapped; for ``.pkl``
+        files the full file is read (typically ~150 KB — a few milliseconds).
+        The returned array is not cached — call again to re-load if needed.
+        """
+        path = self.get_file(trial, dt.trials)
+        if path is None:
+            return None
+        pred = load_prediction_file(path)
+        _, confidence = prediction_to_labels_and_confidence(pred)
+        return confidence
 
-        ds = dt.trial(trial)
-        time_coord = ds.time.values if "time" in ds.coords else np.arange(len(labels)) / 30.0
-        time_coord = time_coord[:len(labels)]
+    def load_all(
+        self,
+        dt,
+        individual: str,
+        confidence_threshold: float = 0.75,
+    ) -> tuple[pd.DataFrame, dict[int | str, str]]:
+        """Load all trials — convert to intervals and compute confidence levels.
 
-        intervals = dense_to_intervals(labels, [individual], time_coord=time_coord)
-        if not intervals.empty:
-            intervals.insert(0, "trial", trial)
-            intervals["prediction_source"] = str(pred_file)
-            intervals["human_verified"] = 0
-            intervals["changepoint_corrected"] = 0
-            rows.append(intervals)
+        Confidence arrays are computed in one pass then discarded; only the
+        per-trial high/low classification is kept.
 
-    if rows:
-        all_df = pd.concat(rows, ignore_index=True)
-    else:
-        all_df = empty_intervals()
-        all_df.insert(0, "trial", pd.Series(dtype=object))
+        Parameters
+        ----------
+        dt : TrialTree
+        individual : str
+        confidence_threshold : float
+            Mean confidence below which a trial is marked ``"low"``.
 
-    return all_df, confidence_map
+        Returns
+        -------
+        all_labels_df : pd.DataFrame
+        confidence_levels : dict
+            ``{trial: "low" | "high"}``
+        """
+        if not self._files:
+            raise FileNotFoundError(f"No prediction files found in {self.folder}")
+
+        rows: list[pd.DataFrame] = []
+        confidence_levels: dict = {}
+
+        for pred_file in self._files:
+            trial = _extract_trial_from_filename(pred_file, dt.trials)
+            if trial is None:
+                logger.warning("Could not match %s to a trial, skipping", pred_file.name)
+                continue
+
+            pred = load_prediction_file(pred_file)
+            labels, confidence = prediction_to_labels_and_confidence(pred)
+
+            ds = dt.trial(trial)
+            time_coord = ds.time.values if "time" in ds.coords else np.arange(len(labels)) / 30.0
+            assert len(labels) == len(time_coord), (
+                f"Trial {trial}: predictions length {len(labels)} != time_coord length {len(time_coord)}"
+            )
+
+            if confidence is not None:
+                level = "low" if float(np.mean(confidence)) < confidence_threshold else "high"
+                confidence_levels[trial] = level
+
+            intervals = dense_to_intervals(labels, [individual], time_coord=time_coord)
+            if not intervals.empty:
+                intervals.insert(0, "trial", trial)
+                intervals["prediction_source"] = str(pred_file)
+                intervals["human_verified"] = 0
+                intervals["changepoint_corrected"] = 0
+                rows.append(intervals)
+
+        if rows:
+            all_df = pd.concat(rows, ignore_index=True)
+        else:
+            all_df = empty_intervals()
+            all_df.insert(0, "trial", pd.Series(dtype=object))
+
+        return all_df, confidence_levels
 
 
 def _extract_trial_from_filename(path: Path, trial_list: list) -> int | str | None:
     """Try to extract a trial ID from a prediction filename."""
     stem = path.stem
 
-    # Try direct match: "trial_1", "trial1", etc.
-    for trial in trial_list:
-        trial_str = str(trial)
-        if trial_str in stem:
-            return trial
+    # Extract the number after 'trial' (e.g. cetnet_trial10_uncorr -> 10)
+    match = re.search(r'trial(\d+)', stem)
+    if match:
+        num = int(match.group(1))
+        if num in trial_list:
+            return num
+        num_str = str(num)
+        if num_str in [str(t) for t in trial_list]:
+            return num
 
-    # Try extracting trailing number
-    match = re.search(r"(\d+)$", stem)
+    # Fallback: trailing number in stem
+    match = re.search(r'(\d+)$', stem)
     if match:
         num = int(match.group(1))
         if num in trial_list:

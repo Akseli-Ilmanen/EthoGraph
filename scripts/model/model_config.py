@@ -59,10 +59,10 @@ if __name__ == "__main__":
    # model_path = r"D:\Akseli\Code\ethograph\configs\model\Freddy_train_20251021_164220.json" # only for inference mode
    # model_path = os.path.join(eto.get_project_root(), "configs", "model", "Ivy_train_20260202_191138_epoch-100.model")
    model_path = r"D:\Akseli\Code\ethograph\result\Poppy_train_20260326_190925\split_1\epoch-100.model"
+   model_path = r"D:\Akseli\Code\ethograph\configs\model\Ivy_train_20260202_191138_epoch-100.model"
 
-
-   target_individual = "Poppy" # predict labels for this individual
-   
+   target_individual = "Crow1" # predict labels for this individual
+   W
    cp_kwargs = {
       "individuals": target_individual,
       "keypoints": "beakTip",
@@ -78,7 +78,8 @@ if __name__ == "__main__":
    
    
    nc_paths = [
-      r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260309_01\behav\Trial_data.nc"
+      #r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260309_01\behav\Trial_data.nc"
+      r"D:\Akseli\AI_data\Moll2025\Trial_data.nc",
    ]
 
 
@@ -140,9 +141,9 @@ if __name__ == "__main__":
       config_path = save_config(params_dynamic, 'configs/model', action)
       
       if action == "train":
-         print("Next run: \npython scripts/model_run.py --config {} --action train".format(config_path))
+         print("Next run: \npython scripts/model/model_run.py --config {} --action train".format(config_path))
       elif action == "inference":
-         print("Next run: \npython scripts/model_run.py --config {} --action inference --model_path {}".format(config_path, str(model_path)))
+         print("Next run: \npython scripts/model/model_run.py --config {} --action inference --model_path {}".format(config_path, str(model_path)))
 
    if action == "CV":
       env = os.environ.copy()
@@ -164,7 +165,7 @@ if __name__ == "__main__":
    
       for fold_id in range(num_sessions):      
           result = subprocess.run(
-            [sys.executable, str(eto.get_project_root()  / 'scripts' / 'model_run.py'), '--action', 'CV', '--config', config_path, '--split', str(fold_id+1)],
+            [sys.executable, str(eto.get_project_root()  / 'scripts' / 'model' / 'model_run.py'), '--action', 'CV', '--config', config_path, '--split', str(fold_id+1)],
             env=env,
             text=True
           )

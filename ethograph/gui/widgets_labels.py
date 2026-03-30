@@ -36,7 +36,9 @@ import ethograph as eto
 from ethograph.gui.notify import notify
 from ethograph.features.changepoints import snap_to_nearest_changepoint_time
 from ethograph.labels.intervals import load_label_mapping
-from ethograph.labels.predictions import load_predictions_folder
+from ethograph.labels.plots import plot_confidence_pdf
+from ethograph.labels.predictions import PredictionsStore
+from ethograph.labels.tsv_store import save_labels_tsv
 from ethograph.labels.intervals import (
     add_interval,
     delete_interval,
@@ -62,6 +64,8 @@ from .app_constants import (
     DEFAULT_LAYOUT_SPACING,
     Z_INDEX_LABELS_OVERLAY,
 )
+
+
 
 
 class LabelsWidget(QWidget):
@@ -184,8 +188,8 @@ class LabelsWidget(QWidget):
 
         show_predictions = (
             predictions_df is not None and
-            self.io_widget is not None and
-            self.io_widget.pred_show_predictions.isChecked()
+            self.data_widget is not None and
+            self.data_widget.pred_show_predictions.isChecked()
         )
 
         self.plot_container.draw_all_labels(
@@ -691,18 +695,30 @@ class LabelsWidget(QWidget):
         if not folder:
             return
         individual = self.app_state.individuals_sel or "default"
+        threshold = self.io_widget.pred_confidence_threshold_spin.value()
         try:
-            labels_df, confidence_map = load_predictions_folder(
-                folder, self.app_state.dt, individual,
+            store = PredictionsStore(folder)
+            labels_df, confidence_levels = store.load_all(
+                self.app_state.dt, individual, confidence_threshold=threshold,
             )
-        except (FileNotFoundError, ValueError) as e:
+        except (FileNotFoundError, ValueError, AssertionError) as e:
             notify(str(e), severity="error")
             return
 
+        folder_path = Path(folder)
+        labels_dir = folder_path.parent
+        tsv_path = labels_dir / f"{folder_path.name}.tsv"
+        save_labels_tsv(tsv_path, labels_df)
+
         self.app_state.pred_labels_df = labels_df
-        self.app_state.pred_confidence_map = confidence_map
-        self.io_widget.pred_show_predictions.setEnabled(True)
-        self.io_widget.pred_show_predictions.setChecked(True)
+        self.app_state.pred_store = store
+        self.app_state.pred_confidence_threshold = threshold
+        self.app_state.pred_confidence_levels = confidence_levels
+
+        if self.data_widget:
+            self.data_widget.pred_show_predictions.setEnabled(True)
+            self.data_widget.pred_show_predictions.setChecked(True)
+        self.io_widget.pred_confidence_pdf_btn.setEnabled(True)
         self.io_widget.pred_file_path_edit.setText(folder)
 
         if self.data_widget:
@@ -711,11 +727,34 @@ class LabelsWidget(QWidget):
                 self.data_widget.plot_container.labels_redraw_needed.emit()
         self.refresh_labels_shapes_layer()
 
-    def _on_pred_show_predictions_changed(self):
-        if self.data_widget:
-            self.data_widget.update_main_plot(preserve_x_range=True)
-            
-            
+    def _on_confidence_threshold_changed(self, _value):
+        self.app_state.pred_confidence_threshold = self.io_widget.pred_confidence_threshold_spin.value()
+        self.app_state.pred_segment_confidence_threshold = self.io_widget.pred_segment_confidence_threshold_spin.value()
+
+    def _plot_confidence_pdf(self):
+        import os
+        store = getattr(self.app_state, "pred_store", None)
+        labels_df = getattr(self.app_state, "pred_labels_df", None)
+        if store is None or labels_df is None or labels_df.empty:
+            notify("No predictions loaded.", severity="warning")
+            return
+        try:
+            # Load all confidence arrays at click time for the PDF (one-off)
+            confidence_map = {
+                trial: store.get_confidence(trial, self.app_state.dt)
+                for trial in self.app_state.trials
+            }
+            pdf_path, highlighted = plot_confidence_pdf(
+                confidence_map, labels_df, self.app_state.dt, self._mappings,
+                confidence_threshold=self.app_state.pred_confidence_threshold,
+                segment_confidence_threshold=self.app_state.pred_segment_confidence_threshold,
+            )
+            self.app_state.pred_confidence_levels = {
+                t: "low" if is_low else "high" for t, is_low in highlighted.items()
+            }
+            os.startfile(str(pdf_path))
+        except Exception as e:
+            notify(str(e), severity="error")
 
     labels_TO_KEY = {}
 

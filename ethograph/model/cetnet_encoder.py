@@ -1,3 +1,4 @@
+import pickle
 import json
 import os
 from datetime import datetime
@@ -551,38 +552,25 @@ class Trainer:
 
             batch_gen_tst.reset(shuffle=False)
 
-            # {hash_key: [(trial_num, probs, corr_labels), ...]}
+            # {hash_key: [(trial_num, probs), ...]}
             sess_results: dict[str, list] = {}
-            previous_hash = None
-            dt = None
+
 
             print("Running inference...")
             while batch_gen_tst.has_next():
                 batch_input, batch_target, mask, vids = batch_gen_tst.next_batch(1)
 
                 vid = vids[0].split('.')[0]
-                features = np.load(features_path + vid + '.npy')
-                features = features[:, ::sample_rate]
+                batch_input = batch_input.to(device)
+                mask = mask.to(device)
 
-                input_x = torch.tensor(features, dtype=torch.float)
-                input_x.unsqueeze_(0)
-                input_x = input_x.to(device)
-
-                predictions, _ = self.model(input_x, torch.ones(input_x.size(), device=device))
+                predictions, _ = self.model(batch_input, mask)
 
                 # Softmax probabilities → (T, n_classes)
                 probs = torch.softmax(predictions[0], dim=1).squeeze(0).cpu().numpy().T
-
                 hash_key, trial_num = vid.split('_')
 
-                if hash_key != previous_hash:
-                    previous_hash = hash_key
-                    dt = eto.open(trial_mapping[hash_key]["nc_path"])
-
-                predicted = np.argmax(probs, axis=1)
-                corr_pred = correct_changepoints_dense(predicted, dt.trial(trial_num), all_params)
-
-                sess_results.setdefault(hash_key, []).append((trial_num, probs, corr_pred))
+                sess_results.setdefault(hash_key, []).append((trial_num, probs))
 
             # Save per-trial .npy files
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -595,15 +583,15 @@ class Trainer:
                 labels_dir.mkdir(exist_ok=True)
 
                 pred_dir = labels_dir / f"predictions_cetnet_{timestamp}"
-                pred_dir.mkdir(exist_ok=True)
+                os.makedirs(pred_dir, exist_ok=True)
+                for trial_num, probs, in trials:
+                    pred_dict = {
+                        "predicted": np.argmax(probs, axis=1),
+                        "probabilities": probs.astype(np.float32),
+                    }
 
-                for trial_num, probs, corr_pred in trials:
-                    np.save(pred_dir / f"cetnet_trial{trial_num}.npy", probs.astype(np.float32))
-
-                    # One-hot from corrected labels
-                    corr_probs = np.zeros_like(probs)
-                    corr_probs[np.arange(len(corr_pred)), corr_pred] = 1.0
-                    np.save(pred_dir / f"cetnet_trial{trial_num}_corr.npy", corr_probs.astype(np.float32))
+                    with open(pred_dir / f"cetnet_trial{trial_num}.pkl", "wb") as f:
+                        pickle.dump(pred_dict, f)
 
                 print(f"  Saved {len(trials)} trials to {pred_dir}")
 

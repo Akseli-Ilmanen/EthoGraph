@@ -1,5 +1,6 @@
 {
   "Note": "Purge, stich and other changepoint_params determiend in configs/changepoints_settings.yaml",
+  "fps": 200,
   "good_s3d_feats": null,
   "changepoint_feats": {
     "sigmas": [
@@ -51,25 +52,27 @@
   },
   "trainDataReady": false,
   "test_nc_paths": [
-    "D:\\Akseli\\AI_data\\derivatives\\sub-04_id-Crow1\\ses-000_date-20241217_01\\behav\\Trial_data.nc"
+    "D:\\Akseli\\AI_data\\Moll2025\\Trial_data.nc"
   ],
-  "config": "configs/model/Crow1_inference_20260211_160143.json",
+  "config": "configs/model\\Crow1_inference_20260330_161259.json",
   "split": "1",
-  "result_dir": "D:\\Akseli\\Code\\ethograph\\result\\Crow1_inference_20260211_160143\\split_1",
-  "model_path": "D:\\Akseli\\Code\\ethograph\\configs\\model\\Freddy_train_20251021_164220.json",
-  "dataset_dir": "D:\\Akseli\\Code\\ethograph\\data\\Crow1_inference_20260211_160143",
+  "result_dir": "D:\\Akseli\\Code\\ethograph\\result\\Crow1_inference_20260330_161259\\split_1",
+  "model_path": "D:\\Akseli\\Code\\ethograph\\configs\\model\\Ivy_train_20260202_191138_epoch-100.model",
+  "dataset_dir": "D:\\Akseli\\Code\\ethograph\\data\\Crow1_inference_20260330_161259",
   "feature_dim": 63,
-  "min_label_length": 1,
+  "min_label_length_s": 0.05,
   "label_thresholds": {
-    "3": 6,
-    "8": 6,
-    "9": 6,
-    "10": 6,
-    "17": 6
+    "3": 0.03,
+    "8": 0.03,
+    "9": 0.03,
+    "10": 0.03,
+    "17": 0.03,
+    "24": 0.03
   },
-  "stitch_gap_len": 3,
+  "stitch_gap_len_s": 0.015,
   "changepoint_params": {
-    "max_expansion": 1.0,
-    "max_shrink": 2.0
-  }
+    "max_expansion_s": 0.05,
+    "max_shrink_s": 0.05
+  },
+  "sr": 200
 }
