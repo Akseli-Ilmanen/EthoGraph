@@ -821,7 +821,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         if confidence_data is None or len(confidence_data) == 0:
             return
 
-        time_coord = self.app_state
+        time_coord = self.app_state.time_coord
         
         
         item = pg.PlotCurveItem(

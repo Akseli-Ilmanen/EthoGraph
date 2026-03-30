@@ -230,7 +230,7 @@ class TestDownsampledData:
 
         # min-max envelope: output_len = (original // factor) * 2
         # so original = output_len / 2 * factor, which must be >> output_len
-        n_time = len(meta.app_state.time)
+        n_time = len(meta.app_state.time_coord.values)
         original_approx = (n_time // 2) * self.DOWNSAMPLE_FACTOR
         assert n_time < original_approx
 
