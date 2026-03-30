@@ -6,10 +6,7 @@ Dock in napari:  viewer.window.add_dock_widget(MediaDiscoveryWidget(viewer))
 """
 from __future__ import annotations
 
-<<<<<<< HEAD
-=======
 import logging
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,21 +29,14 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-<<<<<<< HEAD
-from ethograph.utils.validation import (
-=======
 from ethograph.io.validation import (
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     VIDEO_EXTENSIONS,
     AUDIO_EXTENSIONS,
     POSE_EXTENSIONS,
 )
 
-<<<<<<< HEAD
-=======
 logger = logging.getLogger(__name__)
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 BG = "#1a1d21"
 BG_PANEL = "#22262c"
 BG_INPUT = "#2c3038"
@@ -60,13 +50,10 @@ COLOR_TRIAL = "#50c8b4"
 COLOR_CAMERA = "#e8737a"
 COLOR_MIC = "#e8c75a"
 
-<<<<<<< HEAD
-=======
 # Roles are filename-segment labels used by the pattern parser to identify
 # what each part of a filename represents (e.g. "camera" = this segment
 # identifies which camera).  These are NOT the xarray dimension names —
 # the actual dims ("cameras", "mics") are defined in trialtree.STREAMS.
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 ROLE_COLORS = {
     "trial": COLOR_TRIAL,
     "camera": COLOR_CAMERA,
@@ -997,11 +984,7 @@ def main():
     app = QApplication.instance() or QApplication(sys.argv)
     root = Path(tempfile.mkdtemp(prefix="media_demo_"))
     create_demo_files(root)
-<<<<<<< HEAD
-    print(f"Demo files: {root}")
-=======
     logger.info("Demo files: %s", root)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     w = MediaDiscoveryWidget()
     w.resize(640, 860)

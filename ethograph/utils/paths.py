@@ -6,13 +6,6 @@ import os
 from pathlib import Path
 import re
 import ethograph as eto
-<<<<<<< HEAD
-from ethograph.utils.validation import (
-    VIDEO_EXTENSIONS,
-    AUDIO_EXTENSIONS,
-    POSE_EXTENSIONS,
-)
-=======
 
 
 def get_project_root(start: Path | None = None) -> Path:
@@ -58,7 +51,6 @@ def get_project_root(start: Path | None = None) -> Path:
     raise FileNotFoundError(
         f"Could not find project root starting from {path}"
     )
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
 def find_media_files(folder: str | Path, extensions: set[str] | list[str], recursive: bool = False) -> list[Path]:

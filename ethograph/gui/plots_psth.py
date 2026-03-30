@@ -198,28 +198,6 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
 
     def _clear_dynamic_items(self):
         for item in self._scatter_items:
-<<<<<<< HEAD
-            try:
-                self.raster.removeItem(item)
-            except Exception:
-                pass
-        for item in self._sep_items:
-            try:
-                self.raster.removeItem(item)
-            except Exception:
-                pass
-        for item in self._psth_items:
-            try:
-                self.psth.removeItem(item)
-            except Exception:
-                pass
-        if self._legend is not None:
-            self._legend.clear()
-            try:
-                self.psth.removeItem(self._legend)
-            except Exception:
-                pass
-=======
             self.raster.removeItem(item)
         for item in self._sep_items:
             self.raster.removeItem(item)
@@ -228,7 +206,6 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
         if self._legend is not None:
             self._legend.clear()
             self.psth.removeItem(self._legend)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             self._legend = None
         self._scatter_items.clear()
         self._sep_items.clear()

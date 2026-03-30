@@ -2,11 +2,7 @@
 
 import numpy as np
 
-<<<<<<< HEAD
-from ethograph.utils.labels import get_labels_start_end_indices
-=======
 from ethograph.labels.ml import get_labels_start_end_indices
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
 def func_eval(ground_truth_dict, predictions_dict, video_list, f1_thresholds=[.5, .75, .9]):

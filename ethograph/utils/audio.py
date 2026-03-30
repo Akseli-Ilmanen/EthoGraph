@@ -1,14 +1,3 @@
-<<<<<<< HEAD
-import subprocess
-import audioio as aio
-from pathlib import Path
-from typing import Optional
-
-
-
-def get_audio_sr(audio_path: str) -> Optional[int]:
-    """Read sample rate from audio file using audioio, rounded to 3 decimals."""
-=======
 from __future__ import annotations
 
 import subprocess
@@ -37,7 +26,6 @@ def get_audio_sr(audio_path: str) -> int | None:
     int or None
         Sample rate, or ``None`` if the file cannot be read.
     """
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     try:
         _, audio_sr = aio.load_audio(audio_path)
         return round(audio_sr, 3)
@@ -47,15 +35,6 @@ def get_audio_sr(audio_path: str) -> int | None:
 
 def mp4_to_wav(mp4_path: str | Path, audio_sr: int) -> Path:
     """Convert MP4 to WAV using ffmpeg.
-<<<<<<< HEAD
-    
-    Args:
-        mp4_path: Input MP4 file
-        audio_sr: Sample rate
-        
-    Returns:
-        Path to created WAV file
-=======
 
     Parameters
     ----------
@@ -68,7 +47,6 @@ def mp4_to_wav(mp4_path: str | Path, audio_sr: int) -> Path:
     -------
     Path
         Path to the created WAV file.
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     """
     mp4_path = Path(mp4_path)
     wav_path = mp4_path.with_suffix('.wav')

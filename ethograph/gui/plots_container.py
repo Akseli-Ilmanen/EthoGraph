@@ -34,10 +34,7 @@ from .app_constants import (
 )
 
 import ethograph as eto
-<<<<<<< HEAD
-=======
 from ethograph.labels.intervals import find_interval_at, get_interval_bounds
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from .audio_player import AudioPlayer
 from .data_sources import build_audio_source
 from .label_drawing_mixin import LabelDrawingMixin
@@ -147,8 +144,6 @@ _PANEL_PLOT_ATTR = {
 }
 
 
-<<<<<<< HEAD
-=======
 class CurrentLabelIndicator(QLabel):
     """Floating badge showing the label name + color at the current time position."""
 
@@ -195,7 +190,6 @@ class CurrentLabelIndicator(QLabel):
         self.move(max(0, x), self._MARGIN)
 
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     """Unified container with dynamic panel visibility.
 
@@ -290,12 +284,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             update_marker=self.update_time_marker_by_time,
         )
 
-<<<<<<< HEAD
-=======
         # --- Current-label floating indicator (top-right corner) ---
         self._label_indicator = CurrentLabelIndicator(self)
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         # --- X-axis linking: all panels link to the x-axis master ---
         # The master is whichever panel is first visible; we use audio_trace_plot
         # if audio is present, otherwise the feature plot.
@@ -323,16 +314,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.ephys_trace_plot.plot_clicked.connect(lambda _: setattr(self, '_last_clicked_panel', 'ephys'))
         self.raster_plot.plot_clicked.connect(lambda _: setattr(self, '_last_clicked_panel', 'raster'))
 
-<<<<<<< HEAD
-        # Initially only the feature plot is in the splitter
-        self._splitter.addWidget(self.line_plot)
-        self.heatmap_plot.hide()
-        self.audio_trace_plot.hide()
-        self.spectrogram_plot.hide()
-        self.neo_trace_plot.hide()
-        self.ephys_trace_plot.hide()
-        self.raster_plot.hide()
-=======
         # Add all panels to the splitter once, hidden. We never reparent them.
         # setVisible() is used to toggle; QSplitter collapses hidden children to zero.
         # Both line_plot and heatmap_plot live at the "feature" slot; only one is visible.
@@ -346,13 +327,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # Track user-adjusted sizes so they survive panel toggles
         self._user_sizes: dict[str, int] = {}
         self._splitter.splitterMoved.connect(self._on_splitter_moved)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def sizeHint(self):
         return QSize(self.width(), PLOT_CONTAINER_SIZE_HINT_HEIGHT)
 
-<<<<<<< HEAD
-=======
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._label_indicator._reposition()
@@ -384,7 +362,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         self._label_indicator.hide()
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     def _on_plot_zoom(self):
         self.update_audio_changepoint_styles()
         self.update_oscillatory_event_styles()
@@ -395,82 +372,20 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def configure_panels(self):
         """Called after data load to set up which panels are available."""
-<<<<<<< HEAD
-        # Show/hide time slider (shown when no video)
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         if not self.app_state.has_video:
             self.time_slider.show()
         else:
             self.time_slider.hide()
 
-<<<<<<< HEAD
-        # Rebuild splitter contents
-        self._rebuild_splitter()
-=======
         # Clear saved user sizes so defaults apply for the new dataset
         self._user_sizes.clear()
         self._update_panel_visibility()
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def _get_panel_widget(self, name: str):
         if name == "feature":
             return self._feature_plot
         return getattr(self, _PANEL_PLOT_ATTR[name])
 
-<<<<<<< HEAD
-    def _rebuild_splitter(self):
-        """Rebuild the splitter with currently visible panels."""
-        while self._splitter.count():
-            w = self._splitter.widget(0)
-            w.hide()
-            w.setParent(None)
-
-        panels_in_order = []
-        for name, guard in _PANEL_ORDER:
-            if guard and not getattr(self.app_state, guard, False):
-                continue
-            if not self._panel_visible[name]:
-                continue
-            panels_in_order.append((name, self._get_panel_widget(name)))
-
-        for _, widget in panels_in_order:
-            self._splitter.addWidget(widget)
-            widget.show()
-
-        # Set up x-axis linking
-        self._setup_xlinks(panels_in_order)
-
-        # Hide x-axis labels on non-bottom panels
-        for i, (_, widget) in enumerate(panels_in_order):
-            if i < len(panels_in_order) - 1:
-                widget.plotItem.getAxis("bottom").setStyle(showValues=False)
-                widget.plotItem.setLabel("bottom", "")
-            else:
-                widget.plotItem.getAxis("bottom").setStyle(showValues=True)
-
-        # Apply zoom constraints to all newly added panels (using tight bounds)
-        self._apply_all_zoom_constraints()
-
-        # Apply panel size ratios
-        QTimer.singleShot(0, self._apply_panel_sizes)
-
-    def _setup_xlinks(self, panels_in_order):
-        """Link all panels to the first panel's x-axis."""
-        if not panels_in_order:
-            return
-
-        master = panels_in_order[0][1]
-        self._xlink_master = master
-
-        for i, (_, widget) in enumerate(panels_in_order):
-            if i > 0:
-                widget.plotItem.setXLink(master.plotItem)
-
-        # Also link hidden plots that might be swapped in later
-        for plot in (self.line_plot, self.heatmap_plot, self.neo_trace_plot):
-            if plot not in [w for _, w in panels_in_order]:
-=======
     def _on_splitter_moved(self, pos: int, index: int):
         """Save user-adjusted sizes keyed by panel name."""
         sizes = self._splitter.sizes()
@@ -534,7 +449,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # Keep hidden swap-candidates linked too
         for plot in (self.line_plot, self.heatmap_plot, self.neo_trace_plot):
             if plot is not master:
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 plot.plotItem.setXLink(master.plotItem)
 
     def _apply_panel_sizes(self):
@@ -547,33 +461,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         has_neural_panel = v["neo"] or (self.app_state.has_kilosort and (v["ephys"] or v["raster"]))
         ratios = _PANEL_RATIOS.get((has_audio_panel, has_neural_panel), {"feature": 1.0})
 
-<<<<<<< HEAD
-        visible_names = []
-        raw = []
-        for name, guard in _PANEL_ORDER:
-            if guard and not getattr(self.app_state, guard, False):
-                continue
-            if not v[name]:
-                continue
-            visible_names.append(name)
-            raw.append(ratios.get(name, 0.2))
-
-        # When neo and phy panels coexist, enforce a 1:5 size ratio between them.
-        phy_names = {"ephys", "raster"}
-        if "neo" in visible_names and any(n in phy_names for n in visible_names):
-            neo_i = visible_names.index("neo")
-            phy_indices = [i for i, n in enumerate(visible_names) if n in phy_names]
-            neo_phy_total = raw[neo_i] + sum(raw[j] for j in phy_indices)
-            raw[neo_i] = neo_phy_total / 6
-            phy_raw_total = sum(raw[j] for j in phy_indices)
-            for j in phy_indices:
-                raw[j] = raw[j] / phy_raw_total * (neo_phy_total * 5 / 6)
-
-        if raw and len(raw) == self._splitter.count():
-            scale = 1.0 / sum(raw)
-            sizes = [int(total * r * scale) for r in raw]
-            self._splitter.setSizes(sizes)
-=======
         visible_names = self._visible_panel_names()
 
         # Build raw sizes: prefer user-saved sizes, fall back to ratio defaults.
@@ -617,7 +504,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             feature_idx = next(i for i, (n, _) in enumerate(_PANEL_ORDER) if n == "feature")
             all_sizes[feature_idx] = 0
         self._splitter.setSizes(all_sizes)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     # ------------------------------------------------------------------
     # Panel visibility toggles
@@ -627,11 +513,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         if self._panel_visible[name] == visible:
             return
         self._panel_visible[name] = visible
-<<<<<<< HEAD
-        self._rebuild_splitter()
-=======
         self._update_panel_visibility()
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def set_audiotrace_visible(self, visible: bool):
         self._set_panel_visible("audiotrace", visible)
@@ -653,17 +535,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     def _swap_feature_panel(self, new_plot, new_type):
         prev_xlim = self._feature_plot.get_current_xlim()
         prev_marker = self._feature_plot.time_marker.value()
-<<<<<<< HEAD
-        sizes = self._splitter.sizes()
-
-        idx = self._splitter.indexOf(self._feature_plot)
-        self._feature_plot.hide()
-
-        self._splitter.insertWidget(idx, new_plot)
-        new_plot.show()
-
-        # Re-link x-axis
-=======
 
         old_idx = self._splitter.indexOf(self._feature_plot)
         new_idx = self._splitter.indexOf(new_plot)
@@ -677,7 +548,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._feature_plot.hide()
         new_plot.show()
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         if self._xlink_master and new_plot is not self._xlink_master:
             new_plot.plotItem.setXLink(self._xlink_master.plotItem)
 
@@ -707,11 +577,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._panel_visible["ephys"] = visible
         if not visible:
             self._panel_visible["raster"] = False
-<<<<<<< HEAD
-        self._rebuild_splitter()
-=======
         self._update_panel_visibility()
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def set_raster_visible(self, visible: bool):
         self._set_panel_visible("raster", visible)
@@ -729,11 +595,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         if v["ephys"] != show_ephys or v["raster"] != show_raster:
             v["ephys"] = show_ephys
             v["raster"] = show_raster
-<<<<<<< HEAD
-            self._rebuild_splitter()
-=======
             self._update_panel_visibility()
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def set_featureplot_visible(self, visible: bool):
         self._set_panel_visible("feature", visible)
@@ -808,10 +670,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         for plot in self._visible_plots():
             plot.update_time_marker(time_s)
         self.time_slider.set_slider_time(time_s)
-<<<<<<< HEAD
-=======
         self._update_label_indicator(time_s)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def _on_seek_time_requested(self, time_s: float):
         self.update_time_marker_by_time(time_s)
@@ -832,10 +691,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         for plot in self._visible_plots():
             plot.update_time_marker(current_time)
         self.time_slider.set_slider_time(current_time)
-<<<<<<< HEAD
-=======
         self._update_label_indicator(current_time)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def apply_y_range(self, ymin, ymax):
         return self._feature_plot.apply_y_range(ymin, ymax)
@@ -851,16 +707,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             plot._apply_zoom_constraints(x_bounds_override=bounds)
 
     def _trial_bounds_tuple(self):
-<<<<<<< HEAD
-        """Return (start_s, end_s) from TrialAlignment.trial_range, or None."""
-        tr = self.app_state.trial_bounds
-        if tr is None:
-            return None
-        return (tr.start_s, tr.end_s)
-=======
         tr = self.app_state.trial_bounds
         return (tr.start_s, tr.end_s) if tr is not None else None
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     # --- Bottom panel switching ---
 
@@ -911,11 +759,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         """Refresh audio-driven panels (waveform + spectrogram) after mic change."""
         source = build_audio_source(self.app_state)
         self.spectrogram_plot.set_source(source)
-<<<<<<< HEAD
-        self.audio_trace_plot.set_source(source.timeseries_source if source else None)
-=======
         self.audio_trace_plot.set_source(source)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         t0, t1 = self.get_current_xlim()
         time = self.app_state.time
@@ -955,39 +799,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             master.vb.setXRange(time_s - half, time_s + half, padding=0)
 
     def update_time_range_from_data(self):
-<<<<<<< HEAD
-        alignment = getattr(self.app_state, 'trial_alignment', None)
-        if alignment is not None:
-            gr = alignment.trial_range
-            if gr is not None and gr.duration > 0:
-                self.time_slider.set_time_range(gr.start_s, gr.end_s)
-                return
-
-        time = self.app_state.time
-        if time is not None:
-            vals = np.asarray(time)
-            self.time_slider.set_time_range(float(vals[0]), float(vals[-1]))
-            return
-
-        audio_path = getattr(self.app_state, 'audio_path', None)
-        if audio_path:
-            loader = SharedAudioCache.get_loader(audio_path)
-            if loader is not None and len(loader) > 0:
-                duration = len(loader) / loader.rate
-                self.time_slider.set_time_range(0.0, duration)
-                return
-
-        ephys_path, stream_id, _ = self.app_state.get_ephys_source()
-        if ephys_path:
-            loader = get_ephys_loader(ephys_path, stream_id=stream_id)
-            if loader is not None and len(loader) > 0:
-                duration = len(loader) / loader.rate
-                self.time_slider.set_time_range(0.0, duration)
-=======
         tr = self.app_state.trial_bounds
         if tr is not None and tr.duration > 0:
             self.time_slider.set_time_range(tr.start_s, tr.end_s)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     # --- Audio playback (space key) ---
 
@@ -1281,9 +1095,4 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         SharedAudioCache.clear_cache()
         if hasattr(self.spectrogram_plot, "buffer"):
             self.spectrogram_plot.buffer._clear_buffer()
-<<<<<<< HEAD
-        if hasattr(self.audio_trace_plot, "buffer"):
-            self.audio_trace_plot.buffer.set_source(None)
-=======
         self.audio_trace_plot.set_source(None)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955

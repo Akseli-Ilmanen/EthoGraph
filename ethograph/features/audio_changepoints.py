@@ -4,22 +4,12 @@ Uses vocalseg library for detecting vocal onset/offset candidates in audio files
 Reference: https://github.com/timsainb/vocalization-segmentation
 """
 
-<<<<<<< HEAD
-import audioio as aio
 import numpy as np
-import vocalpy as voc
-=======
-import numpy as np
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from scipy.signal import stft
 
 if not hasattr(np, "product"):
     np.product = np.prod
 
-<<<<<<< HEAD
-from vocalseg.continuity_filtering import continuity_segmentation
-from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
-=======
 try:
     import audioio as aio
     import vocalpy as voc
@@ -31,7 +21,6 @@ except ImportError as e:
         "audio changepoint detection. "
         "Install them with: uv pip install \"ethograph[audio]\""
     ) from e
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 from ethograph.features.energy import _to_sound, env_ava, env_meansquared
 
@@ -88,9 +77,6 @@ def get_audio_changepoints(
     channel_idx: int = 0,
     **kwargs,
 ) -> tuple:
-<<<<<<< HEAD
-
-=======
     """Detect vocal onset/offset times from audio using the specified algorithm.
 
     Supports four backends: ``meansquared`` and ``ava`` (vocalpy), plus
@@ -122,7 +108,6 @@ def get_audio_changepoints(
     envelope : numpy.ndarray
         Energy amplitude envelope aligned with ``env_time``.
     """
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     data_1d, sr = _prepare_audio(audio_path, signal, sr, channel_idx)
     sound = _to_sound(data_1d, sr)
 

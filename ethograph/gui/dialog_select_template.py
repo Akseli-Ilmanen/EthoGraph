@@ -1,10 +1,5 @@
 """Dialog for selecting a template dataset to pre-fill IO paths."""
 
-<<<<<<< HEAD
-import webbrowser
-from pathlib import Path
-
-=======
 import logging
 import traceback
 import webbrowser
@@ -12,7 +7,6 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from qtpy.QtCore import QSize, QThread, Qt, Signal
 from qtpy.QtGui import QMovie, QPixmap
 from qtpy.QtWidgets import (
@@ -20,31 +14,20 @@ from qtpy.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-<<<<<<< HEAD
-    QMessageBox,
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     QProgressDialog,
     QPushButton,
     QVBoxLayout,
 )
 
-<<<<<<< HEAD
-=======
 from ethograph.gui.notify import notify_dialog
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from ethograph.utils.download import (
     EXAMPLE_DATASETS,
     download_assets,
     is_downloaded,
 )
 
-<<<<<<< HEAD
-_ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "tutorials" / "assets"
-=======
 _ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "examples" / "assets"
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 _DOWNLOAD_BASE = Path.home() / ".ethograph" / "example_data"
 
 TEMPLATES = [
@@ -281,22 +264,14 @@ class TemplateDialog(QDialog):
                 )
                 dt.to_netcdf(nc_path)
             except Exception as e:
-<<<<<<< HEAD
-                QMessageBox.critical(self, "Error", f"Failed to generate .nc from audio:\n{e}")
-=======
                 traceback.print_exc()
                 notify_dialog(f"Failed to generate .nc from audio:\n{e}", "error", "Error", self)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 return
 
         resolved = _resolve_template_paths(template)
         resolved["nc_file_path"] = nc_path
         resolved["audio_folder"] = str(dest)
-<<<<<<< HEAD
-        print("[DEBUG] Canary template resolved paths:", resolved)
-=======
         logger.debug("Canary template resolved paths: %s", resolved)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self.selected_template = resolved
         self.accept()
 
@@ -326,11 +301,7 @@ class TemplateDialog(QDialog):
         def on_error(msg):
             progress.close()
             worker.deleteLater()
-<<<<<<< HEAD
-            QMessageBox.warning(self, "Download Error", msg)
-=======
             notify_dialog(msg, "warning", "Download Error", self)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         worker.progress.connect(on_progress)
         worker.finished.connect(on_finished)

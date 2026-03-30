@@ -1,11 +1,8 @@
 """Settings that the user can modify and are saved in gui_settings.yaml"""
 
 import gc
-<<<<<<< HEAD
-=======
 import logging
 import subprocess
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from datetime import datetime
 from pathlib import Path
 from typing import Any, get_args, get_origin
@@ -16,22 +13,6 @@ import pandas as pd
 import xarray as xr
 import yaml
 from napari.settings import get_settings
-<<<<<<< HEAD
-from napari.utils.notifications import show_info
-from qtpy.QtCore import QObject, QTimer, Signal
-
-import ethograph as eto
-from ethograph.gui.plots_timeseriessource import TrialAlignment, TimeRange
-
-from .makepretty import find_combo_index
-from ethograph.utils.label_intervals import (
-    empty_intervals,
-    intervals_to_xr,
-    xr_to_intervals,
-)
-
-
-=======
 from qtpy.QtCore import QObject, QTimer, Signal
 
 import ethograph as eto
@@ -53,14 +34,11 @@ from ethograph.labels.tsv_store import (
 
 logger = logging.getLogger(__name__)
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 SIMPLE_SIGNAL_TYPES = (int, float, str, bool)
 
 
 
 
-<<<<<<< HEAD
-=======
 def _auto_git_commit(label_path: Path) -> None:
     """Auto-commit a label file if the parent folder is a git repository."""
     repo_dir = str(label_path.parent)
@@ -92,7 +70,6 @@ def _auto_git_commit(label_path: Path) -> None:
         raise ValueError(f"git commit failed: {e.stderr.strip() or e.stdout.strip() or str(e)}")
 
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 def get_signal_type(type_hint):
     """Derive Qt Signal-compatible type from a type hint."""
     if type_hint in SIMPLE_SIGNAL_TYPES:
@@ -169,16 +146,9 @@ class AppStateSpec:
         "ds": (xr.Dataset | None, None, False),
         "ds_temp": (xr.Dataset | None, None, False),
         "dt": (xr.DataTree | None, None, False),
-<<<<<<< HEAD
-        "label_ds": (xr.Dataset | None, None, False),
-        "label_dt": (xr.DataTree | None, None, False),
-        "pred_ds": (xr.Dataset | None, None, False),
-        "pred_dt": (xr.DataTree | None, None, False),
-=======
         "labels_confidence_ds": (xr.Dataset | None, None, False),
         "pred_labels_df": (pd.DataFrame | None, None, False),
         "pred_confidence_map": (dict | None, None, False),
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         "trial_conditions": (list | None, None, False),
         "keypoints": (list[str], [], False),
         "import_labels_nc_data": (bool, False, True),
@@ -186,11 +156,7 @@ class AppStateSpec:
         "audio_playback_speed": (float, 1.0, True),
         "av_speed_coupled": (bool, True, True),
         "skip_frames": (bool, False, True),
-<<<<<<< HEAD
-        "filter_warnings": (bool, False, True),
-=======
         "filter_warnings": (bool, True, True),
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         "center_playback": (bool, False, True),
         "time_jump_ms": (float, 100.0, True),
         "time": (xr.DataArray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
@@ -211,10 +177,6 @@ class AppStateSpec:
         # Paths 
         "nc_file_path": (str | None, None, False),
         "video_folder": (str | None, None, True, SCOPE_LOCAL),
-<<<<<<< HEAD
-        "remote_video": (bool, False, True),
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         "audio_folder": (str | None, None, True, SCOPE_LOCAL),
         "pose_folder": (str | None, None, True, SCOPE_LOCAL),
         "ephys_path": (str | None, None, True, SCOPE_LOCAL),
@@ -244,14 +206,9 @@ class AppStateSpec:
         "buffer_multiplier": (float, 5.0, True),
         "percentile_ylim": (float, 99.5, True),
         "space_plot_type": (str, "Layers", True),
-<<<<<<< HEAD
-        "slot2_sel": (str | None, None, True),
-        "slot3_sel": (str | None, None, True),
-=======
         "primary_camera": (str | None, None, True),
         "primary_camera_previous": (str | None, None, False),
         "extra_cameras": (list[str], [], True),
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         "lock_axes": (bool, False, False),
         "spec_colormap": (str, "CET-R4", True),
         "spec_levels_mode": (str, "auto", True),
@@ -268,12 +225,8 @@ class AppStateSpec:
         "apply_changepoint_correction": (bool, True, True),
         "automatic_min_label_length_s": (float, 1e-3, True),
         "automatic_stitch_gap_s": (float, 0.0, True),
-<<<<<<< HEAD
-        "save_tsv_enabled": (bool, True, True),
-=======
         "remote_backup_path": (str | None, None, True),
         "remote_backup_mode": (str, "timestamp", True),
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         # Envelope / energy (general, used by both heatmap and overlay)
         "energy_metric": (str, "energy_lowpass", True),
@@ -366,11 +319,8 @@ class ObservableAppState(QObject):
         self.ephys_source_map: dict[str, tuple[str, str, int]] = {}
         self.ephys_stream_sel: str | None = None
         self._suspend_local_autoload = False
-<<<<<<< HEAD
-=======
         self._all_labels_df: pd.DataFrame | None = None
         self._label_mappings: dict | None = None
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         self.settings = get_settings()
         self._yaml_path = yaml_path or "gui_settings.yaml"
@@ -380,13 +330,6 @@ class ObservableAppState(QObject):
 
     @property
     def video_fps(self) -> float:
-<<<<<<< HEAD
-        video = getattr(self, 'video', None)
-        if video is None:
-            return 1
-        else:
-            return video.fps
-=======
         dt = getattr(self, 'dt', None)
         if dt is not None:
             camera = self.primary_camera
@@ -395,7 +338,6 @@ class ObservableAppState(QObject):
                 return fps
         logger.warning("video_fps: no FPS metadata found, falling back to 1.0")
         return 1.0
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     @property
     def sel_attrs(self) -> dict:
@@ -524,11 +466,7 @@ class ObservableAppState(QObject):
         raise AttributeError(name)
 
     def __setattr__(self, name, value):
-<<<<<<< HEAD
-        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map", "ephys_source_map", "ephys_stream_sel", "_suspend_local_autoload"):
-=======
         if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map", "ephys_source_map", "ephys_stream_sel", "_suspend_local_autoload", "_all_labels_df", "_label_mappings"):
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             super().__setattr__(name, value)
             return
 
@@ -674,11 +612,7 @@ class ObservableAppState(QObject):
                 if index >= 0:
                     combo.setCurrentIndex(index)
         except (AttributeError, TypeError) as e:
-<<<<<<< HEAD
-            print(f"Error updating combo box for {type_key}: {e}")
-=======
             logger.error("Error updating combo box for %s: %s", type_key, e)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def _cycle_combo_box(self, type_key, data_widget):
         """Cycle the combo box to the next item when no previous selection exists."""
@@ -688,11 +622,7 @@ class ObservableAppState(QObject):
                 next_index = (combo.currentIndex() + 1) % combo.count()
                 combo.setCurrentIndex(next_index)
         except (AttributeError, TypeError) as e:
-<<<<<<< HEAD
-            print(f"Error cycling combo box for {type_key}: {e}")
-=======
             logger.error("Error cycling combo box for %s: %s", type_key, e)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     # --- Save/Load methods ---
     PATH_SUFFIXES = ("_path", "_folder")
@@ -745,11 +675,7 @@ class ObservableAppState(QObject):
                             if isinstance(value, (str, float, int, bool)):
                                 state_dict[attr] = self._to_native(value)
                     except (AttributeError, TypeError) as exc:
-<<<<<<< HEAD
-                        print(f"Error accessing {attr}: {exc}")
-=======
                         logger.error("Error accessing %s: %s", attr, exc)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         return state_dict
 
     def _sort_state_dict(self, state_dict: dict) -> dict:
@@ -827,17 +753,10 @@ class ObservableAppState(QObject):
             if not state_dict:
                 return False
             self.load_from_dict(state_dict)
-<<<<<<< HEAD
-            print(f"Local state loaded from {local_path}")
-            return True
-        except (OSError, yaml.YAMLError) as e:
-            print(f"Error loading local state from YAML: {e}")
-=======
             logger.info("Local state loaded from %s", local_path)
             return True
         except (OSError, yaml.YAMLError) as e:
             logger.error("Error loading local state from YAML: %s", e)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return False
 
     def save_to_yaml(self, yaml_path: str | None = None) -> bool:
@@ -860,11 +779,7 @@ class ObservableAppState(QObject):
 
             return True
         except (OSError, yaml.YAMLError) as e:
-<<<<<<< HEAD
-            print(f"Error saving state to YAML: {e}")
-=======
             logger.error("Error saving state to YAML: %s", e)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return False
 
     def load_from_yaml(self, yaml_path: str | None = None) -> bool:
@@ -872,19 +787,11 @@ class ObservableAppState(QObject):
             if yaml_path is not None:
                 path = Path(yaml_path)
                 if not path.exists():
-<<<<<<< HEAD
-                    print(f"YAML file {path} not found, using defaults\n")
-                    return False
-                state_dict = self._yaml_read(path)
-                self.load_from_dict(state_dict)
-                print(f"State loaded from {path}\n")
-=======
                     logger.warning("YAML file %s not found, using defaults", path)
                     return False
                 state_dict = self._yaml_read(path)
                 self.load_from_dict(state_dict)
                 logger.info("State loaded from %s", path)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 return True
 
             loaded_any = False
@@ -893,28 +800,17 @@ class ObservableAppState(QObject):
             global_state = self._yaml_read(global_path)
             if global_state:
                 self.load_from_dict(global_state)
-<<<<<<< HEAD
-                print(f"Global state loaded from {global_path}")
-=======
                 logger.info("Global state loaded from %s", global_path)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 loaded_any = True
 
             if self.load_local_settings():
                 loaded_any = True
 
             if not loaded_any:
-<<<<<<< HEAD
-                print("No settings YAML found, using defaults\n")
-            return loaded_any
-        except (OSError, yaml.YAMLError) as e:
-            print(f"Error loading state from YAML: {e}")
-=======
                 logger.warning("No settings YAML found, using defaults")
             return loaded_any
         except (OSError, yaml.YAMLError) as e:
             logger.error("Error loading state from YAML: %s", e)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return False
         
     def delete_yaml(self, yaml_path: str | None = None) -> bool:
@@ -923,41 +819,21 @@ class ObservableAppState(QObject):
                 p = Path(yaml_path)
                 if p.exists():
                     p.unlink()
-<<<<<<< HEAD
-                    print(f"Deleted YAML file {yaml_path}")
-                    return True
-                print(f"YAML file {yaml_path} does not exist")
-=======
                     logger.info("Deleted YAML file %s", yaml_path)
                     return True
                 logger.warning("YAML file %s does not exist", yaml_path)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 return False
 
             deleted_any = False
             global_path = self._global_settings_path()
             if global_path.exists():
                 global_path.unlink()
-<<<<<<< HEAD
-                print(f"Deleted YAML file {global_path}")
-=======
                 logger.info("Deleted YAML file %s", global_path)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 deleted_any = True
 
             local_path = self._local_settings_path()
             if local_path is not None and local_path.exists():
                 local_path.unlink()
-<<<<<<< HEAD
-                print(f"Deleted YAML file {local_path}")
-                deleted_any = True
-
-            if not deleted_any:
-                print("No YAML settings files found to delete")
-            return deleted_any
-        except OSError as e:
-            print(f"Error deleting YAML file: {e}")
-=======
                 logger.info("Deleted YAML file %s", local_path)
                 deleted_any = True
 
@@ -966,7 +842,6 @@ class ObservableAppState(QObject):
             return deleted_any
         except OSError as e:
             logger.error("Error deleting YAML file: %s", e)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return False
     
     def stop_auto_save(self):
@@ -976,63 +851,6 @@ class ObservableAppState(QObject):
 
     # --- Interval label helpers ---
     def get_trial_intervals(self, trial) -> pd.DataFrame:
-<<<<<<< HEAD
-        if self.label_dt is None:
-            return empty_intervals()
-        trial_ds = self.label_dt.trial(trial)
-        if "onset_s" in trial_ds.data_vars:
-            return xr_to_intervals(trial_ds)
-        return empty_intervals()
-
-    def set_trial_intervals(self, trial, df: pd.DataFrame) -> None:
-        if self.label_dt is None:
-            return
-        interval_ds = intervals_to_xr(df)
-        old_ds = self.label_dt.trial(trial)
-        interval_ds.attrs = old_ds.attrs.copy()
-        if "labels_confidence" in old_ds.data_vars:
-            interval_ds["labels_confidence"] = old_ds["labels_confidence"]
-        self.label_dt.update_trial(trial, lambda _: interval_ds)
-
-    def _get_downsampled_suffix(self) -> str:
-        """Get suffix for downsampled files."""
-        if self.downsample_factor_used:
-            return f"_downsampled_{self.downsample_factor_used}x"
-        return ""
-    
-    def _save_labels_tsv(self, nc_path, suffix):        
-        tsv_path = nc_path.parent / f"{nc_path.stem}{suffix}_labels.tsv"        
-        keep_attrs = self.trial_conditions if self.trial_conditions is not None else []
-        df = eto.trees_to_df(self.dt, keep_attrs)
-        df.to_csv(tsv_path, index=False, sep='\t', encoding='utf-8-sig')
-                    
-
-    def save_labels(self):
-        """Save only updated labels to preserve data integrity of other variables."""
-
-        nc_path = Path(self.nc_file_path)
-        suffix = self._get_downsampled_suffix()
-
-        # Save label seperately as backup
-        labels_dir = nc_path.parent / "labels"
-        labels_dir.mkdir(exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        versioned_filename = f"{nc_path.stem}{suffix}_labels_{timestamp}{nc_path.suffix}"
-        versioned_path = labels_dir / versioned_filename
-
-        self.label_dt.save(versioned_path)
-        show_info(f"✅ Saved: {Path(versioned_path).name}")
-
-        self.changes_saved = True
-
-
-    def save_file(self) -> None:
-        if getattr(self.dt, "attrs", {}).get("nwb_source_path", "").startswith(("http://", "https://", "s3://")):
-            show_info(
-                "Full save is unavailable for remote NWB files. "
-                "Use 'Save labels' instead."
-            )
-=======
         return get_trial_from_tsv(self._all_labels_df, trial)
 
     def set_trial_intervals(self, trial, df: pd.DataFrame) -> None:
@@ -1075,38 +893,10 @@ class ObservableAppState(QObject):
             "timestamp" (default) appends timestamp suffix, "overwrite" saves as single file.
         """
         if self._all_labels_df is None:
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         nc_path = Path(self.nc_file_path)
         suffix = self._get_downsampled_suffix()
-<<<<<<< HEAD
-        
-
-
-        if suffix:
-            save_path = nc_path.parent / f"{nc_path.stem}{suffix}{nc_path.suffix}"
-            updated_dt = self.dt.overwrite_with_labels(self.label_dt)
-
-            
-            updated_dt.save(save_path)
-            updated_dt.close()
-            show_info(f"✅ Saved downsampled: {save_path.name}")
-        else:
-            updated_dt = self.dt.overwrite_with_labels(self.label_dt)
-            updated_dt.load()
-            self.dt.close()
-
-            updated_dt.save(nc_path)
-
-            self.dt = eto.open(nc_path)
-            show_info(f"✅ Saved: {nc_path.name}")
-            
-            
-        if self.save_tsv_enabled:
-            self._save_labels_tsv(nc_path, suffix)
-            show_info(f"✅ Saved TSV: {nc_path.stem}{suffix}_labels.tsv")
-=======
         stem = f"{nc_path.stem}{suffix}"
 
         # Enrich with computed columns (duration, sequence, global timing, trial attrs)
@@ -1139,4 +929,3 @@ class ObservableAppState(QObject):
 
         notify(f"Saved labels: {canonical_tsv.name}")
         self.changes_saved = True
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955

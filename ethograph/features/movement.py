@@ -1,20 +1,13 @@
 """Features related to movements/kinematics."""
 
-<<<<<<< HEAD
-=======
 from __future__ import annotations
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-<<<<<<< HEAD
-from typing import Union
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 import numpy as np
 import pandas as pd
@@ -122,11 +115,7 @@ class Position3DCalibration:
 
 def compute_distance_to_constant(
     data: xr.Dataset,
-<<<<<<< HEAD
-    reference_point: Union[np.ndarray, list, tuple],
-=======
     reference_point: np.ndarray | list | tuple,
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     keypoint: str = None,
     individual: str = None,
     metric: str = "euclidean",
@@ -137,15 +126,9 @@ def compute_distance_to_constant(
     
     Parameters
     ----------
-<<<<<<< HEAD
-    data : xr.Dataset
-        Dataset containing position data with dims: time, individuals, keypoints, space
-        Space dimension must contain either ['x', 'y'] or ['x', 'y', 'z']
-=======
     data : xarray.Dataset
         Dataset containing position data with dims: time, individuals, keypoints, space.
         Space dimension must contain either ``['x', 'y']`` or ``['x', 'y', 'z']``.
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     reference_point : array-like
         Constant reference point [x, y] for 2D or [x, y, z] for 3D
     keypoint : str, optional
@@ -159,13 +142,8 @@ def compute_distance_to_constant(
     
     Returns
     -------
-<<<<<<< HEAD
-    xr.DataArray
-        Distances with preserved dimensions
-=======
     xarray.DataArray
         Distances with preserved dimensions.
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     
     Raises
     ------
@@ -366,8 +344,6 @@ def extract_video_motion(
     hwaccel: str | None = None,
     verbose: bool = True,
 ) -> xr.DataArray:
-<<<<<<< HEAD
-=======
     """Compute per-frame pixel difference (motion energy) from a video file.
 
     Uses ffmpeg ``signalstats`` filter (YDIF — mean absolute luma difference
@@ -396,7 +372,6 @@ def extract_video_motion(
     xarray.DataArray
         1-D array of motion values with a time coordinate in seconds.
     """
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     video_path = Path(video_path)
     
     if not video_path.exists():
@@ -455,10 +430,6 @@ def compute_aux_velocity_and_speed(
     time_intan: np.ndarray,
     fps: float = 30000.0,
     mov_mean_window1: int = 6001,
-<<<<<<< HEAD
-    mov_mean_window2: int = 15001
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-=======
     mov_mean_window2: int = 15001,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute drift-corrected velocity and scalar speed from accelerometer data.
@@ -489,7 +460,6 @@ def compute_aux_velocity_and_speed(
     speed : numpy.ndarray
         L2 norm of ``v_corr`` — scalar speed at each time point, shape ``(N,)``.
     """
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     if a_aux_trial.shape[0] != len(time_intan):
         raise ValueError(
             f"Shape mismatch: a_aux_trial has {a_aux_trial.shape[0]} samples "

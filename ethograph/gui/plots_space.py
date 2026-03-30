@@ -233,24 +233,11 @@ class SpacePlot(QWidget):
         self.ds_kwargs = {}
         self._trajectory_pos = None
         self._pca_times = None
-<<<<<<< HEAD
-        self.hide()
-
-
-=======
         super().hide()  # don't call overridden hide() at init — no dock exists yet
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
 
     def show(self):
-<<<<<<< HEAD
-        """Show the space plot by replacing the layer controls area."""
-
-        self.viewer.window._qt_viewer.dockLayerControls.setVisible(False)
-
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         if not self.dock_widget:
             # Add space plot at the left side
             self.dock_widget = self.viewer.window.add_dock_widget(
@@ -273,16 +260,8 @@ class SpacePlot(QWidget):
         super().show()
 
     def hide(self):
-<<<<<<< HEAD
-        """Hide the space plot dock widget and show layer controls."""
-        self.viewer.window._qt_viewer.dockLayerControls.setVisible(True)
         if self.dock_widget:
             self.dock_widget.setVisible(False)
-
-=======
-        if self.dock_widget:
-            self.dock_widget.setVisible(False)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         super().hide()
 
     def update_plot(self, individual: str = None, keypoints: str = None, color_variable: str = None, view_3d: bool = False):

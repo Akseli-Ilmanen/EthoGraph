@@ -18,12 +18,6 @@ def build_tsgroup(
 
     Parameters
     ----------
-<<<<<<< HEAD
-    spike_times : (N,) spike times in seconds
-    spike_clusters : (N,) cluster id for each spike
-    cluster_ids : subset of clusters to include (defaults to all unique)
-    time_support : epoch boundaries (defaults to full data range)
-=======
     spike_times : numpy.ndarray
         Spike times in seconds, shape ``(N,)``.
     spike_clusters : numpy.ndarray
@@ -37,7 +31,6 @@ def build_tsgroup(
     -------
     pynapple.TsGroup
         One :class:`pynapple.Ts` per cluster.
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     """
     spike_times = spike_times.ravel()
     spike_clusters = spike_clusters.ravel()
@@ -69,20 +62,6 @@ def firing_rate_by_cluster(
 
     Parameters
     ----------
-<<<<<<< HEAD
-    spike_times : (N,) spike times in seconds, sorted ascending
-    spike_clusters : (N,) cluster id for each spike
-    bin_size : bin width in seconds
-    t_start, t_stop : time range (defaults to data range)
-    cluster_ids : which clusters to include (defaults to all unique)
-    _tsgroup : pre-built TsGroup, pass to skip reconstruction
-
-    Returns
-    -------
-    rates : (n_clusters, n_bins) firing rate in Hz
-    bin_centers : (n_bins,) time of each bin center
-    cluster_ids : (n_clusters,) cluster id for each row
-=======
     spike_times : numpy.ndarray
         Spike times in seconds, sorted ascending, shape ``(N,)``.
     spike_clusters : numpy.ndarray
@@ -106,7 +85,6 @@ def firing_rate_by_cluster(
         Time of each bin center, shape ``(n_bins,)``.
     cluster_ids : numpy.ndarray
         Cluster ID for each row, shape ``(n_clusters,)``.
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     """
     if cluster_ids is None:
         cluster_ids = np.unique(spike_clusters.ravel())
@@ -141,16 +119,6 @@ def compute_pca(
 
     Parameters
     ----------
-<<<<<<< HEAD
-    firing_rate : DataArray with dims ("cluster_id", "time_fr")
-    n_components : number of principal components to keep
-    zscore : z-score each cluster's firing rate before PCA
-
-    Returns
-    -------
-    xr.DataArray with dims ("time_fr", "pc"), coords pc=["PC1","PC2",...],
-    and attrs including explained_variance ratios.
-=======
     firing_rate : xarray.DataArray
         Firing rates with dims ``("cluster_id", "time_fr")``.
     n_components : int
@@ -163,7 +131,6 @@ def compute_pca(
     xarray.DataArray
         Scores with dims ``("time_fr", "pc")``, coords
         ``pc=["PC1", "PC2", ...]``, and ``attrs["explained_variance"]``.
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     """
     X = firing_rate.values.T  # (time, clusters)
 
@@ -206,13 +173,6 @@ def firing_rate_to_xarray(
     cluster_ids: np.ndarray | None = None,
     _tsgroup: nap.TsGroup | None = None,
 ):
-<<<<<<< HEAD
-    """Compute firing rates and return as xarray.DataArray.
-
-    Returns
-    -------
-    xr.DataArray with dims ("cluster_id", "time_fr") and attrs["bin_size"].
-=======
     """Compute firing rates and return as an xarray DataArray.
 
     Parameters
@@ -237,7 +197,6 @@ def firing_rate_to_xarray(
     xarray.DataArray
         Firing rates with dims ``("cluster_id", "time_fr")`` and
         ``attrs["bin_size"]``.
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     """
     rates, bin_centers, cluster_ids = firing_rate_by_cluster(
         spike_times, spike_clusters, bin_size, t_start, t_stop, cluster_ids,

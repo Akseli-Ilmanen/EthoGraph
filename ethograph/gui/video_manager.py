@@ -1,24 +1,10 @@
-<<<<<<< HEAD
-"""Video layer lifecycle management — setup, teardown, camera switching, secondary video."""
-=======
 """Video layer lifecycle management — setup, teardown, camera switching, multi-camera display."""
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 import os
 from pathlib import Path
 
 from napari._qt.qt_viewer import QtViewer
 from napari.components.viewer_model import ViewerModel
-<<<<<<< HEAD
-from napari.utils.notifications import show_warning
-from qtpy.QtCore import Qt, QTimer
-from qtpy.QtWidgets import QSplitter, QVBoxLayout, QWidget
-
-from napari_pyav._reader import FastVideoReader
-
-from .video_sync import NapariVideoSync
-
-=======
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
@@ -30,15 +16,10 @@ from .video_sync import NapariVideoSync
 
 MAX_EXTRA_CAMERAS = 4
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 def is_url(path: str) -> bool:
     return path.startswith("http://") or path.startswith("https://")
 
-<<<<<<< HEAD
-class SecondaryVideoWidget(QWidget):
-    """Displays a second camera feed with pose overlay via a napari canvas."""
-=======
 
 class TrialVideoSlice:
     """Wraps a FastVideoReader to expose only frames within a trial's time range.
@@ -100,7 +81,6 @@ class ExtraCameraWidget(QWidget):
     Owns its own FPS — the mediator (VideoManager) broadcasts time in seconds
     and each widget converts to frames internally.
     """
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -114,11 +94,6 @@ class ExtraCameraWidget(QWidget):
 
         self._hide_dims_slider()
 
-<<<<<<< HEAD
-        self._video_layer = None
-        self._points_layer = None
-
-=======
         self._fps: float = 0.0
         self._video_layer = None
         self._points_layer = None
@@ -127,20 +102,14 @@ class ExtraCameraWidget(QWidget):
     def fps(self) -> float:
         return self._fps
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     def _hide_dims_slider(self):
         from napari._qt.widgets.qt_dims import QtDims
 
         for widget in self._qt_viewer.findChildren(QtDims):
             widget.setVisible(False)
 
-<<<<<<< HEAD
-    def set_video(self, video_data):
-        """Set the video source (a FastVideoReader or ndarray-like)."""
-=======
     def set_video(self, video_data, fps: float = 0.0):
         self._fps = fps
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         if self._video_layer is not None:
             old_data = getattr(self._video_layer, "data", None)
             try:
@@ -155,21 +124,6 @@ class ExtraCameraWidget(QWidget):
                     pass
 
         if video_data is not None:
-<<<<<<< HEAD
-            self._video_layer = self._viewer_model.add_image(video_data, name="video", rgb=True)
-            self._hide_dims_slider()
-            self.seek_to_frame(0)
-
-    def set_pose_layer(self, data, properties, style_kwargs):
-        """Add or replace the pose Points layer."""
-        self.clear_pose()
-        if data is not None and len(data) > 0:
-            self._points_layer = self._viewer_model.add_points(
-                data,
-                properties=properties,
-                **style_kwargs,
-            )
-=======
             try:
                 self._video_layer = self._viewer_model.add_image(video_data, name="video", rgb=True)
             except StopIteration:
@@ -193,7 +147,6 @@ class ExtraCameraWidget(QWidget):
         n_frames = self._video_layer.data.shape[0]
         frame = max(0, min(frame, n_frames - 1))
         self._viewer_model.dims.set_point(0, frame)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def seek_to_frame(self, frame: int):
         n_frames = 0
@@ -230,12 +183,6 @@ class ExtraCameraWidget(QWidget):
 
 
 class VideoManager:
-<<<<<<< HEAD
-    """Manages primary and secondary video layers, audio path resolution, and frame sync.
-
-    Owns the video layer lifecycle on behalf of DataWidget. Does NOT own
-    plot_container, labels, combos, or any UI controls — those stay in DataWidget.
-=======
     """Manages primary and extra video layers, audio path resolution, and frame sync.
 
     Acts as a mediator: broadcasts time in seconds to extra cameras, each of
@@ -243,54 +190,29 @@ class VideoManager:
 
     Supports up to MAX_EXTRA_CAMERAS additional camera views displayed in a
     vertical stack alongside the primary napari viewer.
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     """
 
     def __init__(self, viewer, app_state):
         self.viewer = viewer
         self.app_state = app_state
-<<<<<<< HEAD
-        self._secondary_widget: SecondaryVideoWidget | None = None
-        self._secondary_fps: float = 0.0
-        self._central_splitter: QSplitter | None = None
-=======
         self._extra_widgets: dict[str, ExtraCameraWidget] = {}
         self._central_splitter: QSplitter | None = None
         self._extra_splitter: QSplitter | None = None
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self._original_central = None
         self._video_format_warned = False
 
     @property
-<<<<<<< HEAD
-    def secondary_widget(self) -> SecondaryVideoWidget | None:
-        return self._secondary_widget
-
-    @property
-    def secondary_fps(self) -> float:
-        return self._secondary_fps
-=======
     def extra_widgets(self) -> dict[str, ExtraCameraWidget]:
         return self._extra_widgets
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def update_video(self, plot_container, transform_widget):
         if not self.app_state.ready:
             return
-<<<<<<< HEAD
-        camera_sel = getattr(self.app_state, 'cameras_sel', None)
-        video_file = None
-        if camera_sel:
-            dt = self.app_state.dt
-
-            video_file = dt.get_media(self.app_state.trials_sel, "video", device=camera_sel)
-=======
         camera = self.app_state.primary_camera
         video_file = None
         if camera:
             dt = self.app_state.dt
             video_file = dt.get_media(self.app_state.trials_sel, "video", device=camera)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         if video_file and is_url(video_file):
             self.app_state.video_path = video_file
         elif video_file and self.app_state.video_folder:
@@ -338,16 +260,10 @@ class VideoManager:
         ext = Path(video_path).suffix.lower()
         if ext in ('.avi', '.mov') and not self._video_format_warned:
             self._video_format_warned = True
-<<<<<<< HEAD
-            show_warning(
-                f"Video format '{ext}' may have inaccurate frame seeking. "
-                f"See https://ethograph.readthedocs.io/en/latest/troubleshooting/"
-=======
             notify(
                 f"Video format '{ext}' may have inaccurate frame seeking. "
                 f"See https://ethograph.readthedocs.io/en/latest/troubleshooting/",
                 "warning",
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             )
 
     def _cleanup_primary_video(self):
@@ -371,13 +287,6 @@ class VideoManager:
 
     def _setup_primary_video(self, restore_frame: int):
 
-<<<<<<< HEAD
-        video_data = FastVideoReader(
-            self.app_state.video_path, read_format='rgb24',
-        )
-
-        _ = video_data.shape
-=======
         reader = FastVideoReader(
             self.app_state.video_path, read_format='rgb24',
         )
@@ -408,31 +317,21 @@ class VideoManager:
                 video_data = TrialVideoSlice(reader, start_frame, end_frame)
                 video_time_offset = 0.0
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         n_frames = int(video_data.shape[0]) if len(video_data.shape) >= 1 else 0
         if n_frames > 0:
             restore_frame = min(restore_frame, n_frames - 1)
         else:
             restore_frame = 0
 
-<<<<<<< HEAD
-        video_layer = self.viewer.add_image(video_data, name="video", rgb=True)
-=======
         try:
             video_layer = self.viewer.add_image(video_data, name="video", rgb=True)
         except StopIteration:
             notify("Video file could not be loaded (frame read failed).", "warning")
             return
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         video_index = self.viewer.layers.index(video_layer)
         self.viewer.layers.move(video_index, 0)
 
         try:
-<<<<<<< HEAD
-            alignment = getattr(self.app_state, 'trial_alignment', None)
-            video_time_offset = alignment.video_offset if alignment else 0.0
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             sync = NapariVideoSync(
                 viewer=self.viewer,
                 app_state=self.app_state,
@@ -444,11 +343,7 @@ class VideoManager:
             self.app_state.video = sync
             self.app_state.num_frames = sync.total_frames
         except (OSError, ValueError) as e:
-<<<<<<< HEAD
-            show_warning(f"Failed to initialize video sync: {e}")
-=======
             notify(f"Failed to initialize video sync: {e}", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         sync.frame_changed.connect(self._on_primary_frame_changed)
@@ -471,26 +366,6 @@ class VideoManager:
             plot_container.toggle_pause_resume()
 
     # ------------------------------------------------------------------
-<<<<<<< HEAD
-    # Secondary video
-    # ------------------------------------------------------------------
-
-    def show_secondary_video(self, video_path: str, layout_mgr, meta_widget):
-        video_data = self._load_secondary_video_data(video_path)
-
-        if self._secondary_widget is None:
-            saved = layout_mgr.save_dock_widths()
-            self._secondary_widget = SecondaryVideoWidget()
-            qt_window = self.viewer.window._qt_window
-            central = qt_window.centralWidget()
-            self._central_splitter = QSplitter(Qt.Horizontal)
-            self._central_splitter.setStretchFactor(0, 1)
-            self._central_splitter.setStretchFactor(1, 1)
-            self._original_central = central
-            central.setParent(None)
-            self._central_splitter.addWidget(central)
-            self._central_splitter.addWidget(self._secondary_widget)
-=======
     # Extra cameras
     # ------------------------------------------------------------------
 
@@ -573,76 +448,16 @@ class VideoManager:
             central.setParent(None)
             self._central_splitter.addWidget(central)
             self._central_splitter.addWidget(self._extra_splitter)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             qt_window.setCentralWidget(self._central_splitter)
             central.show()
             meta_widget.reapply_shortcuts()
 
             def _settle():
-<<<<<<< HEAD
-                self._equalize_video_split_now()
-=======
                 self._equalize_camera_split()
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 layout_mgr.restore_dock_widths(saved)
 
             QTimer.singleShot(50, _settle)
         else:
-<<<<<<< HEAD
-            self._secondary_widget.show()
-
-            def _settle():
-                self._equalize_video_split_now()
-
-            QTimer.singleShot(50, _settle)
-
-        self._secondary_widget.set_video(video_data)
-
-        self._connect_secondary_sync()
-        self._secondary_widget.seek_to_frame(self.viewer.dims.current_step[0])
-
-    def _load_secondary_video_data(self, video_path: str):
-        video_data = FastVideoReader(video_path, read_format='rgb24')
-        _ = video_data.shape
-        self._secondary_fps = float(video_data.stream.guessed_rate)
-        return video_data
-
-    def hide_secondary_video(self):
-        if self._secondary_widget is not None:
-            self._disconnect_secondary_sync()
-            self._secondary_widget.clear()
-            self._secondary_widget.hide()
-
-    def _equalize_video_split_now(self):
-        if self._central_splitter is None:
-            return
-        total = self._central_splitter.width()
-        self._central_splitter.setSizes([total // 2, total // 2])
-
-    def _connect_secondary_sync(self):
-        self._disconnect_secondary_sync()
-        self.viewer.dims.events.current_step.connect(self._on_secondary_frame_sync)
-
-    def _disconnect_secondary_sync(self):
-        try:
-            self.viewer.dims.events.current_step.disconnect(self._on_secondary_frame_sync)
-        except (RuntimeError, TypeError):
-            pass
-
-    def _on_secondary_frame_sync(self, event=None):
-        if self._secondary_widget is None or getattr(self.app_state, 'video', None) is None:
-            return
-
-        primary_fps = self.app_state.video_fps
-        frame = self.viewer.dims.current_step[0]
-        if abs(self._secondary_fps - primary_fps) < 0.01:
-            self._secondary_widget.seek_to_frame(frame)
-        else:
-            self._secondary_widget.seek_to_frame(int(frame / primary_fps * self._secondary_fps))
-            
-    def cleanup(self):
-        # Centralized cleanup for both primary and secondary video
-=======
             while self._extra_splitter.count():
                 w = self._extra_splitter.widget(0)
                 w.setParent(None)
@@ -708,28 +523,16 @@ class VideoManager:
                 da.loc[{"cameras": camera_name}] = fps
 
     def cleanup(self):
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         if getattr(self.app_state, 'video', None):
             self.app_state.video.stop()
             self.app_state.video = None
         self._cleanup_primary_video()
-<<<<<<< HEAD
-        self.hide_secondary_video()
-        self._secondary_widget = None
-        self._central_splitter = None
-
-=======
         self.remove_all_cameras()
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def _resolve_video_path(self, camera_name: str, video_folder: str | None) -> str | None:
         if is_url(camera_name):
             return camera_name
         if video_folder:
-<<<<<<< HEAD
-
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             video_file = self.app_state.dt.get_media(self.app_state.trials_sel, "video", device=camera_name)
             if video_file:
                 path = os.path.normpath(os.path.join(video_folder, video_file))

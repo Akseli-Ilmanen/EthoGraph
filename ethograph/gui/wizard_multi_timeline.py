@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import json
-<<<<<<< HEAD
-=======
 import logging
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from collections import Counter
 from pathlib import Path
 
@@ -36,26 +33,18 @@ from ethograph.gui.dialog_function_params import _do_open_source
 from ethograph.gui.plots_timeseriessource import compute_trial_alignment, TimeRange, TrialAlignment
 from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
-<<<<<<< HEAD
-from ethograph.utils.xr_utils import get_time_coord
-
-=======
 from ethograph.utils.stream_durations import get_audio_duration, get_ephys_duration, get_pose_duration, get_video_duration
 from ethograph.utils.xr_utils import get_time_coord
 
 logger = logging.getLogger(__name__)
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 # Colors per modality (matching dialog_media_files.py palette)
 MODALITY_COLORS = {
     "video": "#50c8b4",
     "pose": "#e8737a",
     "audio": "#e8c75a",
     "ephys": "#b07ae8",
-<<<<<<< HEAD
-=======
     "features": "#7ab0e8",
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 }
 
 
@@ -171,11 +160,7 @@ def _code_to_notebook(code: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-<<<<<<< HEAD
-# Duration calculation helpers
-=======
 # Drawing helpers
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 # ---------------------------------------------------------------------------
 
 def _make_rounded_bar(
@@ -191,41 +176,6 @@ def _make_rounded_bar(
     return item
 
 
-<<<<<<< HEAD
-def _get_video_duration(path: str) -> float | None:
-    try:
-        import av
-        with av.open(path) as container:
-            stream = container.streams.video[0]
-            if stream.duration and stream.time_base:
-                return float(stream.duration * stream.time_base)
-            if stream.frames and stream.average_rate:
-                return stream.frames / float(stream.average_rate)
-    except Exception:
-        pass
-    return None
-
-
-def _get_audio_duration(path: str) -> float | None:
-    try:
-        import soundfile as sf
-        info = sf.info(path)
-        return info.duration
-    except Exception:
-        pass
-    try:
-        import av
-        with av.open(path) as container:
-            stream = container.streams.audio[0]
-            if stream.duration and stream.time_base:
-                return float(stream.duration * stream.time_base)
-    except Exception:
-        pass
-    return None
-
-
-
-=======
 def draw_session_timeline(
     plot: pg.PlotWidget,
     dt,
@@ -412,7 +362,6 @@ def draw_session_timeline(
     total = max(max_t, 1.0)
     plot.setXRange(0, min(total, 120), padding=0.02)
     return total
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
 def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
@@ -435,15 +384,6 @@ def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
             fp = str(f)
             dur = None
             if name == "video":
-<<<<<<< HEAD
-                dur = _get_video_duration(fp)
-            elif name == "audio":
-                dur = _get_audio_duration(fp)
-            elif name == "pose":
-                dur = _estimate_pose_duration(fp, cfg)
-            elif name == "ephys":
-                dur = _get_ephys_duration(fp, cfg)
-=======
                 dur = get_video_duration(fp)
             elif name == "audio":
                 dur = get_audio_duration(fp)
@@ -451,7 +391,6 @@ def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
                 dur = get_pose_duration(fp, cfg.fps)
             elif name == "ephys":
                 dur = get_ephys_duration(fp)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             if dur is not None:
                 durs[fp] = dur
 
@@ -460,81 +399,6 @@ def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
 
     return durations
 
-<<<<<<< HEAD
-def _count_csv_headers(path: str) -> int:
-    """
-    Dynamically count CSV header rows by detecting where data starts.
-    Works for DLC (3-4 headers), LightningPose (3 headers), SLEAP (1 header).
-    """
-    with open(path, 'r') as f:
-        for i, line in enumerate(f):
-            line = line.strip()
-            if not line:
-                continue
-            
-            # Check if line contains numeric data (data row)
-            parts = line.split(',')
-            if len(parts) < 2:
-                continue
-            
-            try:
-                # Try to parse as floats (skip first column which is frame index)
-                float(parts[0])  # Frame index
-                float(parts[1])  # First coordinate value
-                # Found data row, so header count is current line number
-                return i
-            except (ValueError, IndexError):
-                # Still in header section
-                continue
-    
-    # Default to 1 if we can't determine
-    return 1
-
-
-def _estimate_pose_duration(path: str, cfg: ModalityConfig) -> float | None:
-    try:
-        suffix = Path(path).suffix.lower()
-        n_frames = None
-        
-        if suffix == ".csv":
-            # Dynamically detect header count
-            n_headers = _count_csv_headers(path)
-            # Count total lines and subtract headers
-            with open(path, 'r') as fh:
-                n_frames = sum(1 for _ in fh) - n_headers
- 
-        elif suffix in (".h5", ".hdf5", ".slp"):
-            import h5py
-            with h5py.File(path, "r") as f:
-                if suffix == ".slp":
-                    n_frames = f["instances"].shape[0]
-                else:
-                    # Generic HDF5/h5 handling - find first 2D dataset
-                    for key in f.keys():
-                        data = f[key]
-                        if hasattr(data, 'shape') and len(data.shape) >= 2:
-                            n_frames = data.shape[0]
-                            break
-            
-        if n_frames is not None and n_frames > 0:
-            return n_frames / cfg.fps
-        else:
-            return None
-
-    except Exception as e:
-        print(f"Could not estimate duration for pose file {path}: {e}")
-        return None
-
-
-def _get_ephys_duration(path: str, cfg: ModalityConfig) -> float | None:
-    try:
-        from ethograph.gui.plots_ephystrace import GenericEphysLoader
-        loader = GenericEphysLoader(path)
-        return len(loader) / loader.rate
-    except Exception:
-        return None
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
 def _normalize_trial_key(value: object) -> object:
@@ -961,17 +825,10 @@ class TimelinePage(QWidget):
         self._out_widget.hide()
 
     def populate_from_trialtree(self, dt, app_state):
-<<<<<<< HEAD
-        """Populate timeline from a loaded TrialTree.
-
-        Uses :func:`compute_trial_alignment` (from ``plots_timeseriessource``) to
-        derive each trial's absolute time range and available modalities.
-=======
         """Populate timeline from a loaded TrialTree's session data.
 
         Uses ``dt.session`` DataArrays (``start_time``, ``stop_time``,
         ``start_time_video``, etc.) as the single source of truth.
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         """
         self._clear()
         self._state = None
@@ -979,99 +836,9 @@ class TimelinePage(QWidget):
             "# Open via the New Dataset Wizard to generate alignment code."
         )
 
-<<<<<<< HEAD
-        cameras = list(getattr(dt, "cameras", None) or [])
-        mics = list(getattr(dt, "mics", None) or [])
-
-        has_ephys = bool(getattr(app_state, "ephys_stream_sel", None))
-
-        rows: list[tuple[str, str, str | None]] = []
-        for cam in cameras:
-            rows.append((f"video: {cam}", "video", cam))
-        for cam in cameras:
-            if self._has_pose_data(dt, cam):
-                rows.append((f"pose: {cam}", "pose", cam))
-        for mic in mics:
-            rows.append((f"audio: {mic}", "audio", mic))
-        if has_ephys:
-            rows.append(("ephys", "ephys", None))
-        rows.append(("features", "features", None))
-
-        n_rows = len(rows)
-        rows_rev = list(reversed(rows))
-        y_ticks = [(i + 0.5, rows_rev[i][0]) for i in range(n_rows)]
-        self._plot.getAxis("left").setTicks([y_ticks])
-        self._plot.setYRange(-0.2, n_rows + 0.2)
-
-        video_folder = getattr(app_state, "video_folder", None)
-        audio_folder = getattr(app_state, "audio_folder", None)
-        cameras_sel = getattr(app_state, "cameras_sel", None)
-
-        end_sources: list[tuple[str, str]] = []
-        max_t = 0.0
-        t_cursor = 0.0
-
-        for trial_id in dt.trials:
-            ds = None
-            try:
-                ds = dt.trial(trial_id)
-            except Exception:
-                pass
-
-            alignment: TrialAlignment | None = None
-            try:
-                alignment = compute_trial_alignment(
-                    dt, trial_id, ds or xr.Dataset(),
-                    video_folder=video_folder,
-                    audio_folder=audio_folder,
-                    cameras_sel=cameras_sel,
-                )
-                t_start = alignment.ephys_offset
-                dur = alignment.trial_range.duration if alignment.trial_range else 0.0
-            except Exception:
-                t_start = t_cursor
-                dur = 0.0
-
-            t_end = t_start + dur if dur > 0 else t_start + 10.0
-            t_cursor = t_end
-            max_t = max(max_t, t_end)
-
-            src = self._get_end_source(dt, trial_id, ds, alignment)
-            end_sources.append((str(trial_id), src))
-
-            for row_idx, (_label, modality, device) in enumerate(rows_rev):
-                if not self._trial_has_modality(dt, trial_id, modality, device, ds):
-                    continue
-                y_base = row_idx
-                color = pg.mkColor(MODALITY_COLORS.get(modality, "#888888"))
-                color.setAlpha(160)
-                bar = _make_rounded_bar(
-                    t_start, t_end, y_base + 0.3, y_base + 0.7,
-                    pg.mkBrush(color), pg.mkPen(color.lighter(130), width=1),
-                )
-                self._plot.addItem(bar)
-                self._items.append(bar)
-
-            line = pg.InfiniteLine(
-                pos=t_start, angle=90,
-                pen=pg.mkPen("#aaaaaa", width=1, style=Qt.PenStyle.DotLine),
-            )
-            self._plot.addItem(line)
-            self._items.append(line)
-
-            lbl = pg.TextItem(str(trial_id), color="#aaaaaa", anchor=(0.5, 1.0))
-            lbl.setPos(t_start + (t_end - t_start) / 2, n_rows + 0.1)
-            self._plot.addItem(lbl)
-            self._items.append(lbl)
-
-        self._total_duration = max(max_t, 1.0)
-        self._plot.setXRange(0, min(self._total_duration, 120), padding=0.02)
-        self._update_note(end_sources)
-=======
         self._total_duration = draw_session_timeline(
             self._plot, dt, items_out=self._items,
         )
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     @staticmethod
     def _trial_has_modality(dt, trial_id, modality: str, device, ds) -> bool:
@@ -1088,13 +855,8 @@ class TimelinePage(QWidget):
                 return bool(dt.get_audio(trial_id, device))
             if modality == "pose":
                 return bool(dt.get_pose(trial_id, device))
-<<<<<<< HEAD
-        except Exception:
-            pass
-=======
         except (KeyError, IndexError):
             return False
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         return False
 
     @staticmethod
@@ -1103,11 +865,7 @@ class TimelinePage(QWidget):
             try:
                 if dt.get_pose(trial_id, cam):
                     return True
-<<<<<<< HEAD
-            except Exception:
-=======
             except (KeyError, IndexError):
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 pass
         return False
 
@@ -1118,11 +876,7 @@ class TimelinePage(QWidget):
             try:
                 if session_io.stop_time(trial_id) is not None:
                     return "session stop_time"
-<<<<<<< HEAD
-            except Exception:
-=======
             except (KeyError, AttributeError):
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 pass
         if ds is not None:
             for var_name in ds.data_vars:

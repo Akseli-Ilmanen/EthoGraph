@@ -3,10 +3,7 @@ logging/
 result/
 neurosift/
 pynaviz/
-<<<<<<< HEAD
-=======
 docs_OLD/
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 *.mp4
 *.avi
 *.mkv
@@ -20,46 +17,11 @@ docs_OLD/
 
 
 
-<<<<<<< HEAD
-
-*gui_settings.yaml
-
-
-# Byte-compiled
-=======
 # Byte-compiled / optimized / DLL files
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 __pycache__/
 *.py[cod]
 *$py.class
 
-<<<<<<< HEAD
-# MkDocs build output
-site/
-docs/tutorials/
-
-# Distribution
-dist/
-build/
-*.egg-info/
-
-
-
-# IDE
-.idea/
-.vscode/
-.claude/
-*.swp
-
-# Jupyter
-.ipynb_checkpoints/
-
-
-# OS
-.DS_Store
-Thumbs.db
-nul
-=======
 # C extensions
 *.so
 
@@ -141,4 +103,3 @@ venv/
 
 # Development build artifacts
 ethograph-*/
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955

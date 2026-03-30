@@ -1,18 +1,11 @@
 """Widget for labeling segments in movement data."""
 
-<<<<<<< HEAD
-=======
 import logging
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 import os
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-<<<<<<< HEAD
-from napari.utils.notifications import show_info, show_warning
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from napari.viewer import Viewer
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QColor
@@ -22,19 +15,13 @@ from qtpy.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-<<<<<<< HEAD
-=======
     QDoubleSpinBox,
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
-<<<<<<< HEAD
-=======
     QLineEdit,
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
@@ -45,34 +32,22 @@ from qtpy.QtWidgets import (
 )
 
 import ethograph as eto
-<<<<<<< HEAD
-from ethograph.features.changepoints import snap_to_nearest_changepoint_time
-from ethograph.utils.label_intervals import (
-=======
 from ethograph.gui.notify import notify
 from ethograph.features.changepoints import snap_to_nearest_changepoint_time
 from ethograph.labels.intervals import load_label_mapping
 from ethograph.labels.predictions import load_predictions_folder
 from ethograph.labels.intervals import (
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     add_interval,
     delete_interval,
     empty_intervals,
     find_interval_at,
     get_interval_bounds,
 )
-<<<<<<< HEAD
-from ethograph.utils.labels import load_label_mapping
-from ethograph.utils.paths import find_mapping_file
-
-
-=======
 from ethograph.utils.paths import find_mapping_file
 
 
 logger = logging.getLogger(__name__)
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from .app_constants import (
     LABELS_TABLE_MAX_HEIGHT,
     LABELS_TABLE_ROW_HEIGHT,
@@ -144,10 +119,7 @@ class LabelsWidget(QWidget):
 
         mapping_path = find_mapping_file()
         self._mappings = load_label_mapping(mapping_path) if mapping_path else {}
-<<<<<<< HEAD
-=======
         self.app_state._label_mappings = self._mappings
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self._populate_labels_table()
 
     def refresh_mapping_for_data_dir(self, data_dir: Path | str):
@@ -212,13 +184,7 @@ class LabelsWidget(QWidget):
         show_predictions = (
             predictions_df is not None and
             self.io_widget is not None and
-<<<<<<< HEAD
-            self.io_widget.pred_show_predictions.isChecked() and
-            hasattr(self.app_state, 'pred_ds') and
-            self.app_state.pred_ds is not None
-=======
             self.io_widget.pred_show_predictions.isChecked()
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         )
 
         self.plot_container.draw_all_labels(
@@ -373,36 +339,6 @@ class LabelsWidget(QWidget):
         hv_row.addStretch()
         layout.addLayout(hv_row)
 
-<<<<<<< HEAD
-
-
-        bottom_row = QWidget()
-        bottom_layout = QHBoxLayout()
-        bottom_row.setLayout(bottom_layout)
-
-        self.save_labels_button = QPushButton("Save labels file")
-        self.save_labels_button.setToolTip("Shortcut: (Ctrl + S). Save file in labels\\... folder")
-        self.save_labels_button.clicked.connect(lambda: self.app_state.save_labels())
-        bottom_layout.addWidget(self.save_labels_button)
-
-        self.save_button = QPushButton("Merge labels and save sesssion")
-        self.save_button.setToolTip("Takes current labels and saves to original sesssion file")
-        self.save_button.clicked.connect(lambda: self.app_state.save_file())
-        bottom_layout.addWidget(self.save_button)
-
-        self.save_tsv_checkbox = QCheckBox("Save tsv")
-        self.save_tsv_checkbox.setToolTip("Also export labels as tsv when saving")
-        self.save_tsv_checkbox.setChecked(self.app_state.save_tsv_enabled)
-        self.save_tsv_checkbox.toggled.connect(self._on_save_tsv_toggled)
-        bottom_layout.addWidget(self.save_tsv_checkbox)
-
-        bottom_layout.addStretch()
-        layout.addWidget(bottom_row)
-
-
-    def _on_save_tsv_toggled(self, checked: bool):
-        self.app_state.save_tsv_enabled = checked
-=======
         # Correct offsets row
         co_row = QHBoxLayout()
         co_row.addWidget(QLabel("Apply offset correction to:"))
@@ -520,7 +456,6 @@ class LabelsWidget(QWidget):
         folder = QFileDialog.getExistingDirectory(self, "Select remote backup folder")
         if folder:
             self.remote_backup_edit.setText(folder)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def _browse_mapping_file(self):
         """Browse for a mapping.txt file and reload mappings."""
@@ -539,10 +474,7 @@ class LabelsWidget(QWidget):
         """Reload  mappings from the specified path."""
         try:
             self._mappings = load_label_mapping(Path(mapping_path))
-<<<<<<< HEAD
-=======
             self.app_state._label_mappings = self._mappings
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             if self.plot_container:
                 self.plot_container.set_label_mappings(self._mappings)
             if self.changepoints_widget:
@@ -551,15 +483,9 @@ class LabelsWidget(QWidget):
             self.refresh_labels_shapes_layer()
             if self.data_widget:
                 self.data_widget.update_main_plot(preserve_x_range=True)
-<<<<<<< HEAD
-            show_info(f"Loaded {len(self._mappings) - 1} labels from {Path(mapping_path).name}")
-        except FileNotFoundError:
-            show_warning(f"Mapping file not found: {mapping_path}")
-=======
             notify(f"Loaded {len(self._mappings) - 1} labels from {Path(mapping_path).name}")
         except FileNotFoundError:
             notify(f"Mapping file not found: {mapping_path}", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def _create_temporary_labels(self):
         """Open dialog to create temporary labels for this session."""
@@ -576,10 +502,7 @@ class LabelsWidget(QWidget):
 
                 self.io_widget.mapping_file_path_edit.setText(str(mapping_path))
                 self._mappings = load_label_mapping(mapping_path)
-<<<<<<< HEAD
-=======
                 self.app_state._label_mappings = self._mappings
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 if self.plot_container:
                     self.plot_container.set_label_mappings(self._mappings)
                 if self.changepoints_widget:
@@ -588,19 +511,6 @@ class LabelsWidget(QWidget):
                 self.refresh_labels_shapes_layer()
                 if self.data_widget:
                     self.data_widget.update_main_plot(preserve_x_range=True)
-<<<<<<< HEAD
-                show_info(f"Loaded {len(labels)} temporary labels")
-
-    def _human_verification_true(self, mode=None):
-        """Mark current trial as human verified."""
-        if self.app_state.label_dt is None or self.app_state.trials_sel is None:
-            return
-        if mode == "single_trial":
-            self.app_state.label_dt.trial(self.app_state.trials_sel).attrs['human_verified'] = np.int8(1)
-        elif mode == "all_trials":
-            for trial in self.app_state.label_dt.trials:
-                self.app_state.label_dt.trial(trial).attrs['human_verified'] = np.int8(1)
-=======
                 notify(f"Loaded {len(labels)} temporary labels")
 
     def _human_verification_true(self, mode=None):
@@ -612,7 +522,6 @@ class LabelsWidget(QWidget):
         elif mode == "all_trials":
             for trial in self.app_state.trials:
                 self.app_state.set_trial_meta_attr(trial, 'human_verified', 1)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         self._update_human_verified_status()
         if self.data_widget:
@@ -620,59 +529,23 @@ class LabelsWidget(QWidget):
         if self.meta_widget:
             self.meta_widget.update_labels_widget_title()
 
-<<<<<<< HEAD
-        
-=======
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     def _update_human_verified_status(self):
         default_style = ""
         verified_style = "background-color: green; color: white;"
 
-<<<<<<< HEAD
-        if self.app_state.label_dt is None or self.app_state.trials_sel is None:
-=======
         if self.app_state.trials_sel is None:
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             self.human_verify_trial_btn.setStyleSheet(default_style)
             self.human_verify_all_trials_btn.setStyleSheet(default_style)
             return
 
-<<<<<<< HEAD
-        attrs = self.app_state.label_dt.trial(self.app_state.trials_sel).attrs
-        if attrs.get('human_verified', None) == True:
-=======
         trial_meta = self.app_state.get_trial_meta(self.app_state.trials_sel)
         if trial_meta.get('human_verified', 0):
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             self.human_verify_trial_btn.setStyleSheet(verified_style)
         else:
             self.human_verify_trial_btn.setStyleSheet(default_style)
 
         all_verified = all(
-<<<<<<< HEAD
-            self.app_state.label_dt.trial(t).attrs.get('human_verified', None) == True
-            for t in self.app_state.label_dt.trials
-        )
-        if all_verified:
-            self.human_verify_all_trials_btn.setStyleSheet(verified_style)
-        else:
-            self.human_verify_all_trials_btn.setStyleSheet(default_style)  
-        
-
-
-    def _import_predictions_from_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select prediction .nc file", "", "NetCDF files (*.nc);;All Files (*)")
-        if file_path:
-            if 'predictions' not in os.path.basename(file_path):
-                show_warning("Filename must include 'predictions' .")
-                return
-            self.app_state.pred_dt = eto.open(file_path)
-            self.app_state.pred_ds = self.app_state.pred_dt.trial(self.app_state.trials_sel)
-            self.io_widget.pred_show_predictions.setEnabled(True)
-            self.io_widget.pred_show_predictions.setChecked(True)
-            self.io_widget.pred_file_path_edit.setText(file_path)
-=======
             self.app_state.get_trial_meta(t).get('human_verified', 0)
             for t in self.app_state.trials
         )
@@ -792,7 +665,6 @@ class LabelsWidget(QWidget):
         self.io_widget.pred_show_predictions.setEnabled(True)
         self.io_widget.pred_show_predictions.setChecked(True)
         self.io_widget.pred_file_path_edit.setText(folder)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
@@ -921,11 +793,7 @@ class LabelsWidget(QWidget):
                 self._check_labels_click(t_clicked, individual)
 
         except (KeyError, IndexError, ValueError, AttributeError) as e:
-<<<<<<< HEAD
-            print(f"Error in plot click handling: {e}")
-=======
             logger.error("Error in plot click handling: %s", e)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         # Without video, any click (not in label mode) jumps the time marker
@@ -984,27 +852,17 @@ class LabelsWidget(QWidget):
 
         Works entirely in the time domain. Also considers audio changepoints.
         """
-<<<<<<< HEAD
-
-        ds_kwargs = self.app_state.get_ds_kwargs()
-        time_coord = self.app_state.time_coord
-=======
         time_coord = self.app_state.time_coord
         if time_coord is None:
             return t_clicked
 
         ds_kwargs = self.app_state.get_ds_kwargs()
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         feature_sel = self.app_state.features_sel
 
         snapped = snap_to_nearest_changepoint_time(
             t_clicked, self.app_state.ds, feature_sel, time_coord.values, **ds_kwargs
         )
-<<<<<<< HEAD
-        
-=======
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         return snapped
 
     def _apply_label(self):
@@ -1094,11 +952,7 @@ class LabelsWidget(QWidget):
     def _edit_label(self):
         """Enter edit mode for adjusting interval boundaries."""
         if self.current_labels_pos is None:
-<<<<<<< HEAD
-            print("No label selected. Click on a label first to select it.")
-=======
             logger.warning("No label selected. Click on a label first to select it.")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         self.old_labels_pos = self.current_labels_pos
@@ -1110,11 +964,7 @@ class LabelsWidget(QWidget):
 
     def _play_segment(self):
         if self.current_labels_pos is None:
-<<<<<<< HEAD
-            print("No label selected for playback")
-=======
             logger.warning("No label selected for playback")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         df = self.app_state.label_intervals
@@ -1148,11 +998,7 @@ class LabelsWidget(QWidget):
             else:
                 height, width = LABELS_OVERLAY_FALLBACK_SIZE
         except (IndexError, AttributeError):
-<<<<<<< HEAD
-            print("No video layer found for label shapes overlay.")
-=======
             logger.warning("No video layer found for label shapes overlay.")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return None
 
         box_width, box_height = LABELS_OVERLAY_BOX_WIDTH, LABELS_OVERLAY_BOX_HEIGHT

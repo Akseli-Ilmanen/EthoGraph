@@ -1,9 +1,6 @@
 """Widget for input/output controls and data loading."""
 
-<<<<<<< HEAD
-=======
 import logging
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 import os
 from pathlib import Path
 
@@ -19,10 +16,6 @@ from qtpy.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
-<<<<<<< HEAD
-    QMessageBox,
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -31,26 +24,17 @@ from qtpy.QtWidgets import (
 
 import ethograph as eto
 from ethograph.utils.paths import find_mapping_file, gui_default_settings_path
-<<<<<<< HEAD
-from ethograph.utils.validation import EPHYS_FILE_FILTER
-
-from .app_state import AppStateSpec
-=======
 from ethograph.io.validation import EPHYS_FILE_FILTER
 from ethograph.labels.tsv_store import load_labels_tsv
 
 from .app_state import AppStateSpec
 from .notify import notify_dialog
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from .wizard_overview import NCWizardDialog
 from .makepretty import ElidedDelegate, clean_display_labels
 from .dialog_select_template import TemplateDialog
 
-<<<<<<< HEAD
-=======
 logger = logging.getLogger(__name__)
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 class IOWidget(QWidget):
     """Widget to control I/O paths, device selection, and data loading."""
@@ -112,11 +96,7 @@ class IOWidget(QWidget):
         self.app_state.kilosort_folder_changed.connect(
             lambda value: self.kilosort_folder_edit.setText(value or "")
         )
-<<<<<<< HEAD
-        self.app_state.remote_video_changed.connect(self.remote_video_checkbox.setChecked)
-=======
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def _wire_path_edit_signals(self):
         self.nc_file_path_edit.editingFinished.connect(
@@ -234,10 +214,6 @@ class IOWidget(QWidget):
             object_name="video_folder",
             browse_callback=lambda: self.on_browse_clicked("folder", "video"),
         )
-<<<<<<< HEAD
-        self.remote_video_checkbox.setChecked(bool(self.app_state.remote_video))
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self.pose_folder_edit = self._create_path_widget(
             self._load_layout,
             label="Pose folder:",
@@ -320,11 +296,7 @@ class IOWidget(QWidget):
         pred_layout.addWidget(self.pred_file_path_edit)
 
         self.import_predictions_btn = QPushButton("Browse")
-<<<<<<< HEAD
-        self.import_predictions_btn.setToolTip("Import predictions.nc file from labels\\... folder")
-=======
         self.import_predictions_btn.setToolTip("Import predictions folder containing per-trial .npy files")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         pred_layout.addWidget(self.import_predictions_btn)
 
         self.pred_show_predictions = QCheckBox("Show predictions")
@@ -341,16 +313,10 @@ class IOWidget(QWidget):
         labels_row.setLayout(labels_layout)
 
         self.labels_format_combo = QComboBox()
-<<<<<<< HEAD
-        self.labels_format_combo.addItem(".nc file")
-        if self.app_state.audio_folder:
-            from ethograph.utils.label_intervals import CROWSETTA_SEQ_FORMATS
-=======
         self.labels_format_combo.addItem(".tsv")
         self.labels_format_combo.addItem(".nc (legacy)")
         if self.app_state.audio_folder:
             from ethograph.labels.converters import CROWSETTA_SEQ_FORMATS
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             for fmt in CROWSETTA_SEQ_FORMATS:
                 self.labels_format_combo.addItem(fmt)
         self.labels_format_combo.setToolTip("Label file format to import")
@@ -369,20 +335,14 @@ class IOWidget(QWidget):
 
     def _on_labels_browse_clicked(self):
         fmt = self.labels_format_combo.currentText()
-<<<<<<< HEAD
-        if fmt == ".nc file":
-=======
         if fmt == ".tsv":
             self._import_tsv_labels()
             return
         if fmt == ".nc (legacy)":
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             self.on_browse_clicked("file", "labels")
             return
         self._import_crowsetta_labels(fmt)
 
-<<<<<<< HEAD
-=======
     def _import_tsv_labels(self):
         nc_parent = ""
         if self.app_state.nc_file_path:
@@ -415,7 +375,6 @@ class IOWidget(QWidget):
             if self.data_widget.plot_container:
                 self.data_widget.plot_container.labels_redraw_needed.emit()
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     def _import_crowsetta_labels(self, format_name):
         filter_map = {
             "aud-seq": "Text files (*.txt)",
@@ -446,11 +405,7 @@ class IOWidget(QWidget):
         self._do_crowsetta_import(format_name, file_path)
 
     def _do_crowsetta_import(self, format_name, file_path):
-<<<<<<< HEAD
-        from ethograph.utils.label_intervals import (
-=======
         from ethograph.labels.converters import (
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             crowsetta_to_intervals,
             resolve_crowsetta_mapping,
         )
@@ -462,14 +417,6 @@ class IOWidget(QWidget):
             name_to_id, new_mapping_path, warning = resolve_crowsetta_mapping(
                 file_path, format_name, mapping_path, configs_dir,
             )
-<<<<<<< HEAD
-        except Exception as e:
-            QMessageBox.critical(self, "Mapping error", str(e))
-            return
-
-        if warning:
-            QMessageBox.warning(self, "Mapping warning", warning)
-=======
         except (OSError, ValueError, KeyError) as e:
             logger.exception("Crowsetta mapping resolution failed")
             notify_dialog(str(e), "error", "Mapping error", self)
@@ -477,7 +424,6 @@ class IOWidget(QWidget):
 
         if warning:
             notify_dialog(warning, "warning", "Mapping warning", self)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         if new_mapping_path:
             self.mapping_file_path_edit.setText(new_mapping_path)
@@ -493,14 +439,6 @@ class IOWidget(QWidget):
             intervals_df = crowsetta_to_intervals(
                 file_path, format_name, name_to_id, individual,
             )
-<<<<<<< HEAD
-        except Exception as e:
-            QMessageBox.critical(self, "Import error", f"Failed to parse {format_name} file:\n{e}")
-            return
-
-        if intervals_df.empty:
-            QMessageBox.information(self, "No labels", "No non-background labels found in file.")
-=======
         except (OSError, ValueError, KeyError) as e:
             logger.exception("Failed to parse %s file", format_name)
             notify_dialog(f"Failed to parse {format_name} file:\n{e}", "error", "Import error", self)
@@ -508,22 +446,13 @@ class IOWidget(QWidget):
 
         if intervals_df.empty:
             notify_dialog("No non-background labels found in file.", "info", "No labels", self)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         self.app_state.label_intervals = intervals_df
 
-<<<<<<< HEAD
-        label_dt = getattr(self.app_state, "label_dt", None)
-        if label_dt is not None:
-            trial = getattr(self.app_state, "trials_sel", None)
-            if trial is not None:
-                self.app_state.set_trial_intervals(trial, intervals_df)
-=======
         trial = getattr(self.app_state, "trials_sel", None)
         if trial is not None:
             self.app_state.set_trial_intervals(trial, intervals_df)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         if hasattr(self, "changepoints_widget") and self.changepoints_widget:
             self.changepoints_widget._update_cp_status()
@@ -568,11 +497,7 @@ class IOWidget(QWidget):
             return
         self.video_folder_edit.setText(str(video_folder))
         self.app_state.video_folder = str(video_folder)
-<<<<<<< HEAD
-        print(f"[NWB] Auto-set video folder: {video_folder}")
-=======
         logger.info("NWB auto-set video folder: %s", video_folder)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def _apply_nwb_epoch_mapping(self):
         """If NWB epochs were imported, write mapping file and load into labels widget."""
@@ -583,11 +508,7 @@ class IOWidget(QWidget):
         if not epoch_mapping or not isinstance(epoch_mapping, dict):
             return
 
-<<<<<<< HEAD
-        from ethograph.utils.label_intervals import write_mapping_file
-=======
         from ethograph.labels.converters import write_mapping_file
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         configs_dir = eto.get_project_root() / "configs"
         mapping_path = configs_dir / "mapping_nwb_epochs.txt"
@@ -597,19 +518,11 @@ class IOWidget(QWidget):
             self.labels_widget._reload_mapping(str(mapping_path))
 
         n_labels = len(epoch_mapping) - 1  # exclude background
-<<<<<<< HEAD
-        print(f"[NWB] Auto-created mapping with {n_labels} epoch labels: {mapping_path}")
-
-    def _ensure_crowsetta_formats(self):
-        """Add crowsetta formats to labels combo if not already present."""
-        from ethograph.utils.label_intervals import CROWSETTA_SEQ_FORMATS
-=======
         logger.info("NWB auto-created mapping with %d epoch labels: %s", n_labels, mapping_path)
 
     def _ensure_crowsetta_formats(self):
         """Add crowsetta formats to labels combo if not already present."""
         from ethograph.labels.converters import CROWSETTA_SEQ_FORMATS
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         existing = [self.labels_format_combo.itemText(i)
                      for i in range(self.labels_format_combo.count())]
@@ -621,11 +534,7 @@ class IOWidget(QWidget):
         """If a crowsetta format and path are set, auto-import after load."""
         fmt = self.labels_format_combo.currentText()
         file_path = self.label_file_path_edit.text().strip()
-<<<<<<< HEAD
-        if fmt == ".nc file" or not file_path or not Path(file_path).exists():
-=======
         if fmt in (".tsv", ".nc (legacy)") or not file_path or not Path(file_path).exists():
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
         self._do_crowsetta_import(fmt, file_path)
 
@@ -723,11 +632,7 @@ class IOWidget(QWidget):
         line_edit.setObjectName(f"{object_name}_edit")
         if object_name == "nc_file_path":
             line_edit.setPlaceholderText(
-<<<<<<< HEAD
-                "Path to .nc/.nwb file"
-=======
                 "Path to .nc file"
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             )
 
         browse_button = QPushButton("Browse")
@@ -737,32 +642,16 @@ class IOWidget(QWidget):
         if object_name == "nc_file_path":
             self.import_labels_checkbox = QCheckBox("Import labels")
             self.import_labels_checkbox.setObjectName("import_labels_checkbox")
-<<<<<<< HEAD
-=======
             self.import_labels_checkbox.setToolTip(
                 "Load labels from {name}_labels.tsv alongside the .nc file.\n"
                 "Falls back to labels inside the .nc (legacy) if no .tsv exists."
             )
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             self.import_labels_checkbox.stateChanged.connect(
                 lambda state: setattr(self.app_state, 'import_labels_nc_data', state == 2)
             )
             self.import_labels_checkbox.setChecked(bool(self.app_state.import_labels_nc_data))
             
 
-<<<<<<< HEAD
-        if object_name == "video_folder":
-            self.remote_video_checkbox = QCheckBox("Remote")
-            self.remote_video_checkbox.setObjectName("remote_video_checkbox")
-            self.remote_video_checkbox.setToolTip(
-                "Video URLs are stored in the dataset (e.g. DANDI). No local folder needed."
-            )
-            self.remote_video_checkbox.stateChanged.connect(
-                lambda state: self._on_remote_video_toggled(state == 2, line_edit, browse_button)
-            )
-
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         clear_button = QPushButton("Clear")
         clear_button.setObjectName(f"{object_name}_clear_button")
         clear_button.clicked.connect(lambda: self._on_clear_path_clicked(object_name, line_edit))
@@ -772,25 +661,11 @@ class IOWidget(QWidget):
         row_layout.addWidget(browse_button)
         if object_name == "nc_file_path":
             row_layout.addWidget(self.import_labels_checkbox)
-<<<<<<< HEAD
-        if object_name == "video_folder":
-            row_layout.addWidget(self.remote_video_checkbox)
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         row_layout.addWidget(clear_button)
         target_layout.addRow(label, row_layout)
 
         return line_edit
 
-<<<<<<< HEAD
-    def _on_remote_video_toggled(self, checked, line_edit, browse_button):
-        self.app_state.remote_video = checked
-        line_edit.setEnabled(not checked)
-        browse_button.setEnabled(not checked)
-
-
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     def _on_clear_path_clicked(self, object_name, line_edit):
         line_edit.setText("")
         attr_map = {
@@ -806,11 +681,8 @@ class IOWidget(QWidget):
             setattr(self.app_state, attr, None)
         if self.labels_widget:
             self.labels_widget._update_human_verified_status()
-<<<<<<< HEAD
-=======
             self.labels_widget._update_correct_offsets_status()
             self.labels_widget._update_purge_small_labels_status()
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     # Device controls (populated after load)
     # ------------------------------------------------------------------
 
@@ -844,11 +716,7 @@ class IOWidget(QWidget):
                 self.app_state.ephys_source_map[display_name] = (filepath, "0", 0)
                 feature_names.append(display_name)
         except (OSError, IOError, ValueError) as e:
-<<<<<<< HEAD
-            print(f"Skipping ephys file {Path(filepath).name}: {e}")
-=======
             logger.error("Skipping ephys file %s: %s", Path(filepath).name, e)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         return feature_names
 
@@ -943,37 +811,14 @@ class IOWidget(QWidget):
 
                 result = QFileDialog.getOpenFileName(
                     None,
-<<<<<<< HEAD
-                    caption="Open file in ./labels/data_labels.nc",
-                    dir=str(nc_parent),
-                    filter="NetCDF files (*.nc)",
-=======
                     caption="Load labels TSV file",
                     dir=str(nc_parent),
                     filter="TSV files (*.tsv)",
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 )
                 labels_file_path = result[0] if result and len(result) >= 1 else ""
                 if not labels_file_path:
                     return
 
-<<<<<<< HEAD
-                if labels_file_path:
-                    label_dt_full = eto.open(labels_file_path)
-                    self.app_state.label_dt = label_dt_full.get_label_dt()
-                    self.app_state.label_ds = self.app_state.label_dt.trial(self.app_state.trials_sel)
-                    self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
-
-                    self.label_file_path_edit.setText(labels_file_path)
-
-                    if hasattr(self, "changepoints_widget") and self.changepoints_widget:
-                        self.changepoints_widget._update_cp_status()
-                    if self.labels_widget:
-                        self.labels_widget._mark_changes_unsaved()
-                        self.labels_widget.refresh_labels_shapes_layer()
-                        self.labels_widget._update_human_verified_status()
-                    if self.data_widget and self.data_widget.plot_container:
-=======
                 self.app_state._all_labels_df = load_labels_tsv(labels_file_path)
 
                 self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
@@ -990,7 +835,6 @@ class IOWidget(QWidget):
                 if self.data_widget:
                     self.data_widget.update_main_plot(preserve_x_range=True)
                     if self.data_widget.plot_container:
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                         self.data_widget.plot_container.labels_redraw_needed.emit()
 
             elif media_type == "ephys":
@@ -1060,11 +904,7 @@ class IOWidget(QWidget):
         )
         self.browse_mapping_btn.clicked.connect(self.labels_widget._browse_mapping_file)
         self.temp_labels_button.clicked.connect(self.labels_widget._create_temporary_labels)
-<<<<<<< HEAD
-        self.import_predictions_btn.clicked.connect(self.labels_widget._import_predictions_from_file)
-=======
         self.import_predictions_btn.clicked.connect(self.labels_widget._import_predictions_from_folder)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self.pred_show_predictions.stateChanged.connect(self.labels_widget._on_pred_show_predictions_changed)
 
     def wire_ephys_signals(self, ephys_widget):

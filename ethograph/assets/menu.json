@@ -5,27 +5,17 @@
   "menu_items": [
     {
       "name": "ethograph",
-<<<<<<< HEAD
-      "command": ["ethograph", "launch"],
-=======
       "command": ["{{ PYTHON }}", "-m", "ethograph", "launch"],
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
       "activate": true,
       "terminal": true,
       "platforms": {
         "win": {
-<<<<<<< HEAD
-          "icon": "{{ MENU_DIR }}/icon.ico"
-        },
-        "linux": {
-=======
           "desktop": true,
           "icon": "{{ MENU_DIR }}/icon.ico",
           "command": ["{{ PYTHON }}", "-m", "ethograph", "launch", "--keep-open"]
         },
         "linux": {
           "Categories": ["Science", "Education"],
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
           "icon": "{{ MENU_DIR }}/icon.png"
         },
         "osx": {

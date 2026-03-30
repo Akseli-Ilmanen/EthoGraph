@@ -2,25 +2,15 @@
 
 from __future__ import annotations
 
-<<<<<<< HEAD
-=======
 import logging
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 import os
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-<<<<<<< HEAD
-import pyqtgraph as pg
-from napari.utils.notifications import show_info, show_warning
-from napari.viewer import Viewer
-from scipy.ndimage import gaussian_filter1d
-=======
 import pynapple as nap
 import pyqtgraph as pg
 from napari.viewer import Viewer
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from qtpy.QtCore import Qt, QItemSelectionModel, QRect, QRectF, QSortFilterProxyModel, Signal
 from qtpy.QtGui import QBrush, QColor, QPen, QStandardItem, QStandardItemModel
 from qtpy.QtWidgets import (
@@ -47,28 +37,18 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-<<<<<<< HEAD
-
-import pynapple as nap
-
-from ethograph.features.neural import build_tsgroup, compute_pca, firing_rate_to_xarray
-=======
 from scipy.ndimage import gaussian_filter1d
 
 from ethograph.features.neural import build_tsgroup, compute_pca, firing_rate_to_xarray
 from ethograph.gui.notify import notify
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 from .app_constants import CLUSTER_TABLE_MAX_HEIGHT, CLUSTER_TABLE_ROW_HEIGHT
 from .makepretty import find_combo_index, get_combo_value, set_combo_to_value
 from .plots_ephystrace import GenericEphysLoader, get_loader as get_ephys_loader
 from .plots_timeseriessource import RegularTimeseriesSource
 
-<<<<<<< HEAD
-=======
 logger = logging.getLogger(__name__)
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 _CLUSTER_COLORS = [
     (228, 26, 28),    # red
     (55, 126, 184),   # blue
@@ -1122,11 +1102,7 @@ class EphysWidget(QWidget):
 
     def _open_probe_channel_dialog(self):
         if self._channel_positions is None or self._channel_map is None:
-<<<<<<< HEAD
-            show_warning("No channel positions loaded — load a Kilosort folder first.")
-=======
             notify("No channel positions loaded — load a Kilosort folder first.", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         current_selected = None
@@ -1219,13 +1195,8 @@ class EphysWidget(QWidget):
                 result["dat_path"] = str(dat_path)
             result["dtype"] = str(namespace.get("dtype", "int16"))
             return result
-<<<<<<< HEAD
-        except Exception as e:
-            show_warning(f"Failed to parse {params_file.name}: {e}")
-=======
         except (OSError, ValueError, KeyError, TypeError) as e:
             notify(f"Failed to parse {params_file.name}: {e}", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return None
 
     def _validate_kilosort_sr(self, kilosort_sr: float) -> bool:
@@ -1234,16 +1205,10 @@ class EphysWidget(QWidget):
             return True
         ephys_sr = loader.rate
         if abs(kilosort_sr - ephys_sr) > 1.0:
-<<<<<<< HEAD
-            show_warning(
-                f"Sample rate mismatch: Kilosort params.py says {kilosort_sr:.0f} Hz "
-                f"but ephys loader reports {ephys_sr:.0f} Hz. Check your data."
-=======
             notify(
                 f"Sample rate mismatch: Kilosort params.py says {kilosort_sr:.0f} Hz "
                 f"but ephys loader reports {ephys_sr:.0f} Hz. Check your data.",
                 "warning",
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             )
             return False
         return True
@@ -1255,11 +1220,7 @@ class EphysWidget(QWidget):
 
         folder = Path(path_str)
         if not folder.is_dir():
-<<<<<<< HEAD
-            show_warning(f"Folder not found: {folder}")
-=======
             notify(f"Folder not found: {folder}", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         self.app_state.kilosort_folder = path_str
@@ -1272,16 +1233,10 @@ class EphysWidget(QWidget):
         ]
         missing = [f for f in required_files if not (folder / f).exists()]
         if missing:
-<<<<<<< HEAD
-            show_warning(
-                f"Kilosort folder is missing required files:\n"
-                + "\n".join(f"  - {f}" for f in missing)
-=======
             notify(
                 f"Kilosort folder is missing required files:\n"
                 + "\n".join(f"  - {f}" for f in missing),
                 "warning",
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             )
             return
 
@@ -1293,44 +1248,26 @@ class EphysWidget(QWidget):
                 return
             ks_params = dialog.get_params()
             _write_params_py(folder, ks_params)
-<<<<<<< HEAD
-            show_info(f"Saved params.py to {folder}")
-=======
             notify(f"Saved params.py to {folder}")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         # Validate / fix dat_path
         dat_path_str = ks_params.get("dat_path", "")
         if dat_path_str and not Path(dat_path_str).is_file():
-<<<<<<< HEAD
-            show_warning(
-                f"dat_path not found on this machine:\n{dat_path_str}\n\n"
-                "Please update the path to the raw data file."
-=======
             notify(
                 f"dat_path not found on this machine:\n{dat_path_str}\n\n"
                 "Please update the path to the raw data file.",
                 "warning",
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             )
             dialog = ParamsDialog(self, defaults=ks_params)
             if dialog.exec_() != QDialog.Accepted:
                 return
             ks_params = dialog.get_params()
             _write_params_py(folder, ks_params)
-<<<<<<< HEAD
-            show_info(f"Updated params.py in {folder}")
-
-        ks_sr = ks_params.get("sample_rate")
-        if ks_sr is None:
-            show_warning("No sample_rate in params — cannot load kilosort folder.")
-=======
             notify(f"Updated params.py in {folder}")
 
         ks_sr = ks_params.get("sample_rate")
         if ks_sr is None:
             notify("No sample_rate in params — cannot load kilosort folder.", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
         ks_sr = float(ks_sr)
         if not self._validate_kilosort_sr(ks_sr):
@@ -1342,11 +1279,7 @@ class EphysWidget(QWidget):
         if cluster_info_path.exists():
             self._cluster_df = self._load_file(cluster_info_path, pd.read_csv, sep='\t')
         else:
-<<<<<<< HEAD
-            show_warning("No cluster_info.tsv found — cluster table will be empty.")
-=======
             notify("No cluster_info.tsv found — cluster table will be empty.", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             self._cluster_df = None
 
 
@@ -1470,13 +1403,8 @@ class EphysWidget(QWidget):
         try:
             data = loader(path, **kwargs)
             return data.flatten() if flatten else data
-<<<<<<< HEAD
-        except Exception as e:
-            show_warning(f"Failed to load {path.name}: {e}")
-=======
         except (OSError, ValueError) as e:
             notify(f"Failed to load {path.name}: {e}", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return None
 
     def _resolve_dat_path(self, ks_folder: Path) -> Path | None:
@@ -1526,11 +1454,7 @@ class EphysWidget(QWidget):
             n_channels = int(self._channel_map.max()) + 1
 
         if n_channels is None:
-<<<<<<< HEAD
-            show_warning("Cannot determine n_channels_dat — skipping Phy viewer.")
-=======
             notify("Cannot determine n_channels_dat — skipping Phy viewer.", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         loader = get_ephys_loader(
@@ -1538,11 +1462,7 @@ class EphysWidget(QWidget):
             n_channels=n_channels, sampling_rate=sr,
         )
         if loader is None:
-<<<<<<< HEAD
-            show_warning(f"Failed to open .dat file: {dat_path}")
-=======
             notify(f"Failed to open .dat file: {dat_path}", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         self._phy_reader = loader
@@ -1556,11 +1476,7 @@ class EphysWidget(QWidget):
 
         self.app_state.has_neo = True
         self.app_state.has_kilosort = True
-<<<<<<< HEAD
-        show_info(f"Phy viewer: {dat_path.name} ({n_channels} ch, {sr:.0f} Hz)")
-=======
         notify(f"Phy viewer: {dat_path.name} ({n_channels} ch, {sr:.0f} Hz)")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def _get_hardware_label(self) -> str:
         ephys_path, stream_id, _ = self.app_state.get_ephys_source()
@@ -1926,11 +1842,7 @@ class EphysWidget(QWidget):
     def _select_clusters_all_visible(self):
         """Select all filtered-visible rows, highlight their spikes, then disable auto-highlight."""
         if self._cluster_proxy.rowCount() == 0:
-<<<<<<< HEAD
-            show_info("No clusters in current view.")
-=======
             notify("No clusters in current view.")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
         self.cluster_table.selectAll()
 
@@ -2223,11 +2135,7 @@ class EphysWidget(QWidget):
         if selection == "Selected in table":
             ids = self._get_table_selected_cluster_ids()
             if ids is None or len(ids) == 0:
-<<<<<<< HEAD
-                show_warning("No clusters selected in the table.")
-=======
                 notify("No clusters selected in the table.", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 return None
             return ids
 
@@ -2244,11 +2152,7 @@ class EphysWidget(QWidget):
         mask = self._cluster_df["group"].isin(allowed)
         ids = self._cluster_df.loc[mask, "cluster_id"].values
         if len(ids) == 0:
-<<<<<<< HEAD
-            show_warning(f"No clusters with group '{selection}' found in cluster table.")
-=======
             notify(f"No clusters with group '{selection}' found in cluster table.", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return None
         return ids
 
@@ -2281,11 +2185,7 @@ class EphysWidget(QWidget):
         if ephys_sr is None:
             loader = self._get_any_ephys_loader()
             if loader is None:
-<<<<<<< HEAD
-                show_warning("No sample rate available — load kilosort folder with params.py or specify an ephys folder.")
-=======
                 notify("No sample rate available — load kilosort folder with params.py or specify an ephys folder.", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 return
             ephys_sr = loader.rate
 
@@ -2412,11 +2312,7 @@ class EphysWidget(QWidget):
     def _compute_pca(self):
         ds = self.app_state.ds
         if ds is None or "firing_rate" not in ds.data_vars:
-<<<<<<< HEAD
-            show_warning("Compute firing rates first before running PCA.")
-=======
             notify("Compute firing rates first before running PCA.", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         fr_da = ds["firing_rate"]

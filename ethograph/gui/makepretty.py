@@ -201,8 +201,6 @@ class LayoutManager:
                 )
             QTimer.singleShot(0, _restore)
 
-<<<<<<< HEAD
-=======
     def toggle_layer_docks_with_anchor(self, show: bool) -> None:
         """Show/hide layer docks while anchoring the sidebar width."""
         saved_plot_h = self._plot_dock.height() if self._plot_dock else None
@@ -229,7 +227,6 @@ class LayoutManager:
 
         QTimer.singleShot(0, _reanchor)
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     def show_layer_docks(self) -> None:
         for dock in self._layer_docks:
             dock.setVisible(True)
@@ -325,20 +322,12 @@ class LayoutManager:
         if central is None:
             return
         if visible:
-<<<<<<< HEAD
-            central.show()
-            central.setMaximumHeight(MAX_WIDGET_SIZE)
-        else:
-            central.setMaximumHeight(0)
-            central.hide()
-=======
             central.setMaximumHeight(MAX_WIDGET_SIZE)
         else:
             # Only zero the height, never hide() — hiding removes the central widget from
             # Qt's horizontal layout, which lets the sidebar expand to fill the full window
             # when layer docks are also hidden.
             central.setMaximumHeight(0)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def set_sidebar_default_width(
         self, sidebar_widget: QWidget, ratio: float,

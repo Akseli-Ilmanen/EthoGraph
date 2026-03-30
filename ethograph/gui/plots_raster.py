@@ -99,16 +99,10 @@ class RasterPlot(BasePlot):
         self._total_channels = total_channels
 
         if total_channels > 0:
-<<<<<<< HEAD
-            margin = spacing * 0.5
-            y_max = (total_channels - 1) * spacing + margin
-            self.vb.setLimits(yMin=-margin, yMax=y_max)
-=======
             margin = spacing * 1.0
             y_max = (total_channels - 1) * spacing + margin
             self.vb.setLimits(yMin=-margin, yMax=y_max)
             self.vb.setYRange(-margin, y_max, padding=0)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         self._update_visible_dots()
 
@@ -166,11 +160,7 @@ class RasterPlot(BasePlot):
 
     def _apply_y_constraints(self):
         if self._total_channels > 0:
-<<<<<<< HEAD
-            margin = self._channel_spacing * 0.5
-=======
             margin = self._channel_spacing * 1.0
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             y_max = (self._total_channels - 1) * self._channel_spacing + margin
             self.vb.setLimits(yMin=-margin, yMax=y_max)
 

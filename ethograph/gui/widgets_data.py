@@ -9,12 +9,6 @@ from typing import Dict
 
 import numpy as np
 import xarray as xr
-<<<<<<< HEAD
-from movement.napari.loader_widgets import DataLoader
-from movement.napari.layer_styles import PointsStyle
-from napari.utils.notifications import show_warning
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from napari.viewer import Viewer
 from qtpy.QtCore import QSortFilterProxyModel, Qt, QTimer
 from qtpy.QtGui import QColor
@@ -29,10 +23,6 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-<<<<<<< HEAD
-    QMessageBox,
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     QPushButton,
     QSizePolicy,
     QTableWidget,
@@ -44,12 +34,8 @@ from qtpy.QtWidgets import (
 
 
 import ethograph as eto
-<<<<<<< HEAD
-from ethograph.utils.label_intervals import dense_to_intervals, get_interval_bounds
-=======
 from ethograph.gui.notify import notify, notify_dialog
 from ethograph.labels.intervals import get_interval_bounds
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from ethograph.gui.plots_timeseriessource import RegularTimeseriesSource, compute_trial_alignment
 
 
@@ -77,11 +63,8 @@ from .pose_render import (
 )
 from .video_manager import VideoManager,  is_url
 
-<<<<<<< HEAD
-=======
 logger = logging.getLogger(__name__)
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 @dataclass
 class _PanelDef:
@@ -294,11 +277,7 @@ class DataPanel(QWidget):
         self.keypoints_table.blockSignals(False)
 
 
-<<<<<<< HEAD
-class DataWidget(DataLoader, QWidget):
-=======
 class DataWidget(QWidget):
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     """Orchestrator widget — loads data, manages selections, updates plots."""
 
     def __init__(
@@ -309,12 +288,7 @@ class DataWidget(QWidget):
         io_widget,
         parent=None,
     ):
-<<<<<<< HEAD
-        DataLoader.__init__(self, napari_viewer)
-        QWidget.__init__(self, parent=parent)
-=======
         super().__init__(parent=parent)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self.viewer = napari_viewer
         layout = QFormLayout()
         layout.setSpacing(DEFAULT_LAYOUT_SPACING)
@@ -332,26 +306,13 @@ class DataWidget(QWidget):
         self.video_path = None
         self.audio_path = None
         self.space_plot = None
-<<<<<<< HEAD
-        self.properties = None
-        self.data = None
-        self.data_not_nan = None
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         self.combos = {}
         self.all_checkboxes = {}
         self.controls = []
 
-<<<<<<< HEAD
-        self.fps = None
         self.source_software = None
         self.file_path = None
-        self.file_name = None
-=======
-        self.source_software = None
-        self.file_path = None
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         self.video_mgr = VideoManager(napari_viewer, app_state)
         self.video_mgr.set_frame_changed_callback(self._on_primary_frame_changed)
@@ -381,11 +342,7 @@ class DataWidget(QWidget):
         self.pose_point_size_spin = panel.pose_point_size_spin
         self.keypoints_table = panel.keypoints_table
 
-<<<<<<< HEAD
-        self.pose_mgr = PoseDisplayManager(self, self.app_state, self.video_mgr)
-=======
         self.pose_mgr = PoseDisplayManager(self.viewer, self.app_state, self.video_mgr, self)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self.app_state.keypoints_changed.connect(self.populate_keypoints)
 
         panel.pose_hide_threshold_spin.valueChanged.connect(self._on_pose_hide_threshold_changed)
@@ -477,22 +434,13 @@ class DataWidget(QWidget):
             dt.close()
             self.app_state.dt = None
         self.app_state.ds = None
-<<<<<<< HEAD
-        self.app_state.label_dt = None
-        self.app_state.label_ds = None
-=======
         self.app_state._all_labels_df = None
         self.app_state.labels_confidence_ds = None
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self.type_vars_dict = {}
         self.app_state.ready = False
 
     def _cancel_load(self, reason: str):
-<<<<<<< HEAD
-        QMessageBox.warning(self, "Load cancelled", reason)
-=======
         notify_dialog(reason, "warning", "Load cancelled", self)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self._cleanup_load_state()
 
 
@@ -500,28 +448,11 @@ class DataWidget(QWidget):
 
     def on_load_clicked(self):
         if not self.app_state.nc_file_path:
-<<<<<<< HEAD
-            QMessageBox.warning(self, "Load cancelled", "Please select a path ending with .nc")
-=======
             notify_dialog("Please select a path ending with .nc", "warning", "Load cancelled", self)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         nc_file_path = self.io_widget.get_nc_file_path()
 
-<<<<<<< HEAD
-        self.app_state.has_video = bool(self.app_state.video_folder) or bool(self.app_state.remote_video)
-        self.app_state.has_pose = bool(self.app_state.pose_folder)
-        require_fps = self.app_state.has_video or self.app_state.has_pose
-
-        try:
-            self.app_state.dt, label_dt, self.type_vars_dict = load_dataset(
-                nc_file_path,
-                require_fps=require_fps,
-                progress_callback=getattr(self.app_state, "_progress_callback", None),
-                max_trials=getattr(self.app_state, "_dandi_max_trials", None),
-                dandiset_id=getattr(self.app_state, "_dandi_dandiset_id", None),
-=======
         self.app_state.has_video = bool(self.app_state.video_folder)
         self.app_state.has_pose = bool(self.app_state.pose_folder)
 
@@ -533,16 +464,11 @@ class DataWidget(QWidget):
                 max_trials=getattr(self.app_state, "_dandi_max_trials", None),
                 dandiset_id=getattr(self.app_state, "_dandi_dandiset_id", None),
                 import_labels=self.io_widget.import_labels_checkbox.isChecked(),
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             )
             nwb_video_folder = self.app_state.dt.attrs.get("nwb_video_folder")
             if nwb_video_folder and not self.app_state.video_folder:
                 self.app_state.video_folder = nwb_video_folder
-<<<<<<< HEAD
-        except Exception as e:
-=======
         except (OSError, ValueError, KeyError) as e:
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             self._cancel_load(f"Failed to load dataset: {e}")
             return
 
@@ -582,11 +508,7 @@ class DataWidget(QWidget):
                 self.io_widget._expand_ephys_with_streams(
                     self.app_state.ephys_path, self.app_state.ds,
                 )
-<<<<<<< HEAD
-            except Exception as e:
-=======
             except (OSError, ValueError, KeyError) as e:
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 self._cancel_load(f"Failed to load ephys features: {e}")
                 return
             
@@ -595,11 +517,7 @@ class DataWidget(QWidget):
         if downsample_factor is not None:
             self.app_state.dt = eto.downsample_trialtree(self.app_state.dt, downsample_factor)
             self.app_state.downsample_factor_used = downsample_factor
-<<<<<<< HEAD
-            print(f"Downsampled data by factor {downsample_factor}")
-=======
             logger.info("Downsampled data by factor %d", downsample_factor)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         else:
             self.app_state.downsample_factor_used = None
 
@@ -607,30 +525,15 @@ class DataWidget(QWidget):
 
         trials = self.app_state.dt.trials
 
-<<<<<<< HEAD
-        
-        
-        if self.io_widget.import_labels_checkbox.isChecked():
-            self.app_state.label_dt = label_dt
-        else:
-            self.app_state.label_dt = self.app_state.dt.get_label_dt(empty=True)
-
-        self.app_state.ds = self.app_state.dt.trial(trials[0])
-        self.app_state.label_ds = self.app_state.label_dt.trial(trials[0])
-=======
         self.app_state._all_labels_df = all_labels_df
 
         self.app_state.ds = self.app_state.dt.trial(trials[0])
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self.app_state.trials = sorted(trials)
 
 
         missing = self._validate_media_files()
         if missing:
-<<<<<<< HEAD
-=======
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             self._cancel_load(
                 "Missing media files for first trial:\n" + "\n".join(missing)
             )
@@ -663,11 +566,7 @@ class DataWidget(QWidget):
                 lambda: self.layout_mgr.set_sidebar_default_width(self.meta_widget, SIDEBAR_AFTER_LOAD_WIDTH_RATIO),
             )
 
-<<<<<<< HEAD
-        trial = self.app_state.trials_sel
-=======
         trial = getattr(self.app_state, 'trials_sel', None)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         try:
             is_nan = np.isnan(trial)
         except (TypeError, ValueError):
@@ -709,11 +608,7 @@ class DataWidget(QWidget):
     def _collect_trial_status(self) -> Dict[int, int]:
         trial_status = {}
         for trial in self.app_state.trials:
-<<<<<<< HEAD
-            is_verified = self.app_state.label_dt.trial(trial).attrs.get('human_verified', 0)
-=======
             is_verified = self.app_state.get_trial_meta(trial).get('human_verified', 0)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             trial_status[trial] = bool(is_verified)
         return trial_status
 
@@ -768,16 +663,6 @@ class DataWidget(QWidget):
             slot_layout.addWidget(self.primary_camera_combo)
 
         if len(cameras) > 1:
-<<<<<<< HEAD
-            self.secondary_camera_combo = QComboBox()
-            self.secondary_camera_combo.setObjectName("secondary_camera_combo")
-            self.secondary_camera_combo.addItems(["None"] + [str(c) for c in cameras])
-            self.secondary_camera_combo.setItemDelegate(ElidedDelegate(parent=self.secondary_camera_combo))
-            self.secondary_camera_combo.setCurrentIndex(0)
-            self.secondary_camera_combo.currentTextChanged.connect(self._on_secondary_camera_changed)
-            self.controls.append(self.secondary_camera_combo)
-            slot_layout.addWidget(self.secondary_camera_combo)
-=======
             from .video_manager import MAX_EXTRA_CAMERAS
             cam_names = [str(c) for c in cameras]
             n_extra = min(MAX_EXTRA_CAMERAS, len(cameras) - 1)
@@ -794,7 +679,6 @@ class DataWidget(QWidget):
                 self._extra_camera_combos.append(combo)
                 self.controls.append(combo)
                 slot_layout.addWidget(combo)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         if "keypoints" in self.app_state.ds.coords:
             keypoint_names = strip_common_prefix([str(k) for k in self.app_state.ds.coords["keypoints"].values])
@@ -1182,25 +1066,9 @@ class DataWidget(QWidget):
             else:
                 primary.setCurrentIndex(0)
             primary.blockSignals(False)
-<<<<<<< HEAD
-            self.app_state.set_key_sel("cameras", primary.currentText())
-
-        secondary = getattr(self, 'secondary_camera_combo', None)
-        if secondary is not None and len(cameras) > 1:
-            prev_index = secondary.currentIndex()
-            secondary.blockSignals(True)
-            secondary.clear()
-            secondary.addItems(["None"] + cameras)
-            if prev_index < secondary.count():
-                secondary.setCurrentIndex(prev_index)
-            else:
-                secondary.setCurrentIndex(0)
-            secondary.blockSignals(False)
-=======
             self.app_state.primary_camera = primary.currentText()
 
         self._update_extra_camera_combo_items(cameras)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
 
@@ -1319,20 +1187,12 @@ class DataWidget(QWidget):
 
         idx = self.labels_widget.current_labels_pos
         if idx is None:
-<<<<<<< HEAD
-            show_warning("Select a label interval first")
-=======
             notify("Select a label interval first", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         df = self.app_state.label_intervals
         if df is None or idx not in df.index:
-<<<<<<< HEAD
-            show_warning("Select a label interval first")
-=======
             notify("Select a label interval first", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         onset_s, offset_s, _ = get_interval_bounds(df, idx)
@@ -1340,11 +1200,7 @@ class DataWidget(QWidget):
         heatmap = self.plot_container.heatmap_plot
         data = heatmap.get_normalized_data_for_range(onset_s, offset_s)
         if data is None or data.size == 0:
-<<<<<<< HEAD
-            show_warning("No heatmap data available for the selected interval")
-=======
             notify("No heatmap data available for the selected interval", "warning")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         channel_sums = np.nansum(np.abs(data), axis=0)
@@ -1552,26 +1408,6 @@ class DataWidget(QWidget):
         if hasattr(self, 'space_view_combo'):
             self.space_view_combo.setCurrentText(space_plot_type)
 
-<<<<<<< HEAD
-        saved_slot2 = self.app_state.slot2_sel
-        if saved_slot2 and hasattr(self, 'primary_camera_combo'):
-            idx = self.primary_camera_combo.findText(saved_slot2)
-            if idx >= 0:
-                self.primary_camera_combo.setCurrentIndex(idx)
-                self.app_state.set_key_sel("cameras", saved_slot2)
-
-        saved_slot3 = self.app_state.slot3_sel
-        if saved_slot3 and hasattr(self, 'secondary_camera_combo'):
-            idx = self.secondary_camera_combo.findText(saved_slot3)
-            if idx >= 0:
-                self.secondary_camera_combo.setCurrentIndex(idx)
-
-        template_idx = getattr(self.app_state, '_template_slot3_index', None)
-        if template_idx is not None and hasattr(self, 'secondary_camera_combo'):
-            resolved = template_idx % self.secondary_camera_combo.count()
-            self.secondary_camera_combo.setCurrentIndex(resolved)
-            del self.app_state._template_slot3_index
-=======
         saved_camera = self.app_state.primary_camera
         if saved_camera and hasattr(self, 'primary_camera_combo'):
             idx = self.primary_camera_combo.findText(saved_camera)
@@ -1589,7 +1425,6 @@ class DataWidget(QWidget):
                     combo.blockSignals(True)
                     combo.setCurrentIndex(idx)
                     combo.blockSignals(False)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         # Normalize stale *_sel values against currently loaded options.
         self._normalize_saved_sel_values()
@@ -1618,11 +1453,7 @@ class DataWidget(QWidget):
                 return
             combo.setCurrentIndex(0)
             fallback = get_combo_value(combo)
-<<<<<<< HEAD
-            print(f"Saved {key}_sel '{saved_value}' not found; reverting to '{fallback}'.")
-=======
             logger.warning("Saved %s_sel '%s' not found; reverting to '%s'", key, saved_value, fallback)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             self.app_state.set_key_sel(key, fallback)
 
         for key, combo in self.combos.items():
@@ -1631,15 +1462,10 @@ class DataWidget(QWidget):
             _normalize_from_combo(key, combo)
 
         primary_combo = getattr(self, "primary_camera_combo", None)
-<<<<<<< HEAD
-        if isinstance(primary_combo, QComboBox):
-            _normalize_from_combo("cameras", primary_combo)
-=======
         if isinstance(primary_combo, QComboBox) and primary_combo.count() > 0:
             saved = self.app_state.primary_camera
             if saved is None or find_combo_index(primary_combo, saved) < 0:
                 self.app_state.primary_camera = get_combo_value(primary_combo)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         mics_combo = getattr(self, "mics_combo", None)
         if isinstance(mics_combo, QComboBox):
@@ -1653,11 +1479,7 @@ class DataWidget(QWidget):
 
     def _load_trial_with_fallback(self) -> None:
         first_trial = self.app_state.trials[0]
-<<<<<<< HEAD
-        current_trial = self.app_state.trials_sel
-=======
         current_trial = getattr(self.app_state, 'trials_sel', None)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         try:
             is_nan = np.isnan(current_trial)
@@ -1666,11 +1488,7 @@ class DataWidget(QWidget):
 
         if not current_trial or is_nan or current_trial not in self.app_state.trials:
             if current_trial and not is_nan:
-<<<<<<< HEAD
-                print(f"Saved trial {current_trial} not in dataset, using {first_trial}.")
-=======
                 logger.warning("Saved trial %s not in dataset, using %s", current_trial, first_trial)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             self.app_state.trials_sel = first_trial
 
         self.on_trial_changed()
@@ -1694,16 +1512,10 @@ class DataWidget(QWidget):
         if audio_folder:
             mics = dt.mics
             if not mics:
-<<<<<<< HEAD
-                show_warning(
-                    "You selected an audio folder, although the .nc "
-                    "contains no audio media entries."
-=======
                 notify(
                     "You selected an audio folder, although the .nc "
                     "contains no audio media entries.",
                     "warning",
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 )
             else:
                 for mic in mics:
@@ -1718,16 +1530,10 @@ class DataWidget(QWidget):
         if pose_folder:
             cameras = dt.cameras
             if not cameras:
-<<<<<<< HEAD
-                show_warning(
-                    "You selected a pose folder, although the .nc "
-                    "contains no pose data."
-=======
                 notify(
                     "You selected a pose folder, although the .nc "
                     "contains no pose data.",
                     "warning",
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 )
             else:
                 for cam in cameras:
@@ -1749,11 +1555,7 @@ class DataWidget(QWidget):
             self.app_state.ds,
             video_folder=self.app_state.video_folder,
             audio_folder=self.app_state.audio_folder,
-<<<<<<< HEAD
-            cameras_sel=getattr(self.app_state, "cameras_sel", None),
-=======
             cameras_sel=self.app_state.primary_camera,
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         )
 
 
@@ -1762,25 +1564,14 @@ class DataWidget(QWidget):
         trials_sel = self.app_state.trials_sel
         
         if trials_sel not in self.app_state.trials:
-<<<<<<< HEAD
-            print(f"Selected trial '{trials_sel}' not found in dataset. Reverting to first trial '{self.app_state.trials[0]}'.")
-=======
             logger.warning("Selected trial '%s' not found in dataset, reverting to first trial '%s'", trials_sel, self.app_state.trials[0])
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             trials_sel = self.app_state.trials[0]
             self.app_state.trials_sel = trials_sel
             return
         
 
         self.app_state.ds = self.app_state.dt.trial(trials_sel)
-<<<<<<< HEAD
-        self.app_state.label_ds = self.app_state.label_dt.trial(trials_sel)
 
-        if self.app_state.pred_dt is not None:
-            self.app_state.pred_ds = self.app_state.pred_dt.trial(trials_sel)
-=======
-
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         self._update_device_sels_for_trial(self.app_state.ds)
         self.update_mics_combo_for_trial(self.app_state.ds)
@@ -1804,11 +1595,7 @@ class DataWidget(QWidget):
 
         self.app_state.current_frame = 0
         self.update_video()
-<<<<<<< HEAD
-        self._init_or_update_secondary_video()
-=======
         self._init_or_update_extra_cameras()
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self.update_audio()
         self.update_pose()
         self.update_label()
@@ -1843,11 +1630,7 @@ class DataWidget(QWidget):
         if self.show_confidence_checkbox.isChecked():
             self.plot_container.hide_confidence_plot()
 
-<<<<<<< HEAD
-            label_ds = getattr(self.app_state, "label_ds", None)
-=======
             label_ds = getattr(self.app_state, "labels_confidence_ds", None)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             if label_ds is not None and "labels_confidence" in getattr(label_ds, "data_vars", {}):
                 try:
                     label_confidence, _ = eto.sel_valid(label_ds.labels_confidence, ds_kwargs)
@@ -1881,30 +1664,11 @@ class DataWidget(QWidget):
 
         if (
             self.io_widget.pred_show_predictions.isChecked()
-<<<<<<< HEAD
-            and hasattr(self.app_state, 'pred_ds')
-            and self.app_state.pred_ds is not None
-        ):
-            pred_ds = self.app_state.pred_ds
-            predictions, _ = eto.sel_valid(pred_ds.labels, ds_kwargs)
-            pred_time = eto.get_time_coord(pred_ds.labels).values
-            individuals = (
-                list(pred_ds.coords['individuals'].values)
-                if 'individuals' in pred_ds.coords
-                else ["default"]
-            )
-            predictions_df = dense_to_intervals(
-                np.asarray(predictions).reshape(-1, 1) if np.asarray(predictions).ndim == 1 else np.asarray(predictions),
-                pred_time,
-                individuals,
-            )
-=======
             and self.app_state.pred_labels_df is not None
         ):
             trial = self.app_state.trials_sel
             df = self.app_state.pred_labels_df
             predictions_df = df[df["trial"] == trial] if "trial" in df.columns else df
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         self.labels_widget.plot_all_labels(intervals_df, predictions_df)
 
@@ -1950,11 +1714,7 @@ class DataWidget(QWidget):
             self.plot_container.set_x_range(mode='center', center_on_frame=frame_number)
 
     def update_pose(self):
-<<<<<<< HEAD
-        """Refresh primary and secondary pose layers through PoseDisplayManager."""
-=======
         """Refresh primary and extra camera pose layers through PoseDisplayManager."""
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         if self.pose_mgr is None or not self.app_state.has_pose:
             return
         if not self.app_state.pose_markers_visible:
@@ -1977,64 +1737,12 @@ class DataWidget(QWidget):
 
         show_layers = text == "Layers"
 
-<<<<<<< HEAD
-        def _toggle():
-            if show_layers:
-                self.layout_mgr.show_layer_docks()
-            else:
-                self.layout_mgr.hide_layer_docks()
-
-        self.layout_mgr.with_preserved_height(_toggle)
-=======
         self.layout_mgr.toggle_layer_docks_with_anchor(show_layers)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self.update_space_plot()
 
     def _on_primary_camera_changed(self, camera_name):
         if not self.app_state.ready or not camera_name:
             return
-<<<<<<< HEAD
-        self.app_state.slot2_sel = camera_name
-        self.app_state.set_key_sel("cameras", camera_name)
-        self.update_video()
-        self.update_pose()
-
-    def _on_secondary_camera_changed(self, camera_name):
-        if not self.app_state.ready:
-            return
-        self.app_state.slot3_sel = camera_name
-        if camera_name == "None":
-            self.video_mgr.hide_secondary_video()
-            return
-        video_path = self.video_mgr._resolve_video_path(camera_name, self.app_state.video_folder)
-        if not video_path:
-            self.video_mgr.hide_secondary_video()
-            return
-        # Always show secondary video when combo changes
-        self.video_mgr.show_secondary_video(
-            video_path=video_path,
-            layout_mgr=self.layout_mgr,
-            meta_widget=self.meta_widget,
-        )
-        if self.pose_mgr is not None:
-            self.pose_mgr.update_secondary_pose(self.get_hidden_keypoints(), camera_name)
-
-    def _init_or_update_secondary_video(self):
-        secondary_camera_combo = getattr(self, 'secondary_camera_combo', None)
-        if secondary_camera_combo is None:
-            return
-
-        camera_name = secondary_camera_combo.currentText()
-        if not camera_name or camera_name == "None":
-            return
-
-        secondary_widget = self.video_mgr.secondary_widget
-        if secondary_widget is None or not secondary_widget.isVisible():
-            video_path = self.video_mgr._resolve_video_path(camera_name, self.app_state.video_folder)
-            if not video_path:
-                return
-            self.video_mgr.show_secondary_video(
-=======
         self.app_state.primary_camera_previous = self.app_state.primary_camera
         self.app_state.primary_camera = camera_name
         self.update_video()
@@ -2061,16 +1769,11 @@ class DataWidget(QWidget):
                 continue
             self.video_mgr.add_camera(
                 camera_name=name,
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 video_path=video_path,
                 layout_mgr=self.layout_mgr,
                 meta_widget=self.meta_widget,
             )
             if self.pose_mgr is not None:
-<<<<<<< HEAD
-                self.pose_mgr.update_secondary_pose(self.get_hidden_keypoints(), camera_name)
-            return
-=======
                 self.pose_mgr.update_extra_camera_pose(name, self.get_hidden_keypoints())
 
     def _get_desired_extra_cameras(self) -> set[str]:
@@ -2121,7 +1824,6 @@ class DataWidget(QWidget):
             )
             if self.pose_mgr is not None:
                 self.pose_mgr.update_extra_camera_pose(camera_name, self.get_hidden_keypoints())
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
 

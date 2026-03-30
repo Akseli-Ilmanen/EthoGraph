@@ -6,14 +6,9 @@ import pandas as pd
 from scipy.signal import find_peaks
 
 from ethograph.features.preprocessing import z_normalize
-<<<<<<< HEAD
-from ethograph.utils.labels import find_blocks, fix_endings, purge_small_blocks, stitch_gaps
-from ethograph.utils.label_intervals import purge_short_intervals, stitch_intervals, snap_boundaries
-=======
 from ethograph.labels.intervals import purge_short_intervals, snap_boundaries, stitch_intervals
 from ethograph.labels.ml import find_blocks, fix_endings, purge_small_blocks, stitch_gaps
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -254,9 +249,6 @@ def correct_changepoints_automatic(
 # ---------------------------------------------------------------------------
 
 def correct_changepoints_dense(labels, ds, all_params):
-<<<<<<< HEAD
-    """Correct labels with changepoints (dense array, legacy pipeline)."""
-=======
     """Correct dense label arrays using changepoints (legacy ML pipeline).
 
     Operates on integer label arrays, not interval DataFrames.
@@ -284,7 +276,6 @@ def correct_changepoints_dense(labels, ds, all_params):
     np.ndarray
         Corrected integer label array of the same shape as ``labels``.
     """
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     cp_kwargs = all_params["cp_kwargs"]
     
 
@@ -365,9 +356,6 @@ def correct_changepoints_dense(labels, ds, all_params):
 # ---------------------------------------------------------------------------
 
 def merge_changepoints(ds):
-<<<<<<< HEAD
-    """Merge all changepoint variables into a single combined mask."""
-=======
     """Merge all changepoint variables in a dataset into a single boolean mask.
 
     Combines every variable with ``attrs["type"] == "changepoints"`` using
@@ -392,7 +380,6 @@ def merge_changepoints(ds):
     ValueError
         If changepoint variables reference different target features.
     """
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     ds = ds.copy()
     cp_ds = ds.filter_by_attrs(type="changepoints")
 

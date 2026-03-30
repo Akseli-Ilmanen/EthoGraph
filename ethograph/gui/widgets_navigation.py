@@ -205,14 +205,6 @@ class NavigationWidget(QWidget):
         )
         self.skip_frames_checkbox.toggled.connect(self._on_skip_frames_changed)
 
-<<<<<<< HEAD
-        self.filter_warnings_checkbox = QCheckBox("Filter Warnings")
-        self.filter_warnings_checkbox.setObjectName("filter_warnings_checkbox")
-        self.filter_warnings_checkbox.setChecked(app_state.get_with_default("filter_warnings"))
-        self.filter_warnings_checkbox.setToolTip(
-            "Suppress repetitive warnings (e.g. video seek warnings).\n"
-            "When enabled, each warning is shown only once."
-=======
         self.filter_warnings_checkbox = QCheckBox("Suppress library warnings")
         self.filter_warnings_checkbox.setObjectName("filter_warnings_checkbox")
         self.filter_warnings_checkbox.setChecked(app_state.get_with_default("filter_warnings"))
@@ -220,7 +212,6 @@ class NavigationWidget(QWidget):
             "Suppress Python warnings from third-party libraries\n"
             "(e.g. NumPy deprecation notices, codec warnings).\n"
             "Does not affect ethograph's own notifications."
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         )
         self.filter_warnings_checkbox.toggled.connect(self._on_filter_warnings_changed)
         self._apply_warning_filters(app_state.get_with_default("filter_warnings"))
@@ -326,11 +317,7 @@ class NavigationWidget(QWidget):
             new_trial = self.app_state.trials[new_idx]
             
          
-<<<<<<< HEAD
-            trial_attrs = self.app_state.label_dt.trial(new_trial).attrs
-=======
             trial_attrs = self.app_state.get_trial_meta(new_trial)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             
             if "model_confidence" not in trial_attrs:
                 break
@@ -499,19 +486,11 @@ class NavigationWidget(QWidget):
 
         # Apply confidence filter
         confidence_mode = self.confidence_skip_combo.currentText()
-<<<<<<< HEAD
-        if confidence_mode != "Show all" and hasattr(self.app_state, "label_dt") and self.app_state.label_dt:
-            confidence_filtered = []
-            target_confidence = "low" if confidence_mode == "Low confidence only" else "high"
-            for trial in filtered_trials:
-                trial_attrs = self.app_state.label_dt.trial(trial).attrs
-=======
         if confidence_mode != "Show all" and self.app_state._all_labels_df is not None:
             confidence_filtered = []
             target_confidence = "low" if confidence_mode == "Low confidence only" else "high"
             for trial in filtered_trials:
                 trial_attrs = self.app_state.get_trial_meta(trial)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 if trial_attrs.get("model_confidence") == target_confidence:
                     confidence_filtered.append(trial)
             filtered_trials = set(confidence_filtered)
@@ -637,36 +616,6 @@ class NavigationWidget(QWidget):
 
         print(SEP)
         print("=" * 60)
-<<<<<<< HEAD
-        print("  label_dt")
-        print("=" * 60)
-        label_dt = getattr(self.app_state, 'label_dt', None)
-        if label_dt is None:
-            print("  No label_dt loaded.")
-        else:
-            print(label_dt)
-            print("\n  label_dt.attrs:")
-            for k, v in label_dt.attrs.items():
-                print(f"    {k}: {v!r}  (type: {type(v).__name__})")
-
-        print(SEP)
-        print("=" * 60)
-        print("  CURRENT TRIAL  dataset + attrs")
-        print("=" * 60)
-        trial = getattr(self.app_state, 'trials_sel', None)
-        if label_dt is None or trial is None:
-            print("  No label_dt or trial selected.")
-        else:
-            try:
-                trial_ds = label_dt.trial(trial)
-                print(f"  label_dt.trial({trial!r}):")
-                print(trial_ds)
-                print(f"\n  label_dt.trial({trial!r}).attrs:")
-                for k, v in trial_ds.attrs.items():
-                    print(f"    {k}: {v!r}  (type: {type(v).__name__})")
-            except Exception as e:
-                print(f"  Error reading trial: {e}")
-=======
         print("  Labels (TSV store)")
         print("=" * 60)
         all_labels = getattr(self.app_state, '_all_labels_df', None)
@@ -699,7 +648,6 @@ class NavigationWidget(QWidget):
                 print(f"\n  Trial {trial!r} metadata:")
                 for k, v in trial_meta.items():
                     print(f"    {k}: {v!r}")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         print(SEP)
         print("=" * 60)
@@ -715,13 +663,9 @@ class NavigationWidget(QWidget):
         print("=" * 60)
         print(f"Trial Interval set")
         print("=" * 60)
-<<<<<<< HEAD
-        df = self.app_state.dt.trials_ep.as_dataframe()
-=======
         trials_ep = getattr(self.app_state.dt, 'trials_ep', None)
         if trials_ep is None:
             print("  No trials_ep available.")
         else:
             df = trials_ep.as_dataframe()
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         print(df.to_string())

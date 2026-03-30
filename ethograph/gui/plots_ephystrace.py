@@ -18,22 +18,15 @@ All loaders expose the same interface consumed by EphysTraceBuffer:
 
 from __future__ import annotations
 
-<<<<<<< HEAD
-
-=======
 import logging
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 import numpy as np
 import threading
 import pyqtgraph as pg
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Protocol, runtime_checkable
 
-<<<<<<< HEAD
-=======
 logger = logging.getLogger(__name__)
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 if TYPE_CHECKING:
     from .plots_timeseriessource import TimeseriesSource
 from numpy.typing import NDArray
@@ -42,14 +35,10 @@ from qtpy.QtCore import QEvent, Qt, Signal
 import warnings
 from phylib.io.traces import get_ephys_reader
 
-<<<<<<< HEAD
-from .app_constants import BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER_EPHYS, EPHYSTRACE_DEBOUNCE_MS
-=======
 from ethograph.utils.nwb import resolve_timeseries_timing
 
 from .app_constants import BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER_EPHYS, EPHYSTRACE_DEBOUNCE_MS
 from .modality import FileSource, ModalitySource
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from .plots_base import BasePlot, ThrottleDebounce
 from .video_manager import is_url
 
@@ -141,29 +130,6 @@ class EphysLoader(Protocol):
 
 
 
-<<<<<<< HEAD
-class RemoteNWBLoader:
-    def __init__(self, url: str, electrical_series_name: str | None = None):
-        import h5py
-        import remfile
-        import pynwb
-
-        self._rf = remfile.File(url)
-        self._h5 = h5py.File(self._rf, "r")
-        self._io = pynwb.NWBHDF5IO(file=self._h5, load_namespaces=True)
-
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message=".*manufacturer.*deprecated", category=DeprecationWarning)
-            nwb = self._io.read()
-
-        es = self._resolve_electrical_series(nwb, electrical_series_name)
-        self._data = es.data
-        self._conversion = float(es.conversion) if es.conversion else 1.0
-        self.rate = float(es.rate)
-        self.starting_time = float(es.starting_time) if es.starting_time else 0.0
-        self._n_channels = self._data.shape[1] if self._data.ndim > 1 else 1
-
-=======
 class NWBEphysLoader:
     """Unified NWB ephys loader for local and remote files.
 
@@ -220,37 +186,11 @@ class NWBEphysLoader:
 
     @staticmethod
     def _extract_channel_names(es, n_channels: int) -> list[str]:
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         electrodes = es.electrodes
         if electrodes is not None and hasattr(electrodes, "table"):
             table = electrodes.table
             indices = electrodes.data[:]
             if "label" in table.colnames:
-<<<<<<< HEAD
-                self._channel_names = [str(table["label"][i]) for i in indices]
-            else:
-                self._channel_names = [f"Ch {i}" for i in indices]
-        else:
-            self._channel_names = [f"Ch {i}" for i in range(self._n_channels)]
-        self._units = "V"
-
-    def _resolve_electrical_series(self, nwb, name: str | None):
-        import pynwb
-
-        if name:
-            return nwb.acquisition[name]
-        es = next(
-            (v for v in nwb.acquisition.values()
-             if isinstance(v, pynwb.ecephys.ElectricalSeries)),
-            None,
-        )
-        if es is None:
-            raise ValueError(
-                f"No ElectricalSeries found. "
-                f"Available acquisition keys: {list(nwb.acquisition.keys())}"
-            )
-        return es
-=======
                 return [str(table["label"][i]) for i in indices]
             return [f"Ch {i}" for i in indices]
         return [f"Ch {i}" for i in range(n_channels)]
@@ -269,7 +209,6 @@ class NWBEphysLoader:
                 "dtype": str(es.data.dtype),
             }
         return result
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def __len__(self) -> int:
         return self._data.shape[0]
@@ -293,14 +232,10 @@ class NWBEphysLoader:
         return chunk.astype(np.float64) * self._conversion
 
     def __del__(self):
-<<<<<<< HEAD
-        for resource in (self._io, self._h5, self._rf):
-=======
         resources = [self._io, self._h5]
         if self._rf is not None:
             resources.append(self._rf)
         for resource in resources:
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             try:
                 resource.close()
             except Exception:
@@ -340,10 +275,6 @@ class GenericEphysLoader:
     """
 
     KNOWN_EXTENSIONS: dict[str, str] = {
-<<<<<<< HEAD
-        ".nwb": "NWBIO",
-=======
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         ".rhd": "IntanRawIO",
         ".rhs": "IntanRawIO",
         ".oebin": "OpenEphysBinaryRawIO",
@@ -387,11 +318,7 @@ class GenericEphysLoader:
     ):
         self.path = Path(path)
         self._reader = None
-<<<<<<< HEAD
-        self._loader:  None 
-=======
         self._loader = None
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         self.rate: float = 0.0
         self.dtype: str = dtype
@@ -401,13 +328,8 @@ class GenericEphysLoader:
 
         ext = self.path.suffix.lower()
 
-<<<<<<< HEAD
-        if ext == ".nwb" and is_url(str(self.path)):
-            self._init_remote_nwb()
-=======
         if ext == ".nwb":
             self._init_nwb(stream_id)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         elif rawio_name := self.KNOWN_EXTENSIONS.get(ext):
             self._init_neo(rawio_name, stream_id)
         elif ext in _RAW_BINARY_EXTENSIONS:
@@ -415,22 +337,13 @@ class GenericEphysLoader:
                 raise ValueError(f"Raw binary '{ext}' requires n_channels and sampling_rate.")
             self._phylib_memmap(n_channels, sampling_rate, dtype, gain)
         else:
-<<<<<<< HEAD
-            supported = ", ".join(sorted(self.KNOWN_EXTENSIONS))
-=======
             supported = ", ".join(sorted([".nwb", *self.KNOWN_EXTENSIONS]))
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             raise ValueError(f"Unsupported format '{ext}'. Supported: {supported}, {', '.join(_RAW_BINARY_EXTENSIONS)}")
 
     # -- backends -----------------------------------------------------------
 
-<<<<<<< HEAD
-    def _init_remote_nwb(self):
-        loader = RemoteNWBLoader(str(self.path))
-=======
     def _init_nwb(self, stream_id: str):
         loader = NWBEphysLoader(str(self.path), stream_id=stream_id)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self._loader = loader
         self._n_channels = loader.n_channels
         self._n_samples = len(loader)
@@ -513,11 +426,8 @@ class GenericEphysLoader:
 
     @property
     def streams(self) -> dict | None:
-<<<<<<< HEAD
-=======
         if isinstance(self._loader, NWBEphysLoader):
             return self._loader.streams
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         if self._reader is None:
             return None
         all_channels = self._reader.header["signal_channels"]
@@ -580,15 +490,8 @@ def get_loader(
                     sampling_rate=sampling_rate,
                     stream_id=stream_id,
                 )
-<<<<<<< HEAD
-            except Exception as e:
-                print(f"Failed to load ephys file {path}: {type(e).__name__}: {e}")
-                import traceback
-                traceback.print_exc()
-=======
             except (OSError, ValueError, KeyError) as e:
                 logger.error("Failed to load ephys file %s: %s: %s", path, type(e).__name__, e, exc_info=True)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 return None
         return _loader_cache[key]
 
@@ -643,20 +546,13 @@ class EphysTraceBuffer:
         self.channel_spacing = 3.0
         self.display_gain: float = 0.0
         self.autocenter: bool = False
-<<<<<<< HEAD
-=======
         self._source: FileSource | None = None
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def set_loader(self, loader: EphysLoader, channel: int = 0):
         self.loader = loader
         self.channel = channel
         self.ephys_sr = loader.rate
         self._starting_time = float(getattr(loader, "starting_time", 0.0))
-<<<<<<< HEAD
-        self._invalidate_cache()
-
-=======
         self._source = FileSource("ephys", loader, start_time=self._starting_time)
         self._invalidate_cache()
 
@@ -664,7 +560,6 @@ class EphysTraceBuffer:
     def source(self) -> FileSource | None:
         return self._source
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     def set_preprocessing(self, flags: dict):
         self._preproc_flags = flags
         self._invalidate_cache()
@@ -956,11 +851,7 @@ class EphysTracePlot(BasePlot):
         self._hw_to_order_idx: dict[int, int] = {}
         self._last_visible_hw: set[int] = set()
 
-<<<<<<< HEAD
-        self._source: TimeseriesSource | None = None
-=======
         self._source: ModalitySource | None = None
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         # Calibration scale bars
         self._scale_v_line: pg.PlotDataItem | None = None
@@ -1003,11 +894,7 @@ class EphysTracePlot(BasePlot):
 
         self.setToolTip("Double-click or Ctrl+A to autoscale")
 
-<<<<<<< HEAD
-    def set_source(self, source: TimeseriesSource | None):
-=======
     def set_source(self, source: ModalitySource | None):
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self._source = source
         self._apply_zoom_constraints()
 
@@ -1045,13 +932,8 @@ class EphysTracePlot(BasePlot):
             return
         spacing = self.buffer.channel_spacing
         total = len(self._total_ordered_channels)
-<<<<<<< HEAD
-        y_lo = (total - 1 - ch_end) * spacing - spacing * 0.5
-        y_hi = (total - 1 - ch_start) * spacing + spacing * 0.5
-=======
         y_lo = (total - 1 - ch_end) * spacing - spacing * 1.0
         y_hi = (total - 1 - ch_start) * spacing + spacing * 1.0
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self.plot_item.setYRange(y_lo, y_hi, padding=0)
 
     def set_custom_channel_set(self, hw_indices: NDArray | None):
@@ -1188,11 +1070,7 @@ class EphysTracePlot(BasePlot):
 
         ch_indices, y_positions = self._channels_in_viewport()
         if len(ch_indices) == 0:
-<<<<<<< HEAD
-            print(f"[EphysTracePlot] _update_multichannel: No channels in viewport for t0={t0}, t1={t1}")
-=======
             logger.debug("_update_multichannel: No channels in viewport for t0=%s, t1=%s", t0, t1)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         # Expand draw range beyond the viewport so the trace is pre-rendered
@@ -1217,11 +1095,7 @@ class EphysTracePlot(BasePlot):
         )
 
         if result is None:
-<<<<<<< HEAD
-            print(f"[EphysTracePlot] _update_multichannel: No data for t0={t0_draw}, t1={t1_draw}, channels={ch_indices}")
-=======
             logger.debug("_update_multichannel: No data for t0=%s, t1=%s, channels=%s", t0_draw, t1_draw, ch_indices)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         times, data_2d, step, n_ch = result

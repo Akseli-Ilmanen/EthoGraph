@@ -6,13 +6,8 @@ from typing import Optional
 import napari
 from audioio import AudioLoader, PlayAudio
 from qtpy.QtCore import QObject, QTimer, Signal
-<<<<<<< HEAD
-from napari.utils.notifications import show_error
-
-=======
 
 from ethograph.gui.notify import notify
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from ethograph.utils.audio import get_audio_sr
 
 try:
@@ -71,11 +66,7 @@ class NapariVideoSync(QObject):
                 break
 
         if not self.video_layer:
-<<<<<<< HEAD
-            show_error("Video layer not found. Load video first.")
-=======
             notify("Video layer not found. Load video first.", "error")
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         self.total_frames = self.video_layer.data.shape[0]
@@ -91,16 +82,7 @@ class NapariVideoSync(QObject):
 
     @property
     def fps(self) -> float:
-<<<<<<< HEAD
-        if self.video_layer is not None:
-            try:
-                return float(self.video_layer.data.stream.guessed_rate)
-            except (AttributeError, ZeroDivisionError):
-                pass
-        return 30.0
-=======
         return self.app_state.video_fps
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     @property
     def fps_playback(self) -> float:
@@ -183,19 +165,12 @@ class NapariVideoSync(QObject):
 
         self.seek_to_frame(start_frame)
 
-<<<<<<< HEAD
-        if self.audio_source and self.audio_sr:
-            with AudioLoader(self.audio_source) as data:
-                start_sample = int(start_frame / self.fps * self.audio_sr)
-                end_sample = int(end_frame / self.fps * self.audio_sr)
-=======
         audio_path = self.app_state.audio_path or self.audio_source
         if audio_path:
             with AudioLoader(audio_path) as data:
                 audio_sr = data.rate
                 start_sample = int(start_frame / self.fps * audio_sr)
                 end_sample = int(end_frame / self.fps * audio_sr)
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 segment = data[start_sample:end_sample]
 
             if segment.ndim > 1:
@@ -205,15 +180,9 @@ class NapariVideoSync(QObject):
                 segment = segment[:, channel_idx]
 
             if self.app_state.av_speed_coupled:
-<<<<<<< HEAD
-                rate = (self.fps_playback / self.fps) * self.audio_sr
-            else:
-                rate = self.app_state.audio_playback_speed * self.audio_sr
-=======
                 rate = (self.fps_playback / self.fps) * audio_sr
             else:
                 rate = self.app_state.audio_playback_speed * audio_sr
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             self._audio_player = PlayAudio()
             self._audio_player.play(data=segment, rate=float(rate), blocking=False)
 
@@ -250,10 +219,7 @@ class NapariVideoSync(QObject):
         if self._segment_end_actual_frame is not None:
             self._segment_end_actual_frame = None
             self.stop()
-<<<<<<< HEAD
-=======
             self._stop_audio()
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
     def _start_skip_playback(self):

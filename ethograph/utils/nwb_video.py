@@ -7,14 +7,6 @@ import urllib.error
 import urllib.request
 import webbrowser
 from pathlib import Path, PurePosixPath
-<<<<<<< HEAD
-from typing import TYPE_CHECKING, Optional
-
-import av
-import numpy as np
-from pynwb import NWBFile
-from pynwb.image import ImageSeries
-=======
 from typing import TYPE_CHECKING, Any, Optional
 
 import numpy as np
@@ -28,7 +20,6 @@ except ImportError as e:
         "av and pynwb are required for NWB video utilities. "
         "Install them with: uv pip install \"ethograph[nwb]\""
     ) from e
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 from ethograph.utils.nwb import open_nwb_dandi
 
@@ -236,11 +227,8 @@ def discover_video_series(nwbfile: NWBFile) -> dict[str, ImageSeries]:
     for name, obj in nwbfile.acquisition.items():
         if isinstance(obj, ImageSeries) and obj.external_file is not None:
             video_series[name] = obj
-<<<<<<< HEAD
-=======
         
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     return video_series
 
 
@@ -416,8 +404,6 @@ def get_pose_estimation_info(nwbfile: NWBFile) -> dict[str, dict]:
     return info
 
 
-<<<<<<< HEAD
-=======
 def probe_local_video_metadata(path: str) -> dict:
     """Probe video metadata from a local file using PyAV.
 
@@ -516,7 +502,6 @@ def get_local_video_info(nwbfile: NWBFile, nwb_path: str) -> dict[str, dict]:
     return video_info
 
 
->>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 def probe_dandi_video_metadata(url: str) -> dict:
     """Probe video metadata from a remote URL using HTTP HEAD and PyAV.
 
