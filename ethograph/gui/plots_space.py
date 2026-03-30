@@ -296,7 +296,10 @@ class SpacePlot(QWidget):
 
         self.ds_kwargs = ds_kwargs
 
-        arena = load_arena_config(eto.get_project_root() / "configs" / "arena.yaml")
+        from ethograph.utils.paths import find_config
+        data_dir = Path(self.app_state.nc_file_path).parent if self.app_state.nc_file_path else None
+        arena_path = find_config("arena.yaml", data_dir)
+        arena = load_arena_config(arena_path) if arena_path else None
         X, Y, Z = space_plot_pyqt(
             self.space_widget, self.app_state.ds, color_variable, view_3d, arena=arena, **ds_kwargs
         )

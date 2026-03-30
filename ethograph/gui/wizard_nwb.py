@@ -46,7 +46,7 @@ from ethograph.gui.dialog_pose_video_matcher import PoseVideoMatcherWidget
 from ethograph.gui.makepretty import styled_link
 from ethograph.gui.notify import notify_dialog
 from ethograph.gui.wizard_multi_timeline import draw_session_timeline
-from ethograph.labels.converters import NWBLabelConverter
+from ethograph.labels.converters import NWBLabelConverter, write_mapping_file
 from ethograph.labels.tsv_store import init_empty_labels, labels_tsv_path, save_labels_tsv
 from ethograph.utils.nwb import (
     download_clip,
@@ -1244,7 +1244,10 @@ class NWBImportDialog(QDialog):
             self._set_ephys_attrs(dt, ephys_series, source_info)
             self._set_raw_asset_attr(dt, source_info)
             if label_source:
-                all_labels_df = NWBLabelConverter().from_nwb(self._nwb, trials_df)
+                converter = NWBLabelConverter()
+                all_labels_df = converter.from_nwb(self._nwb, trials_df)
+                mapping_dir = Path(output_dir) / ".ethograph"
+                write_mapping_file(mapping_dir / "mapping.txt", converter.label_map)
             else:
                 all_labels_df = init_empty_labels(dt.trials)
             self._set_video_files(dt, matching, output_dir, include_pose)

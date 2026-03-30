@@ -33,7 +33,7 @@ def first_trial_ds(trial_tree):
 
 @pytest.fixture
 def type_vars_dict(first_trial_ds, trial_tree):
-    from ethograph.utils.validation import extract_type_vars
+    from ethograph.io.validation import extract_type_vars
     return extract_type_vars(first_trial_ds, trial_tree)
 
 
@@ -55,11 +55,12 @@ def app_state(qtbot, tmp_path):
 def gui(qtbot, tmp_path, monkeypatch):
     import ethograph.utils.paths as paths_module
 
-    yaml_path = tmp_path / "test_gui_settings.yaml"
+    test_config_dir = tmp_path / ".ethograph"
+    test_config_dir.mkdir(exist_ok=True)
     monkeypatch.setattr(
         paths_module,
-        "gui_default_settings_path",
-        lambda: yaml_path,
+        "default_config_dir",
+        lambda data_dir=None: test_config_dir,
     )
 
     import napari

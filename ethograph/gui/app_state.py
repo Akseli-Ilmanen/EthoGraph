@@ -260,6 +260,13 @@ class AppStateSpec:
         "fr_bin_size": (float, 0.01, True),
         "fr_sigma": (float, 2.0, True),
 
+        # Changepoint correction
+        "cp_min_label_length_s": (float, 0.05, True),
+        "cp_stitch_gap_len_s": (float, 0.015, True),
+        "cp_max_expansion_s": (float, 0.05, True),
+        "cp_max_shrink_s": (float, 0.05, True),
+        "cp_label_thresholds": (dict, {}, True),
+
         # Function params cache (dialog_function_params.py)
         "function_params_cache": (dict, {}, True),
     }

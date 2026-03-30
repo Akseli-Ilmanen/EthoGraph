@@ -12,7 +12,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ethograph.utils.paths import gui_default_settings_path
+from ethograph.utils.paths import default_config_dir
 
 from .app_constants import (
     DEFAULT_LAYOUT_MARGIN,
@@ -51,10 +51,10 @@ class MetaWidget(CollapsibleWidgetContainer):
         self._set_compact_font()
 
         # Create centralized app_state with YAML persistence
-        yaml_path = gui_default_settings_path()
-        logger.info("Settings file: %s", yaml_path)
+        global_settings = default_config_dir() / "gui_settings.yaml"
+        logger.info("Settings file: %s", global_settings)
 
-        self.app_state = ObservableAppState(yaml_path=str(yaml_path))
+        self.app_state = ObservableAppState(yaml_path=str(global_settings))
 
         # Try to load previous settings
         self.app_state.load_from_yaml()

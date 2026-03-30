@@ -74,7 +74,8 @@ if __name__ == "__main__":
    
    
 
-   mapping_file = os.path.join(eto.get_project_root(), "configs", "mapping.txt")
+   from ethograph.utils.paths import find_config
+   mapping_file = str(find_config("mapping.txt") or os.path.join(eto.get_project_root(), "configs", "mapping.txt"))
    
    
    nc_paths = [

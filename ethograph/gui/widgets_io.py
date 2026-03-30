@@ -25,7 +25,7 @@ from qtpy.QtWidgets import (
 )
 
 import ethograph as eto
-from ethograph.utils.paths import find_mapping_file, gui_default_settings_path
+from ethograph.utils.paths import default_config_dir, find_config, find_mapping_file
 from ethograph.io.validation import EPHYS_FILE_FILTER
 from ethograph.labels.tsv_store import labels_tsv_path, load_labels_tsv
 
@@ -444,7 +444,8 @@ class IOWidget(QWidget):
             resolve_crowsetta_mapping,
         )
 
-        configs_dir = eto.get_project_root() / "configs"
+        data_dir = Path(self.app_state.nc_file_path).parent if self.app_state.nc_file_path else None
+        configs_dir = default_config_dir(data_dir)
         mapping_path = self.mapping_file_path_edit.text()
 
         try:
@@ -544,8 +545,8 @@ class IOWidget(QWidget):
 
         from ethograph.labels.converters import write_mapping_file
 
-        configs_dir = eto.get_project_root() / "configs"
-        mapping_path = configs_dir / "mapping_nwb_epochs.txt"
+        data_dir = Path(self.app_state.nc_file_path).parent if self.app_state.nc_file_path else None
+        mapping_path = default_config_dir(data_dir) / "mapping_nwb_epochs.txt"
         write_mapping_file(mapping_path, epoch_mapping)
         self.mapping_file_path_edit.setText(str(mapping_path))
         if self.labels_widget:
@@ -595,8 +596,8 @@ class IOWidget(QWidget):
         self._clear_all_line_edits()
         self._clear_combo_boxes()
 
-        yaml_path = gui_default_settings_path()
-        self.app_state._yaml_path = str(yaml_path)
+        global_settings = default_config_dir() / "gui_settings.yaml"
+        self.app_state._yaml_path = str(global_settings)
         self.app_state.save_to_yaml()
 
     def _on_create_nc_clicked(self):

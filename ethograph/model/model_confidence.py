@@ -23,7 +23,8 @@ def create_classification_probabilities_pdf(label_dt, output_path: Union[str, Pa
     trial_nums = label_dt.trials
     N = len(trial_nums)
 
-    mapping_path = eto.get_project_root() / "configs" / "mapping.txt"
+    from ethograph.utils.paths import find_config
+    mapping_path = find_config("mapping.txt") or Path("mapping.txt")
     label_mappings = load_label_mapping(mapping_path)
     class_colors = [label_mappings[i]['color'] for i in range(len(label_mappings))]
     num_classes = len(label_mappings)

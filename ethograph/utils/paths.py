@@ -53,29 +53,6 @@ def get_project_root(start: Path | None = None) -> Path:
     )
 
 
-def find_media_files(folder: str | Path, extensions: set[str] | list[str], recursive: bool = False) -> list[Path]:
-    """Find all files with given extensions in a folder.
-    
-    Parameters
-    ----------
-    folder
-        Path to search
-    extensions
-        Set or list of file extensions to match (e.g., {'.mp4', '.avi'})
-    recursive
-        If True, search nested subdirectories
-        
-    Returns
-    -------
-    Sorted list of matching file paths
-    """
-    folder = Path(folder)
-    pattern = "**/*" if recursive else "*"
-    files = []
-    for ext in extensions:
-        files.extend(folder.glob(f"{pattern}{ext}"))
-    return sorted(files)
-
 
 def extract_pattern_groups(filenames: list[str | Path], pattern: str, convert_numeric: bool = True) -> list[dict[str, str | int]]:
     """Extract named groups from filenames using a regex pattern.
@@ -118,33 +95,6 @@ def extract_pattern_groups(filenames: list[str | Path], pattern: str, convert_nu
     return results
 
 
-def group_files_by(files: list[Path], key_func) -> dict:
-    """Group files by a key extracted from each filename.
-    
-    Parameters
-    ----------
-    files
-        List of file paths
-    key_func
-        Function that extracts a grouping key from a Path
-        
-    Returns
-    -------
-    Dict mapping keys to lists of file paths
-    
-    Examples
-    --------
-    >>> files = [Path('cam1_001.mp4'), Path('cam1_002.mp4'), Path('cam2_001.mp4')]
-    >>> group_files_by(files, lambda p: p.stem.split('_')[0])
-    {'cam1': [Path('cam1_001.mp4'), Path('cam1_002.mp4')], 
-     'cam2': [Path('cam2_001.mp4')]}
-    """
-    groups: dict = {}
-    for f in files:
-        key = key_func(f)
-        groups.setdefault(key, []).append(f)
-    return groups
-
 
 
 def check_paths_exist(nc_paths):
@@ -158,40 +108,64 @@ def check_paths_exist(nc_paths):
 
 
 
-def find_mapping_file(data_dir: Path | str | None = None) -> Path | None:
-    """Find mapping.txt using priority hierarchy.
+SETTINGS_DIR = ".ethograph"
+
+
+def find_config(name: str, data_dir: Path | str | None = None) -> Path | None:
+    """Find a config file by walking up from *data_dir*, then falling back to global.
 
     Search order:
-    1. ``data_dir/.ethograph/mapping.txt``  (local, next to loaded data)
-    2. ``~/.ethograph/mapping.txt``          (global user config)
-    3. ``project_root/configs/mapping.txt``  (project fallback)
+    1. Walk up from *data_dir* looking for ``.ethograph/{name}`` in each ancestor.
+       This lets a shared ``.ethograph/`` in a parent directory serve multiple
+       sessions, while per-session overrides are found first.
+    2. ``~/.ethograph/{name}``  (global user default)
 
     Parameters
     ----------
+    name
+        Config filename, e.g. ``"mapping.txt"`` or ``"arena.yaml"``.
     data_dir
-        Directory of the loaded data file.  Pass ``None`` to skip the local
-        search (e.g. at application startup before any file is loaded).
+        Directory of the loaded data file.  Pass ``None`` to skip the
+        walk-up search (e.g. at application startup before any file is loaded).
 
     Returns
     -------
     First existing path, or ``None`` if none are found.
+
+    Examples
+    --------
+    >>> find_config("mapping.txt", "/data/project/session_01")
+    PosixPath('/data/project/.ethograph/mapping.txt')
     """
-    candidates: list[Path] = []
     if data_dir is not None:
-        candidates.append(Path(data_dir) / ".ethograph" / "mapping.txt")
-    candidates.append(Path.home() / ".ethograph" / "mapping.txt")
-    try:
-        candidates.append(eto.get_project_root() / "configs" / "mapping.txt")
-    except FileNotFoundError:
-        pass
-    return next((p for p in candidates if p.exists()), None)
+        d = Path(data_dir).resolve()
+        for parent in [d] + list(d.parents):
+            candidate = parent / SETTINGS_DIR / name
+            if candidate.exists():
+                return candidate
+
+    global_candidate = Path.home() / SETTINGS_DIR / name
+    if global_candidate.exists():
+        return global_candidate
+
+    return None
 
 
-def gui_default_settings_path() -> Path:
-    """Get the default path for gui_settings.yaml in the project root."""
-    settings_path = eto.get_project_root() / "configs" / "gui_settings.yaml"
-    settings_path.touch(exist_ok=True)
-    return settings_path
+def default_config_dir(data_dir: Path | str | None = None) -> Path:
+    """Return the ``.ethograph/`` directory where new configs should be written.
+
+    Uses ``data_dir/.ethograph/`` when a data directory is known, otherwise
+    falls back to ``~/.ethograph/``.
+    """
+    if data_dir is not None:
+        return Path(data_dir) / SETTINGS_DIR
+    return Path.home() / SETTINGS_DIR
+
+
+def find_mapping_file(data_dir: Path | str | None = None) -> Path | None:
+    """Find mapping.txt. Convenience wrapper around :func:`find_config`."""
+    return find_config("mapping.txt", data_dir)
+
 
 
 def extract_trial_info_from_filename(path):
@@ -209,62 +183,3 @@ def extract_trial_info_from_filename(path):
     else:
         raise ValueError(f"Filename format not recognized: {filename}")
 
-def get_session_path(user: str, datatype: str, bird: str, session: str, data_folder_type: str):
-    """
-    Args:
-        user (str): e.g. 'Akseli_right' or 'Alice_home'.
-        datatype (str): Type of data (e.g., 'rawdata' or 'derivatives').
-        bird (str): Name of the bird (e.g., 'Ivy', 'Poppy', or 'Freddy').
-        session (str): Date of the session in 'YYYYMMDD_XX' format.
-        data_folder_type (str): 'rigid_local', 'working_local', or 'working_backup'
-
-    Returns:
-        subject_folder (str): Path to the subject folder
-        session_path (str): Path to the rawdata/derivatives session folder
-        data_folder (str): Path to parent data folder
-    """
-    breakpoint()
-    # Desktop path (Windows default, swap for Linux/mac if needed)
-    desktop_path = os.path.join(os.environ.get("USERPROFILE", os.environ.get("HOME")), "Desktop")
-    
-    # Load user_paths.json
-    with open(os.path.join(desktop_path, "user_paths.json"), "r") as f:
-        paths = json.load(f)
-        
-
-    # Select the data folder
-    if data_folder_type == "rigid_local":
-        data_folder = paths[user]["rigid_local_data_folder"]
-    elif data_folder_type == "working_local":
-        data_folder = paths[user]["working_local_data_folder"]
-    elif data_folder_type == "working_backup":
-        data_folder = paths[user]["working_backup_data_folder"]
-    else:
-        raise ValueError("Unknown data folder type.")
-
-    # Bird mapping
-    if bird == "Ivy":
-        sub_name = "sub-01_id-Ivy"
-    elif bird == "Poppy":
-        sub_name = "sub-02_id-Poppy"
-    elif bird == "Freddy":
-        sub_name = "sub-03_id-Freddy"
-    else:
-        raise ValueError("Unknown bird type.")
-
-    # Subject folder
-    subject_folder = os.path.join(data_folder, datatype, sub_name)
-    print(f"Subject folder: {subject_folder}")
-
-    # Find session folder
-    matches = [d for d in os.listdir(subject_folder) if session in d]
-
-    if len(matches) != 1:
-        raise RuntimeError(
-            "Likely causes:\n1) Multiple or no folders found containing the session date."
-            "\n2) Paths wrong in Desktop/user_paths.json."
-        )
-
-    session_path = os.path.join(subject_folder, matches[0])
-
-    return subject_folder, session_path, data_folder
