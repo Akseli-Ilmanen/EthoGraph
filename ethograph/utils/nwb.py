@@ -7,8 +7,57 @@ from pathlib import Path
 from typing import Any, Callable
 
 import subprocess
+<<<<<<< HEAD
 
 import h5py
+=======
+from urllib.parse import parse_qs, urlparse
+
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+try:
+    import h5py
+    import pynwb
+    from pynwb import NWBFile
+except ImportError:
+    h5py = None
+    pynwb = None
+    NWBFile = None
+
+try:
+    import remfile
+except ImportError:
+    remfile = None
+
+try:
+    from dandi.dandiapi import DandiAPIClient
+except ImportError:
+    DandiAPIClient = None
+
+try:
+    from movement.io import load_poses
+except ImportError:
+    load_poses = None
+
+
+def _require_nwb():
+    if pynwb is None:
+        raise ImportError(
+            "h5py and pynwb are required for NWB support. "
+            "Install them with: uv pip install \"ethograph[nwb]\""
+        )
+
+
+def _require_dandi():
+    if DandiAPIClient is None:
+        raise ImportError(
+            "dandi is required for DANDI support. "
+            "Install with: uv pip install \"ethograph[nwb]\""
+        )
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 try:
     import lindi as _lindi
     _LINDI_AVAILABLE = True
@@ -16,6 +65,7 @@ except Exception:
     _lindi = None
     _LINDI_AVAILABLE = False
 
+<<<<<<< HEAD
 import numpy as np
 import pandas as pd
 import pynwb
@@ -26,6 +76,8 @@ from movement.io import load_poses
 from pynwb import NWBFile
 from urllib.parse import parse_qs, urlparse
 
+=======
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 import ethograph as eto
 from ethograph import TrialTree, get_time_coord
 
@@ -87,6 +139,10 @@ def parse_dandi_url(url: str) -> dict | None:
 
 def open_nwb_local(path: str) -> tuple:
     """Open a local NWB file. Returns (nwb, io, h5_file, None)."""
+<<<<<<< HEAD
+=======
+    _require_nwb()
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     h5_file = h5py.File(path, "r")
     io = pynwb.NWBHDF5IO(file=h5_file, mode="r", load_namespaces=True)
     return io.read(), io, h5_file, None
@@ -101,6 +157,11 @@ def open_nwb_dandi(dandiset_id: str, asset_id: str) -> tuple:
 
     Returns (nwb, io, h5_file, rf) where rf=None when lindi is used.
     """
+<<<<<<< HEAD
+=======
+    _require_nwb()
+    _require_dandi()
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     if _LINDI_AVAILABLE:
         lindi_url = (
             f"https://lindi.neurosift.org/dandi/dandisets/{dandiset_id}"
@@ -128,6 +189,10 @@ def find_video_assets(
     asset_id: str | None = None,
     progress_callback: Callable[[str], None] | None = None,
 ) -> list[tuple[str, str]]:
+<<<<<<< HEAD
+=======
+    _require_dandi()
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     video_extensions = frozenset({".mp4", ".avi", ".mov", ".mkv"})
 
     for item in getattr(nwb, "acquisition", {}).values():
@@ -398,6 +463,10 @@ def load_nwb_session(
     include_pose: bool = True,
     behavioral_sources: set[str] | None = None,
 ) -> tuple[TrialTree, pd.DataFrame]:
+<<<<<<< HEAD
+=======
+    _require_nwb()
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     trials_df = read_trials_table(nwb_file)
     if trial_indices is not None:
         trials_df = trials_df.iloc[trial_indices].reset_index(drop=True)
@@ -528,6 +597,32 @@ def load_nwb_session(
 # ---------------------------------------------------------------------------
 
 
+<<<<<<< HEAD
+=======
+def resolve_timeseries_timing(iface: Any) -> tuple[float, float]:
+    """Extract (rate_hz, starting_time_s) from any NWB TimeSeries.
+
+    Handles both NWB timing schemes:
+    - ``rate`` + ``starting_time``: returns them directly.
+    - ``timestamps``: derives rate from median inter-sample interval,
+      starting_time from ``timestamps[0]``.
+
+    Raises ``ValueError`` if neither scheme is available.
+    """
+    if getattr(iface, "rate", None) is not None and iface.rate:
+        t0 = float(iface.starting_time) if getattr(iface, "starting_time", None) is not None else 0.0
+        return float(iface.rate), t0
+    ts = getattr(iface, "timestamps", None)
+    if ts is not None and len(ts) >= 2:
+        ts_arr = np.asarray(ts[:min(len(ts), 10_000)], dtype=np.float64)
+        rate = 1.0 / float(np.median(np.diff(ts_arr)))
+        return rate, float(ts_arr[0])
+    raise ValueError(
+        f"TimeSeries '{getattr(iface, 'name', '?')}' has neither rate nor timestamps."
+    )
+
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 def _has_valid_timing(iface: Any) -> bool:
     """Return True if the interface has either an explicit timestamps array or a rate."""
     if getattr(iface, "timestamps", None) is not None:

@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import json
+<<<<<<< HEAD
+=======
+import logging
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from collections import Counter
 from pathlib import Path
 
@@ -32,14 +36,26 @@ from ethograph.gui.dialog_function_params import _do_open_source
 from ethograph.gui.plots_timeseriessource import compute_trial_alignment, TimeRange, TrialAlignment
 from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
+<<<<<<< HEAD
 from ethograph.utils.xr_utils import get_time_coord
 
+=======
+from ethograph.utils.stream_durations import get_audio_duration, get_ephys_duration, get_pose_duration, get_video_duration
+from ethograph.utils.xr_utils import get_time_coord
+
+logger = logging.getLogger(__name__)
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 # Colors per modality (matching dialog_media_files.py palette)
 MODALITY_COLORS = {
     "video": "#50c8b4",
     "pose": "#e8737a",
     "audio": "#e8c75a",
     "ephys": "#b07ae8",
+<<<<<<< HEAD
+=======
+    "features": "#7ab0e8",
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 }
 
 
@@ -155,7 +171,11 @@ def _code_to_notebook(code: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+<<<<<<< HEAD
 # Duration calculation helpers
+=======
+# Drawing helpers
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 # ---------------------------------------------------------------------------
 
 def _make_rounded_bar(
@@ -171,6 +191,7 @@ def _make_rounded_bar(
     return item
 
 
+<<<<<<< HEAD
 def _get_video_duration(path: str) -> float | None:
     try:
         import av
@@ -204,6 +225,194 @@ def _get_audio_duration(path: str) -> float | None:
 
 
 
+=======
+def draw_session_timeline(
+    plot: pg.PlotWidget,
+    dt,
+    items_out: list | None = None,
+    extra_streams: list[str] | None = None,
+) -> float:
+    """Draw a timeline from ``dt.session`` onto a pyqtgraph PlotWidget.
+
+    Reads ``start_time`` / ``stop_time`` for trial boundaries and
+    ``start_time_{stream}`` for media bar placement.  This is the single
+    source of truth for all timeline visualizations.
+
+    Parameters
+    ----------
+    plot
+        Target PlotWidget (cleared before drawing).
+    dt
+        TrialTree with a populated session node.
+    items_out
+        If provided, appended with all created QGraphicsItems so the
+        caller can remove them later.
+    extra_streams
+        Additional stream names to draw (e.g. ``["features"]``).
+
+    Returns
+    -------
+    float
+        Total duration (max time) for x-axis scaling.
+    """
+    sess = dt.session
+    if sess is None:
+        return 1.0
+
+    dt.print_session()
+
+    items: list = items_out if items_out is not None else []
+    trials = dt.trials
+
+    # Discover which streams have media files or data
+    streams_to_draw: list[tuple[str, str, list[str]]] = []
+    for stream_name in ["video", "pose", "audio", "ephys"] + (extra_streams or []):
+        if stream_name not in sess:
+            continue
+        devices = dt.devices(stream_name)
+        if devices:
+            for dev in devices:
+                streams_to_draw.append((f"{stream_name}: {dev}", stream_name, [dev]))
+        else:
+            streams_to_draw.append((stream_name, stream_name, []))
+
+    # Features: show if any trial has feature data variables
+    has_features = False
+    for trial_id in trials:
+        ds = dt.trial(trial_id)
+        if any(ds[v].attrs.get("type") == "features" for v in ds.data_vars):
+            has_features = True
+            break
+    if has_features:
+        streams_to_draw.append(("features", "features", []))
+
+    if not streams_to_draw:
+        streams_to_draw.append(("(no streams)", "features", []))
+
+    n_rows = len(streams_to_draw)
+    rows_rev = list(reversed(streams_to_draw))
+    y_ticks = [(i + 0.5, rows_rev[i][0]) for i in range(n_rows)]
+    plot.getAxis("left").setTicks([y_ticks])
+    plot.setYRange(-0.2, n_rows + 0.2)
+
+    max_t = 0.0
+    has_start = "start_time" in sess
+    has_stop = "stop_time" in sess
+
+    # --- Trial boundary lines ---
+    for trial_id in trials:
+        t0 = None
+        if has_start:
+            try:
+                t0 = float(sess["start_time"].sel(trial=trial_id))
+            except (KeyError, ValueError):
+                pass
+        if t0 is None or np.isnan(t0):
+            continue
+
+        line = pg.InfiniteLine(
+            pos=t0, angle=90,
+            pen=pg.mkPen("#ffffff", width=1, style=Qt.PenStyle.DotLine),
+        )
+        plot.addItem(line)
+        items.append(line)
+
+        t1 = None
+        if has_stop:
+            try:
+                t1 = float(sess["stop_time"].sel(trial=trial_id))
+            except (KeyError, ValueError):
+                pass
+
+        mid = t0 + ((t1 - t0) / 2 if t1 and not np.isnan(t1) else 5.0)
+        lbl = pg.TextItem(str(trial_id), color="#aaaaaa", anchor=(0.5, 1.0))
+        lbl.setPos(mid, n_rows + 0.1)
+        plot.addItem(lbl)
+        items.append(lbl)
+
+        if t1 and not np.isnan(t1):
+            max_t = max(max_t, t1)
+
+    # --- Stream bars ---
+    from ethograph.io.trialtree import STREAMS
+
+    for row_idx, (label, stream_name, devices) in enumerate(rows_rev):
+        color = pg.mkColor(MODALITY_COLORS.get(stream_name, "#888888"))
+        color.setAlpha(160)
+        bar_brush = pg.mkBrush(color)
+        bar_pen = pg.mkPen(color.lighter(130), width=1)
+        y_base = row_idx
+
+        start_key = f"start_time_{stream_name}"
+        has_media_start = start_key in sess
+
+        # Features are always per-trial (sliced from NWB data)
+        is_per_trial = stream_name == "features"
+        if not is_per_trial and stream_name in sess:
+            is_per_trial = "trial" in sess[stream_name].dims
+
+        if is_per_trial:
+            for trial_id in trials:
+                t_trial_start = 0.0
+                t_trial_end = 0.0
+                if has_start:
+                    try:
+                        t_trial_start = float(sess["start_time"].sel(trial=trial_id))
+                    except (KeyError, ValueError):
+                        continue
+                if has_stop:
+                    try:
+                        t_trial_end = float(sess["stop_time"].sel(trial=trial_id))
+                    except (KeyError, ValueError):
+                        t_trial_end = t_trial_start + 10.0
+                if np.isnan(t_trial_start):
+                    continue
+                if np.isnan(t_trial_end):
+                    t_trial_end = t_trial_start + 10.0
+                bar = _make_rounded_bar(
+                    t_trial_start, t_trial_end, y_base + 0.3, y_base + 0.7,
+                    bar_brush, bar_pen,
+                )
+                plot.addItem(bar)
+                items.append(bar)
+                max_t = max(max_t, t_trial_end)
+        else:
+            # Session-wide: use start_time_{stream} for bar start
+            for dev in (devices or [None]):
+                t_start = 0.0
+                if has_media_start:
+                    sel: dict = {}
+                    s = STREAMS.get(stream_name)
+                    if dev and s and s.device_dim and s.device_dim in sess[start_key].dims:
+                        sel[s.device_dim] = dev
+                    try:
+                        t_start = float(sess[start_key].sel(**sel)) if sel else float(sess[start_key])
+                    except (KeyError, ValueError):
+                        pass
+                if np.isnan(t_start):
+                    t_start = 0.0
+
+                # Bar extends from media start to last trial stop
+                t_end = max_t if max_t > t_start else t_start + 60.0
+                if has_stop:
+                    stops = sess["stop_time"].values
+                    finite = stops[np.isfinite(stops)]
+                    if len(finite) > 0:
+                        t_end = float(finite.max())
+
+                if t_end > t_start:
+                    bar = _make_rounded_bar(
+                        t_start, t_end, y_base + 0.3, y_base + 0.7,
+                        bar_brush, bar_pen,
+                    )
+                    plot.addItem(bar)
+                    items.append(bar)
+                    max_t = max(max_t, t_end)
+
+    total = max(max_t, 1.0)
+    plot.setXRange(0, min(total, 120), padding=0.02)
+    return total
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
 def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
@@ -226,6 +435,7 @@ def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
             fp = str(f)
             dur = None
             if name == "video":
+<<<<<<< HEAD
                 dur = _get_video_duration(fp)
             elif name == "audio":
                 dur = _get_audio_duration(fp)
@@ -233,6 +443,15 @@ def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
                 dur = _estimate_pose_duration(fp, cfg)
             elif name == "ephys":
                 dur = _get_ephys_duration(fp, cfg)
+=======
+                dur = get_video_duration(fp)
+            elif name == "audio":
+                dur = get_audio_duration(fp)
+            elif name == "pose":
+                dur = get_pose_duration(fp, cfg.fps)
+            elif name == "ephys":
+                dur = get_ephys_duration(fp)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             if dur is not None:
                 durs[fp] = dur
 
@@ -241,6 +460,7 @@ def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
 
     return durations
 
+<<<<<<< HEAD
 def _count_csv_headers(path: str) -> int:
     """
     Dynamically count CSV header rows by detecting where data starts.
@@ -313,6 +533,8 @@ def _get_ephys_duration(path: str, cfg: ModalityConfig) -> float | None:
         return len(loader) / loader.rate
     except Exception:
         return None
+=======
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
 def _normalize_trial_key(value: object) -> object:
@@ -739,10 +961,17 @@ class TimelinePage(QWidget):
         self._out_widget.hide()
 
     def populate_from_trialtree(self, dt, app_state):
+<<<<<<< HEAD
         """Populate timeline from a loaded TrialTree.
 
         Uses :func:`compute_trial_alignment` (from ``plots_timeseriessource``) to
         derive each trial's absolute time range and available modalities.
+=======
+        """Populate timeline from a loaded TrialTree's session data.
+
+        Uses ``dt.session`` DataArrays (``start_time``, ``stop_time``,
+        ``start_time_video``, etc.) as the single source of truth.
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         """
         self._clear()
         self._state = None
@@ -750,6 +979,7 @@ class TimelinePage(QWidget):
             "# Open via the New Dataset Wizard to generate alignment code."
         )
 
+<<<<<<< HEAD
         cameras = list(getattr(dt, "cameras", None) or [])
         mics = list(getattr(dt, "mics", None) or [])
 
@@ -837,6 +1067,11 @@ class TimelinePage(QWidget):
         self._total_duration = max(max_t, 1.0)
         self._plot.setXRange(0, min(self._total_duration, 120), padding=0.02)
         self._update_note(end_sources)
+=======
+        self._total_duration = draw_session_timeline(
+            self._plot, dt, items_out=self._items,
+        )
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     @staticmethod
     def _trial_has_modality(dt, trial_id, modality: str, device, ds) -> bool:
@@ -853,8 +1088,13 @@ class TimelinePage(QWidget):
                 return bool(dt.get_audio(trial_id, device))
             if modality == "pose":
                 return bool(dt.get_pose(trial_id, device))
+<<<<<<< HEAD
         except Exception:
             pass
+=======
+        except (KeyError, IndexError):
+            return False
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         return False
 
     @staticmethod
@@ -863,7 +1103,11 @@ class TimelinePage(QWidget):
             try:
                 if dt.get_pose(trial_id, cam):
                     return True
+<<<<<<< HEAD
             except Exception:
+=======
+            except (KeyError, IndexError):
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 pass
         return False
 
@@ -874,7 +1118,11 @@ class TimelinePage(QWidget):
             try:
                 if session_io.stop_time(trial_id) is not None:
                     return "session stop_time"
+<<<<<<< HEAD
             except Exception:
+=======
+            except (KeyError, AttributeError):
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 pass
         if ds is not None:
             for var_name in ds.data_vars:

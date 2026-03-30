@@ -12,6 +12,11 @@ from qtpy.QtWidgets import (
     QProgressDialog,
 )
 
+<<<<<<< HEAD
+=======
+from ethograph.gui.notify import notify
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 class BusyProgressDialog(QProgressDialog):
     """Modal dialog with indeterminate progress bar.
@@ -100,7 +105,11 @@ class BusyProgressDialog(QProgressDialog):
 
     def _show_done(self):
         if self._error:
+<<<<<<< HEAD
             print(f"Error: {self._error}")
+=======
+            notify(str(self._error), "error")
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             short = str(self._error)[:120]
             if len(str(self._error)) > 120:
                 short += "…"

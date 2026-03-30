@@ -2,16 +2,29 @@
 
 from __future__ import annotations
 
+<<<<<<< HEAD
+=======
+import logging
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 import os
 import threading
 from typing import TYPE_CHECKING, Optional
 
+<<<<<<< HEAD
+=======
+logger = logging.getLogger(__name__)
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 import numpy as np
 import pyqtgraph as pg
 from audioio import AudioLoader
 from qtpy.QtCore import Signal
 from scipy.signal import spectrogram
 
+<<<<<<< HEAD
+=======
+from .modality import ModalitySource
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from .plots_base import BasePlot, ThrottleDebounce
 from .app_constants import (
     SPECTROGRAM_DEBOUNCE_MS,
@@ -21,9 +34,12 @@ from .app_constants import (
     Z_INDEX_BACKGROUND,
 )
 
+<<<<<<< HEAD
 if TYPE_CHECKING:
     from .data_sources import SpectrogramSource
 
+=======
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 class SharedAudioCache:
     """Singleton cache for AudioLoader instances.
@@ -46,7 +62,11 @@ class SharedAudioCache:
                 try:
                     cls._instances[audio_path] = AudioLoader(audio_path, buffersize=buffer_size)
                 except (OSError, IOError, ValueError) as e:
+<<<<<<< HEAD
                     print(f"Failed to load audio file {audio_path}: {e}")
+=======
+                    logger.error("Failed to load audio file %s: %s", audio_path, e)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                     return None
             return cls._instances[audio_path]
 
@@ -74,7 +94,11 @@ class SpectrogramPlot(BasePlot):
 
         self.init_colorbar()
         self.buffer = SpectrogramBuffer(app_state)
+<<<<<<< HEAD
         self.source: SpectrogramSource | None = None
+=======
+        self.source: ModalitySource | None = None
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         self._set_frequency_limits()
 
@@ -106,8 +130,13 @@ class SpectrogramPlot(BasePlot):
             vmax = self.app_state.get_with_default("vmax_db")
         self.spec_item.setLevels([vmin, vmax])
 
+<<<<<<< HEAD
     def set_source(self, source: SpectrogramSource | None):
         """Set a custom spectrogram source (e.g. XarraySource). Clears buffer."""
+=======
+    def set_source(self, source: ModalitySource | None):
+        """Set a ModalitySource for spectrogram data. Clears buffer."""
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self.source = source
         self.buffer._clear_buffer()
         if source is not None:
@@ -147,7 +176,11 @@ class SpectrogramPlot(BasePlot):
         nyquist_freq = DEFAULT_FALLBACK_MAX_FREQUENCY
 
         if self.source is not None:
+<<<<<<< HEAD
             nyquist_freq = self.source.rate / 2
+=======
+            nyquist_freq = self.source.sampling_rate / 2
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         else:
             audio_path = getattr(self.app_state, 'audio_path', None)
             if audio_path:
@@ -231,7 +264,11 @@ class SpectrogramBuffer:
         margin = (t1 - t0) * BUFFER_COVERAGE_MARGIN
         return self.buffer_t0 <= t0 - margin and self.buffer_t1 >= t1 + margin
 
+<<<<<<< HEAD
     def get_spectrogram(self, source: SpectrogramSource, t0: float, t1: float):
+=======
+    def get_spectrogram(self, source: ModalitySource, t0: float, t1: float):
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         """Get spectrogram data, computing only if necessary."""
         if source.identity != self.current_identity:
             self._clear_buffer()
@@ -247,20 +284,35 @@ class SpectrogramBuffer:
 
         return self.Sxx_db, self._get_spec_rect()
 
+<<<<<<< HEAD
     def _compute_buffer(self, source: SpectrogramSource, t0: float, t1: float):
         """Compute spectrogram for buffered range."""
         self.fs = source.rate
+=======
+    def _compute_buffer(self, source: ModalitySource, t0: float, t1: float):
+        """Compute spectrogram for buffered range."""
+        self.fs = source.sampling_rate
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         window_size = t1 - t0
         buffer_size = window_size * self.buffer_multiplier
         self.buffer_t0 = max(0.0, t0 - buffer_size / 2)
         self.buffer_t1 = t1 + buffer_size / 2
 
+<<<<<<< HEAD
         max_time = source.duration
         if self.buffer_t1 > max_time:
             self.buffer_t1 = max_time
 
         audio_data = source.get_data(self.buffer_t0, self.buffer_t1)
+=======
+        max_time = source.time_range.duration
+        if self.buffer_t1 > max_time:
+            self.buffer_t1 = max_time
+
+        result = source.get_data(self.buffer_t0, self.buffer_t1)
+        audio_data = result.values if hasattr(result, 'values') else result
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         if len(audio_data) == 0:
             return

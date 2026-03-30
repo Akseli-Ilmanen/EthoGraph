@@ -17,16 +17,26 @@ from qtpy.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QInputDialog,
+<<<<<<< HEAD
     QMessageBox,
+=======
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     QPlainTextEdit,
     QPushButton,
     QSplitter,
     QTextBrowser,
     QVBoxLayout,
 )
+<<<<<<< HEAD
 
 import ruptures as rpt
 
+=======
+import ruptures as rpt
+
+from ethograph.gui.notify import notify_dialog
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
 # ---------------------------------------------------------------------------
@@ -985,7 +995,11 @@ class FunctionParamsDialog(QDialog):
         )
         result, error = _validate_and_convert(raw, self._param_infos)
         if error:
+<<<<<<< HEAD
             QMessageBox.warning(self, "Validation Error", error)
+=======
+            notify_dialog(error, "warning", "Validation Error", self)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
         result.update(self._spec.fixed_params)
         self._result_params = result
@@ -1000,7 +1014,11 @@ class FunctionParamsDialog(QDialog):
         )
         result, error = _validate_and_convert(raw, self._param_infos)
         if error:
+<<<<<<< HEAD
             QMessageBox.warning(self, "Validation Error", error)
+=======
+            notify_dialog(error, "warning", "Validation Error", self)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         # Merge defaults, fixed params, and user values for template formatting

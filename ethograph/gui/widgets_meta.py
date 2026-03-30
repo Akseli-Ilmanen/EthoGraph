@@ -1,5 +1,10 @@
 """Widget container for other collapsible widgets."""
 
+<<<<<<< HEAD
+=======
+import logging
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from napari.viewer import Viewer
 from qt_niu.collapsible_widget import CollapsibleWidgetContainer
 from qtpy.QtCore import Qt, QTimer
@@ -33,6 +38,10 @@ from .widgets_plot_settings import PlotSettingsWidget
 from .widgets_transform import TransformWidget
 from .widgets_ephys import EphysWidget
 
+<<<<<<< HEAD
+=======
+logger = logging.getLogger(__name__)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
 class MetaWidget(CollapsibleWidgetContainer):
@@ -49,7 +58,11 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         # Create centralized app_state with YAML persistence
         yaml_path = gui_default_settings_path()
+<<<<<<< HEAD
         print(f"Settings file: {yaml_path}")
+=======
+        logger.info("Settings file: %s", yaml_path)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         self.app_state = ObservableAppState(yaml_path=str(yaml_path))
 
@@ -142,6 +155,10 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.transform_widget.set_meta_widget(self)
         self.changepoints_widget.set_plot_container(self.plot_container)
         self.changepoints_widget.set_meta_widget(self)
+<<<<<<< HEAD
+=======
+        self.changepoints_widget.data_widget = self.data_widget
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self.changepoints_widget.set_motif_mappings(self.labels_widget._mappings)
         self.navigation_widget.set_plot_container(self.plot_container)
         self.ephys_widget.set_plot_container(self.plot_container)
@@ -320,6 +337,7 @@ class MetaWidget(CollapsibleWidgetContainer):
 
             # Get verification status
             verification_emoji = "❌"  # Default to not verified
+<<<<<<< HEAD
             if (hasattr(self.app_state, 'label_dt') and self.app_state.label_dt is not None and
                 hasattr(self.app_state, 'trials_sel') and self.app_state.trials_sel is not None):
                 try:
@@ -328,6 +346,12 @@ class MetaWidget(CollapsibleWidgetContainer):
                         verification_emoji = "✅"
                 except (KeyError, AttributeError):
                     pass
+=======
+            if hasattr(self.app_state, 'trials_sel') and self.app_state.trials_sel is not None:
+                trial_meta = self.app_state.get_trial_meta(self.app_state.trials_sel)
+                if trial_meta.get('human_verified', 0):
+                    verification_emoji = "✅"
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
             # Update the title
             new_title = f"Label controls {verification_emoji}"
@@ -378,7 +402,11 @@ class MetaWidget(CollapsibleWidgetContainer):
                     self.app_state.save_labels()
                     # If save was successful, changes_saved will be True now
                     return True  # OK to close
+<<<<<<< HEAD
                 except Exception as e:
+=======
+                except (OSError, PermissionError) as e:
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                     error_msg = QMessageBox()
                     error_msg.setWindowTitle("Save Error")
                     error_msg.setText(f"Failed to save changes: {str(e)}")
@@ -442,7 +470,11 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         except (AttributeError, KeyError, TypeError) as e:
             # Silently handle any issues with notification configuration
+<<<<<<< HEAD
             print(f"Notification configuration warning: {e}")
+=======
+            logger.warning("Notification configuration warning: %s", e)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def configure_layout_for_data(self):
         """Configure panel visibility and napari canvas after data load.

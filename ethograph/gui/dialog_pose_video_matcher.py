@@ -45,7 +45,11 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+<<<<<<< HEAD
 from ethograph.utils.validation import POSE_EXTENSIONS, VIDEO_EXTENSIONS
+=======
+from ethograph.io.validation import POSE_EXTENSIONS, VIDEO_EXTENSIONS
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
 # ---------------------------------------------------------------------------

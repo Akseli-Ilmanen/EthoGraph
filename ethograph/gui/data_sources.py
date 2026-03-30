@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 """Source-agnostic data providers for the spectrogram and audio trace pipelines."""
 
 from __future__ import annotations
@@ -58,6 +59,18 @@ class SpectrogramSourceAdapter:
 
 def build_audio_source(app_state) -> SpectrogramSourceAdapter | None:
     """Build a SpectrogramSourceAdapter for audio from the current app_state."""
+=======
+"""Source-agnostic data providers for audio pipelines."""
+
+from __future__ import annotations
+
+from .modality import FileSource, ModalitySource
+from .plots_spectrogram import SharedAudioCache
+
+
+def build_audio_source(app_state) -> FileSource | None:
+    """Build a FileSource for audio from the current app_state."""
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     audio_path = getattr(app_state, 'audio_path', None)
     if not audio_path:
         return None
@@ -65,5 +78,9 @@ def build_audio_source(app_state) -> SpectrogramSourceAdapter | None:
     loader = SharedAudioCache.get_loader(audio_path)
     if loader is None:
         return None
+<<<<<<< HEAD
     ts = RegularTimeseriesSource("audio", loader, channel=channel_idx)
     return SpectrogramSourceAdapter(ts, channel=channel_idx)
+=======
+    return FileSource("audio", loader, channel=channel_idx)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955

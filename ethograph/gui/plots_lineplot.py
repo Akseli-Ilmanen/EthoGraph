@@ -1,10 +1,15 @@
 """Enhanced line plot inheriting from BasePlot."""
 
+<<<<<<< HEAD
+=======
+import logging
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from typing import Optional
 
 import numpy as np
 import pyqtgraph as pg
 import matplotlib.pyplot as plt
+<<<<<<< HEAD
 from .app_constants import LINEPLOT_DEBOUNCE_MS
 
 import ethograph as eto
@@ -15,6 +20,19 @@ from .plots_base import BasePlot, ThrottleDebounce
 
 
 
+=======
+
+logger = logging.getLogger(__name__)
+
+import ethograph as eto
+
+from .app_constants import DEFAULT_BUFFER_MULTIPLIER, LINEPLOT_DEBOUNCE_MS
+from .makepretty import clean_display_labels
+from .modality import WindowedBuffer, XarraySource
+from .plots_base import BasePlot, ThrottleDebounce
+
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 class LinePlot(BasePlot):
     """Line plot with lazy loading and shared sync/marker functionality."""
 
@@ -27,11 +45,15 @@ class LinePlot(BasePlot):
         self.plot_items = []
         self.label_items = []
 
+<<<<<<< HEAD
         # Buffer state for lazy loading
         self._buffer_multiplier = 5.0
         self._buffered_ds = None
         self._buffer_t0 = 0.0
         self._buffer_t1 = 0.0
+=======
+        self._buffer = WindowedBuffer(buffer_multiplier=DEFAULT_BUFFER_MULTIPLIER)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self._current_feature = None
         self._current_trial = None
         self._current_ds_kwargs_hash = None
@@ -62,14 +84,28 @@ class LinePlot(BasePlot):
         self._current_trial = getattr(self.app_state, 'trials_sel', None)
         self._current_ds_kwargs_hash = self._get_ds_kwargs_hash()
 
+<<<<<<< HEAD
     def _clear_buffer(self):
         self._buffered_ds = None
         self._buffer_t0 = 0.0
         self._buffer_t1 = 0.0
+=======
+    def _ensure_source(self):
+        """Create/update the XarraySource from current app_state."""
+        ds = self.app_state.ds
+        time_coord = self.app_state.time_coord
+        if ds is None or time_coord is None:
+            self._buffer.set_source(None)
+            return
+        bounds = self.app_state.trial_bounds
+        source = XarraySource(ds, time_coord.name)
+        self._buffer.set_source(source, bounds=bounds)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def _get_buffered_ds(self, t0: float, t1: float):
         """Get buffered dataset slice for the visible time range."""
         if self._context_changed():
+<<<<<<< HEAD
             self._clear_buffer()
             self._update_context()
 
@@ -108,6 +144,16 @@ class LinePlot(BasePlot):
         self._buffer_t1 = load_t1
 
         return self._buffered_ds
+=======
+            self._buffer.invalidate()
+            self._update_context()
+            self._ensure_source()
+
+        if self._buffer.source is None:
+            self._ensure_source()
+
+        return self._buffer.get(t0, t1)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def _on_view_range_changed(self):
         if not self.isVisible():
@@ -200,7 +246,11 @@ class LinePlot(BasePlot):
 
 class MultiColoredLineItem(pg.GraphicsObject):
     """Efficient multi-colored line for PyQtGraph."""
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     def __init__(self, x, y, colors, width=2):
         super().__init__()
         self.x = x
@@ -208,12 +258,20 @@ class MultiColoredLineItem(pg.GraphicsObject):
         self.colors = colors
         self.width = width
         self.generatePicture()
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     def generatePicture(self):
         self.picture = pg.QtGui.QPicture()
         painter = pg.QtGui.QPainter(self.picture)
         painter.setCompositionMode(pg.QtGui.QPainter.CompositionMode.CompositionMode_SourceOver)
+<<<<<<< HEAD
         
+=======
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         for i in range(len(self.x) - 1):
             if i < len(self.colors):
                 color = self.colors[i]
@@ -221,13 +279,18 @@ class MultiColoredLineItem(pg.GraphicsObject):
                     color = tuple(int(c * 255) for c in color)
             else:
                 color = (255, 255, 255)
+<<<<<<< HEAD
             
+=======
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             pen = pg.mkPen(color=color, width=self.width)
             painter.setPen(pen)
             painter.drawLine(
                 pg.QtCore.QPointF(self.x[i], self.y[i]),
                 pg.QtCore.QPointF(self.x[i+1], self.y[i+1])
             )
+<<<<<<< HEAD
         
         painter.end()
     
@@ -238,28 +301,54 @@ class MultiColoredLineItem(pg.GraphicsObject):
         return pg.QtCore.QRectF(self.picture.boundingRect())
     
     
+=======
+
+        painter.end()
+
+    def paint(self, painter, *args):
+        painter.drawPicture(0, 0, self.picture)
+
+    def boundingRect(self):
+        return pg.QtCore.QRectF(self.picture.boundingRect())
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
 def plot_multidim(plot_item, time, data, coord_labels=None, existing_curves=None):
     """
     Plot multi-dimensional data (e.g., pos, vel) over time using PyQtGraph.
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     Args:
         plot_item: PyQtGraph PlotItem to plot on
         time: time array
         data: shape (time, space)
         coord_labels: list of labels for each dimension (e.g., ['x', 'y', 'z'])
         existing_curves: list to append created curves to
+<<<<<<< HEAD
         
+=======
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     Returns:
         list of PlotDataItem objects
     """
     if existing_curves is None:
         existing_curves = []
+<<<<<<< HEAD
         
     colors = [
         '#1f77b4',  # Blue (replaces white)
         '#d62728',  # Red 
+=======
+
+    colors = [
+        '#1f77b4',  # Blue (replaces white)
+        '#d62728',  # Red
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         '#2ca02c',  # Green
         '#ff7f0e',  # Orange
         '#9467bd',  # Purple
@@ -269,6 +358,7 @@ def plot_multidim(plot_item, time, data, coord_labels=None, existing_curves=None
         '#bcbd22',  # Olive
         '#17becf'   # Cyan
     ]
+<<<<<<< HEAD
     
     for i in range(data.shape[1]):
         label = coord_labels[i] if coord_labels is not None else f"dim {i}"
@@ -276,11 +366,24 @@ def plot_multidim(plot_item, time, data, coord_labels=None, existing_curves=None
         
         curve = plot_item.plot(
             time, data[:, i], 
+=======
+
+    for i in range(data.shape[1]):
+        label = coord_labels[i] if coord_labels is not None else f"dim {i}"
+        color = colors[i % len(colors)]
+
+        curve = plot_item.plot(
+            time, data[:, i],
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             pen=pg.mkPen(color=color, width=2),
             name=label
         )
         existing_curves.append(curve)
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     return existing_curves
 
 
@@ -301,6 +404,7 @@ def plot_singledim(plot_item, time, data, color_data=None, changepoints_dict=Non
 
     # Add changepoints as scatter plots, each with its own color and label
     if changepoints_dict is not None and show_changepoints:
+<<<<<<< HEAD
         # Use tab10 color palette from matplotlib, converted to 0-255 RGB
         
         
@@ -310,6 +414,12 @@ def plot_singledim(plot_item, time, data, color_data=None, changepoints_dict=Non
         colors = [tuple(int(c*255) for c in cmap.colors[i][:3]) for i in range(len(cmap.colors))]
         
         
+=======
+        cmap = plt.get_cmap('tab10')
+
+        colors = [tuple(int(c*255) for c in cmap.colors[i][:3]) for i in range(len(cmap.colors))]
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         for i, (cp_name, cp_array) in enumerate(changepoints_dict.items()):
             idxs = np.where(cp_array)[0]
             color = colors[(i+5) % len(colors)]  # offset to match original
@@ -355,10 +465,13 @@ def plot_ds_variable(plot_item, ds, ds_kwargs, variable, color_variable=None, sh
         plot_item.removeItem(plot_item.legend)
         plot_item.legend = None
 
+<<<<<<< HEAD
     # NOTE: Don't clear all items here - clear_plot_items() handles targeted
     # clearing before this function is called. Blanket clearing removes labels.
 
 
+=======
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     var = ds[variable]
     time = eto.get_time_coord(var).values
 
@@ -410,30 +523,51 @@ def plot_ds_variable(plot_item, ds, ds_kwargs, variable, color_variable=None, sh
             show_changepoints=show_changepoints
         )
     else:
+<<<<<<< HEAD
         print(f"Variable '{variable}' not supported for plotting.")
     
+=======
+        logger.warning("Variable '%s' not supported for plotting", variable)
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     # Add boundary events as vertical lines
     if hasattr(ds, "boundary_events"):
         boundary_events_raw = ds["boundary_events"].values
         valid_events = boundary_events_raw[~np.isnan(boundary_events_raw)]
         eventsIdxs = valid_events.astype(int)
         eventsIdxs = eventsIdxs[(eventsIdxs >= 0) & (eventsIdxs < len(time))]
+<<<<<<< HEAD
         
         for event in eventsIdxs:
             vline = pg.InfiniteLine(
                 pos=time[event], 
                 angle=90, 
+=======
+
+        for event in eventsIdxs:
+            vline = pg.InfiniteLine(
+                pos=time[event],
+                angle=90,
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 pen=pg.mkPen('k', width=2)
             )
             plot_item.addItem(vline)
             plot_items.append(vline)
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     # Set labels and title - use filt_kwargs which contains the applied selections
     ylabel = var.attrs.get("ylabel", variable)
     title_parts = [f"Trial: {ds.attrs.get('trial')}"]
     title_parts.extend(f"{k}={v}" for k, v in filt_kwargs.items())
     title = ", ".join(title_parts)
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     plot_item.setLabel('bottom', 'Time', units='s')
     plot_item.setLabel('left', ylabel, Fontsize='14pt')
     plot_item.setTitle(title)
@@ -472,5 +606,8 @@ def clear_plot_items(plot_item, items_list):
             item.deleteLater()
 
     items_list.clear()
+<<<<<<< HEAD
 
 
+=======
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955

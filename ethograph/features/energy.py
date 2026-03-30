@@ -1,7 +1,20 @@
 import numpy as np
+<<<<<<< HEAD
 import vocalpy as voc
 from scipy.signal import butter, decimate, sosfiltfilt, stft
 
+=======
+from scipy.signal import butter, decimate, sosfiltfilt, stft
+
+try:
+    import vocalpy as voc
+except ImportError as e:
+    raise ImportError(
+        "vocalpy is required for energy envelope features. "
+        "Install it with: uv pip install \"ethograph[audio]\""
+    ) from e
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 def _sosfilter(data, rate, cutoff, mode, order=4, axis=0):
     if mode == 'lp' and cutoff > rate / 2:
@@ -43,7 +56,11 @@ def lowpass_envelope(
 
     Parameters
     ----------
+<<<<<<< HEAD
     data : np.ndarray
+=======
+    data : numpy.ndarray
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         Single-channel audio signal.
     rate : float
         Sampling rate of ``data`` in Hz.
@@ -54,9 +71,15 @@ def lowpass_envelope(
 
     Returns
     -------
+<<<<<<< HEAD
     env_time : np.ndarray
         Time axis for the envelope in seconds.
     envelope : np.ndarray
+=======
+    env_time : numpy.ndarray
+        Time axis for the envelope in seconds.
+    envelope : numpy.ndarray
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         Amplitude envelope at ``env_rate``.
     """
     _validate_envelope_params(cutoff, env_rate)
@@ -77,7 +100,11 @@ def highpass_envelope(
 
     Parameters
     ----------
+<<<<<<< HEAD
     data : np.ndarray
+=======
+    data : numpy.ndarray
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         Single-channel audio signal.
     rate : float
         Sampling rate of ``data`` in Hz.
@@ -88,9 +115,15 @@ def highpass_envelope(
 
     Returns
     -------
+<<<<<<< HEAD
     env_time : np.ndarray
         Time axis for the envelope in seconds.
     envelope : np.ndarray
+=======
+    env_time : numpy.ndarray
+        Time axis for the envelope in seconds.
+    envelope : numpy.ndarray
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         Amplitude envelope at ``env_rate``.
     """
     _validate_envelope_params(cutoff, env_rate)
@@ -117,7 +150,11 @@ def bandpass_envelope(
 
     Parameters
     ----------
+<<<<<<< HEAD
     data : np.ndarray
+=======
+    data : numpy.ndarray
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         Single-channel audio signal.
     rate : float
         Sampling rate of ``data`` in Hz.
@@ -131,9 +168,15 @@ def bandpass_envelope(
 
     Returns
     -------
+<<<<<<< HEAD
     env_time : np.ndarray
         Time axis for the envelope in seconds.
     envelope : np.ndarray
+=======
+    env_time : numpy.ndarray
+        Time axis for the envelope in seconds.
+    envelope : numpy.ndarray
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         Amplitude envelope at ``env_rate``.
     """
     _validate_envelope_params(cutoff, env_rate)
@@ -195,8 +238,30 @@ def env_meansquared(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute meansquared energy envelope from a 1-D audio array.
 
+<<<<<<< HEAD
     Returns (env_time, envelope) where env_time is seconds and
     envelope is the meansquared energy at the original sample rate.
+=======
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Single-channel audio signal.
+    rate : float
+        Sample rate in Hz.
+    freq_cutoffs : tuple, optional
+        Frequency cutoffs forwarded to vocalpy.
+    smooth_win : int
+        Smoothing window size.
+    **kwargs
+        Extra keyword arguments forwarded to vocalpy.
+
+    Returns
+    -------
+    env_time : numpy.ndarray
+        Time axis in seconds.
+    envelope : numpy.ndarray
+        Meansquared energy envelope.
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     """
     sound = _to_sound(data, rate)
     ms_kwargs = {}
@@ -225,7 +290,37 @@ def env_ava(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute AVA amplitude envelope from a 1-D audio array.
 
+<<<<<<< HEAD
     Returns (env_time, envelope).
+=======
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Single-channel audio signal.
+    rate : float
+        Sample rate in Hz.
+    nperseg : int
+        STFT segment length.
+    noverlap : int
+        STFT overlap.
+    min_freq : float
+        Minimum frequency in Hz.
+    max_freq : float
+        Maximum frequency in Hz.
+    smoothing_timescale : float
+        Smoothing timescale in seconds.
+    use_softmax_amp : bool
+        Whether to use softmax amplitude.
+    **kwargs
+        Extra keyword arguments forwarded to vocalpy.
+
+    Returns
+    -------
+    env_time : numpy.ndarray
+        Time axis in seconds.
+    envelope : numpy.ndarray
+        AVA amplitude envelope.
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     """
     energy_kwargs = {
         "nperseg": nperseg,
@@ -286,6 +381,32 @@ def _ava_spect_bounds(
 
 
 def get_lowpass_envelope(audio_path: str, audio_sr: int | None, fps: float):
+<<<<<<< HEAD
+=======
+    """Load an audio file and return a lowpass amplitude envelope aligned to video frames.
+
+    Converts MP4 to WAV if needed, computes :func:`lowpass_envelope`, then
+    interpolates to match the video frame rate.
+
+    Parameters
+    ----------
+    audio_path : str
+        Path to the audio file (.wav or .mp4).
+    audio_sr : int or None
+        Override the file's sample rate. If None, use the file's own rate.
+    fps : float
+        Video frame rate used to align the output envelope. Must come from
+        actual video metadata — do not hard-code a default.
+
+    Returns
+    -------
+    envelope : numpy.ndarray
+        Amplitude envelope resampled to ``fps``, length = n_frames.
+    gen_wav_path : str or None
+        Path to a temporary WAV file created from MP4, or None if no
+        conversion was needed.
+    """
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     from pathlib import Path
 
     import audioio as aio

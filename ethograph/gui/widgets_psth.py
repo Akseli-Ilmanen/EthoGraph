@@ -20,8 +20,16 @@ NavigationWidget uses) — no logic is duplicated.
 
 from __future__ import annotations
 
+<<<<<<< HEAD
 from pathlib import Path
 
+=======
+import logging
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 import numpy as np
 import pynapple as nap
 from qtpy.QtCore import Qt, Signal
@@ -35,7 +43,10 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+<<<<<<< HEAD
     QMessageBox,
+=======
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     QPushButton,
     QRadioButton,
     QSpinBox,
@@ -43,6 +54,11 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+<<<<<<< HEAD
+=======
+from ethograph.gui.notify import notify_dialog
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from .plots_psth import PSTHPlot, sort_trials
 
 
@@ -450,7 +466,11 @@ class PSTHDialog(QDialog):
                 ds = self.app_state.dt.trial(trial_id)
                 val = ds.attrs.get(key)
                 group[trial_i] = val_to_idx.get(val, 0)
+<<<<<<< HEAD
             except Exception:
+=======
+            except (KeyError, AttributeError):
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 group[trial_i] = 0
 
         return group, [str(v) for v in all_vals]
@@ -522,7 +542,11 @@ class PSTHDialog(QDialog):
             if stop is not None:
                 return stop
         else:
+<<<<<<< HEAD
             print("fdas")
+=======
+            return None
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
     def _get_label_local_t(self, trial_id: str, label_id: int, use_offset: bool) -> float | None:
@@ -603,10 +627,17 @@ class PSTHDialog(QDialog):
 
             if not ref_times_abs:
                 label_name = self._align_combo.currentText()
+<<<<<<< HEAD
                 QMessageBox.warning(
                     self, "No events found",
                     f"Label '{label_name}' has no occurrences in any trial.\n"
                     "Falling back to Trial start alignment.",
+=======
+                notify_dialog(
+                    f"Label '{label_name}' has no occurrences in any trial.\n"
+                    "Falling back to Trial start alignment.",
+                    "warning", "No events found", self,
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 )
                 self._align_combo.blockSignals(True)
                 self._align_combo.setCurrentIndex(0)  # "Trial start"

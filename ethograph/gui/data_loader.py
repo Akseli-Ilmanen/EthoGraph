@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import ethograph as eto
+<<<<<<< HEAD
 from ethograph.utils.validation import extract_type_vars, validate_datatree
 from movement.io import load_poses, save_poses
 from movement.io import load
@@ -16,6 +17,25 @@ from movement.kinematics import compute_acceleration, compute_pairwise_distances
 
 def _show_popup(message: str, title: str = "Load Error") -> None:
     print(f"[{title}] {message}", flush=True)
+=======
+from ethograph.io.validation import extract_type_vars, validate_datatree
+from movement.io import load, load_poses, save_poses
+from movement.kinematics import compute_acceleration, compute_pairwise_distances, compute_speed, compute_velocity
+
+from ethograph.gui.notify import notify_dialog
+from ethograph.io.trialtree import TrialTree
+from ethograph.labels.tsv_store import (
+    init_empty_labels,
+    labels_tsv_path,
+    load_labels_tsv,
+    save_labels_tsv,
+)
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 def load_dataset(
     file_path: str,
@@ -23,6 +43,7 @@ def load_dataset(
     progress_callback: Callable[[str], None] | None = None,
     max_trials: int | None = None,
     dandiset_id: str | None = None,
+<<<<<<< HEAD
 ) -> Tuple[Optional[xr.Dataset], Optional[dict]]:
     """Load dataset from file path and cache metadata on the instance.
 
@@ -34,10 +55,19 @@ def load_dataset(
 
     Returns:
         Tuple of (dt, label_dt, type_vars_dict) on success.
+=======
+    import_labels: bool = True,
+) -> tuple:
+    """Load dataset from file path.
+
+    Returns:
+        Tuple of (dt, all_labels_df, type_vars_dict) on success.
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     Raises:
         ValueError: On validation or format errors (popup shown before raising).
     """
+<<<<<<< HEAD
 
     dt = eto.open(file_path)
     label_dt = dt.get_label_dt()
@@ -47,14 +77,37 @@ def load_dataset(
     errors = validate_datatree(
         dt, require_fps=require_fps,
     )
+=======
+    dt = eto.open(file_path)
+    type_vars_dict = extract_type_vars(dt.itrial(0), dt)
+
+    errors = validate_datatree(dt, require_fps=require_fps)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     if errors:
         error_msg = "\n".join(f"• {e}" for e in errors)
         suffix_msg = "\n\nSee documentation: XXX"
         msg = "Validation failed:\n" + error_msg + suffix_msg
+<<<<<<< HEAD
         _show_popup(msg, title="Validation Error")
         raise ValueError(msg)
 
     return dt, label_dt, type_vars_dict
+=======
+        notify_dialog(msg, "error", "Validation Error")
+        raise ValueError(msg)
+
+    nc_path = Path(file_path)
+    tsv_path = labels_tsv_path(nc_path)
+
+    if tsv_path.exists():
+        all_labels_df = load_labels_tsv(tsv_path)
+        logger.info("Loaded labels from %s", tsv_path.name)
+    
+    else:
+        all_labels_df = init_empty_labels(dt.trials)
+
+    return dt, all_labels_df, type_vars_dict
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
 def _wizard_single_media_helper(
@@ -85,6 +138,14 @@ def _wizard_single_media_helper(
     )
 
     dt["session"] = xr.DataTree(session)
+<<<<<<< HEAD
+=======
+
+    fps = dt.itrial(0).attrs.get("fps")
+    if fps is not None and "cameras" in coords:
+        dt.set_video_fps(float(fps), device_labels=coords["cameras"])
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     return dt
 
    
@@ -108,17 +169,26 @@ def wizard_single_from_pose(
     """
     try:
         ds = load.load_dataset(
+<<<<<<< HEAD
             file_path=pose_path,
+=======
+            pose_path,
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             fps=fps,
             source_software=source_software,
         )
     except (OSError, ValueError, KeyError):
+<<<<<<< HEAD
         # Fallback: try reading as HDF5 DLC-style DataFrame
         df = pd.read_hdf(pose_path)
         pose_path = Path(pose_path).with_suffix(".csv")
         ds = load_poses.from_dlc_style_df(df, fps=fps)
         save_poses.to_dlc_file(ds, str(pose_path))
         ds.attrs["source_software"] = source_software
+=======
+        notify_dialog(f"Failed to load pose data from {pose_path}. Please check the file and try again.", "error", "Pose Load Error")
+        raise
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 
     ds["velocity"] = compute_velocity(ds.position)

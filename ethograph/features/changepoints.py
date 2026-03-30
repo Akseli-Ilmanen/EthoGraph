@@ -6,8 +6,14 @@ import pandas as pd
 from scipy.signal import find_peaks
 
 from ethograph.features.preprocessing import z_normalize
+<<<<<<< HEAD
 from ethograph.utils.labels import find_blocks, fix_endings, purge_small_blocks, stitch_gaps
 from ethograph.utils.label_intervals import purge_short_intervals, stitch_intervals, snap_boundaries
+=======
+from ethograph.labels.intervals import purge_short_intervals, snap_boundaries, stitch_intervals
+from ethograph.labels.ml import find_blocks, fix_endings, purge_small_blocks, stitch_gaps
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -248,7 +254,37 @@ def correct_changepoints_automatic(
 # ---------------------------------------------------------------------------
 
 def correct_changepoints_dense(labels, ds, all_params):
+<<<<<<< HEAD
     """Correct labels with changepoints (dense array, legacy pipeline)."""
+=======
+    """Correct dense label arrays using changepoints (legacy ML pipeline).
+
+    Operates on integer label arrays, not interval DataFrames.
+    Use :func:`correct_changepoints` for the modern interval-native pipeline.
+
+    Parameters
+    ----------
+    labels : array-like
+        Dense integer label array of shape (T,).
+    ds : xr.Dataset
+        Trial dataset containing changepoint variables.
+    all_params : dict
+        Keys:
+
+        - ``cp_kwargs``: Selection kwargs forwarded to ``ds.sel()``.
+        - ``min_label_length_s``: Minimum label duration in seconds.
+        - ``stitch_gap_len_s``: Maximum gap to stitch in seconds.
+        - ``label_thresholds_s``: Per-label minimum durations (dict).
+        - ``changepoint_params``: Dict with ``max_expansion_s`` and
+          ``max_shrink_s``.
+        - ``fps``: Frame rate used to convert seconds to sample counts.
+
+    Returns
+    -------
+    np.ndarray
+        Corrected integer label array of the same shape as ``labels``.
+    """
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     cp_kwargs = all_params["cp_kwargs"]
     
 
@@ -329,7 +365,34 @@ def correct_changepoints_dense(labels, ds, all_params):
 # ---------------------------------------------------------------------------
 
 def merge_changepoints(ds):
+<<<<<<< HEAD
     """Merge all changepoint variables into a single combined mask."""
+=======
+    """Merge all changepoint variables in a dataset into a single boolean mask.
+
+    Combines every variable with ``attrs["type"] == "changepoints"`` using
+    logical OR across all non-time dimensions.  All changepoint variables
+    must share the same ``target_feature`` attribute.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Dataset containing one or more changepoint variables.
+
+    Returns
+    -------
+    ds : xr.Dataset
+        Copy of the input with a new ``"changepoints"`` DataArray
+        (float 0/1) replacing the individual changepoint variables.
+    target_feature : str
+        The shared ``target_feature`` attribute from the input variables.
+
+    Raises
+    ------
+    ValueError
+        If changepoint variables reference different target features.
+    """
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     ds = ds.copy()
     cp_ds = ds.filter_by_attrs(type="changepoints")
 

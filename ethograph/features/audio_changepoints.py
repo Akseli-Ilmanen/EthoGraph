@@ -4,16 +4,34 @@ Uses vocalseg library for detecting vocal onset/offset candidates in audio files
 Reference: https://github.com/timsainb/vocalization-segmentation
 """
 
+<<<<<<< HEAD
 import audioio as aio
 import numpy as np
 import vocalpy as voc
+=======
+import numpy as np
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from scipy.signal import stft
 
 if not hasattr(np, "product"):
     np.product = np.prod
 
+<<<<<<< HEAD
 from vocalseg.continuity_filtering import continuity_segmentation
 from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
+=======
+try:
+    import audioio as aio
+    import vocalpy as voc
+    from vocalseg.continuity_filtering import continuity_segmentation
+    from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
+except ImportError as e:
+    raise ImportError(
+        "audioio, vocalpy, and vocalization-segmentation are required for "
+        "audio changepoint detection. "
+        "Install them with: uv pip install \"ethograph[audio]\""
+    ) from e
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 from ethograph.features.energy import _to_sound, env_ava, env_meansquared
 
@@ -70,7 +88,41 @@ def get_audio_changepoints(
     channel_idx: int = 0,
     **kwargs,
 ) -> tuple:
+<<<<<<< HEAD
 
+=======
+    """Detect vocal onset/offset times from audio using the specified algorithm.
+
+    Supports four backends: ``meansquared`` and ``ava`` (vocalpy), plus
+    ``vocalseg`` and ``continuity`` (vocalseg library dynamic/continuity
+    threshold segmentation).
+
+    Parameters
+    ----------
+    method : str
+        Segmentation algorithm. One of ``"meansquared"``, ``"ava"``,
+        ``"vocalseg"``, ``"continuity"``.
+    audio_path : str, optional
+        Path to an audio file (any format supported by audioio).
+    signal : numpy.ndarray, optional
+        Raw 1-D audio array. Required when ``audio_path`` is None.
+    sr : float, optional
+        Sample rate in Hz. Required when ``signal`` is provided.
+    channel_idx : int
+        Which channel to use for multi-channel audio files.
+    **kwargs
+        Passed to the chosen backend (e.g. ``nperseg``, ``min_freq``).
+
+    Returns
+    -------
+    (onsets, offsets) : tuple[numpy.ndarray, numpy.ndarray]
+        Event onset and offset times in seconds.
+    env_time : numpy.ndarray
+        Time axis for the energy envelope in seconds.
+    envelope : numpy.ndarray
+        Energy amplitude envelope aligned with ``env_time``.
+    """
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     data_1d, sr = _prepare_audio(audio_path, signal, sr, channel_idx)
     sound = _to_sound(data_1d, sr)
 

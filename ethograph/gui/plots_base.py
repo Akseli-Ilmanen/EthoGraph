@@ -1,11 +1,20 @@
 """Shared base class for plot widgets with sync and marker functionality."""
 
+<<<<<<< HEAD
+=======
+import logging
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from typing import Optional, Tuple
 
 import numpy as np
 import pyqtgraph as pg
 from qtpy.QtCore import QTimer, QRunnable, QThreadPool, QObject, Signal, Qt
 
+<<<<<<< HEAD
+=======
+logger = logging.getLogger(__name__)
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 from .app_constants import (
     LOCKED_RANGE_MIN_FACTOR,
@@ -207,7 +216,11 @@ class BasePlot(pg.PlotWidget):
 
         Subclasses should override this method.
         """
+<<<<<<< HEAD
         print(f"[plots_base] update_plot_content called in {self.__class__.__name__} (id={id(self)}) t0={t0}, t1={t1}")
+=======
+        logger.debug("update_plot_content called in %s (id=%s) t0=%s, t1=%s", self.__class__.__name__, id(self), t0, t1)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         raise NotImplementedError("Subclasses must implement update_plot_content")
 
     def apply_y_range(self, ymin: Optional[float], ymax: Optional[float]):
@@ -264,6 +277,7 @@ class BasePlot(pg.PlotWidget):
 
 
 
+<<<<<<< HEAD
     def _get_time_bounds(self) -> Optional[Tuple[float, float]]:
         """Return (t_min, t_max) for this plot's time domain.
 
@@ -276,12 +290,19 @@ class BasePlot(pg.PlotWidget):
         return bounds.start_s, bounds.end_s
 
 
+=======
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     def set_x_range(self, mode='default', curr_xlim=None, center_on_frame=None):
         """Set plot x-range with different behaviors."""
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
 
+<<<<<<< HEAD
         bounds = self._get_time_bounds()
+=======
+        tr = self.app_state.trial_bounds
+        bounds = (tr.start_s, tr.end_s) if tr is not None else None
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         if bounds is None:
             if mode == 'preserve' and curr_xlim:
                 self.vb.setXRange(curr_xlim[0], curr_xlim[1], padding=0)
@@ -329,7 +350,12 @@ class BasePlot(pg.PlotWidget):
             current_ylim = self.vb.viewRange()[1]
             x_range = current_xlim[1] - current_xlim[0]
 
+<<<<<<< HEAD
             bounds = x_bounds_override or self._get_time_bounds()
+=======
+            tr = self.app_state.trial_bounds
+            bounds = x_bounds_override or ((tr.start_s, tr.end_s) if tr is not None else None)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             if hasattr(self.app_state, 'ds') and self.app_state.ds is not None and bounds is not None:
                 data_xmin, data_xmax = bounds
                 data_range = data_xmax - data_xmin
@@ -364,7 +390,11 @@ class BasePlot(pg.PlotWidget):
         ----------
         x_bounds_override
             Optional ``(xMin, xMax)`` to use instead of this plot's own
+<<<<<<< HEAD
             ``_get_time_bounds()``.  The container passes the tightest
+=======
+            ``app_state.trial_bounds``.  The container passes the tightest
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             bounds across all visible panels so that no panel scrolls past
             another's data.
         """
@@ -375,7 +405,12 @@ class BasePlot(pg.PlotWidget):
         )
 
         if hasattr(self.app_state, 'ds') and self.app_state.ds is not None:
+<<<<<<< HEAD
             bounds = x_bounds_override or self._get_time_bounds()
+=======
+            tr = self.app_state.trial_bounds
+            bounds = x_bounds_override or ((tr.start_s, tr.end_s) if tr is not None else None)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             if bounds is not None:
                 xMin, xMax = bounds
                 xRange = xMax - xMin

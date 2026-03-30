@@ -1,9 +1,19 @@
 """Global keyboard shortcut bindings for the ethograph GUI."""
 
+<<<<<<< HEAD
+=======
+import logging
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 import numpy as np
 from napari.layers import Image, Labels, Points, Shapes, Surface, Tracks
 from qtpy.QtWidgets import QMenu
 
+<<<<<<< HEAD
+=======
+logger = logging.getLogger(__name__)
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 def override_napari_shortcuts(viewer):
     number_keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
@@ -27,7 +37,11 @@ def override_napari_shortcuts(viewer):
                 if hasattr(layer_type, 'bind_key'):
                     layer_type.bind_key(key, None)
             except (KeyError, ValueError, AttributeError) as e:
+<<<<<<< HEAD
                 print(f"Could not unbind {key} from {layer_type.__name__}: {e}")
+=======
+                logger.warning("Could not unbind %s from %s: %s", key, layer_type.__name__, e)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     for key in all_keys:
         if hasattr(viewer, "keymap") and key in viewer.keymap:
@@ -224,11 +238,22 @@ def bind_global_shortcuts(meta_widget):
 
     @viewer.bind_key("ctrl+c", overwrite=True)
     def cycle_cameras(v):
+<<<<<<< HEAD
         app_state.cycle_key_sel("cameras", data_widget)
 
     @viewer.bind_key("ctrl+m", overwrite=True)
     def cycle_mics(v):
         app_state.cycle_key_sel("mics", data_widget)
+=======
+        combo = getattr(data_widget, 'primary_camera_combo', None)
+        if combo is not None and combo.count() > 1:
+            next_index = (combo.currentIndex() + 1) % combo.count()
+            combo.setCurrentIndex(next_index)
+
+    @viewer.bind_key("ctrl+m", overwrite=True)
+    def toggle_mics(v):
+        app_state.toggle_key_sel("mics", data_widget)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     @viewer.bind_key("ctrl+h", overwrite=True)
     def cycle_neural_view(v):

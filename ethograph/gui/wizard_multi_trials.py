@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+<<<<<<< HEAD
+=======
+import io
+import logging
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from pathlib import Path
 
 import numpy as np
@@ -26,9 +31,18 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+<<<<<<< HEAD
 from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
 
+=======
+from ethograph.gui.notify import notify_dialog
+from ethograph.gui.wizard_media_files import extract_file_row
+from ethograph.gui.wizard_overview import ModalityConfig, WizardState
+
+logger = logging.getLogger(__name__)
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 def _build_modality_df(
     config: ModalityConfig, stream_name: str,
@@ -420,31 +434,52 @@ class TrialsPage(QWidget):
         try:
             df = pd.read_csv(path, sep=sep)
             self._imported_df = df
+<<<<<<< HEAD
             self._imported_path = path  # Store path for code generation
             self._update_import_table()
             self._refresh_table()
         except Exception as e:
             from qtpy.QtWidgets import QMessageBox
             QMessageBox.critical(self, "Import error", f"Failed to read file:\n{e}")
+=======
+            self._imported_path = path
+            self._update_import_table()
+            self._refresh_table()
+        except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError) as e:
+            logger.exception("Failed to read file")
+            notify_dialog(f"Failed to read file:\n{e}", "error", "Import error", self)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def _paste_from_clipboard(self):
         clipboard = QApplication.clipboard()
         text = clipboard.text()
         if not text.strip():
             return
+<<<<<<< HEAD
         import io
         # Auto-detect separator: tab or comma
+=======
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         first_line = text.strip().split("\n")[0]
         sep = "\t" if "\t" in first_line else ","
         try:
             df = pd.read_csv(io.StringIO(text), sep=sep)
             self._imported_df = df
+<<<<<<< HEAD
             self._imported_path = None  # Pasted data has no file path
             self._update_import_table()
             self._refresh_table()
         except Exception as e:
             from qtpy.QtWidgets import QMessageBox
             QMessageBox.critical(self, "Paste error", f"Failed to parse clipboard:\n{e}")
+=======
+            self._imported_path = None
+            self._update_import_table()
+            self._refresh_table()
+        except (pd.errors.ParserError, pd.errors.EmptyDataError) as e:
+            logger.exception("Failed to parse clipboard")
+            notify_dialog(f"Failed to parse clipboard:\n{e}", "error", "Paste error", self)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
     def _clear_imported(self):
         self._imported_df = None

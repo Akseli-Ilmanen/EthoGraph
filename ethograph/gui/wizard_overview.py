@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+<<<<<<< HEAD
+=======
+import traceback
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -18,7 +22,10 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+<<<<<<< HEAD
     QMessageBox,
+=======
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     QPushButton,
     QRadioButton,
     QStackedWidget,
@@ -27,6 +34,10 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.gui.makepretty import styled_link
+<<<<<<< HEAD
+=======
+from ethograph.gui.notify import notify_dialog
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 if TYPE_CHECKING:
     from ethograph.gui.wizard_media_files import FilePattern
@@ -120,7 +131,11 @@ class _ModeSelectionPage(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(
+<<<<<<< HEAD
             "<b>Create trials.nc file</b><br>"
+=======
+            "<b>➕Create with own data file</b><br>"
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             "Select how your data is organized:"
         ))
         layout.addSpacing(12)
@@ -158,7 +173,11 @@ class _ModeSelectionPage(QWidget):
         nwb_box = QGroupBox("NWB file")
         nb_lay = QVBoxLayout(nwb_box)
         self._rb_nwb_local = QRadioButton("1) Local .nwb file")
+<<<<<<< HEAD
         self._rb_nwb_dandi = QRadioButton("2) DANDI archive (streaming)")
+=======
+        self._rb_nwb_dandi = QRadioButton("2) DANDI archive (downloading individual trials/ streaming)")
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self._top_group.addButton(self._rb_nwb_local)
         self._top_group.addButton(self._rb_nwb_dandi)
         nb_lay.addWidget(self._rb_nwb_local)
@@ -175,8 +194,13 @@ class _ModeSelectionPage(QWidget):
         tut_lay.addWidget(tut_text)
         tut_lay.addSpacing(5)
         tut_link = QLabel(styled_link(
+<<<<<<< HEAD
             "https://github.com/Akseli-Ilmanen/EthoGraph/tree/main/tutorials",
             "View tutorials for creating custom .nc files"
+=======
+            "https://github.com/Akseli-Ilmanen/EthoGraph/tree/main/examples",
+            "View examples for creating custom .nc files"
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         ))
         tut_link.setOpenExternalLinks(True)
         tut_link.setTextFormat(Qt.RichText)
@@ -314,7 +338,11 @@ class NCWizardDialog(QDialog):
         self.io_widget = io_widget
         self._state = WizardState()
 
+<<<<<<< HEAD
         self.setWindowTitle("Create trials.nc — Wizard")
+=======
+        self.setWindowTitle("➕Create with own data — Wizard")
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self.setMinimumWidth(950)
         self.setMinimumHeight(750)
         self.resize(1050, 800)
@@ -384,7 +412,11 @@ class NCWizardDialog(QDialog):
         elif page == 1:
             err = self._page_modality.validate()
             if err:
+<<<<<<< HEAD
                 QMessageBox.warning(self, "Input error", err)
+=======
+                notify_dialog(err, "warning", "Input error", self)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 return
             self._page_modality.collect_state(self._state)
             self._ensure_config_page()
@@ -393,7 +425,11 @@ class NCWizardDialog(QDialog):
         elif page == 2:
             err = self._page_config.validate(self._state)
             if err:
+<<<<<<< HEAD
                 QMessageBox.warning(self, "Input error", err)
+=======
+                notify_dialog(err, "warning", "Input error", self)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 return
             self._page_config.collect_state(self._state)
             self._ensure_trials_page()
@@ -403,7 +439,11 @@ class NCWizardDialog(QDialog):
         elif page == 3:
             err = self._page_trials.validate(self._state)
             if err:
+<<<<<<< HEAD
                 QMessageBox.warning(self, "Input error", err)
+=======
+                notify_dialog(err, "warning", "Input error", self)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 return
             self._page_trials.collect_state(self._state)
             self._ensure_timeline_page()
@@ -411,7 +451,11 @@ class NCWizardDialog(QDialog):
             progress = BusyProgressDialog("Scanning files…", parent=self)
             _, err = progress.execute(self._page_timeline.populate_from_state, self._state)
             if err:
+<<<<<<< HEAD
                 QMessageBox.critical(self, "Error", f"Failed to scan files:\n{err}")
+=======
+                notify_dialog(f"Failed to scan files:\n{err}", "error", "Error", self)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 return
             self._stack.setCurrentIndex(4)
             self._update_nav()
@@ -509,7 +553,11 @@ class NCWizardDialog(QDialog):
 
         output_path = self._state.output_path
         if not output_path:
+<<<<<<< HEAD
             QMessageBox.warning(self, "Missing output", "Please select an output path.")
+=======
+            notify_dialog("Please select an output path.", "warning", "Missing output", self)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         def _build():
@@ -520,17 +568,29 @@ class NCWizardDialog(QDialog):
 
         if progress.was_cancelled or error:
             if error:
+<<<<<<< HEAD
                 QMessageBox.critical(self, "Error", f"Failed to create trials.nc:\n{error}")
+=======
+                notify_dialog(f"Failed to ➕Create with own data:\n{error}", "error", "Error", self)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             return
 
         save_progress = BusyProgressDialog("Saving .nc file…", parent=self)
         _, save_error = save_progress.execute(dt.to_netcdf, output_path)
         if save_error:
+<<<<<<< HEAD
             QMessageBox.critical(self, "Error", f"Failed to save:\n{save_error}")
             return
 
         self._populate_io_fields()
         QMessageBox.information(self, "Success", f"Successfully created:\n{output_path}")
+=======
+            notify_dialog(f"Failed to save:\n{save_error}", "error", "Error", self)
+            return
+
+        self._populate_io_fields()
+        notify_dialog(f"Successfully created:\n{output_path}", "info", "Success", self)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         self.accept()
 
     def _populate_io_fields(self):

@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 import copy
+=======
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 import json
 import os
 from datetime import datetime
@@ -9,15 +12,21 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+<<<<<<< HEAD
 import xarray as xr
 from scipy.stats import entropy
+=======
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 from torch import Tensor, optim
 
 import ethograph as eto
 from ethograph.features.changepoints import correct_changepoints_dense
 from ethograph.model.eval_metrics import func_eval, func_eval_labelwise
+<<<<<<< HEAD
 from ethograph.utils.label_intervals import dense_to_intervals, intervals_to_xr
 from ethograph.model.model_confidence import create_classification_probabilities_pdf
+=======
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -542,14 +551,24 @@ class Trainer:
         
 
     def inference(self, model_path, features_path, batch_gen_tst, epoch, trial_mapping, sample_rate, all_params):
+<<<<<<< HEAD
         self.model.eval()
         
+=======
+        """Run inference and save per-trial .npy files (DLC2Action-compatible format).
+
+        Saves softmax probabilities as (T, n_classes) .npy files per trial,
+        loadable by ``ethograph.labels.predictions.load_predictions_folder``.
+        """
+        self.model.eval()
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
         with torch.no_grad():
             self.model.to(device)
             print("Loading model from {}".format(model_path))
             self.model.load_state_dict(torch.load(model_path, weights_only=True))
 
+<<<<<<< HEAD
             batch_gen_tst.reset(shuffle=False)           
 
             previous_hash = None    
@@ -566,16 +585,30 @@ class Trainer:
                                   "inference": False}
                 
                 
+=======
+            batch_gen_tst.reset(shuffle=False)
+
+            # {hash_key: [(trial_num, probs, corr_labels), ...]}
+            sess_results: dict[str, list] = {}
+            previous_hash = None
+            dt = None
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
             print("Running inference...")
             while batch_gen_tst.has_next():
                 batch_input, batch_target, mask, vids = batch_gen_tst.next_batch(1)
 
+<<<<<<< HEAD
                 vid = vids[0]
                 vid = vid.split('.')[0]
+=======
+                vid = vids[0].split('.')[0]
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
                 features = np.load(features_path + vid + '.npy')
                 features = features[:, ::sample_rate]
 
                 input_x = torch.tensor(features, dtype=torch.float)
+<<<<<<< HEAD
 
                 # input_x =input_x.transpose(1, 0)
                 input_x.unsqueeze_(0)
@@ -822,4 +855,47 @@ class Trainer:
     #                 except Exception as e:
     #                     print(f"Warning: Failed to create classification probabilities PDF: {e}")                    
 
+=======
+                input_x.unsqueeze_(0)
+                input_x = input_x.to(device)
+
+                predictions, _ = self.model(input_x, torch.ones(input_x.size(), device=device))
+
+                # Softmax probabilities → (T, n_classes)
+                probs = torch.softmax(predictions[0], dim=1).squeeze(0).cpu().numpy().T
+
+                hash_key, trial_num = vid.split('_')
+
+                if hash_key != previous_hash:
+                    previous_hash = hash_key
+                    dt = eto.open(trial_mapping[hash_key]["nc_path"])
+
+                predicted = np.argmax(probs, axis=1)
+                corr_pred = correct_changepoints_dense(predicted, dt.trial(trial_num), all_params)
+
+                sess_results.setdefault(hash_key, []).append((trial_num, probs, corr_pred))
+
+            # Save per-trial .npy files
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            for hash_key, trials in sess_results.items():
+                nc_path_obj = Path(trial_mapping[hash_key]["nc_path"])
+                print(f"Saving predictions for session {hash_key}..., nc_path: {nc_path_obj}")
+
+                labels_dir = nc_path_obj.parent / "labels"
+                labels_dir.mkdir(exist_ok=True)
+
+                pred_dir = labels_dir / f"predictions_cetnet_{timestamp}"
+                pred_dir.mkdir(exist_ok=True)
+
+                for trial_num, probs, corr_pred in trials:
+                    np.save(pred_dir / f"cetnet_trial{trial_num}.npy", probs.astype(np.float32))
+
+                    # One-hot from corrected labels
+                    corr_probs = np.zeros_like(probs)
+                    corr_probs[np.arange(len(corr_pred)), corr_pred] = 1.0
+                    np.save(pred_dir / f"cetnet_trial{trial_num}_corr.npy", corr_probs.astype(np.float32))
+
+                print(f"  Saved {len(trials)} trials to {pred_dir}")
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 

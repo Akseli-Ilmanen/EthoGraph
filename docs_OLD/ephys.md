@@ -1,0 +1,1 @@
+Add some notes about loading cluster_info.tsv. Assumes that channelmap idxs from software correspond to kilosort channel idxs. If this is not true, the user should manually convert their cluster_info.tsv, to map from kilosort idxs to recording software idxs, for 'ch' column.

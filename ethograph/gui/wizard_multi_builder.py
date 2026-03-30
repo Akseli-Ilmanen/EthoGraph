@@ -13,8 +13,13 @@ from natsort import natsorted
 from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
 from ethograph.utils.io import dataset_to_basic_trialtree
+<<<<<<< HEAD
 from ethograph.utils.label_intervals import empty_intervals, intervals_to_xr
 from ethograph.utils.trialtree import TrialTree
+=======
+from ethograph.labels.intervals import INTERVAL_COLUMNS
+from ethograph.io.trialtree import TrialTree
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 INTERVAL_COLUMNS = {"onset_s", "offset_s", "labels", "individual"}
 
@@ -76,12 +81,15 @@ def _build_single_trial_ds(
         if pose_path:
             ds = _load_pose_into_ds(ds, pose_path, state.pose)
 
+<<<<<<< HEAD
     # Ensure labels exist
     if "onset_s" not in ds.data_vars:
         interval_ds = intervals_to_xr(empty_intervals())
         for var_name in interval_ds.data_vars:
             ds[var_name] = interval_ds[var_name]
 
+=======
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     # Tag all data variables (except labels and confidence) as features
     for var in list(ds.data_vars):
         if var not in INTERVAL_COLUMNS and var != "confidence":
@@ -267,6 +275,18 @@ def _set_media(
             )
     
 
+<<<<<<< HEAD
+=======
+    video_cfg = state.video if state.video.enabled else (state.pose if state.pose.enabled else None)
+    if cameras and video_cfg and video_cfg.fps is not None:
+        fps_values = [float(video_cfg.fps_by_camera.get(c, video_cfg.fps)) for c in cameras]
+        session["video_fps"] = xr.DataArray(
+            np.array(fps_values, dtype=np.float64),
+            dims=["cameras"],
+            coords={"cameras": cameras},
+        )
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     dt["session"] = xr.DataTree(session)
 
 
@@ -292,6 +312,7 @@ def _set_stream_offsets(
                 # Constant offset across all devices
                 dt.set_stream_offset(stream, cfg.constant_offset)
             elif cfg.device_offsets:
+<<<<<<< HEAD
                 # Per-device offsets stored as session variables
                 if dt.session is not None:
                     session_ds = dt["session"].to_dataset()
@@ -306,6 +327,11 @@ def _set_stream_offsets(
                 
                 if session_ds.data_vars:
                     dt["session"] = xr.DataTree(session_ds)
+=======
+                for device, offset in cfg.device_offsets.items():
+                    if offset != 0.0:
+                        dt.set_stream_offset(stream, offset, device=device)
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
         else:
             # Aligned mode
             if cfg.constant_offset != 0.0:

@@ -7,12 +7,28 @@ import urllib.error
 import urllib.request
 import webbrowser
 from pathlib import Path, PurePosixPath
+<<<<<<< HEAD
 from typing import TYPE_CHECKING, Optional
 
 import av
 import numpy as np
 from pynwb import NWBFile
 from pynwb.image import ImageSeries
+=======
+from typing import TYPE_CHECKING, Any, Optional
+
+import numpy as np
+
+try:
+    import av
+    from pynwb import NWBFile
+    from pynwb.image import ImageSeries
+except ImportError as e:
+    raise ImportError(
+        "av and pynwb are required for NWB video utilities. "
+        "Install them with: uv pip install \"ethograph[nwb]\""
+    ) from e
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 
 from ethograph.utils.nwb import open_nwb_dandi
 
@@ -220,6 +236,11 @@ def discover_video_series(nwbfile: NWBFile) -> dict[str, ImageSeries]:
     for name, obj in nwbfile.acquisition.items():
         if isinstance(obj, ImageSeries) and obj.external_file is not None:
             video_series[name] = obj
+<<<<<<< HEAD
+=======
+        
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
     return video_series
 
 
@@ -395,6 +416,107 @@ def get_pose_estimation_info(nwbfile: NWBFile) -> dict[str, dict]:
     return info
 
 
+<<<<<<< HEAD
+=======
+def probe_local_video_metadata(path: str) -> dict:
+    """Probe video metadata from a local file using PyAV.
+
+    Returns a dict with available keys: size_bytes, width, height, fps,
+    duration_s, frame_count.
+    """
+    metadata: dict = {}
+    file_path = Path(path)
+    if file_path.exists():
+        metadata["size_bytes"] = file_path.stat().st_size
+
+    container = av.open(path)
+    stream = container.streams.video[0]
+    metadata["width"] = stream.codec_context.width
+    metadata["height"] = stream.codec_context.height
+    if stream.average_rate:
+        metadata["fps"] = float(stream.average_rate)
+    if stream.duration is not None and stream.time_base is not None:
+        metadata["duration_s"] = float(stream.duration * stream.time_base)
+    elif container.duration is not None:
+        metadata["duration_s"] = container.duration / 1_000_000
+    if stream.frames:
+        metadata["frame_count"] = stream.frames
+    container.close()
+
+    return metadata
+
+
+def resolve_local_video_paths(nwbfile: NWBFile, nwb_path: str) -> dict[str, str]:
+    """Resolve external_file references in ImageSeries to absolute local paths.
+
+    Parameters
+    ----------
+    nwbfile : NWBFile
+        NWB file containing video ImageSeries.
+    nwb_path : str
+        Path to the NWB file on disk (used to resolve relative paths).
+
+    Returns
+    -------
+    dict[str, str]
+        Mapping of video series names to absolute file paths.
+    """
+    nwb_dir = Path(nwb_path).parent
+    video_series = discover_video_series(nwbfile)
+    paths: dict[str, str] = {}
+    for name, series in video_series.items():
+        relative = series.external_file[0].lstrip("./")
+        candidate = nwb_dir / relative
+        paths[name] = str(candidate) if candidate.exists() else relative
+    return paths
+
+
+def get_local_video_info(nwbfile: NWBFile, nwb_path: str) -> dict[str, dict]:
+    """Get video info for a local NWB file, including resolved file paths.
+
+    Combines NWB timestamp metadata with resolved local file paths.
+
+    Parameters
+    ----------
+    nwbfile : NWBFile
+        NWB file containing video ImageSeries.
+    nwb_path : str
+        Path to the NWB file on disk.
+
+    Returns
+    -------
+    dict[str, dict]
+        Mapping of video names to info dicts with keys:
+        ``path``, ``start``, ``end``.
+    """
+    local_paths = resolve_local_video_paths(nwbfile, nwb_path)
+    video_series = discover_video_series(nwbfile)
+    video_info: dict[str, dict] = {}
+
+    for name, series in video_series.items():
+        info: dict[str, Any] = {"path": local_paths.get(name, "")}
+
+        if series.timestamps is not None and len(series.timestamps) > 0:
+            info["start"] = float(series.timestamps[0])
+            info["end"] = float(series.timestamps[-1])
+        elif series.starting_time is not None and series.rate is not None:
+            n_frames = series.data.shape[0] if hasattr(series.data, "shape") else 0
+            if n_frames > 0:
+                info["start"] = float(series.starting_time)
+                info["end"] = float(series.starting_time + (n_frames - 1) / series.rate)
+            else:
+                info["start"] = 0.0
+                info["end"] = 0.0
+        else:
+            info["start"] = 0.0
+            info["end"] = 0.0
+
+        video_info[name] = info
+
+    return video_info
+
+
+>>>>>>> bbdb95118885b151f0e39e30378a0ec171e43955
 def probe_dandi_video_metadata(url: str) -> dict:
     """Probe video metadata from a remote URL using HTTP HEAD and PyAV.
 
