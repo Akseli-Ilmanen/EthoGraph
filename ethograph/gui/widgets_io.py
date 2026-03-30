@@ -25,7 +25,7 @@ from qtpy.QtWidgets import (
 import ethograph as eto
 from ethograph.utils.paths import find_mapping_file, gui_default_settings_path
 from ethograph.io.validation import EPHYS_FILE_FILTER
-from ethograph.labels.tsv_store import load_labels_tsv
+from ethograph.labels.tsv_store import labels_tsv_path, load_labels_tsv
 
 from .app_state import AppStateSpec
 from .notify import notify_dialog
@@ -324,7 +324,7 @@ class IOWidget(QWidget):
 
         self.label_file_path_edit = QLineEdit()
         if self.import_labels_checkbox.isChecked() and self.app_state.nc_file_path:
-            self.label_file_path_edit.setText(self.app_state.nc_file_path or "")
+            self.label_file_path_edit.setText(str(labels_tsv_path(self.app_state.nc_file_path)))
         labels_layout.addWidget(self.label_file_path_edit)
 
         labels_browse_btn = QPushButton("Browse")
@@ -646,9 +646,7 @@ class IOWidget(QWidget):
                 "Load labels from {name}_labels.tsv alongside the .nc file.\n"
                 "Falls back to labels inside the .nc (legacy) if no .tsv exists."
             )
-            self.import_labels_checkbox.stateChanged.connect(
-                lambda state: setattr(self.app_state, 'import_labels_nc_data', state == 2)
-            )
+            self.import_labels_checkbox.stateChanged.connect(self._on_import_labels_checked)
             self.import_labels_checkbox.setChecked(bool(self.app_state.import_labels_nc_data))
             
 
@@ -665,6 +663,13 @@ class IOWidget(QWidget):
         target_layout.addRow(label, row_layout)
 
         return line_edit
+
+    def _on_import_labels_checked(self, state):
+        self.app_state.import_labels_nc_data = state == 2
+        if state == 2 and self.app_state.nc_file_path:
+            tsv = labels_tsv_path(self.app_state.nc_file_path)
+            if hasattr(self, "label_file_path_edit"):
+                self.label_file_path_edit.setText(str(tsv))
 
     def _on_clear_path_clicked(self, object_name, line_edit):
         line_edit.setText("")

@@ -18,6 +18,7 @@ from qtpy.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -398,10 +399,13 @@ class LabelsWidget(QWidget):
         layout.addLayout(local_backup_row)
 
         # --- Remote backup (optional) ---
-        remote_row = QHBoxLayout()
-        remote_label = QLabel("Remote backup:")
-        remote_label.setFixedWidth(90)
-        remote_row.addWidget(remote_label)
+        remote_group = QGroupBox("Remote backup")
+        remote_group_layout = QVBoxLayout()
+        remote_group_layout.setSpacing(4)
+        remote_group.setLayout(remote_group_layout)
+
+        # Row 1: path + browse
+        remote_path_row = QHBoxLayout()
         self.remote_backup_edit = QLineEdit()
         self.remote_backup_edit.setPlaceholderText("(optional) cloud/git folder...")
         self.remote_backup_edit.setToolTip(
@@ -411,14 +415,16 @@ class LabelsWidget(QWidget):
         if self.app_state.remote_backup_path:
             self.remote_backup_edit.setText(self.app_state.remote_backup_path)
         self.remote_backup_edit.editingFinished.connect(
-            lambda: setattr(self.app_state, 'remote_backup_path', self.remote_backup_edit.text().strip() or None)
+            lambda: setattr(self.app_state, "remote_backup_path", self.remote_backup_edit.text().strip() or None)
         )
-        remote_row.addWidget(self.remote_backup_edit)
-
+        remote_path_row.addWidget(self.remote_backup_edit)
         remote_browse_btn = QPushButton("Browse")
         remote_browse_btn.clicked.connect(self._browse_remote_backup)
-        remote_row.addWidget(remote_browse_btn)
+        remote_path_row.addWidget(remote_browse_btn)
+        remote_group_layout.addLayout(remote_path_row)
 
+        # Row 2: save mode + subfolder depth
+        remote_options_row = QHBoxLayout()
         self.remote_save_mode_combo = QComboBox()
         self.remote_save_mode_combo.addItem("Save with timestamp")
         self.remote_save_mode_combo.addItem("Overwrite file")
@@ -440,8 +446,24 @@ class LabelsWidget(QWidget):
             else:
                 self.app_state.remote_backup_mode = "timestamp"
         self.remote_save_mode_combo.currentTextChanged.connect(_on_mode_changed)
-        remote_row.addWidget(self.remote_save_mode_combo)
-        layout.addLayout(remote_row)
+        remote_options_row.addWidget(self.remote_save_mode_combo)
+
+        self.remote_depth_combo = QComboBox()
+        self.remote_depth_combo.setToolTip(
+            "Controls the subfolder structure inside the remote backup root.\n"
+            "Flat: all files land directly in the remote root.\n"
+            "Higher levels mirror parent directories to avoid filename collisions."
+        )
+        self._populate_remote_depth_combo()
+        self.remote_depth_combo.currentIndexChanged.connect(
+            lambda idx: setattr(self.app_state, "remote_path_depth", idx)
+        )
+        remote_options_row.addWidget(self.remote_depth_combo)
+        remote_group_layout.addLayout(remote_options_row)
+
+        layout.addWidget(remote_group)
+
+        self.app_state.nc_file_path_changed.connect(self._populate_remote_depth_combo)
 
     def _save_labels(self):
         from ethograph.gui.notify import notify_dialog
@@ -449,8 +471,25 @@ class LabelsWidget(QWidget):
         remote_mode = self.app_state.remote_backup_mode
         try:
             self.app_state.save_labels(remote_path=remote_path, remote_mode=remote_mode)
-        except ValueError as e:
+        except Exception as e:
             notify_dialog(str(e), "error", "Save Error", self)
+
+    def _populate_remote_depth_combo(self):
+        if not hasattr(self, "remote_depth_combo"):
+            return
+        nc_path = self.app_state.nc_file_path
+        combo = self.remote_depth_combo
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("Flat (no subfolders)")
+        if nc_path:
+            parts = Path(nc_path).parent.parts[1:]  # strip drive
+            for i, _ in enumerate(parts):
+                subfolder = "/".join(parts[len(parts) - i - 1:])
+                combo.addItem(subfolder)
+        saved_depth = self.app_state.remote_path_depth
+        combo.setCurrentIndex(min(saved_depth, combo.count() - 1))
+        combo.blockSignals(False)
 
     def _browse_remote_backup(self):
         folder = QFileDialog.getExistingDirectory(self, "Select remote backup folder")

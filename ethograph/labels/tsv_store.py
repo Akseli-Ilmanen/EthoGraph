@@ -147,7 +147,9 @@ def save_labels_tsv(path: str | Path, df: pd.DataFrame) -> None:
 
     out = df.copy()
     preferred = [
-        "individual", "trial", "labels", "onset_s", "offset_s", 
+        "session", "trial", "session_trial", "individual", "labels",
+        "onset_s", "offset_s", "trial_onset", "onset_global", "offset_global",
+        "duration", "sequence_idx", "sequence",
         "human_verified", "changepoint_corrected", "prediction_source", "n_samples",
     ]
     cols = [c for c in preferred if c in out.columns]

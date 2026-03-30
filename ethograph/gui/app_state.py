@@ -65,9 +65,13 @@ def _auto_git_commit(label_path: Path) -> None:
             ["git", "-C", repo_dir, "commit", "-m", f"Labels updated: {label_path.name}"],
             check=True, capture_output=True, text=True,
         )
-        logger.info("Auto-committed %s to git", label_path.name)
+        subprocess.run(
+            ["git", "-C", repo_dir, "push"],
+            check=True, capture_output=True, text=True,
+        )
+        logger.info("Auto-committed and pushed %s to git", label_path.name)
     except subprocess.CalledProcessError as e:
-        raise ValueError(f"git commit failed: {e.stderr.strip() or e.stdout.strip() or str(e)}")
+        raise ValueError(f"git commit/push failed: {e.stderr.strip() or e.stdout.strip() or str(e)}")
 
 
 def get_signal_type(type_hint):
@@ -155,7 +159,7 @@ class AppStateSpec:
         "fps_playback": (float, 30.0, True),
         "audio_playback_speed": (float, 1.0, True),
         "av_speed_coupled": (bool, True, True),
-        "skip_frames": (bool, False, True),
+        "skip_frames": (bool, True, True),
         "filter_warnings": (bool, True, True),
         "center_playback": (bool, False, True),
         "time_jump_ms": (float, 100.0, True),
@@ -227,6 +231,7 @@ class AppStateSpec:
         "automatic_stitch_gap_s": (float, 0.0, True),
         "remote_backup_path": (str | None, None, True),
         "remote_backup_mode": (str, "timestamp", True),
+        "remote_path_depth": (int, 0, True),
 
         # Envelope / energy (general, used by both heatmap and overlay)
         "energy_metric": (str, "energy_lowpass", True),
@@ -882,18 +887,21 @@ class ObservableAppState(QObject):
             return f"_downsampled_{self.downsample_factor_used}x"
         return ""
 
-    def save_labels(self, remote_path: str | None = None, remote_mode: str = "timestamp") -> None:
+    def save_labels(self, remote_path: str | None = None, remote_mode: str | None = None) -> None:
         """Save labels to canonical TSV + local backup + optional remote backup.
 
         Parameters
         ----------
         remote_path : str, optional
-            Folder path for remote backup (cloud/git/...).
-        remote_mode : str
-            "timestamp" (default) appends timestamp suffix, "overwrite" saves as single file.
+            Folder path for remote backup. Falls back to ``self.remote_backup_path``.
+        remote_mode : str, optional
+            "timestamp", "overwrite", or "git". Falls back to ``self.remote_backup_mode``.
         """
         if self._all_labels_df is None:
             return
+
+        effective_remote_path = remote_path or self.remote_backup_path or None
+        effective_remote_mode = remote_mode if remote_mode is not None else self.remote_backup_mode
 
         nc_path = Path(self.nc_file_path)
         suffix = self._get_downsampled_suffix()
@@ -916,13 +924,24 @@ class ObservableAppState(QObject):
         save_labels_tsv(backup_dir / f"{stem}_labels_{timestamp}.tsv", save_df)
 
         # 3. Remote backup (optional)
-        if remote_path:
-            remote_dir = Path(remote_path)
+        # remote_path_depth controls how many parent folders to mirror inside remote_root:
+        #   0 = flat (Trial_data_labels.tsv)
+        #   1 = behav/Trial_data_labels.tsv
+        #   2 = ses-000/behav/Trial_data_labels.tsv  (etc.)
+        if effective_remote_path:
+            remote_root = Path(effective_remote_path)
+            depth = self.remote_path_depth
+            if depth > 0:
+                parent_parts = nc_path.parent.parts[1:]  # strip drive / leading '/'
+                mirror_parts = parent_parts[max(0, len(parent_parts) - depth):]
+                remote_dir = remote_root.joinpath(*mirror_parts)
+            else:
+                remote_dir = remote_root
             remote_dir.mkdir(parents=True, exist_ok=True)
             remote_file = remote_dir / f"{stem}_labels.tsv"
-            if remote_mode in ("overwrite", "git"):
+            if effective_remote_mode in ("overwrite", "git"):
                 save_labels_tsv(remote_file, save_df)
-                if remote_mode == "git":
+                if effective_remote_mode == "git":
                     _auto_git_commit(remote_file)
             else:
                 save_labels_tsv(remote_dir / f"{stem}_labels_{timestamp}.tsv", save_df)
