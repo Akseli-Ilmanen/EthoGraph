@@ -95,6 +95,7 @@ class ExtraCameraWidget(QWidget):
         self._hide_dims_slider()
 
         self._fps: float = 0.0
+        self._time_offset: float = 0.0
         self._video_layer = None
         self._points_layer = None
 
@@ -108,8 +109,9 @@ class ExtraCameraWidget(QWidget):
         for widget in self._qt_viewer.findChildren(QtDims):
             widget.setVisible(False)
 
-    def set_video(self, video_data, fps: float = 0.0):
+    def set_video(self, video_data, fps: float = 0.0, time_offset: float = 0.0):
         self._fps = fps
+        self._time_offset = time_offset
         if self._video_layer is not None:
             old_data = getattr(self._video_layer, "data", None)
             try:
@@ -143,7 +145,7 @@ class ExtraCameraWidget(QWidget):
     def seek_to_time(self, t_seconds: float):
         if self._fps <= 0 or self._video_layer is None:
             return
-        frame = int(t_seconds * self._fps)
+        frame = int((t_seconds - self._time_offset) * self._fps)
         n_frames = self._video_layer.data.shape[0]
         frame = max(0, min(frame, n_frames - 1))
         self._viewer_model.dims.set_point(0, frame)
@@ -383,8 +385,10 @@ class VideoManager:
         fps = float(reader.stream.guessed_rate)
         self._store_camera_fps_in_session(camera_name, fps)
 
+        video_data, time_offset = self._prepare_extra_video(reader, fps, camera_name)
+
         widget = ExtraCameraWidget()
-        widget.set_video(reader, fps=fps)
+        widget.set_video(video_data, fps=fps, time_offset=time_offset)
         self._extra_widgets[camera_name] = widget
         self._rebuild_camera_layout(layout_mgr, meta_widget)
 
@@ -396,10 +400,31 @@ class VideoManager:
         _ = reader.shape
         fps = float(reader.stream.guessed_rate)
         self._store_camera_fps_in_session(camera_name, fps)
+        video_data, time_offset = self._prepare_extra_video(reader, fps, camera_name)
         widget = self._extra_widgets[camera_name]
-        widget.set_video(reader, fps=fps)
+        widget.set_video(video_data, fps=fps, time_offset=time_offset)
         widget.show()
         self._sync_widget_to_current_time(widget)
+
+    def _prepare_extra_video(self, reader, fps: float, camera_name: str):
+        """Retrieve per-camera offset and apply trial slicing for an extra camera."""
+        dt = getattr(self.app_state, 'dt', None)
+        time_offset = 0.0
+        if dt is not None:
+            trial_id = self.app_state.trials_sel
+            time_offset = dt.source_start_time_trial_relative(trial_id, "video", camera_name)
+
+        alignment = getattr(self.app_state, 'trial_alignment', None)
+        video_data = reader
+        if alignment and alignment.trial_range:
+            trial_start_in_video = -time_offset
+            start_frame = max(0, int(trial_start_in_video * fps))
+            end_frame = int((trial_start_in_video + alignment.trial_range.duration) * fps)
+            if start_frame > 0 or end_frame < reader.nframes:
+                video_data = TrialVideoSlice(reader, start_frame, end_frame)
+                time_offset = 0.0
+
+        return video_data, time_offset
 
     def _sync_widget_to_current_time(self, widget: ExtraCameraWidget):
         video = getattr(self.app_state, 'video', None)

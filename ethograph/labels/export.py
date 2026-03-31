@@ -36,7 +36,10 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
 
     # Internal to crow lab, we had a legacy labeling system that was frame-wise(200 Hz), and this correction should fix those labels.
     dt = 1 / 200  # 5 ms frame rate
-    for _, group in df.groupby(["session", "trial", "individual"]):
+    group_cols = ["trial", "individual"]
+    if "session" in df.columns:
+        group_cols.insert(0, "session")
+    for _, group in df.groupby(group_cols):
         individual = group["individual"].iloc[0]
         
         # Won't affect other users.
@@ -103,10 +106,11 @@ def enrich_labels_df(
 
     valid["duration"] = valid["offset_s"] - valid["onset_s"]
 
-    # Session info
-    session_name = getattr(dt, "attrs", {}).get("session", "")
-    valid["session"] = session_name
-    valid["session_trial"] = valid["trial"].apply(lambda t: f"{session_name}_{t}")
+    # Session info (only when session attr exists)
+    session_name = getattr(dt, "attrs", {}).get("session", None)
+    if session_name is not None:
+        valid["session"] = session_name
+        valid["session_trial"] = valid["trial"].apply(lambda t: f"{session_name}_{t}")
 
     # Per-trial: sequence, sequence_idx, timing, attrs
     enriched_rows = []

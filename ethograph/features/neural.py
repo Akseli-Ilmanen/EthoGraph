@@ -86,22 +86,26 @@ def firing_rate_by_cluster(
     cluster_ids : numpy.ndarray
         Cluster ID for each row, shape ``(n_clusters,)``.
     """
-    if cluster_ids is None:
-        cluster_ids = np.unique(spike_clusters.ravel())
-
-    if t_start is None:
-        t_start = float(spike_times.ravel()[0])
-    if t_stop is None:
-        t_stop = float(spike_times.ravel()[-1])
-
-    time_support = nap.IntervalSet(t_start, t_stop)
-
-    if _tsgroup is None:
+    if _tsgroup is not None:
+        if cluster_ids is None:
+            cluster_ids = np.array(list(_tsgroup.keys()))
+        if t_start is None:
+            t_start = float(_tsgroup.time_support.start[0])
+        if t_stop is None:
+            t_stop = float(_tsgroup.time_support.end[-1])
+        time_support = nap.IntervalSet(t_start, t_stop)
+        _tsgroup = _tsgroup.restrict(time_support)
+    else:
+        if cluster_ids is None:
+            cluster_ids = np.unique(spike_clusters.ravel())
+        if t_start is None:
+            t_start = float(spike_times.ravel()[0])
+        if t_stop is None:
+            t_stop = float(spike_times.ravel()[-1])
+        time_support = nap.IntervalSet(t_start, t_stop)
         _tsgroup = build_tsgroup(
             spike_times, spike_clusters, cluster_ids, time_support,
         )
-    else:
-        _tsgroup = _tsgroup.restrict(time_support)
 
     counts = _tsgroup.count(bin_size=bin_size)
     rates = (counts.values / bin_size).T

@@ -548,7 +548,7 @@ class PSTHDialog(QDialog):
             return
         tsgroup = getattr(self.ephys_widget, "_tsgroup", None)
         if tsgroup is None or self._current_cluster_id not in tsgroup:
-            self._status.setText("No Kilosort data loaded.")
+            self._status.setText("No spike data loaded.")
             return
 
         self._update_title()

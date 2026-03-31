@@ -980,7 +980,7 @@ class EphysConfigTab(_BaseConfigTab):
 
     def collect_state(self, config: ModalityConfig):
         config.single_file_path = self._ephys_edit.text()
-        config.kilosort_folder = self._ks_edit.text()
+        config.neurons_path = self._ks_edit.text()
         config.ephys_sr = None if self._spin_is_required(self._sr_spin) else self._sr_spin.value()
         config.n_channels = self._nchan_spin.value()
         config.constant_offset = self._offset_spin.value()

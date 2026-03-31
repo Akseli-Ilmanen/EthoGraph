@@ -11,18 +11,12 @@ from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
-    QDoubleSpinBox,
     QFileDialog,
-    QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QLineEdit,
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
@@ -204,87 +198,11 @@ class LabelsWidget(QWidget):
         layout.setSpacing(DEFAULT_LAYOUT_SPACING)
         self.setLayout(layout)
 
-        # Create toggle buttons for collapsible sections
-        self._create_toggle_buttons()
-        layout.addWidget(self.toggle_widget)
-
         # Create labels table
         self._create_labels_table_and_edit_buttons()
-
-        # Create control buttons
-        self._create_control_buttons()
-
-        # Add collapsible sections
         layout.addWidget(self.labels_table)
-        layout.addWidget(self.controls_widget)
-
-        # Set initial state: table visible, controls hidden
-        self.table_toggle.setText("📋 Table ✓")
-        self.controls_toggle.setText("🎛️ Export labels")
-        self.controls_widget.hide()
 
         layout.addStretch()
-
-    def _create_toggle_buttons(self):
-        """Create toggle buttons for collapsible sections."""
-        self.toggle_widget = QWidget()
-        toggle_layout = QHBoxLayout()
-        toggle_layout.setSpacing(2)
-        self.toggle_widget.setLayout(toggle_layout)
-
-        # Table toggle button
-        self.table_toggle = QPushButton("📋 Table")
-        self.table_toggle.setCheckable(True)
-        self.table_toggle.setChecked(True)
-        self.table_toggle.clicked.connect(self._toggle_table)
-        toggle_layout.addWidget(self.table_toggle)
-
-        # Controls toggle button
-        self.controls_toggle = QPushButton("🎛️ Export labels")
-        self.controls_toggle.setCheckable(True)
-        self.controls_toggle.setChecked(False)  # Start with controls collapsed
-        self.controls_toggle.clicked.connect(self._toggle_controls)
-        toggle_layout.addWidget(self.controls_toggle)
-
-    def _toggle_table(self):
-        """Toggle labels table visibility (mutually exclusive with controls)."""
-        if self.table_toggle.isChecked():
-            # Show table, hide controls
-            self.labels_table.show()
-            self.controls_widget.hide()
-            self.table_toggle.setText("📋 Table ✓")
-            self.controls_toggle.setText("🎛️ Export labels")
-            self.controls_toggle.setChecked(False)
-        else:
-            # If trying to uncheck table, force controls to be checked instead
-            self.controls_widget.show()
-            self.labels_table.hide()
-            self.controls_toggle.setText("🎛️ Export labels ✓")
-            self.table_toggle.setText("📋 Table")
-            self.controls_toggle.setChecked(True)
-        self._refresh_layout()
-
-    def _toggle_controls(self):
-        """Toggle controls visibility (mutually exclusive with table)."""
-        if self.controls_toggle.isChecked():
-            # Show controls, hide table
-            self.controls_widget.show()
-            self.labels_table.hide()
-            self.controls_toggle.setText("🎛️ Export labels ✓")
-            self.table_toggle.setText("📋 Table")
-            self.table_toggle.setChecked(False)
-        else:
-            # If trying to uncheck controls, force table to be checked instead
-            self.labels_table.show()
-            self.controls_widget.hide()
-            self.table_toggle.setText("📋 Table ✓")
-            self.controls_toggle.setText("🎛️ Export labels")
-            self.table_toggle.setChecked(True)
-        self._refresh_layout()
-
-    def _refresh_layout(self):
-        if self.meta_widget:
-            self.meta_widget.refresh_widget_layout(self)
 
     def _create_labels_table_and_edit_buttons(self):
         """Create the labels table showing available  types in two columns."""
@@ -322,184 +240,6 @@ class LabelsWidget(QWidget):
 
 
 
-    def _create_control_buttons(self):
-        """Create control buttons for labeling operations."""
-
-        self.controls_widget = QWidget()
-        layout = QVBoxLayout()
-        self.controls_widget.setLayout(layout)
-
-        # Human verification row
-        hv_row = QHBoxLayout()
-        hv_row.addWidget(QLabel("Apply human verification to:"))
-
-        self.human_verify_trial_btn = QPushButton("Single Trial")
-        self.human_verify_trial_btn.clicked.connect(lambda: self._human_verification_true("single_trial"))
-        hv_row.addWidget(self.human_verify_trial_btn)
-
-        self.human_verify_all_trials_btn = QPushButton("All Trials")
-        self.human_verify_all_trials_btn.clicked.connect(lambda: self._human_verification_true("all_trials"))
-        hv_row.addWidget(self.human_verify_all_trials_btn)
-
-        hv_row.addStretch()
-        layout.addLayout(hv_row)
-
-        # Correct offsets row
-        co_row = QHBoxLayout()
-        co_row.addWidget(QLabel("Apply offset correction to:"))
-
-        self.correct_offsets_trial_btn = QPushButton("Single Trial")
-        self.correct_offsets_trial_btn.clicked.connect(lambda: self._apply_correct_offsets("single_trial"))
-        co_row.addWidget(self.correct_offsets_trial_btn)
-
-        self.correct_offsets_all_trials_btn = QPushButton("All Trials")
-        self.correct_offsets_all_trials_btn.clicked.connect(lambda: self._apply_correct_offsets("all_trials"))
-        co_row.addWidget(self.correct_offsets_all_trials_btn)
-
-        co_row.addStretch()
-        layout.addLayout(co_row)
-
-        # Purge small labels row
-        purge_row = QHBoxLayout()
-        purge_row.addWidget(QLabel("Purge labels shorter than:"))
-
-        self.purge_min_duration_spin = QDoubleSpinBox()
-        self.purge_min_duration_spin.setRange(0.001, 10.0)
-        self.purge_min_duration_spin.setValue(0.01)
-        self.purge_min_duration_spin.setSuffix(" s")
-        self.purge_min_duration_spin.setSingleStep(0.01)
-        self.purge_min_duration_spin.setDecimals(3)
-        purge_row.addWidget(self.purge_min_duration_spin)
-
-        self.purge_trial_btn = QPushButton("Single Trial")
-        self.purge_trial_btn.clicked.connect(lambda: self._apply_purge_small_labels("single_trial"))
-        purge_row.addWidget(self.purge_trial_btn)
-
-        self.purge_all_trials_btn = QPushButton("All Trials")
-        self.purge_all_trials_btn.clicked.connect(lambda: self._apply_purge_small_labels("all_trials"))
-        purge_row.addWidget(self.purge_all_trials_btn)
-
-        purge_row.addStretch()
-        layout.addLayout(purge_row)
-
-        # --- Save button ---
-        self.save_labels_button = QPushButton("Save labels (Ctrl+S)")
-        self.save_labels_button.setToolTip("Save labels TSV + local backup + optional remote backup")
-        self.save_labels_button.clicked.connect(self._save_labels)
-        layout.addWidget(self.save_labels_button)
-
-        # --- Local backup (read-only display) ---
-        local_backup_row = QHBoxLayout()
-        local_backup_label = QLabel("Local backup:")
-        local_backup_label.setFixedWidth(90)
-        local_backup_row.addWidget(local_backup_label)
-        self.local_backup_edit = QLineEdit()
-        self.local_backup_edit.setReadOnly(True)
-        self.local_backup_edit.setPlaceholderText("label_backups/")
-        if self.app_state.nc_file_path:
-            backup_dir = str(Path(self.app_state.nc_file_path).parent / "label_backups")
-            self.local_backup_edit.setText(backup_dir)
-        local_backup_row.addWidget(self.local_backup_edit)
-        layout.addLayout(local_backup_row)
-
-        # --- Remote backup (optional) ---
-        remote_group = QGroupBox("Remote backup")
-        remote_group_layout = QVBoxLayout()
-        remote_group_layout.setSpacing(4)
-        remote_group.setLayout(remote_group_layout)
-
-        # Row 1: path + browse
-        remote_path_row = QHBoxLayout()
-        self.remote_backup_edit = QLineEdit()
-        self.remote_backup_edit.setPlaceholderText("(optional) cloud/git folder...")
-        self.remote_backup_edit.setToolTip(
-            "Optional path to a remote folder for label backups.\n"
-            "Useful for syncing labels via cloud storage or a git repository."
-        )
-        if self.app_state.remote_backup_path:
-            self.remote_backup_edit.setText(self.app_state.remote_backup_path)
-        self.remote_backup_edit.editingFinished.connect(
-            lambda: setattr(self.app_state, "remote_backup_path", self.remote_backup_edit.text().strip() or None)
-        )
-        remote_path_row.addWidget(self.remote_backup_edit)
-        remote_browse_btn = QPushButton("Browse")
-        remote_browse_btn.clicked.connect(self._browse_remote_backup)
-        remote_path_row.addWidget(remote_browse_btn)
-        remote_group_layout.addLayout(remote_path_row)
-
-        # Row 2: save mode + subfolder depth
-        remote_options_row = QHBoxLayout()
-        self.remote_save_mode_combo = QComboBox()
-        self.remote_save_mode_combo.addItem("Save with timestamp")
-        self.remote_save_mode_combo.addItem("Overwrite file")
-        self.remote_save_mode_combo.addItem("Overwrite + git commit")
-        self.remote_save_mode_combo.setToolTip(
-            "Timestamp: each save creates a new file (safe, auditable).\n"
-            "Overwrite: saves a single file, no version control.\n"
-            "Overwrite + git commit: saves a single file and auto-commits.\n"
-            "  Requires the remote folder to be a git repo (run 'git init' once)."
-        )
-        mode_map = {"timestamp": 0, "overwrite": 1, "git": 2}
-        self.remote_save_mode_combo.setCurrentIndex(mode_map.get(self.app_state.remote_backup_mode, 0))
-
-        def _on_mode_changed(text):
-            if text == "Overwrite + git commit":
-                self.app_state.remote_backup_mode = "git"
-            elif text == "Overwrite file":
-                self.app_state.remote_backup_mode = "overwrite"
-            else:
-                self.app_state.remote_backup_mode = "timestamp"
-        self.remote_save_mode_combo.currentTextChanged.connect(_on_mode_changed)
-        remote_options_row.addWidget(self.remote_save_mode_combo)
-
-        self.remote_depth_combo = QComboBox()
-        self.remote_depth_combo.setToolTip(
-            "Controls the subfolder structure inside the remote backup root.\n"
-            "Flat: all files land directly in the remote root.\n"
-            "Higher levels mirror parent directories to avoid filename collisions."
-        )
-        self._populate_remote_depth_combo()
-        self.remote_depth_combo.currentIndexChanged.connect(
-            lambda idx: setattr(self.app_state, "remote_path_depth", idx)
-        )
-        remote_options_row.addWidget(self.remote_depth_combo)
-        remote_group_layout.addLayout(remote_options_row)
-
-        layout.addWidget(remote_group)
-
-        self.app_state.nc_file_path_changed.connect(self._populate_remote_depth_combo)
-
-    def _save_labels(self):
-        from ethograph.gui.notify import notify_dialog
-        remote_path = self.remote_backup_edit.text().strip() or None
-        remote_mode = self.app_state.remote_backup_mode
-        try:
-            self.app_state.save_labels(remote_path=remote_path, remote_mode=remote_mode)
-        except Exception as e:
-            notify_dialog(str(e), "error", "Save Error", self)
-
-    def _populate_remote_depth_combo(self):
-        if not hasattr(self, "remote_depth_combo"):
-            return
-        nc_path = self.app_state.nc_file_path
-        combo = self.remote_depth_combo
-        combo.blockSignals(True)
-        combo.clear()
-        combo.addItem("Flat (no subfolders)")
-        if nc_path:
-            parts = Path(nc_path).parent.parts[1:]  # strip drive
-            for i, _ in enumerate(parts):
-                subfolder = "/".join(parts[len(parts) - i - 1:])
-                combo.addItem(subfolder)
-        saved_depth = self.app_state.remote_path_depth
-        combo.setCurrentIndex(min(saved_depth, combo.count() - 1))
-        combo.blockSignals(False)
-
-    def _browse_remote_backup(self):
-        folder = QFileDialog.getExistingDirectory(self, "Select remote backup folder")
-        if folder:
-            self.remote_backup_edit.setText(folder)
-
     def _browse_mapping_file(self):
         """Browse for a mapping.txt file and reload mappings."""
         current = find_mapping_file()
@@ -536,8 +276,11 @@ class LabelsWidget(QWidget):
         if dialog.exec_():
             labels = dialog.get_labels()
             if labels:
-                mapping_path = Path.home() / ".ethograph" / "mapping_temporary.txt"
-                mapping_path.parent.mkdir(exist_ok=True)
+                from ethograph.utils.paths import default_config_dir
+                data_dir = Path(self.app_state.nc_file_path).parent if self.app_state.nc_file_path else None
+                config_dir = default_config_dir(data_dir)
+                mapping_path = config_dir / "mapping_temporary.txt"
+                mapping_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(mapping_path, "w") as f:
                     f.write("0 background\n")
                     for i, label in enumerate(labels, start=1):
@@ -555,140 +298,6 @@ class LabelsWidget(QWidget):
                 if self.data_widget:
                     self.data_widget.update_main_plot(preserve_x_range=True)
                 notify(f"Loaded {len(labels)} temporary labels")
-
-    def _human_verification_true(self, mode=None):
-        """Mark current trial as human verified."""
-        if self.app_state.trials_sel is None:
-            return
-        if mode == "single_trial":
-            self.app_state.set_trial_meta_attr(self.app_state.trials_sel, 'human_verified', 1)
-        elif mode == "all_trials":
-            for trial in self.app_state.trials:
-                self.app_state.set_trial_meta_attr(trial, 'human_verified', 1)
-
-        self._update_human_verified_status()
-        if self.data_widget:
-            self.data_widget.update_trials_combo()
-        if self.meta_widget:
-            self.meta_widget.update_labels_widget_title()
-
-
-    def _update_human_verified_status(self):
-        default_style = ""
-        verified_style = "background-color: green; color: white;"
-
-        if self.app_state.trials_sel is None:
-            self.human_verify_trial_btn.setStyleSheet(default_style)
-            self.human_verify_all_trials_btn.setStyleSheet(default_style)
-            return
-
-        trial_meta = self.app_state.get_trial_meta(self.app_state.trials_sel)
-        if trial_meta.get('human_verified', 0):
-            self.human_verify_trial_btn.setStyleSheet(verified_style)
-        else:
-            self.human_verify_trial_btn.setStyleSheet(default_style)
-
-        all_verified = all(
-            self.app_state.get_trial_meta(t).get('human_verified', 0)
-            for t in self.app_state.trials
-        )
-        if all_verified and self.app_state.trials:
-            self.human_verify_all_trials_btn.setStyleSheet(verified_style)
-        else:
-            self.human_verify_all_trials_btn.setStyleSheet(default_style)
-
-    def _apply_correct_offsets(self, mode: str):
-        from ethograph.labels.export import correct_offsets_trial
-        if self.app_state.trials_sel is None:
-            return
-
-        if mode == "single_trial":
-            trial = self.app_state.trials_sel
-            df = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
-            self.app_state.set_trial_intervals(trial, df)
-            self.app_state.label_intervals = df
-            self.app_state.set_trial_meta_attr(trial, "offsets_corrected", 1)
-        elif mode == "all_trials":
-            for trial in self.app_state.trials:
-                df = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
-                self.app_state.set_trial_intervals(trial, df)
-                self.app_state.set_trial_meta_attr(trial, "offsets_corrected", 1)
-            self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
-
-        self._update_correct_offsets_status()
-        self._mark_changes_unsaved()
-        if self.data_widget:
-            self.data_widget.update_main_plot(preserve_x_range=True)
-            if self.data_widget.plot_container:
-                self.data_widget.plot_container.labels_redraw_needed.emit()
-
-    def _update_correct_offsets_status(self):
-        default_style = ""
-        applied_style = "background-color: green; color: white;"
-
-        if self.app_state.trials_sel is None:
-            self.correct_offsets_trial_btn.setStyleSheet(default_style)
-            self.correct_offsets_all_trials_btn.setStyleSheet(default_style)
-            return
-
-        trial_corrected = self.app_state.get_trial_meta(self.app_state.trials_sel).get("offsets_corrected", 0)
-        self.correct_offsets_trial_btn.setStyleSheet(applied_style if trial_corrected else default_style)
-
-        all_corrected = all(
-            self.app_state.get_trial_meta(t).get("offsets_corrected", 0)
-            for t in self.app_state.trials
-        )
-        self.correct_offsets_all_trials_btn.setStyleSheet(applied_style if all_corrected else default_style)
-
-    def _apply_purge_small_labels(self, mode: str):
-        if self.app_state.trials_sel is None:
-            return
-
-        min_duration = self.purge_min_duration_spin.value()
-
-        def purge(df):
-            if df.empty:
-                return df
-            mask = (df["offset_s"] - df["onset_s"]) >= min_duration
-            return df[mask].copy().reset_index(drop=True)
-
-        if mode == "single_trial":
-            trial = self.app_state.trials_sel
-            df = purge(self.app_state.get_trial_intervals(trial))
-            self.app_state.set_trial_intervals(trial, df)
-            self.app_state.label_intervals = df
-            self.app_state.set_trial_meta_attr(trial, "small_labels_purged", 1)
-        elif mode == "all_trials":
-            for trial in self.app_state.trials:
-                df = purge(self.app_state.get_trial_intervals(trial))
-                self.app_state.set_trial_intervals(trial, df)
-                self.app_state.set_trial_meta_attr(trial, "small_labels_purged", 1)
-            self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
-
-        self._update_purge_small_labels_status()
-        self._mark_changes_unsaved()
-        if self.data_widget:
-            self.data_widget.update_main_plot(preserve_x_range=True)
-            if self.data_widget.plot_container:
-                self.data_widget.plot_container.labels_redraw_needed.emit()
-
-    def _update_purge_small_labels_status(self):
-        default_style = ""
-        applied_style = "background-color: green; color: white;"
-
-        if self.app_state.trials_sel is None:
-            self.purge_trial_btn.setStyleSheet(default_style)
-            self.purge_all_trials_btn.setStyleSheet(default_style)
-            return
-
-        trial_purged = self.app_state.get_trial_meta(self.app_state.trials_sel).get("small_labels_purged", 0)
-        self.purge_trial_btn.setStyleSheet(applied_style if trial_purged else default_style)
-
-        all_purged = all(
-            self.app_state.get_trial_meta(t).get("small_labels_purged", 0)
-            for t in self.app_state.trials
-        )
-        self.purge_all_trials_btn.setStyleSheet(applied_style if all_purged else default_style)
 
     def _import_predictions_from_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Select predictions folder (.npy files)")
@@ -983,7 +592,8 @@ class LabelsWidget(QWidget):
         self.second_click = None
         self.ready_for_label_click = False
 
-        self._human_verification_true(mode="single_trial")
+        if self.io_widget:
+            self.io_widget._human_verification_true(mode="single_trial")
         self._mark_changes_unsaved()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)

@@ -6,6 +6,78 @@ from urllib.request import urlopen
 
 _RELEASE_BASE = "https://github.com/Akseli-Ilmanen/EthoGraph/releases/download"
 
+# Default mapping written to ~/.ethograph/mapping.txt if it doesn't exist.
+DEFAULT_MAPPING = (
+    "0 Background\n"
+    "1 Idle\n"
+    "2 Carry\n"
+    "3 Deposit\n"
+    "4 Dunk\n"
+    "5 Feed\n"
+    "6 Fly\n"
+    "7 Hook\n"
+    "8 Insert\n"
+    "9 Look\n"
+    "10 Manipulate\n"
+    "11 Peck\n"
+    "12 Probe\n"
+    "13 Pull\n"
+    "14 Push\n"
+    "15 Reach\n"
+    "16 Regrip\n"
+    "17 Retrieve\n"
+    "18 Shake\n"
+    "19 Step\n"
+    "20 Walk\n"
+    "21 Wipe\n"
+)
+
+# Per-dataset configs that override the global default.
+# Written into dest/.ethograph/ after download.
+EXAMPLE_CONFIGS: dict[str, dict[str, str]] = {
+    "moll2025": {
+        "mapping.txt": (
+            "0 background\n"
+            "1 pullOutStick\n"
+            "2 diagonalToBox\n"
+            "3 toss\n"
+            "4 swoop\n"
+            "5 reachLeftCorner\n"
+            "6 right\n"
+            "7 pullOutAlongWall\n"
+            "8 swoopOut\n"
+            "9 stickToDisp\n"
+            "10 stickInDisp\n"
+            "11 lookToPellet\n"
+            "12 snapPellet\n"
+            "13 eat\n"
+            "14 reachRightCorner\n"
+            "15 nodding\n"
+        ),
+        "space.yaml": (
+            "arena:\n"
+            "  type: polygon\n"
+            "  xy_polygon:\n"
+            "    - [0.0, 0.0]\n"
+            "    - [0.5, 0.0]\n"
+            "    - [0.5, 0.4]\n"
+            "    - [0.0, 0.4]\n"
+            "  z_bot: 0.0\n"
+            "  z_top: 1.0\n"
+        ),
+    },
+}
+
+
+def ensure_default_configs() -> None:
+    """Write default configs to ``~/.ethograph/`` if they don't exist yet."""
+    from ethograph.utils.paths import SETTINGS_DIR
+    global_dir = Path.home() / SETTINGS_DIR
+    global_dir.mkdir(parents=True, exist_ok=True)
+    mapping = global_dir / "mapping.txt"
+    if not mapping.exists():
+        mapping.write_text(DEFAULT_MAPPING, encoding="utf-8")
+
 EXAMPLE_DATASETS = {
     "moll2025": {
         "release_tag": "moll2025",
@@ -24,6 +96,7 @@ EXAMPLE_DATASETS = {
         ],
         "assets_gui": [
             "Trial_data.nc",
+            "Trial_data_labels.tsv",
             "2024-12-17_115_Crow1-cam-1.mp4",
             "2024-12-17_115_Crow1-cam-1DLC.csv",
             "2024-12-18_041_Crow1-cam-1.mp4",
@@ -122,6 +195,18 @@ EXAMPLE_DATASETS = {
 }
 
 
+def write_example_configs(dataset_key: str, dest: Path) -> None:
+    """Write bundled config files into ``dest/.ethograph/``."""
+    configs = EXAMPLE_CONFIGS.get(dataset_key)
+    if not configs:
+        return
+    from ethograph.utils.paths import SETTINGS_DIR
+    config_dir = Path(dest) / SETTINGS_DIR
+    config_dir.mkdir(parents=True, exist_ok=True)
+    for name, content in configs.items():
+        (config_dir / name).write_text(content, encoding="utf-8")
+
+
 def download_assets(
     release_tag: str,
     assets: list[str],
@@ -176,8 +261,11 @@ def download_example_dataset(
     key: str,
     dest: Path,
     verbose: bool = True,
-) -> None:
+) -> Path | None:
     """High-level helper: download an example dataset by key.
+
+    Downloads assets and writes bundled configs (e.g. ``mapping.txt``)
+    into ``dest/.ethograph/``.
 
     Parameters
     ----------
@@ -187,6 +275,10 @@ def download_example_dataset(
         Directory to download into.
     verbose : bool
         Print progress to stdout.
+
+    Returns
+    -------
+    Path to ``mapping.txt`` if one was created, otherwise ``None``.
     """
     info = EXAMPLE_DATASETS[key]
     assets = info["assets_notebook"]
@@ -204,3 +296,13 @@ def download_example_dataset(
         dest=dest,
         on_progress=_print_progress if verbose else None,
     )
+
+    ensure_default_configs()
+    write_example_configs(key, dest)
+    from ethograph.utils.paths import SETTINGS_DIR
+    mapping_path = Path(dest) / SETTINGS_DIR / "mapping.txt"
+    if mapping_path.exists():
+        if verbose:
+            print(f"  mapping: {mapping_path}")
+        return mapping_path
+    return None

@@ -10,6 +10,7 @@ from qtpy.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
@@ -23,6 +24,8 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from ethograph.labels.export import correct_offsets_trial
 
 import ethograph as eto
 from ethograph.utils.paths import default_config_dir, find_config, find_mapping_file
@@ -58,11 +61,13 @@ class IOWidget(QWidget):
         self._create_toggle_buttons(main_layout)
         self._create_load_panel(main_layout)
         self._create_controls_panel(main_layout)
+        self._create_export_panel(main_layout)
         self._wire_app_state_path_signals()
         self._wire_path_edit_signals()
 
-        # Initial state: load tab active, controls greyed out
+        # Initial state: load tab active, others greyed out
         self.controls_toggle.setEnabled(False)
+        self.export_toggle.setEnabled(False)
         self._show_panel("load")
 
         # Restore UI text fields from app state
@@ -76,8 +81,8 @@ class IOWidget(QWidget):
             self.pose_folder_edit.setText(self.app_state.pose_folder)
         if self.app_state.ephys_path:
             self.ephys_path_edit.setText(self.app_state.ephys_path)
-        if self.app_state.kilosort_folder:
-            self.kilosort_folder_edit.setText(self.app_state.kilosort_folder)
+        if self.app_state.neurons_path:
+            self.neurons_path_edit.setText(self.app_state.neurons_path)
 
     def _wire_app_state_path_signals(self):
         self.app_state.nc_file_path_changed.connect(
@@ -95,8 +100,8 @@ class IOWidget(QWidget):
         self.app_state.ephys_path_changed.connect(
             lambda value: self.ephys_path_edit.setText(value or "")
         )
-        self.app_state.kilosort_folder_changed.connect(
-            lambda value: self.kilosort_folder_edit.setText(value or "")
+        self.app_state.neurons_path_changed.connect(
+            lambda value: self.neurons_path_edit.setText(value or "")
         )
 
 
@@ -116,8 +121,8 @@ class IOWidget(QWidget):
         self.ephys_path_edit.editingFinished.connect(
             lambda: self._sync_line_edit_to_state(self.ephys_path_edit, "ephys_path")
         )
-        self.kilosort_folder_edit.editingFinished.connect(
-            lambda: self._sync_line_edit_to_state(self.kilosort_folder_edit, "kilosort_folder")
+        self.neurons_path_edit.editingFinished.connect(
+            lambda: self._sync_line_edit_to_state(self.neurons_path_edit, "neurons_path")
         )
 
     def _sync_line_edit_to_state(self, line_edit, attr_name):
@@ -141,10 +146,15 @@ class IOWidget(QWidget):
         self.load_toggle.clicked.connect(self._toggle_load)
         toggle_layout.addWidget(self.load_toggle)
 
-        self.controls_toggle = QPushButton("I/O controls")
+        self.controls_toggle = QPushButton("Import labels")
         self.controls_toggle.setCheckable(True)
         self.controls_toggle.clicked.connect(self._toggle_controls)
         toggle_layout.addWidget(self.controls_toggle)
+
+        self.export_toggle = QPushButton("Export labels")
+        self.export_toggle.setCheckable(True)
+        self.export_toggle.clicked.connect(self._toggle_export)
+        toggle_layout.addWidget(self.export_toggle)
 
         main_layout.addWidget(toggle_widget)
 
@@ -152,6 +162,7 @@ class IOWidget(QWidget):
         panels = {
             "load": (self.load_panel, self.load_toggle),
             "controls": (self.controls_panel, self.controls_toggle),
+            "export": (self.export_panel, self.export_toggle),
         }
         for name, (panel, toggle) in panels.items():
             if name == panel_name:
@@ -172,6 +183,9 @@ class IOWidget(QWidget):
 
     def _toggle_controls(self):
         self._show_panel("controls" if self.controls_toggle.isChecked() else "load")
+
+    def _toggle_export(self):
+        self._show_panel("export" if self.export_toggle.isChecked() else "controls")
 
     # ------------------------------------------------------------------
     # Load panel
@@ -236,11 +250,11 @@ class IOWidget(QWidget):
             browse_callback=lambda: self.on_browse_clicked("file", "ephys"),
         )
 
-        self.kilosort_folder_edit = self._create_path_widget(
+        self.neurons_path_edit = self._create_path_widget(
             self._load_layout,
-            label="Kilosort folder:",
-            object_name="kilosort_folder",
-            browse_callback=lambda: self.on_browse_clicked("folder", "kilosort"),
+            label="Neurons (Kilosort/Pynapple):",
+            object_name="neurons_path",
+            browse_callback=self._browse_neurons,
         )
 
         # Downsample + Load button
@@ -259,10 +273,333 @@ class IOWidget(QWidget):
         self._controls_layout.setContentsMargins(0, 0, 0, 0)
         self.controls_panel.setLayout(self._controls_layout)
 
-        self._create_mapping_row(self._controls_layout)
+        labels_group = QGroupBox("Labels")
+        self._labels_group_layout = QFormLayout()
+        self._labels_group_layout.setSpacing(2)
+        self._labels_group_layout.setContentsMargins(4, 4, 4, 4)
+        labels_group.setLayout(self._labels_group_layout)
+
+        self._create_mapping_row(self._labels_group_layout)
+        # Labels row inserted here dynamically by create_device_controls()
+        self._labels_row_index = self._labels_group_layout.rowCount()
+
+        self._controls_layout.addRow(labels_group)
         self._create_predictions_row(self._controls_layout)
 
         main_layout.addWidget(self.controls_panel)
+
+    # ------------------------------------------------------------------
+    # Export panel
+    # ------------------------------------------------------------------
+
+    def _create_export_panel(self, main_layout):
+        self.export_panel = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(2)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.export_panel.setLayout(layout)
+
+        # Human verification row
+        hv_row = QHBoxLayout()
+        hv_row.addWidget(QLabel("Apply human verification to:"))
+        self.human_verify_trial_btn = QPushButton("Single Trial")
+        self.human_verify_trial_btn.clicked.connect(lambda: self._human_verification_true("single_trial"))
+        hv_row.addWidget(self.human_verify_trial_btn)
+        self.human_verify_all_trials_btn = QPushButton("All Trials")
+        self.human_verify_all_trials_btn.clicked.connect(lambda: self._human_verification_true("all_trials"))
+        hv_row.addWidget(self.human_verify_all_trials_btn)
+        hv_row.addStretch()
+        layout.addLayout(hv_row)
+
+        # Correct offsets row
+        co_row = QHBoxLayout()
+        co_row.addWidget(QLabel("Apply offset correction to:"))
+        self.correct_offsets_trial_btn = QPushButton("Single Trial")
+        self.correct_offsets_trial_btn.clicked.connect(lambda: self._apply_correct_offsets("single_trial"))
+        co_row.addWidget(self.correct_offsets_trial_btn)
+        self.correct_offsets_all_trials_btn = QPushButton("All Trials")
+        self.correct_offsets_all_trials_btn.clicked.connect(lambda: self._apply_correct_offsets("all_trials"))
+        co_row.addWidget(self.correct_offsets_all_trials_btn)
+        co_row.addStretch()
+        layout.addLayout(co_row)
+
+        # Purge small labels row
+        purge_row = QHBoxLayout()
+        purge_row.addWidget(QLabel("Purge labels shorter than:"))
+        self.purge_min_duration_spin = QDoubleSpinBox()
+        self.purge_min_duration_spin.setRange(0.001, 10.0)
+        self.purge_min_duration_spin.setValue(0.01)
+        self.purge_min_duration_spin.setSuffix(" s")
+        self.purge_min_duration_spin.setSingleStep(0.01)
+        self.purge_min_duration_spin.setDecimals(3)
+        purge_row.addWidget(self.purge_min_duration_spin)
+        self.purge_trial_btn = QPushButton("Single Trial")
+        self.purge_trial_btn.clicked.connect(lambda: self._apply_purge_small_labels("single_trial"))
+        purge_row.addWidget(self.purge_trial_btn)
+        self.purge_all_trials_btn = QPushButton("All Trials")
+        self.purge_all_trials_btn.clicked.connect(lambda: self._apply_purge_small_labels("all_trials"))
+        purge_row.addWidget(self.purge_all_trials_btn)
+        purge_row.addStretch()
+        layout.addLayout(purge_row)
+
+        # Save button
+        self.save_labels_button = QPushButton("Save labels (Ctrl+S)")
+        self.save_labels_button.setToolTip("Save labels TSV + local backup + optional remote backup")
+        self.save_labels_button.clicked.connect(self._save_labels)
+        layout.addWidget(self.save_labels_button)
+
+        # Local backup (read-only display)
+        local_backup_row = QHBoxLayout()
+        local_backup_label = QLabel("Local backup:")
+        local_backup_label.setFixedWidth(90)
+        local_backup_row.addWidget(local_backup_label)
+        self.local_backup_edit = QLineEdit()
+        self.local_backup_edit.setReadOnly(True)
+        self.local_backup_edit.setPlaceholderText("label_backups/")
+        if self.app_state.nc_file_path:
+            backup_dir = str(Path(self.app_state.nc_file_path).parent / "label_backups")
+            self.local_backup_edit.setText(backup_dir)
+        local_backup_row.addWidget(self.local_backup_edit)
+        layout.addLayout(local_backup_row)
+
+        # Remote backup (optional)
+        remote_group = QGroupBox("Remote backup")
+        remote_group_layout = QVBoxLayout()
+        remote_group_layout.setSpacing(4)
+        remote_group.setLayout(remote_group_layout)
+
+        remote_path_row = QHBoxLayout()
+        self.remote_backup_edit = QLineEdit()
+        self.remote_backup_edit.setPlaceholderText("(optional) cloud/git folder...")
+        self.remote_backup_edit.setToolTip(
+            "Optional path to a remote folder for label backups.\n"
+            "Useful for syncing labels via cloud storage or a git repository."
+        )
+        if self.app_state.remote_backup_path:
+            self.remote_backup_edit.setText(self.app_state.remote_backup_path)
+        self.remote_backup_edit.editingFinished.connect(
+            lambda: setattr(self.app_state, "remote_backup_path", self.remote_backup_edit.text().strip() or None)
+        )
+        remote_path_row.addWidget(self.remote_backup_edit)
+        remote_browse_btn = QPushButton("Browse")
+        remote_browse_btn.clicked.connect(self._browse_remote_backup)
+        remote_path_row.addWidget(remote_browse_btn)
+        remote_group_layout.addLayout(remote_path_row)
+
+        remote_options_row = QHBoxLayout()
+        self.remote_save_mode_combo = QComboBox()
+        self.remote_save_mode_combo.addItem("Save with timestamp")
+        self.remote_save_mode_combo.addItem("Overwrite file")
+        self.remote_save_mode_combo.addItem("Overwrite + git commit")
+        self.remote_save_mode_combo.setToolTip(
+            "Timestamp: each save creates a new file (safe, auditable).\n"
+            "Overwrite: saves a single file, no version control.\n"
+            "Overwrite + git commit: saves a single file and auto-commits.\n"
+            "  Requires the remote folder to be a git repo (run 'git init' once)."
+        )
+        mode_map = {"timestamp": 0, "overwrite": 1, "git": 2}
+        self.remote_save_mode_combo.setCurrentIndex(mode_map.get(self.app_state.remote_backup_mode, 0))
+
+        def _on_mode_changed(text):
+            if text == "Overwrite + git commit":
+                self.app_state.remote_backup_mode = "git"
+            elif text == "Overwrite file":
+                self.app_state.remote_backup_mode = "overwrite"
+            else:
+                self.app_state.remote_backup_mode = "timestamp"
+        self.remote_save_mode_combo.currentTextChanged.connect(_on_mode_changed)
+        remote_options_row.addWidget(self.remote_save_mode_combo)
+
+        self.remote_depth_combo = QComboBox()
+        self.remote_depth_combo.setToolTip(
+            "Controls the subfolder structure inside the remote backup root.\n"
+            "Flat: all files land directly in the remote root.\n"
+            "Higher levels mirror parent directories to avoid filename collisions."
+        )
+        self._populate_remote_depth_combo()
+        self.remote_depth_combo.currentIndexChanged.connect(
+            lambda idx: setattr(self.app_state, "remote_path_depth", idx)
+        )
+        remote_options_row.addWidget(self.remote_depth_combo)
+        remote_group_layout.addLayout(remote_options_row)
+
+        layout.addWidget(remote_group)
+
+        self.app_state.nc_file_path_changed.connect(self._populate_remote_depth_combo)
+
+        main_layout.addWidget(self.export_panel)
+
+    # ------------------------------------------------------------------
+    # Export panel handlers
+    # ------------------------------------------------------------------
+
+    def _save_labels(self):
+        remote_path = self.remote_backup_edit.text().strip() or None
+        remote_mode = self.app_state.remote_backup_mode
+        try:
+            self.app_state.save_labels(remote_path=remote_path, remote_mode=remote_mode)
+        except Exception as e:
+            notify_dialog(str(e), "error", "Save Error", self)
+
+    def _populate_remote_depth_combo(self):
+        if not hasattr(self, "remote_depth_combo"):
+            return
+        nc_path = self.app_state.nc_file_path
+        combo = self.remote_depth_combo
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("Flat (no subfolders)")
+        if nc_path:
+            parts = Path(nc_path).parent.parts[1:]
+            for i, _ in enumerate(parts):
+                subfolder = "/".join(parts[len(parts) - i - 1:])
+                combo.addItem(subfolder)
+        saved_depth = self.app_state.remote_path_depth
+        combo.setCurrentIndex(min(saved_depth, combo.count() - 1))
+        combo.blockSignals(False)
+
+    def _browse_remote_backup(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select remote backup folder")
+        if folder:
+            self.remote_backup_edit.setText(folder)
+
+    def _human_verification_true(self, mode=None):
+        if self.app_state.trials_sel is None:
+            return
+        if mode == "single_trial":
+            self.app_state.set_trial_meta_attr(self.app_state.trials_sel, 'human_verified', 1)
+        elif mode == "all_trials":
+            for trial in self.app_state.trials:
+                self.app_state.set_trial_meta_attr(trial, 'human_verified', 1)
+
+        self._update_human_verified_status()
+        self.app_state.changes_saved = False
+        if self.data_widget:
+            self.data_widget.update_trials_combo()
+        if hasattr(self, "meta_widget") and self.meta_widget:
+            self.meta_widget.update_labels_widget_title()
+
+    def _update_human_verified_status(self):
+        if not hasattr(self, "human_verify_trial_btn"):
+            return
+        default_style = ""
+        verified_style = "background-color: green; color: white;"
+
+        if self.app_state.trials_sel is None:
+            self.human_verify_trial_btn.setStyleSheet(default_style)
+            self.human_verify_all_trials_btn.setStyleSheet(default_style)
+            return
+
+        trial_meta = self.app_state.get_trial_meta(self.app_state.trials_sel)
+        if trial_meta.get('human_verified', 0):
+            self.human_verify_trial_btn.setStyleSheet(verified_style)
+        else:
+            self.human_verify_trial_btn.setStyleSheet(default_style)
+
+        all_verified = all(
+            self.app_state.get_trial_meta(t).get('human_verified', 0)
+            for t in self.app_state.trials
+        )
+        if all_verified and self.app_state.trials:
+            self.human_verify_all_trials_btn.setStyleSheet(verified_style)
+        else:
+            self.human_verify_all_trials_btn.setStyleSheet(default_style)
+
+    def _apply_correct_offsets(self, mode: str):
+        if self.app_state.trials_sel is None:
+            return
+
+        if mode == "single_trial":
+            trial = self.app_state.trials_sel
+            df = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
+            self.app_state.set_trial_intervals(trial, df)
+            self.app_state.label_intervals = df
+            self.app_state.set_trial_meta_attr(trial, "offsets_corrected", 1)
+        elif mode == "all_trials":
+            for trial in self.app_state.trials:
+                df = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
+                self.app_state.set_trial_intervals(trial, df)
+                self.app_state.set_trial_meta_attr(trial, "offsets_corrected", 1)
+            self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
+
+        self._update_correct_offsets_status()
+        self.app_state.changes_saved = False
+        if self.data_widget:
+            self.data_widget.update_main_plot(preserve_x_range=True)
+            if self.data_widget.plot_container:
+                self.data_widget.plot_container.labels_redraw_needed.emit()
+
+    def _update_correct_offsets_status(self):
+        if not hasattr(self, "correct_offsets_trial_btn"):
+            return
+        default_style = ""
+        applied_style = "background-color: green; color: white;"
+
+        if self.app_state.trials_sel is None:
+            self.correct_offsets_trial_btn.setStyleSheet(default_style)
+            self.correct_offsets_all_trials_btn.setStyleSheet(default_style)
+            return
+
+        trial_corrected = self.app_state.get_trial_meta(self.app_state.trials_sel).get("offsets_corrected", 0)
+        self.correct_offsets_trial_btn.setStyleSheet(applied_style if trial_corrected else default_style)
+
+        all_corrected = all(
+            self.app_state.get_trial_meta(t).get("offsets_corrected", 0)
+            for t in self.app_state.trials
+        )
+        self.correct_offsets_all_trials_btn.setStyleSheet(applied_style if all_corrected else default_style)
+
+    def _apply_purge_small_labels(self, mode: str):
+        if self.app_state.trials_sel is None:
+            return
+
+        min_duration = self.purge_min_duration_spin.value()
+
+        def purge(df):
+            if df.empty:
+                return df
+            mask = (df["offset_s"] - df["onset_s"]) >= min_duration
+            return df[mask].copy().reset_index(drop=True)
+
+        if mode == "single_trial":
+            trial = self.app_state.trials_sel
+            df = purge(self.app_state.get_trial_intervals(trial))
+            self.app_state.set_trial_intervals(trial, df)
+            self.app_state.label_intervals = df
+            self.app_state.set_trial_meta_attr(trial, "small_labels_purged", 1)
+        elif mode == "all_trials":
+            for trial in self.app_state.trials:
+                df = purge(self.app_state.get_trial_intervals(trial))
+                self.app_state.set_trial_intervals(trial, df)
+                self.app_state.set_trial_meta_attr(trial, "small_labels_purged", 1)
+            self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
+
+        self._update_purge_small_labels_status()
+        self.app_state.changes_saved = False
+        if self.data_widget:
+            self.data_widget.update_main_plot(preserve_x_range=True)
+            if self.data_widget.plot_container:
+                self.data_widget.plot_container.labels_redraw_needed.emit()
+
+    def _update_purge_small_labels_status(self):
+        if not hasattr(self, "purge_trial_btn"):
+            return
+        default_style = ""
+        applied_style = "background-color: green; color: white;"
+
+        if self.app_state.trials_sel is None:
+            self.purge_trial_btn.setStyleSheet(default_style)
+            self.purge_all_trials_btn.setStyleSheet(default_style)
+            return
+
+        trial_purged = self.app_state.get_trial_meta(self.app_state.trials_sel).get("small_labels_purged", 0)
+        self.purge_trial_btn.setStyleSheet(applied_style if trial_purged else default_style)
+
+        all_purged = all(
+            self.app_state.get_trial_meta(t).get("small_labels_purged", 0)
+            for t in self.app_state.trials
+        )
+        self.purge_all_trials_btn.setStyleSheet(applied_style if all_purged else default_style)
 
     def _create_mapping_row(self, target_layout):
         mapping_row = QWidget()
@@ -279,11 +616,11 @@ class IOWidget(QWidget):
         self.browse_mapping_btn = QPushButton("Browse")
         mapping_layout.addWidget(self.browse_mapping_btn)
 
+        target_layout.addRow("Name mapping:", mapping_row)
+
         self.temp_labels_button = QPushButton("Create temporary labels")
         self.temp_labels_button.setToolTip("Create custom labels for this session only")
-        mapping_layout.addWidget(self.temp_labels_button)
-
-        target_layout.addRow("Mapping:", mapping_row)
+        target_layout.addRow("", self.temp_labels_button)
 
     def _create_predictions_row(self, target_layout):
         pred_group = QGroupBox("Predictions")
@@ -340,7 +677,8 @@ class IOWidget(QWidget):
         pred_group_layout.addLayout(controls_row)
         target_layout.addRow(pred_group)
 
-    def _create_labels_row(self, target_layout):
+    def _create_labels_row_at_index(self):
+        """Create the labels row and insert it before the predictions group."""
         labels_row = QWidget()
         labels_layout = QHBoxLayout()
         labels_layout.setContentsMargins(0, 0, 0, 0)
@@ -365,7 +703,7 @@ class IOWidget(QWidget):
         labels_browse_btn.clicked.connect(self._on_labels_browse_clicked)
         labels_layout.addWidget(labels_browse_btn)
 
-        target_layout.addRow("Labels:", labels_row)
+        self._labels_group_layout.insertRow(self._labels_row_index, "Labels path:", labels_row)
 
     def _on_labels_browse_clicked(self):
         fmt = self.labels_format_combo.currentText()
@@ -401,9 +739,9 @@ class IOWidget(QWidget):
         if self.labels_widget:
             self.labels_widget._mark_changes_unsaved()
             self.labels_widget.refresh_labels_shapes_layer()
-            self.labels_widget._update_human_verified_status()
-            self.labels_widget._update_correct_offsets_status()
-            self.labels_widget._update_purge_small_labels_status()
+        self._update_human_verified_status()
+        self._update_correct_offsets_status()
+        self._update_purge_small_labels_status()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
             if self.data_widget.plot_container:
@@ -508,6 +846,7 @@ class IOWidget(QWidget):
         for child in self.load_panel.findChildren(QWidget):
             child.setEnabled(False)
         self.controls_toggle.setEnabled(True)
+        self.export_toggle.setEnabled(True)
         self._show_panel("controls")
 
         self._ensure_crowsetta_formats()
@@ -646,7 +985,7 @@ class IOWidget(QWidget):
 
     def _clear_all_line_edits(self):
         for attr in ('nc_file_path_edit', 'video_folder_edit', 'audio_folder_edit',
-                  'pose_folder_edit', 'ephys_path_edit', 'kilosort_folder_edit', 
+                  'pose_folder_edit', 'ephys_path_edit', 'neurons_path_edit',
                       'label_file_path_edit', 'pred_file_path_edit'):
             widget = getattr(self, attr, None)
             if widget:
@@ -714,20 +1053,19 @@ class IOWidget(QWidget):
             "audio_folder": "audio_folder",
             "pose_folder": "pose_folder",
             "ephys_path": "ephys_path",
-            "kilosort_folder": "kilosort_folder",
+            "neurons_path": "neurons_path",
         }
         attr = attr_map.get(object_name)
         if attr:
             setattr(self.app_state, attr, None)
-        if self.labels_widget:
-            self.labels_widget._update_human_verified_status()
-            self.labels_widget._update_correct_offsets_status()
-            self.labels_widget._update_purge_small_labels_status()
+        self._update_human_verified_status()
+        self._update_correct_offsets_status()
+        self._update_purge_small_labels_status()
     # Device controls (populated after load)
     # ------------------------------------------------------------------
 
     def create_device_controls(self, type_vars_dict):
-        self._create_labels_row(self._controls_layout)
+        self._create_labels_row_at_index()
         self.controls.append(self.label_file_path_edit)
 
     def _expand_ephys_with_streams(self, ephys_path, ds):
@@ -869,9 +1207,9 @@ class IOWidget(QWidget):
                 if self.labels_widget:
                     self.labels_widget._mark_changes_unsaved()
                     self.labels_widget.refresh_labels_shapes_layer()
-                    self.labels_widget._update_human_verified_status()
-                    self.labels_widget._update_correct_offsets_status()
-                    self.labels_widget._update_purge_small_labels_status()
+                self._update_human_verified_status()
+                self._update_correct_offsets_status()
+                self._update_purge_small_labels_status()
                 if self.data_widget:
                     self.data_widget.update_main_plot(preserve_x_range=True)
                     if self.data_widget.plot_container:
@@ -889,7 +1227,7 @@ class IOWidget(QWidget):
 
                 self.ephys_path_edit.setText(ephys_path)
                 self.app_state.ephys_path = ephys_path
-                self._auto_detect_kilosort(ephys_path)
+                self._auto_detect_neurons(ephys_path)
 
         elif browse_type == "folder":
             if media_type == "video":
@@ -898,8 +1236,6 @@ class IOWidget(QWidget):
                 caption = "Open folder with audio files (e.g. wav, mp3, mp4)."
             elif media_type == "pose":
                 caption = "Open folder with pose files (e.g. .csv, .h5)."
-            elif media_type == "kilosort":
-                caption = "Select Kilosort output folder."
 
             folder_path = QFileDialog.getExistingDirectory(None, caption=caption)
 
@@ -914,21 +1250,63 @@ class IOWidget(QWidget):
             elif media_type == "pose":
                 self.pose_folder_edit.setText(folder_path)
                 self.app_state.pose_folder = folder_path
-            elif media_type == "kilosort":
-                if folder_path:
-                    self.kilosort_folder_edit.setText(folder_path)
-                    self.app_state.kilosort_folder = folder_path
 
-    def _auto_detect_kilosort(self, ephys_path: str):
+    def _browse_neurons(self):
+        """Browse for a Kilosort folder or Pynapple file (.npz, .nwb)."""
+        start_dir = self.app_state.neurons_path or ""
+        if start_dir and Path(start_dir).is_file():
+            start_dir = str(Path(start_dir).parent)
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Load neuron data")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Select the type of neuron data to load:"))
+
+        btn_ks = QPushButton("Kilosort Folder")
+        btn_ks.setToolTip("Select a Kilosort output folder (spike_times.npy, etc.)")
+        btn_nap = QPushButton("Pynapple File (.npz / .nwb)")
+        btn_nap.setToolTip("Select a Pynapple-compatible file with a 'units' TsGroup")
+
+        layout.addWidget(btn_ks)
+        layout.addWidget(btn_nap)
+
+        chosen_path = [None]
+
+        def _on_kilosort():
+            folder = QFileDialog.getExistingDirectory(
+                dialog, "Select Kilosort output folder", start_dir,
+            )
+            if folder:
+                chosen_path[0] = folder
+                dialog.accept()
+
+        def _on_pynapple():
+            path, _ = QFileDialog.getOpenFileName(
+                dialog, "Select Pynapple file", start_dir,
+                "Pynapple files (*.npz *.nwb);;All files (*)",
+            )
+            if path:
+                chosen_path[0] = path
+                dialog.accept()
+
+        btn_ks.clicked.connect(_on_kilosort)
+        btn_nap.clicked.connect(_on_pynapple)
+
+        if dialog.exec_() == QDialog.Accepted and chosen_path[0]:
+            self.neurons_path_edit.setText(chosen_path[0])
+            self.app_state.neurons_path = chosen_path[0]
+            self.neurons_path_edit.returnPressed.emit()
+
+    def _auto_detect_neurons(self, ephys_path: str):
         ephys_parent = Path(ephys_path).parent
         for folder_name in ("kilosort4", "kilosort"):
             ks_folder = ephys_parent / folder_name
             if ks_folder.is_dir():
-                self.kilosort_folder_edit.setText(str(ks_folder))
-                self.app_state.kilosort_folder = str(ks_folder)
+                self.neurons_path_edit.setText(str(ks_folder))
+                self.app_state.neurons_path = str(ks_folder)
                 return
-        self.kilosort_folder_edit.clear()
-        self.app_state.kilosort_folder = None
+        self.neurons_path_edit.clear()
+        self.app_state.neurons_path = None
 
     def get_nc_file_path(self):
         return self.nc_file_path_edit.text().strip()
@@ -950,5 +1328,5 @@ class IOWidget(QWidget):
         self.pred_segment_confidence_threshold_spin.valueChanged.connect(self.labels_widget._on_confidence_threshold_changed)
 
     def wire_ephys_signals(self, ephys_widget):
-        """Connect kilosort UI to EphysWidget methods."""
-        self.kilosort_folder_edit.returnPressed.connect(ephys_widget._load_kilosort_folder)
+        """Connect neurons UI to EphysWidget methods."""
+        self.neurons_path_edit.returnPressed.connect(ephys_widget._load_neurons)

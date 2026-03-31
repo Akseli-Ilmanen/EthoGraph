@@ -1135,9 +1135,9 @@ class EphysFileDialog(QDialog):
                 self.io_widget.ephys_path_edit.setText(ephys_path)
 
         if kilosort_folder:
-            self.app_state.kilosort_folder = kilosort_folder
-            if hasattr(self.io_widget, 'kilosort_folder_edit'):
-                self.io_widget.kilosort_folder_edit.setText(kilosort_folder)
+            self.app_state.neurons_path = kilosort_folder
+            if hasattr(self.io_widget, 'neurons_path_edit'):
+                self.io_widget.neurons_path_edit.setText(kilosort_folder)
 
         if audio_path:
             audio_folder = str(Path(audio_path).parent)

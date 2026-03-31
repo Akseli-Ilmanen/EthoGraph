@@ -110,7 +110,7 @@ class TimeSlider(QWidget):
             self._label.setText(f"{sign}{seconds:.2f} s")
 
 
-# Panel size ratios keyed by (has_audio, has_kilosort_or_neo)
+# Panel size ratios keyed by (has_audio, has_neurons_or_neo)
 # Values: dict mapping panel_name -> fraction of splitter height
 _PANEL_RATIOS = {
     # audio + ephys
@@ -129,8 +129,8 @@ _PANEL_ORDER = [
     ("audiotrace", "has_audio"),
     ("spectrogram", "has_audio"),
     ("neo", None),
-    ("ephys", "has_kilosort"),
-    ("raster", "has_kilosort"),
+    ("ephys", "has_neurons"),
+    ("raster", "has_neurons"),
     ("feature", None),
 ]
 
@@ -458,7 +458,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         v = self._panel_visible
         has_audio_panel = self.app_state.has_audio and (v["audiotrace"] or v["spectrogram"])
-        has_neural_panel = v["neo"] or (self.app_state.has_kilosort and (v["ephys"] or v["raster"]))
+        has_neural_panel = v["neo"] or (self.app_state.has_neurons and (v["ephys"] or v["raster"]))
         ratios = _PANEL_RATIOS.get((has_audio_panel, has_neural_panel), {"feature": 1.0})
 
         visible_names = self._visible_panel_names()

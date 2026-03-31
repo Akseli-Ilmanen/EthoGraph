@@ -51,7 +51,7 @@ class ModalityConfig:
     source_software: str = "DeepLabCut"
     constant_offset: float = 0.0
     video_motion: bool = False
-    kilosort_folder: str = ""
+    neurons_path: str = ""
     ephys_sr: int = None
     gap_mode: str = "gap_between"  # "gap_between" | "onset_interval"
     gap_value: float = 0.0

@@ -98,7 +98,7 @@ ethograph/gui/
     widgets_labels.py         # Label labeling interface
     widgets_navigation.py     # Trial navigation
     widgets_changepoints.py   # Changepoint detection + correction
-    widgets_ephys.py          # Ephys controls, Kilosort, firing rates
+    widgets_ephys.py          # Ephys controls, neurons (Kilosort/Pynapple), firing rates
     widgets_plot_settings.py  # Plot settings controls
     widgets_transform.py      # Energy envelope + noise reduction
 
@@ -185,6 +185,14 @@ All plots inherit `BasePlot` (pyqtgraph `PlotWidget`): time marker, x-axis range
 `MetaWidget` creates all widgets and wires signals. `DataWidget` is the central orchestrator — handles trial changes, plot updates, video/audio loading.
 
 **Signal flow:** `NavigationWidget` → `trial_changed` → `DataWidget.on_trial_changed()` → updates everything.
+
+### Neuron Loading (Kilosort / Pynapple)
+
+Two loading paths, both producing a `nap.TsGroup` + cluster table:
+- **Kilosort folder**: loads `.npy` files, `cluster_info.tsv`, raw `.dat` trace. Full features (probe map, spike waveforms, raster).
+- **Pynapple file** (`.npz`/`.nwb`): loads via `nap.load_file()`, extracts `data["units"]` TsGroup. Raster-only (no raw traces, no probe map). TsGroup metadata columns populate the cluster table.
+
+State: `app_state.neurons_path` (was `kilosort_folder`), `app_state.has_neurons` (was `has_kilosort`). `EphysWidget._neurons_source` is `"kilosort"` or `"pynapple"`.
 
 ### Kilosort Channel Mapping
 

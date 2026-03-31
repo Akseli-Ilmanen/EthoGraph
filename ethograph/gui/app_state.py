@@ -178,7 +178,7 @@ class AppStateSpec:
         "has_pose": (bool, False, False),
         "has_audio": (bool, False, False),
         "has_neo": (bool, False, False),
-        "has_kilosort": (bool, False, False),
+        "has_neurons": (bool, False, False),
         
 
         # Paths 
@@ -187,7 +187,7 @@ class AppStateSpec:
         "audio_folder": (str | None, None, True, SCOPE_LOCAL),
         "pose_folder": (str | None, None, True, SCOPE_LOCAL),
         "ephys_path": (str | None, None, True, SCOPE_LOCAL),
-        "kilosort_folder": (str | None, None, True, SCOPE_LOCAL),
+        "neurons_path": (str | None, None, True, SCOPE_LOCAL),
         
 
         "video_path": (str | None, None, False),

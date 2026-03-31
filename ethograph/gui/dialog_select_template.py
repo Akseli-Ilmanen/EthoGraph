@@ -24,7 +24,9 @@ from ethograph.gui.notify import notify_dialog
 from ethograph.utils.download import (
     EXAMPLE_DATASETS,
     download_assets,
+    ensure_default_configs,
     is_downloaded,
+    write_example_configs,
 )
 
 _ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "examples" / "assets"
@@ -244,6 +246,8 @@ class TemplateDialog(QDialog):
         if template.get("nc_filename") is None and template.get("audio_file"):
             self._generate_nc_from_audio(template)
             return
+        ensure_default_configs()
+        write_example_configs(template["dataset_key"], _template_dir(template))
         self.selected_template = _resolve_template_paths(template)
         self.accept()
 

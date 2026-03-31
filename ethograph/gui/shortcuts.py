@@ -149,7 +149,7 @@ def bind_global_shortcuts(meta_widget):
 
     @viewer.bind_key("ctrl+v", overwrite=True)
     def human_verified(v):
-        labels_widget._human_verification_true(mode="single_trial")
+        io_widget._human_verification_true(mode="single_trial")
 
     @viewer.bind_key("ctrl+b", overwrite=True)
     def toggle_changepoint_correction(v):

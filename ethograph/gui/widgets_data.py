@@ -498,9 +498,9 @@ class DataWidget(QWidget):
             self.app_state.ephys_source_map[display_name] = (nwb_ephys_path, "0", 0)
             self.app_state.ephys_stream_sel = display_name
 
-        self.app_state.has_audio = bool("mics" in self.type_vars_dict and self.app_state.audio_folder)
+        self.app_state.has_audio = bool(self.app_state.dt.mics and self.app_state.audio_folder)
         self.app_state.has_neo = bool(self.app_state.ephys_path) or bool(nwb_ephys_series and nwb_ephys_path)
-        self.app_state.has_kilosort = bool(self.app_state.kilosort_folder)
+        self.app_state.has_neurons = bool(self.app_state.neurons_path)
 
         # Populate ephys_source_map (streams are NOT added to features list)
         if self.app_state.ephys_path:
@@ -527,9 +527,18 @@ class DataWidget(QWidget):
 
         self.app_state._all_labels_df = all_labels_df
 
-        self.app_state.ds = self.app_state.dt.trial(trials[0])
         self.app_state.trials = sorted(trials)
+        self.app_state.ds = self.app_state.dt.trial(self.app_state.trials[0])
 
+        # Set trials_sel early so _expand_mics_with_channels / get_media
+        # can resolve filenames during UI creation.
+        trial = getattr(self.app_state, 'trials_sel', None)
+        try:
+            is_nan = np.isnan(trial)
+        except (TypeError, ValueError):
+            is_nan = False
+        if not trial or is_nan or trial not in self.app_state.trials:
+            self.app_state.trials_sel = self.app_state.trials[0]
 
         missing = self._validate_media_files()
         if missing:
@@ -565,14 +574,6 @@ class DataWidget(QWidget):
                 0,
                 lambda: self.layout_mgr.set_sidebar_default_width(self.meta_widget, SIDEBAR_AFTER_LOAD_WIDTH_RATIO),
             )
-
-        trial = getattr(self.app_state, 'trials_sel', None)
-        try:
-            is_nan = np.isnan(trial)
-        except (TypeError, ValueError):
-            is_nan = False
-        if not trial or is_nan:
-            self.app_state.trials_sel = self.app_state.trials[0]
 
         self.update_trials_combo()
         self._load_trial_with_fallback()
@@ -695,7 +696,7 @@ class DataWidget(QWidget):
 
         has_audio = bool(self.app_state.has_audio)
         has_neo = bool(self.app_state.has_neo)
-        has_phy = bool(self.app_state.has_kilosort)
+        has_phy = bool(self.app_state.has_neurons)
         has_features = self.type_vars_dict.get("features") != []
 
         # Whether this panel's data is available in the current session.
@@ -1040,6 +1041,8 @@ class DataWidget(QWidget):
         audio_folder = self.app_state.audio_folder
         dt = getattr(self.app_state, 'dt', None)
         trial_id = getattr(self.app_state, 'trials_sel', None)
+        if trial_id is None and dt is not None and dt.trials:
+            trial_id = dt.trials[0]
 
         if not audio_folder or dt is None:
             for mic in mic_labels:
@@ -1180,8 +1183,9 @@ class DataWidget(QWidget):
         self.view_mode_combo.blockSignals(True)
         self.view_mode_combo.clear()
 
+        has_audio = self.app_state.has_audio or bool(self.app_state.audio_path)
         items = ["LinePlot", "Heatmap"]
-        if self.app_state.has_audio:
+        if has_audio:
             items.append("Heatmap (Audio)")
         if self.app_state.has_neo:
             items.append("Heatmap (Ephys)")
@@ -1640,15 +1644,18 @@ class DataWidget(QWidget):
         preserve = getattr(self.app_state, '_preserve_x_range_next', False)
         self.app_state._preserve_x_range_next = False
         self.update_main_plot(preserve_x_range=preserve)
-        self.update_space_plot()
+        try:
+            self.update_space_plot()
+        except Exception:
+            logger.debug("update_space_plot failed", exc_info=True)
 
         self.plot_container.update_time_range_from_data()
         self.plot_container.update_time_marker_by_time(0.0)
 
         self._update_confidence_overlay()
 
-        if self.labels_widget:
-            self.labels_widget._update_human_verified_status()
+        if self.io_widget:
+            self.io_widget._update_human_verified_status()
 
     # ------------------------------------------------------------------
     # Plot updates
@@ -1742,6 +1749,8 @@ class DataWidget(QWidget):
         if self.pose_mgr is None or not self.app_state.has_pose:
             return
         if not self.app_state.pose_markers_visible:
+            return
+        if not hasattr(self.app_state, 'trials_sel') or self.app_state.trials_sel is None:
             return
         self.pose_mgr.update_pose(self.get_hidden_keypoints())
 

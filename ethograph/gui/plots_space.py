@@ -1,5 +1,6 @@
 """Space plot widget for displaying box topview and centroid trajectory plots."""
 
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -13,6 +14,8 @@ from qtpy.QtWidgets import QVBoxLayout, QWidget, QSizePolicy
 from ethograph.features.preprocessing import interpolate_nans
 from ethograph.gui.plots_lineplot import MultiColoredLineItem
 import ethograph as eto
+
+logger = logging.getLogger(__name__)
 
 
 def load_arena_config(config_path: Path) -> Optional[dict]:
@@ -268,8 +271,9 @@ class SpacePlot(QWidget):
         if not self.app_state.ds:
             return
 
-        if not hasattr(self.app_state.ds, 'position') or 'x' not in self.app_state.ds.coords["space"] or 'y' not in self.app_state.ds.coords["space"]:
-            raise ValueError("Dataset must have 'position' variable with 'x' and 'y' coordinates for space plots")
+        if 'position' not in self.app_state.ds or 'space' not in self.app_state.ds.coords or 'x' not in self.app_state.ds.coords["space"].values or 'y' not in self.app_state.ds.coords["space"].values:
+            logger.debug("Dataset has no position/space data — skipping space plot")
+            return
 
         if self.space_widget:
             self.layout.removeWidget(self.space_widget)

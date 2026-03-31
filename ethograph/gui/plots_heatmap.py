@@ -46,6 +46,7 @@ class HeatmapPlot(BasePlot):
         self._sort_order: np.ndarray | None = None
 
         # Unified buffer for xarray feature data
+        self._buffer_multiplier = DEFAULT_BUFFER_MULTIPLIER
         self._buffer = WindowedBuffer(buffer_multiplier=DEFAULT_BUFFER_MULTIPLIER)
         self._buffered_data = None
         self._buffered_time = None
@@ -183,10 +184,14 @@ class HeatmapPlot(BasePlot):
         n_samples = data.shape[0]
         if n_samples <= max_samples:
             return data
-        block_size = n_samples // max_samples
-        usable = block_size * max_samples
-        blocked = data[:usable].reshape(max_samples, block_size, data.shape[1])
-        return blocked.mean(axis=1)
+        block_size = -(-n_samples // max_samples)  # ceil division — covers all data
+        n_full = n_samples // block_size
+        usable = n_full * block_size
+        result = data[:usable].reshape(n_full, block_size, data.shape[1]).mean(axis=1)
+        if usable < n_samples:
+            last = data[usable:].mean(axis=0, keepdims=True)
+            result = np.vstack([result, last])
+        return result
 
     # --- Audio envelope loading ---
 
@@ -449,10 +454,20 @@ class HeatmapPlot(BasePlot):
 
             buf_t0 = float(time_vals[0])
             buf_t1 = float(time_vals[-1])
+            n_display = display_data.shape[0]
             duration = buf_t1 - buf_t0
 
+            # Half-pixel correction: each image pixel is a bin, not a point.
+            # Shift rect so pixel centers align with sample times.
+            if n_display > 1:
+                dt = duration / (n_display - 1)
+            else:
+                dt = max(duration, 1e-6)
+            rect_x = buf_t0 - dt / 2
+            rect_w = duration + dt
+
             # Image covers all channels in global y-space [0, n_total]
-            self.image_item.setRect(pg.QtCore.QRectF(buf_t0, 0, duration, n_total))
+            self.image_item.setRect(pg.QtCore.QRectF(rect_x, 0, rect_w, n_total))
 
             # Set up global y-space on first render or channel count change
             self._setup_global_y_space()

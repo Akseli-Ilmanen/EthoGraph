@@ -501,7 +501,7 @@ class ChangepointsWidget(QWidget):
         self._update_oscillatory_source_state()
 
     def _update_oscillatory_source_state(self):
-        has_raw_ephys = bool(self.app_state.has_neo or self.app_state.has_kilosort)
+        has_raw_ephys = bool(self.app_state.has_neo or self.app_state.has_neurons)
         model = self.osc_source_combo.model()
         ephys_item = model.item(0)  # "Ephys Trace"
         ephys_item.setEnabled(has_raw_ephys)

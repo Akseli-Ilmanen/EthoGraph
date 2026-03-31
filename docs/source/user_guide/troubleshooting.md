@@ -20,6 +20,11 @@ Report bugs on [GitHub Issues](https://github.com/Akseli-Ilmanen/ethograph/issue
 
 I/O support for new data formats is actively being expanded. If your format is not yet represented, please send a sample dataset to [akseli.ilmanen@gmail.com](mailto:akseli.ilmanen@gmail.com) and I will work on adding loading support for it.
 
+
+### What does this button do?
+
+A lot of buttons, spinners, dropdowns, etc. have a little description tooltip when you hover over them.
+
 ### Video seek warnings with `.avi` / `.mov` files
 
 If you see warnings like `Seek problem with frame 206! pts: 208; target: 206`, your video container format has unreliable keyframe indexing. Frame display may be off by 1-2 frames when scrubbing or seeking.

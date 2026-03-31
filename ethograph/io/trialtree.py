@@ -349,11 +349,12 @@ class TrialTree(xr.DataTree):
         if not has_monotonic_starts:
             return None
 
+        # If stop time missing, infer it as just before the next trial's start
         has_stop = ~np.isnan(ends)
         safe_ends = ends.copy()
         for i in range(n - 1):
             if np.isnan(safe_ends[i]):
-                safe_ends[i] = starts[i + 1] - _EPOCH_GAP
+                safe_ends[i] = starts[i + 1] - _EPOCH_GAP 
         if np.isnan(safe_ends[-1]):
             safe_ends[-1] = starts[-1] + 1.0
 
@@ -502,16 +503,14 @@ class TrialTree(xr.DataTree):
         """Session-absolute time of sample 0 for this stream's file.
 
         Reads from the ``start_time_{stream}`` DataArray in the session
-        node.  For ``"features"``, falls back to ``features_aligned_to``
-        (default ``"video"``) when no explicit start time is stored.
+        node. 
 
         Parameters
         ----------
         trial : int or str
             Trial identifier.
         stream : str
-            Stream name (e.g. ``"video"``, ``"audio"``, ``"ephys"``,
-            ``"features"``).
+            Stream name (e.g. ``"video"``, ``"audio"``, ``"ephys"``).
         device : str, optional
             Device label (e.g. ``"left"``).
 
