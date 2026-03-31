@@ -252,7 +252,7 @@ class IOWidget(QWidget):
 
         self.neurons_path_edit = self._create_path_widget(
             self._load_layout,
-            label="Neurons (Kilosort/Pynapple):",
+            label="Units (Kilosort/Pynapple):",
             object_name="neurons_path",
             browse_callback=self._browse_neurons,
         )
