@@ -16,6 +16,8 @@ from ethograph.io.dataset import (
 )
 from ethograph.utils.xr_utils import get_time_coord, sel_valid
 from ethograph.utils.paths import get_project_root
+from ethograph.io.pynapple import load_nap_data, nap_to_metadata_trialtree
+from ethograph.io.feature_store import PlotData, XarrayStore, PynappleStore
 
 
 def open(path: str) -> TrialTree:

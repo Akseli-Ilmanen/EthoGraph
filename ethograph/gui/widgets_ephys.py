@@ -1409,10 +1409,10 @@ class EphysWidget(QWidget):
     def _trial_ep(self) -> nap.IntervalSet | None:
         alignment = self.app_state.trial_alignment
         ephys_offset = alignment.ephys_offset if alignment is not None else 0.0
-        trial_bounds = self.app_state.trial_bounds
-        if trial_bounds is None:
+        window_bounds = self.app_state.window_bounds
+        if window_bounds is None:
             return None
-        return nap.IntervalSet(ephys_offset, ephys_offset + trial_bounds.duration)
+        return nap.IntervalSet(ephys_offset, ephys_offset + window_bounds.duration)
 
     def _ephys_offset(self) -> float:
         alignment = self.app_state.trial_alignment
@@ -2332,7 +2332,7 @@ class EphysWidget(QWidget):
 
         ds = self.app_state.dt.trial(trial)
         start_time = self.app_state.dt.start_time(trial)
-        bounds = self.app_state.trial_bounds
+        bounds = self.app_state.window_bounds
         if bounds is None:
             return
 

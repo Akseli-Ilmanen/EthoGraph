@@ -905,7 +905,7 @@ class EphysTracePlot(BasePlot):
 
     @property
     def _trial_duration(self) -> float | None:
-        bounds = self.app_state.trial_bounds
+        bounds = self.app_state.window_bounds
         return bounds.duration if bounds is not None else None
 
     def set_loader(self, loader: EphysLoader, channel: int = 0):

@@ -381,7 +381,7 @@ class IOWidget(QWidget):
             lambda: setattr(self.app_state, "remote_backup_path", self.remote_backup_edit.text().strip() or None)
         )
         remote_path_row.addWidget(self.remote_backup_edit)
-        remote_browse_btn = QPushButton("Browse")
+        remote_browse_btn = QPushButton("Browse file")
         remote_browse_btn.clicked.connect(self._browse_remote_backup)
         remote_path_row.addWidget(remote_browse_btn)
         remote_group_layout.addLayout(remote_path_row)
@@ -1006,7 +1006,7 @@ class IOWidget(QWidget):
         line_edit.setObjectName(f"{object_name}_edit")
         if object_name == "nc_file_path":
             line_edit.setPlaceholderText(
-                "Path to .nc file"
+                "Path to .nc / .nwb / .npz file or pynapple folder"
             )
 
         browse_button = QPushButton("Browse")
@@ -1018,11 +1018,9 @@ class IOWidget(QWidget):
             self.import_labels_checkbox.setObjectName("import_labels_checkbox")
             self.import_labels_checkbox.setToolTip(
                 "Load labels from {name}_labels.tsv alongside the .nc file.\n"
-                "Falls back to labels inside the .nc (legacy) if no .tsv exists."
             )
             self.import_labels_checkbox.stateChanged.connect(self._on_import_labels_checked)
             self.import_labels_checkbox.setChecked(bool(self.app_state.import_labels_nc_data))
-            
 
         clear_button = QPushButton("Clear")
         clear_button.setObjectName(f"{object_name}_clear_button")
@@ -1032,7 +1030,11 @@ class IOWidget(QWidget):
         row_layout.addWidget(line_edit)
         row_layout.addWidget(browse_button)
         if object_name == "nc_file_path":
-            row_layout.addWidget(self.import_labels_checkbox)
+            browse_folder_button = QPushButton("Browse folder")
+            browse_folder_button.setObjectName(f"{object_name}_browse_folder_button")
+            browse_folder_button.setToolTip("Browse for a pynapple data folder")
+            browse_folder_button.clicked.connect(self._browse_data_folder)
+            row_layout.addWidget(browse_folder_button)
         row_layout.addWidget(clear_button)
         target_layout.addRow(label, row_layout)
 
@@ -1143,6 +1145,7 @@ class IOWidget(QWidget):
         self.load_button.setObjectName("load_button")
         self.load_button.clicked.connect(self._on_load_clicked)
 
+        load_layout.addWidget(self.import_labels_checkbox)
         load_layout.addWidget(self.downsample_checkbox)
         load_layout.addWidget(self.downsample_spin)
         load_layout.addWidget(self.load_button, stretch=1)
@@ -1169,20 +1172,33 @@ class IOWidget(QWidget):
     # Browse dialogs
     # ------------------------------------------------------------------
 
+    def _browse_data_file(self):
+        """Browse for a data file (.nc, .nwb, .npz)."""
+        result = QFileDialog.getOpenFileName(
+            None,
+            caption="Open data file",
+            filter="Data files (*.nc *.nwb *.npz);;All files (*)",
+        )
+        path = result[0] if result and len(result) >= 1 else ""
+        if path:
+            self.nc_file_path_edit.setText(path)
+            self.app_state.nc_file_path = path
+
+    def _browse_data_folder(self):
+        """Browse for a pynapple data folder."""
+        path = QFileDialog.getExistingDirectory(
+            None,
+            caption="Open pynapple data folder",
+        )
+        if path:
+            self.nc_file_path_edit.setText(path)
+            self.app_state.nc_file_path = path
+
     def on_browse_clicked(self, browse_type="file", media_type=None):
         if browse_type == "file":
             if media_type == "data":
-                result = QFileDialog.getOpenFileName(
-                    None,
-                    caption="Open file containing feature data",
-                    filter="Data files (*.nc *.nwb)",
-                )
-                nc_file_path = result[0] if result and len(result) >= 1 else ""
-                if not nc_file_path:
-                    return
-
-                self.nc_file_path_edit.setText(nc_file_path)
-                self.app_state.nc_file_path = nc_file_path
+                self._browse_data_file()
+                return
 
             elif media_type == "labels":
                 nc_parent = Path(self.app_state.nc_file_path).parent

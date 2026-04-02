@@ -272,7 +272,7 @@ class BasePlot(pg.PlotWidget):
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
 
-        tr = self.app_state.trial_bounds
+        tr = self.app_state.window_bounds
         bounds = (tr.start_s, tr.end_s) if tr is not None else None
         if bounds is None:
             if mode == 'preserve' and curr_xlim:
@@ -321,7 +321,7 @@ class BasePlot(pg.PlotWidget):
             current_ylim = self.vb.viewRange()[1]
             x_range = current_xlim[1] - current_xlim[0]
 
-            tr = self.app_state.trial_bounds
+            tr = self.app_state.window_bounds
             bounds = x_bounds_override or ((tr.start_s, tr.end_s) if tr is not None else None)
             if hasattr(self.app_state, 'ds') and self.app_state.ds is not None and bounds is not None:
                 data_xmin, data_xmax = bounds
@@ -357,7 +357,7 @@ class BasePlot(pg.PlotWidget):
         ----------
         x_bounds_override
             Optional ``(xMin, xMax)`` to use instead of this plot's own
-            ``app_state.trial_bounds``.  The container passes the tightest
+            ``app_state.window_bounds``.  The container passes the tightest
             bounds across all visible panels so that no panel scrolls past
             another's data.
         """
@@ -368,7 +368,7 @@ class BasePlot(pg.PlotWidget):
         )
 
         if hasattr(self.app_state, 'ds') and self.app_state.ds is not None:
-            tr = self.app_state.trial_bounds
+            tr = self.app_state.window_bounds
             bounds = x_bounds_override or ((tr.start_s, tr.end_s) if tr is not None else None)
             if bounds is not None:
                 xMin, xMax = bounds

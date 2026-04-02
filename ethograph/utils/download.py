@@ -94,6 +94,12 @@ EXAMPLE_DATASETS = {
             "2024-12-18_041_Crow1_DLC_3D.csv",
             "2024-12-18_041_Crow1-cam-1_s3d.npy",
         ],
+        "assets_pynapple": [
+            "beakTip_speed.npz",
+            "beakTip_velocity.npz",
+            "beakTip_position.npz",
+            "trials.npz",
+        ],
         "assets_gui": [
             "Trial_data.nc",
             "Trial_data_labels.tsv",

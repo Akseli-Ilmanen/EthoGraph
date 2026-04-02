@@ -31,7 +31,7 @@ from .widgets_data import DataPanel, DataWidget
 from .widgets_help import HelpWidget
 from .widgets_io import IOWidget
 from .widgets_labels import LabelsWidget
-from .widgets_navigation import NavigationWidget
+from .widget_intervals import NavigationWidget
 from .widgets_plot_settings import PlotSettingsWidget
 from .widgets_transform import TransformWidget
 from .widgets_ephys import EphysWidget
@@ -150,6 +150,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.changepoints_widget.set_meta_widget(self)
         self.changepoints_widget.data_widget = self.data_widget
         self.changepoints_widget.set_motif_mappings(self.labels_widget._mappings)
+        self.navigation_widget.set_mappings(self.labels_widget._mappings)
         self.navigation_widget.set_plot_container(self.plot_container)
         self.ephys_widget.set_plot_container(self.plot_container)
         self.ephys_widget.set_meta_widget(self)

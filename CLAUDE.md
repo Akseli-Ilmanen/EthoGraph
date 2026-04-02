@@ -88,13 +88,14 @@ ethograph/gui/
     plots_heatmap.py          # N-dim heatmap (WindowedBuffer + XarraySource for features)
     plots_raster.py           # Spike raster plot
     plots_space.py            # 2D/3D position visualization
-    plots_timeseriessource.py # TimeRange, TrialAlignment, compute_trial_alignment()
+    plots_timeseriessource.py # TimeRange, RestrictionWindow, TrialAlignment, compute_trial_alignment()
     label_drawing_mixin.py    # Shared label/changepoint drawing
     video_sync.py             # Napari video/audio synchronization (NapariVideoSync)
     video_manager.py          # Multi-camera video loading
+    widget_intervals.py       # Interval navigation: browse by trial/label/sequence (IntervalNavigationWidget)
     widgets_meta.py           # Main orchestrator (MetaWidget)
     widgets_data.py           # Dataset controls (DataWidget — central orchestrator)
-    widgets_io.py             # File loading, I/O controls
+    widgets_io.py             # File loading, I/O controls (.nc, .nwb, .npz, pynapple folders)
     widgets_labels.py         # Label labeling interface
     widgets_navigation.py     # Trial navigation
     widgets_changepoints.py   # Changepoint detection + correction
@@ -111,10 +112,18 @@ ethograph/labels/
     converters.py             # Crowsetta/NWB import converters
     export.py                 # enrich_labels_df(), correct_offsets_trial()
 
-ethograph/utils/
+ethograph/io/
     trialtree.py              # TrialTree (xr.DataTree subclass)
+    dataset.py                # dataset_to_basic_trialtree, downsample_trialtree
+    feature_store.py          # PlotData, FeatureStore protocol, XarrayStore, PynappleStore
+    validation.py             # extract_type_vars, extract_type_vars_unified, validate_datatree
+    pynapple.py               # Pynapple/NWB loading: load_nap_data, nap_to_metadata_trialtree, PynappleStore
+    restrict.py               # Restriction logic: build_trial/label/sequence_window, find_closest_trial
+
+ethograph/utils/
     io.py                     # Standalone I/O functions
     xr_utils.py               # sel_valid(), get_time_coord()
+    sequences.py              # match_sequences, get_label_instances, get_unique_sequences
 ```
 
 ## Architecture
@@ -154,7 +163,49 @@ Media: `dt.set_media(video=, audio=, pose=)`, `dt.get_video(trial, camera)`, `dt
 **AppStateSpec** — type-checked spec with ~40 variables.
 **ObservableAppState** — Qt signals auto-generated per variable (e.g., `current_frame_changed`). Dynamic `*_sel` attributes for xarray selections. Auto-saves to YAML.
 
-Key signals: `trial_changed`, `labels_modified`, `verification_changed`
+Key signals: `trial_changed`, `restrict_window_changed`, `labels_modified`, `verification_changed`
+
+### Restriction Window System
+
+`RestrictionWindow` (dataclass in `plots_timeseriessource.py`) replaces trial-only bounds with a flexible display window:
+
+- **mode**: `"trial"` (default), `"label"`, or `"sequence"`
+- **time_range**: Effective display window (including extra context padding)
+- **core_range**: The actual interval (without padding)
+- **trial_id**: Which trial this belongs to
+
+`app_state.window_bounds` returns the current `RestrictionWindow.time_range` (or falls back to `trial_bounds`). All plots use `window_bounds` for x-axis limits.
+
+**Navigation modes** (`IntervalNavigationWidget`):
+- Trial mode: standard trial navigation (current behavior)
+- Label mode: navigate between instances of a specific label class across trials
+- Sequence mode: navigate between trials matching a label sequence pattern (e.g. "1-2-3-5")
+
+**Restriction logic** (`ethograph/io/restrict.py`): `build_trial_window()`, `build_label_window()`, `build_sequence_window()`, `find_closest_trial()`.
+
+**Sequence matching** (`ethograph/utils/sequences.py`): `match_sequences()`, `get_label_instances()`, `get_unique_sequences()`.
+
+### Feature Store: `feature_store.py`
+
+**`FeatureStore`** (Protocol) — backend-agnostic interface: `features`, `dims`, `colors`, `select(feature, selections, t0, t1)` → `PlotData`.
+
+**`PlotData`** — source-agnostic dataclass: `time`, `data` (numpy), `dim_labels`, `title`, `ylabel`, `color_data`, `changepoints`, `boundary_events`. Consumed by `render_plot_data()` in `plots_lineplot.py`.
+
+**Concrete stores:**
+- `XarrayStore` — wraps `xr.Dataset`, delegates to `sel_valid()`. Updated on trial change via `update_ds()`.
+- `PynappleStore` — wraps raw pynapple dict. Lazy: data never copied to xarray. Uses `restrict()` for trial + time window, column indexing for dim selection.
+
+**Shared column dimensions:** `_compute_shared_column_dims()` groups TsdFrame objects by their column values. Objects with identical columns (e.g. position & velocity both with x/y/z) share one dimension name → one combo in the GUI.
+
+### Pynapple/NWB Data Loading
+
+The GUI supports loading `.nc` (NetCDF), `.nwb`, `.npz`, and pynapple folders. Dispatch happens in `data_loader.py`:
+- `.nc` → `eto.open()` (existing path, `XarrayStore`)
+- `.nwb`/`.npz`/folder → `load_nap_data()` + `PynappleStore` (lazy) + `nap_to_metadata_trialtree()` (lightweight TrialTree for navigation/labels, no data vars)
+
+`PynappleStore` holds raw pynapple objects. On each `select()` call it restricts to the current trial via `IntervalSet`, time-slices, selects columns, and returns trial-relative numpy arrays in a `PlotData`.
+
+`nap_to_metadata_trialtree()` creates a TrialTree with just time coordinates and session table (for trial navigation and label storage) — no feature data variables.
 
 ### Plot System
 

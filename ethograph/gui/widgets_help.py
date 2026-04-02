@@ -152,4 +152,4 @@ class HelpWidget(QWidget):
             print("  No trials_ep available.")
         else:
             df = trials_ep.as_dataframe()
-        print(df.to_string())
+            print(df.to_string())

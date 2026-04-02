@@ -34,7 +34,7 @@ from movement.kinematics import compute_velocity, compute_speed
 {% if mod.regex %}
 
 {{ mod.name }}_pattern = re.compile(r"{{ mod.regex }}")
-{% if mod.has_trial_role and mod.file_mode == "multi_regular" %}
+{% if mod.has_trial_role and mod.file_mode == "aligned_to_trial" %}
 {{ mod.name }}_by_trial = {}
 for file_path in {{ mod.name }}_files:
     match = {{ mod.name }}_pattern.search(file_path.stem)
@@ -100,11 +100,7 @@ session_table = pd.DataFrame({
 ds_list = []
 {% if pose_has_trial_metadata %}
 for trial in session_table['trial']:
-    # Find pose file(s) for this trial
-    trial_pose_files = [
-        pose_files[i] for i, m in enumerate(pose_metadata)
-        if m.get('trial') == trial
-    ]
+    trial_pose_files = pose_by_trial.get(trial, [])
     if not trial_pose_files:
         continue
 
@@ -136,7 +132,7 @@ dt.itrial(0)
 # ─── 5. Store media files in session table ───
 
 {% for mod in media_modalities %}
-{% if mod.file_mode == "multi_regular" %}
+{% if mod.file_mode == "aligned_to_trial" %}
 # {{ mod.name }}: per-trial files
 {{ mod.name }}_filenames = [
     [f.name for f in {{ mod.name }}_by_trial.get(trial, [])]
@@ -148,7 +144,7 @@ dt.set_media("{{ mod.name }}", {{ mod.name }}_filenames, device_labels={{ mod.de
 dt.set_media("{{ mod.name }}", {{ mod.name }}_filenames)
 {% endif %}
 
-{% elif mod.file_mode == "multi_irregular" %}
+{% elif mod.file_mode == "aligned_to_session" %}
 # {{ mod.name }}: session-wide (continuous recording)
 {% if mod.device_labels %}
 {{ mod.name }}_filenames = [f.name for f in {{ mod.name }}_files[:len({{ mod.device_labels }})]]
@@ -176,9 +172,11 @@ dt.set_stream_offset("{{ stream }}", {{ offset }})
 {% else %}
 # No stream offsets configured
 {% endif %}
-{% if output_path %}
 
 # ─── 7. Save to NetCDF ───
 
+{% if output_path %}
 dt.save("{{ output_path }}")
+{% else %}
+dt.save("output.nc")  # TODO: set your output path
 {% endif %}

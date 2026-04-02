@@ -25,6 +25,32 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _is_pynapple_path(file_path: str) -> bool:
+    """Check if path is a pynapple/NWB file or folder."""
+    p = Path(file_path)
+    from ethograph.io.pynapple import PYNAPPLE_EXTENSIONS
+    return p.is_dir() or p.suffix in PYNAPPLE_EXTENSIONS
+
+
+def _load_pynapple_dataset(file_path: str) -> tuple:
+    """Load a pynapple/NWB file or folder into TrialTree + type_vars.
+
+    Returns the same ``(dt, all_labels_df, type_vars_dict)`` tuple as
+    :func:`load_dataset`, plus stores a :class:`PynappleStore` on ``dt``
+    via ``dt.attrs["feature_store"]`` for lazy data access.
+    """
+    from ethograph.io.feature_store import PynappleStore
+    from ethograph.io.pynapple import load_nap_data, nap_to_metadata_trialtree
+
+    data, trials_ep = load_nap_data(file_path)
+    store = PynappleStore(data, trials_ep)
+    dt = nap_to_metadata_trialtree(data, trials_ep)
+    dt.attrs["feature_store"] = store
+    type_vars_dict = store.get_type_vars()
+    all_labels_df = init_empty_labels(dt.trials)
+    return dt, all_labels_df, type_vars_dict
+
+
 def load_dataset(
     file_path: str,
     require_fps: bool = True,
@@ -35,12 +61,17 @@ def load_dataset(
 ) -> tuple:
     """Load dataset from file path.
 
+    Supports ``.nc`` (NetCDF), ``.nwb``, ``.npz``, and pynapple folders.
+
     Returns:
         Tuple of (dt, all_labels_df, type_vars_dict) on success.
 
     Raises:
         ValueError: On validation or format errors (popup shown before raising).
     """
+    if _is_pynapple_path(file_path):
+        return _load_pynapple_dataset(file_path)
+
     dt = eto.open(file_path)
     type_vars_dict = extract_type_vars(dt.itrial(0), dt)
 
@@ -58,7 +89,7 @@ def load_dataset(
     if tsv_path.exists():
         all_labels_df = load_labels_tsv(tsv_path)
         logger.info("Loaded labels from %s", tsv_path.name)
-    
+
     else:
         all_labels_df = init_empty_labels(dt.trials)
 

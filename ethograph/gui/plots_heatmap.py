@@ -128,24 +128,24 @@ class HeatmapPlot(BasePlot):
 
     # --- Context tracking (same pattern as LinePlot) ---
 
-    def _get_ds_kwargs_hash(self) -> str:
-        ds_kwargs = self.app_state.get_ds_kwargs()
-        return str(sorted(ds_kwargs.items()))
+    def _get_selections_hash(self) -> str:
+        selections = self.app_state.get_selections()
+        return str(sorted(selections.items()))
 
     def _context_changed(self) -> bool:
         feature = getattr(self.app_state, 'features_sel', None)
         trial = getattr(self.app_state, 'trials_sel', None)
-        ds_kwargs_hash = self._get_ds_kwargs_hash()
+        sel_hash = self._get_selections_hash()
         return (
             feature != self._current_feature
             or trial != self._current_trial
-            or ds_kwargs_hash != self._current_ds_kwargs_hash
+            or sel_hash != self._current_ds_kwargs_hash
         )
 
     def _update_context(self):
         self._current_feature = getattr(self.app_state, 'features_sel', None)
         self._current_trial = getattr(self.app_state, 'trials_sel', None)
-        self._current_ds_kwargs_hash = self._get_ds_kwargs_hash()
+        self._current_ds_kwargs_hash = self._get_selections_hash()
 
     def _clear_buffer(self):
         self._buffer.invalidate()
@@ -326,7 +326,7 @@ class HeatmapPlot(BasePlot):
         if ds is None or time_coord is None:
             self._buffer.set_source(None)
             return
-        bounds = self.app_state.trial_bounds
+        bounds = self.app_state.window_bounds
         source = XarraySource(ds, time_coord.name)
         self._buffer.set_source(source, bounds=bounds)
 
@@ -354,43 +354,65 @@ class HeatmapPlot(BasePlot):
         if view_mode == "Heatmap (Ephys)":
             return self._get_buffered_ephys_envelope(t0, t1)
 
-        if self._buffer.source is None:
-            self._ensure_xarray_source()
+        selections = self.app_state.get_selections()
+        store = getattr(self.app_state, 'feature_store', None)
 
-        buffered_ds = self._buffer.get(t0, t1)
-        if buffered_ds is None:
-            return None, None
+        if store is not None:
+            # FeatureStore path (pynapple or xarray via store)
+            buf_t0 = t0 - (t1 - t0) * 2
+            buf_t1 = t1 + (t1 - t0) * 2
+            plot_data = store.select(feature_sel, selections, t0=buf_t0, t1=buf_t1)
+            if plot_data is None:
+                return None, None
 
-        ds = self.app_state.ds
-        time_coord = self.app_state.time_coord
-        ds_kwargs = self.app_state.get_ds_kwargs()
-        da = buffered_ds[feature_sel]
-        data, _ = eto.sel_valid(da, ds_kwargs)
+            data = plot_data.data
+            time = plot_data.time
+            if data.ndim == 1:
+                data = data[:, np.newaxis]
 
-        if data.ndim == 1:
-            data = data[:, np.newaxis]
-
-        da_full = ds[feature_sel]
-        dims_after_sel = [d for d in da_full.dims if 'time' not in d and d not in ds_kwargs]
-        if dims_after_sel and dims_after_sel[0] in da_full.coords:
-            self._channel_labels = clean_display_labels(
-                [str(v) for v in da_full.coords[dims_after_sel[0]].values]
-            )
-        elif data.shape[1] > 1:
-            self._channel_labels = [str(i) for i in range(data.shape[1])]
+            if plot_data.dim_labels:
+                self._channel_labels = clean_display_labels(plot_data.dim_labels)
+            elif data.shape[1] > 1:
+                self._channel_labels = [str(i) for i in range(data.shape[1])]
+            else:
+                self._channel_labels = [feature_sel]
         else:
-            self._channel_labels = [feature_sel]
+            # Legacy xarray buffer path
+            if self._buffer.source is None:
+                self._ensure_xarray_source()
+
+            buffered_ds = self._buffer.get(t0, t1)
+            if buffered_ds is None:
+                return None, None
+
+            ds = self.app_state.ds
+            time_coord = self.app_state.time_coord
+            da = buffered_ds[feature_sel]
+            data, _ = eto.sel_valid(da, selections)
+
+            if data.ndim == 1:
+                data = data[:, np.newaxis]
+
+            da_full = ds[feature_sel]
+            dims_after_sel = [d for d in da_full.dims if 'time' not in d and d not in selections]
+            if dims_after_sel and dims_after_sel[0] in da_full.coords:
+                self._channel_labels = clean_display_labels(
+                    [str(v) for v in da_full.coords[dims_after_sel[0]].values]
+                )
+            elif data.shape[1] > 1:
+                self._channel_labels = [str(i) for i in range(data.shape[1])]
+            else:
+                self._channel_labels = [feature_sel]
+
+            time = buffered_ds.coords[time_coord.name].values
 
         self._n_channels = data.shape[1]
-
-        buffered_time = buffered_ds.coords[time_coord.name].values
-
         self._buffered_data = data
-        self._buffered_time = buffered_time
-        self._buffer_t0 = self._buffer.cache_range[0]
-        self._buffer_t1 = self._buffer.cache_range[1]
+        self._buffered_time = time
+        self._buffer_t0 = t0 - (t1 - t0) * 2
+        self._buffer_t1 = t1 + (t1 - t0) * 2
 
-        return data, buffered_time
+        return data, time
 
     # --- Rendering ---
 

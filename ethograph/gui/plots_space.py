@@ -71,8 +71,12 @@ def space_plot_pyqt(
     space_widget.clear()
 
     spaces = ['x', 'y', 'z'] if view_3d else ['x', 'y']
-
+    
+    
+    time_coord = eto.get_time_coord(ds.sel(space=spaces).position)
     pos, _ = eto.sel_valid(ds.sel(space=spaces).position, ds_kwargs)
+    
+    times = time_coord.values if time_coord is not None else None
     pos = interpolate_nans(pos)
 
     X, Y = pos[:, 0], pos[:, 1]
@@ -158,7 +162,7 @@ def space_plot_pyqt(
             )
             space_widget.addItem(box_line)
 
-    return X, Y, Z
+    return X, Y, Z, times
 
 
 def _time_gradient_colors(n: int) -> np.ndarray:
@@ -235,7 +239,9 @@ class SpacePlot(QWidget):
         self.is_pca = False
         self.ds_kwargs = {}
         self._trajectory_pos = None
+        self._trajectory_times = None
         self._pca_times = None
+        self._time_marker_item = None
         super().hide()  # don't call overridden hide() at init — no dock exists yet
 
 
@@ -304,10 +310,12 @@ class SpacePlot(QWidget):
         data_dir = Path(self.app_state.nc_file_path).parent if self.app_state.nc_file_path else None
         arena_path = find_config("arena.yaml", data_dir)
         arena = load_arena_config(arena_path) if arena_path else None
-        X, Y, Z = space_plot_pyqt(
+        X, Y, Z, times = space_plot_pyqt(
             self.space_widget, self.app_state.ds, color_variable, view_3d, arena=arena, **ds_kwargs
         )
         self._trajectory_pos = (X, Y, Z)
+        self._trajectory_times = times
+        self._time_marker_item = None
 
 
     def update_pca_plot(self, view_3d: bool = False):
@@ -335,6 +343,8 @@ class SpacePlot(QWidget):
         pc1, pc2, pc3 = pca_plot_pyqt(self.space_widget, pca_da, view_3d)
         self._trajectory_pos = (pc1, pc2, pc3)
         self._pca_times = pca_da.coords["time_fr"].values
+        self._trajectory_times = self._pca_times
+        self._time_marker_item = None
 
     def highlight_pca(self, start_time: float, end_time: float, color: tuple):
         """Highlight a time segment of the PCA trajectory."""
@@ -436,3 +446,40 @@ class SpacePlot(QWidget):
                 )
                 orange_line._is_highlight = True
                 plot_item.addItem(orange_line)
+
+    def update_time_marker(self, time_position: float):
+        """Show a red circle at the current time position on the trajectory."""
+        if not self.space_widget or self._trajectory_pos is None or self._trajectory_times is None:
+            return
+
+        times = self._trajectory_times
+        idx = int(np.searchsorted(times, time_position, side='right') - 1)
+        idx = np.clip(idx, 0, len(times) - 1)
+
+        X, Y, Z = self._trajectory_pos
+        x, y = float(X[idx]), float(Y[idx])
+
+        if self.is_3d:
+            z = float(Z[idx]) if Z is not None else 0.0
+            pos_arr = np.array([[x, y, z]], dtype=np.float32)
+            if self._time_marker_item is not None:
+                self._time_marker_item.setData(pos=pos_arr)
+            else:
+                self._time_marker_item = gl.GLScatterPlotItem(
+                    pos=pos_arr, color=(1, 0, 0, 1), size=12, pxMode=True
+                )
+                self.space_widget.addItem(self._time_marker_item)
+        else:
+            if self._time_marker_item is not None:
+                self._time_marker_item.setData([x], [y])
+            else:
+                self._time_marker_item = pg.ScatterPlotItem(
+                    [x], [y],
+                    pen=pg.mkPen(None),
+                    brush=pg.mkBrush(255, 0, 0),
+                    size=12,
+                    symbol='o',
+                )
+                self._time_marker_item.setZValue(1000)
+                plot_item = self.space_widget.getPlotItem()
+                plot_item.addItem(self._time_marker_item)

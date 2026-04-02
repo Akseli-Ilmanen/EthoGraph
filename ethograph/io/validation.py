@@ -405,7 +405,6 @@ def extract_type_vars(ds: xr.Dataset, dt: "TrialTree") -> dict:
 
 
 
-
 def validate_datatree(
     dt: "TrialTree",
     require_fps: bool = True,

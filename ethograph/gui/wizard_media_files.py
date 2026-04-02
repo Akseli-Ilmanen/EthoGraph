@@ -7,11 +7,12 @@ Dock in napari:  viewer.window.add_dock_widget(MediaDiscoveryWidget(viewer))
 from __future__ import annotations
 
 import logging
+import fnmatch
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from qtpy.QtCore import Qt, Signal
+from qtpy.QtCore import Qt, QTimer, Signal
 from qtpy.QtGui import QColor, QFont
 from qtpy.QtWidgets import (
     QApplication,
@@ -156,12 +157,27 @@ def _auto_detect_role(seg: Segment) -> str | None:
     if all(any(p.match(v) for p in trial_patterns) for v in seg.values):
         return "trial"
     
-    # Heuristic: small number of short numeric values (1-2 digits) likely indicates camera/mic IDs
-    # e.g., ["1", "2"] or ["1", "2", "3"] when there are only a few cameras/mics
     n = len(seg.values)
-    if all(v.isdigit() and len(v) <= 2 for v in seg.values) and 1 < n <= 4:
+
+    # Pure numeric values: many → trial IDs, few short ones → camera/mic IDs
+    if all(v.isdigit() for v in seg.values):
+        if n > 4:
+            return "trial"
+        if all(len(v) <= 2 for v in seg.values) and 1 < n <= 4:
+            return "camera"
+        return "trial"
+
+    # Keyword-based: values containing "cam"/"view" or "mic"
+    low = [v.lower() for v in seg.values]
+    if any(kw in v for v in low for kw in ("view", "cam", "camera")):
         return "camera"
-    
+    if any(kw in v for v in low for kw in ("mic", "microphone")):
+        return "mic"
+
+    # Many unique values likely means trial identifiers
+    if n > 4:
+        return "trial"
+
     return None
 
 
@@ -233,33 +249,6 @@ def analyze_filenames(files: list[Path]) -> FilePattern | None:
     return FilePattern([Segment(0, "<varies>", True, names)], files, suffix)
 
 
-def _guess_role(values: list[str]) -> str | None:
-    n = len(values)
-    low = [v.lower() for v in values]
-    if all(v.isdigit() for v in values):
-        return "trial"
-    if any(kw in v for v in low for kw in ("view", "cam", "camera")):
-        return "camera"
-    if any(kw in v for v in low for kw in ("mic", "microphone")):
-        return "mic"
-    if _values_share_prefix_with_varying_suffix(values):
-        return "trial"
-    if n > 4:
-        return "trial"
-    if n <= 4:
-        return "camera"
-    return None
-
-
-def _values_share_prefix_with_varying_suffix(values: list[str]) -> bool:
-    if len(values) < 2:
-        return False
-    match = re.match(r"^([a-zA-Z]+)", values[0])
-    if not match:
-        return False
-    prefix = match.group(1)
-    return all(v.startswith(prefix) and v[len(prefix):] != values[0][len(prefix):] for v in values[1:])
-
 
 def classify_stream(filename: str) -> str | None:
     lower = filename.lower()
@@ -305,6 +294,69 @@ def analyze_nested_filenames(folder: Path, stream: str) -> FilePattern | None:
         all_files,
         suffix,
     )
+
+
+def _find_distinguishing_glob(group_stems: list[str], other_stems: list[str]) -> str:
+    """Find a readable glob pattern that matches all group stems but no others.
+
+    Tries word-level tokens first (e.g. "cam", "3D") for readable labels,
+    then consecutive token pairs, then falls back to shortest substring.
+    """
+    if not group_stems or not other_stems:
+        return "*"
+    ref = group_stems[0]
+    tokens = _tokenize(ref, "smart")
+
+    def _distinguishes(sub: str) -> bool:
+        return all(sub in s for s in group_stems) and not any(
+            sub in s for s in other_stems
+        )
+
+    for tok in tokens:
+        if len(tok) >= 2 and _distinguishes(tok):
+            return f"*{tok}*"
+    spans = _find_token_spans(ref, tokens)
+    for i in range(len(tokens) - 1):
+        pair = ref[spans[i][0] : spans[i + 1][1]]
+        if _distinguishes(pair):
+            return f"*{pair}*"
+    for length in range(3, min(40, len(ref) + 1)):
+        for start in range(len(ref) - length + 1):
+            sub = ref[start : start + length]
+            if _distinguishes(sub):
+                return f"*{sub}*"
+    return f"*{ref[:20]}*"
+
+
+def detect_file_groups(files: list[Path]) -> list[tuple[str, list[Path]]]:
+    """Group files by naming structure when tokenization lengths differ.
+
+    Returns (glob_pattern, files) pairs sorted by size descending, or empty
+    list if all files share the same structure.
+    """
+    if len(files) < 2:
+        return []
+    stems = [f.stem for f in files]
+    for mode in ("smart", "_", "-"):
+        tokenized = [_tokenize(s, mode) for s in stems]
+        if len({len(t) for t in tokenized}) == 1:
+            return []
+    tokenized_pairs = [(f, _tokenize(f.stem, "smart")) for f in files]
+    by_count: dict[int, list[Path]] = {}
+    for f, tokens in tokenized_pairs:
+        by_count.setdefault(len(tokens), []).append(f)
+    if len(by_count) <= 1:
+        return []
+    groups_sorted = sorted(by_count.values(), key=len, reverse=True)
+    result: list[tuple[str, list[Path]]] = []
+    for group_files in groups_sorted:
+        group_ids = {id(f) for f in group_files}
+        other_files = [f for f in files if id(f) not in group_ids]
+        group_stems = [f.stem for f in group_files]
+        other_stems = [f.stem for f in other_files]
+        glob_label = _find_distinguishing_glob(group_stems, other_stems)
+        result.append((glob_label, group_files))
+    return result
 
 
 def extract_file_row(
@@ -562,6 +614,7 @@ class StreamPanel(QWidget):
         self._stream = stream
         self._allowed_roles = allowed_roles
         self._pattern: FilePattern | None = None
+        self._all_files: list[Path] = []
         self._build()
 
     def _build(self):
@@ -603,6 +656,37 @@ class StreamPanel(QWidget):
         self._nested_cb.toggled.connect(lambda: self._on_folder(self._folder.text()))
         outer.addWidget(self._nested_cb)
 
+        # file filter
+        filter_row = QHBoxLayout()
+        filter_row.setContentsMargins(14, 0, 14, 0)
+        filter_lbl = QLabel("Filter:")
+        filter_lbl.setStyleSheet(f"color:{TEXT_MID}; font-size:{FS}px;")
+        self._filter_edit = QLineEdit()
+        self._filter_edit.setPlaceholderText("Glob to include only matching files, e.g. *trial*.csv excludes extra_table.csv")
+        self._filter_edit.setClearButtonEnabled(True)
+        self._filter_edit.setStyleSheet(
+            f"QLineEdit {{ background:{BG_INPUT}; color:{TEXT}; "
+            f"border:1px solid {BORDER}; border-radius:4px; "
+            f"padding:5px 10px; font-size:{FS}px; }}"
+            f"QLineEdit:focus {{ border-color:{ACCENT}; }}"
+        )
+        self._filter_timer = QTimer()
+        self._filter_timer.setSingleShot(True)
+        self._filter_timer.setInterval(300)
+        self._filter_timer.timeout.connect(self._apply_filter_and_analyze)
+        self._filter_edit.textChanged.connect(lambda: self._filter_timer.start())
+        filter_row.addWidget(filter_lbl)
+        filter_row.addWidget(self._filter_edit, stretch=1)
+        outer.addLayout(filter_row)
+
+        # group chips (shown when mixed file structures detected)
+        self._group_row = QHBoxLayout()
+        self._group_row.setContentsMargins(14, 0, 14, 0)
+        self._group_container = QWidget()
+        self._group_container.setLayout(self._group_row)
+        self._group_container.setVisible(False)
+        outer.addWidget(self._group_container)
+
         # pattern label
         lbl = QLabel("pattern")
         lbl.setStyleSheet(f"color:{TEXT_DIM}; font-size:11px; padding:0 20px;")
@@ -642,14 +726,87 @@ class StreamPanel(QWidget):
     def _on_folder(self, text: str):
         p = Path(text)
         if not p.is_dir():
+            self._all_files = []
+            self._populate_group_chips([])
             self._set_pattern(None)
             return
         if self._nested_cb.isChecked():
+            self._all_files = []
+            self._populate_group_chips([])
             self._set_pattern(analyze_nested_filenames(p, self._stream))
+            return
+        files = sorted(f for f in p.iterdir() if f.is_file())
+        relevant = [f for f in files if classify_stream(f.name) == self._stream]
+        self._all_files = relevant or files
+        self._filter_edit.blockSignals(True)
+        self._filter_edit.clear()
+        self._filter_edit.blockSignals(False)
+        groups = detect_file_groups(self._all_files)
+        self._populate_group_chips(groups)
+        self._apply_filter_and_analyze()
+
+    def _apply_filter_and_analyze(self):
+        if not self._all_files:
+            self._set_pattern(None)
+            return
+        filter_text = self._filter_edit.text().strip()
+        if filter_text:
+            pat = (
+                filter_text
+                if ("*" in filter_text or "?" in filter_text)
+                else f"*{filter_text}*"
+            )
+            filtered = [
+                f for f in self._all_files if fnmatch.fnmatch(f.name, pat)
+            ]
         else:
-            files = sorted(f for f in p.iterdir() if f.is_file())
-            relevant = [f for f in files if classify_stream(f.name) == self._stream]
-            self._set_pattern(analyze_filenames(relevant or files))
+            filtered = list(self._all_files)
+        if not filtered:
+            self._set_pattern(None)
+            return
+        self._set_pattern(analyze_filenames(filtered))
+        if filter_text and len(filtered) < len(self._all_files):
+            current = self._summary.text()
+            self._summary.setText(
+                f"[{len(filtered)}/{len(self._all_files)}]  {current}"
+            )
+
+    def _populate_group_chips(self, groups: list[tuple[str, list[Path]]]):
+        while self._group_row.count():
+            item = self._group_row.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        if not groups:
+            self._group_container.setVisible(False)
+            return
+        self._group_container.setVisible(True)
+        hint = QLabel("Mixed file structures — pick a group:")
+        hint.setStyleSheet(f"color:{TEXT_MID}; font-size:{FS - 1}px;")
+        self._group_row.addWidget(hint)
+        for glob_pat, group_files in groups:
+            btn = QPushButton(f"{glob_pat} ({len(group_files)})")
+            btn.setStyleSheet(
+                f"QPushButton {{ background:{BG_INPUT}; color:{TEXT_MID}; "
+                f"border:1px solid {BORDER}; border-radius:10px; "
+                f"padding:3px 10px; font-size:{FS - 1}px; }}"
+                f"QPushButton:hover {{ border-color:{TEXT_MID}; color:{TEXT}; }}"
+            )
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(
+                lambda _, g=glob_pat: self._filter_edit.setText(g)
+            )
+            self._group_row.addWidget(btn)
+        all_btn = QPushButton(f"All ({len(self._all_files)})")
+        all_btn.setStyleSheet(
+            f"QPushButton {{ background:{BG_INPUT}; color:{TEXT_MID}; "
+            f"border:1px solid {BORDER}; border-radius:10px; "
+            f"padding:3px 10px; font-size:{FS - 1}px; }}"
+            f"QPushButton:hover {{ border-color:{TEXT_MID}; color:{TEXT}; }}"
+        )
+        all_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        all_btn.clicked.connect(lambda: self._filter_edit.clear())
+        self._group_row.addWidget(all_btn)
+        self._group_row.addStretch()
 
     def _set_pattern(self, pat: FilePattern | None):
         self._pattern = pat

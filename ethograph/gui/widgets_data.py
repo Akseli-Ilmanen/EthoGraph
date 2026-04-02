@@ -434,6 +434,7 @@ class DataWidget(QWidget):
             dt.close()
             self.app_state.dt = None
         self.app_state.ds = None
+        self.app_state.feature_store = None
         self.app_state._all_labels_df = None
         self.app_state.labels_confidence_ds = None
         self.type_vars_dict = {}
@@ -448,7 +449,7 @@ class DataWidget(QWidget):
 
     def on_load_clicked(self):
         if not self.app_state.nc_file_path:
-            notify_dialog("Please select a path ending with .nc", "warning", "Load cancelled", self)
+            notify_dialog("Please select a data file (.nc, .nwb, .npz) or folder", "warning", "Load cancelled", self)
             return
 
         nc_file_path = self.io_widget.get_nc_file_path()
@@ -474,6 +475,9 @@ class DataWidget(QWidget):
 
 
         self.app_state.trial_conditions = self.type_vars_dict["trial_conditions"]
+
+        # Extract feature_store from pynapple loader (xarray store created later after ds is set)
+        self._pending_feature_store = self.app_state.dt.attrs.pop("feature_store", None)
 
         dt_attrs = self.app_state.dt.attrs
 
@@ -530,6 +534,14 @@ class DataWidget(QWidget):
         self.app_state.trials = sorted(trials)
         self.app_state.ds = self.app_state.dt.trial(self.app_state.trials[0])
 
+        # Now ds is set — create or finalize feature_store
+        store = self._pending_feature_store
+        if store is None:
+            from ethograph.io.feature_store import XarrayStore
+            store = XarrayStore(self.app_state.ds)
+        self.app_state.feature_store = store
+        self._pending_feature_store = None
+
         # Set trials_sel early so _expand_mics_with_channels / get_media
         # can resolve filenames during UI creation.
         trial = getattr(self.app_state, 'trials_sel', None)
@@ -577,6 +589,10 @@ class DataWidget(QWidget):
 
         self.update_trials_combo()
         self._load_trial_with_fallback()
+
+        if self.navigation_widget:
+            self.navigation_widget.set_mappings(self.labels_widget._mappings)
+            self.navigation_widget.refresh_after_load()
 
         self.view_mode_combo.show()
 
@@ -1598,7 +1614,17 @@ class DataWidget(QWidget):
             cameras_sel=self.app_state.primary_camera,
         )
 
-
+    def _build_restrict_window(self, trial_id) -> None:
+        from ethograph.io.restrict import build_trial_window
+        alignment = self.app_state.trial_alignment
+        if alignment is None:
+            return
+        extra_t0 = getattr(self.app_state, "restrict_extra_t0", 0.0)
+        extra_t1 = getattr(self.app_state, "restrict_extra_t1", 0.0)
+        if self.app_state.restrict_mode == "trial":
+            self.app_state.restrict_window = build_trial_window(
+                alignment, trial_id, extra_t0, extra_t1,
+            )
 
     def on_trial_changed(self):
         trials_sel = self.app_state.trials_sel
@@ -1612,6 +1638,14 @@ class DataWidget(QWidget):
 
         self.app_state.ds = self.app_state.dt.trial(trials_sel)
 
+        # Update feature_store trial index (pynapple: restrict changes;
+        # xarray: XarrayStore.update_ds swaps the backing dataset)
+        store = self.app_state.feature_store
+        if store is not None:
+            trial_idx = self.app_state.trials.index(trials_sel)
+            store.set_trial(trial_idx)
+            if hasattr(store, 'update_ds'):
+                store.update_ds(self.app_state.ds)
 
         self._update_device_sels_for_trial(self.app_state.ds)
         self.update_mics_combo_for_trial(self.app_state.ds)
@@ -1632,6 +1666,7 @@ class DataWidget(QWidget):
         self.app_state.label_intervals = self.app_state.get_trial_intervals(trials_sel)
 
         self._build_trial_alignment(trials_sel)
+        self._build_restrict_window(trials_sel)
 
         self.app_state.current_frame = 0
         self.update_video()
@@ -1734,12 +1769,17 @@ class DataWidget(QWidget):
     def _on_primary_frame_changed(self, frame_number: int):
         self.app_state.current_frame = frame_number
 
-
         self.plot_container.update_time_marker_and_window(frame_number)
 
+        video = getattr(self.app_state, 'video', None)
+        if video:
+            current_time = video.frame_to_time(frame_number)
+        else:
+            current_time = frame_number / self.app_state.video_fps
 
-        primary_fps = self.app_state.video_fps
-        current_time = frame_number / primary_fps
+        if self.space_plot and self.space_plot.isVisible():
+            self.space_plot.update_time_marker(current_time)
+
         xlim = self.plot_container.get_current_xlim()
         if getattr(self.app_state, 'center_playback', False) or current_time < xlim[0] or current_time > xlim[1]:
             self.plot_container.set_x_range(mode='center', center_on_frame=frame_number)

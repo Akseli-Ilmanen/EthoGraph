@@ -313,7 +313,7 @@ def generate_alignment_code(state: WizardState) -> str:
     Rendered Python code as a string.
     """
     ctx = _build_template_context(state)
-    template = _get_env().get_template("alignment_code.py.j2")
+    template = _get_env().get_template("wizard_multi_codegen.j2")
     rendered = template.render(ctx)
     return _clean_blank_lines(rendered)
 

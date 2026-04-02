@@ -17,7 +17,7 @@ from qtpy.QtCore import QObject, QTimer, Signal
 
 import ethograph as eto
 from ethograph.gui.notify import notify
-from ethograph.gui.plots_timeseriessource import TrialAlignment, TimeRange
+from ethograph.gui.plots_timeseriessource import RestrictionWindow, TrialAlignment, TimeRange
 
 from .makepretty import find_combo_index
 from ethograph.labels.intervals import empty_intervals
@@ -147,6 +147,7 @@ class AppStateSpec:
         "feature_view_mode": (str, "LinePlot", True, SCOPE_LOCAL),
 
         # Data
+        "feature_store": (object | None, None, False),
         "ds": (xr.Dataset | None, None, False),
         "ds_temp": (xr.Dataset | None, None, False),
         "dt": (xr.DataTree | None, None, False),
@@ -169,6 +170,13 @@ class AppStateSpec:
         "time": (xr.DataArray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
         "label_intervals": (pd.DataFrame | None, None, False),
         "trial_alignment": (TrialAlignment | None, None, False),
+        "restrict_mode": (str, "trial", True),
+        "restrict_extra_t0": (float, 0.0, True),
+        "restrict_extra_t1": (float, 0.0, True),
+        "restrict_window": (RestrictionWindow | None, None, False),
+        "label_instance_idx": (int, 0, False),
+        "sequence_pattern": (str, "", True),
+        "sequence_match_idx": (int, 0, False),
         "trials": (list[int | str], [], False),
         "downsample_enabled": (bool, False, True),
         "downsample_factor": (int, 100, True),
@@ -376,6 +384,14 @@ class ObservableAppState(QObject):
         return None
 
     @property
+    def window_bounds(self) -> TimeRange | None:
+        """Effective display window — restriction window if set, else trial bounds."""
+        rw = getattr(self, 'restrict_window', None)
+        if rw is not None:
+            return rw.time_range
+        return self.trial_bounds
+
+    @property
     def time_coord(self) -> xr.DataArray | None:
         """Get the time coordinate for the currently selected features."""
         ds = getattr(self, 'ds', None)
@@ -532,8 +548,28 @@ class ObservableAppState(QObject):
                 ds_kwargs[dim] = int(output)
 
         return ds_kwargs
-            
 
+    def get_selections(self) -> dict[str, str]:
+        """Backend-agnostic selection dict from combo *_sel attributes.
+
+        Uses ``feature_store.dims`` when available (pynapple path),
+        falls back to ``get_ds_kwargs()`` for pure xarray.
+        """
+        store = getattr(self, "feature_store", None)
+        if store is None:
+            if self.ds is None:
+                return {}
+            return self.get_ds_kwargs()
+
+        selections: dict[str, str] = {}
+        for dim_name in store.dims:
+            attr_name = f"{dim_name}_sel"
+            if not hasattr(self, attr_name):
+                continue
+            val = getattr(self, attr_name)
+            if val is not None and val not in ("", "None"):
+                selections[dim_name] = str(val)
+        return selections
 
     def key_sel_exists(self, type_key: str) -> bool:
         """Check if a key selection exists for a given type."""

@@ -262,6 +262,8 @@ class LabelsWidget(QWidget):
                 self.plot_container.set_label_mappings(self._mappings)
             if self.changepoints_widget:
                 self.changepoints_widget.set_motif_mappings(self._mappings)
+            if self.data_widget and self.data_widget.navigation_widget:
+                self.data_widget.navigation_widget.set_mappings(self._mappings)
             self._populate_labels_table()
             self.refresh_labels_shapes_layer()
             if self.data_widget:
@@ -293,6 +295,8 @@ class LabelsWidget(QWidget):
                     self.plot_container.set_label_mappings(self._mappings)
                 if self.changepoints_widget:
                     self.changepoints_widget.set_motif_mappings(self._mappings)
+                if self.data_widget and self.data_widget.navigation_widget:
+                    self.data_widget.navigation_widget.set_mappings(self._mappings)
                 self._populate_labels_table()
                 self.refresh_labels_shapes_layer()
                 if self.data_widget:

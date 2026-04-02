@@ -55,6 +55,23 @@ class TimeRange:
         return f"TimeRange({self.start_s:.3f}s .. {self.end_s:.3f}s, dur={self.duration:.3f}s)"
 
 
+@dataclass(frozen=True)
+class RestrictionWindow:
+    """Describes the currently active display window.
+
+    In "trial" mode this wraps a full trial range.  In "label" or
+    "sequence" mode it wraps a sub-interval (with optional extra
+    context padding).
+    """
+
+    mode: str  # "trial" | "label" | "sequence"
+    time_range: TimeRange  # effective display window (including extra context)
+    core_range: TimeRange  # the actual interval (without extra context)
+    trial_id: int | str | None = None
+    label_info: dict | None = None
+    sequence_info: dict | None = None
+
+
 # ---------------------------------------------------------------------------
 # Protocol for continuous sampled data (audio, ephys)
 # ---------------------------------------------------------------------------

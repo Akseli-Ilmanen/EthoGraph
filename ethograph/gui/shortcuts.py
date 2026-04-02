@@ -119,10 +119,11 @@ def bind_global_shortcuts(meta_widget):
 
     @viewer.bind_key("ctrl+p", overwrite=True)
     def toggle_sync(v):
-        current_index = navigation_widget.sync_toggle_btn.currentIndex()
-        total_options = navigation_widget.sync_toggle_btn.count()
-        next_index = (current_index + 1) % total_options
-        navigation_widget.sync_toggle_btn.setCurrentIndex(next_index)
+        btn = getattr(navigation_widget, "sync_toggle_btn", None)
+        if btn is None:
+            return
+        next_index = (btn.currentIndex() + 1) % btn.count()
+        btn.setCurrentIndex(next_index)
 
     @viewer.bind_key("ctrl+y", overwrite=True)
     def toggle_label_pred(v):

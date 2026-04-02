@@ -707,7 +707,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             plot._apply_zoom_constraints(x_bounds_override=bounds)
 
     def _trial_bounds_tuple(self):
-        tr = self.app_state.trial_bounds
+        tr = self.app_state.window_bounds
         return (tr.start_s, tr.end_s) if tr is not None else None
 
     # --- Bottom panel switching ---
@@ -799,7 +799,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             master.vb.setXRange(time_s - half, time_s + half, padding=0)
 
     def update_time_range_from_data(self):
-        tr = self.app_state.trial_bounds
+        tr = self.app_state.window_bounds
         if tr is not None and tr.duration > 0:
             self.time_slider.set_time_range(tr.start_s, tr.end_s)
 
