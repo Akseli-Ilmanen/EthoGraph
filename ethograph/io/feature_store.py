@@ -72,6 +72,10 @@ class FeatureStore(Protocol):
         color_variable: str | None = None,
     ) -> PlotData | None: ...
 
+    def feature_dims(self, feature: str) -> dict[str, list[str]]:
+        """Non-time dimensions and their coordinate values for *feature*."""
+        ...
+
     def time_range(self, feature: str | None = None) -> tuple[float, float]: ...
 
     def set_trial(self, trial_idx: int) -> None: ...
@@ -144,6 +148,20 @@ class XarrayStore:
             tvd[dim_name] = values
         tvd["trial_conditions"] = []
         return tvd
+
+    def feature_dims(self, feature: str) -> dict[str, list[str]]:
+        if self._ds is None or feature not in self._ds.data_vars:
+            return {}
+        var = self._ds[feature]
+        result: dict[str, list[str]] = {}
+        for d in var.dims:
+            if "time" in d.lower():
+                continue
+            if d in var.coords:
+                result[d] = [str(v) for v in var.coords[d].values]
+            else:
+                result[d] = [str(i) for i in range(self._ds.sizes[d])]
+        return result
 
     # -- data access --------------------------------------------------------
 
@@ -380,6 +398,18 @@ class PynappleStore:
             tvd[dim_name] = values
         tvd["trial_conditions"] = []
         return tvd
+
+    def feature_dims(self, feature: str) -> dict[str, list[str]]:
+        import pynapple as nap
+
+        if feature not in self._feature_objs:
+            return {}
+        obj = self._feature_objs[feature]
+        result: dict[str, list[str]] = {}
+        dim_name = self._dim_map.get(feature)
+        if isinstance(obj, nap.TsdFrame) and dim_name:
+            result[dim_name] = [str(c) for c in obj.columns]
+        return result
 
     # -- trial management ---------------------------------------------------
 

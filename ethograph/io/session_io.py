@@ -270,7 +270,7 @@ class NWBSessionIO:
             # Detect session-wide media: same filename for all trials
             filenames = df[col].dropna().unique()
             if len(filenames) == 1 and len(df) > 1:
-                # Session-wide: compute from NWB acquisition timing
+                # Session-wide: try NWB acquisition timing first (video)
                 acq_name = col
                 acq = self.nwb.acquisition.get(acq_name) if self.nwb.acquisition else None
                 if acq is not None:
@@ -280,6 +280,9 @@ class NWBSessionIO:
                         return file_t0 - self.start_time(trial)
                     except (ValueError, TypeError):
                         pass
+                # No acquisition (e.g. audio): file starts at earliest trial
+                earliest = float(df["start_time"].min()) if "start_time" in df.columns else 0.0
+                return earliest - self.start_time(trial)
             # Per-trial media or single-trial: file is aligned to trial
             return 0.0
 

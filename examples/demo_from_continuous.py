@@ -74,7 +74,9 @@ def main():
         print(f"  Trial {trial_id}: session={t_start:.0f}–{t_stop:.0f}s  "
               f"video_offset={v_off:.1f}s  audio_offset={a_off:.1f}s")
 
-    # Cleanup demo NWB
+    # Cleanup demo NWB (close session_io handle first on Windows)
+    dt.session_io.close()
+    dt.__dict__.pop("session_io", None)
     nwb_path.unlink(missing_ok=True)
     print("\nDone! (cleaned up demo NWB)")
 

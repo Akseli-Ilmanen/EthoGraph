@@ -78,3 +78,23 @@ def from_datasets(datasets: list, session_table=None) -> TrialTree:
     [1, 2, 3]
     """
     return TrialTree.from_datasets(datasets, session_table=session_table)
+
+
+def from_continuous(ds, epochs) -> TrialTree:
+    """Build a TrialTree from a single continuous recording + trial epochs.
+
+    Shorthand for :meth:`TrialTree.from_continuous`.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Full recording dataset.
+    epochs : pandas.DataFrame or pynapple.IntervalSet
+        Trial boundaries.  DataFrame must have columns ``trial``,
+        ``start_time``, ``stop_time``.
+
+    Returns
+    -------
+    TrialTree
+    """
+    return TrialTree.from_continuous(ds, epochs)

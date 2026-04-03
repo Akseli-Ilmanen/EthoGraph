@@ -35,36 +35,34 @@ class TestNoVideoState:
 
 class TestNoVideoAudioPanels:
 
-    def test_audio_trace_visible(self, no_video_gui):
+    def test_audio_trace_panel_enabled(self, no_video_gui):
         _, meta = no_video_gui
         pc = meta.plot_container
-        if not pc._panel_visible.get("audiotrace"):
-            pytest.skip("Audio trace not visible (no audio files found)")
-        assert pc.audio_trace_plot.isVisible()
+        assert pc._panel_visible.get("audiotrace", False), \
+            "Audio trace panel should be enabled in audio-only mode"
 
     def test_audio_trace_has_data(self, no_video_gui):
         _, meta = no_video_gui
         pc = meta.plot_container
         if not pc._panel_visible.get("audiotrace"):
-            pytest.skip("Audio trace not visible")
+            pytest.skip("Audio trace not enabled")
         at = pc.audio_trace_plot
         assert at.trace_item.xData is not None, "Audio trace xData is None"
         assert len(at.trace_item.xData) > 0, "Audio trace xData empty"
         assert at.trace_item.yData is not None, "Audio trace yData is None"
         assert len(at.trace_item.yData) > 0, "Audio trace yData empty"
 
-    def test_spectrogram_visible(self, no_video_gui):
+    def test_spectrogram_panel_enabled(self, no_video_gui):
         _, meta = no_video_gui
         pc = meta.plot_container
-        if not pc._panel_visible.get("spectrogram"):
-            pytest.skip("Spectrogram not visible")
-        assert pc.spectrogram_plot.isVisible()
+        assert pc._panel_visible.get("spectrogram", False), \
+            "Spectrogram panel should be enabled in audio-only mode"
 
     def test_spectrogram_has_data(self, no_video_gui):
         _, meta = no_video_gui
         pc = meta.plot_container
         if not pc._panel_visible.get("spectrogram"):
-            pytest.skip("Spectrogram not visible")
+            pytest.skip("Spectrogram not enabled")
         sp = pc.spectrogram_plot
         assert sp.spec_item.image is not None, "Spectrogram image is None"
         assert sp.spec_item.image.size > 0, "Spectrogram image empty"

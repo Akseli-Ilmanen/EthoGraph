@@ -139,6 +139,17 @@ class HelpWidget(QWidget):
 
         print(SEP)
         print("=" * 60)
+        print("  NWB ALIGNMENT (session_io)")
+        print("=" * 60)
+        dt = getattr(self.app_state, 'dt', None)
+        sio = getattr(dt, 'session_io', None) if dt is not None else None
+        if sio is None:
+            print("  No session_io available.")
+        else:
+            sio.print_session()
+
+        print(SEP)
+        print("=" * 60)
         print(f"Trial Interval set")
         print("=" * 60)
         trials_ep = getattr(self.app_state.dt, 'trials_ep', None)

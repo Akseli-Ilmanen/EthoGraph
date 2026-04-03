@@ -288,14 +288,21 @@ class TrialTree(xr.DataTree):
 
     def start_time(self, trial) -> float:
         """Session-absolute start time of a trial in seconds."""
+        if self._is_continuous and trial in self._trial_epochs:
+            return self._trial_epochs[trial][0]
         return self.session_io.start_time(trial)
 
     def stop_time(self, trial) -> float | None:
         """Session-absolute stop time of a trial in seconds."""
+        if self._is_continuous and trial in self._trial_epochs:
+            return self._trial_epochs[trial][1]
         return self.session_io.stop_time(trial)
 
     def trial_duration(self, trial) -> float:
         """Duration of the trial in seconds."""
+        if self._is_continuous and trial in self._trial_epochs:
+            start, stop = self._trial_epochs[trial]
+            return stop - start
         return self.session_io.trial_duration(trial)
 
     def source_start_time(self, trial, stream: str, device: str | None = None) -> float:
@@ -327,14 +334,28 @@ class TrialTree(xr.DataTree):
     @property
     def trials_ep(self) -> nap.IntervalSet | None:
         """All trial epochs as a pynapple IntervalSet."""
+        if self._is_continuous:
+            sorted_ids = sorted(self._trial_epochs.keys())
+            starts = [self._trial_epochs[t][0] for t in sorted_ids]
+            ends = [self._trial_epochs[t][1] for t in sorted_ids]
+            return nap.IntervalSet(
+                start=starts,
+                end=ends,
+                metadata={"trial": np.array(sorted_ids)},
+            )
         return self.session_io.trials_ep
 
     def trial_epoch(self, trial) -> nap.IntervalSet:
         """Return the IntervalSet for a single trial."""
+        if self._is_continuous and trial in self._trial_epochs:
+            start, stop = self._trial_epochs[trial]
+            return nap.IntervalSet(start=[start], end=[stop])
         return self.session_io.trial_epoch(trial)
 
     def restrict(self, obj, trial):
         """Restrict a pynapple object to a trial's epoch."""
+        if self._is_continuous and trial in self._trial_epochs:
+            return obj.restrict(self.trial_epoch(trial))
         return self.session_io.restrict(obj, trial)
 
     def print_session(self) -> None:

@@ -7,6 +7,9 @@ import pytest
 import numpy as np
 from pathlib import Path
 from qtpy.QtWidgets import QApplication
+from ethograph.gui.dialog_select_template import _DOWNLOAD_BASE
+
+_BIRDPARK_NC = _DOWNLOAD_BASE / "BirdPark" / "copExpBP08_trim.nc"
 
 
 class TestLoadNonexistentFile:
@@ -110,9 +113,8 @@ class TestDoubleLoad:
         assert meta.app_state.ready is True
 
         # Reload same file
-        from conftest import TEST_NC_PATH
-        meta.io_widget.nc_file_path_edit.setText(str(TEST_NC_PATH))
-        meta.app_state.nc_file_path = str(TEST_NC_PATH)
+        meta.io_widget.nc_file_path_edit.setText(str(_BIRDPARK_NC))
+        meta.app_state.nc_file_path = str(_BIRDPARK_NC)
 
         meta.data_widget.on_load_clicked()
         QApplication.processEvents()

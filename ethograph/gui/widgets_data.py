@@ -19,12 +19,14 @@ from qtpy.QtWidgets import (
     QDialog,
     QDoubleSpinBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QPushButton,
     QSizePolicy,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -411,6 +413,8 @@ class DataWidget(QWidget):
         self.ephys_widget = ephys_widget
         self.layout_mgr = layout_mgr
 
+        plot_container.time_marker_updated.connect(self._on_time_marker_updated)
+
         if changepoints_widget is not None:
             changepoints_widget.request_plot_update.connect(self._on_plot_update_request)
 
@@ -640,7 +644,7 @@ class DataWidget(QWidget):
         self.navigation_widget.setup_trial_conditions(self.type_vars_dict)
         self.navigation_widget.set_data_widget(self)
 
-        non_data_type_vars = ["mics", "trial_conditions", "changepoints", "rgb"]
+        non_data_type_vars = ["mics", "cameras", "trial_conditions", "changepoints", "rgb"]
         for type_var in self.type_vars_dict.keys():
             if type_var.lower() not in non_data_type_vars:
                 vars_list = self.type_vars_dict[type_var]
@@ -659,12 +663,10 @@ class DataWidget(QWidget):
             self.app_state.has_video = True
         slot_layout = self.slot_layout
 
-        # Slot 1: Layers (tabified controls + list) / Space 2D / Space 3D
+        # Slot 1: Layers / Space Plot toggle
         self.space_view_combo = QComboBox()
         self.space_view_combo.setObjectName("space_view_combo")
-        view_items = ["Layers"]
-        if 'position' in self.app_state.ds.data_vars:
-            view_items.extend(["Space 2D", "Space 3D"])
+        view_items = ["Layers", "Space Plot"]
         self.space_view_combo.addItems(view_items)
         self.space_view_combo.currentTextChanged.connect(self._on_space_view_changed)
         self.controls.append(self.space_view_combo)
@@ -1363,7 +1365,8 @@ class DataWidget(QWidget):
             self.update_main_plot(t0=xmin, t1=xmax)
 
             if key in ["individuals", "keypoints", "colors"]:
-                self.update_space_plot()
+                if self.space_plot and self.space_plot.isVisible():
+                    self.space_plot.refresh()
 
             if key == "cluster_id" and self.ephys_widget:
                 try:
@@ -1408,7 +1411,8 @@ class DataWidget(QWidget):
         current_plot = self.plot_container.get_current_plot()
         xmin, xmax = current_plot.get_current_xlim()
         self.update_main_plot(t0=xmin, t1=xmax)
-        self.update_space_plot()
+        if self.space_plot and self.space_plot.isVisible():
+            self.space_plot.refresh()
 
     def _on_channel_all_changed(self, state: int):
         if not self.app_state.ready:
@@ -1462,6 +1466,12 @@ class DataWidget(QWidget):
             self.app_state.trials_sel = self.app_state.trials[0]
 
         space_plot_type = getattr(self.app_state, 'space_plot_type', 'Layers')
+        # Migrate old values to simplified combo
+        if space_plot_type in ("Space 2D", "Space 3D", "space_2D", "space_3D", "PCA 2D", "PCA 3D"):
+            space_plot_type = "Space Plot"
+        # Default to Space Plot when position data is available
+        if space_plot_type == "Layers" and "position" in self.app_state.ds.data_vars:
+            space_plot_type = "Space Plot"
         if hasattr(self, 'space_view_combo'):
             self.space_view_combo.setCurrentText(space_plot_type)
 
@@ -1767,6 +1777,39 @@ class DataWidget(QWidget):
     def toggle_pause_resume(self):
         self.video_mgr.toggle_pause_resume(self.plot_container)
 
+    def _on_time_marker_updated(self, time_s: float):
+        if not self.space_plot or not self.space_plot.isVisible():
+            return
+        self.space_plot.update_time_marker(time_s)
+        self._highlight_label_at_time(time_s)
+
+    _space_highlight_key: tuple | None = None
+
+    def _highlight_label_at_time(self, time_s: float):
+        """If the current time falls inside a label, highlight that segment.
+
+        Only redraws when entering a different label interval.
+        """
+        label_intervals = self.app_state.label_intervals
+        if label_intervals is None or label_intervals.empty:
+            self._space_highlight_key = None
+            return
+        mask = (label_intervals["onset_s"] <= time_s) & (label_intervals["offset_s"] >= time_s)
+        hits = label_intervals[mask]
+        if hits.empty:
+            self._space_highlight_key = None
+            return
+        row = hits.iloc[0]
+        key = (float(row["onset_s"]), float(row["offset_s"]), int(row["labels"]))
+        if key == self._space_highlight_key:
+            return
+        self._space_highlight_key = key
+
+        color = (255, 102, 0)
+        mappings = getattr(self.labels_widget, '_mappings', {})
+        color = mappings.get(key[2], {}).get("color", color)
+        self.space_plot.highlight_time_segment(key[0], key[1], color)
+
     def _on_primary_frame_changed(self, frame_number: int):
         self.app_state.current_frame = frame_number
 
@@ -1777,10 +1820,6 @@ class DataWidget(QWidget):
             current_time = video.frame_to_time(frame_number)
         else:
             current_time = frame_number / self.app_state.video_fps
-
-        skip_active = video and video._skip_timer.isActive()
-        if not skip_active and self.space_plot and self.space_plot.isVisible():
-            self.space_plot.update_time_marker(current_time)
 
         xlim = self.plot_container.get_current_xlim()
         if getattr(self.app_state, 'center_playback', False) or current_time < xlim[0] or current_time > xlim[1]:
@@ -1811,9 +1850,12 @@ class DataWidget(QWidget):
         self.app_state.space_plot_type = text
 
         show_layers = text == "Layers"
-
         self.layout_mgr.toggle_layer_docks_with_anchor(show_layers)
-        self.update_space_plot()
+
+        if text == "Space Plot":
+            self.update_space_plot()
+        elif self.space_plot:
+            self.space_plot.hide()
 
     def _on_primary_camera_changed(self, camera_name):
         if not self.app_state.ready or not camera_name:
@@ -1921,11 +1963,7 @@ class DataWidget(QWidget):
             return
 
         plot_type = self.app_state.get_with_default('space_plot_type')
-
-        is_space = plot_type in ("Space 2D", "Space 3D", "space_2D", "space_3D")
-        is_pca = plot_type in ("PCA 2D", "PCA 3D")
-
-        if not is_space and not is_pca:
+        if plot_type != "Space Plot":
             if self.space_plot:
                 self.space_plot.hide()
             return
@@ -1935,39 +1973,28 @@ class DataWidget(QWidget):
             if self.labels_widget:
                 self.labels_widget.highlight_spaceplot.connect(self._highlight_positions_in_space_plot)
 
-        if is_pca:
-            view_3d = plot_type == "PCA 3D"
-            self.space_plot.update_pca_plot(view_3d)
-        else:
-            individual = self.combos.get('individuals', None)
-            individual_text = get_combo_value(individual) if individual else None
-            keypoints = self.combos.get('keypoints', None)
-            keypoints_text = get_combo_value(keypoints) if keypoints else None
-            color_variable = self.combos.get('colors', None)
-            color_variable = get_combo_value(color_variable) if color_variable else None
-            view_3d = plot_type in ("Space 3D", "space_3D")
-            self.space_plot.update_plot(individual_text, keypoints_text, color_variable, view_3d)
+        store = getattr(self.app_state, 'feature_store', None)
+        if store is None and self.app_state.ds is not None:
+            from ethograph.io.feature_store import XarrayStore
+            store = XarrayStore(self.app_state.ds)
 
+        self.space_plot.set_store(store)
+        self.space_plot.refresh()
         self.space_plot.show()
 
     def _highlight_positions_in_space_plot(self, start_time: float, end_time: float):
-        if not self.space_plot or not self.space_plot.dock_widget.isVisible():
+        if not self.space_plot or not self.space_plot.dock_widget or not self.space_plot.dock_widget.isVisible():
             return
 
-        if self.space_plot.is_pca:
-            label_intervals = self.app_state.label_intervals
-            color = (255, 102, 0)
-            if label_intervals is not None and not label_intervals.empty:
-                mid = (start_time + end_time) / 2.0
-                mask = (label_intervals["onset_s"] <= mid) & (label_intervals["offset_s"] >= mid)
-                hits = label_intervals[mask]
-                if not hits.empty:
-                    label_id = int(hits.iloc[0]["labels"])
-                    mappings = getattr(self.labels_widget, '_mappings', {})
-                    color = mappings.get(label_id, {}).get("color", color)
-            self.space_plot.highlight_pca(start_time, end_time, color)
-        else:
-            space_sr = self.app_state.get_feature_sr(position=True)
-            start_frame = int(start_time * space_sr)
-            end_frame = int(end_time * space_sr)
-            self.space_plot.highlight_positions(start_frame, end_frame)
+        color = (255, 102, 0)
+        label_intervals = self.app_state.label_intervals
+        if label_intervals is not None and not label_intervals.empty:
+            mid = (start_time + end_time) / 2.0
+            mask = (label_intervals["onset_s"] <= mid) & (label_intervals["offset_s"] >= mid)
+            hits = label_intervals[mask]
+            if not hits.empty:
+                label_id = int(hits.iloc[0]["labels"])
+                mappings = getattr(self.labels_widget, '_mappings', {})
+                color = mappings.get(label_id, {}).get("color", color)
+
+        self.space_plot.highlight_time_segment(start_time, end_time, color)

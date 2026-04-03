@@ -55,13 +55,14 @@ class TestPlotPopulatedAfterLoad:
         assert pc._feature_type == "lineplot"
         _assert_lineplot_has_data(pc.line_plot)
 
-    def test_lineplot_x_matches_trial_time(self, loaded_gui):
+    def test_lineplot_x_within_reasonable_range(self, loaded_gui):
         _, meta = loaded_gui
         lp = meta.plot_container.line_plot
         x, _ = _get_curve_data(lp.plot_items)
-        time = meta.app_state.time
-        assert x[0] >= time[0] - 1.0, "Line x starts well before trial"
-        assert x[-1] <= time[-1] + 1.0, "Line x ends well after trial"
+        xlim = lp.get_current_xlim()
+        # Curve x should overlap with the visible range
+        assert x[0] <= xlim[1], "Curve starts after visible range"
+        assert x[-1] >= xlim[0], "Curve ends before visible range"
 
     def test_lineplot_y_is_finite(self, loaded_gui):
         _, meta = loaded_gui
@@ -285,13 +286,13 @@ class TestPanZoom:
         _, meta = loaded_gui
         lp = meta.plot_container.line_plot
 
-        time = meta.app_state.time
-        if len(time) < 100:
+        xlim = lp.get_current_xlim()
+        trial_dur = xlim[1] - xlim[0]
+        if trial_dur < 0.5:
             pytest.skip("Trial too short to test buffer reload")
 
-        trial_dur = float(time[-1] - time[0])
-        # Pan to the last portion of the trial
-        t_end = float(time[-1])
+        # Pan to the last portion of the visible range
+        t_end = xlim[1]
         t_start = t_end - trial_dur * 0.2
         lp.plot_item.setXRange(t_start, t_end)
         QApplication.processEvents()

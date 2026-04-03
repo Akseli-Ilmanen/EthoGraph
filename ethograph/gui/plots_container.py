@@ -200,6 +200,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     plot_changed = Signal(str)
     labels_redraw_needed = Signal()
     spectrogram_overlay_shown = Signal()
+    time_marker_updated = Signal(float)
 
     def __init__(self, napari_viewer, app_state, parent=None):
         super().__init__(parent)
@@ -671,6 +672,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             plot.update_time_marker(time_s)
         self.time_slider.set_slider_time(time_s)
         self._update_label_indicator(time_s)
+        self.time_marker_updated.emit(time_s)
 
     def _on_seek_time_requested(self, time_s: float):
         self.update_time_marker_by_time(time_s)
@@ -692,6 +694,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             plot.update_time_marker(current_time)
         self.time_slider.set_slider_time(current_time)
         self._update_label_indicator(current_time)
+        self.time_marker_updated.emit(current_time)
 
     def apply_y_range(self, ymin, ymax):
         return self._feature_plot.apply_y_range(ymin, ymax)

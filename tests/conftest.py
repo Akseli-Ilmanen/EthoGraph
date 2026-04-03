@@ -80,6 +80,24 @@ def app_state(qtbot, tmp_path):
     state.stop_auto_save()
 
 
+@pytest.fixture(autouse=True)
+def _suppress_dialogs(monkeypatch):
+    """Suppress all GUI popups during tests via the SUPPRESS flag.
+
+    Also patches QMessageBox statics as a safety net for any direct callers.
+    """
+    import ethograph.gui.notify as _notify_mod
+
+    monkeypatch.setattr(_notify_mod, "SUPPRESS", True)
+
+    from qtpy.QtWidgets import QMessageBox
+
+    _noop = lambda *a, **kw: QMessageBox.Ok
+    monkeypatch.setattr(QMessageBox, "critical", _noop)
+    monkeypatch.setattr(QMessageBox, "warning", _noop)
+    monkeypatch.setattr(QMessageBox, "information", _noop)
+
+
 @pytest.fixture
 def gui(qtbot, tmp_path, monkeypatch):
     import ethograph.utils.paths as paths_module

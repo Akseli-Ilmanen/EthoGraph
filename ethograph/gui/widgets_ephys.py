@@ -1490,7 +1490,7 @@ class EphysWidget(QWidget):
         best_map: dict[int, int] = {}
         for cluster_id in range(self._templates.shape[0]):
             template = self._templates[cluster_id]
-            amplitude = np.ptp(template, axis=0)
+            amplitude = np.max(template, axis=0) - np.min(template, axis=0)
             site_idx = int(np.argmax(amplitude))
             if site_idx < len(self._channel_map):
                 best_map[cluster_id] = int(self._channel_map[site_idx])
@@ -2388,13 +2388,6 @@ class EphysWidget(QWidget):
                 features_combo.addItem(display_name, var_name)
                 self._set_combo_item_enabled(features_combo, display_name, False)
 
-        slot1 = getattr(self.data_widget, 'space_view_combo', None)
-        if slot1 is not None:
-            for label in ("PCA 2D", "PCA 3D"):
-                if slot1.findText(label) < 0:
-                    slot1.addItem(label)
-                    self._set_combo_item_enabled(slot1, label, False)
-
     def _set_combo_item_enabled(self, combo: QComboBox, text: str, enabled: bool):
         idx = find_combo_index(combo, text)
         if idx < 0:
@@ -2461,11 +2454,10 @@ class EphysWidget(QWidget):
 
         self._enable_feature_item("PCA")
 
+        # Switch to space plot so user can see PCA in the axis combos
         slot1 = getattr(self.data_widget, 'space_view_combo', None)
         if slot1 is not None:
-            for label in ("PCA 2D", "PCA 3D"):
-                self._set_combo_item_enabled(slot1, label, True)
-            slot1.setCurrentText("PCA 2D")
+            slot1.setCurrentText("Space Plot")
 
         pca_da = self.app_state.ds["pca"]
         if "pc" in pca_da.dims:
@@ -2561,10 +2553,6 @@ class EphysWidget(QWidget):
             return
         self._disable_feature_item("Firing rate")
         self._disable_feature_item("PCA")
-        slot1 = getattr(self.data_widget, 'space_view_combo', None)
-        if slot1 is not None:
-            for label in ("PCA 2D", "PCA 3D"):
-                self._set_combo_item_enabled(slot1, label, False)
         self.fr_status_label.setText("")
         self.pca_status_label.setText("")
 
