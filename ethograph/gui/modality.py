@@ -71,8 +71,6 @@ class FileSource:
 
     The loader must expose ``rate: float``, ``__len__() -> int``,
     and ``__getitem__(slice) -> ndarray``.
-
-    Replaces ``RegularTimeseriesSource`` with the unified protocol.
     """
 
     def __init__(

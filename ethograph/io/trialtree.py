@@ -169,12 +169,44 @@ class TrialTree(xr.DataTree):
         return sio
 
     # ------------------------------------------------------------------
+    # Continuous mode support
+    # ------------------------------------------------------------------
+
+    @property
+    def _is_continuous(self) -> bool:
+        """True when backed by a single shared dataset + epoch boundaries."""
+        return getattr(self, "_continuous_ds", None) is not None
+
+    def _slice_continuous(self, trial_id) -> xr.Dataset:
+        """Slice the continuous dataset for a single trial, shifting time to 0."""
+        start, stop = self._trial_epochs[trial_id]
+        ds = self._continuous_ds
+
+        time_dims = [d for d in ds.dims if "time" in d.lower()]
+
+        sel = {dim: slice(start, stop) for dim in time_dims}
+        sliced = ds.sel(sel)
+
+        for dim in time_dims:
+            if dim in sliced.coords:
+                sliced = sliced.assign_coords(
+                    {dim: sliced.coords[dim].values - start}
+                )
+
+        sliced.attrs = dict(ds.attrs)
+        sliced.attrs["trial"] = trial_id
+        return sliced
+
+    # ------------------------------------------------------------------
     # Trial list & iteration
     # ------------------------------------------------------------------
 
     @property
     def trials(self) -> list[int | str]:
-        """List of trial identifiers extracted from ``ds.attrs["trial"]``."""
+        """List of trial identifiers."""
+        if self._is_continuous:
+            return sorted(self._trial_epochs.keys())
+
         raw = [
             node.ds.attrs["trial"]
             for node in self.children.values()
@@ -187,6 +219,11 @@ class TrialTree(xr.DataTree):
 
     def trial_items(self):
         """Iterate over ``(trial_id, dataset)`` pairs for all trial nodes."""
+        if self._is_continuous:
+            for trial_id in sorted(self._trial_epochs.keys()):
+                yield trial_id, self._slice_continuous(trial_id)
+            return
+
         for node in self.children.values():
             if node.ds is not None and "trial" in node.ds.attrs:
                 trial_id = node.ds.attrs["trial"]
@@ -195,7 +232,15 @@ class TrialTree(xr.DataTree):
                 yield trial_id, node.ds
 
     def map_trials(self, func: Callable[[xr.Dataset], xr.Dataset]) -> TrialTree:
-        """Apply *func* to every trial dataset and return a new TrialTree."""
+        """Apply *func* to every trial dataset and return a new TrialTree.
+
+        For continuous trees, materialises sliced datasets into a
+        standard per-node TrialTree so *func* results can be stored.
+        """
+        if self._is_continuous:
+            datasets = [func(self._slice_continuous(t)) for t in sorted(self._trial_epochs.keys())]
+            return TrialTree.from_datasets(datasets, validate=False)
+
         def _apply(ds):
             if ds is None or "trial" not in ds.attrs:
                 return ds
@@ -206,7 +251,16 @@ class TrialTree(xr.DataTree):
         )
 
     def update_trial(self, trial, func: Callable[[xr.Dataset], xr.Dataset]) -> None:
-        """Read-modify-write a single trial's dataset."""
+        """Read-modify-write a single trial's dataset.
+
+        Not supported for continuous trees — call :meth:`materialise`
+        first if you need per-trial mutation.
+        """
+        if self._is_continuous:
+            raise TypeError(
+                "Cannot update trials in a continuous TrialTree. "
+                "Call .materialise() first to split into per-trial datasets."
+            )
         node_name = self._trial_node_name(trial)
         self[node_name] = xr.DataTree(func(self[node_name].ds))
 
@@ -304,6 +358,10 @@ class TrialTree(xr.DataTree):
 
     def trial(self, trial) -> xr.Dataset:
         """Return the dataset for the given trial ID."""
+        if self._is_continuous:
+            if trial not in self._trial_epochs:
+                raise KeyError(f"No epoch found for trial {trial!r}")
+            return self._slice_continuous(trial)
         ds = self[self._trial_node_name(trial)].ds
         if ds is None:
             raise ValueError(f"Trial {trial} has no dataset")
@@ -311,6 +369,12 @@ class TrialTree(xr.DataTree):
 
     def itrial(self, trial_idx: int) -> xr.Dataset:
         """Return the dataset at an integer index (0-based)."""
+        if self._is_continuous:
+            trial_ids = sorted(self._trial_epochs.keys())
+            if trial_idx >= len(trial_ids):
+                raise IndexError(f"Trial index {trial_idx} out of range")
+            return self._slice_continuous(trial_ids[trial_idx])
+
         trial_nodes = [
             k
             for k in self.children
@@ -326,6 +390,25 @@ class TrialTree(xr.DataTree):
     def get_all_trials(self) -> dict[int, xr.Dataset]:
         """Return a dict mapping trial ID to Dataset for all trials."""
         return {num: self.trial(num) for num in self.trials}
+
+    def materialise(self) -> TrialTree:
+        """Convert a continuous TrialTree into a standard per-node TrialTree.
+
+        No-op if the tree is already per-node.  The returned tree copies
+        the NWB path from the source.
+        """
+        if not self._is_continuous:
+            return self
+        datasets = [self._slice_continuous(t) for t in sorted(self._trial_epochs.keys())]
+        tree = TrialTree.from_datasets(datasets, validate=False)
+        tree.attrs = dict(self.attrs)
+        nwb = getattr(self, "_nwb_path", None)
+        if nwb is not None:
+            tree._nwb_path = nwb
+        sp = getattr(self, "_source_path", None)
+        if sp is not None:
+            tree._source_path = sp
+        return tree
 
     def get_common_attrs(self) -> dict[str, Any]:
         """Return attributes that are identical across all trials."""
@@ -422,6 +505,69 @@ class TrialTree(xr.DataTree):
         return tree
 
     @classmethod
+    def from_continuous(
+        cls,
+        ds: xr.Dataset,
+        epochs: "pd.DataFrame | nap.IntervalSet",
+    ) -> TrialTree:
+        """Build a TrialTree from a single continuous recording + trial epochs.
+
+        Unlike :meth:`from_datasets` which requires pre-split data, this
+        stores one shared dataset and slices on demand when :meth:`trial`
+        is called.  Time coordinates are shifted to 0 per trial.
+
+        Parameters
+        ----------
+        ds
+            Full recording dataset.  Must have at least one dimension
+            whose name contains ``"time"``.
+        epochs
+            Trial boundaries.  Accepts:
+
+            - ``pd.DataFrame`` with columns ``trial``, ``start_time``,
+              ``stop_time``.
+            - ``nap.IntervalSet`` — trial IDs taken from a ``"trial"``
+              metadata column, or ``1, 2, …`` if absent.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> epochs = pd.DataFrame({
+        ...     "trial": [1, 2, 3],
+        ...     "start_time": [0.0, 60.0, 120.0],
+        ...     "stop_time": [60.0, 120.0, 180.0],
+        ... })
+        >>> dt = TrialTree.from_continuous(ds, epochs)
+        >>> dt.trial(2)  # returns 60-120s slice, time shifted to 0
+        """
+        tree = cls()
+
+        if isinstance(epochs, nap.IntervalSet):
+            epoch_dict = {}
+            has_trial = "trial" in epochs.metadata.columns
+            for i in range(len(epochs)):
+                trial_id = (
+                    epochs.metadata["trial"].iloc[i] if has_trial else i + 1
+                )
+                if hasattr(trial_id, "item"):
+                    trial_id = trial_id.item()
+                epoch_dict[trial_id] = (float(epochs.start[i]), float(epochs.end[i]))
+        else:
+            epoch_dict = {}
+            trials_col = epochs["trial"].values
+            starts_col = epochs["start_time"].values
+            stops_col = epochs["stop_time"].values
+            for i in range(len(epochs)):
+                tid = trials_col[i]
+                if hasattr(tid, "item"):
+                    tid = tid.item()
+                epoch_dict[tid] = (float(starts_col[i]), float(stops_col[i]))
+
+        tree._continuous_ds = ds
+        tree._trial_epochs = epoch_dict
+        return tree
+
+    @classmethod
     def from_datatree(cls, dt: xr.DataTree, attrs: dict | None = None,
                       *, source: "TrialTree | None" = None) -> TrialTree:
         """Wrap an existing DataTree as a TrialTree.
@@ -449,8 +595,15 @@ class TrialTree(xr.DataTree):
     def save(self, path: str | Path | None = None) -> None:
         """Write the TrialTree to a NetCDF file.
 
+        Continuous trees are materialised into per-trial nodes before
+        saving so the file can be re-opened with :meth:`open`.
+
         Uses an atomic write (temp file then rename) to avoid partial writes.
         """
+        if self._is_continuous:
+            self.materialise().save(path)
+            return
+
         source_path = getattr(self, "_source_path", None)
         if path is None and source_path is None:
             raise ValueError("No path provided and no source path stored.")

@@ -253,7 +253,8 @@ class NWBSessionIO:
 
         For per-trial aligned media returns 0.0 (unless a ``_start``
         column provides an explicit offset).
-        For session-wide media returns source_start_time - trial_start.
+        For session-wide media (same file across all trials) returns
+        the file's start time minus the trial's start time.
         """
         df = self.trials_df
         col = f"{stream}_{device}" if device else stream
@@ -266,7 +267,20 @@ class NWBSessionIO:
                 return float(row[start_col])
 
         if not df.empty and col in df.columns:
-            # Per-trial media with no explicit offset: file is aligned to trial
+            # Detect session-wide media: same filename for all trials
+            filenames = df[col].dropna().unique()
+            if len(filenames) == 1 and len(df) > 1:
+                # Session-wide: compute from NWB acquisition timing
+                acq_name = col
+                acq = self.nwb.acquisition.get(acq_name) if self.nwb.acquisition else None
+                if acq is not None:
+                    from ethograph.utils.nwb import resolve_timeseries_timing
+                    try:
+                        _rate, file_t0 = resolve_timeseries_timing(acq)
+                        return file_t0 - self.start_time(trial)
+                    except (ValueError, TypeError):
+                        pass
+            # Per-trial media or single-trial: file is aligned to trial
             return 0.0
 
         abs_start = self.source_start_time(trial, stream, device)

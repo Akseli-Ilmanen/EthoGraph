@@ -20,7 +20,7 @@ from .app_constants import Z_INDEX_TIME_MARKER, RASTER_DEBOUNCE_MS, DEFAULT_BUFF
 from .plots_base import BasePlot, ThrottleDebounce
 
 if TYPE_CHECKING:
-    from ethograph.gui.plots_timeseriessource import TimeseriesSource
+    from ethograph.gui.modality import ModalitySource
 
 _PHY_BG = '#000000'
 _PHY_AXIS = '#AAAAAA'
@@ -59,7 +59,7 @@ class RasterPlot(BasePlot):
         self._scatter_t0: float | None = None
         self._scatter_t1: float | None = None
 
-        self._source: TimeseriesSource | None = None
+        self._source: ModalitySource | None = None
 
         # Full sorted spike arrays (source of truth).
         self._spike_times: NDArray | None = None
@@ -164,7 +164,7 @@ class RasterPlot(BasePlot):
             y_max = (self._total_channels - 1) * self._channel_spacing + margin
             self.vb.setLimits(yMin=-margin, yMax=y_max)
 
-    def set_source(self, source: TimeseriesSource | None):
+    def set_source(self, source: ModalitySource | None):
         self._source = source
 
     # ------------------------------------------------------------------

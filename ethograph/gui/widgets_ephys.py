@@ -45,7 +45,7 @@ from ethograph.gui.notify import notify
 from .app_constants import CLUSTER_TABLE_MAX_HEIGHT, CLUSTER_TABLE_ROW_HEIGHT
 from .makepretty import find_combo_index, get_combo_value, set_combo_to_value
 from .plots_ephystrace import GenericEphysLoader, get_loader as get_ephys_loader
-from .plots_timeseriessource import RegularTimeseriesSource
+from .modality import FileSource
 
 logger = logging.getLogger(__name__)
 
@@ -1024,7 +1024,7 @@ class EphysWidget(QWidget):
             return
 
         self.plot_container.ephys_trace_plot.set_loader(loader, channel_idx)
-        ephys_source = RegularTimeseriesSource("ephys", loader, start_time=0.0)
+        ephys_source = FileSource("ephys", loader, start_time=0.0)
         self.plot_container.ephys_trace_plot.set_source(ephys_source)
         self.plot_container.raster_plot.set_source(ephys_source)
 

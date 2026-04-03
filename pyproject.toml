@@ -149,6 +149,8 @@ ethograph = ["assets/*"]
 addopts = "--cov=ethograph"
 filterwarnings = [
     "error",
+    "ignore::pydantic.warnings.PydanticDeprecatedSince20",
+    "ignore::DeprecationWarning:napari",
 ]
 
 [tool.check-manifest]

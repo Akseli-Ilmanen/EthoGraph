@@ -36,7 +36,8 @@ from qtpy.QtWidgets import (
 import ethograph as eto
 from ethograph.gui.notify import notify, notify_dialog
 from ethograph.labels.intervals import get_interval_bounds
-from ethograph.gui.plots_timeseriessource import RegularTimeseriesSource, compute_trial_alignment
+from ethograph.gui.modality import FileSource
+from ethograph.gui.plots_timeseriessource import compute_trial_alignment
 
 
 
@@ -1015,7 +1016,7 @@ class DataWidget(QWidget):
         neo_plot = self.plot_container.neo_trace_plot
         neo_plot.set_loader(loader, channel_idx)
 
-        neo_plot.set_source(RegularTimeseriesSource("neo", loader, start_time=0.0))
+        neo_plot.set_source(FileSource("neo", loader, start_time=0.0))
 
         if self.plot_container._panel_visible["neo"]:
             xmin, xmax = self.plot_container.get_current_xlim()

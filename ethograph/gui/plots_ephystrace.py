@@ -23,12 +23,10 @@ import numpy as np
 import threading
 import pyqtgraph as pg
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Protocol, runtime_checkable
+from typing import Optional, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    from .plots_timeseriessource import TimeseriesSource
 from numpy.typing import NDArray
 from qtpy.QtCore import QEvent, Qt, Signal
 

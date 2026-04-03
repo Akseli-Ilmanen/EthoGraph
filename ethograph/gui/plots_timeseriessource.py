@@ -1,9 +1,8 @@
-"""Data source abstractions for time-aligned multi-modal data.
+"""Trial alignment and restriction window abstractions.
 
 Key types:
     TimeRange               -- Immutable time interval with set operations
-    TimeseriesSource        -- Protocol for continuous sampled data (audio, ephys)
-    RegularTimeseriesSource -- Uniform-rate file-based loader wrapper
+    RestrictionWindow       -- Display window for trial/label/sequence navigation
     TrialAlignment          -- Trial time range + video offset
 """
 
@@ -11,7 +10,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 import numpy as np
 import xarray as xr
@@ -70,144 +69,6 @@ class RestrictionWindow:
     trial_id: int | str | None = None
     label_info: dict | None = None
     sequence_info: dict | None = None
-
-
-# ---------------------------------------------------------------------------
-# Protocol for continuous sampled data (audio, ephys)
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class TimeseriesSource(Protocol):
-    """Uniform interface for slice-loading large files (audio, ephys).
-
-    Used by AudioTracePlot and EphysTracePlot so they can call
-    ``get_data(t0, t1)`` without loading the whole file into memory.
-    """
-
-    @property
-    def name(self) -> str: ...
-
-    @property
-    def time_range(self) -> TimeRange: ...
-
-    @property
-    def sampling_rate(self) -> float: ...
-
-    @property
-    def n_channels(self) -> int: ...
-
-    @property
-    def n_samples(self) -> int: ...
-
-    @property
-    def identity(self) -> str: ...
-
-    def index_for_time(self, t: float) -> int: ...
-
-    def time_for_index(self, i: int) -> float: ...
-
-    def get_data(self, t0: float, t1: float) -> tuple[np.ndarray, np.ndarray]:
-        """Return ``(timestamps, data)`` for the window ``[t0, t1]``."""
-        ...
-
-
-# ---------------------------------------------------------------------------
-# Continuous source: uniform sampling (file-based loaders)
-# ---------------------------------------------------------------------------
-
-
-class RegularTimeseriesSource:
-    """Wraps a file-based loader with uniform sampling rate.
-
-    Compatible with ``AudioLoader`` (audioio), ``EphysLoader``,
-    ``MemmapLoader``, or any object exposing ``rate``, ``__len__``,
-    and ``__getitem__``.
-
-    Parameters
-    ----------
-    name
-        Human-readable label (e.g. ``"audio"``, ``"ephys"``).
-    loader
-        Object with ``rate: float``, ``__len__() -> int``,
-        ``__getitem__(slice) -> ndarray``.
-    start_time
-        Time in seconds corresponding to sample index 0.
-    channel
-        If set, extract a single channel from multi-channel data.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        loader,
-        *,
-        start_time: float = 0.0,
-        channel: int | None = None,
-    ):
-        self._name = name
-        self._loader = loader
-        self._start_time = start_time
-        self._channel = channel
-        self._rate = float(loader.rate)
-        self._n_samples = len(loader)
-
-        if channel is not None:
-            self._n_channels = 1
-        elif hasattr(loader, "n_channels"):
-            self._n_channels = loader.n_channels
-        else:
-            probe = loader[0 : min(2, self._n_samples)]
-            self._n_channels = probe.shape[1] if probe.ndim > 1 else 1
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def time_range(self) -> TimeRange:
-        end = self._start_time + self._n_samples / self._rate
-        return TimeRange(self._start_time, end)
-
-    @property
-    def sampling_rate(self) -> float:
-        return self._rate
-
-    @property
-    def n_channels(self) -> int:
-        return self._n_channels
-
-    @property
-    def n_samples(self) -> int:
-        return self._n_samples
-
-    @property
-    def identity(self) -> str:
-        loader_id = getattr(self._loader, "filepath", id(self._loader))
-        ch = f":{self._channel}" if self._channel is not None else ""
-        return f"regular:{self._name}:{loader_id}{ch}"
-
-    def index_for_time(self, t: float) -> int:
-        idx = round((t - self._start_time) * self._rate)
-        return max(0, min(idx, self._n_samples - 1))
-
-    def time_for_index(self, i: int) -> float:
-        return self._start_time + i / self._rate
-
-    def get_data(self, t0: float, t1: float) -> tuple[np.ndarray, np.ndarray]:
-        i0 = max(0, int((t0 - self._start_time) * self._rate))
-        i1 = min(self._n_samples, int((t1 - self._start_time) * self._rate) + 1)
-        if i1 <= i0:
-            empty = np.array([], dtype=np.float64)
-            return empty, empty
-
-        data = self._loader[i0:i1]
-        if self._channel is not None and data.ndim > 1:
-            ch = min(self._channel, data.shape[1] - 1)
-            data = data[:, ch]
-
-        timestamps = self._start_time + np.arange(i0, i1) / self._rate
-        return timestamps.astype(np.float64), np.asarray(data, dtype=np.float64)
 
 
 # ---------------------------------------------------------------------------
