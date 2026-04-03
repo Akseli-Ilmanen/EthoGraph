@@ -80,6 +80,10 @@ class FeatureStore(Protocol):
 
     def set_trial(self, trial_idx: int) -> None: ...
 
+    def get_cp_times(self, feature: str | None = None) -> np.ndarray:
+        """Return sparse changepoint timestamps (trial-relative) for correction."""
+        ...
+
 
 # ---------------------------------------------------------------------------
 # XarrayStore
@@ -264,6 +268,16 @@ class XarrayStore:
             return (0.0, 0.0)
         vals = tc.values
         return (float(vals[0]), float(vals[-1]))
+
+    def get_cp_times(self, feature: str | None = None) -> np.ndarray:
+        from ethograph.features.changepoints import extract_cp_times
+
+        if self._ds is None:
+            return np.array([], dtype=np.float64)
+        tc = eto.get_time_coord(next(iter(self._ds.data_vars.values()), None))
+        if tc is None:
+            return np.array([], dtype=np.float64)
+        return extract_cp_times(self._ds, tc.values)
 
     def set_trial(self, trial_idx: int) -> None:
         pass  # Trial switching handled externally via update_ds
@@ -498,6 +512,43 @@ class PynappleStore:
             if isinstance(color_obj, nap.TsdFrame) and len(color_obj) > 0:
                 color_data = color_obj.values
 
+        # Changepoints (1-D features only)
+        changepoints = None
+        if data.ndim == 1:
+            cp_dict: dict[str, np.ndarray] = {}
+            for key, obj in self._data.items():
+                if not isinstance(obj, nap.TsGroup):
+                    continue
+                if not (hasattr(obj, "metadata") and obj.metadata is not None):
+                    continue
+                meta = obj.metadata
+                if "type" not in meta.columns:
+                    continue
+                target = meta["target_feature"].iloc[0] if "target_feature" in meta.columns else None
+                if target != feature:
+                    continue
+                cp_units = meta.index[meta["type"] == "changepoints"]
+                for uid in cp_units:
+                    ts_obj = obj[uid]
+                    ts_obj, _ = self._restrict(ts_obj, t0, t1)
+                    if len(ts_obj) == 0:
+                        continue
+                    # Dense Tsd (0/1 at every frame): only use non-zero timestamps
+                    if isinstance(ts_obj, nap.Tsd):
+                        mask = ts_obj.values.astype(bool)
+                        cp_times = ts_obj.t[mask] - self._trial_offset
+                    else:
+                        cp_times = ts_obj.t - self._trial_offset
+                    if len(cp_times) == 0:
+                        continue
+                    binary = np.zeros(len(time), dtype=np.int8)
+                    idxs = np.searchsorted(time, cp_times)
+                    idxs = np.clip(idxs, 0, len(time) - 1)
+                    binary[idxs] = 1
+                    cp_dict[key] = binary
+            if cp_dict:
+                changepoints = cp_dict
+
         # Title
         trial_num = self._current_trial_idx + 1
         title_parts = [f"Trial: {trial_num}"]
@@ -513,7 +564,38 @@ class PynappleStore:
             title=title,
             ylabel=feature,
             color_data=color_data,
+            changepoints=changepoints,
         )
+
+    def get_cp_times(self, feature: str | None = None) -> np.ndarray:
+        import pynapple as nap
+
+        all_times: list[np.ndarray] = []
+        for key, obj in self._data.items():
+            if not isinstance(obj, nap.TsGroup):
+                continue
+            if not (hasattr(obj, "metadata") and obj.metadata is not None):
+                continue
+            meta = obj.metadata
+            if "type" not in meta.columns:
+                continue
+            if feature and "target_feature" in meta.columns:
+                if meta["target_feature"].iloc[0] != feature:
+                    continue
+            cp_units = meta.index[meta["type"] == "changepoints"]
+            for uid in cp_units:
+                ts_obj = obj[uid]
+                ts_obj, _ = self._restrict(ts_obj)
+                if len(ts_obj) == 0:
+                    continue
+                if isinstance(ts_obj, nap.Tsd):
+                    mask = ts_obj.values.astype(bool)
+                    all_times.append(ts_obj.t[mask] - self._trial_offset)
+                else:
+                    all_times.append(ts_obj.t - self._trial_offset)
+        if not all_times:
+            return np.array([], dtype=np.float64)
+        return np.unique(np.concatenate(all_times)).astype(np.float64)
 
     def time_range(self, feature: str | None = None) -> tuple[float, float]:
         return self.trial_bounds

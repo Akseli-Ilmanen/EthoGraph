@@ -116,10 +116,8 @@ def add_changepoints_to_nap(
 
     ts_dict = {}
     for i, (_, (t, x)) in enumerate(units.items()):
-        mask = np.zeros(len(t), dtype=np.float32)
         cp_times = _apply_changepoint_func(t, x, f)
-        mask[np.isin(t, cp_times)] = 1.0
-        ts_dict[i] = nap.Tsd(t=t, d=mask, time_support=data.time_support)
+        ts_dict[i] = nap.Ts(t=cp_times, time_support=data.time_support)
 
     group = nap.TsGroup(ts_dict, time_support=data.time_support)
     group.set_info(

@@ -158,3 +158,36 @@ class HelpWidget(QWidget):
         else:
             df = trials_ep.as_dataframe()
             print(df.to_string())
+
+        print(SEP)
+        print("=" * 60)
+        print("  FEATURE STORE / DATASET")
+        print("=" * 60)
+        store = getattr(self.app_state, 'feature_store', None)
+        ds = getattr(self.app_state, 'ds', None)
+        if store is None:
+            print("  No feature_store.")
+        else:
+            print(f"  Store type: {type(store).__name__} (backend={store.backend})")
+            print(f"  Features: {store.features}")
+            print(f"  Dims: {list(store.dims.keys())}")
+            print(f"  Colors: {store.colors}")
+            print(f"  Changepoint names: {store.changepoint_names}")
+            if hasattr(store, '_ds'):
+                store_ds = store._ds
+                if store_ds is not None:
+                    cp_vars = list(store_ds.filter_by_attrs(type="changepoints").data_vars)
+                    print(f"  Store._ds changepoint vars: {cp_vars}")
+                    print(f"  Store._ds is app_state.ds: {store_ds is ds}")
+                else:
+                    print("  Store._ds is None")
+        if ds is not None:
+            cp_vars = list(ds.filter_by_attrs(type="changepoints").data_vars)
+            print(f"  app_state.ds changepoint vars: {cp_vars}")
+            for v in cp_vars:
+                da = ds[v]
+                import numpy as np
+                n_pos = int(np.sum(da.values > 0))
+                print(f"    {v}: shape={da.shape}, n_positive={n_pos}, target={da.attrs.get('target_feature')}")
+        else:
+            print("  app_state.ds is None")

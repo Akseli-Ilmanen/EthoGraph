@@ -168,9 +168,8 @@ def test_extract_type_vars_detects_rgb():
 
 
 def test_extract_type_vars_detects_changepoints():
-    t = np.arange(100)
-    tsd = nap.Tsd(t=t, d=np.zeros(100))
-    group = nap.TsGroup({0: tsd})
+    cp_times = np.array([10.0, 25.0, 50.0, 75.0])
+    group = nap.TsGroup({0: nap.Ts(t=cp_times)})
     group.set_info(type=["changepoints"])
     data = {"cp_group": group}
     tvd = extract_type_vars_pynapple(data)
@@ -328,3 +327,82 @@ def test_store_n_trials_without_intervalset():
     data = {"speed": nap.Tsd(t=t, d=np.random.randn(1000))}
     store = PynappleStore(data)
     assert store.n_trials == 1
+
+
+def test_store_select_sparse_changepoints():
+    """Sparse Ts changepoints should only mark actual CP frames, not every frame."""
+    t = np.linspace(0, 10, 2000)
+    speed = nap.Tsd(t=t, d=np.random.randn(2000))
+
+    cp_times = np.array([1.0, 3.5, 7.2])
+    group = nap.TsGroup({0: nap.Ts(t=cp_times)})
+    group.set_info(
+        type=["changepoints"],
+        target_feature=["speed"],
+        source_label=["unit_0"],
+    )
+
+    store = PynappleStore({"speed": speed, "cps": group})
+    pd = store.select("speed", {})
+    assert pd is not None
+    assert pd.changepoints is not None
+    cp_binary = list(pd.changepoints.values())[0]
+    assert cp_binary.sum() == 3
+    assert len(cp_binary) == len(pd.time)
+
+
+def test_store_select_dense_tsd_changepoints():
+    """Dense Tsd changepoints (legacy) should only mark non-zero frames."""
+    t = np.linspace(0, 10, 2000)
+    speed = nap.Tsd(t=t, d=np.random.randn(2000))
+
+    mask = np.zeros(2000, dtype=np.float32)
+    mask[100] = 1.0
+    mask[500] = 1.0
+    mask[1500] = 1.0
+    dense_cp = nap.Tsd(t=t, d=mask)
+    group = nap.TsGroup({0: dense_cp})
+    group.set_info(
+        type=["changepoints"],
+        target_feature=["speed"],
+        source_label=["unit_0"],
+    )
+
+    store = PynappleStore({"speed": speed, "cps": group})
+    pd = store.select("speed", {})
+    assert pd is not None
+    assert pd.changepoints is not None
+    cp_binary = list(pd.changepoints.values())[0]
+    assert cp_binary.sum() == 3
+    assert len(cp_binary) == len(pd.time)
+
+
+# ---------------------------------------------------------------------------
+# get_cp_times (for changepoint correction)
+# ---------------------------------------------------------------------------
+
+
+def test_store_get_cp_times_sparse():
+    """get_cp_times returns sparse trial-relative timestamps for correction."""
+    t = np.linspace(0, 10, 2000)
+    speed = nap.Tsd(t=t, d=np.random.randn(2000))
+
+    cp_times = np.array([1.0, 3.5, 7.2])
+    group = nap.TsGroup({0: nap.Ts(t=cp_times)})
+    group.set_info(
+        type=["changepoints"],
+        target_feature=["speed"],
+        source_label=["unit_0"],
+    )
+
+    store = PynappleStore({"speed": speed, "cps": group})
+    result = store.get_cp_times("speed")
+    assert len(result) == 3
+    np.testing.assert_allclose(result, cp_times, atol=1e-6)
+
+
+def test_store_get_cp_times_no_changepoints():
+    t = np.linspace(0, 10, 1000)
+    store = PynappleStore({"speed": nap.Tsd(t=t, d=np.random.randn(1000))})
+    result = store.get_cp_times("speed")
+    assert len(result) == 0

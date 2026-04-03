@@ -33,7 +33,6 @@ from .widgets_io import IOWidget
 from .widgets_labels import LabelsWidget
 from .widget_navigation import NavigationWidget
 from .widgets_plot_settings import PlotSettingsWidget
-from .widgets_transform import TransformWidget
 from .widgets_ephys import EphysWidget
 
 logger = logging.getLogger(__name__)
@@ -118,7 +117,6 @@ class MetaWidget(CollapsibleWidgetContainer):
         # Create all widgets with app_state
         self.help_widget = HelpWidget(self.app_state)
         self.plot_settings_widget = PlotSettingsWidget(self.viewer, self.app_state)
-        self.transform_widget = TransformWidget(self.viewer, self.app_state)
         self.changepoints_widget = ChangepointsWidget(self.viewer, self.app_state)
         self.labels_widget = LabelsWidget(self.viewer, self.app_state)
         self.navigation_widget = NavigationWidget(self.viewer, self.app_state)
@@ -144,8 +142,6 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.labels_widget.io_widget = self.io_widget
         self.plot_settings_widget.set_plot_container(self.plot_container)
         self.plot_settings_widget.set_meta_widget(self)
-        self.transform_widget.set_plot_container(self.plot_container)
-        self.transform_widget.set_meta_widget(self)
         self.changepoints_widget.set_plot_container(self.plot_container)
         self.changepoints_widget.set_meta_widget(self)
         self.changepoints_widget.data_widget = self.data_widget
@@ -177,7 +173,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         # The one widget to rule them all (loading data, updating plots, managing sync)
         self.data_widget.set_references(
             self.plot_container, self.labels_widget, self.plot_settings_widget,
-            self.navigation_widget, self.transform_widget, self.changepoints_widget,
+            self.navigation_widget, self.changepoints_widget,
             ephys_widget=self.ephys_widget,
             layout_mgr=self.layout_mgr,
         )
@@ -190,7 +186,6 @@ class MetaWidget(CollapsibleWidgetContainer):
             self.changepoints_widget,
             self.ephys_widget,
             self.plot_settings_widget,
-            self.transform_widget,
             self.navigation_widget,
         ]:
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -238,14 +233,7 @@ class MetaWidget(CollapsibleWidgetContainer):
             widget_title="Changepoints (CPs)",
         )
 
-        # Index 6: Energy envelopes
-        self.add_widget(
-            self.transform_widget,
-            collapsible=True,
-            widget_title="Energy envelopes",
-        )
-
-        # Index 7: Plot settings
+        # Index 6: Plot settings
         self.add_widget(
             self.plot_settings_widget,
             collapsible=True,

@@ -32,6 +32,12 @@ def _is_pynapple_path(file_path: str) -> bool:
     return p.is_dir() or p.suffix in PYNAPPLE_EXTENSIONS
 
 
+def _is_nwb_project_dir(file_path: str) -> bool:
+    """Check if path is an NWB project directory (created by the NWB wizard)."""
+    p = Path(file_path)
+    return p.is_dir() and (p / ".ethograph" / "project.json").exists()
+
+
 def _load_pynapple_dataset(file_path: str) -> tuple:
     """Load a pynapple/NWB file or folder into TrialTree + type_vars.
 
@@ -51,6 +57,73 @@ def _load_pynapple_dataset(file_path: str) -> tuple:
     return dt, all_labels_df, type_vars_dict
 
 
+def _load_nwb_project(project_dir: str) -> tuple:
+    """Load an NWB project directory created by the NWB import wizard.
+
+    The project directory contains:
+    - ``.ethograph/project.json`` — config (nwb_source, pose keys, etc.)
+    - ``.ethograph/alignment.nwb`` — trial table + video matching
+    - ``labels.tsv`` — behavioral labels
+
+    Features are loaded lazily from the source NWB via pynapple.
+    Pose is loaded directly from NWB PoseEstimationSeries at render time.
+    """
+    import json
+    from ethograph.io.feature_store import PynappleStore
+    from ethograph.io.pynapple import load_nap_data, nap_to_metadata_trialtree
+
+    project_path = Path(project_dir)
+    config_path = project_path / ".ethograph" / "project.json"
+    alignment_path = project_path / ".ethograph" / "alignment.nwb"
+
+    with open(config_path) as f:
+        config = json.load(f)
+
+    # Resolve the NWB source path
+    nwb_source = config.get("nwb_source")
+    if not nwb_source:
+        dandiset_id = config.get("nwb_source_dandiset")
+        session_eid = config.get("nwb_source_session")
+        if dandiset_id and session_eid:
+            from ethograph.utils.nwb import open_nwb_dandi
+            raise NotImplementedError(
+                f"DANDI streaming re-open not yet supported. "
+                f"Download the NWB file locally first. "
+                f"(dandiset={dandiset_id}, session={session_eid})"
+            )
+        raise ValueError("No NWB source path found in project.json")
+
+    # Load features lazily via pynapple
+    data, trials_ep = load_nap_data(nwb_source)
+    store = PynappleStore(data, trials_ep)
+    dt = nap_to_metadata_trialtree(data, trials_ep)
+    dt.attrs["feature_store"] = store
+    type_vars_dict = store.get_type_vars()
+
+    # Apply project config
+    if config.get("nwb_pose_keys"):
+        dt.attrs["nwb_pose_keys"] = config["nwb_pose_keys"]
+    dt.attrs["nwb_source"] = nwb_source
+    for key in ("nwb_ephys_series", "nwb_ephys_path", "nwb_ephys_dandiset_id",
+                "nwb_ephys_asset_id", "nwb_raw_asset_id"):
+        if config.get(key):
+            dt.attrs[key] = config[key]
+
+    # Point to alignment NWB for session_io (trial timing, video matching)
+    if alignment_path.exists():
+        dt.nwb_path = str(alignment_path)
+
+    # Load labels
+    labels_path = project_path / "labels.tsv"
+    if labels_path.exists():
+        all_labels_df = load_labels_tsv(labels_path)
+        logger.info("Loaded labels from %s", labels_path)
+    else:
+        all_labels_df = init_empty_labels(dt.trials)
+
+    return dt, all_labels_df, type_vars_dict
+
+
 def load_dataset(
     file_path: str,
     require_fps: bool = True,
@@ -61,7 +134,8 @@ def load_dataset(
 ) -> tuple:
     """Load dataset from file path.
 
-    Supports ``.nc`` (NetCDF), ``.nwb``, ``.npz``, and pynapple folders.
+    Supports ``.nc`` (NetCDF), ``.nwb``, ``.npz``, pynapple folders,
+    and NWB project directories (with ``.ethograph/project.json``).
 
     Returns:
         Tuple of (dt, all_labels_df, type_vars_dict) on success.
@@ -69,6 +143,9 @@ def load_dataset(
     Raises:
         ValueError: On validation or format errors (popup shown before raising).
     """
+    if _is_nwb_project_dir(file_path):
+        return _load_nwb_project(file_path)
+
     if _is_pynapple_path(file_path):
         return _load_pynapple_dataset(file_path)
 
@@ -92,6 +169,19 @@ def load_dataset(
 
     else:
         all_labels_df = init_empty_labels(dt.trials)
+
+    # If a .nc has nwb_source, attach a PynappleStore for lazy feature access
+    nwb_source = dt.attrs.get("nwb_source")
+    if nwb_source and Path(nwb_source).exists():
+        try:
+            from ethograph.io.feature_store import PynappleStore
+            from ethograph.io.pynapple import load_nap_data
+            data, trials_ep = load_nap_data(nwb_source)
+            store = PynappleStore(data, trials_ep)
+            dt.attrs["feature_store"] = store
+            type_vars_dict.update(store.get_type_vars())
+        except Exception as e:
+            logger.warning("Failed to load pynapple store from %s: %s", nwb_source, e)
 
     return dt, all_labels_df, type_vars_dict
 

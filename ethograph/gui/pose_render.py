@@ -4,6 +4,10 @@ Pure functions are stateless — they load and filter pose data into PoseRenderD
 PoseDisplayManager orchestrates display using a single code path for all cameras
 (primary and extra). Each camera's keypoints are tracked independently; the UI
 shows the union across all loaded cameras.
+
+Two loading paths:
+- File-based (DLC, SLEAP, etc.): via ``movement.io.load_dataset`` + ``ds_to_napari_layers``
+- NWB-based: direct lazy HDF5 reads from ``PoseEstimationSeries`` (no xarray/movement)
 """
 
 from __future__ import annotations
@@ -16,7 +20,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from movement.io import load_dataset
-from movement.io.load_poses import from_nwb_file
 from movement.napari.convert import ds_to_napari_layers
 from movement.napari.layer_styles import PointsStyle, _sample_colormap
 
@@ -76,16 +79,26 @@ def load_pose_from_file(file_path: str, source_software: str, fps: float) -> Pos
     )
 
 
-def load_pose_from_nwb_file(
+def _get_series_timestamps(series: Any) -> np.ndarray:
+    """Extract absolute timestamps from a PoseEstimationSeries."""
+    if getattr(series, "timestamps", None) is not None:
+        return np.asarray(series.timestamps[:], dtype=np.float64)
+    n = series.data.shape[0]
+    t0 = float(series.starting_time) if getattr(series, "starting_time", None) is not None else 0.0
+    return t0 + np.arange(n, dtype=np.float64) / float(series.rate)
+
+
+def load_pose_from_nwb_direct(
     nwb_file: Any,
     pose_estimation_key: str,
     t_start: float | None = None,
     t_stop: float | None = None,
-) -> PoseRenderData:
-    """Load pose from NWB via movement's from_nwb_file + ds_to_napari_layers.
+) -> PoseRenderData | None:
+    """Load pose directly from NWB PoseEstimationSeries (no xarray/movement).
 
-    Optionally slices to a trial window [t_start, t_stop] and makes time
-    trial-relative (starting at 0).
+    Reads ``series.data`` and ``series.confidence`` via lazy HDF5 slicing.
+    Keypoint names come from the series keys.  Optionally slices to
+    ``[t_start, t_stop]`` and makes time trial-relative.
     """
     proc_key = "pose_estimation"
     for mod_name, mod in nwb_file.processing.items():
@@ -93,38 +106,62 @@ def load_pose_from_nwb_file(
             proc_key = mod_name
             break
 
-    ds = from_nwb_file(
-        nwb_file,
-        processing_module_key=proc_key,
-        pose_estimation_key=pose_estimation_key,
-    )
-
-    # movement discards NWB timestamps and rebuilds from 0.
-    # Restore session-absolute timestamps so trial slicing works.
     container = nwb_file.processing[proc_key][pose_estimation_key]
-    series = next(iter(container.pose_estimation_series.values()))
-    if getattr(series, "timestamps", None) is not None:
-        abs_ts = np.asarray(series.timestamps[:], dtype=np.float64)
-    else:
-        n = series.data.shape[0]
-        t0 = float(series.starting_time) if getattr(series, "starting_time", None) else 0.0
-        abs_ts = t0 + np.arange(n, dtype=np.float64) / float(series.rate)
-    ds = ds.assign_coords(time=abs_ts[: len(ds.time)])
+    raw_kp_names = list(container.pose_estimation_series.keys())
+    stripped = strip_common_prefix(raw_kp_names)
+    name_map = dict(zip(raw_kp_names, stripped))
 
-    if t_start is not None and t_stop is not None:
-        ds = ds.sel(time=slice(t_start, t_stop))
-        ds = ds.assign_coords(time=ds.time.values - t_start)
+    all_pts: list[np.ndarray] = []
+    all_not_nan: list[np.ndarray] = []
+    kp_col: list[str] = []
+    ind_col: list[str] = []
+    conf_col: list[float] = []
 
-    kp_coord = ds.coords.get("keypoints")
-    keypoints = kp_coord.values.astype(str).tolist() if kp_coord is not None else None
-    data, _, properties = ds_to_napari_layers(ds)
+    for kp_name, series in container.pose_estimation_series.items():
+        ts = _get_series_timestamps(series)
+
+        if t_start is not None and t_stop is not None:
+            idx = np.where((ts >= t_start) & (ts <= t_stop))[0]
+            if len(idx) == 0:
+                continue
+            i0, i1 = int(idx[0]), int(idx[-1]) + 1
+        else:
+            i0, i1 = 0, series.data.shape[0]
+
+        data = np.asarray(series.data[i0:i1], dtype=np.float64)
+        n = len(data)
+        frames = np.arange(n, dtype=np.float64)
+
+        # NWB stores (x, y); napari Points needs (frame, row/y, col/x)
+        pts = np.column_stack([frames, data[:, 1], data[:, 0]])
+        not_nan = ~np.any(np.isnan(data[:, :2]), axis=1)
+
+        confidence: np.ndarray | None = None
+        if hasattr(series, "confidence") and series.confidence is not None:
+            try:
+                confidence = np.asarray(series.confidence[i0:i1], dtype=np.float64)
+            except Exception:
+                confidence = None
+
+        all_pts.append(pts)
+        all_not_nan.append(not_nan)
+        kp_col.extend([name_map[kp_name]] * n)
+        ind_col.extend([pose_estimation_key] * n)
+        conf_col.extend(
+            confidence.tolist() if confidence is not None else [1.0] * n
+        )
+
+    if not all_pts:
+        return None
 
     return PoseRenderData(
-        data=data,
-        properties=_strip_keypoint_prefix(properties),
-        data_not_nan=~np.any(np.isnan(data), axis=1),
+        data=np.vstack(all_pts),
+        properties=pd.DataFrame(
+            {"keypoint": kp_col, "individual": ind_col, "confidence": conf_col}
+        ),
+        data_not_nan=np.concatenate(all_not_nan),
         file_name=f"NWB_pose_{pose_estimation_key}",
-        keypoints=keypoints,
+        keypoints=stripped,
     )
 
 
@@ -226,7 +263,7 @@ class PoseDisplayManager:
                 trial_id = self.app_state.trials_sel
                 t_start = dt.start_time(trial_id) if trial_id else None
                 t_stop = dt.stop_time(trial_id) if trial_id else None
-                return load_pose_from_nwb_file(
+                return load_pose_from_nwb_direct(
                     nwb_file,
                     pose_keys[camera_idx],
                     t_start=t_start,

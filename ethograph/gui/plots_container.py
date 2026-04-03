@@ -39,7 +39,7 @@ from .audio_player import AudioPlayer
 from .data_sources import build_audio_source
 from .label_drawing_mixin import LabelDrawingMixin
 from .plots_audiotrace import AudioTracePlot
-from .plots_ephystrace import EphysTracePlot, get_loader as get_ephys_loader
+from .plots_ephystrace import EphysTracePlot
 from .plots_heatmap import HeatmapPlot
 from .plots_lineplot import LinePlot
 from .plots_base import ThrottleDebounce
@@ -904,21 +904,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     # --- Envelope sibling trace ---
 
-    def _get_envelope_target(self) -> str:
-        return getattr(self.app_state, '_envelope_target', 'audio')
-
     def _get_envelope_host_plot(self):
-        target = self._get_envelope_target()
-        if target == "audio":
-            if self._panel_visible["audiotrace"] and self.audio_trace_plot.isVisible():
-                return self.audio_trace_plot
-            return None
-        if target == "ephys":
-            if not self._panel_visible["ephys"] or not self.ephys_trace_plot.isVisible():
-                return None
-            if self.ephys_trace_plot._multichannel:
-                return None
-            return self.ephys_trace_plot
+        if self._panel_visible["audiotrace"] and self.audio_trace_plot.isVisible():
+            return self.audio_trace_plot
         return None
 
     def show_envelope_overlay(self):
@@ -1049,46 +1037,23 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
                 self._sync_envelope_axis_to_host(host, env_vb)
 
     def _load_envelope_data(self, host, t0, t1):
-        target = self._get_envelope_target()
-        if target == "audio":
-            audio_path = getattr(self.app_state, 'audio_path', None)
-            if not audio_path:
-                return None, None, None
-            loader = SharedAudioCache.get_loader(audio_path)
-            if loader is None:
-                return None, None, None
-            fs = loader.rate
-            _, channel_idx = self.app_state.get_audio_source()
-            start_idx = max(0, int(t0 * fs))
-            stop_idx = min(len(loader), int(t1 * fs))
-            if stop_idx <= start_idx:
-                return None, None, None
-            audio_data = np.array(loader[start_idx:stop_idx], dtype=np.float64)
-            if audio_data.ndim > 1:
-                ch = min(channel_idx, audio_data.shape[1] - 1)
-                audio_data = audio_data[:, ch]
-            return audio_data, fs, t0
-        elif target == "ephys":
-            ephys_path, stream_id, _ = self.app_state.get_ephys_source()
-            if not ephys_path:
-                return None, None, None
-            loader = get_ephys_loader(ephys_path, stream_id=stream_id)
-            if loader is None:
-                return None, None, None
-            fs = loader.rate
-            channel = self.ephys_trace_plot.buffer.channel
-            start_idx = max(0, int(t0 * fs))
-            stop_idx = min(len(loader), int(t1 * fs))
-            if stop_idx <= start_idx:
-                return None, None, None
-            raw = loader[start_idx:stop_idx]
-            if raw.ndim == 1:
-                ephys_data = raw.astype(np.float64)
-            else:
-                ch = min(channel, raw.shape[1] - 1)
-                ephys_data = np.asarray(raw[:, ch], dtype=np.float64)
-            return ephys_data, fs, t0
-        return None, None, None
+        audio_path = getattr(self.app_state, 'audio_path', None)
+        if not audio_path:
+            return None, None, None
+        loader = SharedAudioCache.get_loader(audio_path)
+        if loader is None:
+            return None, None, None
+        fs = loader.rate
+        _, channel_idx = self.app_state.get_audio_source()
+        start_idx = max(0, int(t0 * fs))
+        stop_idx = min(len(loader), int(t1 * fs))
+        if stop_idx <= start_idx:
+            return None, None, None
+        audio_data = np.array(loader[start_idx:stop_idx], dtype=np.float64)
+        if audio_data.ndim > 1:
+            ch = min(channel_idx, audio_data.shape[1] - 1)
+            audio_data = audio_data[:, ch]
+        return audio_data, fs, t0
 
     # --- Cache management ---
 

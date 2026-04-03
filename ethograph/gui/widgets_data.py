@@ -16,7 +16,6 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QCompleter,
-    QDialog,
     QDoubleSpinBox,
     QFormLayout,
     QGridLayout,
@@ -46,7 +45,6 @@ from ethograph.gui.plots_timeseriessource import compute_trial_alignment
 from .app_constants import (
     DEFAULT_LAYOUT_MARGIN,
     DEFAULT_LAYOUT_SPACING,
-    MAX_WIDGET_SIZE,
     SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
 )
 from .data_loader import load_dataset
@@ -126,7 +124,18 @@ def make_searchable(combo_box: QComboBox) -> None:
 
 
 class DataPanel(QWidget):
-    """Visible panel for the 'Data' collapsible section in the sidebar."""
+    """Visible panel for the 'Data' collapsible section in the sidebar.
+
+    Organised into three tabs: Main, Pose, Audio.
+    """
+
+    ENERGY_DISPLAY_NAMES = {
+        "energy_lowpass": "SOS lowpass envelope",
+        "energy_highpass": "SOS highpass envelope",
+        "energy_band": "SOS bandpass envelope",
+        "energy_meansquared": "Vocalpy meansquared (amplitude)",
+        "energy_ava": "Vocalpy AVA (spectral power)",
+    }
 
     def __init__(self, app_state, parent=None):
         super().__init__(parent=parent)
@@ -137,8 +146,33 @@ class DataPanel(QWidget):
         layout.setContentsMargins(DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN)
         self.setLayout(layout)
 
-        self._create_main_section(layout)
-        self._create_pose_section(layout)
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet("QTabBar::tab { padding: 4px 16px; }")
+        layout.addWidget(self.tab_widget)
+
+        main_tab = QWidget()
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
+        main_layout.setContentsMargins(2, 2, 2, 2)
+        main_tab.setLayout(main_layout)
+        self._create_main_section(main_layout)
+        self.tab_widget.addTab(main_tab, "Main")
+
+        pose_tab = QWidget()
+        pose_layout = QVBoxLayout()
+        pose_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
+        pose_layout.setContentsMargins(2, 2, 2, 2)
+        pose_tab.setLayout(pose_layout)
+        self._create_pose_section(pose_layout)
+        self.tab_widget.addTab(pose_tab, "Pose")
+
+        audio_tab = QWidget()
+        audio_layout = QVBoxLayout()
+        audio_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
+        audio_layout.setContentsMargins(2, 2, 2, 2)
+        audio_tab.setLayout(audio_layout)
+        self._create_audio_section(audio_layout)
+        self.tab_widget.addTab(audio_tab, "Audio")
 
     def _create_main_section(self, parent_layout):
         self.coords_groupbox = QGroupBox("Xarray coords")
@@ -185,6 +219,8 @@ class DataPanel(QWidget):
         self.overlays_groupbox.setLayout(self.overlays_layout)
         parent_layout.addWidget(self.overlays_groupbox)
 
+        parent_layout.addStretch()
+
     def _create_pose_section(self, parent_layout):
         self.pose_groupbox = QGroupBox("Pose controls")
         pose_layout = QVBoxLayout()
@@ -193,7 +229,7 @@ class DataPanel(QWidget):
         self.pose_groupbox.setLayout(pose_layout)
 
         threshold_layout = QHBoxLayout()
-        threshold_layout.addWidget(QLabel("Hide below confidence:"))
+        threshold_layout.addWidget(QLabel("Confidence >="))
         self.pose_hide_threshold_spin = QDoubleSpinBox()
         self.pose_hide_threshold_spin.setObjectName("pose_hide_threshold_spin")
         self.pose_hide_threshold_spin.setRange(0.0, 1.0)
@@ -205,10 +241,6 @@ class DataPanel(QWidget):
         )
         self.pose_hide_threshold_spin.setValue(self.app_state.pose_hide_threshold)
         threshold_layout.addWidget(self.pose_hide_threshold_spin)
-
-        self.hide_markers_btn = QPushButton("Hide markers")
-        self.hide_markers_btn.clicked.connect(self._open_keypoints_dialog)
-        threshold_layout.addWidget(self.hide_markers_btn)
 
         threshold_layout.addWidget(QLabel("Size:"))
         self.pose_point_size_spin = QDoubleSpinBox()
@@ -235,40 +267,57 @@ class DataPanel(QWidget):
         row2.addStretch()
         pose_layout.addLayout(row2)
 
+        # Select All / Deselect All
+        btn_row = QHBoxLayout()
+        select_all_btn = QPushButton("Select All")
+        deselect_all_btn = QPushButton("Deselect All")
+        select_all_btn.clicked.connect(lambda: self._set_all_keypoints_checked(True))
+        deselect_all_btn.clicked.connect(lambda: self._set_all_keypoints_checked(False))
+        btn_row.addWidget(select_all_btn)
+        btn_row.addWidget(deselect_all_btn)
+        btn_row.addStretch()
+        pose_layout.addLayout(btn_row)
+
+        # Keypoints table (inline, scrollable)
         self.keypoints_table = QTableWidget(0, 2)
         self.keypoints_table.setHorizontalHeaderLabels(["Show", "Keypoint"])
         self.keypoints_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.keypoints_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.keypoints_table.verticalHeader().setVisible(False)
+        pose_layout.addWidget(self.keypoints_table, stretch=1)
 
         self.pose_groupbox.hide()
-        parent_layout.addWidget(self.pose_groupbox)
+        parent_layout.addWidget(self.pose_groupbox, stretch=1)
 
-    def _open_keypoints_dialog(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Hide individual markers")
-        dialog.setMinimumWidth(300)
-        dialog.setMinimumHeight(350)
-        layout = QVBoxLayout(dialog)
+    def _create_audio_section(self, parent_layout):
+        group = QGroupBox("Energy envelope")
+        grid = QGridLayout()
+        group.setLayout(grid)
 
-        btn_row = QHBoxLayout()
-        select_all_btn = QPushButton("Select All")
-        unselect_all_btn = QPushButton("Unselect All")
-        select_all_btn.clicked.connect(lambda: self._set_all_keypoints_checked(True))
-        unselect_all_btn.clicked.connect(lambda: self._set_all_keypoints_checked(False))
-        btn_row.addWidget(select_all_btn)
-        btn_row.addWidget(unselect_all_btn)
-        apply_btn = QPushButton("Apply")
-        apply_btn.clicked.connect(lambda: self._update_pose_callback() if self._update_pose_callback else None)
-        btn_row.addWidget(apply_btn)
-        btn_row.addStretch()
-        layout.addLayout(btn_row)
+        grid.addWidget(QLabel("Energy metric:"), 0, 0)
+        self.metric_combo = QComboBox()
+        self.metric_combo.addItems(self.ENERGY_DISPLAY_NAMES.values())
+        grid.addWidget(self.metric_combo, 0, 1, 1, 2)
 
-        layout.addWidget(self.keypoints_table)
-        self.keypoints_table.setMaximumHeight(MAX_WIDGET_SIZE)
-        dialog.exec_()
-        layout.removeWidget(self.keypoints_table)
-        self.keypoints_table.setParent(self.pose_groupbox)
+        self.energy_configure_btn = QPushButton("Configure...")
+        self.energy_configure_btn.setToolTip("Open parameter editor for selected energy metric")
+        grid.addWidget(self.energy_configure_btn, 1, 0, 1, 3)
+
+        parent_layout.addWidget(group)
+        parent_layout.addStretch()
+
+        self._restore_energy_selections()
+
+    def _restore_energy_selections(self):
+        metric = self.app_state.get_with_default("energy_metric")
+        display = self.ENERGY_DISPLAY_NAMES.get(metric, "SOS lowpass envelope")
+        self.metric_combo.setCurrentText(display)
+
+    def energy_display_to_key(self, display_text: str) -> str:
+        for key, val in self.ENERGY_DISPLAY_NAMES.items():
+            if val == display_text:
+                return key
+        return "energy_lowpass"
 
     def _set_all_keypoints_checked(self, checked: bool):
         state = Qt.Checked if checked else Qt.Unchecked
@@ -278,6 +327,8 @@ class DataPanel(QWidget):
             if item:
                 item.setCheckState(state)
         self.keypoints_table.blockSignals(False)
+        if self._update_pose_callback:
+            self._update_pose_callback()
 
 
 class DataWidget(QWidget):
@@ -303,7 +354,6 @@ class DataWidget(QWidget):
         self.plot_container = None
         self.labels_widget = None
         self.plot_settings_widget = None
-        self.transform_widget = None
         self.ephys_widget = None
         self.audio_player = None
         self.video_path = None
@@ -354,6 +404,8 @@ class DataWidget(QWidget):
         panel.rotate_btn.clicked.connect(self.pose_mgr.on_rotate_video_pose)
         panel._update_pose_callback = self.update_pose
 
+        panel.energy_configure_btn.clicked.connect(self._open_energy_params)
+
     def populate_keypoints(self, keypoint_names: list[str]) -> None:
         try:
             self.keypoints_table.cellChanged.disconnect(self._on_keypoint_toggled)
@@ -401,14 +453,13 @@ class DataWidget(QWidget):
 
     def set_references(
         self, plot_container, labels_widget, plot_settings_widget,
-        navigation_widget, transform_widget=None, changepoints_widget=None,
+        navigation_widget, changepoints_widget=None,
         ephys_widget=None, layout_mgr=None,
     ):
         self.plot_container = plot_container
         self.labels_widget = labels_widget
         self.plot_settings_widget = plot_settings_widget
         self.navigation_widget = navigation_widget
-        self.transform_widget = transform_widget
         self.changepoints_widget = changepoints_widget
         self.ephys_widget = ephys_widget
         self.layout_mgr = layout_mgr
@@ -575,10 +626,6 @@ class DataWidget(QWidget):
         self.labels_widget.refresh_mapping_for_data_dir(Path(nc_file_path).parent)
         self.changepoints_widget.setEnabled(True)
         self.plot_settings_widget.set_enabled_state()
-        if self.transform_widget:
-            self.transform_widget.setEnabled(True)
-            if self.app_state.has_audio or self.app_state.has_neo:
-                self.transform_widget.show_envelope_target_combo()
         if self.ephys_widget:
             self.ephys_widget.setEnabled(True)
             self.ephys_widget.populate_ephys_default_path()
@@ -1290,6 +1337,38 @@ class DataWidget(QWidget):
         else:
             self.plot_container.hide_envelope_overlay()
 
+    def _open_energy_params(self):
+        from .dialog_function_params import open_function_params_dialog
+        key = self.data_panel.energy_display_to_key(
+            self.data_panel.metric_combo.currentText(),
+        )
+        if key:
+            result = open_function_params_dialog(key, self.app_state, parent=self.data_panel)
+            if result is not None:
+                self._on_energy_apply()
+
+    def _on_energy_apply(self):
+        metric_key = self.data_panel.energy_display_to_key(
+            self.data_panel.metric_combo.currentText(),
+        )
+        self.app_state.energy_metric = metric_key
+
+        if not self.plot_container:
+            return
+
+        from .dialog_busy_progress import BusyProgressDialog
+
+        if (
+            hasattr(self, 'show_envelope_checkbox')
+            and not self.show_envelope_checkbox.isChecked()
+        ):
+            self.show_envelope_checkbox.setChecked(True)
+            return
+
+        self.plot_container.hide_envelope_overlay()
+        dialog = BusyProgressDialog("Computing energy envelope...", parent=self.data_panel)
+        dialog.execute_blocking(self.plot_container.show_envelope_overlay)
+
     def _set_controls_enabled(self, enabled: bool):
         for control in self.controls:
             control.setEnabled(enabled)
@@ -1757,18 +1836,12 @@ class DataWidget(QWidget):
         if not self.app_state.ready:
             return
         self.show_envelope_checkbox.show()
-        self.video_mgr.update_video(
-            plot_container=self.plot_container,
-            transform_widget=self.transform_widget,
-        )
+        self.video_mgr.update_video(plot_container=self.plot_container)
 
     def update_audio(self):
         if not self.app_state.ready:
             return
-        self.video_mgr.update_audio(
-            plot_container=self.plot_container,
-            transform_widget=self.transform_widget,
-        )
+        self.video_mgr.update_audio(plot_container=self.plot_container)
 
 
     def update_label(self):

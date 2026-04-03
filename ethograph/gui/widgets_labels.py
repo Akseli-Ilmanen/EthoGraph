@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from napari.viewer import Viewer
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QColor
@@ -536,6 +537,15 @@ class LabelsWidget(QWidget):
 
         Works entirely in the time domain. Also considers audio changepoints.
         """
+        store = getattr(self.app_state, 'feature_store', None)
+        if store is not None:
+            feature = getattr(self.app_state, 'features_sel', None)
+            cp_times = store.get_cp_times(feature)
+            if len(cp_times) == 0:
+                return t_clicked
+            nearest_idx = np.argmin(np.abs(cp_times - t_clicked))
+            return float(cp_times[nearest_idx])
+
         time_coord = self.app_state.time_coord
         if time_coord is None:
             return t_clicked

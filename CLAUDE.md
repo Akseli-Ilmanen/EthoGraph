@@ -78,7 +78,8 @@ ethograph/gui/
     modality.py               # Unified data source + buffering (ModalitySource, FileSource, XarraySource, WindowedBuffer)
     app_state.py              # Central state management (AppStateSpec + ObservableAppState)
     data_sources.py           # build_audio_source() -> FileSource
-    data_loader.py            # Dataset loading utilities
+    data_loader.py            # Dataset loading: .nc, .nwb, pynapple, NWB project dirs
+    pose_render.py            # Pose loading (direct NWB + movement), filtering, PoseDisplayManager
     plots_container.py        # UnifiedPanelContainer — multi-panel layout
     plots_base.py             # Abstract base class for all plots (BasePlot)
     plots_audiotrace.py       # Audio waveform (WindowedBuffer + FileSource)
@@ -199,13 +200,24 @@ Key signals: `trial_changed`, `restrict_window_changed`, `labels_modified`, `ver
 
 ### Pynapple/NWB Data Loading
 
-The GUI supports loading `.nc` (NetCDF), `.nwb`, `.npz`, and pynapple folders. Dispatch happens in `data_loader.py`:
-- `.nc` → `eto.open()` (existing path, `XarrayStore`)
+The GUI supports loading `.nc` (NetCDF), `.nwb`, `.npz`, pynapple folders, and NWB project directories. Dispatch happens in `data_loader.py`:
+- `.nc` → `eto.open()` (existing path, `XarrayStore`). If `.nc` has `nwb_source` attr, also attaches a `PynappleStore` for lazy NWB features.
 - `.nwb`/`.npz`/folder → `load_nap_data()` + `PynappleStore` (lazy) + `nap_to_metadata_trialtree()` (lightweight TrialTree for navigation/labels, no data vars)
+- NWB project dir (has `.ethograph/project.json`) → loads NWB via pynapple, applies config (pose keys, video matching, ephys). No `.nc` file needed.
 
 `PynappleStore` holds raw pynapple objects. On each `select()` call it restricts to the current trial via `IntervalSet`, time-slices, selects columns, and returns trial-relative numpy arrays in a `PlotData`.
 
 `nap_to_metadata_trialtree()` creates a TrialTree with just time coordinates and session table (for trial navigation and label storage) — no feature data variables.
+
+### Pose Rendering: `pose_render.py`
+
+Two loading paths for pose data:
+- **File-based** (DLC, SLEAP, etc.): `load_pose_from_file()` via `movement.io.load_dataset` + `ds_to_napari_layers`
+- **NWB-based**: `load_pose_from_nwb_direct()` reads `PoseEstimationSeries.data` and `.confidence` directly via lazy HDF5 slicing — no xarray/movement intermediate
+
+`PoseRenderData` is the unified result type. `apply_confidence_filter()` and `apply_keypoint_filter()` work on the `data_not_nan` mask. `PoseDisplayManager` orchestrates display via `shown` mask — filtering never recreates layers.
+
+The NWB wizard stores `nwb_pose_keys` (e.g. `["LeftCamera", "RightCamera"]`) in the project config. At render time, `PoseDisplayManager._load_pose_for_camera()` maps camera index → pose key → direct NWB loading.
 
 ### Plot System
 

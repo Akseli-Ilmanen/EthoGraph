@@ -208,7 +208,7 @@ class VideoManager:
     def extra_widgets(self) -> dict[str, ExtraCameraWidget]:
         return self._extra_widgets
 
-    def update_video(self, plot_container, transform_widget):
+    def update_video(self, plot_container):
         if not self.app_state.ready:
             return
         camera = self.app_state.primary_camera
@@ -231,11 +231,11 @@ class VideoManager:
         self._cleanup_primary_video()
         self._setup_primary_video(restore_frame)
 
-    def update_audio(self, plot_container, transform_widget):
+    def update_audio(self, plot_container):
         if not self.app_state.ready:
             return
         self._update_audio_path()
-        self._update_audio_ui(plot_container, transform_widget)
+        self._update_audio_ui(plot_container)
 
     def _update_audio_path(self) -> None:
         self.app_state.audio_path = None
@@ -244,10 +244,8 @@ class VideoManager:
             if audio_path:
                 self.app_state.audio_path = audio_path
 
-    def _update_audio_ui(self, plot_container, transform_widget):
+    def _update_audio_ui(self, plot_container):
         has_audio = bool(self.app_state.audio_path)
-        if transform_widget:
-            transform_widget.set_enabled_state(has_audio=has_audio)
         for w in self._audio_row_widgets:
             w.setVisible(has_audio)
         if has_audio:
