@@ -101,33 +101,41 @@ def _wizard_single_media_helper(
     video_path=None,
     pose_path=None,
     audio_path=None,
+    video_offset: float | None = None,
+    audio_offset: float | None = None,
 ):
-    data_vars = {}
-    coords = {"trial": [1]}
+    """Create a minimal NWB alignment file for a single-trial wizard."""
+    import pandas as pd
+    from ethograph.utils.nwb import build_nwb_from_trial_table
+
+    row: dict = {"trial": 1, "start_time": 0.0}
 
     if video_path is not None:
-        data_vars["video"] = (["cameras"], [Path(video_path).name])
-        coords["cameras"] = ["cam-1"]
+        row["video_cam-1"] = Path(video_path).name
+        if video_offset is not None and video_offset != 0.0:
+            row["video_cam-1_start"] = float(video_offset)
 
     if pose_path is not None:
-        data_vars["pose"] = (["cameras"], [Path(pose_path).name])
-        coords["cameras"] = ["cam-1"]
+        row["pose_cam-1"] = Path(pose_path).name
 
     if audio_path is not None:
-        data_vars["audio"] = (["mics"], [Path(audio_path).name])
-        coords["mics"] = ["mic-1"]
+        row["audio_mic-1"] = Path(audio_path).name
+        if audio_offset is not None and audio_offset != 0.0:
+            row["audio_mic-1_start"] = float(audio_offset)
 
+    trial_table = pd.DataFrame([row])
+    fps = dt.itrial(0).attrs.get("fps", 30)
 
-    session = xr.Dataset(
-        data_vars=data_vars,
-        coords=coords,
-    )
+    # Determine output path near the video/pose/audio file
+    ref_path = video_path or pose_path or audio_path
+    if ref_path:
+        output_dir = Path(ref_path).parent
+    else:
+        output_dir = Path.cwd()
 
-    dt["session"] = xr.DataTree(session)
-
-    fps = dt.itrial(0).attrs.get("fps")
-    if fps is not None and "cameras" in coords:
-        dt.set_video_fps(float(fps), device_labels=coords["cameras"])
+    nwb_path = output_dir / ".ethograph" / "alignment.nwb"
+    build_nwb_from_trial_table(trial_table, camera_fps=float(fps), output_path=nwb_path)
+    dt.nwb_path = str(nwb_path)
 
     return dt
 
@@ -174,18 +182,14 @@ def wizard_single_from_pose(
     
 
     dt = eto.dataset_to_basic_trialtree(ds, video_motion=False)
-    _wizard_single_media_helper(dt, video_path=video_path, pose_path=pose_path)
-    if video_offset is not None:
-        dt.set_stream_offset("video", float(video_offset))
-    
+    _wizard_single_media_helper(dt, video_path=video_path, pose_path=pose_path,
+                                video_offset=video_offset)
     return dt
 
 
 def wizard_single_from_ds(video_path, ds: xr.Dataset, video_offset: float | None = None):
     dt = eto.dataset_to_basic_trialtree(ds)
-    _wizard_single_media_helper(dt, video_path=video_path)
-    if video_offset is not None:
-        dt.set_stream_offset("video", float(video_offset))
+    _wizard_single_media_helper(dt, video_path=video_path, video_offset=video_offset)
     return dt
 
 
@@ -230,9 +234,7 @@ def wizard_single_from_npy_file(
 
     
     dt = eto.dataset_to_basic_trialtree(ds, video_path=video_path, video_motion=video_motion)
-    _wizard_single_media_helper(dt, video_path=video_path)
-    if video_offset is not None:
-        dt.set_stream_offset("video", float(video_offset))
+    _wizard_single_media_helper(dt, video_path=video_path, video_offset=video_offset)
     return dt
 
 
@@ -256,14 +258,45 @@ def wizard_single_from_ephys(
 
 
     dt = eto.dataset_to_basic_trialtree(ds, video_path=video_path, video_motion=video_motion)
-    _wizard_single_media_helper(dt, video_path=video_path, audio_path=audio_path)
-    
-    if video_offset is not None:
-        dt.set_stream_offset("video", float(video_offset))
-    
-    if audio_offset is not None:
-        dt.set_stream_offset("audio", float(audio_offset))
+    _wizard_single_media_helper(dt, video_path=video_path, audio_path=audio_path,
+                                video_offset=video_offset, audio_offset=audio_offset)
+    return dt
 
+
+def wizard_single_from_video(
+    video_path: str,
+    fps: int | None = None,
+    individuals: list[str] | None = None,
+    scale_width: int = 160,
+):
+    """Create a TrialTree from a video file with motion-energy feature.
+
+    Reads the video FPS via PyAV when *fps* is not given, then computes
+    per-frame pixel difference (YDIF) via ``extract_video_motion`` and
+    wraps the result as a single-trial TrialTree.
+    """
+    from ethograph.gui.wizard_single import get_video_fps
+    from ethograph.features.movement import extract_video_motion
+
+    if fps is None:
+        fps = get_video_fps(video_path)
+        if fps is None:
+            raise ValueError(f"Cannot determine FPS from {video_path}")
+
+    if individuals is None:
+        individuals = ["individual 1", "individual 2", "individual 3", "individual 4"]
+
+    motion = extract_video_motion(video_path, fps=fps, verbose=False,
+                                  scale_width=scale_width)
+
+    ds = xr.Dataset(
+        {"video_motion": motion},
+        coords={"individuals": individuals},
+    )
+    ds.attrs["fps"] = fps
+
+    dt = eto.dataset_to_basic_trialtree(ds, video_motion=False)
+    _wizard_single_media_helper(dt, video_path=video_path)
     return dt
 
 
@@ -288,8 +321,7 @@ def wizard_single_from_audio(
     ds.attrs["fps"] = fps
 
     dt = eto.dataset_to_basic_trialtree(ds, video_path=video_path, video_motion=video_motion)
-    _wizard_single_media_helper(dt, video_path=video_path, audio_path=audio_path)
-    if video_offset is not None:
-        dt.set_stream_offset("video", float(video_offset))
+    _wizard_single_media_helper(dt, video_path=video_path, audio_path=audio_path,
+                                video_offset=video_offset)
     return dt
 

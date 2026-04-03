@@ -321,15 +321,22 @@ def nap_to_metadata_trialtree(
 
     dt = TrialTree.from_datasets(datasets, validate=False)
 
-    session_data = {
-        "start_time": ("trial", list(trials_ep.start)),
-        "stop_time": ("trial", list(trials_ep.end)),
-    }
-    session_ds = xr.Dataset(
-        session_data,
-        coords={"trial": list(range(1, len(trials_ep) + 1))},
-    )
-    dt.set_session_table(session_ds)
+    # Create a minimal NWB alignment file with trial timing
+    import pandas as pd
+    from ethograph.utils.nwb import build_nwb_from_trial_table
+
+    trial_df = pd.DataFrame({
+        "trial": list(range(1, len(trials_ep) + 1)),
+        "start_time": list(trials_ep.start),
+        "stop_time": list(trials_ep.end),
+    })
+
+    # Write to a temp location (caller can override via dt.nwb_path)
+    import tempfile
+    nwb_dir = Path(tempfile.gettempdir()) / ".ethograph"
+    nwb_path = nwb_dir / "alignment.nwb"
+    build_nwb_from_trial_table(trial_df, output_path=nwb_path)
+    dt.nwb_path = str(nwb_path)
 
     return dt
 

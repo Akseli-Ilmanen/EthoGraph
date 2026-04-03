@@ -1285,18 +1285,26 @@ class NWBImportDialog(QDialog):
     # ------------------------------------------------------------------
 
     def _build_session_table(self, dt, trials_df):
+        """Build an alignment NWB file from NWB trials data and attach to dt."""
         trial_ids = list(dt.trials)
         if trials_df is None or "start_time" not in trials_df.columns:
             return
-        session_vars: dict = {
-            "start_time": ("trial", trials_df["start_time"].astype(float).values),
-            "stop_time": ("trial", trials_df["stop_time"].astype(float).values),
-        }
 
-        session_ds = xr.Dataset(session_vars, coords={"trial": trial_ids})
-        session_ds.attrs["session_start_time"] = str(self._nwb.session_start_time)
+        # Build a trial table for the NWB alignment file
+        import pandas as pd
+        from ethograph.utils.nwb import build_nwb_from_trial_table
 
-        dt.set_session_table(session_ds)
+        nwb_df = pd.DataFrame({
+            "trial": trial_ids,
+            "start_time": trials_df["start_time"].astype(float).values,
+            "stop_time": trials_df["stop_time"].astype(float).values,
+        })
+
+        # Determine output path
+        output_dir = getattr(self, "_output_dir", None) or Path.cwd()
+        nwb_path = output_dir / ".ethograph" / "alignment.nwb"
+        build_nwb_from_trial_table(nwb_df, output_path=nwb_path)
+        dt.nwb_path = str(nwb_path)
 
     def _set_ephys_attrs(self, dt, ephys_series: str | None, source_info: dict):
         if ephys_series is None:
@@ -1318,10 +1326,17 @@ class NWBImportDialog(QDialog):
             dt.attrs["nwb_raw_asset_id"] = raw_asset.identifier
 
     def _set_video_files(self, dt, matching: list[tuple[str, str]], output_dir: Path | None, include_pose: bool):
+        """Add video file references to the alignment NWB file.
+
+        Updates the NWB trials table with video columns and regenerates
+        acquisition ImageSeries from the updated table.
+        """
+        import pandas as pd
+        from pynwb import NWBHDF5IO
+        from ethograph.utils.nwb import sync_acquisition_from_trials
+
         trials = dt.trials
 
-        # matching = [(video_name, pose_name), ...]
-        # Use video names as canonical device labels for the `cameras` coord.
         if matching:
             video_keys = [video_cam for video_cam, _ in matching]
             device_labels = video_keys
@@ -1331,41 +1346,44 @@ class NWBImportDialog(QDialog):
         else:
             return
 
+        nwb_path = getattr(dt, "_nwb_path", None)
+        if not nwb_path:
+            logger.warning("No NWB path set on TrialTree, cannot set video files")
+            return
+
+        # Read existing NWB, add video columns, rewrite
+        with NWBHDF5IO(nwb_path, "r") as io:
+            nwbfile = io.read()
+            df = nwbfile.trials.to_dataframe() if nwbfile.trials else pd.DataFrame()
+
         if output_dir is not None:
-            video_files = [
-                [f"{dl}_trial_{trial_id}.mp4" for dl in device_labels]
-                for trial_id in trials
-            ]
-            dt.set_media("video", video_files, device_labels=device_labels, per_trial=True)
-            return
+            # Per-trial downloaded videos
+            for dl in device_labels:
+                col = f"video_{dl}"
+                df[col] = [f"{dl}_trial_{trial_id}.mp4" for trial_id in trials]
+        else:
+            # Session-wide videos (streaming)
+            for vk, dl in zip(video_keys, device_labels):
+                info = self._video_info.get(vk, {})
+                filepath = info.get("path") or info.get("url", "")
+                if not filepath:
+                    logger.warning("No video path/URL found for camera: %s", dl)
+                    continue
+                logger.info("  video '%s' -> %s", dl, filepath[:80] + ("..." if len(filepath) > 80 else ""))
+                col = f"video_{dl}"
+                df[col] = filepath  # Same file for all trials (session-wide)
 
-        camera_files = [
-            self._video_info.get(vk, {}).get("path") or self._video_info.get(vk, {}).get("url", "")
-            for vk in video_keys
-        ]
-        stored = [(dl, f) for dl, f in zip(device_labels, camera_files) if f]
-        missing = [dl for dl, f in zip(device_labels, camera_files) if not f]
-        if missing:
-            logger.warning("No video path/URL found for cameras: %s", missing)
-        if not any(camera_files):
-            return
+        # Get FPS
+        fps_values = [self._video_info.get(vk, {}).get("fps", 30.0) for vk in video_keys]
+        camera_fps = max(fps_values) if fps_values else 30.0
 
-        for dl, f in stored:
-            logger.info("  video '%s' -> %s", dl, f[:80] + ("..." if len(f) > 80 else ""))
+        # Rebuild NWB with updated trial table
+        from ethograph.utils.nwb import build_nwb_from_trial_table
+        # Column is already named "trial" in the NWB file
+        build_nwb_from_trial_table(df, camera_fps=camera_fps, output_path=nwb_path)
 
-        camera_start_times = [
-            self._video_info.get(vk, {}).get("start", 0.0)
-            for vk in video_keys
-        ]
-        has_start_times = any(t != 0.0 for t in camera_start_times)
-        dt.set_media(
-            "video", camera_files, device_labels=device_labels, per_trial=False,
-            start_times=camera_start_times if has_start_times else None,
-        )
-
-        fps_values = [self._video_info.get(vk, {}).get("fps", 0.0) for vk in video_keys]
-        if any(f > 0 for f in fps_values):
-            dt.set_video_fps(fps_values, device_labels=device_labels)
+        # Invalidate cached session_io so it reloads
+        dt.__dict__.pop("session_io", None)
 
     # ------------------------------------------------------------------
     # Video download

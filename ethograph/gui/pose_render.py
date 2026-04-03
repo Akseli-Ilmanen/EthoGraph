@@ -15,13 +15,12 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import xarray as xr
 from movement.io import load_dataset
+from movement.io.load_poses import from_nwb_file
 from movement.napari.convert import ds_to_napari_layers
 from movement.napari.layer_styles import PointsStyle, _sample_colormap
 
 from ethograph.gui.notify import notify
-from ethograph.utils.xr_utils import get_time_coord
 
 @dataclass
 class PoseRenderData:
@@ -77,64 +76,55 @@ def load_pose_from_file(file_path: str, source_software: str, fps: float) -> Pos
     )
 
 
-def load_pose_from_nwb(
-    ds: xr.Dataset,
-    camera_idx: int = 0,
-    camera_name: str = "",
+def load_pose_from_nwb_file(
+    nwb_file: Any,
+    pose_estimation_key: str,
+    t_start: float | None = None,
+    t_stop: float | None = None,
 ) -> PoseRenderData:
-    """Extract pose from an NWB-sourced xr.Dataset (multiview ``view`` dim or legacy ``cameras`` dim)."""
-    pos = ds["position"]
-    if "view" in pos.dims:
-        pos = pos.isel(view=camera_idx)
-    elif "cameras" in pos.dims:
-        pos = pos.isel(cameras=camera_idx)
+    """Load pose from NWB via movement's from_nwb_file + ds_to_napari_layers.
 
-    if "confidence" in ds.data_vars:
-        conf = ds["confidence"]
-        if "view" in conf.dims:
-            conf = conf.isel(view=camera_idx)
-        elif "cameras" in conf.dims:
-            conf = conf.isel(cameras=camera_idx)
+    Optionally slices to a trial window [t_start, t_stop] and makes time
+    trial-relative (starting at 0).
+    """
+    proc_key = "pose_estimation"
+    for mod_name, mod in nwb_file.processing.items():
+        if pose_estimation_key in mod.data_interfaces:
+            proc_key = mod_name
+            break
+
+    ds = from_nwb_file(
+        nwb_file,
+        processing_module_key=proc_key,
+        pose_estimation_key=pose_estimation_key,
+    )
+
+    # movement discards NWB timestamps and rebuilds from 0.
+    # Restore session-absolute timestamps so trial slicing works.
+    container = nwb_file.processing[proc_key][pose_estimation_key]
+    series = next(iter(container.pose_estimation_series.values()))
+    if getattr(series, "timestamps", None) is not None:
+        abs_ts = np.asarray(series.timestamps[:], dtype=np.float64)
     else:
-        conf = xr.ones_like(pos.isel(space=0).drop_vars("space"))
+        n = series.data.shape[0]
+        t0 = float(series.starting_time) if getattr(series, "starting_time", None) else 0.0
+        abs_ts = t0 + np.arange(n, dtype=np.float64) / float(series.rate)
+    ds = ds.assign_coords(time=abs_ts[: len(ds.time)])
 
-    return _pose_arrays_to_render_data(pos, conf, camera_name or str(camera_idx))
+    if t_start is not None and t_stop is not None:
+        ds = ds.sel(time=slice(t_start, t_stop))
+        ds = ds.assign_coords(time=ds.time.values - t_start)
 
+    kp_coord = ds.coords.get("keypoints")
+    keypoints = kp_coord.values.astype(str).tolist() if kp_coord is not None else None
+    data, _, properties = ds_to_napari_layers(ds)
 
-def load_pose_from_nwb_variable(
-    ds: xr.Dataset,
-    cam_suffix: str,
-    camera_name: str = "",
-) -> PoseRenderData:
-    """Extract pose from a merged NWB dataset using ``position_{cam_suffix}`` variable."""
-    pos = ds[f"position_{cam_suffix}"]
-    conf_key = f"confidence_{cam_suffix}"
-    conf = ds[conf_key] if conf_key in ds.data_vars else xr.ones_like(pos.isel(space=0).drop_vars("space"))
-    return _pose_arrays_to_render_data(pos, conf, camera_name or cam_suffix)
-
-
-def _pose_arrays_to_render_data(
-    pos: xr.DataArray,
-    conf: xr.DataArray,
-    label_suffix: str,
-) -> PoseRenderData:
-    time_coord = get_time_coord(pos)
-    if time_coord is None:
-        raise ValueError("Position data has no time coordinate")
-    time_name = time_coord.name or time_coord.dims[0]
-
-    pos_mv = pos.transpose(time_name, "space", "individuals", "keypoints")
-    conf_mv = conf.transpose(time_name, "individuals", "keypoints")
-    mv_ds = xr.Dataset({"position": pos_mv, "confidence": conf_mv}).rename({time_name: "time"})
-    mv_ds.attrs["ds_type"] = "poses"
-
-    data, _, properties = ds_to_napari_layers(mv_ds)
     return PoseRenderData(
         data=data,
         properties=_strip_keypoint_prefix(properties),
         data_not_nan=~np.any(np.isnan(data), axis=1),
-        file_name=f"NWB_pose_{label_suffix}",
-        keypoints=None,
+        file_name=f"NWB_pose_{pose_estimation_key}",
+        keypoints=keypoints,
     )
 
 
@@ -201,11 +191,9 @@ class PoseDisplayManager:
                 return fps
         return self.app_state.video_fps
 
-    def _has_embedded_pose(self) -> bool:
-        ds = self.app_state.ds
-        if "position" in ds.data_vars:
-            return True
-        return any(k.startswith("position_") for k in ds.data_vars)
+    def _get_nwb_file(self) -> Any | None:
+        sio = self.app_state.dt.session_io
+        return getattr(sio, "nwb", None)
 
     def _load_pose_for_camera(self, camera_idx: int) -> PoseRenderData | None:
         dt = self.app_state.dt
@@ -228,13 +216,25 @@ class PoseDisplayManager:
             except (OSError, ValueError, KeyError) as e:
                 notify(f"Failed to load pose for camera {camera_idx}: {e}", "warning")
                 return None
-        if self._has_embedded_pose():
-            ds = self.app_state.ds
-            if "position" in ds.data_vars:
-                return load_pose_from_nwb(ds, camera_idx=camera_idx)
-            pose_keys = list(dt.attrs.get("nwb_pose_keys", []))
-            if camera_idx < len(pose_keys):
-                return load_pose_from_nwb_variable(ds, pose_keys[camera_idx])
+
+        pose_keys = list(dt.attrs.get("nwb_pose_keys", []))
+        if pose_keys and camera_idx < len(pose_keys):
+            nwb_file = self._get_nwb_file()
+            if nwb_file is None:
+                return None
+            try:
+                trial_id = self.app_state.trials_sel
+                t_start = dt.start_time(trial_id) if trial_id else None
+                t_stop = dt.stop_time(trial_id) if trial_id else None
+                return load_pose_from_nwb_file(
+                    nwb_file,
+                    pose_keys[camera_idx],
+                    t_start=t_start,
+                    t_stop=t_stop,
+                )
+            except (OSError, ValueError, KeyError) as e:
+                notify(f"Failed to load NWB pose for {pose_keys[camera_idx]}: {e}", "warning")
+                return None
         return None
 
     def _prepare_pose(self, camera_idx: int, hidden_keypoints: set[str]) -> PoseRenderData | None:

@@ -122,16 +122,14 @@ def enrich_labels_df(
 
         # Session timing
         t_start, t_stop = None, None
-        if hasattr(dt, "session") and dt.session is not None and "start_time" in dt.session:
-            try:
-                t_start = float(dt.session.start_time.sel(trial=trial_id))
-            except (KeyError, ValueError):
-                pass
-            if "stop_time" in dt.session:
-                try:
-                    t_stop = float(dt.session.stop_time.sel(trial=trial_id))
-                except (KeyError, ValueError):
-                    pass
+        try:
+            t_start = dt.start_time(trial_id)
+        except (AttributeError, KeyError, ValueError):
+            pass
+        try:
+            t_stop = dt.stop_time(trial_id)
+        except (AttributeError, KeyError, ValueError):
+            pass
 
         if t_start is not None:
             group["trial_onset"] = t_start

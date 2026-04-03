@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
-from enum import Enum
-from functools import cached_property
 from pathlib import Path
 from typing import Any, Callable
 
@@ -15,34 +12,6 @@ import pynapple as nap
 
 from ethograph.labels.intervals import empty_intervals
 from ethograph.io.validation import validate_datatree
-
-
-# ---------------------------------------------------------------------------
-# Stream schema
-# ---------------------------------------------------------------------------
-
-
-class StreamLayout(Enum):
-    PER_TRIAL = "per_trial"
-    SESSION_WIDE = "session_wide"
-
-
-@dataclass(frozen=True)
-class StreamSpec:
-    name: str
-    layout: StreamLayout
-    device_dim: str | None = None
-
-
-STREAMS: dict[str, StreamSpec] = {
-    "video": StreamSpec("video", StreamLayout.PER_TRIAL, device_dim="cameras"),
-    "audio": StreamSpec("audio", StreamLayout.PER_TRIAL, device_dim="mics"),
-    "pose": StreamSpec("pose", StreamLayout.PER_TRIAL, device_dim="cameras"),
-    "ephys": StreamSpec("ephys", StreamLayout.SESSION_WIDE),
-}
-
-SESSION_NODE = "session"
-_EPOCH_GAP = 1e-4  # 100 µs gap between inferred trial boundaries
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +54,33 @@ def _dataset_to_ep(ds: xr.Dataset) -> nap.IntervalSet:
         end=ds["end"].values,
         metadata=meta or None,
     )
+
+
+# ---------------------------------------------------------------------------
+# NWB discovery
+# ---------------------------------------------------------------------------
+
+_NWB_FILENAME = "alignment.nwb"
+_SETTINGS_DIR = ".ethograph"
+
+
+def _discover_nwb(nc_path: str | Path) -> Path | None:
+    """Find an NWB session file near a .nc file.
+
+    Search order:
+    1. ``<dir>/.ethograph/alignment.nwb``
+    2. Any ``.nwb`` file in ``<dir>/.ethograph/``
+    """
+    d = Path(nc_path).resolve().parent
+    ethograph_dir = d / _SETTINGS_DIR
+    if ethograph_dir.is_dir():
+        candidate = ethograph_dir / _NWB_FILENAME
+        if candidate.exists():
+            return candidate
+        nwb_files = list(ethograph_dir.glob("*.nwb"))
+        if nwb_files:
+            return nwb_files[0]
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -140,23 +136,45 @@ class TrialTree(xr.DataTree):
         super().__setitem__(key, value)
 
     # ------------------------------------------------------------------
+    # SessionIO: NWB-backed session metadata
+    # ------------------------------------------------------------------
+
+    @property
+    def nwb_path(self) -> str | None:
+        return getattr(self, "_nwb_path", None)
+
+    @nwb_path.setter
+    def nwb_path(self, value: str | Path | None) -> None:
+        old = getattr(self, "_nwb_path", None)
+        self._nwb_path = str(value) if value else None
+        if old != self._nwb_path:
+            # Invalidate cached session_io
+            self.__dict__.pop("session_io", None)
+
+    @property
+    def session_io(self):
+        """Lazy-loaded SessionIO adapter backed by the NWB file."""
+        cached = self.__dict__.get("session_io")
+        if cached is not None:
+            return cached
+
+        from ethograph.io.session_io import NWBSessionIO, EmptySessionIO
+
+        nwb_path = getattr(self, "_nwb_path", None)
+        if nwb_path and Path(nwb_path).exists():
+            sio = NWBSessionIO(nwb_path)
+        else:
+            sio = EmptySessionIO()
+        self.__dict__["session_io"] = sio
+        return sio
+
+    # ------------------------------------------------------------------
     # Trial list & iteration
     # ------------------------------------------------------------------
 
     @property
     def trials(self) -> list[int | str]:
-        """List of trial identifiers extracted from ``ds.attrs["trial"]``.
-
-        Returns
-        -------
-        list[int | str]
-            Trial identifiers from all child nodes.
-
-        Raises
-        ------
-        ValueError
-            If no child nodes contain a ``"trial"`` attribute.
-        """
+        """List of trial identifiers extracted from ``ds.attrs["trial"]``."""
         raw = [
             node.ds.attrs["trial"]
             for node in self.children.values()
@@ -168,14 +186,7 @@ class TrialTree(xr.DataTree):
         return trials
 
     def trial_items(self):
-        """Iterate over ``(trial_id, dataset)`` pairs for all trial nodes.
-
-        Yields
-        ------
-        trial_id : int or str
-            The ``ds.attrs["trial"]`` value.
-        ds : xarray.Dataset
-        """
+        """Iterate over ``(trial_id, dataset)`` pairs for all trial nodes."""
         for node in self.children.values():
             if node.ds is not None and "trial" in node.ds.attrs:
                 trial_id = node.ds.attrs["trial"]
@@ -184,486 +195,69 @@ class TrialTree(xr.DataTree):
                 yield trial_id, node.ds
 
     def map_trials(self, func: Callable[[xr.Dataset], xr.Dataset]) -> TrialTree:
-        """Apply *func* to every trial dataset and return a new TrialTree.
-
-        Parameters
-        ----------
-        func : callable
-            ``func(ds) -> ds``.  Receives and returns an :class:`xarray.Dataset`.
-
-        Returns
-        -------
-        TrialTree
-            New tree with transformed trial datasets.
-        """
+        """Apply *func* to every trial dataset and return a new TrialTree."""
         def _apply(ds):
             if ds is None or "trial" not in ds.attrs:
                 return ds
             return func(ds)
 
-        return self.from_datatree(self.map_over_datasets(_apply), attrs=self.attrs)
+        return self.from_datatree(
+            self.map_over_datasets(_apply), attrs=self.attrs, source=self,
+        )
 
     def update_trial(self, trial, func: Callable[[xr.Dataset], xr.Dataset]) -> None:
-        """Read-modify-write a single trial's dataset.
-
-        Use this for structural changes (adding/removing variables) that
-        do not propagate when mutating the dataset returned by :meth:`trial`.
-
-        Parameters
-        ----------
-        trial : int or str
-            Trial identifier.
-        func : callable
-            ``func(ds) -> ds``.  Receives the current dataset and must
-            return the replacement.
-        """
+        """Read-modify-write a single trial's dataset."""
         node_name = self._trial_node_name(trial)
         self[node_name] = xr.DataTree(func(self[node_name].ds))
 
     # ------------------------------------------------------------------
-    # Session table
+    # Delegated session access (reads from NWB via session_io)
     # ------------------------------------------------------------------
 
     @property
-    def session(self) -> xr.Dataset | None:
-        """The session-level :class:`xarray.Dataset`, or ``None``.
+    def cameras(self) -> list[str]:
+        """Camera device labels."""
+        return self.session_io.cameras
 
-        Returns
-        -------
-        xarray.Dataset or None
-            Session dataset if a ``"session"`` child node exists.
-        """
-        if SESSION_NODE in self.children:
-            return self[SESSION_NODE].ds
-        return None
+    @property
+    def mics(self) -> list[str]:
+        """Microphone device labels."""
+        return self.session_io.mics
 
-    def _ensure_session(self) -> None:
-        if SESSION_NODE not in self.children:
-            self[SESSION_NODE] = xr.DataTree(xr.Dataset())
+    def devices(self, stream: str) -> list[str]:
+        """List device labels for a stream."""
+        return self.session_io.devices(stream)
 
-    def _update_session(self, func: Callable[[xr.Dataset], xr.Dataset]) -> None:
-        self._ensure_session()
-        self[SESSION_NODE] = xr.DataTree(func(self[SESSION_NODE].to_dataset()))
-
-    def set_session_table(self, table: xr.Dataset | pd.DataFrame) -> None:
-        """Store session-level metadata (timing, file paths, etc.).
-
-        Parameters
-        ----------
-        table : xarray.Dataset or pandas.DataFrame
-            Must be indexed (or have a column) named ``"trial"``.
-        """
-        if isinstance(table, pd.DataFrame):
-            if table.index.name != "trial":
-                if "trial" in table.columns:
-                    table = table.set_index("trial")
-                else:
-                    table.index.name = "trial"
-            table = xr.Dataset.from_dataframe(table)
-        self[SESSION_NODE] = xr.DataTree(table)
-
-    def session_to_dataframe(self) -> pd.DataFrame | None:
-        """Return the session table as a :class:`~pandas.DataFrame`.
-
-        Returns
-        -------
-        pandas.DataFrame or None
-            Session table as a DataFrame, or ``None`` if no session exists.
-        """
-        if self.session is None:
-            return None
-        return self.session.to_dataframe()
-
-    def print_session(self) -> None:
-        """Print a formatted summary of the session table to stdout."""
-        ds = self.session
-        if ds is None:
-            print("No session table.")
-            return
-
-        groups: dict[str, list[str]] = defaultdict(list)
-        for name, var in ds.data_vars.items():
-            key = var.dims[0] if var.dims else "(scalar)"
-            groups[key].append(name)
-
-        with xr.set_options(display_width=120, display_max_rows=100):
-            for dim, names in groups.items():
-                print(f"\n{'=' * 60}")
-                print(f"  dim: {dim}")
-                print(f"{'=' * 60}")
-                for name in names:
-                    print(f"\n  [{name}]")
-                    print(ds[name].values)
-
-        if ds.attrs:
-            print(f"\n{'=' * 60}")
-            print("  attrs")
-            print(f"{'=' * 60}")
-            for k, v in ds.attrs.items():
-                print(f"  {k}: {v}")
-
-    # ------------------------------------------------------------------
-    # Timing
-    # ------------------------------------------------------------------
-
-    def _invalidate_timing_cache(self) -> None:
-        for attr in ("_trials_ep", "_trial_idx_cache"):
-            try:
-                del self.__dict__[attr]
-            except KeyError:
-                pass
-
-    @cached_property
-    def _trials_ep(self) -> nap.IntervalSet | None:
-        sess = self.session
-        if sess is None:
-            return None
-
-        trials_list = self.trials
-        n = len(trials_list)
-        if n == 0:
-            return None
-
-        starts = np.zeros(n, dtype=np.float64)
-        ends = np.full(n, np.nan, dtype=np.float64)
-
-        if "start_time" in sess:
-            for i, t in enumerate(trials_list):
-                try:
-                    v = float(sess["start_time"].sel(trial=t))
-                    if not np.isnan(v):
-                        starts[i] = v
-                except (KeyError, ValueError):
-                    pass
-
-        if "stop_time" in sess:
-            for i, t in enumerate(trials_list):
-                try:
-                    v = float(sess["stop_time"].sel(trial=t))
-                    if not np.isnan(v):
-                        ends[i] = v
-                except (KeyError, ValueError):
-                    pass
-
-        has_monotonic_starts = n == 1 or bool(np.all(np.diff(starts) > 0))
-        if not has_monotonic_starts:
-            return None
-
-        # If stop time missing, infer it as just before the next trial's start
-        has_stop = ~np.isnan(ends)
-        safe_ends = ends.copy()
-        for i in range(n - 1):
-            if np.isnan(safe_ends[i]):
-                safe_ends[i] = starts[i + 1] - _EPOCH_GAP 
-        if np.isnan(safe_ends[-1]):
-            safe_ends[-1] = starts[-1] + 1.0
-
-        return nap.IntervalSet(
-            start=starts,
-            end=safe_ends,
-            metadata={
-                "trial": np.array(trials_list),
-                "has_stop": has_stop.astype(float),
-            },
-        )
-
-    @cached_property
-    def _trial_idx_cache(self) -> dict[str, int]:
-        ep = self._trials_ep
-        if ep is None:
-            return {}
-        return {str(t): i for i, t in enumerate(ep.metadata["trial"])}
-
-    def _trial_ep_idx(self, trial) -> int:
-        idx = self._trial_idx_cache.get(str(trial))
-        if idx is None:
-            raise KeyError(f"Trial {trial} not found in timing table")
-        return idx
+    def get_media(self, trial, stream: str, device: str | None = None) -> str | None:
+        """Retrieve a media filename for a trial and stream."""
+        return self.session_io.get_media(trial, stream, device)
 
     def start_time(self, trial) -> float:
-        """Session-absolute start time of a trial in seconds.
-
-        Parameters
-        ----------
-        trial : int or str
-            Trial identifier.
-
-        Returns
-        -------
-        float
-            Start time in seconds, or 0.0 if no timing information is available.
-        """
-        ep = self._trials_ep
-        if ep is None:
-            return 0.0
-        return float(ep.start[self._trial_ep_idx(trial)])
+        """Session-absolute start time of a trial in seconds."""
+        return self.session_io.start_time(trial)
 
     def stop_time(self, trial) -> float | None:
-        """Session-absolute stop time of a trial in seconds.
-
-        Parameters
-        ----------
-        trial : int or str
-            Trial identifier.
-
-        Returns
-        -------
-        float or None
-            Stop time in seconds, or ``None`` if no stop time is recorded.
-        """
-        ep = self._trials_ep
-        if ep is None:
-            return None
-        idx = self._trial_ep_idx(trial)
-        if not bool(ep.metadata["has_stop"].iloc[idx]):
-            return None
-        return float(ep.end[idx])
+        """Session-absolute stop time of a trial in seconds."""
+        return self.session_io.stop_time(trial)
 
     def trial_duration(self, trial) -> float:
-        """Duration of the trial in seconds (``stop_time - start_time``).
-
-        Parameters
-        ----------
-        trial : int or str
-            Trial identifier.
-
-        Returns
-        -------
-        float
-            Duration in seconds.
-
-        Raises
-        ------
-        ValueError
-            If the trial has no known stop time.
-        """
-        stop = self.stop_time(trial)
-        if stop is None:
-            raise ValueError(f"Trial {trial} has no known stop time")
-        return stop - self.start_time(trial)
-
-    @property
-    def trials_ep(self) -> nap.IntervalSet | None:
-        """All trial epochs as a single :class:`pynapple.IntervalSet`.
-
-        Returns
-        -------
-        pynapple.IntervalSet or None
-            Combined interval set for all trials, or ``None`` if no
-            timing information is available.
-        """
-        return self._trials_ep
-
-    def trial_epoch(self, trial) -> nap.IntervalSet:
-        """Return the :class:`pynapple.IntervalSet` for a single trial.
-
-        Parameters
-        ----------
-        trial : int or str
-            Trial identifier.
-
-        Returns
-        -------
-        pynapple.IntervalSet
-            Single-interval set spanning the trial's start to end time.
-
-        Raises
-        ------
-        ValueError
-            If no timing information is available.
-        """
-        ep = self._trials_ep
-        if ep is None:
-            raise ValueError("No timing information available")
-        idx = self._trial_ep_idx(trial)
-        return nap.IntervalSet(start=ep.start[idx], end=ep.end[idx])
-
-    def restrict(self, obj: nap.Tsd | nap.TsdFrame | nap.TsdTensor | nap.Ts | nap.TsGroup, trial) -> nap.Tsd | nap.TsdFrame | nap.TsdTensor | nap.Ts | nap.TsGroup:
-        """Restrict a pynapple object to a trial's epoch.
-
-        Parameters
-        ----------
-        obj : :class:`~pynapple.Tsd` | :class:`~pynapple.TsdFrame` | :class:`~pynapple.TsdTensor` | :class:`~pynapple.Ts` | :class:`~pynapple.TsGroup`
-            Any pynapple time series or group.
-        trial : int or str
-            Trial identifier.
-
-        Returns
-        -------
-        :class:`~pynapple.Tsd` | :class:`~pynapple.TsdFrame` | :class:`~pynapple.TsdTensor` | :class:`~pynapple.Ts` | :class:`~pynapple.TsGroup`
-            The input restricted to the trial's epoch.
-        """
-        return obj.restrict(self.trial_epoch(trial))
-
-    # ------------------------------------------------------------------
-    # Stream offsets & source timing
-    # ------------------------------------------------------------------
+        """Duration of the trial in seconds."""
+        return self.session_io.trial_duration(trial)
 
     def source_start_time(self, trial, stream: str, device: str | None = None) -> float:
-        """Session-absolute time of sample 0 for this stream's file.
-
-        Reads from the ``start_time_{stream}`` DataArray in the session
-        node. 
-
-        Parameters
-        ----------
-        trial : int or str
-            Trial identifier.
-        stream : str
-            Stream name (e.g. ``"video"``, ``"audio"``, ``"ephys"``).
-        device : str, optional
-            Device label (e.g. ``"left"``).
-
-        Returns
-        -------
-        float
-            Session-absolute start time in seconds (0.0 if unknown).
-        """
-        sess = self.session
-        if sess is None:
-            return 0.0
-
-        key = f"start_time_{stream}"
-        if key in sess:
-            da = sess[key]
-            sel: dict[str, Any] = {}
-            if "trial" in da.dims:
-                sel["trial"] = trial
-            spec = STREAMS.get(stream)
-            if device and spec and spec.device_dim and spec.device_dim in da.dims:
-                sel[spec.device_dim] = device
-            try:
-                val = float(da.sel(**sel)) if sel else float(da)
-                if not np.isnan(val):
-                    return val
-            except (KeyError, ValueError):
-                pass
-
-        return 0.0
-
-
-
-
+        """Session-absolute time of sample 0 for this stream's file."""
+        return self.session_io.source_start_time(trial, stream, device)
 
     def source_start_time_trial_relative(self, trial, stream: str, device: str | None = None) -> float:
-        """Trial-relative time of sample 0 for this stream's file.
-
-        Convenience wrapper: ``source_start_time(...) - trial_start``.
-        Per-trial media (``"trial"`` in dims) always returns 0.
-
-        Parameters
-        ----------
-        trial : int or str
-            Trial identifier.
-        stream : str
-            Stream name.
-        device : str, optional
-            Device label.
-
-        Returns
-        -------
-        float
-        """
-        sess = self.session
-        if sess is not None and stream in sess and "trial" in sess[stream].dims:
-            return 0.0
-        ep = self._trials_ep
-        if ep is None:
-            return 0.0
-        abs_start = self.source_start_time(trial, stream, device)
-        return abs_start - float(ep.start[self._trial_ep_idx(trial)])
-
-    def set_stream_offset(self, stream: str, offset: float, device: str | None = None) -> None:
-        """Set the session-absolute start time for a stream.
-
-        Stores (or updates) a ``start_time_{stream}`` DataArray in the
-        session node.  When *device* is given, only that device's entry
-        is updated; other devices keep their existing values.
-
-        For new code, prefer passing ``start_times=`` to :meth:`set_media`
-        instead.
-
-        Parameters
-        ----------
-        stream : str
-            Stream name (e.g. ``"video"``, ``"audio"``, ``"ephys"``).
-        offset : float
-            Session-absolute time in seconds of the stream's first sample.
-        device : str, optional
-            Device label.  Required when the stream has multiple devices.
-        """
-        key = f"start_time_{stream}"
-
-        def _set(ds):
-            if key in ds and device is not None:
-                ds[key].loc[{STREAMS[stream].device_dim: device}] = offset
-            else:
-                ds[key] = xr.DataArray(offset)
-            return ds
-
-        self._update_session(_set)
-        self._invalidate_timing_cache()
-
-    def set_video_fps(
-        self,
-        fps: float | list[float],
-        device_labels: list[str] | None = None,
-    ) -> None:
-        """Store per-camera video FPS in the session node.
-
-        Parameters
-        ----------
-        fps
-            A single float (applied to all cameras) or a list of floats
-            matching *device_labels*.
-        device_labels
-            Camera labels.  When ``None`` and *fps* is scalar, the value
-            is stored without a ``cameras`` dimension.
-        """
-        def _set(ds: xr.Dataset) -> xr.Dataset:
-            if isinstance(fps, (list, np.ndarray)):
-                labels = device_labels or [f"cameras-{i + 1}" for i in range(len(fps))]
-                ds["video_fps"] = xr.DataArray(
-                    np.array(fps, dtype=np.float64),
-                    dims=["cameras"],
-                    coords={"cameras": labels},
-                )
-            elif device_labels is not None and len(device_labels) > 0:
-                ds["video_fps"] = xr.DataArray(
-                    np.full(len(device_labels), float(fps), dtype=np.float64),
-                    dims=["cameras"],
-                    coords={"cameras": device_labels},
-                )
-            else:
-                ds["video_fps"] = xr.DataArray(float(fps))
-            return ds
-
-        self._update_session(_set)
+        """Trial-relative time of sample 0 for this stream's file."""
+        return self.session_io.source_start_time_trial_relative(trial, stream, device)
 
     def get_video_fps(self, camera: str | None = None) -> float | None:
-        """Return video FPS from session, falling back to ``ds.attrs["fps"]``.
-
-        Parameters
-        ----------
-        camera
-            Camera label.  When ``None``, returns the first camera's FPS
-            (or the scalar value if no ``cameras`` dimension).
-
-        Returns
-        -------
-        float or None
-            ``None`` only when no FPS information is available at all.
-        """
-        sess = self.session
-        if sess is not None and "video_fps" in sess:
-            da = sess["video_fps"]
-            if camera and "cameras" in da.dims:
-                try:
-                    return float(da.sel(cameras=camera).item())
-                except KeyError:
-                    pass
-            return float(da.values.flat[0])
-
+        """Return video FPS, checking NWB acquisition then trial attrs."""
+        fps = self.session_io.get_video_fps(camera)
+        if fps is not None:
+            return fps
+        # Fallback to trial dataset attrs
         try:
             ds = self.itrial(0)
             if "fps" in ds.attrs:
@@ -672,229 +266,51 @@ class TrialTree(xr.DataTree):
             pass
         return None
 
-    def set_ephys_stream_id(self, stream_id: str) -> None:
-        """Store the selected ephys stream identifier in the session.
-
-        Parameters
-        ----------
-        stream_id : str
-            Identifier for the selected ephys stream (e.g. Neo stream name).
-        """
-        def _set(ds):
-            ds.attrs["ephys_stream_id"] = stream_id
-            return ds
-
-        self._update_session(_set)
-
-    # ------------------------------------------------------------------
-    # Media — schema-driven
-    # ------------------------------------------------------------------
-
-    def set_media(
-        self,
-        stream: str,
-        files: str | list[str] | list[list[str]],
-        device_labels: list[str] | None = None,
-        per_trial: bool | None = None,
-        start_times: float | list[float] | list[list[float]] | None = None,
-    ) -> None:
-        """Store media file paths (and optional start times) for a stream.
-
-        Parameters
-        ----------
-        stream
-            Must be a key in ``STREAMS``.
-        files
-            Per-trial with devices: ``list[list[str]]`` shaped (trials, devices).
-            Per-trial single device or session-wide devices: ``list[str]``.
-            Session-wide scalar: ``str``.
-        device_labels
-            Explicit labels; auto-generated if ``None`` and spec has a device dim.
-        per_trial
-            Override the stream's default layout.  ``None`` (default) uses
-            ``StreamSpec.layout``.  Pass ``False`` to store a normally
-            per-trial stream (e.g. video) as session-wide, or ``True``
-            to store a normally session-wide stream as per-trial.
-        start_times
-            Session-absolute start time(s) for the media files, in seconds.
-            Shape must match *files*.  Stored as ``start_time_{stream}``
-            DataArray with the same dims/coords as the file path array.
-            ``None`` means no start times are stored (equivalent to 0.0).
-        Examples
-        --------
-        Session-wide, 3 cameras with known start times::
-
-            dt.set_media("video",
-                ["left.mp4", "right.mp4", "body.mp4"],
-                device_labels=["left", "right", "body"],
-                per_trial=False,
-                start_times=[6.5, 6.5, 6.6],
-            )
-
-        Per-trial, no start times needed (files are aligned to trials)::
-
-            dt.set_media("video",
-                [["left_t1.mp4", "right_t1.mp4"], ["left_t2.mp4", "right_t2.mp4"]],
-                device_labels=["left", "right"],
-                per_trial=True,
-            )
-        """
-        spec = STREAMS[stream]
-
-        if spec.device_dim is None and device_labels:
-            raise ValueError(f"Stream {stream!r} has no device dimension")
-
-        is_per_trial = spec.layout is StreamLayout.PER_TRIAL if per_trial is None else per_trial
-        has_device = spec.device_dim is not None
-
-        if is_per_trial and isinstance(files, list) and files and isinstance(files[0], list):
-            n_devices = len(files[0])
-            labels = device_labels or [f"{spec.device_dim}-{i + 1}" for i in range(n_devices)]
-            dims = ["trial", spec.device_dim]
-            coords = {"trial": self.trials, spec.device_dim: labels}
-        elif is_per_trial:
-            if isinstance(files, str):
-                files = [files]
-            if has_device:
-                labels = device_labels or [f"{spec.device_dim}-1"]
-                dims = ["trial", spec.device_dim]
-                arr = [[f] for f in files]
-                coords = {"trial": self.trials, spec.device_dim: labels}
-                files = arr
-            else:
-                dims = ["trial"]
-                coords = {"trial": self.trials}
-        elif isinstance(files, str):
-            if has_device:
-                labels = device_labels or [f"{spec.device_dim}-1"]
-                dims = [spec.device_dim]
-                coords = {spec.device_dim: labels}
-                files = [files]
-            else:
-                dims = []
-                coords = {}
-        else:
-            if has_device:
-                labels = device_labels or [f"{spec.device_dim}-{i + 1}" for i in range(len(files))]
-                dims = [spec.device_dim]
-                coords = {spec.device_dim: labels}
-            else:
-                dims = []
-                coords = {}
-
-        def _set(ds):
-            ds[stream] = xr.DataArray(np.array(files, dtype=str), dims=dims, coords=coords)
-            if start_times is not None:
-                ds[f"start_time_{stream}"] = xr.DataArray(
-                    np.array(start_times, dtype=np.float64), dims=dims, coords=coords,
-                )
-            return ds
-
-        self._update_session(_set)
-
-    def get_media(self, trial, stream: str, device: str | None = None) -> str | None:
-        """Retrieve a media filename for a trial and stream.
-
-        Parameters
-        ----------
-        trial : int or str
-            Trial identifier.
-        stream : str
-            Stream name (``"video"``, ``"audio"``, ``"pose"``).
-        device : str, optional
-            Device label (e.g. ``"left"``).  Required when the stream has
-            multiple devices.
-
-        Returns
-        -------
-        str or None
-            The filename string, or ``None`` if not found.
-        """
-        sess = self.session
-        if sess is None or stream not in sess:
-            return None
-        da = sess[stream]
-        spec = STREAMS.get(stream)
-
-        sel: dict[str, Any] = {}
-        if "trial" in da.dims:
-            sel["trial"] = trial
-        if device is not None and spec and spec.device_dim and spec.device_dim in da.dims:
-            sel[spec.device_dim] = device
-
-        try:
-            val = da.sel(**sel) if sel else da
-            return _scalar_or_none(val)
-        except (KeyError, ValueError):
-            return None
-
-    def devices(self, stream: str) -> list[str]:
-        """List device labels for a stream (e.g. camera names or mic names).
-
-        Parameters
-        ----------
-        stream : str
-            Stream name (``"video"``, ``"audio"``, ``"pose"``).
-
-        Returns
-        -------
-        list[str]
-            Empty list if the stream has no device dimension or no session data.
-        """
-        spec = STREAMS.get(stream)
-        if spec is None or spec.device_dim is None:
-            return []
-        sess = self.session
-        if sess is None or stream not in sess:
-            return []
-        da = sess[stream]
-        if spec.device_dim not in da.dims:
-            return []
-        return [str(v) for v in da.coords[spec.device_dim].values]
+    def set_video_fps(self, fps: float, camera: str | None = None) -> None:
+        """Store detected video FPS in session_io's in-memory overlay."""
+        self.session_io.set_video_fps(fps, camera)
 
     @property
-    def cameras(self) -> list[str]:
-        """Camera device labels (shortcut for ``devices("video")``)."""
-        return self.devices("video")
+    def trials_ep(self) -> nap.IntervalSet | None:
+        """All trial epochs as a pynapple IntervalSet."""
+        return self.session_io.trials_ep
+
+    def trial_epoch(self, trial) -> nap.IntervalSet:
+        """Return the IntervalSet for a single trial."""
+        return self.session_io.trial_epoch(trial)
+
+    def restrict(self, obj, trial):
+        """Restrict a pynapple object to a trial's epoch."""
+        return self.session_io.restrict(obj, trial)
+
+    def print_session(self) -> None:
+        """Print a formatted summary of the session metadata."""
+        self.session_io.print_session()
+
+    # ------------------------------------------------------------------
+    # Backward compat: session property (returns None for NWB-backed trees)
+    # ------------------------------------------------------------------
 
     @property
-    def mics(self) -> list[str]:
-        """Microphone device labels (shortcut for ``devices("audio")``)."""
-        return self.devices("audio")
+    def session(self) -> xr.Dataset | None:
+        """Legacy session access. Returns None for NWB-backed trees."""
+        if "session" in self.children:
+            return self["session"].ds
+        return None
 
     # ------------------------------------------------------------------
     # Trial data access
     # ------------------------------------------------------------------
 
     def trial(self, trial) -> xr.Dataset:
-        """Return the dataset for the given trial ID.
-
-        Parameters
-        ----------
-        trial : int or str
-            Matches ``ds.attrs["trial"]``.
-
-        Returns
-        -------
-        xr.Dataset
-        """
+        """Return the dataset for the given trial ID."""
         ds = self[self._trial_node_name(trial)].ds
         if ds is None:
             raise ValueError(f"Trial {trial} has no dataset")
         return ds
 
     def itrial(self, trial_idx: int) -> xr.Dataset:
-        """Return the dataset at an integer index (0-based).
-
-        Parameters
-        ----------
-        trial_idx : int
-            Zero-based index into the ordered list of trial nodes.
-
-        Returns
-        -------
-        xr.Dataset
-        """
+        """Return the dataset at an integer index (0-based)."""
         trial_nodes = [
             k
             for k in self.children
@@ -908,23 +324,11 @@ class TrialTree(xr.DataTree):
         return ds
 
     def get_all_trials(self) -> dict[int, xr.Dataset]:
-        """Return a dict mapping trial ID to :class:`xarray.Dataset` for all trials.
-
-        Returns
-        -------
-        dict[int, xarray.Dataset]
-            Mapping from trial identifier to its dataset.
-        """
+        """Return a dict mapping trial ID to Dataset for all trials."""
         return {num: self.trial(num) for num in self.trials}
 
     def get_common_attrs(self) -> dict[str, Any]:
-        """Return attributes that are identical across all trials.
-
-        Returns
-        -------
-        dict[str, Any]
-            Attributes shared by every trial dataset.
-        """
+        """Return attributes that are identical across all trials."""
         trials_dict = self.get_all_trials()
         if not trials_dict:
             return {}
@@ -946,19 +350,7 @@ class TrialTree(xr.DataTree):
     # ------------------------------------------------------------------
 
     def filter_by_attr(self, attr_name: str, attr_value: Any) -> TrialTree:
-        """Return a new TrialTree containing only trials that match an attribute.
-
-        Parameters
-        ----------
-        attr_name : str
-            ``ds.attrs`` key to filter on.
-        attr_value
-            Target value. Compared after coercion to str / int / float.
-
-        Returns
-        -------
-        TrialTree
-        """
+        """Return a new TrialTree containing only trials that match an attribute."""
         new_tree = xr.DataTree()
 
         def values_match(stored: Any, target: Any) -> bool:
@@ -985,18 +377,15 @@ class TrialTree(xr.DataTree):
     def open(cls, path: str) -> TrialTree:
         """Load a TrialTree from a NetCDF file.
 
-        Parameters
-        ----------
-        path : str
-            Path to a ``.nc`` file previously saved with :meth:`save`.
-
-        Returns
-        -------
-        TrialTree
+        Auto-discovers ``.ethograph/alignment.nwb`` next to the file.
         """
         tree = xr.open_datatree(path, engine="netcdf4")
         tree.__class__ = cls
         tree._source_path = path
+        # Auto-discover NWB session file
+        nwb = _discover_nwb(path)
+        if nwb is not None:
+            tree._nwb_path = str(nwb)
         return tree
 
     @classmethod
@@ -1010,17 +399,12 @@ class TrialTree(xr.DataTree):
 
         Parameters
         ----------
-        datasets : list[xr.Dataset]
+        datasets
             Each dataset must have a unique ``attrs["trial"]`` key.
-        session_table : xarray.Dataset or pandas.DataFrame, optional
-            Session-level metadata indexed by trial ID.
-        validate : bool
-            Run :func:`~ethograph.io.validation.validate_datatree`
-            after construction. Default True.
-
-        Returns
-        -------
-        TrialTree
+        session_table
+            Deprecated. Use NWB files for session metadata.
+        validate
+            Run validation after construction.
         """
         tree = cls()
         seen: set = set()
@@ -1033,27 +417,19 @@ class TrialTree(xr.DataTree):
             seen.add(trial_num)
             node_name = str(trial_num).replace("/", "_")
             tree[node_name] = xr.DataTree(ds)
-        if session_table is not None:
-            tree.set_session_table(session_table)
         if validate:
             tree._validate_tree()
         return tree
 
     @classmethod
-    def from_datatree(cls, dt: xr.DataTree, attrs: dict | None = None) -> TrialTree:
-        """Wrap an existing :class:`xarray.DataTree` as a TrialTree.
+    def from_datatree(cls, dt: xr.DataTree, attrs: dict | None = None,
+                      *, source: "TrialTree | None" = None) -> TrialTree:
+        """Wrap an existing DataTree as a TrialTree.
 
         Parameters
         ----------
-        dt : xarray.DataTree
-            Source tree.
-        attrs : dict, optional
-            Override root attributes.  Defaults to ``dt.attrs``.
-
-        Returns
-        -------
-        TrialTree
-            New TrialTree wrapping the source tree's children and data.
+        source
+            Original TrialTree to copy ``_nwb_path`` and ``_source_path`` from.
         """
         tree = cls()
         for name, child in dt.children.items():
@@ -1061,18 +437,19 @@ class TrialTree(xr.DataTree):
         if dt.ds is not None:
             tree.ds = dt.ds
         tree.attrs = (attrs if attrs is not None else dt.attrs).copy()
+        if source is not None:
+            nwb = getattr(source, "_nwb_path", None)
+            if nwb is not None:
+                tree._nwb_path = nwb
+            sp = getattr(source, "_source_path", None)
+            if sp is not None:
+                tree._source_path = sp
         return tree
 
     def save(self, path: str | Path | None = None) -> None:
         """Write the TrialTree to a NetCDF file.
 
         Uses an atomic write (temp file then rename) to avoid partial writes.
-
-        Parameters
-        ----------
-        path : str or Path, optional
-            Destination path.  If None, overwrites the file the tree was
-            loaded from.
         """
         source_path = getattr(self, "_source_path", None)
         if path is None and source_path is None:
@@ -1098,7 +475,7 @@ class TrialTree(xr.DataTree):
         ds = self.itrial(0)
         has_cameras = len(self.cameras) > 0
         has_fps = "fps" in ds.attrs
-        has_session_fps = self.session is not None and "video_fps" in self.session
+        has_session_fps = self.get_video_fps() is not None
         errors = validate_datatree(
             self,
             require_fps=(has_fps or has_cameras) and not has_session_fps,

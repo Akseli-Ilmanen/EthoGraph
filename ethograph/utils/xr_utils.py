@@ -82,9 +82,9 @@ def sel_valid(da, sel_kwargs):
     if isel_kwargs:
         da = da.isel(**isel_kwargs)
     da = da.squeeze()
-    
+
     time_dim = next((dim for dim in da.dims if 'time' in dim), None)
-    
+
     if time_dim is None:
         raise ValueError("No dimension containing 'time' found in the DataArray.")
     

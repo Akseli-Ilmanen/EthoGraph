@@ -156,7 +156,7 @@ All modalities (audio, ephys, features) use a shared abstraction for data access
 
 Key: `dt.trial(id)`, `dt.itrial(idx)`, `dt.trials`, `dt.trial_items()`, `dt.map_trials(fn)`, `dt.update_trial(id, fn)`, `dt.get_label_dt()`
 
-Media: `dt.set_media(video=, audio=, pose=)`, `dt.get_video(trial, camera)`, `dt.get_audio(trial, mic)`. 2-D arrays indexed by `(trial, cameras/mics)`.
+Media & Session: All session metadata (trial timing, media file paths, FPS, stream offsets) lives in NWB files (`.ethograph/alignment.nwb`), accessed via `dt.session_io` (NWBSessionIO). Methods: `dt.get_media(trial, stream, device)`, `dt.cameras`, `dt.mics`, `dt.start_time(trial)`, `dt.stop_time(trial)`, `dt.get_video_fps(camera)`. The old xarray `dt.session` node is removed. Use `ethograph.utils.nwb.build_nwb_from_trial_table()` or `build_nwb_session()` to create alignment NWB files.
 
 ### State Management: `app_state.py`
 
@@ -259,7 +259,7 @@ Bridge pattern: intervals→dense→correct→intervals. Kinematic CPs stored as
 
 - NetCDF with trials. Time coords: `time`, `time_aux`, etc. (any containing 'time')
 - Variables with `type='features'` for feature selection
-- Media at session level via `dt.set_media()`
+- Media/session metadata in NWB files (`.ethograph/alignment.nwb`), accessed via `dt.session_io`
 - Labels: stored in `_labels.tsv` (not inside `.nc`). Legacy `.nc` labels auto-migrate on first load.
 
 ## Roadmap

@@ -10,7 +10,7 @@ Key types:
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import numpy as np
@@ -233,21 +233,31 @@ class TrialAlignment:
         Session-absolute start of this trial in the ephys file (seconds).
         Used to convert trial-relative display times to file sample indices:
         ``t_file = t_trial + ephys_offset``.
+    source_ranges
+        Per-source time ranges discovered during alignment, keyed by
+        source name (e.g. ``"session_table"``, ``"xarray"``, ``"video"``,
+        ``"audio"``).
     """
 
     trial_id: str
     trial_range: TimeRange | None = None
     video_offset: float = 0.0
     ephys_offset: float = 0.0
+    source_ranges: dict[str, TimeRange] | None = None
+    _cached_video_reader: object = field(default=None, repr=False)
 
     def summary(self) -> str:
-        lines = [f"TrialAlignment(trial={self.trial_id!r})"]
+        lines = [f"  TrialAlignment(trial={self.trial_id!r})"]
         if self.trial_range:
-            lines.append(f"  range:         {self.trial_range}")
+            lines.append(f"    effective range: {self.trial_range}")
         if self.video_offset:
-            lines.append(f"  video_offset:  {self.video_offset:.3f}s")
+            lines.append(f"    video_offset:   {self.video_offset:.3f}s")
         if self.ephys_offset:
-            lines.append(f"  ephys_offset:  {self.ephys_offset:.3f}s")
+            lines.append(f"    ephys_offset:   {self.ephys_offset:.3f}s")
+        if self.source_ranges:
+            lines.append("    sources:")
+            for name, tr in self.source_ranges.items():
+                lines.append(f"      {name:20s} {tr}")
         return "\n".join(lines)
 
 
@@ -302,7 +312,7 @@ def compute_trial_alignment(
     except (KeyError, AttributeError):
         pass
 
-    trial_end = _compute_trial_end(
+    trial_end, source_ranges, video_reader = _compute_trial_end(
         dt, trial_id, ds, video_path, video_offset, audio_path, audio_device
     )
     trial_range = TimeRange(0.0, trial_end) if trial_end and trial_end > 0 else None
@@ -311,6 +321,8 @@ def compute_trial_alignment(
         trial_range=trial_range,
         video_offset=video_offset,
         ephys_offset=ephys_offset,
+        source_ranges=source_ranges or None,
+        _cached_video_reader=video_reader,
     )
 
 
@@ -322,15 +334,28 @@ def _compute_trial_end(
     video_offset: float,
     audio_path: str | None,
     audio_device: str | None = None,
-) -> float | None:
-    """Return trial duration in seconds using the highest-priority source."""
+) -> tuple[float | None, dict[str, TimeRange], object]:
+    """Return (trial_duration, per_source_ranges, video_reader).
+
+    The first non-None duration wins as the effective trial end.
+    All discovered source ranges are always returned.
+    ``video_reader`` is the :class:`FastVideoReader` opened to probe
+    the video length so the caller can reuse it instead of re-opening.
+    """
     from ethograph.utils.xr_utils import get_time_coord
+
+    best_end: float | None = None
+    source_ranges: dict[str, TimeRange] = {}
+    video_reader = None
 
     # 1. Session stop_time
     try:
         stop = dt.stop_time(trial_id)
         if stop is not None:
-            return stop - dt.start_time(trial_id)
+            duration = stop - dt.start_time(trial_id)
+            source_ranges["session_table"] = TimeRange(0.0, duration)
+            if best_end is None:
+                best_end = duration
     except (KeyError, AttributeError):
         pass
 
@@ -342,21 +367,27 @@ def _compute_trial_end(
             if tc is not None:
                 vals = tc if not hasattr(tc, "values") else tc.values
                 if len(vals) > 0:
+                    t_start = float(vals[0])
                     t_end = float(vals[-1])
                     if t_end > 0:
-                        return t_end
+                        source_ranges[f"xarray:{var_name}"] = TimeRange(t_start, t_end)
+                        if best_end is None:
+                            best_end = t_end
 
     # 3. Video
     if video_path:
         try:
             from napari_pyav._reader import FastVideoReader
-            reader = FastVideoReader(video_path, read_format="rgb24")
-            n_frames = reader.shape[0]
-            fps = float(reader.stream.guessed_rate)
+            video_reader = FastVideoReader(video_path, read_format="rgb24")
+            n_frames = video_reader.shape[0]
+            fps = float(video_reader.stream.guessed_rate)
             if n_frames > 0 and fps > 0:
-                return video_offset + n_frames / fps
+                vid_end = video_offset + n_frames / fps
+                source_ranges["video"] = TimeRange(video_offset, vid_end)
+                if best_end is None:
+                    best_end = vid_end
         except Exception:
-            pass
+            video_reader = None
 
     # 4. Audio (per-trial only — session-wide sources have large negative start)
     if audio_path:
@@ -364,9 +395,12 @@ def _compute_trial_end(
             from ethograph.gui.plots_spectrogram import SharedAudioCache
             loader = SharedAudioCache.get_loader(audio_path)
             audio_start = dt.source_start_time_trial_relative(trial_id, "audio", audio_device)
-            if loader is not None and len(loader) > 0 and audio_start >= -0.5:
-                return len(loader) / loader.rate
+            if loader is not None and len(loader) > 0:
+                audio_end = len(loader) / loader.rate
+                source_ranges["audio"] = TimeRange(audio_start, audio_start + audio_end)
+                if best_end is None and audio_start >= -0.5:
+                    best_end = audio_end
         except Exception:
             pass
 
-    return None
+    return best_end, source_ranges, video_reader

@@ -91,12 +91,6 @@ class HelpWidget(QWidget):
         print("=" * 60)
         self.app_state.print_state()
 
-        print(SEP)
-        print("=" * 60)
-        print("  SESSION  media info")
-        print("=" * 60)
-        dt = self.app_state.dt
-        dt.print_session()
 
         print(SEP)
         print("=" * 60)

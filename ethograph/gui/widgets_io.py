@@ -103,11 +103,17 @@ class IOWidget(QWidget):
         self.app_state.neurons_path_changed.connect(
             lambda value: self.neurons_path_edit.setText(value or "")
         )
+        self.app_state.nwb_file_path_changed.connect(
+            lambda value: self.nwb_file_path_edit.setText(value or "")
+        )
 
 
     def _wire_path_edit_signals(self):
         self.nc_file_path_edit.editingFinished.connect(
             lambda: self._sync_line_edit_to_state(self.nc_file_path_edit, "nc_file_path")
+        )
+        self.nwb_file_path_edit.editingFinished.connect(
+            lambda: self._sync_line_edit_to_state(self.nwb_file_path_edit, "nwb_file_path")
         )
         self.video_folder_edit.editingFinished.connect(
             lambda: self._sync_line_edit_to_state(self.video_folder_edit, "video_folder")
@@ -223,6 +229,12 @@ class IOWidget(QWidget):
             label="Get sesssion:",
             object_name="nc_file_path",
             browse_callback=lambda: self.on_browse_clicked("file", "data"),
+        )
+        self.nwb_file_path_edit = self._create_path_widget(
+            self._load_layout,
+            label="NWB session:",
+            object_name="nwb_file_path",
+            browse_callback=lambda: self._browse_nwb_file(),
         )
         self.video_folder_edit = self._create_path_widget(
             self._load_layout,
@@ -858,6 +870,7 @@ class IOWidget(QWidget):
             del self._canary_labels_path
 
         self._auto_populate_nwb_video_folder()
+        self._auto_discover_nwb()
         self._auto_import_crowsetta_labels()
         self._apply_nwb_epoch_mapping()
 
@@ -984,9 +997,9 @@ class IOWidget(QWidget):
         dialog.execute_blocking(self.data_widget.on_load_clicked)
 
     def _clear_all_line_edits(self):
-        for attr in ('nc_file_path_edit', 'video_folder_edit', 'audio_folder_edit',
-                  'pose_folder_edit', 'ephys_path_edit', 'neurons_path_edit',
-                      'label_file_path_edit', 'pred_file_path_edit'):
+        for attr in ('nc_file_path_edit', 'nwb_file_path_edit', 'video_folder_edit',
+                  'audio_folder_edit', 'pose_folder_edit', 'ephys_path_edit',
+                  'neurons_path_edit', 'label_file_path_edit', 'pred_file_path_edit'):
             widget = getattr(self, attr, None)
             if widget:
                 widget.clear()
@@ -1171,6 +1184,37 @@ class IOWidget(QWidget):
     # ------------------------------------------------------------------
     # Browse dialogs
     # ------------------------------------------------------------------
+
+    def _browse_nwb_file(self):
+        """Browse for an NWB session/alignment file."""
+        result = QFileDialog.getOpenFileName(
+            None,
+            caption="Open NWB session file",
+            filter="NWB files (*.nwb);;All files (*)",
+        )
+        path = result[0] if result and len(result) >= 1 else ""
+        if path:
+            self.nwb_file_path_edit.setText(path)
+            self.app_state.nwb_file_path = path
+            # Wire NWB path to TrialTree if loaded
+            if self.app_state.dt is not None:
+                self.app_state.dt.nwb_path = path
+
+    def _auto_discover_nwb(self):
+        """Auto-discover alignment.nwb near the loaded data file."""
+        from ethograph.utils.paths import find_nwb_file
+
+        nc_path = self.app_state.nc_file_path
+        if not nc_path:
+            return
+        data_dir = str(Path(nc_path).parent)
+        nwb = find_nwb_file(data_dir)
+        if nwb is not None:
+            self.nwb_file_path_edit.setText(str(nwb))
+            self.app_state.nwb_file_path = str(nwb)
+            if self.app_state.dt is not None:
+                self.app_state.dt.nwb_path = str(nwb)
+            logger.info("Auto-discovered NWB session: %s", nwb)
 
     def _browse_data_file(self):
         """Browse for a data file (.nc, .nwb, .npz)."""

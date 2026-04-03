@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 from napari.viewer import Viewer
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QColor
@@ -50,13 +49,7 @@ from .app_constants import (
     LABELS_TABLE_ROW_HEIGHT,
     LABELS_TABLE_ID_COLUMN_WIDTH,
     LABELS_TABLE_COLOR_COLUMN_WIDTH,
-    LABELS_OVERLAY_BOX_WIDTH,
-    LABELS_OVERLAY_BOX_HEIGHT,
-    LABELS_OVERLAY_BOX_MARGIN,
-    LABELS_OVERLAY_TEXT_SIZE,
-    LABELS_OVERLAY_FALLBACK_SIZE,
     DEFAULT_LAYOUT_SPACING,
-    Z_INDEX_LABELS_OVERLAY,
 )
 
 
@@ -679,100 +672,141 @@ class LabelsWidget(QWidget):
 
 
 
-    def _add_labels_shapes_layer(self):
-        """Add single box overlay with dynamically updating text using intervals."""
-        try:
-            layer = self.viewer.layers[0]
-            if layer.data.ndim == 2:
-                height, width = layer.data.shape
-            elif layer.data.ndim == 3:
-                height, width = layer.data.shape[1:3]
-            else:
-                height, width = LABELS_OVERLAY_FALLBACK_SIZE
-        except (IndexError, AttributeError):
-            logger.warning("No video layer found for label shapes overlay.")
+    def _get_canvas_widget(self):
+        """Return the Qt widget that holds the napari OpenGL canvas."""
+        qt_viewer = getattr(self.viewer.window, '_qt_viewer', None)
+        if qt_viewer is None:
             return None
+        # _qt_viewer.canvas.native is the actual OpenGL widget
+        canvas = getattr(qt_viewer, 'canvas', None)
+        native = getattr(canvas, 'native', None) if canvas else None
+        return native or qt_viewer
 
-        box_width, box_height = LABELS_OVERLAY_BOX_WIDTH, LABELS_OVERLAY_BOX_HEIGHT
-        x = width - box_width - LABELS_OVERLAY_BOX_MARGIN
-        y = height - box_height - LABELS_OVERLAY_BOX_MARGIN
+    def _add_labels_shapes_layer(self):
+        """Add a Qt QLabel overlay on the napari canvas.
 
-        rect = np.array([[[y, x],
-                        [y, x + box_width],
-                        [y + box_height, x + box_width],
-                        [y + box_height, x]]])
+        Much faster than a napari Shapes layer: setText() is a
+        trivial Qt repaint instead of a full OpenGL shapes render pass.
+        """
+        if getattr(self, '_label_overlay', None) is not None:
+            return
 
-        shapes_layer = self.viewer.add_shapes(
-            rect,
-            shape_type='rectangle',
-            name="_labels",
-            face_color='white',
-            edge_color='black',
-            edge_width=2,
-            opacity=0.9,
-            text={'string': [''], 'color': [[0, 0, 0]], 'size': LABELS_OVERLAY_TEXT_SIZE, 'anchor': 'center'}
-        )
+        canvas_widget = self._get_canvas_widget()
+        if canvas_widget is None:
+            return
 
-        shapes_layer.z_index = Z_INDEX_LABELS_OVERLAY
+        overlay = QLabel(canvas_widget)
+        overlay.setAttribute(Qt.WA_TransparentForMouseEvents)
+        overlay.setAlignment(Qt.AlignCenter)
+        overlay.setStyleSheet(self._overlay_stylesheet("white"))
+        overlay.setFixedHeight(36)
+        overlay.hide()
+        self._label_overlay = overlay
+        self._label_overlay_last_text = ""
 
-        video_fps = self.app_state.video_fps
-        individual = self._current_individual()
+        def _reposition_overlay():
+            if self._label_overlay is None:
+                return
+            parent = self._label_overlay.parent()
+            if parent is None:
+                return
+            pw = parent.width()
+            ow = self._label_overlay.sizeHint().width()
+            self._label_overlay.move((pw - ow) // 2, 8)
 
-        shapes_layer.metadata = {
-            'intervals_df': self.app_state.label_intervals,
-            'video_fps': video_fps,
-            'individual': individual,
-            '_mappings': self._mappings,
-        }
+        self._reposition_overlay = _reposition_overlay
 
-        def update_labels_text(event=None):
-            video_frame = self.viewer.dims.current_step[0]
+        # Track canvas resizes to keep the overlay centred
+        orig_resize = canvas_widget.resizeEvent
+
+        def _on_canvas_resize(event):
+            orig_resize(event)
+            _reposition_overlay()
+
+        canvas_widget.resizeEvent = _on_canvas_resize
+
+        def _update_labels_text(event=None):
+            overlay = getattr(self, '_label_overlay', None)
+            if overlay is None:
+                return
+            if getattr(self, '_label_overlay_hidden', False):
+                overlay.hide()
+                return
             video = getattr(self.app_state, 'video', None)
-            time_s = video.frame_to_time(video_frame) if video else video_frame / shapes_layer.metadata['video_fps']
-            df = shapes_layer.metadata['intervals_df']
-            ind = shapes_layer.metadata['individual']
-            mappings = shapes_layer.metadata['_mappings']
+            video_frame = self.viewer.dims.current_step[0]
+            if video:
+                time_s = video.frame_to_time(video_frame)
+            elif hasattr(self.app_state, 'video_fps') and self.app_state.video_fps:
+                time_s = video_frame / self.app_state.video_fps
+            else:
+                return
+            df = self.app_state.label_intervals
+            ind = self._current_individual()
+            mappings = self._mappings
 
+            text = ""
+            css_color = "white"
             if df is not None and not df.empty:
                 idx = find_interval_at(df, time_s, ind)
                 if idx is not None:
                     _, _, labels = get_interval_bounds(df, idx)
                     if labels in mappings and labels != 0:
+                        text = mappings[labels]["name"]
                         color = mappings[labels]["color"]
-                        color_list = color.tolist() if hasattr(color, 'tolist') else list(color)
-                        shapes_layer.text = {
-                            'string': [mappings[labels]["name"]],
-                            'color': [color_list],
-                            'size': LABELS_OVERLAY_TEXT_SIZE,
-                            'anchor': 'center'
-                        }
-                        return
+                        if hasattr(color, 'tolist'):
+                            color = color.tolist()
+                        r, g, b = (int(c * 255) for c in color[:3])
+                        css_color = f"rgb({r},{g},{b})"
 
-            shapes_layer.text = {'string': [''], 'color': [[0, 0, 0]]}
+            if text == self._label_overlay_last_text:
+                return
+            self._label_overlay_last_text = text
 
-        self.viewer.dims.events.current_step.connect(update_labels_text)
-        update_labels_text()
+            if not text:
+                overlay.hide()
+                return
+            overlay.setStyleSheet(self._overlay_stylesheet(css_color))
+            overlay.setText(text)
+            overlay.adjustSize()
+            overlay.setFixedHeight(36)
+            _reposition_overlay()
+            overlay.show()
+            overlay.raise_()
 
-        return shapes_layer
-    
+        self.viewer.dims.events.current_step.connect(_update_labels_text)
+        self._update_labels_text = _update_labels_text
+        _update_labels_text()
+
+    @staticmethod
+    def _overlay_stylesheet(color: str) -> str:
+        return (
+            "QLabel {"
+            "  background: rgba(0, 0, 0, 160);"
+            f"  color: {color};"
+            "  font-size: 22px;"
+            "  font-weight: bold;"
+            "  padding: 4px 16px;"
+            "  border-radius: 6px;"
+            "}"
+        )
+
     def _remove_labels_shapes_layer(self):
-        """Remove existing  shapes layer if it exists."""
-        if "_labels" in self.viewer.layers:
-            self.viewer.layers.remove("_labels")
-
+        """Remove the Qt label overlay."""
+        overlay = getattr(self, '_label_overlay', None)
+        if overlay is not None:
+            overlay.setParent(None)
+            overlay.deleteLater()
+            self._label_overlay = None
+            self._label_overlay_last_text = ""
 
     def refresh_labels_shapes_layer(self):
-        """Refresh intervals data without recreating the layer."""
-        if getattr(self.app_state, 'video', None) is None:
-            return
-        if "_labels" not in self.viewer.layers:
+        """Refresh: ensure overlay exists, then force an update."""
+        if getattr(self, '_label_overlay', None) is None:
             self._add_labels_shapes_layer()
             return
-
-        shapes_layer = self.viewer.layers["_labels"]
-        shapes_layer.metadata['intervals_df'] = self.app_state.label_intervals
-        shapes_layer.metadata['individual'] = self._current_individual()
-        shapes_layer.metadata['_mappings'] = self._mappings
+        self._label_overlay_last_text = ""
+        if hasattr(self, '_update_labels_text'):
+            self._update_labels_text()
 
 
 class TemporaryLabelsDialog(QDialog):

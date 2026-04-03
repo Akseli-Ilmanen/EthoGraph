@@ -167,6 +167,46 @@ def find_mapping_file(data_dir: Path | str | None = None) -> Path | None:
     return find_config("mapping.txt", data_dir)
 
 
+def find_nwb_file(data_dir: Path | str | None = None) -> Path | None:
+    """Find alignment.nwb in ``.ethograph/`` relative to *data_dir*.
+
+    Search order:
+    1. ``<data_dir>/.ethograph/alignment.nwb``
+    2. Any ``.nwb`` file in ``<data_dir>/.ethograph/``
+    3. Walk up parent directories looking for ``.ethograph/alignment.nwb``
+
+    Returns
+    -------
+    Path or None
+    """
+    if data_dir is None:
+        return None
+    d = Path(data_dir).resolve()
+
+    # Check immediate .ethograph directory
+    ethograph_dir = d / SETTINGS_DIR
+    if ethograph_dir.is_dir():
+        candidate = ethograph_dir / "alignment.nwb"
+        if candidate.exists():
+            return candidate
+        nwb_files = list(ethograph_dir.glob("*.nwb"))
+        if nwb_files:
+            return nwb_files[0]
+
+    # Walk up
+    for parent in d.parents:
+        ethograph_dir = parent / SETTINGS_DIR
+        if ethograph_dir.is_dir():
+            candidate = ethograph_dir / "alignment.nwb"
+            if candidate.exists():
+                return candidate
+            nwb_files = list(ethograph_dir.glob("*.nwb"))
+            if nwb_files:
+                return nwb_files[0]
+
+    return None
+
+
 
 def extract_trial_info_from_filename(path):
     """

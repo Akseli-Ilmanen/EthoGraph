@@ -44,6 +44,10 @@ TEMPLATES = [
         "has_audio": False,
         "has_pose": True,
         "import_labels": True,
+        "media": [
+            {"video_cam-1": "2024-12-17_115_Crow1-cam-1.mp4", "pose_cam-1": "2024-12-17_115_Crow1-cam-1DLC.csv"},
+            {"video_cam-1": "2024-12-18_041_Crow1-cam-1.mp4", "pose_cam-1": "2024-12-18_041_Crow1-cam-1DLC.csv"},
+        ],
     },
     {
         "name": "Rüttimann et al., 2025 — Zebra finches in BirdPark",
@@ -55,6 +59,12 @@ TEMPLATES = [
         "has_video": True,
         "has_audio": True,
         "has_pose": False,
+        "media": [
+            {
+                "video_cam-1": "BP_2021-05-25_08-12-51_655154_0380000.mp4",
+                "audio_mic-1": "BP_2021-05-25_08-12-51_655154_0380000.wav",
+            },
+        ],
     },
     {
         "name": "Philodoptera — Motor control of sound production in crickets",
@@ -66,6 +76,13 @@ TEMPLATES = [
         "has_video": True,
         "has_audio": True,
         "has_pose": True,
+        "media": [
+            {
+                "video_cam-1": "philodoptera.mp4",
+                "audio_mic-1": "philodoptera.wav",
+                "pose_cam-1": "philodoptera.csv",
+            },
+        ],
     },
     {
         "name": "Reiske et al., 2025 — Mouse Lockbox",
@@ -77,6 +94,32 @@ TEMPLATES = [
         "has_video": True,
         "has_audio": False,
         "has_pose": True,
+        "media": [
+            {
+                "video_front-view": "2021-02-15_07-32-44_segment1_mouse324_ball_front-view.mp4",
+                "video_side-view": "2021-02-15_07-32-44_segment1_mouse324_ball_side-view.mp4",
+                "video_top-down-view": "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view.mp4",
+                "pose_front-view": "2021-02-15_07-32-44_segment1_mouse324_ball_front-view-tracks_individual_0.csv",
+                "pose_side-view": "2021-02-15_07-32-44_segment1_mouse324_ball_side-view-tracks_individual_0.csv",
+                "pose_top-down-view": "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view-tracks_individual_0.csv",
+            },
+            {
+                "video_front-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view.mp4",
+                "video_side-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view.mp4",
+                "video_top-down-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view.mp4",
+                "pose_front-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view-tracks_individual_0.csv",
+                "pose_side-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view-tracks_individual_0.csv",
+                "pose_top-down-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view-tracks_individual_0.csv",
+            },
+            {
+                "video_front-view": "2021-05-31_07-34-21_segment3_mouse291_stick_front-view.mp4",
+                "video_side-view": "2021-05-31_07-34-21_segment3_mouse291_stick_side-view.mp4",
+                "video_top-down-view": "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view.mp4",
+                "pose_front-view": "2021-05-31_07-34-21_segment3_mouse291_stick_front-view-tracks_individual_0.csv",
+                "pose_side-view": "2021-05-31_07-34-21_segment3_mouse291_stick_side-view-tracks_individual_0.csv",
+                "pose_top-down-view": "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view-tracks_individual_0.csv",
+            },
+        ],
     },
     {
         "name": "Giraudon et al. 2021 - Canary song",
@@ -92,6 +135,39 @@ TEMPLATES = [
         "labels_file": "100_marron1_May_24_2016_62101389.audacity.txt",
     },
 ]
+
+
+def _build_alignment_nwb(template: dict) -> None:
+    """Create an alignment.nwb from the template's media mapping and NC file."""
+    media_rows = template.get("media")
+    if not media_rows:
+        return
+    dest = _DOWNLOAD_BASE / template["folder"]
+    nc_path = dest / template["nc_filename"]
+    if not nc_path.exists():
+        return
+
+    import pandas as pd
+    import ethograph as eto
+    from ethograph.utils.nwb import build_nwb_from_trial_table
+
+    dt = eto.open(str(nc_path))
+    trials = dt.trials  # preserve insertion order to match media list
+    fps = dt.itrial(0).attrs.get("fps", None)
+
+    rows = []
+    for trial_id, media in zip(trials, media_rows):
+        row = {"trial": trial_id, "start_time": 0.0}
+        row.update(media)
+        rows.append(row)
+
+    trial_table = pd.DataFrame(rows)
+    nwb_path = dest / ".ethograph" / "alignment.nwb"
+    kwargs = {}
+    if fps is not None:
+        kwargs["camera_fps"] = float(fps)
+    build_nwb_from_trial_table(trial_table, output_path=nwb_path, **kwargs)
+    logger.info("Created alignment NWB: %s", nwb_path)
 
 
 def _template_dir(template: dict) -> Path:
@@ -248,6 +324,10 @@ class TemplateDialog(QDialog):
             return
         ensure_default_configs()
         write_example_configs(template["dataset_key"], _template_dir(template))
+        try:
+            _build_alignment_nwb(template)
+        except Exception:
+            logger.warning("Failed to build alignment NWB", exc_info=True)
         self.selected_template = _resolve_template_paths(template)
         self.accept()
 

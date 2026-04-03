@@ -187,10 +187,12 @@ class AppStateSpec:
         "has_audio": (bool, False, False),
         "has_neo": (bool, False, False),
         "has_neurons": (bool, False, False),
+        "files_aligned_to_trials": (bool, True, True, SCOPE_LOCAL),
         
 
-        # Paths 
+        # Paths
         "nc_file_path": (str | None, None, False),
+        "nwb_file_path": (str | None, None, True, SCOPE_LOCAL),
         "video_folder": (str | None, None, True, SCOPE_LOCAL),
         "audio_folder": (str | None, None, True, SCOPE_LOCAL),
         "pose_folder": (str | None, None, True, SCOPE_LOCAL),

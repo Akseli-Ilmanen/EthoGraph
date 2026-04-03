@@ -85,19 +85,19 @@ def bind_global_shortcuts(meta_widget):
     def play_segment(v):
         labels_widget._play_segment()
 
-    @viewer.bind_key("Left", overwrite=True)
+    @viewer.bind_key("shift+Left", overwrite=True)
     def step_window_backward(v):
         navigation_widget.step_window_backward()
 
-    @viewer.bind_key("Right", overwrite=True)
+    @viewer.bind_key("shift+Right", overwrite=True)
     def step_window_forward(v):
         navigation_widget.step_window_forward()
 
-    @viewer.bind_key("shift+Left", overwrite=True)
+    @viewer.bind_key("Left", overwrite=True)
     def step_frame_backward(v):
         navigation_widget.step_frame_backward()
 
-    @viewer.bind_key("shift+Right", overwrite=True)
+    @viewer.bind_key("Right", overwrite=True)
     def step_frame_forward(v):
         navigation_widget.step_frame_forward()
 
@@ -191,6 +191,12 @@ def bind_global_shortcuts(meta_widget):
     @viewer.bind_key("alt+Left", overwrite=True)
     def prev_spike(v):
         _jump_spike(-1)
+
+    @viewer.bind_key("ctrl+space", overwrite=True)
+    def stop_recording(v):
+        record_btn = getattr(navigation_widget, "record_button", None)
+        if record_btn is not None:
+            record_btn._stop_recording()
 
     # Label activation grid layout
     number_keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']

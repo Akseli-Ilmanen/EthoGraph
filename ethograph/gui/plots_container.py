@@ -777,8 +777,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         if self._panel_visible["audiotrace"]:
             self.audio_trace_plot.update_plot(t0=t0, t1=t1)
-            self.audio_trace_plot.vb.enableAutoRange(x=False, y=True)
-            self.audio_trace_plot._apply_y_constraints()
         if self._panel_visible["spectrogram"]:
             self.spectrogram_plot.update_plot(t0=t0, t1=t1)
 

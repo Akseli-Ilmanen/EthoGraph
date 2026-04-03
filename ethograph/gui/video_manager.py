@@ -1,6 +1,7 @@
 """Video layer lifecycle management — setup, teardown, camera switching, multi-camera display."""
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from napari._qt.qt_viewer import QtViewer
@@ -289,18 +290,21 @@ class VideoManager:
 
     def _setup_primary_video(self, restore_frame: int):
 
-        reader = FastVideoReader(
-            self.app_state.video_path, read_format='rgb24',
-        )
-        _ = reader.shape
+        alignment = getattr(self.app_state, 'trial_alignment', None)
+        cached = getattr(alignment, '_cached_video_reader', None) if alignment else None
+        if cached is not None:
+            reader = cached
+            alignment._cached_video_reader = None
+        else:
+            reader = FastVideoReader(
+                self.app_state.video_path, read_format='rgb24',
+            )
+            _ = reader.shape
 
         detected_fps = float(reader.stream.guessed_rate) if reader.stream.guessed_rate else None
         if detected_fps is not None and self.app_state.dt is not None:
             camera = self.app_state.primary_camera
-            if camera:
-                self._store_camera_fps_in_session(camera, detected_fps)
-            else:
-                self.app_state.dt.set_video_fps(detected_fps)
+            self.app_state.dt.set_video_fps(detected_fps, camera=camera)
 
         alignment = getattr(self.app_state, 'trial_alignment', None)
         video_time_offset = alignment.video_offset if alignment else 0.0
@@ -371,17 +375,18 @@ class VideoManager:
     # Extra cameras
     # ------------------------------------------------------------------
 
-    def add_camera(self, camera_name: str, video_path: str, layout_mgr, meta_widget):
+    def add_camera(self, camera_name: str, video_path: str, layout_mgr, meta_widget, *, reader=None):
         if camera_name in self._extra_widgets:
-            self._update_existing_camera(camera_name, video_path)
+            self._update_existing_camera(camera_name, video_path, reader=reader)
             return
 
         if len(self._extra_widgets) >= MAX_EXTRA_CAMERAS:
             notify(f"Maximum {MAX_EXTRA_CAMERAS} extra cameras supported.", "warning")
             return
 
-        reader = FastVideoReader(video_path, read_format='rgb24')
-        _ = reader.shape
+        if reader is None:
+            reader = FastVideoReader(video_path, read_format='rgb24')
+            _ = reader.shape
         fps = float(reader.stream.guessed_rate)
         self._store_camera_fps_in_session(camera_name, fps)
 
@@ -395,9 +400,10 @@ class VideoManager:
         self._connect_extra_sync()
         self._sync_widget_to_current_time(widget)
 
-    def _update_existing_camera(self, camera_name: str, video_path: str):
-        reader = FastVideoReader(video_path, read_format='rgb24')
-        _ = reader.shape
+    def _update_existing_camera(self, camera_name: str, video_path: str, *, reader=None):
+        if reader is None:
+            reader = FastVideoReader(video_path, read_format='rgb24')
+            _ = reader.shape
         fps = float(reader.stream.guessed_rate)
         self._store_camera_fps_in_session(camera_name, fps)
         video_data, time_offset = self._prepare_extra_video(reader, fps, camera_name)
@@ -541,11 +547,7 @@ class VideoManager:
         dt = getattr(self.app_state, 'dt', None)
         if dt is None:
             return
-        sess = dt.session
-        if sess is not None and "video_fps" in sess:
-            da = sess["video_fps"]
-            if "cameras" in da.dims and camera_name in da.coords["cameras"].values:
-                da.loc[{"cameras": camera_name}] = fps
+        dt.set_video_fps(fps, camera=camera_name)
 
     def cleanup(self):
         if getattr(self.app_state, 'video', None):
@@ -553,6 +555,41 @@ class VideoManager:
             self.app_state.video = None
         self._cleanup_primary_video()
         self.remove_all_cameras()
+
+    @staticmethod
+    def open_readers_parallel(paths: dict[str, str]) -> dict[str, FastVideoReader]:
+        """Open FastVideoReaders for *paths* concurrently.
+
+        Parameters
+        ----------
+        paths
+            ``{camera_name: video_path}`` mapping.
+
+        Returns
+        -------
+        dict
+            ``{camera_name: reader}`` for every path that opened
+            successfully.  Failed opens are silently skipped.
+        """
+        def _open(video_path: str) -> FastVideoReader | None:
+            try:
+                reader = FastVideoReader(video_path, read_format="rgb24")
+                _ = reader.shape
+                return reader
+            except Exception:
+                return None
+
+        if not paths:
+            return {}
+
+        results: dict[str, FastVideoReader] = {}
+        with ThreadPoolExecutor(max_workers=len(paths)) as pool:
+            futures = {name: pool.submit(_open, path) for name, path in paths.items()}
+            for name, future in futures.items():
+                reader = future.result()
+                if reader is not None:
+                    results[name] = reader
+        return results
 
     def _resolve_video_path(self, camera_name: str, video_folder: str | None) -> str | None:
         if is_url(camera_name):

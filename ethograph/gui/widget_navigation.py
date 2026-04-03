@@ -28,6 +28,7 @@ from ethograph.io.restrict import build_trial_window, find_closest_trial
 from ethograph.utils.sequences import get_label_instances, match_sequences
 
 from .app_constants import AUDIO_SPEED_MAX, AUDIO_SPEED_MIN, AUDIO_SPEED_STEP
+from .screen_recorder import RecordButton
 
 logger = logging.getLogger(__name__)
 
@@ -293,6 +294,15 @@ class NavigationWidget(QWidget):
         playback_layout.addWidget(self.time_jump_label, 2, 0)
         playback_layout.addWidget(self.time_jump_spin, 2, 1)
         playback_layout.addWidget(self.center_playback_checkbox, 2, 2)
+
+        self.record_button = RecordButton(viewer, parent=self)
+        self.hide_label_text_cb = QCheckBox("Hide label text")
+        self.hide_label_text_cb.setToolTip(
+            "Hide the label name overlay shown on the video canvas during playback"
+        )
+        self.hide_label_text_cb.toggled.connect(self._on_hide_label_text_toggled)
+        playback_layout.addWidget(self.record_button, 3, 0, 1, 2)
+        playback_layout.addWidget(self.hide_label_text_cb, 3, 2)
 
         # ── Assemble ─────────────────────────────────────────────────
         main_layout.addWidget(filter_group)
@@ -794,6 +804,21 @@ class NavigationWidget(QWidget):
         self.app_state.av_speed_coupled = checked
         self.coupling_button.setText("\U0001f517" if checked else "\U0001f513")
 
+    def _on_hide_label_text_toggled(self, checked: bool):
+        labels_widget = getattr(self, '_labels_widget', None)
+        if labels_widget is None:
+            return
+        labels_widget._label_overlay_hidden = checked
+        overlay = getattr(labels_widget, '_label_overlay', None)
+        if overlay is None:
+            return
+        if checked:
+            overlay.hide()
+        else:
+            labels_widget._label_overlay_last_text = ""
+            if hasattr(labels_widget, '_update_labels_text'):
+                labels_widget._update_labels_text()
+
     def _step_frame(self, direction: int):
         if not self.app_state.ready:
             return
@@ -809,6 +834,15 @@ class NavigationWidget(QWidget):
         if not self.app_state.ready:
             return
         self._step_time_no_video(direction)
+        video = self.app_state.video    
+        if video and self.plot_container:                                                                                    
+            new_time = self.plot_container.time_slider.current_time                                                                                         
+            frame = video.time_to_frame(new_time)
+            video.blockSignals(True)
+            video.seek_to_frame(frame)
+            video.blockSignals(False)  
+
+
 
     def _step_time_no_video(self, direction: int):
         if not self.plot_container:

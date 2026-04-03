@@ -1010,7 +1010,7 @@ class DataWidget(QWidget):
             return
 
         if self.app_state.dt is not None:
-            self.app_state.dt.set_ephys_stream_id(stream_id)
+            self.app_state.dt.attrs["ephys_stream_id"] = stream_id
 
         neo_plot = self.plot_container.neo_trace_plot
         neo_plot.set_loader(loader, channel_idx)
@@ -1777,7 +1777,8 @@ class DataWidget(QWidget):
         else:
             current_time = frame_number / self.app_state.video_fps
 
-        if self.space_plot and self.space_plot.isVisible():
+        skip_active = video and video._skip_timer.isActive()
+        if not skip_active and self.space_plot and self.space_plot.isVisible():
             self.space_plot.update_time_marker(current_time)
 
         xlim = self.plot_container.get_current_xlim()
@@ -1836,15 +1837,22 @@ class DataWidget(QWidget):
             if self.pose_mgr is not None:
                 self.pose_mgr.on_camera_removed(name)
 
+        to_add: dict[str, str] = {}
         for name in desired - current:
             video_path = self.video_mgr._resolve_video_path(name, self.app_state.video_folder)
-            if not video_path:
-                continue
+            if video_path:
+                to_add[name] = video_path
+
+        from .video_manager import VideoManager
+        readers = VideoManager.open_readers_parallel(to_add)
+
+        for name, video_path in to_add.items():
             self.video_mgr.add_camera(
                 camera_name=name,
                 video_path=video_path,
                 layout_mgr=self.layout_mgr,
                 meta_widget=self.meta_widget,
+                reader=readers.get(name),
             )
             if self.pose_mgr is not None:
                 self.pose_mgr.update_extra_camera_pose(name, self.get_hidden_keypoints())
@@ -1882,18 +1890,25 @@ class DataWidget(QWidget):
         if not hasattr(self, '_extra_camera_combos'):
             return
         desired = self._get_desired_extra_cameras()
+        to_add: dict[str, str] = {}
         for camera_name in desired:
             widget = self.video_mgr.extra_widgets.get(camera_name)
             if widget is not None and widget.isVisible():
                 continue
             video_path = self.video_mgr._resolve_video_path(camera_name, self.app_state.video_folder)
-            if not video_path:
-                continue
+            if video_path:
+                to_add[camera_name] = video_path
+
+        from .video_manager import VideoManager
+        readers = VideoManager.open_readers_parallel(to_add)
+
+        for camera_name, video_path in to_add.items():
             self.video_mgr.add_camera(
                 camera_name=camera_name,
                 video_path=video_path,
                 layout_mgr=self.layout_mgr,
                 meta_widget=self.meta_widget,
+                reader=readers.get(camera_name),
             )
             if self.pose_mgr is not None:
                 self.pose_mgr.update_extra_camera_pose(camera_name, self.get_hidden_keypoints())
