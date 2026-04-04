@@ -76,6 +76,7 @@ class TrialVideoSlice:
     def start_frame(self) -> int:
         return self._start
 
+
 class ExtraCameraWidget(QWidget):
     """Self-contained camera view with pose overlay via a napari canvas.
 
@@ -358,7 +359,6 @@ class VideoManager:
         self._frame_changed_callback = callback
 
     def _on_primary_frame_changed(self, frame_number: int):
-        self.app_state.current_frame = frame_number
         if hasattr(self, '_frame_changed_callback'):
             self._frame_changed_callback(frame_number)
 

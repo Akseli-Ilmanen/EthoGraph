@@ -31,7 +31,8 @@ from .widgets_data import DataPanel, DataWidget
 from .widgets_help import HelpWidget
 from .widgets_io import IOWidget
 from .widgets_labels import LabelsWidget
-from .widget_navigation import NavigationWidget
+from .widgets_navigation import NavigationWidget
+from .widget_trials import TrialsWidget
 from .widgets_plot_settings import PlotSettingsWidget
 from .widgets_ephys import EphysWidget
 
@@ -120,6 +121,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.changepoints_widget = ChangepointsWidget(self.viewer, self.app_state)
         self.labels_widget = LabelsWidget(self.viewer, self.app_state)
         self.navigation_widget = NavigationWidget(self.viewer, self.app_state)
+        self.trials_widget = TrialsWidget(self.app_state)
         self.ephys_widget = EphysWidget(self.viewer, self.app_state)
 
         # Create I/O widget first, then pass it to data widget
@@ -176,6 +178,7 @@ class MetaWidget(CollapsibleWidgetContainer):
             self.navigation_widget, self.changepoints_widget,
             ephys_widget=self.ephys_widget,
             layout_mgr=self.layout_mgr,
+            trials_widget=self.trials_widget,
         )
 
         for widget in [
@@ -187,6 +190,7 @@ class MetaWidget(CollapsibleWidgetContainer):
             self.ephys_widget,
             self.plot_settings_widget,
             self.navigation_widget,
+            self.trials_widget,
         ]:
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
@@ -240,7 +244,14 @@ class MetaWidget(CollapsibleWidgetContainer):
             widget_title="Plot settings",
         )
 
-        # Index 8: Navigation
+        # Trials metadata + filtering
+        self.add_widget(
+            self.trials_widget,
+            collapsible=True,
+            widget_title="Trials",
+        )
+
+        # Navigation
         self.add_widget(
             self.navigation_widget,
             collapsible=True,

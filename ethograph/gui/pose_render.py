@@ -33,13 +33,17 @@ class PoseRenderData:
     properties   : DataFrame with per-point metadata (keypoint, individual, confidence, ...)
     data_not_nan : bool mask shape (N,) — True for points that should be shown
     file_name    : label used as the napari layer name base
-    keypoints    : optional list of keypoint names for populating the keypoint filter UI
     """
     data: np.ndarray
     properties: pd.DataFrame
     data_not_nan: np.ndarray
     file_name: str
-    keypoints: list[str] | None = None
+
+    @property
+    def keypoints(self) -> list[str]:
+        if "keypoint" not in self.properties.columns:
+            return []
+        return self.properties["keypoint"].unique().tolist()
 
 
 def strip_common_prefix(names: list[str]) -> list[str]:
@@ -67,15 +71,12 @@ def _strip_keypoint_prefix(properties: pd.DataFrame) -> pd.DataFrame:
 def load_pose_from_file(file_path: str, source_software: str, fps: float) -> PoseRenderData:
     """Load a pose file via movement and return a PoseRenderData."""
     ds = load_dataset(file_path, source_software, fps)
-    kp_coord = ds.coords.get("keypoints")
-    keypoints = kp_coord.values.astype(str).tolist() if kp_coord is not None else None
     data, _, properties = ds_to_napari_layers(ds)
     return PoseRenderData(
         data=data,
         properties=_strip_keypoint_prefix(properties),
         data_not_nan=~np.any(np.isnan(data), axis=1),
         file_name=Path(file_path).name,
-        keypoints=keypoints,
     )
 
 
@@ -161,7 +162,6 @@ def load_pose_from_nwb_direct(
         ),
         data_not_nan=np.concatenate(all_not_nan),
         file_name=f"NWB_pose_{pose_estimation_key}",
-        keypoints=stripped,
     )
 
 

@@ -1294,7 +1294,7 @@ class EphysWidget(QWidget):
 
         self._register_dat_fallback(folder)
         if self._phy_reader is not None and self.plot_container:
-            self.plot_container.set_ephys_visible(True)
+            self.plot_container.set_ephys_visible(self.app_state.ephys_visible)
             self.configure_ephys_trace_plot()
 
         if self._tsgroup is not None:

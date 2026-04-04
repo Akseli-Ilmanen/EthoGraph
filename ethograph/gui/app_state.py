@@ -222,7 +222,7 @@ class AppStateSpec:
         "vmax_db": (float, -20.0, True),
         "buffer_multiplier": (float, 5.0, True),
         "percentile_ylim": (float, 99.5, True),
-        "space_plot_type": (str, "Layers", True),
+        "space_plot_type": (str, "Layers", True, SCOPE_LOCAL),
         "space_x_axis": (str | None, None, True),
         "space_y_axis": (str | None, None, True),
         "space_z_axis": (str | None, None, True),
@@ -355,6 +355,7 @@ class ObservableAppState(QObject):
         self._suspend_local_autoload = False
         self._all_labels_df: pd.DataFrame | None = None
         self._label_mappings: dict | None = None
+        self._active_branches: set[int] = {0}
 
         self.settings = get_settings()
         self._yaml_path = yaml_path or "gui_settings.yaml"
@@ -386,6 +387,20 @@ class ObservableAppState(QObject):
                     result[attr] = value
         return result
     
+    @property
+    def active_label_ids(self) -> set[int] | None:
+        """Return label IDs belonging to currently active branches.
+
+        Returns None when no mappings are loaded (meaning all IDs allowed).
+        """
+        mappings = self._label_mappings
+        if not mappings:
+            return None
+        return {
+            lid for lid, data in mappings.items()
+            if isinstance(lid, int) and data.get("branch", 0) in self._active_branches
+        }
+
     @property
     def trial_bounds(self) -> TimeRange | None:
         """Time range for the current trial, sourced from TrialAlignment.trial_range."""
@@ -508,7 +523,7 @@ class ObservableAppState(QObject):
         raise AttributeError(name)
 
     def __setattr__(self, name, value):
-        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map", "ephys_source_map", "ephys_stream_sel", "_suspend_local_autoload", "_all_labels_df", "_label_mappings"):
+        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map", "ephys_source_map", "ephys_stream_sel", "_suspend_local_autoload", "_all_labels_df", "_label_mappings", "_active_branches"):
             super().__setattr__(name, value)
             return
 
@@ -521,8 +536,13 @@ class ObservableAppState(QObject):
             self._values[name] = value
 
             signal = getattr(self, f"{name}_changed", None)
-            if signal and old_value is not value:
-                signal.emit(value)
+            if signal:
+                try:
+                    changed = bool(old_value != value)
+                except (ValueError, TypeError):
+                    changed = old_value is not value
+                if changed:
+                    signal.emit(value)
 
             if name == "nc_file_path" and not self._suspend_local_autoload:
                 self.load_local_settings()

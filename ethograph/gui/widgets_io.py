@@ -30,6 +30,7 @@ from ethograph.labels.export import correct_offsets_trial
 import ethograph as eto
 from ethograph.utils.paths import default_config_dir, find_config, find_mapping_file
 from ethograph.io.validation import EPHYS_FILE_FILTER
+from ethograph.io.metadata_table import metadata_tsv_path
 from ethograph.labels.tsv_store import labels_tsv_path, load_labels_tsv
 
 from .app_state import AppStateSpec
@@ -39,6 +40,15 @@ from .makepretty import ElidedDelegate, clean_display_labels
 from .dialog_select_template import TemplateDialog
 
 logger = logging.getLogger(__name__)
+
+
+def _populate_if_exists(line_edit: QLineEdit, path: str | Path | None) -> None:
+    """Set a QLineEdit's text only if *path* points to an existing file or folder."""
+    if path is None:
+        return
+    p = Path(path)
+    if p.exists():
+        line_edit.setText(str(p))
 
 
 class IOWidget(QWidget):
@@ -232,9 +242,15 @@ class IOWidget(QWidget):
         )
         self.nwb_file_path_edit = self._create_path_widget(
             self._load_layout,
-            label="NWB session:",
+            label="Alignment:",
             object_name="nwb_file_path",
             browse_callback=lambda: self._browse_nwb_file(),
+        )
+        self.metadata_path_edit = self._create_path_widget(
+            self._load_layout,
+            label="Metadata:",
+            object_name="metadata_path",
+            browse_callback=lambda: self._browse_metadata_file(),
         )
         self.video_folder_edit = self._create_path_widget(
             self._load_layout,
@@ -708,7 +724,7 @@ class IOWidget(QWidget):
 
         self.label_file_path_edit = QLineEdit()
         if self.import_labels_checkbox.isChecked() and self.app_state.nc_file_path:
-            self.label_file_path_edit.setText(str(labels_tsv_path(self.app_state.nc_file_path)))
+            _populate_if_exists(self.label_file_path_edit, labels_tsv_path(self.app_state.nc_file_path))
         labels_layout.addWidget(self.label_file_path_edit)
 
         labels_browse_btn = QPushButton("Browse")
@@ -871,6 +887,7 @@ class IOWidget(QWidget):
 
         self._auto_populate_nwb_video_folder()
         self._auto_discover_nwb()
+        self._auto_discover_metadata()
         self._auto_import_crowsetta_labels()
         self._apply_nwb_epoch_mapping()
 
@@ -882,8 +899,9 @@ class IOWidget(QWidget):
         video_folder = dt.attrs.get("nwb_video_folder")
         if not video_folder:
             return
-        self.video_folder_edit.setText(str(video_folder))
-        self.app_state.video_folder = str(video_folder)
+        video_folder = self._maybe_downsample_videos(str(video_folder))
+        self.video_folder_edit.setText(video_folder)
+        self.app_state.video_folder = video_folder
         logger.info("NWB auto-set video folder: %s", video_folder)
 
     def _apply_nwb_epoch_mapping(self):
@@ -966,8 +984,9 @@ class IOWidget(QWidget):
                 self.nc_file_path_edit.setText(t["nc_file_path"])
                 self.app_state.nc_file_path = t["nc_file_path"]
             if t["video_folder"]:
-                self.video_folder_edit.setText(t["video_folder"])
-                self.app_state.video_folder = t["video_folder"]
+                video_folder = self._maybe_downsample_videos(t["video_folder"])
+                self.video_folder_edit.setText(video_folder)
+                self.app_state.video_folder = video_folder
             if t["audio_folder"]:
                 self.audio_folder_edit.setText(t["audio_folder"])
                 self.app_state.audio_folder = t["audio_folder"]
@@ -981,6 +1000,8 @@ class IOWidget(QWidget):
                 self.downsample_spin.setValue(100)
             if t.get("labels_file"):
                 self._canary_labels_path = t["labels_file"]
+
+            self._on_load_clicked()
 
 
 
@@ -997,9 +1018,10 @@ class IOWidget(QWidget):
         dialog.execute_blocking(self.data_widget.on_load_clicked)
 
     def _clear_all_line_edits(self):
-        for attr in ('nc_file_path_edit', 'nwb_file_path_edit', 'video_folder_edit',
-                  'audio_folder_edit', 'pose_folder_edit', 'ephys_path_edit',
-                  'neurons_path_edit', 'label_file_path_edit', 'pred_file_path_edit'):
+        for attr in ('nc_file_path_edit', 'nwb_file_path_edit', 'metadata_path_edit',
+                  'video_folder_edit', 'audio_folder_edit', 'pose_folder_edit',
+                  'ephys_path_edit', 'neurons_path_edit', 'label_file_path_edit',
+                  'pred_file_path_edit'):
             widget = getattr(self, attr, None)
             if widget:
                 widget.clear()
@@ -1058,7 +1080,7 @@ class IOWidget(QWidget):
         if state == 2 and self.app_state.nc_file_path:
             tsv = labels_tsv_path(self.app_state.nc_file_path)
             if hasattr(self, "label_file_path_edit"):
-                self.label_file_path_edit.setText(str(tsv))
+                _populate_if_exists(self.label_file_path_edit, tsv)
 
     def _on_clear_path_clicked(self, object_name, line_edit):
         line_edit.setText("")
@@ -1200,6 +1222,18 @@ class IOWidget(QWidget):
             if self.app_state.dt is not None:
                 self.app_state.dt.nwb_path = path
 
+    def _browse_metadata_file(self):
+        """Browse for a metadata TSV file."""
+        result = QFileDialog.getOpenFileName(
+            None,
+            caption="Open metadata file",
+            filter="TSV files (*.tsv);;All files (*)",
+        )
+        path = result[0] if result and len(result) >= 1 else ""
+        if path:
+            self.metadata_path_edit.setText(path)
+            self.app_state.metadata_path = path
+
     def _auto_discover_nwb(self):
         """Auto-discover alignment.nwb near the loaded data file."""
         from ethograph.utils.paths import find_nwb_file
@@ -1214,7 +1248,15 @@ class IOWidget(QWidget):
             self.app_state.nwb_file_path = str(nwb)
             if self.app_state.dt is not None:
                 self.app_state.dt.nwb_path = str(nwb)
-            logger.info("Auto-discovered NWB session: %s", nwb)
+            logger.info("Auto-discovered NWB alignment: %s", nwb)
+
+    def _auto_discover_metadata(self):
+        """Auto-discover {stem}_metadata.tsv near the loaded data file."""
+        nc_path = self.app_state.nc_file_path
+        if not nc_path:
+            return
+        tsv = metadata_tsv_path(nc_path)
+        _populate_if_exists(self.metadata_path_edit, tsv)
 
     def _browse_data_file(self):
         """Browse for a data file (.nc, .nwb, .npz)."""
@@ -1237,6 +1279,11 @@ class IOWidget(QWidget):
         if path:
             self.nc_file_path_edit.setText(path)
             self.app_state.nc_file_path = path
+
+    def _maybe_downsample_videos(self, folder: str) -> str:
+        """Offer to downsample high-res videos. Returns the folder to use."""
+        from .dialog_video_downsample import offer_downsample
+        return offer_downsample(folder, parent=self)
 
     def on_browse_clicked(self, browse_type="file", media_type=None):
         if browse_type == "file":
@@ -1300,6 +1347,8 @@ class IOWidget(QWidget):
             folder_path = QFileDialog.getExistingDirectory(None, caption=caption)
 
             if media_type == "video":
+                if folder_path:
+                    folder_path = self._maybe_downsample_videos(folder_path)
                 self.video_folder_edit.setText(folder_path)
                 self.app_state.video_folder = folder_path
             elif media_type == "audio":

@@ -439,3 +439,40 @@ def convert_session_to_nwb(dt: TrialTree, output_path: str | Path | None = None)
     output_path = Path(output_path)
     build_nwb_from_trial_table(trial_df, camera_fps=fps, output_path=output_path)
     return output_path
+
+
+def migrate_attrs_to_metadata_tsv(
+    dt: TrialTree, output_path: str | Path | None = None,
+) -> Path:
+    """Extract per-trial condition attrs from ds.attrs and save as metadata TSV.
+
+    Parameters
+    ----------
+    dt
+        TrialTree with condition metadata in ``ds.attrs``.
+    output_path
+        Where to write.  Defaults to ``{nc_stem}_metadata.tsv``.
+
+    Returns
+    -------
+    Path to the created TSV file.
+    """
+    from ethograph.io.metadata_table import (
+        metadata_from_attrs,
+        metadata_tsv_path,
+        save_metadata_tsv,
+    )
+
+    df = metadata_from_attrs(dt)
+
+    if output_path is None:
+        source = getattr(dt, "_source_path", None)
+        if source:
+            output_path = metadata_tsv_path(source)
+        else:
+            output_path = Path.cwd() / "metadata.tsv"
+
+    output_path = Path(output_path)
+    save_metadata_tsv(output_path, df)
+    dt.metadata_df = df
+    return output_path

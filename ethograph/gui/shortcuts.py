@@ -221,6 +221,10 @@ def bind_global_shortcuts(meta_widget):
     def delete_label(v):
         labels_widget._delete_label()
 
+    @viewer.bind_key("shift+b", overwrite=True)
+    def switch_branch(v):
+        labels_widget.toggle_branch()
+
     @viewer.bind_key("ctrl+f", overwrite=True)
     def toggle_features(v):
         app_state.toggle_key_sel("features", data_widget)

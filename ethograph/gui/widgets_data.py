@@ -148,6 +148,7 @@ class DataPanel(QWidget):
 
         self.tab_widget = QTabWidget()
         self.tab_widget.setStyleSheet("QTabBar::tab { padding: 4px 16px; }")
+        self.tab_widget.tabBar().setExpanding(True)
         layout.addWidget(self.tab_widget)
 
         main_tab = QWidget()
@@ -370,7 +371,6 @@ class DataWidget(QWidget):
         self.video_mgr = VideoManager(napari_viewer, app_state)
         self.video_mgr.set_frame_changed_callback(self._on_primary_frame_changed)
         self.pose_mgr: PoseDisplayManager | None = None  # created after set_data_panel
-
         self.app_state.audio_video_sync = None
         self.type_vars_dict = {}
 
@@ -454,7 +454,7 @@ class DataWidget(QWidget):
     def set_references(
         self, plot_container, labels_widget, plot_settings_widget,
         navigation_widget, changepoints_widget=None,
-        ephys_widget=None, layout_mgr=None,
+        ephys_widget=None, layout_mgr=None, trials_widget=None,
     ):
         self.plot_container = plot_container
         self.labels_widget = labels_widget
@@ -463,6 +463,10 @@ class DataWidget(QWidget):
         self.changepoints_widget = changepoints_widget
         self.ephys_widget = ephys_widget
         self.layout_mgr = layout_mgr
+        self.trials_widget = trials_widget
+
+        if trials_widget is not None:
+            trials_widget.trials_filtered.connect(self._on_trials_filtered)
 
         plot_container.time_marker_updated.connect(self._on_time_marker_updated)
 
@@ -524,6 +528,8 @@ class DataWidget(QWidget):
             )
             nwb_video_folder = self.app_state.dt.attrs.get("nwb_video_folder")
             if nwb_video_folder and not self.app_state.video_folder:
+                from .dialog_video_downsample import offer_downsample
+                nwb_video_folder = offer_downsample(str(nwb_video_folder), parent=self)
                 self.app_state.video_folder = nwb_video_folder
         except (OSError, ValueError, KeyError) as e:
             self._cancel_load(f"Failed to load dataset: {e}")
@@ -681,6 +687,16 @@ class DataWidget(QWidget):
             trial_status[trial] = bool(is_verified)
         return trial_status
 
+    def _on_trials_filtered(self, filtered_trials: list) -> None:
+        """Handle TrialsWidget filter changes."""
+        if not self.app_state.ready:
+            return
+        self.update_trials_combo()
+        if self.app_state.trials_sel not in filtered_trials and filtered_trials:
+            self.app_state.set_key_sel("trials", filtered_trials[0])
+            self.app_state.trial_changed.emit()
+        self.update_main_plot()
+
     # ------------------------------------------------------------------
     # Create controls (populates main panel groupboxes)
     # ------------------------------------------------------------------
@@ -690,6 +706,9 @@ class DataWidget(QWidget):
         self.io_widget.create_device_controls(self.type_vars_dict)
         self.navigation_widget.setup_trial_conditions(self.type_vars_dict)
         self.navigation_widget.set_data_widget(self)
+
+        if getattr(self, "trials_widget", None) is not None:
+            self.trials_widget.setup(self.app_state.dt.metadata_df)
 
         non_data_type_vars = ["mics", "cameras", "trial_conditions", "changepoints", "rgb"]
         for type_var in self.type_vars_dict.keys():
@@ -801,20 +820,28 @@ class DataWidget(QWidget):
         for defn in _PANEL_DEFS:
             checkbox = QCheckBox(defn.label)
             checkbox.setObjectName(f"{defn.name}_checkbox")
-            # Connect signal first so the initial setChecked fires it for available panels.
+            setattr(self, f"{defn.name}_checkbox", checkbox)
+
+            # Set checkbox to saved state WITHOUT firing signals (avoids
+            # triggering plot updates before data is loaded).
+            checkbox.blockSignals(True)
+            if data_available[defn.name]:
+                checkbox.setChecked(saved_checked[defn.name])
+            else:
+                checkbox.setChecked(False)
+            checkbox.blockSignals(False)
+
+            # Apply the effective visibility to the container directly.
+            effective = data_available[defn.name] and saved_checked[defn.name]
+            if defn.container_method and self.plot_container:
+                getattr(self.plot_container, defn.container_method)(effective)
+            if defn.on_toggle:
+                getattr(self, defn.on_toggle)(effective)
+
+            # Connect signal AFTER initial state is applied.
             checkbox.stateChanged.connect(
                 lambda state, n=defn.name: self._on_panel_toggled(n, state)
             )
-            setattr(self, f"{defn.name}_checkbox", checkbox)
-
-            if data_available[defn.name]:
-                # Fires signal → updates app_state + container visibility.
-                checkbox.setChecked(saved_checked[defn.name])
-            else:
-                # Block signal so the saved preference is not overwritten.
-                checkbox.blockSignals(True)
-                checkbox.setChecked(False)
-                checkbox.blockSignals(False)
 
             if not initial_shown[defn.name]:
                 checkbox.hide()
@@ -896,8 +923,6 @@ class DataWidget(QWidget):
             self._neural_view_label.show()
             self.neural_view_combo.show()
             self.ephys_widget.configure_ephys_trace_plot()
-            if self.plot_container:
-                self.plot_container.set_ephys_visible(True)
 
         if not has_audio:
             for w in self._audio_row_widgets:
@@ -1886,8 +1911,6 @@ class DataWidget(QWidget):
         self.space_plot.highlight_time_segment(key[0], key[1], color)
 
     def _on_primary_frame_changed(self, frame_number: int):
-        self.app_state.current_frame = frame_number
-
         self.plot_container.update_time_marker_and_window(frame_number)
 
         video = getattr(self.app_state, 'video', None)
@@ -2065,13 +2088,15 @@ class DataWidget(QWidget):
 
         color = (255, 102, 0)
         label_intervals = self.app_state.label_intervals
+        active_ids = self.app_state.active_label_ids
         if label_intervals is not None and not label_intervals.empty:
             mid = (start_time + end_time) / 2.0
             mask = (label_intervals["onset_s"] <= mid) & (label_intervals["offset_s"] >= mid)
             hits = label_intervals[mask]
             if not hits.empty:
                 label_id = int(hits.iloc[0]["labels"])
-                mappings = getattr(self.labels_widget, '_mappings', {})
-                color = mappings.get(label_id, {}).get("color", color)
+                if active_ids is None or label_id in active_ids:
+                    mappings = getattr(self.labels_widget, '_mappings', {})
+                    color = mappings.get(label_id, {}).get("color", color)
 
         self.space_plot.highlight_time_segment(start_time, end_time, color)

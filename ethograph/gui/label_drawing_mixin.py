@@ -44,6 +44,9 @@ class LabelDrawingMixin:
     def set_label_mappings(self, mappings: Dict[int, Dict[str, Any]]):
         self.label_mappings = mappings
 
+    def set_active_label_ids(self, ids: set[int]):
+        self._active_label_ids = ids
+
     def _get_all_plots(self) -> list:
         """Return all plot widgets that exist on this container."""
         candidates = []
@@ -118,9 +121,12 @@ class LabelDrawingMixin:
             plot.label_items = []
         if intervals_df is None or intervals_df.empty:
             return
+        active_ids = getattr(self, "_active_label_ids", None)
         for _, row in intervals_df.iterrows():
             labels = int(row["labels"])
             if labels == 0:
+                continue
+            if active_ids is not None and labels not in active_ids:
                 continue
             self._draw_single_label(plot, row["onset_s"], row["offset_s"], labels, is_main)
 

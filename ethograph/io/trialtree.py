@@ -169,6 +169,40 @@ class TrialTree(xr.DataTree):
         return sio
 
     # ------------------------------------------------------------------
+    # Trial metadata table
+    # ------------------------------------------------------------------
+
+    @property
+    def metadata_df(self) -> pd.DataFrame:
+        """Per-trial condition metadata as a DataFrame.
+
+        Always has a ``trial`` column.  Condition columns (genotype,
+        treatment, ...) are everything else.
+        """
+        cached = getattr(self, "_metadata_df", None)
+        if cached is not None:
+            return cached
+        return pd.DataFrame({"trial": self.trials})
+
+    @metadata_df.setter
+    def metadata_df(self, value: pd.DataFrame | None) -> None:
+        self._metadata_df = value
+
+    def get_trial_metadata(self, trial) -> dict:
+        """Return condition metadata for a single trial as a dict."""
+        df = self.metadata_df
+        if df.empty:
+            return {}
+        row = df[df["trial"] == trial]
+        if row.empty:
+            row = df[df["trial"] == str(trial)]
+        if row.empty and isinstance(trial, (int, float)):
+            row = df[df["trial"].astype(str) == str(int(trial))]
+        if row.empty:
+            return {}
+        return {k: v for k, v in row.iloc[0].to_dict().items() if k != "trial" and pd.notna(v)}
+
+    # ------------------------------------------------------------------
     # Continuous mode support
     # ------------------------------------------------------------------
 
@@ -429,6 +463,9 @@ class TrialTree(xr.DataTree):
         sp = getattr(self, "_source_path", None)
         if sp is not None:
             tree._source_path = sp
+        mdf = getattr(self, "_metadata_df", None)
+        if mdf is not None:
+            tree._metadata_df = mdf
         return tree
 
     def get_common_attrs(self) -> dict[str, Any]:
@@ -454,9 +491,10 @@ class TrialTree(xr.DataTree):
     # ------------------------------------------------------------------
 
     def filter_by_attr(self, attr_name: str, attr_value: Any) -> TrialTree:
-        """Return a new TrialTree containing only trials that match an attribute."""
-        new_tree = xr.DataTree()
+        """Return a new TrialTree containing only trials that match an attribute.
 
+        Checks the metadata table first; falls back to ``ds.attrs``.
+        """
         def values_match(stored: Any, target: Any) -> bool:
             if stored == target:
                 return True
@@ -467,6 +505,21 @@ class TrialTree(xr.DataTree):
                     continue
             return False
 
+        mdf = getattr(self, "_metadata_df", None)
+        if mdf is not None and attr_name in mdf.columns:
+            matching_trials = set()
+            for _, row in mdf.iterrows():
+                if values_match(row[attr_name], attr_value):
+                    matching_trials.add(row["trial"])
+            new_tree = xr.DataTree()
+            for name, node in self.children.items():
+                if node.ds and node.ds.attrs.get("trial") in matching_trials:
+                    new_tree[name] = node
+            result = TrialTree(new_tree)
+            result._metadata_df = mdf[mdf["trial"].isin(result.trials)].reset_index(drop=True)
+            return result
+
+        new_tree = xr.DataTree()
         for name, node in self.children.items():
             if node.ds and attr_name in node.ds.attrs:
                 if values_match(node.ds.attrs[attr_name], attr_value):
@@ -611,6 +664,9 @@ class TrialTree(xr.DataTree):
             sp = getattr(source, "_source_path", None)
             if sp is not None:
                 tree._source_path = sp
+            mdf = getattr(source, "_metadata_df", None)
+            if mdf is not None:
+                tree._metadata_df = mdf
         return tree
 
     def save(self, path: str | Path | None = None) -> None:
@@ -620,6 +676,9 @@ class TrialTree(xr.DataTree):
         saving so the file can be re-opened with :meth:`open`.
 
         Uses an atomic write (temp file then rename) to avoid partial writes.
+        If an alignment NWB exists and the save directory differs from where
+        the NWB lives, a copy is placed in ``<save_dir>/.ethograph/`` so that
+        :meth:`open` can discover it.
         """
         if self._is_continuous:
             self.materialise().save(path)
@@ -638,8 +697,25 @@ class TrialTree(xr.DataTree):
             self.close()
             temp_path.replace(path)
             self._source_path = str(path)
+            self._ensure_alignment_nwb(path.parent)
         finally:
             self.close()
+
+    def _ensure_alignment_nwb(self, save_dir: Path) -> None:
+        """Copy alignment NWB next to the save location if needed."""
+        import shutil
+
+        nwb = getattr(self, "_nwb_path", None)
+        if not nwb or not Path(nwb).exists():
+            return
+
+        target = save_dir / _SETTINGS_DIR / _NWB_FILENAME
+        if target.exists() or Path(nwb).resolve() == target.resolve():
+            return
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(nwb, target)
+        self._nwb_path = str(target)
 
     # ------------------------------------------------------------------
     # Validation
