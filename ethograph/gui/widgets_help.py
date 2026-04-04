@@ -3,13 +3,31 @@
 import warnings
 import webbrowser
 
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QCheckBox,
+    QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
+
+TUTORIALS = [
+    {
+        "title": "Video playback",
+        "url": "https://www.youtube.com/watch?v=hErA8c_BMUY&list=PLAI16F70Jqg0yE5LNO0lKouVIXkSwQkTN&index=3",
+    },
+    {
+        "title": "Labeling guide",
+        "url": "https://www.youtube.com/watch?v=s2UAfVRuJKY&list=PLAI16F70Jqg0yE5LNO0lKouVIXkSwQkTN&index=2",
+    },
+    {
+        "title": "Adjusting axes limits",
+        "url": "https://www.youtube.com/watch?v=oXc7bCoY6G0&list=PLAI16F70Jqg0yE5LNO0lKouVIXkSwQkTN",
+    },
+]
 
 
 class HelpWidget(QWidget):
@@ -59,12 +77,27 @@ class HelpWidget(QWidget):
         help_layout3.addWidget(self.filter_warnings_checkbox)
 
         main_layout = QVBoxLayout()
-        main_layout.setSpacing(2)
-        main_layout.setContentsMargins(2, 2, 2, 2)
+        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.addLayout(help_layout)
         main_layout.addLayout(help_layout2)
         main_layout.addLayout(help_layout3)
+        main_layout.addWidget(self._build_tutorials_group())
+        main_layout.addStretch()
         self.setLayout(main_layout)
+
+    def _build_tutorials_group(self) -> QGroupBox:
+        group = QGroupBox("Video Tutorials")
+        grid = QGridLayout()
+        grid.setSpacing(8)
+        cols = 3
+        for i, entry in enumerate(TUTORIALS):
+            btn = QPushButton(entry["title"])
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.clicked.connect(lambda checked=False, url=entry["url"]: webbrowser.open(url))
+            grid.addWidget(btn, i // cols, i % cols)
+        group.setLayout(grid)
+        return group
 
     def _on_filter_warnings_changed(self, checked: bool):
         self.app_state.filter_warnings = checked

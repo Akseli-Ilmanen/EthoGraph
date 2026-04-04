@@ -1548,9 +1548,6 @@ class DataWidget(QWidget):
         # Migrate old values to simplified combo
         if space_plot_type in ("Space 2D", "Space 3D", "space_2D", "space_3D", "PCA 2D", "PCA 3D"):
             space_plot_type = "Space Plot"
-        # Default to Space Plot when position data is available
-        if space_plot_type == "Layers" and "position" in self.app_state.ds.data_vars:
-            space_plot_type = "Space Plot"
         if hasattr(self, 'space_view_combo'):
             self.space_view_combo.setCurrentText(space_plot_type)
 
@@ -1856,6 +1853,11 @@ class DataWidget(QWidget):
         self.space_plot.update_time_marker(time_s)
         self._highlight_label_at_time(time_s)
 
+    def _on_xrange_for_space_plot(self, _time_s: float):
+        """Debounced re-render of space plot when lineplot x-range changes."""
+        if self.space_plot and self.space_plot.isVisible():
+            self.space_plot.on_xrange_changed()
+
     _space_highlight_key: tuple | None = None
 
     def _highlight_label_at_time(self, time_s: float):
@@ -2043,6 +2045,8 @@ class DataWidget(QWidget):
 
         if not self.space_plot:
             self.space_plot = SpacePlot(self.viewer, self.app_state)
+            self.space_plot.set_plot_container(self.plot_container)
+            self.plot_container.time_marker_updated.connect(self._on_xrange_for_space_plot)
             if self.labels_widget:
                 self.labels_widget.highlight_spaceplot.connect(self._highlight_positions_in_space_plot)
 

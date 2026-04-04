@@ -195,7 +195,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.add_widget(
             self.help_widget,
             collapsible=True,
-            widget_title="Help",
+            widget_title="Help & Tutorials",
         )
 
         # Index 1: I/O

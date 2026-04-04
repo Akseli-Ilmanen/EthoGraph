@@ -14,10 +14,10 @@ import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 import yaml
+from qtpy.QtCore import QTimer
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
     QSizePolicy,
@@ -102,40 +102,6 @@ def _select_axis(store: FeatureStore, item: str, selections: dict,
         data = data[:, 0]
 
     return pd.time, data.astype(np.float64)
-
-
-# ---------------------------------------------------------------------------
-# Outlier filtering
-# ---------------------------------------------------------------------------
-
-def _filter_outliers(x, y, z, percentile: float):
-    """NaN-out points outside the percentile range on any axis.
-
-    Returns copies — originals are not modified.
-    """
-    lo = (100 - percentile) / 2
-    hi = 100 - lo
-
-    x, y = x.copy(), y.copy()
-    z = z.copy() if z is not None else None
-
-    for arr in (x, y, z):
-        if arr is None:
-            continue
-        vmin, vmax = np.nanpercentile(arr, [lo, hi])
-        mask = (arr < vmin) | (arr > vmax)
-        arr[mask] = np.nan
-
-    # NaN any point where any axis is NaN (keeps trajectories consistent)
-    combined = np.isnan(x) | np.isnan(y)
-    if z is not None:
-        combined |= np.isnan(z)
-    x[combined] = np.nan
-    y[combined] = np.nan
-    if z is not None:
-        z[combined] = np.nan
-
-    return x, y, z
 
 
 # ---------------------------------------------------------------------------
@@ -353,58 +319,40 @@ class SpacePlot(QWidget):
 
         root.addLayout(toolbar)
 
-        # Row 2: marker + filter
-        toolbar2 = QHBoxLayout()
-        toolbar2.setContentsMargins(0, 0, 0, 0)
-        toolbar2.setSpacing(8)
-
-        self.cb_marker = QCheckBox("Marker")
-        self.cb_marker.setChecked(True)
-        toolbar2.addWidget(self.cb_marker)
-
-        toolbar2.addSpacing(8)
-
-        toolbar2.addWidget(QLabel("Filter"))
-        self.filter_combo = QComboBox()
-        self.filter_combo.addItems(["None", "Percentile", "Confidence"])
-        self.filter_combo.setCurrentText("None")
-        self.filter_combo.setFixedWidth(95)
-        toolbar2.addWidget(self.filter_combo)
-
-        self.filter_spin = QDoubleSpinBox()
-        self.filter_spin.setRange(0.1, 99.9)
-        self.filter_spin.setValue(0.6)
-        self.filter_spin.setSingleStep(0.1)
-        self.filter_spin.setDecimals(1)
-        self.filter_spin.setFixedWidth(65)
-        self.filter_spin.setVisible(False)
-        toolbar2.addWidget(self.filter_spin)
-        toolbar2.addStretch()
-
-        root.addLayout(toolbar2)
-
         # Plot area (created on first update)
         self.space_widget = None
         self.is_3d = False
+        self._plot_container = None
+        self._debounce_timer = QTimer()
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(150)
+        self._debounce_timer.timeout.connect(self._update_plot)
 
         # Trajectory state for highlight / time marker
         self._trajectory_pos: tuple | None = None
         self._trajectory_times: np.ndarray | None = None
         self._time_marker_item = None
 
-        # Connect signals
+        # Connect combo/checkbox signals
         self.x_combo.currentIndexChanged.connect(self._on_axis_changed)
         self.y_combo.currentIndexChanged.connect(self._on_axis_changed)
         self.z_combo.currentIndexChanged.connect(self._on_axis_changed)
         self.cb_3d.toggled.connect(self._on_3d_toggled)
-        self.filter_combo.currentTextChanged.connect(self._on_filter_changed)
-        self.filter_spin.valueChanged.connect(self._on_axis_changed)
-        self.cb_marker.toggled.connect(self._on_marker_toggled)
+
+        # Listen for settings changes via app_state
+        app_state.space_percentile_xyzlim_changed.connect(self._on_settings_changed)
+        app_state.space_confidence_filter_changed.connect(self._on_settings_changed)
+        app_state.space_confidence_threshold_changed.connect(self._on_settings_changed)
+        app_state.space_limit_to_window_changed.connect(self._on_settings_changed)
 
         self._set_3d_visible(False)
         super().hide()
 
     # --- Public API --------------------------------------------------------
+
+    def set_plot_container(self, plot_container):
+        """Wire up the main plot container for x-range queries."""
+        self._plot_container = plot_container
 
     def set_store(self, store: FeatureStore | None):
         """Set the feature store and repopulate axis combos."""
@@ -485,7 +433,7 @@ class SpacePlot(QWidget):
 
     # --- Axis change handlers ----------------------------------------------
 
-    def _on_axis_changed(self):
+    def _on_axis_changed(self, *_args):
         if self._store is not None:
             self._save_to_app_state()
             self._update_plot()
@@ -496,34 +444,21 @@ class SpacePlot(QWidget):
         if self._store is not None:
             self._update_plot()
 
-    def _on_filter_changed(self, text: str):
-        if text == "Percentile":
-            self.filter_spin.setRange(80.0, 99.9)
-            self.filter_spin.setValue(99.5)
-            self.filter_spin.setSingleStep(0.5)
-            self.filter_spin.setDecimals(1)
-            self.filter_spin.setVisible(True)
-        elif text == "Confidence":
-            self.filter_spin.setRange(0.0, 1.0)
-            self.filter_spin.setValue(0.6)
-            self.filter_spin.setSingleStep(0.05)
-            self.filter_spin.setDecimals(2)
-            self.filter_spin.setVisible(True)
-        else:
-            self.filter_spin.setVisible(False)
-        self._on_axis_changed()
+    def _on_settings_changed(self, *_args):
+        """Re-render when a plot-settings value changes (debounced)."""
+        if self._store is not None and self.isVisible():
+            self._debounce_timer.start()
 
-    def _on_marker_toggled(self, checked: bool):
-        if not checked:
-            self._remove_time_marker()
+    def on_xrange_changed(self):
+        """Called by DataWidget when the lineplot x-range changes."""
+        if getattr(self.app_state, 'space_limit_to_window', False) and self.isVisible():
+            self._debounce_timer.start()
 
     def _save_to_app_state(self):
         self.app_state.space_x_axis = self.x_combo.currentText() or None
         self.app_state.space_y_axis = self.y_combo.currentText() or None
         self.app_state.space_z_axis = self.z_combo.currentText() or None
         self.app_state.space_3d = self.cb_3d.isChecked()
-        self.app_state.space_filter_mode = self.filter_combo.currentText()
-        self.app_state.space_filter_threshold = self.filter_spin.value()
 
     def _restore_from_app_state(self):
         """Restore axis selections from app_state after combo population."""
@@ -546,23 +481,22 @@ class SpacePlot(QWidget):
                     combo.setCurrentIndex(idx)
                     combo.blockSignals(False)
 
-        saved_filter = getattr(self.app_state, 'space_filter_mode', 'None')
-        self.filter_combo.blockSignals(True)
-        self.filter_combo.setCurrentText(saved_filter)
-        self.filter_combo.blockSignals(False)
-        self._on_filter_changed(saved_filter)
-
-        saved_threshold = getattr(self.app_state, 'space_filter_threshold', None)
-        if saved_threshold is not None:
-            self.filter_spin.blockSignals(True)
-            self.filter_spin.setValue(saved_threshold)
-            self.filter_spin.blockSignals(False)
-
     def _set_3d_visible(self, visible: bool):
         self.z_label.setVisible(visible)
         self.z_combo.setVisible(visible)
 
     # --- Core plot logic ---------------------------------------------------
+
+    def _get_window_time_range(self) -> tuple[float | None, float | None]:
+        """Return (t0, t1) from the lineplot x-range if limit-to-window is on."""
+        if not getattr(self.app_state, 'space_limit_to_window', False):
+            return None, None
+        if self._plot_container is None:
+            return None, None
+        try:
+            return self._plot_container.get_current_xlim()
+        except Exception:
+            return None, None
 
     def _update_plot(self):
         """Fetch data for selected axes and render."""
@@ -579,47 +513,41 @@ class SpacePlot(QWidget):
         z_item = self.z_combo.currentText() if view_3d else None
 
         selections = self.app_state.get_selections()
+        t0, t1 = self._get_window_time_range()
 
-        time_x, data_x = _select_axis(store, x_item, selections)
-        time_y, data_y = _select_axis(store, y_item, selections)
+        time_x, data_x = _select_axis(store, x_item, selections, t0=t0, t1=t1)
+        time_y, data_y = _select_axis(store, y_item, selections, t0=t0, t1=t1)
         if time_x is None or time_y is None:
             return
 
-        # Align to the shorter array (same time base expected in most cases)
         n = min(len(data_x), len(data_y))
         data_x, data_y = data_x[:n], data_y[:n]
         times = time_x[:n]
 
         data_z = None
         if view_3d and z_item:
-            _, dz = _select_axis(store, z_item, selections)
+            _, dz = _select_axis(store, z_item, selections, t0=t0, t1=t1)
             if dz is not None:
                 data_z = dz[:n]
 
-        # Apply filtering before interpolation so filtered points become gaps
-        filter_mode = self.filter_combo.currentText()
-        if filter_mode == "Confidence":
-            threshold = self.filter_spin.value()
+        # Confidence filter (reads settings from app_state)
+        if getattr(self.app_state, 'space_confidence_filter', False):
+            threshold = getattr(self.app_state, 'space_confidence_threshold', 0.6)
             data_x, data_y, data_z = self._apply_confidence_filter(
                 data_x, data_y, data_z, selections, threshold,
             )
-        elif filter_mode == "Percentile":
-            pct = self.filter_spin.value()
-            data_x, data_y, data_z = _filter_outliers(data_x, data_y, data_z, pct)
 
-        # Interpolate NaN gaps for smooth trajectories
         data_x = interpolate_nans(data_x)
         data_y = interpolate_nans(data_y)
         if data_z is not None:
             data_z = interpolate_nans(data_z)
 
-        # Color data from store
         color_data = self._get_color_data(store, selections, n)
 
-        # Recreate the plot widget for the right mode (2D vs 3D)
-        self._rebuild_plot_widget(view_3d)
+        use_3d = view_3d and data_z is not None
+        self._rebuild_plot_widget(use_3d)
 
-        if view_3d and data_z is not None:
+        if use_3d:
             _render_3d(self.space_widget, data_x, data_y, data_z, color_data)
             _auto_camera_3d(self.space_widget, data_x, data_y, data_z)
         else:
@@ -628,14 +556,15 @@ class SpacePlot(QWidget):
             plot_item.setLabel('bottom', x_item)
             plot_item.setLabel('left', y_item)
 
+        self._apply_percentile_limits(data_x, data_y, data_z)
         self._draw_references()
 
         self._trajectory_pos = (data_x, data_y, data_z)
         self._trajectory_times = times
         self._time_marker_item = None
-        self.is_3d = view_3d
+        self.is_3d = use_3d
 
-        # Place marker at current time immediately
+        # Place marker at current time
         current_frame = getattr(self.app_state, 'current_frame', 0)
         video = getattr(self.app_state, 'video', None)
         if video:
@@ -778,6 +707,55 @@ class SpacePlot(QWidget):
                 plot_item = self.space_widget.getPlotItem()
                 _render_reference_2d(plot_item, ref)
 
+    # --- Percentile axis limits (zoom constraints) --------------------------
+
+    def _apply_percentile_limits(self, data_x, data_y, data_z=None):
+        """Constrain zoom to per-axis percentile range using vb.setLimits()."""
+        percentile = getattr(self.app_state, 'space_percentile_xyzlim', 100.0)
+        if percentile >= 100.0 or self.space_widget is None:
+            return
+
+        lo = (100 - percentile) / 2
+        hi = 100 - lo
+
+        x_lo, x_hi = np.nanpercentile(data_x, [lo, hi])
+        y_lo, y_hi = np.nanpercentile(data_y, [lo, hi])
+
+        x_range = x_hi - x_lo
+        y_range = y_hi - y_lo
+        if x_range <= 0 or y_range <= 0:
+            return
+
+        x_buf = x_range * 0.2
+        y_buf = y_range * 0.2
+
+        is_gl = isinstance(self.space_widget, gl.GLViewWidget)
+        if is_gl:
+            cx = float((x_lo + x_hi) / 2)
+            cy = float((y_lo + y_hi) / 2)
+            extent = max(x_range, y_range)
+            if data_z is not None:
+                z_lo, z_hi = np.nanpercentile(data_z, [lo, hi])
+                cz = float((z_lo + z_hi) / 2)
+                extent = max(extent, z_hi - z_lo)
+            else:
+                cz = 0.0
+            self.space_widget.setCameraPosition(
+                pos=pg.Vector(cx, cy, cz),
+                distance=max(float(extent) * 1.5, 1.0),
+                elevation=30,
+                azimuth=200,
+            )
+        else:
+            vb = self.space_widget.getPlotItem().vb
+            vb.setLimits(
+                xMin=x_lo - x_buf, xMax=x_hi + x_buf,
+                yMin=y_lo - y_buf, yMax=y_hi + y_buf,
+                minXRange=x_range * 0.1, maxXRange=x_range + x_buf,
+                minYRange=y_range * 0.1, maxYRange=y_range + y_buf,
+            )
+            vb.setRange(xRange=(x_lo, x_hi), yRange=(y_lo, y_hi), padding=0.05)
+
     # --- Highlight / time marker -------------------------------------------
 
     def highlight_time_segment(self, start_time: float, end_time: float,
@@ -840,7 +818,7 @@ class SpacePlot(QWidget):
 
     def update_time_marker(self, time_position: float):
         """Show a red circle at the current time position on the trajectory."""
-        if not self.cb_marker.isChecked():
+        if not getattr(self.app_state, 'space_marker_visible', True):
             self._remove_time_marker()
             return
         if not self.space_widget or self._trajectory_pos is None or self._trajectory_times is None:

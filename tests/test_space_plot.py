@@ -9,7 +9,6 @@ from ethograph.gui.plots_space import (
     ReferenceGeometry,
     SEPARATOR,
     _build_axis_items,
-    _filter_outliers,
     _parse_axis_item,
     _parse_references,
     _select_axis,
@@ -177,47 +176,6 @@ class TestSelectAxis:
         assert len(data) < 50
         assert time[0] >= 0.2
         assert time[-1] <= 0.8
-
-
-# ---------------------------------------------------------------------------
-# Tests: _filter_outliers
-# ---------------------------------------------------------------------------
-
-class TestFilterOutliers:
-    def test_removes_extreme_values(self):
-        x = np.zeros(1000)
-        y = np.zeros(1000)
-        x[0] = 1000.0  # extreme outlier
-        y[999] = -500.0
-        xf, yf, zf = _filter_outliers(x, y, None, 99.5)
-        assert np.isnan(xf[0])
-        assert np.isnan(yf[0])  # NaN propagated from x
-        assert np.isnan(yf[999])
-        assert zf is None
-
-    def test_preserves_normal_values(self):
-        rng = np.random.RandomState(42)
-        x = rng.randn(100)
-        y = rng.randn(100)
-        xf, yf, _ = _filter_outliers(x, y, None, 99.5)
-        n_nan = np.isnan(xf).sum() + np.isnan(yf).sum()
-        assert n_nan < 10  # very few removed at 99.5%
-
-    def test_3d_filtering(self):
-        x = np.ones(100)
-        y = np.ones(100)
-        z = np.ones(100)
-        z[50] = 9999.0
-        xf, yf, zf = _filter_outliers(x, y, z, 99.0)
-        assert np.isnan(zf[50])
-        assert np.isnan(xf[50])  # propagated
-
-    def test_does_not_modify_originals(self):
-        x = np.array([0.0, 1.0, 1000.0])
-        y = np.array([0.0, 1.0, 2.0])
-        x_orig = x.copy()
-        _filter_outliers(x, y, None, 95.0)
-        np.testing.assert_array_equal(x, x_orig)
 
 
 # ---------------------------------------------------------------------------
@@ -675,8 +633,8 @@ class TestMarker:
         import pyqtgraph.opengl as gl
 
         sp = SpacePlot.__new__(SpacePlot)
-        sp.cb_marker = MagicMock()
-        sp.cb_marker.isChecked.return_value = True
+        sp.app_state = MagicMock()
+        sp.app_state.space_marker_visible = True
         sp._time_marker_item = None
 
         X = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
@@ -738,7 +696,7 @@ class TestMarker:
         sp.update_time_marker(0.5)
         assert sp._time_marker_item is not None
 
-        sp.cb_marker.isChecked.return_value = False
+        sp.app_state.space_marker_visible = False
         sp.update_time_marker(0.75)
         assert sp._time_marker_item is None
 
@@ -747,7 +705,7 @@ class TestMarker:
         sp.update_time_marker(0.5)
         assert sp._time_marker_item is not None
 
-        sp.cb_marker.isChecked.return_value = False
+        sp.app_state.space_marker_visible = False
         sp.update_time_marker(0.75)
         assert sp._time_marker_item is None
         sp.space_widget.removeItem.assert_called()
@@ -757,8 +715,8 @@ class TestMarker:
         from ethograph.gui.plots_space import SpacePlot
 
         sp = SpacePlot.__new__(SpacePlot)
-        sp.cb_marker = MagicMock()
-        sp.cb_marker.isChecked.return_value = True
+        sp.app_state = MagicMock()
+        sp.app_state.space_marker_visible = True
         sp.space_widget = MagicMock()
         sp._trajectory_pos = None
         sp._trajectory_times = None
