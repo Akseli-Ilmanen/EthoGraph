@@ -320,19 +320,6 @@ class PlotSettingsWidget(QWidget):
         self.space_limit_window_checkbox.toggled.connect(self._on_space_limit_window_toggled)
         group_layout.addWidget(self.space_limit_window_checkbox, row, 3)
 
-        row += 1
-        self.space_confidence_checkbox = QCheckBox("Confidence filter")
-        self.space_confidence_checkbox.toggled.connect(self._on_space_confidence_toggled)
-        group_layout.addWidget(self.space_confidence_checkbox, row, 0)
-
-        self.space_confidence_spin = QDoubleSpinBox()
-        self.space_confidence_spin.setRange(0.0, 1.0)
-        self.space_confidence_spin.setSingleStep(0.05)
-        self.space_confidence_spin.setDecimals(2)
-        self.space_confidence_spin.setToolTip("Confidence threshold for filtering pose data")
-        self.space_confidence_spin.valueChanged.connect(self._on_space_confidence_threshold_changed)
-        group_layout.addWidget(self.space_confidence_spin, row, 1)
-
         main_layout.addWidget(self.spaceplot_panel)
 
     def _restore_spaceplot_defaults(self):
@@ -340,12 +327,6 @@ class PlotSettingsWidget(QWidget):
             self.app_state.get_with_default("space_percentile_xyzlim"))
         self.space_marker_checkbox.setChecked(
             self.app_state.get_with_default("space_marker_visible"))
-
-        conf = self.app_state.get_with_default("space_confidence_filter")
-        self.space_confidence_checkbox.setChecked(conf)
-        self.space_confidence_spin.setValue(
-            self.app_state.get_with_default("space_confidence_threshold"))
-        self.space_confidence_spin.setEnabled(conf)
 
         self.space_limit_window_checkbox.setChecked(
             self.app_state.get_with_default("space_limit_to_window"))
@@ -359,12 +340,6 @@ class PlotSettingsWidget(QWidget):
     def _on_space_limit_window_toggled(self, checked: bool):
         self.app_state.space_limit_to_window = checked
 
-    def _on_space_confidence_toggled(self, checked: bool):
-        self.app_state.space_confidence_filter = checked
-        self.space_confidence_spin.setEnabled(checked)
-
-    def _on_space_confidence_threshold_changed(self, value: float):
-        self.app_state.space_confidence_threshold = value
 
     # ------------------------------------------------------------------
     # Shared controls (apply to all plot types)

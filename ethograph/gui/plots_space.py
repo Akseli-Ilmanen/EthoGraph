@@ -341,8 +341,6 @@ class SpacePlot(QWidget):
 
         # Listen for settings changes via app_state
         app_state.space_percentile_xyzlim_changed.connect(self._on_settings_changed)
-        app_state.space_confidence_filter_changed.connect(self._on_settings_changed)
-        app_state.space_confidence_threshold_changed.connect(self._on_settings_changed)
         app_state.space_limit_to_window_changed.connect(self._on_settings_changed)
 
         self._set_3d_visible(False)
@@ -358,7 +356,7 @@ class SpacePlot(QWidget):
         """Set the feature store and repopulate axis combos."""
         self._store = store
         self._populate_combos()
-        self._restore_from_app_state()
+
 
     def show(self):
         if not self.dock_widget:
@@ -460,26 +458,7 @@ class SpacePlot(QWidget):
         self.app_state.space_z_axis = self.z_combo.currentText() or None
         self.app_state.space_3d = self.cb_3d.isChecked()
 
-    def _restore_from_app_state(self):
-        """Restore axis selections from app_state after combo population."""
-        saved_3d = getattr(self.app_state, 'space_3d', False)
-        self.cb_3d.blockSignals(True)
-        self.cb_3d.setChecked(saved_3d)
-        self._set_3d_visible(saved_3d)
-        self.cb_3d.blockSignals(False)
 
-        for combo, attr in [
-            (self.x_combo, 'space_x_axis'),
-            (self.y_combo, 'space_y_axis'),
-            (self.z_combo, 'space_z_axis'),
-        ]:
-            saved = getattr(self.app_state, attr, None)
-            if saved:
-                idx = combo.findText(saved)
-                if idx >= 0:
-                    combo.blockSignals(True)
-                    combo.setCurrentIndex(idx)
-                    combo.blockSignals(False)
 
     def _set_3d_visible(self, visible: bool):
         self.z_label.setVisible(visible)
@@ -530,17 +509,6 @@ class SpacePlot(QWidget):
             if dz is not None:
                 data_z = dz[:n]
 
-        # Confidence filter (reads settings from app_state)
-        if getattr(self.app_state, 'space_confidence_filter', False):
-            threshold = getattr(self.app_state, 'space_confidence_threshold', 0.6)
-            data_x, data_y, data_z = self._apply_confidence_filter(
-                data_x, data_y, data_z, selections, threshold,
-            )
-
-        data_x = interpolate_nans(data_x)
-        data_y = interpolate_nans(data_y)
-        if data_z is not None:
-            data_z = interpolate_nans(data_z)
 
         color_data = self._get_color_data(store, selections, n)
 
@@ -574,66 +542,6 @@ class SpacePlot(QWidget):
             t = current_frame / fps if fps else 0.0
         self.update_time_marker(t)
 
-    def _apply_confidence_filter(self, data_x, data_y, data_z,
-                                   selections: dict, threshold: float):
-        """Use movement.filtering.filter_by_confidence on ds.position.
-
-        Requires xarray backend with ``position`` and ``confidence`` in the dataset.
-        """
-        from movement.filtering import filter_by_confidence
-
-        ds = getattr(self.app_state, 'ds', None)
-        if ds is None:
-            raise ValueError("Confidence filter requires an xarray dataset")
-        if "position" not in ds.data_vars:
-            raise ValueError("Confidence filter requires 'position' in the dataset")
-        if "confidence" not in ds.data_vars:
-            raise ValueError("Confidence filter requires 'confidence' in the dataset")
-
-        import ethograph as eto
-        position = ds["position"]
-        if selections:
-            filt = {k: v for k, v in selections.items() if k in position.dims}
-            if filt:
-                position = position.sel(**filt)
-        confidence = ds["confidence"]
-        if selections:
-            filt = {k: v for k, v in selections.items() if k in confidence.dims}
-            if filt:
-                confidence = confidence.sel(**filt)
-
-        conf_vals = confidence.values
-        if np.all(np.isnan(conf_vals)):
-            raise ValueError("Confidence values are all NaN — filter has no effect")
-        unique = np.unique(conf_vals[~np.isnan(conf_vals)])
-        if len(unique) == 1:
-            raise ValueError(
-                f"Confidence values are all {unique[0]} — filter has no effect"
-            )
-
-        filtered = filter_by_confidence(position, confidence, threshold=threshold)
-        tc = eto.get_time_coord(filtered)
-        if tc is None:
-            return data_x, data_y, data_z
-
-        # Build NaN mask from filtered position (any space dim NaN → all NaN)
-        fdata = filtered.values
-        if fdata.ndim == 1:
-            nan_mask = np.isnan(fdata)
-        else:
-            nan_mask = np.isnan(fdata).any(axis=tuple(range(1, fdata.ndim)))
-
-        n = min(len(nan_mask), len(data_x))
-        nan_mask = nan_mask[:n]
-
-        data_x, data_y = data_x.copy(), data_y.copy()
-        data_x[nan_mask] = np.nan
-        data_y[nan_mask] = np.nan
-        if data_z is not None:
-            data_z = data_z.copy()
-            data_z[nan_mask] = np.nan
-
-        return data_x, data_y, data_z
 
     def _get_color_data(self, store: FeatureStore, selections: dict, n: int):
         """Fetch color data if a color variable is selected."""

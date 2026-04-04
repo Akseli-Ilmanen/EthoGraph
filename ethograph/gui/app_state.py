@@ -231,7 +231,7 @@ class AppStateSpec:
         "space_marker_visible": (bool, True, True),
         "space_confidence_filter": (bool, False, True),
         "space_confidence_threshold": (float, 0.6, True),
-        "space_limit_to_window": (bool, False, True),
+        "space_limit_to_window": (bool, False, False), # May confuse user, better not keep saved.
         "primary_camera": (str | None, None, True),
         "primary_camera_previous": (str | None, None, False),
         "extra_cameras": (list[str], [], True),
