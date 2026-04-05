@@ -2377,7 +2377,7 @@ class EphysWidget(QWidget):
         if not self.data_widget:
             return
 
-        features_list = self.data_widget.type_vars_dict.get("features", [])
+        features_list = self.data_widget.catalog.features if self.data_widget.catalog else []
         features_combo = self.data_widget.combos.get("features")
 
         _display_to_var = {"Firing rate": "firing_rate", "PCA": "pca"}

@@ -73,7 +73,7 @@ class NavigationWidget(QWidget):
         super().__init__(parent=parent)
         self.viewer = viewer
         self.app_state = app_state
-        self.type_vars_dict = {}
+        self.catalog = None
         self.plot_container = None
         self.data_widget = None
         self._mappings: dict[int, dict[str, Any]] = {}
@@ -644,9 +644,9 @@ class NavigationWidget(QWidget):
         self.trials_combo.blockSignals(False)
         self.app_state.trial_changed.emit()
 
-    def setup_trial_conditions(self, type_vars_dict: dict):
+    def setup_trial_conditions(self, catalog):
         """No-op — trial condition filtering moved to TrialsWidget."""
-        self.type_vars_dict = type_vars_dict
+        self.catalog = catalog
 
     # ==================================================================
     # Playback

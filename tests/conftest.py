@@ -61,9 +61,15 @@ def first_trial_ds(trial_tree):
 
 
 @pytest.fixture
-def type_vars_dict(first_trial_ds, trial_tree):
-    from ethograph.io.validation import extract_type_vars
-    return extract_type_vars(first_trial_ds, trial_tree)
+def catalog(first_trial_ds, trial_tree):
+    from ethograph.io.catalog import catalog_from_xarray
+    return catalog_from_xarray(first_trial_ds, trial_tree)
+
+
+@pytest.fixture
+def type_vars_dict(catalog):
+    """Backwards-compat fixture — prefer ``catalog`` in new tests."""
+    return catalog.to_type_vars_dict()
 
 
 @pytest.fixture

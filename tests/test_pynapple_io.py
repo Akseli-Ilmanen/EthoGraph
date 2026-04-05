@@ -1,16 +1,16 @@
-"""Tests for ethograph.io.pynapple loading and feature_store access."""
+"""Tests for ethograph.io.pynapple loading and DataLoader access."""
 
 import numpy as np
 import pynapple as nap
 import pytest
 
-from ethograph.io.feature_store import PynappleStore
-from ethograph.io.pynapple import (
+from ethograph.io.catalog import (
+    PynappleLoader as PynappleStore,
     _compute_shared_column_dims,
-    detect_trials,
-    extract_type_vars_pynapple,
-    nap_to_metadata_trialtree,
+    catalog_from_pynapple,
 )
+from ethograph.gui.data_loader import _trialtree_from_trials_ep
+from ethograph.io.pynapple import detect_trials
 
 
 # ---------------------------------------------------------------------------
@@ -130,98 +130,93 @@ def test_single_tsdframe_keeps_prefixed_dim():
 
 
 # ---------------------------------------------------------------------------
-# extract_type_vars_pynapple
+# catalog_from_pynapple (replaces extract_type_vars_pynapple)
 # ---------------------------------------------------------------------------
 
 
-def test_extract_type_vars_basic(simple_nap_data):
-    tvd = extract_type_vars_pynapple(simple_nap_data)
-    assert "features" in tvd
-    assert "speed" in tvd["features"]
-    assert "velocity" in tvd["features"]
-    assert "individuals" in tvd
-    assert "trial_conditions" in tvd
+def test_catalog_basic(simple_nap_data):
+    cat = catalog_from_pynapple(simple_nap_data)
+    assert "speed" in cat.features
+    assert "velocity" in cat.features
+    assert "individuals" in cat.combos
+    assert cat.trial_conditions == []
 
 
-def test_extract_type_vars_detects_tsdframe_columns(simple_nap_data):
-    tvd = extract_type_vars_pynapple(simple_nap_data)
-    assert "velocity_columns" in tvd
-    assert list(tvd["velocity_columns"]) == ["x", "y", "z"]
+def test_catalog_detects_tsdframe_columns(simple_nap_data):
+    cat = catalog_from_pynapple(simple_nap_data)
+    assert "velocity_columns" in cat.combos
+    assert list(cat.combo_values("velocity_columns")) == ["x", "y", "z"]
 
 
-def test_extract_type_vars_shared_columns(multi_tsdframe_data):
-    """Shared columns produce one 'columns' entry instead of two."""
-    tvd = extract_type_vars_pynapple(multi_tsdframe_data)
-    assert "columns" in tvd
-    assert "position_columns" not in tvd
-    assert "velocity_columns" not in tvd
-    assert list(tvd["columns"]) == ["x", "y", "z"]
+def test_catalog_shared_columns(multi_tsdframe_data):
+    """Shared columns produce one 'columns' combo instead of two."""
+    cat = catalog_from_pynapple(multi_tsdframe_data)
+    assert "columns" in cat.combos
+    assert "position_columns" not in cat.combos
+    assert "velocity_columns" not in cat.combos
+    assert list(cat.combo_values("columns")) == ["x", "y", "z"]
 
 
-def test_extract_type_vars_detects_rgb():
+def test_catalog_detects_rgb():
     t = np.arange(100)
     rgb = nap.TsdFrame(t=t, d=np.random.rand(100, 3), columns=["R", "G", "B"])
     data = {"angle_rgb": rgb}
-    tvd = extract_type_vars_pynapple(data)
-    assert "colors" in tvd
-    assert "angle_rgb" in tvd["colors"]
+    cat = catalog_from_pynapple(data)
+    assert "angle_rgb" in cat.colors
 
 
-def test_extract_type_vars_detects_changepoints():
+def test_catalog_detects_changepoints():
     cp_times = np.array([10.0, 25.0, 50.0, 75.0])
     group = nap.TsGroup({0: nap.Ts(t=cp_times)})
     group.set_info(type=["changepoints"])
     data = {"cp_group": group}
-    tvd = extract_type_vars_pynapple(data)
-    assert "changepoints" in tvd
-    assert "cp_group" in tvd["changepoints"]
+    cat = catalog_from_pynapple(data)
+    assert "cp_group" in cat.changepoints
 
 
-def test_extract_type_vars_skips_intervalset(simple_nap_data):
-    tvd = extract_type_vars_pynapple(simple_nap_data)
-    assert "trials" not in tvd["features"]
+def test_catalog_skips_intervalset(simple_nap_data):
+    cat = catalog_from_pynapple(simple_nap_data)
+    assert "trials" not in cat.features
 
 
 # ---------------------------------------------------------------------------
-# Metadata-only TrialTree
+# Lightweight TrialTree from intervals
 # ---------------------------------------------------------------------------
 
 
-def test_metadata_trialtree_has_trials(simple_nap_data):
+def test_trialtree_from_intervals_has_trials(simple_nap_data):
     trials = simple_nap_data["trials"]
-    dt = nap_to_metadata_trialtree(simple_nap_data, trials)
+    dt = _trialtree_from_trials_ep(trials, simple_nap_data)
     assert len(dt.trials) == 2
 
 
-def test_metadata_trialtree_no_data_vars(simple_nap_data):
-    """Metadata TrialTree should NOT contain feature data variables."""
+def test_trialtree_from_intervals_no_data_vars(simple_nap_data):
+    """Lightweight TrialTree should NOT contain feature data variables."""
     trials = simple_nap_data["trials"]
-    dt = nap_to_metadata_trialtree(simple_nap_data, trials)
+    dt = _trialtree_from_trials_ep(trials, simple_nap_data)
     ds = dt.itrial(0)
     assert "speed" not in ds.data_vars
     assert "velocity" not in ds.data_vars
 
 
-def test_metadata_trialtree_has_time_coord(simple_nap_data):
+def test_trialtree_from_intervals_has_time_coord(simple_nap_data):
     trials = simple_nap_data["trials"]
-    dt = nap_to_metadata_trialtree(simple_nap_data, trials)
+    dt = _trialtree_from_trials_ep(trials, simple_nap_data)
     ds = dt.itrial(0)
     assert "time" in ds.coords
     assert ds.time.values[0] < 1.0  # trial-relative
 
 
-def test_metadata_trialtree_session_timing(simple_nap_data):
+def test_trialtree_from_intervals_nwb_path(simple_nap_data):
     trials = simple_nap_data["trials"]
-    dt = nap_to_metadata_trialtree(simple_nap_data, trials)
-    session = dt.session
-    assert session is not None
-    assert "start_time" in session
-    assert "stop_time" in session
+    dt = _trialtree_from_trials_ep(trials, simple_nap_data)
+    assert hasattr(dt, "nwb_path")
+    assert dt.nwb_path is not None
 
 
-def test_metadata_trialtree_no_trials(simple_nap_data):
+def test_trialtree_from_intervals_no_trials(simple_nap_data):
     del simple_nap_data["trials"]
-    dt = nap_to_metadata_trialtree(simple_nap_data, None)
+    dt = _trialtree_from_trials_ep(None, simple_nap_data)
     assert len(dt.trials) == 1
 
 

@@ -2,7 +2,7 @@
 
 Users pick which feature (and sub-dimension) to plot on each axis via
 combo boxes embedded in the dock widget itself.  Data is fetched through
-the FeatureStore so xarray, pynapple, and NWB sources all work.
+the DataLoader so xarray, pynapple, and NWB sources all work.
 """
 
 import logging
@@ -26,8 +26,9 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.features.preprocessing import interpolate_nans
+from ethograph.io.catalog import DataLoader
 from ethograph.gui.plots_lineplot import MultiColoredLineItem
-from ethograph.io.feature_store import FeatureStore
+
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ SEPARATOR = " · "
 # Axis item helpers
 # ---------------------------------------------------------------------------
 
-def _build_axis_items(store: FeatureStore) -> list[str]:
+def _build_axis_items(store: DataLoader) -> list[str]:
     """Build combo items from store features + their sub-dimensions.
 
     Each item is either ``"feature"`` (1-D) or ``"feature · column"`` (2-D+).
@@ -68,7 +69,7 @@ def _parse_axis_item(item: str) -> tuple[str, str | None]:
     return item, None
 
 
-def _select_axis(store: FeatureStore, item: str, selections: dict,
+def _select_axis(store: DataLoader, item: str, selections: dict,
                  t0: float | None = None, t1: float | None = None):
     """Fetch 1-D numpy array + time for a single axis item.
 
@@ -285,7 +286,7 @@ class SpacePlot(QWidget):
         self.app_state = app_state
         self.dock_widget = None
 
-        self._store: FeatureStore | None = None
+        self._store: DataLoader | None = None
 
         # --- Layout ---
         root = QVBoxLayout()
@@ -352,7 +353,7 @@ class SpacePlot(QWidget):
         """Wire up the main plot container for x-range queries."""
         self._plot_container = plot_container
 
-    def set_store(self, store: FeatureStore | None):
+    def set_store(self, store: DataLoader | None):
         """Set the feature store and repopulate axis combos."""
         self._store = store
         self._populate_combos()
@@ -543,7 +544,7 @@ class SpacePlot(QWidget):
         self.update_time_marker(t)
 
 
-    def _get_color_data(self, store: FeatureStore, selections: dict, n: int):
+    def _get_color_data(self, store: DataLoader, selections: dict, n: int):
         """Fetch color data if a color variable is selected."""
         color_var = None
         if hasattr(self.app_state, 'colors_sel') and self.app_state.colors_sel not in (None, "None", ""):

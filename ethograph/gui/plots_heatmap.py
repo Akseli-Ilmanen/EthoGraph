@@ -355,10 +355,10 @@ class HeatmapPlot(BasePlot):
             return self._get_buffered_ephys_envelope(t0, t1)
 
         selections = self.app_state.get_selections()
-        store = getattr(self.app_state, 'feature_store', None)
+        store = getattr(self.app_state, 'data_loader', None)
 
         if store is not None:
-            # FeatureStore path (pynapple or xarray via store)
+            # DataLoader path (pynapple or xarray via loader)
             buf_t0 = t0 - (t1 - t0) * 2
             buf_t1 = t1 + (t1 - t0) * 2
             plot_data = store.select(feature_sel, selections, t0=buf_t0, t1=buf_t1)

@@ -1,10 +1,10 @@
-"""Tests for SpacePlot axis items and data selection via FeatureStore."""
+"""Tests for SpacePlot axis items and data selection via DataLoader."""
 
 import numpy as np
 import pytest
 import xarray as xr
 
-from ethograph.io.feature_store import PlotData, XarrayStore, FeatureStore
+from ethograph.io.catalog import PlotData, XarrayLoader, DataLoader
 from ethograph.gui.plots_space import (
     ReferenceGeometry,
     SEPARATOR,
@@ -65,7 +65,7 @@ def _make_ds():
 
 class TestFeatureDims:
     def test_xarray_position_dims(self):
-        store = XarrayStore(_make_ds())
+        store = XarrayLoader(_make_ds())
         dims = store.feature_dims("position")
         assert "space" in dims
         assert dims["space"] == ["x", "y", "z"]
@@ -73,18 +73,18 @@ class TestFeatureDims:
         assert "individuals" in dims
 
     def test_xarray_1d_feature_has_no_dims(self):
-        store = XarrayStore(_make_ds())
+        store = XarrayLoader(_make_ds())
         dims = store.feature_dims("speed")
         assert dims == {}
 
     def test_xarray_pca_dims(self):
-        store = XarrayStore(_make_ds())
+        store = XarrayLoader(_make_ds())
         dims = store.feature_dims("pca")
         assert "pc" in dims
         assert dims["pc"] == ["PC1", "PC2", "PC3"]
 
     def test_xarray_missing_feature(self):
-        store = XarrayStore(_make_ds())
+        store = XarrayLoader(_make_ds())
         assert store.feature_dims("nonexistent") == {}
 
 
@@ -94,26 +94,26 @@ class TestFeatureDims:
 
 class TestBuildAxisItems:
     def test_items_include_position_columns(self):
-        store = XarrayStore(_make_ds())
+        store = XarrayLoader(_make_ds())
         items = _build_axis_items(store)
         assert f"position{SEPARATOR}x" in items
         assert f"position{SEPARATOR}y" in items
         assert f"position{SEPARATOR}z" in items
 
     def test_items_include_1d_features(self):
-        store = XarrayStore(_make_ds())
+        store = XarrayLoader(_make_ds())
         items = _build_axis_items(store)
         assert "speed" in items
 
     def test_items_include_pca_columns(self):
-        store = XarrayStore(_make_ds())
+        store = XarrayLoader(_make_ds())
         items = _build_axis_items(store)
         assert f"pca{SEPARATOR}PC1" in items
         assert f"pca{SEPARATOR}PC2" in items
 
     def test_no_crash_on_multidim_features(self):
         """Should not crash on features with 3+ non-time dims."""
-        store = XarrayStore(_make_ds())
+        store = XarrayLoader(_make_ds())
         _build_axis_items(store)  # must not raise
 
 
@@ -139,7 +139,7 @@ class TestParseAxisItem:
 
 class TestSelectAxis:
     def test_select_position_x(self):
-        store = XarrayStore(_make_ds())
+        store = XarrayLoader(_make_ds())
         sel = {"keypoints": "nose", "individuals": "animal1"}
         time, data = _select_axis(store, f"position{SEPARATOR}x", sel)
         assert time is not None
@@ -148,28 +148,28 @@ class TestSelectAxis:
         assert len(data) == 50
 
     def test_select_1d_feature(self):
-        store = XarrayStore(_make_ds())
+        store = XarrayLoader(_make_ds())
         time, data = _select_axis(store, "speed", {})
         assert time is not None
         assert data.ndim == 1
         assert len(data) == 50
 
     def test_select_pca_pc1(self):
-        store = XarrayStore(_make_ds())
+        store = XarrayLoader(_make_ds())
         time, data = _select_axis(store, f"pca{SEPARATOR}PC1", {})
         assert data is not None
         assert data.ndim == 1
 
     def test_missing_selections_auto_filled(self):
         """If app_state selections don't cover all dims, defaults are used."""
-        store = XarrayStore(_make_ds())
+        store = XarrayLoader(_make_ds())
         # No keypoints or individuals in selections — should auto-fill
         time, data = _select_axis(store, f"position{SEPARATOR}x", {})
         assert data is not None
         assert data.ndim == 1
 
     def test_select_with_time_range(self):
-        store = XarrayStore(_make_ds())
+        store = XarrayLoader(_make_ds())
         sel = {"keypoints": "nose", "individuals": "animal1"}
         time, data = _select_axis(store, f"position{SEPARATOR}x", sel, t0=0.2, t1=0.8)
         assert time is not None

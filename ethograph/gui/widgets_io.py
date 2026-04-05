@@ -706,32 +706,60 @@ class IOWidget(QWidget):
         target_layout.addRow(pred_group)
 
     def _create_labels_row_at_index(self):
-        """Create the labels row and insert it before the predictions group."""
-        labels_row = QWidget()
-        labels_layout = QHBoxLayout()
-        labels_layout.setContentsMargins(0, 0, 0, 0)
-        labels_row.setLayout(labels_layout)
+        """Create two labels rows: input (browse) and output (auto-generated TSV)."""
+        # Row 1: format combo + input path + browse
+        input_row = QWidget()
+        input_layout = QHBoxLayout()
+        input_layout.setContentsMargins(0, 0, 0, 0)
+        input_row.setLayout(input_layout)
 
         self.labels_format_combo = QComboBox()
         self.labels_format_combo.addItem(".tsv")
         self.labels_format_combo.addItem(".nc (legacy)")
+        self.labels_format_combo.addItem("pynapple (.npz)")
+        self.labels_format_combo.addItem("pynapple (.nwb)")
         if self.app_state.audio_folder:
             from ethograph.labels.converters import CROWSETTA_SEQ_FORMATS
             for fmt in CROWSETTA_SEQ_FORMATS:
                 self.labels_format_combo.addItem(fmt)
         self.labels_format_combo.setToolTip("Label file format to import")
-        labels_layout.addWidget(self.labels_format_combo)
+        self.labels_format_combo.currentTextChanged.connect(self._on_labels_format_changed)
+        input_layout.addWidget(self.labels_format_combo)
 
         self.label_file_path_edit = QLineEdit()
         if self.import_labels_checkbox.isChecked() and self.app_state.nc_file_path:
             _populate_if_exists(self.label_file_path_edit, labels_tsv_path(self.app_state.nc_file_path))
-        labels_layout.addWidget(self.label_file_path_edit)
+        input_layout.addWidget(self.label_file_path_edit)
 
-        labels_browse_btn = QPushButton("Browse")
-        labels_browse_btn.clicked.connect(self._on_labels_browse_clicked)
-        labels_layout.addWidget(labels_browse_btn)
+        self.labels_browse_btn = QPushButton("Browse")
+        self.labels_browse_btn.clicked.connect(self._on_labels_browse_clicked)
+        input_layout.addWidget(self.labels_browse_btn)
 
-        self._labels_group_layout.insertRow(self._labels_row_index, "Labels path:", labels_row)
+        self._labels_input_label = QLabel("Labels path:")
+        self._labels_group_layout.insertRow(self._labels_row_index, self._labels_input_label, input_row)
+
+        # Row 2: output TSV path (read-only, no browse, greyed out for .tsv)
+        self.labels_output_edit = QLineEdit()
+        self.labels_output_edit.setReadOnly(True)
+        self.labels_output_edit.setPlaceholderText("Converted .tsv output will appear here")
+        self._labels_output_label = QLabel("Labels output:")
+        self._labels_group_layout.insertRow(self._labels_row_index + 1, self._labels_output_label, self.labels_output_edit)
+
+        # Initial state: .tsv selected → output row disabled
+        self._set_labels_output_enabled(False)
+
+    def _set_labels_output_enabled(self, enabled: bool):
+        self.labels_output_edit.setEnabled(enabled)
+        self._labels_output_label.setEnabled(enabled)
+
+    def _on_labels_format_changed(self, fmt: str):
+        is_tsv = fmt == ".tsv"
+        self._set_labels_output_enabled(not is_tsv)
+        if is_tsv:
+            self._labels_input_label.setText("Labels path:")
+            self.labels_output_edit.clear()
+        else:
+            self._labels_input_label.setText("Labels input:")
 
     def _on_labels_browse_clicked(self):
         fmt = self.labels_format_combo.currentText()
@@ -740,6 +768,9 @@ class IOWidget(QWidget):
             return
         if fmt == ".nc (legacy)":
             self.on_browse_clicked("file", "labels")
+            return
+        if fmt.startswith("pynapple"):
+            self._import_pynapple_labels()
             return
         self._import_crowsetta_labels(fmt)
 
@@ -849,17 +880,119 @@ class IOWidget(QWidget):
             notify_dialog("No non-background labels found in file.", "info", "No labels", self)
             return
 
+        self._apply_imported_intervals(intervals_df)
+
+    def _import_pynapple_labels(self):
+        """Import labels from a pynapple .npz or .nwb file."""
+        import pynapple as nap
+
+        fmt = self.labels_format_combo.currentText()
+        ext_filter = {
+            "pynapple (.npz)": "NPZ files (*.npz);;All files (*)",
+            "pynapple (.nwb)": "NWB files (*.nwb);;All files (*)",
+        }.get(fmt, "All files (*)")
+
+        nc_parent = ""
+        if self.app_state.nc_file_path:
+            nc_parent = str(Path(self.app_state.nc_file_path).parent)
+
+        result = QFileDialog.getOpenFileName(
+            self, caption=f"Open {fmt} file for labels", dir=nc_parent, filter=ext_filter,
+        )
+        file_path = result[0] if result and result[0] else ""
+        if not file_path:
+            return
+
+        self.label_file_path_edit.setText(file_path)
+
+        try:
+            data = nap.load_file(file_path)
+        except Exception as e:
+            logger.exception("Failed to load pynapple file")
+            notify_dialog(f"Failed to load pynapple file:\n{e}", "error", "Import error", self)
+            return
+
+        intervalsets = {}
+        for key in data.keys():
+            try:
+                val = data[key]
+            except Exception:
+                continue
+            if isinstance(val, nap.IntervalSet) and key.lower() != "trials":
+                intervalsets[key] = val
+
+        if not intervalsets:
+            notify_dialog("No IntervalSets found (excluding 'trials').", "info", "No labels", self)
+            return
+
+        from ethograph.labels.converters import build_mapping_from_labels, write_mapping_file
+        from ethograph.labels.intervals import _rows_to_df
+
+        label_names = sorted(intervalsets.keys())
+        name_to_id = build_mapping_from_labels(label_names)
+
+        data_dir = Path(self.app_state.nc_file_path).parent if self.app_state.nc_file_path else None
+        configs_dir = default_config_dir(data_dir)
+        mapping_path = configs_dir / "mapping_pynapple.txt"
+        write_mapping_file(mapping_path, name_to_id)
+        self.mapping_file_path_edit.setText(str(mapping_path))
+        if self.labels_widget:
+            self.labels_widget._reload_mapping(str(mapping_path))
+
+        individual = "ind0"
+        ds = getattr(self.app_state, "ds", None)
+        if ds is not None and "individuals" in ds.coords:
+            individual = str(ds.coords["individuals"].values[0])
+
+        rows: list[dict] = []
+        for name, iset in intervalsets.items():
+            label_id = name_to_id.get(name, 0)
+            if label_id == 0:
+                continue
+            starts = np.asarray(iset.start)
+            ends = np.asarray(iset.end)
+            for s, e in zip(starts, ends):
+                rows.append({
+                    "onset_s": float(s),
+                    "offset_s": float(e),
+                    "labels": label_id,
+                    "individual": individual,
+                })
+
+        intervals_df = _rows_to_df(rows)
+        if intervals_df.empty:
+            notify_dialog("No intervals found in IntervalSets.", "info", "No labels", self)
+            return
+
+        self._apply_imported_intervals(intervals_df)
+
+    def _apply_imported_intervals(self, intervals_df):
+        """Common post-import: save converted TSV, load into app state, refresh UI."""
+        from ethograph.labels.tsv_store import save_labels_tsv, TRIAL_META_DEFAULTS
+
         self.app_state.label_intervals = intervals_df
 
         trial = getattr(self.app_state, "trials_sel", None)
         if trial is not None:
             self.app_state.set_trial_intervals(trial, intervals_df)
 
+        # For non-.tsv formats, save the converted TSV and show in output row
+        fmt = self.labels_format_combo.currentText()
+        if fmt != ".tsv" and self.app_state.nc_file_path:
+            tsv_out = labels_tsv_path(self.app_state.nc_file_path)
+            all_df = self.app_state._all_labels_df
+            if all_df is not None and not all_df.empty:
+                save_labels_tsv(tsv_out, all_df)
+            self.labels_output_edit.setText(str(tsv_out))
+
         if hasattr(self, "changepoints_widget") and self.changepoints_widget:
             self.changepoints_widget._update_cp_status()
         if self.labels_widget:
             self.labels_widget._mark_changes_unsaved()
             self.labels_widget.refresh_labels_shapes_layer()
+        self._update_human_verified_status()
+        self._update_correct_offsets_status()
+        self._update_purge_small_labels_status()
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
             if self.data_widget.plot_container:
@@ -1101,7 +1234,7 @@ class IOWidget(QWidget):
     # Device controls (populated after load)
     # ------------------------------------------------------------------
 
-    def create_device_controls(self, type_vars_dict):
+    def create_device_controls(self, catalog):
         self._create_labels_row_at_index()
         self.controls.append(self.label_file_path_edit)
 

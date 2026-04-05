@@ -89,6 +89,7 @@ gui = [
     "jinja2",
     "natsort",
     "tqdm",
+    "nwb-video-widgets @ git+https://github.com/Akseli-Ilmanen/nwb-video-widgets.git",
     "ethograph[audio]",
     "ethograph[neural]",
 ]

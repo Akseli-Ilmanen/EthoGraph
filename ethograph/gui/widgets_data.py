@@ -25,7 +25,6 @@ from qtpy.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
-    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -146,34 +145,71 @@ class DataPanel(QWidget):
         layout.setContentsMargins(DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN)
         self.setLayout(layout)
 
-        self.tab_widget = QTabWidget()
-        self.tab_widget.setStyleSheet("QTabBar::tab { padding: 4px 16px; }")
-        self.tab_widget.tabBar().setExpanding(True)
-        layout.addWidget(self.tab_widget)
+        self._create_toggle_buttons(layout)
 
-        main_tab = QWidget()
+        self.main_panel = QWidget()
         main_layout = QVBoxLayout()
         main_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
         main_layout.setContentsMargins(2, 2, 2, 2)
-        main_tab.setLayout(main_layout)
+        self.main_panel.setLayout(main_layout)
         self._create_main_section(main_layout)
-        self.tab_widget.addTab(main_tab, "Main")
+        layout.addWidget(self.main_panel)
 
-        pose_tab = QWidget()
+        self.pose_panel = QWidget()
         pose_layout = QVBoxLayout()
         pose_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
         pose_layout.setContentsMargins(2, 2, 2, 2)
-        pose_tab.setLayout(pose_layout)
+        self.pose_panel.setLayout(pose_layout)
         self._create_pose_section(pose_layout)
-        self.tab_widget.addTab(pose_tab, "Pose")
+        layout.addWidget(self.pose_panel)
 
-        audio_tab = QWidget()
+        self.audio_panel = QWidget()
         audio_layout = QVBoxLayout()
         audio_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
         audio_layout.setContentsMargins(2, 2, 2, 2)
-        audio_tab.setLayout(audio_layout)
+        self.audio_panel.setLayout(audio_layout)
         self._create_audio_section(audio_layout)
-        self.tab_widget.addTab(audio_tab, "Audio")
+        layout.addWidget(self.audio_panel)
+
+        self._show_panel("main")
+
+    def _create_toggle_buttons(self, parent_layout):
+        toggle_widget = QWidget()
+        toggle_layout = QHBoxLayout()
+        toggle_layout.setSpacing(2)
+        toggle_layout.setContentsMargins(0, 0, 0, 0)
+        toggle_widget.setLayout(toggle_layout)
+
+        self.main_toggle = QPushButton("Main")
+        self.main_toggle.setCheckable(True)
+        self.main_toggle.clicked.connect(lambda: self._show_panel("main"))
+        toggle_layout.addWidget(self.main_toggle)
+
+        self.pose_toggle = QPushButton("Pose")
+        self.pose_toggle.setCheckable(True)
+        self.pose_toggle.clicked.connect(lambda: self._show_panel("pose"))
+        toggle_layout.addWidget(self.pose_toggle)
+
+        self.audio_toggle = QPushButton("Audio")
+        self.audio_toggle.setCheckable(True)
+        self.audio_toggle.clicked.connect(lambda: self._show_panel("audio"))
+        toggle_layout.addWidget(self.audio_toggle)
+
+        parent_layout.addWidget(toggle_widget)
+
+    def _show_panel(self, panel_name):
+        panels = {
+            "main": (self.main_panel, self.main_toggle),
+            "pose": (self.pose_panel, self.pose_toggle),
+            "audio": (self.audio_panel, self.audio_toggle),
+        }
+        for name, (panel, toggle) in panels.items():
+            if name == panel_name:
+                panel.show()
+                toggle.setChecked(True)
+            else:
+                panel.hide()
+                toggle.setChecked(False)
 
     def _create_main_section(self, parent_layout):
         self.coords_groupbox = QGroupBox("Xarray coords")
@@ -372,7 +408,7 @@ class DataWidget(QWidget):
         self.video_mgr.set_frame_changed_callback(self._on_primary_frame_changed)
         self.pose_mgr: PoseDisplayManager | None = None  # created after set_data_panel
         self.app_state.audio_video_sync = None
-        self.type_vars_dict = {}
+        self.catalog = None  # DataCatalog set after load
 
     def set_data_panel(self, panel: DataPanel):
         self.data_panel = panel
@@ -494,10 +530,10 @@ class DataWidget(QWidget):
             dt.close()
             self.app_state.dt = None
         self.app_state.ds = None
-        self.app_state.feature_store = None
+        self.app_state.data_loader = None
         self.app_state._all_labels_df = None
         self.app_state.labels_confidence_ds = None
-        self.type_vars_dict = {}
+        self.catalog = None
         self.app_state.ready = False
 
     def _cancel_load(self, reason: str):
@@ -518,7 +554,7 @@ class DataWidget(QWidget):
         self.app_state.has_pose = bool(self.app_state.pose_folder)
 
         try:
-            self.app_state.dt, all_labels_df, self.type_vars_dict = load_dataset(
+            self.app_state.dt, all_labels_df, catalog = load_dataset(
                 nc_file_path,
                 require_fps=self.app_state.has_pose,
                 progress_callback=getattr(self.app_state, "_progress_callback", None),
@@ -526,6 +562,7 @@ class DataWidget(QWidget):
                 dandiset_id=getattr(self.app_state, "_dandi_dandiset_id", None),
                 import_labels=self.io_widget.import_labels_checkbox.isChecked(),
             )
+            self.catalog = catalog
             nwb_video_folder = self.app_state.dt.attrs.get("nwb_video_folder")
             if nwb_video_folder and not self.app_state.video_folder:
                 from .dialog_video_downsample import offer_downsample
@@ -535,11 +572,10 @@ class DataWidget(QWidget):
             self._cancel_load(f"Failed to load dataset: {e}")
             return
 
+        self.app_state.trial_conditions = self.catalog.trial_conditions
 
-        self.app_state.trial_conditions = self.type_vars_dict["trial_conditions"]
-
-        # Extract feature_store from pynapple loader (xarray store created later after ds is set)
-        self._pending_feature_store = self.app_state.dt.attrs.pop("feature_store", None)
+        # Extract data_loader from pynapple/NWB loader (xarray loader created later after ds is set)
+        self._pending_loader = self.app_state.dt.attrs.pop("data_loader", None)
 
         dt_attrs = self.app_state.dt.attrs
 
@@ -596,13 +632,14 @@ class DataWidget(QWidget):
         self.app_state.trials = sorted(trials)
         self.app_state.ds = self.app_state.dt.trial(self.app_state.trials[0])
 
-        # Now ds is set — create or finalize feature_store
-        store = self._pending_feature_store
+        # Now ds is set — create or finalize DataLoader
+        store = self._pending_loader
         if store is None:
-            from ethograph.io.feature_store import XarrayStore
-            store = XarrayStore(self.app_state.ds)
-        self.app_state.feature_store = store
-        self._pending_feature_store = None
+            from ethograph.io.catalog import XarrayLoader, catalog_from_xarray
+            cat = catalog_from_xarray(self.app_state.ds, self.app_state.dt)
+            store = XarrayLoader(self.app_state.ds, cat)
+        self.app_state.data_loader = store
+        self._pending_loader = None
 
         # Set trials_sel early so _expand_mics_with_channels / get_media
         # can resolve filenames during UI creation.
@@ -703,20 +740,17 @@ class DataWidget(QWidget):
 
 
     def _create_trial_controls(self):
-        self.io_widget.create_device_controls(self.type_vars_dict)
-        self.navigation_widget.setup_trial_conditions(self.type_vars_dict)
+        self.io_widget.create_device_controls(self.catalog)
+        self.navigation_widget.setup_trial_conditions(self.catalog)
         self.navigation_widget.set_data_widget(self)
 
         if getattr(self, "trials_widget", None) is not None:
             self.trials_widget.setup(self.app_state.dt.metadata_df)
 
-        non_data_type_vars = ["mics", "cameras", "trial_conditions", "changepoints", "rgb"]
-        for type_var in self.type_vars_dict.keys():
-            if type_var.lower() not in non_data_type_vars:
-                vars_list = self.type_vars_dict[type_var]
-                if hasattr(vars_list, '__len__') and len(vars_list) == 0:
-                    continue
-                self._create_combo_widget(type_var, vars_list)
+        for combo_name, combo_spec in self.catalog.combos.items():
+            if not combo_spec.values:
+                continue
+            self._create_combo_widget(combo_name, list(combo_spec.values))
 
         # Restore camera combos
         has_nwb_pose = "nwb_source" in self.app_state.dt.attrs and (
@@ -782,7 +816,7 @@ class DataWidget(QWidget):
         has_audio = bool(self.app_state.has_audio)
         has_neo = bool(self.app_state.has_neo)
         has_phy = bool(self.app_state.has_neurons)
-        has_features = self.type_vars_dict.get("features") != []
+        has_features = bool(self.catalog and self.catalog.features)
 
         # Whether this panel's data is available in the current session.
         # When data is NOT available the checkbox is forced unchecked and signals are
@@ -855,7 +889,7 @@ class DataWidget(QWidget):
 
         # Row 2: mic selector
         if has_audio:
-            mic_names = self.type_vars_dict.get("mics", [])
+            mic_names = self.catalog.mics if self.catalog else []
             expanded = self._expand_mics_with_channels(mic_names)
             self.mics_combo = QComboBox()
             self.mics_combo.setObjectName("mics_combo")
@@ -1535,30 +1569,33 @@ class DataWidget(QWidget):
         self.app_state.all_checkbox_states = states
 
     def _restore_or_set_defaults(self):
-        for key, vars in self.type_vars_dict.items():
+        if not self.catalog:
+            return
+        for key, spec in self.catalog.combos.items():
             combo = self.io_widget.combos.get(key) or self.combos.get(key)
+            vals = list(spec.values)
 
-            if combo is not None:
+            if combo is not None and vals:
                 saved_value = self.app_state.get_key_sel(key) if self.app_state.key_sel_exists(key) else None
-                vars_str = [str(var) for var in vars]
+                vals_str = [str(v) for v in vals]
 
-                if saved_value in vars_str:
+                if saved_value in vals_str:
                     set_combo_to_value(combo, saved_value)
                 elif saved_value and key == "mics":
-                    match = next((v for v in vars_str if v.startswith(str(saved_value))), None)
+                    match = next((v for v in vals_str if v.startswith(str(saved_value))), None)
                     if match:
                         set_combo_to_value(combo, match)
                         self.app_state.set_key_sel(key, match)
                     else:
-                        set_combo_to_value(combo, str(vars[0]))
-                        self.app_state.set_key_sel(key, str(vars[0]))
+                        set_combo_to_value(combo, vals_str[0])
+                        self.app_state.set_key_sel(key, vals_str[0])
                 else:
-                    if key == "features" and "speed" in vars:
+                    if key == "features" and "speed" in vals_str:
                         set_combo_to_value(combo, "speed")
                         self.app_state.set_key_sel(key, "speed")
                     else:
-                        set_combo_to_value(combo, str(vars[0]))
-                        self.app_state.set_key_sel(key, str(vars[0]))
+                        set_combo_to_value(combo, vals_str[0])
+                        self.app_state.set_key_sel(key, vals_str[0])
 
 
         if self.app_state.key_sel_exists("trials"):
@@ -1750,9 +1787,9 @@ class DataWidget(QWidget):
 
         self.app_state.ds = self.app_state.dt.trial(trials_sel)
 
-        # Update feature_store trial index (pynapple: restrict changes;
-        # xarray: XarrayStore.update_ds swaps the backing dataset)
-        store = self.app_state.feature_store
+        # Update data_loader trial index (pynapple: restrict changes;
+        # xarray: XarrayLoader.update_ds swaps the backing dataset)
+        store = self.app_state.data_loader
         if store is not None:
             trial_idx = self.app_state.trials.index(trials_sel)
             store.set_trial(trial_idx)
@@ -2073,10 +2110,11 @@ class DataWidget(QWidget):
             if self.labels_widget:
                 self.labels_widget.highlight_spaceplot.connect(self._highlight_positions_in_space_plot)
 
-        store = getattr(self.app_state, 'feature_store', None)
+        store = getattr(self.app_state, 'data_loader', None)
         if store is None and self.app_state.ds is not None:
-            from ethograph.io.feature_store import XarrayStore
-            store = XarrayStore(self.app_state.ds)
+            from ethograph.io.catalog import XarrayLoader, catalog_from_xarray
+            cat = catalog_from_xarray(self.app_state.ds, self.app_state.dt)
+            store = XarrayLoader(self.app_state.ds, cat)
 
         self.space_plot.set_store(store)
         self.space_plot.refresh()

@@ -160,7 +160,7 @@ class ChangepointsWidget(QWidget):
         trial = self.app_state.trials_sel
         self.app_state.dt.update_trial(trial, lambda _: new_ds)
         self.app_state.ds = self.app_state.dt.trial(trial)
-        store = getattr(self.app_state, "feature_store", None)
+        store = getattr(self.app_state, "data_loader", None)
         if store is not None and hasattr(store, "update_ds"):
             store.update_ds(self.app_state.ds)
 
@@ -1316,7 +1316,7 @@ class ChangepointsWidget(QWidget):
 
     def _extract_cp_times(self, ds, ds_kwargs):
         """Extract changepoint times from either backend."""
-        store = getattr(self.app_state, 'feature_store', None)
+        store = getattr(self.app_state, 'data_loader', None)
         if store is not None:
             feature = getattr(self.app_state, 'features_sel', None)
             return store.get_cp_times(feature)

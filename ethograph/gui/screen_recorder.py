@@ -36,9 +36,11 @@ CROP_MODES = {
 
 SCALE_PRESETS = {
     "Native": 1.0,
-    "720p": 720,
-    "1080p": 1080,
-    "480p": 480,
+    "4K (3840×2160)": (3840, 2160),
+    "1440p (2560×1440)": (2560, 1440),
+    "1080p (1920×1080)": (1920, 1080),
+    "720p (1280×720)": (1280, 720),
+    "480p (854×480)": (854, 480),
 }
 
 
@@ -68,9 +70,13 @@ def _scale_frame(frame: np.ndarray, scale) -> np.ndarray:
     if scale is None or scale == 1.0:
         return frame
     h, w = frame.shape[:2]
-    if isinstance(scale, (int, float)) and scale > 1:
+    if isinstance(scale, tuple):
+        target_w, target_h = scale
+        if w == target_w and h == target_h:
+            return frame
+    elif isinstance(scale, (int, float)) and scale > 1:
         target_h = int(scale)
-        if h <= target_h:
+        if h == target_h:
             return frame
         ratio = target_h / h
         target_w = int(w * ratio)
@@ -218,7 +224,7 @@ class RecordDialog(QDialog):
         grid.addWidget(QLabel("FPS:"), row, 0)
         self.fps_spin = QSpinBox()
         self.fps_spin.setRange(1, 60)
-        self.fps_spin.setValue(24)
+        self.fps_spin.setValue(30)
         grid.addWidget(self.fps_spin, row, 1)
         row += 1
 

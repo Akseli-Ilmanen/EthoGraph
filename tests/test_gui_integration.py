@@ -35,9 +35,9 @@ class TestDataLoading:
         assert state.time is not None
         assert len(state.time) > 0
 
-        tvd = meta.data_widget.type_vars_dict
-        assert "features" in tvd
-        assert len(tvd["features"]) > 0
+        cat = meta.data_widget.catalog
+        assert cat is not None
+        assert len(cat.features) > 0
 
     def test_combos_populated_after_load(self, loaded_gui):
         _, meta = loaded_gui

@@ -114,11 +114,13 @@ ethograph/labels/
     export.py                 # enrich_labels_df(), correct_offsets_trial()
 
 ethograph/io/
+    catalog.py                # Unified DataCatalog + DataLoader (XarrayLoader, PynappleLoader, NWBLoader)
+    nwb_backend.py            # NWB traversal + combo detection: open_nwb, catalog_nwb, ComboCatalog, load_slice
     trialtree.py              # TrialTree (xr.DataTree subclass)
     dataset.py                # dataset_to_basic_trialtree, downsample_trialtree
-    feature_store.py          # PlotData, FeatureStore protocol, XarrayStore, PynappleStore
-    validation.py             # extract_type_vars, extract_type_vars_unified, validate_datatree
-    pynapple.py               # Pynapple/NWB loading: load_nap_data, nap_to_metadata_trialtree, PynappleStore
+    feature_store.py          # Backwards-compat re-exports from catalog.py
+    validation.py             # validate_datatree, extract_type_vars (delegates to catalog)
+    pynapple.py               # Pynapple/NWB loading: load_nap_data, detect_trials, changepoint helpers
     restrict.py               # Restriction logic: build_trial/label/sequence_window, find_closest_trial
 
 ethograph/utils/
@@ -186,28 +188,35 @@ Key signals: `trial_changed`, `restrict_window_changed`, `labels_modified`, `ver
 
 **Sequence matching** (`ethograph/utils/sequences.py`): `match_sequences()`, `get_label_instances()`, `get_unique_sequences()`.
 
-### Feature Store: `feature_store.py`
+### Unified Data Catalog + Loader: `catalog.py`
 
-**`FeatureStore`** (Protocol) — backend-agnostic interface: `features`, `dims`, `colors`, `select(feature, selections, t0, t1)` → `PlotData`.
+Replaces the old `type_vars_dict` pattern with two explicit abstractions:
 
-**`PlotData`** — source-agnostic dataclass: `time`, `data` (numpy), `dim_labels`, `title`, `ylabel`, `color_data`, `changepoints`, `boundary_events`. Consumed by `render_plot_data()` in `plots_lineplot.py`.
+**`DataCatalog`** — declares what's available: features, dimensions (combos), streams. Built by `catalog_from_xarray()`, `catalog_from_pynapple()`, or `catalog_from_nwb()`. The GUI creates combo boxes from `catalog.combos`. `catalog.to_type_vars_dict()` provides backwards-compat dict for existing GUI code.
 
-**Concrete stores:**
-- `XarrayStore` — wraps `xr.Dataset`, delegates to `sel_valid()`. Updated on trial change via `update_ds()`.
-- `PynappleStore` — wraps raw pynapple dict. Lazy: data never copied to xarray. Uses `restrict()` for trial + time window, column indexing for dim selection.
+**`DataLoader`** (Protocol) — backend-agnostic data access. `select(feature, selections, t0, t1) → PlotData`. Follows the `sel_valid` principle: combo selections can be overspecified, loaders ignore dimensions that don't exist on the target feature.
 
-**Shared column dimensions:** `_compute_shared_column_dims()` groups TsdFrame objects by their column values. Objects with identical columns (e.g. position & velocity both with x/y/z) share one dimension name → one combo in the GUI.
+**`PlotData`** — source-agnostic dataclass: `time`, `data` (numpy `(T,)` or `(T,D)`), `dim_labels`, `title`, `ylabel`, `color_data`, `changepoints`, `boundary_events`. Consumed by `render_plot_data()` in `plots_lineplot.py`.
 
-### Pynapple/NWB Data Loading
+**Concrete loaders:**
+- `XarrayLoader` — wraps `xr.Dataset`, delegates to `sel_valid()`. Updated on trial change via `update_ds()`.
+- `PynappleLoader` — wraps raw pynapple dict. Lazy: data never copied to xarray. Uses `restrict()` for trial + time window, column indexing for dim selection.
+- `NWBLoader` — wraps NWB file via `nwb_catalog` + `ComboCatalog`. Supports local and remote (remfile) access. Time slicing via rate-based indexing or `np.searchsorted` on timestamps.
 
-The GUI supports loading `.nc` (NetCDF), `.nwb`, `.npz`, pynapple folders, and NWB project directories. Dispatch happens in `data_loader.py`:
-- `.nc` → `eto.open()` (existing path, `XarrayStore`). If `.nc` has `nwb_source` attr, also attaches a `PynappleStore` for lazy NWB features.
-- `.nwb`/`.npz`/folder → `load_nap_data()` + `PynappleStore` (lazy) + `nap_to_metadata_trialtree()` (lightweight TrialTree for navigation/labels, no data vars)
-- NWB project dir (has `.ethograph/project.json`) → loads NWB via pynapple, applies config (pose keys, video matching, ephys). No `.nc` file needed.
+**Shared column dimensions:** `_compute_shared_column_dims()` (in `catalog.py`) groups TsdFrame objects by their column values. Objects with identical columns (e.g. position & velocity both with x/y/z) share one dimension name → one combo in the GUI.
 
-`PynappleStore` holds raw pynapple objects. On each `select()` call it restricts to the current trial via `IntervalSet`, time-slices, selects columns, and returns trial-relative numpy arrays in a `PlotData`.
+**NWB Catalog** (`nwb_catalog.py` + `combos.py`): Low-level NWB traversal produces `NWBCatalog` with `TimeSeriesRecord`s and `TimeIntervalsRecord`s. `combos.py` detects combo dimensions (module, group, keypoint, feature, space) from NWB hierarchy and builds a `ComboCatalog` with `filter()`, `load_slice()`, `load_stacked()`.
 
-`nap_to_metadata_trialtree()` creates a TrialTree with just time coordinates and session table (for trial navigation and label storage) — no feature data variables.
+**Backwards compat:** `feature_store.py` re-exports old names (`XarrayStore`, `PynappleStore`, `FeatureStore`) as aliases for the new classes.
+
+### Data Loading: `data_loader.py`
+
+The GUI supports loading `.nc` (NetCDF), `.nwb`, `.npz`, pynapple folders, and NWB project directories. Dispatch in `data_loader.py`:
+- `.nc` → `eto.open()` + `catalog_from_xarray()`. If `.nc` has `nwb_source` attr, also attaches a `PynappleLoader` for lazy NWB features.
+- `.nwb`/`.npz`/folder → `load_nap_data()` + `catalog_from_pynapple()` + `PynappleLoader`. Lightweight TrialTree via `_trialtree_from_trials_ep()` (just trial boundaries, no feature data).
+- NWB project dir (has `.ethograph/project.json`) → loads NWB via pynapple, applies config (pose keys, video matching, ephys).
+
+`load_dataset()` returns `(dt, all_labels_df, catalog)` where `catalog` is a `DataCatalog`.
 
 ### Pose Rendering: `pose_render.py`
 

@@ -147,7 +147,7 @@ class AppStateSpec:
         "feature_view_mode": (str, "LinePlot", True, SCOPE_LOCAL),
 
         # Data
-        "feature_store": (object | None, None, False),
+        "data_loader": (object | None, None, False),
         "ds": (xr.Dataset | None, None, False),
         "ds_temp": (xr.Dataset | None, None, False),
         "dt": (xr.DataTree | None, None, False),
@@ -583,10 +583,10 @@ class ObservableAppState(QObject):
     def get_selections(self) -> dict[str, str]:
         """Backend-agnostic selection dict from combo *_sel attributes.
 
-        Uses ``feature_store.dims`` when available (pynapple path),
+        Uses ``data_loader.dims`` when available (pynapple path),
         falls back to ``get_ds_kwargs()`` for pure xarray.
         """
-        store = getattr(self, "feature_store", None)
+        store = getattr(self, "data_loader", None)
         if store is None:
             if self.ds is None:
                 return {}

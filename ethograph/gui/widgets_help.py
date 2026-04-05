@@ -194,12 +194,12 @@ class HelpWidget(QWidget):
 
         print(SEP)
         print("=" * 60)
-        print("  FEATURE STORE / DATASET")
+        print("  DATA LOADER / DATASET")
         print("=" * 60)
-        store = getattr(self.app_state, 'feature_store', None)
+        store = getattr(self.app_state, 'data_loader', None)
         ds = getattr(self.app_state, 'ds', None)
         if store is None:
-            print("  No feature_store.")
+            print("  No data_loader.")
         else:
             print(f"  Store type: {type(store).__name__} (backend={store.backend})")
             print(f"  Features: {store.features}")

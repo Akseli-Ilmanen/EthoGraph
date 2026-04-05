@@ -469,9 +469,11 @@ class TestMoll2025Pynapple:
         assert meta.app_state.dt is not None
 
     def test_npz_type_vars_structure(self):
-        from ethograph.io.pynapple import load_nap_data, extract_type_vars_pynapple
+        from ethograph.io.catalog import catalog_from_pynapple
+        from ethograph.io.pynapple import load_nap_data
         data, trials_ep = load_nap_data(str(self._speed_npz))
-        tv = extract_type_vars_pynapple(data)
+        cat = catalog_from_pynapple(data, trials_ep)
+        tv = cat.to_type_vars_dict()
         assert isinstance(tv, dict)
         assert "features" in tv or "individuals" in tv or len(tv) > 0
 

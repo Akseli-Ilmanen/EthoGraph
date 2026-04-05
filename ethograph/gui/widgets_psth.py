@@ -426,8 +426,8 @@ class PSTHDialog(QDialog):
         self._cond_key_combo.clear()
         self._cond_key_combo.addItem("None", None)
 
-        type_vars = getattr(self.navigation_widget, "type_vars_dict", {})
-        for condition in type_vars.get("trial_conditions", []):
+        catalog = getattr(self.navigation_widget, "catalog", None)
+        for condition in (catalog.trial_conditions if catalog else []):
             self._cond_key_combo.addItem(str(condition), condition)
 
         self._cond_key_combo.blockSignals(False)

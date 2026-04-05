@@ -331,12 +331,14 @@ class LabelsWidget(QWidget):
         checkbox.setStyleSheet("QCheckBox { color: #ccc; font-weight: bold; }")
         checkbox.toggled.connect(lambda state, b=branch_idx: self._on_branch_toggled(b, state))
         header_row.addWidget(checkbox)
-        delete_btn = QPushButton("x")
-        delete_btn.setFixedSize(20, 20)
-        delete_btn.setToolTip("Delete this branch (must be empty)")
-        delete_btn.setStyleSheet("QPushButton { color: #aaa; background: transparent; border: none; font-weight: bold; } QPushButton:hover { color: #f66; }")
-        delete_btn.clicked.connect(lambda _, b=branch_idx: self._delete_branch(b))
-        header_row.addWidget(delete_btn)
+        if branch_idx > 0:
+            delete_btn = QPushButton("x")
+            delete_btn.setFixedSize(20, 20)
+            delete_btn.setToolTip("Delete this branch (must be empty)")
+            delete_btn.setStyleSheet("QPushButton { color: #aaa; background: transparent; border: none; font-weight: bold; } QPushButton:hover { color: #f66; }")
+            delete_btn.clicked.connect(lambda _, b=branch_idx: self._delete_branch(b))
+            header_row.addWidget(delete_btn)
+        header_row.addStretch()
         section_layout.addLayout(header_row)
 
         table = self._create_branch_table(branch_idx)
@@ -473,13 +475,14 @@ class LabelsWidget(QWidget):
             self._mappings = load_label_mapping(Path(mapping_path))
             self._mapping_file_path = mapping_path
             self.app_state._label_mappings = self._mappings
-            # Reset active branches — all branches in the new mapping start active
+            # Reset active branches — only the first branch starts active
             new_branches = {
                 data.get("branch", 0)
                 for data in self._mappings.values()
                 if isinstance(data, dict)
             }
-            self.app_state._active_branches = new_branches if new_branches else {0}
+            first_branch = min(new_branches) if new_branches else 0
+            self.app_state._active_branches = {first_branch}
             # Remove stale branch UI sections
             for b in list(self._branch_sections):
                 section = self._branch_sections.pop(b)
@@ -824,7 +827,7 @@ class LabelsWidget(QWidget):
 
         Works entirely in the time domain. Also considers audio changepoints.
         """
-        store = getattr(self.app_state, 'feature_store', None)
+        store = getattr(self.app_state, 'data_loader', None)
         if store is not None:
             feature = getattr(self.app_state, 'features_sel', None)
             cp_times = store.get_cp_times(feature)

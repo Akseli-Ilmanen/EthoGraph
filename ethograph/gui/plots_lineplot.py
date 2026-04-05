@@ -8,7 +8,7 @@ import numpy as np
 import pyqtgraph as pg
 
 import ethograph as eto
-from ethograph.io.feature_store import PlotData
+from ethograph.io.catalog import PlotData
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ class LinePlot(BasePlot):
 
     @property
     def _store(self):
-        return getattr(self.app_state, 'feature_store', None)
+        return getattr(self.app_state, 'data_loader', None)
 
     def _on_view_range_changed(self):
         if not self.isVisible():
@@ -315,10 +315,10 @@ def plot_singledim(plot_item, time, data, color_data=None, changepoints_dict=Non
 
 
 def select_feature(ds, variable, ds_kwargs, color_variable=None) -> PlotData | None:
-    """Extract plot-ready data from an xarray Dataset via XarrayStore."""
-    from ethograph.io.feature_store import XarrayStore
+    """Extract plot-ready data from an xarray Dataset via XarrayLoader."""
+    from ethograph.io.catalog import XarrayLoader
 
-    return XarrayStore(ds).select(variable, ds_kwargs, color_variable=color_variable)
+    return XarrayLoader(ds).select(variable, ds_kwargs, color_variable=color_variable)
 
 
 def render_plot_data(plot_item, plot_data: PlotData, show_changepoints=True) -> list:
