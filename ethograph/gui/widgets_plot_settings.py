@@ -300,7 +300,7 @@ class PlotSettingsWidget(QWidget):
         row = 0
         group_layout.addWidget(QLabel("Percentile XYZ-lim:"), row, 0)
         self.space_percentile_spin = QDoubleSpinBox()
-        self.space_percentile_spin.setRange(90.0, 100.0)
+        self.space_percentile_spin.setRange(50.0, 100.0)
         self.space_percentile_spin.setSingleStep(0.5)
         self.space_percentile_spin.setDecimals(1)
         self.space_percentile_spin.setToolTip(

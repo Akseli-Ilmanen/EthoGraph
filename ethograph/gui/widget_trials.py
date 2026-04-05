@@ -144,7 +144,17 @@ class TrialsWidget(QWidget):
         for r, (_, row) in enumerate(df.iterrows()):
             for c, col in enumerate(cols):
                 val = row[col]
-                item = QTableWidgetItem(str(val) if pd.notna(val) else "")
+                item = QTableWidgetItem()
+                if pd.notna(val):
+                    # Store numeric types natively so Qt sorts numerically
+                    if isinstance(val, (int, np.integer)):
+                        item.setData(Qt.DisplayRole, int(val))
+                    elif isinstance(val, (float, np.floating)):
+                        item.setData(Qt.DisplayRole, float(val))
+                    else:
+                        item.setData(Qt.DisplayRole, str(val))
+                else:
+                    item.setData(Qt.DisplayRole, "")
                 item.setData(Qt.UserRole, row.get("trial"))
                 self._table.setItem(r, c, item)
 

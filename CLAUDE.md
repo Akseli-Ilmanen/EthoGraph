@@ -1,6 +1,6 @@
 ## Frame Rate Guidelines
 
-Never hardcode frame rates (e.g., 30 fps) anywhere in the codebase. Always use actual source metadata (e.g., video.fps, audio sample rate) or user settings.
+Never hardcode frame rates (e.g., 30 fps) or sample rates (e.g., 44100 Hz) anywhere in the codebase — not even as fallbacks. Always use actual source metadata (e.g., video.fps, audio sample rate, ImageSeries.rate) or user-specified settings. If a rate is unknown, raise an error or return None — never silently default to a hardcoded value.
 
 # CLAUDE.md
 
@@ -205,16 +205,29 @@ Replaces the old `type_vars_dict` pattern with two explicit abstractions:
 
 **Shared column dimensions:** `_compute_shared_column_dims()` (in `catalog.py`) groups TsdFrame objects by their column values. Objects with identical columns (e.g. position & velocity both with x/y/z) share one dimension name → one combo in the GUI.
 
-**NWB Catalog** (`nwb_catalog.py` + `combos.py`): Low-level NWB traversal produces `NWBCatalog` with `TimeSeriesRecord`s and `TimeIntervalsRecord`s. `combos.py` detects combo dimensions (module, group, keypoint, feature, space) from NWB hierarchy and builds a `ComboCatalog` with `filter()`, `load_slice()`, `load_stacked()`.
+**NWB Backend** (`nwb_backend.py`): NWB traversal + combo detection in one file. `NWBCatalog` with `TimeSeriesRecord`s, `ComboCatalog` with `filter()`, `load_slice()`, `load_stacked()`.
 
-**Backwards compat:** `feature_store.py` re-exports old names (`XarrayStore`, `PynappleStore`, `FeatureStore`) as aliases for the new classes.
+### Alignment System: `alignment.nwb` + `session_io.py`
+
+All external media (video, audio, pose) stored as `ImageSeries` in NWB acquisition with `external_file` + `starting_frame` + `rate`. Named `{stream}_{device}` (e.g. `video_cam-1`, `audio_mic-1`, `pose_cam-1`).
+
+**`NWBSessionIO`** reads alignment NWB. Key methods:
+- `get_stream_rate(stream, device)` — read `.rate` from any ImageSeries
+- `resolve_media_path(trial, stream, device, fallback_folder)` — try ImageSeries path → NWB-relative → fallback folder + filename
+- `get_media_for_time(session_time, fallback_folders)` — generalized `get_videos`: walks all acquisition ImageSeries, returns `{name: (path, local_time)}`
+- `stream_offset_for_trial(trial, stream, device)` — trial-relative offset derived from ImageSeries timing
+
+**Path fallback**: ImageSeries stores original paths. If files move, `resolve_media_path` extracts the filename and joins with a user-specified fallback folder (`video_folder`, `audio_folder`, etc.).
+
+**`build_nwb_from_trial_table`** (`utils/nwb.py`) creates ImageSeries for ALL streams via `sync_acquisition_for_streams(nwbfile, stream_rates)`. Takes `stream_rates: dict[str, float]` — no hardcoded FPS values.
 
 ### Data Loading: `data_loader.py`
 
 The GUI supports loading `.nc` (NetCDF), `.nwb`, `.npz`, pynapple folders, and NWB project directories. Dispatch in `data_loader.py`:
 - `.nc` → `eto.open()` + `catalog_from_xarray()`. If `.nc` has `nwb_source` attr, also attaches a `PynappleLoader` for lazy NWB features.
-- `.nwb`/`.npz`/folder → `load_nap_data()` + `catalog_from_pynapple()` + `PynappleLoader`. Lightweight TrialTree via `_trialtree_from_trials_ep()` (just trial boundaries, no feature data).
-- NWB project dir (has `.ethograph/project.json`) → loads NWB via pynapple, applies config (pose keys, video matching, ephys).
+- `.nwb` → `catalog_from_nwb()` + `NWBLoader` (direct HDF5 slicing via `ComboCatalog`).
+- `.npz`/folder → `load_nap_data()` + `catalog_from_pynapple()` + `PynappleLoader`.
+- NWB project dir (has `.ethograph/project.json`) → loads NWB via pynapple, applies config.
 
 `load_dataset()` returns `(dt, all_labels_df, catalog)` where `catalog` is a `DataCatalog`.
 

@@ -27,7 +27,6 @@ _NWB_STRUCTURAL_COLUMNS = frozenset({
     "trial",
     "start_time",
     "stop_time",
-    "stop_time_is_placeholder",
 })
 
 _LEGACY_SKIP_EXTENSIONS = frozenset({
@@ -76,31 +75,6 @@ def _is_nwb_infrastructure_col(col: str) -> bool:
     if col.endswith("_start"):
         return True
     return False
-
-
-def metadata_from_nwb(session_io) -> pd.DataFrame | None:
-    """Extract condition metadata columns from an NWB trials table.
-
-    Returns a DataFrame with ``trial`` + condition columns, or None if
-    no condition columns exist.
-    """
-    df = session_io.trials_df
-    if df.empty:
-        return None
-
-    keep = ["trial"] if "trial" in df.columns else []
-    for col in df.columns:
-        if col == "trial":
-            continue
-        if _is_nwb_infrastructure_col(col):
-            continue
-        keep.append(col)
-
-    if len(keep) <= 1:
-        return None
-
-    result = df[keep].copy().reset_index(drop=True)
-    return result
 
 
 def metadata_from_attrs(dt: "TrialTree") -> pd.DataFrame:

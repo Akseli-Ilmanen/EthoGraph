@@ -80,6 +80,7 @@ def bind_global_shortcuts(meta_widget):
     @viewer.bind_key("space", overwrite=True)
     def toggle_pause_resume(v):
         data_widget.toggle_pause_resume()
+        navigation_widget._sync_play_icon()
 
     @viewer.bind_key("v", overwrite=True)
     def play_segment(v):
@@ -292,3 +293,12 @@ def bind_global_shortcuts(meta_widget):
     @viewer.bind_key("ctrl+Left", overwrite=True)
     def prev_changepoint(v):
         changepoints_widget.jump_changepoint(-1)
+
+    @viewer.bind_key("shift+k", overwrite=True)
+    def cycle_space_keypoint(v):
+        sp = getattr(data_widget, 'space_plot', None)
+        if sp is None or not sp.isVisible():
+            return
+        combo = sp.keypoint_combo
+        if combo.isVisible() and combo.count() > 1:
+            combo.setCurrentIndex((combo.currentIndex() + 1) % combo.count())

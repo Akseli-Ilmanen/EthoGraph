@@ -163,10 +163,11 @@ def _build_alignment_nwb(template: dict) -> None:
 
     trial_table = pd.DataFrame(rows)
     nwb_path = dest / ".ethograph" / "alignment.nwb"
-    kwargs = {}
+    stream_rates = {}
     if fps is not None:
-        kwargs["camera_fps"] = float(fps)
-    build_nwb_from_trial_table(trial_table, output_path=nwb_path, **kwargs)
+        stream_rates["video"] = float(fps)
+        stream_rates["pose"] = float(fps)
+    build_nwb_from_trial_table(trial_table, stream_rates=stream_rates, output_path=nwb_path)
     logger.info("Created alignment NWB: %s", nwb_path)
 
 

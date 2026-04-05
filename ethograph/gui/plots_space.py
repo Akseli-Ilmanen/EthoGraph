@@ -315,10 +315,27 @@ class SpacePlot(QWidget):
         self.z_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         toolbar.addWidget(self.z_combo)
 
-        self.cb_3d = QCheckBox("3D")
-        toolbar.addWidget(self.cb_3d)
-
         root.addLayout(toolbar)
+
+        # Row 2: 3D checkbox + keypoint filter
+        row2 = QHBoxLayout()
+        row2.setContentsMargins(0, 0, 0, 0)
+        row2.setSpacing(6)
+
+        self.cb_3d = QCheckBox("3D")
+        row2.addWidget(self.cb_3d)
+
+        self.cb_hide_zeros = QCheckBox("Hide zeros")
+        self.cb_hide_zeros.setToolTip("Hide points where all dimensions are exactly zero")
+        row2.addWidget(self.cb_hide_zeros)
+
+        self.keypoint_label = QLabel("Keypoint")
+        row2.addWidget(self.keypoint_label)
+        self.keypoint_combo = QComboBox()
+        self.keypoint_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        row2.addWidget(self.keypoint_combo)
+
+        root.addLayout(row2)
 
         # Plot area (created on first update)
         self.space_widget = None
@@ -339,6 +356,8 @@ class SpacePlot(QWidget):
         self.y_combo.currentIndexChanged.connect(self._on_axis_changed)
         self.z_combo.currentIndexChanged.connect(self._on_axis_changed)
         self.cb_3d.toggled.connect(self._on_3d_toggled)
+        self.keypoint_combo.currentIndexChanged.connect(self._on_axis_changed)
+        self.cb_hide_zeros.toggled.connect(self._on_axis_changed)
 
         # Listen for settings changes via app_state
         app_state.space_percentile_xyzlim_changed.connect(self._on_settings_changed)
@@ -386,12 +405,13 @@ class SpacePlot(QWidget):
 
     def _populate_combos(self):
         """Fill axis combos from the current store."""
-        for combo in (self.x_combo, self.y_combo, self.z_combo):
+        all_combos = (self.x_combo, self.y_combo, self.z_combo, self.keypoint_combo)
+        for combo in all_combos:
             combo.blockSignals(True)
             combo.clear()
 
         if self._store is None:
-            for combo in (self.x_combo, self.y_combo, self.z_combo):
+            for combo in all_combos:
                 combo.blockSignals(False)
             return
 
@@ -402,7 +422,10 @@ class SpacePlot(QWidget):
         # Smart defaults: pick position · x/y/z if available, else first two
         self._set_default_axes(items)
 
-        for combo in (self.x_combo, self.y_combo, self.z_combo):
+        # Populate keypoint combo from non-first (non-axis-expanded) dimensions
+        self._populate_keypoint_combo()
+
+        for combo in all_combos:
             combo.blockSignals(False)
 
     def _set_default_axes(self, items: list[str]):
@@ -429,6 +452,43 @@ class SpacePlot(QWidget):
                 self.y_combo.setCurrentIndex(1)
             if len(items) >= 3:
                 self.z_combo.setCurrentIndex(2)
+
+    _KEYPOINT_DIM_NAMES = {"keypoint", "keypoints"}
+
+    def _populate_keypoint_combo(self):
+        """Populate keypoint combo from keypoint dimensions of store features."""
+        if self._store is None:
+            return
+
+        keypoint_vals: list[str] = []
+        self._keypoint_dim_name = None
+        for feat in self._store.features:
+            for dim_name, dim_vals in self._store.feature_dims(feat).items():
+                if dim_name.lower() not in self._KEYPOINT_DIM_NAMES or not dim_vals:
+                    continue
+                self._keypoint_dim_name = dim_name
+                for v in dim_vals:
+                    if v not in keypoint_vals:
+                        keypoint_vals.append(v)
+
+        has_keypoints = bool(keypoint_vals)
+        self.keypoint_combo.setVisible(has_keypoints)
+        self.keypoint_label.setVisible(has_keypoints)
+        if has_keypoints:
+            self.keypoint_combo.addItems(keypoint_vals)
+
+    def _get_keypoint_selection(self) -> dict[str, str]:
+        """Return selection dict override from the keypoint combo."""
+        text = self.keypoint_combo.currentText()
+        if not text:
+            return {}
+        if SEPARATOR in text:
+            dim_name, val = text.split(SEPARATOR, 1)
+            return {dim_name: val}
+        dim_name = getattr(self, '_keypoint_dim_name', None)
+        if dim_name:
+            return {dim_name: text}
+        return {}
 
     # --- Axis change handlers ----------------------------------------------
 
@@ -493,6 +553,7 @@ class SpacePlot(QWidget):
         z_item = self.z_combo.currentText() if view_3d else None
 
         selections = self.app_state.get_selections()
+        selections.update(self._get_keypoint_selection())
         t0, t1 = self._get_window_time_range()
 
         time_x, data_x = _select_axis(store, x_item, selections, t0=t0, t1=t1)
@@ -510,6 +571,15 @@ class SpacePlot(QWidget):
             if dz is not None:
                 data_z = dz[:n]
 
+        # Mask points where all dimensions are exactly zero
+        if self.cb_hide_zeros.isChecked():
+            zero_mask = (data_x == 0) & (data_y == 0)
+            if data_z is not None:
+                zero_mask &= (data_z == 0)
+            data_x = np.where(zero_mask, np.nan, data_x)
+            data_y = np.where(zero_mask, np.nan, data_y)
+            if data_z is not None:
+                data_z = np.where(zero_mask, np.nan, data_z)
 
         color_data = self._get_color_data(store, selections, n)
 

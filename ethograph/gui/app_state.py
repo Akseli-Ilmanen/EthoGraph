@@ -311,10 +311,6 @@ class AppStateSpec:
         return cls.get_meta(key)[0]
 
     @classmethod
-    def get_scope(cls, key):
-        return cls.get_meta(key)[3]
-
-    @classmethod
     def saveable_attributes(cls, scope: str | None = None) -> set[str]:
         attrs = set()
         for key in cls.VARS:
@@ -364,15 +360,12 @@ class ObservableAppState(QObject):
         self._auto_save_timer.start(auto_save_interval)
 
     @property
-    def video_fps(self) -> float:
+    def video_fps(self) -> float | None:
         dt = getattr(self, 'dt', None)
         if dt is not None:
             camera = self.primary_camera
-            fps = dt.get_video_fps(camera)
-            if fps is not None:
-                return fps
-        logger.warning("video_fps: no FPS metadata found, falling back to 1.0")
-        return 1.0
+            return dt.get_stream_rate("video", camera)
+        return None
 
     @property
     def sel_attrs(self) -> dict:
@@ -492,20 +485,40 @@ class ObservableAppState(QObject):
         Returns (audio_path, channel_idx) tuple. Uses audio_source_map to resolve
         the display name to (mic_file, channel_idx).
         """
-        import os
-
         mics_sel = getattr(self, 'mics_sel', None)
         if not mics_sel or not self.audio_source_map:
             return None, 0
 
         mic_file, channel_idx = self.audio_source_map.get(mics_sel, (mics_sel, 0))
-
-        audio_folder = getattr(self, 'audio_folder', None)
-        if not audio_folder or not mic_file:
+        if not mic_file:
             return None, channel_idx
 
-        audio_path = os.path.normpath(os.path.join(audio_folder, mic_file))
-        return audio_path, channel_idx
+        dt = getattr(self, 'dt', None)
+        audio_folder = getattr(self, 'audio_folder', None)
+
+        # Try resolve via session_io (ImageSeries path → fallback folder)
+        if dt is not None:
+            # Find which mic device this file belongs to
+            for mic_dev in dt.mics:
+                trial = getattr(self, 'trials_sel', None)
+                if trial is None:
+                    break
+                media = dt.get_media(trial, "audio", mic_dev)
+                if media and (media == mic_file or Path(media).name == mic_file):
+                    resolved = dt.resolve_media_path(
+                        trial, "audio", device=mic_dev,
+                        fallback_folder=audio_folder,
+                    )
+                    if resolved:
+                        return resolved, channel_idx
+
+        # Direct fallback
+        if audio_folder:
+            import os
+            path = os.path.normpath(os.path.join(audio_folder, mic_file))
+            return path, channel_idx
+
+        return None, channel_idx
 
 
 
@@ -546,6 +559,12 @@ class ObservableAppState(QObject):
 
             if name == "nc_file_path" and not self._suspend_local_autoload:
                 self.load_local_settings()
+
+            # Auto-sync nwb_file_path → dt.nwb_path
+            if name == "nwb_file_path":
+                dt = self._values.get("dt")
+                if dt is not None:
+                    dt.nwb_path = value
 
             return
 

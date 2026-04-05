@@ -150,6 +150,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.changepoints_widget.set_motif_mappings(self.labels_widget._mappings)
         self.navigation_widget.set_mappings(self.labels_widget._mappings)
         self.navigation_widget._labels_widget = self.labels_widget
+        self.navigation_widget._data_widget = self.data_widget
         self.navigation_widget.set_plot_container(self.plot_container)
         self.ephys_widget.set_plot_container(self.plot_container)
         self.ephys_widget.set_meta_widget(self)
@@ -199,7 +200,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.add_widget(
             self.help_widget,
             collapsible=True,
-            widget_title="Help & Tutorials",
+            widget_title="Help and Tutorials",
         )
 
         # Index 1: I/O

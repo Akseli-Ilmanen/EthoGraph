@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory() as tmp:
     nwb_a = dir_a / _SETTINGS_DIR / _NWB_FILENAME
     nwb_a.parent.mkdir(parents=True)
     trial_table = pd.DataFrame([{"trial": 1, "start_time": 0.0}])
-    build_nwb_from_trial_table(trial_table, camera_fps=30.0, output_path=nwb_a)
+    build_nwb_from_trial_table(trial_table, stream_rates={"video": 30.0, "pose": 30.0}, output_path=nwb_a)
     dt._nwb_path = str(nwb_a)
 
     # Call _ensure_alignment_nwb for dir B

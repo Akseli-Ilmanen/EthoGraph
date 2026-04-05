@@ -19,9 +19,6 @@ from ethograph.io.validation import validate_datatree
 # ---------------------------------------------------------------------------
 
 
-def _scalar_or_none(da: xr.DataArray) -> str | None:
-    val = str(da.values.flat[0]) if da.ndim > 0 else str(da.item())
-    return val or None
 
 
 def _attrs_equal(a: Any, b: Any) -> bool:
@@ -33,27 +30,6 @@ def _attrs_equal(a: Any, b: Any) -> bool:
     except (ValueError, TypeError):
         return False
 
-
-def _ep_to_dataset(ep: nap.IntervalSet) -> xr.Dataset:
-    data_vars: dict[str, xr.DataArray] = {
-        "start": xr.DataArray(ep.start, dims=["row"]),
-        "end": xr.DataArray(ep.end, dims=["row"]),
-    }
-    for col in ep.metadata.columns:
-        vals = ep.metadata[col].values
-        if vals.dtype == object:
-            vals = vals.astype(str)
-        data_vars[col] = xr.DataArray(vals, dims=["row"])
-    return xr.Dataset(data_vars)
-
-
-def _dataset_to_ep(ds: xr.Dataset) -> nap.IntervalSet:
-    meta = {k: ds[k].values for k in ds.data_vars if k not in {"start", "end"}}
-    return nap.IntervalSet(
-        start=ds["start"].values,
-        end=ds["end"].values,
-        metadata=meta or None,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -339,31 +315,26 @@ class TrialTree(xr.DataTree):
             return stop - start
         return self.session_io.trial_duration(trial)
 
-    def source_start_time(self, trial, stream: str, device: str | None = None) -> float:
-        """Session-absolute time of sample 0 for this stream's file."""
-        return self.session_io.source_start_time(trial, stream, device)
+    def stream_offset_for_trial(
+        self, trial, stream: str, device: str | None = None,
+    ) -> float:
+        """Trial-relative time offset for a stream's file."""
+        return self.session_io.stream_offset_for_trial(trial, stream, device)
 
-    def source_start_time_trial_relative(self, trial, stream: str, device: str | None = None) -> float:
-        """Trial-relative time of sample 0 for this stream's file."""
-        return self.session_io.source_start_time_trial_relative(trial, stream, device)
+    def get_stream_rate(self, stream: str, device: str | None = None) -> float | None:
+        """Return sampling rate for a stream from its acquisition ImageSeries."""
+        return self.session_io.get_stream_rate(stream, device)
 
-    def get_video_fps(self, camera: str | None = None) -> float | None:
-        """Return video FPS, checking NWB acquisition then trial attrs."""
-        fps = self.session_io.get_video_fps(camera)
-        if fps is not None:
-            return fps
-        # Fallback to trial dataset attrs
-        try:
-            ds = self.itrial(0)
-            if "fps" in ds.attrs:
-                return float(ds.attrs["fps"])
-        except (StopIteration, IndexError):
-            pass
-        return None
+    def set_stream_rate(self, rate: float, stream: str, device: str | None = None) -> None:
+        """Store a rate override in session_io's in-memory overlay."""
+        self.session_io.set_stream_rate(rate, stream, device)
 
-    def set_video_fps(self, fps: float, camera: str | None = None) -> None:
-        """Store detected video FPS in session_io's in-memory overlay."""
-        self.session_io.set_video_fps(fps, camera)
+    def resolve_media_path(
+        self, trial, stream: str, device: str | None = None,
+        fallback_folder: str | None = None,
+    ) -> str | None:
+        """Resolve full path for a media file (ImageSeries path → fallback folder)."""
+        return self.session_io.resolve_media_path(trial, stream, device, fallback_folder)
 
     @property
     def trials_ep(self) -> nap.IntervalSet | None:
@@ -549,7 +520,6 @@ class TrialTree(xr.DataTree):
     def from_datasets(
         cls,
         datasets: list[xr.Dataset],
-        session_table: xr.Dataset | pd.DataFrame | None = None,
         validate: bool = True,
     ) -> TrialTree:
         """Build a TrialTree from a list of xarray Datasets.
@@ -558,8 +528,6 @@ class TrialTree(xr.DataTree):
         ----------
         datasets
             Each dataset must have a unique ``attrs["trial"]`` key.
-        session_table
-            Deprecated. Use NWB files for session metadata.
         validate
             Run validation after construction.
         """
@@ -725,7 +693,7 @@ class TrialTree(xr.DataTree):
         ds = self.itrial(0)
         has_cameras = len(self.cameras) > 0
         has_fps = "fps" in ds.attrs
-        has_session_fps = self.get_video_fps() is not None
+        has_session_fps = self.get_stream_rate("video") is not None
         errors = validate_datatree(
             self,
             require_fps=(has_fps or has_cameras) and not has_session_fps,

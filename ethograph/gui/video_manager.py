@@ -213,15 +213,11 @@ class VideoManager:
         if not self.app_state.ready:
             return
         camera = self.app_state.primary_camera
-        video_file = None
-        if camera:
-            dt = self.app_state.dt
-            video_file = dt.get_media(self.app_state.trials_sel, "video", device=camera)
-        if video_file and is_url(video_file):
-            self.app_state.video_path = video_file
-        elif video_file and self.app_state.video_folder:
-            self.app_state.video_path = os.path.normpath(
-                os.path.join(self.app_state.video_folder, video_file)
+        dt = self.app_state.dt
+        if camera and dt is not None:
+            self.app_state.video_path = dt.resolve_media_path(
+                self.app_state.trials_sel, "video", device=camera,
+                fallback_folder=self.app_state.video_folder,
             )
         else:
             self.app_state.video_path = None
@@ -303,7 +299,7 @@ class VideoManager:
         detected_fps = float(reader.stream.guessed_rate) if reader.stream.guessed_rate else None
         if detected_fps is not None and self.app_state.dt is not None:
             camera = self.app_state.primary_camera
-            self.app_state.dt.set_video_fps(detected_fps, camera=camera)
+            self.app_state.dt.set_stream_rate(detected_fps, "video", camera)
 
         alignment = getattr(self.app_state, 'trial_alignment', None)
         video_time_offset = alignment.video_offset if alignment else 0.0
@@ -354,6 +350,10 @@ class VideoManager:
         sync.frame_changed.connect(self._on_primary_frame_changed)
         sync.seek_to_frame(restore_frame)
         self.app_state.current_frame = restore_frame
+
+        qt_dims = getattr(self.viewer.window, "_qt_viewer", self.viewer.window.qt_viewer).dims
+        if qt_dims.slider_widgets:
+            qt_dims.slider_widgets[0].play_button.hide()
 
     def set_frame_changed_callback(self, callback):
         self._frame_changed_callback = callback
@@ -416,7 +416,7 @@ class VideoManager:
         time_offset = 0.0
         if dt is not None:
             trial_id = self.app_state.trials_sel
-            time_offset = dt.source_start_time_trial_relative(trial_id, "video", camera_name)
+            time_offset = dt.stream_offset_for_trial(trial_id, "video", camera_name)
 
         alignment = getattr(self.app_state, 'trial_alignment', None)
         video_data = reader
@@ -545,7 +545,7 @@ class VideoManager:
         dt = getattr(self.app_state, 'dt', None)
         if dt is None:
             return
-        dt.set_video_fps(fps, camera=camera_name)
+        dt.set_stream_rate(fps, "video", camera_name)
 
     def cleanup(self):
         if getattr(self.app_state, 'video', None):
@@ -592,9 +592,7 @@ class VideoManager:
     def _resolve_video_path(self, camera_name: str, video_folder: str | None) -> str | None:
         if is_url(camera_name):
             return camera_name
-        if video_folder:
-            video_file = self.app_state.dt.get_media(self.app_state.trials_sel, "video", device=camera_name)
-            if video_file:
-                path = os.path.normpath(os.path.join(video_folder, video_file))
-                return path if os.path.isfile(path) else None
-        return None
+        return self.app_state.dt.resolve_media_path(
+            self.app_state.trials_sel, "video", device=camera_name,
+            fallback_folder=video_folder,
+        )

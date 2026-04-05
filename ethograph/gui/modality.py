@@ -123,13 +123,6 @@ class FileSource:
         ch = f":{self._channel}" if self._channel is not None else ""
         return f"file:{self._name}:{loader_id}{ch}"
 
-    def index_for_time(self, t: float) -> int:
-        idx = round((t - self._start_time) * self._rate)
-        return max(0, min(idx, self._n_samples - 1))
-
-    def time_for_index(self, i: int) -> float:
-        return self._start_time + i / self._rate
-
     def get_data(self, t0: float, t1: float) -> SourceData:
         i0 = max(0, int((t0 - self._start_time) * self._rate))
         i1 = min(self._n_samples, int((t1 - self._start_time) * self._rate) + 1)
@@ -253,10 +246,6 @@ class WindowedBuffer:
     def invalidate(self):
         """Public cache invalidation (e.g. on trial change)."""
         self._invalidate()
-
-    @property
-    def cache_range(self) -> tuple[float, float]:
-        return (self._cache_t0, self._cache_t1)
 
     def _covers(self, t0: float, t1: float) -> bool:
         if self._cache is None:

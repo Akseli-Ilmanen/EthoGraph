@@ -274,13 +274,22 @@ class NavigationWidget(QWidget):
         playback_layout.addWidget(self.time_jump_spin, 2, 1)
         playback_layout.addWidget(self.center_playback_checkbox, 2, 2)
 
+        self.play_pause_btn = QPushButton("\u25B6")
+        self.play_pause_btn.setToolTip("Play / Pause  (Space)")
+        self.play_pause_btn.setFixedWidth(36)
+        self.play_pause_btn.clicked.connect(self._on_play_pause_clicked)
+
         self.record_button = RecordButton(viewer, parent=self)
         self.hide_label_text_cb = QCheckBox("Hide label text")
         self.hide_label_text_cb.setToolTip(
             "Hide the label name overlay shown on the video canvas during playback"
         )
         self.hide_label_text_cb.toggled.connect(self._on_hide_label_text_toggled)
-        playback_layout.addWidget(self.record_button, 3, 0, 1, 2)
+
+        play_record_row = QHBoxLayout()
+        play_record_row.addWidget(self.play_pause_btn)
+        play_record_row.addWidget(self.record_button)
+        playback_layout.addLayout(play_record_row, 3, 0, 1, 2)
         playback_layout.addWidget(self.hide_label_text_cb, 3, 2)
 
         # ── Assemble ─────────────────────────────────────────────────
@@ -651,6 +660,28 @@ class NavigationWidget(QWidget):
     # ==================================================================
     # Playback
     # ==================================================================
+
+    def _on_play_pause_clicked(self):
+        if hasattr(self, "_data_widget") and self._data_widget is not None:
+            self._data_widget.toggle_pause_resume()
+        self._sync_play_icon()
+
+    def _sync_play_icon(self):
+        video = getattr(self.app_state, "video", None)
+        playing = video.is_playing if video else False
+        self.play_pause_btn.setText("\u23F8" if playing else "\u25B6")
+
+    def connect_video_sync(self, sync):
+        """Connect playback_stopped signal to reset the play button icon."""
+        if getattr(self, "_connected_sync", None) is sync:
+            return
+        if getattr(self, "_connected_sync", None) is not None:
+            try:
+                self._connected_sync.playback_stopped.disconnect(self._sync_play_icon)
+            except (RuntimeError, TypeError):
+                pass
+        sync.playback_stopped.connect(self._sync_play_icon)
+        self._connected_sync = sync
 
     def _on_fps_changed(self):
         fps_playback = float(self.fps_playback_edit.text())

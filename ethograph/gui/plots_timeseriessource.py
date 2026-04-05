@@ -145,27 +145,16 @@ def compute_trial_alignment(
     4. Per-trial audio length.
     """
 
-    video_path: str | None = None
-    video_offset = 0.0
-    video_file = dt.get_media(trial_id, "video", cameras_sel)
-    if video_file:
-        video_path = (
-            os.path.join(video_folder, video_file)
-            if (video_folder and not os.path.isabs(video_file))
-            else video_file
-        )
-        video_offset = dt.source_start_time_trial_relative(trial_id, "video", cameras_sel)
+    video_path = dt.resolve_media_path(
+        trial_id, "video", device=cameras_sel, fallback_folder=video_folder,
+    )
+    video_offset = dt.stream_offset_for_trial(trial_id, "video", cameras_sel) if video_path else 0.0
 
     audio_devices = dt.devices("audio")
     audio_device = audio_devices[0] if audio_devices else None
-    audio_file = dt.get_media(trial_id, "audio", audio_device)
-    audio_path: str | None = None
-    if audio_file and audio_folder:
-        audio_path = (
-            os.path.join(audio_folder, audio_file)
-            if not os.path.isabs(audio_file)
-            else audio_file
-        )
+    audio_path = dt.resolve_media_path(
+        trial_id, "audio", device=audio_device, fallback_folder=audio_folder,
+    ) if audio_device else None
 
     ephys_offset = 0.0
     try:
@@ -255,7 +244,7 @@ def _compute_trial_end(
         try:
             from ethograph.gui.plots_spectrogram import SharedAudioCache
             loader = SharedAudioCache.get_loader(audio_path)
-            audio_start = dt.source_start_time_trial_relative(trial_id, "audio", audio_device)
+            audio_start = dt.stream_offset_for_trial(trial_id, "audio", audio_device)
             if loader is not None and len(loader) > 0:
                 audio_end = len(loader) / loader.rate
                 source_ranges["audio"] = TimeRange(audio_start, audio_start + audio_end)

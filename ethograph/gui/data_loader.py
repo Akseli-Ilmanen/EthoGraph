@@ -39,6 +39,12 @@ from ethograph.labels.tsv_store import (
 
 logger = logging.getLogger(__name__)
 
+def _detect_audio_rate(audio_path: str) -> float:
+    """Detect sample rate from an audio file via audioio."""
+    from audioio import AudioLoader
+    with AudioLoader(audio_path) as loader:
+        return float(loader.rate)
+
 
 def _is_nwb_file(file_path: str) -> bool:
     """Check if path is a standalone .nwb file."""
@@ -387,6 +393,14 @@ def _wizard_single_media_helper(
     trial_table = pd.DataFrame([row])
     fps = dt.itrial(0).attrs.get("fps", 30)
 
+    stream_rates: dict[str, float] = {}
+    if video_path:
+        stream_rates["video"] = float(fps)
+    if pose_path:
+        stream_rates["pose"] = float(fps)
+    if audio_path:
+        stream_rates["audio"] = _detect_audio_rate(audio_path)
+
     ref_path = video_path or pose_path or audio_path
     if ref_path:
         output_dir = Path(ref_path).parent
@@ -395,7 +409,7 @@ def _wizard_single_media_helper(
 
     nwb_path = output_dir / ".ethograph" / "alignment.nwb"
     build_nwb_from_trial_table(
-        trial_table, camera_fps=float(fps), output_path=nwb_path
+        trial_table, stream_rates=stream_rates, output_path=nwb_path
     )
     dt.nwb_path = str(nwb_path)
 

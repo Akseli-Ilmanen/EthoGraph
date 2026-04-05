@@ -1,14 +1,17 @@
 """Custom lab-internal legacy code"""
 
-import pandas as pd
-from ethograph import TrialTree
+import json
+import os
 from pathlib import Path
+
 import numpy as np
+import pandas as pd
+import pynwb
 import xarray as xr
+
+from ethograph import TrialTree
 from ethograph.labels.intervals import empty_intervals
 from ethograph.labels.tsv_store import _empty_all_labels
-import os
-import json
 
 def _xr_to_intervals(ds: xr.Dataset) -> pd.DataFrame:
     """Convert an xarray Dataset back to an intervals DataFrame (legacy)."""
@@ -336,143 +339,3 @@ def get_session_path(user: str, datatype: str, bird: str, session: str, data_fol
     return subject_folder, session_path, data_folder
 
 
-def convert_session_to_nwb(dt: TrialTree, output_path: str | Path | None = None) -> Path:
-    """Convert an old .nc file with xarray session node to an alignment.nwb file.
-
-    Reads ``dt.session`` (the legacy xarray session node) and writes an
-    equivalent NWB file with trials table and acquisition ImageSeries.
-
-    Parameters
-    ----------
-    dt
-        TrialTree loaded from an old ``.nc`` file that has a ``"session"``
-        child node with media DataArrays.
-    output_path
-        Where to write the NWB file. Defaults to ``.ethograph/alignment.nwb``
-        relative to the tree's source path.
-
-    Returns
-    -------
-    Path to the created NWB file.
-    """
-    from ethograph.utils.nwb import build_nwb_from_trial_table
-
-    sess = dt.session
-    if sess is None:
-        raise ValueError("TrialTree has no legacy session node to convert.")
-
-    trials = dt.trials
-    rows = []
-    for trial_id in trials:
-        row = {"trial": trial_id}
-        if "start_time" in sess:
-            try:
-                row["start_time"] = float(sess["start_time"].sel(trial=trial_id))
-            except (KeyError, ValueError):
-                row["start_time"] = 0.0
-        else:
-            row["start_time"] = 0.0
-
-
-        # Extract media columns
-        for stream in ("video", "audio", "pose"):
-            if stream not in sess:
-                continue
-            da = sess[stream]
-            if "trial" in da.dims:
-                # Per-trial media
-                device_dim = None
-                for dim in da.dims:
-                    if dim != "trial":
-                        device_dim = dim
-                        break
-                if device_dim and device_dim in da.coords:
-                    for dev in da.coords[device_dim].values:
-                        try:
-                            val = str(da.sel(trial=trial_id, **{device_dim: dev}).values)
-                            row[f"{stream}_{dev}"] = val if val != "nan" else ""
-                        except (KeyError, ValueError):
-                            row[f"{stream}_{dev}"] = ""
-                else:
-                    try:
-                        val = str(da.sel(trial=trial_id).values)
-                        row[f"{stream}_0"] = val if val != "nan" else ""
-                    except (KeyError, ValueError):
-                        row[f"{stream}_0"] = ""
-            else:
-                # Session-wide media
-                device_dim = None
-                for dim in da.dims:
-                    device_dim = dim
-                    break
-                if device_dim and device_dim in da.coords:
-                    for dev in da.coords[device_dim].values:
-                        try:
-                            val = str(da.sel(**{device_dim: dev}).values)
-                            row[f"{stream}_{dev}"] = val if val != "nan" else ""
-                        except (KeyError, ValueError):
-                            row[f"{stream}_{dev}"] = ""
-
-        rows.append(row)
-
-    trial_df = pd.DataFrame(rows)
-
-    # Determine FPS from session or trial attrs
-    fps = 30.0
-    if "video_fps" in sess:
-        fps = float(sess["video_fps"].values.flat[0])
-    else:
-        try:
-            ds = dt.itrial(0)
-            if "fps" in ds.attrs:
-                fps = float(ds.attrs["fps"])
-        except (StopIteration, IndexError):
-            pass
-
-    if output_path is None:
-        source = getattr(dt, "_source_path", None)
-        if source:
-            output_path = Path(source).parent / ".ethograph" / "alignment.nwb"
-        else:
-            output_path = Path.cwd() / ".ethograph" / "alignment.nwb"
-
-    output_path = Path(output_path)
-    build_nwb_from_trial_table(trial_df, camera_fps=fps, output_path=output_path)
-    return output_path
-
-
-def migrate_attrs_to_metadata_tsv(
-    dt: TrialTree, output_path: str | Path | None = None,
-) -> Path:
-    """Extract per-trial condition attrs from ds.attrs and save as metadata TSV.
-
-    Parameters
-    ----------
-    dt
-        TrialTree with condition metadata in ``ds.attrs``.
-    output_path
-        Where to write.  Defaults to ``{nc_stem}_metadata.tsv``.
-
-    Returns
-    -------
-    Path to the created TSV file.
-    """
-    from ethograph.io.metadata_table import (
-        metadata_from_attrs,
-        metadata_tsv_path,
-        save_metadata_tsv,
-    )
-
-    df = metadata_from_attrs(dt)
-
-    if output_path is None:
-        source = getattr(dt, "_source_path", None)
-        if source:
-            output_path = metadata_tsv_path(source)
-        else:
-            output_path = Path.cwd() / "metadata.tsv"
-
-    output_path = Path(output_path)
-    save_metadata_tsv(output_path, df)
-    dt.metadata_df = df
-    return output_path

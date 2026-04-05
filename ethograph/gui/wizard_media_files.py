@@ -7,7 +7,6 @@ Dock in napari:  viewer.window.add_dock_widget(MediaDiscoveryWidget(viewer))
 from __future__ import annotations
 
 import logging
-import fnmatch
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -63,12 +62,6 @@ ROLE_COLORS = {
     None: TEXT_DIM,
 }
 
-STREAM_ROLES: dict[str, list[str]] = {
-    "video": ["ignore", "trial", "camera"],
-    "pose": ["ignore", "trial", "camera"],
-    "audio": ["ignore", "trial", "mic"],
-}
-
 # Convert extension sets to regex patterns for classification
 STREAM_RULES: dict[str, list[str]] = {
     "video": [rf"\{ext}$" for ext in VIDEO_EXTENSIONS],
@@ -106,6 +99,7 @@ class FilePattern:
     files: list[Path]
     suffix: str
     tokenize_mode: str = "smart"
+    regex_pattern: str | None = None
 
     def summary(self) -> dict[str, list[str]]:
         return {
@@ -114,71 +108,6 @@ class FilePattern:
             if s.varying and s.role and s.role != "ignore"
         }
 
-
-def _auto_detect_role(seg: Segment) -> str | None:
-    """Auto-detect role from segment values.
-    
-    Returns 'camera' if values look like cam-X, camera-X
-    Returns 'mic' if values look like mic-X, microphone-X
-    Returns 'trial' if values look like trial-X
-    Returns None otherwise
-    """
-    if not seg.values:
-        return None
-    
-    # Check if all values match camera patterns
-    cam_patterns = [
-        re.compile(r'^cam[-_]?\d+$', re.IGNORECASE),
-        re.compile(r'^camera[-_]?\d+$', re.IGNORECASE),
-        re.compile(r'^cam$', re.IGNORECASE),
-        re.compile(r'^camera$', re.IGNORECASE),
-    ]
-    
-    if all(any(p.match(v) for p in cam_patterns) for v in seg.values):
-        return "camera"
-    
-    # Check if all values match mic patterns
-    mic_patterns = [
-        re.compile(r'^mic[-_]?\d+$', re.IGNORECASE),
-        re.compile(r'^microphone[-_]?\d+$', re.IGNORECASE),
-        re.compile(r'^mic$', re.IGNORECASE),
-        re.compile(r'^microphone$', re.IGNORECASE),
-    ]
-    
-    if all(any(p.match(v) for p in mic_patterns) for v in seg.values):
-        return "mic"
-    
-    # Check if all values match trial patterns
-    trial_patterns = [
-        re.compile(r'^trial[-_]?\d+$', re.IGNORECASE),
-        re.compile(r'^trial$', re.IGNORECASE),
-    ]
-    
-    if all(any(p.match(v) for p in trial_patterns) for v in seg.values):
-        return "trial"
-    
-    n = len(seg.values)
-
-    # Pure numeric values: many → trial IDs, few short ones → camera/mic IDs
-    if all(v.isdigit() for v in seg.values):
-        if n > 4:
-            return "trial"
-        if all(len(v) <= 2 for v in seg.values) and 1 < n <= 4:
-            return "camera"
-        return "trial"
-
-    # Keyword-based: values containing "cam"/"view" or "mic"
-    low = [v.lower() for v in seg.values]
-    if any(kw in v for v in low for kw in ("view", "cam", "camera")):
-        return "camera"
-    if any(kw in v for v in low for kw in ("mic", "microphone")):
-        return "mic"
-
-    # Many unique values likely means trial identifiers
-    if n > 4:
-        return "trial"
-
-    return None
 
 
 _TIMESTAMP_RE = re.compile(
@@ -234,20 +163,46 @@ def _build_segments(tokenized: list[list[str]]) -> list[Segment]:
     return segments
 
 
-def analyze_filenames(files: list[Path]) -> FilePattern | None:
-    if not files:
+def analyze_filenames_with_regex(files: list[Path], pattern: str) -> FilePattern | None:
+    """Build a FilePattern from a regex with named groups (trial, camera, mic)."""
+    try:
+        rx = re.compile(pattern)
+    except re.error:
         return None
-    suffix = files[0].suffix
-    stems = [f.stem for f in files]
-    for mode in ("smart", "_", "-"):
-        tokenized = [_tokenize(s, mode) for s in stems]
-        if len({len(t) for t in tokenized}) == 1:
-            return FilePattern(
-                _build_segments(tokenized), files, suffix, tokenize_mode=mode,
-            )
-    names = sorted(set(stems))
-    return FilePattern([Segment(0, "<varies>", True, names)], files, suffix)
 
+    group_names = list(rx.groupindex.keys())
+    if not group_names:
+        return None
+
+    matched_files: list[Path] = []
+    values_by_group: dict[str, set[str]] = {g: set() for g in group_names}
+
+    for f in files:
+        m = rx.search(f.stem)
+        if not m:
+            continue
+        matched_files.append(f)
+        for g in group_names:
+            val = m.group(g)
+            if val is not None:
+                values_by_group[g].add(val)
+
+    if not matched_files:
+        return None
+
+    segments: list[Segment] = []
+    for i, g in enumerate(group_names):
+        vals = sorted(values_by_group[g])
+        role = g if g in ("trial", "camera", "mic") else "ignore"
+        segments.append(Segment(
+            position=i, text="", varying=len(vals) > 1, values=vals, role=role,
+        ))
+
+    suffix = matched_files[0].suffix
+    return FilePattern(
+        segments, matched_files, suffix,
+        tokenize_mode="regex", regex_pattern=pattern,
+    )
 
 
 def classify_stream(filename: str) -> str | None:
@@ -258,112 +213,19 @@ def classify_stream(filename: str) -> str | None:
     return None
 
 
-def analyze_nested_filenames(folder: Path, stream: str) -> FilePattern | None:
-    subdirs = sorted(d for d in folder.iterdir() if d.is_dir())
-    if not subdirs:
-        return None
-    all_files: list[Path] = []
-    subdir_names: set[str] = set()
-    for sd in subdirs:
-        files = sorted(f for f in sd.iterdir() if f.is_file())
-        relevant = [f for f in files if classify_stream(f.name) == stream]
-        candidates = relevant or files
-        for f in candidates:
-            all_files.append(f)
-            subdir_names.add(sd.name)
-    if not all_files:
-        return None
-    suffix = all_files[0].suffix
-    device_role = "mic" if stream == "audio" else "camera"
-    folder_seg = Segment(
-        position=FOLDER_POSITION,
-        text="",
-        varying=True,
-        values=sorted(subdir_names),
-        role=device_role,
-    )
-    stems = [f.stem for f in all_files]
-    for mode in ("smart", "_", "-"):
-        tokenized = [_tokenize(s, mode) for s in stems]
-        if len({len(t) for t in tokenized}) == 1:
-            segments = [folder_seg] + _build_segments(tokenized)
-            return FilePattern(segments, all_files, suffix, tokenize_mode=mode)
-    names = sorted(set(stems))
-    return FilePattern(
-        [folder_seg, Segment(0, "<varies>", True, names)],
-        all_files,
-        suffix,
-    )
-
-
-def _find_distinguishing_glob(group_stems: list[str], other_stems: list[str]) -> str:
-    """Find a readable glob pattern that matches all group stems but no others.
-
-    Tries word-level tokens first (e.g. "cam", "3D") for readable labels,
-    then consecutive token pairs, then falls back to shortest substring.
-    """
-    if not group_stems or not other_stems:
-        return "*"
-    ref = group_stems[0]
-    tokens = _tokenize(ref, "smart")
-
-    def _distinguishes(sub: str) -> bool:
-        return all(sub in s for s in group_stems) and not any(
-            sub in s for s in other_stems
-        )
-
-    for tok in tokens:
-        if len(tok) >= 2 and _distinguishes(tok):
-            return f"*{tok}*"
-    spans = _find_token_spans(ref, tokens)
-    for i in range(len(tokens) - 1):
-        pair = ref[spans[i][0] : spans[i + 1][1]]
-        if _distinguishes(pair):
-            return f"*{pair}*"
-    for length in range(3, min(40, len(ref) + 1)):
-        for start in range(len(ref) - length + 1):
-            sub = ref[start : start + length]
-            if _distinguishes(sub):
-                return f"*{sub}*"
-    return f"*{ref[:20]}*"
-
-
-def detect_file_groups(files: list[Path]) -> list[tuple[str, list[Path]]]:
-    """Group files by naming structure when tokenization lengths differ.
-
-    Returns (glob_pattern, files) pairs sorted by size descending, or empty
-    list if all files share the same structure.
-    """
-    if len(files) < 2:
-        return []
-    stems = [f.stem for f in files]
-    for mode in ("smart", "_", "-"):
-        tokenized = [_tokenize(s, mode) for s in stems]
-        if len({len(t) for t in tokenized}) == 1:
-            return []
-    tokenized_pairs = [(f, _tokenize(f.stem, "smart")) for f in files]
-    by_count: dict[int, list[Path]] = {}
-    for f, tokens in tokenized_pairs:
-        by_count.setdefault(len(tokens), []).append(f)
-    if len(by_count) <= 1:
-        return []
-    groups_sorted = sorted(by_count.values(), key=len, reverse=True)
-    result: list[tuple[str, list[Path]]] = []
-    for group_files in groups_sorted:
-        group_ids = {id(f) for f in group_files}
-        other_files = [f for f in files if id(f) not in group_ids]
-        group_stems = [f.stem for f in group_files]
-        other_stems = [f.stem for f in other_files]
-        glob_label = _find_distinguishing_glob(group_stems, other_stems)
-        result.append((glob_label, group_files))
-    return result
-
-
 def extract_file_row(
     filepath: Path, segments: list[Segment], tokenize_mode: str = "smart",
+    *, regex_pattern: str | None = None,
 ) -> dict[str, str]:
-    tokens = _tokenize(filepath.stem, tokenize_mode)
     row: dict[str, str] = {"path": str(filepath)}
+    if tokenize_mode == "regex" and regex_pattern:
+        m = re.search(regex_pattern, filepath.stem)
+        if m:
+            for key, val in m.groupdict().items():
+                if val is not None and key in ("trial", "camera", "mic"):
+                    row[key] = val
+        return row
+    tokens = _tokenize(filepath.stem, tokenize_mode)
     for seg in segments:
         if not (seg.varying and seg.role and seg.role != "ignore"):
             continue
@@ -384,6 +246,7 @@ class StreamConfig:
     folder: str
     role_map: dict[int, str]  # segment position → role name
     nested: bool = False
+    regex_pattern: str | None = None
 
 
 @dataclass
@@ -397,6 +260,7 @@ class MediaConfig:
                     "folder": sc.folder,
                     "roles": {str(k): v for k, v in sc.role_map.items()},
                     "nested": sc.nested,
+                    **({"regex": sc.regex_pattern} if sc.regex_pattern else {}),
                 }
                 for name, sc in self.streams.items()
             }
@@ -410,6 +274,7 @@ class MediaConfig:
                 folder=sc["folder"],
                 role_map={int(k): v for k, v in sc.get("roles", {}).items()},
                 nested=sc.get("nested", False),
+                regex_pattern=sc.get("regex"),
             )
         return cls(streams=streams)
 
@@ -463,6 +328,11 @@ class FilenameList(QWidget):
             return
 
         mono = _mono(FS)
+
+        if pattern.tokenize_mode == "regex" and pattern.regex_pattern:
+            self._refresh_regex(pattern, mono)
+            return
+
         segs = [s for s in pattern.segments if s.position != FOLDER_POSITION]
         folder_seg = next((s for s in pattern.segments if s.position == FOLDER_POSITION), None)
         for fp in pattern.files[:MAX_PREVIEW]:
@@ -502,7 +372,66 @@ class FilenameList(QWidget):
             self._lay.addWidget(lbl)
             self._rows.append(lbl)
 
-        rest = len(pattern.files) - MAX_PREVIEW
+        self._add_overflow_label(pattern, mono)
+
+    def _refresh_regex(self, pattern: FilePattern, mono: QFont):
+        rx = re.compile(pattern.regex_pattern)
+        for fp in pattern.files[:MAX_PREVIEW]:
+            stem = fp.stem
+            m = rx.search(stem)
+            if not m:
+                html = f"<span style='color:{TEXT_DIM}'>{stem}{pattern.suffix}</span>"
+            else:
+                group_spans = []
+                for name in rx.groupindex:
+                    s, e = m.span(name)
+                    if s >= 0:
+                        role = name if name in ("trial", "camera", "mic") else None
+                        group_spans.append((s, e, role))
+                group_spans.sort()
+
+                parts: list[str] = []
+                prev = 0
+                for s, e, role in group_spans:
+                    if s > prev:
+                        parts.append(f"<span style='color:{TEXT_DIM}'>{stem[prev:s]}</span>")
+                    c = ROLE_COLORS.get(role, TEXT_DIM)
+                    parts.append(f"<span style='color:{c};font-weight:700'>{stem[s:e]}</span>")
+                    prev = e
+                if prev < len(stem):
+                    parts.append(f"<span style='color:{TEXT_DIM}'>{stem[prev:]}</span>")
+                parts.append(f"<span style='color:{TEXT_DIM}'>{pattern.suffix}</span>")
+                html = "".join(parts)
+
+            lbl = QLabel(html)
+            lbl.setFont(mono)
+            lbl.setTextFormat(Qt.TextFormat.RichText)
+            lbl.setStyleSheet("background:transparent; padding:2px 0;")
+            self._lay.addWidget(lbl)
+            self._rows.append(lbl)
+
+        self._add_overflow_label(pattern, mono)
+
+    def set_plain_files(self, files: list[Path]):
+        """Show filenames without any coloring."""
+        for w in self._rows:
+            w.deleteLater()
+        self._rows.clear()
+        mono = _mono(FS)
+        for fp in files[:MAX_PREVIEW]:
+            lbl = QLabel(f"<span style='color:{TEXT_DIM}'>{fp.name}</span>")
+            lbl.setFont(mono)
+            lbl.setTextFormat(Qt.TextFormat.RichText)
+            lbl.setStyleSheet("background:transparent; padding:2px 0;")
+            self._lay.addWidget(lbl)
+            self._rows.append(lbl)
+        self._add_overflow(len(files), mono)
+
+    def _add_overflow_label(self, pattern: FilePattern, mono: QFont):
+        self._add_overflow(len(pattern.files), mono)
+
+    def _add_overflow(self, total: int, mono: QFont):
+        rest = total - MAX_PREVIEW
         if rest > 0:
             lbl = QLabel(f"<span style='color:{TEXT_DIM};font-style:italic'>… {rest} more</span>")
             lbl.setFont(mono)
@@ -512,95 +441,278 @@ class FilenameList(QWidget):
             self._rows.append(lbl)
 
 
-# ─── pattern bar ─────────────────────────────────────────────────────────────
+
+# ─── pattern editor ─────────────────────────────────────────────────────────
 
 
-class PatternBar(QWidget):
-    role_changed = Signal()
+class PatternEditor(QWidget):
+    """Visual filename-pattern editor.
 
-    def __init__(self, pattern: FilePattern, stream: str, parent: QWidget | None = None, allowed_roles: list[str] | None = None):
+    Workflow — "pick colour, then paint":
+      1. Click a role button (Trial / Camera / Mic) to activate it.
+      2. Drag-select text in the reference filename — it immediately
+         highlights in that role's colour.
+      3. Pick another role and highlight another part.
+      4. The file list and pattern bar below update automatically.
+
+    Internally the widget builds a regex from the marked regions and
+    emits ``pattern_changed`` so the ``StreamPanel`` can re-analyse.
+    """
+
+    pattern_changed = Signal(str)  # emits regex string, or "" when cleared
+
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        self._pattern = pattern
-        self._stream = stream
-        self._allowed_roles = allowed_roles
+        self._marks: list[tuple[int, int, str]] = []  # (start, end, role)
+        self._reference = ""
+        self._override = ""
+        self._active_role: str | None = None
+        self._role_buttons: dict[str, QPushButton] = {}
         self._build()
 
+    # ── build ────────────────────────────────────────────────────────────
+
     def _build(self):
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(20, 6, 20, 6)
-        lay.setSpacing(3)
-        roles = self._allowed_roles if self._allowed_roles is not None else STREAM_ROLES.get(self._stream, ["ignore", "trial", "camera"])
-        mono = _mono(FS)
-        segs = self._pattern.segments
-        segs_no_folder = [s for s in segs if s.position != FOLDER_POSITION]
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 6, 14, 2)
+        layout.setSpacing(4)
 
-        # Extract delimiters from first file's original stem
-        ref_delims: list[str] = []
-        if self._pattern.files:
-            ref_stem = self._pattern.files[0].stem
-            ref_tokens = _tokenize(ref_stem, self._pattern.tokenize_mode)
-            ref_spans = _find_token_spans(ref_stem, ref_tokens)
-            for i in range(len(ref_spans) - 1):
-                ref_delims.append(ref_stem[ref_spans[i][1]:ref_spans[i + 1][0]])
+        # reference file selector
+        ref_row = QHBoxLayout()
+        ref_row.setSpacing(6)
+        ref_lbl = QLabel("Example file:")
+        ref_lbl.setStyleSheet(f"color:{TEXT_MID}; font-size:{FS - 1}px;")
+        ref_row.addWidget(ref_lbl)
+        self._file_combo = QComboBox()
+        self._file_combo.setStyleSheet(
+            f"QComboBox {{ background:{BG_INPUT}; color:{TEXT}; "
+            f"border:1px solid {BORDER}; border-radius:4px; "
+            f"padding:3px 8px; font-size:{FS - 1}px; }}"
+            f"QComboBox::drop-down {{ border:none; width:18px; }}"
+            f"QComboBox QAbstractItemView {{ background:{BG_PANEL}; "
+            f"color:{TEXT}; selection-background-color:{BORDER}; }}"
+        )
+        self._file_combo.currentTextChanged.connect(self._on_reference_changed)
+        ref_row.addWidget(self._file_combo, stretch=1)
+        layout.addLayout(ref_row)
 
-        for idx, seg in enumerate(segs):
-            if not seg.varying:
-                lbl = QLabel(seg.text)
-                lbl.setFont(mono)
-                lbl.setStyleSheet(f"color:{TEXT_MID}; padding:0 1px;")
-                lay.addWidget(lbl)
-            else:
-                cb = QComboBox()
-                cb.addItems(roles)
-                if seg.role and seg.role in roles:
-                    cb.setCurrentText(seg.role)
-                elif seg.role == "camera" and "mic" in roles and "camera" not in roles:
-                    seg.role = "mic"
-                    cb.setCurrentText("mic")
-                else:
-                    # Auto-detect role if not set
-                    detected = _auto_detect_role(seg)
-                    if detected and detected in roles:
-                        seg.role = detected
-                        cb.setCurrentText(detected)
-                    else:
-                        cb.setCurrentIndex(0)
-                self._style(cb, seg.role)
-                cb.setFixedHeight(30)
-                cb.setMinimumWidth(100)
-                cb.currentTextChanged.connect(
-                    lambda text, s=seg, c=cb: self._changed(s, text, c)
-                )
-                lay.addWidget(cb)
-            if seg.position == FOLDER_POSITION:
-                sep = QLabel("/")
-                sep.setFont(mono)
-                sep.setStyleSheet(f"color:{TEXT_MID}; padding:0 1px;")
-                lay.addWidget(sep)
-            else:
-                nf_idx = segs_no_folder.index(seg) if seg in segs_no_folder else -1
-                if 0 <= nf_idx < len(ref_delims):
-                    sep = QLabel(ref_delims[nf_idx])
-                    sep.setFont(mono)
-                    sep.setStyleSheet(f"color:{TEXT_MID}; padding:0 1px;")
-                    lay.addWidget(sep)
-        lay.addStretch()
+        # role buttons — pick a colour first, then paint on the filename
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(6)
+        hint = QLabel("Pick role, then highlight:")
+        hint.setStyleSheet(f"color:{TEXT_DIM}; font-size:{FS - 1}px;")
+        btn_row.addWidget(hint)
+        for role, color, label in [
+            ("trial", COLOR_TRIAL, "Trial"),
+            ("camera", COLOR_CAMERA, "Camera"),
+            ("mic", COLOR_MIC, "Mic"),
+        ]:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda _, r=role: self._activate_role(r))
+            self._role_buttons[role] = btn
+            self._style_role_btn(btn, color, active=False)
+            btn_row.addWidget(btn)
+        clear_btn = QPushButton("Clear")
+        clear_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        clear_btn.setStyleSheet(
+            f"QPushButton {{ background:transparent; color:{TEXT_DIM}; "
+            f"border:1px solid {BORDER}; border-radius:4px; "
+            f"padding:3px 10px; font-size:{FS - 1}px; }}"
+            f"QPushButton:hover {{ color:{TEXT}; border-color:{TEXT_MID}; }}"
+        )
+        clear_btn.clicked.connect(self._clear_marks)
+        btn_row.addWidget(clear_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
 
-    def _style(self, cb: QComboBox, role: str | None):
-        c = ROLE_COLORS.get(role, TEXT_DIM)
-        cb.setStyleSheet(
-            f"QComboBox {{ background:{BG_INPUT}; color:{c}; font-weight:700; "
-            f"border:2px solid {c}; border-radius:4px; padding:3px 10px; "
-            f"font-size:{FS}px; }}"
-            f"QComboBox::drop-down {{ border:none; width:20px; }}"
-            f"QComboBox QAbstractItemView {{ background:{BG_PANEL}; color:{TEXT}; "
-            f"selection-background-color:{BORDER}; font-size:{FS}px; }}"
+        # filename text — read-only QLineEdit for mouse-selection
+        self._edit = QLineEdit()
+        self._edit.setReadOnly(True)
+        self._edit.setFont(_mono(FS))
+        self._edit.setStyleSheet(
+            f"QLineEdit {{ background:{BG_INPUT}; color:{TEXT}; "
+            f"border:1px solid {BORDER}; border-radius:4px; "
+            f"padding:6px 10px; font-size:{FS}px; }}"
+            f"QLineEdit:focus {{ border-color:{ACCENT}; }}"
+        )
+        self._edit.selectionChanged.connect(self._on_selection_changed)
+        layout.addWidget(self._edit)
+
+        # coloured preview
+        self._preview = QLabel()
+        self._preview.setFont(_mono(FS))
+        self._preview.setTextFormat(Qt.TextFormat.RichText)
+        self._preview.setStyleSheet("background:transparent; padding:2px 0;")
+        layout.addWidget(self._preview)
+
+        # debounce timer — emit pattern_changed after selection stabilises
+        self._emit_timer = QTimer()
+        self._emit_timer.setSingleShot(True)
+        self._emit_timer.setInterval(200)
+        self._emit_timer.timeout.connect(
+            lambda: self.pattern_changed.emit(self._build_regex())
         )
 
-    def _changed(self, seg: Segment, text: str, cb: QComboBox):
-        seg.role = text if text != "ignore" else None
-        self._style(cb, seg.role)
-        self.role_changed.emit()
+    @staticmethod
+    def _style_role_btn(btn: QPushButton, color: str, *, active: bool):
+        if active:
+            btn.setStyleSheet(
+                f"QPushButton {{ background:{color}; color:{BG}; "
+                f"border:1.5px solid {color}; border-radius:4px; "
+                f"padding:3px 12px; font-size:{FS - 1}px; font-weight:700; }}"
+            )
+        else:
+            btn.setStyleSheet(
+                f"QPushButton {{ background:{BG_INPUT}; color:{color}; "
+                f"border:1.5px solid {color}; border-radius:4px; "
+                f"padding:3px 12px; font-size:{FS - 1}px; font-weight:700; }}"
+                f"QPushButton:hover {{ background:{color}; color:{BG}; }}"
+            )
+
+    # ── public API ───────────────────────────────────────────────────────
+
+    def set_files(self, files: list[Path]):
+        """Populate the reference-file combo.  First file becomes the default."""
+        stems = [f.stem for f in files[:60]]
+        self._file_combo.blockSignals(True)
+        self._file_combo.clear()
+        self._file_combo.addItems(stems)
+        self._file_combo.blockSignals(False)
+        if stems:
+            self._set_reference(stems[0])
+        else:
+            self._set_reference("")
+
+    def set_regex(self, regex: str):
+        """Restore a previously-saved regex (from config)."""
+        self._marks.clear()
+        self._override = regex
+        self._update_preview()
+        self.pattern_changed.emit(regex)
+
+    @property
+    def regex(self) -> str:
+        """Current regex string, or ``""`` when no marks are set."""
+        return self._build_regex()
+
+    # ── internals ────────────────────────────────────────────────────────
+
+    def _set_reference(self, stem: str):
+        self._reference = stem
+        self._edit.setText(stem)
+        self._marks.clear()
+        self._override = ""
+        self._update_preview()
+        self.pattern_changed.emit("")
+
+    def _on_reference_changed(self, text: str):
+        self._set_reference(text)
+
+    def _activate_role(self, role: str):
+        """Toggle a role as the active paint brush."""
+        role_colors = {"trial": COLOR_TRIAL, "camera": COLOR_CAMERA, "mic": COLOR_MIC}
+        if self._active_role == role:
+            # Deactivate
+            self._active_role = None
+            for r, btn in self._role_buttons.items():
+                btn.setChecked(False)
+                self._style_role_btn(btn, role_colors[r], active=False)
+        else:
+            self._active_role = role
+            for r, btn in self._role_buttons.items():
+                is_active = r == role
+                btn.setChecked(is_active)
+                self._style_role_btn(btn, role_colors[r], active=is_active)
+
+    def _on_selection_changed(self):
+        """Live-paint: when the user drags a selection while a role is active,
+        immediately mark that region and update the preview."""
+        if not self._active_role or not self._reference:
+            return
+        sel = self._edit.selectedText()
+        if not sel:
+            return
+        start = self._edit.selectionStart()
+        end = start + len(sel)
+        role = self._active_role
+        # Replace any existing mark for this role + remove overlaps
+        self._marks = [
+            (s, e, r)
+            for s, e, r in self._marks
+            if r != role and (e <= start or s >= end)
+        ]
+        self._marks.append((start, end, role))
+        self._marks.sort()
+        self._override = ""
+        self._update_preview()
+        # Debounced: let the selection stabilise before triggering analysis
+        self._emit_timer.start()
+
+    def _clear_marks(self):
+        self._marks.clear()
+        self._active_role = None
+        self._override = ""
+        role_colors = {"trial": COLOR_TRIAL, "camera": COLOR_CAMERA, "mic": COLOR_MIC}
+        for r, btn in self._role_buttons.items():
+            btn.setChecked(False)
+            self._style_role_btn(btn, role_colors[r], active=False)
+        self._update_preview()
+        self.pattern_changed.emit("")
+
+    def _update_preview(self):
+        if not self._reference:
+            self._preview.setText("")
+            return
+        if not self._marks:
+            self._preview.setText("")
+            return
+        parts: list[str] = []
+        prev = 0
+        for start, end, role in self._marks:
+            if start > prev:
+                parts.append(
+                    f"<span style='color:{TEXT_DIM}'>"
+                    f"{self._reference[prev:start]}</span>"
+                )
+            c = ROLE_COLORS.get(role, TEXT_DIM)
+            parts.append(
+                f"<span style='color:{c};font-weight:bold;"
+                f"text-decoration:underline'>"
+                f"{self._reference[start:end]}</span>"
+                f"<sub style='color:{c}'> {role}</sub>"
+            )
+            prev = end
+        if prev < len(self._reference):
+            parts.append(
+                f"<span style='color:{TEXT_DIM}'>"
+                f"{self._reference[prev:]}</span>"
+            )
+        self._preview.setText("".join(parts))
+
+    def _build_regex(self) -> str:
+        if self._override:
+            return self._override
+        if not self._marks or not self._reference:
+            return ""
+        parts: list[str] = []
+        prev = 0
+        for start, end, role in self._marks:
+            if start > prev:
+                parts.append(re.escape(self._reference[prev:start]))
+            # Infer a character class from the delimiter that follows
+            if end < len(self._reference):
+                nxt = self._reference[end]
+                parts.append(f"(?P<{role}>[^{re.escape(nxt)}]+)")
+            else:
+                parts.append(f"(?P<{role}>.+)")
+            prev = end
+        if prev < len(self._reference):
+            parts.append(re.escape(self._reference[prev:]))
+        return "".join(parts)
 
 
 # ─── stream panel ────────────────────────────────────────────────────────────
@@ -656,56 +768,17 @@ class StreamPanel(QWidget):
         self._nested_cb.toggled.connect(lambda: self._on_folder(self._folder.text()))
         outer.addWidget(self._nested_cb)
 
-        # file filter
-        filter_row = QHBoxLayout()
-        filter_row.setContentsMargins(14, 0, 14, 0)
-        filter_lbl = QLabel("Filter:")
-        filter_lbl.setStyleSheet(f"color:{TEXT_MID}; font-size:{FS}px;")
-        self._filter_edit = QLineEdit()
-        self._filter_edit.setPlaceholderText("Glob to include only matching files, e.g. *trial*.csv excludes extra_table.csv")
-        self._filter_edit.setClearButtonEnabled(True)
-        self._filter_edit.setStyleSheet(
-            f"QLineEdit {{ background:{BG_INPUT}; color:{TEXT}; "
-            f"border:1px solid {BORDER}; border-radius:4px; "
-            f"padding:5px 10px; font-size:{FS}px; }}"
-            f"QLineEdit:focus {{ border-color:{ACCENT}; }}"
-        )
-        self._filter_timer = QTimer()
-        self._filter_timer.setSingleShot(True)
-        self._filter_timer.setInterval(300)
-        self._filter_timer.timeout.connect(self._apply_filter_and_analyze)
-        self._filter_edit.textChanged.connect(lambda: self._filter_timer.start())
-        filter_row.addWidget(filter_lbl)
-        filter_row.addWidget(self._filter_edit, stretch=1)
-        outer.addLayout(filter_row)
-
-        # group chips (shown when mixed file structures detected)
-        self._group_row = QHBoxLayout()
-        self._group_row.setContentsMargins(14, 0, 14, 0)
-        self._group_container = QWidget()
-        self._group_container.setLayout(self._group_row)
-        self._group_container.setVisible(False)
-        outer.addWidget(self._group_container)
-
-        # pattern label
-        lbl = QLabel("pattern")
-        lbl.setStyleSheet(f"color:{TEXT_DIM}; font-size:11px; padding:0 20px;")
-        outer.addWidget(lbl)
-
-        # pattern bar area
-        self._pat_area = QVBoxLayout()
-        self._pat_area.setContentsMargins(0, 0, 0, 0)
-        ph = QLabel("no folder selected")
-        ph.setStyleSheet(f"color:{TEXT_DIM}; font-style:italic; padding:4px 20px; font-size:{FS}px;")
-        self._pat_area.addWidget(ph)
-        outer.addLayout(self._pat_area)
+        # pattern editor
+        self._pattern_editor = PatternEditor()
+        self._pattern_editor.pattern_changed.connect(lambda _: self._apply_analysis())
+        outer.addWidget(self._pattern_editor)
 
         # summary
         self._summary = QLabel()
         self._summary.setStyleSheet(f"color:{TEXT_MID}; font-size:{FS}px; padding:0 20px;")
         outer.addWidget(self._summary)
 
-        # scrollable filename list — takes remaining space
+        # scrollable filename list
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet(
@@ -727,112 +800,46 @@ class StreamPanel(QWidget):
         p = Path(text)
         if not p.is_dir():
             self._all_files = []
-            self._populate_group_chips([])
             self._set_pattern(None)
             return
         if self._nested_cb.isChecked():
-            self._all_files = []
-            self._populate_group_chips([])
-            self._set_pattern(analyze_nested_filenames(p, self._stream))
-            return
-        files = sorted(f for f in p.iterdir() if f.is_file())
-        relevant = [f for f in files if classify_stream(f.name) == self._stream]
-        self._all_files = relevant or files
-        self._filter_edit.blockSignals(True)
-        self._filter_edit.clear()
-        self._filter_edit.blockSignals(False)
-        groups = detect_file_groups(self._all_files)
-        self._populate_group_chips(groups)
-        self._apply_filter_and_analyze()
+            all_files: list[Path] = []
+            for sd in sorted(d for d in p.iterdir() if d.is_dir()):
+                files = sorted(f for f in sd.iterdir() if f.is_file())
+                relevant = [f for f in files if classify_stream(f.name) == self._stream]
+                all_files.extend(relevant or files)
+            self._all_files = all_files
+        else:
+            files = sorted(f for f in p.iterdir() if f.is_file())
+            relevant = [f for f in files if classify_stream(f.name) == self._stream]
+            self._all_files = relevant or files
+        self._pattern_editor.set_files(self._all_files)
+        self._apply_analysis()
 
-    def _apply_filter_and_analyze(self):
+    def _apply_analysis(self):
         if not self._all_files:
             self._set_pattern(None)
             return
-        filter_text = self._filter_edit.text().strip()
-        if filter_text:
-            pat = (
-                filter_text
-                if ("*" in filter_text or "?" in filter_text)
-                else f"*{filter_text}*"
-            )
-            filtered = [
-                f for f in self._all_files if fnmatch.fnmatch(f.name, pat)
-            ]
-        else:
-            filtered = list(self._all_files)
-        if not filtered:
-            self._set_pattern(None)
+        regex_text = self._pattern_editor.regex
+        if not regex_text:
+            self._flist.set_plain_files(self._all_files)
+            self._summary.setText(f"{len(self._all_files)} files")
+            self._pattern = None
+            self.changed.emit()
             return
-        self._set_pattern(analyze_filenames(filtered))
-        if filter_text and len(filtered) < len(self._all_files):
-            current = self._summary.text()
-            self._summary.setText(
-                f"[{len(filtered)}/{len(self._all_files)}]  {current}"
-            )
-
-    def _populate_group_chips(self, groups: list[tuple[str, list[Path]]]):
-        while self._group_row.count():
-            item = self._group_row.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        if not groups:
-            self._group_container.setVisible(False)
-            return
-        self._group_container.setVisible(True)
-        hint = QLabel("Mixed file structures — pick a group:")
-        hint.setStyleSheet(f"color:{TEXT_MID}; font-size:{FS - 1}px;")
-        self._group_row.addWidget(hint)
-        for glob_pat, group_files in groups:
-            btn = QPushButton(f"{glob_pat} ({len(group_files)})")
-            btn.setStyleSheet(
-                f"QPushButton {{ background:{BG_INPUT}; color:{TEXT_MID}; "
-                f"border:1px solid {BORDER}; border-radius:10px; "
-                f"padding:3px 10px; font-size:{FS - 1}px; }}"
-                f"QPushButton:hover {{ border-color:{TEXT_MID}; color:{TEXT}; }}"
-            )
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.clicked.connect(
-                lambda _, g=glob_pat: self._filter_edit.setText(g)
-            )
-            self._group_row.addWidget(btn)
-        all_btn = QPushButton(f"All ({len(self._all_files)})")
-        all_btn.setStyleSheet(
-            f"QPushButton {{ background:{BG_INPUT}; color:{TEXT_MID}; "
-            f"border:1px solid {BORDER}; border-radius:10px; "
-            f"padding:3px 10px; font-size:{FS - 1}px; }}"
-            f"QPushButton:hover {{ border-color:{TEXT_MID}; color:{TEXT}; }}"
-        )
-        all_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        all_btn.clicked.connect(lambda: self._filter_edit.clear())
-        self._group_row.addWidget(all_btn)
-        self._group_row.addStretch()
+        pat = analyze_filenames_with_regex(self._all_files, regex_text)
+        self._set_pattern(pat)
 
     def _set_pattern(self, pat: FilePattern | None):
         self._pattern = pat
-        while self._pat_area.count():
-            w = self._pat_area.takeAt(0).widget()
-            if w:
-                w.deleteLater()
         if pat is None:
-            lbl = QLabel("no matching files")
-            lbl.setStyleSheet(f"color:{TEXT_DIM}; font-style:italic; padding:4px 20px; font-size:{FS}px;")
-            self._pat_area.addWidget(lbl)
             self._flist.refresh(None)
             self._summary.setText("")
             self.changed.emit()
             return
-        bar = PatternBar(pat, self._stream, allowed_roles=self._allowed_roles)
-        bar.role_changed.connect(self._refresh)
-        self._pat_area.addWidget(bar)
-        self._refresh()
-
-    def _refresh(self):
-        self._flist.refresh(self._pattern)
-        info = self._pattern.summary() if self._pattern else {}
-        bits: list[str] = []
-        if self._pattern:
-            bits.append(f"{len(self._pattern.files)} files")
+        self._flist.refresh(pat)
+        info = pat.summary()
+        bits = [f"{len(pat.files)} files"]
         for key, label in [("trial", "trials"), ("camera", "cameras"), ("mic", "mics")]:
             if key in info:
                 vals = info[key]
@@ -854,12 +861,18 @@ class StreamPanel(QWidget):
             for seg in self._pattern.segments
             if seg.varying and seg.role and seg.role != "ignore"
         }
-        return StreamConfig(folder=folder, role_map=role_map, nested=self._nested_cb.isChecked())
+        return StreamConfig(
+            folder=folder, role_map=role_map,
+            nested=self._nested_cb.isChecked(),
+            regex_pattern=self._pattern.regex_pattern,
+        )
 
     def apply_config(self, cfg: StreamConfig) -> None:
         self._nested_cb.setChecked(cfg.nested)
+        if cfg.regex_pattern:
+            self._pattern_editor.set_regex(cfg.regex_pattern)
         self._folder.setText(cfg.folder)
-        if self._pattern is not None:
+        if self._pattern is not None and not cfg.regex_pattern:
             _apply_roles(self._pattern, cfg.role_map)
             self._set_pattern(self._pattern)
 
@@ -905,7 +918,7 @@ class SessionPreview(QWidget):
             if not pat:
                 continue
             stream = panel._stream
-            rows = [extract_file_row(f, pat.segments, pat.tokenize_mode) for f in pat.files]
+            rows = [extract_file_row(f, pat.segments, pat.tokenize_mode, regex_pattern=pat.regex_pattern) for f in pat.files]
             df = pd.DataFrame(rows)
             if "trial" not in df.columns:
                 continue
@@ -1113,46 +1126,3 @@ class MediaDiscoveryWidget(QWidget):
         self._config_status.setText(f"loaded ← {Path(path).name}")
 
 
-# ─── demo ────────────────────────────────────────────────────────────────────
-
-
-def create_demo_files(root: Path):
-    for d in ("video", "pose", "audio"):
-        (root / d).mkdir(parents=True, exist_ok=True)
-    # flat layout (default)
-    for t in range(1, 13):
-        for cam in ("left", "right"):
-            (root / "video" / f"{cam}_trial{t:03d}.mp4").touch()
-        (root / "pose" / f"dlc_left_trial{t:03d}.h5").touch()
-        if t <= 8:
-            (root / "pose" / f"dlc_right_trial{t:03d}.h5").touch()
-        (root / "audio" / f"mic1_trial{t:03d}.wav").touch()
-    # nested layout (one subfolder per camera)
-    for cam in ("left", "right"):
-        (root / "video_nested" / cam).mkdir(parents=True, exist_ok=True)
-    for t in range(1, 13):
-        for cam in ("left", "right"):
-            (root / "video_nested" / cam / f"trial{t:03d}.mp4").touch()
-
-
-def main():
-    import sys, tempfile
-
-    app = QApplication.instance() or QApplication(sys.argv)
-    root = Path(tempfile.mkdtemp(prefix="media_demo_"))
-    create_demo_files(root)
-    logger.info("Demo files: %s", root)
-
-    w = MediaDiscoveryWidget()
-    w.resize(640, 860)
-    w.show()
-
-    w._panels[0]._folder.setText(str(root / "video"))
-    w._panels[1]._folder.setText(str(root / "pose"))
-    w._panels[2]._folder.setText(str(root / "audio"))
-
-    sys.exit(app.exec_())
-
-
-if __name__ == "__main__":
-    main()

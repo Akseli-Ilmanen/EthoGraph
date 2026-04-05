@@ -12,7 +12,6 @@ from natsort import natsorted
 
 from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
-from ethograph.utils.io import dataset_to_basic_trialtree
 from ethograph.labels.intervals import INTERVAL_COLUMNS
 from ethograph.io.trialtree import TrialTree
 
@@ -140,11 +139,14 @@ def _build_nwb_file(
     ethograph_dir = output_dir / ".ethograph"
     nwb_path = ethograph_dir / "alignment.nwb"
 
-    camera_fps = float(fps) if fps else 30.0
+    stream_rates: dict[str, float] = {}
+    if fps:
+        stream_rates["video"] = float(fps)
+        stream_rates["pose"] = float(fps)
 
     build_nwb_from_trial_table(
         trial_table=nwb_df,
-        camera_fps=camera_fps,
+        stream_rates=stream_rates,
         output_path=nwb_path,
     )
 

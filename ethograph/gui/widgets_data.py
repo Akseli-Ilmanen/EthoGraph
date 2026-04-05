@@ -298,6 +298,16 @@ class DataPanel(QWidget):
         self.pose_show_text_checkbox.setToolTip("Show keypoint/individual labels on pose markers")
         row2.addWidget(self.pose_show_text_checkbox)
 
+        row2.addWidget(QLabel("Text size:"))
+        self.pose_text_size_spin = QDoubleSpinBox()
+        self.pose_text_size_spin.setObjectName("pose_text_size_spin")
+        self.pose_text_size_spin.setRange(4.0, 72.0)
+        self.pose_text_size_spin.setSingleStep(1.0)
+        self.pose_text_size_spin.setDecimals(0)
+        self.pose_text_size_spin.setFixedWidth(55)
+        self.pose_text_size_spin.setValue(12.0)
+        row2.addWidget(self.pose_text_size_spin)
+
         self.rotate_btn = QPushButton("Rotate video/pose by 90°")
         self.rotate_btn.setToolTip("Rotate all video and pose layers by 90° clockwise")
         row2.addWidget(self.rotate_btn)
@@ -429,6 +439,7 @@ class DataWidget(QWidget):
         self.pose_hide_threshold_spin = panel.pose_hide_threshold_spin
         self.pose_show_text_checkbox = panel.pose_show_text_checkbox
         self.pose_point_size_spin = panel.pose_point_size_spin
+        self.pose_text_size_spin = panel.pose_text_size_spin
         self.keypoints_table = panel.keypoints_table
 
         self.pose_mgr = PoseDisplayManager(self.viewer, self.app_state, self.video_mgr, self)
@@ -437,6 +448,7 @@ class DataWidget(QWidget):
         panel.pose_hide_threshold_spin.valueChanged.connect(self._on_pose_hide_threshold_changed)
         panel.pose_show_text_checkbox.stateChanged.connect(self._on_pose_text_toggled)
         panel.pose_point_size_spin.valueChanged.connect(self._on_pose_point_size_changed)
+        panel.pose_text_size_spin.valueChanged.connect(self._on_pose_text_size_changed)
         panel.rotate_btn.clicked.connect(self.pose_mgr.on_rotate_video_pose)
         panel._update_pose_callback = self.update_pose
 
@@ -485,6 +497,9 @@ class DataWidget(QWidget):
         self.pose_mgr.apply_pose_style()
 
     def _on_pose_point_size_changed(self, value: float):
+        self.pose_mgr.apply_pose_style()
+
+    def _on_pose_text_size_changed(self, value: float):
         self.pose_mgr.apply_pose_style()
 
     def set_references(
@@ -550,9 +565,6 @@ class DataWidget(QWidget):
 
         nc_file_path = self.io_widget.get_nc_file_path()
 
-        self.app_state.has_video = bool(self.app_state.video_folder)
-        self.app_state.has_pose = bool(self.app_state.pose_folder)
-
         try:
             self.app_state.dt, all_labels_df, catalog = load_dataset(
                 nc_file_path,
@@ -578,19 +590,26 @@ class DataWidget(QWidget):
         self._pending_loader = self.app_state.dt.attrs.pop("data_loader", None)
 
         dt_attrs = self.app_state.dt.attrs
+        dt = self.app_state.dt
 
-        # NWB-embedded pose: position variables already in ds, no pose_folder needed
+        # Infer media availability from NWB acquisition items
+        cameras_list = dt.cameras
         has_nwb_pose = "nwb_source" in dt_attrs and bool(dt_attrs.get("nwb_pose_keys"))
-        if has_nwb_pose:
-            self.app_state.has_video = True
-            self.app_state.has_pose = True
+        has_remote_cameras = any(is_url(c) for c in cameras_list)
 
-        # Remote cameras: URLs in session-level cameras — no video folder needed
-        cameras_list = self.app_state.dt.cameras
-        if any(is_url(c) for c in cameras_list):
-            self.app_state.has_video = True
+        # Video: cameras detected (from trials table or acquisition) + folder or full paths
+        self.app_state.has_video = (
+            bool(cameras_list)
+            or has_remote_cameras
+            or has_nwb_pose
+        )
+        self.app_state.has_pose = (
+            bool(dt.devices("pose"))
+            or has_nwb_pose
+        )
+        self.app_state.has_audio = bool(dt.mics)
 
-        # NWB-embedded ephys: path stored in attrs, no local ephys file needed
+        # NWB-embedded ephys
         nwb_ephys_series = dt_attrs.get("nwb_ephys_series")
         nwb_ephys_path = dt_attrs.get("nwb_ephys_path")
         if nwb_ephys_series and nwb_ephys_path:
@@ -600,7 +619,6 @@ class DataWidget(QWidget):
             self.app_state.ephys_source_map[display_name] = (nwb_ephys_path, "0", 0)
             self.app_state.ephys_stream_sel = display_name
 
-        self.app_state.has_audio = bool(self.app_state.dt.mics and self.app_state.audio_folder)
         self.app_state.has_neo = bool(self.app_state.ephys_path) or bool(nwb_ephys_series and nwb_ephys_path)
         self.app_state.has_neurons = bool(self.app_state.neurons_path)
 
@@ -1896,6 +1914,10 @@ class DataWidget(QWidget):
             return
         self.show_envelope_checkbox.show()
         self.video_mgr.update_video(plot_container=self.plot_container)
+        video = getattr(self.app_state, "video", None)
+        if video:
+            nav = self.meta_widget.navigation_widget
+            nav.connect_video_sync(video)
 
     def update_audio(self):
         if not self.app_state.ready:

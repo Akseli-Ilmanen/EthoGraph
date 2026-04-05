@@ -43,9 +43,6 @@ def _fmt_extensions(exts: set[str]) -> str:
     return ", ".join(sorted(exts))
 
 
-VIDEO_EXTENSIONS_STR = _fmt_extensions(VIDEO_EXTENSIONS)
-AUDIO_EXTENSIONS_STR = _fmt_extensions(AUDIO_EXTENSIONS)
-POSE_EXTENSIONS_STR = _fmt_extensions(POSE_EXTENSIONS)
 EPHYS_EXTENSIONS_STR = _fmt_extensions(EPHYS_EXTENSIONS)
 
 
@@ -56,7 +53,6 @@ def _qt_filter(label: str, exts: set[str]) -> str:
 
 VIDEO_FILE_FILTER = _qt_filter("Video files", VIDEO_EXTENSIONS)
 AUDIO_FILE_FILTER = _qt_filter("Audio files", AUDIO_EXTENSIONS)
-POSE_FILE_FILTER = _qt_filter("Pose files", POSE_EXTENSIONS)
 EPHYS_FILE_FILTER = _qt_filter("Ephys files", EPHYS_EXTENSIONS)
 
 
@@ -310,33 +306,6 @@ def _possible_trial_conditions(ds: xr.Dataset, dt: "TrialTree") -> list[str]:
 
 
     
-def extract_type_vars(ds: xr.Dataset, dt: "TrialTree") -> dict:
-    """Build a typed-variable catalogue for a trial dataset.
-
-    Delegates to :func:`ethograph.io.catalog.catalog_from_xarray` and
-    returns the backwards-compatible dict via
-    :meth:`DataCatalog.to_type_vars_dict`.
-
-    Parameters
-    ----------
-    ds : xarray.Dataset
-        A single trial dataset.
-    dt : TrialTree
-        Parent tree (supplies camera/mic lists and common attribute keys).
-
-    Returns
-    -------
-    dict
-        Keys include ``"individuals"``, ``"cameras"``, ``"mics"``,
-        ``"features"``, ``"colors"``, ``"changepoints"``,
-        ``"trial_conditions"``, plus any extra temporal dimension names.
-    """
-    from ethograph.io.catalog import catalog_from_xarray
-
-    return catalog_from_xarray(ds, dt).to_type_vars_dict()
-
-
-
 def validate_datatree(
     dt: "TrialTree",
     require_fps: bool = True,

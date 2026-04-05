@@ -684,111 +684,132 @@ def _ts_duration(ts: Any) -> float | None:
 # ---------------------------------------------------------------------------
 
 
-def sync_acquisition_from_trials(
-    nwbfile: NWBFile,
-    cam_labels: list[str],
-    camera_fps: float,
-) -> None:
-    """Derive ImageSeries acquisition items from the NWB trials table.
+_KNOWN_STREAMS = ("video", "pose", "audio", "ephys")
 
-    For each camera, reads video filenames and trial timing from the trials
-    table, computes per-frame timestamps and ``starting_frame`` arrays,
-    and stores as an ``ImageSeries`` in ``nwbfile.acquisition``.
+
+def _parse_stream_devices(columns: list[str]) -> dict[str, list[str]]:
+    """Detect ``{stream}_{device}`` columns → ``{stream: [device, ...]}``."""
+    result: dict[str, list[str]] = {}
+    for col in columns:
+        for stream in _KNOWN_STREAMS:
+            prefix = f"{stream}_"
+            if col.startswith(prefix) and not col.endswith("_start"):
+                device = col[len(prefix):]
+                if device:
+                    result.setdefault(stream, []).append(device)
+    return result
+
+
+def sync_acquisition_for_streams(
+    nwbfile: NWBFile,
+    stream_rates: dict[str, float],
+) -> None:
+    """Create ImageSeries acquisition items for ALL external media streams.
+
+    Reads the trials table to discover ``{stream}_{device}`` columns.
+    For each stream+device pair, creates an ``ImageSeries`` in
+    ``nwbfile.acquisition`` with ``external_file``, ``starting_frame``,
+    and ``rate`` (or ``timestamps`` if offsets are present).
 
     Parameters
     ----------
     nwbfile
-        NWB file with a populated trials table containing ``video_{cam}``
-        columns.
-    cam_labels
-        Camera device names (e.g. ``["cam_1", "cam_2"]``).
-    camera_fps
-        Frame rate used to compute per-frame timestamps.
+        NWB file with a populated trials table.
+    stream_rates
+        Mapping of stream name to sampling rate, e.g.
+        ``{"video": 30.0, "audio": 44100.0, "pose": 30.0}``.
     """
     from pynwb.image import ImageSeries
 
     df = nwbfile.trials.to_dataframe()
+    stream_devices = _parse_stream_devices(list(df.columns))
 
-    for cam in cam_labels:
-        video_col = f"video_{cam}"
-        if video_col not in df.columns:
+    for stream, devices in stream_devices.items():
+        rate = stream_rates.get(stream)
+        if rate is None or rate <= 0:
             continue
 
-        valid = df[df[video_col] != ""]
-        if valid.empty:
-            continue
+        for device in devices:
+            col = f"{stream}_{device}"
+            if col not in df.columns:
+                continue
 
-        external_files = valid[video_col].tolist()
+            valid = df[df[col] != ""]
+            if valid.empty:
+                continue
 
-        start_col = f"video_{cam}_start"
-        if start_col in df.columns:
-            video_starts = valid[start_col].values
-        else:
-            video_starts = valid["start_time"].values
+            external_files = valid[col].tolist()
 
-        timestamps_parts = []
-        starting_frames = []
-        frame_count = 0
-
-        is_placeholder = "stop_time_is_placeholder" in valid.columns
-        has_real_durations = not is_placeholder
-
-        for i, (_, row) in enumerate(valid.iterrows()):
-            video_start = float(video_starts[i])
-            if has_real_durations:
-                duration = float(row["stop_time"]) - float(row["start_time"])
-                if duration <= 0:
-                    duration = 1.0
-                n_frames = max(1, int(duration * camera_fps))
+            start_col = f"{col}_start"
+            if start_col in df.columns:
+                starts = valid[start_col].values.astype(float)
             else:
-                n_frames = 1
-            frames = video_start + np.arange(n_frames) / camera_fps
-            timestamps_parts.append(frames)
-            starting_frames.append(frame_count)
-            frame_count += n_frames
+                starts = valid["start_time"].values.astype(float)
 
-        if cam not in [d.name for d in nwbfile.devices.values()]:
-            nwbfile.create_device(name=cam, description=f"Behavior camera {cam}")
+            timestamps_parts: list[np.ndarray] = []
+            starting_frames: list[int] = []
+            frame_count = 0
 
-        if f"video_{cam}" in nwbfile.acquisition:
-            del nwbfile.acquisition[f"video_{cam}"]
-
-        if has_real_durations:
-            nwbfile.add_acquisition(
-                ImageSeries(
-                    name=f"video_{cam}",
-                    description=f"Behavioral video from {cam}",
-                    external_file=external_files,
-                    format="external",
-                    starting_frame=np.array(starting_frames, dtype=np.int32),
-                    timestamps=np.concatenate(timestamps_parts),
-                )
+            # Check if we have real trial durations
+            has_real_durations = (
+                "stop_time" in valid.columns
+                and valid["stop_time"].notna().all()
+                and (valid["stop_time"].astype(float) - valid["start_time"].astype(float) > 0).all()
             )
-        else:
-            # Aligned mode: no real durations, use rate instead of timestamps
-            nwbfile.add_acquisition(
-                ImageSeries(
-                    name=f"video_{cam}",
-                    description=f"Behavioral video from {cam}",
-                    external_file=external_files,
-                    format="external",
-                    starting_frame=np.array(starting_frames, dtype=np.int32),
-                    rate=camera_fps,
+
+            for i, (_, row) in enumerate(valid.iterrows()):
+                file_start = float(starts[i])
+                if has_real_durations:
+                    duration = float(row["stop_time"]) - float(row["start_time"])
+                    n_samples = max(1, int(duration * rate))
+                else:
+                    n_samples = 1
+                ts = file_start + np.arange(n_samples) / rate
+                timestamps_parts.append(ts)
+                starting_frames.append(frame_count)
+                frame_count += n_samples
+
+            if device not in [d.name for d in nwbfile.devices.values()]:
+                nwbfile.create_device(
+                    name=device, description=f"{stream} device {device}"
                 )
-            )
+
+            acq_name = f"{stream}_{device}"
+            if acq_name in nwbfile.acquisition:
+                del nwbfile.acquisition[acq_name]
+
+            if has_real_durations:
+                nwbfile.add_acquisition(
+                    ImageSeries(
+                        name=acq_name,
+                        description=f"{stream} from {device}",
+                        external_file=external_files,
+                        format="external",
+                        starting_frame=np.array(starting_frames, dtype=np.int32),
+                        timestamps=np.concatenate(timestamps_parts),
+                    )
+                )
+            else:
+                nwbfile.add_acquisition(
+                    ImageSeries(
+                        name=acq_name,
+                        description=f"{stream} from {device}",
+                        external_file=external_files,
+                        format="external",
+                        starting_frame=np.array(starting_frames, dtype=np.int32),
+                        rate=rate,
+                    )
+                )
 
 
 def build_nwb_session(
     media_by_trial: dict[int, dict[str, dict[str, Path]]],
     cam_labels: list[str],
     stream_names: list[str],
-    camera_fps: float = 30.0,
+    stream_rates: dict[str, float] | None = None,
     output_path: Path | None = None,
 ) -> NWBFile:
     """Create an NWB file with trials table and acquisition items.
-
-    The trials table is the single source of truth for media filenames.
-    ``sync_acquisition_from_trials`` derives ``ImageSeries`` from it.
 
     Parameters
     ----------
@@ -798,14 +819,10 @@ def build_nwb_session(
         Camera device names.
     stream_names
         Stream names to include (e.g. ``["video", "pose"]``).
-    camera_fps
-        Default frame rate for video.
+    stream_rates
+        Rate per stream. Streams not listed are skipped.
     output_path
         If given, writes the NWB file to this path.
-
-    Returns
-    -------
-    NWBFile
     """
     from datetime import datetime
     from uuid import uuid4
@@ -837,7 +854,8 @@ def build_nwb_session(
                 row[f"{stream}_{cam}"] = path.name if path else ""
         nwbfile.add_trial(**row)
 
-    sync_acquisition_from_trials(nwbfile, cam_labels, camera_fps)
+    if stream_rates:
+        sync_acquisition_for_streams(nwbfile, stream_rates)
 
     if output_path:
         output_path = Path(output_path)
@@ -850,22 +868,26 @@ def build_nwb_session(
 
 def build_nwb_from_trial_table(
     trial_table: pd.DataFrame,
-    camera_fps: float = 30.0,
+    stream_rates: dict[str, float] | None = None,
     output_path: Path | None = None,
     session_description: str = "NWB file for media alignment (ethograph generated).",
 ) -> NWBFile:
     """Create an NWB file from a pandas DataFrame trial table.
 
     The DataFrame must have a ``trial`` column. Media columns are detected
-    by the ``{stream}_{device}`` naming convention (e.g. ``video_cam_1``).
+    by the ``{stream}_{device}`` naming convention (e.g. ``video_cam-1``,
+    ``audio_mic-1``, ``pose_cam-1``).  An ``ImageSeries`` is created in
+    acquisition for each stream+device pair.
 
     Parameters
     ----------
     trial_table
         DataFrame with ``trial``, ``start_time``, ``stop_time`` and
-        media columns like ``video_cam_1``, ``pose_cam_1``.
-    camera_fps
-        Default frame rate.
+        media columns like ``video_cam-1``, ``audio_mic-1``.
+    stream_rates
+        Sampling rate per stream, e.g.
+        ``{"video": 30.0, "audio": 44100.0, "pose": 30.0}``.
+        Streams not listed are skipped (no ImageSeries created).
     output_path
         Write path. Creates parent directories.
     session_description
@@ -884,45 +906,34 @@ def build_nwb_from_trial_table(
     )
 
     # Detect media columns (everything except trial/start_time/stop_time)
-    media_cols = [c for c in trial_table.columns if c not in {"trial", "start_time", "stop_time"}]
+    reserved = {"trial", "start_time", "stop_time"}
+    media_cols = [c for c in trial_table.columns if c not in reserved]
 
-    # Declare trial column if source table has one
     has_trial_col = "trial" in trial_table.columns
     if has_trial_col:
         nwbfile.add_trial_column(name="trial", description="Trial number")
 
-    # Track whether stop_time is a real value or NWB-required placeholder
     has_stop_time = "stop_time" in trial_table.columns
-    if not has_stop_time:
-        nwbfile.add_trial_column(name="stop_time_is_placeholder", description="1 if stop_time is a placeholder")
 
     for col in media_cols:
         nwbfile.add_trial_column(name=col, description=f"{col} filename")
+
     for _, row in trial_table.iterrows():
         start = float(row.get("start_time", 0.0))
         if has_stop_time and pd.notna(row.get("stop_time")):
             stop = float(row["stop_time"])
         else:
             stop = start + 1.0  # NWB requires stop > start
-        trial_row: dict[str, Any] = {
-            "start_time": start,
-            "stop_time": stop,
-        }
-        if not has_stop_time:
-            trial_row["stop_time_is_placeholder"] = 1
+        trial_row: dict[str, Any] = {"start_time": start, "stop_time": stop}
         if has_trial_col:
             trial_row["trial"] = row["trial"]
         for col in media_cols:
             trial_row[col] = str(row[col]) if pd.notna(row[col]) else ""
         nwbfile.add_trial(**trial_row)
 
-    # Derive acquisition ImageSeries for video cameras
-    cam_labels = []
-    for col in trial_table.columns:
-        if col.startswith("video_"):
-            cam_labels.append(col[len("video_"):])
-    if cam_labels:
-        sync_acquisition_from_trials(nwbfile, cam_labels, camera_fps)
+    # Create ImageSeries for all detected streams
+    if stream_rates:
+        sync_acquisition_for_streams(nwbfile, stream_rates)
 
     if output_path:
         output_path = Path(output_path)
@@ -931,6 +942,216 @@ def build_nwb_from_trial_table(
             io.write(nwbfile)
 
     return nwbfile
+
+
+def create_alignment(
+    trial_table: pd.DataFrame,
+    stream_rates: dict[str, float],
+    output_path: str | Path,
+) -> Path:
+    """Create an alignment.nwb from a trial table.
+
+    This is the primary user-facing function for creating alignment files.
+
+    Parameters
+    ----------
+    trial_table
+        DataFrame with ``trial`` column and ``{stream}_{device}`` filename
+        columns.  ``start_time`` / ``stop_time`` are optional — omit for
+        aligned-to-trial data.
+
+        Example::
+
+            trial | video_cam-1    | audio_mic-1   | pose_cam-1
+            1     | cam1_t1.mp4    | mic1_t1.wav   | cam1_t1.h5
+            2     | cam1_t2.mp4    | mic1_t2.wav   | cam1_t2.h5
+
+    stream_rates
+        Sampling rate per stream.  Must include every stream that has
+        columns in the table.  Example:
+        ``{"video": 30.0, "audio": 48000.0, "pose": 30.0}``
+    output_path
+        Where to write the ``.nwb`` file.
+
+    Returns
+    -------
+    Path to the created NWB file.
+
+    Examples
+    --------
+    >>> import pandas as pd, ethograph as eto
+    >>> table = pd.DataFrame({
+    ...     "trial": [1, 2, 3],
+    ...     "video_cam-1": ["t1.mp4", "t2.mp4", "t3.mp4"],
+    ...     "pose_cam-1": ["t1.h5", "t2.h5", "t3.h5"],
+    ... })
+    >>> eto.create_alignment(table, {"video": 30.0, "pose": 30.0}, "out/.ethograph/alignment.nwb")
+    """
+    output = Path(output_path)
+    build_nwb_from_trial_table(trial_table, stream_rates=stream_rates, output_path=output)
+    return output
+
+
+def create_alignment_from_streams(
+    trials: pd.DataFrame,
+    streams: list[dict],
+    output_path: str | Path,
+) -> Path:
+    """Create an alignment.nwb for unaligned / complex scenarios.
+
+    The trials table contains only timing (no filenames).  All file
+    references go into ImageSeries acquisition items.
+
+    Parameters
+    ----------
+    trials
+        DataFrame with ``trial``, ``start_time``, ``stop_time``.
+    streams
+        List of stream dicts, each with::
+
+            {
+                "name": "video_cam-1",       # acquisition item name
+                "files": ["t1.mp4", ...],    # one per trial (full paths)
+                "rate": 30.0,                # sampling rate
+            }
+
+        For session-wide files (one file spanning all trials)::
+
+            {
+                "name": "audio_mic-1",
+                "files": ["session.wav"],
+                "rate": 44100.0,
+                "starting_time": 0.0,        # when file starts in session time
+            }
+
+        For streams with explicit timestamps (irregular)::
+
+            {
+                "name": "ephys_probe-1",
+                "files": ["session.dat"],
+                "timestamps": np.array([0.0, 0.001, ...]),
+            }
+
+    output_path
+        Where to write the ``.nwb`` file.
+
+    Returns
+    -------
+    Path to the created NWB file.
+
+    Examples
+    --------
+    Per-trial video + pose, session-wide audio::
+
+        >>> trials = pd.DataFrame({
+        ...     "trial": [1, 2, 3],
+        ...     "start_time": [0.0, 10.5, 22.3],
+        ...     "stop_time": [8.2, 19.1, 30.0],
+        ... })
+        >>> streams = [
+        ...     {"name": "video_cam-1", "files": ["t1.mp4", "t2.mp4", "t3.mp4"], "rate": 30.0},
+        ...     {"name": "pose_cam-1", "files": ["t1.h5", "t2.h5", "t3.h5"], "rate": 30.0},
+        ...     {"name": "audio_mic-1", "files": ["session.wav"], "rate": 48000.0, "starting_time": 0.0},
+        ... ]
+        >>> eto.create_alignment_from_streams(trials, streams, ".ethograph/alignment.nwb")
+    """
+    from datetime import datetime
+    from uuid import uuid4
+
+    from dateutil.tz import tzlocal
+    from pynwb import NWBHDF5IO
+    from pynwb.image import ImageSeries
+
+    nwbfile = pynwb.NWBFile(
+        session_description="NWB file for media alignment (ethograph generated).",
+        identifier=str(uuid4()),
+        session_start_time=datetime.now(tzlocal()),
+    )
+
+    # Trials table: only timing, no filenames
+    nwbfile.add_trial_column(name="trial", description="Trial number")
+    for _, row in trials.iterrows():
+        nwbfile.add_trial(
+            trial=row["trial"],
+            start_time=float(row["start_time"]),
+            stop_time=float(row["stop_time"]),
+        )
+
+    trial_starts = trials["start_time"].values.astype(float)
+    trial_stops = trials["stop_time"].values.astype(float)
+    n_trials = len(trials)
+
+    for spec in streams:
+        name = spec["name"]
+        files = spec["files"]
+        rate = spec.get("rate")
+        explicit_ts = spec.get("timestamps")
+        starting_time = spec.get("starting_time", None)
+
+        # Parse stream_device for device creation
+        parts = name.split("_", 1)
+        device_name = parts[1] if len(parts) > 1 else parts[0]
+        if device_name not in [d.name for d in nwbfile.devices.values()]:
+            nwbfile.create_device(name=device_name, description=f"Device {device_name}")
+
+        if explicit_ts is not None:
+            # Irregular timestamps provided directly
+            nwbfile.add_acquisition(
+                ImageSeries(
+                    name=name,
+                    description=name,
+                    external_file=files,
+                    format="external",
+                    starting_frame=np.array([0] * len(files), dtype=np.int32),
+                    timestamps=np.asarray(explicit_ts, dtype=np.float64),
+                )
+            )
+        elif len(files) == 1 and n_trials > 1:
+            # Session-wide: one file spanning all trials
+            t0 = starting_time if starting_time is not None else float(trial_starts[0])
+            t1 = float(trial_stops[-1])
+            n_samples = max(1, int((t1 - t0) * rate)) if rate else 1
+            timestamps = t0 + np.arange(n_samples) / rate if rate else np.array([t0])
+            nwbfile.add_acquisition(
+                ImageSeries(
+                    name=name,
+                    description=name,
+                    external_file=files,
+                    format="external",
+                    starting_frame=np.array([0], dtype=np.int32),
+                    timestamps=timestamps,
+                )
+            )
+        else:
+            # Per-trial: one file per trial
+            timestamps_parts = []
+            starting_frames = []
+            frame_count = 0
+            for i in range(min(len(files), n_trials)):
+                t0 = float(trial_starts[i])
+                dur = float(trial_stops[i]) - t0
+                n_samples = max(1, int(dur * rate)) if rate else 1
+                ts = t0 + np.arange(n_samples) / rate if rate else np.array([t0])
+                timestamps_parts.append(ts)
+                starting_frames.append(frame_count)
+                frame_count += n_samples
+            nwbfile.add_acquisition(
+                ImageSeries(
+                    name=name,
+                    description=name,
+                    external_file=files[:n_trials],
+                    format="external",
+                    starting_frame=np.array(starting_frames, dtype=np.int32),
+                    timestamps=np.concatenate(timestamps_parts),
+                )
+            )
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with NWBHDF5IO(str(output), "w") as io:
+        io.write(nwbfile)
+
+    return output
 
 
 # ---------------------------------------------------------------------------

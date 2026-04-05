@@ -61,7 +61,7 @@ def _make_alignment_nwb(epochs: pd.DataFrame, output_dir: Path) -> Path:
     trial_table["audio_mic-1"] = _AUDIO_NAME
 
     nwb_path = output_dir / ".ethograph" / "alignment.nwb"
-    build_nwb_from_trial_table(trial_table, camera_fps=_FPS, output_path=nwb_path)
+    build_nwb_from_trial_table(trial_table, stream_rates={"video": _FPS, "pose": _FPS}, output_path=nwb_path)
     return nwb_path
 
 
@@ -120,15 +120,15 @@ def test_nwb_alignment_with_continuous(tmp_path):
 
     # Video offset: session-wide video starts at t=0 absolute,
     # so for trial 2 (starts at 20s), trial-relative offset = 0 - 20 = -20s.
-    offset_t1 = dt.source_start_time_trial_relative(1, "video", "cam-1")
-    offset_t2 = dt.source_start_time_trial_relative(2, "video", "cam-1")
-    offset_t3 = dt.source_start_time_trial_relative(3, "video", "cam-1")
+    offset_t1 = dt.stream_offset_for_trial(1, "video", "cam-1")
+    offset_t2 = dt.stream_offset_for_trial(2, "video", "cam-1")
+    offset_t3 = dt.stream_offset_for_trial(3, "video", "cam-1")
     assert abs(offset_t1 - 0.0) < 0.1, f"Trial 1 offset should be ~0, got {offset_t1}"
     assert abs(offset_t2 - (-20.0)) < 0.1, f"Trial 2 offset should be ~-20, got {offset_t2}"
     assert abs(offset_t3 - (-40.0)) < 0.1, f"Trial 3 offset should be ~-40, got {offset_t3}"
 
     # FPS from NWB
-    detected_fps = dt.get_video_fps("cam-1")
+    detected_fps = dt.get_stream_rate("video", "cam-1")
     assert detected_fps is not None
     assert abs(detected_fps - _FPS) < 0.01
 
@@ -238,7 +238,7 @@ def test_continuous_xarray_and_nwb_together(tmp_path):
         assert abs(nwb_stop - nwb_start - 20.0) < 0.01
 
         # Video offset bridges the two
-        v_offset = dt.source_start_time_trial_relative(trial_id, "video", "cam-1")
+        v_offset = dt.stream_offset_for_trial(trial_id, "video", "cam-1")
         expected_offset = 0.0 - nwb_start
         assert abs(v_offset - expected_offset) < 0.1
 

@@ -640,12 +640,6 @@ class _VideoPosePage(QWidget):
     def get_video_matching(self) -> list[tuple[str, str]]:
         return self._matcher.get_mapping()
 
-    def get_selected_behavioral_sources(self) -> set[str] | None:
-        if not self._behavior_checkboxes:
-            return None
-        selected = {cb._source for cb in self._behavior_checkboxes if cb.isChecked()}
-        return selected if selected else None
-
     def get_selected_label_source(self) -> str | None:
         for rb in self._label_radios:
             if rb.isChecked():
@@ -1261,8 +1255,9 @@ class NWBImportDialog(QDialog):
                     if filepath:
                         nwb_df[f"video_{vk}"] = filepath
 
+            stream_rates = {"video": camera_fps, "pose": camera_fps} if camera_fps else {}
             build_nwb_from_trial_table(
-                nwb_df, camera_fps=camera_fps, output_path=nwb_path,
+                nwb_df, stream_rates=stream_rates, output_path=nwb_path,
             )
 
             # Save project config (replaces .nc attrs)

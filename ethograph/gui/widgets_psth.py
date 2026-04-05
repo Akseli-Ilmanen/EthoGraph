@@ -771,16 +771,3 @@ class PSTHDialog(QDialog):
     # Public: update after data reload
     # ------------------------------------------------------------------
 
-    def refresh_label_combo(self):
-        """Re-populate alignment combo when mappings change."""
-        current = self._align_combo.currentData()
-        self._populate_align_combo()
-        for i in range(self._align_combo.count()):
-            if self._align_combo.itemData(i) == current:
-                self._align_combo.setCurrentIndex(i)
-                break
-
-    def refresh_condition_combo(self):
-        """Re-populate condition combo when dataset changes."""
-        self._populate_condition_combo()
-        self._replot()

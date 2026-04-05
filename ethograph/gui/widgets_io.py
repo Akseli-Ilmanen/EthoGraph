@@ -36,7 +36,6 @@ from ethograph.labels.tsv_store import labels_tsv_path, load_labels_tsv
 from .app_state import AppStateSpec
 from .notify import notify_dialog
 from .wizard_overview import NCWizardDialog
-from .makepretty import ElidedDelegate, clean_display_labels
 from .dialog_select_template import TemplateDialog
 
 logger = logging.getLogger(__name__)
@@ -1350,10 +1349,7 @@ class IOWidget(QWidget):
         path = result[0] if result and len(result) >= 1 else ""
         if path:
             self.nwb_file_path_edit.setText(path)
-            self.app_state.nwb_file_path = path
-            # Wire NWB path to TrialTree if loaded
-            if self.app_state.dt is not None:
-                self.app_state.dt.nwb_path = path
+            self.app_state.nwb_file_path = path  # auto-syncs to dt.nwb_path
 
     def _browse_metadata_file(self):
         """Browse for a metadata TSV file."""
@@ -1378,9 +1374,7 @@ class IOWidget(QWidget):
         nwb = find_nwb_file(data_dir)
         if nwb is not None:
             self.nwb_file_path_edit.setText(str(nwb))
-            self.app_state.nwb_file_path = str(nwb)
-            if self.app_state.dt is not None:
-                self.app_state.dt.nwb_path = str(nwb)
+            self.app_state.nwb_file_path = str(nwb)  # auto-syncs to dt.nwb_path
             logger.info("Auto-discovered NWB alignment: %s", nwb)
 
     def _auto_discover_metadata(self):

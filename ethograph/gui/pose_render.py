@@ -223,7 +223,7 @@ class PoseDisplayManager:
         dt = self.app_state.dt
         cameras = dt.cameras
         if camera_idx < len(cameras):
-            fps = dt.get_video_fps(cameras[camera_idx])
+            fps = dt.get_stream_rate("video", cameras[camera_idx])
             if fps is not None and fps > 0:
                 return fps
         return self.app_state.video_fps
@@ -237,12 +237,12 @@ class PoseDisplayManager:
         trial_id = self.app_state.trials_sel
         cameras = dt.cameras
 
-        if self.app_state.pose_folder and camera_idx < len(cameras):
-            pose_file = dt.get_media(trial_id, "pose", device=cameras[camera_idx])
-            if not pose_file:
-                return None
-            pose_path = os.path.join(self.app_state.pose_folder, pose_file)
-            if not os.path.isfile(pose_path):
+        if camera_idx < len(cameras):
+            pose_path = dt.resolve_media_path(
+                trial_id, "pose", device=cameras[camera_idx],
+                fallback_folder=self.app_state.pose_folder,
+            )
+            if not pose_path:
                 return None
             try:
                 return load_pose_from_file(
@@ -418,12 +418,15 @@ class PoseDisplayManager:
     def apply_pose_style(self) -> None:
         visible = self._data_widget.pose_show_text_checkbox.isChecked()
         size = self._data_widget.pose_point_size_spin.value()
+        text_size = self._data_widget.pose_text_size_spin.value()
         if self._primary_points_layer is not None:
             self._primary_points_layer.text.visible = visible
+            self._primary_points_layer.text.size = text_size
             self._primary_points_layer.size = size
         for widget in self.video_mgr.extra_widgets.values():
             if widget._points_layer is not None:
                 widget._points_layer.text.visible = visible
+                widget._points_layer.text.size = text_size
                 widget._points_layer.size = size
 
     def on_rotate_video_pose(self) -> None:

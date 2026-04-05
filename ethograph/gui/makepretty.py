@@ -191,16 +191,6 @@ class LayoutManager:
 
         QTimer.singleShot(100, _resize)
 
-    def with_preserved_height(self, fn: callable) -> None:
-        saved_height = self._plot_dock.height() if self._plot_dock else None
-        fn()
-        if self._plot_dock is not None and saved_height is not None:
-            def _restore():
-                self._qt_window.resizeDocks(
-                    [self._plot_dock], [saved_height], Qt.Vertical,
-                )
-            QTimer.singleShot(0, _restore)
-
     def toggle_layer_docks_with_anchor(self, show: bool) -> None:
         """Show/hide layer docks while anchoring the sidebar width."""
         saved_plot_h = self._plot_dock.height() if self._plot_dock else None
@@ -248,19 +238,6 @@ class LayoutManager:
         max_w = int(self._qt_window.width() * ratio_clamped)
         for dock in self._layer_docks:
             dock.setMaximumWidth(max_w)
-
-        def _release():
-            for d in self._layer_docks:
-                d.setMaximumWidth(MAX_WIDGET_SIZE)
-
-        QTimer.singleShot(LAYOUT_RELEASE_DELAY_MS, _release)
-
-    def freeze_layer_widths(self) -> None:
-        if not self._layer_docks:
-            return
-        for dock in self._layer_docks:
-            if dock.isVisible():
-                dock.setMaximumWidth(dock.width())
 
         def _release():
             for d in self._layer_docks:

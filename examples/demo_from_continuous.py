@@ -55,7 +55,7 @@ def main():
     trial_table["audio_mic-1"] = AUDIO
 
     nwb_path = BIRDPARK_DIR / ".ethograph" / "alignment_demo.nwb"
-    build_nwb_from_trial_table(trial_table, camera_fps=fps, output_path=nwb_path)
+    build_nwb_from_trial_table(trial_table, stream_rates={"video": fps, "pose": fps}, output_path=nwb_path)
     dt.nwb_path = str(nwb_path)
     print(f"\nAlignment NWB: {nwb_path}")
 
@@ -67,8 +67,8 @@ def main():
     # 7. Show video/audio offsets per trial
     print("Video/audio offsets (trial-relative):")
     for trial_id in dt.trials:
-        v_off = dt.source_start_time_trial_relative(trial_id, "video", "cam-1")
-        a_off = dt.source_start_time_trial_relative(trial_id, "audio", "mic-1")
+        v_off = dt.stream_offset_for_trial(trial_id, "video", "cam-1")
+        a_off = dt.stream_offset_for_trial(trial_id, "audio", "mic-1")
         t_start = dt.start_time(trial_id)
         t_stop = dt.stop_time(trial_id)
         print(f"  Trial {trial_id}: session={t_start:.0f}–{t_stop:.0f}s  "

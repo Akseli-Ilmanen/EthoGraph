@@ -17,12 +17,16 @@ from qtpy.QtWidgets import (
     QFileDialog,
     QGraphicsPathItem,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
     QSlider,
+    QStackedWidget,
     QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -173,122 +177,98 @@ def draw_session_timeline(
     items_out: list | None = None,
     extra_streams: list[str] | None = None,
 ) -> float:
-    """Draw a timeline from NWB session data onto a pyqtgraph PlotWidget.
+    """Draw a timeline from NWB acquisition ImageSeries.
 
-    Reads trial boundaries and media timing from ``dt.session_io``
-    (NWB-backed or empty). For per-trial media, draws bars at each
-    trial's time range. For session-wide media, uses acquisition
-    ImageSeries timestamps/starting_time.
-
-    Parameters
-    ----------
-    plot
-        Target PlotWidget (cleared before drawing).
-    dt
-        TrialTree with a session_io (NWB-backed or empty).
-    items_out
-        If provided, appended with all created QGraphicsItems.
-    extra_streams
-        Additional stream names to draw (e.g. ``["features"]``).
-
-    Returns
-    -------
-    float
-        Total duration (max time) for x-axis scaling.
+    Each ImageSeries with ``external_file`` gets one row.  Per-file bars
+    are drawn using ``starting_frame`` + ``timestamps`` (or ``rate``) to
+    determine each file's time span.  Trial boundaries from the trials
+    table are shown as dotted vertical lines.
     """
-    sio = dt.session_io
-    sio.print_session()
+    from ethograph.io.session_io import NWBSessionIO
 
+    sio = dt.session_io
     items: list = items_out if items_out is not None else []
 
-    try:
-        trials = dt.trials
-    except ValueError:
+    nwb = sio.nwb if isinstance(sio, NWBSessionIO) else None
+    if nwb is None or not nwb.acquisition:
         return 1.0
 
-    if not trials:
+    # Collect acquisition items with external files
+    acq_items: list[tuple[str, str, Any]] = []  # (label, stream, series)
+    for acq_name, series in nwb.acquisition.items():
+        if not hasattr(series, "external_file") or not series.external_file:
+            continue
+        stream = acq_name.split("_", 1)[0] if "_" in acq_name else acq_name
+        acq_items.append((acq_name, stream, series))
+
+    if not acq_items:
         return 1.0
 
-    # Discover streams and devices from session_io
-    streams_to_draw: list[tuple[str, str, list[str]]] = []
-    for stream_name in ["video", "pose", "audio", "ephys"] + (extra_streams or []):
-        devices = sio.devices(stream_name)
-        if devices:
-            for dev in devices:
-                streams_to_draw.append((f"{stream_name}: {dev}", stream_name, [dev]))
-        elif stream_name in ("ephys",):
-            # Check if any trial has media for this stream
-            if sio.get_media(trials[0], stream_name) is not None:
-                streams_to_draw.append((stream_name, stream_name, []))
-
-    # Features: show if any trial has feature data variables
-    has_features = False
-    for trial_id in trials:
-        try:
-            ds = dt.trial(trial_id)
-            if any(ds[v].attrs.get("type") == "features" for v in ds.data_vars):
-                has_features = True
-                break
-        except (KeyError, ValueError):
-            pass
-    if has_features:
-        streams_to_draw.append(("features", "features", []))
-
-    if not streams_to_draw:
-        streams_to_draw.append(("(no streams)", "features", []))
-
-    n_rows = len(streams_to_draw)
-    rows_rev = list(reversed(streams_to_draw))
+    n_rows = len(acq_items)
+    rows_rev = list(reversed(acq_items))
     y_ticks = [(i + 0.5, rows_rev[i][0]) for i in range(n_rows)]
     plot.getAxis("left").setTicks([y_ticks])
     plot.setYRange(-0.2, n_rows + 0.2)
 
     max_t = 0.0
-    artificial_gaps = False
 
-    # --- Detect aligned-to-trial mode ---
-    # Check app_state flag first, then infer from NWB data.
-    # True only when ALL file modalities are aligned (not just some).
-    is_aligned_mode = False
-    app_state = getattr(dt, "_app_state", None)
-    if app_state is not None:
-        is_aligned_mode = getattr(app_state, "files_aligned_to_trials", False)
-    else:
-        # Infer: all trials same start_time and no real stop_time
-        starts = [sio.start_time(t) for t in trials]
-        stops = [sio.stop_time(t) for t in trials]
-        all_same_start = len(set(starts)) <= 1
-        no_real_stops = all(s is None for s in stops)
-        is_aligned_mode = all_same_start and no_real_stops and len(trials) > 1
+    # --- Draw per-file bars from ImageSeries timing ---
+    for row_idx, (acq_name, stream, series) in enumerate(rows_rev):
+        color = pg.mkColor(MODALITY_COLORS.get(stream, "#888888"))
+        color.setAlpha(160)
+        bar_brush = pg.mkBrush(color)
+        bar_pen = pg.mkPen(color.lighter(130), width=1)
+        y_base = row_idx
 
-    # For aligned mode, estimate per-trial durations from media files
-    trial_layout: dict[int | str, tuple[float, float]] = {}  # trial -> (x_start, x_end)
+        files = list(series.external_file)
+        sf = (
+            [int(f) for f in series.starting_frame]
+            if getattr(series, "starting_frame", None) is not None
+            else [0] * len(files)
+        )
+        timestamps = getattr(series, "timestamps", None)
+        rate = getattr(series, "rate", None)
+        starting_time = float(series.starting_time) if getattr(series, "starting_time", None) is not None else 0.0
 
-    if is_aligned_mode:
-        artificial_gaps = True
-        # Collect file durations per trial from the first video/pose/audio stream
-        trial_durations: list[float] = []
-        for trial_id in trials:
-            dur = _estimate_trial_duration_from_nwb(dt, sio, trial_id)
-            trial_durations.append(dur if dur and dur > 0 else 10.0)
+        for i in range(len(files)):
+            frame_start = sf[i]
+            frame_end = sf[i + 1] if i + 1 < len(files) else None
 
-        gap = 0.5  # artificial gap between trials in seconds
-        cum = 0.0
-        for i, trial_id in enumerate(trials):
-            trial_layout[trial_id] = (cum, cum + trial_durations[i])
-            cum += trial_durations[i] + gap
-    else:
-        for trial_id in trials:
-            t0 = sio.start_time(trial_id)
-            t1 = sio.stop_time(trial_id)
-            if t1 is None:
-                t1 = t0 + 10.0
-            trial_layout[trial_id] = (t0, t1)
+            if timestamps is not None and len(timestamps) > 0:
+                ts = np.asarray(timestamps)
+                t_start = float(ts[frame_start]) if frame_start < len(ts) else 0.0
+                if frame_end is not None and frame_end < len(ts):
+                    t_end = float(ts[frame_end - 1])
+                else:
+                    t_end = float(ts[-1])
+            elif rate and rate > 0:
+                t_start = starting_time + frame_start / rate
+                if frame_end is not None:
+                    t_end = starting_time + frame_end / rate
+                else:
+                    t_end = t_start + 1.0
+            else:
+                continue
+
+            if t_end <= t_start:
+                continue
+
+            bar = _make_rounded_bar(
+                t_start, t_end, y_base + 0.3, y_base + 0.7,
+                bar_brush, bar_pen,
+            )
+            plot.addItem(bar)
+            items.append(bar)
+            max_t = max(max_t, t_end)
 
     # --- Trial boundary lines ---
-    for trial_id in trials:
-        t0, t1 = trial_layout.get(trial_id, (0.0, 1.0))
+    try:
+        trials = dt.trials
+    except ValueError:
+        trials = []
 
+    for trial_id in trials:
+        t0 = sio.start_time(trial_id)
         line = pg.InfiniteLine(
             pos=t0, angle=90,
             pen=pg.mkPen("#ffffff", width=1, style=Qt.PenStyle.DotLine),
@@ -296,153 +276,20 @@ def draw_session_timeline(
         plot.addItem(line)
         items.append(line)
 
-        mid = (t0 + t1) / 2
+        t1 = sio.stop_time(trial_id)
+        mid = (t0 + (t1 or t0 + 1.0)) / 2
         lbl = pg.TextItem(str(trial_id), color="#aaaaaa", anchor=(0.5, 1.0))
         lbl.setPos(mid, n_rows + 0.1)
         plot.addItem(lbl)
         items.append(lbl)
 
-        max_t = max(max_t, t1)
-
-    # --- Stream bars ---
-    nwb = None
-    from ethograph.io.session_io import NWBSessionIO
-    if isinstance(sio, NWBSessionIO):
-        nwb = sio.nwb
-
-    for row_idx, (label, stream_name, devices) in enumerate(rows_rev):
-        color = pg.mkColor(MODALITY_COLORS.get(stream_name, "#888888"))
-        color.setAlpha(160)
-        bar_brush = pg.mkBrush(color)
-        bar_pen = pg.mkPen(color.lighter(130), width=1)
-        y_base = row_idx
-
-        # Check if this stream has per-trial media entries
-        has_per_trial_media = False
-        if devices:
-            has_per_trial_media = sio.get_media(trials[0], stream_name, devices[0]) is not None
-        else:
-            has_per_trial_media = sio.get_media(trials[0], stream_name) is not None
-
-        if stream_name == "features":
-            has_per_trial_media = True
-
-        if has_per_trial_media:
-            # Per-trial: draw one bar per trial using the layout
-            for trial_id in trials:
-                t_start, t_end = trial_layout.get(trial_id, (0.0, 1.0))
-                bar = _make_rounded_bar(
-                    t_start, t_end, y_base + 0.3, y_base + 0.7,
-                    bar_brush, bar_pen,
-                )
-                plot.addItem(bar)
-                items.append(bar)
-                max_t = max(max_t, t_end)
-        else:
-            # Session-wide: use acquisition timestamps if available
-            for dev in (devices or [None]):
-                t_start = 0.0
-                t_end = max_t if max_t > 0 else 60.0
-
-                acq_name = f"{stream_name}_{dev}" if dev else stream_name
-                if nwb and acq_name in nwb.acquisition:
-                    acq = nwb.acquisition[acq_name]
-                    from ethograph.utils.nwb import resolve_timeseries_timing
-                    try:
-                        rate, acq_t0 = resolve_timeseries_timing(acq)
-                        t_start = acq_t0
-                        ts = getattr(acq, "timestamps", None)
-                        if ts is not None and len(ts) > 0:
-                            t_end = float(ts[-1])
-                        else:
-                            n_samples = acq.data.shape[0] if hasattr(acq.data, "shape") else len(acq.data)
-                            t_end = acq_t0 + n_samples / rate
-                    except (ValueError, TypeError):
-                        pass
-
-                if t_end > t_start:
-                    bar = _make_rounded_bar(
-                        t_start, t_end, y_base + 0.3, y_base + 0.7,
-                        bar_brush, bar_pen,
-                    )
-                    plot.addItem(bar)
-                    items.append(bar)
-                    max_t = max(max_t, t_end)
-
-    # --- Note about artificial gaps ---
-    if artificial_gaps:
-        note = pg.TextItem(
-            "Note: gaps between trials are artificial (files aligned to trials)",
-            color="#888888", anchor=(0.0, 0.0),
-        )
-        note.setPos(0, -0.5)
-        plot.addItem(note)
-        items.append(note)
+        if t1:
+            max_t = max(max_t, t1)
 
     total = max(max_t, 1.0)
     plot.setXRange(0, min(total, 120), padding=0.02)
     return total
 
-
-def _estimate_trial_duration_from_nwb(dt, sio, trial_id) -> float | None:
-    """Estimate a trial's duration from its media files or xarray data."""
-    from ethograph.utils.stream_durations import (
-        get_video_duration, get_audio_duration, get_pose_duration,
-    )
-
-    # Try video
-    for cam in sio.cameras:
-        filename = sio.get_media(trial_id, "video", cam)
-        if filename:
-            # Resolve path: check common folders
-            for folder_attr in ("video_folder",):
-                app_state = getattr(dt, "_app_state", None)
-                folder = getattr(app_state, folder_attr, None) if app_state else None
-                if folder:
-                    import os
-                    full = os.path.join(folder, filename)
-                    if os.path.isfile(full):
-                        dur = get_video_duration(full)
-                        if dur:
-                            return dur
-            # Try filename as-is or relative to source path
-            source = getattr(dt, "_source_path", None)
-            if source:
-                import os
-                full = os.path.join(os.path.dirname(source), filename)
-                if os.path.isfile(full):
-                    dur = get_video_duration(full)
-                    if dur:
-                        return dur
-
-    # Try pose
-    fps = dt.get_video_fps() or 30.0
-    for cam in sio.devices("pose"):
-        filename = sio.get_media(trial_id, "pose", cam)
-        if filename:
-            source = getattr(dt, "_source_path", None)
-            if source:
-                import os
-                full = os.path.join(os.path.dirname(source), filename)
-                if os.path.isfile(full):
-                    dur = get_pose_duration(full, fps)
-                    if dur:
-                        return dur
-
-    # Try xarray feature timestamps
-    try:
-        from ethograph.utils.xr_utils import get_time_coord
-        ds = dt.trial(trial_id)
-        for var_name in ds.data_vars:
-            tc = get_time_coord(ds[var_name])
-            if tc is not None:
-                vals = tc.values
-                if len(vals) > 1:
-                    return float(vals[-1]) - float(vals[0])
-    except (KeyError, ValueError):
-        pass
-
-    return None
 
 
 def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
@@ -509,14 +356,35 @@ class TimelinePage(QWidget):
             }
         """)
 
-        # Tab 1: Timeline visualization
+        # Tab 1: Visualization (stacked: table for aligned, timeline for unaligned)
         viz_tab = QWidget()
         viz_layout = QVBoxLayout(viz_tab)
-        viz_layout.addWidget(QLabel(
+
+        self._viz_stack = QStackedWidget()
+
+        # --- Page 0: Aligned table view ---
+        table_page = QWidget()
+        table_layout = QVBoxLayout(table_page)
+        table_layout.addWidget(QLabel(
+            "All files are aligned to trials. Each row shows which files belong to each trial."
+        ))
+        self._aligned_table = QTableWidget()
+        self._aligned_table.setStyleSheet(
+            "QTableWidget { background-color: #1a1d21; color: #d4d4d4; gridline-color: #3e3e3e; }"
+            "QHeaderView::section { background-color: #2d2d2d; color: #d4d4d4; padding: 4px; }"
+        )
+        self._aligned_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table_layout.addWidget(self._aligned_table, stretch=1)
+        self._viz_stack.addWidget(table_page)
+
+        # --- Page 1: Timeline view ---
+        timeline_page = QWidget()
+        timeline_layout = QVBoxLayout(timeline_page)
+        timeline_layout.addWidget(QLabel(
             "Review how your files align in time. "
             "Colored bars show file durations; dotted lines mark trial boundaries."
         ))
-        viz_layout.addSpacing(4)
+        timeline_layout.addSpacing(4)
 
         self._plot = pg.PlotWidget()
         self._plot.setBackground("#1a1d21")
@@ -524,7 +392,7 @@ class TimelinePage(QWidget):
         self._plot.setLabel("bottom", "Time (s)")
         self._plot.setMouseEnabled(x=True, y=False)
         self._plot.getAxis("left").setTicks([])
-        viz_layout.addWidget(self._plot, stretch=1)
+        timeline_layout.addWidget(self._plot, stretch=1)
 
         slider_row = QHBoxLayout()
         slider_row.addWidget(QLabel("Pan:"))
@@ -533,7 +401,10 @@ class TimelinePage(QWidget):
         self._slider.setValue(0)
         self._slider.valueChanged.connect(self._on_slider)
         slider_row.addWidget(self._slider)
-        viz_layout.addLayout(slider_row)
+        timeline_layout.addLayout(slider_row)
+        self._viz_stack.addWidget(timeline_page)
+
+        viz_layout.addWidget(self._viz_stack, stretch=1)
 
         self._note_label = QLabel("")
         self._note_label.setWordWrap(True)
@@ -603,6 +474,13 @@ class TimelinePage(QWidget):
         self._state = state
         self._clear()
         self._regenerate_code()
+
+        # Switch view mode: table for aligned, timeline for unaligned
+        if state.files_aligned_to_trials:
+            self._viz_stack.setCurrentIndex(0)
+            self._populate_aligned_table(state)
+            return
+        self._viz_stack.setCurrentIndex(1)
 
         durations = _compute_file_durations(state)
         state.file_durations = durations
@@ -693,6 +571,7 @@ class TimelinePage(QWidget):
                     for f in cfg.pattern.files:
                         row_data = extract_file_row(
                             f, cfg.pattern.segments, cfg.pattern.tokenize_mode,
+                            regex_pattern=cfg.pattern.regex_pattern,
                         )
                         fp = str(f)
                         mapping[fp] = row_data.get(dev_role, "")
@@ -813,6 +692,71 @@ class TimelinePage(QWidget):
         self._total_duration = max(max_time, 1.0)
         self._plot.setXRange(0, min(self._total_duration, 120), padding=0.02)
 
+    # ------------------------------------------------------------------
+    # Aligned table view
+    # ------------------------------------------------------------------
+
+    def _populate_aligned_table(self, state: WizardState):
+        """Build a table: rows=trials, columns=stream_device, cells=filenames."""
+        if state.trial_table is None:
+            return
+
+        trial_ids = state.trial_table["trial"].tolist() if "trial" in state.trial_table.columns else []
+        if not trial_ids:
+            return
+
+        # Collect stream_device columns from the trial table
+        stream_cols = [
+            c for c in state.trial_table.columns
+            if c not in ("trial", "start_time", "stop_time")
+            and not c.endswith("_start")
+        ]
+
+        self._aligned_table.setRowCount(len(trial_ids))
+        self._aligned_table.setColumnCount(len(stream_cols) + 1)
+        self._aligned_table.setHorizontalHeaderLabels(["Trial"] + stream_cols)
+
+        for row, trial_id in enumerate(trial_ids):
+            self._aligned_table.setItem(row, 0, QTableWidgetItem(str(trial_id)))
+            for col_idx, col_name in enumerate(stream_cols):
+                val = state.trial_table.iloc[row].get(col_name, "")
+                cell = Path(str(val)).name if val else ""
+                self._aligned_table.setItem(row, col_idx + 1, QTableWidgetItem(cell))
+
+        self._aligned_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents
+        )
+
+    def _populate_aligned_table_from_dt(self, dt):
+        """Build a table from TrialTree's NWB session trials_df."""
+        sio = dt.session_io
+        df = sio.trials_df
+        if df.empty:
+            return
+
+        trial_col = df["trial"].tolist() if "trial" in df.columns else list(range(1, len(df) + 1))
+
+        stream_cols = [
+            c for c in df.columns
+            if c not in ("trial", "start_time", "stop_time")
+            and not c.endswith("_start")
+        ]
+
+        self._aligned_table.setRowCount(len(trial_col))
+        self._aligned_table.setColumnCount(len(stream_cols) + 1)
+        self._aligned_table.setHorizontalHeaderLabels(["Trial"] + stream_cols)
+
+        for row, trial_id in enumerate(trial_col):
+            self._aligned_table.setItem(row, 0, QTableWidgetItem(str(trial_id)))
+            for col_idx, col_name in enumerate(stream_cols):
+                val = df.iloc[row].get(col_name, "")
+                cell = Path(str(val)).name if val else ""
+                self._aligned_table.setItem(row, col_idx + 1, QTableWidgetItem(cell))
+
+        self._aligned_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents
+        )
+
     def _get_devices(self, name: str, state: WizardState) -> list[str]:
         if name == "video" and state.camera_names:
             return state.camera_names
@@ -896,10 +840,12 @@ class TimelinePage(QWidget):
         self._out_widget.hide()
 
     def populate_from_trialtree(self, dt, app_state):
-        """Populate timeline from a loaded TrialTree's NWB session data.
+        """Populate from a loaded TrialTree's NWB session data.
 
-        Uses ``dt.session_io`` to read trial timing and acquisition
-        metadata for the timeline visualization.
+        Aligned mode (table view): trials table has ``{stream}_{device}``
+        filename columns.
+        Unaligned mode (timeline view): filenames are in acquisition
+        ImageSeries, trials table has only timing.
         """
         self._clear()
         self._state = None
@@ -907,22 +853,25 @@ class TimelinePage(QWidget):
             "# Open via the New Dataset Wizard to generate alignment code."
         )
 
-        self._total_duration = draw_session_timeline(
-            self._plot, dt, items_out=self._items,
-        )
+        # Detect mode: table has filename columns → aligned, otherwise → timeline
+        sio = dt.session_io
+        df = sio.trials_df
+        has_filename_cols = any(
+            col not in ("trial", "start_time", "stop_time")
+            and not col.endswith("_start")
+            for col in df.columns
+        ) if not df.empty else False
 
-    @staticmethod
-    def _trial_has_modality(dt, trial_id, modality: str, device, ds) -> bool:
-        if modality == "features":
-            return ds is not None and bool(ds.data_vars)
-        if modality == "ephys":
-            return True
-        if device is None:
-            return False
-        try:
-            return bool(dt.get_media(trial_id, modality, device))
-        except (KeyError, IndexError):
-            return False
+        if has_filename_cols:
+            self._viz_stack.setCurrentIndex(0)
+            self._populate_aligned_table_from_dt(dt)
+        else:
+            self._viz_stack.setCurrentIndex(1)
+            self._total_duration = draw_session_timeline(
+                self._plot, dt, items_out=self._items,
+            )
+
+
 
     @staticmethod
     def _has_pose_data(dt, cam: str) -> bool:

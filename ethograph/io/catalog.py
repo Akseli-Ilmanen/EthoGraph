@@ -376,10 +376,6 @@ class PynappleLoader(_CatalogMixin):
         return len(self._trials_ep)
 
     @property
-    def trials(self) -> list[int]:
-        return list(range(1, self.n_trials + 1))
-
-    @property
     def _trial_offset(self) -> float:
         if self._trials_ep is None:
             times = [obj.t[0] for obj in self._feature_objs.values() if len(obj) > 0]
@@ -762,6 +758,10 @@ def _compute_shared_column_dims(
     return dim_map
 
 
+# Dimensions that are internal to color variables — never show as user combos
+_HIDDEN_DIMS = frozenset({"RGB", "RGBA"})
+
+
 def _auto_catalog_xarray(ds: xr.Dataset) -> DataCatalog:
     """Quick catalog from a Dataset when no TrialTree is available."""
     from ethograph.io.validation import find_temporal_dims
@@ -778,9 +778,11 @@ def _auto_catalog_xarray(ds: xr.Dataset) -> DataCatalog:
 
     if features_list:
         combos["features"] = ComboSpec("features", tuple(features_list))
+    if colors_list:
+        combos["colors"] = ComboSpec("colors", tuple(colors_list))
 
     for name in find_temporal_dims(ds):
-        if name in combos:
+        if name in combos or name.upper() in _HIDDEN_DIMS:
             continue
         if name in ds.coords:
             coord = ds.coords[name]
@@ -824,10 +826,12 @@ def catalog_from_xarray(ds: xr.Dataset, dt: TrialTree) -> DataCatalog:
 
     if features_list:
         combos["features"] = ComboSpec("features", tuple(features_list))
+    if colors_list:
+        combos["colors"] = ComboSpec("colors", tuple(colors_list))
 
     extra_dims = find_temporal_dims(ds)
     for name in extra_dims:
-        if name in combos:
+        if name in combos or name.upper() in _HIDDEN_DIMS:
             continue
         if name in ds.coords:
             coord = ds.coords[name]
@@ -891,17 +895,21 @@ def catalog_from_pynapple(
 
             if isinstance(obj, nap.TsdFrame):
                 cols_lower = [c.lower() for c in obj.columns]
-                if "rgb" in key.lower() or set(cols_lower) == {"r", "g", "b"}:
+                is_color = "rgb" in key.lower() or set(cols_lower) == {"r", "g", "b"}
+                if is_color:
                     colors.append(key)
-
-                dim_name = dim_map.get(key, f"{key}_columns")
-                if dim_name not in combos:
-                    combos[dim_name] = ComboSpec(
-                        dim_name, tuple(str(c) for c in obj.columns)
-                    )
+                else:
+                    # Only add column dims for non-color TsdFrames
+                    dim_name = dim_map.get(key, f"{key}_columns")
+                    if dim_name not in combos:
+                        combos[dim_name] = ComboSpec(
+                            dim_name, tuple(str(c) for c in obj.columns)
+                        )
 
     if features:
         combos["features"] = ComboSpec("features", tuple(features))
+    if colors:
+        combos["colors"] = ComboSpec("colors", tuple(colors))
 
     return DataCatalog(
         combos=combos,

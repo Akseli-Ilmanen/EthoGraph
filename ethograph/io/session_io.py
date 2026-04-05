@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from functools import cached_property
 from pathlib import Path
@@ -14,54 +15,82 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 _EPOCH_GAP = 1e-4
+_KNOWN_STREAMS = ("video", "pose", "audio", "ephys")
 
 
 # ---------------------------------------------------------------------------
-# Protocol
+# Base class (also serves as null-object when no NWB is loaded)
 # ---------------------------------------------------------------------------
 
 
-@runtime_checkable
-class SessionIO(Protocol):
-    """Read-only interface for trial-level session metadata."""
+class SessionIO:
+    """Base session metadata interface with null-object defaults.
+
+    ``NWBSessionIO`` overrides these with real NWB-backed implementations.
+    When no NWB file is available, the base class is used directly
+    (replaces the old ``EmptySessionIO``).
+    """
 
     @property
-    def trials_df(self) -> pd.DataFrame: ...
+    def trials_df(self) -> pd.DataFrame:
+        return pd.DataFrame()
 
-    def get_media(self, trial, stream: str, device: str | None = None) -> str | None: ...
+    def get_media(self, trial, stream: str, device: str | None = None) -> str | None:
+        return None
 
-    def devices(self, stream: str) -> list[str]: ...
-
-    @property
-    def cameras(self) -> list[str]: ...
-
-    @property
-    def mics(self) -> list[str]: ...
-
-    def start_time(self, trial) -> float: ...
-
-    def stop_time(self, trial) -> float | None: ...
-
-    def trial_duration(self, trial) -> float: ...
-
-    def source_start_time(self, trial, stream: str, device: str | None = None) -> float: ...
-
-    def source_start_time_trial_relative(self, trial, stream: str, device: str | None = None) -> float: ...
-
-    def get_video_fps(self, camera: str | None = None) -> float | None: ...
-
-    def set_video_fps(self, fps: float, camera: str | None = None) -> None: ...
+    def devices(self, stream: str) -> list[str]:
+        return []
 
     @property
-    def trials_ep(self) -> Any: ...
+    def cameras(self) -> list[str]:
+        return self.devices("video")
 
-    def trial_epoch(self, trial) -> Any: ...
+    @property
+    def mics(self) -> list[str]:
+        return self.devices("audio")
 
-    def restrict(self, obj: Any, trial) -> Any: ...
+    def start_time(self, trial) -> float:
+        return 0.0
 
-    def print_session(self) -> None: ...
+    def stop_time(self, trial) -> float | None:
+        return None
 
-    def close(self) -> None: ...
+    def trial_duration(self, trial) -> float:
+        stop = self.stop_time(trial)
+        if stop is None:
+            raise ValueError(f"Trial {trial} has no known stop time")
+        return stop - self.start_time(trial)
+
+    def stream_offset_for_trial(self, trial, stream: str, device: str | None = None) -> float:
+        return 0.0
+
+    def get_stream_rate(self, stream: str, device: str | None = None) -> float | None:
+        return None
+
+    def set_stream_rate(self, rate: float, stream: str, device: str | None = None) -> None:
+        pass
+
+    def resolve_media_path(
+        self, trial, stream: str, device: str | None = None,
+        fallback_folder: str | None = None,
+    ) -> str | None:
+        return None
+
+    @property
+    def trials_ep(self) -> Any:
+        return None
+
+    def trial_epoch(self, trial) -> Any:
+        raise ValueError("No timing information available")
+
+    def restrict(self, obj: Any, trial) -> Any:
+        raise ValueError("No timing information available")
+
+    def print_session(self) -> None:
+        print("No session table.")
+
+    def close(self) -> None:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -95,8 +124,9 @@ def _parse_stream_columns(columns: list[str], stream: str) -> list[str]:
 class NWBSessionIO:
     """Session metadata backed by an NWB file.
 
-    Opens the NWB file read-only and caches the trials table.
-    Supports both NWB timing schemes (timestamps array and rate+starting_time).
+    All external media (video, audio, pose) are stored as ImageSeries
+    in acquisition with ``{stream}_{device}`` naming.  Timing comes from
+    ``rate`` or ``timestamps`` on the ImageSeries.
     """
 
     def __init__(self, nwb_path: str | Path) -> None:
@@ -104,7 +134,7 @@ class NWBSessionIO:
         self._io: Any = None
         self._nwb: Any = None
         self._trials_df_cache: pd.DataFrame | None = None
-        self._fps_overlay: dict[str | None, float] = {}
+        self._rate_overlay: dict[tuple[str, str | None], float] = {}
 
     def _open(self) -> None:
         if self._nwb is not None:
@@ -171,10 +201,25 @@ class NWBSessionIO:
         return None
 
     def devices(self, stream: str) -> list[str]:
+        """Discover devices from trials table columns AND acquisition items."""
+        devs: list[str] = []
+
+        # From trials table columns
         df = self.trials_df
-        if df.empty:
-            return []
-        return _parse_stream_columns(list(df.columns), stream)
+        if not df.empty:
+            devs = _parse_stream_columns(list(df.columns), stream)
+
+        # From acquisition ImageSeries names
+        nwb = self.nwb
+        prefix = f"{stream}_"
+        if nwb.acquisition:
+            for name in nwb.acquisition:
+                if name.startswith(prefix):
+                    dev = name[len(prefix):]
+                    if dev and dev not in devs:
+                        devs.append(dev)
+
+        return devs
 
     @property
     def cameras(self) -> list[str]:
@@ -198,9 +243,6 @@ class NWBSessionIO:
         row = self._trial_row(trial)
         if row is None:
             return None
-        # Check placeholder flag
-        if "stop_time_is_placeholder" in row.index and row["stop_time_is_placeholder"] == 1:
-            return None
         if "stop_time" in row.index:
             val = row["stop_time"]
             if pd.notna(val):
@@ -213,117 +255,142 @@ class NWBSessionIO:
             raise ValueError(f"Trial {trial} has no known stop time")
         return stop - self.start_time(trial)
 
-    def source_start_time(self, trial, stream: str, device: str | None = None) -> float:
-        """Session-absolute time of sample 0 for a stream's file.
-
-        For per-trial media: returns the trial's start_time (files are aligned).
-        For session-wide media: reads from NWB acquisition ImageSeries timing.
-        """
-        nwb = self.nwb
-
-        # Check acquisition for this stream+device
-        acq_name = f"{stream}_{device}" if device else stream
-        acq = nwb.acquisition.get(acq_name) if nwb.acquisition else None
-        if acq is not None:
-            from ethograph.utils.nwb import resolve_timeseries_timing
-            try:
-                _rate, t0 = resolve_timeseries_timing(acq)
-                # For per-trial: find the start of this trial's frames
-                starting_frame = getattr(acq, "starting_frame", None)
-                if starting_frame is not None and len(starting_frame) > 0:
-                    trial_idx = self._trial_index(trial)
-                    if trial_idx is not None:
-                        ts = getattr(acq, "timestamps", None)
-                        if ts is not None and len(ts) > 0:
-                            frame_idx = int(starting_frame[trial_idx]) if trial_idx < len(starting_frame) else 0
-                            if frame_idx < len(ts):
-                                return float(ts[frame_idx])
-                        # Fall back to rate-based calculation
-                        frame_idx = int(starting_frame[trial_idx]) if trial_idx < len(starting_frame) else 0
-                        return t0 + frame_idx / _rate
-                return t0
-            except (ValueError, TypeError):
-                pass
-
-        # Fall back to trial start_time
-        return self.start_time(trial)
-
-    def source_start_time_trial_relative(self, trial, stream: str, device: str | None = None) -> float:
+    def stream_offset_for_trial(
+        self, trial, stream: str, device: str | None = None,
+    ) -> float:
         """Trial-relative time of sample 0 for a stream's file.
 
-        For per-trial aligned media returns 0.0 (unless a ``_start``
-        column provides an explicit offset).
-        For session-wide media (same file across all trials) returns
-        the file's start time minus the trial's start time.
+        For per-trial aligned media returns 0.0.
+        For session-wide media returns the file's start relative to the trial.
+        Reads timing from the acquisition ImageSeries.
         """
-        df = self.trials_df
-        col = f"{stream}_{device}" if device else stream
+        trial_start = self.start_time(trial)
+        trial_idx = self._trial_index(trial)
 
-        # Check for an explicit per-trial offset column (e.g. video_cam-1_start)
-        start_col = f"{col}_start"
-        if not df.empty and start_col in df.columns:
-            row = self._trial_row(trial)
-            if row is not None and start_col in row.index and pd.notna(row[start_col]):
-                return float(row[start_col])
-
-        if not df.empty and col in df.columns:
-            # Detect session-wide media: same filename for all trials
-            filenames = df[col].dropna().unique()
-            if len(filenames) == 1 and len(df) > 1:
-                # Session-wide: try NWB acquisition timing first (video)
-                acq_name = col
-                acq = self.nwb.acquisition.get(acq_name) if self.nwb.acquisition else None
-                if acq is not None:
-                    from ethograph.utils.nwb import resolve_timeseries_timing
-                    try:
-                        _rate, file_t0 = resolve_timeseries_timing(acq)
-                        return file_t0 - self.start_time(trial)
-                    except (ValueError, TypeError):
-                        pass
-                # No acquisition (e.g. audio): file starts at earliest trial
-                earliest = float(df["start_time"].min()) if "start_time" in df.columns else 0.0
-                return earliest - self.start_time(trial)
-            # Per-trial media or single-trial: file is aligned to trial
+        nwb = self.nwb
+        acq_name = f"{stream}_{device}" if device else stream
+        acq = nwb.acquisition.get(acq_name) if nwb.acquisition else None
+        if acq is None:
             return 0.0
 
-        abs_start = self.source_start_time(trial, stream, device)
-        return abs_start - self.start_time(trial)
+        starting_frame = getattr(acq, "starting_frame", None)
+        timestamps = getattr(acq, "timestamps", None)
+        rate = getattr(acq, "rate", None)
 
-    # ── FPS ──
+        if starting_frame is not None and trial_idx is not None and trial_idx < len(starting_frame):
+            frame_idx = int(starting_frame[trial_idx])
 
-    def get_video_fps(self, camera: str | None = None) -> float | None:
-        # Check in-memory overlay first
-        if camera in self._fps_overlay:
-            return self._fps_overlay[camera]
-        if None in self._fps_overlay and camera is not None:
-            return self._fps_overlay[None]
+            if timestamps is not None and frame_idx < len(timestamps):
+                # Timestamps mode: read directly
+                file_start_time = float(timestamps[frame_idx])
+            elif rate and rate > 0:
+                # Rate mode: compute from starting_time + frame/rate
+                t0 = float(acq.starting_time) if acq.starting_time is not None else 0.0
+                file_start_time = t0 + frame_idx / rate
+            else:
+                return 0.0
 
-        # Read from acquisition ImageSeries
+            return file_start_time - trial_start
+
+        # No starting_frame or trial not found — use first timestamp
+        if timestamps is not None and len(timestamps) > 0:
+            return float(timestamps[0]) - trial_start
+        if rate and rate > 0:
+            t0 = float(acq.starting_time) if acq.starting_time is not None else 0.0
+            return t0 - trial_start
+
+        return 0.0
+
+    # ── Stream rate ──
+
+    def get_stream_rate(self, stream: str, device: str | None = None) -> float | None:
+        """Read the sampling rate for a stream from its acquisition ImageSeries."""
+        key = (stream, device)
+        if key in self._rate_overlay:
+            return self._rate_overlay[key]
+
         nwb = self.nwb
-        if nwb.acquisition:
-            if camera:
-                acq_name = f"video_{camera}"
-                acq = nwb.acquisition.get(acq_name)
-                if acq is not None:
-                    from ethograph.utils.nwb import resolve_timeseries_timing
-                    try:
-                        rate, _ = resolve_timeseries_timing(acq)
-                        return rate
-                    except ValueError:
-                        pass
-            # Try any video acquisition
-            for name, acq in nwb.acquisition.items():
-                if name.startswith("video_"):
-                    from ethograph.utils.nwb import resolve_timeseries_timing
-                    try:
-                        rate, _ = resolve_timeseries_timing(acq)
-                        return rate
-                    except ValueError:
-                        continue
+        if not nwb.acquisition:
+            return None
+
+        from ethograph.utils.nwb import resolve_timeseries_timing
+
+        if device:
+            acq = nwb.acquisition.get(f"{stream}_{device}")
+            if acq is not None:
+                rate, _ = resolve_timeseries_timing(acq)
+                return rate
+
+        for name, acq in nwb.acquisition.items():
+            if name.startswith(f"{stream}_"):
+                rate, _ = resolve_timeseries_timing(acq)
+                return rate
+
         return None
 
-    def set_video_fps(self, fps: float, camera: str | None = None) -> None:
-        self._fps_overlay[camera] = fps
+    def set_stream_rate(self, rate: float, stream: str, device: str | None = None) -> None:
+        self._rate_overlay[(stream, device)] = rate
+
+    # ── Media path resolution ──
+
+    def resolve_media_path(
+        self,
+        trial,
+        stream: str,
+        device: str | None = None,
+        fallback_folder: str | None = None,
+    ) -> str | None:
+        """Resolve the full path for a media file.
+
+        1. Try the ImageSeries ``external_file`` path for this trial (if on disk).
+        2. Fallback: trial table filename + ``fallback_folder``.
+        3. Returns ``None`` if unresolvable.
+        """
+        nwb = self.nwb
+        acq_name = f"{stream}_{device}" if device else stream
+        acq = nwb.acquisition.get(acq_name) if nwb.acquisition else None
+
+        trial_idx = self._trial_index(trial)
+        nwb_base_dir = self._path.parent
+
+        if acq is not None and hasattr(acq, "external_file") and acq.external_file:
+            starting_frame = getattr(acq, "starting_frame", None)
+            files = list(acq.external_file)
+
+            if trial_idx is not None and starting_frame is not None and trial_idx < len(starting_frame):
+                file_idx = _file_index_for_trial(starting_frame, trial_idx, len(files))
+            elif trial_idx is not None and trial_idx < len(files):
+                file_idx = trial_idx
+            else:
+                file_idx = 0
+
+            if file_idx < len(files):
+                raw_path = files[file_idx]
+                # Try the stored path directly
+                if os.path.isfile(raw_path):
+                    return raw_path
+                # Try relative to NWB file location
+                rel = nwb_base_dir / raw_path
+                if rel.is_file():
+                    return str(rel)
+                # Fallback: filename + folder
+                filename = Path(raw_path).name
+                if fallback_folder:
+                    candidate = os.path.normpath(os.path.join(fallback_folder, filename))
+                    if os.path.isfile(candidate):
+                        return candidate
+
+        # Last resort: trial table filename + fallback_folder
+        media_file = self.get_media(trial, stream, device)
+        if media_file:
+            if os.path.isfile(media_file):
+                return media_file
+            if fallback_folder:
+                candidate = os.path.normpath(os.path.join(fallback_folder, Path(media_file).name))
+                if os.path.isfile(candidate):
+                    return candidate
+
+        return None
 
     # ── Epochs (pynapple IntervalSet) ──
 
@@ -341,8 +408,7 @@ class NWBSessionIO:
             return None
 
         ends = np.full(n, np.nan, dtype=np.float64)
-        is_placeholder = "stop_time_is_placeholder" in df.columns
-        if "stop_time" in df.columns and not is_placeholder:
+        if "stop_time" in df.columns:
             ends = df["stop_time"].values.astype(np.float64)
 
         has_monotonic = n == 1 or bool(np.all(np.diff(starts) > 0))
@@ -402,7 +468,6 @@ class NWBSessionIO:
         print(f"{'=' * 60}")
         print(df.to_string(max_rows=20))
 
-        # Show acquisition items
         nwb = self.nwb
         if nwb.acquisition:
             print(f"\n  Acquisition items:")
@@ -426,6 +491,27 @@ class NWBSessionIO:
                 pass
             self._io = None
             self._nwb = None
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _file_index_for_trial(
+    starting_frames: list | np.ndarray,
+    trial_idx: int,
+    n_files: int,
+) -> int:
+    """Map a trial index to the corresponding file index via starting_frame."""
+    sf = [int(f) for f in starting_frames]
+    if trial_idx >= len(sf):
+        return min(trial_idx, n_files - 1)
+    target_frame = sf[trial_idx]
+    for i in range(n_files - 1, -1, -1):
+        if i < len(sf) and sf[i] <= target_frame:
+            return i
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -463,17 +549,20 @@ class EmptySessionIO:
     def trial_duration(self, trial) -> float:
         raise ValueError(f"Trial {trial} has no known stop time")
 
-    def source_start_time(self, trial, stream: str, device: str | None = None) -> float:
+    def stream_offset_for_trial(self, trial, stream: str, device: str | None = None) -> float:
         return 0.0
 
-    def source_start_time_trial_relative(self, trial, stream: str, device: str | None = None) -> float:
-        return 0.0
-
-    def get_video_fps(self, camera: str | None = None) -> float | None:
+    def get_stream_rate(self, stream: str, device: str | None = None) -> float | None:
         return None
 
-    def set_video_fps(self, fps: float, camera: str | None = None) -> None:
+    def set_stream_rate(self, rate: float, stream: str, device: str | None = None) -> None:
         pass
+
+    def resolve_media_path(
+        self, trial, stream: str, device: str | None = None,
+        fallback_folder: str | None = None,
+    ) -> str | None:
+        return None
 
     @property
     def trials_ep(self):
