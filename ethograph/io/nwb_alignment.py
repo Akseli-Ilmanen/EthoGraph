@@ -248,6 +248,11 @@ class NWBAlignment:
                 match = df[df["trial"] == int(trial)]
             if not match.empty:
                 return match.iloc[0]
+            return None
+        # No trial column: use 1-based integer lookup into row index
+        idx = self._trial_to_iloc(trial)
+        if idx is not None and 0 <= idx < len(df):
+            return df.iloc[idx]
         return None
 
     def _trial_index(self, trial) -> int | None:
@@ -258,7 +263,17 @@ class NWBAlignment:
             for i, val in enumerate(df["trial"]):
                 if val == trial or str(val) == str(trial):
                     return i
-        return None
+            return None
+        return self._trial_to_iloc(trial)
+
+    @staticmethod
+    def _trial_to_iloc(trial) -> int | None:
+        """Convert a trial ID to a 0-based row index (assumes 1-based trial IDs)."""
+        try:
+            idx = int(trial) - 1
+            return idx if idx >= 0 else None
+        except (ValueError, TypeError):
+            return None
 
     # ── Media access ──
 
@@ -582,8 +597,17 @@ class NWBAlignment:
 # ---------------------------------------------------------------------------
 
 
-def _build_trials_ep(df: pd.DataFrame):
+def _build_trials_ep(df: pd.DataFrame, session_end: float | None = None):
     """Build a pynapple IntervalSet from a trials DataFrame with start/stop times.
+
+    Parameters
+    ----------
+    df
+        Trials DataFrame with ``start_time`` and optionally ``stop_time``.
+    session_end
+        Session end time (seconds). Used as fallback stop for the last trial
+        when its stop time is unknown. Pass ``source_collection.union_range.end_s``
+        after data loading.
 
     Returns None when timing data is missing or non-monotonic.
     """
@@ -613,16 +637,19 @@ def _build_trials_ep(df: pd.DataFrame):
 
     trial_ids = df["trial"].values if "trial" in df.columns else np.arange(1, n + 1)
 
-    # Drop the last trial if its stop time is unknown (no hardcoded fallback)
+    # Last trial with unknown stop: use session end if available, else drop
     if np.isnan(safe_ends[-1]):
-        mask = np.ones(n, dtype=bool)
-        mask[-1] = False
-        starts = starts[mask]
-        safe_ends = safe_ends[mask]
-        has_stop = has_stop[mask]
-        trial_ids = trial_ids[mask]
-        if len(starts) == 0:
-            return None
+        if session_end is not None and session_end > starts[-1]:
+            safe_ends[-1] = session_end
+        else:
+            mask = np.ones(n, dtype=bool)
+            mask[-1] = False
+            starts = starts[mask]
+            safe_ends = safe_ends[mask]
+            has_stop = has_stop[mask]
+            trial_ids = trial_ids[mask]
+            if len(starts) == 0:
+                return None
 
     return nap.IntervalSet(
         start=starts,

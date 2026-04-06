@@ -24,7 +24,13 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ethograph.io.time_model import build_trial_window, find_closest_trial
+from ethograph.io.time_model import (
+    RestrictionWindow,
+    TimeRange,
+    build_trial_window,
+    find_closest_trial,
+    infer_slider_range,
+)
 from ethograph.utils.sequences import get_label_instances, match_sequences
 
 from .app_constants import AUDIO_SPEED_MAX, AUDIO_SPEED_MIN, AUDIO_SPEED_STEP
@@ -32,7 +38,11 @@ from .dialog_screen_recorder import RecordButton
 
 logger = logging.getLogger(__name__)
 
-RESTRICT_MODES = ["Trial", "Video", "Label", "Sequence"]
+NAVIGATE_MODES = ["Trial", "Label", "Sequence"]
+SLIDER_SCOPES = ["Trial", "Trial Start", "Session"]
+
+_SCOPE_KEY_TO_DISPLAY = {"trial": "Trial", "trial_start": "Trial Start", "session": "Session"}
+_SCOPE_DISPLAY_TO_KEY = {v: k for k, v in _SCOPE_KEY_TO_DISPLAY.items()}
 
 
 class _DataAlignmentDialog(QDialog):
@@ -93,15 +103,24 @@ class NavigationWidget(QWidget):
         filter_hint.setStyleSheet("color: grey; font-size: 10px;")
         navigate_layout.addWidget(filter_hint)
 
-        # Mode selector row
-        mode_row = QHBoxLayout()
-        mode_row.addWidget(QLabel("Restrict:"))
-        self.mode_combo = QComboBox()
-        self.mode_combo.setObjectName("restrict_mode_combo")
-        self.mode_combo.addItems(RESTRICT_MODES)
-        self.mode_combo.currentTextChanged.connect(self._on_mode_changed)
-        mode_row.addWidget(self.mode_combo, stretch=1)
-        navigate_layout.addLayout(mode_row)
+        # Navigate by / Slider scope
+        nav_mode_row = QHBoxLayout()
+        nav_mode_row.addWidget(QLabel("Navigate by:"))
+        self.navigate_combo = QComboBox()
+        self.navigate_combo.setObjectName("navigate_mode_combo")
+        self.navigate_combo.addItems(NAVIGATE_MODES)
+        self.navigate_combo.currentTextChanged.connect(self._on_navigate_changed)
+        nav_mode_row.addWidget(self.navigate_combo, stretch=1)
+        navigate_layout.addLayout(nav_mode_row)
+
+        scope_row = QHBoxLayout()
+        scope_row.addWidget(QLabel("Slider scope:"))
+        self.scope_combo = QComboBox()
+        self.scope_combo.setObjectName("slider_scope_combo")
+        self.scope_combo.addItems(SLIDER_SCOPES)
+        self.scope_combo.currentTextChanged.connect(self._on_scope_changed)
+        scope_row.addWidget(self.scope_combo, stretch=1)
+        navigate_layout.addLayout(scope_row)
 
         # Unified prev / next / counter row
         nav_row = QHBoxLayout()
@@ -132,19 +151,6 @@ class NavigationWidget(QWidget):
         self.trials_combo.currentIndexChanged.connect(self._sync_trials_combo_color)
         trial_lay.addWidget(self.trials_combo)
         self._stack.addWidget(trial_panel)
-
-        # -- Video panel --
-        video_panel = QWidget()
-        video_lay = QVBoxLayout(video_panel)
-        video_lay.setContentsMargins(0, 0, 0, 0)
-        self.video_combo = QComboBox()
-        self.video_combo.setObjectName("video_combo")
-        self.video_combo.currentIndexChanged.connect(self._on_video_combo_changed)
-        video_lay.addWidget(self.video_combo)
-        self._video_info_label = QLabel("")
-        self._video_info_label.setStyleSheet("color: grey; font-size: 10px;")
-        video_lay.addWidget(self._video_info_label)
-        self._stack.addWidget(video_panel)
 
         # -- Label panel --
         label_panel = QWidget()
@@ -183,25 +189,25 @@ class NavigationWidget(QWidget):
 
         navigate_layout.addWidget(self._stack)
 
-        # Extra context
-        ctx_row = QHBoxLayout()
-        ctx_row.addWidget(QLabel("Context:"))
-        self.extra_t0_spin = QDoubleSpinBox()
-        self.extra_t0_spin.setRange(0.0, 60.0)
-        self.extra_t0_spin.setSingleStep(0.1)
-        self.extra_t0_spin.setSuffix(" s")
-        self.extra_t0_spin.setValue(app_state.get_with_default("restrict_extra_t0"))
-        self.extra_t0_spin.valueChanged.connect(self._on_extra_context_changed)
-        ctx_row.addWidget(self.extra_t0_spin)
-        ctx_row.addWidget(QLabel("+"))
-        self.extra_t1_spin = QDoubleSpinBox()
-        self.extra_t1_spin.setRange(0.0, 60.0)
-        self.extra_t1_spin.setSingleStep(0.1)
-        self.extra_t1_spin.setSuffix(" s")
-        self.extra_t1_spin.setValue(app_state.get_with_default("restrict_extra_t1"))
-        self.extra_t1_spin.valueChanged.connect(self._on_extra_context_changed)
-        ctx_row.addWidget(self.extra_t1_spin)
-        navigate_layout.addLayout(ctx_row)
+        # Before / After padding
+        ba_row = QHBoxLayout()
+        ba_row.addWidget(QLabel("Before:"))
+        self.before_spin = QDoubleSpinBox()
+        self.before_spin.setRange(0.0, 600.0)
+        self.before_spin.setSingleStep(0.5)
+        self.before_spin.setSuffix(" s")
+        self.before_spin.setValue(app_state.get_with_default("before_s_trial"))
+        self.before_spin.valueChanged.connect(self._on_before_after_changed)
+        ba_row.addWidget(self.before_spin)
+        ba_row.addWidget(QLabel("After:"))
+        self.after_spin = QDoubleSpinBox()
+        self.after_spin.setRange(0.0, 600.0)
+        self.after_spin.setSingleStep(0.5)
+        self.after_spin.setSuffix(" s")
+        self.after_spin.setValue(app_state.get_with_default("after_s_trial"))
+        self.after_spin.valueChanged.connect(self._on_before_after_changed)
+        ba_row.addWidget(self.after_spin)
+        navigate_layout.addLayout(ba_row)
 
         # Auto-play checkbox
         self.autoplay_checkbox = QCheckBox("Auto-play on navigate")
@@ -310,10 +316,16 @@ class NavigationWidget(QWidget):
         main_layout.addWidget(playback_group)
         self.setLayout(main_layout)
 
-        # Restore saved mode
-        saved = app_state.get_with_default("restrict_mode")
-        idx = RESTRICT_MODES.index(saved.capitalize()) if saved.capitalize() in RESTRICT_MODES else 0
-        self.mode_combo.setCurrentIndex(idx)
+        # Restore saved modes
+        saved_nav = app_state.get_with_default("navigate_mode")
+        nav_items = [m.lower() for m in NAVIGATE_MODES]
+        nav_idx = nav_items.index(saved_nav) if saved_nav in nav_items else 0
+        self.navigate_combo.setCurrentIndex(nav_idx)
+
+        saved_scope = app_state.get_with_default("slider_scope")
+        scope_display = _SCOPE_KEY_TO_DISPLAY.get(saved_scope, "Trial")
+        scope_idx = SLIDER_SCOPES.index(scope_display) if scope_display in SLIDER_SCOPES else 0
+        self.scope_combo.setCurrentIndex(scope_idx)
 
     # ==================================================================
     # Public API (used by widgets_data, shortcuts, widgets_meta, etc.)
@@ -332,6 +344,36 @@ class NavigationWidget(QWidget):
     def refresh_after_load(self):
         self._populate_label_combo()
         self._populate_individual_combo()
+
+    def on_labels_changed(self):
+        """Refresh label/sequence instances after labels are modified.
+
+        Preserves the current instance index so the user stays at their
+        position rather than jumping back to the first instance.
+        """
+        mode = self.app_state.navigate_mode
+        if mode == "label":
+            old_idx = self.app_state.label_instance_idx
+            self._refresh_label_instances_keep_position(old_idx)
+        elif mode == "sequence" and self._sequence_matches:
+            old_idx = self.app_state.sequence_match_idx
+            self._on_sequence_search()
+            self.app_state.sequence_match_idx = min(old_idx, max(0, len(self._sequence_matches) - 1))
+            self._update_counter()
+
+    def _refresh_label_instances_keep_position(self, old_idx: int):
+        """Refresh label instances and keep index close to old_idx."""
+        label_id = self.label_combo.currentData()
+        if label_id is None:
+            self._label_instances = []
+            self._update_counter()
+            return
+        individual = self.individual_combo.currentText()
+        ind_filter = None if individual == "All" else individual
+        df = getattr(self.app_state, "_all_labels_df", None)
+        self._label_instances = get_label_instances(df, label_id, ind_filter)
+        self.app_state.label_instance_idx = min(old_idx, max(0, len(self._label_instances) - 1))
+        self._update_counter()
 
     def navigate_to_trial(self, trial_id):
         self.trials_combo.setCurrentText(str(trial_id))
@@ -360,8 +402,8 @@ class NavigationWidget(QWidget):
     # ==================================================================
 
     def _navigate(self, direction: int):
-        mode = self.mode_combo.currentText().lower()
-        if mode in ("trial", "video"):
+        mode = self.navigate_combo.currentText().lower()
+        if mode == "trial":
             self._navigate_trial(direction)
         elif mode == "label":
             self._navigate_label(direction)
@@ -369,28 +411,149 @@ class NavigationWidget(QWidget):
             self._navigate_sequence(direction)
 
     # ==================================================================
-    # Mode switching
+    # Navigate by / Slider scope switching
     # ==================================================================
 
-    def _on_mode_changed(self, mode_text: str):
+    def _on_navigate_changed(self, mode_text: str):
         mode = mode_text.lower()
-        self.app_state.restrict_mode = mode
-        self._stack.setCurrentIndex(RESTRICT_MODES.index(mode_text))
+        self.app_state.navigate_mode = mode
+        self._stack.setCurrentIndex(NAVIGATE_MODES.index(mode_text))
 
-        self.trials_combo.setEnabled(mode in ("trial", "video"))
+        # Swap spinbox values to the per-category stored values
+        self._sync_spinboxes_to_mode(mode)
 
-        if mode == "video":
-            self._populate_video_combo()
-            self._apply_video_restriction()
-        elif mode == "label":
+        if mode == "label":
             self._refresh_label_instances()
             self._apply_label_restriction()
         elif mode == "sequence":
             self._on_sequence_search()
         else:
-            self._apply_trial_restriction()
+            self._apply_slider_scope()
 
         self._update_counter()
+
+    def _sync_spinboxes_to_mode(self, mode: str):
+        """Load the per-category before/after values into the spinboxes."""
+        self.before_spin.blockSignals(True)
+        self.after_spin.blockSignals(True)
+        self.before_spin.setValue(self.app_state.get_with_default(f"before_s_{mode}"))
+        self.after_spin.setValue(self.app_state.get_with_default(f"after_s_{mode}"))
+        self.before_spin.blockSignals(False)
+        self.after_spin.blockSignals(False)
+
+    def _on_scope_changed(self, scope_text: str):
+        scope_key = _SCOPE_DISPLAY_TO_KEY.get(scope_text, "trial")
+        self.app_state.slider_scope = scope_key
+
+        if scope_key == "session":
+            self._apply_slider_scope()
+            self._update_viewport_for_scope()
+        elif scope_key in ("trial", "trial_start"):
+            self._snap_to_closest_trial()
+        else:
+            self._apply_slider_scope()
+
+    def _update_viewport_for_scope(self):
+        """Set the plot x-range to match the current restrict_window."""
+        if self.plot_container is None:
+            return
+        rw = getattr(self.app_state, "restrict_window", None)
+        if rw is None:
+            return
+        master = getattr(self.plot_container, "_xlink_master", None) or getattr(self.plot_container, "_feature_plot", None)
+        if master is not None:
+            master.vb.setXRange(rw.time_range.start_s, rw.time_range.end_s, padding=0)
+        self.plot_container.update_time_range_from_data()
+
+    def _snap_to_closest_trial(self):
+        """Switch to the trial closest to the current time marker, then update viewport."""
+        sio = getattr(self.app_state, "nwb_alignment", None)
+        trials = getattr(self.app_state, "trials", None)
+        if not sio or not trials:
+            self._apply_slider_scope()
+            return
+
+        # Get current time from time marker / slider
+        current_time = 0.0
+        if self.plot_container and hasattr(self.plot_container, "time_slider"):
+            current_time = self.plot_container.time_slider.current_time
+
+        # Convert local time to session-absolute for lookup
+        sc = getattr(self.app_state, "source_collection", None)
+        trial_idx = None
+        if sc and sc.n_trials > 0:
+            curr_trial = getattr(self.app_state, "trials_sel", None)
+            if curr_trial in trials:
+                old_idx = trials.index(curr_trial)
+                session_time = sc.trial_offset(old_idx) + current_time
+                trial_idx = sc.find_trial(session_time)
+
+        if trial_idx is not None and 0 <= trial_idx < len(trials):
+            new_trial = trials[trial_idx]
+            if new_trial != self.app_state.trials_sel:
+                self.app_state.trials_sel = new_trial
+                self.trials_combo.blockSignals(True)
+                self.trials_combo.setCurrentText(str(new_trial))
+                self.trials_combo.blockSignals(False)
+                self.app_state.trial_changed.emit()
+                self._update_counter()
+                return
+
+        self._apply_slider_scope()
+        self._update_viewport_for_scope()
+
+    def _apply_slider_scope(self):
+        """Build restrict_window from the current slider scope + before/after."""
+        alignment = getattr(self.app_state, "trial_alignment", None)
+        trial_id = getattr(self.app_state, "trials_sel", None)
+        scope = self.app_state.slider_scope
+        before = self.before_spin.value()
+        after = self.after_spin.value()
+
+        if scope == "trial" and alignment and alignment.trial_range:
+            core = alignment.trial_range
+            time_range = TimeRange(core.start_s - before, core.end_s + after)
+            self.app_state.restrict_window = RestrictionWindow(
+                mode="trial", time_range=time_range, core_range=core,
+                trial_id=trial_id,
+            )
+        elif scope == "trial_start" and alignment and alignment.trial_range:
+            core = alignment.trial_range
+            time_range = TimeRange(core.start_s - before, core.end_s + after)
+            self.app_state.restrict_window = RestrictionWindow(
+                mode="trial_start", time_range=time_range, core_range=core,
+                trial_id=trial_id,
+            )
+        elif scope == "session":
+            sc = getattr(self.app_state, "source_collection", None)
+            session = sc.session_range if sc else None
+            if session:
+                self.app_state.restrict_window = RestrictionWindow(
+                    mode="session", time_range=session, core_range=session,
+                    trial_id=trial_id,
+                )
+        elif alignment and alignment.trial_range:
+            # Fallback: use trial range
+            core = alignment.trial_range
+            time_range = TimeRange(core.start_s - before, core.end_s + after)
+            self.app_state.restrict_window = RestrictionWindow(
+                mode="trial", time_range=time_range, core_range=core,
+                trial_id=trial_id,
+            )
+
+    def auto_infer_scope(self):
+        """Auto-detect slider scope from alignment timing and update the combo."""
+        sio = getattr(self.app_state, "nwb_alignment", None)
+        trial_id = getattr(self.app_state, "trials_sel", None)
+        sc = getattr(self.app_state, "source_collection", None)
+        if sio is None or trial_id is None:
+            return
+        scope, _ = infer_slider_range(sio, trial_id, sc)
+        display = _SCOPE_KEY_TO_DISPLAY.get(scope, "Trial")
+        self.scope_combo.blockSignals(True)
+        self.scope_combo.setCurrentText(display)
+        self.scope_combo.blockSignals(False)
+        self.app_state.slider_scope = scope
 
     # ==================================================================
     # Trial mode
@@ -430,11 +593,6 @@ class NavigationWidget(QWidget):
             self.trials_combo.blockSignals(True)
             self.trials_combo.setCurrentText(str(new_trial))
             self.trials_combo.blockSignals(False)
-            # Sync video combo if it exists
-            if hasattr(self, 'video_combo') and self.video_combo.count() > 0:
-                self.video_combo.blockSignals(True)
-                self.video_combo.setCurrentIndex(new_idx)
-                self.video_combo.blockSignals(False)
             self.app_state.trial_changed.emit()
             self._update_counter()
             tb = self.app_state.trial_bounds
@@ -442,87 +600,7 @@ class NavigationWidget(QWidget):
                 self._center_and_maybe_play(tb.start_s, tb.end_s)
 
     def _apply_trial_restriction(self):
-        alignment = getattr(self.app_state, "trial_alignment", None)
-        if alignment is None:
-            return
-        trial_id = getattr(self.app_state, "trials_sel", None)
-        rw = build_trial_window(
-            alignment, trial_id,
-            extra_t0=self.extra_t0_spin.value(),
-            extra_t1=self.extra_t1_spin.value(),
-        )
-        self.app_state.restrict_window = rw
-
-    # ==================================================================
-    # Video mode
-    # ==================================================================
-
-    def _populate_video_combo(self):
-        """Fill video_combo with filenames from the primary camera."""
-        import os
-
-        self.video_combo.blockSignals(True)
-        self.video_combo.clear()
-        sio = getattr(self.app_state, "nwb_alignment", None)
-        if sio is None:
-            self.video_combo.blockSignals(False)
-            return
-        camera = getattr(self.app_state, "primary_camera", None)
-        trials = getattr(self.app_state, "trials", [])
-        for tid in trials:
-            path = sio.resolve_media_path(tid, "video", device=camera)
-            name = os.path.basename(path) if path else str(tid)
-            self.video_combo.addItem(name, tid)
-        current = getattr(self.app_state, "trials_sel", None)
-        if current in trials:
-            self.video_combo.setCurrentIndex(trials.index(current))
-        self.video_combo.blockSignals(False)
-
-    def _on_video_combo_changed(self, index: int):
-        if not self.app_state.ready or index < 0:
-            return
-        tid = self.video_combo.itemData(index)
-        if tid is None:
-            return
-        current = getattr(self.app_state, "trials_sel", None)
-        if tid != current:
-            self.app_state.trials_sel = tid
-            self.trials_combo.blockSignals(True)
-            self.trials_combo.setCurrentText(str(tid))
-            self.trials_combo.blockSignals(False)
-            self.app_state.trial_changed.emit()
-        self._apply_video_restriction()
-        self._update_counter()
-        tb = self.app_state.trial_bounds
-        if tb:
-            self._center_and_maybe_play(tb.start_s, tb.end_s)
-
-    def _apply_video_restriction(self):
-        """Restrict time range to current trial's primary camera video duration."""
-        from ethograph.io.time_model import RestrictionWindow, TimeRange
-
-        alignment = getattr(self.app_state, "trial_alignment", None)
-        video = getattr(self.app_state, "video", None)
-        if alignment is None or video is None:
-            self._apply_trial_restriction()
-            return
-
-        vid_start = alignment.video_offset
-        vid_end = vid_start + video.total_duration
-        extra_t0 = self.extra_t0_spin.value()
-        extra_t1 = self.extra_t1_spin.value()
-
-        core = TimeRange(vid_start, vid_end)
-        time_range = TimeRange(vid_start - extra_t0, vid_end + extra_t1)
-        trial_id = getattr(self.app_state, "trials_sel", None)
-
-        self.app_state.restrict_window = RestrictionWindow(
-            mode="video", time_range=time_range, core_range=core,
-            trial_id=trial_id,
-        )
-        self._video_info_label.setText(
-            f"Video: {vid_start:.2f}s \u2013 {vid_end:.2f}s  ({video.total_duration:.2f}s)"
-        )
+        self._apply_slider_scope()
 
     # ==================================================================
     # Label mode
@@ -549,13 +627,13 @@ class NavigationWidget(QWidget):
         self.individual_combo.blockSignals(False)
 
     def _on_label_selected(self):
-        if not self.app_state.ready or self.app_state.restrict_mode != "label":
+        if not self.app_state.ready or self.app_state.navigate_mode != "label":
             return
         self._refresh_label_instances()
         self._apply_label_restriction()
 
     def _on_label_filter_changed(self):
-        if not self.app_state.ready or self.app_state.restrict_mode != "label":
+        if not self.app_state.ready or self.app_state.navigate_mode != "label":
             return
         self._refresh_label_instances()
         self._apply_label_restriction()
@@ -652,7 +730,7 @@ class NavigationWidget(QWidget):
     # ==================================================================
 
     def _update_counter(self):
-        mode = self.mode_combo.currentText().lower()
+        mode = self.navigate_combo.currentText().lower()
         if mode == "trial":
             trials = getattr(self.app_state, "trials", [])
             sel = getattr(self.app_state, "trials_sel", None)
@@ -687,8 +765,8 @@ class NavigationWidget(QWidget):
         if self.plot_container is None:
             return
 
-        extra_t0 = self.extra_t0_spin.value()
-        extra_t1 = self.extra_t1_spin.value()
+        extra_t0 = self.before_spin.value()
+        extra_t1 = self.after_spin.value()
 
         master = getattr(self.plot_container, "_xlink_master", None) or getattr(self.plot_container, "_feature_plot", None)
         if master is not None:
@@ -711,21 +789,14 @@ class NavigationWidget(QWidget):
             self.plot_container.audio_player.play_segment(onset_s, offset_s)
 
     # ==================================================================
-    # Extra context
+    # Before / After padding
     # ==================================================================
 
-    def _on_extra_context_changed(self):
-        self.app_state.restrict_extra_t0 = self.extra_t0_spin.value()
-        self.app_state.restrict_extra_t1 = self.extra_t1_spin.value()
-        mode = self.app_state.restrict_mode
-        if mode == "video":
-            self._apply_video_restriction()
-        elif mode == "trial":
-            self._apply_trial_restriction()
-        elif mode == "label":
-            self._apply_label_restriction()
-        elif mode == "sequence":
-            self._apply_sequence_restriction()
+    def _on_before_after_changed(self):
+        mode = self.app_state.navigate_mode
+        setattr(self.app_state, f"before_s_{mode}", self.before_spin.value())
+        setattr(self.app_state, f"after_s_{mode}", self.after_spin.value())
+        self._apply_slider_scope()
 
     # ==================================================================
     # Jump to time
@@ -859,8 +930,7 @@ class NavigationWidget(QWidget):
         center = getattr(self.app_state, "center_playback", False)
         xlim = self.plot_container.get_current_xlim()
         if center or new_time < xlim[0] or new_time > xlim[1]:
-            window_size = self.app_state.get_with_default("window_size")
-            half = window_size / 2.0
+            half = self.app_state.view_span / 2.0
             master = self.plot_container._xlink_master or self.plot_container._feature_plot
             master.vb.setXRange(new_time - half, new_time + half, padding=0)
 

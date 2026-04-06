@@ -784,9 +784,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             vals = np.asarray(time)
             data_t0, data_t1 = float(vals[0]), float(vals[-1])
             if t1 - t0 < 0.01 or t0 < data_t0 - 1000 or t1 > data_t1 + 1000:
-                window = self.app_state.get_with_default("window_size")
+                view_span = self.app_state.view_span
                 t0 = data_t0
-                t1 = min(data_t0 + float(window), data_t1)
+                t1 = min(data_t0 + view_span, data_t1)
                 master = self._xlink_master or self._feature_plot
                 master.vb.setXRange(t0, t1, padding=0)
 
@@ -806,8 +806,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         center = getattr(self.app_state, 'center_playback', False)
         visible = TimeRange(*self.get_current_xlim())
         if center or not visible.contains(time_s):
-            window_size = self.app_state.get_with_default("window_size")
-            half = window_size / 2.0
+            half = self.app_state.view_span / 2.0
             master = self._xlink_master or self._feature_plot
             master.vb.setXRange(time_s - half, time_s + half, padding=0)
 

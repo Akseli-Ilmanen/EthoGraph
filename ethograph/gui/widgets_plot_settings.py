@@ -185,7 +185,6 @@ class PlotSettingsWidget(QWidget):
             ("ymin", self.ymin_edit),
             ("ymax", self.ymax_edit),
             ("percentile_ylim", self.percentile_ylim_edit),
-            ("window_size", self.window_s_edit),
         ]:
             value = getattr(self.app_state, attr, None)
             if value is None:
@@ -227,7 +226,6 @@ class PlotSettingsWidget(QWidget):
             "ymin": self.ymin_edit,
             "ymax": self.ymax_edit,
             "percentile_ylim": self.percentile_ylim_edit,
-            "window_size": self.window_s_edit,
         }
 
         values = {}
@@ -262,8 +260,9 @@ class PlotSettingsWidget(QWidget):
             return None, None
         video = getattr(self.app_state, 'video', None)
         current_time = video.frame_to_time(self.app_state.current_frame) if video else self.app_state.current_frame / self.app_state.video_fps
-        window_size = self.app_state.get_with_default("window_size")
-        half_window = window_size / 2
+        before = self.app_state.before_s
+        after = self.app_state.after_s
+        half_window = (before + after) / 2
         return current_time - half_window, current_time + half_window
 
     def _reset_axes_to_defaults(self):
@@ -271,7 +270,6 @@ class PlotSettingsWidget(QWidget):
             ("ymin", self.ymin_edit),
             ("ymax", self.ymax_edit),
             ("percentile_ylim", self.percentile_ylim_edit),
-            ("window_size", self.window_s_edit),
         ]:
             value = self.app_state.get_with_default(attr)
             edit.setText("" if value is None else str(value))
@@ -320,6 +318,14 @@ class PlotSettingsWidget(QWidget):
         self.space_limit_window_checkbox.toggled.connect(self._on_space_limit_window_toggled)
         group_layout.addWidget(self.space_limit_window_checkbox, row, 3)
 
+        row += 1
+        self.space_lock_axes_checkbox = QCheckBox("Lock axes (Space)")
+        self.space_lock_axes_checkbox.setToolTip(
+            "Keep the current axis ranges when switching trials"
+        )
+        self.space_lock_axes_checkbox.toggled.connect(self._on_space_lock_axes_toggled)
+        group_layout.addWidget(self.space_lock_axes_checkbox, row, 0, 1, 2)
+
         main_layout.addWidget(self.spaceplot_panel)
 
     def _restore_spaceplot_defaults(self):
@@ -331,6 +337,9 @@ class PlotSettingsWidget(QWidget):
         self.space_limit_window_checkbox.setChecked(
             self.app_state.get_with_default("space_limit_to_window"))
 
+        self.space_lock_axes_checkbox.setChecked(
+            self.app_state.get_with_default("space_lock_axes"))
+
     def _on_space_percentile_changed(self, value: float):
         self.app_state.space_percentile_xyzlim = value
 
@@ -339,6 +348,9 @@ class PlotSettingsWidget(QWidget):
 
     def _on_space_limit_window_toggled(self, checked: bool):
         self.app_state.space_limit_to_window = checked
+
+    def _on_space_lock_axes_toggled(self, checked: bool):
+        self.app_state.space_lock_axes = checked
 
 
     # ------------------------------------------------------------------
@@ -354,18 +366,13 @@ class PlotSettingsWidget(QWidget):
 
         self.autoscale_checkbox = QCheckBox("Autoscale Y")
         self.lock_axes_checkbox = QCheckBox("Lock Axes")
-        self.window_s_edit = QLineEdit()
-        self.window_s_edit.setFixedWidth(50)
 
         shared_layout.addWidget(self.autoscale_checkbox)
         shared_layout.addWidget(self.lock_axes_checkbox)
-        shared_layout.addWidget(QLabel("Window (s):"))
-        shared_layout.addWidget(self.window_s_edit)
         shared_layout.addStretch()
 
         self.autoscale_checkbox.toggled.connect(self._autoscale_y_toggle)
         self.lock_axes_checkbox.toggled.connect(self._on_lock_axes_toggled)
-        self.window_s_edit.editingFinished.connect(self._on_axes_edited)
 
         main_layout.addWidget(shared_widget)
 

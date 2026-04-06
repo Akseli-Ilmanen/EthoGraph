@@ -326,8 +326,10 @@ class LabelsWidget(QWidget):
         section_layout.setSpacing(1)
 
         header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
         checkbox = QCheckBox(f"Branch {branch_idx}")
         checkbox.setChecked(checked)
+        checkbox.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         checkbox.setStyleSheet("QCheckBox { color: #ccc; font-weight: bold; }")
         checkbox.toggled.connect(lambda state, b=branch_idx: self._on_branch_toggled(b, state))
         header_row.addWidget(checkbox)

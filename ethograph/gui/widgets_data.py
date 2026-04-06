@@ -67,6 +67,24 @@ from .video_manager import VideoManager,  is_url
 logger = logging.getLogger(__name__)
 
 
+def _detect_nwb_pose_keys(nwb_path: str | None) -> list[str] | None:
+    """Detect PoseEstimation container names from NWB processing modules."""
+    if not nwb_path or not Path(nwb_path).exists():
+        return None
+    try:
+        from pynwb import NWBHDF5IO
+        keys = []
+        with NWBHDF5IO(str(nwb_path), "r") as io:
+            nwb = io.read()
+            for mod in nwb.processing.values():
+                for name, di in mod.data_interfaces.items():
+                    if hasattr(di, "pose_estimation_series"):
+                        keys.append(name)
+        return keys if keys else None
+    except Exception:
+        return None
+
+
 @dataclass
 class _PanelDef:
     """Declarative description of a panel toggle checkbox."""
@@ -78,6 +96,7 @@ class _PanelDef:
     autoscale_plot: str | None = None   # plot_container.X for autoscale on show
     audio_row: bool = False             # part of the hidden-when-no-audio widget group
     on_toggle: str | None = None        # self.method(visible) called after standard actions
+    requires: str | None = None         # app_state attr that must be truthy for data to exist
 
 
 _PANEL_DEFS: list[_PanelDef] = [
@@ -85,28 +104,35 @@ _PANEL_DEFS: list[_PanelDef] = [
               state_attr="audiotrace_visible",
               container_method="set_audiotrace_visible",
               autoscale_plot="audio_trace_plot",
-              on_toggle="_on_audio_panel_toggle"),
+              on_toggle="_on_audio_panel_toggle",
+              requires="has_audio"),
     _PanelDef("spectrogram",  "Spectrogram",  row=1, audio_row=True,
               state_attr="spectrogram_visible",
               container_method="set_spectrogram_visible",
               autoscale_plot="spectrogram_plot",
-              on_toggle="_on_audio_panel_toggle"),
+              on_toggle="_on_audio_panel_toggle",
+              requires="has_audio"),
     _PanelDef("neo_viewer",   "Neo-Viewer",   row=1,
               container_method="set_neo_visible",
-              on_toggle="_on_neo_panel_toggle"),
+              on_toggle="_on_neo_panel_toggle",
+              requires="has_neo"),
     _PanelDef("phy_viewer",   "Phy-Viewer",   row=1,
               state_attr="ephys_visible",
               container_method="set_ephys_visible",
-              on_toggle="_on_phy_panel_toggle"),
+              on_toggle="_on_phy_panel_toggle",
+              requires="has_neurons"),
     _PanelDef("featureplot",  "FeaturePlot",  row=1,
               state_attr="featureplot_visible",
-              container_method="set_featureplot_visible"),
+              container_method="set_featureplot_visible",
+              requires="has_features"),
     _PanelDef("video_viewer", "VideoViewer",  row=1,
               state_attr="video_viewer_visible",
-              on_toggle="_on_video_viewer_toggle"),
+              on_toggle="_on_video_viewer_toggle",
+              requires="has_video"),
     _PanelDef("pose_markers", "PoseMarkers",  row=1,
               state_attr="pose_markers_visible",
-              on_toggle="_on_pose_markers_toggle"),
+              on_toggle="_on_pose_markers_toggle",
+              requires="has_pose"),
 ]
 
 
@@ -328,6 +354,15 @@ class DataPanel(QWidget):
         btn_row.addStretch()
         pose_layout.addLayout(btn_row)
 
+        # Pose ↔ Video matching
+        self.pose_match_btn = QPushButton("Match Pose ↔ Video")
+        self.pose_match_btn.setToolTip(
+            "Open dialog to match NWB PoseEstimation containers to video cameras.\n"
+            "Required when the NWB has multiple pose containers (e.g. LeftCamera, RightCamera)."
+        )
+        self.pose_match_btn.clicked.connect(self._on_pose_match_clicked)
+        pose_layout.addWidget(self.pose_match_btn)
+
         # Keypoints table (inline, scrollable)
         self.keypoints_table = QTableWidget(0, 2)
         self.keypoints_table.setHorizontalHeaderLabels(["Show", "Keypoint"])
@@ -338,6 +373,39 @@ class DataPanel(QWidget):
 
         self.pose_groupbox.hide()
         parent_layout.addWidget(self.pose_groupbox, stretch=1)
+
+    def _on_pose_match_clicked(self):
+        from .dialog_pose_video_matcher import PoseVideoMatcherDialog
+
+        nwb_local = getattr(self.app_state, "nwb_local", None)
+        pose_keys = getattr(self.app_state, "nwb_pose_keys", None) or []
+        sio = getattr(self.app_state, "nwb_alignment", None)
+        cameras = sio.cameras if sio else []
+
+        if not pose_keys and nwb_local:
+            pose_keys = _detect_nwb_pose_keys(nwb_local) or []
+
+        if not pose_keys:
+            from ethograph.gui.notify import notify
+            notify("No PoseEstimation containers found in the NWB file.", "warning")
+            return
+
+        dialog = PoseVideoMatcherDialog(
+            video_folder=getattr(self.app_state, "video_folder", "") or "",
+            pose_folder=getattr(self.app_state, "pose_folder", "") or "",
+            trial_ids=getattr(self.app_state, "trials", []),
+            parent=self,
+            nwb_registry={},
+            pose_items=pose_keys,
+        )
+        if dialog.exec_():
+            mapping = dialog.get_mapping()
+            # mapping is [(video_stem, pose_key), ...] — store as ordered pose keys
+            ordered_keys = [pose_key for _, pose_key in mapping]
+            self.app_state.nwb_pose_keys = ordered_keys
+            self.app_state.has_pose = True
+            if self._update_pose_callback:
+                self._update_pose_callback()
 
     def _create_audio_section(self, parent_layout):
         group = QGroupBox("Energy envelope")
@@ -609,6 +677,15 @@ class DataWidget(QWidget):
             or has_remote_cameras
             or has_nwb_pose
         )
+        # Auto-detect NWB pose keys from processing modules if not set by wizard
+        if not result.nwb_pose_keys and result.nwb_local:
+            auto_pose_keys = _detect_nwb_pose_keys(result.nwb_local)
+            if auto_pose_keys:
+                result = result._replace(nwb_pose_keys=auto_pose_keys) if hasattr(result, '_replace') else result
+                if not hasattr(result, '_replace'):
+                    result.nwb_pose_keys = auto_pose_keys
+                has_nwb_pose = True
+
         self.app_state.has_pose = (
             bool(sio.devices("pose"))
             or has_nwb_pose
@@ -837,68 +914,38 @@ class DataWidget(QWidget):
             self.populate_keypoints(keypoint_names)
 
         slot_layout.addStretch()
-        if self.app_state.has_video or self.app_state.has_audio:
-            self.slot_groupbox.show()
+        self.slot_groupbox.show()
 
         self._setup_panel_checkboxes()
+
+    def _is_panel_available(self, defn: _PanelDef) -> bool:
+        if defn.requires is None:
+            return True
+        if defn.requires == "has_features":
+            return bool(self.catalog and self.catalog.features)
+        return bool(getattr(self.app_state, defn.requires, False))
 
     def _setup_panel_checkboxes(self):
         self._audio_row_widgets = []
 
-        has_audio = bool(self.app_state.has_audio)
-        has_neo = bool(self.app_state.has_neo)
-        has_phy = bool(self.app_state.has_neurons)
-        has_features = bool(self.catalog and self.catalog.features)
-
-        # Whether this panel's data is available in the current session.
-        # When data is NOT available the checkbox is forced unchecked and signals are
-        # blocked so the saved preference is preserved for future sessions with that data.
-        data_available = {
-            "video_viewer": bool(self.app_state.has_video),
-            "pose_markers": bool(self.app_state.has_pose),
-            "featureplot":  has_features,
-            "audiotrace":   has_audio,
-            "spectrogram":  has_audio,
-            "neo_viewer":   has_neo,
-            "phy_viewer":   has_phy,
-        }
-        # Saved user preference (ignored when data unavailable).
-        # neo_viewer has no state_attr so always defaults to True when available.
-        saved_checked = {
-            "video_viewer": self.app_state.video_viewer_visible,
-            "pose_markers": self.app_state.pose_markers_visible,
-            "featureplot":  self.app_state.featureplot_visible,
-            "audiotrace":   self.app_state.audiotrace_visible,
-            "spectrogram":  self.app_state.spectrogram_visible,
-            "neo_viewer":   True,
-            "phy_viewer":   self.app_state.ephys_visible,
-        }
-        initial_shown = {
-            "video_viewer": True,
-            "pose_markers": True,
-            "featureplot":  True,
-            "audiotrace":   True,
-            "spectrogram":  True,
-            "neo_viewer":   has_neo,
-            "phy_viewer":   has_phy,
-        }
-
         for defn in _PANEL_DEFS:
+            available = self._is_panel_available(defn)
+            saved = getattr(self.app_state, defn.state_attr) if defn.state_attr else True
+
             checkbox = QCheckBox(defn.label)
             checkbox.setObjectName(f"{defn.name}_checkbox")
             setattr(self, f"{defn.name}_checkbox", checkbox)
 
             # Set checkbox to saved state WITHOUT firing signals (avoids
             # triggering plot updates before data is loaded).
+            # When data is NOT available the checkbox is forced unchecked —
+            # signals are blocked so the saved preference is preserved.
             checkbox.blockSignals(True)
-            if data_available[defn.name]:
-                checkbox.setChecked(saved_checked[defn.name])
-            else:
-                checkbox.setChecked(False)
+            checkbox.setChecked(available and saved)
             checkbox.blockSignals(False)
 
             # Apply the effective visibility to the container directly.
-            effective = data_available[defn.name] and saved_checked[defn.name]
+            effective = available and saved
             if defn.container_method and self.plot_container:
                 getattr(self.plot_container, defn.container_method)(effective)
             if defn.on_toggle:
@@ -909,8 +956,8 @@ class DataWidget(QWidget):
                 lambda state, n=defn.name: self._on_panel_toggled(n, state)
             )
 
-            if not initial_shown[defn.name]:
-                checkbox.hide()
+            if not available:
+                checkbox.setEnabled(False)
             if defn.audio_row:
                 self._audio_row_widgets.append(checkbox)
 
@@ -920,7 +967,7 @@ class DataWidget(QWidget):
         self.panels_row1_layout.addStretch()
 
         # Row 2: mic selector
-        if has_audio:
+        if self.app_state.has_audio:
             mic_names = self.catalog.mics if self.catalog else []
             expanded = self._expand_mics_with_channels(mic_names)
             self.mics_combo = QComboBox()
@@ -982,17 +1029,17 @@ class DataWidget(QWidget):
         self.slot_row2_layout.addWidget(self.pose_markers_checkbox)
         self.slot_row2_layout.addStretch()
 
-        if has_neo and self.ephys_widget:
+        if self.app_state.has_neo and self.ephys_widget:
             self._populate_neo_stream_combo()
 
-        if has_phy and self.ephys_widget:
+        if self.app_state.has_neurons and self.ephys_widget:
             self._neural_view_label.show()
             self.neural_view_combo.show()
             self.ephys_widget.configure_ephys_trace_plot()
 
-        if not has_audio:
+        if not self.app_state.has_audio:
             for w in self._audio_row_widgets:
-                w.hide()
+                w.setEnabled(False)
         self.video_mgr.set_audio_row_widgets(self._audio_row_widgets)
 
         # Overlays
@@ -1800,20 +1847,8 @@ class DataWidget(QWidget):
         )
 
     def _build_restrict_window(self, trial_id) -> None:
-        from ethograph.io.time_model import build_trial_window
-
-        mode = self.app_state.restrict_mode
-        alignment = self.app_state.trial_alignment
-        if alignment is None:
-            return
-        extra_t0 = getattr(self.app_state, "restrict_extra_t0", 0.0)
-        extra_t1 = getattr(self.app_state, "restrict_extra_t1", 0.0)
-        if mode == "trial":
-            self.app_state.restrict_window = build_trial_window(
-                alignment, trial_id, extra_t0, extra_t1,
-            )
-        elif mode == "video":
-            self.navigation_widget._apply_video_restriction()
+        if self.navigation_widget is not None:
+            self.navigation_widget._apply_slider_scope()
 
     def on_trial_changed(self):
         trials_sel = self.app_state.trials_sel
@@ -1827,6 +1862,8 @@ class DataWidget(QWidget):
 
         if self.app_state.dt is not None:
             self.app_state.ds = self.app_state.dt.trial(trials_sel)
+
+        self.pose_frame_path = self.app_state.ds.attrs.get("frame_path")
 
         # Update data_loader trial index (pynapple: restrict changes;
         # xarray: XarrayLoader.update_ds swaps the backing dataset)

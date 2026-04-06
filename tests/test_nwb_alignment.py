@@ -1,4 +1,4 @@
-"""Tests for ethograph.io.nwb_alignment — trials_ep generation."""
+"""Tests for ethograph.io.nwb_alignment and ethograph.io.time_model navigation."""
 
 import numpy as np
 import pandas as pd
@@ -6,8 +6,12 @@ import pytest
 
 from ethograph.io.nwb_alignment import (
     EmpytAlignment,
-    NWBAlignment,
     TableAlignment,
+    _build_trials_ep,
+)
+from ethograph.io.time_model import (
+    TimeRange,
+    infer_slider_range,
 )
 
 
@@ -17,7 +21,6 @@ from ethograph.io.nwb_alignment import (
 
 
 class TestTrialsEp:
-    """If the alignment table has start_time and stop_time, trials_ep must be non-None."""
 
     def _make_table_alignment(self, n_trials: int = 5, with_trial_col: bool = True) -> TableAlignment:
         rng = np.random.default_rng(42)
@@ -33,31 +36,25 @@ class TestTrialsEp:
     def test_table_alignment_trials_ep(self):
         alignment = self._make_table_alignment()
         ep = alignment.trials_ep
-        assert ep is not None, "trials_ep must not be None when start/stop times are present"
+        assert ep is not None
         assert len(ep) == 5
 
     def test_empty_alignment_trials_ep_none(self):
-        alignment = EmpytAlignment()
-        assert alignment.trials_ep is None
+        assert EmpytAlignment().trials_ep is None
 
     def test_trial_metadata_ids(self):
         alignment = self._make_table_alignment()
         ep = alignment.trials_ep
-        assert ep is not None
-        trial_ids = ep.metadata["trial"]
-        assert list(trial_ids) == [1, 2, 3, 4, 5]
+        assert list(ep.metadata["trial"]) == [1, 2, 3, 4, 5]
 
     def test_no_trial_column(self):
-        """NWB trials tables often lack a 'trial' column — trials_ep should still work."""
         alignment = self._make_table_alignment(n_trials=3, with_trial_col=False)
         ep = alignment.trials_ep
-        assert ep is not None, "trials_ep must work even without a 'trial' column"
+        assert ep is not None
         assert len(ep) == 3
-        # Auto-generated trial IDs should be 1-indexed
         assert list(ep.metadata["trial"]) == [1, 2, 3]
 
     def test_consistency_start_stop_and_ep(self):
-        """If alignment has start/stop for a trial, trials_ep must cover that trial."""
         alignment = self._make_table_alignment(n_trials=10)
         ep = alignment.trials_ep
         assert ep is not None
@@ -65,7 +62,102 @@ class TestTrialsEp:
             start = alignment.start_time(trial_id)
             stop = alignment.stop_time(trial_id)
             if stop is not None and stop > start:
-                ep_start = float(ep.start[i])
-                ep_end = float(ep.end[i])
-                assert abs(ep_start - start) < 1e-6
-                assert abs(ep_end - stop) < 1e-6
+                assert abs(float(ep.start[i]) - start) < 1e-6
+                assert abs(float(ep.end[i]) - stop) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# _build_trials_ep with session_range fallback
+# ---------------------------------------------------------------------------
+
+
+class TestBuildTrialsEpCascade:
+
+    def test_session_end_fallback_for_last_trial(self):
+        """Last trial with no stop_time should use session_end."""
+        df = pd.DataFrame({
+            "trial": [1, 2, 3],
+            "start_time": [0.0, 10.0, 20.0],
+            "stop_time": [5.0, 15.0, np.nan],
+        })
+        ep = _build_trials_ep(df, session_end=30.0)
+        assert ep is not None
+        assert len(ep) == 3
+        assert float(ep.end[2]) == 30.0
+
+    def test_no_session_end_drops_last_trial(self):
+        """Without session_end, last trial with no stop should be dropped."""
+        df = pd.DataFrame({
+            "trial": [1, 2, 3],
+            "start_time": [0.0, 10.0, 20.0],
+            "stop_time": [5.0, 15.0, np.nan],
+        })
+        ep = _build_trials_ep(df, session_end=None)
+        assert ep is not None
+        assert len(ep) == 2
+
+    def test_all_stops_present_ignores_session_end(self):
+        df = pd.DataFrame({
+            "trial": [1, 2],
+            "start_time": [0.0, 10.0],
+            "stop_time": [5.0, 15.0],
+        })
+        ep = _build_trials_ep(df, session_end=100.0)
+        assert ep is not None
+        assert len(ep) == 2
+        assert float(ep.end[1]) == 15.0  # session_end not used
+
+
+# ---------------------------------------------------------------------------
+# infer_slider_range cascade
+# ---------------------------------------------------------------------------
+
+
+class TestInferSliderRange:
+
+    def test_trial_with_stop(self):
+        """Trial with start+stop → scope = 'trial'."""
+        df = pd.DataFrame({
+            "trial": [1, 2],
+            "start_time": [0.0, 10.0],
+            "stop_time": [5.0, 15.0],
+        })
+        alignment = TableAlignment(df)
+        scope, tr = infer_slider_range(alignment, 1)
+        assert scope == "trial"
+        assert tr is not None
+        assert abs(tr.duration - 5.0) < 1e-6
+
+    def test_start_only_extends_to_next(self):
+        """Trial with start only → scope = 'trial_start', extends to next start."""
+        df = pd.DataFrame({
+            "trial": [1, 2, 3],
+            "start_time": [0.0, 10.0, 20.0],
+        })
+        alignment = TableAlignment(df)
+        scope, tr = infer_slider_range(alignment, 1)
+        assert scope == "trial_start"
+        assert tr is not None
+        assert abs(tr.end_s - 10.0) < 1e-6
+
+    def test_last_trial_no_stop_uses_session(self):
+        """Last trial with no stop → uses session extent."""
+        from ethograph.io.time_model import SourceCollection
+
+        df = pd.DataFrame({
+            "trial": [1, 2],
+            "start_time": [0.0, 10.0],
+        })
+        alignment = TableAlignment(df)
+        sc = SourceCollection()
+        sc.set_trials([1, 2], [0.0, 10.0], [5.0, 25.0])
+        scope, tr = infer_slider_range(alignment, 2, sc)
+        assert scope == "session"
+        assert tr is not None
+        assert abs(tr.end_s - 15.0) < 1e-6  # 25.0 - 10.0
+
+    def test_empty_alignment(self):
+        alignment = EmpytAlignment()
+        scope, tr = infer_slider_range(alignment, 1)
+        assert scope == "session"
+        assert tr is None

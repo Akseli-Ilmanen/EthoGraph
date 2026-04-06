@@ -302,9 +302,9 @@ class BasePlot(pg.PlotWidget):
                 t1 = data_tmax
 
         else:  # mode == 'default'
-            window_size = self.app_state.get_with_default("window_size")
+            view_span = self.app_state.view_span
             t0 = data_tmin
-            t1 = min(t0 + float(window_size), data_tmax)
+            t1 = min(t0 + view_span, data_tmax)
 
         self.vb.setXRange(t0, t1, padding=0)
 
@@ -329,9 +329,9 @@ class BasePlot(pg.PlotWidget):
                 padding = min(data_range * AXIS_LIMIT_PADDING_RATIO, 5)
 
                 if preserve_default_range:
-                    window_size = self.app_state.get_with_default("window_size")
-                    min_range = window_size * LOCKED_RANGE_MIN_FACTOR
-                    max_range = window_size * LOCKED_RANGE_MAX_FACTOR
+                    view_span = self.app_state.view_span
+                    min_range = view_span * LOCKED_RANGE_MIN_FACTOR
+                    max_range = view_span * LOCKED_RANGE_MAX_FACTOR
                 else:
                     min_range = x_range
                     max_range = x_range

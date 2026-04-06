@@ -1534,8 +1534,7 @@ class ChangepointsWidget(QWidget):
 
         xlim = self.plot_container.get_current_xlim()
         if time_s < xlim[0] or time_s > xlim[1]:
-            window_size = self.app_state.get_with_default("window_size")
-            half = window_size / 2.0
+            half = self.app_state.view_span / 2.0
             master = self.plot_container._xlink_master or self.plot_container._feature_plot
             master.vb.setXRange(time_s - half, time_s + half, padding=0)
 

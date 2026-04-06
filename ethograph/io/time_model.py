@@ -61,10 +61,11 @@ class RestrictionWindow:
     """Describes the currently active display window.
 
     Modes:
-        ``"session"``  — full session range (all trials + inter-trial gaps)
-        ``"trial"``    — one trial's time range
-        ``"label"``    — a single label instance (with optional context padding)
-        ``"sequence"`` — a matched label sequence span
+        ``"session"``      — full session range (all trials + inter-trial gaps)
+        ``"trial"``        — one trial's time range (start + stop known)
+        ``"trial_start"``  — trial start to next trial start (stop unknown)
+        ``"label"``        — a single label instance (with context padding)
+        ``"sequence"``     — a matched label sequence span
     """
 
     mode: str  # "session" | "trial" | "label" | "sequence"
@@ -447,6 +448,41 @@ def build_sequence_window(
             "match_rows": match.get("match_rows"),
         },
     )
+
+
+def infer_slider_range(
+    nwb_alignment,
+    trial_id,
+    source_collection: SourceCollection | None = None,
+) -> tuple[str, TimeRange | None]:
+    """Infer slider scope and time range from the best available timing.
+
+    Returns ``(scope, time_range)`` where *scope* is one of:
+    - ``"trial"``       — trial has start + stop
+    - ``"trial_start"`` — trial has start only, extends to next trial or session end
+    - ``"session"``     — no trial timing, use full session extent
+    """
+    start = nwb_alignment.start_time(trial_id)
+    stop = nwb_alignment.stop_time(trial_id)
+
+    if stop is not None:
+        return "trial", TimeRange(0.0, stop - start)
+
+    # Start-only: extend to next trial's start
+    df = nwb_alignment.trials_df
+    if not df.empty and "start_time" in df.columns:
+        all_starts = sorted(df["start_time"].dropna().values)
+        for s in all_starts:
+            if s > start:
+                return "trial_start", TimeRange(0.0, s - start)
+
+    # Last trial or no next: use session extent
+    if source_collection is not None:
+        sr = source_collection.session_range
+        if sr is not None:
+            return "session", TimeRange(0.0, sr.end_s - start)
+
+    return "session", None
 
 
 def find_closest_trial(nwb_alignment, trials: list, global_time: float) -> tuple[int | str, float]:

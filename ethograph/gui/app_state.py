@@ -136,7 +136,12 @@ class AppStateSpec:
         "num_frames": (int, 0, False),
         "_info_data": (dict[str, Any], {}, False),
         "sync_state": (str | None, None, False),
-        "window_size": (float, 5.0, True),
+        "before_s_trial": (float, 0.0, True),
+        "after_s_trial": (float, 0.0, True),
+        "before_s_label": (float, 1.0, True),
+        "after_s_label": (float, 1.0, True),
+        "before_s_sequence": (float, 1.0, True),
+        "after_s_sequence": (float, 1.0, True),
         "audiotrace_visible": (bool, True, True, SCOPE_LOCAL),
         "spectrogram_visible": (bool, True, True, SCOPE_LOCAL),
         "neo_visible": (bool, True, True, SCOPE_LOCAL),
@@ -175,9 +180,8 @@ class AppStateSpec:
         "metadata_path": (str | None, None, True, SCOPE_LOCAL),
         "trial_alignment": (TrialVideoBounds | None, None, False),
         "ephys_offset": (float, 0.0, True, SCOPE_LOCAL),
-        "restrict_mode": (str, "trial", True),
-        "restrict_extra_t0": (float, 0.0, True),
-        "restrict_extra_t1": (float, 0.0, True),
+        "navigate_mode": (str, "trial", True),
+        "slider_scope": (str, "trial", True),
         "restrict_window": (RestrictionWindow | None, None, False),
         "label_instance_idx": (int, 0, False),
         "sequence_pattern": (str, "", True),
@@ -201,6 +205,7 @@ class AppStateSpec:
         "video_folder": (str | None, None, True, SCOPE_LOCAL),
         "audio_folder": (str | None, None, True, SCOPE_LOCAL),
         "pose_folder": (str | None, None, True, SCOPE_LOCAL),
+        "nwb_pose_keys": (list | None, None, True, SCOPE_LOCAL),
         "ephys_path": (str | None, None, True, SCOPE_LOCAL),
         "neurons_path": (str | None, None, True, SCOPE_LOCAL),
         
@@ -237,6 +242,7 @@ class AppStateSpec:
         "space_confidence_filter": (bool, False, True),
         "space_confidence_threshold": (float, 0.6, True),
         "space_limit_to_window": (bool, False, False), # May confuse user, better not keep saved.
+        "space_lock_axes": (bool, False, False),
         "primary_camera": (str | None, None, True),
         "primary_camera_previous": (str | None, None, False),
         "extra_cameras": (list[str], [], True),
@@ -340,7 +346,7 @@ class ObservableAppState(QObject):
     GLOBAL_SETTINGS_FILENAME = "gui_settings.yaml"
     LOCAL_SETTINGS_FILENAME = "local_settings.yaml"
     SETTINGS_DIRNAME = ".ethograph"
-    _TIME_REFRESH_KEYS = {"ds", "dt", "video", "video_path", "audio_path", "window_size"}
+    _TIME_REFRESH_KEYS = {"ds", "dt", "video", "video_path", "audio_path"}
 
 
     def __init__(self, yaml_path: str | None = None, auto_save_interval: int = 30000):
@@ -410,6 +416,20 @@ class ObservableAppState(QObject):
         return None
 
 
+
+    @property
+    def before_s(self) -> float:
+        mode = getattr(self, "navigate_mode", "trial")
+        return self._values.get(f"before_s_{mode}", 0.0)
+
+    @property
+    def after_s(self) -> float:
+        mode = getattr(self, "navigate_mode", "trial")
+        return self._values.get(f"after_s_{mode}", 0.0)
+
+    @property
+    def view_span(self) -> float:
+        return self.before_s + self.after_s
 
     @property
     def window_bounds(self) -> TimeRange | None:
@@ -825,13 +845,16 @@ class ObservableAppState(QObject):
         return dict(sorted(state_dict.items(), key=_category_key))
 
     def print_state(self) -> None:
-        """Print all yaml-persisted app state vars, grouped by category."""
-        _CATEGORY_LABELS = {0: "Paths", 1: "Selections", 2: "Booleans", 3: "Strings", 4: "Numbers", 5: "Dicts"}
+        """Print all simple-typed app state vars, grouped by category."""
+        _PRINTABLE = (str, int, float, bool, list, dict, type(None))
+        _CATEGORY_LABELS = {0: "Paths", 1: "Selections", 2: "Booleans", 3: "Strings", 4: "Numbers", 5: "Lists/Dicts", 6: "None"}
 
         def _category_key(item):
             key, value = item
-            if isinstance(value, dict):
+            if isinstance(value, (dict, list)):
                 return 5
+            if value is None:
+                return 6
             if any(key.endswith(s) for s in self.PATH_SUFFIXES):
                 return 0
             if key.endswith("_sel") or key.endswith("_sel_previous"):
@@ -842,7 +865,21 @@ class ObservableAppState(QObject):
                 return 3
             return 4
 
-        state = self.get_saveable_state_dict()
+        state = {}
+        for attr in self._values:
+            value = self._values[attr]
+            if isinstance(value, _PRINTABLE):
+                state[attr] = self._to_native(value) if isinstance(value, (str, int, float, bool)) else value
+        # Also include dynamic _sel attributes
+        for attr in dir(self):
+            if attr.endswith("_sel") or attr.endswith("_sel_previous"):
+                try:
+                    value = getattr(self, attr)
+                    if not callable(value) and isinstance(value, _PRINTABLE):
+                        state[attr] = self._to_native(value) if isinstance(value, (str, int, float, bool)) else value
+                except (AttributeError, TypeError):
+                    pass
+
         current_cat = None
         for key, value in sorted(state.items(), key=lambda item: (_category_key(item), item[0])):
             cat = _category_key((key, value))
@@ -854,6 +891,25 @@ class ObservableAppState(QObject):
             print(f"  {key}: {value}")
 
     def load_from_dict(self, state_dict: dict):
+        # Migrate legacy keys
+        if "restrict_mode" in state_dict:
+            val = state_dict.pop("restrict_mode")
+            if val == "video":
+                val = "trial"
+            state_dict.setdefault("navigate_mode", val)
+
+        # Migrate old before_s/after_s or restrict_extra_t0/t1 → per-category
+        old_before = state_dict.pop("before_s", state_dict.pop("restrict_extra_t0", None))
+        old_after = state_dict.pop("after_s", state_dict.pop("restrict_extra_t1", None))
+        if old_before is not None:
+            for suffix in ("trial", "label", "sequence"):
+                state_dict.setdefault(f"before_s_{suffix}", old_before)
+        if old_after is not None:
+            for suffix in ("trial", "label", "sequence"):
+                state_dict.setdefault(f"after_s_{suffix}", old_after)
+
+        state_dict.pop("window_size", None)
+
         self._suspend_local_autoload = True
         try:
             for key, value in state_dict.items():
@@ -975,6 +1031,9 @@ class ObservableAppState(QObject):
 
     def set_trial_intervals(self, trial, df: pd.DataFrame) -> None:
         self._all_labels_df = set_trial_in_tsv(self._all_labels_df, trial, df)
+        nav = getattr(self, "navigation_widget", None)
+        if nav is not None and hasattr(nav, "on_labels_changed"):
+            nav.on_labels_changed()
 
     def get_trial_meta(self, trial) -> dict:
         return get_trial_meta(self._all_labels_df, trial)

@@ -350,6 +350,7 @@ class SpacePlot(QWidget):
         self._trajectory_pos: tuple | None = None
         self._trajectory_times: np.ndarray | None = None
         self._time_marker_item = None
+        self._locked_ranges: dict | None = None  # saved axis ranges when lock is on
 
         # Connect combo/checkbox signals
         self.x_combo.currentIndexChanged.connect(self._on_axis_changed)
@@ -584,6 +585,11 @@ class SpacePlot(QWidget):
         color_data = self._get_color_data(store, selections, n)
 
         use_3d = view_3d and data_z is not None
+        locked = getattr(self.app_state, 'space_lock_axes', False)
+
+        # Save current ranges before rebuilding the widget
+        saved_ranges = self._capture_ranges() if locked else None
+
         self._rebuild_plot_widget(use_3d)
 
         if use_3d:
@@ -595,7 +601,10 @@ class SpacePlot(QWidget):
             plot_item.setLabel('bottom', x_item)
             plot_item.setLabel('left', y_item)
 
-        self._apply_percentile_limits(data_x, data_y, data_z)
+        if locked and saved_ranges:
+            self._restore_ranges(saved_ranges)
+        else:
+            self._apply_percentile_limits(data_x, data_y, data_z)
         self._draw_references()
 
         self._trajectory_pos = (data_x, data_y, data_z)
@@ -734,6 +743,33 @@ class SpacePlot(QWidget):
                 minYRange=y_range * 0.1, maxYRange=y_range + y_buf,
             )
             vb.setRange(xRange=(x_lo, x_hi), yRange=(y_lo, y_hi), padding=0.05)
+
+    def _capture_ranges(self) -> dict | None:
+        """Snapshot the current axis ranges (2D) or camera position (3D)."""
+        if self.space_widget is None:
+            return None
+        if isinstance(self.space_widget, gl.GLViewWidget):
+            opts = self.space_widget.cameraParams()
+            return {"mode": "3d", "camera": opts}
+        vb = self.space_widget.getPlotItem().vb
+        xr, yr = vb.viewRange()
+        return {"mode": "2d", "x": tuple(xr), "y": tuple(yr)}
+
+    def _restore_ranges(self, ranges: dict):
+        """Restore previously captured axis ranges."""
+        if self.space_widget is None:
+            return
+        if ranges["mode"] == "3d" and isinstance(self.space_widget, gl.GLViewWidget):
+            cam = ranges["camera"]
+            self.space_widget.setCameraPosition(
+                pos=cam.get("center"),
+                distance=cam.get("distance"),
+                elevation=cam.get("elevation"),
+                azimuth=cam.get("azimuth"),
+            )
+        elif ranges["mode"] == "2d" and not isinstance(self.space_widget, gl.GLViewWidget):
+            vb = self.space_widget.getPlotItem().vb
+            vb.setRange(xRange=ranges["x"], yRange=ranges["y"], padding=0)
 
     # --- Highlight / time marker -------------------------------------------
 

@@ -241,7 +241,8 @@ class HelpWidget(QWidget):
             if sc.n_trials > 10:
                 print(f"    ... ({sc.n_trials - 10} more)")
         rw = getattr(self.app_state, 'restrict_window', None)
-        print(f"  Restrict mode:  {getattr(self.app_state, 'restrict_mode', '?')}")
+        print(f"  Navigate mode:   {getattr(self.app_state, 'navigate_mode', '?')}")
+        print(f"  Slider scope:    {getattr(self.app_state, 'slider_scope', '?')}")
         print(f"  Restrict window: {rw}")
         print(f"  Window bounds:   {self.app_state.window_bounds}")
 
