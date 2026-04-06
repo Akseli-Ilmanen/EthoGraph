@@ -19,6 +19,7 @@ from ethograph.io.catalog import (
     catalog_from_pynapple,
     catalog_from_xarray,
 )
+from ethograph.io.time_model import SourceCollection
 from ethograph.io.validation import validate_datatree
 from movement.io import load
 from movement.kinematics import (
@@ -79,24 +80,25 @@ def _trialtree_from_trials_ep(trials_ep, data: dict | None = None) -> TrialTree:
 
     if trials_ep is None or len(trials_ep) == 0:
         # Single-trial: infer range from data if available
+        feature_objs = {}
         if data:
             feature_objs = {
                 k: v
                 for k, v in data.items()
                 if isinstance(v, (nap.Tsd, nap.TsdFrame, nap.TsdTensor))
             }
-            if feature_objs:
-                t_min = min(
-                    obj.t[0] for obj in feature_objs.values() if len(obj) > 0
-                )
-                t_max = max(
-                    obj.t[-1] for obj in feature_objs.values() if len(obj) > 0
-                )
-                duration = t_max - t_min
-            else:
-                duration = 1.0
+        if feature_objs:
+            t_min = min(
+                obj.t[0] for obj in feature_objs.values() if len(obj) > 0
+            )
+            t_max = max(
+                obj.t[-1] for obj in feature_objs.values() if len(obj) > 0
+            )
+            duration = t_max - t_min
         else:
-            duration = 1.0
+            raise ValueError(
+                "Cannot build TrialTree: no trial intervals and no data to infer duration from"
+            )
 
         ds = xr.Dataset(
             coords={"time": np.array([0.0, duration]), "individuals": ["individual_0"]}
@@ -172,6 +174,9 @@ def _load_nwb_dataset(file_path: str) -> tuple:
 
     dt.attrs["data_loader"] = loader
     dt.attrs["nwb_source"] = file_path
+    dt.attrs["source_collection"] = _build_source_collection_nwb(
+        file_path, combo_cat, trial_intervals,
+    )
 
     # Labels
     tsv_path = labels_tsv_path(Path(file_path))
@@ -201,6 +206,7 @@ def _load_pynapple_dataset(file_path: str) -> tuple:
     loader = PynappleLoader(data, trials_ep, catalog)
     dt = _trialtree_from_trials_ep(trials_ep, data)
     dt.attrs["data_loader"] = loader
+    dt.attrs["source_collection"] = _build_source_collection_pynapple(data, trials_ep)
     all_labels_df = init_empty_labels(dt.trials)
     return dt, all_labels_df, catalog
 
@@ -238,6 +244,7 @@ def _load_nwb_project(project_dir: str) -> tuple:
     loader = PynappleLoader(data, trials_ep, catalog)
     dt = _trialtree_from_trials_ep(trials_ep, data)
     dt.attrs["data_loader"] = loader
+    dt.attrs["source_collection"] = _build_source_collection_pynapple(data, trials_ep)
 
     # Apply project config
     if config.get("nwb_pose_keys"):
@@ -356,7 +363,94 @@ def load_dataset(
         except Exception as e:
             logger.warning("Failed to load pynapple store from %s: %s", nwb_source, e)
 
+    # Build SourceCollection from xarray
+    dt.attrs["source_collection"] = _build_source_collection_xarray(dt)
+
     return dt, all_labels_df, catalog
+
+
+# ---------------------------------------------------------------------------
+# SourceCollection builders
+# ---------------------------------------------------------------------------
+
+
+def _build_source_collection_pynapple(
+    data: dict, trials_ep=None,
+) -> SourceCollection:
+    """Build SourceCollection from pynapple objects."""
+    import pynapple as nap
+    from ethograph.io.time_sources import PynappleSource
+
+    sc = SourceCollection()
+    for key, obj in data.items():
+        if isinstance(obj, (nap.Tsd, nap.TsdFrame, nap.TsdTensor)):
+            sc.add(PynappleSource(key, obj, trials_ep))
+    if trials_ep is not None and len(trials_ep) > 0:
+        sc.set_trials(
+            ids=list(range(1, len(trials_ep) + 1)),
+            starts=[float(s) for s in trials_ep.start],
+            stops=[float(e) for e in trials_ep.end],
+        )
+    return sc
+
+
+def _build_source_collection_nwb(
+    file_path: str,
+    combo_catalog,
+    trial_intervals: list[tuple[float, float]] | None = None,
+) -> SourceCollection:
+    """Build SourceCollection from NWB combo catalog."""
+    from ethograph.io.time_sources import NWBTimeSource
+
+    sc = SourceCollection()
+    for entry in combo_catalog.features:
+        sc.add(NWBTimeSource(
+            name=entry.display_name,
+            source_path=file_path,
+            entry=entry,
+            combo_catalog=combo_catalog,
+        ))
+    if trial_intervals:
+        sc.set_trials(
+            ids=list(range(1, len(trial_intervals) + 1)),
+            starts=[t[0] for t in trial_intervals],
+            stops=[t[1] for t in trial_intervals],
+        )
+    return sc
+
+
+def _build_source_collection_xarray(dt: TrialTree) -> SourceCollection:
+    """Build SourceCollection from a TrialTree's xarray datasets."""
+    from ethograph.io.time_sources import XarrayTrialSource
+    from ethograph.utils.xr_utils import get_time_coord
+
+    sc = SourceCollection()
+    ds = dt.itrial(0)
+    for var_name in ds.data_vars:
+        da = ds[var_name]
+        tc = get_time_coord(da)
+        if tc is not None:
+            sc.add(XarrayTrialSource(var_name, ds, tc.name))
+
+    # Populate trial intervals from session_io only when real timing exists.
+    try:
+        session = dt.session_io
+        trial_ids = dt.trials
+        starts, stops = [], []
+        for tid in trial_ids:
+            start = session.start_time(tid)
+            stop = session.stop_time(tid)
+            if stop is None:
+                break
+            starts.append(start)
+            stops.append(stop)
+        else:
+            if starts:
+                sc.set_trials(ids=trial_ids, starts=starts, stops=stops)
+    except (AttributeError, ValueError, KeyError):
+        pass
+
+    return sc
 
 
 # ---------------------------------------------------------------------------

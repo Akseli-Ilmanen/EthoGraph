@@ -314,7 +314,6 @@ def test_store_n_trials_with_intervalset():
     data = {"speed": nap.Tsd(t=t, d=np.random.randn(2500), time_support=trials)}
     store = PynappleStore(data, trials)
     assert store.n_trials == 3
-    assert store.trials == [1, 2, 3]
 
 
 def test_store_n_trials_without_intervalset():

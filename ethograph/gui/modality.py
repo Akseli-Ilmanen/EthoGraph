@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import numpy as np
 
-from .plots_timeseriessource import TimeRange
+from ethograph.io.time_model import TimeRange
 
 if TYPE_CHECKING:
     import xarray as xr

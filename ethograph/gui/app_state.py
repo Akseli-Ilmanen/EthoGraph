@@ -17,7 +17,7 @@ from qtpy.QtCore import QObject, QTimer, Signal
 
 import ethograph as eto
 from ethograph.gui.notify import notify
-from ethograph.gui.plots_timeseriessource import RestrictionWindow, TrialAlignment, TimeRange
+from ethograph.io.time_model import RestrictionWindow, TrialAlignment, TimeRange
 
 from .makepretty import find_combo_index
 from ethograph.labels.intervals import empty_intervals
@@ -148,6 +148,7 @@ class AppStateSpec:
 
         # Data
         "data_loader": (object | None, None, False),
+        "source_collection": (object | None, None, False),
         "ds": (xr.Dataset | None, None, False),
         "ds_temp": (xr.Dataset | None, None, False),
         "dt": (xr.DataTree | None, None, False),
@@ -401,6 +402,8 @@ class ObservableAppState(QObject):
         if alignment is not None:
             return alignment.trial_range
         return None
+
+
 
     @property
     def window_bounds(self) -> TimeRange | None:

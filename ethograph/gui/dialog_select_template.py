@@ -157,7 +157,7 @@ def _build_alignment_nwb(template: dict) -> None:
 
     rows = []
     for trial_id, media in zip(trials, media_rows):
-        row = {"trial": trial_id, "start_time": 0.0}
+        row = {"trial": trial_id}
         row.update(media)
         rows.append(row)
 

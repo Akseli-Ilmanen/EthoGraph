@@ -231,7 +231,33 @@ class NWBSessionIO:
 
     # ── Timing ──
 
+    @cached_property
+    def has_real_timing(self) -> bool:
+        """Whether the trials table has meaningful start/stop times.
+
+        Returns False when all trials have identical placeholder timing
+        (e.g. start=0.0, stop=1.0 for every row), which indicates the
+        NWB was generated without real session timing.
+        """
+        df = self.trials_df
+        if df.empty or "start_time" not in df.columns:
+            return False
+        starts = df["start_time"].dropna()
+        if len(starts) == 0:
+            return False
+        if len(starts) > 1 and starts.nunique() > 1:
+            return True
+        # Single unique start: check if stop_time varies or is > start + 1.001
+        if "stop_time" in df.columns:
+            stops = df["stop_time"].dropna()
+            durations = stops - starts.iloc[0]
+            if durations.nunique() > 1:
+                return True
+        return False
+
     def start_time(self, trial) -> float:
+        if not self.has_real_timing:
+            return 0.0
         row = self._trial_row(trial)
         if row is not None and "start_time" in row.index:
             val = row["start_time"]
@@ -240,6 +266,8 @@ class NWBSessionIO:
         return 0.0
 
     def stop_time(self, trial) -> float | None:
+        if not self.has_real_timing:
+            return None
         row = self._trial_row(trial)
         if row is None:
             return None
@@ -330,6 +358,24 @@ class NWBSessionIO:
 
     def set_stream_rate(self, rate: float, stream: str, device: str | None = None) -> None:
         self._rate_overlay[(stream, device)] = rate
+
+    def stream_rates(self) -> dict[str, tuple[float, float | None]]:
+        """Return ``{acq_name: (starting_time, rate)}`` for all acquisition streams.
+
+        Only returns rate and starting_time from NWB ImageSeries metadata.
+        Does not compute duration — external files must be probed for that.
+        """
+        from ethograph.utils.nwb import resolve_timeseries_timing
+
+        nwb = self.nwb
+        if not nwb.acquisition:
+            return {}
+        result: dict[str, tuple[float, float | None]] = {}
+        for name, acq in nwb.acquisition.items():
+            rate, _ = resolve_timeseries_timing(acq)
+            start = float(acq.starting_time) if acq.starting_time is not None else 0.0
+            result[name] = (start, rate)
+        return result
 
     # ── Media path resolution ──
 

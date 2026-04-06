@@ -224,3 +224,31 @@ class HelpWidget(QWidget):
                 print(f"    {v}: shape={da.shape}, n_positive={n_pos}, target={da.attrs.get('target_feature')}")
         else:
             print("  app_state.ds is None")
+
+        print(SEP)
+        print("=" * 60)
+        print("  SOURCE COLLECTION (time model)")
+        print("=" * 60)
+        sc = getattr(self.app_state, 'source_collection', None)
+        if sc is None:
+            print("  No source_collection.")
+        else:
+            print(f"  Sources ({len(sc.sources)}):")
+            for name, src in sc.sources.items():
+                sr = src.sampling_rate
+                sr_str = f"{sr:.1f} Hz" if sr else "irregular"
+                print(f"    {name}: {src.time_range}  ({sr_str})")
+            ur = sc.union_range
+            ir = sc.intersection_range
+            print(f"  Union range:        {ur}")
+            print(f"  Intersection range: {ir}")
+            print(f"  Trials: {sc.n_trials}")
+            for i in range(min(sc.n_trials, 10)):
+                tid = sc.trial_ids[i] if i < len(sc.trial_ids) else "?"
+                print(f"    [{i}] trial={tid}  {sc.trial_range(i)}")
+            if sc.n_trials > 10:
+                print(f"    ... ({sc.n_trials - 10} more)")
+        rw = getattr(self.app_state, 'restrict_window', None)
+        print(f"  Restrict mode:  {getattr(self.app_state, 'restrict_mode', '?')}")
+        print(f"  Restrict window: {rw}")
+        print(f"  Window bounds:   {self.app_state.window_bounds}")

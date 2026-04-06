@@ -185,11 +185,15 @@ class SpectrogramPlot(BasePlot):
         self.buffer.update_buffer_size()
 
     def _on_view_range_changed(self):
+        if not self.isVisible():
+            return
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
         self._td.trigger()
 
     def _do_range_update(self):
+        if not self.isVisible():
+            return
         t0, t1 = self.get_current_xlim()
         self.update_plot_content(t0, t1)
 

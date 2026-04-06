@@ -1,11 +1,13 @@
-"""Tests for ethograph.io.restrict and ethograph.utils.sequences."""
+"""Tests for ethograph.io.time_model restriction builders and ethograph.utils.sequences."""
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from ethograph.gui.plots_timeseriessource import RestrictionWindow, TimeRange, TrialAlignment
-from ethograph.io.restrict import (
+from ethograph.io.time_model import (
+    RestrictionWindow,
+    TimeRange,
+    TrialAlignment,
     build_label_window,
     build_sequence_window,
     build_trial_window,
@@ -58,7 +60,7 @@ def test_build_trial_window_basic(trial_alignment):
 
 def test_build_trial_window_with_extra(trial_alignment):
     rw = build_trial_window(trial_alignment, trial_id=1, extra_t0=1.0, extra_t1=2.0)
-    assert rw.time_range.start_s == 0.0  # clamped to 0
+    assert rw.time_range.start_s == -1.0  # extends before trial for ephys context
     assert rw.time_range.end_s == 12.0
     assert rw.core_range == TimeRange(0.0, 10.0)
 
@@ -145,6 +147,67 @@ def test_restrict_pynapple():
     restricted = restrict_pynapple(tsd, tr)
     assert restricted.t.min() >= 2.0
     assert restricted.t.max() <= 5.0
+
+
+# ---------------------------------------------------------------------------
+# SourceCollection
+# ---------------------------------------------------------------------------
+
+
+def test_source_collection_union_intersection():
+    from ethograph.io.time_model import SourceCollection
+
+    class _FakeSource:
+        def __init__(self, name, start, end):
+            self.name = name
+            self.time_range = TimeRange(start, end)
+            self.sampling_rate = 100.0
+        def get_data(self, t0, t1):
+            return np.array([]), np.array([])
+
+    sc = SourceCollection()
+    sc.add(_FakeSource("a", 0.0, 10.0))
+    sc.add(_FakeSource("b", 5.0, 15.0))
+
+    assert sc.union_range == TimeRange(0.0, 15.0)
+    assert sc.intersection_range == TimeRange(5.0, 10.0)
+
+
+def test_source_collection_trials():
+    from ethograph.io.time_model import SourceCollection
+
+    sc = SourceCollection()
+    sc.set_trials(
+        ids=[1, 2, 3],
+        starts=[0.0, 10.0, 25.0],
+        stops=[8.0, 20.0, 30.0],
+    )
+    assert sc.n_trials == 3
+    assert sc.trial_range(0) == TimeRange(0.0, 8.0)
+    assert sc.trial_local_range(1) == TimeRange(0.0, 10.0)
+    assert sc.trial_offset(2) == 25.0
+    assert sc.session_range == TimeRange(0.0, 30.0)
+    assert sc.find_trial(5.0) == 0
+    assert sc.find_trial(15.0) == 1
+
+
+def test_source_collection_infer_stops():
+    from ethograph.io.time_model import SourceCollection
+
+    class _FakeSource:
+        def __init__(self, name, start, end):
+            self.name = name
+            self.time_range = TimeRange(start, end)
+            self.sampling_rate = None
+        def get_data(self, t0, t1):
+            return np.array([]), np.array([])
+
+    sc = SourceCollection()
+    sc.add(_FakeSource("sig", 0.0, 40.0))
+    sc.set_trials(ids=[1, 2], starts=[0.0, 15.0])
+
+    assert sc.trial_range(0) == TimeRange(0.0, 15.0)
+    assert sc.trial_range(1) == TimeRange(15.0, 40.0)
 
 
 # ---------------------------------------------------------------------------

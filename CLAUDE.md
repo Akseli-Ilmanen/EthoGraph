@@ -2,6 +2,8 @@
 
 Never hardcode frame rates (e.g., 30 fps) or sample rates (e.g., 44100 Hz) anywhere in the codebase — not even as fallbacks. Always use actual source metadata (e.g., video.fps, audio sample rate, ImageSeries.rate) or user-specified settings. If a rate is unknown, raise an error or return None — never silently default to a hardcoded value.
 
+Never hardcode a 1-second fallback for time windows, trial durations, or trial start/stop timing. If timing metadata is missing, propagate unknown timing (or raise) instead of using 1.0s placeholders.
+
 # CLAUDE.md
 
 ## Continue
@@ -89,7 +91,7 @@ ethograph/gui/
     plots_heatmap.py          # N-dim heatmap (WindowedBuffer + XarraySource for features)
     plots_raster.py           # Spike raster plot
     plots_space.py            # 2D/3D position visualization
-    plots_timeseriessource.py # TimeRange, RestrictionWindow, TrialAlignment, compute_trial_alignment()
+    plots_timeseriessource.py # Re-exports from io/time_model.py (backwards compat)
     label_drawing_mixin.py    # Shared label/changepoint drawing
     video_sync.py             # Napari video/audio synchronization (NapariVideoSync)
     video_manager.py          # Multi-camera video loading
@@ -98,7 +100,7 @@ ethograph/gui/
     widgets_data.py           # Dataset controls (DataWidget — central orchestrator)
     widgets_io.py             # File loading, I/O controls (.nc, .nwb, .npz, pynapple folders)
     widgets_labels.py         # Label labeling interface
-    widgets_navigation.py     # Trial navigation
+    widgets_navigation.py     # Navigation: Session/Trial/Label/Sequence mode ("Time slider:" combo)
     widgets_changepoints.py   # Changepoint detection + correction
     widgets_ephys.py          # Ephys controls, neurons (Kilosort/Pynapple), firing rates
     widgets_plot_settings.py  # Plot settings controls
@@ -117,11 +119,13 @@ ethograph/io/
     catalog.py                # Unified DataCatalog + DataLoader (XarrayLoader, PynappleLoader, NWBLoader)
     nwb_backend.py            # NWB traversal + combo detection: open_nwb, catalog_nwb, ComboCatalog, load_slice
     trialtree.py              # TrialTree (xr.DataTree subclass)
+    time_model.py             # TimeRange, RestrictionWindow, TrialAlignment, TimeSource, SourceCollection, restriction builders
+    time_sources.py           # Concrete adapters: XarrayTrialSource, PynappleSource, NWBTimeSource
     dataset.py                # dataset_to_basic_trialtree, downsample_trialtree
     feature_store.py          # Backwards-compat re-exports from catalog.py
     validation.py             # validate_datatree, extract_type_vars (delegates to catalog)
     pynapple.py               # Pynapple/NWB loading: load_nap_data, detect_trials, changepoint helpers
-    restrict.py               # Restriction logic: build_trial/label/sequence_window, find_closest_trial
+    restrict.py               # Re-exports from time_model.py (backwards compat, can be deleted)
 
 ethograph/utils/
     io.py                     # Standalone I/O functions
@@ -168,23 +172,27 @@ Media & Session: All session metadata (trial timing, media file paths, FPS, stre
 
 Key signals: `trial_changed`, `restrict_window_changed`, `labels_modified`, `verification_changed`
 
-### Restriction Window System
+### Time Model + Navigation: `time_model.py`
 
-`RestrictionWindow` (dataclass in `plots_timeseriessource.py`) replaces trial-only bounds with a flexible display window:
+Core types in `ethograph/io/time_model.py` (canonical home, re-exported from `gui/plots_timeseriessource.py` for backwards compat):
 
-- **mode**: `"trial"` (default), `"label"`, or `"sequence"`
-- **time_range**: Effective display window (including extra context padding)
-- **core_range**: The actual interval (without padding)
-- **trial_id**: Which trial this belongs to
+**`TimeRange`** — immutable time interval with `union()`, `intersect()`, `contains()`, `overlaps()`.
 
-`app_state.window_bounds` returns the current `RestrictionWindow.time_range` (or falls back to `trial_bounds`). All plots use `window_bounds` for x-axis limits.
+**`TimeSource`** (Protocol) — one time-aligned data source: `name`, `time_range`, `sampling_rate`, `get_data(t0, t1) → (timestamps, values)`. Concrete adapters in `time_sources.py`: `XarrayTrialSource`, `PynappleSource`, `NWBTimeSource`.
 
-**Navigation modes** (`IntervalNavigationWidget`):
-- Trial mode: standard trial navigation (current behavior)
+**`SourceCollection`** — Neurosift-inspired registry of `TimeSource` objects. Provides `union_range` (full navigable extent), `intersection_range` (overlap of all sources), `session_range` (min trial start to max trial end), `sources_at(t)`, trial bookmarks (`trial_range`, `find_trial`, `trial_offset`). Built during dataset loading in `data_loader.py`, stored as `app_state.source_collection`.
+
+**`RestrictionWindow`** — display window with mode: `"session"`, `"trial"`, `"label"`, or `"sequence"`.
+
+`app_state.window_bounds` returns the current `RestrictionWindow.time_range` (or falls back to `trial_bounds`). `app_state.session_time_range` returns the full session extent from `SourceCollection`. All plots use `window_bounds` for x-axis limits.
+
+**Navigation modes** (UI label: "Time slider:"):
+- Session mode: slider covers entire session (inter-trial gaps navigable)
+- Trial mode: standard trial navigation
 - Label mode: navigate between instances of a specific label class across trials
 - Sequence mode: navigate between trials matching a label sequence pattern (e.g. "1-2-3-5")
 
-**Restriction logic** (`ethograph/io/restrict.py`): `build_trial_window()`, `build_label_window()`, `build_sequence_window()`, `find_closest_trial()`.
+**Restriction builders** (in `time_model.py`): `build_trial_window()`, `build_label_window()`, `build_sequence_window()`, `find_closest_trial()`.
 
 **Sequence matching** (`ethograph/utils/sequences.py`): `match_sequences()`, `get_label_instances()`, `get_unique_sequences()`.
 

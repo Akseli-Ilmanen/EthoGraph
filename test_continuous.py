@@ -61,7 +61,7 @@ assert sorted(all_t.keys()) == [1, 2, 3]
 
 # Test pynapple IntervalSet input
 import pynapple as nap
-ep = nap.IntervalSet(start=[0, 100, 200], end=[100, 200, 300])
+ep = nap.IntervalSet(start=[0, 100, 200], end=[99, 199, 299])
 dt2 = TrialTree.from_continuous(ds, ep)
 assert dt2.trials == [1, 2, 3]
 ds_nap = dt2.trial(2)

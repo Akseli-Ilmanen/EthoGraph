@@ -37,7 +37,7 @@ import ethograph as eto
 from ethograph.gui.notify import notify, notify_dialog
 from ethograph.labels.intervals import get_interval_bounds
 from ethograph.gui.modality import FileSource
-from ethograph.gui.plots_timeseriessource import compute_trial_alignment
+from ethograph.io.time_model import compute_trial_alignment
 
 
 
@@ -83,11 +83,13 @@ _PANEL_DEFS: list[_PanelDef] = [
     _PanelDef("audiotrace",   "AudioTrace",   row=1, audio_row=True,
               state_attr="audiotrace_visible",
               container_method="set_audiotrace_visible",
-              autoscale_plot="audio_trace_plot"),
+              autoscale_plot="audio_trace_plot",
+              on_toggle="_on_audio_panel_toggle"),
     _PanelDef("spectrogram",  "Spectrogram",  row=1, audio_row=True,
               state_attr="spectrogram_visible",
               container_method="set_spectrogram_visible",
-              autoscale_plot="spectrogram_plot"),
+              autoscale_plot="spectrogram_plot",
+              on_toggle="_on_audio_panel_toggle"),
     _PanelDef("neo_viewer",   "Neo-Viewer",   row=1,
               container_method="set_neo_visible",
               on_toggle="_on_neo_panel_toggle"),
@@ -546,6 +548,7 @@ class DataWidget(QWidget):
             self.app_state.dt = None
         self.app_state.ds = None
         self.app_state.data_loader = None
+        self.app_state.source_collection = None
         self.app_state._all_labels_df = None
         self.app_state.labels_confidence_ds = None
         self.catalog = None
@@ -586,8 +589,9 @@ class DataWidget(QWidget):
 
         self.app_state.trial_conditions = self.catalog.trial_conditions
 
-        # Extract data_loader from pynapple/NWB loader (xarray loader created later after ds is set)
+        # Extract data_loader and source_collection from dt.attrs
         self._pending_loader = self.app_state.dt.attrs.pop("data_loader", None)
+        self.app_state.source_collection = self.app_state.dt.attrs.pop("source_collection", None)
 
         dt_attrs = self.app_state.dt.attrs
         dt = self.app_state.dt
@@ -1291,6 +1295,10 @@ class DataWidget(QWidget):
         if defn.on_toggle:
             getattr(self, defn.on_toggle)(visible)
 
+    def _on_audio_panel_toggle(self, visible: bool):
+        if visible and self.plot_container and self.app_state.has_audio:
+            self.plot_container.update_audio_panels()
+
     def _on_neo_panel_toggle(self, visible: bool):
         if visible and self.plot_container:
             self._configure_neo_panel()
@@ -1779,19 +1787,24 @@ class DataWidget(QWidget):
             video_folder=self.app_state.video_folder,
             audio_folder=self.app_state.audio_folder,
             cameras_sel=self.app_state.primary_camera,
+            source_collection=getattr(self.app_state, 'source_collection', None),
         )
 
     def _build_restrict_window(self, trial_id) -> None:
-        from ethograph.io.restrict import build_trial_window
+        from ethograph.io.time_model import build_trial_window
+
+        mode = self.app_state.restrict_mode
         alignment = self.app_state.trial_alignment
         if alignment is None:
             return
         extra_t0 = getattr(self.app_state, "restrict_extra_t0", 0.0)
         extra_t1 = getattr(self.app_state, "restrict_extra_t1", 0.0)
-        if self.app_state.restrict_mode == "trial":
+        if mode == "trial":
             self.app_state.restrict_window = build_trial_window(
                 alignment, trial_id, extra_t0, extra_t1,
             )
+        elif mode == "video":
+            self.navigation_widget._apply_video_restriction()
 
     def on_trial_changed(self):
         trials_sel = self.app_state.trials_sel
@@ -1808,11 +1821,19 @@ class DataWidget(QWidget):
         # Update data_loader trial index (pynapple: restrict changes;
         # xarray: XarrayLoader.update_ds swaps the backing dataset)
         store = self.app_state.data_loader
+        trial_idx = self.app_state.trials.index(trials_sel)
         if store is not None:
-            trial_idx = self.app_state.trials.index(trials_sel)
             store.set_trial(trial_idx)
             if hasattr(store, 'update_ds'):
                 store.update_ds(self.app_state.ds)
+
+        # Sync SourceCollection: only update trial index, not dataset
+        # (DataLoader handles dataset access; sources are for range queries)
+        sc = getattr(self.app_state, 'source_collection', None)
+        if sc is not None:
+            for src in sc.sources.values():
+                if hasattr(src, 'set_trial'):
+                    src.set_trial(trial_idx)
 
         self._update_device_sels_for_trial(self.app_state.ds)
         self.update_mics_combo_for_trial(self.app_state.ds)

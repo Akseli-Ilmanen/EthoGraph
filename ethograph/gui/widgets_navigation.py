@@ -24,7 +24,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ethograph.io.restrict import build_trial_window, find_closest_trial
+from ethograph.io.time_model import build_trial_window, find_closest_trial
 from ethograph.utils.sequences import get_label_instances, match_sequences
 
 from .app_constants import AUDIO_SPEED_MAX, AUDIO_SPEED_MIN, AUDIO_SPEED_STEP
@@ -32,7 +32,7 @@ from .screen_recorder import RecordButton
 
 logger = logging.getLogger(__name__)
 
-RESTRICT_MODES = ["Trial", "Label", "Sequence"]
+RESTRICT_MODES = ["Trial", "Video", "Label", "Sequence"]
 
 
 class _DataAlignmentDialog(QDialog):
@@ -132,6 +132,19 @@ class NavigationWidget(QWidget):
         self.trials_combo.currentIndexChanged.connect(self._sync_trials_combo_color)
         trial_lay.addWidget(self.trials_combo)
         self._stack.addWidget(trial_panel)
+
+        # -- Video panel --
+        video_panel = QWidget()
+        video_lay = QVBoxLayout(video_panel)
+        video_lay.setContentsMargins(0, 0, 0, 0)
+        self.video_combo = QComboBox()
+        self.video_combo.setObjectName("video_combo")
+        self.video_combo.currentIndexChanged.connect(self._on_video_combo_changed)
+        video_lay.addWidget(self.video_combo)
+        self._video_info_label = QLabel("")
+        self._video_info_label.setStyleSheet("color: grey; font-size: 10px;")
+        video_lay.addWidget(self._video_info_label)
+        self._stack.addWidget(video_panel)
 
         # -- Label panel --
         label_panel = QWidget()
@@ -348,7 +361,7 @@ class NavigationWidget(QWidget):
 
     def _navigate(self, direction: int):
         mode = self.mode_combo.currentText().lower()
-        if mode == "trial":
+        if mode in ("trial", "video"):
             self._navigate_trial(direction)
         elif mode == "label":
             self._navigate_label(direction)
@@ -364,9 +377,12 @@ class NavigationWidget(QWidget):
         self.app_state.restrict_mode = mode
         self._stack.setCurrentIndex(RESTRICT_MODES.index(mode_text))
 
-        self.trials_combo.setEnabled(mode == "trial")
+        self.trials_combo.setEnabled(mode in ("trial", "video"))
 
-        if mode == "label":
+        if mode == "video":
+            self._populate_video_combo()
+            self._apply_video_restriction()
+        elif mode == "label":
             self._refresh_label_instances()
             self._apply_label_restriction()
         elif mode == "sequence":
@@ -414,6 +430,11 @@ class NavigationWidget(QWidget):
             self.trials_combo.blockSignals(True)
             self.trials_combo.setCurrentText(str(new_trial))
             self.trials_combo.blockSignals(False)
+            # Sync video combo if it exists
+            if hasattr(self, 'video_combo') and self.video_combo.count() > 0:
+                self.video_combo.blockSignals(True)
+                self.video_combo.setCurrentIndex(new_idx)
+                self.video_combo.blockSignals(False)
             self.app_state.trial_changed.emit()
             self._update_counter()
             tb = self.app_state.trial_bounds
@@ -431,6 +452,77 @@ class NavigationWidget(QWidget):
             extra_t1=self.extra_t1_spin.value(),
         )
         self.app_state.restrict_window = rw
+
+    # ==================================================================
+    # Video mode
+    # ==================================================================
+
+    def _populate_video_combo(self):
+        """Fill video_combo with filenames from the primary camera."""
+        import os
+
+        self.video_combo.blockSignals(True)
+        self.video_combo.clear()
+        dt = getattr(self.app_state, "dt", None)
+        if dt is None:
+            self.video_combo.blockSignals(False)
+            return
+        camera = getattr(self.app_state, "primary_camera", None)
+        trials = getattr(self.app_state, "trials", [])
+        for tid in trials:
+            path = dt.resolve_media_path(tid, "video", device=camera)
+            name = os.path.basename(path) if path else str(tid)
+            self.video_combo.addItem(name, tid)
+        current = getattr(self.app_state, "trials_sel", None)
+        if current in trials:
+            self.video_combo.setCurrentIndex(trials.index(current))
+        self.video_combo.blockSignals(False)
+
+    def _on_video_combo_changed(self, index: int):
+        if not self.app_state.ready or index < 0:
+            return
+        tid = self.video_combo.itemData(index)
+        if tid is None:
+            return
+        current = getattr(self.app_state, "trials_sel", None)
+        if tid != current:
+            self.app_state.trials_sel = tid
+            self.trials_combo.blockSignals(True)
+            self.trials_combo.setCurrentText(str(tid))
+            self.trials_combo.blockSignals(False)
+            self.app_state.trial_changed.emit()
+        self._apply_video_restriction()
+        self._update_counter()
+        tb = self.app_state.trial_bounds
+        if tb:
+            self._center_and_maybe_play(tb.start_s, tb.end_s)
+
+    def _apply_video_restriction(self):
+        """Restrict time range to current trial's primary camera video duration."""
+        from ethograph.io.time_model import RestrictionWindow, TimeRange
+
+        alignment = getattr(self.app_state, "trial_alignment", None)
+        video = getattr(self.app_state, "video", None)
+        if alignment is None or video is None:
+            self._apply_trial_restriction()
+            return
+
+        vid_start = alignment.video_offset
+        vid_end = vid_start + video.total_duration
+        extra_t0 = self.extra_t0_spin.value()
+        extra_t1 = self.extra_t1_spin.value()
+
+        core = TimeRange(vid_start, vid_end)
+        time_range = TimeRange(vid_start - extra_t0, vid_end + extra_t1)
+        trial_id = getattr(self.app_state, "trials_sel", None)
+
+        self.app_state.restrict_window = RestrictionWindow(
+            mode="video", time_range=time_range, core_range=core,
+            trial_id=trial_id,
+        )
+        self._video_info_label.setText(
+            f"Video: {vid_start:.2f}s \u2013 {vid_end:.2f}s  ({video.total_duration:.2f}s)"
+        )
 
     # ==================================================================
     # Label mode
@@ -626,7 +718,9 @@ class NavigationWidget(QWidget):
         self.app_state.restrict_extra_t0 = self.extra_t0_spin.value()
         self.app_state.restrict_extra_t1 = self.extra_t1_spin.value()
         mode = self.app_state.restrict_mode
-        if mode == "trial":
+        if mode == "video":
+            self._apply_video_restriction()
+        elif mode == "trial":
             self._apply_trial_restriction()
         elif mode == "label":
             self._apply_label_restriction()

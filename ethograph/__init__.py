@@ -29,6 +29,11 @@ from ethograph.io.catalog import (
     catalog_from_xarray,
 )
 from ethograph.io.pynapple import load_nap_data
+from ethograph.io.time_model import (
+    SourceCollection,
+    TimeRange,
+    TimeSource,
+)
 
 # Backwards-compat aliases
 XarrayStore = XarrayLoader

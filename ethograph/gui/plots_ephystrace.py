@@ -1049,10 +1049,11 @@ class EphysTracePlot(BasePlot):
             xmin, xmax = self.get_current_xlim()
             t0, t1 = xmin, xmax
 
-        # Clamp to trial boundaries
-        t0 = max(0.0, t0)
-        if self._trial_duration is not None:
-            t1 = min(self._trial_duration, t1)
+        # Clamp to window bounds (includes extra context beyond trial)
+        wb = self.app_state.window_bounds
+        if wb is not None:
+            t0 = max(wb.start_s, t0)
+            t1 = min(wb.end_s, t1)
 
         self._update_multichannel(t0, t1)
 
@@ -1075,10 +1076,12 @@ class EphysTracePlot(BasePlot):
         # for upcoming positions (eliminates black blinking during playback).
         window = visible_t1 - visible_t0
         buf_s = window * DEFAULT_BUFFER_MULTIPLIER_EPHYS / 2
-        t0_draw = max(0.0, visible_t0 - buf_s)
+        t0_draw = visible_t0 - buf_s
         t1_draw = visible_t1 + buf_s
-        if self._trial_duration is not None:
-            t1_draw = min(self._trial_duration, t1_draw)
+        wb = self.app_state.window_bounds
+        if wb is not None:
+            t0_draw = max(wb.start_s, t0_draw)
+            t1_draw = min(wb.end_s, t1_draw)
         draw_window = t1_draw - t0_draw
 
         # Scale pixel_width so sample density matches the visible range.
@@ -1666,11 +1669,15 @@ class EphysTracePlot(BasePlot):
             self.update_plot_content(*self.get_current_xlim())
 
     def _on_view_range_changed(self):
+        if not self.isVisible():
+            return
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
         self._td.trigger()
 
     def _do_range_update(self):
+        if not self.isVisible():
+            return
         t0, t1 = self.get_current_xlim()
         self.update_plot_content(t0, t1)
 

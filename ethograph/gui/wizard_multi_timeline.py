@@ -33,7 +33,7 @@ from qtpy.QtWidgets import (
 
 from ethograph.gui.wizard_multi_codegen import generate_alignment_code
 from ethograph.gui.dialog_function_params import _do_open_source
-from ethograph.gui.plots_timeseriessource import compute_trial_alignment, TimeRange, TrialAlignment
+from ethograph.io.time_model import compute_trial_alignment, TimeRange, TrialAlignment
 from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
 from ethograph.utils.stream_durations import get_audio_duration, get_ephys_duration, get_pose_duration, get_video_duration

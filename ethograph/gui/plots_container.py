@@ -14,7 +14,7 @@ Panel stack (top to bottom, each optional except Feature Plot):
 from typing import Any, Dict
 
 import numpy as np
-from ethograph.gui.plots_timeseriessource import TimeRange
+from ethograph.io.time_model import TimeRange
 import pyqtgraph as pg
 from qtpy.QtCore import QSize, Qt, QTimer, Signal
 from qtpy.QtWidgets import (
@@ -206,6 +206,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         super().__init__(parent)
         self.viewer = napari_viewer
         self.app_state = app_state
+        self._data_widget = None  # set by widgets_meta after construction
 
         # --- Plots ---
         self.audio_trace_plot = AudioTracePlot(app_state)
@@ -271,7 +272,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._splitter.setChildrenCollapsible(False)
         main_layout.addWidget(self._splitter)
 
-        # Time slider (shown when no video)
         self.time_slider = TimeSlider()
         self.time_slider.time_changed.connect(self._on_slider_time)
         self.time_slider.hide()
@@ -518,9 +518,13 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def set_audiotrace_visible(self, visible: bool):
         self._set_panel_visible("audiotrace", visible)
+        if not visible:
+            self.audio_trace_plot.set_source(None)
 
     def set_spectrogram_visible(self, visible: bool):
         self._set_panel_visible("spectrogram", visible)
+        if not visible:
+            self.spectrogram_plot.set_source(None)
 
     def set_feature_view(self, mode: str):
         """Switch the feature (bottom) panel.
@@ -571,6 +575,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def set_neo_visible(self, visible: bool):
         self._set_panel_visible("neo", visible)
+        if not visible:
+            self.neo_trace_plot.buffer.loader = None
+            self.neo_trace_plot.set_source(None)
 
     def set_ephys_visible(self, visible: bool):
         if self._panel_visible["ephys"] == visible:
@@ -578,6 +585,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._panel_visible["ephys"] = visible
         if not visible:
             self._panel_visible["raster"] = False
+            self.ephys_trace_plot.buffer.loader = None
+            self.ephys_trace_plot.set_source(None)
         self._update_panel_visibility()
 
     def set_raster_visible(self, visible: bool):
@@ -761,8 +770,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     def update_audio_panels(self):
         """Refresh audio-driven panels (waveform + spectrogram) after mic change."""
         source = build_audio_source(self.app_state)
-        self.spectrogram_plot.set_source(source)
-        self.audio_trace_plot.set_source(source)
+        if self._panel_visible["spectrogram"]:
+            self.spectrogram_plot.set_source(source)
+        if self._panel_visible["audiotrace"]:
+            self.audio_trace_plot.set_source(source)
 
         t0, t1 = self.get_current_xlim()
         time = self.app_state.time

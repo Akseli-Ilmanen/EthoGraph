@@ -1,5 +1,5 @@
-from ethograph.gui.plots_timeseriessource import TimeRange, RestrictionWindow, TrialAlignment, compute_trial_alignment
-print("plots_timeseriessource: OK")
+from ethograph.io.time_model import TimeRange, RestrictionWindow, TrialAlignment, compute_trial_alignment
+print("time_model: OK")
 
 from ethograph.gui.modality import FileSource, ModalitySource, XarraySource, WindowedBuffer
 print("modality: OK")
