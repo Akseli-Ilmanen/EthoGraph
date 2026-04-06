@@ -214,15 +214,15 @@ class IOWidget(QWidget):
         self.load_panel.setLayout(self._load_layout)
 
         # Button row
-        self.reset_button = QPushButton("💡Reset gui_settings.yaml")
+        self.reset_button = QPushButton("🔄️Reset gui_settings.yaml")
         self.reset_button.setObjectName("reset_button")
         self.reset_button.clicked.connect(self._on_reset_gui_clicked)
 
-        self.create_nc_button = QPushButton("🧙‍♂️Data wizard")
+        self.create_nc_button = QPushButton("🧙Data wizard")
         self.create_nc_button.setObjectName("create_nc_button")
         self.create_nc_button.clicked.connect(self._on_create_nc_clicked)
 
-        self.template_button = QPushButton("📋Select templates")
+        self.template_button = QPushButton("🐦‍⬛Select templates")
         self.template_button.setObjectName("template_button")
         self.template_button.clicked.connect(self._on_select_template_clicked)
 
@@ -1028,7 +1028,7 @@ class IOWidget(QWidget):
         dt = getattr(self.app_state, "dt", None)
         if dt is None:
             return
-        video_folder = dt.attrs.get("nwb_video_folder")
+        video_folder = getattr(self.app_state, "nwb_video_folder", None)
         if not video_folder:
             return
         video_folder = self._maybe_downsample_videos(str(video_folder))
@@ -1041,7 +1041,7 @@ class IOWidget(QWidget):
         dt = getattr(self.app_state, "dt", None)
         if dt is None:
             return
-        epoch_mapping = dt.attrs.get("nwb_epoch_mapping")
+        epoch_mapping = getattr(self.app_state, "nwb_epoch_mapping", None)
         if not epoch_mapping or not isinstance(epoch_mapping, dict):
             return
 
@@ -1349,7 +1349,7 @@ class IOWidget(QWidget):
         path = result[0] if result and len(result) >= 1 else ""
         if path:
             self.nwb_file_path_edit.setText(path)
-            self.app_state.nwb_file_path = path  # auto-syncs to dt.nwb_path
+            self.app_state.nwb_file_path = path  # auto-syncs to app_state.nwb_alignment
 
     def _browse_metadata_file(self):
         """Browse for a metadata TSV file."""
@@ -1374,7 +1374,7 @@ class IOWidget(QWidget):
         nwb = find_nwb_file(data_dir)
         if nwb is not None:
             self.nwb_file_path_edit.setText(str(nwb))
-            self.app_state.nwb_file_path = str(nwb)  # auto-syncs to dt.nwb_path
+            self.app_state.nwb_file_path = str(nwb)  # auto-syncs to app_state.nwb_alignment
             logger.info("Auto-discovered NWB alignment: %s", nwb)
 
     def _auto_discover_metadata(self):

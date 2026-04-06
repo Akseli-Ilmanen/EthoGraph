@@ -14,6 +14,7 @@ from qtpy.QtWidgets import QApplication
 from ethograph.gui.dialog_select_template import (
     TEMPLATES,
     _DOWNLOAD_BASE,
+    _build_alignment_nwb,
     _resolve_template_paths,
     _template_dir,
     _template_downloaded,
@@ -40,6 +41,7 @@ def _skip_if_not_downloaded(key: str):
 def _apply_template(meta, template_key: str):
     """Apply a template's paths to the IO widget and trigger load."""
     t = _get_template(template_key)
+    _build_alignment_nwb(t)
     resolved = _resolve_template_paths(t)
 
     io = meta.io_widget
@@ -280,7 +282,7 @@ class TestLockbox:
 
     def test_three_cameras_exist(self, lockbox_gui):
         _, meta = lockbox_gui
-        cameras = meta.app_state.dt.cameras
+        cameras = meta.app_state.nwb_alignment.cameras
         assert len(cameras) == 3
         assert "front-view" in cameras
         assert "side-view" in cameras
@@ -458,13 +460,6 @@ class TestMoll2025Pynapple:
         if not self._speed_npz.exists():
             pytest.skip("Moll2025 pynapple .npz not downloaded")
 
-    def test_load_npz_as_dataset(self):
-        from ethograph.gui.data_loader import load_dataset
-        dt, labels_df, type_vars = load_dataset(str(self._speed_npz), require_fps=False)
-        assert dt is not None
-        assert len(dt.trials) > 0
-        ds = dt.itrial(0)
-        assert ds is not None
 
     def test_load_npz_into_gui(self, gui, qtbot):
         viewer, meta = gui

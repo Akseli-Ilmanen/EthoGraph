@@ -140,13 +140,13 @@ def trees_to_df(
                 t_start = None
                 t_stop = None
                 try:
-                    t_start = dt.start_time(trial_id)
+                    t_start = dt.nwb_alignment.start_time(trial_id)
                 except (AttributeError, KeyError, ValueError):
-                    pass
+                    t_start = None
                 try:
-                    t_stop = dt.stop_time(trial_id)
+                    t_stop = dt.nwb_alignment.stop_time(trial_id)
                 except (AttributeError, KeyError, ValueError):
-                    pass
+                    t_stop = None
 
                 if t_start is None and 'pulse_onsets' in ds:
                     t_start = float(ds.pulse_onsets.values[0]) / 30_000  # Legacy crow lab

@@ -1,8 +1,9 @@
 """Concrete TimeSource adapters for xarray, pynapple, and NWB backends.
 
-Each adapter wraps an existing data backend and presents a uniform
-:class:`~ethograph.io.time_model.TimeSource` interface with
-session-absolute time.
+Navigation-layer sources: each wraps a data backend and exposes
+time-range metadata for ``SourceCollection`` (session extent, trial
+finding).  These are *not* used by plot widgets directly — plots use
+``PlotSource`` implementations from ``gui/plot_sources`` instead.
 """
 
 from __future__ import annotations

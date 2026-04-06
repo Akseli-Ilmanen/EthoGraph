@@ -7,7 +7,7 @@ here); the dialog listens to EphysWidget.cluster_selected signal.
 Label-aligned PSTH
 ------------------
 For each trial the dialog:
-1. Gets the session-absolute start via ``dt.start_time(trial)``
+1. Gets the session-absolute start via ``nwb_alignment.start_time(trial)``
    (falls back to 0 if no session timing is available).
 2. Reads label intervals from ``app_state.get_trial_intervals(trial)`` and
    finds the onset/offset of the chosen label class in trial-relative time.
@@ -440,8 +440,11 @@ class PSTHDialog(QDialog):
         if not key or not hasattr(self.app_state, "dt") or self.app_state.dt is None:
             return None, None
 
+        dt = self.app_state.dt
+        if dt is None:
+            return None, None
         all_vals: list = sorted(
-            {ds.attrs[key] for _, ds in self.app_state.dt.trial_items() if key in ds.attrs},
+            {ds.attrs[key] for _, ds in dt.trial_items() if key in ds.attrs},
             key=str,
         )
         if not all_vals:
@@ -451,7 +454,7 @@ class PSTHDialog(QDialog):
         group: dict[int, int] = {}
         for trial_i, trial_id in enumerate(self._current_trials):
             try:
-                ds = self.app_state.dt.trial(trial_id)
+                ds = dt.trial(trial_id)
                 val = ds.attrs.get(key)
                 group[trial_i] = val_to_idx.get(val, 0)
             except (KeyError, AttributeError):
@@ -505,24 +508,22 @@ class PSTHDialog(QDialog):
     # ------------------------------------------------------------------
 
     def _build_trial_list(self) -> list[str]:
-        if not hasattr(self.app_state, "dt") or self.app_state.dt is None:
-            return []
-        return list(self.app_state.dt.trials)
+        return list(getattr(self.app_state, "trials", None) or [])
 
     # ------------------------------------------------------------------
     # Alignment time resolution
     # ------------------------------------------------------------------
 
     def _trial_abs_start(self, trial_id) -> float:
-        session_io = getattr(self.app_state.dt, "session_io", None)
-        if session_io is not None:
-            return session_io.start_time(trial_id)
+        nwb_alignment = getattr(self.app_state.dt, "nwb_alignment", None)
+        if nwb_alignment is not None:
+            return nwb_alignment.start_time(trial_id)
         return 0.0   # per-trial files: local == session-absolute
 
     def _trial_abs_end(self, trial_id) -> float:
-        session_io = getattr(self.app_state.dt, "session_io", None)
-        if session_io is not None:
-            stop = session_io.stop_time(trial_id)
+        nwb_alignment = getattr(self.app_state.dt, "nwb_alignment", None)
+        if nwb_alignment is not None:
+            stop = nwb_alignment.stop_time(trial_id)
             if stop is not None:
                 return stop
         else:
@@ -568,10 +569,10 @@ class PSTHDialog(QDialog):
             valid_display: list[int]   = []
 
             # Precompute per-trial start times in one pass (avoids O(N²) _trial_idx scans)
-            session_io = getattr(self.app_state.dt, "session_io", None)
-            if session_io is not None:
-                start_map = {t: session_io.start_time(t) for t in trials}
-                end_map   = {t: session_io.stop_time(t)  for t in trials} if align_data == "trial_end" else {}
+            nwb_alignment = getattr(self.app_state.dt, "nwb_alignment", None)
+            if nwb_alignment is not None:
+                start_map = {t: nwb_alignment.start_time(t) for t in trials}
+                end_map   = {t: nwb_alignment.stop_time(t)  for t in trials} if align_data == "trial_end" else {}
             else:
                 start_map = {t: 0.0 for t in trials}
                 end_map   = {}

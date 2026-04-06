@@ -56,27 +56,29 @@ def main():
 
     nwb_path = BIRDPARK_DIR / ".ethograph" / "alignment_demo.nwb"
     build_nwb_from_trial_table(trial_table, stream_rates={"video": fps, "pose": fps}, output_path=nwb_path)
-    dt.nwb_path = str(nwb_path)
+    from ethograph.io.nwb_alignment import make_nwb_alignment
+    dt.nwb_alignment = make_nwb_alignment(nwb_path)
     print(f"\nAlignment NWB: {nwb_path}")
 
-    # 6. Verify session_io works
-    print(f"  cameras: {dt.cameras}")
-    print(f"  mics:    {dt.mics}")
+    # 6. Verify nwb_alignment works
+    sio = dt.nwb_alignment
+    print(f"  cameras: {sio.cameras}")
+    print(f"  mics:    {sio.mics}")
     print()
 
     # 7. Show video/audio offsets per trial
     print("Video/audio offsets (trial-relative):")
     for trial_id in dt.trials:
-        v_off = dt.stream_offset_for_trial(trial_id, "video", "cam-1")
-        a_off = dt.stream_offset_for_trial(trial_id, "audio", "mic-1")
-        t_start = dt.start_time(trial_id)
-        t_stop = dt.stop_time(trial_id)
+        v_off = sio.stream_offset_for_trial(trial_id, "video", "cam-1")
+        a_off = sio.stream_offset_for_trial(trial_id, "audio", "mic-1")
+        t_start = sio.start_time(trial_id)
+        t_stop = sio.stop_time(trial_id)
         print(f"  Trial {trial_id}: session={t_start:.0f}–{t_stop:.0f}s  "
               f"video_offset={v_off:.1f}s  audio_offset={a_off:.1f}s")
 
-    # Cleanup demo NWB (close session_io handle first on Windows)
-    dt.session_io.close()
-    dt.__dict__.pop("session_io", None)
+    # Cleanup demo NWB (close nwb_alignment handle first on Windows)
+    dt.nwb_alignment.close()
+    dt.__dict__.pop("nwb_alignment", None)
     nwb_path.unlink(missing_ok=True)
     print("\nDone! (cleaned up demo NWB)")
 

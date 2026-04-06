@@ -184,12 +184,12 @@ def draw_session_timeline(
     determine each file's time span.  Trial boundaries from the trials
     table are shown as dotted vertical lines.
     """
-    from ethograph.io.session_io import NWBSessionIO
+    from ethograph.io.nwb_alignment import NWBAlignment
 
-    sio = dt.session_io
+    sio = dt.nwb_alignment
     items: list = items_out if items_out is not None else []
 
-    nwb = sio.nwb if isinstance(sio, NWBSessionIO) else None
+    nwb = sio.nwb if isinstance(sio, NWBAlignment) else None
     if nwb is None or not nwb.acquisition:
         return 1.0
 
@@ -729,7 +729,7 @@ class TimelinePage(QWidget):
 
     def _populate_aligned_table_from_dt(self, dt):
         """Build a table from TrialTree's NWB session trials_df."""
-        sio = dt.session_io
+        sio = dt.nwb_alignment
         df = sio.trials_df
         if df.empty:
             return
@@ -854,7 +854,7 @@ class TimelinePage(QWidget):
         )
 
         # Detect mode: table has filename columns → aligned, otherwise → timeline
-        sio = dt.session_io
+        sio = dt.nwb_alignment
         df = sio.trials_df
         has_filename_cols = any(
             col not in ("trial", "start_time", "stop_time")
@@ -877,7 +877,7 @@ class TimelinePage(QWidget):
     def _has_pose_data(dt, cam: str) -> bool:
         for trial_id in (dt.trials or [])[:5]:
             try:
-                if dt.get_media(trial_id, "pose", cam):
+                if dt.nwb_alignment.get_media(trial_id, "pose", cam):
                     return True
             except (KeyError, IndexError):
                 pass
@@ -885,10 +885,10 @@ class TimelinePage(QWidget):
 
     @staticmethod
     def _get_end_source(dt, trial_id, ds, alignment: TrialAlignment | None) -> str:
-        session_io = getattr(dt, "session_io", None)
-        if session_io is not None:
+        nwb_alignment = getattr(dt, "nwb_alignment", None)
+        if nwb_alignment is not None:
             try:
-                if session_io.stop_time(trial_id) is not None:
+                if nwb_alignment.stop_time(trial_id) is not None:
                     return "session stop_time"
             except (KeyError, AttributeError):
                 pass

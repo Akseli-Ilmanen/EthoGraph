@@ -381,7 +381,8 @@ class TestWizardFromNpy:
         original_nwb.parent.mkdir(parents=True, exist_ok=True)
         trial_table = pd.DataFrame([{"trial": 1, "start_time": 0.0}])
         build_nwb_from_trial_table(trial_table, stream_rates={"video": 30.0, "pose": 30.0}, output_path=original_nwb)
-        dt.nwb_path = str(original_nwb)
+        from ethograph.io.nwb_alignment import make_nwb_alignment, NWBAlignment
+        dt.nwb_alignment = make_nwb_alignment(original_nwb)
         assert original_nwb.exists()
 
         save_dir = tmp_path / "output"
@@ -398,8 +399,7 @@ class TestWizardFromNpy:
         assert copied_nwb.exists(), "alignment.nwb should be copied next to saved .nc"
 
         reloaded = TrialTree.open(str(nc_out))
-        assert reloaded.nwb_path is not None
-        assert reloaded.session_io is not None
+        assert isinstance(reloaded.nwb_alignment, NWBAlignment)
 
 
 # ===================================================================

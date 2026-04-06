@@ -341,7 +341,3 @@ def add_angle_rgb_to_ds(ds: xr.Dataset, smoothing_params: dict) -> xr.Dataset:
 
 
 
-
-
-# ------------- Helpers ------------------------
-

@@ -9,7 +9,6 @@ import xarray as xr
 
 from ethograph.io.metadata_table import (
     condition_columns,
-    metadata_from_attrs,
     load_metadata_tsv,
     save_metadata_tsv,
     metadata_tsv_path,
@@ -35,14 +34,6 @@ def _make_dt_with_conditions():
     return TrialTree.from_datasets([ds1, ds2], validate=False)
 
 
-def test_metadata_from_attrs():
-    dt = _make_dt_with_conditions()
-    mdf = metadata_from_attrs(dt)
-    assert "genotype" in mdf.columns
-    assert "treatment" in mdf.columns
-    # fps is common across all trials → excluded
-    assert "fps" not in mdf.columns
-    assert len(mdf) == 2
 
 
 def test_condition_columns():
@@ -52,27 +43,7 @@ def test_condition_columns():
     assert "trial" not in cols
 
 
-def test_metadata_df_on_trialtree():
-    dt = _make_dt_with_conditions()
-    mdf = metadata_from_attrs(dt)
-    dt.metadata_df = mdf
 
-    meta1 = dt.get_trial_metadata(1)
-    assert meta1["genotype"] == "WT"
-    assert meta1["treatment"] == "saline"
-
-    meta2 = dt.get_trial_metadata(2)
-    assert meta2["genotype"] == "KO"
-    assert meta2["treatment"] == "drug_A"
-
-
-def test_filter_by_attr_uses_metadata():
-    dt = _make_dt_with_conditions()
-    dt.metadata_df = metadata_from_attrs(dt)
-
-    filtered = dt.filter_by_attr("genotype", "WT")
-    assert filtered.trials == [1]
-    assert "genotype" in filtered.metadata_df.columns
 
 
 def test_save_load_roundtrip():

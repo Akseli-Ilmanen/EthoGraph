@@ -172,12 +172,12 @@ class HelpWidget(QWidget):
 
         print(SEP)
         print("=" * 60)
-        print("  NWB ALIGNMENT (session_io)")
+        print("  NWB ALIGNMENT (nwb_alignment)")
         print("=" * 60)
         dt = getattr(self.app_state, 'dt', None)
-        sio = getattr(dt, 'session_io', None) if dt is not None else None
+        sio = getattr(dt, 'nwb_alignment', None) if dt is not None else None
         if sio is None:
-            print("  No session_io available.")
+            print("  No nwb_alignment available.")
         else:
             sio.print_session()
 

@@ -45,7 +45,7 @@ from ethograph.gui.notify import notify
 from .app_constants import CLUSTER_TABLE_MAX_HEIGHT, CLUSTER_TABLE_ROW_HEIGHT
 from .makepretty import find_combo_index, get_combo_value, set_combo_to_value
 from .plots_ephystrace import GenericEphysLoader, get_loader as get_ephys_loader
-from .modality import FileSource
+from ..io.plot_sources import FileSource
 
 logger = logging.getLogger(__name__)
 
@@ -2330,8 +2330,8 @@ class EphysWidget(QWidget):
             return
         self._fr_cache_key = cache_key
 
-        ds = self.app_state.dt.trial(trial)
-        start_time = self.app_state.dt.start_time(trial)
+        ds = self.app_state.dt.trial(trial) if self.app_state.dt is not None else self.app_state.ds
+        start_time = self.app_state.nwb_alignment.start_time(trial)
         bounds = self.app_state.window_bounds
         if bounds is None:
             return
@@ -2354,9 +2354,9 @@ class EphysWidget(QWidget):
             new_ds = new_ds.drop_vars("firing_rate")
         new_ds["firing_rate"] = da
 
-        self.app_state.dt.update_trial(trial, lambda _: new_ds)
-
-        self.app_state.ds = self.app_state.dt.trial(trial)
+        if self.app_state.dt is not None:
+            self.app_state.dt.update_trial(trial, lambda _: new_ds)
+        self.app_state.ds = new_ds
         self.fr_status_label.setText(
             f"{len(cluster_ids)} clusters ({group_text})"
         )
@@ -2444,8 +2444,9 @@ class EphysWidget(QWidget):
             new_ds = new_ds.drop_vars("pca")
         new_ds["pca"] = pca_da
 
-        self.app_state.dt.update_trial(trial, lambda _: new_ds)
-        self.app_state.ds = self.app_state.dt.trial(trial)
+        if self.app_state.dt is not None:
+            self.app_state.dt.update_trial(trial, lambda _: new_ds)
+        self.app_state.ds = new_ds
 
         ev = pca_da.attrs["explained_variance"]
         self.pca_status_label.setText(

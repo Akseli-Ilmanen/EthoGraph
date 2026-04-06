@@ -224,7 +224,7 @@ class PoseFileDialog(QDialog):
             self.accept()
         except (OSError, ValueError, KeyError) as e:
             logger.exception("Failed to create from pose file")
-            notify_dialog(f"Failed to 🧙‍♂️Data wizard:\n{e}", "error", "Error", self)
+            notify_dialog(f"Failed to 🧙Data wizard:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(self, output_path: str, video_path: Optional[str], pose_path: str):
         pose_folder = str(Path(pose_path).parent)
@@ -389,7 +389,7 @@ class XarrayDatasetDialog(QDialog):
             self.accept()
         except (OSError, ValueError, KeyError) as e:
             logger.exception("Failed to create from xarray dataset")
-            notify_dialog(f"Failed to 🧙‍♂️Data wizard:\n{e}", "error", "Error", self)
+            notify_dialog(f"Failed to 🧙Data wizard:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(self, output_path: str, video_path: Optional[str]):
 
@@ -587,7 +587,7 @@ class AudioFileDialog(QDialog):
             self.accept()
         except (OSError, ValueError, KeyError) as e:
             logger.exception("Failed to create from audio file")
-            notify_dialog(f"Failed to 🧙‍♂️Data wizard:\n{e}", "error", "Error", self)
+            notify_dialog(f"Failed to 🧙Data wizard:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(self, output_path: str, video_path: Optional[str], audio_path: str):
         audio_folder = str(Path(audio_path).parent)
@@ -784,7 +784,7 @@ class NpyFileDialog(QDialog):
             self.accept()
         except (OSError, ValueError, KeyError) as e:
             logger.exception("Failed to create from npy file")
-            notify_dialog(f"Failed to 🧙‍♂️Data wizard:\n{e}", "error", "Error", self)
+            notify_dialog(f"Failed to 🧙Data wizard:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(self, output_path: str, video_path: Optional[str]):
 
@@ -1113,7 +1113,7 @@ class EphysFileDialog(QDialog):
             self.accept()
         except (OSError, ValueError, KeyError) as e:
             logger.exception("Failed to create from ephys file")
-            notify_dialog(f"Failed to 🧙‍♂️Data wizard:\n{e}", "error", "Error", self)
+            notify_dialog(f"Failed to 🧙Data wizard:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(
         self, output_path: str, video_path: Optional[str],

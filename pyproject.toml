@@ -152,6 +152,7 @@ filterwarnings = [
     "error",
     "ignore::pydantic.warnings.PydanticDeprecatedSince20",
     "ignore::DeprecationWarning:napari",
+    "ignore::DeprecationWarning:vispy",
 ]
 
 [tool.check-manifest]

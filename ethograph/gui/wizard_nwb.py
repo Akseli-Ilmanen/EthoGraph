@@ -48,15 +48,17 @@ from ethograph.gui.notify import notify_dialog
 from ethograph.gui.wizard_multi_timeline import draw_session_timeline
 from ethograph.labels.converters import NWBLabelConverter, write_mapping_file
 from ethograph.labels.tsv_store import init_empty_labels, labels_tsv_path, save_labels_tsv
-from ethograph.utils.nwb import (
-    download_clip,
-    find_video_assets,
-    format_file_size,
-    open_nwb_local,
+from ethograph.io.nwb_import import (
     probe_behavioral_series,
     probe_electrical_series,
     probe_label_sources,
     read_trials_table,
+)
+from ethograph.utils.dandi import (
+    download_clip,
+    find_video_assets,
+    format_file_size,
+    open_nwb_local,
 )
 from ethograph.utils.nwb_video import (
     NWBDANDIPoseEstimationWidget,
@@ -845,6 +847,7 @@ class _NWBTimelinePage(QWidget):
                 dt[str(tid)] = xr.DataTree(ds)
 
         session_vars: dict[str, Any] = {}
+        # TODO. old system, change
         trial_ids = dt.trials if dt.children else []
 
         if selected_df is not None and "start_time" in selected_df.columns:
@@ -1262,7 +1265,7 @@ class NWBImportDialog(QDialog):
 
             # Save project config (replaces .nc attrs)
             config = {
-                "nwb_source": source_info["path"] if source_info["type"] == "local" else None,
+                "nwb_local": source_info["path"] if source_info["type"] == "local" else None,
                 "nwb_source_dandiset": source_info.get("dandiset_id"),
                 "nwb_source_session": source_info.get("session_eid"),
                 "nwb_pose_keys": list(self._cameras_with_pose) if include_pose and self._cameras_with_pose else [],
@@ -1284,7 +1287,7 @@ class NWBImportDialog(QDialog):
             if raw_asset:
                 config["nwb_raw_asset_id"] = raw_asset.identifier
 
-            config_path = ethograph_dir / "project.json"
+            config_path = ethograph_dir / "nwb_metadata"
             with open(config_path, "w") as f:
                 json.dump(config, f, indent=2)
 

@@ -172,7 +172,7 @@ class TrialsWidget(QWidget):
         if dt is None:
             return
 
-        original_trials = set(dt.trials)
+        original_trials = set(getattr(self.app_state, "trials", None) or [])
         filtered = set(original_trials)
 
         # Condition filters

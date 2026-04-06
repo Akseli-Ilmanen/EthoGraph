@@ -123,7 +123,7 @@ class TrialAlignment:
 
 
 def compute_trial_alignment(
-    dt: TrialTree,
+    nwb_alignment,
     trial_id,
     ds: xr.Dataset,
     *,
@@ -137,14 +137,15 @@ def compute_trial_alignment(
     Trial duration comes from ``source_collection.union_range`` when
     available, otherwise falls back to probing xarray time coordinates.
     """
-    video_path = dt.resolve_media_path(
+    sio = nwb_alignment
+    video_path = sio.resolve_media_path(
         trial_id, "video", device=cameras_sel, fallback_folder=video_folder,
     )
-    video_offset = dt.stream_offset_for_trial(trial_id, "video", cameras_sel) if video_path else 0.0
+    video_offset = sio.stream_offset_for_trial(trial_id, "video", cameras_sel) if video_path else 0.0
 
     ephys_offset = 0.0
     try:
-        ephys_offset = dt.start_time(str(trial_id))
+        ephys_offset = sio.start_time(str(trial_id))
     except (KeyError, AttributeError):
         pass
 
@@ -217,10 +218,15 @@ def _resolve_trial_end(
 
 @runtime_checkable
 class TimeSource(Protocol):
-    """One time-aligned data source with session-absolute time.
+    """Navigation-layer metadata for one time-aligned data stream.
 
-    Implementations wrap xarray, pynapple, or NWB backends and present
-    a uniform ``get_data(t0, t1)`` interface. All times are in seconds.
+    Used by ``SourceCollection`` to compute session extent
+    (``union_range``), find which trial contains a given time, etc.
+    Concrete adapters live in ``io/time_sources.py``.
+
+    Not to be confused with ``PlotSource`` (``gui/plot_sources``),
+    which is the rendering-layer protocol that plot widgets use for
+    actual data loading and viewport caching.
     """
 
     @property
@@ -463,12 +469,12 @@ def build_sequence_window(
     )
 
 
-def find_closest_trial(dt: TrialTree, global_time: float) -> tuple[int | str, float]:
+def find_closest_trial(nwb_alignment, trials: list, global_time: float) -> tuple[int | str, float]:
     """Given a session-absolute time, find the enclosing trial.
 
     Returns ``(trial_id, trial_relative_time)``.
     """
-    ep = dt.trials_ep
+    ep = nwb_alignment.trials_ep
     if ep is None:
         raise ValueError("No trial timing information available")
 
@@ -485,7 +491,7 @@ def find_closest_trial(dt: TrialTree, global_time: float) -> tuple[int | str, fl
         )
         idx = int(np.argmin(dists))
 
-    trial_id = dt.trials[idx]
+    trial_id = trials[idx]
     trial_start = float(starts[idx])
     return trial_id, global_time - trial_start
 

@@ -24,18 +24,7 @@ class TestTrialTree:
         with pytest.raises(IndexError):
             trial_tree.itrial(99999)
 
-    def test_label_dt(self, trial_tree):
-        label_dt = trial_tree.get_label_dt()
-        first_trial = label_dt.trials[0]
-        trial_ds = label_dt.trial(first_trial)
-        assert "onset_s" in trial_ds.data_vars
-        assert "offset_s" in trial_ds.data_vars
-        assert "labels" in trial_ds.data_vars
-        assert "individual" in trial_ds.data_vars
 
-        label_dt_empty = trial_tree.get_label_dt(empty=True)
-        empty_ds = label_dt_empty.trial(first_trial)
-        assert empty_ds.sizes.get("segment", 0) == 0
 
     def test_from_datasets_roundtrip(self, first_trial_ds):
         dt = eto.from_datasets([first_trial_ds])

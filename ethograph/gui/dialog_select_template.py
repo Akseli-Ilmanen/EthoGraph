@@ -167,6 +167,17 @@ def _build_alignment_nwb(template: dict) -> None:
     if fps is not None:
         stream_rates["video"] = float(fps)
         stream_rates["pose"] = float(fps)
+
+    # Detect audio streams and read sample rate from the first available file
+    audio_cols = [c for c in trial_table.columns if c.startswith("audio_")]
+    if audio_cols:
+        first_audio_file = dest / str(trial_table[audio_cols[0]].iloc[0])
+        if first_audio_file.exists():
+            from ethograph.utils.audio import get_audio_sr
+            sr = get_audio_sr(str(first_audio_file))
+            if sr is not None:
+                stream_rates["audio"] = float(sr)
+
     build_nwb_from_trial_table(trial_table, stream_rates=stream_rates, output_path=nwb_path)
     logger.info("Created alignment NWB: %s", nwb_path)
 
@@ -339,7 +350,7 @@ class TemplateDialog(QDialog):
 
         if not Path(nc_path).exists():
             try:
-                from ethograph.gui.data_loader import wizard_single_from_audio
+                from ethograph.io.data_loader import wizard_single_from_audio
                 from ethograph.utils.audio import get_audio_sr
 
                 audio_sr = get_audio_sr(audio_path)

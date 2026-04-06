@@ -4,7 +4,8 @@ import tempfile
 import pandas as pd
 import xarray as xr
 import numpy as np
-from ethograph.io.trialtree import TrialTree, _SETTINGS_DIR, _NWB_FILENAME
+from ethograph.io.trialtree import TrialTree
+from ethograph.io.nwb_alignment import _SETTINGS_DIR, _NWB_FILENAME, make_nwb_alignment, NWBAlignment
 from ethograph.utils.nwb import build_nwb_from_trial_table
 
 with tempfile.TemporaryDirectory() as tmp:
@@ -24,7 +25,7 @@ with tempfile.TemporaryDirectory() as tmp:
     nwb_a.parent.mkdir(parents=True)
     trial_table = pd.DataFrame([{"trial": 1, "start_time": 0.0}])
     build_nwb_from_trial_table(trial_table, stream_rates={"video": 30.0, "pose": 30.0}, output_path=nwb_a)
-    dt._nwb_path = str(nwb_a)
+    dt.nwb_alignment = make_nwb_alignment(nwb_a)
 
     # Call _ensure_alignment_nwb for dir B
     dir_b = tmp / "output"
@@ -33,7 +34,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     nwb_b = dir_b / _SETTINGS_DIR / _NWB_FILENAME
     print("NWB copied:", nwb_b.exists())
-    print("dt._nwb_path updated:", dt._nwb_path == str(nwb_b))
+    print("dt.nwb_alignment updated:", isinstance(dt.nwb_alignment, NWBAlignment))
 
     # Verify same-dir is a no-op
     size_before = nwb_b.stat().st_size

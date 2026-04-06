@@ -36,7 +36,7 @@ from .app_constants import (
 import ethograph as eto
 from ethograph.labels.intervals import find_interval_at, get_interval_bounds
 from .audio_player import AudioPlayer
-from .data_sources import build_audio_source
+from ..io.plot_sources import build_audio_source
 from .label_drawing_mixin import LabelDrawingMixin
 from .plots_audiotrace import AudioTracePlot
 from .plots_ephystrace import EphysTracePlot

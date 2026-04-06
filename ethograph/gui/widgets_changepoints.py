@@ -158,8 +158,11 @@ class ChangepointsWidget(QWidget):
 
     def _update_trial_dataset(self, new_ds: xr.Dataset):
         trial = self.app_state.trials_sel
-        self.app_state.dt.update_trial(trial, lambda _: new_ds)
-        self.app_state.ds = self.app_state.dt.trial(trial)
+        if self.app_state.dt is not None:
+            self.app_state.dt.update_trial(trial, lambda _: new_ds)
+            self.app_state.ds = self.app_state.dt.trial(trial)
+        else:
+            self.app_state.ds = new_ds
         store = getattr(self.app_state, "data_loader", None)
         if store is not None and hasattr(store, "update_ds"):
             store.update_ds(self.app_state.ds)
@@ -1402,7 +1405,7 @@ class ChangepointsWidget(QWidget):
                 # TODO: Mention in documentation, only Ctrl+Z functionality of the GUI.
                 self._save_correction_snapshot(mode)
                 for trial in self.app_state.trials:
-                    ds = self.app_state.dt.trial(trial)
+                    ds = self.app_state.dt.trial(trial) if self.app_state.dt is not None else self.app_state.ds
                     corrected_df = self._correct_trial_intervals(trial, ds, all_params, ds_kwargs)
                     self.app_state.set_trial_intervals(trial, corrected_df)
                     self.app_state.set_trial_meta_attr(trial, 'changepoint_corrected', 1)

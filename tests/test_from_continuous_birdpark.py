@@ -3,7 +3,7 @@
 Verifies:
 - TrialTree.from_continuous slices correctly
 - NWB alignment file works with session-wide video/audio
-- session_io returns correct offsets per trial
+- nwb_alignment returns correct offsets per trial
 - Time coordinates are trial-relative (start at 0)
 """
 
@@ -101,34 +101,35 @@ def test_nwb_alignment_with_continuous(tmp_path):
     dt = TrialTree.from_continuous(ds, epochs)
 
     nwb_path = _make_alignment_nwb(epochs, tmp_path)
-    dt.nwb_path = str(nwb_path)
+    from ethograph.io.nwb_alignment import make_nwb_alignment
+    dt.nwb_alignment = make_nwb_alignment(nwb_path)
 
-    sio = dt.session_io
+    sio = dt.nwb_alignment
     assert sio.cameras == ["cam-1"]
     assert sio.mics == ["mic-1"]
 
     # Trial timing (session-absolute)
-    assert dt.start_time(1) == 0.0
-    assert dt.start_time(2) == 20.0
-    assert dt.start_time(3) == 40.0
-    assert dt.stop_time(1) == 20.0
+    assert sio.start_time(1) == 0.0
+    assert sio.start_time(2) == 20.0
+    assert sio.start_time(3) == 40.0
+    assert sio.stop_time(1) == 20.0
 
     # Media files — all trials reference the same session-wide files
-    assert dt.get_media(1, "video", "cam-1") == _VIDEO_NAME
-    assert dt.get_media(2, "audio", "mic-1") == _AUDIO_NAME
-    assert dt.get_media(3, "video", "cam-1") == _VIDEO_NAME
+    assert sio.get_media(1, "video", "cam-1") == _VIDEO_NAME
+    assert sio.get_media(2, "audio", "mic-1") == _AUDIO_NAME
+    assert sio.get_media(3, "video", "cam-1") == _VIDEO_NAME
 
     # Video offset: session-wide video starts at t=0 absolute,
     # so for trial 2 (starts at 20s), trial-relative offset = 0 - 20 = -20s.
-    offset_t1 = dt.stream_offset_for_trial(1, "video", "cam-1")
-    offset_t2 = dt.stream_offset_for_trial(2, "video", "cam-1")
-    offset_t3 = dt.stream_offset_for_trial(3, "video", "cam-1")
+    offset_t1 = sio.stream_offset_for_trial(1, "video", "cam-1")
+    offset_t2 = sio.stream_offset_for_trial(2, "video", "cam-1")
+    offset_t3 = sio.stream_offset_for_trial(3, "video", "cam-1")
     assert abs(offset_t1 - 0.0) < 0.1, f"Trial 1 offset should be ~0, got {offset_t1}"
     assert abs(offset_t2 - (-20.0)) < 0.1, f"Trial 2 offset should be ~-20, got {offset_t2}"
     assert abs(offset_t3 - (-40.0)) < 0.1, f"Trial 3 offset should be ~-40, got {offset_t3}"
 
     # FPS from NWB
-    detected_fps = dt.get_stream_rate("video", "cam-1")
+    detected_fps = sio.get_stream_rate("video", "cam-1")
     assert detected_fps is not None
     assert abs(detected_fps - _FPS) < 0.01
 
@@ -222,7 +223,8 @@ def test_continuous_xarray_and_nwb_together(tmp_path):
     dt = TrialTree.from_continuous(ds, epochs)
 
     nwb_path = _make_alignment_nwb(epochs, tmp_path)
-    dt.nwb_path = str(nwb_path)
+    from ethograph.io.nwb_alignment import make_nwb_alignment
+    dt.nwb_alignment = make_nwb_alignment(nwb_path)
 
     for trial_id in [1, 2, 3]:
         trial_ds = dt.trial(trial_id)
@@ -233,12 +235,12 @@ def test_continuous_xarray_and_nwb_together(tmp_path):
         assert 19.0 < t_end < 20.5
 
         # NWB: session-absolute timing
-        nwb_start = dt.start_time(trial_id)
-        nwb_stop = dt.stop_time(trial_id)
+        nwb_start = dt.nwb_alignment.start_time(trial_id)
+        nwb_stop = dt.nwb_alignment.stop_time(trial_id)
         assert abs(nwb_stop - nwb_start - 20.0) < 0.01
 
         # Video offset bridges the two
-        v_offset = dt.stream_offset_for_trial(trial_id, "video", "cam-1")
+        v_offset = dt.nwb_alignment.stream_offset_for_trial(trial_id, "video", "cam-1")
         expected_offset = 0.0 - nwb_start
         assert abs(v_offset - expected_offset) < 0.1
 

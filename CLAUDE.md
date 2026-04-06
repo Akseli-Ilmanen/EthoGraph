@@ -47,6 +47,10 @@ Never remove human-authored comments (TODO, FIXME, NOTE, explanatory comments). 
 
 After making major design changes, update this file to match the current state.
 
+## Test Files
+
+All test and debug scripts go in `tests/`. Never leave `test_*.py` or `_test_*.py` files in the project root. Prefix with `_test_` for ad-hoc debug scripts (pytest won't discover them).
+
 ## Development Notes
 
 Claude Code has permission to make any necessary changes to files in this repository.
@@ -77,7 +81,7 @@ ethograph/
     __init__.py               # Public API
 
 ethograph/gui/
-    modality.py               # Unified data source + buffering (ModalitySource, FileSource, XarraySource, WindowedBuffer)
+    plot_sources               # Plot-facing data sources + buffering (PlotSource, FileSource, XarraySource, WindowedBuffer)
     app_state.py              # Central state management (AppStateSpec + ObservableAppState)
     data_sources.py           # build_audio_source() -> FileSource
     data_loader.py            # Dataset loading: .nc, .nwb, pynapple, NWB project dirs
@@ -85,7 +89,7 @@ ethograph/gui/
     plots_container.py        # UnifiedPanelContainer — multi-panel layout
     plots_base.py             # Abstract base class for all plots (BasePlot)
     plots_audiotrace.py       # Audio waveform (WindowedBuffer + FileSource)
-    plots_spectrogram.py      # Spectrogram (SpectrogramBuffer + ModalitySource)
+    plots_spectrogram.py      # Spectrogram (SpectrogramBuffer + PlotSource)
     plots_ephystrace.py       # Ephys multichannel trace (custom pyramid buffer + FileSource)
     plots_lineplot.py         # Time-series line plot (WindowedBuffer + XarraySource)
     plots_heatmap.py          # N-dim heatmap (WindowedBuffer + XarraySource for features)
@@ -135,23 +139,28 @@ ethograph/utils/
 
 ## Architecture
 
-### Unified Data Source + Buffering: `modality.py`
+### Two Data-Source Layers
 
-All modalities (audio, ephys, features) use a shared abstraction for data access and viewport caching:
+The codebase has two distinct source protocols:
 
-**`ModalitySource`** (Protocol) — uniform interface: `name`, `time_range`, `sampling_rate`, `identity`, `get_data(t0, t1)`
-
-**Concrete sources:**
+**Rendering layer** (`gui/plot_sources`) — what plots use to load and cache viewport data:
+- **`PlotSource`** (Protocol) — `name`, `time_range`, `sampling_rate`, `identity`, `get_data(t0, t1)`
 - `FileSource` — wraps any loader with `rate`/`__len__`/`__getitem__` (audioio, ephys, memmap)
 - `XarraySource` — wraps `xr.Dataset`, returns time-sliced datasets from `get_data()`
+- `WindowedBuffer` — viewport-aware cache. Loads wider than viewport, reloads on pan past buffer.
 
-**`WindowedBuffer`** — generic viewport-aware cache. Loads data wider than the viewport (configurable `buffer_multiplier`), reloads only when panning past the buffered region. Identity-based invalidation on source change.
+**Navigation layer** (`io/time_model.py` + `io/time_sources.py`) — session-level time metadata:
+- **`TimeSource`** (Protocol) — `name`, `time_range`, `sampling_rate`, `get_data(t0, t1)`
+- `SourceCollection` — registry that computes `union_range`, `intersection_range`, `find_trial(t)`
+- Concrete adapters: `XarrayTrialSource`, `PynappleSource`, `NWBTimeSource`, `MediaTimeSource`
+
+`SourceCollection` only uses `time_range` metadata — it never calls `get_data()`.
 
 **Which plots use what:**
 | Plot | Source | Buffer |
 |------|--------|--------|
 | AudioTracePlot | `FileSource` | `WindowedBuffer` |
-| SpectrogramPlot | `ModalitySource` (FileSource) | `SpectrogramBuffer` (caches FFT output) |
+| SpectrogramPlot | `PlotSource` (FileSource) | `SpectrogramBuffer` (caches FFT output) |
 | EphysTracePlot | `FileSource` (via buffer) | `EphysTraceBuffer` (custom: multi-resolution pyramid) |
 | LinePlot | `XarraySource` | `WindowedBuffer` |
 | HeatmapPlot (features) | `XarraySource` | `WindowedBuffer` |
@@ -163,7 +172,7 @@ All modalities (audio, ephys, features) use a shared abstraction for data access
 
 Key: `dt.trial(id)`, `dt.itrial(idx)`, `dt.trials`, `dt.trial_items()`, `dt.map_trials(fn)`, `dt.update_trial(id, fn)`, `dt.get_label_dt()`
 
-Media & Session: All session metadata (trial timing, media file paths, FPS, stream offsets) lives in NWB files (`.ethograph/alignment.nwb`), accessed via `dt.session_io` (NWBSessionIO). Methods: `dt.get_media(trial, stream, device)`, `dt.cameras`, `dt.mics`, `dt.start_time(trial)`, `dt.stop_time(trial)`, `dt.get_video_fps(camera)`. The old xarray `dt.session` node is removed. Use `ethograph.utils.nwb.build_nwb_from_trial_table()` or `build_nwb_session()` to create alignment NWB files.
+Media & Session: All session metadata (trial timing, media file paths, FPS, stream offsets) lives in NWB files (`.ethograph/alignment.nwb`), accessed via `dt.nwb_alignment` (NWBAlignment). Methods: `dt.get_media(trial, stream, device)`, `dt.cameras`, `dt.mics`, `dt.start_time(trial)`, `dt.stop_time(trial)`, `dt.get_video_fps(camera)`. The old xarray `dt.session` node is removed. Use `ethograph.utils.nwb.build_nwb_from_trial_table()` or `build_nwb_session()` to create alignment NWB files.
 
 ### State Management: `app_state.py`
 
@@ -215,11 +224,11 @@ Replaces the old `type_vars_dict` pattern with two explicit abstractions:
 
 **NWB Backend** (`nwb_backend.py`): NWB traversal + combo detection in one file. `NWBCatalog` with `TimeSeriesRecord`s, `ComboCatalog` with `filter()`, `load_slice()`, `load_stacked()`.
 
-### Alignment System: `alignment.nwb` + `session_io.py`
+### Alignment System: `alignment.nwb` + `nwb_alignment.py`
 
 All external media (video, audio, pose) stored as `ImageSeries` in NWB acquisition with `external_file` + `starting_frame` + `rate`. Named `{stream}_{device}` (e.g. `video_cam-1`, `audio_mic-1`, `pose_cam-1`).
 
-**`NWBSessionIO`** reads alignment NWB. Key methods:
+**`NWBAlignment`** reads alignment NWB. Key methods:
 - `get_stream_rate(stream, device)` — read `.rate` from any ImageSeries
 - `resolve_media_path(trial, stream, device, fallback_folder)` — try ImageSeries path → NWB-relative → fallback folder + filename
 - `get_media_for_time(session_time, fallback_folders)` — generalized `get_videos`: walks all acquisition ImageSeries, returns `{name: (path, local_time)}`
@@ -301,7 +310,7 @@ Bridge pattern: intervals→dense→correct→intervals. Kinematic CPs stored as
 
 - NetCDF with trials. Time coords: `time`, `time_aux`, etc. (any containing 'time')
 - Variables with `type='features'` for feature selection
-- Media/session metadata in NWB files (`.ethograph/alignment.nwb`), accessed via `dt.session_io`
+- Media/session metadata in NWB files (`.ethograph/alignment.nwb`), accessed via `dt.nwb_alignment`
 - Labels: stored in `_labels.tsv` (not inside `.nc`). Legacy `.nc` labels auto-migrate on first load.
 
 ## Roadmap

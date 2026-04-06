@@ -174,26 +174,25 @@ def detect_trials(data: dict) -> nap.IntervalSet | None:
     return None
 
 
+def _nwb_to_dict(nwb: nap.NWBFile) -> dict:
+    """Extract all objects from an NWBFile into a flat dict."""
+    data = {}
+    for key in parse_nwb_types(nwb):
+        try:
+            data[key] = nwb[key]
+        except Exception:
+            pass
+    return data
+
+
 def _load_folder_as_dict(folder_path: Path) -> dict:
     """Load all .npz and .nwb files in a folder into a flat dict."""
     data = {}
-    for f in sorted(folder_path.iterdir()):
-        if f.suffix == ".npz":
-            try:
-                data[f.stem] = nap.load_file(str(f))
-            except Exception:
-                pass
-        elif f.suffix == ".nwb":
-            try:
-                nwb = nap.load_file(str(f))
-                type_map = parse_nwb_types(nwb)
-                for key in type_map:
-                    try:
-                        data[key] = nwb[key]
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+    for key, val in nap.load_folder(str(folder_path)).items():
+        if isinstance(val, nap.NWBFile):
+            data.update(_nwb_to_dict(val))
+        else:
+            data[key] = val
     return data
 
 
@@ -215,16 +214,8 @@ def load_nap_data(path: str) -> tuple[dict, nap.IntervalSet | None]:
     if p.is_dir():
         data = _load_folder_as_dict(p)
     elif p.suffix == ".nwb":
-        nwb = nap.load_file(str(p))
-        type_map = parse_nwb_types(nwb)
-        data = {}
-        for key in type_map:
-            try:
-                data[key] = nwb[key]
-            except Exception:
-                pass
+        data = _nwb_to_dict(nap.load_file(str(p)))
     elif p.suffix == ".npz":
-        # Load all sibling npz files from the same directory
         data = _load_folder_as_dict(p.parent)
     else:
         raise ValueError(f"Unsupported file type: {p.suffix}")

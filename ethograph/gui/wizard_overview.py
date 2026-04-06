@@ -121,7 +121,7 @@ class _ModeSelectionPage(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(
-            "<b>🧙‍♂️Data wizard</b><br>"
+            "<b>🧙Data wizard</b><br>"
             "Select how your data is organized:"
         ))
         layout.addSpacing(12)
@@ -315,7 +315,7 @@ class NCWizardDialog(QDialog):
         self.io_widget = io_widget
         self._state = WizardState()
 
-        self.setWindowTitle("🧙‍♂️Data wizard — Wizard")
+        self.setWindowTitle("Data wizard")
         self.setMinimumWidth(950)
         self.setMinimumHeight(750)
         self.resize(1050, 800)
@@ -521,7 +521,7 @@ class NCWizardDialog(QDialog):
 
         if progress.was_cancelled or error:
             if error:
-                notify_dialog(f"Failed to 🧙‍♂️Data wizard:\n{error}", "error", "Error", self)
+                notify_dialog(f"Failed to 🧙Data wizard:\n{error}", "error", "Error", self)
             return
 
         save_progress = BusyProgressDialog("Saving .nc file…", parent=self)

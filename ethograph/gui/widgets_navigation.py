@@ -463,14 +463,14 @@ class NavigationWidget(QWidget):
 
         self.video_combo.blockSignals(True)
         self.video_combo.clear()
-        dt = getattr(self.app_state, "dt", None)
-        if dt is None:
+        sio = getattr(self.app_state, "nwb_alignment", None)
+        if sio is None:
             self.video_combo.blockSignals(False)
             return
         camera = getattr(self.app_state, "primary_camera", None)
         trials = getattr(self.app_state, "trials", [])
         for tid in trials:
-            path = dt.resolve_media_path(tid, "video", device=camera)
+            path = sio.resolve_media_path(tid, "video", device=camera)
             name = os.path.basename(path) if path else str(tid)
             self.video_combo.addItem(name, tid)
         current = getattr(self.app_state, "trials_sel", None)
@@ -732,12 +732,13 @@ class NavigationWidget(QWidget):
     # ==================================================================
 
     def _on_jump_to_time(self):
-        dt = getattr(self.app_state, "dt", None)
-        if dt is None:
+        sio = getattr(self.app_state, "nwb_alignment", None)
+        trials = getattr(self.app_state, "trials", None)
+        if sio is None or not trials:
             return
         global_t = self.jump_time_spin.value()
         try:
-            trial_id, _rel_t = find_closest_trial(dt, global_t)
+            trial_id, _rel_t = find_closest_trial(sio, trials, global_t)
         except ValueError:
             logger.warning("Cannot jump: no trial timing info")
             return

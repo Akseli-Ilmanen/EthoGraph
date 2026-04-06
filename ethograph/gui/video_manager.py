@@ -223,9 +223,9 @@ class VideoManager:
         if not self.app_state.ready:
             return
         camera = self.app_state.primary_camera
-        dt = self.app_state.dt
-        if camera and dt is not None:
-            self.app_state.video_path = dt.resolve_media_path(
+        sio = getattr(self.app_state, 'nwb_alignment', None)
+        if camera and sio is not None:
+            self.app_state.video_path = sio.resolve_media_path(
                 self.app_state.trials_sel, "video", device=camera,
                 fallback_folder=self.app_state.video_folder,
             )
@@ -309,7 +309,7 @@ class VideoManager:
         detected_fps = float(reader.stream.guessed_rate) if reader.stream.guessed_rate else None
         if detected_fps is not None and self.app_state.dt is not None:
             camera = self.app_state.primary_camera
-            self.app_state.dt.set_stream_rate(detected_fps, "video", camera)
+            self.app_state.nwb_alignment.set_stream_rate(detected_fps, "video", camera)
 
         alignment = getattr(self.app_state, 'trial_alignment', None)
         video_time_offset = alignment.video_offset if alignment else 0.0
@@ -422,11 +422,11 @@ class VideoManager:
 
     def _prepare_extra_video(self, reader, fps: float, camera_name: str):
         """Retrieve per-camera offset and apply trial slicing for an extra camera."""
-        dt = getattr(self.app_state, 'dt', None)
+        sio = getattr(self.app_state, 'nwb_alignment', None)
         time_offset = 0.0
-        if dt is not None:
+        if sio is not None:
             trial_id = self.app_state.trials_sel
-            time_offset = dt.stream_offset_for_trial(trial_id, "video", camera_name)
+            time_offset = sio.stream_offset_for_trial(trial_id, "video", camera_name)
 
         alignment = getattr(self.app_state, 'trial_alignment', None)
         video_data = reader
@@ -552,10 +552,10 @@ class VideoManager:
             widget.seek_to_time(t_seconds)
 
     def _store_camera_fps_in_session(self, camera_name: str, fps: float):
-        dt = getattr(self.app_state, 'dt', None)
-        if dt is None:
+        sio = getattr(self.app_state, 'nwb_alignment', None)
+        if sio is None:
             return
-        dt.set_stream_rate(fps, "video", camera_name)
+        sio.set_stream_rate(fps, "video", camera_name)
 
     def cleanup(self):
         if getattr(self.app_state, 'video', None):
@@ -602,7 +602,7 @@ class VideoManager:
     def _resolve_video_path(self, camera_name: str, video_folder: str | None) -> str | None:
         if is_url(camera_name):
             return camera_name
-        return self.app_state.dt.resolve_media_path(
+        return self.app_state.nwb_alignment.resolve_media_path(
             self.app_state.trials_sel, "video", device=camera_name,
             fallback_folder=video_folder,
         )

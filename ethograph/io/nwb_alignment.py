@@ -1,4 +1,4 @@
-"""SessionIO: NWB-backed session metadata access for TrialTree."""
+""" Alignment of media streams, feature data and trial timing from alignment.nwb."""
 
 from __future__ import annotations
 
@@ -16,6 +16,34 @@ logger = logging.getLogger(__name__)
 
 _EPOCH_GAP = 1e-4
 _KNOWN_STREAMS = ("video", "pose", "audio", "ephys")
+_NWB_FILENAME = "alignment.nwb"
+_SETTINGS_DIR = ".ethograph"
+
+
+def discover_nwb(nc_path: str | Path) -> Path | None:
+    """Find an NWB session file near a data file.
+
+    Search order:
+    1. ``<dir>/.ethograph/alignment.nwb``
+    2. Any ``.nwb`` file in ``<dir>/.ethograph/``
+    """
+    d = Path(nc_path).resolve().parent
+    ethograph_dir = d / _SETTINGS_DIR
+    if ethograph_dir.is_dir():
+        candidate = ethograph_dir / _NWB_FILENAME
+        if candidate.exists():
+            return candidate
+        nwb_files = list(ethograph_dir.glob("*.nwb"))
+        if nwb_files:
+            return nwb_files[0]
+    return None
+
+
+def make_nwb_alignment(nwb_path: str | Path | None = None):
+    """Create a EmpytAlignment from an NWB path, falling back to base EmpytAlignment."""
+    if nwb_path and Path(nwb_path).exists():
+        return NWBAlignment(nwb_path)
+    return EmpytAlignment()
 
 
 # ---------------------------------------------------------------------------
@@ -23,12 +51,11 @@ _KNOWN_STREAMS = ("video", "pose", "audio", "ephys")
 # ---------------------------------------------------------------------------
 
 
-class SessionIO:
+class EmpytAlignment:
     """Base session metadata interface with null-object defaults.
 
-    ``NWBSessionIO`` overrides these with real NWB-backed implementations.
-    When no NWB file is available, the base class is used directly
-    (replaces the old ``EmptySessionIO``).
+    ``NWBAlignment`` overrides these with real NWB-backed implementations.
+    When no NWB file is available, the base class is used directly.
     """
 
     @property
@@ -97,7 +124,6 @@ class SessionIO:
 # Column parsing helpers
 # ---------------------------------------------------------------------------
 
-_STREAM_COL_RE = re.compile(r"^(video|pose|audio|ephys)_(.+)$")
 
 
 def _parse_stream_columns(columns: list[str], stream: str) -> list[str]:
@@ -117,11 +143,11 @@ def _parse_stream_columns(columns: list[str], stream: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# NWBSessionIO
+# NWBAlignment
 # ---------------------------------------------------------------------------
 
 
-class NWBSessionIO:
+class NWBAlignment:
     """Session metadata backed by an NWB file.
 
     All external media (video, audio, pose) are stored as ImageSeries
@@ -134,7 +160,7 @@ class NWBSessionIO:
         self._io: Any = None
         self._nwb: Any = None
         self._trials_df_cache: pd.DataFrame | None = None
-        self._rate_overlay: dict[tuple[str, str | None], float] = {}
+        self._rate_dict: dict[tuple[str, str | None], float] = {}
 
     def _open(self) -> None:
         if self._nwb is not None:
@@ -334,8 +360,8 @@ class NWBSessionIO:
     def get_stream_rate(self, stream: str, device: str | None = None) -> float | None:
         """Read the sampling rate for a stream from its acquisition ImageSeries."""
         key = (stream, device)
-        if key in self._rate_overlay:
-            return self._rate_overlay[key]
+        if key in self._rate_dict:
+            return self._rate_dict[key]
 
         nwb = self.nwb
         if not nwb.acquisition:
@@ -357,7 +383,7 @@ class NWBSessionIO:
         return None
 
     def set_stream_rate(self, rate: float, stream: str, device: str | None = None) -> None:
-        self._rate_overlay[(stream, device)] = rate
+        self._rate_dict[(stream, device)] = rate
 
     def stream_rates(self) -> dict[str, tuple[float, float | None]]:
         """Return ``{acq_name: (starting_time, rate)}`` for all acquisition streams.
@@ -558,70 +584,3 @@ def _file_index_for_trial(
         if i < len(sf) and sf[i] <= target_frame:
             return i
     return 0
-
-
-# ---------------------------------------------------------------------------
-# EmptySessionIO
-# ---------------------------------------------------------------------------
-
-
-class EmptySessionIO:
-    """Null-object session: no metadata available."""
-
-    @property
-    def trials_df(self) -> pd.DataFrame:
-        return pd.DataFrame()
-
-    def get_media(self, trial, stream: str, device: str | None = None) -> str | None:
-        return None
-
-    def devices(self, stream: str) -> list[str]:
-        return []
-
-    @property
-    def cameras(self) -> list[str]:
-        return []
-
-    @property
-    def mics(self) -> list[str]:
-        return []
-
-    def start_time(self, trial) -> float:
-        return 0.0
-
-    def stop_time(self, trial) -> float | None:
-        return None
-
-    def trial_duration(self, trial) -> float:
-        raise ValueError(f"Trial {trial} has no known stop time")
-
-    def stream_offset_for_trial(self, trial, stream: str, device: str | None = None) -> float:
-        return 0.0
-
-    def get_stream_rate(self, stream: str, device: str | None = None) -> float | None:
-        return None
-
-    def set_stream_rate(self, rate: float, stream: str, device: str | None = None) -> None:
-        pass
-
-    def resolve_media_path(
-        self, trial, stream: str, device: str | None = None,
-        fallback_folder: str | None = None,
-    ) -> str | None:
-        return None
-
-    @property
-    def trials_ep(self):
-        return None
-
-    def trial_epoch(self, trial):
-        raise ValueError("No timing information available")
-
-    def restrict(self, obj, trial):
-        raise ValueError("No timing information available")
-
-    def print_session(self) -> None:
-        print("No session table.")
-
-    def close(self) -> None:
-        pass

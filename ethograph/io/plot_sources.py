@@ -1,21 +1,24 @@
-"""Unified data source and buffering abstractions for all modalities.
+"""Plot-facing data sources and viewport buffering.
 
-Replaces the per-plot buffer classes (AudioTraceBuffer, SpectrogramBuffer,
-EphysTraceBuffer, LinePlot inline buffer) with a single generic
-``WindowedBuffer`` that wraps any ``ModalitySource``.
+Provides the **rendering layer**: concrete sources that plots use to
+fetch and cache data for the visible viewport.  Distinct from the
+**navigation layer** in ``io/time_model.py`` (``TimeSource`` /
+``SourceCollection``) which only tracks time-range metadata for
+session navigation — it never loads waveform/feature data.
 
 Key types:
-    SourceData      -- (timestamps, values) pair returned by file-based sources
-    ModalitySource  -- Protocol: anything that provides time-aligned data
-    FileSource      -- Wraps audioio/ephys/memmap loaders as ModalitySource
-    XarraySource    -- Wraps xr.Dataset as a ModalitySource (returns dataset slices)
-    WindowedBuffer  -- Generic viewport-aware cache for any source
+    SampleSlice     -- (timestamps, values) NamedTuple from file-based sources
+    PlotSource      -- Protocol: anything a plot can read data from
+    FileSource      -- Wraps audioio/ephys/memmap loaders as PlotSource
+    XarraySource    -- Wraps xr.Dataset as a PlotSource (returns dataset slices)
+    NWBSource       -- Lazy HDF5 streaming from NWB TimeSeries/ImageSeries
+    PynappleSource  -- Lazy access to pynapple Tsd/TsdFrame objects
+    WindowedBuffer  -- Generic viewport-aware cache for any PlotSource
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -25,30 +28,33 @@ if TYPE_CHECKING:
     import xarray as xr
 
 
-@dataclass(slots=True)
-class SourceData:
-    """Raw data slice returned by a file-based ModalitySource."""
+class SampleSlice(NamedTuple):
+    """Raw (timestamps, values) slice from a file-based PlotSource.
+
+    Same shape contract as ``TimeSource.get_data()`` return value:
+    ``timestamps`` is 1-D float64, ``values`` is ``(T,)`` or ``(T, C)``.
+    """
 
     timestamps: np.ndarray
     values: np.ndarray
 
-    def __len__(self) -> int:
-        return len(self.timestamps)
-
     def empty(self) -> bool:
         return len(self.timestamps) == 0
 
-    def slice_time(self, t0: float, t1: float) -> SourceData:
-        mask = (self.timestamps >= t0) & (self.timestamps <= t1)
-        return SourceData(self.timestamps[mask], self.values[mask])
-
 
 @runtime_checkable
-class ModalitySource(Protocol):
-    """Uniform interface for any time-aligned data provider.
+class PlotSource(Protocol):
+    """Uniform data-access interface consumed by plot widgets.
 
-    Implementations: FileSource (audio, ephys), XarraySource (features),
-    VideoSource (frame-based).
+    Each plot's ``set_source()`` accepts a PlotSource; ``WindowedBuffer``
+    caches the result of ``get_data()`` around the current viewport.
+
+    Concrete implementations: ``FileSource`` (audio, ephys file loaders),
+    ``XarraySource`` (feature datasets).
+
+    Not to be confused with ``TimeSource`` (``io/time_model.py``), which
+    is a lighter metadata-only protocol used by ``SourceCollection`` for
+    session-level navigation and time-range queries.
     """
 
     @property
@@ -67,7 +73,7 @@ class ModalitySource(Protocol):
 
 
 class FileSource:
-    """Wraps a file-based loader (audioio, ephys, memmap) as a ModalitySource.
+    """Wraps a file-based loader (audioio, ephys, memmap) as a PlotSource.
 
     The loader must expose ``rate: float``, ``__len__() -> int``,
     and ``__getitem__(slice) -> ndarray``.
@@ -123,12 +129,12 @@ class FileSource:
         ch = f":{self._channel}" if self._channel is not None else ""
         return f"file:{self._name}:{loader_id}{ch}"
 
-    def get_data(self, t0: float, t1: float) -> SourceData:
+    def get_data(self, t0: float, t1: float) -> SampleSlice:
         i0 = max(0, int((t0 - self._start_time) * self._rate))
         i1 = min(self._n_samples, int((t1 - self._start_time) * self._rate) + 1)
         if i1 <= i0:
             empty = np.array([], dtype=np.float64)
-            return SourceData(empty, empty)
+            return SampleSlice(empty, empty)
 
         data = self._loader[i0:i1]
         if self._channel is not None and data.ndim > 1:
@@ -136,14 +142,14 @@ class FileSource:
             data = data[:, ch]
 
         timestamps = self._start_time + np.arange(i0, i1) / self._rate
-        return SourceData(
+        return SampleSlice(
             timestamps.astype(np.float64),
             np.asarray(data, dtype=np.float64),
         )
 
 
 class XarraySource:
-    """Wraps an xr.Dataset as a ModalitySource.
+    """Wraps an xr.Dataset as a PlotSource.
 
     Returns time-sliced datasets from ``get_data()``.  Only variables
     sharing the given time coordinate are included.
@@ -182,13 +188,13 @@ class XarraySource:
 
 
 class WindowedBuffer:
-    """Viewport-aware cache for any ModalitySource.
+    """Viewport-aware cache for any PlotSource.
 
     Maintains a data window around the current viewport, reloading only
     when the viewport moves outside the buffered region.  Replaces all
     per-plot buffer classes with a single generic implementation.
 
-    The cached object type depends on the source: ``SourceData`` for
+    The cached object type depends on the source: ``SampleSlice`` for
     ``FileSource``, ``xr.Dataset`` for ``XarraySource``, etc.
 
     Parameters
@@ -206,7 +212,7 @@ class WindowedBuffer:
         buffer_multiplier: float = 5.0,
         coverage_margin: float = 0.2,
     ):
-        self.source: ModalitySource | None = None
+        self.source: PlotSource | None = None
         self.buffer_multiplier = buffer_multiplier
         self._coverage_margin = coverage_margin
         self._bounds: TimeRange | None = None
@@ -218,7 +224,7 @@ class WindowedBuffer:
 
     def set_source(
         self,
-        source: ModalitySource | None,
+        source: PlotSource | None,
         bounds: TimeRange | None = None,
     ):
         """Attach a new source, invalidating the cache if it changed."""
@@ -271,3 +277,17 @@ class WindowedBuffer:
         self._cache_t0 = 0.0
         self._cache_t1 = 0.0
         self._identity = None
+
+
+def build_audio_source(app_state) -> FileSource | None:
+    """Build a FileSource for audio from the current app_state."""
+    from ..gui.plots_spectrogram import SharedAudioCache
+
+    audio_path = getattr(app_state, 'audio_path', None)
+    if not audio_path:
+        return None
+    _, channel_idx = app_state.get_audio_source()
+    loader = SharedAudioCache.get_loader(audio_path)
+    if loader is None:
+        return None
+    return FileSource("audio", loader, channel=channel_idx)

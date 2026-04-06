@@ -71,23 +71,26 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
 
 def enrich_labels_df(
     all_labels_df: pd.DataFrame,
-    dt: "TrialTree",
+    nwb_alignment=None,
     keep_attrs: list[str] | None = None,
+    dt=None,
 ) -> pd.DataFrame:
     """Enrich a raw labels DataFrame with computed columns for analysis export.
 
     Takes the in-memory ``_all_labels_df`` (with columns ``onset_s``, ``offset_s``,
     ``labels``, ``individual``, ``trial``) and adds session timing, duration,
-    sequence info, and trial attributes from ``dt``.
+    sequence info, and trial attributes.
 
     Parameters
     ----------
     all_labels_df : pd.DataFrame
         Raw labels with required columns: onset_s, offset_s, labels, individual, trial.
-    dt : TrialTree
-        The data tree (for session timing and trial attributes).
+    nwb_alignment
+        Session metadata (for trial timing).
     keep_attrs : list[str], optional
-        Trial-level ``ds.attrs`` keys to include as extra columns.
+        Trial-level ``ds.attrs`` keys to include as extra columns (xarray only).
+    dt : TrialTree, optional
+        Xarray data tree (only needed for ``keep_attrs`` and session name).
 
     Returns
     -------
@@ -123,11 +126,11 @@ def enrich_labels_df(
         # Session timing
         t_start, t_stop = None, None
         try:
-            t_start = dt.start_time(trial_id)
+            t_start = nwb_alignment.start_time(trial_id)
         except (AttributeError, KeyError, ValueError):
             pass
         try:
-            t_stop = dt.stop_time(trial_id)
+            t_stop = nwb_alignment.stop_time(trial_id)
         except (AttributeError, KeyError, ValueError):
             pass
 

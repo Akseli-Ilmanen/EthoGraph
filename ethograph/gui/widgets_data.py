@@ -9,6 +9,7 @@ from typing import Dict
 
 import numpy as np
 import xarray as xr
+import pandas as pd
 from napari.viewer import Viewer
 from qtpy.QtCore import QSortFilterProxyModel, Qt, QTimer
 from qtpy.QtGui import QColor
@@ -36,7 +37,7 @@ from qtpy.QtWidgets import (
 import ethograph as eto
 from ethograph.gui.notify import notify, notify_dialog
 from ethograph.labels.intervals import get_interval_bounds
-from ethograph.gui.modality import FileSource
+from ethograph.io.plot_sources import FileSource
 from ethograph.io.time_model import compute_trial_alignment
 
 
@@ -46,7 +47,7 @@ from .app_constants import (
     DEFAULT_LAYOUT_SPACING,
     SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
 )
-from .data_loader import load_dataset
+from ethograph.io.data_loader import load_dataset
 from .makepretty import (
     ElidedDelegate,
     clean_display_labels,
@@ -569,7 +570,7 @@ class DataWidget(QWidget):
         nc_file_path = self.io_widget.get_nc_file_path()
 
         try:
-            self.app_state.dt, all_labels_df, catalog = load_dataset(
+            result = load_dataset(
                 nc_file_path,
                 require_fps=self.app_state.has_pose,
                 progress_callback=getattr(self.app_state, "_progress_callback", None),
@@ -577,11 +578,12 @@ class DataWidget(QWidget):
                 dandiset_id=getattr(self.app_state, "_dandi_dandiset_id", None),
                 import_labels=self.io_widget.import_labels_checkbox.isChecked(),
             )
-            self.catalog = catalog
-            nwb_video_folder = self.app_state.dt.attrs.get("nwb_video_folder")
-            if nwb_video_folder and not self.app_state.video_folder:
+            self.app_state.dt = result.dt
+            all_labels_df = result.all_labels_df
+            self.catalog = result.catalog
+            if result.nwb_video_folder and not self.app_state.video_folder:
                 from .dialog_video_downsample import offer_downsample
-                nwb_video_folder = offer_downsample(str(nwb_video_folder), parent=self)
+                nwb_video_folder = offer_downsample(str(result.nwb_video_folder), parent=self)
                 self.app_state.video_folder = nwb_video_folder
         except (OSError, ValueError, KeyError) as e:
             self._cancel_load(f"Failed to load dataset: {e}")
@@ -589,16 +591,14 @@ class DataWidget(QWidget):
 
         self.app_state.trial_conditions = self.catalog.trial_conditions
 
-        # Extract data_loader and source_collection from dt.attrs
-        self._pending_loader = self.app_state.dt.attrs.pop("data_loader", None)
-        self.app_state.source_collection = self.app_state.dt.attrs.pop("source_collection", None)
-
-        dt_attrs = self.app_state.dt.attrs
-        dt = self.app_state.dt
+        self._pending_loader = result.data_loader
+        self.app_state.source_collection = result.source_collection
+        self.app_state.nwb_alignment = result.nwb_alignment
 
         # Infer media availability from NWB acquisition items
-        cameras_list = dt.cameras
-        has_nwb_pose = "nwb_source" in dt_attrs and bool(dt_attrs.get("nwb_pose_keys"))
+        sio = self.app_state.nwb_alignment
+        cameras_list = sio.cameras if sio else []
+        has_nwb_pose = bool(result.nwb_local and result.nwb_pose_keys)
         has_remote_cameras = any(is_url(c) for c in cameras_list)
 
         # Video: cameras detected (from trials table or acquisition) + folder or full paths
@@ -608,14 +608,20 @@ class DataWidget(QWidget):
             or has_nwb_pose
         )
         self.app_state.has_pose = (
-            bool(dt.devices("pose"))
+            bool(sio.devices("pose"))
             or has_nwb_pose
         )
-        self.app_state.has_audio = bool(dt.mics)
+        self.app_state.has_audio = bool(sio.mics)
+
+        # Store NWB config on app_state for later access
+        if result.nwb_pose_keys:
+            self.app_state.nwb_pose_keys = result.nwb_pose_keys
+        if result.nwb_local:
+            self.app_state.nwb_local = result.nwb_local
 
         # NWB-embedded ephys
-        nwb_ephys_series = dt_attrs.get("nwb_ephys_series")
-        nwb_ephys_path = dt_attrs.get("nwb_ephys_path")
+        nwb_ephys_series = result.nwb_ephys_series
+        nwb_ephys_path = result.nwb_ephys_path
         if nwb_ephys_series and nwb_ephys_path:
             if not self.app_state.ephys_path:
                 self.app_state.ephys_path = nwb_ephys_path
@@ -638,7 +644,7 @@ class DataWidget(QWidget):
             
 
         downsample_factor = self.io_widget.get_downsample_factor()
-        if downsample_factor is not None:
+        if downsample_factor is not None and self.app_state.dt is not None:
             self.app_state.dt = eto.downsample_trialtree(self.app_state.dt, downsample_factor)
             self.app_state.downsample_factor_used = downsample_factor
             logger.info("Downsampled data by factor %d", downsample_factor)
@@ -647,12 +653,13 @@ class DataWidget(QWidget):
 
         self.io_widget.disable_downsample_controls()
 
-        trials = self.app_state.dt.trials
-
         self.app_state._all_labels_df = all_labels_df
 
-        self.app_state.trials = sorted(trials)
-        self.app_state.ds = self.app_state.dt.trial(self.app_state.trials[0])
+        self.app_state.trials = sorted(result.trial_ids)
+        if self.app_state.dt is not None:
+            self.app_state.ds = self.app_state.dt.trial(self.app_state.trials[0])
+        else:
+            self.app_state.ds = xr.Dataset()
 
         # Now ds is set — create or finalize DataLoader
         store = self._pending_loader
@@ -767,7 +774,9 @@ class DataWidget(QWidget):
         self.navigation_widget.set_data_widget(self)
 
         if getattr(self, "trials_widget", None) is not None:
-            self.trials_widget.setup(self.app_state.dt.metadata_df)
+            dt = self.app_state.dt
+            mdf = dt.metadata_df if dt is not None else pd.DataFrame({"trial": self.app_state.trials})
+            self.trials_widget.setup(mdf)
 
         for combo_name, combo_spec in self.catalog.combos.items():
             if not combo_spec.values:
@@ -775,11 +784,11 @@ class DataWidget(QWidget):
             self._create_combo_widget(combo_name, list(combo_spec.values))
 
         # Restore camera combos
-        has_nwb_pose = "nwb_source" in self.app_state.dt.attrs and (
+        has_nwb_pose = getattr(self.app_state, "nwb_local", None) and (
             "position" in self.app_state.ds.data_vars
             or any(k.startswith("position_") for k in self.app_state.ds.data_vars)
         )
-        cameras = self.app_state.dt.cameras
+        cameras = self.app_state.nwb_alignment.cameras
         has_remote_cameras = any(is_url(c) for c in cameras)
         if has_nwb_pose or has_remote_cameras:
             self.app_state.has_video = True
@@ -1140,8 +1149,7 @@ class DataWidget(QWidget):
         if loader is None:
             return
 
-        if self.app_state.dt is not None:
-            self.app_state.dt.attrs["ephys_stream_id"] = stream_id
+        self.app_state.ephys_stream_id = stream_id
 
         neo_plot = self.plot_container.neo_trace_plot
         neo_plot.set_loader(loader, channel_idx)
@@ -1188,8 +1196,8 @@ class DataWidget(QWidget):
         audio_folder = self.app_state.audio_folder
         dt = getattr(self.app_state, 'dt', None)
         trial_id = getattr(self.app_state, 'trials_sel', None)
-        if trial_id is None and dt is not None and dt.trials:
-            trial_id = dt.trials[0]
+        if trial_id is None and self.app_state.trials:
+            trial_id = self.app_state.trials[0]
 
         if not audio_folder or dt is None:
             for mic in mic_labels:
@@ -1199,7 +1207,7 @@ class DataWidget(QWidget):
             return expanded_items
 
         for mic_label in mic_labels:
-            mic_file = dt.get_media(trial_id, "audio", str(mic_label))
+            mic_file = self.app_state.nwb_alignment.get_media(trial_id, "audio", str(mic_label))
             if not mic_file:
                 continue
             try:
@@ -1222,7 +1230,7 @@ class DataWidget(QWidget):
         combo = getattr(self, 'mics_combo', None)
         if combo is None:
             return
-        new_items = self.app_state.dt.mics
+        new_items = self.app_state.nwb_alignment.mics
         if not new_items:
             return
         new_items = np.array(new_items, dtype=str)
@@ -1239,7 +1247,7 @@ class DataWidget(QWidget):
         self.app_state.set_key_sel("mics", combo.currentText())
 
     def _update_device_sels_for_trial(self, ds):
-        cameras = self.app_state.dt.cameras
+        cameras = self.app_state.nwb_alignment.cameras
 
         primary = getattr(self, 'primary_camera_combo', None)
         if primary is not None and cameras:
@@ -1726,13 +1734,13 @@ class DataWidget(QWidget):
 
     def _validate_media_files(self) -> list[str]:
         missing = []
-        dt = self.app_state.dt
+        sio = self.app_state.nwb_alignment
         first_trial = self.app_state.trials[0]
 
         video_folder = self.app_state.video_folder
         if video_folder:
-            for cam in dt.cameras:
-                vid = dt.get_media(first_trial, "video", device=cam) 
+            for cam in sio.cameras:
+                vid = sio.get_media(first_trial, "video", device=cam)
                 if not vid or is_url(vid):
                     continue
                 path = os.path.join(video_folder, vid)
@@ -1741,7 +1749,7 @@ class DataWidget(QWidget):
 
         audio_folder = self.app_state.audio_folder
         if audio_folder:
-            mics = dt.mics
+            mics = sio.mics
             if not mics:
                 notify(
                     "You selected an audio folder, although the .nc "
@@ -1750,7 +1758,7 @@ class DataWidget(QWidget):
                 )
             else:
                 for mic in mics:
-                    aud = dt.get_media(first_trial, "audio", device=mic)
+                    aud = sio.get_media(first_trial, "audio", device=mic)
                     if not aud:
                         continue
                     path = os.path.join(audio_folder, aud)
@@ -1759,7 +1767,7 @@ class DataWidget(QWidget):
 
         pose_folder = self.app_state.pose_folder
         if pose_folder:
-            cameras = dt.cameras
+            cameras = sio.cameras
             if not cameras:
                 notify(
                     "You selected a pose folder, although the .nc "
@@ -1768,7 +1776,7 @@ class DataWidget(QWidget):
                 )
             else:
                 for cam in cameras:
-                    pose_file = dt.get_media(first_trial, "pose", device=cam)
+                    pose_file = sio.get_media(first_trial, "pose", device=cam)
                     if not pose_file:
                         continue
                     path = os.path.join(pose_folder, pose_file)
@@ -1781,7 +1789,7 @@ class DataWidget(QWidget):
 
     def _build_trial_alignment(self, trial_id) -> None:
         self.app_state.trial_alignment = compute_trial_alignment(
-            self.app_state.dt,
+            self.app_state.nwb_alignment,
             trial_id,
             self.app_state.ds,
             video_folder=self.app_state.video_folder,
@@ -1816,7 +1824,8 @@ class DataWidget(QWidget):
             return
         
 
-        self.app_state.ds = self.app_state.dt.trial(trials_sel)
+        if self.app_state.dt is not None:
+            self.app_state.ds = self.app_state.dt.trial(trials_sel)
 
         # Update data_loader trial index (pynapple: restrict changes;
         # xarray: XarrayLoader.update_ds swaps the backing dataset)
@@ -2031,9 +2040,14 @@ class DataWidget(QWidget):
         self.layout_mgr.toggle_layer_docks_with_anchor(show_layers)
 
         if text == "Space Plot":
+            if not self.app_state.has_video:
+                self.layout_mgr.set_video_viewer_visible(False)
             self.update_space_plot()
-        elif self.space_plot:
-            self.space_plot.hide()
+        else:
+            if self.space_plot:
+                self.space_plot.hide()
+            if not self.app_state.has_video:
+                self.layout_mgr.configure_no_video(self.navigation_widget)
 
     def _on_primary_camera_changed(self, camera_name):
         if not self.app_state.ready or not camera_name:

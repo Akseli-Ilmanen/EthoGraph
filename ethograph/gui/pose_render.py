@@ -264,32 +264,33 @@ class PoseDisplayManager:
         return result
 
     def _camera_index(self, camera_name: str | None = None) -> int:
-        return self.app_state.dt.cameras.index(camera_name)
+        return self.app_state.nwb_alignment.cameras.index(camera_name)
 
     def _camera_name_for_index(self, camera_idx: int) -> str:
-        cameras = self.app_state.dt.cameras
+        cameras = self.app_state.nwb_alignment.cameras
         return cameras[camera_idx] if camera_idx < len(cameras) else str(camera_idx)
 
     def _resolve_camera_fps(self, camera_idx: int) -> float:
-        dt = self.app_state.dt
-        cameras = dt.cameras
+        sio = self.app_state.nwb_alignment
+        cameras = sio.cameras
         if camera_idx < len(cameras):
-            fps = dt.get_stream_rate("video", cameras[camera_idx])
+            fps = sio.get_stream_rate("video", cameras[camera_idx])
             if fps is not None and fps > 0:
                 return fps
         return self.app_state.video_fps
 
     def _get_nwb_file(self) -> Any | None:
-        sio = self.app_state.dt.session_io
+        sio = self.app_state.nwb_alignment
         return getattr(sio, "nwb", None)
 
     def _load_pose_for_camera(self, camera_idx: int) -> PoseRenderData | None:
         dt = self.app_state.dt
         trial_id = self.app_state.trials_sel
-        cameras = dt.cameras
+        sio = self.app_state.nwb_alignment
+        cameras = sio.cameras
 
         if camera_idx < len(cameras):
-            pose_path = dt.resolve_media_path(
+            pose_path = sio.resolve_media_path(
                 trial_id, "pose", device=cameras[camera_idx],
                 fallback_folder=self.app_state.pose_folder,
             )
@@ -307,7 +308,7 @@ class PoseDisplayManager:
             alignment = getattr(self.app_state, 'trial_alignment', None)
             if alignment and alignment.trial_range:
                 fps = self._resolve_camera_fps(camera_idx)
-                time_offset = dt.stream_offset_for_trial(
+                time_offset = sio.stream_offset_for_trial(
                     trial_id, "video", cameras[camera_idx],
                 )
                 trial_start = -time_offset
@@ -318,15 +319,15 @@ class PoseDisplayManager:
                 pr = slice_pose_to_frames(pr, start_frame, end_frame)
             return pr
 
-        pose_keys = list(dt.attrs.get("nwb_pose_keys", []))
+        pose_keys = list(getattr(self.app_state, "nwb_pose_keys", None) or [])
         if pose_keys and camera_idx < len(pose_keys):
             nwb_file = self._get_nwb_file()
             if nwb_file is None:
                 return None
             try:
                 trial_id = self.app_state.trials_sel
-                t_start = dt.start_time(trial_id) if trial_id else None
-                t_stop = dt.stop_time(trial_id) if trial_id else None
+                t_start = sio.start_time(trial_id) if trial_id else None
+                t_stop = sio.stop_time(trial_id) if trial_id else None
                 return load_pose_from_nwb_direct(
                     nwb_file,
                     pose_keys[camera_idx],
@@ -379,8 +380,9 @@ class PoseDisplayManager:
         trial_id = self.app_state.trials_sel
         if dt is None or trial_id is None:
             return 1.0, 1.0
-        device = camera_name or (dt.cameras[0] if dt.cameras else None)
-        video_path = dt.resolve_media_path(
+        sio = self.app_state.nwb_alignment
+        device = camera_name or (sio.cameras[0] if sio.cameras else None)
+        video_path = sio.resolve_media_path(
             trial_id, "video", device=device, fallback_folder=video_folder,
         )
         if not video_path:

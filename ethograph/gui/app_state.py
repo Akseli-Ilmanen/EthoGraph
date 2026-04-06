@@ -353,6 +353,10 @@ class ObservableAppState(QObject):
         self._all_labels_df: pd.DataFrame | None = None
         self._label_mappings: dict | None = None
         self._active_branches: set[int] = {0}
+        
+        # Always initialize nwb_alignment to a null-object (empty SessionIO)
+        from ethograph.io.nwb_alignment import SessionIO
+        self.nwb_alignment = SessionIO()
 
         self.settings = get_settings()
         self._yaml_path = yaml_path or "gui_settings.yaml"
@@ -362,11 +366,8 @@ class ObservableAppState(QObject):
 
     @property
     def video_fps(self) -> float | None:
-        dt = getattr(self, 'dt', None)
-        if dt is not None:
-            camera = self.primary_camera
-            return dt.get_stream_rate("video", camera)
-        return None
+        camera = self.primary_camera
+        return self.nwb_alignment.get_stream_rate("video", camera)
 
     @property
     def sel_attrs(self) -> dict:
@@ -496,24 +497,21 @@ class ObservableAppState(QObject):
         if not mic_file:
             return None, channel_idx
 
-        dt = getattr(self, 'dt', None)
         audio_folder = getattr(self, 'audio_folder', None)
 
-        # Try resolve via session_io (ImageSeries path → fallback folder)
-        if dt is not None:
-            # Find which mic device this file belongs to
-            for mic_dev in dt.mics:
-                trial = getattr(self, 'trials_sel', None)
-                if trial is None:
-                    break
-                media = dt.get_media(trial, "audio", mic_dev)
-                if media and (media == mic_file or Path(media).name == mic_file):
-                    resolved = dt.resolve_media_path(
-                        trial, "audio", device=mic_dev,
-                        fallback_folder=audio_folder,
-                    )
-                    if resolved:
-                        return resolved, channel_idx
+        # Try resolve via nwb_alignment (ImageSeries path → fallback folder)
+        for mic_dev in self.nwb_alignment.mics:
+            trial = getattr(self, 'trials_sel', None)
+            if trial is None:
+                break
+            media = self.nwb_alignment.get_media(trial, "audio", mic_dev)
+            if media and (media == mic_file or Path(media).name == mic_file):
+                resolved = self.nwb_alignment.resolve_media_path(
+                    trial, "audio", device=mic_dev,
+                    fallback_folder=audio_folder,
+                )
+                if resolved:
+                    return resolved, channel_idx
 
         # Direct fallback
         if audio_folder:
@@ -563,11 +561,10 @@ class ObservableAppState(QObject):
             if name == "nc_file_path" and not self._suspend_local_autoload:
                 self.load_local_settings()
 
-            # Auto-sync nwb_file_path → dt.nwb_path
+            # Auto-sync nwb_file_path → nwb_alignment
             if name == "nwb_file_path":
-                dt = self._values.get("dt")
-                if dt is not None:
-                    dt.nwb_path = value
+                from ethograph.io.nwb_alignment import make_nwb_alignment
+                self.nwb_alignment = make_nwb_alignment(value)
 
             return
 
@@ -1014,7 +1011,7 @@ class ObservableAppState(QObject):
         # Enrich with computed columns (duration, sequence, global timing, trial attrs)
         from ethograph.labels.export import enrich_labels_df
         keep_attrs = self.trial_conditions if self.trial_conditions else []
-        enriched = enrich_labels_df(self._all_labels_df, self.dt, keep_attrs)
+        enriched = enrich_labels_df(self._all_labels_df, nwb_alignment=self.nwb_alignment, keep_attrs=keep_attrs, dt=self.dt)
         save_df = enriched if not enriched.empty else self._all_labels_df
 
         # 1. Canonical location (sibling to .nc)

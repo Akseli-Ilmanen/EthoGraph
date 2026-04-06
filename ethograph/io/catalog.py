@@ -1,4 +1,4 @@
-"""Unified data catalog and loader for xarray, pynapple, and NWB backends.
+"""Unified combo catalog and loader for xarray, pynapple, and NWB backends.
 
 Replaces the old type_vars_dict pattern with:
 - DataCatalog: what dimensions/features are available (builds combo boxes)
@@ -807,7 +807,7 @@ def _auto_catalog_xarray(ds: xr.Dataset) -> DataCatalog:
 # ---------------------------------------------------------------------------
 
 
-def catalog_from_xarray(ds: xr.Dataset, dt: TrialTree) -> DataCatalog:
+def catalog_from_xarray(ds: xr.Dataset, dt: TrialTree, nwb_alignment=None) -> DataCatalog:
     """Build a DataCatalog from an xarray Dataset + TrialTree."""
     from ethograph.io.validation import (
         _possible_trial_conditions,
@@ -843,8 +843,9 @@ def catalog_from_xarray(ds: xr.Dataset, dt: TrialTree) -> DataCatalog:
             vals = tuple(str(i) for i in range(ds.sizes[name]))
         combos[name] = ComboSpec(name, vals)
 
-    cameras = list(dt.cameras) if dt.cameras else []
-    mics = list(dt.mics) if dt.mics else []
+    sio = nwb_alignment or getattr(dt, "nwb_alignment", None)
+    cameras = list(sio.cameras) if sio and sio.cameras else []
+    mics = list(sio.mics) if sio and sio.mics else []
     trial_conditions = _possible_trial_conditions(ds, dt)
 
     return DataCatalog(

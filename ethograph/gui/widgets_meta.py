@@ -492,19 +492,22 @@ class MetaWidget(CollapsibleWidgetContainer):
         if not self.app_state.video_viewer_visible:
             self.layout_mgr.set_video_viewer_visible(False)
 
-        if self.app_state.has_video:
-            slot1_text = getattr(self.app_state, 'space_plot_type', 'Layers')
-            show_layers = slot1_text == "Layers"
+        slot1_text = getattr(self.app_state, 'space_plot_type', 'Layers')
+        show_layers = slot1_text == "Layers"
 
-            if show_layers:
+        if show_layers:
+            if self.app_state.has_video:
                 self.layout_mgr.show_layer_docks()
                 self.layout_mgr.cap_layer_width()
             else:
-                self.layout_mgr.hide_layer_docks()
+                self.layout_mgr.configure_no_video(self.navigation_widget)
+        else:
+            self.layout_mgr.hide_layer_docks()
+            if not self.app_state.has_video:
+                self.layout_mgr.set_video_viewer_visible(False)
+            self.data_widget.update_space_plot()
 
+        if self.app_state.has_video:
             self.layout_mgr.set_vertical_ratio()
-
-        if not self.app_state.has_video:
-            self.layout_mgr.configure_no_video(self.navigation_widget)
 
 

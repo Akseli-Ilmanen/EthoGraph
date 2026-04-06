@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable
 
@@ -10,8 +9,8 @@ import xarray as xr
 
 import pynapple as nap
 
-from ethograph.labels.intervals import empty_intervals
 from ethograph.io.validation import validate_datatree
+from ethograph.io.nwb_alignment import discover_nwb, make_nwb_alignment, EmpytAlignment
 
 
 # ---------------------------------------------------------------------------
@@ -33,33 +32,6 @@ def _attrs_equal(a: Any, b: Any) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# NWB discovery
-# ---------------------------------------------------------------------------
-
-_NWB_FILENAME = "alignment.nwb"
-_SETTINGS_DIR = ".ethograph"
-
-
-def _discover_nwb(nc_path: str | Path) -> Path | None:
-    """Find an NWB session file near a .nc file.
-
-    Search order:
-    1. ``<dir>/.ethograph/alignment.nwb``
-    2. Any ``.nwb`` file in ``<dir>/.ethograph/``
-    """
-    d = Path(nc_path).resolve().parent
-    ethograph_dir = d / _SETTINGS_DIR
-    if ethograph_dir.is_dir():
-        candidate = ethograph_dir / _NWB_FILENAME
-        if candidate.exists():
-            return candidate
-        nwb_files = list(ethograph_dir.glob("*.nwb"))
-        if nwb_files:
-            return nwb_files[0]
-    return None
-
-
-# ---------------------------------------------------------------------------
 # TrialTree
 # ---------------------------------------------------------------------------
 
@@ -73,6 +45,9 @@ class TrialTree(xr.DataTree):
                 self[child_name] = child_node
         else:
             super().__init__(dataset=data, children=children, name=name)
+        # Always initialize nwb_alignment to a null-object (empty EmpytAlignment)
+        if not hasattr(self, "nwb_alignment"):
+            self.nwb_alignment = EmpytAlignment()
 
     # ------------------------------------------------------------------
     # Node name resolution
@@ -110,39 +85,6 @@ class TrialTree(xr.DataTree):
         if isinstance(value, xr.Dataset):
             value = xr.DataTree(value)
         super().__setitem__(key, value)
-
-    # ------------------------------------------------------------------
-    # SessionIO: NWB-backed session metadata
-    # ------------------------------------------------------------------
-
-    @property
-    def nwb_path(self) -> str | None:
-        return getattr(self, "_nwb_path", None)
-
-    @nwb_path.setter
-    def nwb_path(self, value: str | Path | None) -> None:
-        old = getattr(self, "_nwb_path", None)
-        self._nwb_path = str(value) if value else None
-        if old != self._nwb_path:
-            # Invalidate cached session_io
-            self.__dict__.pop("session_io", None)
-
-    @property
-    def session_io(self):
-        """Lazy-loaded SessionIO adapter backed by the NWB file."""
-        cached = self.__dict__.get("session_io")
-        if cached is not None:
-            return cached
-
-        from ethograph.io.session_io import NWBSessionIO, EmptySessionIO
-
-        nwb_path = getattr(self, "_nwb_path", None)
-        if nwb_path and Path(nwb_path).exists():
-            sio = NWBSessionIO(nwb_path)
-        else:
-            sio = EmptySessionIO()
-        self.__dict__["session_io"] = sio
-        return sio
 
     # ------------------------------------------------------------------
     # Trial metadata table
@@ -274,98 +216,6 @@ class TrialTree(xr.DataTree):
         node_name = self._trial_node_name(trial)
         self[node_name] = xr.DataTree(func(self[node_name].ds))
 
-    # ------------------------------------------------------------------
-    # Delegated session access (reads from NWB via session_io)
-    # ------------------------------------------------------------------
-
-    @property
-    def cameras(self) -> list[str]:
-        """Camera device labels."""
-        return self.session_io.cameras
-
-    @property
-    def mics(self) -> list[str]:
-        """Microphone device labels."""
-        return self.session_io.mics
-
-    def devices(self, stream: str) -> list[str]:
-        """List device labels for a stream."""
-        return self.session_io.devices(stream)
-
-    def get_media(self, trial, stream: str, device: str | None = None) -> str | None:
-        """Retrieve a media filename for a trial and stream."""
-        return self.session_io.get_media(trial, stream, device)
-
-    def start_time(self, trial) -> float:
-        """Session-absolute start time of a trial in seconds."""
-        if self._is_continuous and trial in self._trial_epochs:
-            return self._trial_epochs[trial][0]
-        return self.session_io.start_time(trial)
-
-    def stop_time(self, trial) -> float | None:
-        """Session-absolute stop time of a trial in seconds."""
-        if self._is_continuous and trial in self._trial_epochs:
-            return self._trial_epochs[trial][1]
-        return self.session_io.stop_time(trial)
-
-    def trial_duration(self, trial) -> float:
-        """Duration of the trial in seconds."""
-        if self._is_continuous and trial in self._trial_epochs:
-            start, stop = self._trial_epochs[trial]
-            return stop - start
-        return self.session_io.trial_duration(trial)
-
-    def stream_offset_for_trial(
-        self, trial, stream: str, device: str | None = None,
-    ) -> float:
-        """Trial-relative time offset for a stream's file."""
-        return self.session_io.stream_offset_for_trial(trial, stream, device)
-
-    def get_stream_rate(self, stream: str, device: str | None = None) -> float | None:
-        """Return sampling rate for a stream from its acquisition ImageSeries."""
-        return self.session_io.get_stream_rate(stream, device)
-
-    def set_stream_rate(self, rate: float, stream: str, device: str | None = None) -> None:
-        """Store a rate override in session_io's in-memory overlay."""
-        self.session_io.set_stream_rate(rate, stream, device)
-
-    def resolve_media_path(
-        self, trial, stream: str, device: str | None = None,
-        fallback_folder: str | None = None,
-    ) -> str | None:
-        """Resolve full path for a media file (ImageSeries path → fallback folder)."""
-        return self.session_io.resolve_media_path(trial, stream, device, fallback_folder)
-
-    @property
-    def trials_ep(self) -> nap.IntervalSet | None:
-        """All trial epochs as a pynapple IntervalSet."""
-        if self._is_continuous:
-            sorted_ids = sorted(self._trial_epochs.keys())
-            starts = [self._trial_epochs[t][0] for t in sorted_ids]
-            ends = [self._trial_epochs[t][1] for t in sorted_ids]
-            return nap.IntervalSet(
-                start=starts,
-                end=ends,
-                metadata={"trial": np.array(sorted_ids)},
-            )
-        return self.session_io.trials_ep
-
-    def trial_epoch(self, trial) -> nap.IntervalSet:
-        """Return the IntervalSet for a single trial."""
-        if self._is_continuous and trial in self._trial_epochs:
-            start, stop = self._trial_epochs[trial]
-            return nap.IntervalSet(start=[start], end=[stop])
-        return self.session_io.trial_epoch(trial)
-
-    def restrict(self, obj, trial):
-        """Restrict a pynapple object to a trial's epoch."""
-        if self._is_continuous and trial in self._trial_epochs:
-            return obj.restrict(self.trial_epoch(trial))
-        return self.session_io.restrict(obj, trial)
-
-    def print_session(self) -> None:
-        """Print a formatted summary of the session metadata."""
-        self.session_io.print_session()
 
     # ------------------------------------------------------------------
     # Backward compat: session property (returns None for NWB-backed trees)
@@ -421,16 +271,14 @@ class TrialTree(xr.DataTree):
         """Convert a continuous TrialTree into a standard per-node TrialTree.
 
         No-op if the tree is already per-node.  The returned tree copies
-        the NWB path from the source.
+        nwb_alignment from the source.
         """
         if not self._is_continuous:
             return self
         datasets = [self._slice_continuous(t) for t in sorted(self._trial_epochs.keys())]
         tree = TrialTree.from_datasets(datasets, validate=False)
         tree.attrs = dict(self.attrs)
-        nwb = getattr(self, "_nwb_path", None)
-        if nwb is not None:
-            tree._nwb_path = nwb
+        tree.nwb_alignment = self.nwb_alignment
         sp = getattr(self, "_source_path", None)
         if sp is not None:
             tree._source_path = sp
@@ -510,10 +358,8 @@ class TrialTree(xr.DataTree):
         tree = xr.open_datatree(path, engine="netcdf4")
         tree.__class__ = cls
         tree._source_path = path
-        # Auto-discover NWB session file
-        nwb = _discover_nwb(path)
-        if nwb is not None:
-            tree._nwb_path = str(nwb)
+        nwb = discover_nwb(path)
+        tree.nwb_alignment = make_nwb_alignment(nwb)
         return tree
 
     @classmethod
@@ -542,6 +388,9 @@ class TrialTree(xr.DataTree):
             seen.add(trial_num)
             node_name = str(trial_num).replace("/", "_")
             tree[node_name] = xr.DataTree(ds)
+        # Ensure nwb_alignment is always set (inherited from __init__, but explicit)
+        if not hasattr(tree, "nwb_alignment") or tree.nwb_alignment is None:
+            tree.nwb_alignment = EmpytAlignment()
         if validate:
             tree._validate_tree()
         return tree
@@ -607,6 +456,10 @@ class TrialTree(xr.DataTree):
 
         tree._continuous_ds = ds
         tree._trial_epochs = epoch_dict
+        
+        # Ensure nwb_alignment is always set (inherited from __init__, but explicit)
+        if not hasattr(tree, "nwb_alignment") or tree.nwb_alignment is None:
+            tree.nwb_alignment = EmpytAlignment()
         return tree
 
     @classmethod
@@ -617,7 +470,7 @@ class TrialTree(xr.DataTree):
         Parameters
         ----------
         source
-            Original TrialTree to copy ``_nwb_path`` and ``_source_path`` from.
+            Original TrialTree to copy ``nwb_alignment`` and ``_source_path`` from.
         """
         tree = cls()
         for name, child in dt.children.items():
@@ -626,9 +479,7 @@ class TrialTree(xr.DataTree):
             tree.ds = dt.ds
         tree.attrs = (attrs if attrs is not None else dt.attrs).copy()
         if source is not None:
-            nwb = getattr(source, "_nwb_path", None)
-            if nwb is not None:
-                tree._nwb_path = nwb
+            tree.nwb_alignment = source.nwb_alignment
             sp = getattr(source, "_source_path", None)
             if sp is not None:
                 tree._source_path = sp
@@ -672,9 +523,13 @@ class TrialTree(xr.DataTree):
     def _ensure_alignment_nwb(self, save_dir: Path) -> None:
         """Copy alignment NWB next to the save location if needed."""
         import shutil
+        from ethograph.io.nwb_alignment import NWBAlignment, _NWB_FILENAME, _SETTINGS_DIR
 
-        nwb = getattr(self, "_nwb_path", None)
-        if not nwb or not Path(nwb).exists():
+        sio = self.nwb_alignment
+        if not isinstance(sio, NWBAlignment):
+            return
+        nwb = str(sio._path)
+        if not Path(nwb).exists():
             return
 
         target = save_dir / _SETTINGS_DIR / _NWB_FILENAME
@@ -683,7 +538,7 @@ class TrialTree(xr.DataTree):
 
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(nwb, target)
-        self._nwb_path = str(target)
+        self.nwb_alignment = make_nwb_alignment(target)
 
     # ------------------------------------------------------------------
     # Validation
@@ -691,9 +546,10 @@ class TrialTree(xr.DataTree):
 
     def _validate_tree(self) -> list[str]:
         ds = self.itrial(0)
-        has_cameras = len(self.cameras) > 0
+        sio = self.nwb_alignment
+        has_cameras = len(sio.cameras) > 0
         has_fps = "fps" in ds.attrs
-        has_session_fps = self.get_stream_rate("video") is not None
+        has_session_fps = sio.get_stream_rate("video") is not None
         errors = validate_datatree(
             self,
             require_fps=(has_fps or has_cameras) and not has_session_fps,

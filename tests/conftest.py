@@ -11,12 +11,17 @@ from ethograph.utils.download import (
     write_example_configs,
 )
 
+
+def pytest_addoption(parser):
+    parser.addoption("--show", action="store_true", default=False, help="Show napari viewer for 15s after each test")
+
 BIRDPARK_DIR = _DOWNLOAD_BASE / "BirdPark"
 BIRDPARK_NC = BIRDPARK_DIR / "copExpBP08_trim.nc"
+MOLL_NC = _DOWNLOAD_BASE / "Moll2025" / "Trial_data.nc"
 
-# Primary test dataset — BirdPark trimmed NC
+
 TEST_DATA_DIR = BIRDPARK_DIR
-TEST_NC_PATH = BIRDPARK_NC
+TEST_NC_PATH = MOLL_NC
 
 
 def _ensure_dataset(key: str, folder: Path):
@@ -105,8 +110,10 @@ def _suppress_dialogs(monkeypatch):
 
 
 @pytest.fixture
-def gui(qtbot, tmp_path, monkeypatch):
+def gui(request, qtbot, tmp_path, monkeypatch):
     import ethograph.utils.paths as paths_module
+
+    show = request.config.getoption("--show")
 
     test_config_dir = tmp_path / ".ethograph"
     test_config_dir.mkdir(exist_ok=True)
@@ -117,7 +124,7 @@ def gui(qtbot, tmp_path, monkeypatch):
     )
 
     import napari
-    viewer = napari.Viewer(show=False)
+    viewer = napari.Viewer(show=show)
     qtbot.addWidget(viewer.window._qt_window)
 
     from ethograph.gui.widgets_meta import MetaWidget
@@ -125,6 +132,8 @@ def gui(qtbot, tmp_path, monkeypatch):
     meta._check_unsaved_changes = lambda event: True
 
     yield viewer, meta
+    if show:
+        qtbot.wait(15_000)
     viewer.close()
 
 

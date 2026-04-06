@@ -131,13 +131,11 @@ def validate_required_attrs(
 def validate_media_files_session(dt: "TrialTree") -> list[str]:
     """Validate session-level media file entries.
 
-    Checks that media paths referenced in session_io are non-empty.
+    Checks that media paths referenced in nwb_alignment are non-empty.
     """
     errors = []
-    sio = getattr(dt, "session_io", None)
-    if sio is None:
-        return errors
-    # Basic check: ensure session_io is accessible
+    sio = dt.nwb_alignment
+    # Basic check: ensure nwb_alignment is accessible
     try:
         _ = sio.cameras
     except Exception:

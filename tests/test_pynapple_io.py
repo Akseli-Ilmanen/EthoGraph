@@ -9,7 +9,7 @@ from ethograph.io.catalog import (
     _compute_shared_column_dims,
     catalog_from_pynapple,
 )
-from ethograph.gui.data_loader import _trialtree_from_trials_ep
+from ethograph.gui.data_loader import _minimal_trialtree
 from ethograph.io.pynapple import detect_trials
 
 
@@ -184,39 +184,37 @@ def test_catalog_skips_intervalset(simple_nap_data):
 # ---------------------------------------------------------------------------
 
 
-def test_trialtree_from_intervals_has_trials(simple_nap_data):
-    trials = simple_nap_data["trials"]
-    dt = _trialtree_from_trials_ep(trials, simple_nap_data)
+def test_minimal_trialtree_has_trials(simple_nap_data):
+    trials_ep = simple_nap_data["trials"]
+    trial_ids = list(range(1, len(trials_ep) + 1))
+    durations = [float(trials_ep.end[i] - trials_ep.start[i]) for i in range(len(trials_ep))]
+    dt = _minimal_trialtree(trial_ids, durations=durations)
     assert len(dt.trials) == 2
 
 
-def test_trialtree_from_intervals_no_data_vars(simple_nap_data):
+def test_minimal_trialtree_no_data_vars(simple_nap_data):
     """Lightweight TrialTree should NOT contain feature data variables."""
-    trials = simple_nap_data["trials"]
-    dt = _trialtree_from_trials_ep(trials, simple_nap_data)
+    trials_ep = simple_nap_data["trials"]
+    trial_ids = list(range(1, len(trials_ep) + 1))
+    durations = [float(trials_ep.end[i] - trials_ep.start[i]) for i in range(len(trials_ep))]
+    dt = _minimal_trialtree(trial_ids, durations=durations)
     ds = dt.itrial(0)
     assert "speed" not in ds.data_vars
     assert "velocity" not in ds.data_vars
 
 
-def test_trialtree_from_intervals_has_time_coord(simple_nap_data):
-    trials = simple_nap_data["trials"]
-    dt = _trialtree_from_trials_ep(trials, simple_nap_data)
+def test_minimal_trialtree_has_time_coord(simple_nap_data):
+    trials_ep = simple_nap_data["trials"]
+    trial_ids = list(range(1, len(trials_ep) + 1))
+    durations = [float(trials_ep.end[i] - trials_ep.start[i]) for i in range(len(trials_ep))]
+    dt = _minimal_trialtree(trial_ids, durations=durations)
     ds = dt.itrial(0)
     assert "time" in ds.coords
     assert ds.time.values[0] < 1.0  # trial-relative
 
 
-def test_trialtree_from_intervals_nwb_path(simple_nap_data):
-    trials = simple_nap_data["trials"]
-    dt = _trialtree_from_trials_ep(trials, simple_nap_data)
-    assert hasattr(dt, "nwb_path")
-    assert dt.nwb_path is not None
-
-
-def test_trialtree_from_intervals_no_trials(simple_nap_data):
-    del simple_nap_data["trials"]
-    dt = _trialtree_from_trials_ep(None, simple_nap_data)
+def test_minimal_trialtree_single_trial():
+    dt = _minimal_trialtree([1])
     assert len(dt.trials) == 1
 
 
