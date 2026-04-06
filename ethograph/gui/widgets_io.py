@@ -218,7 +218,7 @@ class IOWidget(QWidget):
         self.reset_button.setObjectName("reset_button")
         self.reset_button.clicked.connect(self._on_reset_gui_clicked)
 
-        self.create_nc_button = QPushButton("➕Create with own data")
+        self.create_nc_button = QPushButton("🧙‍♂️Data wizard")
         self.create_nc_button.setObjectName("create_nc_button")
         self.create_nc_button.clicked.connect(self._on_create_nc_clicked)
 

@@ -431,6 +431,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         self._apply_all_zoom_constraints()
         QTimer.singleShot(0, self._apply_panel_sizes)
+        self.labels_redraw_needed.emit()
 
     def _setup_xlinks_from_visible(self, visible_names: list[str] | None = None):
         """Link all panels to the first visible panel's x-axis."""

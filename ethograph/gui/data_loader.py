@@ -30,7 +30,7 @@ from movement.kinematics import (
 )
 
 from ethograph.gui.notify import notify_dialog
-from ethograph.io.trialtree import TrialTree
+from ethograph.io.trialtree import TrialTree, _discover_nwb
 from ethograph.labels.tsv_store import (
     init_empty_labels,
     labels_tsv_path,
@@ -318,6 +318,20 @@ def load_dataset(
 
     # --- xarray (.nc) path ---
     dt = eto.open(file_path)
+
+    # Plain Dataset .nc files (e.g. Movement datasets) have no trial children.
+    # Wrap them as a single-trial TrialTree so the GUI can work with them directly.
+    if not dt.children or not any(
+        node.ds is not None and "trial" in node.ds.attrs
+        for node in dt.children.values()
+    ):
+        ds = xr.open_dataset(file_path, engine="netcdf4")
+        dt = eto.dataset_to_basic_trialtree(ds)
+        dt._source_path = file_path
+        nwb = _discover_nwb(file_path)
+        if nwb is not None:
+            dt._nwb_path = str(nwb)
+
     catalog = catalog_from_xarray(dt.itrial(0), dt)
 
     errors = validate_datatree(dt, require_fps=require_fps)
@@ -517,7 +531,7 @@ def wizard_single_from_pose(
     source_software,
     video_offset: float | None = None,
 ):
-    """Create a minimal TrialTree from pose data."""
+    """Create a minimal TrialTree from pose or bounding-box data."""
     try:
         ds = load.load_dataset(
             pose_path,
@@ -526,9 +540,9 @@ def wizard_single_from_pose(
         )
     except (OSError, ValueError, KeyError):
         notify_dialog(
-            f"Failed to load pose data from {pose_path}. Please check the file and try again.",
+            f"Failed to load data from {pose_path}. Please check the file and try again.",
             "error",
-            "Pose Load Error",
+            "Load Error",
         )
         raise
 
@@ -536,7 +550,7 @@ def wizard_single_from_pose(
     ds["speed"] = compute_speed(ds.position)
     ds["acceleration"] = compute_acceleration(ds.position)
 
-    if len(ds.keypoints) > 1:
+    if "keypoints" in ds.coords and len(ds.keypoints) > 1:
         compute_pairwise_distances(ds.position, dim="keypoints", pairs="all")
 
     if len(ds.individuals) > 1:

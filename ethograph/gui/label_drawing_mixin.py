@@ -83,6 +83,7 @@ class LabelDrawingMixin:
         fallback_order = [
             getattr(self, "spectrogram_plot", None),
             getattr(self, "ephys_trace_plot", None),
+            getattr(self, "neo_trace_plot", None),
             getattr(self, "heatmap_plot", None),
         ]
         for plot in fallback_order:
@@ -136,6 +137,7 @@ class LabelDrawingMixin:
             plot is getattr(self, "spectrogram_plot", None)
             or plot is getattr(self, "heatmap_plot", None)
             or plot is getattr(self, "ephys_trace_plot", None)
+            or plot is getattr(self, "neo_trace_plot", None)
             or (
                 plot is getattr(self, "line_plot", None)
                 and getattr(self, "audio_overlay_type", None) == "spectrogram"

@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 from movement.io import load_dataset
 from movement.napari.convert import ds_to_napari_layers
-from movement.napari.layer_styles import PointsStyle, _sample_colormap
+from movement.napari.layer_styles import BoxesStyle, PointsStyle, _sample_colormap
 
 from ethograph.gui.notify import notify
 
@@ -38,6 +38,8 @@ class PoseRenderData:
     properties: pd.DataFrame
     data_not_nan: np.ndarray
     file_name: str
+    bbox_data: np.ndarray | None = None
+    frame_path: str | None = None
 
     @property
     def keypoints(self) -> list[str]:
@@ -71,12 +73,59 @@ def _strip_keypoint_prefix(properties: pd.DataFrame) -> pd.DataFrame:
 def load_pose_from_file(file_path: str, source_software: str, fps: float) -> PoseRenderData:
     """Load a pose file via movement and return a PoseRenderData."""
     ds = load_dataset(file_path, source_software, fps)
-    data, _, properties = ds_to_napari_layers(ds)
+    return load_pose_from_movement_ds(ds, file_name=Path(file_path).name)
+
+
+def load_pose_from_movement_ds(
+    ds: Any, *, file_name: str = "movement_dataset",
+) -> PoseRenderData:
+    """Convert a movement-style xarray Dataset directly to PoseRenderData."""
+    data, bbox_data, properties = ds_to_napari_layers(ds)
     return PoseRenderData(
         data=data,
         properties=_strip_keypoint_prefix(properties),
         data_not_nan=~np.any(np.isnan(data), axis=1),
-        file_name=Path(file_path).name,
+        file_name=file_name,
+        bbox_data=bbox_data,
+        frame_path=ds.attrs.get("frame_path"),
+    )
+
+
+def slice_pose_to_frames(pr: PoseRenderData, start_frame: int, end_frame: int) -> PoseRenderData:
+    """Slice pose data to ``[start_frame, end_frame)`` and reindex to 0.
+
+    Mirrors the ``TrialVideoSlice`` logic so that pose frame indices align
+    with the sliced video.  Works for both points and bounding-box data.
+    """
+    frame_col = 1 if pr.data.shape[1] > 3 else 0
+    frames = pr.data[:, frame_col]
+    mask = (frames >= start_frame) & (frames < end_frame)
+
+    if not np.any(mask):
+        empty = np.empty((0, pr.data.shape[1]))
+        return PoseRenderData(
+            data=empty,
+            properties=pr.properties.iloc[0:0].reset_index(drop=True),
+            data_not_nan=np.empty(0, dtype=bool),
+            file_name=pr.file_name,
+            frame_path=pr.frame_path,
+        )
+
+    data = pr.data[mask].copy()
+    data[:, frame_col] -= start_frame
+
+    bbox_data = None
+    if pr.bbox_data is not None:
+        bbox_data = pr.bbox_data[mask].copy()
+        bbox_data[:, :, 1] -= start_frame  # frame column in each corner vertex
+
+    return PoseRenderData(
+        data=data,
+        properties=pr.properties[mask].reset_index(drop=True),
+        data_not_nan=pr.data_not_nan[mask],
+        file_name=pr.file_name,
+        bbox_data=bbox_data,
+        frame_path=pr.frame_path,
     )
 
 
@@ -171,7 +220,7 @@ def apply_confidence_filter(pr: PoseRenderData, threshold: float) -> PoseRenderD
         return pr
     mask = pr.data_not_nan.copy()
     mask[pr.properties["confidence"].values < threshold] = False
-    return PoseRenderData(pr.data, pr.properties, mask, pr.file_name)
+    return PoseRenderData(pr.data, pr.properties, mask, pr.file_name, pr.bbox_data, pr.frame_path)
 
 
 def apply_keypoint_filter(pr: PoseRenderData, hidden: set[str]) -> PoseRenderData:
@@ -180,7 +229,7 @@ def apply_keypoint_filter(pr: PoseRenderData, hidden: set[str]) -> PoseRenderDat
         return pr
     mask = pr.data_not_nan.copy()
     mask[pr.properties["keypoint"].isin(hidden).values] = False
-    return PoseRenderData(pr.data, pr.properties, mask, pr.file_name)
+    return PoseRenderData(pr.data, pr.properties, mask, pr.file_name, pr.bbox_data, pr.frame_path)
 
 
 class PoseDisplayManager:
@@ -198,6 +247,8 @@ class PoseDisplayManager:
         self.video_mgr = video_manager
         self._data_widget = data_widget
         self._primary_points_layer = None
+        self._primary_shapes_layer = None
+        self._primary_frame_layer = None
         self._primary_file_name: str = ""
         self._camera_keypoints: dict[str, list[str]] = {}
 
@@ -245,7 +296,7 @@ class PoseDisplayManager:
             if not pose_path:
                 return None
             try:
-                return load_pose_from_file(
+                pr = load_pose_from_file(
                     pose_path,
                     self.app_state.ds.source_software,
                     self._resolve_camera_fps(camera_idx),
@@ -253,6 +304,19 @@ class PoseDisplayManager:
             except (OSError, ValueError, KeyError) as e:
                 notify(f"Failed to load pose for camera {camera_idx}: {e}", "warning")
                 return None
+            alignment = getattr(self.app_state, 'trial_alignment', None)
+            if alignment and alignment.trial_range:
+                fps = self._resolve_camera_fps(camera_idx)
+                time_offset = dt.stream_offset_for_trial(
+                    trial_id, "video", cameras[camera_idx],
+                )
+                trial_start = -time_offset
+                start_frame = max(0, int(trial_start * fps))
+                end_frame = int(
+                    (trial_start + alignment.trial_range.duration) * fps
+                )
+                pr = slice_pose_to_frames(pr, start_frame, end_frame)
+            return pr
 
         pose_keys = list(dt.attrs.get("nwb_pose_keys", []))
         if pose_keys and camera_idx < len(pose_keys):
@@ -301,10 +365,66 @@ class PoseDisplayManager:
         self._sync_global_keypoints()
 
     # ------------------------------------------------------------------
+    # Downsample-aware coordinate scaling
+    # ------------------------------------------------------------------
+
+    def _pose_scale(self, camera_name: str | None = None) -> tuple[float, float]:
+        """Return (scale_y, scale_x) for mapping original-res pose coords to display."""
+        from .dialog_video_downsample import get_downsample_scale
+
+        video_folder = self.app_state.video_folder
+        if not video_folder:
+            return 1.0, 1.0
+        dt = self.app_state.dt
+        trial_id = self.app_state.trials_sel
+        if dt is None or trial_id is None:
+            return 1.0, 1.0
+        device = camera_name or (dt.cameras[0] if dt.cameras else None)
+        video_path = dt.resolve_media_path(
+            trial_id, "video", device=device, fallback_folder=video_folder,
+        )
+        if not video_path:
+            return 1.0, 1.0
+        return get_downsample_scale(video_folder, Path(video_path).name)
+
+    def _apply_pose_scale(self, points_data: np.ndarray, camera_name: str | None = None) -> np.ndarray:
+        sy, sx = self._pose_scale(camera_name)
+        if sy == 1.0 and sx == 1.0:
+            return points_data
+        print(f"[ethograph] Video is downsampled — rescaling pose coordinates by {sy:.3f}")
+        scaled = points_data.copy()
+        scaled[:, -2] *= sy  # y column
+        scaled[:, -1] *= sx  # x column
+        return scaled
+
+    # ------------------------------------------------------------------
     # Unified display — same path for primary and extra cameras
     # ------------------------------------------------------------------
 
-    def _display_pose_direct(self, viewer_model, pr: PoseRenderData) -> Any | None:
+    def _display_frame_background(self, pr: PoseRenderData) -> None:
+        """Show a static frame image as background when no video is loaded.
+
+        Checks (in order): user-provided frame path on the widget, then
+        ``frame_path`` from the movement dataset attributes.
+        """
+        if self.app_state.video_path:
+            return
+        frame_path = getattr(self._data_widget, 'pose_frame_path', None) or pr.frame_path
+        if not frame_path:
+            return
+        frame_file = Path(frame_path)
+        if not frame_file.exists():
+            return
+        import imageio.v3 as iio
+
+        img = iio.imread(frame_file)
+        self._primary_frame_layer = self.viewer.add_image(
+            img, name="frame", rgb=img.ndim == 3,
+        )
+        idx = self.viewer.layers.index(self._primary_frame_layer)
+        self.viewer.layers.move(idx, 0)
+
+    def _display_pose_direct(self, viewer_model, pr: PoseRenderData, camera_name: str | None = None) -> Any | None:
         """Add pose points to any napari viewer, preserving the frame dimension.
 
         ``ds_to_napari_layers`` returns Tracks format (track_id, frame, y, x).
@@ -312,9 +432,34 @@ class PoseDisplayManager:
         Uses ``shown`` mask so napari handles per-frame visibility.
         """
         points_data = pr.data[:, 1:] if pr.data.shape[1] > 3 else pr.data
+        points_data = self._apply_pose_scale(points_data, camera_name)
         style_kwargs = self._build_pose_style_kwargs(pr.properties)
         return viewer_model.add_points(
             points_data, properties=pr.properties, shown=pr.data_not_nan, **style_kwargs,
+        )
+
+    def _display_bbox_direct(self, viewer_model, pr: PoseRenderData, camera_name: str | None = None) -> Any | None:
+        """Add bounding boxes to a napari viewer if present in the data.
+
+        Shapes layers don't support a ``shown`` mask, so data is pre-filtered
+        by ``data_not_nan``.  Frame indices in the corner vertices still drive
+        per-frame visibility in napari.
+        """
+        if pr.bbox_data is None:
+            return None
+        mask = pr.data_not_nan
+        bbox_filtered = pr.bbox_data[mask, :, 1:]  # strip track_id
+        if len(bbox_filtered) == 0:
+            return None
+        sy, sx = self._pose_scale(camera_name)
+        if sy != 1.0 or sx != 1.0:
+            bbox_filtered = bbox_filtered.copy()
+            bbox_filtered[:, :, 1] *= sy
+            bbox_filtered[:, :, 2] *= sx
+        props_filtered = pr.properties[mask].copy().reset_index(drop=True)
+        style_kwargs, props_factorized = self._build_bbox_style_kwargs(props_filtered)
+        return viewer_model.add_shapes(
+            bbox_filtered, properties=props_factorized, **style_kwargs,
         )
 
     def update_pose(self, hidden_keypoints: set[str]) -> None:
@@ -334,7 +479,9 @@ class PoseDisplayManager:
         camera_name = self._camera_name_for_index(camera_idx)
         self._register_keypoints(camera_name, pr.keypoints)
         self._primary_file_name = pr.file_name
-        self._primary_points_layer = self._display_pose_direct(self.viewer, pr)
+        self._display_frame_background(pr)
+        self._primary_points_layer = self._display_pose_direct(self.viewer, pr, camera_name)
+        self._primary_shapes_layer = self._display_bbox_direct(self.viewer, pr, camera_name)
         self.apply_pose_style()
 
     def _display_pose_on_extra(
@@ -352,8 +499,10 @@ class PoseDisplayManager:
             return
         self._register_keypoints(camera_name, pr.keypoints)
         points_data = pr.data[:, 1:] if pr.data.shape[1] > 3 else pr.data
+        points_data = self._apply_pose_scale(points_data, camera_name)
         style_kwargs = self._build_pose_style_kwargs(pr.properties)
         widget.set_pose(points_data, pr.properties, pr.data_not_nan, style_kwargs)
+        widget._shapes_layer = self._display_bbox_direct(widget._viewer_model, pr, camera_name)
         self.apply_pose_style()
 
     def update_extra_camera_pose(self, camera_name: str, hidden_keypoints: set[str]) -> None:
@@ -369,6 +518,18 @@ class PoseDisplayManager:
             except ValueError:
                 pass
             self._primary_points_layer = None
+        if self._primary_shapes_layer is not None:
+            try:
+                self.viewer.layers.remove(self._primary_shapes_layer)
+            except ValueError:
+                pass
+            self._primary_shapes_layer = None
+        if self._primary_frame_layer is not None:
+            try:
+                self.viewer.layers.remove(self._primary_frame_layer)
+            except ValueError:
+                pass
+            self._primary_frame_layer = None
         file_name = self._primary_file_name
         if not file_name:
             return
@@ -409,6 +570,25 @@ class PoseDisplayManager:
 
         return style.as_kwargs()
 
+    def _build_bbox_style_kwargs(self, properties: pd.DataFrame) -> tuple[dict[str, Any], pd.DataFrame]:
+        """Build style kwargs and factorized properties for bounding boxes."""
+        color_prop = "individual"
+        if len(properties["individual"].unique()) == 1 and "keypoint" in properties.columns:
+            color_prop = "keypoint"
+
+        text_prop = "individual"
+        if "keypoint" in properties.columns and len(properties["keypoint"].unique()) > 1:
+            text_prop = "keypoint"
+
+        props = properties.copy()
+        codes, _ = pd.factorize(props[color_prop])
+        props[color_prop + "_factorized"] = codes
+
+        style = BoxesStyle(name="bbox")
+        style.set_text_by(property=text_prop)
+        style.set_color_by(property=color_prop, properties_df=props)
+        return style.as_kwargs(), props
+
     def _build_global_color_cycle(self) -> list[tuple] | None:
         all_kps = self.all_keypoints
         if not all_kps:
@@ -423,11 +603,17 @@ class PoseDisplayManager:
             self._primary_points_layer.text.visible = visible
             self._primary_points_layer.text.size = text_size
             self._primary_points_layer.size = size
+        if self._primary_shapes_layer is not None:
+            self._primary_shapes_layer.text.visible = visible
+            self._primary_shapes_layer.text.size = text_size
         for widget in self.video_mgr.extra_widgets.values():
             if widget._points_layer is not None:
                 widget._points_layer.text.visible = visible
                 widget._points_layer.text.size = text_size
                 widget._points_layer.size = size
+            if getattr(widget, '_shapes_layer', None) is not None:
+                widget._shapes_layer.text.visible = visible
+                widget._shapes_layer.text.size = text_size
 
     def on_rotate_video_pose(self) -> None:
         self._rotation_count = (getattr(self, '_rotation_count', 0) + 1) % 4

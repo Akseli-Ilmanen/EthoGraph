@@ -100,6 +100,7 @@ class ExtraCameraWidget(QWidget):
         self._time_offset: float = 0.0
         self._video_layer = None
         self._points_layer = None
+        self._shapes_layer = None
 
     @property
     def fps(self) -> float:
@@ -162,6 +163,14 @@ class ExtraCameraWidget(QWidget):
         frame = max(0, min(frame, n_frames - 1))
         self._viewer_model.dims.set_point(0, frame)
 
+    def clear_bbox(self):
+        if self._shapes_layer is not None:
+            try:
+                self._viewer_model.layers.remove(self._shapes_layer)
+            except ValueError:
+                pass
+            self._shapes_layer = None
+
     def clear_pose(self):
         if self._points_layer is not None:
             try:
@@ -169,6 +178,7 @@ class ExtraCameraWidget(QWidget):
             except ValueError:
                 pass
             self._points_layer = None
+        self.clear_bbox()
 
     def clear(self):
         self.clear_pose()

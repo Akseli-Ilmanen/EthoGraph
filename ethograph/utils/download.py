@@ -233,6 +233,7 @@ EXAMPLE_DATASETS = {
         "release_tag": "lockbox",
         "assets_gui": [
             "lockbox.nc",
+            "_downsample_info.json",
             "2021-02-15_07-32-44_segment1_mouse324_ball_front-view.mp4",
             "2021-02-15_07-32-44_segment1_mouse324_ball_front-view-tracks_individual_0.csv",
             "2021-02-15_07-32-44_segment1_mouse324_ball_side-view.mp4",

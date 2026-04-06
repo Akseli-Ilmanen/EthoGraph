@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 RESOLUTION_THRESHOLD = 1080
 DOWNSAMPLE_FOLDER = "videos_downsampled"
+DOWNSAMPLE_META = "_downsample_info.json"
 
 RESOLUTION_PRESETS = {
     "720p (recommended)": 720,
@@ -33,6 +35,27 @@ RESOLUTION_PRESETS = {
     "1080p": 1080,
     "540p": 540,
 }
+
+
+def get_downsample_scale(video_folder: str, video_filename: str) -> tuple[float, float]:
+    """Return (scale_y, scale_x) to convert original-resolution coords to display coords.
+
+    If the video was not downsampled, returns (1.0, 1.0).
+    """
+    meta_path = os.path.join(video_folder, DOWNSAMPLE_META)
+    if not os.path.isfile(meta_path):
+        return 1.0, 1.0
+    try:
+        with open(meta_path) as f:
+            meta = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return 1.0, 1.0
+    orig = meta.get("original_resolutions", {}).get(video_filename)
+    if orig is None:
+        return 1.0, 1.0
+    target_h = meta["target_height"]
+    scale = target_h / orig["h"]
+    return scale, scale
 
 
 def _get_video_resolution(path: str) -> tuple[int, int] | None:
@@ -161,7 +184,9 @@ def offer_downsample(
         "Downsampling image resolution will make playback significantly faster "
         "without affecting temporal precision for labelling.<br>"
         "<i>Note: high frame rate is not a problem (use frame skipping). "
-        "Only high image resolution affects performance.</i>"
+        "Only high image resolution affects performance.</i><br><br>"
+        "Pose overlays will be rescaled automatically to match the "
+        "downsampled resolution."
     ))
     layout.addWidget(QLabel(f"<pre>{file_list}</pre>"))
 
@@ -244,6 +269,15 @@ def offer_downsample(
         dst = os.path.join(dst_folder, name)
         if not os.path.exists(dst):
             shutil.copy2(src, dst)
+
+    # Save metadata so pose overlay can compute the correct scale factor
+    meta = {
+        "target_height": target_height,
+        "original_resolutions": {name: {"w": w, "h": h} for name, w, h in large},
+    }
+    meta_path = os.path.join(dst_folder, DOWNSAMPLE_META)
+    with open(meta_path, "w") as f:
+        json.dump(meta, f)
 
     logger.info(
         "Downsampled %d videos to %dp in %s", len(filenames), target_height, dst_folder,
