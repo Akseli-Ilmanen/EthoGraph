@@ -1,4 +1,4 @@
-from ethograph.io.time_model import TimeRange, RestrictionWindow, TrialAlignment, compute_trial_alignment
+from ethograph.io.time_model import TimeRange, RestrictionWindow, TrialVideoBounds, compute_trial_video_bounds
 print("time_model: OK")
 
 from ethograph.io.plot_sources import FileSource, PlotSource, XarraySource, WindowedBuffer

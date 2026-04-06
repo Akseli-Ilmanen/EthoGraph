@@ -45,7 +45,7 @@ def build_multi_trial_dt(state: WizardState) -> TrialTree:
     nwb_path = _build_nwb_file(dt, state, trial_table, trial_ids, fps)
     if nwb_path:
         from ethograph.io.nwb_alignment import make_nwb_alignment
-        dt.nwb_alignment = make_nwb_alignment(nwb_path)
+        state.nwb_alignment = make_nwb_alignment(nwb_path)
 
     return dt
 

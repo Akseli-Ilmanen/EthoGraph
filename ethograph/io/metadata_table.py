@@ -19,6 +19,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ethograph.io.pynapple import load_nap_data
+from ethograph.io.nwb_alignment import make_nwb_alignment
+
 logger = logging.getLogger(__name__)
 
 _STREAM_COL_RE = re.compile(r"^(video|pose|audio|ephys)_(.+)$")
@@ -62,8 +65,12 @@ def save_metadata_tsv(path: str | Path, df: pd.DataFrame) -> None:
 
 
 def condition_columns(df: pd.DataFrame) -> list[str]:
-    """Return user-defined condition column names (everything except ``trial``)."""
-    return [c for c in df.columns if c != "trial"]
+    """Return user-defined condition column names.
+
+    Excludes structural NWB timing/media columns so the trials widget only
+    shows actual metadata fields.
+    """
+    return [c for c in df.columns if c != "trial" and not _is_nwb_infrastructure_col(c)]
 
 
 def _is_nwb_infrastructure_col(col: str) -> bool:
@@ -77,26 +84,103 @@ def _is_nwb_infrastructure_col(col: str) -> bool:
     return False
 
 
-def metadata_from_attrs(dt: "TrialTree") -> pd.DataFrame:
-    """Extract condition metadata from legacy ds.attrs across all trials.
+def empty_metadata_df(trials: list[int | str]) -> pd.DataFrame:
+    """Build an empty metadata table with one row per trial."""
+    return pd.DataFrame({"trial": list(trials)})
 
-    Scans each trial's ``ds.attrs`` for keys that look like conditions
-    (not ``trial``, not common across all trials, not file paths).
+
+def _normalise_trial_column(df: pd.DataFrame, trial_ids: list[int | str] | None) -> pd.DataFrame:
+    if df.empty:
+        if trial_ids is None:
+            return pd.DataFrame({"trial": []})
+        return pd.DataFrame({"trial": list(trial_ids)})
+
+    result = df.copy()
+    if "trial" not in result.columns:
+        if trial_ids is None:
+            trial_ids = list(range(1, len(result) + 1))
+        result.insert(0, "trial", list(trial_ids)[: len(result)])
+    return result
+
+
+def metadata_from_nwb_trials(trials_df: pd.DataFrame, trial_ids: list[int | str] | None = None) -> pd.DataFrame:
+    """Extract user metadata columns from an NWB trials table."""
+    if trials_df is None or trials_df.empty:
+        return empty_metadata_df(trial_ids or [])
+
+    df = _normalise_trial_column(trials_df, trial_ids)
+    keep_cols = ["trial"] + [c for c in df.columns if c != "trial" and not _is_nwb_infrastructure_col(c)]
+    return df.loc[:, [c for c in keep_cols if c in df.columns]].copy()
+
+
+def metadata_from_intervalset(trials_ep, trial_ids: list[int | str] | None = None) -> pd.DataFrame:
+    """Extract metadata columns from a pynapple IntervalSet."""
+    if trials_ep is None:
+        return empty_metadata_df(trial_ids or [])
+
+    data = pd.DataFrame(trials_ep.metadata).copy() if getattr(trials_ep, "metadata", None) is not None else pd.DataFrame()
+    df = _normalise_trial_column(data, trial_ids)
+    if df.empty:
+        return empty_metadata_df(trial_ids or [])
+
+    keep_cols = ["trial"] + [c for c in df.columns if c != "trial" and not _is_nwb_infrastructure_col(c)]
+    return df.loc[:, [c for c in keep_cols if c in df.columns]].copy()
+
+
+def load_metadata_df(
+    source_path: str | Path | None = None,
+    *,
+    metadata_path: str | Path | None = None,
+    nwb_alignment=None,
+    trials_ep=None,
+    trial_ids: list[int | str] | None = None,
+) -> tuple[pd.DataFrame, str | None]:
+    """Load a metadata table from TSV or structured NWB/pynapple metadata.
+
+    Priority order:
+    1. Explicit ``metadata_path`` (``.tsv``, ``.nwb``, ``.npz``, or pynapple folder).
+    2. ``source_path`` as direct metadata source (``.nwb``/``.npz``/folder).
+    3. Sidecar ``{stem}_metadata.tsv`` next to ``source_path``.
+    4. Metadata embedded in the loaded NWB alignment object.
+    5. Metadata stored on a pynapple IntervalSet.
+    6. Empty table with one row per trial.
     """
-    common_attrs = dt.get_common_attrs().keys()
+    if metadata_path is not None:
+        path = Path(metadata_path)
+        if path.suffix.lower() == ".tsv" and path.exists():
+            return _normalise_trial_column(load_metadata_tsv(path), trial_ids), str(path)
+        if path.suffix.lower() == ".nwb" and path.exists():
+            alignment = make_nwb_alignment(path)
+            return metadata_from_nwb_trials(alignment.trials_df, trial_ids), str(path)
+        if (path.suffix.lower() == ".npz" or path.is_dir()) and path.exists():
+            _, trials_ep = load_nap_data(str(path))
+            return metadata_from_intervalset(trials_ep, trial_ids), str(path)
 
-    rows = []
-    for trial_id, ds in dt.trial_items():
-        row: dict = {"trial": trial_id}
-        for key, value in ds.attrs.items():
-            if key == "trial" or key in common_attrs:
-                continue
-            if isinstance(value, str) and Path(value).suffix.lower() in _LEGACY_SKIP_EXTENSIONS:
-                continue
-            row[key] = value
-        rows.append(row)
+    if source_path is not None:
+        source = Path(source_path)
+        if source.suffix.lower() == ".tsv" and source.exists():
+            return _normalise_trial_column(load_metadata_tsv(source), trial_ids), str(source)
+        if source.suffix.lower() == ".nwb" and source.exists():
+            alignment = make_nwb_alignment(source)
+            if alignment.trials_df is not None and not alignment.trials_df.empty:
+                return metadata_from_nwb_trials(alignment.trials_df, trial_ids), str(source)
+        if source.is_file():
+            sidecar = metadata_tsv_path(source)
+            if sidecar.exists():
+                return _normalise_trial_column(load_metadata_tsv(sidecar), trial_ids), str(sidecar)
+        if source.suffix.lower() == ".npz" and source.exists():
+            _, trials_ep = load_nap_data(str(source))
+            return metadata_from_intervalset(trials_ep, trial_ids), str(source)
+        if source.is_dir() and source.exists():
+            _, trials_ep = load_nap_data(str(source))
+            return metadata_from_intervalset(trials_ep, trial_ids), str(source)
 
-    if not rows:
-        return pd.DataFrame({"trial": dt.trials})
+    if nwb_alignment is not None:
+        return metadata_from_nwb_trials(nwb_alignment.trials_df, trial_ids), None
 
-    return pd.DataFrame(rows)
+    if trials_ep is not None:
+        return metadata_from_intervalset(trials_ep, trial_ids), None
+
+    return empty_metadata_df(trial_ids or []), None
+
+

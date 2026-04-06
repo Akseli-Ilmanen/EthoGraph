@@ -18,6 +18,7 @@ _EPOCH_GAP = 1e-4
 _KNOWN_STREAMS = ("video", "pose", "audio", "ephys")
 _NWB_FILENAME = "alignment.nwb"
 _SETTINGS_DIR = ".ethograph"
+_SENTINEL = object()
 
 
 def discover_nwb(nc_path: str | Path) -> Path | None:
@@ -105,7 +106,13 @@ class EmpytAlignment:
 
     @property
     def trials_ep(self) -> Any:
-        return None
+        """Pynapple IntervalSet built from trials_df start/stop times."""
+        cached = getattr(self, "_trials_ep_cache", _SENTINEL)
+        if cached is not _SENTINEL:
+            return cached
+        ep = _build_trials_ep(self.trials_df)
+        self._trials_ep_cache = ep
+        return ep
 
     def trial_epoch(self, trial) -> Any:
         raise ValueError("No timing information available")
@@ -118,6 +125,46 @@ class EmpytAlignment:
 
     def close(self) -> None:
         pass
+
+
+class TableAlignment(EmpytAlignment):
+    """Alignment backed by a tabular dataframe with trial timing columns.
+
+    Expected columns are ``trial``, ``start_time``, and ``stop_time``.
+    This is used as a fallback when no suitable alignment NWB is available.
+    """
+
+    def __init__(self, trials_df: pd.DataFrame) -> None:
+        self._trials_df = trials_df.copy()
+
+    @property
+    def trials_df(self) -> pd.DataFrame:
+        return self._trials_df
+
+    def _trial_row(self, trial) -> pd.Series | None:
+        df = self._trials_df
+        if df.empty or "trial" not in df.columns:
+            return None
+        match = df[df["trial"] == trial]
+        if match.empty:
+            match = df[df["trial"] == str(trial)]
+        if match.empty and isinstance(trial, str) and trial.isdigit():
+            match = df[df["trial"] == int(trial)]
+        if match.empty:
+            return None
+        return match.iloc[0]
+
+    def start_time(self, trial) -> float:
+        row = self._trial_row(trial)
+        if row is None or "start_time" not in row.index or pd.isna(row["start_time"]):
+            return 0.0
+        return float(row["start_time"])
+
+    def stop_time(self, trial) -> float | None:
+        row = self._trial_row(trial)
+        if row is None or "stop_time" not in row.index or pd.isna(row["stop_time"]):
+            return None
+        return float(row["stop_time"])
 
 
 # ---------------------------------------------------------------------------
@@ -468,43 +515,8 @@ class NWBAlignment:
 
     @cached_property
     def trials_ep(self):
-        import pynapple as nap
-
-        df = self.trials_df
-        if df.empty or "start_time" not in df.columns:
-            return None
-
-        starts = df["start_time"].values.astype(np.float64)
-        n = len(starts)
-        if n == 0:
-            return None
-
-        ends = np.full(n, np.nan, dtype=np.float64)
-        if "stop_time" in df.columns:
-            ends = df["stop_time"].values.astype(np.float64)
-
-        has_monotonic = n == 1 or bool(np.all(np.diff(starts) > 0))
-        if not has_monotonic:
-            return None
-
-        has_stop = ~np.isnan(ends)
-        safe_ends = ends.copy()
-        for i in range(n - 1):
-            if np.isnan(safe_ends[i]):
-                safe_ends[i] = starts[i + 1] - _EPOCH_GAP
-        if np.isnan(safe_ends[-1]):
-            safe_ends[-1] = starts[-1] + 1.0
-
-        trial_ids = df["trial"].values if "trial" in df.columns else np.arange(1, n + 1)
-
-        return nap.IntervalSet(
-            start=starts,
-            end=safe_ends,
-            metadata={
-                "trial": np.array(trial_ids),
-                "has_stop": has_stop.astype(float),
-            },
-        )
+        """Pynapple IntervalSet built from the NWB trials table."""
+        return _build_trials_ep(self.trials_df)
 
     def _trial_ep_idx(self, trial) -> int:
         ep = self.trials_ep
@@ -568,6 +580,58 @@ class NWBAlignment:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _build_trials_ep(df: pd.DataFrame):
+    """Build a pynapple IntervalSet from a trials DataFrame with start/stop times.
+
+    Returns None when timing data is missing or non-monotonic.
+    """
+    if df.empty or "start_time" not in df.columns:
+        return None
+
+    import pynapple as nap
+
+    starts = df["start_time"].values.astype(np.float64)
+    n = len(starts)
+    if n == 0:
+        return None
+
+    ends = np.full(n, np.nan, dtype=np.float64)
+    if "stop_time" in df.columns:
+        ends = df["stop_time"].values.astype(np.float64)
+
+    has_monotonic = n == 1 or bool(np.all(np.diff(starts) > 0))
+    if not has_monotonic:
+        return None
+
+    has_stop = ~np.isnan(ends)
+    safe_ends = ends.copy()
+    for i in range(n - 1):
+        if np.isnan(safe_ends[i]):
+            safe_ends[i] = starts[i + 1] - _EPOCH_GAP
+
+    trial_ids = df["trial"].values if "trial" in df.columns else np.arange(1, n + 1)
+
+    # Drop the last trial if its stop time is unknown (no hardcoded fallback)
+    if np.isnan(safe_ends[-1]):
+        mask = np.ones(n, dtype=bool)
+        mask[-1] = False
+        starts = starts[mask]
+        safe_ends = safe_ends[mask]
+        has_stop = has_stop[mask]
+        trial_ids = trial_ids[mask]
+        if len(starts) == 0:
+            return None
+
+    return nap.IntervalSet(
+        start=starts,
+        end=safe_ends,
+        metadata={
+            "trial": np.array(trial_ids),
+            "has_stop": has_stop.astype(float),
+        },
+    )
 
 
 def _file_index_for_trial(

@@ -898,8 +898,7 @@ class EphysTracePlot(BasePlot):
 
     @property
     def _ephys_offset(self) -> float:
-        alignment = getattr(self.app_state, 'trial_alignment', None)
-        return alignment.ephys_offset if alignment is not None else 0.0
+        return float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0)
 
     @property
     def _trial_duration(self) -> float | None:

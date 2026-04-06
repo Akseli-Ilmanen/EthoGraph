@@ -14,9 +14,8 @@ from .app_constants import (
     Z_INDEX_BACKGROUND,
 )
 from .makepretty import clean_display_labels
-from .modality import WindowedBuffer, XarraySource
 from .plots_base import BasePlot, ThrottleDebounce
-
+from ethograph.io.plot_sources import WindowedBuffer, XarraySource
 
 class HeatmapPlot(BasePlot):
     """MNE-style stacked heatmap rendering feature data as color-coded rows.

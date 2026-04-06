@@ -5,14 +5,14 @@ Canonical home for types previously in ``gui.plots_timeseriessource``.
 Key types:
     TimeRange               -- Immutable time interval with set operations
     RestrictionWindow       -- Display window for trial/label/sequence/session navigation
-    TrialAlignment          -- Trial time range + video offset
+    TrialVideoBounds        -- Trial-local bounds + video offset
     TimeSource              -- Protocol for any time-aligned data source
     SourceCollection        -- Registry of sources with union/intersection queries
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import numpy as np
@@ -76,12 +76,12 @@ class RestrictionWindow:
 
 
 # ---------------------------------------------------------------------------
-# Trial alignment: time context for one trial
+# Trial bounds: navigation context for one trial
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class TrialAlignment:
+class TrialVideoBounds:
     """Time context for a single trial.
 
     Parameters
@@ -94,26 +94,18 @@ class TrialAlignment:
     video_offset
         Added to ``frame / fps`` to get trial-relative time.
         Zero for per-trial video files; negative for session-wide files.
-    ephys_offset
-        Session-absolute start of this trial in the ephys file (seconds).
-        Used to convert trial-relative display times to file sample indices:
-        ``t_file = t_trial + ephys_offset``.
     """
 
     trial_id: str
     trial_range: TimeRange | None = None
     video_offset: float = 0.0
-    ephys_offset: float = 0.0
-    _cached_video_reader: object = field(default=None, repr=False)
 
     def summary(self) -> str:
-        lines = [f"  TrialAlignment(trial={self.trial_id!r})"]
+        lines = [f"  TrialVideoBounds(trial={self.trial_id!r})"]
         if self.trial_range:
             lines.append(f"    effective range: {self.trial_range}")
         if self.video_offset:
             lines.append(f"    video_offset:   {self.video_offset:.3f}s")
-        if self.ephys_offset:
-            lines.append(f"    ephys_offset:   {self.ephys_offset:.3f}s")
         return "\n".join(lines)
 
 
@@ -122,7 +114,7 @@ class TrialAlignment:
 # ---------------------------------------------------------------------------
 
 
-def compute_trial_alignment(
+def compute_trial_video_bounds(
     nwb_alignment,
     trial_id,
     ds: xr.Dataset,
@@ -131,11 +123,13 @@ def compute_trial_alignment(
     audio_folder: str | None = None,
     cameras_sel: str | None = None,
     source_collection: SourceCollection | None = None,
-) -> TrialAlignment:
-    """Compute a :class:`TrialAlignment` for one trial.
+) -> TrialVideoBounds:
+    """Compute :class:`TrialVideoBounds` for one trial.
 
-    Trial duration comes from ``source_collection.union_range`` when
-    available, otherwise falls back to probing xarray time coordinates.
+    Priority for trial duration:
+    1. ``nwb_alignment.stop_time(trial)`` — authoritative when available
+    2. Video file duration (probed from file)
+    3. ``source_collection.union_range`` — last resort
     """
     sio = nwb_alignment
     video_path = sio.resolve_media_path(
@@ -143,60 +137,40 @@ def compute_trial_alignment(
     )
     video_offset = sio.stream_offset_for_trial(trial_id, "video", cameras_sel) if video_path else 0.0
 
-    ephys_offset = 0.0
-    try:
-        ephys_offset = sio.start_time(str(trial_id))
-    except (KeyError, AttributeError):
-        pass
+    # 1. Alignment timing (authoritative)
+    trial_end: float | None = None
+    stop = sio.stop_time(trial_id)
+    if stop is not None:
+        trial_end = stop - sio.start_time(trial_id)
 
-    # Trial duration: prefer SourceCollection, fall back to xarray/video
-    trial_end = _resolve_trial_end(ds, source_collection, video_path, video_offset)
+    # 2. Fallbacks only when alignment has no stop time
+    if trial_end is None or trial_end <= 0:
+        trial_end = _resolve_trial_end(video_path, video_offset, source_collection)
+
     trial_range = TimeRange(0.0, trial_end) if trial_end and trial_end > 0 else None
 
-    # Cache video reader so update_video() can reuse it
-    video_reader = None
-    if video_path:
-        try:
-            from napari_pyav._reader import FastVideoReader
-            video_reader = FastVideoReader(video_path, read_format="rgb24")
-        except Exception:
-            pass
-
-    return TrialAlignment(
+    return TrialVideoBounds(
         trial_id=str(trial_id),
         trial_range=trial_range,
         video_offset=video_offset,
-        ephys_offset=ephys_offset,
-        _cached_video_reader=video_reader,
     )
 
 
+# Backward-compat aliases for older imports.
+TrialAlignment = TrialVideoBounds
+compute_trial_alignment = compute_trial_video_bounds
+
+
 def _resolve_trial_end(
-    ds: xr.Dataset,
-    source_collection: SourceCollection | None,
     video_path: str | None,
     video_offset: float,
+    source_collection: SourceCollection | None,
 ) -> float | None:
-    """Determine trial duration from the best available source."""
-    from ethograph.utils.xr_utils import get_time_coord
+    """Fallback trial-end resolution when alignment has no stop time.
 
-    # 1. SourceCollection union_range (includes all loaded data)
-    if source_collection is not None:
-        ur = source_collection.union_range
-        if ur is not None and ur.duration > 0:
-            return ur.end_s
-
-    # 2. xarray time coordinates
-    for var_name in ds.data_vars:
-        tc = get_time_coord(ds[var_name])
-        if tc is not None:
-            vals = tc if not hasattr(tc, "values") else tc.values
-            if len(vals) > 0:
-                t_end = float(vals[-1])
-                if t_end > 0:
-                    return t_end
-
-    # 3. Video length
+    Priority: video file duration, then source collection union range.
+    """
+    # 1. Video length
     if video_path:
         try:
             from napari_pyav._reader import FastVideoReader
@@ -207,6 +181,12 @@ def _resolve_trial_end(
                 return video_offset + n_frames / fps
         except Exception:
             pass
+
+    # 2. SourceCollection union_range (last resort)
+    if source_collection is not None:
+        ur = source_collection.union_range
+        if ur is not None and ur.duration > 0:
+            return ur.end_s
 
     return None
 
@@ -393,7 +373,7 @@ class SourceCollection:
 
 
 def build_trial_window(
-    trial_alignment: TrialAlignment,
+    trial_alignment: TrialVideoBounds,
     trial_id: int | str,
     extra_t0: float = 0.0,
     extra_t1: float = 0.0,

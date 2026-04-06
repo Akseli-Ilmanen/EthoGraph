@@ -32,8 +32,9 @@ from movement.kinematics import (
 )
 
 from ethograph.gui.notify import notify_dialog
+from ethograph.io.metadata_table import load_metadata_df, load_metadata_tsv, metadata_tsv_path
 from ethograph.io.trialtree import TrialTree
-from ethograph.io.nwb_alignment import discover_nwb, make_nwb_alignment
+from ethograph.io.nwb_alignment import EmpytAlignment, TableAlignment, discover_nwb, make_nwb_alignment
 from ethograph.labels.tsv_store import (
     init_empty_labels,
     labels_tsv_path,
@@ -51,6 +52,8 @@ class LoadResult:
     dt: Any  # TrialTree (or None for future NWB-only path)
     trial_ids: list[int | str]
     nwb_alignment: Any = None  # NWBAlignment 
+    metadata_df: pd.DataFrame = None
+    metadata_path: str | None = None
     all_labels_df: pd.DataFrame = None
     catalog: DataCatalog = None
     data_loader: Any = None
@@ -84,6 +87,63 @@ def _is_nwb_project_dir(file_path: str) -> bool:
     """Check if path is an NWB project directory (created by the NWB wizard)."""
     p = Path(file_path)
     return p.is_dir() and (p / ".ethograph" / "nwb_metadata").exists()
+
+
+def _resolve_alignment(source_path: str | Path):
+    """Resolve alignment source with priority order.
+
+    For source ``.nwb`` files:
+    1. Source NWB trials table.
+    2. Sidecar ``.ethograph/alignment.nwb``.
+    3. Sidecar metadata TSV with ``start_time`` and ``stop_time``.
+
+    For other source paths:
+    1. Sidecar ``.ethograph/alignment.nwb``.
+    2. Sidecar metadata TSV with ``start_time`` and ``stop_time``.
+    """
+    source = Path(source_path)
+
+    def _tsv_timing_alignment(path: Path):
+        try:
+            if not path.exists() or not path.is_file():
+                return None
+            df = load_metadata_tsv(path)
+            required = {"start_time", "stop_time"}
+            if not required.issubset(df.columns):
+                return None
+            return TableAlignment(df)
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            logger.warning("Failed to read timing TSV %s: %s", path, e)
+            return None
+
+    if source.suffix.lower() == ".nwb" and source.exists():
+        source_alignment = make_nwb_alignment(source)
+        if not source_alignment.trials_df.empty:
+            return source_alignment
+
+        sidecar_nwb = discover_nwb(source)
+        if sidecar_nwb is not None and Path(sidecar_nwb).exists():
+            sidecar_alignment = make_nwb_alignment(sidecar_nwb)
+            if not sidecar_alignment.trials_df.empty:
+                return sidecar_alignment
+
+        sidecar_tsv = metadata_tsv_path(source)
+        tsv_alignment = _tsv_timing_alignment(sidecar_tsv)
+        if tsv_alignment is not None:
+            return tsv_alignment
+
+        return source_alignment
+
+    sidecar_nwb = discover_nwb(source)
+    if sidecar_nwb is not None and Path(sidecar_nwb).exists():
+        return make_nwb_alignment(sidecar_nwb)
+
+    sidecar_tsv = metadata_tsv_path(source)
+    tsv_alignment = _tsv_timing_alignment(sidecar_tsv)
+    if tsv_alignment is not None:
+        return tsv_alignment
+
+    return EmpytAlignment()
 
 
 # ---------------------------------------------------------------------------
@@ -141,13 +201,10 @@ def _load_nwb_dataset(file_path: str) -> LoadResult:
     loader = NWBLoader(file_path, catalog, combo_catalog=combo_cat)
     if trial_intervals:
         loader.set_trial_intervals(trial_intervals)
-
-    if trial_intervals:
         trial_ids = list(range(1, len(trial_intervals) + 1))
-        durations = [t[1] - t[0] for t in trial_intervals]
     else:
         trial_ids = [1]
-        durations = None
+
     tsv_path = labels_tsv_path(Path(file_path))
     if tsv_path.exists():
         all_labels_df = load_labels_tsv(tsv_path)
@@ -155,10 +212,19 @@ def _load_nwb_dataset(file_path: str) -> LoadResult:
     else:
         all_labels_df = init_empty_labels(trial_ids)
 
+    sio = _resolve_alignment(file_path)
+    metadata_df, metadata_path = load_metadata_df(
+        source_path=file_path,
+        nwb_alignment=sio,
+        trial_ids=trial_ids,
+    )
+
     return LoadResult(
         dt=None,
         trial_ids=trial_ids,
-        nwb_alignment=make_nwb_alignment(file_path),
+        nwb_alignment=sio,
+        metadata_df=metadata_df,
+        metadata_path=metadata_path,
         all_labels_df=all_labels_df,
         catalog=catalog,
         data_loader=loader,
@@ -181,14 +247,22 @@ def _load_pynapple_dataset(file_path: str) -> LoadResult:
     loader = PynappleLoader(data, trials_ep, catalog)
     nwb_path = file_path if _is_nwb_file(file_path) else None
     trial_ids = list(range(1, len(trials_ep) + 1)) if trials_ep is not None and len(trials_ep) > 0 else [1]
-    durations = [float(trials_ep.end[i] - trials_ep.start[i]) for i in range(len(trials_ep))] if trials_ep is not None and len(trials_ep) > 0 else None
-    
-    
+
     
     return LoadResult(
         dt=None,
         trial_ids=trial_ids,
         nwb_alignment=make_nwb_alignment(nwb_path),
+        metadata_df=load_metadata_df(
+            source_path=file_path,
+            nwb_alignment=make_nwb_alignment(nwb_path),
+            trial_ids=trial_ids,
+        )[0],
+        metadata_path=load_metadata_df(
+            source_path=file_path,
+            nwb_alignment=make_nwb_alignment(nwb_path),
+            trial_ids=trial_ids,
+        )[1],
         all_labels_df=init_empty_labels(trial_ids),
         catalog=catalog,
         data_loader=loader,
@@ -226,7 +300,7 @@ def _load_nwb_project(project_dir: str) -> LoadResult:
     loader = PynappleLoader(data, trials_ep, catalog)
     nwb = str(alignment_path) if alignment_path.exists() else nwb_source
     trial_ids = list(range(1, len(trials_ep) + 1)) if trials_ep is not None and len(trials_ep) > 0 else [1]
-    durations = [float(trials_ep.end[i] - trials_ep.start[i]) for i in range(len(trials_ep))] if trials_ep is not None and len(trials_ep) > 0 else None
+    
     labels_path = project_path / "labels.tsv"
     if labels_path.exists():
         all_labels_df = load_labels_tsv(labels_path)
@@ -234,10 +308,19 @@ def _load_nwb_project(project_dir: str) -> LoadResult:
     else:
         all_labels_df = init_empty_labels(trial_ids)
 
+    sio = make_nwb_alignment(nwb)
+    metadata_df, metadata_path = load_metadata_df(
+        source_path=nwb_source,
+        nwb_alignment=sio,
+        trial_ids=trial_ids,
+    )
+
     return LoadResult(
         dt=None,
         trial_ids=trial_ids,
-        nwb_alignment=make_nwb_alignment(nwb),
+        nwb_alignment=sio,
+        metadata_df=metadata_df,
+        metadata_path=metadata_path,
         all_labels_df=all_labels_df,
         catalog=catalog,
         data_loader=loader,
@@ -291,10 +374,12 @@ def load_dataset(
         dt = eto.dataset_to_basic_trialtree(ds)
         dt._source_path = file_path
 
-    # Always ensure nwb_alignment is set during dataset load
-    if not hasattr(dt, "nwb_alignment") or dt.nwb_alignment is None:
-        dt.nwb_alignment = make_nwb_alignment(discover_nwb(file_path))
-    sio = dt.nwb_alignment
+    sio = _resolve_alignment(file_path)
+    metadata_df, metadata_path = load_metadata_df(
+        source_path=file_path,
+        nwb_alignment=sio,
+        trial_ids=dt.trials,
+    )
 
     catalog = catalog_from_xarray(dt.itrial(0), dt, nwb_alignment=sio)
 
@@ -343,6 +428,8 @@ def load_dataset(
         dt=dt,
         trial_ids=dt.trials,
         nwb_alignment=sio,
+        metadata_df=metadata_df,
+        metadata_path=metadata_path,
         all_labels_df=all_labels_df,
         catalog=catalog,
         data_loader=data_loader,
@@ -414,7 +501,7 @@ def _build_source_collection_xarray(dt: TrialTree, nwb_alignment=None) -> Source
         if tc is not None:
             sc.add(XarrayTrialSource(var_name, ds, tc.name))
 
-    sio = nwb_alignment if nwb_alignment is not None else dt.nwb_alignment
+    sio = nwb_alignment if nwb_alignment is not None else EmpytAlignment()
     try:
         trial_ids = dt.trials
         starts, stops = [], []
@@ -486,7 +573,6 @@ def _wizard_single_media_helper(
     build_nwb_from_trial_table(
         trial_table, stream_rates=stream_rates, output_path=nwb_path
     )
-    dt.nwb_alignment = make_nwb_alignment(nwb_path)
 
     return dt
 

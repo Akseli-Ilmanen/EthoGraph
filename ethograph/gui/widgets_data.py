@@ -38,7 +38,7 @@ import ethograph as eto
 from ethograph.gui.notify import notify, notify_dialog
 from ethograph.labels.intervals import get_interval_bounds
 from ethograph.io.plot_sources import FileSource
-from ethograph.io.time_model import compute_trial_alignment
+from ethograph.io.time_model import compute_trial_video_bounds
 
 
 
@@ -580,6 +580,8 @@ class DataWidget(QWidget):
             )
             self.app_state.dt = result.dt
             all_labels_df = result.all_labels_df
+            self.app_state.metadata_df = result.metadata_df
+            self.app_state.metadata_path = result.metadata_path
             self.catalog = result.catalog
             if result.nwb_video_folder and not self.app_state.video_folder:
                 from .dialog_video_downsample import offer_downsample
@@ -774,8 +776,7 @@ class DataWidget(QWidget):
         self.navigation_widget.set_data_widget(self)
 
         if getattr(self, "trials_widget", None) is not None:
-            dt = self.app_state.dt
-            mdf = dt.metadata_df if dt is not None else pd.DataFrame({"trial": self.app_state.trials})
+            mdf = self.app_state.metadata_df if self.app_state.metadata_df is not None else pd.DataFrame({"trial": self.app_state.trials})
             self.trials_widget.setup(mdf)
 
         for combo_name, combo_spec in self.catalog.combos.items():
@@ -1788,7 +1789,7 @@ class DataWidget(QWidget):
 
 
     def _build_trial_alignment(self, trial_id) -> None:
-        self.app_state.trial_alignment = compute_trial_alignment(
+        self.app_state.trial_alignment = compute_trial_video_bounds(
             self.app_state.nwb_alignment,
             trial_id,
             self.app_state.ds,

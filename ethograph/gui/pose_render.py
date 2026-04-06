@@ -1,13 +1,12 @@
-"""Pose rendering pipeline: pure loading/filtering functions + display manager.
+"""Pose rendering pipeline: lazy loading + dynamic filtering.
 
-Pure functions are stateless — they load and filter pose data into PoseRenderData.
-PoseDisplayManager orchestrates display using a single code path for all cameras
-(primary and extra). Each camera's keypoints are tracked independently; the UI
-shows the union across all loaded cameras.
+Pure functions load pose keypoint data and return PoseRenderData.
+PoseDisplayManager orchestrates display using keypoint table selections to
+drive which keypoints are shown/hidden.
 
 Two loading paths:
-- File-based (DLC, SLEAP, etc.): via ``movement.io.load_dataset`` + ``ds_to_napari_layers``
-- NWB-based: direct lazy HDF5 reads from ``PoseEstimationSeries`` (no xarray/movement)
+- File-based (DLC, SLEAP, etc.): via ``movement.io.load_dataset``
+- NWB-based: direct HDF5 reads from ``PoseEstimationSeries`` with lazy slicing
 """
 
 from __future__ import annotations
@@ -24,6 +23,7 @@ from movement.napari.convert import ds_to_napari_layers
 from movement.napari.layer_styles import BoxesStyle, PointsStyle, _sample_colormap
 
 from ethograph.gui.notify import notify
+from ethograph.io.nwb_import import _get_absolute_timestamps
 
 @dataclass
 class PoseRenderData:
@@ -73,22 +73,16 @@ def _strip_keypoint_prefix(properties: pd.DataFrame) -> pd.DataFrame:
 def load_pose_from_file(file_path: str, source_software: str, fps: float) -> PoseRenderData:
     """Load a pose file via movement and return a PoseRenderData."""
     ds = load_dataset(file_path, source_software, fps)
-    return load_pose_from_movement_ds(ds, file_name=Path(file_path).name)
-
-
-def load_pose_from_movement_ds(
-    ds: Any, *, file_name: str = "movement_dataset",
-) -> PoseRenderData:
-    """Convert a movement-style xarray Dataset directly to PoseRenderData."""
     data, bbox_data, properties = ds_to_napari_layers(ds)
     return PoseRenderData(
         data=data,
         properties=_strip_keypoint_prefix(properties),
         data_not_nan=~np.any(np.isnan(data), axis=1),
-        file_name=file_name,
+        file_name=Path(file_path).name,
         bbox_data=bbox_data,
         frame_path=ds.attrs.get("frame_path"),
     )
+
 
 
 def slice_pose_to_frames(pr: PoseRenderData, start_frame: int, end_frame: int) -> PoseRenderData:
@@ -129,13 +123,6 @@ def slice_pose_to_frames(pr: PoseRenderData, start_frame: int, end_frame: int) -
     )
 
 
-def _get_series_timestamps(series: Any) -> np.ndarray:
-    """Extract absolute timestamps from a PoseEstimationSeries."""
-    if getattr(series, "timestamps", None) is not None:
-        return np.asarray(series.timestamps[:], dtype=np.float64)
-    n = series.data.shape[0]
-    t0 = float(series.starting_time) if getattr(series, "starting_time", None) is not None else 0.0
-    return t0 + np.arange(n, dtype=np.float64) / float(series.rate)
 
 
 def load_pose_from_nwb_direct(
@@ -144,12 +131,28 @@ def load_pose_from_nwb_direct(
     t_start: float | None = None,
     t_stop: float | None = None,
 ) -> PoseRenderData | None:
-    """Load pose directly from NWB PoseEstimationSeries (no xarray/movement).
+    """Load pose directly from NWB PoseEstimationSeries via lazy HDF5 slicing.
 
-    Reads ``series.data`` and ``series.confidence`` via lazy HDF5 slicing.
-    Keypoint names come from the series keys.  Optionally slices to
-    ``[t_start, t_stop]`` and makes time trial-relative.
+    Reads ``series.data`` and ``series.confidence`` using searchsorted for
+    efficient time-based slicing. No xarray or movement conversion needed.
+
+    Parameters
+    ----------
+    nwb_file
+        Open pynwb.NWBFile object (provides access to processing modules).
+    pose_estimation_key
+        Container name (e.g., "pose_dlc", "pose_sleap").
+    t_start, t_stop
+        Optional time window [t_start, t_stop). If provided, slices data
+        and makes time trial-relative (0-relative).
+
+    Returns
+    -------
+    PoseRenderData | None
+        Stacked keypoint data with per-point properties, or None if data
+        is unavailable or empty after slicing.
     """
+    # Find the pose estimation container
     proc_key = "pose_estimation"
     for mod_name, mod in nwb_file.processing.items():
         if pose_estimation_key in mod.data_interfaces:
@@ -168,24 +171,30 @@ def load_pose_from_nwb_direct(
     conf_col: list[float] = []
 
     for kp_name, series in container.pose_estimation_series.items():
-        ts = _get_series_timestamps(series)
+        ts = _get_absolute_timestamps(series)
+        n_frames = series.data.shape[0]
 
+        # Determine time window index range
         if t_start is not None and t_stop is not None:
             idx = np.where((ts >= t_start) & (ts <= t_stop))[0]
             if len(idx) == 0:
                 continue
             i0, i1 = int(idx[0]), int(idx[-1]) + 1
+            trial_relative_time = ts[i0:i1] - t_start
         else:
-            i0, i1 = 0, series.data.shape[0]
+            i0, i1 = 0, n_frames
+            trial_relative_time = ts
 
+        # Lazy slice from HDF5
         data = np.asarray(series.data[i0:i1], dtype=np.float64)
         n = len(data)
         frames = np.arange(n, dtype=np.float64)
 
-        # NWB stores (x, y); napari Points needs (frame, row/y, col/x)
+        # NWB stores (x, y); napari Points needs (frame, y, x)
         pts = np.column_stack([frames, data[:, 1], data[:, 0]])
         not_nan = ~np.any(np.isnan(data[:, :2]), axis=1)
 
+        # Optionally load confidence
         confidence: np.ndarray | None = None
         if hasattr(series, "confidence") and series.confidence is not None:
             try:
@@ -207,7 +216,11 @@ def load_pose_from_nwb_direct(
     return PoseRenderData(
         data=np.vstack(all_pts),
         properties=pd.DataFrame(
-            {"keypoint": kp_col, "individual": ind_col, "confidence": conf_col}
+            {
+                "keypoint": kp_col,
+                "individual": ind_col,
+                "confidence": conf_col,
+            }
         ),
         data_not_nan=np.concatenate(all_not_nan),
         file_name=f"NWB_pose_{pose_estimation_key}",
@@ -215,7 +228,7 @@ def load_pose_from_nwb_direct(
 
 
 def apply_confidence_filter(pr: PoseRenderData, threshold: float) -> PoseRenderData:
-    """Zero out data_not_nan for points below the confidence threshold."""
+    """Mask out points below confidence threshold (UI-driven filtering)."""
     if threshold <= 0.0 or "confidence" not in pr.properties.columns:
         return pr
     mask = pr.data_not_nan.copy()
@@ -224,7 +237,7 @@ def apply_confidence_filter(pr: PoseRenderData, threshold: float) -> PoseRenderD
 
 
 def apply_keypoint_filter(pr: PoseRenderData, hidden: set[str]) -> PoseRenderData:
-    """Zero out data_not_nan for keypoints in the ``hidden`` set."""
+    """Mask out hidden keypoints from the keypoints table selection."""
     if not hidden or "keypoint" not in pr.properties.columns:
         return pr
     mask = pr.data_not_nan.copy()
@@ -233,12 +246,15 @@ def apply_keypoint_filter(pr: PoseRenderData, hidden: set[str]) -> PoseRenderDat
 
 
 class PoseDisplayManager:
-    """Manages pose loading, filtering, and napari layer display.
+    """Manages pose loading, filtering, and napari display.
 
+    Keyoint filtering is driven by the keypoints table in the UI:
+    - Confidence threshold filters out low-confidence points
+    - Hidden keypoints in the table prevent display
+    
     Uses a single rendering path for all cameras (primary and extra) via
-    direct ``add_points()`` calls with ``shown`` mask to preserve the frame
-    dimension. Tracks per-camera keypoints and exposes their union for the
-    UI filter table.
+    direct ``add_points()`` calls with ``shown`` mask. Each camera's keypoints
+    are tracked independently; the UI filter shows the union.
     """
 
     def __init__(self, viewer, app_state, video_manager, data_widget):
@@ -325,6 +341,7 @@ class PoseDisplayManager:
             if nwb_file is None:
                 return None
             try:
+                # TODO: based of scope range, load in this
                 trial_id = self.app_state.trials_sel
                 t_start = sio.start_time(trial_id) if trial_id else None
                 t_stop = sio.stop_time(trial_id) if trial_id else None
@@ -340,9 +357,11 @@ class PoseDisplayManager:
         return None
 
     def _prepare_pose(self, camera_idx: int, hidden_keypoints: set[str]) -> PoseRenderData | None:
+        """Load pose and apply UI-driven filtering (confidence + keypoint table selection)."""
         pr = self._load_pose_for_camera(camera_idx)
         if pr is None:
             return None
+        # Apply filters driven by UI keypoints table
         pr = apply_confidence_filter(pr, self.app_state.pose_hide_threshold)
         pr = apply_keypoint_filter(pr, hidden_keypoints)
         return pr if np.any(pr.data_not_nan) else None
@@ -465,6 +484,13 @@ class PoseDisplayManager:
         )
 
     def update_pose(self, hidden_keypoints: set[str]) -> None:
+        """Update pose display for all cameras based on keypoints table selection.
+        
+        Parameters
+        ----------
+        hidden_keypoints
+            Set of keypoint names to hide (from the UI keypoints table).
+        """
         primary_combo = getattr(self._data_widget, "primary_camera_combo", None)
         primary_name = primary_combo.currentText() if primary_combo else None
         if primary_name is not None:
@@ -474,6 +500,7 @@ class PoseDisplayManager:
             self._display_pose_on_extra(camera_name, hidden_keypoints, widget)
 
     def _display_pose_on_primary(self, camera_idx: int, hidden_keypoints: set[str]) -> None:
+        """Render pose on the main viewer (driven by keypoints table selection)."""
         self._remove_pose_layers()
         pr = self._prepare_pose(camera_idx, hidden_keypoints)
         if pr is None:
@@ -492,6 +519,7 @@ class PoseDisplayManager:
         hidden_keypoints: set[str],
         widget: Any,
     ) -> None:
+        """Render pose on an extra camera widget (driven by keypoints table selection)."""
         if not camera_name:
             widget.clear_pose()
             return

@@ -160,37 +160,6 @@ class HelpWidget(QWidget):
                 for k, v in trial_meta.items():
                     print(f"    {k}: {v!r}")
 
-        print(SEP)
-        print("=" * 60)
-        print("  TRIAL ALIGNMENT")
-        print("=" * 60)
-        alignment = getattr(self.app_state, 'trial_alignment', None)
-        if alignment is None:
-            print("  No trial alignment available.")
-        else:
-            print(alignment.summary())
-
-        print(SEP)
-        print("=" * 60)
-        print("  NWB ALIGNMENT (nwb_alignment)")
-        print("=" * 60)
-        dt = getattr(self.app_state, 'dt', None)
-        sio = getattr(dt, 'nwb_alignment', None) if dt is not None else None
-        if sio is None:
-            print("  No nwb_alignment available.")
-        else:
-            sio.print_session()
-
-        print(SEP)
-        print("=" * 60)
-        print(f"Trial Interval set")
-        print("=" * 60)
-        trials_ep = getattr(self.app_state.dt, 'trials_ep', None)
-        if trials_ep is None:
-            print("  No trials_ep available.")
-        else:
-            df = trials_ep.as_dataframe()
-            print(df.to_string())
 
         print(SEP)
         print("=" * 60)
@@ -216,7 +185,6 @@ class HelpWidget(QWidget):
                     print("  Store._ds is None")
         if ds is not None:
             cp_vars = list(ds.filter_by_attrs(type="changepoints").data_vars)
-            print(f"  app_state.ds changepoint vars: {cp_vars}")
             for v in cp_vars:
                 da = ds[v]
                 import numpy as np
@@ -224,6 +192,30 @@ class HelpWidget(QWidget):
                 print(f"    {v}: shape={da.shape}, n_positive={n_pos}, target={da.attrs.get('target_feature')}")
         else:
             print("  app_state.ds is None")
+
+
+
+        print(SEP)
+        sio = getattr(self.app_state, 'nwb_alignment', None)
+        if sio is None:
+            dt = getattr(self.app_state, 'dt', None)
+            sio = getattr(dt, 'nwb_alignment', None) if dt is not None else None
+        if sio is None:
+            print("  No nwb_alignment available.")
+        else:
+            sio.print_session()
+
+        print(SEP)
+        print("=" * 60)
+        print(f"Trial Interval set")
+        print("=" * 60)
+        trials_ep = getattr(self.app_state.nwb_alignment, 'trials_ep', None)
+        if trials_ep is None:
+            print("  No trials_ep available.")
+        else:
+            df = trials_ep.as_dataframe()
+            print(df.to_string())
+
 
         print(SEP)
         print("=" * 60)
@@ -252,3 +244,15 @@ class HelpWidget(QWidget):
         print(f"  Restrict mode:  {getattr(self.app_state, 'restrict_mode', '?')}")
         print(f"  Restrict window: {rw}")
         print(f"  Window bounds:   {self.app_state.window_bounds}")
+
+
+
+        print(SEP)
+        print("=" * 60)
+        print("  TRIAL ALIGNMENT")
+        print("=" * 60)
+        alignment = getattr(self.app_state, 'trial_alignment', None)
+        if alignment is None:
+            print("  No trial alignment available.")
+        else:
+            print(alignment.summary())

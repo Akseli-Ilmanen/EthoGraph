@@ -28,7 +28,7 @@ from ethograph.io.time_model import build_trial_window, find_closest_trial
 from ethograph.utils.sequences import get_label_instances, match_sequences
 
 from .app_constants import AUDIO_SPEED_MAX, AUDIO_SPEED_MIN, AUDIO_SPEED_STEP
-from .screen_recorder import RecordButton
+from .dialog_screen_recorder import RecordButton
 
 logger = logging.getLogger(__name__)
 

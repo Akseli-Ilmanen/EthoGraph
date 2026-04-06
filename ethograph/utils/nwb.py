@@ -20,14 +20,6 @@ except ImportError:
     NWBFile = None
 
 
-def _require_nwb():
-    if pynwb is None:
-        raise ImportError(
-            "h5py and pynwb are required for NWB support. "
-            'Install them with: uv pip install "ethograph[nwb]"'
-        )
-
-
 # ---------------------------------------------------------------------------
 # Timing helpers (used by nwb_alignment, plots_ephystrace, and creation code)
 # ---------------------------------------------------------------------------

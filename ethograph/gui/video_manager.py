@@ -294,17 +294,10 @@ class VideoManager:
                         pass
 
     def _setup_primary_video(self, restore_frame: int):
-
-        alignment = getattr(self.app_state, 'trial_alignment', None)
-        cached = getattr(alignment, '_cached_video_reader', None) if alignment else None
-        if cached is not None:
-            reader = cached
-            alignment._cached_video_reader = None
-        else:
-            reader = FastVideoReader(
-                self.app_state.video_path, read_format='rgb24',
-            )
-            _ = reader.shape
+        reader = FastVideoReader(
+            self.app_state.video_path, read_format='rgb24',
+        )
+        _ = reader.shape
 
         detected_fps = float(reader.stream.guessed_rate) if reader.stream.guessed_rate else None
         if detected_fps is not None and self.app_state.dt is not None:

@@ -896,7 +896,11 @@ class _NWBTimelinePage(QWidget):
         sess_ds = xr.Dataset(session_vars, coords=coords)
         dt["session"] = xr.DataTree(sess_ds)
 
-        draw_session_timeline(self._plot, dt, items_out=self._items)
+        draw_session_timeline(
+            self._plot,
+            getattr(self.app_state, "nwb_alignment", None),
+            items_out=self._items,
+        )
 
     def _clear(self):
         for item in self._items:

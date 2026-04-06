@@ -1407,16 +1407,14 @@ class EphysWidget(QWidget):
         dialog.exec_()
 
     def _trial_ep(self) -> nap.IntervalSet | None:
-        alignment = self.app_state.trial_alignment
-        ephys_offset = alignment.ephys_offset if alignment is not None else 0.0
+        ephys_offset = float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0)
         window_bounds = self.app_state.window_bounds
         if window_bounds is None:
             return None
         return nap.IntervalSet(ephys_offset, ephys_offset + window_bounds.duration)
 
     def _ephys_offset(self) -> float:
-        alignment = self.app_state.trial_alignment
-        return alignment.ephys_offset if alignment is not None else 0.0
+        return float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0)
 
     def _restrict_to_trial(self, cluster_id: int, sr: float) -> tuple[np.ndarray, np.ndarray]:
         """Return (times_local_s, samples_abs) for cluster_id restricted to current trial."""

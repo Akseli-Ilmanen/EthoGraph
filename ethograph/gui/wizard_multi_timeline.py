@@ -6,6 +6,7 @@ import json
 import logging
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -33,7 +34,7 @@ from qtpy.QtWidgets import (
 
 from ethograph.gui.wizard_multi_codegen import generate_alignment_code
 from ethograph.gui.dialog_function_params import _do_open_source
-from ethograph.io.time_model import compute_trial_alignment, TimeRange, TrialAlignment
+from ethograph.io.time_model import TimeRange
 from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
 from ethograph.utils.stream_durations import get_audio_duration, get_ephys_duration, get_pose_duration, get_video_duration
@@ -173,7 +174,7 @@ def _make_rounded_bar(
 
 def draw_session_timeline(
     plot: pg.PlotWidget,
-    dt,
+    nwb_alignment,
     items_out: list | None = None,
     extra_streams: list[str] | None = None,
 ) -> float:
@@ -186,7 +187,7 @@ def draw_session_timeline(
     """
     from ethograph.io.nwb_alignment import NWBAlignment
 
-    sio = dt.nwb_alignment
+    sio = nwb_alignment
     items: list = items_out if items_out is not None else []
 
     nwb = sio.nwb if isinstance(sio, NWBAlignment) else None
@@ -262,10 +263,8 @@ def draw_session_timeline(
             max_t = max(max_t, t_end)
 
     # --- Trial boundary lines ---
-    try:
-        trials = dt.trials
-    except ValueError:
-        trials = []
+    trial_df = getattr(sio, "trials_df", pd.DataFrame())
+    trials = trial_df["trial"].tolist() if not trial_df.empty and "trial" in trial_df.columns else []
 
     for trial_id in trials:
         t0 = sio.start_time(trial_id)
@@ -727,9 +726,9 @@ class TimelinePage(QWidget):
             QHeaderView.ResizeMode.ResizeToContents
         )
 
-    def _populate_aligned_table_from_dt(self, dt):
+    def _populate_aligned_table_from_alignment(self, nwb_alignment):
         """Build a table from TrialTree's NWB session trials_df."""
-        sio = dt.nwb_alignment
+        sio = nwb_alignment
         df = sio.trials_df
         if df.empty:
             return
@@ -854,7 +853,13 @@ class TimelinePage(QWidget):
         )
 
         # Detect mode: table has filename columns → aligned, otherwise → timeline
-        sio = dt.nwb_alignment
+        sio = getattr(app_state, "nwb_alignment", None)
+        if sio is None:
+            sio = getattr(dt, "nwb_alignment", None)
+        if sio is None:
+            from ethograph.io.nwb_alignment import EmpytAlignment
+
+            sio = EmpytAlignment()
         df = sio.trials_df
         has_filename_cols = any(
             col not in ("trial", "start_time", "stop_time")
@@ -864,73 +869,11 @@ class TimelinePage(QWidget):
 
         if has_filename_cols:
             self._viz_stack.setCurrentIndex(0)
-            self._populate_aligned_table_from_dt(dt)
+            self._populate_aligned_table_from_alignment(sio)
         else:
             self._viz_stack.setCurrentIndex(1)
             self._total_duration = draw_session_timeline(
-                self._plot, dt, items_out=self._items,
+                self._plot, sio, items_out=self._items,
             )
 
 
-
-    @staticmethod
-    def _has_pose_data(dt, cam: str) -> bool:
-        for trial_id in (dt.trials or [])[:5]:
-            try:
-                if dt.nwb_alignment.get_media(trial_id, "pose", cam):
-                    return True
-            except (KeyError, IndexError):
-                pass
-        return False
-
-    @staticmethod
-    def _get_end_source(dt, trial_id, ds, alignment: TrialAlignment | None) -> str:
-        nwb_alignment = getattr(dt, "nwb_alignment", None)
-        if nwb_alignment is not None:
-            try:
-                if nwb_alignment.stop_time(trial_id) is not None:
-                    return "session stop_time"
-            except (KeyError, AttributeError):
-                pass
-        if ds is not None:
-            for var_name in ds.data_vars:
-                da = ds[var_name]
-                if da.attrs.get("type", "") in ("features", "colors", ""):
-                    tc = get_time_coord(da)
-                    if tc is not None:
-                        vals = getattr(tc, "values", tc)
-                        if len(vals) > 0 and float(vals[-1]) > 0:
-                            return "feature last timestamp"
-        if alignment is not None and alignment.trial_range is not None:
-            return "video/audio file length"
-        return "unknown (10 s placeholder)"
-
-    def _update_note(self, end_sources: list[tuple[str, str]]):
-        src_count = Counter(src for _, src in end_sources)
-        src_colors = {
-            "session stop_time":       "#2a8a2a",
-            "feature last timestamp":  "#2255cc",
-            "video/audio file length": "#aa6600",
-            "unknown (10 s placeholder)": "#cc4400",
-        }
-        parts = []
-        for src, n in src_count.most_common():
-            c = src_colors.get(src, "#555")
-            parts.append(f"<span style='color:{c}'>■</span>&nbsp;{n} trial(s):&nbsp;<b>{src}</b>")
-
-        needs_fallback = any(s != "session stop_time" for _, s in end_sources)
-        priority = ""
-        if needs_fallback:
-            priority = (
-                "<br><span style='color:#888; font-size:10px;'>"
-                "Trial end priority: "
-                "(1)&nbsp;session&nbsp;stop_time &rarr; "
-                "(2)&nbsp;feature&nbsp;last&nbsp;timestamp &rarr; "
-                "(3)&nbsp;video/audio&nbsp;file&nbsp;length."
-                "</span>"
-            )
-
-        self._note_label.setText(
-            "Trial end: &nbsp;" + "&nbsp;&nbsp;|&nbsp;&nbsp;".join(parts) + priority
-        )
-        self._note_label.show()

@@ -143,11 +143,13 @@ ethograph/utils/
 
 The codebase has two distinct source protocols:
 
-**Rendering layer** (`gui/plot_sources`) — what plots use to load and cache viewport data:
+**Rendering layer** (`io/plot_sources`) — what plots use to load and cache viewport data:
 - **`PlotSource`** (Protocol) — `name`, `time_range`, `sampling_rate`, `identity`, `get_data(t0, t1)`
 - `FileSource` — wraps any loader with `rate`/`__len__`/`__getitem__` (audioio, ephys, memmap)
 - `XarraySource` — wraps `xr.Dataset`, returns time-sliced datasets from `get_data()`
-- `WindowedBuffer` — viewport-aware cache. Loads wider than viewport, reloads on pan past buffer.
+- `NWBSource` — lazy HDF5 streaming from NWB TimeSeries/ImageSeries (no xarray conversion, supports remote via remfile)
+- `PynappleSource` — lazy access to pynapple Tsd/TsdFrame objects via `restrict()`
+- `WindowedBuffer` — viewport-aware cache. Loads wider than viewport, reloads on pan past buffer. Works with all PlotSource implementations.
 
 **Navigation layer** (`io/time_model.py` + `io/time_sources.py`) — session-level time metadata:
 - **`TimeSource`** (Protocol) — `name`, `time_range`, `sampling_rate`, `get_data(t0, t1)`
@@ -263,6 +265,43 @@ The NWB wizard stores `nwb_pose_keys` (e.g. `["LeftCamera", "RightCamera"]`) in 
 All plots inherit `BasePlot` (pyqtgraph `PlotWidget`): time marker, x-axis range management, click handling, axes locking.
 
 `UnifiedPanelContainer` holds all panels in a `QSplitter`, links x-axes, manages panel visibility.
+
+### Rendering Sources & Streaming (`io/plot_sources`)
+
+The rendering layer provides **lazy, viewport-aware data streaming** without converting to xarray. All sources implement the `PlotSource` protocol and work with `WindowedBuffer` for efficient caching.
+
+**Core Pattern:**
+```python
+# Create a source (lazy, no data loaded yet)
+source = NWBSource("data.nwb", "acquisition/video_cam-1")
+
+# Wrap in buffer for viewport caching
+buffer = WindowedBuffer(buffer_multiplier=5.0)
+buffer.set_source(source)
+
+# Viewport pan/zoom triggers lazy load
+data = buffer.get(t0=10.0, t1=20.0)  # SampleSlice(timestamps, values)
+```
+
+**Source Types:**
+- `FileSource` — audioio, ephys, memmap loaders (existing)
+- `XarraySource` — xr.Dataset slicing (existing)
+- `NWBSource` — **NEW** — Direct HDF5 streaming from NWB TimeSeries/ImageSeries
+  - Lazy metadata read (no file open until needed)
+  - Supports explicit timestamps or rate-based timing
+  - Enabling point for remfile/remote streaming
+- `PynappleSource` — **NEW** — Direct pynapple Tsd/TsdFrame access
+  - Wraps `restrict()` for time slicing
+  - No xarray intermediate
+
+**Why no xarray conversion?**
+- `nwb_import.py` currently converts NWB → xarray → DataLoader. This is memory-heavy and slow.
+- New sources are file-aware: HDF5 for NWB, in-memory for pynapple.
+- `WindowedBuffer` caches only the viewport window, not the full dataset.
+- Enables future remote streaming (remfile) without refactoring.
+
+**Usage in DataLoader:**
+Future refactor to pass `NWBSource` / `PynappleSource` directly to plots instead of converting to xarray. Catalog/metadata layer (`DataCatalog`) remains unchanged.
 
 ### Video Sync: `video_sync.py`
 

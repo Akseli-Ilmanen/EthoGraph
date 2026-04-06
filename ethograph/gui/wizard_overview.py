@@ -78,6 +78,7 @@ class WizardState:
     files_aligned_to_trials: bool = True
     trial_table: pd.DataFrame | None = None
     trial_table_path: str | None = None  # Path to imported CSV/TSV
+    nwb_alignment: object | None = None
 
     camera_names: list[str] = field(default_factory=list)
     mic_names: list[str] = field(default_factory=list)
@@ -529,6 +530,8 @@ class NCWizardDialog(QDialog):
         if save_error:
             notify_dialog(f"Failed to save:\n{save_error}", "error", "Error", self)
             return
+
+        self.app_state.nwb_alignment = self._state.nwb_alignment
 
         self._populate_io_fields()
         notify_dialog(f"Successfully created:\n{output_path}", "info", "Success", self)

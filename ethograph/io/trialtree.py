@@ -90,25 +90,11 @@ class TrialTree(xr.DataTree):
     # Trial metadata table
     # ------------------------------------------------------------------
 
-    @property
-    def metadata_df(self) -> pd.DataFrame:
-        """Per-trial condition metadata as a DataFrame.
-
-        Always has a ``trial`` column.  Condition columns (genotype,
-        treatment, ...) are everything else.
-        """
-        cached = getattr(self, "_metadata_df", None)
-        if cached is not None:
-            return cached
-        return pd.DataFrame({"trial": self.trials})
-
-    @metadata_df.setter
-    def metadata_df(self, value: pd.DataFrame | None) -> None:
-        self._metadata_df = value
-
     def get_trial_metadata(self, trial) -> dict:
         """Return condition metadata for a single trial as a dict."""
-        df = self.metadata_df
+        df = getattr(self, "_metadata_df", None)
+        if df is None:
+            return {}
         if df.empty:
             return {}
         row = df[df["trial"] == trial]

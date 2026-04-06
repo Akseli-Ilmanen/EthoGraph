@@ -7,7 +7,7 @@ import pytest
 from ethograph.io.time_model import (
     RestrictionWindow,
     TimeRange,
-    TrialAlignment,
+    TrialVideoBounds,
     build_label_window,
     build_sequence_window,
     build_trial_window,
@@ -28,7 +28,7 @@ from ethograph.utils.sequences import (
 
 @pytest.fixture
 def trial_alignment():
-    return TrialAlignment(
+    return TrialVideoBounds(
         trial_id=1,
         trial_range=TimeRange(0.0, 10.0),
     )

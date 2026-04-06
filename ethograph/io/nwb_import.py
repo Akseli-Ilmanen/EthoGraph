@@ -1,4 +1,4 @@
-"""NWB → TrialTree import: probing, conversion, and the NWB wizard loading path."""
+"""NWB metadata probing and trial table reading for the wizard."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import xarray as xr
 
 try:
     import pynwb
@@ -14,19 +13,6 @@ try:
 except ImportError:
     pynwb = None
     NWBFile = None
-
-try:
-    from movement.io import load_poses
-except ImportError:
-    load_poses = None
-
-
-def _require_nwb():
-    if pynwb is None:
-        raise ImportError(
-            "h5py and pynwb are required for NWB support. "
-            'Install them with: uv pip install "ethograph[nwb]"'
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -134,93 +120,6 @@ def probe_label_sources(nwb: NWBFile) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Behavioral series converter
-# ---------------------------------------------------------------------------
-
-
-class BehaviorSpatialTimeSeriesConverter:
-    name = "spatial_series"
-    SKIP_MODULES = {"ecephys", "ophys", "ogen"}
-
-    def __init__(self, include_sources: set[str] | None = None):
-        self._include_sources = include_sources
-        self._data: dict[str, xr.DataArray] = {}
-
-    def _iter_ifaces(self, nwb: NWBFile):
-        for mod_name, mod in nwb.processing.items():
-            if mod_name in self.SKIP_MODULES:
-                continue
-            for name, iface in mod.data_interfaces.items():
-                if self._include_sources is not None and f"{mod_name}/{name}" not in self._include_sources:
-                    continue
-                if hasattr(iface, "pose_estimation_series"):
-                    continue
-                if not hasattr(iface, "data"):
-                    continue
-                if not _has_valid_timing(iface):
-                    continue
-                yield name, iface
-
-    def load(self, nwb: NWBFile) -> None:
-        for name, iface in self._iter_ifaces(nwb):
-            timestamps = _get_absolute_timestamps(iface)
-            data = np.asarray(iface.data[:])
-
-            if data.ndim == 1:
-                self._data[name] = xr.DataArray(data, dims=("time",), coords={"time": timestamps})
-            elif self._is_spatial(iface, data):
-                space = ["x", "y", "z"][:data.shape[-1]]
-                self._data[name] = xr.DataArray(data, dims=("time", "space"), coords={"time": timestamps, "space": space})
-            else:
-                channels = [f"ch_{i}" for i in range(data.reshape(len(data), -1).shape[1])]
-                self._data[name] = xr.DataArray(data.reshape(len(data), -1), dims=("time", "channel"), coords={"time": timestamps, "channel": channels})
-
-    def from_nwb(self, nwb: NWBFile, trial_idx: int, t_start: float, t_stop: float) -> dict[str, xr.DataArray]:
-        if not self._data:
-            self.load(nwb)
-        return {
-            name: da.sel(time=slice(t_start, t_stop)).assign_coords(time=da.sel(time=slice(t_start, t_stop)).time - t_start)
-            for name, da in self._data.items()
-        }
-
-    @staticmethod
-    def _is_spatial(iface: Any, data: np.ndarray) -> bool:
-        return hasattr(iface, "reference_frame") or (data.ndim == 2 and data.shape[-1] in (2, 3))
-
-
-# ---------------------------------------------------------------------------
-# Pose helpers
-# ---------------------------------------------------------------------------
-
-
-def _get_pose_timestamps(pose_estimation: Any) -> np.ndarray:
-    """Extract session-absolute timestamps from a PoseEstimation interface.
-
-    movement's ``load_poses.from_nwb_file`` discards the original NWB
-    timestamps and reconstructs time as ``arange(n) / fps`` starting at 0.
-    This helper retrieves the real timestamps so they can be reassigned.
-    """
-    series = next(iter(pose_estimation.pose_estimation_series.values()))
-    return _get_absolute_timestamps(series)
-
-
-def _estimate_fps(pose_estimation: Any, n_frames: int = 100) -> float:
-    series = next(iter(pose_estimation.pose_estimation_series.values()))
-    return series.rate or 1 / np.diff(series.timestamps[:n_frames]).mean()
-
-
-def _get_keypoints(pose_estimation: Any) -> set[str]:
-    return set(pose_estimation.pose_estimation_series.keys())
-
-
-def _find_pose_module_key(nwb: NWBFile, camera_name: str) -> str:
-    for mod_name, mod in nwb.processing.items():
-        if camera_name in mod.data_interfaces:
-            return mod_name
-    return "pose_estimation"
-
-
-# ---------------------------------------------------------------------------
 # Trials table reader
 # ---------------------------------------------------------------------------
 
@@ -269,161 +168,3 @@ def _ts_duration(ts: Any) -> float | None:
         return start + n / float(ts.rate)
     return None
 
-
-# ---------------------------------------------------------------------------
-# Session loader: NWB → TrialTree
-# ---------------------------------------------------------------------------
-
-
-def _get_individual_coord(nwb: NWBFile) -> list[str]:
-    subject = getattr(nwb, "subject", None)
-    sid = getattr(subject, "subject_id", None) if subject else None
-    return [str(sid) if sid else "individual_0"]
-
-
-def _assign_individual(ds: xr.Dataset, nwb: NWBFile) -> xr.Dataset:
-    return ds.assign_coords(individuals=_get_individual_coord(nwb))
-
-
-def _coerce_attr(val: Any) -> Any:
-    if isinstance(val, (np.bool_, bool)):
-        return int(val)
-    if isinstance(val, np.integer):
-        return int(val)
-    if isinstance(val, np.floating):
-        return float(val)
-    return val
-
-
-def load_nwb_session(
-    nwb_file: NWBFile,
-    pose_containers: dict[str, Any] | None = None,
-    cameras_with_pose: list[str] | None = None,
-    trial_indices: list[int] | None = None,
-    include_pose: bool = True,
-    behavioral_sources: set[str] | None = None,
-) -> tuple:
-    """Load an NWB file into a TrialTree + trials DataFrame.
-
-    Returns ``(TrialTree, pd.DataFrame)``.
-    """
-    import ethograph as eto
-    from ethograph import TrialTree, get_time_coord
-
-    _require_nwb()
-    trials_df = read_trials_table(nwb_file)
-    if trial_indices is not None:
-        trials_df = trials_df.iloc[trial_indices].reset_index(drop=True)
-
-    assert not include_pose or pose_containers is not None, "pose_containers dict must be provided to include pose data"
-
-    if include_pose:
-        fps_per_cam = {k: _estimate_fps(v) for k, v in pose_containers.items()}
-        kps_per_cam = {k: _get_keypoints(v) for k, v in pose_containers.items()}
-        shared_keypoints = set.intersection(*kps_per_cam.values())
-        same_fps = len(set(fps_per_cam.values())) == 1
-
-        pose_datasets = {
-            cam_name: load_poses.from_nwb_file(
-                nwb_file,
-                processing_module_key=_find_pose_module_key(nwb_file, cam_name),
-                pose_estimation_key=cam_name,
-            )
-            for cam_name in pose_containers
-        }
-
-        # movement discards NWB timestamps and rebuilds time from 0.
-        # Restore session-absolute timestamps so trial slicing works.
-        for cam_name, pose_est in pose_containers.items():
-            abs_ts = _get_pose_timestamps(pose_est)
-            ds = pose_datasets[cam_name]
-            pose_datasets[cam_name] = ds.assign_coords(time=abs_ts)
-
-            # Single camera view
-            if len(pose_containers) == 1:
-                pose_ds = ds
-                pose_keys = [str(k) for k in pose_containers]
-
-            # Same keypoints/fps -> can use Movement multiview convention
-            elif len(pose_containers) > 1 and bool(shared_keypoints) and same_fps:
-                pose_ds = xr.concat(
-                    [d.sel(keypoints=list(shared_keypoints)) for d in pose_datasets.values()],
-                    dim=xr.DataArray(list(pose_datasets.keys()), dims="view"),
-                )
-                pose_keys = [str(v) for v in ds["position"].coords["view"].values]
-
-            elif same_fps:
-                pose_ds = xr.merge([
-                    d.rename({"position": f"position_{cam}", "confidence": f"confidence_{cam}"})
-                    for cam, d in pose_datasets.items()
-                ])
-                pose_keys = [k for k in cameras_with_pose if f"position_{k}" in pose_ds.data_vars]
-
-            else:
-                pose_ds = xr.merge([
-                    d.rename({
-                        "position": f"position_{cam}",
-                        "confidence": f"confidence_{cam}",
-                        "time": f"time_{int(round(fps_per_cam[cam]))}Hz",
-                    })
-                    for cam, d in pose_datasets.items()
-                ])
-                pose_keys = [k for k in cameras_with_pose if f"position_{k}" in pose_ds.data_vars]
-
-    behavior_converter = BehaviorSpatialTimeSeriesConverter(include_sources=behavioral_sources)
-    behavior_converter.load(nwb_file)
-
-    ds_list = []
-    for _, row in trials_df.iterrows():
-        t_start, t_stop = float(row["start_time"]), float(row["stop_time"])
-        behavior_trial = behavior_converter.from_nwb(nwb_file, int(row["trial"]), t_start, t_stop)
-
-        if include_pose:
-            pose_slices = {
-                get_time_coord(pose_ds[var]).name: slice(t_start, t_stop)
-                for var in pose_ds.data_vars
-                if "position" in str(var)
-            }
-            pose_trial = pose_ds.sel(pose_slices)
-            pose_trial = pose_trial.assign_coords({
-                dim: pose_trial[dim].values - t_start
-                for dim in pose_slices
-            })
-
-            if pose_slices:
-                pose_time_dim = next(iter(pose_slices))
-                time_vals = pose_trial[pose_time_dim].values
-                pose_hz = int(round(1.0 / float(np.diff(time_vals[:2]).item()))) if len(time_vals) >= 2 else None
-                aligned_behavior: dict[str, xr.DataArray] = {}
-                for var, da in behavior_trial.items():
-                    time_dim = next((d for d in da.dims if "time" in d), None)
-                    if time_dim is None:
-                        aligned_behavior[var] = da
-                        continue
-                    hz = int(time_dim.replace("time_", "").replace("Hz", "")) if "Hz" in time_dim else None
-                    aligned_behavior[var] = da.rename({time_dim: pose_time_dim}) if hz is not None and hz == pose_hz else da
-                ds_trial = xr.merge([pose_trial, xr.Dataset(aligned_behavior)])
-            else:
-                ds_trial = xr.Dataset(behavior_trial)
-        else:
-            ds_trial = xr.Dataset(behavior_trial)
-
-        ds_trial = ds_trial.assign_attrs(
-            trial=int(row["trial"]),
-            start_time=t_start,
-            stop_time=t_stop,
-            **{col: _coerce_attr(row[col]) for col in trials_df.columns if col not in ("trial", "start_time", "stop_time")},
-        )
-        ds_trial = _assign_individual(ds_trial, nwb_file)
-
-        for var in ds_trial.data_vars:
-            ds_trial[var].attrs["type"] = "features"
-
-        ds_list.append(ds_trial)
-
-    dt = eto.from_datasets(ds_list)
-
-    if include_pose:
-        dt.attrs["nwb_pose_keys"] = pose_keys
-
-    return dt, trials_df

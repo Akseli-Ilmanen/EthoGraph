@@ -187,6 +187,231 @@ class XarraySource:
         return self._ds.sel({self._time_coord_name: slice(t0, t1)})
 
 
+class NWBSource:
+    """Lazy HDF5 streaming from NWB TimeSeries or ImageSeries.
+
+    Enables remote/large-file access without loading full datasets into memory.
+    Supports both explicit timestamps and rate-based timing.
+
+    Parameters
+    ----------
+    nwb_path : str
+        Path to the NWB file (local or remote via remfile).
+    ts_path : str
+        HDF5 path to the TimeSeries (e.g., "acquisition/video_cam-1" or
+        "processing/behavior/position").
+    name : str, optional
+        Human-readable name for the source.
+    start_time : float, optional
+        Session absolute time offset (in seconds). Required for proper
+        timeline alignment. Defaults to 0.0.
+    """
+
+    def __init__(
+        self,
+        nwb_path: str,
+        ts_path: str,
+        name: str | None = None,
+        start_time: float = 0.0,
+    ):
+        self._nwb_path = str(nwb_path)
+        self._ts_path = ts_path
+        self._start_time = start_time
+        self._name = name or ts_path.split("/")[-1]
+        
+        # Lazy metadata (no file open yet)
+        self._rate: float | None = None
+        self._n_samples: int | None = None
+        self._timestamps: np.ndarray | None = None
+        self._time_range: TimeRange | None = None
+        self._opened = False
+
+    def _ensure_open(self) -> None:
+        """Lazy open: read metadata from HDF5 header only."""
+        if self._opened:
+            return
+        
+        import h5py
+        
+        with h5py.File(self._nwb_path, "r") as f:
+            ts = f[self._ts_path]
+            
+            # Read metadata
+            if "rate" in ts.attrs:
+                self._rate = float(ts.attrs["rate"])
+            
+            if "starting_time" in ts.attrs:
+                t0 = float(ts.attrs["starting_time"])
+            else:
+                t0 = 0.0
+            
+            # Sample count
+            data_key = "data"
+            if data_key in ts:
+                self._n_samples = ts[data_key].shape[0]
+            else:
+                self._n_samples = 0
+            
+            # Build time range (absolute session time)
+            if "timestamps" in ts:
+                ts_data = ts["timestamps"][:]
+                t_start = float(ts_data[0])
+                t_end = float(ts_data[-1])
+                self._timestamps = np.asarray(ts_data, dtype=np.float64)
+            else:
+                if self._rate and self._rate > 0:
+                    dt = 1.0 / self._rate
+                    t_start = self._start_time + t0
+                    t_end = self._start_time + t0 + self._n_samples / self._rate
+                else:
+                    t_start = self._start_time
+                    t_end = self._start_time + 1.0
+            
+            self._time_range = TimeRange(t_start, t_end)
+            self._opened = True
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def time_range(self) -> TimeRange:
+        self._ensure_open()
+        return self._time_range
+
+    @property
+    def sampling_rate(self) -> float:
+        self._ensure_open()
+        return self._rate if self._rate and self._rate > 0 else 1.0
+
+    @property
+    def identity(self) -> str:
+        return f"nwb:{self._nwb_path}:{self._ts_path}"
+
+    def get_data(self, t0: float, t1: float) -> SampleSlice:
+        """Fetch timestamps and values from NWB HDF5 for [t0, t1]."""
+        import h5py
+        
+        self._ensure_open()
+        
+        if self._n_samples == 0 or t1 <= t0:
+            empty = np.array([], dtype=np.float64)
+            return SampleSlice(empty, empty)
+        
+        # Index-based slicing
+        if self._timestamps is not None:
+            # Explicit timestamps: use searchsorted
+            i0 = np.searchsorted(self._timestamps, t0, side="left")
+            i1 = np.searchsorted(self._timestamps, t1, side="right")
+        else:
+            # Rate-based: convert time to sample indices
+            dt = 1.0 / self._rate if self._rate and self._rate > 0 else 1.0
+            i0 = max(0, int((t0 - self._start_time) / dt))
+            i1 = min(self._n_samples, int((t1 - self._start_time) / dt) + 1)
+        
+        i1 = max(i0, min(i1, self._n_samples))
+        
+        if i1 <= i0:
+            empty = np.array([], dtype=np.float64)
+            return SampleSlice(empty, empty)
+        
+        # Fetch data slice from HDF5
+        with h5py.File(self._nwb_path, "r") as f:
+            ts = f[self._ts_path]
+            data = np.asarray(ts["data"][i0:i1], dtype=np.float64)
+            
+            if self._timestamps is not None:
+                timestamps = self._timestamps[i0:i1].astype(np.float64)
+            else:
+                if self._rate and self._rate > 0:
+                    timestamps = self._start_time + np.arange(i0, i1, dtype=np.float64) / self._rate
+                else:
+                    timestamps = np.arange(i0, i1, dtype=np.float64)
+        
+        return SampleSlice(timestamps, data)
+
+
+class PynappleSource:
+    """Lazy access to pynapple Tsd, TsdFrame, or TsdTensor objects.
+
+    Wraps a pynapple time-series object as a PlotSource for direct
+    streaming without xarray conversion.
+
+    Parameters
+    ----------
+    tsd_object : nap.Tsd | nap.TsdFrame | nap.TsdTensor
+        Pynapple time series to wrap.
+    name : str, optional
+        Human-readable name. Defaults to "pynapple".
+    """
+
+    def __init__(self, tsd_object, name: str = "pynapple"):
+        import pynapple as nap
+        
+        if not isinstance(tsd_object, (nap.Tsd, nap.TsdFrame, nap.TsdTensor)):
+            raise TypeError(
+                f"Expected nap.Tsd/TsdFrame/TsdTensor, got {type(tsd_object)}"
+            )
+        
+        self._tsd = tsd_object
+        self._name = name
+        
+        # Cache metadata (use .t for times, .start/.end for bounds)
+        t_start = float(tsd_object.start)
+        t_end = float(tsd_object.end)
+        self._time_range = TimeRange(t_start, t_end)
+        
+        # Use pynapple's rate if available, otherwise estimate from data
+        if hasattr(tsd_object, "rate") and tsd_object.rate:
+            self._sampling_rate = float(tsd_object.rate)
+        else:
+            # Estimate sampling rate from first interval
+            t = tsd_object.t
+            if len(t) > 1:
+                dt = float(np.diff(t[:2])[0])
+                self._sampling_rate = 1.0 / dt if dt > 0 else 1.0
+            else:
+                self._sampling_rate = 1.0
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def time_range(self) -> TimeRange:
+        return self._time_range
+
+    @property
+    def sampling_rate(self) -> float:
+        return self._sampling_rate
+
+    @property
+    def identity(self) -> str:
+        return f"pynapple:{id(self._tsd)}"
+
+    def get_data(self, t0: float, t1: float) -> SampleSlice:
+        """Fetch timestamps and values via pynapple restrict()."""
+        # Restrict to time window
+        restricted = self._tsd.restrict(
+            pynapple_interval(t0, t1)
+        )
+        
+        if len(restricted.t) == 0:
+            empty = np.array([], dtype=np.float64)
+            return SampleSlice(empty, empty)
+        
+        timestamps = np.asarray(restricted.t, dtype=np.float64)
+        values = np.asarray(restricted.d, dtype=np.float64)
+        
+        return SampleSlice(timestamps, values)
+
+
+def pynapple_interval(t_start: float, t_end: float):
+    """Create a pynapple IntervalSet for a time window."""
+    import pynapple as nap
+    return nap.IntervalSet(t_start, t_end)
+
+
 class WindowedBuffer:
     """Viewport-aware cache for any PlotSource.
 
@@ -195,7 +420,8 @@ class WindowedBuffer:
     per-plot buffer classes with a single generic implementation.
 
     The cached object type depends on the source: ``SampleSlice`` for
-    ``FileSource``, ``xr.Dataset`` for ``XarraySource``, etc.
+    file-based sources (``FileSource``, ``NWBSource``, ``PynappleSource``),
+    ``xr.Dataset`` for ``XarraySource``, etc.
 
     Parameters
     ----------

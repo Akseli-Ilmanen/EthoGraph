@@ -17,7 +17,7 @@ from qtpy.QtCore import QObject, QTimer, Signal
 
 import ethograph as eto
 from ethograph.gui.notify import notify
-from ethograph.io.time_model import RestrictionWindow, TrialAlignment, TimeRange
+from ethograph.io.time_model import RestrictionWindow, TimeRange, TrialVideoBounds
 
 from .makepretty import find_combo_index
 from ethograph.labels.intervals import empty_intervals
@@ -30,6 +30,7 @@ from ethograph.labels.tsv_store import (
     set_trial_in_tsv,
     set_trial_meta_attr,
 )
+from ethograph.io.metadata_table import load_metadata_df
 
 
 logger = logging.getLogger(__name__)
@@ -170,7 +171,10 @@ class AppStateSpec:
         "time_jump_ms": (float, 100.0, True),
         "time": (xr.DataArray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
         "label_intervals": (pd.DataFrame | None, None, False),
-        "trial_alignment": (TrialAlignment | None, None, False),
+        "metadata_df": (pd.DataFrame | None, None, False),
+        "metadata_path": (str | None, None, True, SCOPE_LOCAL),
+        "trial_alignment": (TrialVideoBounds | None, None, False),
+        "ephys_offset": (float, 0.0, True, SCOPE_LOCAL),
         "restrict_mode": (str, "trial", True),
         "restrict_extra_t0": (float, 0.0, True),
         "restrict_extra_t1": (float, 0.0, True),
@@ -351,12 +355,13 @@ class ObservableAppState(QObject):
         self.ephys_stream_sel: str | None = None
         self._suspend_local_autoload = False
         self._all_labels_df: pd.DataFrame | None = None
+        self._metadata_df: pd.DataFrame | None = None
         self._label_mappings: dict | None = None
         self._active_branches: set[int] = {0}
         
-        # Always initialize nwb_alignment to a null-object (empty SessionIO)
-        from ethograph.io.nwb_alignment import SessionIO
-        self.nwb_alignment = SessionIO()
+  
+        from ethograph.io.nwb_alignment import EmpytAlignment
+        self.nwb_alignment = EmpytAlignment()
 
         self.settings = get_settings()
         self._yaml_path = yaml_path or "gui_settings.yaml"
@@ -398,7 +403,7 @@ class ObservableAppState(QObject):
 
     @property
     def trial_bounds(self) -> TimeRange | None:
-        """Time range for the current trial, sourced from TrialAlignment.trial_range."""
+        """Time range for the current trial, sourced from TrialVideoBounds.trial_range."""
         alignment = getattr(self, 'trial_alignment', None)
         if alignment is not None:
             return alignment.trial_range
@@ -537,7 +542,7 @@ class ObservableAppState(QObject):
         raise AttributeError(name)
 
     def __setattr__(self, name, value):
-        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map", "ephys_source_map", "ephys_stream_sel", "_suspend_local_autoload", "_all_labels_df", "_label_mappings", "_active_branches"):
+        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map", "ephys_source_map", "ephys_stream_sel", "_suspend_local_autoload", "_all_labels_df", "_metadata_df", "_label_mappings", "_active_branches"):
             super().__setattr__(name, value)
             return
 
@@ -565,6 +570,20 @@ class ObservableAppState(QObject):
             if name == "nwb_file_path":
                 from ethograph.io.nwb_alignment import make_nwb_alignment
                 self.nwb_alignment = make_nwb_alignment(value)
+
+            if name == "metadata_path":
+                if value:
+                    metadata_df, resolved_path = load_metadata_df(
+                        source_path=self.nc_file_path,
+                        metadata_path=value,
+                        nwb_alignment=self.nwb_alignment,
+                        trials_ep=self.nwb_alignment.trials_ep,
+                        trial_ids=getattr(self, "trials", None) or None,
+                    )
+                    self._values[name] = resolved_path or value
+                    self.metadata_df = metadata_df
+                else:
+                    self.metadata_df = None
 
             return
 

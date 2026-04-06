@@ -20,6 +20,7 @@ from qtpy.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -92,6 +93,7 @@ class IOWidget(QWidget):
             self.ephys_path_edit.setText(self.app_state.ephys_path)
         if self.app_state.neurons_path:
             self.neurons_path_edit.setText(self.app_state.neurons_path)
+        self.ephys_offset_edit.setText(f"{float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0):g}")
 
     def _wire_app_state_path_signals(self):
         self.app_state.nc_file_path_changed.connect(
@@ -114,6 +116,12 @@ class IOWidget(QWidget):
         )
         self.app_state.nwb_file_path_changed.connect(
             lambda value: self.nwb_file_path_edit.setText(value or "")
+        )
+        self.app_state.metadata_path_changed.connect(
+            lambda value: self.metadata_path_edit.setText(value or "")
+        )
+        self.app_state.ephys_offset_changed.connect(
+            lambda value: self.ephys_offset_edit.setText(f"{float(value or 0.0):g}")
         )
 
 
@@ -139,11 +147,26 @@ class IOWidget(QWidget):
         self.neurons_path_edit.editingFinished.connect(
             lambda: self._sync_line_edit_to_state(self.neurons_path_edit, "neurons_path")
         )
+        self.ephys_offset_edit.editingFinished.connect(self._sync_ephys_offset_to_state)
 
     def _sync_line_edit_to_state(self, line_edit, attr_name):
         value = line_edit.text().strip() or None
         if getattr(self.app_state, attr_name, None) != value:
             setattr(self.app_state, attr_name, value)
+
+    def _sync_ephys_offset_to_state(self) -> None:
+        text = self.ephys_offset_edit.text().strip()
+        if not text:
+            value = 0.0
+        else:
+            try:
+                value = float(text)
+            except ValueError:
+                notify_dialog("Ephys offset must be a valid number in seconds.", "warning")
+                self.ephys_offset_edit.setText(f"{float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0):g}")
+                return
+        if getattr(self.app_state, "ephys_offset", 0.0) != value:
+            self.app_state.ephys_offset = value
 
     # ------------------------------------------------------------------
     # Toggle buttons
@@ -239,12 +262,25 @@ class IOWidget(QWidget):
             object_name="nc_file_path",
             browse_callback=lambda: self.on_browse_clicked("file", "data"),
         )
-        self.nwb_file_path_edit = self._create_path_widget(
-            self._load_layout,
-            label="Alignment:",
-            object_name="nwb_file_path",
-            browse_callback=lambda: self._browse_nwb_file(),
-        )
+
+        # Alignment row: NWB path + ephys offset in a single row.
+        alignment_row = QHBoxLayout()
+        self.nwb_file_path_edit = QLineEdit()
+        self.nwb_file_path_edit.setObjectName("nwb_file_path_edit")
+        alignment_row.addWidget(self.nwb_file_path_edit)
+
+        nwb_browse_button = QPushButton("Browse")
+        nwb_browse_button.setObjectName("nwb_file_path_browse_button")
+        nwb_browse_button.clicked.connect(self._browse_nwb_file)
+        alignment_row.addWidget(nwb_browse_button)
+
+        nwb_clear_button = QPushButton("Clear")
+        nwb_clear_button.setObjectName("nwb_file_path_clear_button")
+        nwb_clear_button.clicked.connect(lambda: self._on_clear_path_clicked("nwb_file_path", self.nwb_file_path_edit))
+        alignment_row.addWidget(nwb_clear_button)
+
+        self._load_layout.addRow("Alignment:", alignment_row)
+
         self.metadata_path_edit = self._create_path_widget(
             self._load_layout,
             label="Metadata:",
@@ -1160,6 +1196,8 @@ class IOWidget(QWidget):
             state_key = attr.removesuffix("_edit")
             if hasattr(self.app_state, state_key):
                 setattr(self.app_state, state_key, None)
+        self.ephys_offset_edit.setText("0")
+        self.app_state.ephys_offset = 0.0
         self.downsample_checkbox.setChecked(False)
 
     def _clear_combo_boxes(self):
@@ -1218,6 +1256,7 @@ class IOWidget(QWidget):
         line_edit.setText("")
         attr_map = {
             "nc_file_path": "nc_file_path",
+            "nwb_file_path": "nwb_file_path",
             "video_folder": "video_folder",
             "audio_folder": "audio_folder",
             "pose_folder": "pose_folder",
@@ -1291,7 +1330,7 @@ class IOWidget(QWidget):
     # ------------------------------------------------------------------
 
     def _create_load_button(self, target_layout):
-        load_layout = QHBoxLayout()
+        controls_layout = QHBoxLayout()
 
         self.downsample_checkbox = QCheckBox("Downsample:")
         self.downsample_checkbox.setObjectName("downsample_checkbox")
@@ -1308,16 +1347,30 @@ class IOWidget(QWidget):
         self.downsample_spin.setFixedWidth(70)
         self.downsample_spin.valueChanged.connect(self._on_downsample_value_changed)
 
+        self.ephys_offset_edit = QLineEdit()
+        self.ephys_offset_edit.setObjectName("ephys_offset_edit")
+        self.ephys_offset_edit.setPlaceholderText("0.0")
+        self.ephys_offset_edit.setToolTip("Session-absolute ephys offset in seconds.")
+        self.ephys_offset_edit.setMaximumWidth(110)
+
         self.load_button = QPushButton("Load")
         self.load_button.setObjectName("load_button")
         self.load_button.clicked.connect(self._on_load_clicked)
 
-        load_layout.addWidget(self.import_labels_checkbox)
-        load_layout.addWidget(self.downsample_checkbox)
-        load_layout.addWidget(self.downsample_spin)
-        load_layout.addWidget(self.load_button, stretch=1)
+        controls_layout.addWidget(self.import_labels_checkbox)
+        controls_layout.addWidget(self.downsample_checkbox)
+        controls_layout.addWidget(self.downsample_spin)
+        controls_layout.addWidget(QLabel("Ephys offset (s):"))
+        controls_layout.addWidget(self.ephys_offset_edit)
+        controls_layout.addStretch()
 
-        target_layout.addRow(load_layout)
+        load_button_layout = QHBoxLayout()
+        load_button_layout.setContentsMargins(0, 0, 0, 0)
+        load_button_layout.addWidget(self.load_button)
+        self.load_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        target_layout.addRow(controls_layout)
+        target_layout.addRow(load_button_layout)
 
     def _on_downsample_toggled(self, checked):
         self.downsample_spin.setEnabled(checked)
@@ -1352,11 +1405,17 @@ class IOWidget(QWidget):
             self.app_state.nwb_file_path = path  # auto-syncs to app_state.nwb_alignment
 
     def _browse_metadata_file(self):
-        """Browse for a metadata TSV file."""
+        """Browse for a metadata source file (TSV, NWB, or NPZ)."""
         result = QFileDialog.getOpenFileName(
             None,
             caption="Open metadata file",
-            filter="TSV files (*.tsv);;All files (*)",
+            filter=(
+                "Metadata files (*.tsv *.nwb *.npz);;"
+                "TSV files (*.tsv);;"
+                "NWB files (*.nwb);;"
+                "Pynapple files (*.npz);;"
+                "All files (*)"
+            ),
         )
         path = result[0] if result and len(result) >= 1 else ""
         if path:
@@ -1370,6 +1429,14 @@ class IOWidget(QWidget):
         nc_path = self.app_state.nc_file_path
         if not nc_path:
             return
+
+        source = Path(nc_path)
+        if source.suffix.lower() == ".nwb" and source.exists():
+            self.nwb_file_path_edit.setText(str(source))
+            self.app_state.nwb_file_path = str(source)
+            logger.info("Using source NWB for alignment: %s", source)
+            return
+
         data_dir = str(Path(nc_path).parent)
         nwb = find_nwb_file(data_dir)
         if nwb is not None:
@@ -1384,6 +1451,8 @@ class IOWidget(QWidget):
             return
         tsv = metadata_tsv_path(nc_path)
         _populate_if_exists(self.metadata_path_edit, tsv)
+        if tsv.exists():
+            self.app_state.metadata_path = str(tsv)
 
     def _browse_data_file(self):
         """Browse for a data file (.nc, .nwb, .npz)."""
