@@ -50,12 +50,13 @@ class HelpWidget(QWidget):
         help_layout.addWidget(self.github_button)
 
         help_layout2 = QHBoxLayout()
-        self.print_debug_button = QPushButton("🖨 Print for debugging")
+
+        self.print_debug_button = QPushButton("🖨️Print for debugging")
         self.print_debug_button.setToolTip("Print app state, session, and trial alignment to console for debugging")
         self.print_debug_button.clicked.connect(self._on_print_debug)
         help_layout2.addWidget(self.print_debug_button)
 
-        self.alignment_button = QPushButton("📊 Visualize data alignment")
+        self.alignment_button = QPushButton("📊Visualize data alignment")
         self.alignment_button.setToolTip(
             "Show a timeline of how all loaded data sources (video, audio, features, pose)\n"
             "align across trials.  Useful for verifying session-level timing setup."

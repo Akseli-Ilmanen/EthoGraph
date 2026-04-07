@@ -852,7 +852,7 @@ class TimelinePage(QWidget):
             "# Open via the New Dataset Wizard to generate alignment code."
         )
 
-        # Detect mode: table has filename columns → aligned, otherwise → timeline
+        # Detect mode: timeline if start_time exists or no filename columns
         sio = getattr(app_state, "nwb_alignment", None)
         if sio is None:
             sio = getattr(dt, "nwb_alignment", None)
@@ -861,13 +861,13 @@ class TimelinePage(QWidget):
 
             sio = EmpytAlignment()
         df = sio.trials_df
-        has_filename_cols = any(
-            col not in ("trial", "start_time", "stop_time")
-            and not col.endswith("_start")
-            for col in df.columns
-        ) if not df.empty else False
+        has_timing = not df.empty and "start_time" in df.columns
+        _STREAM_PREFIXES = ("video_", "pose_", "audio_", "ephys_")
+        has_filename_cols = not df.empty and any(
+            col.startswith(_STREAM_PREFIXES) for col in df.columns
+        )
 
-        if has_filename_cols:
+        if has_filename_cols and not has_timing:
             self._viz_stack.setCurrentIndex(0)
             self._populate_aligned_table_from_alignment(sio)
         else:

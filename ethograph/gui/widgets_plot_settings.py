@@ -366,9 +366,15 @@ class PlotSettingsWidget(QWidget):
 
         self.autoscale_checkbox = QCheckBox("Autoscale Y")
         self.lock_axes_checkbox = QCheckBox("Lock Axes")
+        self.reset_layout_button = QPushButton("Reset Layout")
+        self.reset_layout_button.setToolTip(
+            "Re-dock all floating panels and restore default layout.\n"
+            "Use when panels are lost or the layout is messed up."
+        )
 
         shared_layout.addWidget(self.autoscale_checkbox)
         shared_layout.addWidget(self.lock_axes_checkbox)
+        shared_layout.addWidget(self.reset_layout_button)
         shared_layout.addStretch()
 
         self.autoscale_checkbox.toggled.connect(self._autoscale_y_toggle)
