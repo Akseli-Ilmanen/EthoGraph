@@ -3,7 +3,7 @@
 import logging
 import os
 import time as _time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict
 
@@ -11,12 +11,11 @@ import numpy as np
 import xarray as xr
 import pandas as pd
 from napari.viewer import Viewer
-from qtpy.QtCore import QSortFilterProxyModel, Qt, QTimer
+from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QCompleter,
     QDoubleSpinBox,
     QFormLayout,
     QGridLayout,
@@ -48,11 +47,12 @@ from .app_constants import (
     SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
 )
 from ethograph.io.data_loader import load_dataset
-from .makepretty import (
+from .make_pretty import clean_display_labels
+from ethograph.utils.qt import (
     ElidedDelegate,
-    clean_display_labels,
     find_combo_index,
     get_combo_value,
+    make_searchable,
     set_combo_to_value,
 )
 from .plots_ephystrace import get_loader as get_ephys_loader
@@ -136,19 +136,44 @@ _PANEL_DEFS: list[_PanelDef] = [
 ]
 
 
-def make_searchable(combo_box: QComboBox) -> None:
-    combo_box.setFocusPolicy(Qt.StrongFocus)
-    combo_box.setEditable(True)
-    combo_box.setInsertPolicy(QComboBox.NoInsert)
+class _LoadError(Exception):
+    """Raised during any loading phase to abort with a user-visible message."""
 
-    filter_model = QSortFilterProxyModel(combo_box)
-    filter_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
-    filter_model.setSourceModel(combo_box.model())
 
-    completer = QCompleter(filter_model, combo_box)
-    completer.setCompletionMode(QCompleter.UnfilteredPopupCompletion)
-    combo_box.setCompleter(completer)
-    combo_box.lineEdit().textEdited.connect(filter_model.setFilterFixedString)
+@dataclass
+class _LoadContext:
+    """Accumulated load state -- app_state is not mutated until _apply_to_state.
+
+    Each loading phase reads from and writes to this context.  If any phase
+    raises ``_LoadError``, the load is cancelled and app_state remains clean.
+    """
+
+    result: object  # LoadResult from data_loader.load_dataset
+    nc_file_path: str
+    catalog: object  # DataCatalog
+
+    # Inferred media availability
+    has_video: bool = False
+    has_audio: bool = False
+    has_pose: bool = False
+    has_neo: bool = False
+    has_neurons: bool = False
+    cameras: list = field(default_factory=list)
+    nwb_pose_keys: list | None = None
+    nwb_local: str | None = None
+
+    # NWB-embedded ephys
+    nwb_ephys_display: str | None = None
+    nwb_ephys_entry: tuple | None = None
+
+    # Dataset (possibly downsampled)
+    dt: object = None
+    ds: object = None
+    trials: list = field(default_factory=list)
+    all_labels_df: object = None
+    data_loader: object = None
+    downsample_factor: int | None = None
+    video_folder_override: str | None = None
 
 
 class DataPanel(QWidget):
@@ -637,6 +662,32 @@ class DataWidget(QWidget):
 
         nc_file_path = self.io_widget.get_nc_file_path()
 
+        # Phases 1-4: pure computation — app_state is untouched.
+        try:
+            ctx = self._phase_load_data(nc_file_path)
+            self._phase_infer_media(ctx)
+            self._phase_prepare_dataset(ctx)
+            self._phase_validate(ctx)
+        except _LoadError as e:
+            self._cancel_load(str(e))
+            return
+
+        # Phase 5: single commit point — mutate app_state.
+        try:
+            self._apply_to_state(ctx)
+        except _LoadError as e:
+            self._cancel_load(str(e))
+            return
+
+        # Phase 6: UI setup (app_state is now consistent).
+        self._setup_ui_after_load(ctx)
+
+    # ------------------------------------------------------------------
+    # Loading phases
+    # ------------------------------------------------------------------
+
+    def _phase_load_data(self, nc_file_path: str) -> _LoadContext:
+        """Phase 1: Load dataset from disk.  May show downsample dialog."""
         try:
             result = load_dataset(
                 nc_file_path,
@@ -646,108 +697,147 @@ class DataWidget(QWidget):
                 dandiset_id=getattr(self.app_state, "_dandi_dandiset_id", None),
                 import_labels=self.io_widget.import_labels_checkbox.isChecked(),
             )
-            self.app_state.dt = result.dt
-            all_labels_df = result.all_labels_df
-            self.app_state.metadata_df = result.metadata_df
-            self.app_state.metadata_path = result.metadata_path
-            self.catalog = result.catalog
-            if result.nwb_video_folder and not self.app_state.video_folder:
-                from .dialog_video_downsample import offer_downsample
-                nwb_video_folder = offer_downsample(str(result.nwb_video_folder), parent=self)
-                self.app_state.video_folder = nwb_video_folder
         except (OSError, ValueError, KeyError) as e:
-            self._cancel_load(f"Failed to load dataset: {e}")
-            return
+            raise _LoadError(f"Failed to load dataset: {e}") from e
 
-        self.app_state.trial_conditions = self.catalog.trial_conditions
+        video_folder_override = None
+        if result.nwb_video_folder and not self.app_state.video_folder:
+            from .dialog_video_downsample import offer_downsample
+            video_folder_override = offer_downsample(str(result.nwb_video_folder), parent=self)
 
-        self._pending_loader = result.data_loader
+        return _LoadContext(
+            result=result,
+            nc_file_path=nc_file_path,
+            catalog=result.catalog,
+            dt=result.dt,
+            all_labels_df=result.all_labels_df,
+            nwb_local=result.nwb_local,
+            nwb_pose_keys=result.nwb_pose_keys,
+            video_folder_override=video_folder_override,
+        )
+
+    def _phase_infer_media(self, ctx: _LoadContext) -> None:
+        """Phase 2: Detect video/audio/pose/ephys availability."""
+        result = ctx.result
+        sio = result.nwb_alignment
+        cameras_list = sio.cameras if sio else []
+        has_nwb_pose = bool(result.nwb_local and ctx.nwb_pose_keys)
+        has_remote_cameras = any(is_url(c) for c in cameras_list)
+
+        # Auto-detect NWB pose keys if not set by wizard
+        if not ctx.nwb_pose_keys and result.nwb_local:
+            auto_keys = _detect_nwb_pose_keys(result.nwb_local)
+            if auto_keys:
+                ctx.nwb_pose_keys = auto_keys
+                has_nwb_pose = True
+
+        ctx.cameras = cameras_list
+        ctx.has_video = bool(cameras_list) or has_remote_cameras or has_nwb_pose
+        ctx.has_pose = (bool(sio.devices("pose")) if sio else False) or has_nwb_pose
+        ctx.has_audio = bool(sio.mics) if sio else False
+
+        # NWB-embedded ephys — detect directly from the NWB file
+        if sio:
+            eseries = sio.electrical_series()
+            if eseries:
+                first = eseries[0]
+                ctx.nwb_ephys_display = f"{first['name']} (NWB)"
+                ctx.nwb_ephys_entry = (first["path"], "0", 0)
+
+        ctx.has_neo = bool(self.app_state.ephys_path) or bool(ctx.nwb_ephys_entry)
+        ctx.has_neurons = bool(self.app_state.neurons_path)
+
+    def _phase_prepare_dataset(self, ctx: _LoadContext) -> None:
+        """Phase 3: Downsample, resolve trials, build first ds + DataLoader."""
+        downsample_factor = self.io_widget.get_downsample_factor()
+        if downsample_factor is not None and ctx.dt is not None:
+            ctx.dt = eto.downsample_trialtree(ctx.dt, downsample_factor)
+            ctx.downsample_factor = downsample_factor
+            logger.info("Downsampled data by factor %d", downsample_factor)
+
+        ctx.trials = sorted(ctx.result.trial_ids)
+        if ctx.dt is not None:
+            ctx.ds = ctx.dt.trial(ctx.trials[0])
+        else:
+            ctx.ds = xr.Dataset()
+
+        store = ctx.result.data_loader
+        if store is None:
+            from ethograph.io.catalog import XarrayLoader, catalog_from_xarray
+            cat = catalog_from_xarray(ctx.ds, ctx.dt)
+            store = XarrayLoader(ctx.ds, cat)
+        ctx.data_loader = store
+
+    def _phase_validate(self, ctx: _LoadContext) -> None:
+        """Phase 4: Validate media files for the first trial."""
+        video_folder = ctx.video_folder_override or self.app_state.video_folder
+        missing = self._validate_media_files(
+            nwb_alignment=ctx.result.nwb_alignment,
+            first_trial=ctx.trials[0],
+            video_folder=video_folder,
+            audio_folder=self.app_state.audio_folder,
+            pose_folder=self.app_state.pose_folder,
+        )
+        if missing:
+            raise _LoadError(
+                "Missing media files for first trial:\n" + "\n".join(missing)
+            )
+
+    def _apply_to_state(self, ctx: _LoadContext) -> None:
+        """Phase 5: Single commit — mutate app_state from accumulated context."""
+        # Suppress signal handlers during bulk mutation so that handlers
+        # checking app_state.ready don't react to partially-set state.
+        self.app_state.ready = False
+
+        result = ctx.result
+
+        self.app_state.dt = ctx.dt
+        self.app_state.metadata_df = result.metadata_df
+        self.app_state.metadata_path = result.metadata_path
+        self.catalog = ctx.catalog
+
+        if ctx.video_folder_override:
+            self.app_state.video_folder = ctx.video_folder_override
+
+        self.app_state.trial_conditions = ctx.catalog.trial_conditions
         self.app_state.source_collection = result.source_collection
         self.app_state.nwb_alignment = result.nwb_alignment
 
-        # Infer media availability from NWB acquisition items
-        sio = self.app_state.nwb_alignment
-        cameras_list = sio.cameras if sio else []
-        has_nwb_pose = bool(result.nwb_local and result.nwb_pose_keys)
-        has_remote_cameras = any(is_url(c) for c in cameras_list)
+        self.app_state.has_video = ctx.has_video
+        self.app_state.has_pose = ctx.has_pose
+        self.app_state.has_audio = ctx.has_audio
 
-        # Video: cameras detected (from trials table or acquisition) + folder or full paths
-        self.app_state.has_video = (
-            bool(cameras_list)
-            or has_remote_cameras
-            or has_nwb_pose
-        )
-        # Auto-detect NWB pose keys from processing modules if not set by wizard
-        if not result.nwb_pose_keys and result.nwb_local:
-            auto_pose_keys = _detect_nwb_pose_keys(result.nwb_local)
-            if auto_pose_keys:
-                result = result._replace(nwb_pose_keys=auto_pose_keys) if hasattr(result, '_replace') else result
-                if not hasattr(result, '_replace'):
-                    result.nwb_pose_keys = auto_pose_keys
-                has_nwb_pose = True
-
-        self.app_state.has_pose = (
-            bool(sio.devices("pose"))
-            or has_nwb_pose
-        )
-        self.app_state.has_audio = bool(sio.mics)
-
-        # Store NWB config on app_state for later access
-        if result.nwb_pose_keys:
-            self.app_state.nwb_pose_keys = result.nwb_pose_keys
-        if result.nwb_local:
-            self.app_state.nwb_local = result.nwb_local
+        if ctx.nwb_pose_keys:
+            self.app_state.nwb_pose_keys = ctx.nwb_pose_keys
+        if ctx.nwb_local:
+            self.app_state.nwb_local = ctx.nwb_local
 
         # NWB-embedded ephys
-        nwb_ephys_series = result.nwb_ephys_series
-        nwb_ephys_path = result.nwb_ephys_path
-        if nwb_ephys_series and nwb_ephys_path:
+        if ctx.nwb_ephys_display and ctx.nwb_ephys_entry:
             if not self.app_state.ephys_path:
-                self.app_state.ephys_path = nwb_ephys_path
-            display_name = f"{nwb_ephys_series} (NWB)"
-            self.app_state.ephys_source_map[display_name] = (nwb_ephys_path, "0", 0)
-            self.app_state.ephys_stream_sel = display_name
+                self.app_state.ephys_path = ctx.nwb_ephys_entry[0]
+            self.app_state.ephys_source_map[ctx.nwb_ephys_display] = ctx.nwb_ephys_entry
+            self.app_state.ephys_stream_sel = ctx.nwb_ephys_display
 
-        self.app_state.has_neo = bool(self.app_state.ephys_path) or bool(nwb_ephys_series and nwb_ephys_path)
-        self.app_state.has_neurons = bool(self.app_state.neurons_path)
+        self.app_state.has_neo = ctx.has_neo
+        self.app_state.has_neurons = ctx.has_neurons
 
-        # Populate ephys_source_map (streams are NOT added to features list)
+        # Expand ephys streams (mutates io_widget + app_state.ephys_source_map)
         if self.app_state.ephys_path:
             try:
                 self.io_widget._expand_ephys_with_streams(
-                    self.app_state.ephys_path, self.app_state.ds,
+                    self.app_state.ephys_path, ctx.ds,
                 )
             except (OSError, ValueError, KeyError) as e:
-                self._cancel_load(f"Failed to load ephys features: {e}")
-                return
-            
-
-        downsample_factor = self.io_widget.get_downsample_factor()
-        if downsample_factor is not None and self.app_state.dt is not None:
-            self.app_state.dt = eto.downsample_trialtree(self.app_state.dt, downsample_factor)
-            self.app_state.downsample_factor_used = downsample_factor
-            logger.info("Downsampled data by factor %d", downsample_factor)
-        else:
-            self.app_state.downsample_factor_used = None
+                raise _LoadError(f"Failed to load ephys features: {e}") from e
 
         self.io_widget.disable_downsample_controls()
+        self.app_state.downsample_factor_used = ctx.downsample_factor
 
-        self.app_state._all_labels_df = all_labels_df
-
-        self.app_state.trials = sorted(result.trial_ids)
-        if self.app_state.dt is not None:
-            self.app_state.ds = self.app_state.dt.trial(self.app_state.trials[0])
-        else:
-            self.app_state.ds = xr.Dataset()
-
-        # Now ds is set — create or finalize DataLoader
-        store = self._pending_loader
-        if store is None:
-            from ethograph.io.catalog import XarrayLoader, catalog_from_xarray
-            cat = catalog_from_xarray(self.app_state.ds, self.app_state.dt)
-            store = XarrayLoader(self.app_state.ds, cat)
-        self.app_state.data_loader = store
-        self._pending_loader = None
+        self.app_state._all_labels_df = ctx.all_labels_df
+        self.app_state.trials = ctx.trials
+        self.app_state.ds = ctx.ds
+        self.app_state.data_loader = ctx.data_loader
 
         # Set trials_sel early so _expand_mics_with_channels / get_media
         # can resolve filenames during UI creation.
@@ -759,14 +849,8 @@ class DataWidget(QWidget):
         if not trial or is_nan or trial not in self.app_state.trials:
             self.app_state.trials_sel = self.app_state.trials[0]
 
-        missing = self._validate_media_files()
-        if missing:
-
-            self._cancel_load(
-                "Missing media files for first trial:\n" + "\n".join(missing)
-            )
-            return
-
+    def _setup_ui_after_load(self, ctx: _LoadContext) -> None:
+        """Phase 6: Create controls, restore defaults, enable UI."""
         self._create_trial_controls()
 
         self._restore_or_set_defaults()
@@ -774,7 +858,7 @@ class DataWidget(QWidget):
         self.app_state.ready = True
 
         self.io_widget.on_load_complete()
-        self.labels_widget.refresh_mapping_for_data_dir(Path(nc_file_path).parent)
+        self.labels_widget.refresh_mapping_for_data_dir(Path(ctx.nc_file_path).parent)
         self.changepoints_widget.setEnabled(True)
         self.plot_settings_widget.set_enabled_state()
         if self.ephys_widget:
@@ -1780,12 +1864,26 @@ class DataWidget(QWidget):
 
         self.on_trial_changed()
 
-    def _validate_media_files(self) -> list[str]:
-        missing = []
-        sio = self.app_state.nwb_alignment
-        first_trial = self.app_state.trials[0]
+    def _validate_media_files(
+        self,
+        nwb_alignment=None,
+        first_trial=None,
+        video_folder=None,
+        audio_folder=None,
+        pose_folder=None,
+    ) -> list[str]:
+        sio = nwb_alignment if nwb_alignment is not None else self.app_state.nwb_alignment
+        if first_trial is None:
+            first_trial = self.app_state.trials[0]
+        if video_folder is None:
+            video_folder = self.app_state.video_folder
+        if audio_folder is None:
+            audio_folder = self.app_state.audio_folder
+        if pose_folder is None:
+            pose_folder = self.app_state.pose_folder
 
-        video_folder = self.app_state.video_folder
+        missing = []
+
         if video_folder:
             for cam in sio.cameras:
                 vid = sio.get_media(first_trial, "video", device=cam)
@@ -1795,7 +1893,6 @@ class DataWidget(QWidget):
                 if not os.path.isfile(path):
                     missing.append(f"Video: {path}")
 
-        audio_folder = self.app_state.audio_folder
         if audio_folder:
             mics = sio.mics
             if not mics:
@@ -1813,7 +1910,6 @@ class DataWidget(QWidget):
                     if not os.path.isfile(path):
                         missing.append(f"Audio: {path}")
 
-        pose_folder = self.app_state.pose_folder
         if pose_folder:
             cameras = sio.cameras
             if not cameras:

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from qtpy.QtCore import Qt, QTimer, Signal
-from qtpy.QtGui import QColor, QFont
+from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -34,6 +34,7 @@ from ethograph.io.validation import (
     AUDIO_EXTENSIONS,
     POSE_EXTENSIONS,
 )
+from ethograph.utils.qt import mono_font
 
 logger = logging.getLogger(__name__)
 
@@ -74,11 +75,6 @@ MAX_PREVIEW = 20
 FOLDER_POSITION = -1
 
 
-def _mono(size: int = FS) -> QFont:
-    f = QFont("Menlo")
-    f.setPointSize(size)
-    f.setStyleHint(QFont.StyleHint.Monospace)
-    return f
 
 
 # ─── pattern analysis ────────────────────────────────────────────────────────
@@ -327,7 +323,7 @@ class FilenameList(QWidget):
         if not pattern:
             return
 
-        mono = _mono(FS)
+        mono = mono_font(FS)
 
         if pattern.tokenize_mode == "regex" and pattern.regex_pattern:
             self._refresh_regex(pattern, mono)
@@ -417,7 +413,7 @@ class FilenameList(QWidget):
         for w in self._rows:
             w.deleteLater()
         self._rows.clear()
-        mono = _mono(FS)
+        mono = mono_font(FS)
         for fp in files[:MAX_PREVIEW]:
             lbl = QLabel(f"<span style='color:{TEXT_DIM}'>{fp.name}</span>")
             lbl.setFont(mono)
@@ -532,7 +528,7 @@ class PatternEditor(QWidget):
         # filename text — read-only QLineEdit for mouse-selection
         self._edit = QLineEdit()
         self._edit.setReadOnly(True)
-        self._edit.setFont(_mono(FS))
+        self._edit.setFont(mono_font(FS))
         self._edit.setStyleSheet(
             f"QLineEdit {{ background:{BG_INPUT}; color:{TEXT}; "
             f"border:1px solid {BORDER}; border-radius:4px; "
@@ -544,7 +540,7 @@ class PatternEditor(QWidget):
 
         # coloured preview
         self._preview = QLabel()
-        self._preview.setFont(_mono(FS))
+        self._preview.setFont(mono_font(FS))
         self._preview.setTextFormat(Qt.TextFormat.RichText)
         self._preview.setStyleSheet("background:transparent; padding:2px 0;")
         layout.addWidget(self._preview)

@@ -98,7 +98,7 @@ def test_nwb_catalog_and_loader(remote_nwb):
 
 
 def test_full_project_load(tmp_path):
-    """End-to-end: create project.json with video_info, load, verify alignment + cameras."""
+    """End-to-end: create dandi.json with video_info, load, verify alignment + cameras."""
     import json
 
     from ethograph.io.data_loader import _load_nwb_project
@@ -129,7 +129,7 @@ def test_full_project_load(tmp_path):
         "nwb_pose_keys": list(EXPECTED_POSE_CAMERAS),
         "video_info": video_info,
     }
-    (ethograph_dir / "project.json").write_text(json.dumps(config))
+    (ethograph_dir / "dandi.json").write_text(json.dumps(config))
     save_labels_tsv(project_dir / "labels.tsv", init_empty_labels(["1", "2", "3"]))
 
     result = _load_nwb_project(str(project_dir))

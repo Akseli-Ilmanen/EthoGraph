@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from qtpy.QtCore import Qt, QTimer
-from qtpy.QtGui import QGuiApplication, QFont
-from qtpy.QtWidgets import QComboBox, QDockWidget, QStyledItemDelegate, QWidget
+from qtpy.QtGui import QGuiApplication
+from qtpy.QtWidgets import QDockWidget, QWidget
 
 from .app_constants import (
     LAYER_DOCK_WIDTH_RATIO,
@@ -13,6 +13,16 @@ from .app_constants import (
     SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
     SIDEBAR_MIN_WIDTH_PX,
     VERTICAL_SPLIT_RATIO,
+)
+
+# Re-export moved helpers for backwards compatibility
+from ethograph.utils.qt import (  # noqa: F401
+    ElidedDelegate,
+    apply_compact_widget_style,
+    find_combo_index,
+    get_combo_value,
+    normalize_child_layouts,
+    set_combo_to_value,
 )
 
 _LINK_COLOR = "#87CEEB"
@@ -27,127 +37,12 @@ REDUNDANT_PREFIXES = [
 ]
 
 
-class ElidedDelegate(QStyledItemDelegate):
-    def __init__(self, elide_mode=Qt.ElideMiddle, parent=None):
-        super().__init__(parent)
-        self._elide_mode = elide_mode
-
-    def paint(self, painter, option, index):
-        text = index.data(Qt.DisplayRole)
-        if text:
-            metrics = painter.fontMetrics()
-            elided = metrics.elidedText(text, self._elide_mode, option.rect.width())
-            painter.drawText(option.rect, Qt.AlignVCenter | Qt.AlignLeft, elided)
-        else:
-            super().paint(painter, option, index)
-
-
 def clean_display_labels(labels: list[str]) -> list[str]:
     """Strip a prefix from all labels when every label shares that prefix."""
     for prefix in REDUNDANT_PREFIXES:
         if labels and all(label.startswith(prefix) for label in labels):
             labels = [label[len(prefix):] for label in labels]
     return labels
-
-
-def get_combo_value(combo: QComboBox) -> str:
-    data = combo.currentData(Qt.ItemDataRole.UserRole)
-    return data if data is not None else combo.currentText()
-
-
-def find_combo_index(combo: QComboBox, value: str) -> int:
-    idx = combo.findData(value, Qt.ItemDataRole.UserRole)
-    if idx < 0:
-        idx = combo.findText(str(value))
-    return idx
-
-
-def set_combo_to_value(combo: QComboBox, value: str) -> None:
-    idx = find_combo_index(combo, str(value))
-    if idx >= 0:
-        combo.setCurrentIndex(idx)
-
-
-def apply_compact_widget_style(widget: QWidget, font_size: int = 8) -> None:
-    """Apply compact font and stylesheet to a widget subtree."""
-    font = QFont()
-    font.setPointSize(font_size)
-    widget.setFont(font)
-
-    widget.setStyleSheet(f"""
-        * {{
-            font-size: {font_size}pt;
-            padding: 2px;
-            margin: 1px;
-        }}
-        QLabel {{
-            font-size: {font_size}pt;
-            padding: 2px;
-        }}
-        QPushButton {{
-            font-size: {font_size}pt;
-            padding: 4px 8px;
-        }}
-        QComboBox {{
-            font-size: {font_size}pt;
-            padding: 2px 4px;
-        }}
-        QSpinBox, QDoubleSpinBox {{
-            font-size: {font_size}pt;
-            padding: 2px;
-        }}
-        QLineEdit {{
-            font-size: {font_size}pt;
-            padding: 2px 4px;
-        }}
-        QGroupBox {{
-            margin-top: 4px;
-            margin-bottom: 2px;
-            padding-top: 12px;
-        }}
-        QGroupBox::title {{
-            padding: 2px 4px;
-        }}
-        QFrame {{
-            margin: 1px;
-            padding: 1px;
-        }}
-        QCollapsible {{
-            margin: 1px;
-            padding: 1px;
-            border: none;
-            spacing: 2px;
-        }}
-        QCollapsible > QToolButton {{
-            padding: 2px 6px;
-            margin: 1px;
-            min-height: 18px;
-            max-height: 20px;
-            border: none;
-            border-bottom: 1px solid palette(mid);
-        }}
-        QCollapsible > QFrame {{
-            margin: 2px;
-            padding: 2px;
-            border: none;
-        }}
-    """)
-
-
-def normalize_child_layouts(root: QWidget, spacing: int, margin: int) -> None:
-    """Apply consistent spacing/margins to direct child widget layouts."""
-    layout = root.layout()
-    if layout is None:
-        return
-    for i in range(layout.count()):
-        item = layout.itemAt(i)
-        child = item.widget() if item else None
-        child_layout = child.layout() if child is not None else None
-        if child_layout is None:
-            continue
-        child_layout.setSpacing(spacing)
-        child_layout.setContentsMargins(margin, margin, margin, margin)
-
 
 
 class LayoutManager:

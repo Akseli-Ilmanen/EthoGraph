@@ -43,7 +43,7 @@ from ethograph.features.neural import build_tsgroup, compute_pca, firing_rate_to
 from ethograph.gui.notify import notify
 
 from .app_constants import CLUSTER_TABLE_MAX_HEIGHT, CLUSTER_TABLE_ROW_HEIGHT
-from .makepretty import find_combo_index, get_combo_value, set_combo_to_value
+from ethograph.utils.qt import find_combo_index, get_combo_value, set_combo_to_value
 from .plots_ephystrace import GenericEphysLoader, get_loader as get_ephys_loader
 from ..io.plot_sources import FileSource
 

@@ -39,7 +39,7 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.gui.dialog_busy_progress import BusyProgressDialog
-from ethograph.gui.makepretty import styled_link
+from ethograph.gui.make_pretty import styled_link
 from ethograph.gui.notify import notify_dialog
 from ethograph.gui.wizard_multi_timeline import draw_session_timeline
 from ethograph.labels.converters import NWBLabelConverter, write_mapping_file
@@ -1108,7 +1108,7 @@ class NWBImportDialog(QDialog):
             ethograph_dir = project_dir / ".ethograph"
             ethograph_dir.mkdir(parents=True, exist_ok=True)
 
-            # Save project.json — source info for re-loading
+            # Save dandi.json — source info for re-loading
             # No alignment.nwb needed: the remote NWB is the source of truth
             # Store video URLs for cameras that are separate DANDI assets
             # (not stored in NWB acquisition ImageSeries).
@@ -1132,12 +1132,11 @@ class NWBImportDialog(QDialog):
             }
             if include_pose and self._cameras_with_pose:
                 config["nwb_pose_keys"] = list(self._cameras_with_pose)
-            if ephys_series:
-                config["nwb_ephys_series"] = ephys_series
-                config["nwb_ephys_dandiset_id"] = source_info["dandiset_id"]
-                config["nwb_ephys_asset_id"] = self._dandi_asset_id
 
-            config_path = ethograph_dir / "project.json"
+            config["nwb_ephys_dandiset_id"] = source_info["dandiset_id"]
+            config["nwb_ephys_asset_id"] = self._dandi_asset_id
+
+            config_path = ethograph_dir / "dandi.json"
             with open(config_path, "w") as f:
                 json.dump(config, f, indent=2)
 

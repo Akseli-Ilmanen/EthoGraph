@@ -40,7 +40,7 @@ from ethograph.features.changepoints import (
 from ethograph.features.audio_changepoints import get_audio_changepoints
 
 from .dialog_function_params import open_function_params_dialog, get_registry
-from .makepretty import styled_link
+from .make_pretty import styled_link
 
 logger = logging.getLogger(__name__)
 

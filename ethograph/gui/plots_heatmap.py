@@ -13,7 +13,7 @@ from .app_constants import (
     HEATMAP_DEBOUNCE_MS,
     Z_INDEX_BACKGROUND,
 )
-from .makepretty import clean_display_labels
+from .make_pretty import clean_display_labels
 from .plots_base import BasePlot, ThrottleDebounce
 from ethograph.io.plot_sources import WindowedBuffer, XarraySource
 

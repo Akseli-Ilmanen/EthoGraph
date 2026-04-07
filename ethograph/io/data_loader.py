@@ -35,11 +35,11 @@ from ethograph.gui.notify import notify_dialog
 from ethograph.io.metadata_table import load_metadata_df, load_metadata_tsv, metadata_tsv_path
 from ethograph.io.trialtree import TrialTree
 from ethograph.io.nwb_alignment import EmpytAlignment, TableAlignment, discover_nwb, make_nwb_alignment
-from ethograph.labels.tsv_store import (
-    init_empty_labels,
-    labels_tsv_path,
-    load_labels_tsv,
-    save_labels_tsv,
+from ethograph.labels.converters import (
+    NWBLabelConverter,
+    PynappleLabelConverter,
+    resolve_labels_tsv,
+    trials_df_from_intervalset,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,8 +60,6 @@ class LoadResult:
     source_collection: Any = None
     nwb_local: str | None = None
     nwb_pose_keys: list[str] | None = None
-    nwb_ephys_series: str | None = None
-    nwb_ephys_path: str | None = None
     nwb_video_folder: str | None = None
 
 
@@ -146,41 +144,6 @@ def _resolve_alignment(source_path: str | Path):
     return EmpytAlignment()
 
 
-# ---------------------------------------------------------------------------
-# Lightweight TrialTree from trial info (no temp NWB needed)
-# ---------------------------------------------------------------------------
-
-
-def _minimal_trialtree(
-    trial_ids: list[int],
-    durations: list[float] | None = None,
-) -> TrialTree:
-    """Build a minimal TrialTree with lightweight trial nodes.
-
-    Parameters
-    ----------
-    trial_ids
-        List of trial identifiers.
-    durations
-        Per-trial durations in seconds.  Used only for the ``time``
-        coordinate on each dummy dataset.  If *None*, a placeholder
-        ``[0.0, 1.0]`` coordinate is used (actual data comes from the
-        DataLoader, not from these datasets).
-    """
-    datasets = []
-    for i, tid in enumerate(trial_ids):
-        dur = durations[i] if durations else 1.0
-        ds = xr.Dataset(
-            coords={
-                "time": np.array([0.0, dur]),
-                "individuals": ["individual_0"],
-            }
-        )
-        ds.attrs["trial"] = tid
-        datasets.append(ds)
-
-    return TrialTree.from_datasets(datasets, validate=False)
-
 
 # ---------------------------------------------------------------------------
 # NWB direct loading
@@ -205,14 +168,14 @@ def _load_nwb_dataset(file_path: str) -> LoadResult:
     else:
         trial_ids = [1]
 
-    tsv_path = labels_tsv_path(Path(file_path))
-    if tsv_path.exists():
-        all_labels_df = load_labels_tsv(tsv_path)
-        logger.info("Loaded labels from %s", tsv_path.name)
-    else:
-        all_labels_df = init_empty_labels(trial_ids)
-
     sio = _resolve_alignment(file_path)
+
+    converter = NWBLabelConverter(nwb_path=file_path)
+    all_labels_df = converter.resolve_labels(
+        source_path=file_path,
+        trial_ids=trial_ids,
+        trials_df=sio.trials_df if hasattr(sio, "trials_df") else None,
+    )
     metadata_df, metadata_path = load_metadata_df(
         source_path=file_path,
         nwb_alignment=sio,
@@ -248,22 +211,29 @@ def _load_pynapple_dataset(file_path: str) -> LoadResult:
     nwb_path = file_path if _is_nwb_file(file_path) else None
     trial_ids = list(range(1, len(trials_ep) + 1)) if trials_ep is not None and len(trials_ep) > 0 else [1]
 
-    
+    sio = make_nwb_alignment(nwb_path)
+
+    converter = PynappleLabelConverter(data)
+    t_df = trials_df_from_intervalset(trials_ep)
+    all_labels_df = converter.resolve_labels(
+        source_path=file_path,
+        trial_ids=trial_ids,
+        trials_df=t_df if not t_df.empty else None,
+    )
+
+    metadata_df, metadata_path = load_metadata_df(
+        source_path=file_path,
+        nwb_alignment=sio,
+        trial_ids=trial_ids,
+    )
+
     return LoadResult(
         dt=None,
         trial_ids=trial_ids,
-        nwb_alignment=make_nwb_alignment(nwb_path),
-        metadata_df=load_metadata_df(
-            source_path=file_path,
-            nwb_alignment=make_nwb_alignment(nwb_path),
-            trial_ids=trial_ids,
-        )[0],
-        metadata_path=load_metadata_df(
-            source_path=file_path,
-            nwb_alignment=make_nwb_alignment(nwb_path),
-            trial_ids=trial_ids,
-        )[1],
-        all_labels_df=init_empty_labels(trial_ids),
+        nwb_alignment=sio,
+        metadata_df=metadata_df,
+        metadata_path=metadata_path,
+        all_labels_df=all_labels_df,
         catalog=catalog,
         data_loader=loader,
         source_collection=_build_source_collection_pynapple(data, trials_ep),
@@ -300,15 +270,17 @@ def _load_nwb_project(project_dir: str) -> LoadResult:
     loader = PynappleLoader(data, trials_ep, catalog)
     nwb = str(alignment_path) if alignment_path.exists() else nwb_source
     trial_ids = list(range(1, len(trials_ep) + 1)) if trials_ep is not None and len(trials_ep) > 0 else [1]
-    
-    labels_path = project_path / "labels.tsv"
-    if labels_path.exists():
-        all_labels_df = load_labels_tsv(labels_path)
-        logger.info("Loaded labels from %s", labels_path)
-    else:
-        all_labels_df = init_empty_labels(trial_ids)
 
     sio = make_nwb_alignment(nwb)
+
+    converter = PynappleLabelConverter(data)
+    t_df = trials_df_from_intervalset(trials_ep)
+    all_labels_df = converter.resolve_labels(
+        source_path=nwb_source,
+        trial_ids=trial_ids,
+        trials_df=t_df if not t_df.empty else None,
+        labels_path=project_path / "labels.tsv",
+    )
     metadata_df, metadata_path = load_metadata_df(
         source_path=nwb_source,
         nwb_alignment=sio,
@@ -327,8 +299,58 @@ def _load_nwb_project(project_dir: str) -> LoadResult:
         source_collection=_build_source_collection_pynapple(data, trials_ep),
         nwb_local=nwb_source,
         nwb_pose_keys=config.get("nwb_pose_keys"),
-        nwb_ephys_series=config.get("nwb_ephys_series"),
-        nwb_ephys_path=config.get("nwb_ephys_path"),
+    )
+
+
+
+def _load_trialtree(file_path: str, require_fps: bool = False) -> LoadResult:
+    """Load a TrialTree or xarray.Dataset from a .nc file."""
+    dt = eto.open(file_path)
+
+
+    # Plain Dataset .nc files (e.g. Movement datasets) have no trial children.
+    # Wrap them as a single-trial TrialTree so the GUI can work with them directly.
+    if not dt.children or not any(
+        node.ds is not None and "trial" in node.ds.attrs
+        for node in dt.children.values()
+    ):
+        ds = xr.open_dataset(file_path, engine="netcdf4")
+        dt = eto.dataset_to_basic_trialtree(ds)
+        dt._source_path = file_path
+
+
+
+    sio = _resolve_alignment(file_path)
+    metadata_df, metadata_path = load_metadata_df(
+        source_path=file_path,
+        nwb_alignment=sio,
+        trial_ids=dt.trials,
+    )
+
+    catalog = catalog_from_xarray(dt.itrial(0), dt, nwb_alignment=sio)
+
+
+    # TODO: ugly, rewreite with better validation, notify code. 
+    errors = validate_datatree(dt, require_fps)
+    if errors:
+        error_msg = "\n".join(f"• {e}" for e in errors)
+        suffix_msg = "\n\nSee documentation: XXX"
+        msg = "Validation failed:\n" + error_msg + suffix_msg
+        notify_dialog(msg, "error", "Validation Error")
+        raise ValueError(msg)
+
+    all_labels_df = resolve_labels_tsv(file_path, dt.trials)
+
+    return LoadResult(
+        dt=dt,
+        trial_ids=dt.trials,
+        nwb_alignment=sio,
+        metadata_df=metadata_df,
+        metadata_path=metadata_path,
+        all_labels_df=all_labels_df,
+        catalog=catalog,
+        data_loader=XarrayLoader(file_path, catalog),
+        source_collection=_build_source_collection_xarray(dt, nwb_alignment=sio),
     )
 
 
@@ -341,14 +363,11 @@ def load_dataset(
     file_path: str,
     require_fps: bool = True,
     progress_callback: Callable[[str], None] | None = None,
-    max_trials: int | None = None,
-    dandiset_id: str | None = None,
-    import_labels: bool = True,
 ) -> LoadResult:
     """Load dataset from file path.
 
     Supports ``.nc`` (NetCDF), ``.nwb``, ``.npz``, pynapple folders,
-    and NWB project directories (with ``.ethograph/nwb_metadata``).
+    and NWB project directories (with ``.ethograph/dandi.json``).
 
     Returns a :class:`LoadResult` with dt, labels, catalog, and metadata.
     """
@@ -361,81 +380,9 @@ def load_dataset(
     if _is_pynapple_path(file_path):
         return _load_pynapple_dataset(file_path)
 
-    # --- xarray (.nc) path ---
-    dt = eto.open(file_path)
+    if file_path.endswith(".nc"):
+        return _load_trialtree(file_path, require_fps=require_fps)
 
-    # Plain Dataset .nc files (e.g. Movement datasets) have no trial children.
-    # Wrap them as a single-trial TrialTree so the GUI can work with them directly.
-    if not dt.children or not any(
-        node.ds is not None and "trial" in node.ds.attrs
-        for node in dt.children.values()
-    ):
-        ds = xr.open_dataset(file_path, engine="netcdf4")
-        dt = eto.dataset_to_basic_trialtree(ds)
-        dt._source_path = file_path
-
-    sio = _resolve_alignment(file_path)
-    metadata_df, metadata_path = load_metadata_df(
-        source_path=file_path,
-        nwb_alignment=sio,
-        trial_ids=dt.trials,
-    )
-
-    catalog = catalog_from_xarray(dt.itrial(0), dt, nwb_alignment=sio)
-
-    errors = validate_datatree(dt, require_fps=require_fps)
-    if errors:
-        error_msg = "\n".join(f"• {e}" for e in errors)
-        suffix_msg = "\n\nSee documentation: XXX"
-        msg = "Validation failed:\n" + error_msg + suffix_msg
-        notify_dialog(msg, "error", "Validation Error")
-        raise ValueError(msg)
-
-    nc_path = Path(file_path)
-    tsv_path = labels_tsv_path(nc_path)
-
-    if tsv_path.exists():
-        all_labels_df = load_labels_tsv(tsv_path)
-        logger.info("Loaded labels from %s", tsv_path.name)
-    else:
-        all_labels_df = init_empty_labels(dt.trials)
-
-    data_loader = None
-    nwb_local = dt.attrs.get("nwb_local")
-    if nwb_local and Path(nwb_local).exists():
-        try:
-            from ethograph.io.pynapple import load_nap_data
-
-            data, trials_ep = load_nap_data(nwb_local)
-            nap_catalog = catalog_from_pynapple(data, trials_ep)
-            data_loader = PynappleLoader(data, trials_ep, nap_catalog)
-            for f in nap_catalog.features:
-                if f not in catalog.features:
-                    catalog.features.append(f)
-            for c in nap_catalog.colors:
-                if c not in catalog.colors:
-                    catalog.colors.append(c)
-            for cp in nap_catalog.changepoints:
-                if cp not in catalog.changepoints:
-                    catalog.changepoints.append(cp)
-            for name, spec in nap_catalog.combos.items():
-                if name not in catalog.combos:
-                    catalog.combos[name] = spec
-        except Exception as e:
-            logger.warning("Failed to load pynapple store from %s: %s", nwb_local, e)
-
-    return LoadResult(
-        dt=dt,
-        trial_ids=dt.trials,
-        nwb_alignment=sio,
-        metadata_df=metadata_df,
-        metadata_path=metadata_path,
-        all_labels_df=all_labels_df,
-        catalog=catalog,
-        data_loader=data_loader,
-        source_collection=_build_source_collection_xarray(dt, nwb_alignment=sio),
-        nwb_local=nwb_local,
-    )
 
 
 # ---------------------------------------------------------------------------

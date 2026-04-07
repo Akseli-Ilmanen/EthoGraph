@@ -13,7 +13,7 @@ from ethograph.io.catalog import PlotData
 logger = logging.getLogger(__name__)
 
 from .app_constants import DEFAULT_BUFFER_MULTIPLIER, LINEPLOT_DEBOUNCE_MS
-from .makepretty import clean_display_labels
+from .make_pretty import clean_display_labels
 from  ethograph.io.plot_sources import WindowedBuffer, XarraySource
 from .plots_base import BasePlot, ThrottleDebounce
 

@@ -23,7 +23,8 @@ from .app_constants import (
     SIDEBAR_MIN_WIDTH_PX,
 )
 from .app_state import ObservableAppState
-from .makepretty import LayoutManager, apply_compact_widget_style, normalize_child_layouts
+from .make_pretty import LayoutManager
+from ethograph.utils.qt import apply_compact_widget_style, normalize_child_layouts
 from .shortcuts import bind_global_shortcuts
 from .plots_container import UnifiedPanelContainer
 from .widgets_changepoints import ChangepointsWidget

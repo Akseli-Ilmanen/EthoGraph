@@ -317,6 +317,27 @@ class NWBAlignment:
     def mics(self) -> list[str]:
         return self.devices("audio")
 
+    def electrical_series(self) -> list[dict]:
+        """Discover ElectricalSeries in acquisition. Returns list of {name, path, n_channels, rate}."""
+        import pynwb.ecephys
+
+        nwb = self.nwb
+        if not nwb.acquisition:
+            return []
+        results = []
+        for name, obj in nwb.acquisition.items():
+            if not isinstance(obj, pynwb.ecephys.ElectricalSeries):
+                continue
+            n_ch = obj.data.shape[1] if hasattr(obj.data, "shape") and obj.data.ndim > 1 else 1
+            rate = float(obj.rate) if obj.rate else None
+            results.append({
+                "name": name,
+                "path": str(self._path),
+                "n_channels": n_ch,
+                "rate": rate,
+            })
+        return results
+
     # ── Timing ──
 
     @cached_property

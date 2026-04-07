@@ -248,7 +248,7 @@ The GUI supports loading `.nc` (NetCDF), `.nwb`, `.npz`, pynapple folders, and N
 - `.nc` → `eto.open()` + `catalog_from_xarray()`. If `.nc` has `nwb_source` attr, also attaches a `PynappleLoader` for lazy NWB features.
 - `.nwb` → `catalog_from_nwb()` + `NWBLoader` (direct HDF5 slicing via `ComboCatalog`).
 - `.npz`/folder → `load_nap_data()` + `catalog_from_pynapple()` + `PynappleLoader`.
-- NWB project dir (has `.ethograph/project.json`) → opens NWB (local path or DANDI remote via remfile/lindi), loads via pynapple. Remote NWB is used directly as alignment source — no local alignment.nwb created.
+- NWB project dir (has `.ethograph/dandi.json`) → opens NWB (local path or DANDI remote via remfile/lindi), loads via pynapple. Remote NWB is used directly as alignment source — no local alignment.nwb created.
 
 `load_dataset()` returns `(dt, all_labels_df, catalog)` where `catalog` is a `DataCatalog`.
 

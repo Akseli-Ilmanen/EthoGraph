@@ -19,7 +19,7 @@ import ethograph as eto
 from ethograph.gui.notify import notify
 from ethograph.io.time_model import RestrictionWindow, TimeRange, TrialVideoBounds
 
-from .makepretty import find_combo_index
+from ethograph.utils.qt import find_combo_index
 from ethograph.labels.intervals import empty_intervals
 from ethograph.labels.tsv_store import (
     get_trial_from_tsv,
@@ -31,7 +31,7 @@ from ethograph.labels.tsv_store import (
     set_trial_meta_attr,
 )
 from ethograph.io.metadata_table import load_metadata_df
-
+from ethograph.utils.paths import auto_git_commit
 
 logger = logging.getLogger(__name__)
 
@@ -40,39 +40,7 @@ SIMPLE_SIGNAL_TYPES = (int, float, str, bool)
 
 
 
-def _auto_git_commit(label_path: Path) -> None:
-    """Auto-commit a label file if the parent folder is a git repository."""
-    repo_dir = str(label_path.parent)
-    try:
-        result = subprocess.run(
-            ["git", "-C", repo_dir, "rev-parse", "--is-inside-work-tree"],
-            capture_output=True, text=True,
-        )
-    except FileNotFoundError:
-        raise ValueError("git is not installed or not found on PATH.")
 
-    if result.returncode != 0:
-        raise ValueError(
-            f"Remote backup folder is not a git repository: {repo_dir}\n"
-            "Run 'git init' in that folder first, or use 'Save with timestamp' mode."
-        )
-
-    try:
-        subprocess.run(
-            ["git", "-C", repo_dir, "add", label_path.name],
-            check=True, capture_output=True, text=True,
-        )
-        subprocess.run(
-            ["git", "-C", repo_dir, "commit", "-m", f"Labels updated: {label_path.name}"],
-            check=True, capture_output=True, text=True,
-        )
-        subprocess.run(
-            ["git", "-C", repo_dir, "push"],
-            check=True, capture_output=True, text=True,
-        )
-        logger.info("Auto-committed and pushed %s to git", label_path.name)
-    except subprocess.CalledProcessError as e:
-        raise ValueError(f"git commit/push failed: {e.stderr.strip() or e.stdout.strip() or str(e)}")
 
 
 def get_signal_type(type_hint):
@@ -457,19 +425,6 @@ class ObservableAppState(QObject):
         return value
 
     
-
-    def get_feature_sr(self, position: bool = False) -> float | None:
-        ds = getattr(self, "ds", None)
-        feature_sel = getattr(self, "features_sel", None)
-        if ds is None:
-            return None
-        if position:
-            tc = eto.get_time_coord(ds["position"])
-        elif feature_sel and feature_sel in ds.data_vars:
-            tc = eto.get_time_coord(ds[feature_sel])
-        if tc is None or len(tc) < 2:
-            return None
-        return float(1.0 / np.median(np.diff(tc)))
 
 
 
@@ -1124,7 +1079,7 @@ class ObservableAppState(QObject):
             if effective_remote_mode in ("overwrite", "git"):
                 save_labels_tsv(remote_file, save_df)
                 if effective_remote_mode == "git":
-                    _auto_git_commit(remote_file)
+                    auto_git_commit(remote_file)
             else:
                 save_labels_tsv(remote_dir / f"{stem}_labels_{timestamp}.tsv", save_df)
 

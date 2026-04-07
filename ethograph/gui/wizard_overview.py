@@ -26,7 +26,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ethograph.gui.makepretty import styled_link
+from ethograph.gui.make_pretty import styled_link
 from ethograph.gui.notify import notify_dialog
 
 if TYPE_CHECKING:

@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import pynapple as nap
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QColor, QIcon, QPixmap, QStandardItem, QStandardItemModel
+from qtpy.QtGui import QPixmap
 from qtpy.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -46,6 +46,7 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.gui.notify import notify_dialog
+from ethograph.utils.qt import add_combo_separator, color_icon, gray_icon
 
 from .plots_psth import PSTHPlot, sort_trials
 
@@ -83,30 +84,6 @@ class _LoadingOverlay(QLabel):
         self.raise_()
         self.show()
         QApplication.processEvents()
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _color_icon(color_01: tuple, size: int = 14) -> QIcon:
-    r, g, b = (int(c * 255) for c in color_01[:3])
-    pix = QPixmap(size, size)
-    pix.fill(QColor(r, g, b))
-    return QIcon(pix)
-
-
-def _gray_icon(size: int = 14) -> QIcon:
-    pix = QPixmap(size, size)
-    pix.fill(QColor(160, 160, 160))
-    return QIcon(pix)
-
-
-def _add_combo_separator(combo: QComboBox):
-    model: QStandardItemModel = combo.model()
-    item = QStandardItem("─" * 24)
-    item.setFlags(Qt.NoItemFlags)
-    model.appendRow(item)
 
 
 # ---------------------------------------------------------------------------
@@ -408,15 +385,15 @@ class PSTHDialog(QDialog):
     def _populate_align_combo(self):
         self._align_combo.blockSignals(True)
         self._align_combo.clear()
-        self._align_combo.addItem(_gray_icon(), "Trial start", "trial_start")
-        self._align_combo.addItem(_gray_icon(), "Trial end",   "trial_end")
-        _add_combo_separator(self._align_combo)
+        self._align_combo.addItem(gray_icon(), "Trial start", "trial_start")
+        self._align_combo.addItem(gray_icon(), "Trial end",   "trial_end")
+        add_combo_separator(self._align_combo)
 
         if self.labels_widget:
             for label_id, data in self.labels_widget._mappings.items():
                 if label_id == 0:
                     continue
-                icon = _color_icon(data["color"])
+                icon = color_icon(data["color"])
                 self._align_combo.addItem(icon, data["name"], label_id)
 
         self._align_combo.blockSignals(False)
