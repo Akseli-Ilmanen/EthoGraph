@@ -251,7 +251,7 @@ class HelpWidget(QWidget):
 
         print(SEP)
         print("=" * 60)
-        print("  TRIAL ALIGNMENT")
+        print("  TRIAL/ VIDEO BOUNDS")
         print("=" * 60)
         alignment = getattr(self.app_state, 'trial_alignment', None)
         if alignment is None:

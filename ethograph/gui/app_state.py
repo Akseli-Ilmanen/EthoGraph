@@ -587,9 +587,12 @@ class ObservableAppState(QObject):
                 self.load_local_settings()
 
             # Auto-sync nwb_file_path → nwb_alignment
+            # Skip if alignment was already set by the data loader (e.g. remote NWB)
             if name == "nwb_file_path":
-                from ethograph.io.nwb_alignment import make_nwb_alignment
-                self.nwb_alignment = make_nwb_alignment(value)
+                existing = getattr(self, "nwb_alignment", None)
+                if existing is None or getattr(existing, "_path", None) is not None:
+                    from ethograph.io.nwb_alignment import make_nwb_alignment
+                    self.nwb_alignment = make_nwb_alignment(value)
 
             if name == "metadata_path":
                 if value:

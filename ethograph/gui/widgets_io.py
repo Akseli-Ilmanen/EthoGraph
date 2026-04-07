@@ -237,7 +237,7 @@ class IOWidget(QWidget):
         self.load_panel.setLayout(self._load_layout)
 
         # Button row
-        self.reset_button = QPushButton("🔄️Reset gui_settings.yaml")
+        self.reset_button = QPushButton("Reset gui_settings.yaml")
         self.reset_button.setObjectName("reset_button")
         self.reset_button.clicked.connect(self._on_reset_gui_clicked)
 
@@ -1426,6 +1426,10 @@ class IOWidget(QWidget):
         """Auto-discover alignment.nwb near the loaded data file."""
         from ethograph.utils.paths import find_nwb_file
 
+        # Skip if data_loader already provided a valid alignment
+        if self.app_state.nwb_alignment is not None:
+            return
+
         nc_path = self.app_state.nc_file_path
         if not nc_path:
             return
@@ -1437,11 +1441,12 @@ class IOWidget(QWidget):
             logger.info("Using source NWB for alignment: %s", source)
             return
 
-        data_dir = str(Path(nc_path).parent)
+        # For project directories, search inside the dir itself
+        data_dir = str(source) if source.is_dir() else str(source.parent)
         nwb = find_nwb_file(data_dir)
         if nwb is not None:
             self.nwb_file_path_edit.setText(str(nwb))
-            self.app_state.nwb_file_path = str(nwb)  # auto-syncs to app_state.nwb_alignment
+            self.app_state.nwb_file_path = str(nwb)
             logger.info("Auto-discovered NWB alignment: %s", nwb)
 
     def _auto_discover_metadata(self):

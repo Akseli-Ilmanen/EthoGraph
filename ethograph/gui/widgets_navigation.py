@@ -849,6 +849,10 @@ class NavigationWidget(QWidget):
         sync.playback_stopped.connect(self._sync_play_icon)
         self._connected_sync = sync
 
+    def _get_recording_fps(self) -> float | None:
+        """Return the recording FPS from video metadata or NWB alignment."""
+        return self.app_state.video_fps
+
     def _on_fps_changed(self):
         fps_playback = float(self.fps_playback_edit.text())
         self.app_state.fps_playback = fps_playback
@@ -856,23 +860,25 @@ class NavigationWidget(QWidget):
         if qt_dims.slider_widgets:
             slider_widget = qt_dims.slider_widgets[0]
             slider_widget._update_play_settings(fps=fps_playback, loop_mode="once", frame_range=None)
-        if self.app_state.av_speed_coupled and self.app_state.video:
-            recording_fps = self.app_state.video_fps
-            audio_speed = fps_playback / recording_fps
-            self.app_state.audio_playback_speed = audio_speed
-            self.audio_speed_spin.blockSignals(True)
-            self.audio_speed_spin.setValue(audio_speed)
-            self.audio_speed_spin.blockSignals(False)
+        if self.app_state.av_speed_coupled:
+            recording_fps = self._get_recording_fps()
+            if recording_fps:
+                audio_speed = fps_playback / recording_fps
+                self.app_state.audio_playback_speed = audio_speed
+                self.audio_speed_spin.blockSignals(True)
+                self.audio_speed_spin.setValue(audio_speed)
+                self.audio_speed_spin.blockSignals(False)
 
     def _on_audio_speed_changed(self, value: float):
         self.app_state.audio_playback_speed = value
-        if self.app_state.av_speed_coupled and self.app_state.video:
-            recording_fps = self.app_state.video_fps
-            fps_playback = value * recording_fps
-            self.app_state.fps_playback = fps_playback
-            self.fps_playback_edit.blockSignals(True)
-            self.fps_playback_edit.setText(str(fps_playback))
-            self.fps_playback_edit.blockSignals(False)
+        if self.app_state.av_speed_coupled:
+            recording_fps = self._get_recording_fps()
+            if recording_fps:
+                fps_playback = value * recording_fps
+                self.app_state.fps_playback = fps_playback
+                self.fps_playback_edit.blockSignals(True)
+                self.fps_playback_edit.setText(str(fps_playback))
+                self.fps_playback_edit.blockSignals(False)
 
     def _on_coupling_toggled(self, checked: bool):
         self.app_state.av_speed_coupled = checked

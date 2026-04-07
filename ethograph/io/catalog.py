@@ -591,7 +591,7 @@ class NWBLoader(_CatalogMixin):
 
     def __init__(
         self,
-        source: str,
+        source,
         catalog: DataCatalog,
         combo_catalog: Any | None = None,
     ) -> None:

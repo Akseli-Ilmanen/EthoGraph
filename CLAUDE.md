@@ -174,7 +174,7 @@ The codebase has two distinct source protocols:
 
 Key: `dt.trial(id)`, `dt.itrial(idx)`, `dt.trials`, `dt.trial_items()`, `dt.map_trials(fn)`, `dt.update_trial(id, fn)`, `dt.get_label_dt()`
 
-Media & Session: All session metadata (trial timing, media file paths, FPS, stream offsets) lives in NWB files (`.ethograph/alignment.nwb`), accessed via `dt.nwb_alignment` (NWBAlignment). Methods: `dt.get_media(trial, stream, device)`, `dt.cameras`, `dt.mics`, `dt.start_time(trial)`, `dt.stop_time(trial)`, `dt.get_video_fps(camera)`. The old xarray `dt.session` node is removed. Use `ethograph.utils.nwb.build_nwb_from_trial_table()` or `build_nwb_session()` to create alignment NWB files.
+Media & Session: Session metadata (trial timing, media file paths, FPS, stream offsets) accessed via `app_state.nwb_alignment` (NWBAlignment). For NWB sources, the source NWB file is used directly — no separate alignment.nwb is needed. For non-NWB sources (.nc, .npz), a sidecar `.ethograph/alignment.nwb` provides this metadata.
 
 ### State Management: `app_state.py`
 
@@ -226,19 +226,21 @@ Replaces the old `type_vars_dict` pattern with two explicit abstractions:
 
 **NWB Backend** (`nwb_backend.py`): NWB traversal + combo detection in one file. `NWBCatalog` with `TimeSeriesRecord`s, `ComboCatalog` with `filter()`, `load_slice()`, `load_stacked()`.
 
-### Alignment System: `alignment.nwb` + `nwb_alignment.py`
+### Alignment System: `nwb_alignment.py`
 
-All external media (video, audio, pose) stored as `ImageSeries` in NWB acquisition with `external_file` + `starting_frame` + `rate`. Named `{stream}_{device}` (e.g. `video_cam-1`, `audio_mic-1`, `pose_cam-1`).
+**Rule: NWB files are their own alignment source.** When the user loads a `.nwb` file (local or DANDI remote), the source NWB already contains trials, video ImageSeries, pose estimation, and timing metadata. Never create a separate `.ethograph/alignment.nwb` for NWB-sourced data. `alignment.nwb` is only needed for non-NWB data (`.nc`, `.npz`) that lacks session metadata.
 
-**`NWBAlignment`** reads alignment NWB. Key methods:
+**`NWBAlignment`** reads any NWB file for session metadata. Constructed from a file path (`NWBAlignment(path)`) or an already-opened pynwb object (`NWBAlignment.from_nwb_object(nwb_obj)` — used for DANDI remote streaming). Key methods:
 - `get_stream_rate(stream, device)` — read `.rate` from any ImageSeries
 - `resolve_media_path(trial, stream, device, fallback_folder)` — try ImageSeries path → NWB-relative → fallback folder + filename
 - `get_media_for_time(session_time, fallback_folders)` — generalized `get_videos`: walks all acquisition ImageSeries, returns `{name: (path, local_time)}`
 - `stream_offset_for_trial(trial, stream, device)` — trial-relative offset derived from ImageSeries timing
 
+**Priority order** (`_resolve_alignment` in `data_loader.py`): For `.nwb` sources: source NWB → sidecar alignment.nwb → sidecar metadata TSV. For other sources: sidecar alignment.nwb → sidecar metadata TSV.
+
 **Path fallback**: ImageSeries stores original paths. If files move, `resolve_media_path` extracts the filename and joins with a user-specified fallback folder (`video_folder`, `audio_folder`, etc.).
 
-**`build_nwb_from_trial_table`** (`utils/nwb.py`) creates ImageSeries for ALL streams via `sync_acquisition_for_streams(nwbfile, stream_rates)`. Takes `stream_rates: dict[str, float]` — no hardcoded FPS values.
+**`build_nwb_from_trial_table`** (`utils/nwb.py`) creates ImageSeries for ALL streams via `sync_acquisition_for_streams(nwbfile, stream_rates)`. Takes `stream_rates: dict[str, float]` — no hardcoded FPS values. Only used for non-NWB data sources.
 
 ### Data Loading: `data_loader.py`
 
@@ -246,7 +248,7 @@ The GUI supports loading `.nc` (NetCDF), `.nwb`, `.npz`, pynapple folders, and N
 - `.nc` → `eto.open()` + `catalog_from_xarray()`. If `.nc` has `nwb_source` attr, also attaches a `PynappleLoader` for lazy NWB features.
 - `.nwb` → `catalog_from_nwb()` + `NWBLoader` (direct HDF5 slicing via `ComboCatalog`).
 - `.npz`/folder → `load_nap_data()` + `catalog_from_pynapple()` + `PynappleLoader`.
-- NWB project dir (has `.ethograph/project.json`) → loads NWB via pynapple, applies config.
+- NWB project dir (has `.ethograph/project.json`) → opens NWB (local path or DANDI remote via remfile/lindi), loads via pynapple. Remote NWB is used directly as alignment source — no local alignment.nwb created.
 
 `load_dataset()` returns `(dt, all_labels_df, catalog)` where `catalog` is a `DataCatalog`.
 
@@ -349,7 +351,7 @@ Bridge pattern: intervals→dense→correct→intervals. Kinematic CPs stored as
 
 - NetCDF with trials. Time coords: `time`, `time_aux`, etc. (any containing 'time')
 - Variables with `type='features'` for feature selection
-- Media/session metadata in NWB files (`.ethograph/alignment.nwb`), accessed via `dt.nwb_alignment`
+- Media/session metadata: for NWB sources, read from the source NWB directly; for non-NWB sources, from `.ethograph/alignment.nwb`
 - Labels: stored in `_labels.tsv` (not inside `.nc`). Legacy `.nc` labels auto-migrate on first load.
 
 ## Roadmap

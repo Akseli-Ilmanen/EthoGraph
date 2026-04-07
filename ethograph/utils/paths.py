@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import ethograph as eto
+import subprocess
 
 
 def get_project_root(start: Path | None = None) -> Path:
@@ -193,8 +194,9 @@ def find_nwb_file(data_dir: Path | str | None = None) -> Path | None:
         if nwb_files:
             return nwb_files[0]
 
-    # Walk up
-    for parent in d.parents:
+    # Check one parent up only
+    parent = d.parent
+    if parent != d:
         ethograph_dir = parent / SETTINGS_DIR
         if ethograph_dir.is_dir():
             candidate = ethograph_dir / "alignment.nwb"
@@ -223,3 +225,39 @@ def extract_trial_info_from_filename(path):
     else:
         raise ValueError(f"Filename format not recognized: {filename}")
 
+
+
+
+def auto_git_commit(label_path: Path) -> None:
+    """Auto-commit a label file if the parent folder is a git repository."""
+    repo_dir = str(label_path.parent)
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_dir, "rev-parse", "--is-inside-work-tree"],
+            capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        raise ValueError("git is not installed or not found on PATH.")
+
+    if result.returncode != 0:
+        raise ValueError(
+            f"Remote backup folder is not a git repository: {repo_dir}\n"
+            "Run 'git init' in that folder first, or use 'Save with timestamp' mode."
+        )
+
+    try:
+        subprocess.run(
+            ["git", "-C", repo_dir, "add", label_path.name],
+            check=True, capture_output=True, text=True,
+        )
+        subprocess.run(
+            ["git", "-C", repo_dir, "commit", "-m", f"Labels updated: {label_path.name}"],
+            check=True, capture_output=True, text=True,
+        )
+        subprocess.run(
+            ["git", "-C", repo_dir, "push"],
+            check=True, capture_output=True, text=True,
+        )
+        logger.info("Auto-committed and pushed %s to git", label_path.name)
+    except subprocess.CalledProcessError as e:
+        raise ValueError(f"git commit/push failed: {e.stderr.strip() or e.stdout.strip() or str(e)}")
