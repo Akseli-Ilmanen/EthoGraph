@@ -38,9 +38,9 @@
   },
   "action": "inference",
   "mapping_file": "D:\\Akseli\\Code\\ethograph\\configs\\mapping.txt",
-  "target_individual": "Crow1",
+  "target_individual": "Poppy",
   "cp_kwargs": {
-    "individuals": "Crow1",
+    "individuals": "Poppy",
     "keypoints": "beakTip"
   },
   "feat_kwargs": {
@@ -48,18 +48,19 @@
       "beakTip",
       "stickTip"
     ],
-    "individuals": "Crow1"
+    "individuals": "Poppy"
   },
   "trainDataReady": false,
   "test_nc_paths": [
-    "D:\\Akseli\\AI_data\\Moll2025\\Trial_data.nc"
+    "D:\\Akseli\\AI_data\\derivatives\\sub-02_id-Poppy\\ses-000_date-20260310_01\\behav\\Trial_data.nc",
+    "D:\\Akseli\\AI_data\\derivatives\\sub-02_id-Poppy\\ses-000_date-20260311_01\\behav\\Trial_data.nc"
   ],
-  "config": "configs/model\\Crow1_inference_20260330_161259.json",
+  "config": "configs/model\\Poppy_inference_20260402_104151.json",
   "split": "1",
-  "result_dir": "D:\\Akseli\\Code\\ethograph\\result\\Crow1_inference_20260330_161259\\split_1",
-  "model_path": "D:\\Akseli\\Code\\ethograph\\configs\\model\\Ivy_train_20260202_191138_epoch-100.model",
-  "dataset_dir": "D:\\Akseli\\Code\\ethograph\\data\\Crow1_inference_20260330_161259",
-  "feature_dim": 63,
+  "result_dir": "D:\\Akseli\\Code\\ethograph\\result\\Poppy_inference_20260402_104151\\split_1",
+  "model_path": "D:\\Akseli\\Code\\ethograph\\result\\Poppy_train_20260331_175332\\split_1\\epoch-100.model",
+  "dataset_dir": "D:\\Akseli\\Code\\ethograph\\data\\Poppy_inference_20260402_104151",
+  "feature_dim": 70,
   "min_label_length_s": 0.05,
   "label_thresholds": {
     "3": 0.03,
