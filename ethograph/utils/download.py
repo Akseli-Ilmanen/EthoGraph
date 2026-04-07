@@ -55,28 +55,117 @@ EXAMPLE_CONFIGS: dict[str, dict[str, str]] = {
             "15 nodding\n"
         ),
         "space.yaml": (
-            "arena:\n"
-            "  type: polygon\n"
-            "  xy_polygon:\n"
-            "    - [0.0, 0.0]\n"
-            "    - [0.5, 0.0]\n"
-            "    - [0.5, 0.4]\n"
-            "    - [0.0, 0.4]\n"
-            "  z_bot: 0.0\n"
-            "  z_top: 1.0\n"
+            "# Reference geometry for Moll2025 aviary.\n"
+            "# Points are 3D [x, y, z] in metres. Edges connect points by index.\n"
+            "\n"
+            "references:\n"
+            "  - name: aviary\n"
+            "    vertices:\n"
+            "      - [-7.00,  0.00, 0.65]   # 0: floor front-left\n"
+            "      - [-7.00,  9.80, 0.65]   # 1: floor back-left\n"
+            "      - [ 6.80,  9.80, 0.65]   # 2: floor back-right\n"
+            "      - [ 6.80,  0.00, 0.65]   # 3: floor front-right\n"
+            "      - [-7.00,  0.00, 2.75]   # 4: ceiling front-left\n"
+            "      - [-7.00,  9.80, 2.75]   # 5: ceiling back-left\n"
+            "      - [ 6.80,  9.80, 2.75]   # 6: ceiling back-right\n"
+            "      - [ 6.80,  0.00, 2.75]   # 7: ceiling front-right\n"
+            "    edges:\n"
+            "      - [0, 1]\n"
+            "      - [1, 2]\n"
+            "      - [2, 3]\n"
+            "      - [3, 0]\n"
+            "      - [4, 5]\n"
+            "      - [5, 6]\n"
+            "      - [6, 7]\n"
+            "      - [7, 4]\n"
+            "      - [0, 4]\n"
+            "      - [1, 5]\n"
+            "      - [2, 6]\n"
+            "      - [3, 7]\n"
+            "    color: black\n"
         ),
     },
 }
 
 
+_OPEN_TSV_VBS = (
+    'Set objExcel = CreateObject("Excel.Application")\n'
+    "objExcel.Visible = True\n"
+    "objExcel.Workbooks.OpenText WScript.Arguments(0), , , 1, 1, False, True\n"
+)
+
+
+def _tsv_reg_content(vbs_path: Path) -> str:
+    """Generate .reg file content pointing to *vbs_path*."""
+    escaped = str(vbs_path).replace("\\", "\\\\")
+    return (
+        "Windows Registry Editor Version 5.00\n"
+        "\n"
+        "[HKEY_CLASSES_ROOT\\.tsv]\n"
+        '@="TsvFile"\n'
+        "\n"
+        "[HKEY_CLASSES_ROOT\\TsvFile]\n"
+        '@="Tab-Separated Values"\n'
+        "\n"
+        "[HKEY_CLASSES_ROOT\\TsvFile\\DefaultIcon]\n"
+        '@="excel.exe,1"\n'
+        "\n"
+        "[HKEY_CLASSES_ROOT\\TsvFile\\shell]\n"
+        '@="openexcel"\n'
+        "\n"
+        "[HKEY_CLASSES_ROOT\\TsvFile\\shell\\openexcel]\n"
+        '@="Open TSV with Excel"\n'
+        '"FriendlyAppName"="Excel (Tab-Separated)"\n'
+        "\n"
+        "[HKEY_CLASSES_ROOT\\TsvFile\\shell\\openexcel\\command]\n"
+        f'@="wscript.exe \\"{escaped}\\" \\"%1\\""\n'
+    )
+
+
+_SETUP_TSV_MAC = """\
+#!/bin/bash
+# Double-click this file to make .tsv files always open in Excel.
+
+if ! command -v duti &> /dev/null; then
+    echo "Installing duti (requires Homebrew)..."
+    brew install duti
+fi
+
+if command -v duti &> /dev/null; then
+    duti -s com.microsoft.Excel .tsv all
+    echo "Done — .tsv files will now open with Excel."
+else
+    echo "Could not install duti."
+    echo "Manual alternative: right-click any .tsv → Get Info → Open With → Microsoft Excel → Change All"
+fi
+"""
+
+
 def ensure_default_configs() -> None:
     """Write default configs to ``~/.ethograph/`` if they don't exist yet."""
+    import sys
+
     from ethograph.utils.paths import SETTINGS_DIR
     global_dir = Path.home() / SETTINGS_DIR
     global_dir.mkdir(parents=True, exist_ok=True)
     mapping = global_dir / "mapping.txt"
     if not mapping.exists():
         mapping.write_text(DEFAULT_MAPPING, encoding="utf-8")
+
+    if sys.platform == "win32":
+        internal = global_dir / "_internal"
+        internal.mkdir(parents=True, exist_ok=True)
+        vbs = internal / "open-tsv.vbs"
+        if not vbs.exists():
+            vbs.write_text(_OPEN_TSV_VBS, encoding="utf-8")
+        reg = global_dir / "Double-click to open TSV files in Excel.reg"
+        if not reg.exists():
+            reg.write_text(_tsv_reg_content(vbs), encoding="utf-8")
+    elif sys.platform == "darwin":
+        setup = global_dir / "Double-click to open TSV files in Excel.command"
+        if not setup.exists():
+            setup.write_text(_SETUP_TSV_MAC, encoding="utf-8")
+            setup.chmod(0o755)
 
 EXAMPLE_DATASETS = {
     "moll2025": {
@@ -93,6 +182,12 @@ EXAMPLE_DATASETS = {
             "2024-12-18_041_Crow1-cam-2DLC.csv",
             "2024-12-18_041_Crow1_DLC_3D.csv",
             "2024-12-18_041_Crow1-cam-1_s3d.npy",
+        ],
+        "assets_pynapple": [
+            "beakTip_speed.npz",
+            "beakTip_velocity.npz",
+            "beakTip_position.npz",
+            "trials.npz",
         ],
         "assets_gui": [
             "Trial_data.nc",
@@ -138,6 +233,7 @@ EXAMPLE_DATASETS = {
         "release_tag": "lockbox",
         "assets_gui": [
             "lockbox.nc",
+            "_downsample_info.json",
             "2021-02-15_07-32-44_segment1_mouse324_ball_front-view.mp4",
             "2021-02-15_07-32-44_segment1_mouse324_ball_front-view-tracks_individual_0.csv",
             "2021-02-15_07-32-44_segment1_mouse324_ball_side-view.mp4",

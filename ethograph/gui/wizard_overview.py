@@ -78,6 +78,7 @@ class WizardState:
     files_aligned_to_trials: bool = True
     trial_table: pd.DataFrame | None = None
     trial_table_path: str | None = None  # Path to imported CSV/TSV
+    nwb_alignment: object | None = None
 
     camera_names: list[str] = field(default_factory=list)
     mic_names: list[str] = field(default_factory=list)
@@ -121,7 +122,7 @@ class _ModeSelectionPage(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(
-            "<b>➕Create with own data file</b><br>"
+            "<b>🧙Data wizard</b><br>"
             "Select how your data is organized:"
         ))
         layout.addSpacing(12)
@@ -132,11 +133,11 @@ class _ModeSelectionPage(QWidget):
         single_box = QGroupBox("Single trial")
         sb_lay = QVBoxLayout(single_box)
         self._explanation = QLabel("Allows multiple modalities but only one file per modality (video/audio/pose/ephys). Great for quickly gettign started.")
-        self._rb_pose = QRadioButton("1) Generate from pose file (DeepLabCut, SLEAP, ...)")
-        self._rb_xarray = QRadioButton("2) Generate from xarray dataset (Movement style)")
-        self._rb_audio = QRadioButton("3) Generate from audio file")
-        self._rb_npy = QRadioButton("4) Generate from npy file")
-        self._rb_ephys = QRadioButton("5) Generate from ephys file and/or kilosort folder")
+        self._rb_pose = QRadioButton("1) From pose file (DLC, SLEAP, ...) or bounding boxes (VIA, ...)")
+        self._rb_xarray = QRadioButton("2) From xarray dataset (Movement style)")
+        self._rb_audio = QRadioButton("3) From audio file")
+        self._rb_npy = QRadioButton("4) From npy file")
+        self._rb_ephys = QRadioButton("5) From ephys file and/or kilosort folder")
         self._single_radios = [
             self._rb_pose, self._rb_xarray, self._rb_audio,
             self._rb_npy, self._rb_ephys,
@@ -315,7 +316,7 @@ class NCWizardDialog(QDialog):
         self.io_widget = io_widget
         self._state = WizardState()
 
-        self.setWindowTitle("➕Create with own data — Wizard")
+        self.setWindowTitle("Data wizard")
         self.setMinimumWidth(950)
         self.setMinimumHeight(750)
         self.resize(1050, 800)
@@ -521,7 +522,7 @@ class NCWizardDialog(QDialog):
 
         if progress.was_cancelled or error:
             if error:
-                notify_dialog(f"Failed to ➕Create with own data:\n{error}", "error", "Error", self)
+                notify_dialog(f"Failed to 🧙Data wizard:\n{error}", "error", "Error", self)
             return
 
         save_progress = BusyProgressDialog("Saving .nc file…", parent=self)
@@ -529,6 +530,8 @@ class NCWizardDialog(QDialog):
         if save_error:
             notify_dialog(f"Failed to save:\n{save_error}", "error", "Error", self)
             return
+
+        self.app_state.nwb_alignment = self._state.nwb_alignment
 
         self._populate_io_fields()
         notify_dialog(f"Successfully created:\n{output_path}", "info", "Success", self)

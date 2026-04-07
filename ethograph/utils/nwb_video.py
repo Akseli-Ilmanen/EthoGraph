@@ -21,7 +21,7 @@ except ImportError as e:
         "Install them with: uv pip install \"ethograph[nwb]\""
     ) from e
 
-from ethograph.utils.nwb import open_nwb_dandi
+from ethograph.utils.dandi import open_nwb_dandi
 
 
 if TYPE_CHECKING:
@@ -772,3 +772,6 @@ class NWBDANDIPoseEstimationWidget():
             "timestamps": timestamps,
             "fps": fps,
         }
+
+
+

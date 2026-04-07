@@ -8,7 +8,7 @@ from typing import Optional, get_args
 import av
 import numpy as np
 import xarray as xr
-from movement.io import load_poses
+from movement.io import load_bboxes, load_poses
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -59,20 +59,22 @@ def get_video_fps(video_path: str) -> Optional[int]:
 
 
 
-AVAILABLE_SOFTWARES = list(get_args(load_poses.from_file.__annotations__["source_software"]))
+AVAILABLE_POSE_SOFTWARES = list(get_args(load_poses.from_file.__annotations__["source_software"]))
+AVAILABLE_BBOX_SOFTWARES = list(get_args(load_bboxes.from_file.__annotations__["source_software"]))
+AVAILABLE_SOFTWARES = AVAILABLE_POSE_SOFTWARES + AVAILABLE_BBOX_SOFTWARES
 
 MOVEMENT_DOCS_URL = "https://movement.neuroinformatics.dev/latest/user_guide/movement_dataset.html"
 examples_URL = "https://github.com/Akseli-Ilmanen/EthoGraph/tree/main/examples"
 
 
 class PoseFileDialog(QDialog):
-    """Dialog for generating .nc file from pose estimation output."""
+    """Dialog for loading pose estimation or bounding-box tracking output."""
 
     def __init__(self, app_state, io_widget, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.app_state = app_state
         self.io_widget = io_widget
-        self.setWindowTitle("Generate from Pose File")
+        self.setWindowTitle("Load from Pose / Bounding Boxes File")
         self.setMinimumWidth(550)
         self._setup_ui()
 
@@ -90,13 +92,13 @@ class PoseFileDialog(QDialog):
         pose_layout = QHBoxLayout(pose_widget)
         pose_layout.setContentsMargins(0, 0, 0, 0)
         self.pose_edit = QLineEdit()
-        self.pose_edit.setPlaceholderText("Select pose file...")
+        self.pose_edit.setPlaceholderText("Select pose or bounding boxes file...")
         self.pose_edit.setReadOnly(True)
         pose_browse = QPushButton("Browse")
         pose_browse.clicked.connect(self._on_pose_browse)
         pose_layout.addWidget(self.pose_edit)
         pose_layout.addWidget(pose_browse)
-        form_layout.addRow("Pose file:", pose_widget)
+        form_layout.addRow("Data file:", pose_widget)
         
 
         video_widget = QWidget()
@@ -162,7 +164,7 @@ class PoseFileDialog(QDialog):
         software = self.software_combo.currentText()
         result = QFileDialog.getOpenFileName(
             self,
-            caption=f"Select {software} pose file",
+            caption=f"Select {software} data file",
         )
         if result and result[0]:
             self.pose_edit.setText(result[0])
@@ -222,7 +224,7 @@ class PoseFileDialog(QDialog):
             self.accept()
         except (OSError, ValueError, KeyError) as e:
             logger.exception("Failed to create from pose file")
-            notify_dialog(f"Failed to ➕Create with own data file:\n{e}", "error", "Error", self)
+            notify_dialog(f"Failed to 🧙Data wizard:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(self, output_path: str, video_path: Optional[str], pose_path: str):
         pose_folder = str(Path(pose_path).parent)
@@ -387,7 +389,7 @@ class XarrayDatasetDialog(QDialog):
             self.accept()
         except (OSError, ValueError, KeyError) as e:
             logger.exception("Failed to create from xarray dataset")
-            notify_dialog(f"Failed to ➕Create with own data file:\n{e}", "error", "Error", self)
+            notify_dialog(f"Failed to 🧙Data wizard:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(self, output_path: str, video_path: Optional[str]):
 
@@ -585,7 +587,7 @@ class AudioFileDialog(QDialog):
             self.accept()
         except (OSError, ValueError, KeyError) as e:
             logger.exception("Failed to create from audio file")
-            notify_dialog(f"Failed to ➕Create with own data file:\n{e}", "error", "Error", self)
+            notify_dialog(f"Failed to 🧙Data wizard:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(self, output_path: str, video_path: Optional[str], audio_path: str):
         audio_folder = str(Path(audio_path).parent)
@@ -782,7 +784,7 @@ class NpyFileDialog(QDialog):
             self.accept()
         except (OSError, ValueError, KeyError) as e:
             logger.exception("Failed to create from npy file")
-            notify_dialog(f"Failed to ➕Create with own data file:\n{e}", "error", "Error", self)
+            notify_dialog(f"Failed to 🧙Data wizard:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(self, output_path: str, video_path: Optional[str]):
 
@@ -1111,7 +1113,7 @@ class EphysFileDialog(QDialog):
             self.accept()
         except (OSError, ValueError, KeyError) as e:
             logger.exception("Failed to create from ephys file")
-            notify_dialog(f"Failed to ➕Create with own data file:\n{e}", "error", "Error", self)
+            notify_dialog(f"Failed to 🧙Data wizard:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(
         self, output_path: str, video_path: Optional[str],

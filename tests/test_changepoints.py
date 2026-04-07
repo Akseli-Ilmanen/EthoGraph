@@ -1,7 +1,7 @@
 import numpy as np
 
 from ethograph.features.changepoints import correct_changepoints_automatic
-from ethograph.utils.label_intervals import add_interval, empty_intervals
+from ethograph.labels.intervals import add_interval, empty_intervals
 
 
 def test_correct_changepoints_automatic_only_purges_and_stitches():
@@ -17,4 +17,6 @@ def test_correct_changepoints_automatic_only_purges_and_stitches():
 
     assert len(result) == 1
     assert result.iloc[0]["labels"] == 2
-    np.testing.assert_allclose(result.iloc[0][["onset_s", "offset_s"]], [1.0, 3.0])
+    np.testing.assert_allclose(
+        result.iloc[0][["onset_s", "offset_s"]].values.astype(float), [1.0, 3.0]
+    )

@@ -9,6 +9,7 @@ from typing import Dict
 
 import numpy as np
 import xarray as xr
+import pandas as pd
 from napari.viewer import Viewer
 from qtpy.QtCore import QSortFilterProxyModel, Qt, QTimer
 from qtpy.QtGui import QColor
@@ -16,9 +17,9 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QCompleter,
-    QDialog,
     QDoubleSpinBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -36,17 +37,17 @@ from qtpy.QtWidgets import (
 import ethograph as eto
 from ethograph.gui.notify import notify, notify_dialog
 from ethograph.labels.intervals import get_interval_bounds
-from ethograph.gui.plots_timeseriessource import RegularTimeseriesSource, compute_trial_alignment
+from ethograph.io.plot_sources import FileSource
+from ethograph.io.time_model import compute_trial_video_bounds
 
 
 
 from .app_constants import (
     DEFAULT_LAYOUT_MARGIN,
     DEFAULT_LAYOUT_SPACING,
-    MAX_WIDGET_SIZE,
     SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
 )
-from .data_loader import load_dataset
+from ethograph.io.data_loader import load_dataset
 from .makepretty import (
     ElidedDelegate,
     clean_display_labels,
@@ -66,6 +67,24 @@ from .video_manager import VideoManager,  is_url
 logger = logging.getLogger(__name__)
 
 
+def _detect_nwb_pose_keys(nwb_path: str | None) -> list[str] | None:
+    """Detect PoseEstimation container names from NWB processing modules."""
+    if not nwb_path or not Path(nwb_path).exists():
+        return None
+    try:
+        from pynwb import NWBHDF5IO
+        keys = []
+        with NWBHDF5IO(str(nwb_path), "r") as io:
+            nwb = io.read()
+            for mod in nwb.processing.values():
+                for name, di in mod.data_interfaces.items():
+                    if hasattr(di, "pose_estimation_series"):
+                        keys.append(name)
+        return keys if keys else None
+    except Exception:
+        return None
+
+
 @dataclass
 class _PanelDef:
     """Declarative description of a panel toggle checkbox."""
@@ -77,33 +96,43 @@ class _PanelDef:
     autoscale_plot: str | None = None   # plot_container.X for autoscale on show
     audio_row: bool = False             # part of the hidden-when-no-audio widget group
     on_toggle: str | None = None        # self.method(visible) called after standard actions
+    requires: str | None = None         # app_state attr that must be truthy for data to exist
 
 
 _PANEL_DEFS: list[_PanelDef] = [
     _PanelDef("audiotrace",   "AudioTrace",   row=1, audio_row=True,
               state_attr="audiotrace_visible",
               container_method="set_audiotrace_visible",
-              autoscale_plot="audio_trace_plot"),
+              autoscale_plot="audio_trace_plot",
+              on_toggle="_on_audio_panel_toggle",
+              requires="has_audio"),
     _PanelDef("spectrogram",  "Spectrogram",  row=1, audio_row=True,
               state_attr="spectrogram_visible",
               container_method="set_spectrogram_visible",
-              autoscale_plot="spectrogram_plot"),
+              autoscale_plot="spectrogram_plot",
+              on_toggle="_on_audio_panel_toggle",
+              requires="has_audio"),
     _PanelDef("neo_viewer",   "Neo-Viewer",   row=1,
               container_method="set_neo_visible",
-              on_toggle="_on_neo_panel_toggle"),
+              on_toggle="_on_neo_panel_toggle",
+              requires="has_neo"),
     _PanelDef("phy_viewer",   "Phy-Viewer",   row=1,
               state_attr="ephys_visible",
               container_method="set_ephys_visible",
-              on_toggle="_on_phy_panel_toggle"),
+              on_toggle="_on_phy_panel_toggle",
+              requires="has_neurons"),
     _PanelDef("featureplot",  "FeaturePlot",  row=1,
               state_attr="featureplot_visible",
-              container_method="set_featureplot_visible"),
+              container_method="set_featureplot_visible",
+              requires="has_features"),
     _PanelDef("video_viewer", "VideoViewer",  row=1,
               state_attr="video_viewer_visible",
-              on_toggle="_on_video_viewer_toggle"),
+              on_toggle="_on_video_viewer_toggle",
+              requires="has_video"),
     _PanelDef("pose_markers", "PoseMarkers",  row=1,
               state_attr="pose_markers_visible",
-              on_toggle="_on_pose_markers_toggle"),
+              on_toggle="_on_pose_markers_toggle",
+              requires="has_pose"),
 ]
 
 
@@ -123,7 +152,18 @@ def make_searchable(combo_box: QComboBox) -> None:
 
 
 class DataPanel(QWidget):
-    """Visible panel for the 'Data' collapsible section in the sidebar."""
+    """Visible panel for the 'Data' collapsible section in the sidebar.
+
+    Organised into three tabs: Main, Pose, Audio.
+    """
+
+    ENERGY_DISPLAY_NAMES = {
+        "energy_lowpass": "SOS lowpass envelope",
+        "energy_highpass": "SOS highpass envelope",
+        "energy_band": "SOS bandpass envelope",
+        "energy_meansquared": "Vocalpy meansquared (amplitude)",
+        "energy_ava": "Vocalpy AVA (spectral power)",
+    }
 
     def __init__(self, app_state, parent=None):
         super().__init__(parent=parent)
@@ -134,8 +174,71 @@ class DataPanel(QWidget):
         layout.setContentsMargins(DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN)
         self.setLayout(layout)
 
-        self._create_main_section(layout)
-        self._create_pose_section(layout)
+        self._create_toggle_buttons(layout)
+
+        self.main_panel = QWidget()
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
+        main_layout.setContentsMargins(2, 2, 2, 2)
+        self.main_panel.setLayout(main_layout)
+        self._create_main_section(main_layout)
+        layout.addWidget(self.main_panel)
+
+        self.pose_panel = QWidget()
+        pose_layout = QVBoxLayout()
+        pose_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
+        pose_layout.setContentsMargins(2, 2, 2, 2)
+        self.pose_panel.setLayout(pose_layout)
+        self._create_pose_section(pose_layout)
+        layout.addWidget(self.pose_panel)
+
+        self.audio_panel = QWidget()
+        audio_layout = QVBoxLayout()
+        audio_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
+        audio_layout.setContentsMargins(2, 2, 2, 2)
+        self.audio_panel.setLayout(audio_layout)
+        self._create_audio_section(audio_layout)
+        layout.addWidget(self.audio_panel)
+
+        self._show_panel("main")
+
+    def _create_toggle_buttons(self, parent_layout):
+        toggle_widget = QWidget()
+        toggle_layout = QHBoxLayout()
+        toggle_layout.setSpacing(2)
+        toggle_layout.setContentsMargins(0, 0, 0, 0)
+        toggle_widget.setLayout(toggle_layout)
+
+        self.main_toggle = QPushButton("Main")
+        self.main_toggle.setCheckable(True)
+        self.main_toggle.clicked.connect(lambda: self._show_panel("main"))
+        toggle_layout.addWidget(self.main_toggle)
+
+        self.pose_toggle = QPushButton("Pose")
+        self.pose_toggle.setCheckable(True)
+        self.pose_toggle.clicked.connect(lambda: self._show_panel("pose"))
+        toggle_layout.addWidget(self.pose_toggle)
+
+        self.audio_toggle = QPushButton("Audio")
+        self.audio_toggle.setCheckable(True)
+        self.audio_toggle.clicked.connect(lambda: self._show_panel("audio"))
+        toggle_layout.addWidget(self.audio_toggle)
+
+        parent_layout.addWidget(toggle_widget)
+
+    def _show_panel(self, panel_name):
+        panels = {
+            "main": (self.main_panel, self.main_toggle),
+            "pose": (self.pose_panel, self.pose_toggle),
+            "audio": (self.audio_panel, self.audio_toggle),
+        }
+        for name, (panel, toggle) in panels.items():
+            if name == panel_name:
+                panel.show()
+                toggle.setChecked(True)
+            else:
+                panel.hide()
+                toggle.setChecked(False)
 
     def _create_main_section(self, parent_layout):
         self.coords_groupbox = QGroupBox("Xarray coords")
@@ -182,6 +285,8 @@ class DataPanel(QWidget):
         self.overlays_groupbox.setLayout(self.overlays_layout)
         parent_layout.addWidget(self.overlays_groupbox)
 
+        parent_layout.addStretch()
+
     def _create_pose_section(self, parent_layout):
         self.pose_groupbox = QGroupBox("Pose controls")
         pose_layout = QVBoxLayout()
@@ -190,7 +295,7 @@ class DataPanel(QWidget):
         self.pose_groupbox.setLayout(pose_layout)
 
         threshold_layout = QHBoxLayout()
-        threshold_layout.addWidget(QLabel("Hide below confidence:"))
+        threshold_layout.addWidget(QLabel("Confidence >="))
         self.pose_hide_threshold_spin = QDoubleSpinBox()
         self.pose_hide_threshold_spin.setObjectName("pose_hide_threshold_spin")
         self.pose_hide_threshold_spin.setRange(0.0, 1.0)
@@ -202,10 +307,6 @@ class DataPanel(QWidget):
         )
         self.pose_hide_threshold_spin.setValue(self.app_state.pose_hide_threshold)
         threshold_layout.addWidget(self.pose_hide_threshold_spin)
-
-        self.hide_markers_btn = QPushButton("Hide markers")
-        self.hide_markers_btn.clicked.connect(self._open_keypoints_dialog)
-        threshold_layout.addWidget(self.hide_markers_btn)
 
         threshold_layout.addWidget(QLabel("Size:"))
         self.pose_point_size_spin = QDoubleSpinBox()
@@ -226,46 +327,115 @@ class DataPanel(QWidget):
         self.pose_show_text_checkbox.setToolTip("Show keypoint/individual labels on pose markers")
         row2.addWidget(self.pose_show_text_checkbox)
 
+        row2.addWidget(QLabel("Text size:"))
+        self.pose_text_size_spin = QDoubleSpinBox()
+        self.pose_text_size_spin.setObjectName("pose_text_size_spin")
+        self.pose_text_size_spin.setRange(4.0, 72.0)
+        self.pose_text_size_spin.setSingleStep(1.0)
+        self.pose_text_size_spin.setDecimals(0)
+        self.pose_text_size_spin.setFixedWidth(55)
+        self.pose_text_size_spin.setValue(12.0)
+        row2.addWidget(self.pose_text_size_spin)
+
         self.rotate_btn = QPushButton("Rotate video/pose by 90°")
         self.rotate_btn.setToolTip("Rotate all video and pose layers by 90° clockwise")
         row2.addWidget(self.rotate_btn)
         row2.addStretch()
         pose_layout.addLayout(row2)
 
+        # Select All / Deselect All
+        btn_row = QHBoxLayout()
+        select_all_btn = QPushButton("Select All")
+        deselect_all_btn = QPushButton("Deselect All")
+        select_all_btn.clicked.connect(lambda: self._set_all_keypoints_checked(True))
+        deselect_all_btn.clicked.connect(lambda: self._set_all_keypoints_checked(False))
+        btn_row.addWidget(select_all_btn)
+        btn_row.addWidget(deselect_all_btn)
+        btn_row.addStretch()
+        pose_layout.addLayout(btn_row)
+
+        # Pose ↔ Video matching
+        self.pose_match_btn = QPushButton("Match Pose ↔ Video")
+        self.pose_match_btn.setToolTip(
+            "Open dialog to match NWB PoseEstimation containers to video cameras.\n"
+            "Required when the NWB has multiple pose containers (e.g. LeftCamera, RightCamera)."
+        )
+        self.pose_match_btn.clicked.connect(self._on_pose_match_clicked)
+        pose_layout.addWidget(self.pose_match_btn)
+
+        # Keypoints table (inline, scrollable)
         self.keypoints_table = QTableWidget(0, 2)
         self.keypoints_table.setHorizontalHeaderLabels(["Show", "Keypoint"])
         self.keypoints_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.keypoints_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.keypoints_table.verticalHeader().setVisible(False)
+        pose_layout.addWidget(self.keypoints_table, stretch=1)
 
         self.pose_groupbox.hide()
-        parent_layout.addWidget(self.pose_groupbox)
+        parent_layout.addWidget(self.pose_groupbox, stretch=1)
 
-    def _open_keypoints_dialog(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Hide individual markers")
-        dialog.setMinimumWidth(300)
-        dialog.setMinimumHeight(350)
-        layout = QVBoxLayout(dialog)
+    def _on_pose_match_clicked(self):
+        from .dialog_pose_video_matcher import PoseVideoMatcherDialog
 
-        btn_row = QHBoxLayout()
-        select_all_btn = QPushButton("Select All")
-        unselect_all_btn = QPushButton("Unselect All")
-        select_all_btn.clicked.connect(lambda: self._set_all_keypoints_checked(True))
-        unselect_all_btn.clicked.connect(lambda: self._set_all_keypoints_checked(False))
-        btn_row.addWidget(select_all_btn)
-        btn_row.addWidget(unselect_all_btn)
-        apply_btn = QPushButton("Apply")
-        apply_btn.clicked.connect(lambda: self._update_pose_callback() if self._update_pose_callback else None)
-        btn_row.addWidget(apply_btn)
-        btn_row.addStretch()
-        layout.addLayout(btn_row)
+        nwb_local = getattr(self.app_state, "nwb_local", None)
+        pose_keys = getattr(self.app_state, "nwb_pose_keys", None) or []
+        sio = getattr(self.app_state, "nwb_alignment", None)
+        cameras = sio.cameras if sio else []
 
-        layout.addWidget(self.keypoints_table)
-        self.keypoints_table.setMaximumHeight(MAX_WIDGET_SIZE)
-        dialog.exec_()
-        layout.removeWidget(self.keypoints_table)
-        self.keypoints_table.setParent(self.pose_groupbox)
+        if not pose_keys and nwb_local:
+            pose_keys = _detect_nwb_pose_keys(nwb_local) or []
+
+        if not pose_keys:
+            from ethograph.gui.notify import notify
+            notify("No PoseEstimation containers found in the NWB file.", "warning")
+            return
+
+        dialog = PoseVideoMatcherDialog(
+            video_folder=getattr(self.app_state, "video_folder", "") or "",
+            pose_folder=getattr(self.app_state, "pose_folder", "") or "",
+            trial_ids=getattr(self.app_state, "trials", []),
+            parent=self,
+            nwb_registry={},
+            pose_items=pose_keys,
+        )
+        if dialog.exec_():
+            mapping = dialog.get_mapping()
+            # mapping is [(video_stem, pose_key), ...] — store as ordered pose keys
+            ordered_keys = [pose_key for _, pose_key in mapping]
+            self.app_state.nwb_pose_keys = ordered_keys
+            self.app_state.has_pose = True
+            if self._update_pose_callback:
+                self._update_pose_callback()
+
+    def _create_audio_section(self, parent_layout):
+        group = QGroupBox("Energy envelope")
+        grid = QGridLayout()
+        group.setLayout(grid)
+
+        grid.addWidget(QLabel("Energy metric:"), 0, 0)
+        self.metric_combo = QComboBox()
+        self.metric_combo.addItems(self.ENERGY_DISPLAY_NAMES.values())
+        grid.addWidget(self.metric_combo, 0, 1, 1, 2)
+
+        self.energy_configure_btn = QPushButton("Configure...")
+        self.energy_configure_btn.setToolTip("Open parameter editor for selected energy metric")
+        grid.addWidget(self.energy_configure_btn, 1, 0, 1, 3)
+
+        parent_layout.addWidget(group)
+        parent_layout.addStretch()
+
+        self._restore_energy_selections()
+
+    def _restore_energy_selections(self):
+        metric = self.app_state.get_with_default("energy_metric")
+        display = self.ENERGY_DISPLAY_NAMES.get(metric, "SOS lowpass envelope")
+        self.metric_combo.setCurrentText(display)
+
+    def energy_display_to_key(self, display_text: str) -> str:
+        for key, val in self.ENERGY_DISPLAY_NAMES.items():
+            if val == display_text:
+                return key
+        return "energy_lowpass"
 
     def _set_all_keypoints_checked(self, checked: bool):
         state = Qt.Checked if checked else Qt.Unchecked
@@ -275,6 +445,8 @@ class DataPanel(QWidget):
             if item:
                 item.setCheckState(state)
         self.keypoints_table.blockSignals(False)
+        if self._update_pose_callback:
+            self._update_pose_callback()
 
 
 class DataWidget(QWidget):
@@ -300,7 +472,6 @@ class DataWidget(QWidget):
         self.plot_container = None
         self.labels_widget = None
         self.plot_settings_widget = None
-        self.transform_widget = None
         self.ephys_widget = None
         self.audio_player = None
         self.video_path = None
@@ -317,9 +488,8 @@ class DataWidget(QWidget):
         self.video_mgr = VideoManager(napari_viewer, app_state)
         self.video_mgr.set_frame_changed_callback(self._on_primary_frame_changed)
         self.pose_mgr: PoseDisplayManager | None = None  # created after set_data_panel
-
         self.app_state.audio_video_sync = None
-        self.type_vars_dict = {}
+        self.catalog = None  # DataCatalog set after load
 
     def set_data_panel(self, panel: DataPanel):
         self.data_panel = panel
@@ -340,6 +510,7 @@ class DataWidget(QWidget):
         self.pose_hide_threshold_spin = panel.pose_hide_threshold_spin
         self.pose_show_text_checkbox = panel.pose_show_text_checkbox
         self.pose_point_size_spin = panel.pose_point_size_spin
+        self.pose_text_size_spin = panel.pose_text_size_spin
         self.keypoints_table = panel.keypoints_table
 
         self.pose_mgr = PoseDisplayManager(self.viewer, self.app_state, self.video_mgr, self)
@@ -348,8 +519,11 @@ class DataWidget(QWidget):
         panel.pose_hide_threshold_spin.valueChanged.connect(self._on_pose_hide_threshold_changed)
         panel.pose_show_text_checkbox.stateChanged.connect(self._on_pose_text_toggled)
         panel.pose_point_size_spin.valueChanged.connect(self._on_pose_point_size_changed)
+        panel.pose_text_size_spin.valueChanged.connect(self._on_pose_text_size_changed)
         panel.rotate_btn.clicked.connect(self.pose_mgr.on_rotate_video_pose)
         panel._update_pose_callback = self.update_pose
+
+        panel.energy_configure_btn.clicked.connect(self._open_energy_params)
 
     def populate_keypoints(self, keypoint_names: list[str]) -> None:
         try:
@@ -396,19 +570,27 @@ class DataWidget(QWidget):
     def _on_pose_point_size_changed(self, value: float):
         self.pose_mgr.apply_pose_style()
 
+    def _on_pose_text_size_changed(self, value: float):
+        self.pose_mgr.apply_pose_style()
+
     def set_references(
         self, plot_container, labels_widget, plot_settings_widget,
-        navigation_widget, transform_widget=None, changepoints_widget=None,
-        ephys_widget=None, layout_mgr=None,
+        navigation_widget, changepoints_widget=None,
+        ephys_widget=None, layout_mgr=None, trials_widget=None,
     ):
         self.plot_container = plot_container
         self.labels_widget = labels_widget
         self.plot_settings_widget = plot_settings_widget
         self.navigation_widget = navigation_widget
-        self.transform_widget = transform_widget
         self.changepoints_widget = changepoints_widget
         self.ephys_widget = ephys_widget
         self.layout_mgr = layout_mgr
+        self.trials_widget = trials_widget
+
+        if trials_widget is not None:
+            trials_widget.trials_filtered.connect(self._on_trials_filtered)
+
+        plot_container.time_marker_updated.connect(self._on_time_marker_updated)
 
         if changepoints_widget is not None:
             changepoints_widget.request_plot_update.connect(self._on_plot_update_request)
@@ -434,9 +616,11 @@ class DataWidget(QWidget):
             dt.close()
             self.app_state.dt = None
         self.app_state.ds = None
+        self.app_state.data_loader = None
+        self.app_state.source_collection = None
         self.app_state._all_labels_df = None
         self.app_state.labels_confidence_ds = None
-        self.type_vars_dict = {}
+        self.catalog = None
         self.app_state.ready = False
 
     def _cancel_load(self, reason: str):
@@ -448,16 +632,13 @@ class DataWidget(QWidget):
 
     def on_load_clicked(self):
         if not self.app_state.nc_file_path:
-            notify_dialog("Please select a path ending with .nc", "warning", "Load cancelled", self)
+            notify_dialog("Please select a data file (.nc, .nwb, .npz) or folder", "warning", "Load cancelled", self)
             return
 
         nc_file_path = self.io_widget.get_nc_file_path()
 
-        self.app_state.has_video = bool(self.app_state.video_folder)
-        self.app_state.has_pose = bool(self.app_state.pose_folder)
-
         try:
-            self.app_state.dt, all_labels_df, self.type_vars_dict = load_dataset(
+            result = load_dataset(
                 nc_file_path,
                 require_fps=self.app_state.has_pose,
                 progress_callback=getattr(self.app_state, "_progress_callback", None),
@@ -465,32 +646,61 @@ class DataWidget(QWidget):
                 dandiset_id=getattr(self.app_state, "_dandi_dandiset_id", None),
                 import_labels=self.io_widget.import_labels_checkbox.isChecked(),
             )
-            nwb_video_folder = self.app_state.dt.attrs.get("nwb_video_folder")
-            if nwb_video_folder and not self.app_state.video_folder:
+            self.app_state.dt = result.dt
+            all_labels_df = result.all_labels_df
+            self.app_state.metadata_df = result.metadata_df
+            self.app_state.metadata_path = result.metadata_path
+            self.catalog = result.catalog
+            if result.nwb_video_folder and not self.app_state.video_folder:
+                from .dialog_video_downsample import offer_downsample
+                nwb_video_folder = offer_downsample(str(result.nwb_video_folder), parent=self)
                 self.app_state.video_folder = nwb_video_folder
         except (OSError, ValueError, KeyError) as e:
             self._cancel_load(f"Failed to load dataset: {e}")
             return
 
+        self.app_state.trial_conditions = self.catalog.trial_conditions
 
-        self.app_state.trial_conditions = self.type_vars_dict["trial_conditions"]
+        self._pending_loader = result.data_loader
+        self.app_state.source_collection = result.source_collection
+        self.app_state.nwb_alignment = result.nwb_alignment
 
-        dt_attrs = self.app_state.dt.attrs
+        # Infer media availability from NWB acquisition items
+        sio = self.app_state.nwb_alignment
+        cameras_list = sio.cameras if sio else []
+        has_nwb_pose = bool(result.nwb_local and result.nwb_pose_keys)
+        has_remote_cameras = any(is_url(c) for c in cameras_list)
 
-        # NWB-embedded pose: position variables already in ds, no pose_folder needed
-        has_nwb_pose = "nwb_source" in dt_attrs and bool(dt_attrs.get("nwb_pose_keys"))
-        if has_nwb_pose:
-            self.app_state.has_video = True
-            self.app_state.has_pose = True
+        # Video: cameras detected (from trials table or acquisition) + folder or full paths
+        self.app_state.has_video = (
+            bool(cameras_list)
+            or has_remote_cameras
+            or has_nwb_pose
+        )
+        # Auto-detect NWB pose keys from processing modules if not set by wizard
+        if not result.nwb_pose_keys and result.nwb_local:
+            auto_pose_keys = _detect_nwb_pose_keys(result.nwb_local)
+            if auto_pose_keys:
+                result = result._replace(nwb_pose_keys=auto_pose_keys) if hasattr(result, '_replace') else result
+                if not hasattr(result, '_replace'):
+                    result.nwb_pose_keys = auto_pose_keys
+                has_nwb_pose = True
 
-        # Remote cameras: URLs in session-level cameras — no video folder needed
-        cameras_list = self.app_state.dt.cameras
-        if any(is_url(c) for c in cameras_list):
-            self.app_state.has_video = True
+        self.app_state.has_pose = (
+            bool(sio.devices("pose"))
+            or has_nwb_pose
+        )
+        self.app_state.has_audio = bool(sio.mics)
 
-        # NWB-embedded ephys: path stored in attrs, no local ephys file needed
-        nwb_ephys_series = dt_attrs.get("nwb_ephys_series")
-        nwb_ephys_path = dt_attrs.get("nwb_ephys_path")
+        # Store NWB config on app_state for later access
+        if result.nwb_pose_keys:
+            self.app_state.nwb_pose_keys = result.nwb_pose_keys
+        if result.nwb_local:
+            self.app_state.nwb_local = result.nwb_local
+
+        # NWB-embedded ephys
+        nwb_ephys_series = result.nwb_ephys_series
+        nwb_ephys_path = result.nwb_ephys_path
         if nwb_ephys_series and nwb_ephys_path:
             if not self.app_state.ephys_path:
                 self.app_state.ephys_path = nwb_ephys_path
@@ -498,7 +708,6 @@ class DataWidget(QWidget):
             self.app_state.ephys_source_map[display_name] = (nwb_ephys_path, "0", 0)
             self.app_state.ephys_stream_sel = display_name
 
-        self.app_state.has_audio = bool(self.app_state.dt.mics and self.app_state.audio_folder)
         self.app_state.has_neo = bool(self.app_state.ephys_path) or bool(nwb_ephys_series and nwb_ephys_path)
         self.app_state.has_neurons = bool(self.app_state.neurons_path)
 
@@ -514,7 +723,7 @@ class DataWidget(QWidget):
             
 
         downsample_factor = self.io_widget.get_downsample_factor()
-        if downsample_factor is not None:
+        if downsample_factor is not None and self.app_state.dt is not None:
             self.app_state.dt = eto.downsample_trialtree(self.app_state.dt, downsample_factor)
             self.app_state.downsample_factor_used = downsample_factor
             logger.info("Downsampled data by factor %d", downsample_factor)
@@ -523,12 +732,22 @@ class DataWidget(QWidget):
 
         self.io_widget.disable_downsample_controls()
 
-        trials = self.app_state.dt.trials
-
         self.app_state._all_labels_df = all_labels_df
 
-        self.app_state.trials = sorted(trials)
-        self.app_state.ds = self.app_state.dt.trial(self.app_state.trials[0])
+        self.app_state.trials = sorted(result.trial_ids)
+        if self.app_state.dt is not None:
+            self.app_state.ds = self.app_state.dt.trial(self.app_state.trials[0])
+        else:
+            self.app_state.ds = xr.Dataset()
+
+        # Now ds is set — create or finalize DataLoader
+        store = self._pending_loader
+        if store is None:
+            from ethograph.io.catalog import XarrayLoader, catalog_from_xarray
+            cat = catalog_from_xarray(self.app_state.ds, self.app_state.dt)
+            store = XarrayLoader(self.app_state.ds, cat)
+        self.app_state.data_loader = store
+        self._pending_loader = None
 
         # Set trials_sel early so _expand_mics_with_channels / get_media
         # can resolve filenames during UI creation.
@@ -558,10 +777,6 @@ class DataWidget(QWidget):
         self.labels_widget.refresh_mapping_for_data_dir(Path(nc_file_path).parent)
         self.changepoints_widget.setEnabled(True)
         self.plot_settings_widget.set_enabled_state()
-        if self.transform_widget:
-            self.transform_widget.setEnabled(True)
-            if self.app_state.has_audio or self.app_state.has_neo:
-                self.transform_widget.show_envelope_target_combo()
         if self.ephys_widget:
             self.ephys_widget.setEnabled(True)
             self.ephys_widget.populate_ephys_default_path()
@@ -577,6 +792,10 @@ class DataWidget(QWidget):
 
         self.update_trials_combo()
         self._load_trial_with_fallback()
+
+        if self.navigation_widget:
+            self.navigation_widget.set_mappings(self.labels_widget._mappings)
+            self.navigation_widget.refresh_after_load()
 
         self.view_mode_combo.show()
 
@@ -613,41 +832,50 @@ class DataWidget(QWidget):
             trial_status[trial] = bool(is_verified)
         return trial_status
 
+    def _on_trials_filtered(self, filtered_trials: list) -> None:
+        """Handle TrialsWidget filter changes."""
+        if not self.app_state.ready:
+            return
+        self.update_trials_combo()
+        if self.app_state.trials_sel not in filtered_trials and filtered_trials:
+            self.app_state.set_key_sel("trials", filtered_trials[0])
+            self.app_state.trial_changed.emit()
+        self.update_main_plot()
+
     # ------------------------------------------------------------------
     # Create controls (populates main panel groupboxes)
     # ------------------------------------------------------------------
 
 
     def _create_trial_controls(self):
-        self.io_widget.create_device_controls(self.type_vars_dict)
-        self.navigation_widget.setup_trial_conditions(self.type_vars_dict)
+        self.io_widget.create_device_controls(self.catalog)
+        self.navigation_widget.setup_trial_conditions(self.catalog)
         self.navigation_widget.set_data_widget(self)
 
-        non_data_type_vars = ["mics", "trial_conditions", "changepoints", "rgb"]
-        for type_var in self.type_vars_dict.keys():
-            if type_var.lower() not in non_data_type_vars:
-                vars_list = self.type_vars_dict[type_var]
-                if hasattr(vars_list, '__len__') and len(vars_list) == 0:
-                    continue
-                self._create_combo_widget(type_var, vars_list)
+        if getattr(self, "trials_widget", None) is not None:
+            mdf = self.app_state.metadata_df if self.app_state.metadata_df is not None else pd.DataFrame({"trial": self.app_state.trials})
+            self.trials_widget.setup(mdf)
+
+        for combo_name, combo_spec in self.catalog.combos.items():
+            if not combo_spec.values:
+                continue
+            self._create_combo_widget(combo_name, list(combo_spec.values))
 
         # Restore camera combos
-        has_nwb_pose = "nwb_source" in self.app_state.dt.attrs and (
+        has_nwb_pose = getattr(self.app_state, "nwb_local", None) and (
             "position" in self.app_state.ds.data_vars
             or any(k.startswith("position_") for k in self.app_state.ds.data_vars)
         )
-        cameras = self.app_state.dt.cameras
+        cameras = self.app_state.nwb_alignment.cameras
         has_remote_cameras = any(is_url(c) for c in cameras)
         if has_nwb_pose or has_remote_cameras:
             self.app_state.has_video = True
         slot_layout = self.slot_layout
 
-        # Slot 1: Layers (tabified controls + list) / Space 2D / Space 3D
+        # Slot 1: Layers / Space Plot toggle
         self.space_view_combo = QComboBox()
         self.space_view_combo.setObjectName("space_view_combo")
-        view_items = ["Layers"]
-        if 'position' in self.app_state.ds.data_vars:
-            view_items.extend(["Space 2D", "Space 3D"])
+        view_items = ["Layers", "Space Plot"]
         self.space_view_combo.addItems(view_items)
         self.space_view_combo.currentTextChanged.connect(self._on_space_view_changed)
         self.controls.append(self.space_view_combo)
@@ -686,72 +914,50 @@ class DataWidget(QWidget):
             self.populate_keypoints(keypoint_names)
 
         slot_layout.addStretch()
-        if self.app_state.has_video or self.app_state.has_audio:
-            self.slot_groupbox.show()
+        self.slot_groupbox.show()
 
         self._setup_panel_checkboxes()
+
+    def _is_panel_available(self, defn: _PanelDef) -> bool:
+        if defn.requires is None:
+            return True
+        if defn.requires == "has_features":
+            return bool(self.catalog and self.catalog.features)
+        return bool(getattr(self.app_state, defn.requires, False))
 
     def _setup_panel_checkboxes(self):
         self._audio_row_widgets = []
 
-        has_audio = bool(self.app_state.has_audio)
-        has_neo = bool(self.app_state.has_neo)
-        has_phy = bool(self.app_state.has_neurons)
-        has_features = self.type_vars_dict.get("features") != []
-
-        # Whether this panel's data is available in the current session.
-        # When data is NOT available the checkbox is forced unchecked and signals are
-        # blocked so the saved preference is preserved for future sessions with that data.
-        data_available = {
-            "video_viewer": bool(self.app_state.has_video),
-            "pose_markers": bool(self.app_state.has_pose),
-            "featureplot":  has_features,
-            "audiotrace":   has_audio,
-            "spectrogram":  has_audio,
-            "neo_viewer":   has_neo,
-            "phy_viewer":   has_phy,
-        }
-        # Saved user preference (ignored when data unavailable).
-        # neo_viewer has no state_attr so always defaults to True when available.
-        saved_checked = {
-            "video_viewer": self.app_state.video_viewer_visible,
-            "pose_markers": self.app_state.pose_markers_visible,
-            "featureplot":  self.app_state.featureplot_visible,
-            "audiotrace":   self.app_state.audiotrace_visible,
-            "spectrogram":  self.app_state.spectrogram_visible,
-            "neo_viewer":   True,
-            "phy_viewer":   self.app_state.ephys_visible,
-        }
-        initial_shown = {
-            "video_viewer": True,
-            "pose_markers": True,
-            "featureplot":  True,
-            "audiotrace":   True,
-            "spectrogram":  True,
-            "neo_viewer":   has_neo,
-            "phy_viewer":   has_phy,
-        }
-
         for defn in _PANEL_DEFS:
+            available = self._is_panel_available(defn)
+            saved = getattr(self.app_state, defn.state_attr) if defn.state_attr else True
+
             checkbox = QCheckBox(defn.label)
             checkbox.setObjectName(f"{defn.name}_checkbox")
-            # Connect signal first so the initial setChecked fires it for available panels.
+            setattr(self, f"{defn.name}_checkbox", checkbox)
+
+            # Set checkbox to saved state WITHOUT firing signals (avoids
+            # triggering plot updates before data is loaded).
+            # When data is NOT available the checkbox is forced unchecked —
+            # signals are blocked so the saved preference is preserved.
+            checkbox.blockSignals(True)
+            checkbox.setChecked(available and saved)
+            checkbox.blockSignals(False)
+
+            # Apply the effective visibility to the container directly.
+            effective = available and saved
+            if defn.container_method and self.plot_container:
+                getattr(self.plot_container, defn.container_method)(effective)
+            if defn.on_toggle:
+                getattr(self, defn.on_toggle)(effective)
+
+            # Connect signal AFTER initial state is applied.
             checkbox.stateChanged.connect(
                 lambda state, n=defn.name: self._on_panel_toggled(n, state)
             )
-            setattr(self, f"{defn.name}_checkbox", checkbox)
 
-            if data_available[defn.name]:
-                # Fires signal → updates app_state + container visibility.
-                checkbox.setChecked(saved_checked[defn.name])
-            else:
-                # Block signal so the saved preference is not overwritten.
-                checkbox.blockSignals(True)
-                checkbox.setChecked(False)
-                checkbox.blockSignals(False)
-
-            if not initial_shown[defn.name]:
-                checkbox.hide()
+            if not available:
+                checkbox.setEnabled(False)
             if defn.audio_row:
                 self._audio_row_widgets.append(checkbox)
 
@@ -761,8 +967,8 @@ class DataWidget(QWidget):
         self.panels_row1_layout.addStretch()
 
         # Row 2: mic selector
-        if has_audio:
-            mic_names = self.type_vars_dict.get("mics", [])
+        if self.app_state.has_audio:
+            mic_names = self.catalog.mics if self.catalog else []
             expanded = self._expand_mics_with_channels(mic_names)
             self.mics_combo = QComboBox()
             self.mics_combo.setObjectName("mics_combo")
@@ -823,19 +1029,17 @@ class DataWidget(QWidget):
         self.slot_row2_layout.addWidget(self.pose_markers_checkbox)
         self.slot_row2_layout.addStretch()
 
-        if has_neo and self.ephys_widget:
+        if self.app_state.has_neo and self.ephys_widget:
             self._populate_neo_stream_combo()
 
-        if has_phy and self.ephys_widget:
+        if self.app_state.has_neurons and self.ephys_widget:
             self._neural_view_label.show()
             self.neural_view_combo.show()
             self.ephys_widget.configure_ephys_trace_plot()
-            if self.plot_container:
-                self.plot_container.set_ephys_visible(True)
 
-        if not has_audio:
+        if not self.app_state.has_audio:
             for w in self._audio_row_widgets:
-                w.hide()
+                w.setEnabled(False)
         self.video_mgr.set_audio_row_widgets(self._audio_row_widgets)
 
         # Overlays
@@ -993,13 +1197,12 @@ class DataWidget(QWidget):
         if loader is None:
             return
 
-        if self.app_state.dt is not None:
-            self.app_state.dt.set_ephys_stream_id(stream_id)
+        self.app_state.ephys_stream_id = stream_id
 
         neo_plot = self.plot_container.neo_trace_plot
         neo_plot.set_loader(loader, channel_idx)
 
-        neo_plot.set_source(RegularTimeseriesSource("neo", loader, start_time=0.0))
+        neo_plot.set_source(FileSource("neo", loader, start_time=0.0))
 
         if self.plot_container._panel_visible["neo"]:
             xmin, xmax = self.plot_container.get_current_xlim()
@@ -1041,8 +1244,8 @@ class DataWidget(QWidget):
         audio_folder = self.app_state.audio_folder
         dt = getattr(self.app_state, 'dt', None)
         trial_id = getattr(self.app_state, 'trials_sel', None)
-        if trial_id is None and dt is not None and dt.trials:
-            trial_id = dt.trials[0]
+        if trial_id is None and self.app_state.trials:
+            trial_id = self.app_state.trials[0]
 
         if not audio_folder or dt is None:
             for mic in mic_labels:
@@ -1052,7 +1255,7 @@ class DataWidget(QWidget):
             return expanded_items
 
         for mic_label in mic_labels:
-            mic_file = dt.get_media(trial_id, "audio", str(mic_label))
+            mic_file = self.app_state.nwb_alignment.get_media(trial_id, "audio", str(mic_label))
             if not mic_file:
                 continue
             try:
@@ -1075,7 +1278,7 @@ class DataWidget(QWidget):
         combo = getattr(self, 'mics_combo', None)
         if combo is None:
             return
-        new_items = self.app_state.dt.mics
+        new_items = self.app_state.nwb_alignment.mics
         if not new_items:
             return
         new_items = np.array(new_items, dtype=str)
@@ -1092,7 +1295,7 @@ class DataWidget(QWidget):
         self.app_state.set_key_sel("mics", combo.currentText())
 
     def _update_device_sels_for_trial(self, ds):
-        cameras = self.app_state.dt.cameras
+        cameras = self.app_state.nwb_alignment.cameras
 
         primary = getattr(self, 'primary_camera_combo', None)
         if primary is not None and cameras:
@@ -1147,6 +1350,10 @@ class DataWidget(QWidget):
 
         if defn.on_toggle:
             getattr(self, defn.on_toggle)(visible)
+
+    def _on_audio_panel_toggle(self, visible: bool):
+        if visible and self.plot_container and self.app_state.has_audio:
+            self.plot_container.update_audio_panels()
 
     def _on_neo_panel_toggle(self, visible: bool):
         if visible and self.plot_container:
@@ -1271,6 +1478,38 @@ class DataWidget(QWidget):
         else:
             self.plot_container.hide_envelope_overlay()
 
+    def _open_energy_params(self):
+        from .dialog_function_params import open_function_params_dialog
+        key = self.data_panel.energy_display_to_key(
+            self.data_panel.metric_combo.currentText(),
+        )
+        if key:
+            result = open_function_params_dialog(key, self.app_state, parent=self.data_panel)
+            if result is not None:
+                self._on_energy_apply()
+
+    def _on_energy_apply(self):
+        metric_key = self.data_panel.energy_display_to_key(
+            self.data_panel.metric_combo.currentText(),
+        )
+        self.app_state.energy_metric = metric_key
+
+        if not self.plot_container:
+            return
+
+        from .dialog_busy_progress import BusyProgressDialog
+
+        if (
+            hasattr(self, 'show_envelope_checkbox')
+            and not self.show_envelope_checkbox.isChecked()
+        ):
+            self.show_envelope_checkbox.setChecked(True)
+            return
+
+        self.plot_container.hide_envelope_overlay()
+        dialog = BusyProgressDialog("Computing energy envelope...", parent=self.data_panel)
+        dialog.execute_blocking(self.plot_container.show_envelope_overlay)
+
     def _set_controls_enabled(self, enabled: bool):
         for control in self.controls:
             control.setEnabled(enabled)
@@ -1346,7 +1585,8 @@ class DataWidget(QWidget):
             self.update_main_plot(t0=xmin, t1=xmax)
 
             if key in ["individuals", "keypoints", "colors"]:
-                self.update_space_plot()
+                if self.space_plot and self.space_plot.isVisible():
+                    self.space_plot.refresh()
 
             if key == "cluster_id" and self.ephys_widget:
                 try:
@@ -1391,7 +1631,8 @@ class DataWidget(QWidget):
         current_plot = self.plot_container.get_current_plot()
         xmin, xmax = current_plot.get_current_xlim()
         self.update_main_plot(t0=xmin, t1=xmax)
-        self.update_space_plot()
+        if self.space_plot and self.space_plot.isVisible():
+            self.space_plot.refresh()
 
     def _on_channel_all_changed(self, state: int):
         if not self.app_state.ready:
@@ -1410,30 +1651,33 @@ class DataWidget(QWidget):
         self.app_state.all_checkbox_states = states
 
     def _restore_or_set_defaults(self):
-        for key, vars in self.type_vars_dict.items():
+        if not self.catalog:
+            return
+        for key, spec in self.catalog.combos.items():
             combo = self.io_widget.combos.get(key) or self.combos.get(key)
+            vals = list(spec.values)
 
-            if combo is not None:
+            if combo is not None and vals:
                 saved_value = self.app_state.get_key_sel(key) if self.app_state.key_sel_exists(key) else None
-                vars_str = [str(var) for var in vars]
+                vals_str = [str(v) for v in vals]
 
-                if saved_value in vars_str:
+                if saved_value in vals_str:
                     set_combo_to_value(combo, saved_value)
                 elif saved_value and key == "mics":
-                    match = next((v for v in vars_str if v.startswith(str(saved_value))), None)
+                    match = next((v for v in vals_str if v.startswith(str(saved_value))), None)
                     if match:
                         set_combo_to_value(combo, match)
                         self.app_state.set_key_sel(key, match)
                     else:
-                        set_combo_to_value(combo, str(vars[0]))
-                        self.app_state.set_key_sel(key, str(vars[0]))
+                        set_combo_to_value(combo, vals_str[0])
+                        self.app_state.set_key_sel(key, vals_str[0])
                 else:
-                    if key == "features" and "speed" in vars:
+                    if key == "features" and "speed" in vals_str:
                         set_combo_to_value(combo, "speed")
                         self.app_state.set_key_sel(key, "speed")
                     else:
-                        set_combo_to_value(combo, str(vars[0]))
-                        self.app_state.set_key_sel(key, str(vars[0]))
+                        set_combo_to_value(combo, vals_str[0])
+                        self.app_state.set_key_sel(key, vals_str[0])
 
 
         if self.app_state.key_sel_exists("trials"):
@@ -1445,6 +1689,9 @@ class DataWidget(QWidget):
             self.app_state.trials_sel = self.app_state.trials[0]
 
         space_plot_type = getattr(self.app_state, 'space_plot_type', 'Layers')
+        # Migrate old values to simplified combo
+        if space_plot_type in ("Space 2D", "Space 3D", "space_2D", "space_3D", "PCA 2D", "PCA 3D"):
+            space_plot_type = "Space Plot"
         if hasattr(self, 'space_view_combo'):
             self.space_view_combo.setCurrentText(space_plot_type)
 
@@ -1535,13 +1782,13 @@ class DataWidget(QWidget):
 
     def _validate_media_files(self) -> list[str]:
         missing = []
-        dt = self.app_state.dt
+        sio = self.app_state.nwb_alignment
         first_trial = self.app_state.trials[0]
 
         video_folder = self.app_state.video_folder
         if video_folder:
-            for cam in dt.cameras:
-                vid = dt.get_media(first_trial, "video", device=cam) 
+            for cam in sio.cameras:
+                vid = sio.get_media(first_trial, "video", device=cam)
                 if not vid or is_url(vid):
                     continue
                 path = os.path.join(video_folder, vid)
@@ -1550,7 +1797,7 @@ class DataWidget(QWidget):
 
         audio_folder = self.app_state.audio_folder
         if audio_folder:
-            mics = dt.mics
+            mics = sio.mics
             if not mics:
                 notify(
                     "You selected an audio folder, although the .nc "
@@ -1559,7 +1806,7 @@ class DataWidget(QWidget):
                 )
             else:
                 for mic in mics:
-                    aud = dt.get_media(first_trial, "audio", device=mic)
+                    aud = sio.get_media(first_trial, "audio", device=mic)
                     if not aud:
                         continue
                     path = os.path.join(audio_folder, aud)
@@ -1568,7 +1815,7 @@ class DataWidget(QWidget):
 
         pose_folder = self.app_state.pose_folder
         if pose_folder:
-            cameras = dt.cameras
+            cameras = sio.cameras
             if not cameras:
                 notify(
                     "You selected a pose folder, although the .nc "
@@ -1577,7 +1824,7 @@ class DataWidget(QWidget):
                 )
             else:
                 for cam in cameras:
-                    pose_file = dt.get_media(first_trial, "pose", device=cam)
+                    pose_file = sio.get_media(first_trial, "pose", device=cam)
                     if not pose_file:
                         continue
                     path = os.path.join(pose_folder, pose_file)
@@ -1589,16 +1836,19 @@ class DataWidget(QWidget):
 
 
     def _build_trial_alignment(self, trial_id) -> None:
-        self.app_state.trial_alignment = compute_trial_alignment(
-            self.app_state.dt,
+        self.app_state.trial_alignment = compute_trial_video_bounds(
+            self.app_state.nwb_alignment,
             trial_id,
             self.app_state.ds,
             video_folder=self.app_state.video_folder,
             audio_folder=self.app_state.audio_folder,
             cameras_sel=self.app_state.primary_camera,
+            source_collection=getattr(self.app_state, 'source_collection', None),
         )
 
-
+    def _build_restrict_window(self, trial_id) -> None:
+        if self.navigation_widget is not None:
+            self.navigation_widget._apply_slider_scope()
 
     def on_trial_changed(self):
         trials_sel = self.app_state.trials_sel
@@ -1610,8 +1860,27 @@ class DataWidget(QWidget):
             return
         
 
-        self.app_state.ds = self.app_state.dt.trial(trials_sel)
+        if self.app_state.dt is not None:
+            self.app_state.ds = self.app_state.dt.trial(trials_sel)
 
+        self.pose_frame_path = self.app_state.ds.attrs.get("frame_path")
+
+        # Update data_loader trial index (pynapple: restrict changes;
+        # xarray: XarrayLoader.update_ds swaps the backing dataset)
+        store = self.app_state.data_loader
+        trial_idx = self.app_state.trials.index(trials_sel)
+        if store is not None:
+            store.set_trial(trial_idx)
+            if hasattr(store, 'update_ds'):
+                store.update_ds(self.app_state.ds)
+
+        # Sync SourceCollection: only update trial index, not dataset
+        # (DataLoader handles dataset access; sources are for range queries)
+        sc = getattr(self.app_state, 'source_collection', None)
+        if sc is not None:
+            for src in sc.sources.values():
+                if hasattr(src, 'set_trial'):
+                    src.set_trial(trial_idx)
 
         self._update_device_sels_for_trial(self.app_state.ds)
         self.update_mics_combo_for_trial(self.app_state.ds)
@@ -1632,6 +1901,7 @@ class DataWidget(QWidget):
         self.app_state.label_intervals = self.app_state.get_trial_intervals(trials_sel)
 
         self._build_trial_alignment(trials_sel)
+        self._build_restrict_window(trials_sel)
 
         self.app_state.current_frame = 0
         self.update_video()
@@ -1711,18 +1981,16 @@ class DataWidget(QWidget):
         if not self.app_state.ready:
             return
         self.show_envelope_checkbox.show()
-        self.video_mgr.update_video(
-            plot_container=self.plot_container,
-            transform_widget=self.transform_widget,
-        )
+        self.video_mgr.update_video(plot_container=self.plot_container)
+        video = getattr(self.app_state, "video", None)
+        if video:
+            nav = self.meta_widget.navigation_widget
+            nav.connect_video_sync(video)
 
     def update_audio(self):
         if not self.app_state.ready:
             return
-        self.video_mgr.update_audio(
-            plot_container=self.plot_container,
-            transform_widget=self.transform_widget,
-        )
+        self.video_mgr.update_audio(plot_container=self.plot_container)
 
 
     def update_label(self):
@@ -1731,15 +1999,53 @@ class DataWidget(QWidget):
     def toggle_pause_resume(self):
         self.video_mgr.toggle_pause_resume(self.plot_container)
 
+    def _on_time_marker_updated(self, time_s: float):
+        if not self.space_plot or not self.space_plot.isVisible():
+            return
+        self.space_plot.update_time_marker(time_s)
+        self._highlight_label_at_time(time_s)
+
+    def _on_xrange_for_space_plot(self, _time_s: float):
+        """Debounced re-render of space plot when lineplot x-range changes."""
+        if self.space_plot and self.space_plot.isVisible():
+            self.space_plot.on_xrange_changed()
+
+    _space_highlight_key: tuple | None = None
+
+    def _highlight_label_at_time(self, time_s: float):
+        """If the current time falls inside a label, highlight that segment.
+
+        Only redraws when entering a different label interval.
+        """
+        label_intervals = self.app_state.label_intervals
+        if label_intervals is None or label_intervals.empty:
+            self._space_highlight_key = None
+            return
+        mask = (label_intervals["onset_s"] <= time_s) & (label_intervals["offset_s"] >= time_s)
+        hits = label_intervals[mask]
+        if hits.empty:
+            self._space_highlight_key = None
+            return
+        row = hits.iloc[0]
+        key = (float(row["onset_s"]), float(row["offset_s"]), int(row["labels"]))
+        if key == self._space_highlight_key:
+            return
+        self._space_highlight_key = key
+
+        color = (255, 102, 0)
+        mappings = getattr(self.labels_widget, '_mappings', {})
+        color = mappings.get(key[2], {}).get("color", color)
+        self.space_plot.highlight_time_segment(key[0], key[1], color)
+
     def _on_primary_frame_changed(self, frame_number: int):
-        self.app_state.current_frame = frame_number
-
-
         self.plot_container.update_time_marker_and_window(frame_number)
 
+        video = getattr(self.app_state, 'video', None)
+        if video:
+            current_time = video.frame_to_time(frame_number)
+        else:
+            current_time = frame_number / self.app_state.video_fps
 
-        primary_fps = self.app_state.video_fps
-        current_time = frame_number / primary_fps
         xlim = self.plot_container.get_current_xlim()
         if getattr(self.app_state, 'center_playback', False) or current_time < xlim[0] or current_time > xlim[1]:
             self.plot_container.set_x_range(mode='center', center_on_frame=frame_number)
@@ -1769,9 +2075,17 @@ class DataWidget(QWidget):
         self.app_state.space_plot_type = text
 
         show_layers = text == "Layers"
-
         self.layout_mgr.toggle_layer_docks_with_anchor(show_layers)
-        self.update_space_plot()
+
+        if text == "Space Plot":
+            if not self.app_state.has_video:
+                self.layout_mgr.set_video_viewer_visible(False)
+            self.update_space_plot()
+        else:
+            if self.space_plot:
+                self.space_plot.hide()
+            if not self.app_state.has_video:
+                self.layout_mgr.configure_no_video(self.navigation_widget)
 
     def _on_primary_camera_changed(self, camera_name):
         if not self.app_state.ready or not camera_name:
@@ -1796,15 +2110,22 @@ class DataWidget(QWidget):
             if self.pose_mgr is not None:
                 self.pose_mgr.on_camera_removed(name)
 
+        to_add: dict[str, str] = {}
         for name in desired - current:
             video_path = self.video_mgr._resolve_video_path(name, self.app_state.video_folder)
-            if not video_path:
-                continue
+            if video_path:
+                to_add[name] = video_path
+
+        from .video_manager import VideoManager
+        readers = VideoManager.open_readers_parallel(to_add)
+
+        for name, video_path in to_add.items():
             self.video_mgr.add_camera(
                 camera_name=name,
                 video_path=video_path,
                 layout_mgr=self.layout_mgr,
                 meta_widget=self.meta_widget,
+                reader=readers.get(name),
             )
             if self.pose_mgr is not None:
                 self.pose_mgr.update_extra_camera_pose(name, self.get_hidden_keypoints())
@@ -1842,18 +2163,25 @@ class DataWidget(QWidget):
         if not hasattr(self, '_extra_camera_combos'):
             return
         desired = self._get_desired_extra_cameras()
+        to_add: dict[str, str] = {}
         for camera_name in desired:
             widget = self.video_mgr.extra_widgets.get(camera_name)
             if widget is not None and widget.isVisible():
                 continue
             video_path = self.video_mgr._resolve_video_path(camera_name, self.app_state.video_folder)
-            if not video_path:
-                continue
+            if video_path:
+                to_add[camera_name] = video_path
+
+        from .video_manager import VideoManager
+        readers = VideoManager.open_readers_parallel(to_add)
+
+        for camera_name, video_path in to_add.items():
             self.video_mgr.add_camera(
                 camera_name=camera_name,
                 video_path=video_path,
                 layout_mgr=self.layout_mgr,
                 meta_widget=self.meta_widget,
+                reader=readers.get(camera_name),
             )
             if self.pose_mgr is not None:
                 self.pose_mgr.update_extra_camera_pose(camera_name, self.get_hidden_keypoints())
@@ -1865,53 +2193,43 @@ class DataWidget(QWidget):
             return
 
         plot_type = self.app_state.get_with_default('space_plot_type')
-
-        is_space = plot_type in ("Space 2D", "Space 3D", "space_2D", "space_3D")
-        is_pca = plot_type in ("PCA 2D", "PCA 3D")
-
-        if not is_space and not is_pca:
+        if plot_type != "Space Plot":
             if self.space_plot:
                 self.space_plot.hide()
             return
 
         if not self.space_plot:
             self.space_plot = SpacePlot(self.viewer, self.app_state)
+            self.space_plot.set_plot_container(self.plot_container)
+            self.plot_container.time_marker_updated.connect(self._on_xrange_for_space_plot)
             if self.labels_widget:
                 self.labels_widget.highlight_spaceplot.connect(self._highlight_positions_in_space_plot)
 
-        if is_pca:
-            view_3d = plot_type == "PCA 3D"
-            self.space_plot.update_pca_plot(view_3d)
-        else:
-            individual = self.combos.get('individuals', None)
-            individual_text = get_combo_value(individual) if individual else None
-            keypoints = self.combos.get('keypoints', None)
-            keypoints_text = get_combo_value(keypoints) if keypoints else None
-            color_variable = self.combos.get('colors', None)
-            color_variable = get_combo_value(color_variable) if color_variable else None
-            view_3d = plot_type in ("Space 3D", "space_3D")
-            self.space_plot.update_plot(individual_text, keypoints_text, color_variable, view_3d)
+        store = getattr(self.app_state, 'data_loader', None)
+        if store is None and self.app_state.ds is not None:
+            from ethograph.io.catalog import XarrayLoader, catalog_from_xarray
+            cat = catalog_from_xarray(self.app_state.ds, self.app_state.dt)
+            store = XarrayLoader(self.app_state.ds, cat)
 
+        self.space_plot.set_store(store)
+        self.space_plot.refresh()
         self.space_plot.show()
 
     def _highlight_positions_in_space_plot(self, start_time: float, end_time: float):
-        if not self.space_plot or not self.space_plot.dock_widget.isVisible():
+        if not self.space_plot or not self.space_plot.dock_widget or not self.space_plot.dock_widget.isVisible():
             return
 
-        if self.space_plot.is_pca:
-            label_intervals = self.app_state.label_intervals
-            color = (255, 102, 0)
-            if label_intervals is not None and not label_intervals.empty:
-                mid = (start_time + end_time) / 2.0
-                mask = (label_intervals["onset_s"] <= mid) & (label_intervals["offset_s"] >= mid)
-                hits = label_intervals[mask]
-                if not hits.empty:
-                    label_id = int(hits.iloc[0]["labels"])
+        color = (255, 102, 0)
+        label_intervals = self.app_state.label_intervals
+        active_ids = self.app_state.active_label_ids
+        if label_intervals is not None and not label_intervals.empty:
+            mid = (start_time + end_time) / 2.0
+            mask = (label_intervals["onset_s"] <= mid) & (label_intervals["offset_s"] >= mid)
+            hits = label_intervals[mask]
+            if not hits.empty:
+                label_id = int(hits.iloc[0]["labels"])
+                if active_ids is None or label_id in active_ids:
                     mappings = getattr(self.labels_widget, '_mappings', {})
                     color = mappings.get(label_id, {}).get("color", color)
-            self.space_plot.highlight_pca(start_time, end_time, color)
-        else:
-            space_sr = self.app_state.get_feature_sr(position=True)
-            start_frame = int(start_time * space_sr)
-            end_frame = int(end_time * space_sr)
-            self.space_plot.highlight_positions(start_frame, end_frame)
+
+        self.space_plot.highlight_time_segment(start_time, end_time, color)

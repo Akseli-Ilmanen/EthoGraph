@@ -176,15 +176,18 @@ def _empty_all_labels() -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def get_trial_from_tsv(all_df: pd.DataFrame, trial) -> pd.DataFrame:
-    """Extract intervals for a single trial from the all-labels DataFrame.
+    """Extract all rows for a single trial from the all-labels DataFrame.
 
-    Returns a DataFrame with standard interval columns (``onset_s``, ``offset_s``,
-    ``labels``, ``individual``), without the ``trial`` column.
+    Returns a DataFrame with the full ``TSV_COLUMNS`` set: trial, individual,
+    labels, onset_s, offset_s, plus per-trial metadata columns.  Callers that
+    only need interval data can ignore the extras; ``set_trial_in_tsv`` already
+    discards everything except ``INTERVAL_COLUMNS`` when writing back.
     """
     if all_df is None or all_df.empty:
         return empty_intervals()
     mask = all_df["trial"] == trial
-    trial_df = all_df.loc[mask, INTERVAL_COLUMNS].reset_index(drop=True)
+    cols = [c for c in TSV_COLUMNS if c in all_df.columns]
+    trial_df = all_df.loc[mask, cols].reset_index(drop=True)
     if trial_df.empty:
         return empty_intervals()
     return trial_df

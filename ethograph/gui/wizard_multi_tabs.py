@@ -152,7 +152,7 @@ class _BaseConfigTab(QWidget):
             return None
 
         pattern = stream_panel.pattern
-        rows = [extract_file_row(f, pattern.segments, pattern.tokenize_mode) for f in pattern.files]
+        rows = [extract_file_row(f, pattern.segments, pattern.tokenize_mode, regex_pattern=pattern.regex_pattern) for f in pattern.files]
         seen: set[str] = set()
         for row in rows:
             device = str(row.get(role, "")).strip()
@@ -316,7 +316,7 @@ class VideoConfigTab(_BaseConfigTab):
             fps = get_video_fps(str(file_path))
             if fps is None:
                 continue
-            row = extract_file_row(file_path, pat.segments, pat.tokenize_mode)
+            row = extract_file_row(file_path, pat.segments, pat.tokenize_mode, regex_pattern=pat.regex_pattern)
             camera = row.get("camera", "camera_1")
             fps_by_camera.setdefault(camera, []).append(int(round(fps)))
 
@@ -384,7 +384,7 @@ class VideoConfigTab(_BaseConfigTab):
         pat = self._stream_panel.pattern
         cameras: set[str] = set()
         for file_path in pat.files:
-            row = extract_file_row(file_path, pat.segments, pat.tokenize_mode)
+            row = extract_file_row(file_path, pat.segments, pat.tokenize_mode, regex_pattern=pat.regex_pattern)
             camera = row.get("camera", "camera_1")
             cameras.add(camera)
         
@@ -691,7 +691,7 @@ class PoseConfigTab(_BaseConfigTab):
         pat = self._stream_panel.pattern
         poses: set[str] = set()
         for file_path in pat.files:
-            row = extract_file_row(file_path, pat.segments, pat.tokenize_mode)
+            row = extract_file_row(file_path, pat.segments, pat.tokenize_mode, regex_pattern=pat.regex_pattern)
             pose = row.get("camera", "pose_1")
             poses.add(pose)
         
@@ -844,7 +844,7 @@ class AudioConfigTab(_BaseConfigTab):
         pat = self._stream_panel.pattern
         mics: set[str] = set()
         for file_path in pat.files:
-            row = extract_file_row(file_path, pat.segments, pat.tokenize_mode)
+            row = extract_file_row(file_path, pat.segments, pat.tokenize_mode, regex_pattern=pat.regex_pattern)
             mic = row.get("mic", "mic_1")
             mics.add(mic)
         

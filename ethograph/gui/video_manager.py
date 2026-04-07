@@ -1,6 +1,7 @@
 """Video layer lifecycle management — setup, teardown, camera switching, multi-camera display."""
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from napari._qt.qt_viewer import QtViewer
@@ -75,6 +76,7 @@ class TrialVideoSlice:
     def start_frame(self) -> int:
         return self._start
 
+
 class ExtraCameraWidget(QWidget):
     """Self-contained camera view with pose overlay via a napari canvas.
 
@@ -98,6 +100,7 @@ class ExtraCameraWidget(QWidget):
         self._time_offset: float = 0.0
         self._video_layer = None
         self._points_layer = None
+        self._shapes_layer = None
 
     @property
     def fps(self) -> float:
@@ -160,6 +163,14 @@ class ExtraCameraWidget(QWidget):
         frame = max(0, min(frame, n_frames - 1))
         self._viewer_model.dims.set_point(0, frame)
 
+    def clear_bbox(self):
+        if self._shapes_layer is not None:
+            try:
+                self._viewer_model.layers.remove(self._shapes_layer)
+            except ValueError:
+                pass
+            self._shapes_layer = None
+
     def clear_pose(self):
         if self._points_layer is not None:
             try:
@@ -167,6 +178,7 @@ class ExtraCameraWidget(QWidget):
             except ValueError:
                 pass
             self._points_layer = None
+        self.clear_bbox()
 
     def clear(self):
         self.clear_pose()
@@ -207,19 +219,15 @@ class VideoManager:
     def extra_widgets(self) -> dict[str, ExtraCameraWidget]:
         return self._extra_widgets
 
-    def update_video(self, plot_container, transform_widget):
+    def update_video(self, plot_container):
         if not self.app_state.ready:
             return
         camera = self.app_state.primary_camera
-        video_file = None
-        if camera:
-            dt = self.app_state.dt
-            video_file = dt.get_media(self.app_state.trials_sel, "video", device=camera)
-        if video_file and is_url(video_file):
-            self.app_state.video_path = video_file
-        elif video_file and self.app_state.video_folder:
-            self.app_state.video_path = os.path.normpath(
-                os.path.join(self.app_state.video_folder, video_file)
+        sio = getattr(self.app_state, 'nwb_alignment', None)
+        if camera and sio is not None:
+            self.app_state.video_path = sio.resolve_media_path(
+                self.app_state.trials_sel, "video", device=camera,
+                fallback_folder=self.app_state.video_folder,
             )
         else:
             self.app_state.video_path = None
@@ -230,11 +238,11 @@ class VideoManager:
         self._cleanup_primary_video()
         self._setup_primary_video(restore_frame)
 
-    def update_audio(self, plot_container, transform_widget):
+    def update_audio(self, plot_container):
         if not self.app_state.ready:
             return
         self._update_audio_path()
-        self._update_audio_ui(plot_container, transform_widget)
+        self._update_audio_ui(plot_container)
 
     def _update_audio_path(self) -> None:
         self.app_state.audio_path = None
@@ -243,10 +251,8 @@ class VideoManager:
             if audio_path:
                 self.app_state.audio_path = audio_path
 
-    def _update_audio_ui(self, plot_container, transform_widget):
+    def _update_audio_ui(self, plot_container):
         has_audio = bool(self.app_state.audio_path)
-        if transform_widget:
-            transform_widget.set_enabled_state(has_audio=has_audio)
         for w in self._audio_row_widgets:
             w.setVisible(has_audio)
         if has_audio:
@@ -288,7 +294,6 @@ class VideoManager:
                         pass
 
     def _setup_primary_video(self, restore_frame: int):
-
         reader = FastVideoReader(
             self.app_state.video_path, read_format='rgb24',
         )
@@ -297,10 +302,7 @@ class VideoManager:
         detected_fps = float(reader.stream.guessed_rate) if reader.stream.guessed_rate else None
         if detected_fps is not None and self.app_state.dt is not None:
             camera = self.app_state.primary_camera
-            if camera:
-                self._store_camera_fps_in_session(camera, detected_fps)
-            else:
-                self.app_state.dt.set_video_fps(detected_fps)
+            self.app_state.nwb_alignment.set_stream_rate(detected_fps, "video", camera)
 
         alignment = getattr(self.app_state, 'trial_alignment', None)
         video_time_offset = alignment.video_offset if alignment else 0.0
@@ -352,11 +354,14 @@ class VideoManager:
         sync.seek_to_frame(restore_frame)
         self.app_state.current_frame = restore_frame
 
+        qt_dims = getattr(self.viewer.window, "_qt_viewer", self.viewer.window.qt_viewer).dims
+        if qt_dims.slider_widgets:
+            qt_dims.slider_widgets[0].play_button.hide()
+
     def set_frame_changed_callback(self, callback):
         self._frame_changed_callback = callback
 
     def _on_primary_frame_changed(self, frame_number: int):
-        self.app_state.current_frame = frame_number
         if hasattr(self, '_frame_changed_callback'):
             self._frame_changed_callback(frame_number)
 
@@ -371,17 +376,18 @@ class VideoManager:
     # Extra cameras
     # ------------------------------------------------------------------
 
-    def add_camera(self, camera_name: str, video_path: str, layout_mgr, meta_widget):
+    def add_camera(self, camera_name: str, video_path: str, layout_mgr, meta_widget, *, reader=None):
         if camera_name in self._extra_widgets:
-            self._update_existing_camera(camera_name, video_path)
+            self._update_existing_camera(camera_name, video_path, reader=reader)
             return
 
         if len(self._extra_widgets) >= MAX_EXTRA_CAMERAS:
             notify(f"Maximum {MAX_EXTRA_CAMERAS} extra cameras supported.", "warning")
             return
 
-        reader = FastVideoReader(video_path, read_format='rgb24')
-        _ = reader.shape
+        if reader is None:
+            reader = FastVideoReader(video_path, read_format='rgb24')
+            _ = reader.shape
         fps = float(reader.stream.guessed_rate)
         self._store_camera_fps_in_session(camera_name, fps)
 
@@ -395,9 +401,10 @@ class VideoManager:
         self._connect_extra_sync()
         self._sync_widget_to_current_time(widget)
 
-    def _update_existing_camera(self, camera_name: str, video_path: str):
-        reader = FastVideoReader(video_path, read_format='rgb24')
-        _ = reader.shape
+    def _update_existing_camera(self, camera_name: str, video_path: str, *, reader=None):
+        if reader is None:
+            reader = FastVideoReader(video_path, read_format='rgb24')
+            _ = reader.shape
         fps = float(reader.stream.guessed_rate)
         self._store_camera_fps_in_session(camera_name, fps)
         video_data, time_offset = self._prepare_extra_video(reader, fps, camera_name)
@@ -408,11 +415,11 @@ class VideoManager:
 
     def _prepare_extra_video(self, reader, fps: float, camera_name: str):
         """Retrieve per-camera offset and apply trial slicing for an extra camera."""
-        dt = getattr(self.app_state, 'dt', None)
+        sio = getattr(self.app_state, 'nwb_alignment', None)
         time_offset = 0.0
-        if dt is not None:
+        if sio is not None:
             trial_id = self.app_state.trials_sel
-            time_offset = dt.source_start_time_trial_relative(trial_id, "video", camera_name)
+            time_offset = sio.stream_offset_for_trial(trial_id, "video", camera_name)
 
         alignment = getattr(self.app_state, 'trial_alignment', None)
         video_data = reader
@@ -538,14 +545,10 @@ class VideoManager:
             widget.seek_to_time(t_seconds)
 
     def _store_camera_fps_in_session(self, camera_name: str, fps: float):
-        dt = getattr(self.app_state, 'dt', None)
-        if dt is None:
+        sio = getattr(self.app_state, 'nwb_alignment', None)
+        if sio is None:
             return
-        sess = dt.session
-        if sess is not None and "video_fps" in sess:
-            da = sess["video_fps"]
-            if "cameras" in da.dims and camera_name in da.coords["cameras"].values:
-                da.loc[{"cameras": camera_name}] = fps
+        sio.set_stream_rate(fps, "video", camera_name)
 
     def cleanup(self):
         if getattr(self.app_state, 'video', None):
@@ -554,12 +557,45 @@ class VideoManager:
         self._cleanup_primary_video()
         self.remove_all_cameras()
 
+    @staticmethod
+    def open_readers_parallel(paths: dict[str, str]) -> dict[str, FastVideoReader]:
+        """Open FastVideoReaders for *paths* concurrently.
+
+        Parameters
+        ----------
+        paths
+            ``{camera_name: video_path}`` mapping.
+
+        Returns
+        -------
+        dict
+            ``{camera_name: reader}`` for every path that opened
+            successfully.  Failed opens are silently skipped.
+        """
+        def _open(video_path: str) -> FastVideoReader | None:
+            try:
+                reader = FastVideoReader(video_path, read_format="rgb24")
+                _ = reader.shape
+                return reader
+            except Exception:
+                return None
+
+        if not paths:
+            return {}
+
+        results: dict[str, FastVideoReader] = {}
+        with ThreadPoolExecutor(max_workers=len(paths)) as pool:
+            futures = {name: pool.submit(_open, path) for name, path in paths.items()}
+            for name, future in futures.items():
+                reader = future.result()
+                if reader is not None:
+                    results[name] = reader
+        return results
+
     def _resolve_video_path(self, camera_name: str, video_folder: str | None) -> str | None:
         if is_url(camera_name):
             return camera_name
-        if video_folder:
-            video_file = self.app_state.dt.get_media(self.app_state.trials_sel, "video", device=camera_name)
-            if video_file:
-                path = os.path.normpath(os.path.join(video_folder, video_file))
-                return path if os.path.isfile(path) else None
-        return None
+        return self.app_state.nwb_alignment.resolve_media_path(
+            self.app_state.trials_sel, "video", device=camera_name,
+            fallback_folder=video_folder,
+        )

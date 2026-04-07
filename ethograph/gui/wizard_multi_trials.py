@@ -41,7 +41,7 @@ def _build_modality_df(
     pat = config.pattern
     if pat is None:
         return None
-    rows = [extract_file_row(f, pat.segments, pat.tokenize_mode) for f in pat.files]
+    rows = [extract_file_row(f, pat.segments, pat.tokenize_mode, regex_pattern=pat.regex_pattern) for f in pat.files]
     df = pd.DataFrame(rows)
     if "trial" not in df.columns:
         return None

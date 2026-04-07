@@ -7,10 +7,11 @@ from typing import Any
 
 import numpy as np
 from napari.viewer import Viewer
-from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QColor
+from qtpy.QtCore import QMimeData, QSize, Qt, Signal
+from qtpy.QtGui import QColor, QDrag
 from qtpy.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -19,6 +20,7 @@ from qtpy.QtWidgets import (
     QLabel,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
@@ -29,7 +31,7 @@ from qtpy.QtWidgets import (
 import ethograph as eto
 from ethograph.gui.notify import notify
 from ethograph.features.changepoints import snap_to_nearest_changepoint_time
-from ethograph.labels.intervals import load_label_mapping
+from ethograph.labels.intervals import load_label_mapping, save_label_mapping
 from ethograph.labels.plots import plot_confidence_pdf
 from ethograph.labels.predictions import PredictionsStore
 from ethograph.labels.tsv_store import save_labels_tsv
@@ -50,16 +52,63 @@ from .app_constants import (
     LABELS_TABLE_ROW_HEIGHT,
     LABELS_TABLE_ID_COLUMN_WIDTH,
     LABELS_TABLE_COLOR_COLUMN_WIDTH,
-    LABELS_OVERLAY_BOX_WIDTH,
-    LABELS_OVERLAY_BOX_HEIGHT,
-    LABELS_OVERLAY_BOX_MARGIN,
-    LABELS_OVERLAY_TEXT_SIZE,
-    LABELS_OVERLAY_FALLBACK_SIZE,
+    LABELS_WIDGET_SIZE_HINT_HEIGHT,
     DEFAULT_LAYOUT_SPACING,
-    Z_INDEX_LABELS_OVERLAY,
 )
 
 
+
+
+class BranchTable(QTableWidget):
+    """QTableWidget subclass that supports cross-table drag & drop of labels."""
+
+    label_moved = Signal(int, int)  # (label_id, target_branch)
+
+    def __init__(self, branch_idx: int, parent=None):
+        super().__init__(parent)
+        self.branch_idx = branch_idx
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDragDropMode(QAbstractItemView.DragDrop)
+        self.setDefaultDropAction(Qt.MoveAction)
+
+    def startDrag(self, supportedActions):
+        item = self.currentItem()
+        if item is None:
+            return
+        label_id = item.data(Qt.UserRole)
+        if label_id is None:
+            return
+        drag = QDrag(self)
+        mime = QMimeData()
+        mime.setText(str(label_id))
+        drag.setMimeData(mime)
+        drag.exec_(Qt.MoveAction)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        source = event.source()
+        if source is self:
+            event.ignore()
+            return
+        try:
+            label_id = int(event.mimeData().text())
+        except (ValueError, TypeError):
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        self.label_moved.emit(label_id, self.branch_idx)
 
 
 class LabelsWidget(QWidget):
@@ -109,16 +158,22 @@ class LabelsWidget(QWidget):
         self.previous_frame: int | None = None
 
 
-        # UI components
-        self.labels_table = None
+        # UI components — branch tables
+        self.labels_table = None  # kept for backward compat; points to active branch table
+        self._branch_sections: dict[int, dict] = {}  # branch_idx → {"checkbox", "table", "widget"}
+        self._branches_layout = None
+        self._mapping_file_path: str | None = None
+        self._previous_branch: int | None = None
 
         self._setup_ui()
 
 
 
         mapping_path = find_mapping_file()
+        self._mapping_file_path = str(mapping_path) if mapping_path else None
         self._mappings = load_label_mapping(mapping_path) if mapping_path else {}
         self.app_state._label_mappings = self._mappings
+        self.app_state._active_branches = {0}
         self._populate_labels_table()
 
     def refresh_mapping_for_data_dir(self, data_dir: Path | str):
@@ -153,6 +208,7 @@ class LabelsWidget(QWidget):
         """Set the plot container reference and connect click handler to all plots."""
         self.plot_container = plot_container
         plot_container.set_label_mappings(self._mappings)
+        self._sync_active_label_ids()
 
         for plot in [plot_container.line_plot,
                      plot_container.spectrogram_plot,
@@ -192,27 +248,52 @@ class LabelsWidget(QWidget):
             show_predictions=show_predictions,
         )
 
+    def sizeHint(self):
+        return QSize(300, LABELS_WIDGET_SIZE_HINT_HEIGHT)
+
     def _setup_ui(self):
         """Set up the user interface."""
         layout = QVBoxLayout()
         layout.setSpacing(DEFAULT_LAYOUT_SPACING)
+        layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        # Create labels table
-        self._create_labels_table_and_edit_buttons()
-        layout.addWidget(self.labels_table)
+        # Scrollable area for branch tables
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll_content = QWidget()
+        self._branches_layout = QVBoxLayout(scroll_content)
+        self._branches_layout.setSpacing(2)
+        self._branches_layout.setContentsMargins(0, 0, 0, 0)
+        self._branches_layout.addStretch()
+        scroll.setWidget(scroll_content)
+        scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout.addWidget(scroll, stretch=1)
 
-        layout.addStretch()
+        # "+" button to add branches
+        add_branch_btn = QPushButton("+")
+        add_branch_btn.setToolTip("Add a new label branch")
+        add_branch_btn.setFixedWidth(28)
+        add_branch_btn.clicked.connect(self._add_new_branch)
+        layout.addWidget(add_branch_btn, alignment=Qt.AlignLeft)
 
-    def _create_labels_table_and_edit_buttons(self):
-        """Create the labels table showing available  types in two columns."""
-        self.labels_table = QTableWidget()
-        self.labels_table.setColumnCount(6)
-        self.labels_table.setHorizontalHeaderLabels(["ID", "Name (Shortcut)", "C", "ID", "Name (Shortcut)", "C"])
+    _TABLE_STYLE = """
+        QTableWidget { gridline-color: transparent; background: #444; color: #fff; }
+        QTableWidget::item { padding: 0px 2px; color: #fff; }
+        QTableWidget::item:selected { background: #ffe066; color: #000; }
+        QHeaderView::section { padding: 0px 2px; background: #888; color: #fff; }
+    """
 
-        self.labels_table.verticalHeader().setVisible(False)
+    def _create_branch_table(self, branch_idx: int) -> BranchTable:
+        """Create a single labels table widget for the given branch."""
+        table = BranchTable(branch_idx)
+        table.setColumnCount(6)
+        table.setHorizontalHeaderLabels(["ID", "Name (Shortcut)", "C", "ID", "Name (Shortcut)", "C"])
+        table.verticalHeader().setVisible(False)
 
-        header = self.labels_table.horizontalHeader()
+        header = table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Fixed)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         header.setSectionResizeMode(2, QHeaderView.Fixed)
@@ -220,23 +301,160 @@ class LabelsWidget(QWidget):
         header.setSectionResizeMode(4, QHeaderView.Stretch)
         header.setSectionResizeMode(5, QHeaderView.Fixed)
 
-        self.labels_table.setColumnWidth(0, LABELS_TABLE_ID_COLUMN_WIDTH)
-        self.labels_table.setColumnWidth(2, LABELS_TABLE_COLOR_COLUMN_WIDTH)
-        self.labels_table.setColumnWidth(3, LABELS_TABLE_ID_COLUMN_WIDTH)
-        self.labels_table.setColumnWidth(5, LABELS_TABLE_COLOR_COLUMN_WIDTH)
+        table.setColumnWidth(0, LABELS_TABLE_ID_COLUMN_WIDTH)
+        table.setColumnWidth(2, LABELS_TABLE_COLOR_COLUMN_WIDTH)
+        table.setColumnWidth(3, LABELS_TABLE_ID_COLUMN_WIDTH)
+        table.setColumnWidth(5, LABELS_TABLE_COLOR_COLUMN_WIDTH)
 
-        self.labels_table.setSelectionBehavior(QAbstractItemView.SelectItems)
-        self.labels_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.labels_table.verticalHeader().setDefaultSectionSize(LABELS_TABLE_ROW_HEIGHT)
-        self.labels_table.setMaximumHeight(LABELS_TABLE_MAX_HEIGHT)
-        self.labels_table.setStyleSheet("""
-            QTableWidget { gridline-color: transparent; background: #444; color: #fff; }
-            QTableWidget::item { padding: 0px 2px; color: #fff; }
-            QTableWidget::item:selected { background: #ffe066; color: #000; }
-            QHeaderView::section { padding: 0px 2px; background: #888; color: #fff; }
-        """)
+        table.setSelectionBehavior(QAbstractItemView.SelectItems)
+        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        table.verticalHeader().setDefaultSectionSize(LABELS_TABLE_ROW_HEIGHT)
+        table.setStyleSheet(self._TABLE_STYLE)
 
-        self.labels_table.itemSelectionChanged.connect(self._on_table_selection_changed)
+        table.itemSelectionChanged.connect(self._on_table_selection_changed)
+        table.label_moved.connect(self._on_label_dropped)
+        return table
+
+    def _add_branch_section(self, branch_idx: int, *, checked: bool = True):
+        """Add a UI section (checkbox + table) for a branch."""
+        if branch_idx in self._branch_sections:
+            return
+
+        section_widget = QWidget()
+        section_layout = QVBoxLayout(section_widget)
+        section_layout.setContentsMargins(0, 0, 0, 0)
+        section_layout.setSpacing(1)
+
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
+        checkbox = QCheckBox(f"Branch {branch_idx}")
+        checkbox.setChecked(checked)
+        checkbox.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        checkbox.setStyleSheet("QCheckBox { color: #ccc; font-weight: bold; }")
+        checkbox.toggled.connect(lambda state, b=branch_idx: self._on_branch_toggled(b, state))
+        header_row.addWidget(checkbox)
+        if branch_idx > 0:
+            delete_btn = QPushButton("x")
+            delete_btn.setFixedSize(20, 20)
+            delete_btn.setToolTip("Delete this branch (must be empty)")
+            delete_btn.setStyleSheet("QPushButton { color: #aaa; background: transparent; border: none; font-weight: bold; } QPushButton:hover { color: #f66; }")
+            delete_btn.clicked.connect(lambda _, b=branch_idx: self._delete_branch(b))
+            header_row.addWidget(delete_btn)
+        header_row.addStretch()
+        section_layout.addLayout(header_row)
+
+        table = self._create_branch_table(branch_idx)
+        section_layout.addWidget(table)
+
+        self._branch_sections[branch_idx] = {
+            "checkbox": checkbox,
+            "table": table,
+            "widget": section_widget,
+        }
+
+        # Insert before the stretch at the end of _branches_layout
+        insert_pos = self._branches_layout.count() - 1
+        self._branches_layout.insertWidget(insert_pos, section_widget)
+
+        if checked:
+            self.app_state._active_branches.add(branch_idx)
+        else:
+            self.app_state._active_branches.discard(branch_idx)
+
+        # Set labels_table to first branch for backward compat
+        if self.labels_table is None:
+            self.labels_table = table
+
+    def _add_new_branch(self):
+        """Add a new empty branch (triggered by '+' button)."""
+        existing = set(self._branch_sections.keys())
+        new_idx = max(existing, default=-1) + 1
+        self._add_branch_section(new_idx, checked=False)
+
+    def _delete_branch(self, branch_idx: int):
+        """Delete a branch. Only allowed if it has no labels."""
+        has_labels = any(
+            isinstance(lid, int) and lid != 0 and data.get("branch", 0) == branch_idx
+            for lid, data in self._mappings.items()
+        )
+        if has_labels:
+            notify("Cannot delete branch — move all labels out first", severity="error")
+            return
+        if branch_idx not in self._branch_sections:
+            return
+        section = self._branch_sections.pop(branch_idx)
+        section["widget"].setParent(None)
+        section["widget"].deleteLater()
+        self.app_state._active_branches.discard(branch_idx)
+        if self.labels_table is section["table"]:
+            self.labels_table = next(
+                (s["table"] for s in self._branch_sections.values()), None
+            )
+
+    def _on_branch_toggled(self, branch_idx: int, checked: bool):
+        """Handle branch checkbox toggle — only one branch active at a time (radio)."""
+        if not checked:
+            # Don't allow unchecking the only active branch
+            if self.app_state._active_branches == {branch_idx}:
+                self._branch_sections[branch_idx]["checkbox"].blockSignals(True)
+                self._branch_sections[branch_idx]["checkbox"].setChecked(True)
+                self._branch_sections[branch_idx]["checkbox"].blockSignals(False)
+                return
+            self.app_state._active_branches.discard(branch_idx)
+        else:
+            # Uncheck all other branches (radio behavior)
+            old_active = next(iter(self.app_state._active_branches), None)
+            if old_active is not None and old_active != branch_idx:
+                self._previous_branch = old_active
+            self.app_state._active_branches = {branch_idx}
+            for b, section in self._branch_sections.items():
+                if b != branch_idx:
+                    section["checkbox"].blockSignals(True)
+                    section["checkbox"].setChecked(False)
+                    section["checkbox"].blockSignals(False)
+        self._sync_active_label_ids()
+        if self.data_widget:
+            self.data_widget.update_main_plot(preserve_x_range=True)
+        self.refresh_labels_shapes_layer()
+
+    def toggle_branch(self):
+        """Switch between current and previous active branch (Shift+B)."""
+        current = next(iter(self.app_state._active_branches), None)
+        target = self._previous_branch
+        if target is None or target not in self._branch_sections or target == current:
+            return
+        self._branch_sections[target]["checkbox"].setChecked(True)
+
+    def _on_label_dropped(self, label_id: int, target_branch: int):
+        """Handle a label being dragged from one branch table to another."""
+        if label_id not in self._mappings:
+            return
+        old_branch = self._mappings[label_id].get("branch", 0)
+        if old_branch == target_branch:
+            return
+        self._mappings[label_id]["branch"] = target_branch
+        self.app_state._label_mappings = self._mappings
+        self._save_current_mapping()
+        self._populate_labels_table()
+        self._sync_active_label_ids()
+        if self.data_widget:
+            self.data_widget.update_main_plot(preserve_x_range=True)
+        self.refresh_labels_shapes_layer()
+        notify(f"Moved '{self._mappings[label_id]['name']}' to branch {target_branch}")
+
+    def _save_current_mapping(self):
+        """Write the current mappings back to the loaded mapping.txt file."""
+        path = self._mapping_file_path
+        if not path and self.io_widget:
+            path = self.io_widget.mapping_file_path_edit.text()
+        if not path:
+            return
+        save_label_mapping(path, self._mappings)
+
+    def _sync_active_label_ids(self):
+        """Push current active label IDs to plot container."""
+        if self.plot_container:
+            self.plot_container.set_active_label_ids(self.app_state.active_label_ids)
 
 
 
@@ -254,15 +472,32 @@ class LabelsWidget(QWidget):
             self._reload_mapping(file_path)
 
     def _reload_mapping(self, mapping_path: str):
-        """Reload  mappings from the specified path."""
+        """Reload mappings from the specified path."""
         try:
             self._mappings = load_label_mapping(Path(mapping_path))
+            self._mapping_file_path = mapping_path
             self.app_state._label_mappings = self._mappings
+            # Reset active branches — only the first branch starts active
+            new_branches = {
+                data.get("branch", 0)
+                for data in self._mappings.values()
+                if isinstance(data, dict)
+            }
+            first_branch = min(new_branches) if new_branches else 0
+            self.app_state._active_branches = {first_branch}
+            # Remove stale branch UI sections
+            for b in list(self._branch_sections):
+                section = self._branch_sections.pop(b)
+                section["widget"].setParent(None)
+                section["widget"].deleteLater()
             if self.plot_container:
                 self.plot_container.set_label_mappings(self._mappings)
             if self.changepoints_widget:
                 self.changepoints_widget.set_motif_mappings(self._mappings)
+            if self.data_widget and self.data_widget.navigation_widget:
+                self.data_widget.navigation_widget.set_mappings(self._mappings)
             self._populate_labels_table()
+            self._sync_active_label_ids()
             self.refresh_labels_shapes_layer()
             if self.data_widget:
                 self.data_widget.update_main_plot(preserve_x_range=True)
@@ -293,6 +528,8 @@ class LabelsWidget(QWidget):
                     self.plot_container.set_label_mappings(self._mappings)
                 if self.changepoints_widget:
                     self.changepoints_widget.set_motif_mappings(self._mappings)
+                if self.data_widget and self.data_widget.navigation_widget:
+                    self.data_widget.navigation_widget.set_mappings(self._mappings)
                 self._populate_labels_table()
                 self.refresh_labels_shapes_layer()
                 if self.data_widget:
@@ -389,35 +626,77 @@ class LabelsWidget(QWidget):
     KEY_TO_labels = {v.lower(): k for k, v in labels_TO_KEY.items()}
     
     def _populate_labels_table(self):
-        """Populate the labels table with loaded mappings in two columns."""
-        items = [(k, v) for k, v in self._mappings.items() if k != 0]
-        half = (len(items) + 1) // 2
-        self.labels_table.setRowCount(half)
+        """Populate per-branch tables with loaded mappings."""
+        # Collect branches present in the mappings
+        branches: set[int] = set()
+        for lid, data in self._mappings.items():
+            if isinstance(lid, int):
+                branches.add(data.get("branch", 0))
+        if not branches:
+            branches = {0}
 
-        for i, (_id, data) in enumerate(items):
-            row = i % half
-            col_offset = 0 if i < half else 3
+        # Ensure branch sections exist for all branches in the mapping
+        for b in sorted(branches):
+            if b not in self._branch_sections:
+                self._add_branch_section(b, checked=(b in self.app_state._active_branches))
 
-            id_item = QTableWidgetItem(str(_id))
-            id_item.setData(Qt.UserRole, _id)
-            self.labels_table.setItem(row, col_offset, id_item)
+        # Remove sections for branches that no longer have any labels,
+        # but keep user-added empty branches (those with no mapping entries yet)
+        # Only clean up branches when reloading a mapping file (branches come from file)
+        # Don't remove branches that the user manually added via "+" button
 
-            shortcut = self.labels_TO_KEY.get(_id, "?")
-            name_with_shortcut = f"{data['name']} ({shortcut})"
-            name_item = QTableWidgetItem(name_with_shortcut)
-            name_item.setData(Qt.UserRole, _id)
-            self.labels_table.setItem(row, col_offset + 1, name_item)
+        # Populate each branch table
+        for branch_idx, section in self._branch_sections.items():
+            table = section["table"]
+            items = [
+                (lid, data) for lid, data in self._mappings.items()
+                if isinstance(lid, int) and lid != 0 and data.get("branch", 0) == branch_idx
+            ]
+            items.sort(key=lambda kv: kv[0])
+            half = max((len(items) + 1) // 2, 1)
+            table.clearContents()
+            table.setRowCount(half)
 
-            color_item = QTableWidgetItem()
-            color = data["color"]
-            qcolor = QColor(int(color[0] * 255), int(color[1] * 255), int(color[2] * 255))
-            color_item.setBackground(qcolor)
-            color_item.setData(Qt.UserRole, _id)
-            self.labels_table.setItem(row, col_offset + 2, color_item)
+            for i, (_id, data) in enumerate(items):
+                row = i % half
+                col_offset = 0 if i < half else 3
+
+                id_item = QTableWidgetItem(str(_id))
+                id_item.setData(Qt.UserRole, _id)
+                table.setItem(row, col_offset, id_item)
+
+                shortcut = self.labels_TO_KEY.get(_id, "?")
+                name_with_shortcut = f"{data['name']} ({shortcut})"
+                name_item = QTableWidgetItem(name_with_shortcut)
+                name_item.setData(Qt.UserRole, _id)
+                table.setItem(row, col_offset + 1, name_item)
+
+                color_item = QTableWidgetItem()
+                color = data["color"]
+                qcolor = QColor(int(color[0] * 255), int(color[1] * 255), int(color[2] * 255))
+                color_item.setBackground(qcolor)
+                color_item.setData(Qt.UserRole, _id)
+                table.setItem(row, col_offset + 2, color_item)
+
+            # Auto-size table height to fit all rows (no cap)
+            row_count = table.rowCount()
+            table.setFixedHeight(
+                LABELS_TABLE_ROW_HEIGHT * row_count + table.horizontalHeader().height() + 4
+            )
+
+        # Keep backward-compat labels_table pointing to first branch
+        if self._branch_sections:
+            first_branch = min(self._branch_sections)
+            self.labels_table = self._branch_sections[first_branch]["table"]
+
+        self._sync_active_label_ids()
 
     def _on_table_selection_changed(self):
-        """Handle table cell selection changes by activating the selected ."""
-        selected = self.labels_table.selectedItems()
+        """Handle table cell selection changes by activating the selected label."""
+        sender = self.sender()
+        if not isinstance(sender, QTableWidget):
+            return
+        selected = sender.selectedItems()
         if selected:
             item = selected[0]
             _id = item.data(Qt.UserRole)
@@ -432,21 +711,29 @@ class LabelsWidget(QWidget):
         if _id not in self._mappings:
             return
 
+        # Block activation if label's branch is not active
+        label_branch = self._mappings[_id].get("branch", 0)
+        if label_branch not in self.app_state._active_branches:
+            return
+
         self.selected_labels = _id
         self.ready_for_label_click = True
         self.first_click = None
         self.second_click = None
 
-        self.labels_table.blockSignals(True)
-        for row in range(self.labels_table.rowCount()):
-            for col in [0, 3]:
-                item = self.labels_table.item(row, col)
-                if item and item.data(Qt.UserRole) == _id:
-                    self.labels_table.setCurrentItem(item)
-                    self.labels_table.scrollToItem(item)
-                    self.labels_table.blockSignals(False)
-                    return
-        self.labels_table.blockSignals(False)
+        # Find and select in the correct branch table
+        for section in self._branch_sections.values():
+            table = section["table"]
+            table.blockSignals(True)
+            for row in range(table.rowCount()):
+                for col in [0, 3]:
+                    item = table.item(row, col)
+                    if item and item.data(Qt.UserRole) == _id:
+                        table.setCurrentItem(item)
+                        table.scrollToItem(item)
+                        table.blockSignals(False)
+                        return
+            table.blockSignals(False)
         
             
             
@@ -526,6 +813,9 @@ class LabelsWidget(QWidget):
         idx = find_interval_at(df, t_clicked, individual)
         if idx is not None:
             onset_s, offset_s, labels = get_interval_bounds(df, idx)
+            active_ids = self.app_state.active_label_ids
+            if active_ids is not None and labels not in active_ids:
+                return False
             self.current_labels = labels
             self.current_labels_pos = idx
             self.current_labels_is_prediction = False
@@ -539,6 +829,15 @@ class LabelsWidget(QWidget):
 
         Works entirely in the time domain. Also considers audio changepoints.
         """
+        store = getattr(self.app_state, 'data_loader', None)
+        if store is not None:
+            feature = getattr(self.app_state, 'features_sel', None)
+            cp_times = store.get_cp_times(feature)
+            if len(cp_times) == 0:
+                return t_clicked
+            nearest_idx = np.argmin(np.abs(cp_times - t_clicked))
+            return float(cp_times[nearest_idx])
+
         time_coord = self.app_state.time_coord
         if time_coord is None:
             return t_clicked
@@ -574,7 +873,18 @@ class LabelsWidget(QWidget):
             self.old_labels_pos = None
             self.old_labels = None
 
-        df = add_interval(df, onset_s, offset_s, self.selected_labels, individual)
+        # Compute label IDs from inactive branches — these must not be overwritten
+        active_ids = self.app_state.active_label_ids
+        if active_ids is not None:
+            all_ids = {
+                lid for lid, d in self._mappings.items()
+                if isinstance(lid, int) and lid != 0
+            }
+            protected = all_ids - active_ids
+        else:
+            protected = None
+        df = add_interval(df, onset_s, offset_s, self.selected_labels, individual,
+                          protected_label_ids=protected)
         self.app_state.label_intervals = df
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
         
@@ -675,100 +985,142 @@ class LabelsWidget(QWidget):
 
 
 
-    def _add_labels_shapes_layer(self):
-        """Add single box overlay with dynamically updating text using intervals."""
-        try:
-            layer = self.viewer.layers[0]
-            if layer.data.ndim == 2:
-                height, width = layer.data.shape
-            elif layer.data.ndim == 3:
-                height, width = layer.data.shape[1:3]
-            else:
-                height, width = LABELS_OVERLAY_FALLBACK_SIZE
-        except (IndexError, AttributeError):
-            logger.warning("No video layer found for label shapes overlay.")
+    def _get_canvas_widget(self):
+        """Return the Qt widget that holds the napari OpenGL canvas."""
+        qt_viewer = getattr(self.viewer.window, '_qt_viewer', None)
+        if qt_viewer is None:
             return None
+        # _qt_viewer.canvas.native is the actual OpenGL widget
+        canvas = getattr(qt_viewer, 'canvas', None)
+        native = getattr(canvas, 'native', None) if canvas else None
+        return native or qt_viewer
 
-        box_width, box_height = LABELS_OVERLAY_BOX_WIDTH, LABELS_OVERLAY_BOX_HEIGHT
-        x = width - box_width - LABELS_OVERLAY_BOX_MARGIN
-        y = height - box_height - LABELS_OVERLAY_BOX_MARGIN
+    def _add_labels_shapes_layer(self):
+        """Add a Qt QLabel overlay on the napari canvas.
 
-        rect = np.array([[[y, x],
-                        [y, x + box_width],
-                        [y + box_height, x + box_width],
-                        [y + box_height, x]]])
+        Much faster than a napari Shapes layer: setText() is a
+        trivial Qt repaint instead of a full OpenGL shapes render pass.
+        """
+        if getattr(self, '_label_overlay', None) is not None:
+            return
 
-        shapes_layer = self.viewer.add_shapes(
-            rect,
-            shape_type='rectangle',
-            name="_labels",
-            face_color='white',
-            edge_color='black',
-            edge_width=2,
-            opacity=0.9,
-            text={'string': [''], 'color': [[0, 0, 0]], 'size': LABELS_OVERLAY_TEXT_SIZE, 'anchor': 'center'}
-        )
+        canvas_widget = self._get_canvas_widget()
+        if canvas_widget is None:
+            return
 
-        shapes_layer.z_index = Z_INDEX_LABELS_OVERLAY
+        overlay = QLabel(canvas_widget)
+        overlay.setAttribute(Qt.WA_TransparentForMouseEvents)
+        overlay.setAlignment(Qt.AlignCenter)
+        overlay.setStyleSheet(self._overlay_stylesheet("white"))
+        overlay.setFixedHeight(36)
+        overlay.hide()
+        self._label_overlay = overlay
+        self._label_overlay_last_text = ""
 
-        video_fps = self.app_state.video_fps
-        individual = self._current_individual()
+        def _reposition_overlay():
+            if self._label_overlay is None:
+                return
+            parent = self._label_overlay.parent()
+            if parent is None:
+                return
+            pw = parent.width()
+            ow = self._label_overlay.sizeHint().width()
+            self._label_overlay.move((pw - ow) // 2, 8)
 
-        shapes_layer.metadata = {
-            'intervals_df': self.app_state.label_intervals,
-            'video_fps': video_fps,
-            'individual': individual,
-            '_mappings': self._mappings,
-        }
+        self._reposition_overlay = _reposition_overlay
 
-        def update_labels_text(event=None):
-            video_frame = self.viewer.dims.current_step[0]
+        # Track canvas resizes to keep the overlay centred
+        orig_resize = canvas_widget.resizeEvent
+
+        def _on_canvas_resize(event):
+            orig_resize(event)
+            _reposition_overlay()
+
+        canvas_widget.resizeEvent = _on_canvas_resize
+
+        def _update_labels_text(event=None):
+            overlay = getattr(self, '_label_overlay', None)
+            if overlay is None:
+                return
+            if getattr(self, '_label_overlay_hidden', False):
+                overlay.hide()
+                return
             video = getattr(self.app_state, 'video', None)
-            time_s = video.frame_to_time(video_frame) if video else video_frame / shapes_layer.metadata['video_fps']
-            df = shapes_layer.metadata['intervals_df']
-            ind = shapes_layer.metadata['individual']
-            mappings = shapes_layer.metadata['_mappings']
+            video_frame = self.viewer.dims.current_step[0]
+            if video:
+                time_s = video.frame_to_time(video_frame)
+            elif hasattr(self.app_state, 'video_fps') and self.app_state.video_fps:
+                time_s = video_frame / self.app_state.video_fps
+            else:
+                return
+            df = self.app_state.label_intervals
+            ind = self._current_individual()
+            mappings = self._mappings
 
+            text = ""
+            css_color = "white"
+            active_ids = self.app_state.active_label_ids
             if df is not None and not df.empty:
                 idx = find_interval_at(df, time_s, ind)
                 if idx is not None:
                     _, _, labels = get_interval_bounds(df, idx)
-                    if labels in mappings and labels != 0:
+                    if labels in mappings and labels != 0 and (active_ids is None or labels in active_ids):
+                        text = mappings[labels]["name"]
                         color = mappings[labels]["color"]
-                        color_list = color.tolist() if hasattr(color, 'tolist') else list(color)
-                        shapes_layer.text = {
-                            'string': [mappings[labels]["name"]],
-                            'color': [color_list],
-                            'size': LABELS_OVERLAY_TEXT_SIZE,
-                            'anchor': 'center'
-                        }
-                        return
+                        if hasattr(color, 'tolist'):
+                            color = color.tolist()
+                        r, g, b = (int(c * 255) for c in color[:3])
+                        css_color = f"rgb({r},{g},{b})"
 
-            shapes_layer.text = {'string': [''], 'color': [[0, 0, 0]]}
+            if text == self._label_overlay_last_text:
+                return
+            self._label_overlay_last_text = text
 
-        self.viewer.dims.events.current_step.connect(update_labels_text)
-        update_labels_text()
+            if not text:
+                overlay.hide()
+                return
+            overlay.setStyleSheet(self._overlay_stylesheet(css_color))
+            overlay.setText(text)
+            overlay.adjustSize()
+            overlay.setFixedHeight(36)
+            _reposition_overlay()
+            overlay.show()
+            overlay.raise_()
 
-        return shapes_layer
-    
+        self.viewer.dims.events.current_step.connect(_update_labels_text)
+        self._update_labels_text = _update_labels_text
+        _update_labels_text()
+
+    @staticmethod
+    def _overlay_stylesheet(color: str) -> str:
+        return (
+            "QLabel {"
+            "  background: rgba(0, 0, 0, 160);"
+            f"  color: {color};"
+            "  font-size: 22px;"
+            "  font-weight: bold;"
+            "  padding: 4px 16px;"
+            "  border-radius: 6px;"
+            "}"
+        )
+
     def _remove_labels_shapes_layer(self):
-        """Remove existing  shapes layer if it exists."""
-        if "_labels" in self.viewer.layers:
-            self.viewer.layers.remove("_labels")
-
+        """Remove the Qt label overlay."""
+        overlay = getattr(self, '_label_overlay', None)
+        if overlay is not None:
+            overlay.setParent(None)
+            overlay.deleteLater()
+            self._label_overlay = None
+            self._label_overlay_last_text = ""
 
     def refresh_labels_shapes_layer(self):
-        """Refresh intervals data without recreating the layer."""
-        if getattr(self.app_state, 'video', None) is None:
-            return
-        if "_labels" not in self.viewer.layers:
+        """Refresh: ensure overlay exists, then force an update."""
+        if getattr(self, '_label_overlay', None) is None:
             self._add_labels_shapes_layer()
             return
-
-        shapes_layer = self.viewer.layers["_labels"]
-        shapes_layer.metadata['intervals_df'] = self.app_state.label_intervals
-        shapes_layer.metadata['individual'] = self._current_individual()
-        shapes_layer.metadata['_mappings'] = self._mappings
+        self._label_overlay_last_text = ""
+        if hasattr(self, '_update_labels_text'):
+            self._update_labels_text()
 
 
 class TemporaryLabelsDialog(QDialog):

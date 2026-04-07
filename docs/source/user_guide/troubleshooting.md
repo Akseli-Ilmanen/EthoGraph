@@ -60,7 +60,25 @@ See {doc}`../getting_started/installation` for full instructions.
 
 ### Opening `.tsv` label files in Excel
 
-Excel on Windows may not correctly parse `.tsv` files when double-clicked due to regional delimiter settings. To open correctly:
+Excel on Windows may not correctly parse `.tsv` files when double-clicked due to regional delimiter settings.
+
+**Automatic fix (recommended):** EthoGraph ships a one-click helper in `~/.ethograph/`:
+
+::::{tab-set}
+
+:::{tab-item} Windows
+Double-click **`Double-click to open TSV files in Excel.reg`** in your `~/.ethograph/` folder and confirm the registry prompt. This registers `.tsv` files so they always open correctly in Excel with tab delimiters.
+:::
+
+:::{tab-item} macOS
+Double-click **`Double-click to open TSV files in Excel.command`** in your `~/.ethograph/` folder. It installs `duti` (via Homebrew) and sets Excel as the default app for `.tsv` files.
+:::
+
+::::
+
+These files are created automatically the first time you run EthoGraph or download an example dataset. If they are missing, run `python -c "from ethograph.utils.download import ensure_default_configs; ensure_default_configs()"` to regenerate them.
+
+**Manual alternative:**
 
 1. Open Excel -> **File -> Open -> Browse**
 2. Change file filter to **"All Files (\*.\*)"**

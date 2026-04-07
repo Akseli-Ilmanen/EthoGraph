@@ -1,9 +1,16 @@
-from functools import partial
+"""Pynapple / NWB loading and feature extraction utilities."""
+
+from __future__ import annotations
+
 from collections.abc import Callable
+from functools import partial
+from pathlib import Path
 
 import numpy as np
 import pynapple as nap
+import xarray as xr
 from scipy.ndimage import gaussian_filter1d
+
 from ethograph.features.movement import get_angle_rgb
 
 
@@ -109,10 +116,8 @@ def add_changepoints_to_nap(
 
     ts_dict = {}
     for i, (_, (t, x)) in enumerate(units.items()):
-        mask = np.zeros(len(t), dtype=np.float32)
         cp_times = _apply_changepoint_func(t, x, f)
-        mask[np.isin(t, cp_times)] = 1.0
-        ts_dict[i] = nap.Tsd(t=t, d=mask, time_support=data.time_support)
+        ts_dict[i] = nap.Ts(t=cp_times, time_support=data.time_support)
 
     group = nap.TsGroup(ts_dict, time_support=data.time_support)
     group.set_info(
@@ -148,5 +153,74 @@ def add_angle_rgb_to_nap(
         t=tsdframe.t, d=rgb, columns=["R", "G", "B"],
         time_support=tsdframe.time_support,
     )
-    
-    
+
+
+# ---------------------------------------------------------------------------
+# Data loading
+# ---------------------------------------------------------------------------
+
+PYNAPPLE_EXTENSIONS = {".nwb", ".npz"}
+
+
+def detect_trials(data: dict) -> nap.IntervalSet | None:
+    """Find a trials IntervalSet in a loaded pynapple data dict."""
+    for key in ("trials", "epochs", "intervals"):
+        obj = data.get(key)
+        if isinstance(obj, nap.IntervalSet):
+            return obj
+    for key, obj in data.items():
+        if isinstance(obj, nap.IntervalSet) and "trial" in key.lower():
+            return obj
+    return None
+
+
+def _nwb_to_dict(nwb: nap.NWBFile) -> dict:
+    """Extract all objects from an NWBFile into a flat dict."""
+    data = {}
+    for key in parse_nwb_types(nwb):
+        try:
+            data[key] = nwb[key]
+        except Exception:
+            pass
+    return data
+
+
+def _load_folder_as_dict(folder_path: Path) -> dict:
+    """Load all .npz and .nwb files in a folder into a flat dict."""
+    data = {}
+    for key, val in nap.load_folder(str(folder_path)).items():
+        if isinstance(val, nap.NWBFile):
+            data.update(_nwb_to_dict(val))
+        else:
+            data[key] = val
+    return data
+
+
+def load_nap_data(path: str) -> tuple[dict, nap.IntervalSet | None]:
+    """Load pynapple data from a file or folder.
+
+    Supports ``.nwb``, ``.npz``, or a directory (pynapple folder).
+    When loading a single ``.npz``, sibling files in the same directory
+    are also loaded (e.g. ``trials.npz`` alongside ``speed.npz``).
+
+    Returns
+    -------
+    data : dict
+        Loaded pynapple objects keyed by name.
+    trials_ep : IntervalSet or None
+        Trial intervals if found in the data.
+    """
+    p = Path(path)
+    if p.is_dir():
+        data = _load_folder_as_dict(p)
+    elif p.suffix == ".nwb":
+        data = _nwb_to_dict(nap.load_file(str(p)))
+    elif p.suffix == ".npz":
+        data = _load_folder_as_dict(p.parent)
+    else:
+        raise ValueError(f"Unsupported file type: {p.suffix}")
+
+    trials_ep = detect_trials(data)
+    return data, trials_ep
+
+

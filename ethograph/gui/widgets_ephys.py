@@ -45,7 +45,7 @@ from ethograph.gui.notify import notify
 from .app_constants import CLUSTER_TABLE_MAX_HEIGHT, CLUSTER_TABLE_ROW_HEIGHT
 from .makepretty import find_combo_index, get_combo_value, set_combo_to_value
 from .plots_ephystrace import GenericEphysLoader, get_loader as get_ephys_loader
-from .plots_timeseriessource import RegularTimeseriesSource
+from ..io.plot_sources import FileSource
 
 logger = logging.getLogger(__name__)
 
@@ -1024,7 +1024,7 @@ class EphysWidget(QWidget):
             return
 
         self.plot_container.ephys_trace_plot.set_loader(loader, channel_idx)
-        ephys_source = RegularTimeseriesSource("ephys", loader, start_time=0.0)
+        ephys_source = FileSource("ephys", loader, start_time=0.0)
         self.plot_container.ephys_trace_plot.set_source(ephys_source)
         self.plot_container.raster_plot.set_source(ephys_source)
 
@@ -1294,7 +1294,7 @@ class EphysWidget(QWidget):
 
         self._register_dat_fallback(folder)
         if self._phy_reader is not None and self.plot_container:
-            self.plot_container.set_ephys_visible(True)
+            self.plot_container.set_ephys_visible(self.app_state.ephys_visible)
             self.configure_ephys_trace_plot()
 
         if self._tsgroup is not None:
@@ -1407,16 +1407,14 @@ class EphysWidget(QWidget):
         dialog.exec_()
 
     def _trial_ep(self) -> nap.IntervalSet | None:
-        alignment = self.app_state.trial_alignment
-        ephys_offset = alignment.ephys_offset if alignment is not None else 0.0
-        trial_bounds = self.app_state.trial_bounds
-        if trial_bounds is None:
+        ephys_offset = float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0)
+        window_bounds = self.app_state.window_bounds
+        if window_bounds is None:
             return None
-        return nap.IntervalSet(ephys_offset, ephys_offset + trial_bounds.duration)
+        return nap.IntervalSet(ephys_offset, ephys_offset + window_bounds.duration)
 
     def _ephys_offset(self) -> float:
-        alignment = self.app_state.trial_alignment
-        return alignment.ephys_offset if alignment is not None else 0.0
+        return float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0)
 
     def _restrict_to_trial(self, cluster_id: int, sr: float) -> tuple[np.ndarray, np.ndarray]:
         """Return (times_local_s, samples_abs) for cluster_id restricted to current trial."""
@@ -1490,7 +1488,7 @@ class EphysWidget(QWidget):
         best_map: dict[int, int] = {}
         for cluster_id in range(self._templates.shape[0]):
             template = self._templates[cluster_id]
-            amplitude = np.ptp(template, axis=0)
+            amplitude = np.max(template, axis=0) - np.min(template, axis=0)
             site_idx = int(np.argmax(amplitude))
             if site_idx < len(self._channel_map):
                 best_map[cluster_id] = int(self._channel_map[site_idx])
@@ -2330,9 +2328,9 @@ class EphysWidget(QWidget):
             return
         self._fr_cache_key = cache_key
 
-        ds = self.app_state.dt.trial(trial)
-        start_time = self.app_state.dt.start_time(trial)
-        bounds = self.app_state.trial_bounds
+        ds = self.app_state.dt.trial(trial) if self.app_state.dt is not None else self.app_state.ds
+        start_time = self.app_state.nwb_alignment.start_time(trial)
+        bounds = self.app_state.window_bounds
         if bounds is None:
             return
 
@@ -2354,9 +2352,9 @@ class EphysWidget(QWidget):
             new_ds = new_ds.drop_vars("firing_rate")
         new_ds["firing_rate"] = da
 
-        self.app_state.dt.update_trial(trial, lambda _: new_ds)
-
-        self.app_state.ds = self.app_state.dt.trial(trial)
+        if self.app_state.dt is not None:
+            self.app_state.dt.update_trial(trial, lambda _: new_ds)
+        self.app_state.ds = new_ds
         self.fr_status_label.setText(
             f"{len(cluster_ids)} clusters ({group_text})"
         )
@@ -2377,7 +2375,7 @@ class EphysWidget(QWidget):
         if not self.data_widget:
             return
 
-        features_list = self.data_widget.type_vars_dict.get("features", [])
+        features_list = self.data_widget.catalog.features if self.data_widget.catalog else []
         features_combo = self.data_widget.combos.get("features")
 
         _display_to_var = {"Firing rate": "firing_rate", "PCA": "pca"}
@@ -2387,13 +2385,6 @@ class EphysWidget(QWidget):
             if features_combo is not None and find_combo_index(features_combo, var_name) < 0:
                 features_combo.addItem(display_name, var_name)
                 self._set_combo_item_enabled(features_combo, display_name, False)
-
-        slot1 = getattr(self.data_widget, 'space_view_combo', None)
-        if slot1 is not None:
-            for label in ("PCA 2D", "PCA 3D"):
-                if slot1.findText(label) < 0:
-                    slot1.addItem(label)
-                    self._set_combo_item_enabled(slot1, label, False)
 
     def _set_combo_item_enabled(self, combo: QComboBox, text: str, enabled: bool):
         idx = find_combo_index(combo, text)
@@ -2451,8 +2442,9 @@ class EphysWidget(QWidget):
             new_ds = new_ds.drop_vars("pca")
         new_ds["pca"] = pca_da
 
-        self.app_state.dt.update_trial(trial, lambda _: new_ds)
-        self.app_state.ds = self.app_state.dt.trial(trial)
+        if self.app_state.dt is not None:
+            self.app_state.dt.update_trial(trial, lambda _: new_ds)
+        self.app_state.ds = new_ds
 
         ev = pca_da.attrs["explained_variance"]
         self.pca_status_label.setText(
@@ -2461,11 +2453,10 @@ class EphysWidget(QWidget):
 
         self._enable_feature_item("PCA")
 
+        # Switch to space plot so user can see PCA in the axis combos
         slot1 = getattr(self.data_widget, 'space_view_combo', None)
         if slot1 is not None:
-            for label in ("PCA 2D", "PCA 3D"):
-                self._set_combo_item_enabled(slot1, label, True)
-            slot1.setCurrentText("PCA 2D")
+            slot1.setCurrentText("Space Plot")
 
         pca_da = self.app_state.ds["pca"]
         if "pc" in pca_da.dims:
@@ -2561,10 +2552,6 @@ class EphysWidget(QWidget):
             return
         self._disable_feature_item("Firing rate")
         self._disable_feature_item("PCA")
-        slot1 = getattr(self.data_widget, 'space_view_combo', None)
-        if slot1 is not None:
-            for label in ("PCA 2D", "PCA 3D"):
-                self._set_combo_item_enabled(slot1, label, False)
         self.fr_status_label.setText("")
         self.pca_status_label.setText("")
 

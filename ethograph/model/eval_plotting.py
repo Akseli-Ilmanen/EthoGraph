@@ -9,8 +9,6 @@ import numpy as np
 from matplotlib.patches import Patch
 
 import ethograph as eto
-style_path = eto.get_project_root() / 'configs' / 'style' / 'style.mplstyle'
-plt.style.use(str(style_path))
 F1_COLOURS = ["#9467bd", "#2ecc71", "#e377c2"]  # purple, green, pink
 PRED_COLOURS = ["#1f77b4", "#d62728"]  # uncorrected: blue, corrected: red
 

@@ -3,17 +3,18 @@
 import logging
 from typing import Optional
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pyqtgraph as pg
-import matplotlib.pyplot as plt
+
+import ethograph as eto
+from ethograph.io.catalog import PlotData
 
 logger = logging.getLogger(__name__)
 
-import ethograph as eto
-
 from .app_constants import DEFAULT_BUFFER_MULTIPLIER, LINEPLOT_DEBOUNCE_MS
 from .makepretty import clean_display_labels
-from .modality import WindowedBuffer, XarraySource
+from  ethograph.io.plot_sources import WindowedBuffer, XarraySource
 from .plots_base import BasePlot, ThrottleDebounce
 
 
@@ -42,23 +43,23 @@ class LinePlot(BasePlot):
 
         self.vb.sigRangeChanged.connect(self._on_view_range_changed)
 
-    def _get_ds_kwargs_hash(self) -> str:
-        ds_kwargs = self.app_state.get_ds_kwargs()
-        return str(sorted(ds_kwargs.items()))
+    def _get_selections_hash(self) -> str:
+        selections = self.app_state.get_selections()
+        return str(sorted(selections.items()))
 
     def _context_changed(self) -> bool:
         feature = getattr(self.app_state, 'features_sel', None)
         trial = getattr(self.app_state, 'trials_sel', None)
-        ds_kwargs_hash = self._get_ds_kwargs_hash()
+        sel_hash = self._get_selections_hash()
 
         return (feature != self._current_feature or
                 trial != self._current_trial or
-                ds_kwargs_hash != self._current_ds_kwargs_hash)
+                sel_hash != self._current_ds_kwargs_hash)
 
     def _update_context(self):
         self._current_feature = getattr(self.app_state, 'features_sel', None)
         self._current_trial = getattr(self.app_state, 'trials_sel', None)
-        self._current_ds_kwargs_hash = self._get_ds_kwargs_hash()
+        self._current_ds_kwargs_hash = self._get_selections_hash()
 
     def _ensure_source(self):
         """Create/update the XarraySource from current app_state."""
@@ -67,7 +68,7 @@ class LinePlot(BasePlot):
         if ds is None or time_coord is None:
             self._buffer.set_source(None)
             return
-        bounds = self.app_state.trial_bounds
+        bounds = self.app_state.window_bounds
         source = XarraySource(ds, time_coord.name)
         self._buffer.set_source(source, bounds=bounds)
 
@@ -83,10 +84,14 @@ class LinePlot(BasePlot):
 
         return self._buffer.get(t0, t1)
 
+    @property
+    def _store(self):
+        return getattr(self.app_state, 'data_loader', None)
+
     def _on_view_range_changed(self):
         if not self.isVisible():
             return
-        if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
+        if self._store is None and (not hasattr(self.app_state, 'ds') or self.app_state.ds is None):
             return
         self._td.trigger()
 
@@ -113,26 +118,32 @@ class LinePlot(BasePlot):
         if not hasattr(self.app_state, 'features_sel'):
             return
 
-        ds_kwargs = self.app_state.get_ds_kwargs()
         feature_sel = self.app_state.features_sel
-
+        selections = self.app_state.get_selections()
         color_var = None
         if hasattr(self.app_state, 'colors_sel') and self.app_state.colors_sel != "None":
             color_var = self.app_state.colors_sel
-
-        buffered_ds = self._get_buffered_ds(t0, t1)
-        if buffered_ds is None:
-            return
-
         show_cp = getattr(self.app_state, 'show_changepoints', False)
-        self.plot_items = plot_ds_variable(
-            self.plot_item,
-            buffered_ds,
-            ds_kwargs,
-            feature_sel,
-            color_variable=color_var,
-            show_changepoints=show_cp
-        )
+
+        store = self._store
+        if store is not None:
+            plot_data = store.select(
+                feature_sel, selections, t0=t0, t1=t1,
+                color_variable=color_var,
+            )
+            if plot_data is None:
+                return
+            self.plot_items = render_plot_data(
+                self.plot_item, plot_data, show_changepoints=show_cp,
+            )
+        else:
+            buffered_ds = self._get_buffered_ds(t0, t1)
+            if buffered_ds is None:
+                return
+            self.plot_items = plot_ds_variable(
+                self.plot_item, buffered_ds, selections, feature_sel,
+                color_variable=color_var, show_changepoints=show_cp,
+            )
 
         for item in self.plot_items:
             if hasattr(item, 'setDownsampling'):
@@ -148,11 +159,17 @@ class LinePlot(BasePlot):
             return
 
         feature_sel = self.app_state.features_sel
-
-        ds_kwargs = self.app_state.get_ds_kwargs()
+        selections = self.app_state.get_selections()
 
         try:
-            data, _ = eto.sel_valid(self.app_state.ds[feature_sel], ds_kwargs)
+            store = self._store
+            if store is not None:
+                pd = store.select(feature_sel, selections)
+                if pd is None:
+                    return
+                data = pd.data
+            else:
+                data, _ = eto.sel_valid(self.app_state.ds[feature_sel], selections)
 
             percentile_ylim = self.app_state.get_with_default("percentile_ylim")
             y_min = np.nanpercentile(data, 100 - percentile_ylim)
@@ -297,112 +314,66 @@ def plot_singledim(plot_item, time, data, color_data=None, changepoints_dict=Non
     return existing_items
 
 
-def plot_ds_variable(plot_item, ds, ds_kwargs, variable, color_variable=None, show_changepoints=True):
+def select_feature(ds, variable, ds_kwargs, color_variable=None) -> PlotData | None:
+    """Extract plot-ready data from an xarray Dataset via XarrayLoader."""
+    from ethograph.io.catalog import XarrayLoader
 
-    """
-    Plot a variable from ds for a given trial and keypoint using PyQtGraph.
-    Handles both multi-dimensional (e.g., pos, vel) and single-dimensional (e.g., speed) variables.
+    return XarrayLoader(ds).select(variable, ds_kwargs, color_variable=color_variable)
 
-    Args:
-        plot_item: PyQtGraph PlotItem to plot on
-        ds: xarray Dataset
-        ds_kwargs: dict with selection criteria (e.g., {keypoints="beakTip"})
-        variable: variable name to plot
-        color_variable: optional variable name for coloring
-        show_changepoints: whether to draw changepoint markers
 
-    Returns:
-        list of created plot items
-    """
-    if not hasattr(plot_ds_variable, "_call_counter"):
-        plot_ds_variable._call_counter = 0
-    plot_ds_variable._call_counter += 1
-
-    # Clear existing legend if present
+def render_plot_data(plot_item, plot_data: PlotData, show_changepoints=True) -> list:
+    """Render a PlotData to a pyqtgraph PlotItem. Source-agnostic."""
     if hasattr(plot_item, 'legend') and plot_item.legend is not None:
         plot_item.removeItem(plot_item.legend)
         plot_item.legend = None
 
-    var = ds[variable]
-    time = eto.get_time_coord(var).values
+    items = []
+    dim_labels = plot_data.dim_labels
+    if dim_labels:
+        dim_labels = clean_display_labels(dim_labels)
 
-
-    data, filt_kwargs = eto.sel_valid(var, ds_kwargs)
-    var = var.sel(**filt_kwargs)
-    plot_items = []
-
-    if data.ndim == 2:
-        # data is (time, other_dim) after sel_valid transpose
-        # Find the non-time dimension for coordinate labels
-        non_time_dim = next((d for d in var.dims if 'time' not in d.lower()), None)
-        if non_time_dim and non_time_dim in var.coords:
-            coord_labels = [str(c) for c in var.coords[non_time_dim].values]
-        else:
-            coord_labels = [str(i) for i in range(data.shape[1])]
-        coord_labels = clean_display_labels(coord_labels)
+    if plot_data.data.ndim == 2:
         plot_item.legend = plot_item.addLegend(offset=(10, 10))
-        plot_items = plot_multidim(plot_item, time, data, coord_labels, plot_items)
-
-    elif data.ndim == 1:
-        if color_variable and color_variable in ds.data_vars:
-            # Exclude RGB from kwargs to keep all 3 color channels
-            color_kwargs = {k: v for k, v in ds_kwargs.items() if k != 'RGB'}
-            color_data, _ = eto.sel_valid(ds[color_variable], color_kwargs)
-        else:
-            color_data = None
-
-
-        # Build changepoints_dict from ds attributes, inspired by plots.py
-        changepoints_dict = {}
-        if hasattr(ds, 'filter_by_attrs'):
-            cp_ds = ds.filter_by_attrs(type="changepoints")
-            for cp_var_name in cp_ds.data_vars:
-                cp_var = cp_ds[cp_var_name]
-                cp_data, _ = eto.sel_valid(cp_var, ds_kwargs)
-                if cp_var.attrs.get("target_feature") == variable and not np.isnan(cp_data).all():
-                    changepoints_dict[cp_var_name] = cp_data
-
-        # Add legend if changepoints will be shown
-        if changepoints_dict and show_changepoints:
+        items = plot_multidim(
+            plot_item, plot_data.time, plot_data.data,
+            dim_labels, items,
+        )
+    elif plot_data.data.ndim == 1:
+        if plot_data.changepoints and show_changepoints:
             plot_item.legend = plot_item.addLegend(offset=(10, 10))
 
-        plot_items = plot_singledim(
-            plot_item, time, data,
-            color_data=color_data,
-            changepoints_dict=changepoints_dict if changepoints_dict else None,
-            existing_items=plot_items,
-            show_changepoints=show_changepoints
+        items = plot_singledim(
+            plot_item, plot_data.time, plot_data.data,
+            color_data=plot_data.color_data,
+            changepoints_dict=plot_data.changepoints,
+            existing_items=items,
+            show_changepoints=show_changepoints,
         )
     else:
-        logger.warning("Variable '%s' not supported for plotting", variable)
+        logger.warning("Data ndim=%d not supported for plotting", plot_data.data.ndim)
 
-    # Add boundary events as vertical lines
-    if hasattr(ds, "boundary_events"):
-        boundary_events_raw = ds["boundary_events"].values
-        valid_events = boundary_events_raw[~np.isnan(boundary_events_raw)]
-        eventsIdxs = valid_events.astype(int)
-        eventsIdxs = eventsIdxs[(eventsIdxs >= 0) & (eventsIdxs < len(time))]
-
-        for event in eventsIdxs:
-            vline = pg.InfiniteLine(
-                pos=time[event],
-                angle=90,
-                pen=pg.mkPen('k', width=2)
-            )
+    if plot_data.boundary_events is not None:
+        for t_event in plot_data.boundary_events:
+            vline = pg.InfiniteLine(pos=t_event, angle=90, pen=pg.mkPen('k', width=2))
             plot_item.addItem(vline)
-            plot_items.append(vline)
-
-    # Set labels and title - use filt_kwargs which contains the applied selections
-    ylabel = var.attrs.get("ylabel", variable)
-    title_parts = [f"Trial: {ds.attrs.get('trial')}"]
-    title_parts.extend(f"{k}={v}" for k, v in filt_kwargs.items())
-    title = ", ".join(title_parts)
+            items.append(vline)
 
     plot_item.setLabel('bottom', 'Time', units='s')
-    plot_item.setLabel('left', ylabel, Fontsize='14pt')
-    plot_item.setTitle(title)
+    plot_item.setLabel('left', plot_data.ylabel, Fontsize='14pt')
+    plot_item.setTitle(plot_data.title)
 
-    return plot_items
+    return items
+
+
+def plot_ds_variable(plot_item, ds, ds_kwargs, variable, color_variable=None, show_changepoints=True):
+    """Plot a variable from an xarray Dataset.
+
+    Delegates to :func:`select_feature` + :func:`render_plot_data`.
+    """
+    plot_data = select_feature(ds, variable, ds_kwargs, color_variable)
+    if plot_data is None:
+        return []
+    return render_plot_data(plot_item, plot_data, show_changepoints=show_changepoints)
 
 
 def clear_plot_items(plot_item, items_list):

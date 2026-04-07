@@ -32,8 +32,8 @@ from .widgets_help import HelpWidget
 from .widgets_io import IOWidget
 from .widgets_labels import LabelsWidget
 from .widgets_navigation import NavigationWidget
+from .widget_trials import TrialsWidget
 from .widgets_plot_settings import PlotSettingsWidget
-from .widgets_transform import TransformWidget
 from .widgets_ephys import EphysWidget
 
 logger = logging.getLogger(__name__)
@@ -118,10 +118,10 @@ class MetaWidget(CollapsibleWidgetContainer):
         # Create all widgets with app_state
         self.help_widget = HelpWidget(self.app_state)
         self.plot_settings_widget = PlotSettingsWidget(self.viewer, self.app_state)
-        self.transform_widget = TransformWidget(self.viewer, self.app_state)
         self.changepoints_widget = ChangepointsWidget(self.viewer, self.app_state)
         self.labels_widget = LabelsWidget(self.viewer, self.app_state)
         self.navigation_widget = NavigationWidget(self.viewer, self.app_state)
+        self.trials_widget = TrialsWidget(self.app_state)
         self.ephys_widget = EphysWidget(self.viewer, self.app_state)
 
         # Create I/O widget first, then pass it to data widget
@@ -144,12 +144,13 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.labels_widget.io_widget = self.io_widget
         self.plot_settings_widget.set_plot_container(self.plot_container)
         self.plot_settings_widget.set_meta_widget(self)
-        self.transform_widget.set_plot_container(self.plot_container)
-        self.transform_widget.set_meta_widget(self)
         self.changepoints_widget.set_plot_container(self.plot_container)
         self.changepoints_widget.set_meta_widget(self)
         self.changepoints_widget.data_widget = self.data_widget
         self.changepoints_widget.set_motif_mappings(self.labels_widget._mappings)
+        self.navigation_widget.set_mappings(self.labels_widget._mappings)
+        self.navigation_widget._labels_widget = self.labels_widget
+        self.navigation_widget._data_widget = self.data_widget
         self.navigation_widget.set_plot_container(self.plot_container)
         self.ephys_widget.set_plot_container(self.plot_container)
         self.ephys_widget.set_meta_widget(self)
@@ -175,10 +176,13 @@ class MetaWidget(CollapsibleWidgetContainer):
         # The one widget to rule them all (loading data, updating plots, managing sync)
         self.data_widget.set_references(
             self.plot_container, self.labels_widget, self.plot_settings_widget,
-            self.navigation_widget, self.transform_widget, self.changepoints_widget,
+            self.navigation_widget, self.changepoints_widget,
             ephys_widget=self.ephys_widget,
             layout_mgr=self.layout_mgr,
+            trials_widget=self.trials_widget,
         )
+
+        self.plot_settings_widget.reset_layout_button.clicked.connect(self._on_reset_layout)
 
         for widget in [
             self.help_widget,
@@ -188,8 +192,8 @@ class MetaWidget(CollapsibleWidgetContainer):
             self.changepoints_widget,
             self.ephys_widget,
             self.plot_settings_widget,
-            self.transform_widget,
             self.navigation_widget,
+            self.trials_widget,
         ]:
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
@@ -198,7 +202,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.add_widget(
             self.help_widget,
             collapsible=True,
-            widget_title="Help",
+            widget_title="Help and Tutorials",
         )
 
         # Index 1: I/O
@@ -236,21 +240,21 @@ class MetaWidget(CollapsibleWidgetContainer):
             widget_title="Changepoints (CPs)",
         )
 
-        # Index 6: Energy envelopes
-        self.add_widget(
-            self.transform_widget,
-            collapsible=True,
-            widget_title="Energy envelopes",
-        )
-
-        # Index 7: Plot settings
+        # Index 6: Plot settings
         self.add_widget(
             self.plot_settings_widget,
             collapsible=True,
             widget_title="Plot settings",
         )
 
-        # Index 8: Navigation
+        # Trials metadata + filtering
+        self.add_widget(
+            self.trials_widget,
+            collapsible=True,
+            widget_title="Trials",
+        )
+
+        # Navigation
         self.add_widget(
             self.navigation_widget,
             collapsible=True,
@@ -487,22 +491,34 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         self.layout_mgr.register_docks()
 
-        if not self.app_state.video_viewer_visible:
+        if not self.app_state.video_viewer_visible and not self.app_state.has_pose:
             self.layout_mgr.set_video_viewer_visible(False)
 
-        if self.app_state.has_video:
-            slot1_text = getattr(self.app_state, 'space_plot_type', 'Layers')
-            show_layers = slot1_text == "Layers"
+        slot1_text = getattr(self.app_state, 'space_plot_type', 'Layers')
+        show_layers = slot1_text == "Layers"
 
-            if show_layers:
+        if show_layers:
+            if self.app_state.has_video:
                 self.layout_mgr.show_layer_docks()
                 self.layout_mgr.cap_layer_width()
-            else:
+            elif self.app_state.has_pose:
+                # Pose without video: hide layer docks but keep canvas visible for points
                 self.layout_mgr.hide_layer_docks()
+            else:
+                self.layout_mgr.configure_no_video(self.navigation_widget)
+        else:
+            self.layout_mgr.hide_layer_docks()
+            if not self.app_state.has_video and not self.app_state.has_pose:
+                self.layout_mgr.set_video_viewer_visible(False)
+            self.data_widget.update_space_plot()
 
+        if self.app_state.has_video:
             self.layout_mgr.set_vertical_ratio()
 
-        if not self.app_state.has_video:
-            self.layout_mgr.configure_no_video(self.navigation_widget)
-
-
+    def _on_reset_layout(self):
+        space_type = getattr(self.app_state, 'space_plot_type', 'Layers')
+        self.layout_mgr.reset_layout(
+            show_layers=space_type == "Layers",
+            show_space=space_type == "Space Plot",
+            has_video=self.app_state.has_video or self.app_state.has_pose,
+        )

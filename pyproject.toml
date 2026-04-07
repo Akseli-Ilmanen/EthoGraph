@@ -32,6 +32,7 @@ dependencies = [
     "pynapple",
     "pyyaml",
     "crowsetta",
+    "pynwb",
 ]
 
 [project.urls]
@@ -62,13 +63,10 @@ audio = [
 
 # NWB: read/write NWB files, DANDI integration
 nwb = [
-    "pynwb",
     "h5py",
-    "av",
     "dandi",
     "remfile",
     "lindi",
-    "movement>=0.14",
 ]
 
 # Neural: spike sorting, firing rates, ephys analysis
@@ -84,7 +82,6 @@ gui = [
     "pyqt5",
     "qtpy",
     "pyqtgraph",
-    "av",
     "soundfile",
     "napari-pyav @ https://github.com/horsto/napari-pyav/releases/download/v0.0.10.1/napari_pyav-0.0.10-py3-none-any.whl",
     "movement>=0.14",
@@ -92,6 +89,7 @@ gui = [
     "jinja2",
     "natsort",
     "tqdm",
+    "nwb-video-widgets @ git+https://github.com/Akseli-Ilmanen/nwb-video-widgets.git",
     "ethograph[audio]",
     "ethograph[neural]",
 ]
@@ -152,6 +150,9 @@ ethograph = ["assets/*"]
 addopts = "--cov=ethograph"
 filterwarnings = [
     "error",
+    "ignore::pydantic.warnings.PydanticDeprecatedSince20",
+    "ignore::DeprecationWarning:napari",
+    "ignore::DeprecationWarning:vispy",
 ]
 
 [tool.check-manifest]

@@ -15,26 +15,33 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
     For each individual, pulls back ``offset_s`` when the gap to the next onset
     is smaller than ``eps`` so pynapple can resolve all intervals.
 
-    Works on the compact per-trial format (columns: onset_s, offset_s, labels,
+    Works on the per-trial format (columns: trial, onset_s, offset_s, labels,
     individual) returned by ``app_state.get_trial_intervals()``.
     """
     if df.empty:
         return df
     eps = 1e-4
     df = df.copy().sort_values(["individual", "onset_s"]).reset_index(drop=True)
+    
+    counter = 0
     for _, group in df.groupby("individual"):
         idx = group.index.tolist()
         for i in range(len(idx) - 1):
             gap = df.loc[idx[i + 1], "onset_s"] - df.loc[idx[i], "offset_s"]
             if abs(gap) < eps:
+                counter += 1
+                
                 df.loc[idx[i], "offset_s"] = df.loc[idx[i + 1], "onset_s"] - eps
                 df.loc[idx[i], "duration"] = df.loc[idx[i], "offset_s"] - df.loc[idx[i], "onset_s"]
+
             
                 if "offset_global" in df.columns and "onset_global" in df.columns:
                     df.loc[idx[i], "offset_global"] = df.loc[idx[i + 1], "onset_global"] - eps
                     df.loc[idx[i], "duration"] = df.loc[idx[i], "offset_s"] - df.loc[idx[i], "onset_s"]
                 
                 
+                
+    print(f"Corrected {counter} offsets with gap smaller than {eps:.3f} seconds.")
             
             
             
@@ -77,23 +84,26 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
 
 def enrich_labels_df(
     all_labels_df: pd.DataFrame,
-    dt: "TrialTree",
+    nwb_alignment=None,
     keep_attrs: list[str] | None = None,
+    dt=None,
 ) -> pd.DataFrame:
     """Enrich a raw labels DataFrame with computed columns for analysis export.
 
     Takes the in-memory ``_all_labels_df`` (with columns ``onset_s``, ``offset_s``,
     ``labels``, ``individual``, ``trial``) and adds session timing, duration,
-    sequence info, and trial attributes from ``dt``.
+    sequence info, and trial attributes.
 
     Parameters
     ----------
     all_labels_df : pd.DataFrame
         Raw labels with required columns: onset_s, offset_s, labels, individual, trial.
-    dt : TrialTree
-        The data tree (for session timing and trial attributes).
+    nwb_alignment
+        Session metadata (for trial timing).
     keep_attrs : list[str], optional
-        Trial-level ``ds.attrs`` keys to include as extra columns.
+        Trial-level ``ds.attrs`` keys to include as extra columns (xarray only).
+    dt : TrialTree, optional
+        Xarray data tree (only needed for ``keep_attrs`` and session name).
 
     Returns
     -------
@@ -128,16 +138,14 @@ def enrich_labels_df(
 
         # Session timing
         t_start, t_stop = None, None
-        if hasattr(dt, "session") and dt.session is not None and "start_time" in dt.session:
-            try:
-                t_start = float(dt.session.start_time.sel(trial=trial_id))
-            except (KeyError, ValueError):
-                pass
-            if "stop_time" in dt.session:
-                try:
-                    t_stop = float(dt.session.stop_time.sel(trial=trial_id))
-                except (KeyError, ValueError):
-                    pass
+        try:
+            t_start = nwb_alignment.start_time(trial_id)
+        except (AttributeError, KeyError, ValueError):
+            pass
+        try:
+            t_stop = nwb_alignment.stop_time(trial_id)
+        except (AttributeError, KeyError, ValueError):
+            pass
 
         if t_start is not None:
             group["trial_onset"] = t_start

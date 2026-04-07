@@ -17,7 +17,7 @@ from qtpy.QtCore import QObject, QTimer, Signal
 
 import ethograph as eto
 from ethograph.gui.notify import notify
-from ethograph.gui.plots_timeseriessource import TrialAlignment, TimeRange
+from ethograph.io.time_model import RestrictionWindow, TimeRange, TrialVideoBounds
 
 from .makepretty import find_combo_index
 from ethograph.labels.intervals import empty_intervals
@@ -30,6 +30,7 @@ from ethograph.labels.tsv_store import (
     set_trial_in_tsv,
     set_trial_meta_attr,
 )
+from ethograph.io.metadata_table import load_metadata_df
 
 
 logger = logging.getLogger(__name__)
@@ -135,7 +136,12 @@ class AppStateSpec:
         "num_frames": (int, 0, False),
         "_info_data": (dict[str, Any], {}, False),
         "sync_state": (str | None, None, False),
-        "window_size": (float, 5.0, True),
+        "before_s_trial": (float, 0.0, True),
+        "after_s_trial": (float, 0.0, True),
+        "before_s_label": (float, 1.0, True),
+        "after_s_label": (float, 1.0, True),
+        "before_s_sequence": (float, 1.0, True),
+        "after_s_sequence": (float, 1.0, True),
         "audiotrace_visible": (bool, True, True, SCOPE_LOCAL),
         "spectrogram_visible": (bool, True, True, SCOPE_LOCAL),
         "neo_visible": (bool, True, True, SCOPE_LOCAL),
@@ -147,6 +153,8 @@ class AppStateSpec:
         "feature_view_mode": (str, "LinePlot", True, SCOPE_LOCAL),
 
         # Data
+        "data_loader": (object | None, None, False),
+        "source_collection": (object | None, None, False),
         "ds": (xr.Dataset | None, None, False),
         "ds_temp": (xr.Dataset | None, None, False),
         "dt": (xr.DataTree | None, None, False),
@@ -168,7 +176,16 @@ class AppStateSpec:
         "time_jump_ms": (float, 100.0, True),
         "time": (xr.DataArray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
         "label_intervals": (pd.DataFrame | None, None, False),
-        "trial_alignment": (TrialAlignment | None, None, False),
+        "metadata_df": (pd.DataFrame | None, None, False),
+        "metadata_path": (str | None, None, True, SCOPE_LOCAL),
+        "trial_alignment": (TrialVideoBounds | None, None, False),
+        "ephys_offset": (float, 0.0, True, SCOPE_LOCAL),
+        "navigate_mode": (str, "trial", True),
+        "slider_scope": (str, "trial", True),
+        "restrict_window": (RestrictionWindow | None, None, False),
+        "label_instance_idx": (int, 0, False),
+        "sequence_pattern": (str, "", True),
+        "sequence_match_idx": (int, 0, False),
         "trials": (list[int | str], [], False),
         "downsample_enabled": (bool, False, True),
         "downsample_factor": (int, 100, True),
@@ -179,13 +196,16 @@ class AppStateSpec:
         "has_audio": (bool, False, False),
         "has_neo": (bool, False, False),
         "has_neurons": (bool, False, False),
+        "files_aligned_to_trials": (bool, True, True, SCOPE_LOCAL),
         
 
-        # Paths 
+        # Paths
         "nc_file_path": (str | None, None, False),
+        "nwb_file_path": (str | None, None, True, SCOPE_LOCAL),
         "video_folder": (str | None, None, True, SCOPE_LOCAL),
         "audio_folder": (str | None, None, True, SCOPE_LOCAL),
         "pose_folder": (str | None, None, True, SCOPE_LOCAL),
+        "nwb_pose_keys": (list | None, None, True, SCOPE_LOCAL),
         "ephys_path": (str | None, None, True, SCOPE_LOCAL),
         "neurons_path": (str | None, None, True, SCOPE_LOCAL),
         
@@ -212,7 +232,19 @@ class AppStateSpec:
         "vmax_db": (float, -20.0, True),
         "buffer_multiplier": (float, 5.0, True),
         "percentile_ylim": (float, 99.5, True),
-        "space_plot_type": (str, "Layers", True),
+        "space_plot_type": (str, "Layers", True, SCOPE_LOCAL),
+        "space_x_axis": (str | None, None, True),
+        "space_y_axis": (str | None, None, True),
+        "space_z_axis": (str | None, None, True),
+        "space_3d": (bool, False, True),
+        "space_percentile_xyzlim": (float, 100.0, True),
+        "space_marker_visible": (bool, True, True),
+        "space_confidence_filter": (bool, False, True),
+        "space_confidence_threshold": (float, 0.6, True),
+        "space_limit_to_window": (bool, False, False), # May confuse user, better not keep saved.
+        "space_lock_axes": (bool, False, False),
+        "space_hide_zeros": (bool, False, True),
+        "space_show_references": (bool, True, True),
         "primary_camera": (str | None, None, True),
         "primary_camera_previous": (str | None, None, False),
         "extra_cameras": (list[str], [], True),
@@ -292,10 +324,6 @@ class AppStateSpec:
         return cls.get_meta(key)[0]
 
     @classmethod
-    def get_scope(cls, key):
-        return cls.get_meta(key)[3]
-
-    @classmethod
     def saveable_attributes(cls, scope: str | None = None) -> set[str]:
         attrs = set()
         for key in cls.VARS:
@@ -320,7 +348,7 @@ class ObservableAppState(QObject):
     GLOBAL_SETTINGS_FILENAME = "gui_settings.yaml"
     LOCAL_SETTINGS_FILENAME = "local_settings.yaml"
     SETTINGS_DIRNAME = ".ethograph"
-    _TIME_REFRESH_KEYS = {"ds", "dt", "video", "video_path", "audio_path", "window_size"}
+    _TIME_REFRESH_KEYS = {"ds", "dt", "video", "video_path", "audio_path"}
 
 
     def __init__(self, yaml_path: str | None = None, auto_save_interval: int = 30000):
@@ -335,7 +363,13 @@ class ObservableAppState(QObject):
         self.ephys_stream_sel: str | None = None
         self._suspend_local_autoload = False
         self._all_labels_df: pd.DataFrame | None = None
+        self._metadata_df: pd.DataFrame | None = None
         self._label_mappings: dict | None = None
+        self._active_branches: set[int] = {0}
+        
+  
+        from ethograph.io.nwb_alignment import EmpytAlignment
+        self.nwb_alignment = EmpytAlignment()
 
         self.settings = get_settings()
         self._yaml_path = yaml_path or "gui_settings.yaml"
@@ -344,15 +378,9 @@ class ObservableAppState(QObject):
         self._auto_save_timer.start(auto_save_interval)
 
     @property
-    def video_fps(self) -> float:
-        dt = getattr(self, 'dt', None)
-        if dt is not None:
-            camera = self.primary_camera
-            fps = dt.get_video_fps(camera)
-            if fps is not None:
-                return fps
-        logger.warning("video_fps: no FPS metadata found, falling back to 1.0")
-        return 1.0
+    def video_fps(self) -> float | None:
+        camera = self.primary_camera
+        return self.nwb_alignment.get_stream_rate("video", camera)
 
     @property
     def sel_attrs(self) -> dict:
@@ -368,12 +396,50 @@ class ObservableAppState(QObject):
         return result
     
     @property
+    def active_label_ids(self) -> set[int] | None:
+        """Return label IDs belonging to currently active branches.
+
+        Returns None when no mappings are loaded (meaning all IDs allowed).
+        """
+        mappings = self._label_mappings
+        if not mappings:
+            return None
+        return {
+            lid for lid, data in mappings.items()
+            if isinstance(lid, int) and data.get("branch", 0) in self._active_branches
+        }
+
+    @property
     def trial_bounds(self) -> TimeRange | None:
-        """Time range for the current trial, sourced from TrialAlignment.trial_range."""
+        """Time range for the current trial, sourced from TrialVideoBounds.trial_range."""
         alignment = getattr(self, 'trial_alignment', None)
         if alignment is not None:
             return alignment.trial_range
         return None
+
+
+
+    @property
+    def before_s(self) -> float:
+        mode = getattr(self, "navigate_mode", "trial")
+        return self._values.get(f"before_s_{mode}", 0.0)
+
+    @property
+    def after_s(self) -> float:
+        mode = getattr(self, "navigate_mode", "trial")
+        return self._values.get(f"after_s_{mode}", 0.0)
+
+    @property
+    def view_span(self) -> float:
+        return self.before_s + self.after_s
+
+    @property
+    def window_bounds(self) -> TimeRange | None:
+        """Effective display window — restriction window if set, else trial bounds."""
+        rw = getattr(self, 'restrict_window', None)
+        if rw is not None:
+            return rw.time_range
+        return self.trial_bounds
 
     @property
     def time_coord(self) -> xr.DataArray | None:
@@ -450,20 +516,37 @@ class ObservableAppState(QObject):
         Returns (audio_path, channel_idx) tuple. Uses audio_source_map to resolve
         the display name to (mic_file, channel_idx).
         """
-        import os
-
         mics_sel = getattr(self, 'mics_sel', None)
         if not mics_sel or not self.audio_source_map:
             return None, 0
 
         mic_file, channel_idx = self.audio_source_map.get(mics_sel, (mics_sel, 0))
-
-        audio_folder = getattr(self, 'audio_folder', None)
-        if not audio_folder or not mic_file:
+        if not mic_file:
             return None, channel_idx
 
-        audio_path = os.path.normpath(os.path.join(audio_folder, mic_file))
-        return audio_path, channel_idx
+        audio_folder = getattr(self, 'audio_folder', None)
+
+        # Try resolve via nwb_alignment (ImageSeries path → fallback folder)
+        for mic_dev in self.nwb_alignment.mics:
+            trial = getattr(self, 'trials_sel', None)
+            if trial is None:
+                break
+            media = self.nwb_alignment.get_media(trial, "audio", mic_dev)
+            if media and (media == mic_file or Path(media).name == mic_file):
+                resolved = self.nwb_alignment.resolve_media_path(
+                    trial, "audio", device=mic_dev,
+                    fallback_folder=audio_folder,
+                )
+                if resolved:
+                    return resolved, channel_idx
+
+        # Direct fallback
+        if audio_folder:
+            import os
+            path = os.path.normpath(os.path.join(audio_folder, mic_file))
+            return path, channel_idx
+
+        return None, channel_idx
 
 
 
@@ -481,7 +564,7 @@ class ObservableAppState(QObject):
         raise AttributeError(name)
 
     def __setattr__(self, name, value):
-        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map", "ephys_source_map", "ephys_stream_sel", "_suspend_local_autoload", "_all_labels_df", "_label_mappings"):
+        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map", "ephys_source_map", "ephys_stream_sel", "_suspend_local_autoload", "_all_labels_df", "_metadata_df", "_label_mappings", "_active_branches"):
             super().__setattr__(name, value)
             return
 
@@ -494,11 +577,35 @@ class ObservableAppState(QObject):
             self._values[name] = value
 
             signal = getattr(self, f"{name}_changed", None)
-            if signal and old_value is not value:
-                signal.emit(value)
+            if signal:
+                try:
+                    changed = bool(old_value != value)
+                except (ValueError, TypeError):
+                    changed = old_value is not value
+                if changed:
+                    signal.emit(value)
 
             if name == "nc_file_path" and not self._suspend_local_autoload:
                 self.load_local_settings()
+
+            # Auto-sync nwb_file_path → nwb_alignment
+            if name == "nwb_file_path":
+                from ethograph.io.nwb_alignment import make_nwb_alignment
+                self.nwb_alignment = make_nwb_alignment(value)
+
+            if name == "metadata_path":
+                if value:
+                    metadata_df, resolved_path = load_metadata_df(
+                        source_path=self.nc_file_path,
+                        metadata_path=value,
+                        nwb_alignment=self.nwb_alignment,
+                        trials_ep=self.nwb_alignment.trials_ep,
+                        trial_ids=getattr(self, "trials", None) or None,
+                    )
+                    self._values[name] = resolved_path or value
+                    self.metadata_df = metadata_df
+                else:
+                    self.metadata_df = None
 
             return
 
@@ -532,8 +639,28 @@ class ObservableAppState(QObject):
                 ds_kwargs[dim] = int(output)
 
         return ds_kwargs
-            
 
+    def get_selections(self) -> dict[str, str]:
+        """Backend-agnostic selection dict from combo *_sel attributes.
+
+        Uses ``data_loader.dims`` when available (pynapple path),
+        falls back to ``get_ds_kwargs()`` for pure xarray.
+        """
+        store = getattr(self, "data_loader", None)
+        if store is None:
+            if self.ds is None:
+                return {}
+            return self.get_ds_kwargs()
+
+        selections: dict[str, str] = {}
+        for dim_name in store.dims:
+            attr_name = f"{dim_name}_sel"
+            if not hasattr(self, attr_name):
+                continue
+            val = getattr(self, attr_name)
+            if val is not None and val not in ("", "None"):
+                selections[dim_name] = str(val)
+        return selections
 
     def key_sel_exists(self, type_key: str) -> bool:
         """Check if a key selection exists for a given type."""
@@ -720,13 +847,16 @@ class ObservableAppState(QObject):
         return dict(sorted(state_dict.items(), key=_category_key))
 
     def print_state(self) -> None:
-        """Print all yaml-persisted app state vars, grouped by category."""
-        _CATEGORY_LABELS = {0: "Paths", 1: "Selections", 2: "Booleans", 3: "Strings", 4: "Numbers", 5: "Dicts"}
+        """Print all simple-typed app state vars, grouped by category."""
+        _PRINTABLE = (str, int, float, bool, list, dict, type(None))
+        _CATEGORY_LABELS = {0: "Paths", 1: "Selections", 2: "Booleans", 3: "Strings", 4: "Numbers", 5: "Lists/Dicts", 6: "None"}
 
         def _category_key(item):
             key, value = item
-            if isinstance(value, dict):
+            if isinstance(value, (dict, list)):
                 return 5
+            if value is None:
+                return 6
             if any(key.endswith(s) for s in self.PATH_SUFFIXES):
                 return 0
             if key.endswith("_sel") or key.endswith("_sel_previous"):
@@ -737,7 +867,21 @@ class ObservableAppState(QObject):
                 return 3
             return 4
 
-        state = self.get_saveable_state_dict()
+        state = {}
+        for attr in self._values:
+            value = self._values[attr]
+            if isinstance(value, _PRINTABLE):
+                state[attr] = self._to_native(value) if isinstance(value, (str, int, float, bool)) else value
+        # Also include dynamic _sel attributes
+        for attr in dir(self):
+            if attr.endswith("_sel") or attr.endswith("_sel_previous"):
+                try:
+                    value = getattr(self, attr)
+                    if not callable(value) and isinstance(value, _PRINTABLE):
+                        state[attr] = self._to_native(value) if isinstance(value, (str, int, float, bool)) else value
+                except (AttributeError, TypeError):
+                    pass
+
         current_cat = None
         for key, value in sorted(state.items(), key=lambda item: (_category_key(item), item[0])):
             cat = _category_key((key, value))
@@ -749,6 +893,25 @@ class ObservableAppState(QObject):
             print(f"  {key}: {value}")
 
     def load_from_dict(self, state_dict: dict):
+        # Migrate legacy keys
+        if "restrict_mode" in state_dict:
+            val = state_dict.pop("restrict_mode")
+            if val == "video":
+                val = "trial"
+            state_dict.setdefault("navigate_mode", val)
+
+        # Migrate old before_s/after_s or restrict_extra_t0/t1 → per-category
+        old_before = state_dict.pop("before_s", state_dict.pop("restrict_extra_t0", None))
+        old_after = state_dict.pop("after_s", state_dict.pop("restrict_extra_t1", None))
+        if old_before is not None:
+            for suffix in ("trial", "label", "sequence"):
+                state_dict.setdefault(f"before_s_{suffix}", old_before)
+        if old_after is not None:
+            for suffix in ("trial", "label", "sequence"):
+                state_dict.setdefault(f"after_s_{suffix}", old_after)
+
+        state_dict.pop("window_size", None)
+
         self._suspend_local_autoload = True
         try:
             for key, value in state_dict.items():
@@ -870,6 +1033,9 @@ class ObservableAppState(QObject):
 
     def set_trial_intervals(self, trial, df: pd.DataFrame) -> None:
         self._all_labels_df = set_trial_in_tsv(self._all_labels_df, trial, df)
+        nav = getattr(self, "navigation_widget", None)
+        if nav is not None and hasattr(nav, "on_labels_changed"):
+            nav.on_labels_changed()
 
     def get_trial_meta(self, trial) -> dict:
         return get_trial_meta(self._all_labels_df, trial)
@@ -925,7 +1091,7 @@ class ObservableAppState(QObject):
         # Enrich with computed columns (duration, sequence, global timing, trial attrs)
         from ethograph.labels.export import enrich_labels_df
         keep_attrs = self.trial_conditions if self.trial_conditions else []
-        enriched = enrich_labels_df(self._all_labels_df, self.dt, keep_attrs)
+        enriched = enrich_labels_df(self._all_labels_df, nwb_alignment=self.nwb_alignment, keep_attrs=keep_attrs, dt=self.dt)
         save_df = enriched if not enriched.empty else self._all_labels_df
 
         # 1. Canonical location (sibling to .nc)

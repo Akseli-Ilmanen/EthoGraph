@@ -158,8 +158,14 @@ class ChangepointsWidget(QWidget):
 
     def _update_trial_dataset(self, new_ds: xr.Dataset):
         trial = self.app_state.trials_sel
-        self.app_state.dt.update_trial(trial, lambda _: new_ds)
-        self.app_state.ds = self.app_state.dt.trial(trial)
+        if self.app_state.dt is not None:
+            self.app_state.dt.update_trial(trial, lambda _: new_ds)
+            self.app_state.ds = self.app_state.dt.trial(trial)
+        else:
+            self.app_state.ds = new_ds
+        store = getattr(self.app_state, "data_loader", None)
+        if store is not None and hasattr(store, "update_ds"):
+            store.update_ds(self.app_state.ds)
 
     def _ensure_changepoints_visible(self):
         self.show_cp_checkbox.blockSignals(True)
@@ -1311,15 +1317,15 @@ class ChangepointsWidget(QWidget):
             self.data_widget.update_main_plot()
         notify("Reverted correction")
 
-    def _correct_trial_intervals(self, trial, ds, all_params, ds_kwargs):
-        """Interval-native correction: purge -> stitch -> snap -> purge."""
-        intervals_df = self.app_state.get_trial_intervals(trial)
+    def _extract_cp_times(self, ds, ds_kwargs):
+        """Extract changepoint times from either backend."""
+        store = getattr(self.app_state, 'data_loader', None)
+        if store is not None:
+            feature = getattr(self.app_state, 'features_sel', None)
+            return store.get_cp_times(feature)
 
-    
         time_coord = self.app_state.time_coord
-
-        cp_kwargs = all_params.get("cp_kwargs", ds_kwargs)
-        cp_times = extract_cp_times(ds, time_coord.values, **cp_kwargs)
+        cp_times = extract_cp_times(ds, time_coord.values, **ds_kwargs)
 
         all_cp_times = [cp_times]
         if "audio_cp_onsets" in ds.data_vars and "audio_cp_offsets" in ds.data_vars:
@@ -1328,8 +1334,16 @@ class ChangepointsWidget(QWidget):
         if "osc_event_onsets" in ds.data_vars and "osc_event_offsets" in ds.data_vars:
             all_cp_times.append(ds["osc_event_onsets"].values.astype(np.float64))
             all_cp_times.append(ds["osc_event_offsets"].values.astype(np.float64))
-        cp_times = np.unique(np.concatenate(all_cp_times)) if len(all_cp_times) > 1 else cp_times
+        if len(all_cp_times) > 1:
+            cp_times = np.unique(np.concatenate(all_cp_times))
+        return cp_times
 
+    def _correct_trial_intervals(self, trial, ds, all_params, ds_kwargs):
+        """Interval-native correction: purge -> stitch -> snap -> purge."""
+        intervals_df = self.app_state.get_trial_intervals(trial)
+
+        cp_kwargs = all_params.get("cp_kwargs", ds_kwargs)
+        cp_times = self._extract_cp_times(ds, cp_kwargs)
 
         min_duration_s = all_params.get("min_label_length_s", 0)
         label_thresholds_raw = all_params.get("label_thresholds", {})
@@ -1338,10 +1352,8 @@ class ChangepointsWidget(QWidget):
         max_expansion_s = cp_params.get("max_expansion_s", np.inf)
         max_shrink_s = cp_params.get("max_shrink_s", np.inf)
 
-
         label_thresholds_s = {int(k): v for k, v in label_thresholds_raw.items()}
 
-  
         return correct_changepoints(
             intervals_df,
             cp_times,
@@ -1393,7 +1405,7 @@ class ChangepointsWidget(QWidget):
                 # TODO: Mention in documentation, only Ctrl+Z functionality of the GUI.
                 self._save_correction_snapshot(mode)
                 for trial in self.app_state.trials:
-                    ds = self.app_state.dt.trial(trial)
+                    ds = self.app_state.dt.trial(trial) if self.app_state.dt is not None else self.app_state.ds
                     corrected_df = self._correct_trial_intervals(trial, ds, all_params, ds_kwargs)
                     self.app_state.set_trial_intervals(trial, corrected_df)
                     self.app_state.set_trial_meta_attr(trial, 'changepoint_corrected', 1)
@@ -1522,8 +1534,7 @@ class ChangepointsWidget(QWidget):
 
         xlim = self.plot_container.get_current_xlim()
         if time_s < xlim[0] or time_s > xlim[1]:
-            window_size = self.app_state.get_with_default("window_size")
-            half = window_size / 2.0
+            half = self.app_state.view_span / 2.0
             master = self.plot_container._xlink_master or self.plot_container._feature_plot
             master.vb.setXRange(time_s - half, time_s + half, padding=0)
 

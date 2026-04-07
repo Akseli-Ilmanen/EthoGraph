@@ -48,16 +48,17 @@ from ethograph.gui.notify import notify_dialog
 from ethograph.gui.wizard_multi_timeline import draw_session_timeline
 from ethograph.labels.converters import NWBLabelConverter, write_mapping_file
 from ethograph.labels.tsv_store import init_empty_labels, labels_tsv_path, save_labels_tsv
-from ethograph.utils.nwb import (
-    download_clip,
-    find_video_assets,
-    format_file_size,
-    load_nwb_session,
-    open_nwb_local,
+from ethograph.io.nwb_import import (
     probe_behavioral_series,
     probe_electrical_series,
     probe_label_sources,
     read_trials_table,
+)
+from ethograph.utils.dandi import (
+    download_clip,
+    find_video_assets,
+    format_file_size,
+    open_nwb_local,
 )
 from ethograph.utils.nwb_video import (
     NWBDANDIPoseEstimationWidget,
@@ -316,10 +317,10 @@ class _VideoPosePage(QWidget):
 
         # --- Info note ---
         self._info_note = QLabel(
-            "Note: Trials, behavioral labels, and time series (including "
-            "pose estimation) will be converted to a local .nc file for fast "
-            "access and xarray indexing. Raw data (electrophysiology, video, "
-            "audio) can be streamed from DANDI or downloaded locally."
+            "Note: A lightweight project file (.nc) will be created with trial "
+            "metadata only. Pose estimation and behavioral time series are "
+            "loaded lazily from the NWB file at runtime (via pynapple). "
+            "Videos and electrophysiology can be streamed or downloaded."
         )
         self._info_note.setWordWrap(True)
         self._info_note.hide()
@@ -641,12 +642,6 @@ class _VideoPosePage(QWidget):
     def get_video_matching(self) -> list[tuple[str, str]]:
         return self._matcher.get_mapping()
 
-    def get_selected_behavioral_sources(self) -> set[str] | None:
-        if not self._behavior_checkboxes:
-            return None
-        selected = {cb._source for cb in self._behavior_checkboxes if cb.isChecked()}
-        return selected if selected else None
-
     def get_selected_label_source(self) -> str | None:
         for rb in self._label_radios:
             if rb.isChecked():
@@ -804,7 +799,7 @@ class _NWBTimelinePage(QWidget):
         out_group = QGroupBox("Output")
         outg = QHBoxLayout(out_group)
         self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText("Save trials.nc to...")
+        self.output_edit.setPlaceholderText("Project folder...")
         self.output_edit.setReadOnly(True)
         out_browse = QPushButton("Browse")
         out_browse.clicked.connect(self._browse_output)
@@ -815,12 +810,9 @@ class _NWBTimelinePage(QWidget):
         self._items: list = []
 
     def _browse_output(self):
-        result = QFileDialog.getSaveFileName(self, "Save trials.nc", "", "NetCDF files (*.nc);;All files (*)")
-        if result and result[0]:
-            path = result[0]
-            if not path.endswith(".nc"):
-                path += ".nc"
-            self.output_edit.setText(path)
+        folder = QFileDialog.getExistingDirectory(self, "Select project folder")
+        if folder:
+            self.output_edit.setText(folder)
 
     def populate(
         self,
@@ -855,6 +847,7 @@ class _NWBTimelinePage(QWidget):
                 dt[str(tid)] = xr.DataTree(ds)
 
         session_vars: dict[str, Any] = {}
+        # TODO. old system, change
         trial_ids = dt.trials if dt.children else []
 
         if selected_df is not None and "start_time" in selected_df.columns:
@@ -903,7 +896,11 @@ class _NWBTimelinePage(QWidget):
         sess_ds = xr.Dataset(session_vars, coords=coords)
         dt["session"] = xr.DataTree(sess_ds)
 
-        draw_session_timeline(self._plot, dt, items_out=self._items)
+        draw_session_timeline(
+            self._plot,
+            getattr(self.app_state, "nwb_alignment", None),
+            items_out=self._items,
+        )
 
     def _clear(self):
         for item in self._items:
@@ -912,7 +909,7 @@ class _NWBTimelinePage(QWidget):
 
     def validate(self) -> str | None:
         if not self.output_edit.text():
-            return "Please select an output path."
+            return "Please select a project folder."
         return None
 
 
@@ -1018,7 +1015,7 @@ class NWBImportDialog(QDialog):
         if page == 0:
             self._next_btn.setText("Connect & Preview \u2192")
         elif page == 3:
-            self._next_btn.setText("Download data")
+            self._next_btn.setText("Create project")
         else:
             self._next_btn.setText("Next \u2192")
 
@@ -1158,17 +1155,15 @@ class NWBImportDialog(QDialog):
         if self._video_info:
             self._page_video_pose.populate_videos(self._video_info)
 
-        nc_name = self._default_nc_filename()
+        project_name = self._default_project_dirname()
         if source["type"] == "dandi":
             default_dir = self._default_download_dir(source)
             if self._video_info:
                 self._page_video_pose.download_dir_edit.setText(str(default_dir))
-            default_nc = default_dir / nc_name
-            self._page_timeline.output_edit.setText(str(default_nc))
+            self._page_timeline.output_edit.setText(str(default_dir / project_name))
         else:
             nwb_dir = Path(source["path"]).parent
-            default_nc = nwb_dir / nc_name
-            self._page_timeline.output_edit.setText(str(default_nc))
+            self._page_timeline.output_edit.setText(str(nwb_dir / project_name))
 
         self._stack.setCurrentIndex(1)
         self._update_nav()
@@ -1200,7 +1195,6 @@ class NWBImportDialog(QDialog):
         total_trials = len(self._nwb.trials) if self._nwb.trials is not None and len(self._nwb.trials) > 0 else 1
         trial_indices = self._page_trials.get_trial_indices(total_trials)
         include_pose = self._page_video_pose.pose_checkbox.isChecked()
-        behavioral_sources = self._page_video_pose.get_selected_behavioral_sources()
         label_source = self._page_video_pose.get_selected_label_source()
         ephys_series = self._page_video_pose.get_selected_ephys_series()
 
@@ -1225,55 +1219,115 @@ class NWBImportDialog(QDialog):
                     return
 
         source_info = self._page_source.get_source()
-        nwb_source = (
-            source_info["path"] if source_info["type"] == "local"
-            else f"dandiset-{source_info['dandiset_id']}_session-{source_info['session_eid']}"
-        )
         matching = self._page_video_pose.get_video_matching() if self._page_video_pose.has_video_matching() else []
 
         def _build():
-            dt, trials_df = load_nwb_session(
-                self._nwb, self._pose_containers,
-                cameras_with_pose=self._cameras_with_pose,
-                trial_indices=trial_indices,
-                include_pose=include_pose,
-                behavioral_sources=behavioral_sources,
+            import json
+            import pandas as pd
+            from ethograph.utils.nwb import build_nwb_from_trial_table
+
+            trials_df = read_trials_table(self._nwb)
+            if trial_indices is not None:
+                trials_df = trials_df.iloc[trial_indices].reset_index(drop=True)
+
+            # Output directory structure — output_path IS the project dir
+            project_dir = Path(output_path)
+            ethograph_dir = project_dir / ".ethograph"
+            ethograph_dir.mkdir(parents=True, exist_ok=True)
+
+            # Build alignment NWB with trial table + video matching
+            nwb_path = ethograph_dir / "alignment.nwb"
+            nwb_df = pd.DataFrame({
+                "trial": [str(int(r["trial"])) for _, r in trials_df.iterrows()],
+                "start_time": trials_df["start_time"].astype(float).values,
+                "stop_time": trials_df["stop_time"].astype(float).values,
+            })
+
+            # Get camera FPS from video info
+            video_keys = [v for v, _ in matching] if matching else list(self._video_info.keys())
+            fps_values = [self._video_info.get(vk, {}).get("fps", 30.0) for vk in video_keys]
+            camera_fps = max(fps_values) if fps_values else None
+
+            # Add video columns to trial table
+            if output_dir is not None:
+                for dl in video_keys:
+                    nwb_df[f"video_{dl}"] = [
+                        f"{dl}_trial_{int(r['trial'])}.mp4"
+                        for _, r in trials_df.iterrows()
+                    ]
+            else:
+                for vk in video_keys:
+                    info = self._video_info.get(vk, {})
+                    filepath = info.get("path") or info.get("url", "")
+                    if filepath:
+                        nwb_df[f"video_{vk}"] = filepath
+
+            stream_rates = {"video": camera_fps, "pose": camera_fps} if camera_fps else {}
+            build_nwb_from_trial_table(
+                nwb_df, stream_rates=stream_rates, output_path=nwb_path,
             )
-            dt.attrs["nwb_source"] = nwb_source
-            self._build_session_table(dt, trials_df)
-            self._set_ephys_attrs(dt, ephys_series, source_info)
-            self._set_raw_asset_attr(dt, source_info)
+
+            # Save project config (replaces .nc attrs)
+            config = {
+                "nwb_local": source_info["path"] if source_info["type"] == "local" else None,
+                "nwb_source_dandiset": source_info.get("dandiset_id"),
+                "nwb_source_session": source_info.get("session_eid"),
+                "nwb_pose_keys": list(self._cameras_with_pose) if include_pose and self._cameras_with_pose else [],
+                "video_pose_matching": matching,
+            }
+            if ephys_series:
+                config["nwb_ephys_series"] = ephys_series
+                if source_info["type"] == "local":
+                    config["nwb_ephys_path"] = source_info["path"]
+                else:
+                    config["nwb_ephys_dandiset_id"] = source_info["dandiset_id"]
+                    main = self._session_assets and (
+                        self._session_assets.get("processed") or self._session_assets.get("raw")
+                    )
+                    if main:
+                        config["nwb_ephys_asset_id"] = main.identifier
+
+            raw_asset = self._page_video_pose.get_raw_nwb_asset()
+            if raw_asset:
+                config["nwb_raw_asset_id"] = raw_asset.identifier
+
+            config_path = ethograph_dir / "nwb_metadata"
+            with open(config_path, "w") as f:
+                json.dump(config, f, indent=2)
+
+            # Labels
             if label_source:
                 converter = NWBLabelConverter()
                 all_labels_df = converter.from_nwb(self._nwb, trials_df)
-                mapping_dir = Path(output_dir) / ".ethograph"
-                write_mapping_file(mapping_dir / "mapping.txt", converter.label_map)
+                write_mapping_file(ethograph_dir / "mapping.txt", converter.label_map)
             else:
-                all_labels_df = init_empty_labels(dt.trials)
-            self._set_video_files(dt, matching, output_dir, include_pose)
-            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            dt.to_netcdf(output_path)
-            save_labels_tsv(labels_tsv_path(Path(output_path)), all_labels_df)
-            return dt, all_labels_df
+                trial_ids = [str(int(r["trial"])) for _, r in trials_df.iterrows()]
+                all_labels_df = init_empty_labels(trial_ids)
 
-        progress = BusyProgressDialog("Downloading NWB data. This may take a few minutes.", parent=self)
+            labels_path = project_dir / "labels.tsv"
+            save_labels_tsv(labels_path, all_labels_df)
+
+            return config
+
+        progress = BusyProgressDialog("Setting up project...", parent=self)
         (result, error) = progress.execute(_build)
 
         if progress.was_cancelled or error:
             if error:
-                notify_dialog(f"Failed to load data:\n{error}", "error", "Error", self)
+                notify_dialog(f"Failed to create project:\n{error}", "error", "Error", self)
             return
 
         self._output_path = output_path
+        nwb_path = source_info["path"] if source_info["type"] == "local" else output_path
         if output_dir:
             video_folder = str(output_dir)
         elif source_info["type"] == "local":
             video_folder = str(Path(source_info["path"]).parent)
         else:
             video_folder = None
-        self._populate_io_fields(video_folder=video_folder)
+        self._populate_io_fields(nwb_path=nwb_path, video_folder=video_folder)
 
-        msg = f"Successfully created:\n{output_path}"
+        msg = f"Project created in:\n{Path(output_path).parent}"
         if output_dir:
             msg += f"\n\nVideos saved to:\n{output_dir}"
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(output_dir)))
@@ -1281,91 +1335,8 @@ class NWBImportDialog(QDialog):
         self.accept()
 
     # ------------------------------------------------------------------
-    # Build helpers (called from _build closure)
+    # Build helpers
     # ------------------------------------------------------------------
-
-    def _build_session_table(self, dt, trials_df):
-        trial_ids = list(dt.trials)
-        if trials_df is None or "start_time" not in trials_df.columns:
-            return
-        session_vars: dict = {
-            "start_time": ("trial", trials_df["start_time"].astype(float).values),
-            "stop_time": ("trial", trials_df["stop_time"].astype(float).values),
-        }
-
-        session_ds = xr.Dataset(session_vars, coords={"trial": trial_ids})
-        session_ds.attrs["session_start_time"] = str(self._nwb.session_start_time)
-
-        dt.set_session_table(session_ds)
-
-    def _set_ephys_attrs(self, dt, ephys_series: str | None, source_info: dict):
-        if ephys_series is None:
-            return
-        dt.attrs["nwb_ephys_series"] = ephys_series
-        if source_info["type"] == "local":
-            dt.attrs["nwb_ephys_path"] = source_info["path"]
-        else:
-            dt.attrs["nwb_ephys_dandiset_id"] = source_info["dandiset_id"]
-            main = self._session_assets and (self._session_assets["processed"] or self._session_assets["raw"])
-            if main:
-                dt.attrs["nwb_ephys_asset_id"] = main.identifier
-
-    def _set_raw_asset_attr(self, dt, source_info: dict):
-        if source_info["type"] != "dandi":
-            return
-        raw_asset = self._page_video_pose.get_raw_nwb_asset()
-        if raw_asset:
-            dt.attrs["nwb_raw_asset_id"] = raw_asset.identifier
-
-    def _set_video_files(self, dt, matching: list[tuple[str, str]], output_dir: Path | None, include_pose: bool):
-        trials = dt.trials
-
-        # matching = [(video_name, pose_name), ...]
-        # Use video names as canonical device labels for the `cameras` coord.
-        if matching:
-            video_keys = [video_cam for video_cam, _ in matching]
-            device_labels = video_keys
-        elif self._video_info:
-            video_keys = list(self._video_info.keys())
-            device_labels = video_keys
-        else:
-            return
-
-        if output_dir is not None:
-            video_files = [
-                [f"{dl}_trial_{trial_id}.mp4" for dl in device_labels]
-                for trial_id in trials
-            ]
-            dt.set_media("video", video_files, device_labels=device_labels, per_trial=True)
-            return
-
-        camera_files = [
-            self._video_info.get(vk, {}).get("path") or self._video_info.get(vk, {}).get("url", "")
-            for vk in video_keys
-        ]
-        stored = [(dl, f) for dl, f in zip(device_labels, camera_files) if f]
-        missing = [dl for dl, f in zip(device_labels, camera_files) if not f]
-        if missing:
-            logger.warning("No video path/URL found for cameras: %s", missing)
-        if not any(camera_files):
-            return
-
-        for dl, f in stored:
-            logger.info("  video '%s' -> %s", dl, f[:80] + ("..." if len(f) > 80 else ""))
-
-        camera_start_times = [
-            self._video_info.get(vk, {}).get("start", 0.0)
-            for vk in video_keys
-        ]
-        has_start_times = any(t != 0.0 for t in camera_start_times)
-        dt.set_media(
-            "video", camera_files, device_labels=device_labels, per_trial=False,
-            start_times=camera_start_times if has_start_times else None,
-        )
-
-        fps_values = [self._video_info.get(vk, {}).get("fps", 0.0) for vk in video_keys]
-        if any(f > 0 for f in fps_values):
-            dt.set_video_fps(fps_values, device_labels=device_labels)
 
     # ------------------------------------------------------------------
     # Video download
@@ -1376,9 +1347,9 @@ class NWBImportDialog(QDialog):
         return re.sub(r'[<>:"/\\|?*\s]+', "_", s).strip("_") or "unknown"
 
     @staticmethod
-    def _default_nc_filename() -> str:
+    def _default_project_dirname() -> str:
         stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        return f"trials_{stamp}.nc"
+        return f"session_{stamp}"
 
     def _default_download_dir(self, source: dict) -> Path:
         lab = getattr(self._nwb, "lab", "") or "unknown_lab"
@@ -1425,9 +1396,11 @@ class NWBImportDialog(QDialog):
     # Misc
     # ------------------------------------------------------------------
 
-    def _populate_io_fields(self, video_folder: str | None):
-        self.app_state.nc_file_path = self._output_path
-        self.io_widget.nc_file_path_edit.setText(self._output_path)
+    def _populate_io_fields(self, nwb_path: str | None = None, video_folder: str | None = None):
+        # Point the app at the NWB file for direct loading via pynapple
+        path = nwb_path or self._output_path
+        self.app_state.nc_file_path = path
+        self.io_widget.nc_file_path_edit.setText(path)
         if video_folder:
             self.app_state.video_folder = video_folder
             self.io_widget.video_folder_edit.setText(video_folder)

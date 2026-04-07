@@ -41,6 +41,7 @@ class ModalityContext:
     has_trial_role: bool = False
     device_labels: list[str] | None = None
     constant_offset: float = 0.0
+    fps: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +180,7 @@ def _build_modality_context(name: str, cfg: ModalityConfig, state: WizardState) 
         has_trial_role=has_trial_role,
         device_labels=_device_labels_for(name, state),
         constant_offset=cfg.constant_offset,
+        fps=cfg.fps,
     )
 
 
@@ -303,6 +305,9 @@ def _get_env() -> jinja2.Environment:
 def generate_alignment_code(state: WizardState) -> str:
     """Generate executable Python code that reproduces the user's alignment setup.
 
+    Uses the NWB-based template that creates an alignment.nwb file
+    as the source of truth for media paths and timing.
+
     Parameters
     ----------
     state
@@ -313,7 +318,7 @@ def generate_alignment_code(state: WizardState) -> str:
     Rendered Python code as a string.
     """
     ctx = _build_template_context(state)
-    template = _get_env().get_template("alignment_code.py.j2")
+    template = _get_env().get_template("wizard_nwb_codegen.j2")
     rendered = template.render(ctx)
     return _clean_blank_lines(rendered)
 

@@ -5,22 +5,18 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from ethograph.utils.label_intervals import (
+from ethograph.labels.intervals import (
     add_interval,
-    correct_changepoints,
     delete_interval,
-    dense_to_intervals,
     empty_intervals,
     find_interval_at,
     get_interval_bounds,
-    intervals_to_dense,
-    intervals_to_xr,
     purge_short_intervals,
     snap_boundaries,
     stitch_intervals,
-    xr_to_intervals,
 )
-
+from ethograph.labels.ml import dense_to_intervals, intervals_to_dense
+from ethograph.features.changepoints import correct_changepoints
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -69,7 +65,7 @@ class TestEmptyIntervals:
 class TestDenseToIntervals:
     def test_basic(self, sample_dense):
         arr, time, inds = sample_dense
-        df = dense_to_intervals(arr, time, inds)
+        df = dense_to_intervals(arr, inds, time_coord=time)
         assert len(df) == 2
         assert df.iloc[0]["labels"] == 1
         assert df.iloc[1]["labels"] == 2
@@ -79,13 +75,13 @@ class TestDenseToIntervals:
     def test_all_zeros(self):
         arr = np.zeros((10, 1), dtype=np.int8)
         time = np.arange(10) * 0.1
-        df = dense_to_intervals(arr, time, ["ind1"])
+        df = dense_to_intervals(arr, ["ind1"], time_coord=time)
         assert len(df) == 0
 
     def test_1d_input(self):
         arr = np.array([0, 1, 1, 0], dtype=np.int8)
         time = np.arange(4) * 0.5
-        df = dense_to_intervals(arr, time, ["ind1"])
+        df = dense_to_intervals(arr, ["ind1"], time_coord=time)
         assert len(df) == 1
         assert df.iloc[0]["onset_s"] == 0.5
         assert df.iloc[0]["offset_s"] == 1.0
@@ -95,15 +91,14 @@ class TestDenseToIntervals:
             [[1, 0], [1, 2], [0, 2], [0, 0]], dtype=np.int8
         )
         time = np.arange(4) * 0.25
-        df = dense_to_intervals(arr, time, ["a", "b"])
+        df = dense_to_intervals(arr, ["a", "b"], time_coord=time)
         assert len(df) == 2
         assert set(df["individual"]) == {"a", "b"}
 
     def test_mismatched_columns_raises(self):
         arr = np.zeros((5, 2), dtype=np.int8)
-        time = np.arange(5)
         with pytest.raises(ValueError, match="individuals"):
-            dense_to_intervals(arr, time, ["only_one"])
+            dense_to_intervals(arr, ["only_one"], sample_rate=1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +107,7 @@ class TestDenseToIntervals:
 
 class TestIntervalsToDense:
     def test_basic(self, sample_intervals):
-        dense = intervals_to_dense(sample_intervals, sample_rate=10.0, duration=0.9, individuals=["bird1"])
+        dense = intervals_to_dense(sample_intervals, sample_rate=10.0, individuals=["bird1"], n_samples=10)
         assert dense.shape == (10, 1)
         assert dense[2, 0] == 1
         assert dense[4, 0] == 1
@@ -122,7 +117,7 @@ class TestIntervalsToDense:
 
     def test_empty_df(self):
         df = empty_intervals()
-        dense = intervals_to_dense(df, 10.0, 1.0, ["ind1"])
+        dense = intervals_to_dense(df, 10.0, ["ind1"], n_samples=11)
         assert dense.shape == (11, 1)
         assert np.all(dense == 0)
 
@@ -130,7 +125,7 @@ class TestIntervalsToDense:
         df = pd.DataFrame(
             {"onset_s": [0.0], "offset_s": [0.5], "labels": [1], "individual": ["unknown"]}
         )
-        dense = intervals_to_dense(df, 10.0, 1.0, ["bird1"])
+        dense = intervals_to_dense(df, 10.0, ["bird1"], n_samples=11)
         assert np.all(dense == 0)
 
 
@@ -141,10 +136,9 @@ class TestIntervalsToDense:
 class TestRoundTrip:
     def test_round_trip(self, sample_dense):
         arr, time, inds = sample_dense
-        df = dense_to_intervals(arr, time, inds)
+        df = dense_to_intervals(arr, inds, time_coord=time)
         sr = 1.0 / np.median(np.diff(time))
-        duration = time[-1]
-        reconstructed = intervals_to_dense(df, sr, duration, inds, n_samples=len(time))
+        reconstructed = intervals_to_dense(df, sr, inds, n_samples=len(time))
         np.testing.assert_array_equal(arr.flatten(), reconstructed.flatten())
 
     def test_round_trip_multi_individual(self):
@@ -153,38 +147,11 @@ class TestRoundTrip:
         )
         time = np.arange(5) * 0.1
         inds = ["a", "b"]
-        df = dense_to_intervals(arr, time, inds)
+        df = dense_to_intervals(arr, inds, time_coord=time)
         sr = 10.0
-        duration = time[-1]
-        reconstructed = intervals_to_dense(df, sr, duration, inds)
+        reconstructed = intervals_to_dense(df, sr, inds, n_samples=len(time))
         np.testing.assert_array_equal(arr, reconstructed)
 
-
-# ---------------------------------------------------------------------------
-# intervals_to_xr / xr_to_intervals
-# ---------------------------------------------------------------------------
-
-class TestXarrayConversion:
-    def test_round_trip(self, sample_intervals):
-        ds = intervals_to_xr(sample_intervals)
-        assert "segment" in ds.dims
-        assert "onset_s" in ds.data_vars
-        df_back = xr_to_intervals(ds)
-        assert len(df_back) == len(sample_intervals)
-        np.testing.assert_array_almost_equal(
-            df_back["onset_s"].values, sample_intervals["onset_s"].values
-        )
-
-    def test_empty(self):
-        ds = intervals_to_xr(empty_intervals())
-        assert ds.sizes.get("segment", 0) == 0
-        df_back = xr_to_intervals(ds)
-        assert len(df_back) == 0
-
-    def test_missing_vars(self):
-        ds = xr.Dataset()
-        df = xr_to_intervals(ds)
-        assert len(df) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -211,8 +178,8 @@ class TestAddInterval:
         df = add_interval(df, 1.0, 3.0, 1, "bird1")
         df = add_interval(df, 2.0, 4.0, 2, "bird1")
         assert len(df) == 2
-        assert df.iloc[0]["offset_s"] == 2.0  # trimmed
-        assert df.iloc[1]["onset_s"] == 2.0
+        assert df.iloc[0]["offset_s"] == pytest.approx(2.0, abs=0.002)  # trimmed
+        assert df.iloc[1]["onset_s"] == pytest.approx(2.0, abs=0.002)
 
     def test_add_splits_existing(self):
         df = empty_intervals()

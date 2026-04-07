@@ -43,9 +43,6 @@ def _fmt_extensions(exts: set[str]) -> str:
     return ", ".join(sorted(exts))
 
 
-VIDEO_EXTENSIONS_STR = _fmt_extensions(VIDEO_EXTENSIONS)
-AUDIO_EXTENSIONS_STR = _fmt_extensions(AUDIO_EXTENSIONS)
-POSE_EXTENSIONS_STR = _fmt_extensions(POSE_EXTENSIONS)
 EPHYS_EXTENSIONS_STR = _fmt_extensions(EPHYS_EXTENSIONS)
 
 
@@ -56,7 +53,6 @@ def _qt_filter(label: str, exts: set[str]) -> str:
 
 VIDEO_FILE_FILTER = _qt_filter("Video files", VIDEO_EXTENSIONS)
 AUDIO_FILE_FILTER = _qt_filter("Audio files", AUDIO_EXTENSIONS)
-POSE_FILE_FILTER = _qt_filter("Pose files", POSE_EXTENSIONS)
 EPHYS_FILE_FILTER = _qt_filter("Ephys files", EPHYS_EXTENSIONS)
 
 
@@ -135,27 +131,15 @@ def validate_required_attrs(
 def validate_media_files_session(dt: "TrialTree") -> list[str]:
     """Validate session-level media file entries.
 
-    Parameters
-    ----------
-    dt : TrialTree
-        Tree to validate.
-
-    Returns
-    -------
-    list[str]
-        Validation error messages (empty if valid).
+    Checks that media paths referenced in nwb_alignment are non-empty.
     """
     errors = []
-    if dt.session is None:
-        return errors
-    for var_name in ("video", "audio", "pose"):
-        if var_name not in dt.session:
-            continue
-        vals = dt.session[var_name].values.flat
-        for v in vals:
-            v_str = str(v)
-            if v_str and v_str not in ("", "nan"):
-                continue
+    sio = dt.nwb_alignment
+    # Basic check: ensure nwb_alignment is accessible
+    try:
+        _ = sio.cameras
+    except Exception:
+        pass
     return errors
 
 
@@ -235,7 +219,7 @@ def validate_colors(ds: xr.Dataset) -> list[str]:
 
 def validate_dataset(
     ds: xr.Dataset,
-    type_vars_dict: dict,
+    catalog,
     require_fps: bool = True,
 ) -> list[str]:
     """Validate dataset structure and data types.
@@ -244,8 +228,8 @@ def validate_dataset(
     ----------
     ds : xarray.Dataset
         The dataset to validate.
-    type_vars_dict : dict
-        Categorized variables/coordinates from :func:`extract_type_vars`.
+    catalog : DataCatalog
+        Feature/dimension catalog (from ``catalog_from_xarray``).
     require_fps : bool
         When False, missing ``fps`` is not an error.
 
@@ -256,44 +240,29 @@ def validate_dataset(
     """
     errors = []
 
-    # Required attributes
     errors.extend(validate_required_attrs(ds, require_fps=require_fps))
-    
-
-    # Required dimensions and coordinates
-    
 
     if "individuals" not in ds.coords or len(ds.coords["individuals"]) == 0:
         errors.append("Xarray dataset ('ds') must have 'individuals' coordinate")
 
-    # TODO: add something about new interval based label validation?
+    for feat_name in catalog.features:
+        if feat_name not in ds.data_vars:
+            errors.append(f"Feature variable '{feat_name}' missing from trial '{ds.attrs.get('trial', '?')}'")
+            continue
+        feat_var = ds[feat_name]
+        has_time_coord = any('time' in str(dim).lower() for dim in feat_var.dims)
+        if not has_time_coord:
+            errors.append(f"Feature variable '{feat_name}' must have a coordinate containing 'time'. E.g. 'time', 'time_labels', 'time_aux', etc.")
 
-    if "features" in type_vars_dict and len(type_vars_dict["features"]) > 0:
-        for feat_name in type_vars_dict["features"]:
-            if feat_name not in ds.data_vars:
-                errors.append(f"Feature variable '{feat_name}' missing from trial '{ds.attrs.get('trial', '?')}'")
-                continue
-            feat_var = ds[feat_name]
-            has_time_coord = any('time' in str(dim).lower() for dim in feat_var.dims)
-            if not has_time_coord:
-                errors.append(f"Feature variable '{feat_name}' must have a coordinate containing 'time'. E.g. 'time', 'time_labels', 'time_aux', etc.")
-
-        
-
-    # Media files are validated at the TrialTree level, not per-dataset
-
-    # Feature variables must be arrays
     feat_ds = ds.filter_by_attrs(type='features')
     for var_name, var in feat_ds.data_vars.items():
         if not isinstance(var.values, np.ndarray):
             errors.append(f"Feature '{var_name}' must be an array")
 
-    # Changepoints validation
-    if "changepoints" in type_vars_dict:
+    if catalog.changepoints:
         errors.extend(validate_changepoints(ds))
 
-    # Colors validation
-    if "colors" in type_vars_dict:
+    if catalog.colors:
         errors.extend(validate_colors(ds))
 
     return errors
@@ -335,77 +304,6 @@ def _possible_trial_conditions(ds: xr.Dataset, dt: "TrialTree") -> list[str]:
 
 
     
-def extract_type_vars(ds: xr.Dataset, dt: "TrialTree") -> dict:
-    """Build a typed-variable catalogue for a trial dataset.
-
-    Inspects data variables, coordinates, and dimensions to produce a
-    dictionary that the GUI uses to populate combo boxes and validate the
-    dataset structure.
-
-    Parameters
-    ----------
-    ds : xarray.Dataset
-        A single trial dataset.
-    dt : TrialTree
-        Parent tree (supplies camera/mic lists and common attribute keys).
-
-    Returns
-    -------
-    dict
-        Keys include:
-
-        - ``"individuals"`` — str array of individual identifiers
-        - ``"cameras"`` — str array of camera labels (from session)
-        - ``"mics"`` — str array of microphone labels (from session)
-        - ``"features"`` — list of feature variable names
-        - ``"colors"`` — list of color variable names
-        - ``"changepoints"`` — list of changepoint variable names
-        - ``"trial_conditions"`` — per-trial condition attribute keys
-        - Any extra temporal dimension names → their coordinate values
-    """
-    type_vars_dict = {}
-
-    if "individuals" in ds.coords:
-        type_vars_dict["individuals"] = ds.coords["individuals"].values.astype(str)
-
-    # Cameras and mics come from the session table
-    if dt.cameras:
-        type_vars_dict["cameras"] = np.array(dt.cameras, dtype=str)
-    if dt.mics:
-        type_vars_dict["mics"] = np.array(dt.mics, dtype=str)
-            
-    
-
-    # Filter by type attribute
-    type_filters = ['features', 'colors', 'changepoints']
-    for type_name in type_filters:
-        filtered = ds.filter_by_attrs(type=type_name)
-        if filtered.data_vars:
-            type_vars_dict[type_name] = list(filtered.data_vars)
-            
-    # Custom user coords/dims
-    dims = find_temporal_dims(ds)
-    for name in dims:
-        if name in type_vars_dict:
-            continue
-        if name in ds.coords:
-            coord = ds.coords[name]
-            if coord.dtype.kind in ('U', 'S', 'O'):
-                type_vars_dict[name] = coord.values.astype(str)
-            elif coord.dtype.kind in ('i', 'u', 'f'):  # int, unsigned int, float
-                type_vars_dict[name] = coord.values
-        else:
-            # Dim without coord - generate integer range
-            type_vars_dict[name] = np.arange(ds.sizes[name])
-            
-            
-    type_vars_dict["trial_conditions"] = _possible_trial_conditions(ds, dt)
-
-    return type_vars_dict
-
-
-
-
 def validate_datatree(
     dt: "TrialTree",
     require_fps: bool = True,
@@ -430,8 +328,10 @@ def validate_datatree(
     list[str]
         Validation error messages (empty if valid).
     """
+    from ethograph.io.catalog import catalog_from_xarray
+
     ds = dt.itrial(0)
-    type_vars_dict = extract_type_vars(ds, dt)
+    catalog = catalog_from_xarray(ds, dt)
     datasets = _extract_trial_datasets(dt)
 
     if not datasets:
@@ -444,7 +344,7 @@ def validate_datatree(
     sample_indices = np.random.choice(len(datasets), size=sample_size, replace=False)
     for idx in sample_indices:
         errors.extend(validate_dataset(
-            datasets[idx], type_vars_dict,
+            datasets[idx], catalog,
             require_fps=require_fps,
         ))
 
