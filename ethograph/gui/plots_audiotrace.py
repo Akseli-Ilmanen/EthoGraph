@@ -1,6 +1,6 @@
 """Audio waveform trace plot with smart downsampling.
 
-Uses the unified ``WindowedBuffer`` + ``FileSource`` from ``modality.py``
+Uses the unified ``WindowedBuffer`` + ``FileSource`` from ``plot_sources``
 for data caching.  Rendering uses audian-style min/max envelope
 downsampling (pixel-accurate).
 """
@@ -13,7 +13,7 @@ import numpy as np
 import pyqtgraph as pg
 
 from .app_constants import AUDIOTRACE_DEBOUNCE_MS, DEFAULT_BUFFER_MULTIPLIER_AUDIO
-from .modality import FileSource, ModalitySource, SourceData, WindowedBuffer
+from ..io.plot_sources import FileSource, PlotSource, SampleSlice, WindowedBuffer
 from .plots_base import BasePlot, ThrottleDebounce
 from .plots_spectrogram import SharedAudioCache
 
@@ -21,7 +21,7 @@ from .plots_spectrogram import SharedAudioCache
 class AudioTracePlot(BasePlot):
     """Audio waveform plot with smart min/max downsampling per pixel.
 
-    Accepts a ``ModalitySource`` via :meth:`set_source` for data access.
+    Accepts a ``PlotSource`` via :meth:`set_source` for data access.
     Falls back to constructing one from ``app_state.audio_path`` if no
     source is explicitly set.
     """
@@ -54,10 +54,10 @@ class AudioTracePlot(BasePlot):
         self.vb.sigRangeChanged.connect(self._on_view_range_changed)
 
     @property
-    def source(self) -> ModalitySource | None:
+    def source(self) -> PlotSource | None:
         return self._buffer.source
 
-    def set_source(self, source: ModalitySource | None):
+    def set_source(self, source: PlotSource | None):
         self._buffer.set_source(source)
 
     def update_plot_content(self, t0: Optional[float] = None, t1: Optional[float] = None):
@@ -93,7 +93,7 @@ class AudioTracePlot(BasePlot):
             else:
                 self.trace_item.setSymbol(None)
 
-    def _resolve_source(self) -> ModalitySource | None:
+    def _resolve_source(self) -> PlotSource | None:
         if self._buffer.source is not None:
             return self._buffer.source
         audio_path, _ = self.app_state.get_audio_source()
@@ -143,17 +143,21 @@ class AudioTracePlot(BasePlot):
             self.plot_item.setYRange(ymin, ymax)
 
     def _on_view_range_changed(self):
+        if not self.isVisible():
+            return
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
         self._td.trigger()
 
     def _do_range_update(self):
+        if not self.isVisible():
+            return
         t0, t1 = self.get_current_xlim()
         self.update_plot_content(t0, t1)
 
 
 def _downsample_minmax(
-    data: SourceData,
+    data: SampleSlice,
     t0: float,
     t1: float,
     pixel_width: int,

@@ -204,9 +204,6 @@ def add_changepoints_to_ds(ds, target_feature, changepoint_name, changepoint_fun
     ``int8`` binary array (1 = changepoint, 0 = not) stored as
     ``ds["{target_feature}_{changepoint_name}"]``.
 
-    For a complete example of building a dataset with changepoints, see
-    ``create_dataset`` in `Moll et al. 2025
-    <https://doi.org/10.1101/2025.01.23.634485>`_.
 
     Parameters
     ----------
@@ -343,8 +340,4 @@ def add_angle_rgb_to_ds(ds: xr.Dataset, smoothing_params: dict) -> xr.Dataset:
     return ds
 
 
-
-
-
-# ------------- Helpers ------------------------
 

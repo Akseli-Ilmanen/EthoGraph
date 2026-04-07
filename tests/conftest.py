@@ -2,22 +2,56 @@ import pytest
 import numpy as np
 from pathlib import Path
 import ethograph as eto
+from ethograph.gui.dialog_select_template import _DOWNLOAD_BASE
+from ethograph.utils.download import (
+    EXAMPLE_DATASETS,
+    download_assets,
+    ensure_default_configs,
+    is_downloaded,
+    write_example_configs,
+)
 
-TEST_DATA_DIR = eto.get_project_root() / "data" / "examples"
-TEST_NC_PATH = TEST_DATA_DIR / "copExpBP08_trim.nc"
 
-BIRDPARK_DIR = eto.get_project_root() / "data" / "birdpark" / "copExpBP08"
-BIRDPARK_NC = BIRDPARK_DIR / "BP_2021-05-25_08-12-51_655154_0380000.nc"
+def pytest_addoption(parser):
+    parser.addoption("--show", action="store_true", default=False, help="Show napari viewer for 15s after each test")
+
+BIRDPARK_DIR = _DOWNLOAD_BASE / "BirdPark"
+BIRDPARK_NC = BIRDPARK_DIR / "copExpBP08_trim.nc"
+MOLL_NC = _DOWNLOAD_BASE / "Moll2025" / "Trial_data.nc"
+
+
+TEST_DATA_DIR = BIRDPARK_DIR
+TEST_NC_PATH = MOLL_NC
+
+
+def _ensure_dataset(key: str, folder: Path):
+    """Download example dataset if not already present."""
+    info = EXAMPLE_DATASETS[key]
+    if not is_downloaded(key, folder):
+        folder.mkdir(parents=True, exist_ok=True)
+        download_assets(
+            release_tag=info["release_tag"],
+            assets=info["assets_gui"],
+            dest=folder,
+        )
+        ensure_default_configs()
+        write_example_configs(key, folder)
+
+
+def _require_birdpark():
+    _ensure_dataset("birdpark", BIRDPARK_DIR)
+    assert BIRDPARK_NC.exists(), f"BirdPark data not found after download: {BIRDPARK_NC}"
 
 
 @pytest.fixture
 def test_nc_path():
-    assert TEST_NC_PATH.exists(), f"Test data not found: {TEST_NC_PATH}"
+    _require_birdpark()
     return str(TEST_NC_PATH)
 
 
 @pytest.fixture
 def test_data_dir():
+    _require_birdpark()
     return str(TEST_DATA_DIR)
 
 
@@ -32,9 +66,15 @@ def first_trial_ds(trial_tree):
 
 
 @pytest.fixture
-def type_vars_dict(first_trial_ds, trial_tree):
-    from ethograph.utils.validation import extract_type_vars
-    return extract_type_vars(first_trial_ds, trial_tree)
+def catalog(first_trial_ds, trial_tree):
+    from ethograph.io.catalog import catalog_from_xarray
+    return catalog_from_xarray(first_trial_ds, trial_tree)
+
+
+@pytest.fixture
+def type_vars_dict(catalog):
+    """Backwards-compat fixture — prefer ``catalog`` in new tests."""
+    return catalog.to_type_vars_dict()
 
 
 @pytest.fixture
@@ -51,19 +91,40 @@ def app_state(qtbot, tmp_path):
     state.stop_auto_save()
 
 
+@pytest.fixture(autouse=True)
+def _suppress_dialogs(monkeypatch):
+    """Suppress all GUI popups during tests via the SUPPRESS flag.
+
+    Also patches QMessageBox statics as a safety net for any direct callers.
+    """
+    import ethograph.gui.notify as _notify_mod
+
+    monkeypatch.setattr(_notify_mod, "SUPPRESS", True)
+
+    from qtpy.QtWidgets import QMessageBox
+
+    _noop = lambda *a, **kw: QMessageBox.Ok
+    monkeypatch.setattr(QMessageBox, "critical", _noop)
+    monkeypatch.setattr(QMessageBox, "warning", _noop)
+    monkeypatch.setattr(QMessageBox, "information", _noop)
+
+
 @pytest.fixture
-def gui(qtbot, tmp_path, monkeypatch):
+def gui(request, qtbot, tmp_path, monkeypatch):
     import ethograph.utils.paths as paths_module
 
-    yaml_path = tmp_path / "test_gui_settings.yaml"
+    show = request.config.getoption("--show")
+
+    test_config_dir = tmp_path / ".ethograph"
+    test_config_dir.mkdir(exist_ok=True)
     monkeypatch.setattr(
         paths_module,
-        "gui_default_settings_path",
-        lambda: yaml_path,
+        "default_config_dir",
+        lambda data_dir=None: test_config_dir,
     )
 
     import napari
-    viewer = napari.Viewer(show=False)
+    viewer = napari.Viewer(show=show)
     qtbot.addWidget(viewer.window._qt_window)
 
     from ethograph.gui.widgets_meta import MetaWidget
@@ -71,12 +132,16 @@ def gui(qtbot, tmp_path, monkeypatch):
     meta._check_unsaved_changes = lambda event: True
 
     yield viewer, meta
+    if show:
+        qtbot.wait(15_000)
     viewer.close()
 
 
 @pytest.fixture
 def loaded_gui(gui, qtbot):
     from qtpy.QtWidgets import QApplication
+
+    _require_birdpark()
 
     viewer, meta = gui
     meta.io_widget.nc_file_path_edit.setText(str(TEST_NC_PATH))
@@ -94,9 +159,10 @@ def no_video_gui(gui, qtbot):
     """Load birdpark dataset with audio folder only (no video) — triggers 3-panel mode."""
     from qtpy.QtWidgets import QApplication
 
+    _require_birdpark()
+
     viewer, meta = gui
     nc_path = str(BIRDPARK_NC)
-    assert Path(nc_path).exists(), f"Birdpark data not found: {nc_path}"
 
     meta.io_widget.nc_file_path_edit.setText(nc_path)
     meta.app_state.nc_file_path = nc_path
@@ -115,6 +181,8 @@ def no_video_gui(gui, qtbot):
 @pytest.fixture
 def loaded_gui_downsampled(gui, qtbot):
     from qtpy.QtWidgets import QApplication
+
+    _require_birdpark()
 
     viewer, meta = gui
     meta.io_widget.nc_file_path_edit.setText(str(TEST_NC_PATH))

@@ -25,7 +25,7 @@ Each save writes the canonical `data_labels.tsv` alongside the `.nc`, plus a tim
 
 ## Importing labels
 
-In **I/O controls**, the labels format combo offers:
+In the **Import labels** tab, the labels format combo offers:
 
 1. **`.tsv`** -- Load a labels TSV file directly. Use this to load a backup, a colleague's labels, or a manually edited version.
 2. **Crowsetta formats** (aud-seq, simple-seq, textgrid, ...) -- Import from [crowsetta](https://crowsetta.readthedocs.io/)-supported annotation tools (Audacity, Praat, Raven, etc.).
@@ -62,8 +62,8 @@ These are recomputed from the core columns + the `.nc` data on every save. If yo
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `session` | str | Session identifier from `ds.attrs["session"]` |
-| `session_trial` | str | `"{session}_{trial}"` for grouping across sessions |
+| `session` | str | Session identifier from `ds.attrs["session"]`. Only present when `session` is set in the dataset attributes. |
+| `session_trial` | str | `"{session}_{trial}"` for grouping across sessions. Only present when `session` is set. |
 | `duration` | float | `offset_s - onset_s` in seconds |
 | `sequence_idx` | int | Zero-based position of this segment in the trial's label sequence |
 | `sequence` | str | Dash-joined label IDs for the trial (e.g. `"1-3-2-1"`) |

@@ -1,13 +1,17 @@
 """Custom lab-internal legacy code"""
 
-import pandas as pd
-from ethograph import TrialTree
+import json
+import os
 from pathlib import Path
+
 import numpy as np
+import pandas as pd
+import pynwb
 import xarray as xr
+
+from ethograph import TrialTree
 from ethograph.labels.intervals import empty_intervals
 from ethograph.labels.tsv_store import _empty_all_labels
-
 
 def _xr_to_intervals(ds: xr.Dataset) -> pd.DataFrame:
     """Convert an xarray Dataset back to an intervals DataFrame (legacy)."""
@@ -135,19 +139,16 @@ def trees_to_df(
                 }
                 t_start = None
                 t_stop = None
-                if hasattr(dt, 'session') and dt.session is not None and "start_time" in dt.session:
-                    try:
-                        t_start = float(dt.session.start_time.sel(trial=trial_id))
-                    except (KeyError, ValueError):
-                        pass
-                    if "stop_time" in dt.session:
-                        try:
-                            t_stop = float(dt.session.stop_time.sel(trial=trial_id))
-                        except (KeyError, ValueError):
-                            pass
-                    
-                    
-                elif 'pulse_onsets' in ds:
+                try:
+                    t_start = dt.nwb_alignment.start_time(trial_id)
+                except (AttributeError, KeyError, ValueError):
+                    t_start = None
+                try:
+                    t_stop = dt.nwb_alignment.stop_time(trial_id)
+                except (AttributeError, KeyError, ValueError):
+                    t_stop = None
+
+                if t_start is None and 'pulse_onsets' in ds:
                     t_start = float(ds.pulse_onsets.values[0]) / 30_000  # Legacy crow lab
 
                 if t_start is not None:
@@ -274,3 +275,67 @@ def migrate_label_dt_to_tsv(label_dt) -> pd.DataFrame:
 def init_empty_labels(trials: list) -> pd.DataFrame:
     """Create empty labels DataFrame."""
     return _empty_all_labels()
+
+
+
+def get_session_path(user: str, datatype: str, bird: str, session: str, data_folder_type: str):
+    """
+    Args:
+        user (str): e.g. 'Akseli_right' or 'Alice_home'.
+        datatype (str): Type of data (e.g., 'rawdata' or 'derivatives').
+        bird (str): Name of the bird (e.g., 'Ivy', 'Poppy', or 'Freddy').
+        session (str): Date of the session in 'YYYYMMDD_XX' format.
+        data_folder_type (str): 'rigid_local', 'working_local', or 'working_backup'
+
+    Returns:
+        subject_folder (str): Path to the subject folder
+        session_path (str): Path to the rawdata/derivatives session folder
+        data_folder (str): Path to parent data folder
+    """
+    breakpoint()
+    # Desktop path (Windows default, swap for Linux/mac if needed)
+    desktop_path = os.path.join(os.environ.get("USERPROFILE", os.environ.get("HOME")), "Desktop")
+    
+    # Load user_paths.json
+    with open(os.path.join(desktop_path, "user_paths.json"), "r") as f:
+        paths = json.load(f)
+        
+
+    # Select the data folder
+    if data_folder_type == "rigid_local":
+        data_folder = paths[user]["rigid_local_data_folder"]
+    elif data_folder_type == "working_local":
+        data_folder = paths[user]["working_local_data_folder"]
+    elif data_folder_type == "working_backup":
+        data_folder = paths[user]["working_backup_data_folder"]
+    else:
+        raise ValueError("Unknown data folder type.")
+
+    # Bird mapping
+    if bird == "Ivy":
+        sub_name = "sub-01_id-Ivy"
+    elif bird == "Poppy":
+        sub_name = "sub-02_id-Poppy"
+    elif bird == "Freddy":
+        sub_name = "sub-03_id-Freddy"
+    else:
+        raise ValueError("Unknown bird type.")
+
+    # Subject folder
+    subject_folder = os.path.join(data_folder, datatype, sub_name)
+    print(f"Subject folder: {subject_folder}")
+
+    # Find session folder
+    matches = [d for d in os.listdir(subject_folder) if session in d]
+
+    if len(matches) != 1:
+        raise RuntimeError(
+            "Likely causes:\n1) Multiple or no folders found containing the session date."
+            "\n2) Paths wrong in Desktop/user_paths.json."
+        )
+
+    session_path = os.path.join(subject_folder, matches[0])
+
+    return subject_folder, session_path, data_folder
+
+

@@ -12,7 +12,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ethograph.utils.paths import gui_default_settings_path
+from ethograph.utils.paths import default_config_dir
 
 from .app_constants import (
     DEFAULT_LAYOUT_MARGIN,
@@ -28,11 +28,12 @@ from .shortcuts import bind_global_shortcuts
 from .plots_container import UnifiedPanelContainer
 from .widgets_changepoints import ChangepointsWidget
 from .widgets_data import DataPanel, DataWidget
+from .widgets_help import HelpWidget
 from .widgets_io import IOWidget
 from .widgets_labels import LabelsWidget
 from .widgets_navigation import NavigationWidget
+from .widget_trials import TrialsWidget
 from .widgets_plot_settings import PlotSettingsWidget
-from .widgets_transform import TransformWidget
 from .widgets_ephys import EphysWidget
 
 logger = logging.getLogger(__name__)
@@ -51,10 +52,10 @@ class MetaWidget(CollapsibleWidgetContainer):
         self._set_compact_font()
 
         # Create centralized app_state with YAML persistence
-        yaml_path = gui_default_settings_path()
-        logger.info("Settings file: %s", yaml_path)
+        global_settings = default_config_dir() / "gui_settings.yaml"
+        logger.info("Settings file: %s", global_settings)
 
-        self.app_state = ObservableAppState(yaml_path=str(yaml_path))
+        self.app_state = ObservableAppState(yaml_path=str(global_settings))
 
         # Try to load previous settings
         self.app_state.load_from_yaml()
@@ -62,7 +63,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         # Initialize all widgets with app_state
         self._create_widgets()
 
-        self.collapsible_widgets[0].expand()
+        self.collapsible_widgets[1].expand()  # Expand I/O by default
 
         self._connect_collapsible_layout_refresh()
 
@@ -115,11 +116,12 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.layout_mgr = LayoutManager(qt_window, self.plot_container)
 
         # Create all widgets with app_state
+        self.help_widget = HelpWidget(self.app_state)
         self.plot_settings_widget = PlotSettingsWidget(self.viewer, self.app_state)
-        self.transform_widget = TransformWidget(self.viewer, self.app_state)
         self.changepoints_widget = ChangepointsWidget(self.viewer, self.app_state)
         self.labels_widget = LabelsWidget(self.viewer, self.app_state)
         self.navigation_widget = NavigationWidget(self.viewer, self.app_state)
+        self.trials_widget = TrialsWidget(self.app_state)
         self.ephys_widget = EphysWidget(self.viewer, self.app_state)
 
         # Create I/O widget first, then pass it to data widget
@@ -131,6 +133,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         # Now set the data_widget reference in io_widget
         self.io_widget.data_widget = self.data_widget
         self.io_widget.changepoints_widget = self.changepoints_widget
+        self.io_widget.meta_widget = self
 
         # Set up cross-references between widgets
         self.labels_widget.set_plot_container(self.plot_container)
@@ -141,12 +144,13 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.labels_widget.io_widget = self.io_widget
         self.plot_settings_widget.set_plot_container(self.plot_container)
         self.plot_settings_widget.set_meta_widget(self)
-        self.transform_widget.set_plot_container(self.plot_container)
-        self.transform_widget.set_meta_widget(self)
         self.changepoints_widget.set_plot_container(self.plot_container)
         self.changepoints_widget.set_meta_widget(self)
         self.changepoints_widget.data_widget = self.data_widget
         self.changepoints_widget.set_motif_mappings(self.labels_widget._mappings)
+        self.navigation_widget.set_mappings(self.labels_widget._mappings)
+        self.navigation_widget._labels_widget = self.labels_widget
+        self.navigation_widget._data_widget = self.data_widget
         self.navigation_widget.set_plot_container(self.plot_container)
         self.ephys_widget.set_plot_container(self.plot_container)
         self.ephys_widget.set_meta_widget(self)
@@ -162,6 +166,9 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.app_state.trial_changed.connect(self.data_widget.on_trial_changed)
         self.app_state.trial_changed.connect(self.changepoints_widget._update_cp_status)
         self.app_state.trial_changed.connect(self.update_labels_widget_title)
+        self.app_state.trial_changed.connect(self.io_widget._update_human_verified_status)
+        self.app_state.trial_changed.connect(self.io_widget._update_correct_offsets_status)
+        self.app_state.trial_changed.connect(self.io_widget._update_purge_small_labels_status)
         self.changepoints_widget.changepoint_correction_checkbox.stateChanged.connect(
             self.update_changepoints_widget_title
         )
@@ -169,71 +176,89 @@ class MetaWidget(CollapsibleWidgetContainer):
         # The one widget to rule them all (loading data, updating plots, managing sync)
         self.data_widget.set_references(
             self.plot_container, self.labels_widget, self.plot_settings_widget,
-            self.navigation_widget, self.transform_widget, self.changepoints_widget,
+            self.navigation_widget, self.changepoints_widget,
             ephys_widget=self.ephys_widget,
             layout_mgr=self.layout_mgr,
+            trials_widget=self.trials_widget,
         )
 
+        self.plot_settings_widget.reset_layout_button.clicked.connect(self._on_reset_layout)
+
         for widget in [
+            self.help_widget,
             self.io_widget,
             self.data_panel,
             self.labels_widget,
             self.changepoints_widget,
             self.ephys_widget,
             self.plot_settings_widget,
-            self.transform_widget,
             self.navigation_widget,
+            self.trials_widget,
         ]:
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         # Add widgets to collapsible container
+        # Index 0: Help
+        self.add_widget(
+            self.help_widget,
+            collapsible=True,
+            widget_title="Help and Tutorials",
+        )
+
+        # Index 1: I/O
         self.add_widget(
             self.io_widget,
             collapsible=True,
             widget_title="I/O",
         )
 
+        # Index 2: Data
         self.add_widget(
             self.data_panel,
             collapsible=True,
             widget_title="Data",
         )
 
-
+        # Index 3: Phy extension
         self.add_widget(
             self.ephys_widget,
             collapsible=True,
             widget_title="Phy extension",
         )
 
+        # Index 4: Labelling
         self.add_widget(
             self.labels_widget,
             collapsible=True,
             widget_title="Labelling",
         )
 
+        # Index 5: Changepoints
         self.add_widget(
             self.changepoints_widget,
             collapsible=True,
             widget_title="Changepoints (CPs)",
         )
-        
-        self.add_widget(
-            self.transform_widget,
-            collapsible=True,
-            widget_title="Energy envelopes",
-        )
-        
+
+        # Index 6: Plot settings
         self.add_widget(
             self.plot_settings_widget,
             collapsible=True,
             widget_title="Plot settings",
         )
 
+        # Trials metadata + filtering
+        self.add_widget(
+            self.trials_widget,
+            collapsible=True,
+            widget_title="Trials",
+        )
+
+        # Navigation
         self.add_widget(
             self.navigation_widget,
             collapsible=True,
-            widget_title="Navigation / Help",
+            widget_title="Navigation",
         )
 
 
@@ -318,9 +343,9 @@ class MetaWidget(CollapsibleWidgetContainer):
 
     def update_labels_widget_title(self):
         """Update the Label controls title with verification status emoji."""
-        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 3:
-            # Labels widget is at index 4 (0: I/O, 1: Data, 2: Ephys, 3: Labelling)
-            labels_collapsible = self.collapsible_widgets[3]
+        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 4:
+            # Labels widget is at index 4 (0: Help, 1: I/O, 2: Data, 3: Ephys, 4: Labelling)
+            labels_collapsible = self.collapsible_widgets[4]
 
             # Get verification status
             verification_emoji = "❌"  # Default to not verified
@@ -342,9 +367,9 @@ class MetaWidget(CollapsibleWidgetContainer):
 
     def update_changepoints_widget_title(self):
         """Update the Changepoints title with correction mode indicator."""
-        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 4:
-            # Changepoints widget is at index 5 (0: I/O, 1: Data, 2: Ephys,  3: Labelling, 4: Changepoints)
-            cp_collapsible = self.collapsible_widgets[4]
+        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 5:
+            # Changepoints widget is at index 5 (0: Help, 1: I/O, 2: Data, 3: Ephys, 4: Labelling, 5: Changepoints)
+            cp_collapsible = self.collapsible_widgets[5]
 
             correction_enabled = self.changepoints_widget.changepoint_correction_checkbox.isChecked()
             indicator = "🎯" if correction_enabled else "⭕"
@@ -461,27 +486,39 @@ class MetaWidget(CollapsibleWidgetContainer):
             self.plot_container.set_neo_visible(bool(neo_cb and neo_cb.isChecked()))
 
         # Phy-Viewer: run loader setup if panel should be shown.
-        if self.app_state.has_kilosort and self.app_state.ephys_visible:
+        if self.app_state.has_neurons and self.app_state.ephys_visible:
             self.data_widget._configure_ephys_trace_plot()
 
         self.layout_mgr.register_docks()
 
-        if not self.app_state.video_viewer_visible:
+        if not self.app_state.video_viewer_visible and not self.app_state.has_pose:
             self.layout_mgr.set_video_viewer_visible(False)
 
-        if self.app_state.has_video:
-            slot1_text = getattr(self.app_state, 'space_plot_type', 'Layers')
-            show_layers = slot1_text == "Layers"
+        slot1_text = getattr(self.app_state, 'space_plot_type', 'Layers')
+        show_layers = slot1_text == "Layers"
 
-            if show_layers:
+        if show_layers:
+            if self.app_state.has_video:
                 self.layout_mgr.show_layer_docks()
                 self.layout_mgr.cap_layer_width()
-            else:
+            elif self.app_state.has_pose:
+                # Pose without video: hide layer docks but keep canvas visible for points
                 self.layout_mgr.hide_layer_docks()
+            else:
+                self.layout_mgr.configure_no_video(self.navigation_widget)
+        else:
+            self.layout_mgr.hide_layer_docks()
+            if not self.app_state.has_video and not self.app_state.has_pose:
+                self.layout_mgr.set_video_viewer_visible(False)
+            self.data_widget.update_space_plot()
 
+        if self.app_state.has_video:
             self.layout_mgr.set_vertical_ratio()
 
-        if not self.app_state.has_video:
-            self.layout_mgr.configure_no_video(self.navigation_widget)
-
-
+    def _on_reset_layout(self):
+        space_type = getattr(self.app_state, 'space_plot_type', 'Layers')
+        self.layout_mgr.reset_layout(
+            show_layers=space_type == "Layers",
+            show_space=space_type == "Space Plot",
+            has_video=self.app_state.has_video or self.app_state.has_pose,
+        )

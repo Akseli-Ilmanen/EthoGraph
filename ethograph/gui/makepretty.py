@@ -9,6 +9,8 @@ from .app_constants import (
     LAYOUT_RELEASE_DELAY_MS,
     MAX_WIDGET_SIZE,
     NO_VIDEO_PANEL_WIDTH_RATIO,
+    PLOT_CONTAINER_MIN_HEIGHT,
+    SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
     SIDEBAR_MIN_WIDTH_PX,
     VERTICAL_SPLIT_RATIO,
 )
@@ -156,10 +158,12 @@ class LayoutManager:
         self._plot_dock: QDockWidget | None = None
         self._layer_docks: list[QDockWidget] = []
         self._sidebar_dock: QDockWidget | None = None
+        self._space_dock: QDockWidget | None = None
 
     def register_docks(self) -> None:
         self._plot_dock = None
         self._layer_docks = []
+        self._space_dock = None
         for dock in self._qt_window.findChildren(QDockWidget):
             if dock.widget() is self._plot_container:
                 self._plot_dock = dock
@@ -167,6 +171,8 @@ class LayoutManager:
                 title = (dock.windowTitle() or "").lower()
                 if "layer" in title:
                     self._layer_docks.append(dock)
+                elif "space" in title:
+                    self._space_dock = dock
 
     @property
     def plot_dock(self) -> QDockWidget | None:
@@ -190,16 +196,6 @@ class LayoutManager:
             self._qt_window.resizeDocks([self._plot_dock], [plot_h], Qt.Vertical)
 
         QTimer.singleShot(100, _resize)
-
-    def with_preserved_height(self, fn: callable) -> None:
-        saved_height = self._plot_dock.height() if self._plot_dock else None
-        fn()
-        if self._plot_dock is not None and saved_height is not None:
-            def _restore():
-                self._qt_window.resizeDocks(
-                    [self._plot_dock], [saved_height], Qt.Vertical,
-                )
-            QTimer.singleShot(0, _restore)
 
     def toggle_layer_docks_with_anchor(self, show: bool) -> None:
         """Show/hide layer docks while anchoring the sidebar width."""
@@ -248,19 +244,6 @@ class LayoutManager:
         max_w = int(self._qt_window.width() * ratio_clamped)
         for dock in self._layer_docks:
             dock.setMaximumWidth(max_w)
-
-        def _release():
-            for d in self._layer_docks:
-                d.setMaximumWidth(MAX_WIDGET_SIZE)
-
-        QTimer.singleShot(LAYOUT_RELEASE_DELAY_MS, _release)
-
-    def freeze_layer_widths(self) -> None:
-        if not self._layer_docks:
-            return
-        for dock in self._layer_docks:
-            if dock.isVisible():
-                dock.setMaximumWidth(dock.width())
 
         def _release():
             for d in self._layer_docks:
@@ -358,3 +341,70 @@ class LayoutManager:
 
         # Apply once after the initial layout settles to avoid repeated dock churn.
         QTimer.singleShot(0, _apply_sidebar_ratio)
+
+    def reset_layout(self, *, show_layers: bool, show_space: bool, has_video: bool) -> None:
+        """Re-dock all floating panels and restore the default arrangement."""
+        # Re-scan in case docks were created since last register
+        self.register_docks()
+
+        # 1. Re-dock every floating dock widget
+        for dock in self._qt_window.findChildren(QDockWidget):
+            if dock.isFloating():
+                dock.setFloating(False)
+
+        # 2. Place known docks in their default areas
+        if self._plot_dock is not None:
+            self._qt_window.addDockWidget(Qt.BottomDockWidgetArea, self._plot_dock)
+            self._plot_dock.show()
+
+        if self._sidebar_dock is not None:
+            self._qt_window.addDockWidget(Qt.RightDockWidgetArea, self._sidebar_dock)
+            self._sidebar_dock.show()
+
+        # 3. Layer docks → left area
+        if show_layers:
+            for dock in self._layer_docks:
+                self._qt_window.addDockWidget(Qt.LeftDockWidgetArea, dock)
+            self.show_layer_docks()
+            self.cap_layer_width()
+        else:
+            self.hide_layer_docks()
+
+        # 4. Space plot dock → left area (tabified with layers if both visible)
+        if self._space_dock is not None:
+            if show_space:
+                self._qt_window.addDockWidget(Qt.LeftDockWidgetArea, self._space_dock)
+                self._space_dock.show()
+                if show_layers and self._layer_docks:
+                    self._qt_window.tabifyDockWidget(
+                        self._layer_docks[0], self._space_dock,
+                    )
+                    self._space_dock.raise_()
+            else:
+                self._space_dock.setVisible(False)
+
+        # 5. Restore video viewer
+        self.set_video_viewer_visible(has_video)
+
+        # 6. Re-apply standard sizing after Qt processes the layout changes
+        def _apply_sizes():
+            if self._sidebar_dock:
+                total_w = self._qt_window.width()
+                target_w = max(
+                    SIDEBAR_MIN_WIDTH_PX,
+                    int(total_w * SIDEBAR_AFTER_LOAD_WIDTH_RATIO),
+                )
+                self._qt_window.resizeDocks(
+                    [self._sidebar_dock], [target_w], Qt.Horizontal,
+                )
+            if has_video and self._plot_dock:
+                total_h = self._qt_window.height()
+                plot_h = max(
+                    PLOT_CONTAINER_MIN_HEIGHT,
+                    int(total_h * VERTICAL_SPLIT_RATIO),
+                )
+                self._qt_window.resizeDocks(
+                    [self._plot_dock], [plot_h], Qt.Vertical,
+                )
+
+        QTimer.singleShot(50, _apply_sizes)

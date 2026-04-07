@@ -5,10 +5,11 @@
 # =============================================================================
 
 # Labels table (widgets_labels.py)
-LABELS_TABLE_MAX_HEIGHT = 400
+LABELS_TABLE_MAX_HEIGHT = 500
 LABELS_TABLE_ROW_HEIGHT = 20
 LABELS_TABLE_ID_COLUMN_WIDTH = 20
 LABELS_TABLE_COLOR_COLUMN_WIDTH = 20
+LABELS_WIDGET_SIZE_HINT_HEIGHT = 800
 
 # Cluster info table (widgets_plot_settings.py)
 CLUSTER_TABLE_ROW_HEIGHT = 20
@@ -27,7 +28,7 @@ MAX_WIDGET_SIZE = 16777215
 # No-video mode panel layout (widgets_meta.py)
 NO_VIDEO_PANEL_WIDTH_RATIO = 0.75
 SIDEBAR_DEFAULT_WIDTH_RATIO = 0.40
-SIDEBAR_AFTER_LOAD_WIDTH_RATIO = 0.20
+SIDEBAR_AFTER_LOAD_WIDTH_RATIO = 0.25
 SIDEBAR_MIN_WIDTH_PX = 280
 
 # Dock layout (layout_manager.py)

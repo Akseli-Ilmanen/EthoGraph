@@ -36,7 +36,10 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
 
     # Internal to crow lab, we had a legacy labeling system that was frame-wise(200 Hz), and this correction should fix those labels.
     dt = 1 / 200  # 5 ms frame rate
-    for _, group in df.groupby(["session", "trial", "individual"]):
+    group_cols = ["trial", "individual"]
+    if "session" in df.columns:
+        group_cols.insert(0, "session")
+    for _, group in df.groupby(group_cols):
         individual = group["individual"].iloc[0]
         
         # Won't affect other users.
@@ -68,23 +71,26 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
 
 def enrich_labels_df(
     all_labels_df: pd.DataFrame,
-    dt: "TrialTree",
+    nwb_alignment=None,
     keep_attrs: list[str] | None = None,
+    dt=None,
 ) -> pd.DataFrame:
     """Enrich a raw labels DataFrame with computed columns for analysis export.
 
     Takes the in-memory ``_all_labels_df`` (with columns ``onset_s``, ``offset_s``,
     ``labels``, ``individual``, ``trial``) and adds session timing, duration,
-    sequence info, and trial attributes from ``dt``.
+    sequence info, and trial attributes.
 
     Parameters
     ----------
     all_labels_df : pd.DataFrame
         Raw labels with required columns: onset_s, offset_s, labels, individual, trial.
-    dt : TrialTree
-        The data tree (for session timing and trial attributes).
+    nwb_alignment
+        Session metadata (for trial timing).
     keep_attrs : list[str], optional
-        Trial-level ``ds.attrs`` keys to include as extra columns.
+        Trial-level ``ds.attrs`` keys to include as extra columns (xarray only).
+    dt : TrialTree, optional
+        Xarray data tree (only needed for ``keep_attrs`` and session name).
 
     Returns
     -------
@@ -103,10 +109,11 @@ def enrich_labels_df(
 
     valid["duration"] = valid["offset_s"] - valid["onset_s"]
 
-    # Session info
-    session_name = getattr(dt, "attrs", {}).get("session", "")
-    valid["session"] = session_name
-    valid["session_trial"] = valid["trial"].apply(lambda t: f"{session_name}_{t}")
+    # Session info (only when session attr exists)
+    session_name = getattr(dt, "attrs", {}).get("session", None)
+    if session_name is not None:
+        valid["session"] = session_name
+        valid["session_trial"] = valid["trial"].apply(lambda t: f"{session_name}_{t}")
 
     # Per-trial: sequence, sequence_idx, timing, attrs
     enriched_rows = []
@@ -118,16 +125,14 @@ def enrich_labels_df(
 
         # Session timing
         t_start, t_stop = None, None
-        if hasattr(dt, "session") and dt.session is not None and "start_time" in dt.session:
-            try:
-                t_start = float(dt.session.start_time.sel(trial=trial_id))
-            except (KeyError, ValueError):
-                pass
-            if "stop_time" in dt.session:
-                try:
-                    t_stop = float(dt.session.stop_time.sel(trial=trial_id))
-                except (KeyError, ValueError):
-                    pass
+        try:
+            t_start = nwb_alignment.start_time(trial_id)
+        except (AttributeError, KeyError, ValueError):
+            pass
+        try:
+            t_stop = nwb_alignment.stop_time(trial_id)
+        except (AttributeError, KeyError, ValueError):
+            pass
 
         if t_start is not None:
             group["trial_onset"] = t_start

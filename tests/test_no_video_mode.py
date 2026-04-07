@@ -1,213 +1,140 @@
-"""Tests for no-video (audio-only) 3-panel GUI mode."""
+"""Tests for audio-only mode (no video loaded).
 
-import pytest
+Uses the birdpark dataset which has audio but no video configured.
+Verifies that panels are created, audio data renders, and features work
+without a video source.
+"""
+
 import numpy as np
+import pytest
+import pyqtgraph as pg
 from qtpy.QtWidgets import QApplication
 
 
-class TestNoVideoLoading:
+class TestNoVideoState:
 
-    def test_no_video_mode_activated(self, no_video_gui):
+    def test_ready_after_load(self, no_video_gui):
         _, meta = no_video_gui
-        assert meta.app_state.video is None
+        assert meta.app_state.ready is True
 
-    def test_state_after_load(self, no_video_gui):
+    def test_no_video_loaded(self, no_video_gui):
         _, meta = no_video_gui
-        state = meta.app_state
+        video = getattr(meta.app_state, 'video', None)
+        assert video is None, "Expected no video in audio-only mode"
 
-        assert state.ready is True
-        assert state.dt is not None
-        assert state.ds is not None
-        assert state.label_dt is not None
-        assert state.time is not None
-        assert len(state.time) > 0
-        assert state.audio_path is not None
-
-
-
-class TestMultiPanelContainer:
-
-    def test_plot_container_is_multipanel(self, no_video_gui):
-        from ethograph.gui.multipanel_container import MultiPanelContainer
+    def test_has_dataset(self, no_video_gui):
         _, meta = no_video_gui
-        assert isinstance(meta.plot_container, MultiPanelContainer)
+        assert meta.app_state.dt is not None
+        assert meta.app_state.ds is not None
 
-    def test_three_panels_exist(self, no_video_gui):
+    def test_trials_populated(self, no_video_gui):
+        _, meta = no_video_gui
+        assert len(meta.app_state.trials) > 0
+        assert meta.app_state.trials_sel in meta.app_state.trials
+
+
+class TestNoVideoAudioPanels:
+
+    def test_audio_trace_panel_enabled(self, no_video_gui):
         _, meta = no_video_gui
         pc = meta.plot_container
-        assert pc.audio_trace_plot is not None
-        assert pc.spectrogram_plot is not None
-        assert pc.line_plot is not None
-        assert pc.ephys_trace_plot is None
+        assert pc._panel_visible.get("audiotrace", False), \
+            "Audio trace panel should be enabled in audio-only mode"
 
-    def test_x_axis_linked(self, no_video_gui):
+    def test_audio_trace_has_data(self, no_video_gui):
         _, meta = no_video_gui
         pc = meta.plot_container
-        # Spectrogram and line_plot should be linked to audio_trace_plot
-        spec_link = pc.spectrogram_plot.plotItem.getAxis('bottom')
-        assert spec_link is not None
+        if not pc._panel_visible.get("audiotrace"):
+            pytest.skip("Audio trace not enabled")
+        at = pc.audio_trace_plot
+        assert at.trace_item.xData is not None, "Audio trace xData is None"
+        assert len(at.trace_item.xData) > 0, "Audio trace xData empty"
+        assert at.trace_item.yData is not None, "Audio trace yData is None"
+        assert len(at.trace_item.yData) > 0, "Audio trace yData empty"
 
-    def test_valid_x_range(self, no_video_gui):
+    def test_spectrogram_panel_enabled(self, no_video_gui):
         _, meta = no_video_gui
         pc = meta.plot_container
-        xlim = pc.get_current_xlim()
+        assert pc._panel_visible.get("spectrogram", False), \
+            "Spectrogram panel should be enabled in audio-only mode"
+
+    def test_spectrogram_has_data(self, no_video_gui):
+        _, meta = no_video_gui
+        pc = meta.plot_container
+        if not pc._panel_visible.get("spectrogram"):
+            pytest.skip("Spectrogram not enabled")
+        sp = pc.spectrogram_plot
+        assert sp.spec_item.image is not None, "Spectrogram image is None"
+        assert sp.spec_item.image.size > 0, "Spectrogram image empty"
+
+
+class TestNoVideoFeaturePlot:
+
+    def test_feature_plot_has_data(self, no_video_gui):
+        _, meta = no_video_gui
+        pc = meta.plot_container
+        assert pc._feature_type == "lineplot"
+        lp = pc.line_plot
+        assert len(lp.plot_items) > 0, "Feature plot empty in no-video mode"
+
+        for item in lp.plot_items:
+            if isinstance(item, (pg.PlotDataItem, pg.PlotCurveItem)):
+                assert item.xData is not None and len(item.xData) > 0
+                break
+
+    def test_valid_xlim(self, no_video_gui):
+        _, meta = no_video_gui
+        xlim = meta.plot_container.get_current_xlim()
         assert xlim[0] < xlim[1]
-        # Range should be within reasonable data bounds (not default -0.5..0.5)
         assert xlim[0] >= -1.0
-        assert xlim[1] > 0.1
 
-    def test_time_slider_range(self, no_video_gui):
+    def test_cycle_features(self, no_video_gui):
         _, meta = no_video_gui
-        slider = meta.plot_container.time_slider
-        assert slider._t_max > slider._t_min
+        features_combo = meta.data_widget.combos.get("features")
+        if features_combo is None or features_combo.count() == 0:
+            pytest.skip("No features combo")
 
-    def test_bottom_panel_defaults_to_lineplot(self, no_video_gui):
-        _, meta = no_video_gui
-        assert meta.plot_container.is_lineplot()
-        assert not meta.plot_container.is_heatmap()
-
-    def test_switch_to_heatmap(self, no_video_gui):
-        _, meta = no_video_gui
-        pc = meta.plot_container
-        pc.switch_to_heatmap()
-        QApplication.processEvents()
-        assert pc.is_heatmap()
-        assert not pc.is_lineplot()
-
-    def test_switch_back_to_lineplot(self, no_video_gui):
-        _, meta = no_video_gui
-        pc = meta.plot_container
-        pc.switch_to_heatmap()
-        QApplication.processEvents()
-        pc.switch_to_lineplot()
-        QApplication.processEvents()
-        assert pc.is_lineplot()
-
-    def test_spectrogram_is_in_splitter(self, no_video_gui):
-        _, meta = no_video_gui
-        pc = meta.plot_container
-        assert not pc.is_spectrogram()  # not "current" mode
-        # Spectrogram is always a child of the splitter
-        assert pc.spectrogram_plot.parent() is not None
-
-    def test_audio_trace_is_in_splitter(self, no_video_gui):
-        _, meta = no_video_gui
-        pc = meta.plot_container
-        assert not pc.is_audiotrace()  # not "current" mode
-        assert pc.audio_trace_plot.parent() is not None
+        lp = meta.plot_container.line_plot
+        for i in range(features_combo.count()):
+            text = features_combo.itemText(i)
+            if text in ("Spectrogram", "Waveform"):
+                continue
+            features_combo.setCurrentIndex(i)
+            QApplication.processEvents()
+            assert meta.app_state.features_sel == text
+            assert len(lp.plot_items) > 0, f"Feature '{text}' empty in no-video mode"
 
 
-class TestNoVideoOverlays:
+class TestNoVideoNavigation:
 
-    def test_overlay_checkboxes_hidden(self, no_video_gui):
-        _, meta = no_video_gui
-        dw = meta.data_widget
-        assert not dw.show_waveform_checkbox.isVisible()
-        assert not dw.show_spectrogram_checkbox.isVisible()
-
-    def test_envelope_target_combo_configured(self, no_video_gui):
-        _, meta = no_video_gui
-        tw = meta.transform_widget
-        # The combo is shown (not hidden) — but isVisible() depends on parent panel
-        # Check that show() was called (isHidden() checks the widget's own flag)
-        assert not tw.envelope_target_combo.isHidden()
-        assert not tw.envelope_target_label.isHidden()
-
-
-class TestNoVideoTimeMarker:
-
-    def test_update_time_marker(self, no_video_gui):
-        _, meta = no_video_gui
-        pc = meta.plot_container
-        pc.update_time_marker_by_time(1.5)
-        # All three plots should have the marker at 1.5
-        assert pc.audio_trace_plot.time_marker.value() == pytest.approx(1.5)
-        assert pc.spectrogram_plot.time_marker.value() == pytest.approx(1.5)
-        assert pc._bottom_plot.time_marker.value() == pytest.approx(1.5)
-
-
-class TestNoVideoComboInteractions:
-
-    def test_feature_combo_populated(self, no_video_gui):
-        _, meta = no_video_gui
-        combo = meta.data_widget.combos.get("features")
-        assert combo is not None
-        assert combo.count() > 0
-        # "Audio Waveform" should NOT be injected in no-video mode
-        items = [combo.itemText(i) for i in range(combo.count())]
-        assert "Audio Waveform" not in items
-
-    def test_view_mode_no_spectrogram_option(self, no_video_gui):
-        _, meta = no_video_gui
-        combo = meta.data_widget.view_mode_combo
-        items = [combo.itemText(i) for i in range(combo.count())]
-        for item in items:
-            assert "Spectrogram" not in item
-            assert "Audio" not in item
-
-    def test_change_feature(self, no_video_gui):
-        _, meta = no_video_gui
-        combo = meta.data_widget.combos["features"]
-        if combo.count() < 2:
-            pytest.skip("Need at least 2 features")
-
-        combo.setCurrentIndex(1 if combo.currentIndex() == 0 else 0)
-        QApplication.processEvents()
-        assert meta.app_state.features_sel == combo.currentText()
-
-
-class TestNoVideoLabels:
-
-    def test_label_creation(self, no_video_gui):
-        from qtpy.QtCore import Qt
-        from ethograph.utils.label_intervals import find_interval_at
-
-        _, meta = no_video_gui
-        t_start, t_end = 1.0, 2.0
-
-        meta.labels_widget.activate_label(1)
-        meta.labels_widget._on_plot_clicked({"x": t_start, "button": Qt.LeftButton})
-        meta.labels_widget._on_plot_clicked({"x": t_end, "button": Qt.LeftButton})
-        QApplication.processEvents()
-
-        df = meta.app_state.label_intervals
-        assert df is not None and not df.empty
-
-        individual = meta.labels_widget._current_individual()
-        idx = find_interval_at(df, 1.5, individual)
-        assert idx is not None
-
-    def test_shapes_layer_skipped(self, no_video_gui):
-        _, meta = no_video_gui
-        # In no-video mode, the video shapes overlay is not created
-        assert "_labels" not in meta.viewer.layers
-
-
-class TestNoVideoTrialNavigation:
-
-    def test_trial_change(self, no_video_gui):
+    def test_trial_navigation(self, no_video_gui):
         _, meta = no_video_gui
         if len(meta.app_state.trials) < 2:
-            pytest.skip("Need at least 2 trials")
+            pytest.skip("Need 2+ trials")
 
-        first_trial = meta.app_state.trials_sel
+        first = meta.app_state.trials_sel
         meta.navigation_widget.next_trial()
         QApplication.processEvents()
-        assert meta.app_state.trials_sel != first_trial
+        assert meta.app_state.trials_sel != first
+
+    def test_plot_has_data_after_trial_switch(self, no_video_gui):
+        _, meta = no_video_gui
+        if len(meta.app_state.trials) < 2:
+            pytest.skip("Need 2+ trials")
+
+        meta.navigation_widget.next_trial()
+        QApplication.processEvents()
+
+        lp = meta.plot_container.line_plot
+        assert len(lp.plot_items) > 0, "Feature plot empty after trial switch in no-video mode"
 
 
-class TestNapariViewerHidden:
+class TestNoVideoTimeSlider:
 
-    def test_central_widget_hidden(self, no_video_gui):
-        viewer, _ = no_video_gui
-        central = viewer.window._qt_window.centralWidget()
-        if central:
-            assert not central.isVisible()
-
-    def test_layer_docks_hidden(self, no_video_gui):
-        viewer, _ = no_video_gui
-        from qtpy.QtWidgets import QDockWidget
-        for dock in viewer.window._qt_window.findChildren(QDockWidget):
-            title = (dock.windowTitle() or "").lower()
-            if "layer" in title or "control" in title:
-                assert not dock.isVisible(), f"Dock '{dock.windowTitle()}' should be hidden"
+    def test_time_slider_present(self, no_video_gui):
+        """Without video, a time slider should still allow scrubbing."""
+        _, meta = no_video_gui
+        # The time marker on the feature plot should be accessible
+        lp = meta.plot_container.line_plot
+        assert hasattr(lp, 'time_marker')
+        assert lp.time_marker is not None

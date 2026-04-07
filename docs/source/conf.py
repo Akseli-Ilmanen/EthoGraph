@@ -159,22 +159,50 @@ import shutil
 from pathlib import Path
 
 
+def _remove_if_exists(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.is_dir():
+        shutil.rmtree(path)
+
+
+def _sync_link_or_copy(src: Path, dst: Path) -> None:
+    if dst.exists() or dst.is_symlink():
+        _remove_if_exists(dst)
+    try:
+        dst.symlink_to(src, target_is_directory=src.is_dir())
+    except OSError:
+        if src.is_dir():
+            shutil.copytree(src, dst)
+        else:
+            shutil.copy2(src, dst)
+
+
 def setup(app):
     src = Path(app.srcdir).resolve().parent.parent / "examples"
     dst = Path(app.srcdir) / "examples"
     dst.mkdir(exist_ok=True)
+
+    keep_paths: set[Path] = {dst / "index.rst", dst / ".gitignore"}
+
     for nb in src.glob("*.ipynb"):
         # Fix double extensions like foo.ipynb.ipynb -> foo.ipynb
         name = nb.name
         while name.endswith(".ipynb.ipynb"):
             name = name[: -len(".ipynb")]
         target = dst / name
-        if not target.exists() or nb.stat().st_mtime > target.stat().st_mtime:
-            shutil.copy2(nb, target)
-    # Also copy the assets folder if it exists
+        _sync_link_or_copy(nb, target)
+        keep_paths.add(target)
+
+    # Also link/copy the assets folder if it exists.
     assets_src = src / "assets"
     assets_dst = dst / "assets"
     if assets_src.is_dir():
-        if assets_dst.exists():
-            shutil.rmtree(assets_dst)
-        shutil.copytree(assets_src, assets_dst)
+        _sync_link_or_copy(assets_src, assets_dst)
+        keep_paths.add(assets_dst)
+
+    # Remove stale generated files from prior runs.
+    for child in dst.iterdir():
+        if child in keep_paths:
+            continue
+        _remove_if_exists(child)

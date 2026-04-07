@@ -124,7 +124,8 @@ boundary_radius = all_params.get("boundary_radius")
 
 # global
 project_root = eto.get_project_root()
-mapping_path = project_root / "configs" / "mapping.txt"
+from ethograph.utils.paths import find_config
+mapping_path = find_config("mapping.txt") or project_root / "configs" / "mapping.txt"
 
 
 # data/
@@ -207,10 +208,11 @@ with open(trial_mapping_path, 'w') as f:
     json.dump(trial_mapping, f, indent=4)
 
 
-changepoint_settings_path = project_root / "configs" / "changepoint_settings.yaml"
-with open(changepoint_settings_path, "r") as f:
-    changepoint_params = yaml.safe_load(f)
-all_params.update(changepoint_params)
+changepoint_settings_path = find_config("changepoint_settings.yaml") or find_config("gui_settings.yaml")
+if changepoint_settings_path and changepoint_settings_path.exists():
+    with open(changepoint_settings_path, "r") as f:
+        changepoint_params = yaml.safe_load(f) or {}
+    all_params.update(changepoint_params)
 print()
 print(f"Params: {all_params}")
 print()

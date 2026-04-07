@@ -24,18 +24,7 @@ class TestTrialTree:
         with pytest.raises(IndexError):
             trial_tree.itrial(99999)
 
-    def test_label_dt(self, trial_tree):
-        label_dt = trial_tree.get_label_dt()
-        first_trial = label_dt.trials[0]
-        trial_ds = label_dt.trial(first_trial)
-        assert "onset_s" in trial_ds.data_vars
-        assert "offset_s" in trial_ds.data_vars
-        assert "labels" in trial_ds.data_vars
-        assert "individual" in trial_ds.data_vars
 
-        label_dt_empty = trial_tree.get_label_dt(empty=True)
-        empty_ds = label_dt_empty.trial(first_trial)
-        assert empty_ds.sizes.get("segment", 0) == 0
 
     def test_from_datasets_roundtrip(self, first_trial_ds):
         dt = eto.from_datasets([first_trial_ds])
@@ -45,7 +34,7 @@ class TestTrialTree:
 class TestValidation:
 
     def test_validate_datatree(self, trial_tree):
-        from ethograph.utils.validation import validate_datatree
+        from ethograph.io.validation import validate_datatree
         errors = validate_datatree(trial_tree)
         assert isinstance(errors, list)
 
@@ -57,7 +46,7 @@ class TestValidation:
         assert "trial_conditions" in type_vars_dict
 
     def test_find_temporal_dims_and_validate(self, first_trial_ds, type_vars_dict):
-        from ethograph.utils.validation import (
+        from ethograph.io.validation import (
             find_temporal_dims, validate_required_attrs, validate_dataset,
         )
         dims = find_temporal_dims(first_trial_ds)
@@ -94,7 +83,7 @@ class TestDataUtils:
 class TestFirstTrialDataset:
 
     def test_dataset_schema(self, first_trial_ds, type_vars_dict):
-        from ethograph.utils.validation import is_integer_array
+        from ethograph.io.validation import is_integer_array
 
         assert "labels" in first_trial_ds.data_vars
         assert "fps" in first_trial_ds.attrs

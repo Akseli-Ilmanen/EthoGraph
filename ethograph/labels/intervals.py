@@ -111,12 +111,14 @@ def load_label_mapping(mapping_file: str | Path = "mapping.txt") -> Dict[int, Di
     Parameters
     ----------
     mapping_file : str or Path
-        Path to the mapping file.  Each line is ``<id> <name> [<order>]``.
+        Path to the mapping file.  Each line is ``<id> <name> [<branch>]``
+        where *branch* is an optional integer (default 0) grouping labels
+        into branches for independent labeling.
 
     Returns
     -------
     dict[int, dict]
-        ``{label_id: {"name": str, "color": ndarray(3,), "order": int}}``.
+        ``{label_id: {"name": str, "color": ndarray(3,), "order": int, "branch": int}}``.
 
     Raises
     ------
@@ -170,17 +172,43 @@ def load_label_mapping(mapping_file: str | Path = "mapping.txt") -> Dict[int, Di
                     "name": parts[1],
                     "color": _GAP_COLOR,
                     "order": order,
+                    "branch": 0,
                 }
             else:
                 label_id = int(parts[0])
-                order = int(parts[-1]) if len(parts) >= 3 else label_id
+                if len(parts) >= 3:
+                    branch = int(parts[2])
+                else:
+                    branch = 0
                 label_mappings[label_id] = {
                     "name": parts[1],
-                    "color": np.array(_LABEL_COLORS[label_id]) / 255.0,
-                    "order": order,
+                    "color": np.array(_LABEL_COLORS[label_id % len(_LABEL_COLORS)]) / 255.0,
+                    "order": label_id,
+                    "branch": branch,
                 }
 
     return label_mappings
+
+
+def save_label_mapping(mapping_file: str | Path, mappings: Dict[int, Dict]) -> None:
+    """Write a label mapping back to disk, preserving branch assignments.
+
+    Parameters
+    ----------
+    mapping_file : str or Path
+        Destination path.
+    mappings : dict[int, dict]
+        The mapping dict as returned by :func:`load_label_mapping`.
+    """
+    mapping_file = Path(mapping_file)
+    mapping_file.parent.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = []
+    for label_id, data in sorted(mappings.items(), key=lambda kv: kv[0] if isinstance(kv[0], int) else kv[0][0]):
+        if isinstance(label_id, tuple):
+            lines.append(f"({label_id[0]},{label_id[1]}) {data['name']} {data['order']}")
+        else:
+            lines.append(f"{label_id} {data['name']} {data.get('branch', 0)}")
+    mapping_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 # ── Interval operations ─────────────────────────────────────────────────
@@ -191,11 +219,13 @@ def add_interval(
     offset_s: float,
     labels: int,
     individual: str,
+    protected_label_ids: set[int] | None = None,
 ) -> pd.DataFrame:
     """Add an interval, resolving overlaps for the same individual.
 
     If the new interval overlaps existing intervals for the same individual,
-    the existing intervals are trimmed or split.
+    the existing intervals are trimmed or split — unless their label ID is in
+    *protected_label_ids*, in which case they are kept untouched.
 
     Parameters
     ----------
@@ -207,6 +237,9 @@ def add_interval(
         Label class ID.
     individual : str
         Individual identifier.
+    protected_label_ids : set[int] | None
+        Label IDs that must not be trimmed or split (e.g. labels belonging
+        to inactive branches).  ``None`` means no protection.
 
     Returns
     -------
@@ -234,6 +267,11 @@ def add_interval(
     for _, row in same.iterrows():
         ro, rf = row["onset_s"], row["offset_s"]
         rid = row["labels"]
+
+        # Never trim/split intervals from protected (inactive) branches
+        if protected_label_ids is not None and int(rid) in protected_label_ids:
+            kept.append(row.to_dict())
+            continue
 
         if rf <= onset_s or ro >= offset_s:
             kept.append(row.to_dict())

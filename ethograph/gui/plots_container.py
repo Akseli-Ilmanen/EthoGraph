@@ -14,7 +14,7 @@ Panel stack (top to bottom, each optional except Feature Plot):
 from typing import Any, Dict
 
 import numpy as np
-from ethograph.gui.plots_timeseriessource import TimeRange
+from ethograph.io.time_model import TimeRange
 import pyqtgraph as pg
 from qtpy.QtCore import QSize, Qt, QTimer, Signal
 from qtpy.QtWidgets import (
@@ -36,10 +36,10 @@ from .app_constants import (
 import ethograph as eto
 from ethograph.labels.intervals import find_interval_at, get_interval_bounds
 from .audio_player import AudioPlayer
-from .data_sources import build_audio_source
+from ..io.plot_sources import build_audio_source
 from .label_drawing_mixin import LabelDrawingMixin
 from .plots_audiotrace import AudioTracePlot
-from .plots_ephystrace import EphysTracePlot, get_loader as get_ephys_loader
+from .plots_ephystrace import EphysTracePlot
 from .plots_heatmap import HeatmapPlot
 from .plots_lineplot import LinePlot
 from .plots_base import ThrottleDebounce
@@ -110,7 +110,7 @@ class TimeSlider(QWidget):
             self._label.setText(f"{sign}{seconds:.2f} s")
 
 
-# Panel size ratios keyed by (has_audio, has_kilosort_or_neo)
+# Panel size ratios keyed by (has_audio, has_neurons_or_neo)
 # Values: dict mapping panel_name -> fraction of splitter height
 _PANEL_RATIOS = {
     # audio + ephys
@@ -129,8 +129,8 @@ _PANEL_ORDER = [
     ("audiotrace", "has_audio"),
     ("spectrogram", "has_audio"),
     ("neo", None),
-    ("ephys", "has_kilosort"),
-    ("raster", "has_kilosort"),
+    ("ephys", "has_neurons"),
+    ("raster", "has_neurons"),
     ("feature", None),
 ]
 
@@ -200,11 +200,13 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     plot_changed = Signal(str)
     labels_redraw_needed = Signal()
     spectrogram_overlay_shown = Signal()
+    time_marker_updated = Signal(float)
 
     def __init__(self, napari_viewer, app_state, parent=None):
         super().__init__(parent)
         self.viewer = napari_viewer
         self.app_state = app_state
+        self._data_widget = None  # set by widgets_meta after construction
 
         # --- Plots ---
         self.audio_trace_plot = AudioTracePlot(app_state)
@@ -270,7 +272,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._splitter.setChildrenCollapsible(False)
         main_layout.addWidget(self._splitter)
 
-        # Time slider (shown when no video)
         self.time_slider = TimeSlider()
         self.time_slider.time_changed.connect(self._on_slider_time)
         self.time_slider.hide()
@@ -430,6 +431,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         self._apply_all_zoom_constraints()
         QTimer.singleShot(0, self._apply_panel_sizes)
+        self.labels_redraw_needed.emit()
 
     def _setup_xlinks_from_visible(self, visible_names: list[str] | None = None):
         """Link all panels to the first visible panel's x-axis."""
@@ -458,7 +460,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         v = self._panel_visible
         has_audio_panel = self.app_state.has_audio and (v["audiotrace"] or v["spectrogram"])
-        has_neural_panel = v["neo"] or (self.app_state.has_kilosort and (v["ephys"] or v["raster"]))
+        has_neural_panel = v["neo"] or (self.app_state.has_neurons and (v["ephys"] or v["raster"]))
         ratios = _PANEL_RATIOS.get((has_audio_panel, has_neural_panel), {"feature": 1.0})
 
         visible_names = self._visible_panel_names()
@@ -517,9 +519,13 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def set_audiotrace_visible(self, visible: bool):
         self._set_panel_visible("audiotrace", visible)
+        if not visible:
+            self.audio_trace_plot.set_source(None)
 
     def set_spectrogram_visible(self, visible: bool):
         self._set_panel_visible("spectrogram", visible)
+        if not visible:
+            self.spectrogram_plot.set_source(None)
 
     def set_feature_view(self, mode: str):
         """Switch the feature (bottom) panel.
@@ -570,6 +576,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def set_neo_visible(self, visible: bool):
         self._set_panel_visible("neo", visible)
+        if not visible:
+            self.neo_trace_plot.buffer.loader = None
+            self.neo_trace_plot.set_source(None)
 
     def set_ephys_visible(self, visible: bool):
         if self._panel_visible["ephys"] == visible:
@@ -577,6 +586,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._panel_visible["ephys"] = visible
         if not visible:
             self._panel_visible["raster"] = False
+            self.ephys_trace_plot.buffer.loader = None
+            self.ephys_trace_plot.set_source(None)
         self._update_panel_visibility()
 
     def set_raster_visible(self, visible: bool):
@@ -671,6 +682,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             plot.update_time_marker(time_s)
         self.time_slider.set_slider_time(time_s)
         self._update_label_indicator(time_s)
+        self.time_marker_updated.emit(time_s)
 
     def _on_seek_time_requested(self, time_s: float):
         self.update_time_marker_by_time(time_s)
@@ -692,6 +704,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             plot.update_time_marker(current_time)
         self.time_slider.set_slider_time(current_time)
         self._update_label_indicator(current_time)
+        self.time_marker_updated.emit(current_time)
 
     def apply_y_range(self, ymin, ymax):
         return self._feature_plot.apply_y_range(ymin, ymax)
@@ -707,7 +720,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             plot._apply_zoom_constraints(x_bounds_override=bounds)
 
     def _trial_bounds_tuple(self):
-        tr = self.app_state.trial_bounds
+        tr = self.app_state.window_bounds
         return (tr.start_s, tr.end_s) if tr is not None else None
 
     # --- Bottom panel switching ---
@@ -758,8 +771,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     def update_audio_panels(self):
         """Refresh audio-driven panels (waveform + spectrogram) after mic change."""
         source = build_audio_source(self.app_state)
-        self.spectrogram_plot.set_source(source)
-        self.audio_trace_plot.set_source(source)
+        if self._panel_visible["spectrogram"]:
+            self.spectrogram_plot.set_source(source)
+        if self._panel_visible["audiotrace"]:
+            self.audio_trace_plot.set_source(source)
 
         t0, t1 = self.get_current_xlim()
         time = self.app_state.time
@@ -769,16 +784,14 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             vals = np.asarray(time)
             data_t0, data_t1 = float(vals[0]), float(vals[-1])
             if t1 - t0 < 0.01 or t0 < data_t0 - 1000 or t1 > data_t1 + 1000:
-                window = self.app_state.get_with_default("window_size")
+                view_span = self.app_state.view_span
                 t0 = data_t0
-                t1 = min(data_t0 + float(window), data_t1)
+                t1 = min(data_t0 + view_span, data_t1)
                 master = self._xlink_master or self._feature_plot
                 master.vb.setXRange(t0, t1, padding=0)
 
         if self._panel_visible["audiotrace"]:
             self.audio_trace_plot.update_plot(t0=t0, t1=t1)
-            self.audio_trace_plot.vb.enableAutoRange(x=False, y=True)
-            self.audio_trace_plot._apply_y_constraints()
         if self._panel_visible["spectrogram"]:
             self.spectrogram_plot.update_plot(t0=t0, t1=t1)
 
@@ -793,13 +806,12 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         center = getattr(self.app_state, 'center_playback', False)
         visible = TimeRange(*self.get_current_xlim())
         if center or not visible.contains(time_s):
-            window_size = self.app_state.get_with_default("window_size")
-            half = window_size / 2.0
+            half = self.app_state.view_span / 2.0
             master = self._xlink_master or self._feature_plot
             master.vb.setXRange(time_s - half, time_s + half, padding=0)
 
     def update_time_range_from_data(self):
-        tr = self.app_state.trial_bounds
+        tr = self.app_state.window_bounds
         if tr is not None and tr.duration > 0:
             self.time_slider.set_time_range(tr.start_s, tr.end_s)
 
@@ -903,21 +915,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     # --- Envelope sibling trace ---
 
-    def _get_envelope_target(self) -> str:
-        return getattr(self.app_state, '_envelope_target', 'audio')
-
     def _get_envelope_host_plot(self):
-        target = self._get_envelope_target()
-        if target == "audio":
-            if self._panel_visible["audiotrace"] and self.audio_trace_plot.isVisible():
-                return self.audio_trace_plot
-            return None
-        if target == "ephys":
-            if not self._panel_visible["ephys"] or not self.ephys_trace_plot.isVisible():
-                return None
-            if self.ephys_trace_plot._multichannel:
-                return None
-            return self.ephys_trace_plot
+        if self._panel_visible["audiotrace"] and self.audio_trace_plot.isVisible():
+            return self.audio_trace_plot
         return None
 
     def show_envelope_overlay(self):
@@ -1048,46 +1048,23 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
                 self._sync_envelope_axis_to_host(host, env_vb)
 
     def _load_envelope_data(self, host, t0, t1):
-        target = self._get_envelope_target()
-        if target == "audio":
-            audio_path = getattr(self.app_state, 'audio_path', None)
-            if not audio_path:
-                return None, None, None
-            loader = SharedAudioCache.get_loader(audio_path)
-            if loader is None:
-                return None, None, None
-            fs = loader.rate
-            _, channel_idx = self.app_state.get_audio_source()
-            start_idx = max(0, int(t0 * fs))
-            stop_idx = min(len(loader), int(t1 * fs))
-            if stop_idx <= start_idx:
-                return None, None, None
-            audio_data = np.array(loader[start_idx:stop_idx], dtype=np.float64)
-            if audio_data.ndim > 1:
-                ch = min(channel_idx, audio_data.shape[1] - 1)
-                audio_data = audio_data[:, ch]
-            return audio_data, fs, t0
-        elif target == "ephys":
-            ephys_path, stream_id, _ = self.app_state.get_ephys_source()
-            if not ephys_path:
-                return None, None, None
-            loader = get_ephys_loader(ephys_path, stream_id=stream_id)
-            if loader is None:
-                return None, None, None
-            fs = loader.rate
-            channel = self.ephys_trace_plot.buffer.channel
-            start_idx = max(0, int(t0 * fs))
-            stop_idx = min(len(loader), int(t1 * fs))
-            if stop_idx <= start_idx:
-                return None, None, None
-            raw = loader[start_idx:stop_idx]
-            if raw.ndim == 1:
-                ephys_data = raw.astype(np.float64)
-            else:
-                ch = min(channel, raw.shape[1] - 1)
-                ephys_data = np.asarray(raw[:, ch], dtype=np.float64)
-            return ephys_data, fs, t0
-        return None, None, None
+        audio_path = getattr(self.app_state, 'audio_path', None)
+        if not audio_path:
+            return None, None, None
+        loader = SharedAudioCache.get_loader(audio_path)
+        if loader is None:
+            return None, None, None
+        fs = loader.rate
+        _, channel_idx = self.app_state.get_audio_source()
+        start_idx = max(0, int(t0 * fs))
+        stop_idx = min(len(loader), int(t1 * fs))
+        if stop_idx <= start_idx:
+            return None, None, None
+        audio_data = np.array(loader[start_idx:stop_idx], dtype=np.float64)
+        if audio_data.ndim > 1:
+            ch = min(channel_idx, audio_data.shape[1] - 1)
+            audio_data = audio_data[:, ch]
+        return audio_data, fs, t0
 
     # --- Cache management ---
 

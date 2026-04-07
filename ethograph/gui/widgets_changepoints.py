@@ -158,8 +158,14 @@ class ChangepointsWidget(QWidget):
 
     def _update_trial_dataset(self, new_ds: xr.Dataset):
         trial = self.app_state.trials_sel
-        self.app_state.dt.update_trial(trial, lambda _: new_ds)
-        self.app_state.ds = self.app_state.dt.trial(trial)
+        if self.app_state.dt is not None:
+            self.app_state.dt.update_trial(trial, lambda _: new_ds)
+            self.app_state.ds = self.app_state.dt.trial(trial)
+        else:
+            self.app_state.ds = new_ds
+        store = getattr(self.app_state, "data_loader", None)
+        if store is not None and hasattr(store, "update_ds"):
+            store.update_ds(self.app_state.ds)
 
     def _ensure_changepoints_visible(self):
         self.show_cp_checkbox.blockSignals(True)
@@ -501,7 +507,7 @@ class ChangepointsWidget(QWidget):
         self._update_oscillatory_source_state()
 
     def _update_oscillatory_source_state(self):
-        has_raw_ephys = bool(self.app_state.has_neo or self.app_state.has_kilosort)
+        has_raw_ephys = bool(self.app_state.has_neo or self.app_state.has_neurons)
         model = self.osc_source_combo.model()
         ephys_item = model.item(0)  # "Ephys Trace"
         ephys_item.setEnabled(has_raw_ephys)
@@ -571,7 +577,9 @@ class ChangepointsWidget(QWidget):
     def _restore_or_set_defaults(self):
         show_cp = getattr(self.app_state, "show_changepoints", False)
         self.show_cp_checkbox.setChecked(show_cp)
-        self._load_correction_params_from_file()
+        n_custom = len(self.app_state.cp_label_thresholds)
+        if n_custom:
+            self.per_label_btn.setText(f"Per-label thresholds ({n_custom})...")
 
     # =========================================================================
     # Parameter extraction from cache
@@ -1082,7 +1090,6 @@ class ChangepointsWidget(QWidget):
         self.correction_params_panel.setLayout(layout)
 
         self._motif_mappings = {}
-        self._custom_label_thresholds = {}
         self._correction_snapshot = None
 
         self._automatic_correction_group = QGroupBox("Changepoint correction (automatic during labelling)")
@@ -1101,12 +1108,20 @@ class ChangepointsWidget(QWidget):
         self.max_expansion_spin.setToolTip(
             "Max expansion of label boundaries at changepoints"
         )
+        self.max_expansion_spin.setValue(self.app_state.cp_max_expansion_s)
+        self.max_expansion_spin.valueChanged.connect(
+            lambda v: setattr(self.app_state, "cp_max_expansion_s", float(v))
+        )
 
         self.max_shrink_spin = QDoubleSpinBox()
         self.max_shrink_spin.setRange(0, 100000)
         self.max_shrink_spin.setDecimals(3)
         self.max_shrink_spin.setToolTip(
             "Max shrinkage of label boundaries at changepoints"
+        )
+        self.max_shrink_spin.setValue(self.app_state.cp_max_shrink_s)
+        self.max_shrink_spin.valueChanged.connect(
+            lambda v: setattr(self.app_state, "cp_max_shrink_s", float(v))
         )
 
         self.manual_min_label_length_spin = QDoubleSpinBox()
@@ -1115,12 +1130,20 @@ class ChangepointsWidget(QWidget):
         self.manual_min_label_length_spin.setToolTip(
             "Minimum label length used by manual changepoint correction."
         )
+        self.manual_min_label_length_spin.setValue(self.app_state.cp_min_label_length_s)
+        self.manual_min_label_length_spin.valueChanged.connect(
+            lambda v: setattr(self.app_state, "cp_min_label_length_s", float(v))
+        )
 
         self.manual_stitch_gap_spin = QDoubleSpinBox()
         self.manual_stitch_gap_spin.setRange(0, 100000)
         self.manual_stitch_gap_spin.setDecimals(3)
         self.manual_stitch_gap_spin.setToolTip(
             "Gap threshold used by manual changepoint correction."
+        )
+        self.manual_stitch_gap_spin.setValue(self.app_state.cp_stitch_gap_len_s)
+        self.manual_stitch_gap_spin.valueChanged.connect(
+            lambda v: setattr(self.app_state, "cp_stitch_gap_len_s", float(v))
         )
 
         self.automatic_min_label_length_spin = QDoubleSpinBox()
@@ -1189,16 +1212,6 @@ class ChangepointsWidget(QWidget):
         self.per_label_btn.clicked.connect(self._open_label_thresholds_dialog)
         button_layout.addWidget(self.per_label_btn)
 
-        self.save_params_btn = QPushButton("Save")
-        self.save_params_btn.setToolTip("Save correction parameters to changepoint_settings.yaml")
-        self.save_params_btn.clicked.connect(self._save_correction_params)
-        button_layout.addWidget(self.save_params_btn)
-
-        self.load_params_btn = QPushButton("Load")
-        self.load_params_btn.setToolTip("Load correction parameters from changepoint_settings.yaml")
-        self.load_params_btn.clicked.connect(self._load_correction_params)
-        button_layout.addWidget(self.load_params_btn)
-
         button_layout.addStretch()
         manual_layout.addLayout(button_layout)
 
@@ -1239,13 +1252,13 @@ class ChangepointsWidget(QWidget):
 
         dialog = LabelThresholdsDialog(
             self._motif_mappings,
-            self._custom_label_thresholds,
+            self.app_state.cp_label_thresholds,
             self.manual_min_label_length_spin.value(),
             parent=self,
         )
         if dialog.exec_():
-            self._custom_label_thresholds = dialog.get_custom_thresholds()
-            n_custom = len(self._custom_label_thresholds)
+            self.app_state.cp_label_thresholds = dialog.get_custom_thresholds()
+            n_custom = len(self.app_state.cp_label_thresholds)
             if n_custom:
                 self.per_label_btn.setText(f"Per-label thresholds ({n_custom})...")
             else:
@@ -1304,15 +1317,15 @@ class ChangepointsWidget(QWidget):
             self.data_widget.update_main_plot()
         notify("Reverted correction")
 
-    def _correct_trial_intervals(self, trial, ds, all_params, ds_kwargs):
-        """Interval-native correction: purge -> stitch -> snap -> purge."""
-        intervals_df = self.app_state.get_trial_intervals(trial)
+    def _extract_cp_times(self, ds, ds_kwargs):
+        """Extract changepoint times from either backend."""
+        store = getattr(self.app_state, 'data_loader', None)
+        if store is not None:
+            feature = getattr(self.app_state, 'features_sel', None)
+            return store.get_cp_times(feature)
 
-    
         time_coord = self.app_state.time_coord
-
-        cp_kwargs = all_params.get("cp_kwargs", ds_kwargs)
-        cp_times = extract_cp_times(ds, time_coord.values, **cp_kwargs)
+        cp_times = extract_cp_times(ds, time_coord.values, **ds_kwargs)
 
         all_cp_times = [cp_times]
         if "audio_cp_onsets" in ds.data_vars and "audio_cp_offsets" in ds.data_vars:
@@ -1321,8 +1334,16 @@ class ChangepointsWidget(QWidget):
         if "osc_event_onsets" in ds.data_vars and "osc_event_offsets" in ds.data_vars:
             all_cp_times.append(ds["osc_event_onsets"].values.astype(np.float64))
             all_cp_times.append(ds["osc_event_offsets"].values.astype(np.float64))
-        cp_times = np.unique(np.concatenate(all_cp_times)) if len(all_cp_times) > 1 else cp_times
+        if len(all_cp_times) > 1:
+            cp_times = np.unique(np.concatenate(all_cp_times))
+        return cp_times
 
+    def _correct_trial_intervals(self, trial, ds, all_params, ds_kwargs):
+        """Interval-native correction: purge -> stitch -> snap -> purge."""
+        intervals_df = self.app_state.get_trial_intervals(trial)
+
+        cp_kwargs = all_params.get("cp_kwargs", ds_kwargs)
+        cp_times = self._extract_cp_times(ds, cp_kwargs)
 
         min_duration_s = all_params.get("min_label_length_s", 0)
         label_thresholds_raw = all_params.get("label_thresholds", {})
@@ -1331,10 +1352,8 @@ class ChangepointsWidget(QWidget):
         max_expansion_s = cp_params.get("max_expansion_s", np.inf)
         max_shrink_s = cp_params.get("max_shrink_s", np.inf)
 
-
         label_thresholds_s = {int(k): v for k, v in label_thresholds_raw.items()}
 
-  
         return correct_changepoints(
             intervals_df,
             cp_times,
@@ -1386,7 +1405,7 @@ class ChangepointsWidget(QWidget):
                 # TODO: Mention in documentation, only Ctrl+Z functionality of the GUI.
                 self._save_correction_snapshot(mode)
                 for trial in self.app_state.trials:
-                    ds = self.app_state.dt.trial(trial)
+                    ds = self.app_state.dt.trial(trial) if self.app_state.dt is not None else self.app_state.ds
                     corrected_df = self._correct_trial_intervals(trial, ds, all_params, ds_kwargs)
                     self.app_state.set_trial_intervals(trial, corrected_df)
                     self.app_state.set_trial_meta_attr(trial, 'changepoint_corrected', 1)
@@ -1421,12 +1440,12 @@ class ChangepointsWidget(QWidget):
 
     def get_correction_params(self) -> dict:
         return {
-            "min_label_length_s": self.manual_min_label_length_spin.value(),
-            "label_thresholds": {str(k): v for k, v in self._custom_label_thresholds.items()},
-            "stitch_gap_len_s": self.manual_stitch_gap_spin.value(),
+            "min_label_length_s": self.app_state.cp_min_label_length_s,
+            "label_thresholds": {str(k): v for k, v in self.app_state.cp_label_thresholds.items()},
+            "stitch_gap_len_s": self.app_state.cp_stitch_gap_len_s,
             "changepoint_params": {
-                "max_expansion_s": self.max_expansion_spin.value(),
-                "max_shrink_s": self.max_shrink_spin.value(),
+                "max_expansion_s": self.app_state.cp_max_expansion_s,
+                "max_shrink_s": self.app_state.cp_max_shrink_s,
             },
         }
 
@@ -1444,62 +1463,6 @@ class ChangepointsWidget(QWidget):
                 _, sr = aio.load_audio(audio_path)
                 return float(sr)
         return self.app_state.get_feature_sr()
-
-    def _save_correction_params(self):
-        params = self.get_correction_params()
-        sr = self._get_active_sr()
-        if sr is not None:
-            params["sr"] = float(sr)
-        params_path = eto.get_project_root() / "configs" / "changepoint_settings.yaml"
-        with open(params_path, "w") as f:
-            yaml.dump(params, f, default_flow_style=False, sort_keys=False)
-        notify(f"Saved correction parameters to {params_path.name}")
-
-    def _load_correction_params(self):
-        params_path = eto.get_project_root() / "configs" / "changepoint_settings.yaml"
-        if not params_path.exists():
-            notify(f"No settings file found at {params_path}", "warning")
-            return
-        with open(params_path, "r") as f:
-            params = yaml.safe_load(f)
-        self._apply_correction_params(params)
-        notify(f"Loaded correction parameters from {params_path.name}")
-
-    def _load_correction_params_from_file(self):
-        params_path = eto.get_project_root() / "configs" / "changepoint_settings.yaml"
-        if not params_path.exists():
-            return
-        try:
-            with open(params_path, "r") as f:
-                params = yaml.safe_load(f)
-            if params:
-                self._apply_correction_params(params)
-        except (OSError, yaml.YAMLError):
-            pass
-
-    def _apply_correction_params(self, params: dict):
-        self.manual_min_label_length_spin.setValue(
-            params.get("min_label_length_s", self.manual_min_label_length_spin.value())
-        )
-        self.manual_stitch_gap_spin.setValue(
-            params.get("stitch_gap_len_s", self.manual_stitch_gap_spin.value())
-        )
-        cp_params = params.get("changepoint_params", {})
-        self.max_expansion_spin.setValue(
-            cp_params.get("max_expansion_s", self.max_expansion_spin.value())
-        )
-        self.max_shrink_spin.setValue(
-            cp_params.get("max_shrink_s", self.max_shrink_spin.value())
-        )
-
-        self._custom_label_thresholds = {
-            int(k): v for k, v in params.get("label_thresholds", {}).items()
-        }
-        n_custom = len(self._custom_label_thresholds)
-        if n_custom:
-            self.per_label_btn.setText(f"Per-label thresholds ({n_custom})...")
-        else:
-            self.per_label_btn.setText("Per-label thresholds...")
 
     # =========================================================================
     # Changepoint navigation (jump forward/backward between CPs)
@@ -1571,8 +1534,7 @@ class ChangepointsWidget(QWidget):
 
         xlim = self.plot_container.get_current_xlim()
         if time_s < xlim[0] or time_s > xlim[1]:
-            window_size = self.app_state.get_with_default("window_size")
-            half = window_size / 2.0
+            half = self.app_state.view_span / 2.0
             master = self.plot_container._xlink_master or self.plot_container._feature_plot
             master.vb.setXRange(time_s - half, time_s + half, padding=0)
 

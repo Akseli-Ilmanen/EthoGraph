@@ -1,1 +1,0 @@
-For ephys, itnearctive PSTH, only allow trial ids defined by number. 

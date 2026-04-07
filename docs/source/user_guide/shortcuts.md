@@ -8,8 +8,8 @@
 |----------|--------|
 | `Space` | Toggle play/pause video and audio (or audio-only in no-video mode) |
 | `v` | Play selected label segment |
-| `Left` / `Right` | Jump backward / forward by customizable time step (see "Jump step (ms)" in Navigation) |
-| `Shift+Left` / `Shift+Right` | Step one frame backward / forward (video mode) or one time-step (no-video mode) |
+| `Left` / `Right` | Step one frame backward / forward (video mode) or one time-step (no-video mode) |
+| `Shift+Left` / `Shift+Right` | Jump backward / forward by customizable time step (see "Jump step (ms)" in Navigation) |
 
 ## Navigation
 

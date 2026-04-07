@@ -23,12 +23,10 @@ import numpy as np
 import threading
 import pyqtgraph as pg
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Protocol, runtime_checkable
+from typing import Optional, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    from .plots_timeseriessource import TimeseriesSource
 from numpy.typing import NDArray
 from qtpy.QtCore import QEvent, Qt, Signal
 
@@ -38,7 +36,7 @@ from phylib.io.traces import get_ephys_reader
 from ethograph.utils.nwb import resolve_timeseries_timing
 
 from .app_constants import BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER_EPHYS, EPHYSTRACE_DEBOUNCE_MS
-from .modality import FileSource, ModalitySource
+from ..io.plot_sources import FileSource, PlotSource
 from .plots_base import BasePlot, ThrottleDebounce
 from .video_manager import is_url
 
@@ -851,7 +849,7 @@ class EphysTracePlot(BasePlot):
         self._hw_to_order_idx: dict[int, int] = {}
         self._last_visible_hw: set[int] = set()
 
-        self._source: ModalitySource | None = None
+        self._source: PlotSource | None = None
 
         # Calibration scale bars
         self._scale_v_line: pg.PlotDataItem | None = None
@@ -894,18 +892,17 @@ class EphysTracePlot(BasePlot):
 
         self.setToolTip("Double-click or Ctrl+A to autoscale")
 
-    def set_source(self, source: ModalitySource | None):
+    def set_source(self, source: PlotSource | None):
         self._source = source
         self._apply_zoom_constraints()
 
     @property
     def _ephys_offset(self) -> float:
-        alignment = getattr(self.app_state, 'trial_alignment', None)
-        return alignment.ephys_offset if alignment is not None else 0.0
+        return float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0)
 
     @property
     def _trial_duration(self) -> float | None:
-        bounds = self.app_state.trial_bounds
+        bounds = self.app_state.window_bounds
         return bounds.duration if bounds is not None else None
 
     def set_loader(self, loader: EphysLoader, channel: int = 0):
@@ -1051,10 +1048,11 @@ class EphysTracePlot(BasePlot):
             xmin, xmax = self.get_current_xlim()
             t0, t1 = xmin, xmax
 
-        # Clamp to trial boundaries
-        t0 = max(0.0, t0)
-        if self._trial_duration is not None:
-            t1 = min(self._trial_duration, t1)
+        # Clamp to window bounds (includes extra context beyond trial)
+        wb = self.app_state.window_bounds
+        if wb is not None:
+            t0 = max(wb.start_s, t0)
+            t1 = min(wb.end_s, t1)
 
         self._update_multichannel(t0, t1)
 
@@ -1077,10 +1075,12 @@ class EphysTracePlot(BasePlot):
         # for upcoming positions (eliminates black blinking during playback).
         window = visible_t1 - visible_t0
         buf_s = window * DEFAULT_BUFFER_MULTIPLIER_EPHYS / 2
-        t0_draw = max(0.0, visible_t0 - buf_s)
+        t0_draw = visible_t0 - buf_s
         t1_draw = visible_t1 + buf_s
-        if self._trial_duration is not None:
-            t1_draw = min(self._trial_duration, t1_draw)
+        wb = self.app_state.window_bounds
+        if wb is not None:
+            t0_draw = max(wb.start_s, t0_draw)
+            t1_draw = min(wb.end_s, t1_draw)
         draw_window = t1_draw - t0_draw
 
         # Scale pixel_width so sample density matches the visible range.
@@ -1668,11 +1668,15 @@ class EphysTracePlot(BasePlot):
             self.update_plot_content(*self.get_current_xlim())
 
     def _on_view_range_changed(self):
+        if not self.isVisible():
+            return
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
         self._td.trigger()
 
     def _do_range_update(self):
+        if not self.isVisible():
+            return
         t0, t1 = self.get_current_xlim()
         self.update_plot_content(t0, t1)
 

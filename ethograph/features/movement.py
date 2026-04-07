@@ -277,7 +277,7 @@ def calculate_movement_angles(data, input_type="position"):
 
 
 
-def get_angle_rgb(xy_pos, smooth_func=None, smoothing_params=None):
+def get_angle_rgb(xy_pos, smooth_func=None, smoothing_params=None, input_type="position"):
     """
     Convert movement angles to RGB colors using a colormap, with optional smoothing.
 
@@ -312,7 +312,7 @@ def get_angle_rgb(xy_pos, smooth_func=None, smoothing_params=None):
     cm = cmap(np.linspace(0, 1, 256))[:, :3]  # Get RGB, exclude alpha
 
 
-    curr_angles, _ = calculate_movement_angles(xy_pos, "position")
+    curr_angles, _ = calculate_movement_angles(xy_pos, input_type)
 
   
 

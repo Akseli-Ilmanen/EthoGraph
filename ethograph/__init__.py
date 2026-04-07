@@ -16,6 +16,28 @@ from ethograph.io.dataset import (
 )
 from ethograph.utils.xr_utils import get_time_coord, sel_valid
 from ethograph.utils.paths import get_project_root
+from ethograph.utils.nwb import create_alignment, create_alignment_from_streams
+from ethograph.io.catalog import (
+    DataCatalog,
+    DataLoader,
+    NWBLoader,
+    PlotData,
+    PynappleLoader,
+    XarrayLoader,
+    catalog_from_nwb,
+    catalog_from_pynapple,
+    catalog_from_xarray,
+)
+from ethograph.io.pynapple import load_nap_data
+from ethograph.io.time_model import (
+    SourceCollection,
+    TimeRange,
+    TimeSource,
+)
+
+# Backwards-compat aliases
+XarrayStore = XarrayLoader
+PynappleStore = PynappleLoader
 
 
 def open(path: str) -> TrialTree:
@@ -76,3 +98,23 @@ def from_datasets(datasets: list, session_table=None) -> TrialTree:
     [1, 2, 3]
     """
     return TrialTree.from_datasets(datasets, session_table=session_table)
+
+
+def from_continuous(ds, epochs) -> TrialTree:
+    """Build a TrialTree from a single continuous recording + trial epochs.
+
+    Shorthand for :meth:`TrialTree.from_continuous`.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Full recording dataset.
+    epochs : pandas.DataFrame or pynapple.IntervalSet
+        Trial boundaries.  DataFrame must have columns ``trial``,
+        ``start_time``, ``stop_time``.
+
+    Returns
+    -------
+    TrialTree
+    """
+    return TrialTree.from_continuous(ds, epochs)

@@ -43,7 +43,7 @@ _NORM_KEY_TO_DISPLAY = {v: k for k, v in _NORM_DISPLAY_TO_KEY.items()}
 
 
 class PlotSettingsWidget(QWidget):
-    """Combined plot settings with toggle-button tabs: LinePlot | Spectrogram | HeatMap."""
+    """Combined plot settings with toggle-button tabs: LinePlot | SpacePlot | Spectrogram | HeatMap."""
 
     def __init__(self, napari_viewer: Viewer, app_state, parent=None):
         super().__init__(parent=parent)
@@ -62,10 +62,13 @@ class PlotSettingsWidget(QWidget):
 
         self._create_toggle_buttons(main_layout)
         self._create_lineplot_panel(main_layout)
+        self._create_spaceplot_panel(main_layout)
         self._create_spectrogram_panel(main_layout)
         self._create_heatmap_panel(main_layout)
+        self._create_shared_controls(main_layout)
 
         self._restore_lineplot_defaults()
+        self._restore_spaceplot_defaults()
         self._restore_spectrogram_defaults()
         self._restore_heatmap_defaults()
 
@@ -84,6 +87,7 @@ class PlotSettingsWidget(QWidget):
 
         toggle_defs = [
             ("lineplot_toggle", "LinePlot", self._toggle_lineplot),
+            ("spaceplot_toggle", "SpacePlot", self._toggle_spaceplot),
             ("spectrogram_toggle", "Spectrogram", self._toggle_spectrogram),
             ("heatmap_toggle", "HeatMap", self._toggle_heatmap),
         ]
@@ -99,6 +103,7 @@ class PlotSettingsWidget(QWidget):
     def _show_panel(self, panel_name: str):
         panels = {
             "lineplot": (self.lineplot_panel, self.lineplot_toggle),
+            "spaceplot": (self.spaceplot_panel, self.spaceplot_toggle),
             "spectrogram": (self.spectrogram_panel, self.spectrogram_toggle),
             "heatmap": (self.heatmap_panel, self.heatmap_toggle),
         }
@@ -112,7 +117,10 @@ class PlotSettingsWidget(QWidget):
         self._refresh_layout()
 
     def _toggle_lineplot(self):
-        self._show_panel("lineplot" if self.lineplot_toggle.isChecked() else "spectrogram")
+        self._show_panel("lineplot" if self.lineplot_toggle.isChecked() else "spaceplot")
+
+    def _toggle_spaceplot(self):
+        self._show_panel("spaceplot" if self.spaceplot_toggle.isChecked() else "lineplot")
 
     def _toggle_spectrogram(self):
         self._show_panel("spectrogram" if self.spectrogram_toggle.isChecked() else "lineplot")
@@ -148,13 +156,8 @@ class PlotSettingsWidget(QWidget):
         validator.setNotation(QDoubleValidator.StandardNotation)
         self.percentile_ylim_edit.setValidator(validator)
 
-        self.window_s_edit = QLineEdit()
-
         self.apply_button = QPushButton("Apply")
         self.reset_button = QPushButton("Reset")
-
-        self.autoscale_checkbox = QCheckBox("Autoscale Y")
-        self.lock_axes_checkbox = QCheckBox("Lock Axes")
 
         row = 0
         group_layout.addWidget(QLabel("Y min:"), row, 0)
@@ -165,24 +168,15 @@ class PlotSettingsWidget(QWidget):
         row += 1
         group_layout.addWidget(QLabel("Percentile Y-lim:"), row, 0)
         group_layout.addWidget(self.percentile_ylim_edit, row, 1)
-        group_layout.addWidget(QLabel("Window (s):"), row, 2)
-        group_layout.addWidget(self.window_s_edit, row, 3)
-
-        row += 1
-        group_layout.addWidget(self.autoscale_checkbox, row, 0)
-        group_layout.addWidget(self.lock_axes_checkbox, row, 1)
         group_layout.addWidget(self.apply_button, row, 2)
         group_layout.addWidget(self.reset_button, row, 3)
 
         self.ymin_edit.editingFinished.connect(self._on_axes_edited)
         self.ymax_edit.editingFinished.connect(self._on_axes_edited)
         self.percentile_ylim_edit.editingFinished.connect(self._on_axes_edited)
-        self.window_s_edit.editingFinished.connect(self._on_axes_edited)
 
         self.apply_button.clicked.connect(self._on_axes_edited)
         self.reset_button.clicked.connect(self._reset_axes_to_defaults)
-        self.autoscale_checkbox.toggled.connect(self._autoscale_y_toggle)
-        self.lock_axes_checkbox.toggled.connect(self._on_lock_axes_toggled)
 
         main_layout.addWidget(self.lineplot_panel)
 
@@ -191,7 +185,6 @@ class PlotSettingsWidget(QWidget):
             ("ymin", self.ymin_edit),
             ("ymax", self.ymax_edit),
             ("percentile_ylim", self.percentile_ylim_edit),
-            ("window_size", self.window_s_edit),
         ]:
             value = getattr(self.app_state, attr, None)
             if value is None:
@@ -233,7 +226,6 @@ class PlotSettingsWidget(QWidget):
             "ymin": self.ymin_edit,
             "ymax": self.ymax_edit,
             "percentile_ylim": self.percentile_ylim_edit,
-            "window_size": self.window_s_edit,
         }
 
         values = {}
@@ -268,8 +260,9 @@ class PlotSettingsWidget(QWidget):
             return None, None
         video = getattr(self.app_state, 'video', None)
         current_time = video.frame_to_time(self.app_state.current_frame) if video else self.app_state.current_frame / self.app_state.video_fps
-        window_size = self.app_state.get_with_default("window_size")
-        half_window = window_size / 2
+        before = self.app_state.before_s
+        after = self.app_state.after_s
+        half_window = (before + after) / 2
         return current_time - half_window, current_time + half_window
 
     def _reset_axes_to_defaults(self):
@@ -277,7 +270,6 @@ class PlotSettingsWidget(QWidget):
             ("ymin", self.ymin_edit),
             ("ymax", self.ymax_edit),
             ("percentile_ylim", self.percentile_ylim_edit),
-            ("window_size", self.window_s_edit),
         ]:
             value = self.app_state.get_with_default(attr)
             edit.setText("" if value is None else str(value))
@@ -286,6 +278,109 @@ class PlotSettingsWidget(QWidget):
         self.lock_axes_checkbox.setChecked(False)
         self.app_state.lock_axes = False
         self._on_axes_edited()
+
+    # ------------------------------------------------------------------
+    # SpacePlot panel
+    # ------------------------------------------------------------------
+
+    def _create_spaceplot_panel(self, main_layout):
+        self.spaceplot_panel = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(2)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.spaceplot_panel.setLayout(layout)
+
+        group_box = QGroupBox("Space Plot Controls")
+        group_layout = QGridLayout()
+        group_box.setLayout(group_layout)
+        layout.addWidget(group_box)
+
+        row = 0
+        group_layout.addWidget(QLabel("Percentile XYZ-lim:"), row, 0)
+        self.space_percentile_spin = QDoubleSpinBox()
+        self.space_percentile_spin.setRange(50.0, 100.0)
+        self.space_percentile_spin.setSingleStep(0.5)
+        self.space_percentile_spin.setDecimals(1)
+        self.space_percentile_spin.setToolTip(
+            "Percentile for per-axis range limits (100 = show all data)"
+        )
+        self.space_percentile_spin.valueChanged.connect(self._on_space_percentile_changed)
+        group_layout.addWidget(self.space_percentile_spin, row, 1)
+
+        self.space_marker_checkbox = QCheckBox("Marker")
+        self.space_marker_checkbox.toggled.connect(self._on_space_marker_toggled)
+        group_layout.addWidget(self.space_marker_checkbox, row, 2)
+
+        self.space_limit_window_checkbox = QCheckBox("Limit to window")
+        self.space_limit_window_checkbox.setToolTip(
+            "Only draw trajectory for the time range visible in the line plot"
+        )
+        self.space_limit_window_checkbox.toggled.connect(self._on_space_limit_window_toggled)
+        group_layout.addWidget(self.space_limit_window_checkbox, row, 3)
+
+        row += 1
+        self.space_lock_axes_checkbox = QCheckBox("Lock axes (Space)")
+        self.space_lock_axes_checkbox.setToolTip(
+            "Keep the current axis ranges when switching trials"
+        )
+        self.space_lock_axes_checkbox.toggled.connect(self._on_space_lock_axes_toggled)
+        group_layout.addWidget(self.space_lock_axes_checkbox, row, 0, 1, 2)
+
+        main_layout.addWidget(self.spaceplot_panel)
+
+    def _restore_spaceplot_defaults(self):
+        self.space_percentile_spin.setValue(
+            self.app_state.get_with_default("space_percentile_xyzlim"))
+        self.space_marker_checkbox.setChecked(
+            self.app_state.get_with_default("space_marker_visible"))
+
+        self.space_limit_window_checkbox.setChecked(
+            self.app_state.get_with_default("space_limit_to_window"))
+
+        self.space_lock_axes_checkbox.setChecked(
+            self.app_state.get_with_default("space_lock_axes"))
+
+    def _on_space_percentile_changed(self, value: float):
+        self.app_state.space_percentile_xyzlim = value
+
+    def _on_space_marker_toggled(self, checked: bool):
+        self.app_state.space_marker_visible = checked
+
+    def _on_space_limit_window_toggled(self, checked: bool):
+        self.app_state.space_limit_to_window = checked
+
+    def _on_space_lock_axes_toggled(self, checked: bool):
+        self.app_state.space_lock_axes = checked
+
+
+    # ------------------------------------------------------------------
+    # Shared controls (apply to all plot types)
+    # ------------------------------------------------------------------
+
+    def _create_shared_controls(self, main_layout):
+        shared_widget = QWidget()
+        shared_layout = QHBoxLayout()
+        shared_layout.setSpacing(6)
+        shared_layout.setContentsMargins(0, 0, 0, 0)
+        shared_widget.setLayout(shared_layout)
+
+        self.autoscale_checkbox = QCheckBox("Autoscale Y")
+        self.lock_axes_checkbox = QCheckBox("Lock Axes")
+        self.reset_layout_button = QPushButton("Reset Layout")
+        self.reset_layout_button.setToolTip(
+            "Re-dock all floating panels and restore default layout.\n"
+            "Use when panels are lost or the layout is messed up."
+        )
+
+        shared_layout.addWidget(self.autoscale_checkbox)
+        shared_layout.addWidget(self.lock_axes_checkbox)
+        shared_layout.addWidget(self.reset_layout_button)
+        shared_layout.addStretch()
+
+        self.autoscale_checkbox.toggled.connect(self._autoscale_y_toggle)
+        self.lock_axes_checkbox.toggled.connect(self._on_lock_axes_toggled)
+
+        main_layout.addWidget(shared_widget)
 
     # ------------------------------------------------------------------
     # Spectrogram panel

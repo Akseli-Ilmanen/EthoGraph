@@ -73,9 +73,10 @@ if __name__ == "__main__":
    
    
 
-   mapping_file = os.path.join(eto.get_project_root(), "configs", "mapping.txt")
-
-
+   from ethograph.utils.paths import find_config
+   mapping_file = str(find_config("mapping.txt") or os.path.join(eto.get_project_root(), "configs", "mapping.txt"))
+   
+   
    nc_paths = [
       r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260310_01\behav\Trial_data.nc",
       r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260311_01\behav\Trial_data.nc",

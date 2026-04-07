@@ -15,7 +15,7 @@ from audioio import AudioLoader
 from qtpy.QtCore import Signal
 from scipy.signal import spectrogram
 
-from .modality import ModalitySource
+from ..io.plot_sources import PlotSource
 from .plots_base import BasePlot, ThrottleDebounce
 from .app_constants import (
     SPECTROGRAM_DEBOUNCE_MS,
@@ -75,7 +75,7 @@ class SpectrogramPlot(BasePlot):
 
         self.init_colorbar()
         self.buffer = SpectrogramBuffer(app_state)
-        self.source: ModalitySource | None = None
+        self.source: PlotSource | None = None
 
         self._set_frequency_limits()
 
@@ -107,8 +107,8 @@ class SpectrogramPlot(BasePlot):
             vmax = self.app_state.get_with_default("vmax_db")
         self.spec_item.setLevels([vmin, vmax])
 
-    def set_source(self, source: ModalitySource | None):
-        """Set a ModalitySource for spectrogram data. Clears buffer."""
+    def set_source(self, source: PlotSource | None):
+        """Set a PlotSource for spectrogram data. Clears buffer."""
         self.source = source
         self.buffer._clear_buffer()
         if source is not None:
@@ -185,11 +185,15 @@ class SpectrogramPlot(BasePlot):
         self.buffer.update_buffer_size()
 
     def _on_view_range_changed(self):
+        if not self.isVisible():
+            return
         if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
             return
         self._td.trigger()
 
     def _do_range_update(self):
+        if not self.isVisible():
+            return
         t0, t1 = self.get_current_xlim()
         self.update_plot_content(t0, t1)
 
@@ -232,7 +236,7 @@ class SpectrogramBuffer:
         margin = (t1 - t0) * BUFFER_COVERAGE_MARGIN
         return self.buffer_t0 <= t0 - margin and self.buffer_t1 >= t1 + margin
 
-    def get_spectrogram(self, source: ModalitySource, t0: float, t1: float):
+    def get_spectrogram(self, source: PlotSource, t0: float, t1: float):
         """Get spectrogram data, computing only if necessary."""
         if source.identity != self.current_identity:
             self._clear_buffer()
@@ -248,7 +252,7 @@ class SpectrogramBuffer:
 
         return self.Sxx_db, self._get_spec_rect()
 
-    def _compute_buffer(self, source: ModalitySource, t0: float, t1: float):
+    def _compute_buffer(self, source: PlotSource, t0: float, t1: float):
         """Compute spectrogram for buffered range."""
         self.fs = source.sampling_rate
 

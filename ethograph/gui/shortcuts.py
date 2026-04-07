@@ -80,24 +80,25 @@ def bind_global_shortcuts(meta_widget):
     @viewer.bind_key("space", overwrite=True)
     def toggle_pause_resume(v):
         data_widget.toggle_pause_resume()
+        navigation_widget._sync_play_icon()
 
     @viewer.bind_key("v", overwrite=True)
     def play_segment(v):
         labels_widget._play_segment()
 
-    @viewer.bind_key("Left", overwrite=True)
+    @viewer.bind_key("shift+Left", overwrite=True)
     def step_window_backward(v):
         navigation_widget.step_window_backward()
 
-    @viewer.bind_key("Right", overwrite=True)
+    @viewer.bind_key("shift+Right", overwrite=True)
     def step_window_forward(v):
         navigation_widget.step_window_forward()
 
-    @viewer.bind_key("shift+Left", overwrite=True)
+    @viewer.bind_key("Left", overwrite=True)
     def step_frame_backward(v):
         navigation_widget.step_frame_backward()
 
-    @viewer.bind_key("shift+Right", overwrite=True)
+    @viewer.bind_key("Right", overwrite=True)
     def step_frame_forward(v):
         navigation_widget.step_frame_forward()
 
@@ -119,10 +120,11 @@ def bind_global_shortcuts(meta_widget):
 
     @viewer.bind_key("ctrl+p", overwrite=True)
     def toggle_sync(v):
-        current_index = navigation_widget.sync_toggle_btn.currentIndex()
-        total_options = navigation_widget.sync_toggle_btn.count()
-        next_index = (current_index + 1) % total_options
-        navigation_widget.sync_toggle_btn.setCurrentIndex(next_index)
+        btn = getattr(navigation_widget, "sync_toggle_btn", None)
+        if btn is None:
+            return
+        next_index = (btn.currentIndex() + 1) % btn.count()
+        btn.setCurrentIndex(next_index)
 
     @viewer.bind_key("ctrl+y", overwrite=True)
     def toggle_label_pred(v):
@@ -149,7 +151,7 @@ def bind_global_shortcuts(meta_widget):
 
     @viewer.bind_key("ctrl+v", overwrite=True)
     def human_verified(v):
-        labels_widget._human_verification_true(mode="single_trial")
+        io_widget._human_verification_true(mode="single_trial")
 
     @viewer.bind_key("ctrl+b", overwrite=True)
     def toggle_changepoint_correction(v):
@@ -191,6 +193,12 @@ def bind_global_shortcuts(meta_widget):
     def prev_spike(v):
         _jump_spike(-1)
 
+    @viewer.bind_key("ctrl+space", overwrite=True)
+    def stop_recording(v):
+        record_btn = getattr(navigation_widget, "record_button", None)
+        if record_btn is not None:
+            record_btn._stop_recording()
+
     # Label activation grid layout
     number_keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
     qwerty_row = ['q', 'w', 'e', 'r', 't', 'z', 'u', 'i', 'o', 'p']
@@ -213,6 +221,10 @@ def bind_global_shortcuts(meta_widget):
     @viewer.bind_key("ctrl+d", overwrite=True)
     def delete_label(v):
         labels_widget._delete_label()
+
+    @viewer.bind_key("shift+b", overwrite=True)
+    def switch_branch(v):
+        labels_widget.toggle_branch()
 
     @viewer.bind_key("ctrl+f", overwrite=True)
     def toggle_features(v):
@@ -281,3 +293,12 @@ def bind_global_shortcuts(meta_widget):
     @viewer.bind_key("ctrl+Left", overwrite=True)
     def prev_changepoint(v):
         changepoints_widget.jump_changepoint(-1)
+
+    @viewer.bind_key("shift+k", overwrite=True)
+    def cycle_space_keypoint(v):
+        sp = getattr(data_widget, 'space_plot', None)
+        if sp is None or not sp.isVisible():
+            return
+        combo = sp.keypoint_combo
+        if combo.isVisible() and combo.count() > 1:
+            combo.setCurrentIndex((combo.currentIndex() + 1) % combo.count())
