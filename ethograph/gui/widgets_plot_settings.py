@@ -326,6 +326,21 @@ class PlotSettingsWidget(QWidget):
         self.space_lock_axes_checkbox.toggled.connect(self._on_space_lock_axes_toggled)
         group_layout.addWidget(self.space_lock_axes_checkbox, row, 0, 1, 2)
 
+        self.space_hide_zeros_checkbox = QCheckBox("Hide zeros")
+        self.space_hide_zeros_checkbox.setToolTip(
+            "Hide points where all dimensions are exactly zero"
+        )
+        self.space_hide_zeros_checkbox.toggled.connect(self._on_space_hide_zeros_toggled)
+        group_layout.addWidget(self.space_hide_zeros_checkbox, row, 2, 1, 2)
+
+        row += 1
+        self.space_show_references_checkbox = QCheckBox("Show space.yaml references")
+        self.space_show_references_checkbox.setToolTip(
+            "Draw arena/reference geometry loaded from space.yaml"
+        )
+        self.space_show_references_checkbox.toggled.connect(self._on_space_show_references_toggled)
+        group_layout.addWidget(self.space_show_references_checkbox, row, 0, 1, 4)
+
         main_layout.addWidget(self.spaceplot_panel)
 
     def _restore_spaceplot_defaults(self):
@@ -340,6 +355,12 @@ class PlotSettingsWidget(QWidget):
         self.space_lock_axes_checkbox.setChecked(
             self.app_state.get_with_default("space_lock_axes"))
 
+        self.space_hide_zeros_checkbox.setChecked(
+            self.app_state.get_with_default("space_hide_zeros"))
+
+        self.space_show_references_checkbox.setChecked(
+            self.app_state.get_with_default("space_show_references"))
+
     def _on_space_percentile_changed(self, value: float):
         self.app_state.space_percentile_xyzlim = value
 
@@ -352,6 +373,11 @@ class PlotSettingsWidget(QWidget):
     def _on_space_lock_axes_toggled(self, checked: bool):
         self.app_state.space_lock_axes = checked
 
+    def _on_space_hide_zeros_toggled(self, checked: bool):
+        self.app_state.space_hide_zeros = checked
+
+    def _on_space_show_references_toggled(self, checked: bool):
+        self.app_state.space_show_references = checked
 
     # ------------------------------------------------------------------
     # Shared controls (apply to all plot types)

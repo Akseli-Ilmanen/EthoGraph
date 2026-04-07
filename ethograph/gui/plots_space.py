@@ -69,32 +69,28 @@ def _parse_axis_item(item: str) -> tuple[str, str | None]:
     return item, None
 
 
-def _select_axis(store: DataLoader, item: str, selections: dict,
+def _select_axis(store: DataLoader, item: str, ds_kwargs: dict,
                  t0: float | None = None, t1: float | None = None):
     """Fetch 1-D numpy array + time for a single axis item.
+
+    Follows the ``select_feature`` / ``plot_ds_variable`` pattern: pass
+    ``ds_kwargs`` straight through to ``store.select``, which uses
+    ``sel_valid`` internally and ignores dimensions the feature doesn't have.
+    The only axis-specific logic is overriding the right dimension key with
+    the column encoded in the combo item (e.g. "position · x" → space="x").
 
     Returns ``(time, data)`` or ``(None, None)`` on failure.
     """
     feat, col = _parse_axis_item(item)
 
-    # Build selections: start from app-level selections, then add
-    # or override with the column picked for this axis.
-    sel = dict(selections)
+    kw = dict(ds_kwargs)
     if col is not None:
-        feat_dims = store.feature_dims(feat)
-        for dim_name, dim_vals in feat_dims.items():
+        for dim_name, dim_vals in store.feature_dims(feat).items():
             if col in dim_vals:
-                sel[dim_name] = col
+                kw[dim_name] = col
                 break
 
-    # Ensure every non-time dim of this feature has a selection so
-    # sel_valid gets a 1-D or 2-D array (never 3-D+).
-    feat_dims = store.feature_dims(feat)
-    for dim_name, dim_vals in feat_dims.items():
-        if dim_name not in sel and dim_vals:
-            sel[dim_name] = dim_vals[0]
-
-    pd = store.select(feat, sel, t0=t0, t1=t1)
+    pd = store.select(feat, kw, t0=t0, t1=t1)
     if pd is None:
         return None, None
 
@@ -325,10 +321,6 @@ class SpacePlot(QWidget):
         self.cb_3d = QCheckBox("3D")
         row2.addWidget(self.cb_3d)
 
-        self.cb_hide_zeros = QCheckBox("Hide zeros")
-        self.cb_hide_zeros.setToolTip("Hide points where all dimensions are exactly zero")
-        row2.addWidget(self.cb_hide_zeros)
-
         self.keypoint_label = QLabel("Keypoint")
         row2.addWidget(self.keypoint_label)
         self.keypoint_combo = QComboBox()
@@ -351,18 +343,20 @@ class SpacePlot(QWidget):
         self._trajectory_times: np.ndarray | None = None
         self._time_marker_item = None
         self._locked_ranges: dict | None = None  # saved axis ranges when lock is on
+        self._prev_keypoint: str | None = None  # for toggle-back with shift+k
 
         # Connect combo/checkbox signals
         self.x_combo.currentIndexChanged.connect(self._on_axis_changed)
         self.y_combo.currentIndexChanged.connect(self._on_axis_changed)
         self.z_combo.currentIndexChanged.connect(self._on_axis_changed)
         self.cb_3d.toggled.connect(self._on_3d_toggled)
-        self.keypoint_combo.currentIndexChanged.connect(self._on_axis_changed)
-        self.cb_hide_zeros.toggled.connect(self._on_axis_changed)
+        self.keypoint_combo.currentIndexChanged.connect(self._on_keypoint_changed)
 
         # Listen for settings changes via app_state
         app_state.space_percentile_xyzlim_changed.connect(self._on_settings_changed)
         app_state.space_limit_to_window_changed.connect(self._on_settings_changed)
+        app_state.space_hide_zeros_changed.connect(self._on_settings_changed)
+        app_state.space_show_references_changed.connect(self._on_settings_changed)
 
         self._set_3d_visible(False)
         super().hide()
@@ -375,6 +369,8 @@ class SpacePlot(QWidget):
 
     def set_store(self, store: DataLoader | None):
         """Set the feature store and repopulate axis combos."""
+        if store is self._store:
+            return
         self._store = store
         self._populate_combos()
 
@@ -405,7 +401,12 @@ class SpacePlot(QWidget):
     # --- Combo population --------------------------------------------------
 
     def _populate_combos(self):
-        """Fill axis combos from the current store."""
+        """Fill axis combos from the current store, preserving current selections."""
+        prev_x = self.x_combo.currentText()
+        prev_y = self.y_combo.currentText()
+        prev_z = self.z_combo.currentText()
+        prev_kp = self.keypoint_combo.currentText()
+
         all_combos = (self.x_combo, self.y_combo, self.z_combo, self.keypoint_combo)
         for combo in all_combos:
             combo.blockSignals(True)
@@ -420,11 +421,31 @@ class SpacePlot(QWidget):
         for combo in (self.x_combo, self.y_combo, self.z_combo):
             combo.addItems(items)
 
-        # Smart defaults: pick position · x/y/z if available, else first two
-        self._set_default_axes(items)
+        # Restore previous axis selections; fall back to smart defaults.
+        def _restore_or_default(combo, prev, default_fn):
+            idx = combo.findText(prev) if prev else -1
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+            else:
+                default_fn()
+
+        if prev_x or prev_y:
+            _restore_or_default(self.x_combo, prev_x, lambda: None)
+            _restore_or_default(self.y_combo, prev_y, lambda: None)
+            _restore_or_default(self.z_combo, prev_z, lambda: None)
+            if not any(c.currentText() for c in (self.x_combo, self.y_combo)):
+                self._set_default_axes(items)
+        else:
+            self._set_default_axes(items)
 
         # Populate keypoint combo from non-first (non-axis-expanded) dimensions
         self._populate_keypoint_combo()
+
+        # Restore previous keypoint selection if still available.
+        if prev_kp:
+            idx = self.keypoint_combo.findText(prev_kp)
+            if idx >= 0:
+                self.keypoint_combo.setCurrentIndex(idx)
 
         for combo in all_combos:
             combo.blockSignals(False)
@@ -491,7 +512,32 @@ class SpacePlot(QWidget):
             return {dim_name: text}
         return {}
 
+    def toggle_keypoint(self):
+        """Toggle between current and previous keypoint selection (shift+k)."""
+        combo = self.keypoint_combo
+        if not combo.isVisible() or combo.count() < 2:
+            return
+        current = combo.currentText()
+        if self._prev_keypoint and self._prev_keypoint != current:
+            idx = combo.findText(self._prev_keypoint)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+                return
+        # No valid previous — cycle to next
+        combo.setCurrentIndex((combo.currentIndex() + 1) % combo.count())
+
     # --- Axis change handlers ----------------------------------------------
+
+    def _on_keypoint_changed(self, *_args):
+        new_text = self.keypoint_combo.currentText()
+        # _prev_keypoint is the value *before* this change (set at the end of
+        # the previous call, or None on first change).
+        if new_text and new_text != getattr(self, '_current_keypoint', None):
+            self._prev_keypoint = getattr(self, '_current_keypoint', None)
+            self._current_keypoint = new_text
+        if self._store is not None:
+            self._save_to_app_state()
+            self._update_plot()
 
     def _on_axis_changed(self, *_args):
         if self._store is not None:
@@ -553,12 +599,12 @@ class SpacePlot(QWidget):
         view_3d = self.cb_3d.isChecked()
         z_item = self.z_combo.currentText() if view_3d else None
 
-        selections = self.app_state.get_selections()
-        selections.update(self._get_keypoint_selection())
+        ds_kwargs = dict(self.app_state.get_ds_kwargs())
+        ds_kwargs.update(self._get_keypoint_selection())
         t0, t1 = self._get_window_time_range()
 
-        time_x, data_x = _select_axis(store, x_item, selections, t0=t0, t1=t1)
-        time_y, data_y = _select_axis(store, y_item, selections, t0=t0, t1=t1)
+        time_x, data_x = _select_axis(store, x_item, ds_kwargs, t0=t0, t1=t1)
+        time_y, data_y = _select_axis(store, y_item, ds_kwargs, t0=t0, t1=t1)
         if time_x is None or time_y is None:
             return
 
@@ -568,12 +614,12 @@ class SpacePlot(QWidget):
 
         data_z = None
         if view_3d and z_item:
-            _, dz = _select_axis(store, z_item, selections, t0=t0, t1=t1)
+            _, dz = _select_axis(store, z_item, ds_kwargs, t0=t0, t1=t1)
             if dz is not None:
                 data_z = dz[:n]
 
         # Mask points where all dimensions are exactly zero
-        if self.cb_hide_zeros.isChecked():
+        if getattr(self.app_state, 'space_hide_zeros', False):
             zero_mask = (data_x == 0) & (data_y == 0)
             if data_z is not None:
                 zero_mask &= (data_z == 0)
@@ -582,7 +628,7 @@ class SpacePlot(QWidget):
             if data_z is not None:
                 data_z = np.where(zero_mask, np.nan, data_z)
 
-        color_data = self._get_color_data(store, selections, n)
+        color_data = None
 
         use_3d = view_3d and data_z is not None
         locked = getattr(self.app_state, 'space_lock_axes', False)
@@ -622,26 +668,6 @@ class SpacePlot(QWidget):
             t = current_frame / fps if fps else 0.0
         self.update_time_marker(t)
 
-
-    def _get_color_data(self, store: DataLoader, selections: dict, n: int):
-        """Fetch color data if a color variable is selected."""
-        color_var = None
-        if hasattr(self.app_state, 'colors_sel') and self.app_state.colors_sel not in (None, "None", ""):
-            color_var = self.app_state.colors_sel
-
-        if not color_var or color_var not in store.features:
-            return None
-
-        pd = store.select(color_var, selections)
-        if pd is None:
-            return None
-
-        cd = pd.data
-        if cd.ndim == 2 and cd.shape[1] >= 3:
-            if cd.max() > 1.0:
-                cd = cd / 255.0
-            return cd[:n]
-        return None
 
     def _rebuild_plot_widget(self, view_3d: bool):
         """Remove old widget and create the right type."""
@@ -683,6 +709,8 @@ class SpacePlot(QWidget):
 
     def _draw_references(self):
         """Draw all reference geometry items."""
+        if not getattr(self.app_state, 'space_show_references', True):
+            return
         refs = self._load_references()
         if not refs:
             return

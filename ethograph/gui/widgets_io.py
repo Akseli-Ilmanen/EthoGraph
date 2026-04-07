@@ -436,7 +436,7 @@ class IOWidget(QWidget):
             lambda: setattr(self.app_state, "remote_backup_path", self.remote_backup_edit.text().strip() or None)
         )
         remote_path_row.addWidget(self.remote_backup_edit)
-        remote_browse_btn = QPushButton("Browse file")
+        remote_browse_btn = QPushButton("Browse folder")
         remote_browse_btn.clicked.connect(self._browse_remote_backup)
         remote_path_row.addWidget(remote_browse_btn)
         remote_group_layout.addLayout(remote_path_row)
@@ -517,6 +517,7 @@ class IOWidget(QWidget):
         folder = QFileDialog.getExistingDirectory(self, "Select remote backup folder")
         if folder:
             self.remote_backup_edit.setText(folder)
+            self.app_state.remote_backup_path = folder
 
     def _human_verification_true(self, mode=None):
         if self.app_state.trials_sel is None:
@@ -612,22 +613,31 @@ class IOWidget(QWidget):
 
         def purge(df):
             if df.empty:
-                return df
+                return df, 0
             mask = (df["offset_s"] - df["onset_s"]) >= min_duration
-            return df[mask].copy().reset_index(drop=True)
+            count = len(df) - mask.sum()                
+            return df[mask].copy().reset_index(drop=True), count
 
+        counter = 0
+        
         if mode == "single_trial":
             trial = self.app_state.trials_sel
-            df = purge(self.app_state.get_trial_intervals(trial))
+            df, counter = purge(self.app_state.get_trial_intervals(trial))
             self.app_state.set_trial_intervals(trial, df)
             self.app_state.label_intervals = df
             self.app_state.set_trial_meta_attr(trial, "small_labels_purged", 1)
+            
         elif mode == "all_trials":
             for trial in self.app_state.trials:
-                df = purge(self.app_state.get_trial_intervals(trial))
+                df, count = purge(self.app_state.get_trial_intervals(trial))
+                counter += count
                 self.app_state.set_trial_intervals(trial, df)
                 self.app_state.set_trial_meta_attr(trial, "small_labels_purged", 1)
+                
             self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
+        
+            
+        print(f"Purged {counter} small labels shorter than {min_duration:.3f} seconds.")
 
         self._update_purge_small_labels_status()
         self.app_state.changes_saved = False
