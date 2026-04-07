@@ -374,7 +374,6 @@ def convert_session_to_nwb(dt: TrialTree, output_path: str | Path | None = None)
             row["start_time"] = 0.0
 
         row["stop_time"] = row["start_time"] + dt.trial(trial_id).time.values[-1]
-        print(f"Trial {trial_id}: start_time={row['start_time']}, stop_time={row['stop_time']}")
 
         # Extract media columns
         for stream in ("video", "audio", "pose"):
