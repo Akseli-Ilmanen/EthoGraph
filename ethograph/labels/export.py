@@ -15,19 +15,26 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
     For each individual, pulls back ``offset_s`` when the gap to the next onset
     is smaller than ``eps`` so pynapple can resolve all intervals.
 
-    Works on the compact per-trial format (columns: onset_s, offset_s, labels,
+    Works on the per-trial format (columns: trial, onset_s, offset_s, labels,
     individual) returned by ``app_state.get_trial_intervals()``.
     """
     if df.empty:
         return df
     eps = 1e-3
     df = df.copy().sort_values(["individual", "onset_s"]).reset_index(drop=True)
+    
+    counter = 0
     for _, group in df.groupby("individual"):
         idx = group.index.tolist()
         for i in range(len(idx) - 1):
             gap = df.loc[idx[i + 1], "onset_s"] - df.loc[idx[i], "offset_s"]
             if abs(gap) < eps:
                 df.loc[idx[i], "offset_s"] = df.loc[idx[i + 1], "onset_s"] - eps
+                counter += 1
+                
+                
+    print(f"Corrected {counter} offsets with gap smaller than {eps:.3f} seconds.")
+                
                 
             
             

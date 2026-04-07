@@ -15,7 +15,7 @@ from ethograph.gui.wizard_overview import ModalityConfig, WizardState
 from ethograph.labels.intervals import INTERVAL_COLUMNS
 from ethograph.io.trialtree import TrialTree
 
-INTERVAL_COLUMNS = {"onset_s", "offset_s", "labels", "individual"}
+INTERVAL_COLUMNS = {"trial", "onset_s", "offset_s", "labels", "individual"}
 
 
 def build_multi_trial_dt(state: WizardState) -> TrialTree:
