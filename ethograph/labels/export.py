@@ -20,7 +20,7 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
     """
     if df.empty:
         return df
-    eps = 1e-3
+    eps = 1e-4
     df = df.copy().sort_values(["individual", "onset_s"]).reset_index(drop=True)
     for _, group in df.groupby("individual"):
         idx = group.index.tolist()
@@ -28,6 +28,12 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
             gap = df.loc[idx[i + 1], "onset_s"] - df.loc[idx[i], "offset_s"]
             if abs(gap) < eps:
                 df.loc[idx[i], "offset_s"] = df.loc[idx[i + 1], "onset_s"] - eps
+                df.loc[idx[i], "duration"] = df.loc[idx[i], "offset_s"] - df.loc[idx[i], "onset_s"]
+            
+                if "offset_global" in df.columns and "onset_global" in df.columns:
+                    df.loc[idx[i], "offset_global"] = df.loc[idx[i + 1], "onset_global"] - eps
+                    df.loc[idx[i], "duration"] = df.loc[idx[i], "offset_s"] - df.loc[idx[i], "onset_s"]
+                
                 
             
             
@@ -36,9 +42,7 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
 
     # Internal to crow lab, we had a legacy labeling system that was frame-wise(200 Hz), and this correction should fix those labels.
     dt = 1 / 200  # 5 ms frame rate
-    group_cols = ["trial", "individual"]
-    if "session" in df.columns:
-        group_cols.insert(0, "session")
+    group_cols = [c for c in ["session", "trial", "individual"] if c in df.columns]
     for _, group in df.groupby(group_cols):
         individual = group["individual"].iloc[0]
         
@@ -46,7 +50,9 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
         if not any(name in individual for name in ["Ivy", "Freddy"]):
             continue
 
-        print(f"Processing session {group['session'].iloc[0]}, trial {group['trial'].iloc[0]}, individual {individual}")
+        session_str = group["session"].iloc[0] if "session" in group.columns else "?"
+        trial_str = group["trial"].iloc[0] if "trial" in group.columns else "?"
+        print(f"Processing session {session_str}, trial {trial_str}, individual {individual}")
         
         idx = group.index
         
