@@ -70,11 +70,6 @@ class XarrayTrialSource:
     def sampling_rate(self) -> float | None:
         return self._sampling_rate
 
-    def set_dataset(self, ds: xr.Dataset) -> None:
-        """Swap backing dataset on trial change."""
-        self._ds = ds
-        self._update_range()
-
     def get_data(self, t0: float, t1: float) -> tuple[np.ndarray, np.ndarray]:
         if self._name not in self._ds.data_vars:
             return np.array([], dtype=np.float64), np.array([])
@@ -192,42 +187,3 @@ class NWBTimeSource:
 
         return stacked.timestamps.astype(np.float64), data
 
-
-# ---------------------------------------------------------------------------
-# MediaTimeSource — metadata-only source from NWB ImageSeries
-# ---------------------------------------------------------------------------
-
-
-class MediaTimeSource:
-    """TimeSource representing an external media stream (video, audio, pose).
-
-    Does not load actual data — only provides time range and rate from
-    NWB ImageSeries metadata. Used by SourceCollection for range queries
-    so that ``union_range`` includes media file durations.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        start_s: float,
-        end_s: float,
-        rate: float | None,
-    ) -> None:
-        self._name = name
-        self._time_range = TimeRange(start_s, end_s)
-        self._sampling_rate = rate
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def time_range(self) -> TimeRange:
-        return self._time_range
-
-    @property
-    def sampling_rate(self) -> float | None:
-        return self._sampling_rate
-
-    def get_data(self, t0: float, t1: float) -> tuple[np.ndarray, np.ndarray]:
-        return np.array([], dtype=np.float64), np.array([])

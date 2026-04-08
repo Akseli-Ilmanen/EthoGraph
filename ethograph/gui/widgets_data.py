@@ -813,7 +813,7 @@ class DataWidget(QWidget):
         self.app_state.downsample_factor_used = ctx.downsample_factor
 
         self.app_state._all_labels_df = ctx.all_labels_df
-        self.app_state.trials = ctx.trials
+        self.app_state.trials = ctx.trials if ctx.trials else [1]
         self.app_state.ds = ctx.ds
         self.app_state.data_loader = ctx.data_loader
 
@@ -1964,10 +1964,8 @@ class DataWidget(QWidget):
 
         if hasattr(self, 'view_mode_combo'):
             self._apply_view_mode_for_feature()
-            view_mode = self.view_mode_combo.currentText()
-            if view_mode.startswith("Heatmap"):
-                self.plot_container.heatmap_plot._clear_buffer()
-
+            
+       
         self.app_state.label_intervals = self.app_state.get_trial_intervals(trials_sel)
 
         self._build_trial_alignment(trials_sel)
@@ -1981,6 +1979,7 @@ class DataWidget(QWidget):
         self.update_label()
         if self.ephys_widget:
             self.ephys_widget.on_trial_changed()
+            
         preserve = getattr(self.app_state, '_preserve_x_range_next', False)
         self.app_state._preserve_x_range_next = False
         self.update_main_plot(preserve_x_range=preserve)

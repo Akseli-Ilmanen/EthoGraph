@@ -86,25 +86,7 @@ class TrialTree(xr.DataTree):
             value = xr.DataTree(value)
         super().__setitem__(key, value)
 
-    # ------------------------------------------------------------------
-    # Trial metadata table
-    # ------------------------------------------------------------------
 
-    def get_trial_metadata(self, trial) -> dict:
-        """Return condition metadata for a single trial as a dict."""
-        df = getattr(self, "_metadata_df", None)
-        if df is None:
-            return {}
-        if df.empty:
-            return {}
-        row = df[df["trial"] == trial]
-        if row.empty:
-            row = df[df["trial"] == str(trial)]
-        if row.empty and isinstance(trial, (int, float)):
-            row = df[df["trial"].astype(str) == str(int(trial))]
-        if row.empty:
-            return {}
-        return {k: v for k, v in row.iloc[0].to_dict().items() if k != "trial" and pd.notna(v)}
 
     # ------------------------------------------------------------------
     # Continuous mode support
@@ -123,7 +105,7 @@ class TrialTree(xr.DataTree):
         time_dims = [d for d in ds.dims if "time" in d.lower()]
 
         sel = {dim: slice(start, stop) for dim in time_dims}
-        sliced = ds.sel(sel)
+        sliced = ds.sel(sel, method="nearest")
 
         for dim in time_dims:
             if dim in sliced.coords:
@@ -197,22 +179,11 @@ class TrialTree(xr.DataTree):
         if self._is_continuous:
             raise TypeError(
                 "Cannot update trials in a continuous TrialTree. "
-                "Call .materialise() first to split into per-trial datasets."
             )
         node_name = self._trial_node_name(trial)
         self[node_name] = xr.DataTree(func(self[node_name].ds))
 
 
-    # ------------------------------------------------------------------
-    # Backward compat: session property (returns None for NWB-backed trees)
-    # ------------------------------------------------------------------
-
-    @property
-    def session(self) -> xr.Dataset | None:
-        """Legacy session access. Returns None for NWB-backed trees."""
-        if "session" in self.children:
-            return self["session"].ds
-        return None
 
     # ------------------------------------------------------------------
     # Trial data access
@@ -253,25 +224,7 @@ class TrialTree(xr.DataTree):
         """Return a dict mapping trial ID to Dataset for all trials."""
         return {num: self.trial(num) for num in self.trials}
 
-    def materialise(self) -> TrialTree:
-        """Convert a continuous TrialTree into a standard per-node TrialTree.
 
-        No-op if the tree is already per-node.  The returned tree copies
-        nwb_alignment from the source.
-        """
-        if not self._is_continuous:
-            return self
-        datasets = [self._slice_continuous(t) for t in sorted(self._trial_epochs.keys())]
-        tree = TrialTree.from_datasets(datasets, validate=False)
-        tree.attrs = dict(self.attrs)
-        tree.nwb_alignment = self.nwb_alignment
-        sp = getattr(self, "_source_path", None)
-        if sp is not None:
-            tree._source_path = sp
-        mdf = getattr(self, "_metadata_df", None)
-        if mdf is not None:
-            tree._metadata_df = mdf
-        return tree
 
     def get_common_attrs(self) -> dict[str, Any]:
         """Return attributes that are identical across all trials."""
@@ -429,16 +382,25 @@ class TrialTree(xr.DataTree):
                 if hasattr(trial_id, "item"):
                     trial_id = trial_id.item()
                 epoch_dict[trial_id] = (float(epochs.start[i]), float(epochs.end[i]))
-        else:
+                
+                
+        elif isinstance(epochs, pd.DataFrame):
             epoch_dict = {}
-            trials_col = epochs["trial"].values
+            
+            if "trial" in epochs.columns:
+                trials_col = epochs["trial"].values
+            else:
+                trials_col = None
+
             starts_col = epochs["start_time"].values
             stops_col = epochs["stop_time"].values
             for i in range(len(epochs)):
-                tid = trials_col[i]
-                if hasattr(tid, "item"):
-                    tid = tid.item()
-                epoch_dict[tid] = (float(starts_col[i]), float(stops_col[i]))
+                trial_id = trials_col[i] if trials_col is not None else i + 1
+                if hasattr(trial_id, "item"):
+                    trial_id = trial_id.item()
+                epoch_dict[trial_id] = (float(starts_col[i]), float(stops_col[i]))
+        else:
+            raise ValueError("epochs must be a pandas DataFrame or pynapple IntervalSet")
 
         tree._continuous_ds = ds
         tree._trial_epochs = epoch_dict
@@ -539,3 +501,34 @@ class TrialTree(xr.DataTree):
                 "TrialTree validation failed:\n" + "\n".join(f"• {e}" for e in errors)
             )
         return errors
+
+
+
+
+    # ------------------------------------------------------------------
+    # Legacy compatibility
+    # ------------------------------------------------------------------
+
+    @property
+    def session(self) -> xr.Dataset | None:
+        """Legacy session access. Returns None for NWB-backed trees."""
+        if "session" in self.children:
+            return self["session"].ds
+        return None
+
+
+    def get_trial_metadata(self, trial) -> dict:
+        """Return condition metadata for a single trial as a dict."""
+        df = getattr(self, "_metadata_df", None)
+        if df is None:
+            return {}
+        if df.empty:
+            return {}
+        row = df[df["trial"] == trial]
+        if row.empty:
+            row = df[df["trial"] == str(trial)]
+        if row.empty and isinstance(trial, (int, float)):
+            row = df[df["trial"].astype(str) == str(int(trial))]
+        if row.empty:
+            return {}
+        return {k: v for k, v in row.iloc[0].to_dict().items() if k != "trial" and pd.notna(v)}

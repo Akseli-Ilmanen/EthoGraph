@@ -68,6 +68,28 @@ def _detect_audio_rate(audio_path: str) -> float:
         return float(loader.rate)
 
 
+def _ensure_trials_ep(data: dict, trials_ep):
+    """Guarantee a valid trials IntervalSet.
+
+    When no explicit trials are found, synthesize a single trial spanning
+    the full time range of all loaded time-series objects.
+    """
+    if trials_ep is not None and len(trials_ep) > 0:
+        return trials_ep
+
+    import pynapple as nap
+
+    starts: list[float] = []
+    ends: list[float] = []
+    for obj in data.values():
+        if isinstance(obj, (nap.Tsd, nap.TsdFrame, nap.TsdTensor)) and len(obj) > 0:
+            starts.append(float(obj.t[0]))
+            ends.append(float(obj.t[-1]))
+    if not starts:
+        raise ValueError("No time-series data found — cannot determine session extent")
+    return nap.IntervalSet(start=min(starts), end=max(ends))
+
+
 def _is_nwb_file(file_path: str) -> bool:
     """Check if path is a standalone .nwb file."""
     return Path(file_path).suffix == ".nwb"
@@ -204,10 +226,11 @@ def _load_pynapple_dataset(file_path: str) -> LoadResult:
     from ethograph.io.pynapple import load_nap_data
 
     data, trials_ep = load_nap_data(file_path)
+    trials_ep = _ensure_trials_ep(data, trials_ep)
     catalog = catalog_from_pynapple(data, trials_ep)
     loader = PynappleLoader(data, trials_ep, catalog)
     nwb_path = file_path if _is_nwb_file(file_path) else None
-    trial_ids = list(range(1, len(trials_ep) + 1)) if trials_ep is not None and len(trials_ep) > 0 else [1]
+    trial_ids = list(range(1, len(trials_ep) + 1))
 
     sio = make_nwb_alignment(nwb_path)
 
@@ -260,9 +283,10 @@ def _load_nwb_project(project_dir: str) -> LoadResult:
         from ethograph.io.pynapple import load_nap_data
 
         data, trials_ep = load_nap_data(nwb_source)
+        trials_ep = _ensure_trials_ep(data, trials_ep)
         catalog = catalog_from_pynapple(data, trials_ep)
         loader = PynappleLoader(data, trials_ep, catalog)
-        trial_ids = list(range(1, len(trials_ep) + 1)) if trials_ep is not None and len(trials_ep) > 0 else [1]
+        trial_ids = list(range(1, len(trials_ep) + 1))
 
         converter = PynappleLabelConverter(data, trials_ep)
         all_labels_df = converter.resolve_labels(

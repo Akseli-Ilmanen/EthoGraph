@@ -35,10 +35,6 @@ from ethograph.io.time_model import (
     TimeSource,
 )
 
-# Backwards-compat aliases
-XarrayStore = XarrayLoader
-PynappleStore = PynappleLoader
-
 
 def open(path: str) -> TrialTree:
     """Load a TrialTree from a saved NetCDF file.
@@ -65,7 +61,7 @@ def open(path: str) -> TrialTree:
     return TrialTree.open(path)
 
 
-def from_datasets(datasets: list, session_table=None) -> TrialTree:
+def from_datasets(datasets: list) -> TrialTree:
     """Build a TrialTree from a list of per-trial xarray Datasets.
 
     Shorthand for :meth:`TrialTree.from_datasets <ethograph.io.trialtree.TrialTree.from_datasets>`.
@@ -77,9 +73,6 @@ def from_datasets(datasets: list, session_table=None) -> TrialTree:
     ----------
     datasets : list[xarray.Dataset]
         One Dataset per trial.
-    session_table : xarray.Dataset or pandas.DataFrame, optional
-        Session-level metadata indexed by trial ID (e.g. start/stop times,
-        condition labels).
 
     Returns
     -------
@@ -97,7 +90,7 @@ def from_datasets(datasets: list, session_table=None) -> TrialTree:
     >>> dt.trials
     [1, 2, 3]
     """
-    return TrialTree.from_datasets(datasets, session_table=session_table)
+    return TrialTree.from_datasets(datasets)
 
 
 def from_continuous(ds, epochs) -> TrialTree:

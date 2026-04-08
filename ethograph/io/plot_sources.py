@@ -116,14 +116,6 @@ class FileSource:
         return self._rate
 
     @property
-    def n_channels(self) -> int:
-        return self._n_channels
-
-    @property
-    def n_samples(self) -> int:
-        return self._n_samples
-
-    @property
     def identity(self) -> str:
         loader_id = getattr(self._loader, "filepath", id(self._loader))
         ch = f":{self._channel}" if self._channel is not None else ""

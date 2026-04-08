@@ -18,7 +18,7 @@ from ethograph.gui.dialog_select_template import (
     _DOWNLOAD_BASE,
     _template_downloaded,
 )
-from ethograph.gui.data_loader import (
+from ethograph.io.data_loader import (
     wizard_single_from_audio,
     wizard_single_from_ds,
     wizard_single_from_npy_file,

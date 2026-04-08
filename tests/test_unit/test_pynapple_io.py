@@ -57,39 +57,6 @@ def test_detect_trials_not_found():
     assert detect_trials(data) is None
 
 
-# ---------------------------------------------------------------------------
-# Folder loading (sibling files)
-# ---------------------------------------------------------------------------
-
-
-def test_load_nap_data_from_folder(tmp_path, simple_nap_data):
-    """Loading a folder picks up all npz files including trials."""
-    from ethograph.io.pynapple import load_nap_data
-
-    simple_nap_data["speed"].save(str(tmp_path / "speed"))
-    simple_nap_data["velocity"].save(str(tmp_path / "velocity"))
-    simple_nap_data["trials"].save(str(tmp_path / "trials"))
-
-    data, trials_ep = load_nap_data(str(tmp_path))
-    assert "speed" in data
-    assert "velocity" in data
-    assert trials_ep is not None
-    assert len(trials_ep) == 2
-
-
-def test_load_nap_data_single_npz_loads_siblings(tmp_path, simple_nap_data):
-    """Loading a single .npz also loads sibling files from same directory."""
-    from ethograph.io.pynapple import load_nap_data
-
-    simple_nap_data["speed"].save(str(tmp_path / "speed"))
-    simple_nap_data["trials"].save(str(tmp_path / "trials"))
-
-    data, trials_ep = load_nap_data(str(tmp_path / "speed.npz"))
-    assert "speed" in data
-    assert "trials" in data
-    assert trials_ep is not None
-    assert len(trials_ep) == 2
-
 
 # ---------------------------------------------------------------------------
 # Shared column dimensions

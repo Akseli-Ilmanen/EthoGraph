@@ -306,9 +306,6 @@ class ComboCatalog:
     combos: dict[str, ComboSpec]
     features: tuple[FeatureEntry, ...]
 
-    def values(self, combo_name: str) -> tuple[str, ...]:
-        return self.combos[combo_name].values
-
     def filter(self, **kwargs: str) -> tuple[FeatureEntry, ...]:
         return tuple(
             f for f in self.features
@@ -319,35 +316,6 @@ class ComboCatalog:
             )
             and any(k in f.tags for k in kwargs)
         )
-
-    def combos_for_module(self, module: str) -> dict[str, ComboSpec]:
-        entries = self.filter(module=module)
-        result: dict[str, ComboSpec] = {}
-        for combo_name in ("group", "keypoint", "feature", "space"):
-            vals = sorted({
-                e.tags[combo_name]
-                for e in entries
-                if combo_name in e.tags
-            })
-            if vals:
-                result[combo_name] = ComboSpec(name=combo_name, values=tuple(vals))
-        return result
-
-    def load_slice(
-        self,
-        h5: H5Like,
-        t0: float,
-        t1: float,
-        **combo_sel: str,
-    ) -> list[TimeSlice]:
-        entries = self._sel_valid_entries(combo_sel)
-        results: list[TimeSlice] = []
-        for entry in entries:
-            data, timestamps, confidence = _read_time_slice(h5, entry, t0, t1)
-            results.append(TimeSlice(
-                data=data, timestamps=timestamps, feature=entry, confidence=confidence,
-            ))
-        return results
 
     def load_stacked(
         self,
@@ -1372,44 +1340,6 @@ class NWBCatalog:
     backend: NWBBackend
     timeseries: tuple[TimeSeriesRecord, ...]
     intervals: tuple[TimeIntervalsRecord, ...]
-
-    def to_timeseries_df(self) -> pd.DataFrame:
-        import pandas as pd
-
-        return pd.DataFrame([
-            {
-                "path": r.path,
-                "type": r.neurodata_type,
-                "shape": r.shape,
-                "dtype": r.dtype,
-                "unit": r.unit,
-                "rate": r.rate,
-                "time_range": r.time_range,
-                "duration": r.duration,
-                "regular": r.is_regularly_sampled,
-            }
-            for r in self.timeseries
-        ])
-
-    def to_intervals_df(self) -> pd.DataFrame:
-        import pandas as pd
-
-        return pd.DataFrame([
-            {
-                "path": r.path,
-                "type": r.neurodata_type,
-                "n_rows": r.n_rows,
-                "columns": r.column_names,
-                "time_range": r.time_range,
-            }
-            for r in self.intervals
-        ])
-
-    def filter_by_type(self, neurodata_type: str) -> list[TimeSeriesRecord]:
-        return [r for r in self.timeseries if r.neurodata_type == neurodata_type]
-
-    def filter_by_path(self, prefix: str) -> list[TimeSeriesRecord]:
-        return [r for r in self.timeseries if r.path.startswith(prefix)]
 
     def __repr__(self) -> str:
         return (

@@ -154,7 +154,7 @@ The codebase has two distinct source protocols:
 **Navigation layer** (`io/time_model.py` + `io/time_sources.py`) — session-level time metadata:
 - **`TimeSource`** (Protocol) — `name`, `time_range`, `sampling_rate`, `get_data(t0, t1)`
 - `SourceCollection` — registry that computes `union_range`, `intersection_range`, `find_trial(t)`
-- Concrete adapters: `XarrayTrialSource`, `PynappleSource`, `NWBTimeSource`, `MediaTimeSource`
+- Concrete adapters: `XarrayTrialSource`, `PynappleSource`, `NWBTimeSource`
 
 `SourceCollection` only uses `time_range` metadata — it never calls `get_data()`.
 

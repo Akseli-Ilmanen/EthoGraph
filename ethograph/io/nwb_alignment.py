@@ -83,12 +83,6 @@ class EmpytAlignment:
     def stop_time(self, trial) -> float | None:
         return None
 
-    def trial_duration(self, trial) -> float:
-        stop = self.stop_time(trial)
-        if stop is None:
-            raise ValueError(f"Trial {trial} has no known stop time")
-        return stop - self.start_time(trial)
-
     def stream_offset_for_trial(self, trial, stream: str, device: str | None = None) -> float:
         return 0.0
 
@@ -103,6 +97,10 @@ class EmpytAlignment:
         fallback_folder: str | None = None,
     ) -> str | None:
         return None
+    
+    def electrical_series(self) -> list[dict]:
+        """Discover ElectricalSeries in acquisition. Returns list of {name, path, n_channels, rate}."""
+        return []
 
     @property
     def trials_ep(self) -> Any:
@@ -445,12 +443,6 @@ class NWBAlignment:
             if pd.notna(val):
                 return float(val)
         return None
-
-    def trial_duration(self, trial) -> float:
-        stop = self.stop_time(trial)
-        if stop is None:
-            raise ValueError(f"Trial {trial} has no known stop time")
-        return stop - self.start_time(trial)
 
     def stream_offset_for_trial(
         self, trial, stream: str, device: str | None = None,

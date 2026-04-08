@@ -27,7 +27,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ethograph.gui.data_loader import (
+from ethograph.io.data_loader import (
     wizard_single_from_audio,
     wizard_single_from_ds,
     wizard_single_from_ephys,
