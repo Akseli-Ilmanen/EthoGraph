@@ -733,10 +733,9 @@ class _NWBTimelinePage(QWidget):
     def populate(
         self,
         trials_df,
-        video_info: dict[str, dict],
+        video_info: dict[str, dict], # TODO; video_info unused here
         cameras_with_pose: list[str],
         pose_containers: dict[str, Any] | None,
-        behavioral_series: list[dict],
         selected_trial_indices: list[int],
         matching: list[tuple[str, str]] | None = None,
     ) -> None:
@@ -748,45 +747,6 @@ class _NWBTimelinePage(QWidget):
         pose_to_video = {}
         if matching:
             pose_to_video = {pose_cam: video_cam for video_cam, pose_cam in matching}
-
-        # Build a temporary TrialTree with session data so
-        # draw_session_timeline can render from a single source of truth.
-        from ethograph import TrialTree
-        dt = TrialTree()
-        has_behavior = bool(behavioral_series)
-        if selected_df is not None and not selected_df.empty:
-            for _, row in selected_df.iterrows():
-                tid = int(row["trial"]) if "trial" in row.index else row.name
-                ds = xr.Dataset(attrs={"trial": tid})
-                if has_behavior:
-                    ds["_features_placeholder"] = xr.DataArray(0, attrs={"type": "features"})
-                dt[str(tid)] = xr.DataTree(ds)
-
-        session_vars: dict[str, Any] = {}
-        # TODO. old system, change
-        trial_ids = dt.trials if dt.children else []
-
-        if selected_df is not None and "start_time" in selected_df.columns:
-            session_vars["start_time"] = ("trial", selected_df["start_time"].astype(float).values)
-        if selected_df is not None and "stop_time" in selected_df.columns:
-            session_vars["stop_time"] = ("trial", selected_df["stop_time"].astype(float).values)
-
-        camera_names = list(video_info.keys())
-        if camera_names:
-            session_vars["video"] = xr.DataArray(
-                camera_names, dims=["cameras"], coords={"cameras": camera_names},
-            )
-            start_times = [video_info[c].get("start", 0.0) for c in camera_names]
-            session_vars["start_time_video"] = xr.DataArray(
-                np.array(start_times, dtype=np.float64),
-                dims=["cameras"], coords={"cameras": camera_names},
-            )
-            fps_values = [video_info[c].get("fps", 0.0) for c in camera_names]
-            if any(f > 0 for f in fps_values):
-                session_vars["video_fps"] = xr.DataArray(
-                    np.array(fps_values, dtype=np.float64),
-                    dims=["cameras"], coords={"cameras": camera_names},
-                )
 
         if cameras_with_pose:
             pose_starts = []
@@ -800,17 +760,7 @@ class _NWBTimelinePage(QWidget):
                     if first_series and first_series.timestamps is not None and len(first_series.timestamps) > 0:
                         t = float(first_series.timestamps[0])
                 pose_starts.append(t)
-            session_vars["pose"] = xr.DataArray(
-                canonical_names, dims=["cameras"], coords={"cameras": canonical_names},
-            )
-            session_vars["start_time_pose"] = xr.DataArray(
-                np.array(pose_starts, dtype=np.float64),
-                dims=["cameras"], coords={"cameras": canonical_names},
-            )
 
-        coords = {"trial": trial_ids} if trial_ids else {}
-        sess_ds = xr.Dataset(session_vars, coords=coords)
-        dt["session"] = xr.DataTree(sess_ds)
 
         draw_session_timeline(
             self._plot,

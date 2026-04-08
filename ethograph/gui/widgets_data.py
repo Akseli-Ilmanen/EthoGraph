@@ -923,6 +923,8 @@ class DataWidget(QWidget):
                 continue
             self._create_combo_widget(combo_name, list(combo_spec.values))
 
+        self._create_colors_combo()
+
         # Restore camera combos
         has_nwb_pose = getattr(self.app_state, "nwb_local", None) and (
             "position" in self.app_state.ds.data_vars
@@ -1574,17 +1576,78 @@ class DataWidget(QWidget):
         self.io_widget.set_controls_enabled(enabled)
         self.app_state.ready = enabled
 
+    def _create_colors_combo(self):
+        """Create the Colors combo populated with all features, filtered by rgb suffix."""
+        all_features = list(self.catalog.features)
+        if not all_features:
+            return
+
+        combo = QComboBox()
+        combo.setObjectName("colors_combo")
+        combo.currentIndexChanged.connect(self._on_combo_changed)
+
+        rgb_checkbox = QCheckBox("rgb suffix")
+        rgb_checkbox.setObjectName("colors_rgb_suffix_checkbox")
+        rgb_checkbox.setToolTip("Only show features with 'rgb' in the name")
+        rgb_checkbox.setChecked(True)
+        rgb_checkbox.stateChanged.connect(self._on_rgb_suffix_changed)
+        self._colors_rgb_checkbox = rgb_checkbox
+
+        self._populate_colors_combo(combo, all_features, rgb_filter=True)
+        make_searchable(combo)
+
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(5)
+        combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        row_layout.addWidget(combo)
+        row_layout.addWidget(rgb_checkbox)
+
+        self.coords_groupbox_layout.addRow("Colors:", row_widget)
+        self.combos["colors"] = combo
+        self.controls.append(combo)
+        self.controls.append(rgb_checkbox)
+
+    def _populate_colors_combo(self, combo: QComboBox, features: list[str], rgb_filter: bool):
+        prev = get_combo_value(combo) if combo.count() > 0 else "None"
+        combo.blockSignals(True)
+        combo.clear()
+        raw_items = ["None"]
+        if rgb_filter:
+            raw_items += [f for f in features if "rgb" in f.lower()]
+        else:
+            raw_items += features
+        display_items = clean_display_labels(raw_items)
+        for display, raw in zip(display_items, raw_items):
+            combo.addItem(display, raw)
+        # Restore previous selection if still available
+        for i in range(combo.count()):
+            if combo.itemData(i) == prev:
+                combo.setCurrentIndex(i)
+                break
+        combo.blockSignals(False)
+
+    def _on_rgb_suffix_changed(self, _state: int):
+        combo = self.combos.get("colors")
+        if combo is None:
+            return
+        rgb_filter = self._colors_rgb_checkbox.isChecked()
+        self._populate_colors_combo(combo, list(self.catalog.features), rgb_filter)
+        self.app_state.set_key_sel("colors", get_combo_value(combo))
+        if self.app_state.ready and self.plot_container:
+            current_plot = self.plot_container.get_current_plot()
+            xmin, xmax = current_plot.get_current_xlim()
+            self.update_main_plot(t0=xmin, t1=xmax)
+
     def _create_combo_widget(self, key, vars):
-        excluded_from_all = {"individuals", "features", "colors", "cameras", "mics"}
+        excluded_from_all = {"individuals", "features", "cameras", "mics"}
         show_all_checkbox = key not in excluded_from_all
 
         combo = QComboBox()
         combo.setObjectName(f"{key}_combo")
         combo.currentIndexChanged.connect(self._on_combo_changed)
-        if key == "colors":
-            raw_items = ["None"] + [str(var) for var in vars]
-        else:
-            raw_items = [str(var) for var in vars]
+        raw_items = [str(var) for var in vars]
         display_items = clean_display_labels(raw_items)
         for display, raw in zip(display_items, raw_items):
             combo.addItem(display, raw)
@@ -1642,7 +1705,7 @@ class DataWidget(QWidget):
             xmin, xmax = current_plot.get_current_xlim()
             self.update_main_plot(t0=xmin, t1=xmax)
 
-            if key in ["individuals", "keypoints", "colors"]:
+            if key in ["individuals", "keypoints"]:
                 if self.space_plot and self.space_plot.isVisible():
                     self.space_plot.refresh()
 

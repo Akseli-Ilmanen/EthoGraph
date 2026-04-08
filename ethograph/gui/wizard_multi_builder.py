@@ -69,10 +69,6 @@ def _build_single_trial_ds(
         if pose_path:
             ds = _load_pose_into_ds(ds, pose_path, state.pose)
 
-    for var in list(ds.data_vars):
-        if var not in INTERVAL_COLUMNS and var != "confidence":
-            ds[var].attrs["type"] = "features"
-
     return ds
 
 

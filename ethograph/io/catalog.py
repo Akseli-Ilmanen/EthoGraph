@@ -71,7 +71,6 @@ class DataCatalog:
 
     combos: dict[str, ComboSpec] = field(default_factory=dict)
     features: list[str] = field(default_factory=list)
-    colors: list[str] = field(default_factory=list)
     changepoints: list[str] = field(default_factory=list)
     cameras: list[str] = field(default_factory=list)
     mics: list[str] = field(default_factory=list)
@@ -87,8 +86,6 @@ class DataCatalog:
         for name, spec in self.combos.items():
             tvd[name] = np.array(spec.values) if spec.values else []
         tvd["features"] = self.features
-        if self.colors:
-            tvd["colors"] = self.colors
         if self.changepoints:
             tvd["changepoints"] = self.changepoints
         if self.cameras:
@@ -516,9 +513,6 @@ class DataLoader(Protocol):
     def dims(self) -> dict[str, np.ndarray]: ...
 
     @property
-    def colors(self) -> list[str]: ...
-
-    @property
     def changepoint_names(self) -> list[str]: ...
 
     def get_type_vars(self) -> dict: ...
@@ -549,10 +543,6 @@ class _CatalogMixin:
             for n, s in self._catalog.combos.items()
             if n != "features"
         }
-
-    @property
-    def colors(self) -> list[str]:
-        return self._catalog.colors
 
     @property
     def changepoint_names(self) -> list[str]:
@@ -1141,6 +1131,22 @@ def _compute_shared_column_dims(
 # Dimensions that are internal to color variables — never show as user combos
 _HIDDEN_DIMS = frozenset({"RGB", "RGBA"})
 
+# Variables that are never user-selectable features
+_EXCLUDED_VARS = frozenset({"onset_s", "offset_s", "labels", "individual", "boundary_events"})
+
+
+def _feature_vars(ds: xr.Dataset) -> list[str]:
+    """All data_vars with a time dimension, minus changepoints and internal vars."""
+    features = []
+    for name, var in ds.data_vars.items():
+        if name in _EXCLUDED_VARS:
+            continue
+        if var.attrs.get("type") == "changepoints":
+            continue
+        if any("time" in str(d).lower() for d in var.dims):
+            features.append(name)
+    return features
+
 
 def _auto_catalog_xarray(ds: xr.Dataset) -> DataCatalog:
     """Quick catalog from a Dataset when no TrialTree is available."""
@@ -1152,14 +1158,11 @@ def _auto_catalog_xarray(ds: xr.Dataset) -> DataCatalog:
         vals = tuple(ds.coords["individuals"].values.astype(str))
         combos["individuals"] = ComboSpec("individuals", vals)
 
-    features_list = list(ds.filter_by_attrs(type="features").data_vars)
-    colors_list = list(ds.filter_by_attrs(type="colors").data_vars)
+    features_list = _feature_vars(ds)
     changepoints_list = list(ds.filter_by_attrs(type="changepoints").data_vars)
 
     if features_list:
         combos["features"] = ComboSpec("features", tuple(features_list))
-    if colors_list:
-        combos["colors"] = ComboSpec("colors", tuple(colors_list))
 
     for name in find_temporal_dims(ds):
         if name in combos or name.upper() in _HIDDEN_DIMS:
@@ -1177,7 +1180,6 @@ def _auto_catalog_xarray(ds: xr.Dataset) -> DataCatalog:
     return DataCatalog(
         combos=combos,
         features=features_list,
-        colors=colors_list,
         changepoints=changepoints_list,
     )
 
@@ -1200,14 +1202,11 @@ def catalog_from_xarray(ds: xr.Dataset, dt: TrialTree, nwb_alignment=None) -> Da
         vals = tuple(ds.coords["individuals"].values.astype(str))
         combos["individuals"] = ComboSpec("individuals", vals)
 
-    features_list = list(ds.filter_by_attrs(type="features").data_vars)
-    colors_list = list(ds.filter_by_attrs(type="colors").data_vars)
+    features_list = _feature_vars(ds)
     changepoints_list = list(ds.filter_by_attrs(type="changepoints").data_vars)
 
     if features_list:
         combos["features"] = ComboSpec("features", tuple(features_list))
-    if colors_list:
-        combos["colors"] = ComboSpec("colors", tuple(colors_list))
 
     extra_dims = find_temporal_dims(ds)
     for name in extra_dims:
@@ -1231,7 +1230,6 @@ def catalog_from_xarray(ds: xr.Dataset, dt: TrialTree, nwb_alignment=None) -> Da
     return DataCatalog(
         combos=combos,
         features=features_list,
-        colors=colors_list,
         changepoints=changepoints_list,
         cameras=cameras,
         mics=mics,
@@ -1257,7 +1255,6 @@ def catalog_from_pynapple(
     combos["individuals"] = ComboSpec("individuals", ("individual_0",))
 
     features: list[str] = []
-    colors: list[str] = []
     changepoints: list[str] = []
 
     for key, obj in data.items():
@@ -1275,27 +1272,18 @@ def catalog_from_pynapple(
             features.append(key)
 
             if isinstance(obj, nap.TsdFrame):
-                cols_lower = [c.lower() for c in obj.columns]
-                is_color = "rgb" in key.lower() or set(cols_lower) == {"r", "g", "b"}
-                if is_color:
-                    colors.append(key)
-                else:
-                    # Only add column dims for non-color TsdFrames
-                    dim_name = dim_map.get(key, f"{key}_columns")
-                    if dim_name not in combos:
-                        combos[dim_name] = ComboSpec(
-                            dim_name, tuple(str(c) for c in obj.columns)
-                        )
+                dim_name = dim_map.get(key, f"{key}_columns")
+                if dim_name not in combos:
+                    combos[dim_name] = ComboSpec(
+                        dim_name, tuple(str(c) for c in obj.columns)
+                    )
 
     if features:
         combos["features"] = ComboSpec("features", tuple(features))
-    if colors:
-        combos["colors"] = ComboSpec("colors", tuple(colors))
 
     return DataCatalog(
         combos=combos,
         features=features,
-        colors=colors,
         changepoints=changepoints,
         trial_conditions=[],
     )

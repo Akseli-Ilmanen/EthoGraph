@@ -214,6 +214,6 @@ def firing_rate_to_xarray(
             "cluster_id": cluster_ids,
             "time_fr": bin_centers,
         },
-        attrs={"bin_size": bin_size, "units": "Hz", "type": "features"},
+        attrs={"bin_size": bin_size, "units": "Hz"},
     )
 

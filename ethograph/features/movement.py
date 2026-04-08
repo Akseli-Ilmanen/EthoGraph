@@ -186,7 +186,6 @@ def compute_distance_to_constant(
         output_dtypes=[np.float64]
     )
     
-    distances.attrs["type"] = "features"
     return distances
 
 def move_vector_to_rgb(data: np.ndarray) -> np.ndarray:

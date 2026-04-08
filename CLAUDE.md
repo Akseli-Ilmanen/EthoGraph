@@ -211,7 +211,7 @@ Core types in `ethograph/io/time_model.py` (canonical home, re-exported from `gu
 
 Replaces the old `type_vars_dict` pattern with two explicit abstractions:
 
-**`DataCatalog`** — declares what's available: features, dimensions (combos), streams. Built by `catalog_from_xarray()`, `catalog_from_pynapple()`, or `catalog_from_nwb()`. The GUI creates combo boxes from `catalog.combos`. `catalog.to_type_vars_dict()` provides backwards-compat dict for existing GUI code.
+**`DataCatalog`** — declares what's available: features, dimensions (combos), streams. Built by `catalog_from_xarray()`, `catalog_from_pynapple()`, or `catalog_from_nwb()`. Features are auto-detected: all `data_vars` with a time dimension (xarray) or all `Tsd`/`TsdFrame`/`TsdTensor` objects (pynapple) — no `attrs["type"]` annotation needed. The GUI creates combo boxes from `catalog.combos`. Colors are handled separately: the GUI always creates a "Colors" combo populated with all features, with an "rgb suffix" checkbox (default on) that filters to features containing "rgb" in their name.
 
 **`DataLoader`** (Protocol) — backend-agnostic data access. `select(feature, selections, t0, t1) → PlotData`. Follows the `sel_valid` principle: combo selections can be overspecified, loaders ignore dimensions that don't exist on the target feature.
 
@@ -353,7 +353,8 @@ Bridge pattern: intervals→dense→correct→intervals. Kinematic CPs stored as
 ## Dataset Structure
 
 - NetCDF with trials. Time coords: `time`, `time_aux`, etc. (any containing 'time')
-- Variables with `type='features'` for feature selection
+- All `data_vars` with a time dimension are features (no `attrs["type"]` required). Changepoints still use `attrs["type"] = "changepoints"`.
+- Color variables are identified by name: any feature with "rgb" in the name (case-insensitive) is offered in the Colors combo. No `attrs["type"] = "colors"` needed.
 - Media/session metadata: for NWB sources, read from the source NWB directly; for non-NWB sources, from `.ethograph/alignment.nwb`
 - Labels: stored in `_labels.tsv` (not inside `.nc`). Legacy `.nc` labels auto-migrate on first load.
 

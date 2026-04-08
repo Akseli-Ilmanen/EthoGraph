@@ -202,8 +202,6 @@ for trial in session_table['trial']:
     ds["velocity"] = compute_velocity(ds.position)
     ds["speed"] = compute_speed(ds.position)
     ds.attrs["trial"] = trial
-    for var in ds.data_vars:
-        ds[var].attrs["type"] = "features"
 
     ds_list.append(ds)
 {% else %}
@@ -212,8 +210,6 @@ for idx, file in enumerate(pose_files, start=1):
     ds["velocity"] = compute_velocity(ds.position)
     ds["speed"] = compute_speed(ds.position)
     ds.attrs["trial"] = idx
-    for var in ds.data_vars:
-        ds[var].attrs["type"] = "features"
     ds_list.append(ds)
 {% endif %}
 

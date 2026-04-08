@@ -61,7 +61,6 @@ ds = xr.Dataset({
             "time": np.arange(data.shape[0]) / sr,
             "channels": ["biceps", "triceps"],
         },
-        attrs={"type": "features"},
     )
 })
 ds.attrs["trial"] = 1
@@ -77,6 +76,5 @@ dt.save("trials.nc")
 | Attribute | Value |
 |-----------|-------|
 | `attrs["fps"]` | Not required unless video is also loaded |
-| `attrs["type"]` on the feature variable | `"features"` |
 
 For the full {class}`xarray.Dataset` structure see {doc}`data_requirements`.

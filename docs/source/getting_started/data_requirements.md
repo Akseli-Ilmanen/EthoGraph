@@ -33,25 +33,20 @@ Validation is performed by `validate_required_attrs()` and `validate_dataset()` 
 
 ## Marking features for the GUI
 
-The GUI populates its **Feature** dropdown from variables whose `attrs["type"]`
-equals `"features"`. Any {class}`xarray.DataArray` you want to appear in the plot must be
-tagged:
+The GUI populates its **Feature** dropdown from all `data_vars` that have at
+least one time dimension. No `attrs["type"]` annotation is required -- just add
+your variable to the dataset and it will appear in the GUI:
 
 ```python
 ds["speed"] = xr.DataArray(
     speed_values,                       # shape: (time, keypoints, individuals)
     dims=["time", "keypoints", "individuals"],
-    attrs={"type": "features"},         # <-- required
 )
 ```
 
 Every feature variable **must** have at least one dimension whose name contains
 `"time"` (e.g. `time`, `time_accelerometer`, `time_video`). Different features may use
 different time coordinates with different sampling rates -- the GUI handles this via {func}`~ethograph.utils.xr_utils.get_time_coord`.
-
-If you build a dataset from scratch with {func}`~ethograph.utils.io.dataset_to_basic_trialtree`,
-all data variables (except label columns) are auto-tagged as
-`type="features"`.
 
 ---
 
@@ -65,7 +60,7 @@ ds = xr.Dataset(
         "speed": xr.DataArray(
             speed_array,                # shape: (time, individuals)
             dims=["time", "individuals"],
-            attrs={"type": "features"},
+           
         ),
     },
     coords={
@@ -99,8 +94,8 @@ For full documentation of {meth}`~ethograph.io.trialtree.TrialTree.set_media`, {
 ### Video + Pose
 
 The standard scenario. Provide `fps`, camera filenames, and optionally pose
-filenames. Feature variables (position, velocity, speed, ...) should be tagged
-with `type="features"`.
+filenames. All data variables with a time dimension are automatically
+detected as features.
 
 ```python
 import ethograph as eto
@@ -108,9 +103,9 @@ import ethograph as eto
 ds = xr.Dataset(
     data_vars={
         "position": xr.DataArray(pos, dims=["time", "space", "keypoints", "individuals"],
-                                 attrs={"type": "features"}),
+                                ),
         "speed":    xr.DataArray(spd, dims=["time", "keypoints", "individuals"],
-                                 attrs={"type": "features"}),
+                                ),
     },
     coords={
         "time": time_s,
@@ -156,19 +151,21 @@ See {doc}`loading_ephys` for supported file formats, Kilosort folder setup, and 
 
 ## Color variables (optional)
 
-Color data (e.g. angle-based RGB from pose) must have an `RGB` dimension of
-size 3 and `attrs["type"] = "colors"`:
+Color variables are identified by name: any feature variable with **"rgb"** in
+its name (case-insensitive) is automatically offered in the GUI's **Colors**
+combo. No special `attrs` are required. The variable should have an `RGB`
+dimension of size 3 with values in `[0, 1]` (float) or `[0, 255]` (int):
 
 ```python
 ds["angle_rgb"] = xr.DataArray(
     rgb_values,                          # shape: (time, keypoints, individuals, 3)
     dims=["time", "keypoints", "individuals", "RGB"],
-    attrs={"type": "colors"},
 )
 ```
 
-Values must be in `[0, 1]` (float) or `[0, 255]` (int). Validation is
-performed by `validate_colors()` in `validation.py`.
+The GUI shows a "Colors" combo populated with all features, plus an
+"rgb suffix" checkbox (on by default) that filters to names containing "rgb".
+Uncheck it to select any feature as a color source.
 
 To compute angle-based RGB automatically from pose data, use
 {func}`~ethograph.utils.io.add_angle_rgb_to_ds`:
@@ -177,7 +174,7 @@ To compute angle-based RGB automatically from pose data, use
 from ethograph.utils.io import add_angle_rgb_to_ds
 
 ds = add_angle_rgb_to_ds(ds, smoothing_params={"sigma": 3})
-# Creates ds["angles"] (type="features") and ds["angle_rgb"] (type="colors")
+# Creates ds["angles"] and ds["angle_rgb"]
 ```
 
 This function computes frame-to-frame angle changes in the xy plane via
@@ -268,7 +265,6 @@ ds["emg"] = xr.DataArray(
     emg_data,                            # shape: (time, channels)
     dims=["time", "channels"],
     coords={"channels": ["biceps", "triceps"]},
-    attrs={"type": "features"},
 )
 ```
 
@@ -293,12 +289,12 @@ ds = xr.Dataset(
         "position": xr.DataArray(
             np.random.randn(1000, 4, 3, 2),
             dims=["time", "keypoints", "space", "individuals"],
-            attrs={"type": "features"},
+           
         ),
         "speed": xr.DataArray(
             np.random.randn(1000, 4, 2),
             dims=["time", "keypoints", "individuals"],
-            attrs={"type": "features"},
+           
         ),
     },
     coords={
@@ -365,12 +361,12 @@ for trial_id in range(1, 11):
             "position": xr.DataArray(
                 np.random.randn(n_time, 2, 4, 2),
                 dims=["time", "space", "keypoints", "individuals"],
-                attrs={"type": "features"},
+               
             ),
             "speed": xr.DataArray(
                 np.abs(np.random.randn(n_time, 4, 2)),
                 dims=["time", "keypoints", "individuals"],
-                attrs={"type": "features"},
+               
             ),
         },
         coords={
