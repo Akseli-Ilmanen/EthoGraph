@@ -272,10 +272,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._splitter.setChildrenCollapsible(False)
         main_layout.addWidget(self._splitter)
 
-        self.time_slider = TimeSlider()
-        self.time_slider.time_changed.connect(self._on_slider_time)
-        self.time_slider.hide()
-        main_layout.addWidget(self.time_slider)
+    
 
         # Audio playback (no-video mode)
         self.audio_player = AudioPlayer(
@@ -373,11 +370,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def configure_panels(self):
         """Called after data load to set up which panels are available."""
-        if not self.app_state.has_video:
-            self.time_slider.show()
-        else:
-            self.time_slider.hide()
-
+   
         # Clear saved user sizes so defaults apply for the new dataset
         self._user_sizes.clear()
         self._update_panel_visibility()
@@ -680,7 +673,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     def update_time_marker_by_time(self, time_s: float):
         for plot in self._visible_plots():
             plot.update_time_marker(time_s)
-        self.time_slider.set_slider_time(time_s)
         self._update_label_indicator(time_s)
         self.time_marker_updated.emit(time_s)
 
@@ -702,7 +694,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             current_time = frame_number / self.app_state.video_fps
         for plot in self._visible_plots():
             plot.update_time_marker(current_time)
-        self.time_slider.set_slider_time(current_time)
         self._update_label_indicator(current_time)
         self.time_marker_updated.emit(current_time)
 
@@ -797,7 +788,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         self._apply_all_zoom_constraints()
         QTimer.singleShot(0, self._apply_panel_sizes)
-        self.update_time_range_from_data()
+
 
     # --- Time slider ---
 
@@ -810,10 +801,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             master = self._xlink_master or self._feature_plot
             master.vb.setXRange(time_s - half, time_s + half, padding=0)
 
-    def update_time_range_from_data(self):
-        tr = self.app_state.window_bounds
-        if tr is not None and tr.duration > 0:
-            self.time_slider.set_time_range(tr.start_s, tr.end_s)
+
 
     # --- Audio playback (space key) ---
 

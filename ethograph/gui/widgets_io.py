@@ -237,7 +237,7 @@ class IOWidget(QWidget):
         self.create_nc_button.setObjectName("create_nc_button")
         self.create_nc_button.clicked.connect(self._on_create_nc_clicked)
 
-        self.template_button = QPushButton("🐦‍⬛Select templates")
+        self.template_button = QPushButton("💡Select templates")
         self.template_button.setObjectName("template_button")
         self.template_button.clicked.connect(self._on_select_template_clicked)
 

@@ -39,16 +39,6 @@ def test_remote_nwb_has_trials(remote_nwb):
     assert len(nwb_obj.trials) > 500
 
 
-def test_remote_nwb_has_pose_estimation(remote_nwb):
-    """Pose estimation processing modules exist for all expected cameras."""
-    from ethograph.utils.nwb_video import discover_pose_estimation_cameras
-
-    nwb_obj, _ = remote_nwb
-    pose_containers = discover_pose_estimation_cameras(nwb_obj)
-    found_cameras = set(pose_containers.keys())
-    assert EXPECTED_POSE_CAMERAS.issubset(found_cameras), (
-        f"Expected cameras {EXPECTED_POSE_CAMERAS}, found {found_cameras}"
-    )
 
 
 def test_trial_alignment_from_remote(remote_nwb):
@@ -75,8 +65,7 @@ def test_trial_alignment_from_remote(remote_nwb):
 
 def test_nwb_catalog_and_loader(remote_nwb):
     """NWBLoader can be constructed from remote h5py handle and has features."""
-    from ethograph.io.catalog import NWBLoader, catalog_from_nwb
-    from ethograph.io.nwb_backend import read_trial_intervals
+    from ethograph.io.catalog import NWBLoader, catalog_from_nwb, read_trial_intervals
 
     _, h5_file = remote_nwb
     source = h5_file
@@ -98,11 +87,12 @@ def test_nwb_catalog_and_loader(remote_nwb):
 
 
 def test_full_project_load(tmp_path):
-    """End-to-end: create dandi.json with video_info, load, verify alignment + cameras."""
-    import json
+    """End-to-end: create alignment.nwb with provenance, load, verify alignment + cameras."""
+    import pandas as pd
 
     from ethograph.io.data_loader import _load_nwb_project
     from ethograph.labels.tsv_store import init_empty_labels, save_labels_tsv
+    from ethograph.utils.nwb import create_alignment_from_streams
 
     project_dir = tmp_path / "test_session"
     ethograph_dir = project_dir / ".ethograph"
@@ -123,13 +113,31 @@ def test_full_project_load(tmp_path):
             "start": 6.500, "end": 4030.430, "fps": 150.0,
         },
     }
-    config = {
+
+    # Build alignment.nwb with video URLs as session-wide streams
+    # Use a minimal trials table (real trials come from remote NWB at load time)
+    trials_df = pd.DataFrame({
+        "trial": [1, 2, 3],
+        "start_time": [10.0, 20.0, 30.0],
+        "stop_time": [18.0, 28.0, 38.0],
+    })
+    streams = []
+    for vname, info in video_info.items():
+        streams.append({
+            "name": f"video_{vname}",
+            "files": [info["url"]],
+            "rate": info["fps"],
+            "starting_time": info["start"],
+        })
+
+    provenance = {
         "nwb_dandiset_id": DANDISET_ID,
         "nwb_asset_id": EXPECTED_ASSET_ID,
         "nwb_pose_keys": list(EXPECTED_POSE_CAMERAS),
-        "video_info": video_info,
     }
-    (ethograph_dir / "dandi.json").write_text(json.dumps(config))
+    create_alignment_from_streams(
+        trials_df, streams, ethograph_dir / "alignment.nwb", provenance=provenance,
+    )
     save_labels_tsv(project_dir / "labels.tsv", init_empty_labels(["1", "2", "3"]))
 
     result = _load_nwb_project(str(project_dir))
@@ -149,17 +157,24 @@ def test_full_project_load(tmp_path):
     assert start > 0, f"Trial 1 start should be >0, got {start}"
     assert stop is not None and stop > start
 
-    # Cameras: registered from video_info
+    # Cameras: registered from acquisition ImageSeries
     assert set(sio.cameras) == set(video_info.keys()), (
         f"Expected cameras {set(video_info.keys())}, got {set(sio.cameras)}"
     )
-    # Video URL accessible via get_media
-    url = sio.get_media(1, "video", device="VideoBodyCamera")
+    # Video URL accessible via resolve_media_path
+    url = sio.resolve_media_path(1, "video", device="VideoBodyCamera")
     assert url and url.startswith("https://"), f"Expected DANDI URL, got {url}"
 
     # Stream offset: video starts before trial 1 → negative offset
     offset = sio.stream_offset_for_trial(1, "video", "VideoBodyCamera")
     assert offset < 0, f"Video starts before trial 1, offset should be <0, got {offset}"
+
+    # Provenance round-trip
+    prov = sio.provenance
+    assert prov is not None
+    assert prov["nwb_dandiset_id"] == DANDISET_ID
+    assert prov["nwb_asset_id"] == EXPECTED_ASSET_ID
+    assert set(prov["nwb_pose_keys"]) == EXPECTED_POSE_CAMERAS
 
     # Source collection
     sc = result.source_collection

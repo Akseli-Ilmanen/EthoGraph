@@ -71,9 +71,11 @@ class LabelConverter:
         trials_df: pd.DataFrame,
     ) -> list[dict]:
         """Convert global-time epochs to trial-relative interval rows."""
+        has_trial_col = "trial" in trials_df.columns
         rows: list[dict] = []
-        for _, trial_row in trials_df.iterrows():
+        for idx, (_, trial_row) in enumerate(trials_df.iterrows()):
             t_start, t_stop = trial_row["start_time"], trial_row["stop_time"]
+            trial_id = trial_row["trial"] if has_trial_col else idx
             for ep in epochs:
                 if ep["offset_s"] <= t_start or ep["onset_s"] >= t_stop:
                     continue
@@ -85,7 +87,7 @@ class LabelConverter:
                     "offset_s": min(t_stop - t_start, ep["offset_s"] - t_start),
                     "labels": label_id,
                     "individual": ep.get("individual", "individual_0"),
-                    "trial": trial_row["trial"],
+                    "trial": trial_id,
                 })
         return rows
 
@@ -423,8 +425,9 @@ class PynappleLabelConverter(LabelConverter):
 
     SKIP_KEYS = frozenset({"trials", "epochs"})
 
-    def __init__(self, data: dict) -> None:
+    def __init__(self, data: dict, trials_ep=None) -> None:
         super().__init__()
+        self._trials_df = trials_df_from_intervalset(trials_ep)
         self._epochs = self._extract_interval_epochs(data)
         if self._epochs:
             self._label_map = build_mapping_from_labels(
@@ -450,11 +453,10 @@ class PynappleLabelConverter(LabelConverter):
         return epochs
 
     def extract(self, trials_df: pd.DataFrame | None = None) -> pd.DataFrame:
-        if not self._epochs:
+        t_df = trials_df if trials_df is not None else self._trials_df
+        if not self._epochs or t_df.empty:
             return init_empty_labels([])
-        if trials_df is None or trials_df.empty:
-            return init_empty_labels([])
-        rows = self._global_to_trial_rows(self._epochs, trials_df)
+        rows = self._global_to_trial_rows(self._epochs, t_df)
         return self._rows_to_labels_df(rows)
 
 

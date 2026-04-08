@@ -128,13 +128,3 @@ class TestNoVideoNavigation:
         lp = meta.plot_container.line_plot
         assert len(lp.plot_items) > 0, "Feature plot empty after trial switch in no-video mode"
 
-
-class TestNoVideoTimeSlider:
-
-    def test_time_slider_present(self, no_video_gui):
-        """Without video, a time slider should still allow scrubbing."""
-        _, meta = no_video_gui
-        # The time marker on the feature plot should be accessible
-        lp = meta.plot_container.line_plot
-        assert hasattr(lp, 'time_marker')
-        assert lp.time_marker is not None

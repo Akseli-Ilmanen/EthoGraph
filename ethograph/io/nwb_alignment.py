@@ -209,6 +209,17 @@ class NWBAlignment:
         self._trials_df_cache: pd.DataFrame | None = None
         self._rate_dict: dict[tuple[str, str | None], float] = {}
 
+    @classmethod
+    def from_nwb_object(cls, nwb_obj) -> "NWBAlignment":
+        """Create alignment from an already-opened pynwb NWBFile object."""
+        instance = cls.__new__(cls)
+        instance._path = Path(".")
+        instance._io = None
+        instance._nwb = nwb_obj
+        instance._trials_df_cache = None
+        instance._rate_dict = {}
+        return instance
+
     def _open(self) -> None:
         if self._nwb is not None:
             return
@@ -363,6 +374,55 @@ class NWBAlignment:
             if durations.nunique() > 1:
                 return True
         return False
+
+    @cached_property
+    def provenance(self) -> dict | None:
+        """Provenance metadata stored in NWB scratch namespace."""
+        from ethograph.utils.nwb import read_provenance
+        return read_provenance(self.nwb)
+
+    @property
+    def pose_keys(self) -> list[str]:
+        """Ordered list of pose estimation container names from provenance."""
+        prov = self.provenance
+        
+        # Defined by provenance field (e.g. from GUI video-pose matcher).
+        if prov and "nwb_pose_keys" in prov:
+            return list(prov["nwb_pose_keys"])
+        
+        # Defined by acquisition ImageSeries names
+        return self.devices("pose")
+
+    def update_provenance(self, updates: dict) -> None:
+        """Update provenance fields in the alignment.nwb file.
+
+        Merges ``updates`` into existing provenance, rewrites scratch.
+        Only works for file-backed alignments (not from_nwb_object).
+        """
+        import h5py
+
+        if not self._path.exists():
+            return
+        current = dict(self.provenance or {})
+        current.update(updates)
+
+        self.close()
+        # Clear cached provenance so next access re-reads
+        if "provenance" in self.__dict__:
+            del self.__dict__["provenance"]
+
+        import json
+        with h5py.File(str(self._path), "a") as f:
+            scratch_grp = f.get("scratch")
+            if scratch_grp is None:
+                scratch_grp = f.create_group("scratch")
+            prov_ds = scratch_grp.get("ethograph_provenance/data")
+            new_val = json.dumps(current)
+            if prov_ds is not None:
+                prov_ds[()] = new_val
+            else:
+                grp = scratch_grp.require_group("ethograph_provenance")
+                grp.create_dataset("data", data=new_val)
 
     def start_time(self, trial) -> float:
         if not self.has_real_timing:
@@ -521,6 +581,15 @@ class NWBAlignment:
 
             if file_idx < len(files):
                 raw_path = files[file_idx]
+                # URLs returned directly
+                if _is_url(raw_path):
+                    # If fallback_folder has a local copy, prefer that
+                    if fallback_folder:
+                        filename = _filename_from_url_or_path(raw_path)
+                        candidate = os.path.normpath(os.path.join(fallback_folder, filename))
+                        if os.path.isfile(candidate):
+                            return candidate
+                    return raw_path
                 # Try the stored path directly
                 if os.path.isfile(raw_path):
                     return raw_path
@@ -529,7 +598,7 @@ class NWBAlignment:
                 if rel.is_file():
                     return str(rel)
                 # Fallback: filename + folder
-                filename = Path(raw_path).name
+                filename = _filename_from_url_or_path(raw_path)
                 if fallback_folder:
                     candidate = os.path.normpath(os.path.join(fallback_folder, filename))
                     if os.path.isfile(candidate):
@@ -538,10 +607,13 @@ class NWBAlignment:
         # Last resort: trial table filename + fallback_folder
         media_file = self.get_media(trial, stream, device)
         if media_file:
+            if _is_url(media_file):
+                return media_file
             if os.path.isfile(media_file):
                 return media_file
             if fallback_folder:
-                candidate = os.path.normpath(os.path.join(fallback_folder, Path(media_file).name))
+                filename = _filename_from_url_or_path(media_file)
+                candidate = os.path.normpath(os.path.join(fallback_folder, filename))
                 if os.path.isfile(candidate):
                     return candidate
 
@@ -616,6 +688,18 @@ class NWBAlignment:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _is_url(path: str) -> bool:
+    return path.startswith(("http://", "https://"))
+
+
+def _filename_from_url_or_path(path: str) -> str:
+    """Extract filename from a URL or filesystem path (Windows-safe)."""
+    if _is_url(path):
+        from urllib.parse import urlparse
+        return Path(urlparse(path).path).name
+    return Path(path).name
 
 
 def _build_trials_ep(df: pd.DataFrame, session_end: float | None = None):

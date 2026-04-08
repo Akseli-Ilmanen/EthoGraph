@@ -335,13 +335,12 @@ class PoseDisplayManager:
                 pr = slice_pose_to_frames(pr, start_frame, end_frame)
             return pr
 
-        pose_keys = list(getattr(self.app_state, "nwb_pose_keys", None) or [])
+        pose_keys = sio.pose_keys if sio and hasattr(sio, "pose_keys") else []
         if pose_keys and camera_idx < len(pose_keys):
             nwb_file = self._get_nwb_file()
             if nwb_file is None:
                 return None
             try:
-                # TODO: based of scope range, load in this
                 trial_id = self.app_state.trials_sel
                 t_start = sio.start_time(trial_id) if trial_id else None
                 t_stop = sio.stop_time(trial_id) if trial_id else None

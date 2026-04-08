@@ -40,9 +40,7 @@ TEMPLATES = [
         "dataset_key": "moll2025",
         "folder": "Moll2025",
         "nc_filename": "Trial_data.nc",
-        "has_video": True,
         "has_audio": False,
-        "has_pose": True,
         "import_labels": True,
         "media": [
             {"video_cam-1": "2024-12-17_115_Crow1-cam-1.mp4", "pose_cam-1": "2024-12-17_115_Crow1-cam-1DLC.csv"},
@@ -56,9 +54,7 @@ TEMPLATES = [
         "dataset_key": "birdpark",
         "folder": "BirdPark",
         "nc_filename": "copExpBP08_trim.nc",
-        "has_video": True,
         "has_audio": True,
-        "has_pose": False,
         "media": [
             {
                 "video_cam-1": "BP_2021-05-25_08-12-51_655154_0380000.mp4",
@@ -73,9 +69,8 @@ TEMPLATES = [
         "dataset_key": "philodoptera",
         "folder": "Philodoptera",
         "nc_filename": "philodoptera.nc",
-        "has_video": True,
+        
         "has_audio": True,
-        "has_pose": True,
         "media": [
             {
                 "video_cam-1": "philodoptera.mp4",
@@ -91,9 +86,7 @@ TEMPLATES = [
         "dataset_key": "lockbox",
         "folder": "Lockbox",
         "nc_filename": "lockbox.nc",
-        "has_video": True,
         "has_audio": False,
-        "has_pose": True,
         "media": [
             {
                 "video_front-view": "2021-02-15_07-32-44_segment1_mouse324_ball_front-view.mp4",
@@ -128,9 +121,7 @@ TEMPLATES = [
         "dataset_key": "canary",
         "folder": "Canary",
         "nc_filename": None,
-        "has_video": False,
         "has_audio": True,
-        "has_pose": False,
         "audio_file": "100_marron1_May_24_2016_62101389.wav",
         "labels_file": "100_marron1_May_24_2016_62101389.audacity.txt",
     },
@@ -198,9 +189,9 @@ def _resolve_template_paths(template: dict) -> dict:
         "name": template["name"],
         "dataset_key": template["dataset_key"],
         "nc_file_path": nc,
-        "video_folder": dest if template.get("has_video") else "",
+        "video_folder": dest,
         "audio_folder": dest if template.get("has_audio") else "",
-        "pose_folder": dest if template.get("has_pose") else "",
+        "pose_folder": dest,
         "import_labels": template.get("import_labels", False),
     }
     if template.get("labels_file"):

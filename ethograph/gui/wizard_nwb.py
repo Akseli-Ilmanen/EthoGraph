@@ -1098,7 +1098,7 @@ class NWBImportDialog(QDialog):
         selected_videos = self._page_video_pose.get_selected_video_names()
 
         def _build():
-            import json
+            from ethograph.utils.nwb import create_alignment_from_streams
 
             trials_df = read_trials_table(self._nwb)
             if trial_indices is not None:
@@ -1108,37 +1108,73 @@ class NWBImportDialog(QDialog):
             ethograph_dir = project_dir / ".ethograph"
             ethograph_dir.mkdir(parents=True, exist_ok=True)
 
-            # Save dandi.json — source info for re-loading
-            # No alignment.nwb needed: the remote NWB is the source of truth
-            # Store video URLs for cameras that are separate DANDI assets
-            # (not stored in NWB acquisition ImageSeries).
-            # NOTE: one URL per camera for the entire session — does not
-            # scale to per-trial video files.
-            video_urls = {}
+            # Build streams for alignment.nwb
+            streams = []
             for vname in selected_videos:
                 info = self._video_info.get(vname, {})
-                if info.get("url"):
-                    video_urls[vname] = {
-                        "url": info["url"],
-                        "start": info.get("start", 0.0),
-                        "end": info.get("end", 0.0),
-                        "fps": info.get("fps"),
-                    }
+                rate = info.get("fps")
+                if not rate:
+                    continue
+                if output_dir:
+                    # Downloaded per-trial clips
+                    files = [
+                        str(output_dir / f"{vname}_trial_{int(row['trial'])}.mp4")
+                        for _, row in trials_df.iterrows()
+                    ]
+                    streams.append({"name": f"video_{vname}", "files": files, "rate": rate})
+                elif info.get("url"):
+                    # Streaming: session-wide URL
+                    streams.append({
+                        "name": f"video_{vname}",
+                        "files": [info["url"]],
+                        "rate": rate,
+                        "starting_time": info.get("start", 0.0),
+                    })
 
-            config = {
+            # Add pose streams from PoseEstimation containers
+            if include_pose and self._cameras_with_pose:
+                from ethograph.utils.nwb_video import discover_pose_estimation_cameras
+                pose_containers = discover_pose_estimation_cameras(self._nwb)
+                for pose_key in self._cameras_with_pose:
+                    container = pose_containers.get(pose_key)
+                    if container is None:
+                        continue
+                    first_series = next(iter(container.pose_estimation_series.values()), None)
+                    if first_series is None:
+                        continue
+                    ts = getattr(first_series, "timestamps", None)
+                    rate = getattr(first_series, "rate", None)
+                    if ts is not None and len(ts) >= 2:
+                        streams.append({
+                            "name": f"pose_{pose_key}",
+                            "files": [f"nwb://processing/pose_estimation/{pose_key}"],
+                            "timestamps": np.asarray(ts[:], dtype=np.float64),
+                        })
+                    elif rate:
+                        t0 = float(first_series.starting_time) if first_series.starting_time is not None else 0.0
+                        streams.append({
+                            "name": f"pose_{pose_key}",
+                            "files": [f"nwb://processing/pose_estimation/{pose_key}"],
+                            "rate": float(rate),
+                            "starting_time": t0,
+                        })
+
+            provenance = {
                 "nwb_dandiset_id": source_info["dandiset_id"],
                 "nwb_asset_id": self._dandi_asset_id,
-                "video_info": video_urls,
+                "nwb_ephys_dandiset_id": source_info["dandiset_id"],
+                "nwb_ephys_asset_id": self._dandi_asset_id,
             }
             if include_pose and self._cameras_with_pose:
-                config["nwb_pose_keys"] = list(self._cameras_with_pose)
+                provenance["nwb_pose_keys"] = list(self._cameras_with_pose)
 
-            config["nwb_ephys_dandiset_id"] = source_info["dandiset_id"]
-            config["nwb_ephys_asset_id"] = self._dandi_asset_id
-
-            config_path = ethograph_dir / "dandi.json"
-            with open(config_path, "w") as f:
-                json.dump(config, f, indent=2)
+            alignment_path = ethograph_dir / "alignment.nwb"
+            create_alignment_from_streams(
+                trials_df[["trial", "start_time", "stop_time"]],
+                streams,
+                alignment_path,
+                provenance=provenance,
+            )
 
             # Labels
             if label_source:

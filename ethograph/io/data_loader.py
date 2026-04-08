@@ -39,7 +39,6 @@ from ethograph.labels.converters import (
     NWBLabelConverter,
     PynappleLabelConverter,
     resolve_labels_tsv,
-    trials_df_from_intervalset,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,7 +58,6 @@ class LoadResult:
     data_loader: Any = None
     source_collection: Any = None
     nwb_local: str | None = None
-    nwb_pose_keys: list[str] | None = None
     nwb_video_folder: str | None = None
 
 
@@ -84,7 +82,7 @@ def _is_pynapple_path(file_path: str) -> bool:
 def _is_nwb_project_dir(file_path: str) -> bool:
     """Check if path is an NWB project directory (created by the NWB wizard)."""
     p = Path(file_path)
-    return p.is_dir() and (p / ".ethograph" / "nwb_metadata").exists()
+    return p.is_dir() and (p / ".ethograph" / "alignment.nwb").exists()
 
 
 def _resolve_alignment(source_path: str | Path):
@@ -153,10 +151,10 @@ def _resolve_alignment(source_path: str | Path):
 def _load_nwb_dataset(file_path: str) -> LoadResult:
     """Load a standalone .nwb file via direct HDF5 slicing.
 
-    Uses ``nwb_backend`` for catalog + combo detection and ``NWBLoader``
+    Uses ``catalog`` for combo detection and ``NWBLoader``
     for time-sliced data access (no pynapple intermediate).
     """
-    from ethograph.io.nwb_backend import read_trial_intervals
+    from ethograph.io.catalog import read_trial_intervals
 
     catalog, combo_cat = catalog_from_nwb(file_path)
     trial_intervals = read_trial_intervals(file_path)
@@ -213,12 +211,10 @@ def _load_pynapple_dataset(file_path: str) -> LoadResult:
 
     sio = make_nwb_alignment(nwb_path)
 
-    converter = PynappleLabelConverter(data)
-    t_df = trials_df_from_intervalset(trials_ep)
+    converter = PynappleLabelConverter(data, trials_ep)
     all_labels_df = converter.resolve_labels(
         source_path=file_path,
         trial_ids=trial_ids,
-        trials_df=t_df if not t_df.empty else None,
     )
 
     metadata_df, metadata_path = load_metadata_df(
@@ -241,69 +237,107 @@ def _load_pynapple_dataset(file_path: str) -> LoadResult:
 
 
 def _load_nwb_project(project_dir: str) -> LoadResult:
-    """Load an NWB project directory created by the NWB import wizard."""
-    import json
+    """Load an NWB project directory created by the NWB import wizard.
 
-    from ethograph.io.pynapple import load_nap_data
+    Alignment and provenance are always read from ``.ethograph/alignment.nwb``.
+    Provenance determines the data source:
+    - ``nwb_local``: local NWB path → pynapple loading
+    - ``nwb_dandiset_id`` + ``nwb_asset_id``: remote DANDI → NWBLoader
+    """
+    from ethograph.io.catalog import read_trial_intervals
 
     project_path = Path(project_dir)
-    config_path = project_path / ".ethograph" / "nwb_metadata"
     alignment_path = project_path / ".ethograph" / "alignment.nwb"
 
-    with open(config_path) as f:
-        config = json.load(f)
+    sio = make_nwb_alignment(alignment_path)
+    provenance = sio.provenance or {}
 
-    nwb_source = config.get("nwb_local")
-    if not nwb_source:
-        dandiset_id = config.get("nwb_source_dandiset")
-        session_eid = config.get("nwb_source_session")
-        if dandiset_id and session_eid:
-            raise NotImplementedError(
-                f"DANDI streaming re-open not yet supported. "
-                f"Download the NWB file locally first. "
-                f"(dandiset={dandiset_id}, session={session_eid})"
-            )
-        raise ValueError("No NWB source path found in nwb_metadata")
+    nwb_source = provenance.get("nwb_local")
 
-    data, trials_ep = load_nap_data(nwb_source)
-    catalog = catalog_from_pynapple(data, trials_ep)
-    loader = PynappleLoader(data, trials_ep, catalog)
-    nwb = str(alignment_path) if alignment_path.exists() else nwb_source
-    trial_ids = list(range(1, len(trials_ep) + 1)) if trials_ep is not None and len(trials_ep) > 0 else [1]
 
-    sio = make_nwb_alignment(nwb)
+    if nwb_source and Path(nwb_source).exists():
+        # Local NWB: load via pynapple
+        from ethograph.io.pynapple import load_nap_data
 
-    converter = PynappleLabelConverter(data)
-    t_df = trials_df_from_intervalset(trials_ep)
-    all_labels_df = converter.resolve_labels(
-        source_path=nwb_source,
-        trial_ids=trial_ids,
-        trials_df=t_df if not t_df.empty else None,
-        labels_path=project_path / "labels.tsv",
+        data, trials_ep = load_nap_data(nwb_source)
+        catalog = catalog_from_pynapple(data, trials_ep)
+        loader = PynappleLoader(data, trials_ep, catalog)
+        trial_ids = list(range(1, len(trials_ep) + 1)) if trials_ep is not None and len(trials_ep) > 0 else [1]
+
+        converter = PynappleLabelConverter(data, trials_ep)
+        all_labels_df = converter.resolve_labels(
+            source_path=nwb_source,
+            trial_ids=trial_ids,
+            labels_path=project_path / "labels.tsv",
+        )
+        metadata_df, metadata_path = load_metadata_df(
+            source_path=nwb_source,
+            nwb_alignment=sio,
+            trial_ids=trial_ids,
+        )
+        return LoadResult(
+            dt=None,
+            trial_ids=trial_ids,
+            nwb_alignment=sio,
+            metadata_df=metadata_df,
+            metadata_path=metadata_path,
+            all_labels_df=all_labels_df,
+            catalog=catalog,
+            data_loader=loader,
+            source_collection=_build_source_collection_pynapple(data, trials_ep),
+            nwb_local=nwb_source,
+        )
+
+    dandiset_id = provenance.get("nwb_dandiset_id")
+    asset_id = provenance.get("nwb_asset_id")
+    if dandiset_id and asset_id:
+        # Remote DANDI: load via NWBLoader (direct HDF5 slicing)
+        from ethograph.utils.dandi import open_nwb_dandi
+
+        nwb_obj, nwb_io, h5_file, rf = open_nwb_dandi(dandiset_id, asset_id)
+        catalog, combo_cat = catalog_from_nwb(h5_file)
+        trial_intervals = read_trial_intervals(h5_file)
+        loader = NWBLoader(h5_file, catalog, combo_catalog=combo_cat)
+
+        if trial_intervals:
+            loader.set_trial_intervals(trial_intervals)
+            trial_ids = list(range(1, len(trial_intervals) + 1))
+        else:
+            trial_ids = [1]
+
+        converter = NWBLabelConverter(nwb_path=h5_file)
+        all_labels_df = converter.resolve_labels(
+            source_path=project_dir,
+            trial_ids=trial_ids,
+            trials_df=sio.trials_df,
+            labels_path=project_path / "labels.tsv",
+        )
+        metadata_df, metadata_path = load_metadata_df(
+            source_path=project_dir,
+            nwb_alignment=sio,
+            trial_ids=trial_ids,
+        )
+        return LoadResult(
+            dt=None,
+            trial_ids=trial_ids,
+            nwb_alignment=sio,
+            metadata_df=metadata_df,
+            metadata_path=metadata_path,
+            all_labels_df=all_labels_df,
+            catalog=catalog,
+            data_loader=loader,
+            source_collection=_build_source_collection_nwb(h5_file, combo_cat, trial_intervals),
+            nwb_local=None,
+        )
+
+    raise ValueError(
+        "alignment.nwb provenance has neither 'nwb_local' nor DANDI identifiers. "
+        "Cannot determine data source."
     )
-    metadata_df, metadata_path = load_metadata_df(
-        source_path=nwb_source,
-        nwb_alignment=sio,
-        trial_ids=trial_ids,
-    )
-
-    return LoadResult(
-        dt=None,
-        trial_ids=trial_ids,
-        nwb_alignment=sio,
-        metadata_df=metadata_df,
-        metadata_path=metadata_path,
-        all_labels_df=all_labels_df,
-        catalog=catalog,
-        data_loader=loader,
-        source_collection=_build_source_collection_pynapple(data, trials_ep),
-        nwb_local=nwb_source,
-        nwb_pose_keys=config.get("nwb_pose_keys"),
-    )
 
 
 
-def _load_trialtree(file_path: str, require_fps: bool = False) -> LoadResult:
+def _load_trialtree(file_path: str) -> LoadResult:
     """Load a TrialTree or xarray.Dataset from a .nc file."""
     dt = eto.open(file_path)
 
@@ -331,7 +365,7 @@ def _load_trialtree(file_path: str, require_fps: bool = False) -> LoadResult:
 
 
     # TODO: ugly, rewreite with better validation, notify code. 
-    errors = validate_datatree(dt, require_fps)
+    errors = validate_datatree(dt)
     if errors:
         error_msg = "\n".join(f"• {e}" for e in errors)
         suffix_msg = "\n\nSee documentation: XXX"
@@ -349,7 +383,7 @@ def _load_trialtree(file_path: str, require_fps: bool = False) -> LoadResult:
         metadata_path=metadata_path,
         all_labels_df=all_labels_df,
         catalog=catalog,
-        data_loader=XarrayLoader(file_path, catalog),
+        data_loader=XarrayLoader(dt.itrial(0), catalog),
         source_collection=_build_source_collection_xarray(dt, nwb_alignment=sio),
     )
 
@@ -361,7 +395,6 @@ def _load_trialtree(file_path: str, require_fps: bool = False) -> LoadResult:
 
 def load_dataset(
     file_path: str,
-    require_fps: bool = True,
     progress_callback: Callable[[str], None] | None = None,
 ) -> LoadResult:
     """Load dataset from file path.
@@ -381,7 +414,7 @@ def load_dataset(
         return _load_pynapple_dataset(file_path)
 
     if file_path.endswith(".nc"):
-        return _load_trialtree(file_path, require_fps=require_fps)
+        return _load_trialtree(file_path)
 
 
 

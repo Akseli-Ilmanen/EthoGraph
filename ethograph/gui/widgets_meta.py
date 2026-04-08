@@ -492,34 +492,24 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         self.layout_mgr.register_docks()
 
-        if not self.app_state.video_viewer_visible and not self.app_state.has_pose:
+        if not self.app_state.video_viewer_visible:
             self.layout_mgr.set_video_viewer_visible(False)
 
         slot1_text = getattr(self.app_state, 'space_plot_type', 'Layers')
         show_layers = slot1_text == "Layers"
 
         if show_layers:
-            if self.app_state.has_video:
-                self.layout_mgr.show_layer_docks()
-                self.layout_mgr.cap_layer_width()
-            elif self.app_state.has_pose:
-                # Pose without video: hide layer docks but keep canvas visible for points
-                self.layout_mgr.hide_layer_docks()
-            else:
-                self.layout_mgr.configure_no_video(self.navigation_widget)
+            self.layout_mgr.show_layer_docks()
+            self.layout_mgr.cap_layer_width()
         else:
             self.layout_mgr.hide_layer_docks()
-            if not self.app_state.has_video and not self.app_state.has_pose:
-                self.layout_mgr.set_video_viewer_visible(False)
             self.data_widget.update_space_plot()
 
-        if self.app_state.has_video:
-            self.layout_mgr.set_vertical_ratio()
+
 
     def _on_reset_layout(self):
         space_type = getattr(self.app_state, 'space_plot_type', 'Layers')
         self.layout_mgr.reset_layout(
             show_layers=space_type == "Layers",
             show_space=space_type == "Space Plot",
-            has_video=self.app_state.has_video or self.app_state.has_pose,
         )

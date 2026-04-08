@@ -1267,7 +1267,6 @@ class ChangepointsWidget(QWidget):
         video = getattr(self.app_state, 'video', None)
         if video:
             return video.frame_to_time(self.app_state.current_frame)
-        return self.plot_container.time_slider.current_time
 
     def _get_jump_cp_times(self) -> np.ndarray | None:
         last_panel = getattr(self.plot_container, '_last_clicked_panel', 'feature')
@@ -1300,8 +1299,7 @@ class ChangepointsWidget(QWidget):
             video.blockSignals(True)
             video.seek_to_frame(new_frame)
             video.blockSignals(False)
-        else:
-            self.plot_container.time_slider.set_slider_time(time_s)
+
 
         self.plot_container.update_time_marker_by_time(time_s)
 

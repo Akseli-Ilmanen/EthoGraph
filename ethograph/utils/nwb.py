@@ -1,13 +1,19 @@
-"""NWB session creation, alignment helpers, and timing utilities.
+"""NWB session creation, alignment helpers, timing utilities, and H5 protocols.
 
 Also re-exports names that moved to ``utils.dandi`` and ``io.nwb_import``
 for backwards compatibility.
+
+Public names (H5 layer)
+-----------------------
+H5Like, H5Group, H5Dataset, NWBBackend, open_nwb
 """
 
 from __future__ import annotations
 
+import enum
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator, Protocol, runtime_checkable
 
 import numpy as np
 import pandas as pd
@@ -18,6 +24,104 @@ try:
 except ImportError:
     pynwb = None
     NWBFile = None
+
+
+# ---------------------------------------------------------------------------
+# Protocols: anything that looks like an h5py.File / Group / Dataset
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class H5Like(Protocol):
+    def visititems(self, func: Any) -> None: ...
+    def __getitem__(self, key: str) -> Any: ...
+
+
+@runtime_checkable
+class H5Group(Protocol):
+    attrs: Any
+    def get(self, key: str) -> Any: ...
+    def keys(self) -> Any: ...
+
+
+@runtime_checkable
+class H5Dataset(Protocol):
+    shape: tuple[int, ...]
+    dtype: Any
+    def __getitem__(self, key: Any) -> Any: ...
+
+
+# ---------------------------------------------------------------------------
+# Backend enum
+# ---------------------------------------------------------------------------
+
+
+class NWBBackend(enum.Enum):
+    LOCAL = "local"
+    REMFILE = "remfile"
+    LINDI = "lindi"
+
+
+# ---------------------------------------------------------------------------
+# File opener: local, remfile, lindi → h5py-like handle
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def open_nwb(
+    source: str | Path | H5Like,
+    backend: NWBBackend | None = None,
+) -> Iterator[H5Like]:
+    if isinstance(source, H5Like):
+        yield source
+        return
+
+    source = str(source)
+    resolved_backend = backend or _infer_backend(source)
+    closables: list[Any] = []
+
+    try:
+        if resolved_backend == NWBBackend.LINDI:
+            import lindi
+
+            if source.endswith((".lindi.json", ".lindi.tar", ".lindi.d")):
+                f = lindi.LindiH5pyFile.from_lindi_file(source)
+            else:
+                f = lindi.LindiH5pyFile.from_hdf5_file(source)
+            closables.append(f)
+            yield f
+
+        elif resolved_backend == NWBBackend.REMFILE:
+            import h5py
+            import remfile
+
+            rem = remfile.File(source)
+            closables.append(rem)
+            h5 = h5py.File(rem, "r")
+            closables.append(h5)
+            yield h5
+
+        else:
+            import h5py
+
+            h5 = h5py.File(source, "r")
+            closables.append(h5)
+            yield h5
+
+    finally:
+        for obj in reversed(closables):
+            try:
+                obj.close()
+            except Exception:
+                pass
+
+
+def _infer_backend(source: str) -> NWBBackend:
+    if any(source.endswith(ext) for ext in (".lindi.json", ".lindi.tar", ".lindi.d")):
+        return NWBBackend.LINDI
+    if source.startswith(("http://", "https://", "s3://")):
+        return NWBBackend.LINDI
+    return NWBBackend.LOCAL
 
 
 # ---------------------------------------------------------------------------
@@ -372,6 +476,7 @@ def create_alignment_from_streams(
     trials: pd.DataFrame,
     streams: list[dict],
     output_path: str | Path,
+    provenance: dict | None = None,
 ) -> Path:
     """Create an alignment.nwb for unaligned / complex scenarios.
 
@@ -522,11 +627,43 @@ def create_alignment_from_streams(
                 )
             )
 
+    if provenance:
+        write_provenance(nwbfile, provenance)
+
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     with NWBHDF5IO(str(output), "w") as io:
         io.write(nwbfile)
 
     return output
+
+
+# ---------------------------------------------------------------------------
+# Provenance helpers
+# ---------------------------------------------------------------------------
+
+
+def write_provenance(nwbfile: NWBFile, provenance: dict) -> None:
+    """Store provenance metadata in NWB scratch namespace as JSON."""
+    import json
+
+    nwbfile.add_scratch(
+        data=np.array([json.dumps(provenance)]),
+        name="ethograph_provenance",
+        description="ethograph alignment provenance metadata",
+    )
+
+
+def read_provenance(nwbfile) -> dict | None:
+    """Read provenance metadata from NWB scratch namespace."""
+    import json
+
+    scratch = getattr(nwbfile, "scratch", None)
+    if scratch and "ethograph_provenance" in scratch:
+        val = scratch["ethograph_provenance"].data[:]
+        if isinstance(val, bytes):
+            val = val.decode("utf-8")
+        return json.loads(str(val))
+    return None
 
 

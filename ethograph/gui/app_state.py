@@ -159,8 +159,6 @@ class AppStateSpec:
         "downsample_factor": (int, 100, True),
         
         # Boolean
-        "has_video": (bool, False, False),
-        "has_pose": (bool, False, False),
         "has_audio": (bool, False, False),
         "has_neo": (bool, False, False),
         "has_neurons": (bool, False, False),
@@ -173,7 +171,6 @@ class AppStateSpec:
         "video_folder": (str | None, None, True, SCOPE_LOCAL),
         "audio_folder": (str | None, None, True, SCOPE_LOCAL),
         "pose_folder": (str | None, None, True, SCOPE_LOCAL),
-        "nwb_pose_keys": (list | None, None, True, SCOPE_LOCAL),
         "ephys_path": (str | None, None, True, SCOPE_LOCAL),
         "neurons_path": (str | None, None, True, SCOPE_LOCAL),
         

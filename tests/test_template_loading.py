@@ -192,13 +192,7 @@ class TestBirdPark:
             assert abs(spec_xlim[0] - feature_xlim[0]) < 0.5
             assert abs(spec_xlim[1] - feature_xlim[1]) < 0.5
 
-    def test_time_slider_present(self, birdpark_gui):
-        _, meta = birdpark_gui
-        pc = meta.plot_container
-        # Birdpark has video, so slider may be hidden
-        # Just verify it exists and has valid range
-        slider = pc.time_slider
-        assert slider is not None
+
 
     def test_feature_plot_defaults_to_lineplot(self, birdpark_gui):
         _, meta = birdpark_gui
@@ -256,10 +250,7 @@ class TestCanary:
         assert pc.audio_trace_plot is not None
         assert pc.spectrogram_plot is not None
 
-    def test_time_slider_exists(self, canary_gui):
-        _, meta = canary_gui
-        # No video → time slider should exist (isVisible unreliable in headless)
-        assert meta.plot_container.time_slider is not None
+
 
     def test_valid_xlim(self, canary_gui):
         _, meta = canary_gui
@@ -496,8 +487,7 @@ class TestPhilodoptera:
         assert s.ready is True
         assert s.dt is not None
         assert s.has_audio is True
-        assert s.has_video is True
-        assert s.has_pose is True
+
 
     def test_single_trial(self, philodoptera_gui):
         _, meta = philodoptera_gui

@@ -228,19 +228,22 @@ Replaces the old `type_vars_dict` pattern with two explicit abstractions:
 
 ### Alignment System: `nwb_alignment.py`
 
-**Rule: NWB files are their own alignment source.** When the user loads a `.nwb` file (local or DANDI remote), the source NWB already contains trials, video ImageSeries, pose estimation, and timing metadata. Never create a separate `.ethograph/alignment.nwb` for NWB-sourced data. `alignment.nwb` is only needed for non-NWB data (`.nc`, `.npz`) that lacks session metadata.
+**Rule: Always create `alignment.nwb` for project directories.** The NWB wizard always produces `.ethograph/alignment.nwb` — for DANDI remote projects, local NWB projects, and non-NWB data alike. This eliminates the decision logic "source NWB vs sidecar alignment.nwb". For standalone `.nwb` file loading (no project dir), the source NWB is used directly via `_resolve_alignment`.
+
+**Provenance**: alignment.nwb stores provenance metadata in NWB `scratch` namespace (key `ethograph_provenance`). For DANDI projects this includes `nwb_dandiset_id`, `nwb_asset_id`, `nwb_pose_keys`, etc. Read via `NWBAlignment.provenance`. Written via `write_provenance()` / `read_provenance()` in `utils/nwb.py`.
 
 **`NWBAlignment`** reads any NWB file for session metadata. Constructed from a file path (`NWBAlignment(path)`) or an already-opened pynwb object (`NWBAlignment.from_nwb_object(nwb_obj)` — used for DANDI remote streaming). Key methods:
 - `get_stream_rate(stream, device)` — read `.rate` from any ImageSeries
-- `resolve_media_path(trial, stream, device, fallback_folder)` — try ImageSeries path → NWB-relative → fallback folder + filename
-- `get_media_for_time(session_time, fallback_folders)` — generalized `get_videos`: walks all acquisition ImageSeries, returns `{name: (path, local_time)}`
+- `resolve_media_path(trial, stream, device, fallback_folder)` — try ImageSeries path → NWB-relative → fallback folder + filename. URL-aware: returns URLs directly, prefers local fallback_folder copy if available.
 - `stream_offset_for_trial(trial, stream, device)` — trial-relative offset derived from ImageSeries timing
 
-**Priority order** (`_resolve_alignment` in `data_loader.py`): For `.nwb` sources: source NWB → sidecar alignment.nwb → sidecar metadata TSV. For other sources: sidecar alignment.nwb → sidecar metadata TSV.
+**Priority order** (`_resolve_alignment` in `data_loader.py`, used for standalone file loading only): For `.nwb` sources: source NWB → sidecar alignment.nwb → sidecar metadata TSV. For other sources: sidecar alignment.nwb → sidecar metadata TSV. Project directories bypass `_resolve_alignment` — `_load_nwb_project` reads alignment.nwb directly.
 
-**Path fallback**: ImageSeries stores original paths. If files move, `resolve_media_path` extracts the filename and joins with a user-specified fallback folder (`video_folder`, `audio_folder`, etc.).
+**Path fallback**: ImageSeries stores original paths (or URLs for DANDI). If files move, `resolve_media_path` extracts the filename and joins with a user-specified fallback folder (`video_folder`, `audio_folder`, etc.).
 
-**`build_nwb_from_trial_table`** (`utils/nwb.py`) creates ImageSeries for ALL streams via `sync_acquisition_for_streams(nwbfile, stream_rates)`. Takes `stream_rates: dict[str, float]` — no hardcoded FPS values. Only used for non-NWB data sources.
+**`build_nwb_from_trial_table`** (`utils/nwb.py`) creates ImageSeries for ALL streams via `sync_acquisition_for_streams(nwbfile, stream_rates)`. Takes `stream_rates: dict[str, float]` — no hardcoded FPS values.
+
+**`create_alignment_from_streams`** (`utils/nwb.py`) — flexible alignment creation accepting per-trial or session-wide files, optional `provenance` dict. Used by the NWB wizard to create alignment.nwb.
 
 ### Data Loading: `data_loader.py`
 
@@ -248,7 +251,7 @@ The GUI supports loading `.nc` (NetCDF), `.nwb`, `.npz`, pynapple folders, and N
 - `.nc` → `eto.open()` + `catalog_from_xarray()`. If `.nc` has `nwb_source` attr, also attaches a `PynappleLoader` for lazy NWB features.
 - `.nwb` → `catalog_from_nwb()` + `NWBLoader` (direct HDF5 slicing via `ComboCatalog`).
 - `.npz`/folder → `load_nap_data()` + `catalog_from_pynapple()` + `PynappleLoader`.
-- NWB project dir (has `.ethograph/dandi.json`) → opens NWB (local path or DANDI remote via remfile/lindi), loads via pynapple. Remote NWB is used directly as alignment source — no local alignment.nwb created.
+- NWB project dir (has `.ethograph/alignment.nwb`) → reads provenance from alignment.nwb to determine source. Local NWB: loads via pynapple. DANDI remote: opens via `open_nwb_dandi()` + `NWBLoader` (direct HDF5 slicing). Alignment always from alignment.nwb.
 
 `load_dataset()` returns `(dt, all_labels_df, catalog)` where `catalog` is a `DataCatalog`.
 

@@ -8,7 +8,6 @@ from .app_constants import (
     LAYER_DOCK_WIDTH_RATIO,
     LAYOUT_RELEASE_DELAY_MS,
     MAX_WIDGET_SIZE,
-    NO_VIDEO_PANEL_WIDTH_RATIO,
     PLOT_CONTAINER_MIN_HEIGHT,
     SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
     SIDEBAR_MIN_WIDTH_PX,
@@ -161,38 +160,6 @@ class LayoutManager:
         if docks:
             self._qt_window.resizeDocks(docks, sizes, Qt.Horizontal)
 
-    def configure_no_video(self, navigation_widget: QWidget) -> None:
-        for dock in self._layer_docks:
-            dock.hide()
-
-        central = self._qt_window.centralWidget()
-        if central:
-            central.hide()
-
-        if self._plot_dock is not None:
-            self._qt_window.removeDockWidget(self._plot_dock)
-            self._qt_window.addDockWidget(Qt.LeftDockWidgetArea, self._plot_dock)
-            self._plot_dock.show()
-
-            def _apply_dock_ratio():
-                total_width = self._qt_window.width()
-                if total_width <= 0:
-                    return
-                panel_width = int(total_width * NO_VIDEO_PANEL_WIDTH_RATIO)
-                sidebar_width = total_width - panel_width
-                for dock in self._qt_window.findChildren(QDockWidget):
-                    if dock is self._plot_dock:
-                        continue
-                    if dock.isVisible() and dock.widget() is not None:
-                        self._qt_window.resizeDocks(
-                            [self._plot_dock, dock],
-                            [panel_width, sidebar_width],
-                            Qt.Horizontal,
-                        )
-                        break
-
-            QTimer.singleShot(0, _apply_dock_ratio)
-
 
 
     def set_video_viewer_visible(self, visible: bool) -> None:
@@ -237,7 +204,7 @@ class LayoutManager:
         # Apply once after the initial layout settles to avoid repeated dock churn.
         QTimer.singleShot(0, _apply_sidebar_ratio)
 
-    def reset_layout(self, *, show_layers: bool, show_space: bool, has_video: bool) -> None:
+    def reset_layout(self, *, show_layers: bool, show_space: bool) -> None:
         """Re-dock all floating panels and restore the default arrangement."""
         # Re-scan in case docks were created since last register
         self.register_docks()
@@ -278,8 +245,8 @@ class LayoutManager:
             else:
                 self._space_dock.setVisible(False)
 
-        # 5. Restore video viewer
-        self.set_video_viewer_visible(has_video)
+        # 5. Always show video viewer (user can hide manually)
+        self.set_video_viewer_visible(True)
 
         # 6. Re-apply standard sizing after Qt processes the layout changes
         def _apply_sizes():
@@ -292,7 +259,7 @@ class LayoutManager:
                 self._qt_window.resizeDocks(
                     [self._sidebar_dock], [target_w], Qt.Horizontal,
                 )
-            if has_video and self._plot_dock:
+            if self._plot_dock:
                 total_h = self._qt_window.height()
                 plot_h = max(
                     PLOT_CONTAINER_MIN_HEIGHT,

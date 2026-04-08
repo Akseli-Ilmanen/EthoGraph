@@ -157,9 +157,7 @@ def compute_trial_video_bounds(
     )
 
 
-# Backward-compat aliases for older imports.
-TrialAlignment = TrialVideoBounds
-compute_trial_alignment = compute_trial_video_bounds
+
 
 
 def _resolve_trial_end(

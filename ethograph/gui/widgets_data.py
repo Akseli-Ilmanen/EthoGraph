@@ -127,12 +127,10 @@ _PANEL_DEFS: list[_PanelDef] = [
               requires="has_features"),
     _PanelDef("video_viewer", "VideoViewer",  row=1,
               state_attr="video_viewer_visible",
-              on_toggle="_on_video_viewer_toggle",
-              requires="has_video"),
+              on_toggle="_on_video_viewer_toggle"),
     _PanelDef("pose_markers", "PoseMarkers",  row=1,
               state_attr="pose_markers_visible",
-              on_toggle="_on_pose_markers_toggle",
-              requires="has_pose"),
+              on_toggle="_on_pose_markers_toggle"),
 ]
 
 
@@ -153,13 +151,10 @@ class _LoadContext:
     catalog: object  # DataCatalog
 
     # Inferred media availability
-    has_video: bool = False
     has_audio: bool = False
-    has_pose: bool = False
     has_neo: bool = False
     has_neurons: bool = False
     cameras: list = field(default_factory=list)
-    nwb_pose_keys: list | None = None
     nwb_local: str | None = None
 
     # NWB-embedded ephys
@@ -402,13 +397,13 @@ class DataPanel(QWidget):
     def _on_pose_match_clicked(self):
         from .dialog_pose_video_matcher import PoseVideoMatcherDialog
 
-        nwb_local = getattr(self.app_state, "nwb_local", None)
-        pose_keys = getattr(self.app_state, "nwb_pose_keys", None) or []
         sio = getattr(self.app_state, "nwb_alignment", None)
-        cameras = sio.cameras if sio else []
+        pose_keys = sio.pose_keys if sio else []
 
-        if not pose_keys and nwb_local:
-            pose_keys = _detect_nwb_pose_keys(nwb_local) or []
+        if not pose_keys:
+            nwb_local = getattr(self.app_state, "nwb_local", None)
+            if nwb_local:
+                pose_keys = _detect_nwb_pose_keys(nwb_local) or []
 
         if not pose_keys:
             from ethograph.gui.notify import notify
@@ -425,10 +420,10 @@ class DataPanel(QWidget):
         )
         if dialog.exec_():
             mapping = dialog.get_mapping()
-            # mapping is [(video_stem, pose_key), ...] — store as ordered pose keys
             ordered_keys = [pose_key for _, pose_key in mapping]
-            self.app_state.nwb_pose_keys = ordered_keys
-            self.app_state.has_pose = True
+            # Persist to alignment.nwb provenance
+            if sio and hasattr(sio, "update_provenance"):
+                sio.update_provenance({"nwb_pose_keys": ordered_keys})
             if self._update_pose_callback:
                 self._update_pose_callback()
 
@@ -691,14 +686,11 @@ class DataWidget(QWidget):
         try:
             result = load_dataset(
                 nc_file_path,
-                require_fps=self.app_state.has_pose,
                 progress_callback=getattr(self.app_state, "_progress_callback", None),
-                max_trials=getattr(self.app_state, "_dandi_max_trials", None),
-                dandiset_id=getattr(self.app_state, "_dandi_dandiset_id", None),
-                import_labels=self.io_widget.import_labels_checkbox.isChecked(),
             )
         except (OSError, ValueError, KeyError) as e:
-            raise _LoadError(f"Failed to load dataset: {e}") from e
+            logger.exception("load_dataset failed")
+            raise _LoadError(f"Failed to load dataset: {type(e).__name__}: {e}") from e
 
         video_folder_override = None
         if result.nwb_video_folder and not self.app_state.video_folder:
@@ -712,7 +704,6 @@ class DataWidget(QWidget):
             dt=result.dt,
             all_labels_df=result.all_labels_df,
             nwb_local=result.nwb_local,
-            nwb_pose_keys=result.nwb_pose_keys,
             video_folder_override=video_folder_override,
         )
 
@@ -720,20 +711,8 @@ class DataWidget(QWidget):
         """Phase 2: Detect video/audio/pose/ephys availability."""
         result = ctx.result
         sio = result.nwb_alignment
-        cameras_list = sio.cameras if sio else []
-        has_nwb_pose = bool(result.nwb_local and ctx.nwb_pose_keys)
-        has_remote_cameras = any(is_url(c) for c in cameras_list)
 
-        # Auto-detect NWB pose keys if not set by wizard
-        if not ctx.nwb_pose_keys and result.nwb_local:
-            auto_keys = _detect_nwb_pose_keys(result.nwb_local)
-            if auto_keys:
-                ctx.nwb_pose_keys = auto_keys
-                has_nwb_pose = True
 
-        ctx.cameras = cameras_list
-        ctx.has_video = bool(cameras_list) or has_remote_cameras or has_nwb_pose
-        ctx.has_pose = (bool(sio.devices("pose")) if sio else False) or has_nwb_pose
         ctx.has_audio = bool(sio.mics) if sio else False
 
         # NWB-embedded ephys — detect directly from the NWB file
@@ -803,12 +782,10 @@ class DataWidget(QWidget):
         self.app_state.source_collection = result.source_collection
         self.app_state.nwb_alignment = result.nwb_alignment
 
-        self.app_state.has_video = ctx.has_video
-        self.app_state.has_pose = ctx.has_pose
+
         self.app_state.has_audio = ctx.has_audio
 
-        if ctx.nwb_pose_keys:
-            self.app_state.nwb_pose_keys = ctx.nwb_pose_keys
+
         if ctx.nwb_local:
             self.app_state.nwb_local = ctx.nwb_local
 
@@ -829,7 +806,8 @@ class DataWidget(QWidget):
                     self.app_state.ephys_path, ctx.ds,
                 )
             except (OSError, ValueError, KeyError) as e:
-                raise _LoadError(f"Failed to load ephys features: {e}") from e
+                logger.exception("Ephys stream expansion failed")
+                raise _LoadError(f"Failed to load ephys features: {type(e).__name__}: {e}") from e
 
         self.io_widget.disable_downsample_controls()
         self.app_state.downsample_factor_used = ctx.downsample_factor
@@ -951,9 +929,6 @@ class DataWidget(QWidget):
             or any(k.startswith("position_") for k in self.app_state.ds.data_vars)
         )
         cameras = self.app_state.nwb_alignment.cameras
-        has_remote_cameras = any(is_url(c) for c in cameras)
-        if has_nwb_pose or has_remote_cameras:
-            self.app_state.has_video = True
         slot_layout = self.slot_layout
 
         # Slot 1: Layers / Space Plot toggle
@@ -966,14 +941,13 @@ class DataWidget(QWidget):
         slot_layout.addWidget(self.space_view_combo)
 
         # Slot 2: Camera selection (first camera)
-        if self.app_state.has_video and len(cameras) > 0:
-            self.primary_camera_combo = QComboBox()
-            self.primary_camera_combo.setObjectName("primary_camera_combo")
-            self.primary_camera_combo.addItems([str(c) for c in cameras])
-            self.primary_camera_combo.setItemDelegate(ElidedDelegate(parent=self.primary_camera_combo))
-            self.primary_camera_combo.currentTextChanged.connect(self._on_primary_camera_changed)
-            self.controls.append(self.primary_camera_combo)
-            slot_layout.addWidget(self.primary_camera_combo)
+        self.primary_camera_combo = QComboBox()
+        self.primary_camera_combo.setObjectName("primary_camera_combo")
+        self.primary_camera_combo.addItems([str(c) for c in cameras])
+        self.primary_camera_combo.setItemDelegate(ElidedDelegate(parent=self.primary_camera_combo))
+        self.primary_camera_combo.currentTextChanged.connect(self._on_primary_camera_changed)
+        self.controls.append(self.primary_camera_combo)
+        slot_layout.addWidget(self.primary_camera_combo)
 
         if len(cameras) > 1:
             from .video_manager import MAX_EXTRA_CAMERAS
@@ -2015,7 +1989,7 @@ class DataWidget(QWidget):
         except Exception:
             logger.debug("update_space_plot failed", exc_info=True)
 
-        self.plot_container.update_time_range_from_data()
+
         self.plot_container.update_time_marker_by_time(0.0)
 
         self._update_confidence_overlay()
@@ -2148,7 +2122,7 @@ class DataWidget(QWidget):
 
     def update_pose(self):
         """Refresh primary and extra camera pose layers through PoseDisplayManager."""
-        if self.pose_mgr is None or not self.app_state.has_pose:
+        if self.pose_mgr is None:
             return
         if not self.app_state.pose_markers_visible:
             return
@@ -2174,14 +2148,11 @@ class DataWidget(QWidget):
         self.layout_mgr.toggle_layer_docks_with_anchor(show_layers)
 
         if text == "Space Plot":
-            if not self.app_state.has_video:
-                self.layout_mgr.set_video_viewer_visible(False)
             self.update_space_plot()
         else:
             if self.space_plot:
                 self.space_plot.hide()
-            if not self.app_state.has_video:
-                self.layout_mgr.configure_no_video(self.navigation_widget)
+  
 
     def _on_primary_camera_changed(self, camera_name):
         if not self.app_state.ready or not camera_name:

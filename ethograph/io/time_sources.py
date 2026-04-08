@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     import pynapple as nap
     import xarray as xr
 
-    from ethograph.io.nwb_backend import ComboCatalog, FeatureEntry
+    from ethograph.io.catalog import ComboCatalog, FeatureEntry
 
 
 # ---------------------------------------------------------------------------
@@ -160,14 +160,8 @@ class NWBTimeSource:
         self._time_range = self._compute_range()
 
     def _compute_range(self) -> TimeRange:
-        rec = self._entry.record
-        if rec.rate and rec.rate > 0:
-            start = rec.starting_time or 0.0
-            end = start + rec.shape[0] / rec.rate
-            return TimeRange(start, end)
-        if rec.timestamps_range:
-            return TimeRange(rec.timestamps_range[0], rec.timestamps_range[1])
-        return TimeRange(0.0, 0.0)
+        tr = self._entry.record.time_range
+        return TimeRange(tr[0], tr[1]) if tr else TimeRange(0.0, 0.0)
 
     @property
     def name(self) -> str:
@@ -182,7 +176,7 @@ class NWBTimeSource:
         return self._entry.record.rate
 
     def get_data(self, t0: float, t1: float) -> tuple[np.ndarray, np.ndarray]:
-        from ethograph.io.nwb_backend import open_nwb
+        from ethograph.utils.nwb import open_nwb
 
         combo_sel = {"feature": self._entry.display_name}
 

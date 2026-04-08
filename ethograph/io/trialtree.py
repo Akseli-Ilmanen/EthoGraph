@@ -533,13 +533,7 @@ class TrialTree(xr.DataTree):
     def _validate_tree(self) -> list[str]:
         ds = self.itrial(0)
         sio = self.nwb_alignment
-        has_cameras = len(sio.cameras) > 0
-        has_fps = "fps" in ds.attrs
-        has_session_fps = sio.get_stream_rate("video") is not None
-        errors = validate_datatree(
-            self,
-            require_fps=(has_fps or has_cameras) and not has_session_fps,
-        )
+        errors = validate_datatree(self)
         if errors:
             raise ValueError(
                 "TrialTree validation failed:\n" + "\n".join(f"• {e}" for e in errors)

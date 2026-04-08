@@ -463,7 +463,7 @@ class NavigationWidget(QWidget):
         master = getattr(self.plot_container, "_xlink_master", None) or getattr(self.plot_container, "_feature_plot", None)
         if master is not None:
             master.vb.setXRange(rw.time_range.start_s, rw.time_range.end_s, padding=0)
-        self.plot_container.update_time_range_from_data()
+
 
     def _snap_to_closest_trial(self):
         """Switch to the trial closest to the current time marker, then update viewport."""
@@ -475,8 +475,6 @@ class NavigationWidget(QWidget):
 
         # Get current time from time marker / slider
         current_time = 0.0
-        if self.plot_container and hasattr(self.plot_container, "time_slider"):
-            current_time = self.plot_container.time_slider.current_time
 
         # Convert local time to session-absolute for lookup
         sc = getattr(self.app_state, "source_collection", None)
@@ -773,8 +771,7 @@ class NavigationWidget(QWidget):
             master.vb.setXRange(onset_s - extra_t0, offset_s + extra_t1, padding=0)
 
         self.plot_container.update_time_marker_by_time(onset_s)
-        if hasattr(self.plot_container, "time_slider"):
-            self.plot_container.time_slider.set_slider_time(onset_s)
+   
 
         if self.autoplay_checkbox.isChecked():
             self._play_interval(onset_s, offset_s)
@@ -907,8 +904,7 @@ class NavigationWidget(QWidget):
             new_frame = self.app_state.current_frame + direction
             new_frame = max(0, min(new_frame, self.app_state.num_frames - 1))
             video.seek_to_frame(new_frame)
-        else:
-            self._step_time_no_video(direction)
+
 
     def _step_window(self, direction: int):
         if not self.app_state.ready:
@@ -924,21 +920,6 @@ class NavigationWidget(QWidget):
 
 
 
-    def _step_time_no_video(self, direction: int):
-        if not self.plot_container:
-            return
-        slider = self.plot_container.time_slider
-        jump_s = self.app_state.time_jump_ms / 1000.0
-        new_time = slider.current_time + direction * jump_s
-        new_time = max(slider._t_min, min(new_time, slider._t_max))
-        slider.set_slider_time(new_time)
-        self.plot_container.update_time_marker_by_time(new_time)
-        center = getattr(self.app_state, "center_playback", False)
-        xlim = self.plot_container.get_current_xlim()
-        if center or new_time < xlim[0] or new_time > xlim[1]:
-            half = self.app_state.view_span / 2.0
-            master = self.plot_container._xlink_master or self.plot_container._feature_plot
-            master.vb.setXRange(new_time - half, new_time + half, padding=0)
 
     def _sync_trials_combo_color(self):
         idx = self.trials_combo.currentIndex()
