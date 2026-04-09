@@ -711,7 +711,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             plot._apply_zoom_constraints(x_bounds_override=bounds)
 
     def _trial_bounds_tuple(self):
-        tr = self.app_state.window_bounds
+        tr = self.app_state.padded_bounds
         return (tr.start_s, tr.end_s) if tr is not None else None
 
     # --- Bottom panel switching ---

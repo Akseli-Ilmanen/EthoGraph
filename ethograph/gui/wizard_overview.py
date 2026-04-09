@@ -159,7 +159,7 @@ class _ModeSelectionPage(QWidget):
         # --- NWB / DANDI section ---
         nwb_box = QGroupBox("DANDI archive")
         nb_lay = QVBoxLayout(nwb_box)
-        self._rb_nwb_dandi = QRadioButton("Import from DANDI (download trials / stream)")
+        self._rb_nwb_dandi = QRadioButton("Download from DANDI")
         self._top_group.addButton(self._rb_nwb_dandi)
         nb_lay.addWidget(self._rb_nwb_dandi)
         layout.addWidget(nwb_box)

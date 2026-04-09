@@ -182,6 +182,7 @@ class AppStateSpec:
         
         
         
+        "nwb_pose_keys": (list[str], [], True, SCOPE_LOCAL),
         "pose_hide_threshold": (float, 0.9, True),
 
         # Plotting
@@ -400,7 +401,23 @@ class ObservableAppState(QObject):
 
     @property
     def window_bounds(self) -> TimeRange | None:
-        """Effective display window — restriction window if set, else trial bounds."""
+        """Core data range — the actual trial/label/sequence extent without padding.
+
+        Plots use this for x-axis limits and zoom constraints.
+        The padded ``restrict_window.time_range`` is for slider/scroll limits.
+        """
+        rw = getattr(self, 'restrict_window', None)
+        if rw is not None:
+            return rw.core_range
+        return self.trial_bounds
+
+    @property
+    def padded_bounds(self) -> TimeRange | None:
+        """Padded display range including before/after context.
+
+        Use for scroll/slider limits where the user should be able to pan
+        beyond the core trial range.
+        """
         rw = getattr(self, 'restrict_window', None)
         if rw is not None:
             return rw.time_range

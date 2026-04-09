@@ -321,7 +321,7 @@ class BasePlot(pg.PlotWidget):
             current_ylim = self.vb.viewRange()[1]
             x_range = current_xlim[1] - current_xlim[0]
 
-            tr = self.app_state.window_bounds
+            tr = self.app_state.padded_bounds
             bounds = x_bounds_override or ((tr.start_s, tr.end_s) if tr is not None else None)
             if hasattr(self.app_state, 'ds') and self.app_state.ds is not None and bounds is not None:
                 data_xmin, data_xmax = bounds
@@ -368,7 +368,7 @@ class BasePlot(pg.PlotWidget):
         )
 
         if hasattr(self.app_state, 'ds') and self.app_state.ds is not None:
-            tr = self.app_state.window_bounds
+            tr = self.app_state.padded_bounds
             bounds = x_bounds_override or ((tr.start_s, tr.end_s) if tr is not None else None)
             if bounds is not None:
                 xMin, xMax = bounds

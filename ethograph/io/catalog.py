@@ -12,7 +12,6 @@ how time slicing works.
 
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, Sequence, runtime_checkable
@@ -195,33 +194,6 @@ class StackedSlice:
     confidence: np.ndarray | None = None
 
 
-def _parse_path(path: str) -> tuple[str, str | None, str]:
-    """Split an NWB processing path into (module, group_or_none, leaf).
-
-    4-level: /processing/pose_estimation/LeftCamera/SeriesNoseTip
-             -> ("pose_estimation", "LeftCamera", "SeriesNoseTip")
-
-    3-level: /processing/wheel/WheelPosition
-             -> ("wheel", None, "WheelPosition")
-    """
-    parts = path.strip("/").split("/")
-    if len(parts) >= 4:
-        return parts[1], parts[2], parts[3]
-    if len(parts) == 3:
-        return parts[1], None, parts[2]
-    return parts[-1], None, parts[-1]
-
-
-def _detect_real_groups(records: Sequence[TimeSeriesRecord]) -> set[str]:
-    """A group is 'real' if multiple leaves share the same (module, group) pair."""
-    group_leaf_count: dict[tuple[str, str], int] = defaultdict(int)
-    for r in records:
-        module, group, _ = _parse_path(r.path)
-        if group is not None:
-            group_leaf_count[(module, group)] += 1
-    return {group for (_, group), count in group_leaf_count.items() if count > 1}
-
-
 _SPATIAL_TYPES = frozenset({"PoseEstimationSeries", "SpatialSeries"})
 _SPACE_LABELS = {2: ("x", "y"), 3: ("x", "y", "z")}
 
@@ -234,61 +206,65 @@ def _infer_columns(neurodata_type: str, shape: tuple[int, ...]) -> tuple[str, ..
     return ()
 
 
+def _parent_group(path: str) -> str | None:
+    """Extract the parent group name from an NWB path (e.g. 'LeftCamera')."""
+    parts = path.strip("/").split("/")
+    return parts[-2] if len(parts) >= 2 else None
+
+
 def _detect_combos(
     records: Sequence[TimeSeriesRecord],
 ) -> tuple[dict[str, ComboSpec], list[FeatureEntry]]:
-    real_groups = _detect_real_groups(records)
-
-    tag_values: dict[str, set[str]] = defaultdict(set)
-    parsed: list[tuple[TimeSeriesRecord, dict[str, str], tuple[str, ...]]] = []
+    """Flat feature list with optional keypoints/camera combos for pose data."""
+    features: list[FeatureEntry] = []
+    keypoint_names: set[str] = set()
+    feature_names: list[str] = []
+    camera_names: set[str] = set()
+    has_space = False
 
     for r in records:
-        module, group, leaf = _parse_path(r.path)
+        leaf = r.name
         cols = _infer_columns(r.neurodata_type, r.shape)
+        is_pose = r.neurodata_type == "PoseEstimationSeries"
 
-        tags: dict[str, str] = {"module": module}
-
-        if group is not None and group in real_groups:
-            tags["group"] = group
-
-        if r.neurodata_type == "PoseEstimationSeries":
-            tags["keypoint"] = leaf
+        if is_pose:
+            camera = _parent_group(r.path)
+            tags: dict[str, str] = {"keypoint": leaf}
+            if camera:
+                tags["camera"] = camera
+                camera_names.add(camera)
+            keypoint_names.add(leaf)
         else:
-            feature_name = leaf if group is None or group in real_groups else leaf
-            tags["feature"] = feature_name
+            tags = {"feature": leaf}
+            feature_names.append(leaf)
 
         if cols:
-            for c in cols:
-                tag_values["space"].add(c)
-
-        for k, v in tags.items():
-            tag_values[k].add(v)
-
-        parsed.append((r, tags, cols))
-
-    combos: dict[str, ComboSpec] = {}
-    for level in ("module", "group", "keypoint", "feature", "space"):
-        vals = tag_values.get(level, set())
-        if vals:
-            combos[level] = ComboSpec(name=level, values=tuple(sorted(vals)))
-
-    features: list[FeatureEntry] = []
-    for r, tags, cols in parsed:
-        _, group, leaf = _parse_path(r.path)
-        has_confidence = r.neurodata_type == "PoseEstimationSeries"
-        display = leaf
+            has_space = True
 
         features.append(FeatureEntry(
             path=r.path,
-            display_name=display,
+            display_name=leaf,
             neurodata_type=r.neurodata_type,
             shape=r.shape,
             rate=r.rate,
             tags=tags,
             record=r,
             columns=cols,
-            has_confidence=has_confidence,
+            has_confidence=is_pose,
         ))
+
+    combos: dict[str, ComboSpec] = {}
+    if keypoint_names:
+        combos["keypoint"] = ComboSpec("keypoint", tuple(sorted(keypoint_names)))
+    if camera_names:
+        combos["camera"] = ComboSpec("camera", tuple(sorted(camera_names)))
+    if feature_names:
+        combos["feature"] = ComboSpec("feature", tuple(sorted(feature_names)))
+    if has_space:
+        space_vals: set[str] = set()
+        for f in features:
+            space_vals.update(f.columns)
+        combos["space"] = ComboSpec("space", tuple(sorted(space_vals)))
 
     return combos, features
 
@@ -355,7 +331,7 @@ class ComboCatalog:
     def _split_sel(
         self, combo_sel: dict[str, str],
     ) -> tuple[dict[str, str], dict[str, str]]:
-        entry_keys = {"module", "group", "keypoint", "feature"}
+        entry_keys = {"keypoint", "feature", "camera"}
         entry_sel = {k: v for k, v in combo_sel.items() if k in entry_keys}
         column_sel = {k: v for k, v in combo_sel.items() if k not in entry_keys}
         return entry_sel, column_sel
@@ -1002,6 +978,14 @@ class NWBLoader(_CatalogMixin):
         self._trial_intervals = intervals
 
     def feature_dims(self, feature: str) -> dict[str, list[str]]:
+        if feature == "pose_estimation":
+            result: dict[str, list[str]] = {}
+            for key in ("keypoint", "camera", "space"):
+                spec = self._combo_catalog.combos.get(key)
+                if spec and spec.values:
+                    result[key] = list(spec.values)
+            return result
+
         entries = self._combo_catalog.filter(feature=feature)
         if not entries:
             entries = self._combo_catalog.filter(keypoint=feature)
@@ -1032,21 +1016,24 @@ class NWBLoader(_CatalogMixin):
         else:
             abs_t0, abs_t1 = 0.0, 1e9
 
-        # Build combo selection — map feature name into the right tag
-        combo_sel = {}
-        for k, v in selections.items():
-            if k in ("module", "group", "keypoint", "feature", "space"):
-                combo_sel[k] = v
-
-        # Add the feature itself to selection if it matches an entry
-        display_names = {e.display_name for e in self._combo_catalog.features}
-        keypoint_names = {
-            e.tags.get("keypoint", "") for e in self._combo_catalog.features
-        }
-        if feature in display_names:
-            combo_sel["feature"] = feature
-        elif feature in keypoint_names:
-            combo_sel["keypoint"] = feature
+        combo_sel: dict[str, str] = {}
+        if feature == "pose_estimation":
+            if "keypoint" in selections:
+                combo_sel["keypoint"] = selections["keypoint"]
+            if "camera" in selections:
+                combo_sel["camera"] = selections["camera"]
+        else:
+            keypoint_names = {
+                e.tags.get("keypoint", "") for e in self._combo_catalog.features
+            }
+            if feature in keypoint_names:
+                combo_sel["keypoint"] = feature
+                if "camera" in selections:
+                    combo_sel["camera"] = selections["camera"]
+            else:
+                combo_sel["feature"] = feature
+        if "space" in selections:
+            combo_sel["space"] = selections["space"]
 
         with open_nwb(self._source) as h5:
             stacked = self._combo_catalog.load_stacked(
@@ -1304,8 +1291,15 @@ def catalog_from_nwb(source: str) -> tuple[DataCatalog, Any]:
     for name, spec in combo_cat.combos.items():
         combos[name] = ComboSpec(name, spec.values)
 
-    for entry in combo_cat.features:
-        features.append(entry.display_name)
+    has_pose = any(e.neurodata_type == "PoseEstimationSeries" for e in combo_cat.features)
+    non_pose = [e.display_name for e in combo_cat.features if e.neurodata_type != "PoseEstimationSeries"]
+
+    if has_pose:
+        features.append("pose_estimation")
+    features.extend(non_pose)
+
+    if features:
+        combos["features"] = ComboSpec("features", tuple(features))
 
     combos["individuals"] = ComboSpec("individuals", ("individual_0",))
 

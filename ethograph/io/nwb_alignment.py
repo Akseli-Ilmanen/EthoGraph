@@ -20,6 +20,71 @@ _NWB_FILENAME = "alignment.nwb"
 _SETTINGS_DIR = ".ethograph"
 _SENTINEL = object()
 
+# Extension → stream mapping, checked in order (first match wins).
+# Video before audio because .mp4/.avi/.mov are in both sets but are
+# primarily video containers.
+_STREAM_EXTENSION_MAP: list[tuple[str, set[str]]] = []  # populated lazily
+
+
+def _get_stream_extension_map() -> list[tuple[str, set[str]]]:
+    """Build (stream, extensions) list on first call."""
+    if _STREAM_EXTENSION_MAP:
+        return _STREAM_EXTENSION_MAP
+    from ethograph.io.validation import (
+        AUDIO_EXTENSIONS,
+        POSE_EXTENSIONS,
+        VIDEO_EXTENSIONS,
+    )
+    _STREAM_EXTENSION_MAP.extend([
+        ("video", VIDEO_EXTENSIONS),
+        ("pose", POSE_EXTENSIONS),
+        ("audio", AUDIO_EXTENSIONS),
+    ])
+    return _STREAM_EXTENSION_MAP
+
+
+def _classify_imageseries(nwb) -> dict[str, list[str]]:
+    """Classify acquisition ImageSeries by the extensions of their external files.
+
+    Returns ``{stream: [acq_name, ...]}`` for items whose names don't follow
+    the ``{stream}_{device}`` convention but whose external files match known
+    media extensions.
+    """
+    from pynwb.image import ImageSeries
+
+    result: dict[str, list[str]] = {}
+    if not nwb.acquisition:
+        return result
+
+    ext_map = _get_stream_extension_map()
+
+    for name, obj in nwb.acquisition.items():
+        if not isinstance(obj, ImageSeries):
+            continue
+        if obj.external_file is None or len(obj.external_file) == 0:
+            continue
+
+        # Already follows {stream}_{device} convention — skip classification
+        if any(name.startswith(f"{s}_") for s in _KNOWN_STREAMS):
+            continue
+
+        # Check the first non-empty external file extension
+        ext = None
+        for f in obj.external_file:
+            f_str = str(f).strip()
+            if f_str:
+                ext = Path(f_str).suffix.lower()
+                break
+        if not ext:
+            continue
+
+        for stream, exts in ext_map:
+            if ext in exts:
+                result.setdefault(stream, []).append(name)
+                break
+
+    return result
+
 
 def discover_nwb(nc_path: str | Path) -> Path | None:
     """Find an NWB session file near a data file.
@@ -284,6 +349,26 @@ class NWBAlignment:
         except (ValueError, TypeError):
             return None
 
+    # ── Acquisition lookup ──
+
+    def _find_acquisition(self, stream: str, device: str | None = None):
+        """Find an acquisition item by ``{stream}_{device}`` or by direct name.
+
+        Handles extension-classified items where the device name *is* the
+        acquisition name (not prefixed with ``{stream}_``).
+        """
+        nwb = self.nwb
+        if not nwb.acquisition:
+            return None
+        acq_name = f"{stream}_{device}" if device else stream
+        acq = nwb.acquisition.get(acq_name)
+        if acq is not None:
+            return acq
+        # Fallback: device name is the raw acquisition name
+        if device:
+            return nwb.acquisition.get(device)
+        return None
+
     # ── Media access ──
 
     def get_media(self, trial, stream: str, device: str | None = None) -> str | None:
@@ -298,15 +383,22 @@ class NWBAlignment:
         return None
 
     def devices(self, stream: str) -> list[str]:
-        """Discover devices from trials table columns AND acquisition items."""
+        """Discover devices from trials table columns AND acquisition items.
+
+        Three sources, checked in order:
+        1. Trials table columns (``video_cam_1`` → device ``cam_1``).
+        2. Acquisition ImageSeries following ``{stream}_{device}`` naming.
+        3. Acquisition ImageSeries whose ``external_file`` extensions match
+           known media types (e.g. ``.mp4`` → video, ``.wav`` → audio).
+        """
         devs: list[str] = []
 
-        # From trials table columns
+        # 1. From trials table columns
         df = self.trials_df
         if not df.empty:
             devs = _parse_stream_columns(list(df.columns), stream)
 
-        # From acquisition ImageSeries names
+        # 2. From acquisition ImageSeries with {stream}_{device} naming
         nwb = self.nwb
         prefix = f"{stream}_"
         if nwb.acquisition:
@@ -315,6 +407,12 @@ class NWBAlignment:
                     dev = name[len(prefix):]
                     if dev and dev not in devs:
                         devs.append(dev)
+
+        # 3. From extension-based classification of remaining ImageSeries
+        classified = _classify_imageseries(nwb)
+        for acq_name in classified.get(stream, []):
+            if acq_name not in devs:
+                devs.append(acq_name)
 
         return devs
 
@@ -373,34 +471,11 @@ class NWBAlignment:
                 return True
         return False
 
-    @cached_property
-    def provenance(self) -> dict | None:
-        """Provenance metadata from ``provenance.yaml`` next to alignment.nwb."""
-        from ethograph.utils.nwb import read_provenance
-        return read_provenance(self._path.parent)
-
     @property
     def pose_keys(self) -> list[str]:
-        """Ordered list of pose estimation container names from provenance."""
-        prov = self.provenance
-        
-        # Defined by provenance field (e.g. from GUI video-pose matcher).
-        if prov and "nwb_pose_keys" in prov:
-            return list(prov["nwb_pose_keys"])
-        
-        # Defined by acquisition ImageSeries names
+        """Pose estimation container names from acquisition ImageSeries."""
         return self.devices("pose")
 
-    def update_provenance(self, updates: dict) -> None:
-        """Merge *updates* into ``provenance.yaml`` next to alignment.nwb."""
-        from ethograph.utils.nwb import read_provenance, write_provenance
-
-        current = dict(read_provenance(self._path.parent) or {})
-        current.update(updates)
-        write_provenance(self._path.parent, current)
-
-        if "provenance" in self.__dict__:
-            del self.__dict__["provenance"]
 
     def start_time(self, trial) -> float:
         if not self.has_real_timing:
@@ -436,9 +511,7 @@ class NWBAlignment:
         trial_start = self.start_time(trial)
         trial_idx = self._trial_index(trial)
 
-        nwb = self.nwb
-        acq_name = f"{stream}_{device}" if device else stream
-        acq = nwb.acquisition.get(acq_name) if nwb.acquisition else None
+        acq = self._find_acquisition(stream, device)
         if acq is None:
             return 0.0
 
@@ -478,22 +551,20 @@ class NWBAlignment:
         if key in self._rate_dict:
             return self._rate_dict[key]
 
-        nwb = self.nwb
-        if not nwb.acquisition:
-            return None
-
         from ethograph.utils.nwb import resolve_timeseries_timing
 
-        if device:
-            acq = nwb.acquisition.get(f"{stream}_{device}")
-            if acq is not None:
-                rate, _ = resolve_timeseries_timing(acq)
-                return rate
+        acq = self._find_acquisition(stream, device)
+        if acq is not None:
+            rate, _ = resolve_timeseries_timing(acq)
+            return rate
 
-        for name, acq in nwb.acquisition.items():
-            if name.startswith(f"{stream}_"):
-                rate, _ = resolve_timeseries_timing(acq)
-                return rate
+        # Fallback: scan all {stream}_* items
+        nwb = self.nwb
+        if nwb.acquisition:
+            for name, acq in nwb.acquisition.items():
+                if name.startswith(f"{stream}_"):
+                    rate, _ = resolve_timeseries_timing(acq)
+                    return rate
 
         return None
 
@@ -533,9 +604,7 @@ class NWBAlignment:
         2. Fallback: trial table filename + ``fallback_folder``.
         3. Returns ``None`` if unresolvable.
         """
-        nwb = self.nwb
-        acq_name = f"{stream}_{device}" if device else stream
-        acq = nwb.acquisition.get(acq_name) if nwb.acquisition else None
+        acq = self._find_acquisition(stream, device)
 
         trial_idx = self._trial_index(trial)
         nwb_base_dir = self._path.parent

@@ -1048,8 +1048,8 @@ class EphysTracePlot(BasePlot):
             xmin, xmax = self.get_current_xlim()
             t0, t1 = xmin, xmax
 
-        # Clamp to window bounds (includes extra context beyond trial)
-        wb = self.app_state.window_bounds
+        # Clamp to padded bounds (includes before/after context beyond trial)
+        wb = self.app_state.padded_bounds
         if wb is not None:
             t0 = max(wb.start_s, t0)
             t1 = min(wb.end_s, t1)
@@ -1077,7 +1077,7 @@ class EphysTracePlot(BasePlot):
         buf_s = window * DEFAULT_BUFFER_MULTIPLIER_EPHYS / 2
         t0_draw = visible_t0 - buf_s
         t1_draw = visible_t1 + buf_s
-        wb = self.app_state.window_bounds
+        wb = self.app_state.padded_bounds
         if wb is not None:
             t0_draw = max(wb.start_s, t0_draw)
             t1_draw = min(wb.end_s, t1_draw)

@@ -35,7 +35,6 @@ from ethograph.io.data_loader import (
     wizard_single_from_pose,
 )
 from ethograph.gui.notify import notify_dialog
-from ethograph.gui.wizard_nwb import NWBImportDialog
 from ethograph.io.validation import (
     AUDIO_FILE_FILTER,
     EPHYS_EXTENSIONS_STR,

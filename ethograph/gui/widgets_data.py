@@ -398,8 +398,11 @@ class DataPanel(QWidget):
         from .dialog_pose_video_matcher import PoseVideoMatcherDialog
 
         sio = getattr(self.app_state, "nwb_alignment", None)
-        pose_keys = sio.pose_keys if sio else []
 
+        # Saved mapping from local_settings, then NWB acquisition, then detection
+        pose_keys = list(getattr(self.app_state, "nwb_pose_keys", None) or [])
+        if not pose_keys and sio:
+            pose_keys = sio.pose_keys
         if not pose_keys:
             nwb_local = getattr(self.app_state, "nwb_local", None)
             if nwb_local:
@@ -421,9 +424,7 @@ class DataPanel(QWidget):
         if dialog.exec_():
             mapping = dialog.get_mapping()
             ordered_keys = [pose_key for _, pose_key in mapping]
-            # Persist to alignment.nwb provenance
-            if sio and hasattr(sio, "update_provenance"):
-                sio.update_provenance({"nwb_pose_keys": ordered_keys})
+            self.app_state.nwb_pose_keys = ordered_keys
             if self._update_pose_callback:
                 self._update_pose_callback()
 

@@ -126,13 +126,102 @@ def _is_remote_nwb(file_path: str) -> bool:
     return _read_dandi_provenance(ethograph_dir) is not None
 
 
+def _bootstrap_alignment_nwb(source_nwb: Path) -> Path | None:
+    """Create ``.ethograph/alignment.nwb`` from a source NWB's acquisition ImageSeries.
+
+    When loading a standalone ``.nwb`` that has ImageSeries with
+    ``external_file`` but no sidecar alignment.nwb yet, this bootstraps
+    one so the GUI can resolve media paths and stream rates.
+    """
+    from datetime import datetime
+    from uuid import uuid4
+
+    from dateutil.tz import tzlocal
+    from pynwb import NWBHDF5IO, NWBFile
+    from pynwb.image import ImageSeries
+
+    with NWBHDF5IO(str(source_nwb), "r") as io:
+        nwb = io.read()
+
+        series_info = []
+        for name, obj in nwb.acquisition.items():
+            if not isinstance(obj, ImageSeries):
+                continue
+            if obj.external_file is None or len(obj.external_file) == 0:
+                continue
+            info = {
+                "name": name,
+                "description": obj.description or name,
+                "external_file": list(obj.external_file),
+                "starting_frame": (
+                    np.array(obj.starting_frame, dtype=np.int32)
+                    if obj.starting_frame is not None
+                    else np.zeros(1, dtype=np.int32)
+                ),
+            }
+            if obj.timestamps is not None:
+                info["timestamps"] = np.array(obj.timestamps)
+            elif obj.rate is not None:
+                info["rate"] = float(obj.rate)
+                info["starting_time"] = float(obj.starting_time or 0.0)
+            series_info.append(info)
+
+        if not series_info:
+            return None
+
+        trials_rows = []
+        if nwb.trials is not None and len(nwb.trials) > 0:
+            trials_df = nwb.trials.to_dataframe()
+            for _, row in trials_df.iterrows():
+                trials_rows.append((float(row["start_time"]), float(row["stop_time"])))
+
+    output_dir = source_nwb.parent / ".ethograph"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "alignment.nwb"
+
+    nwbfile = NWBFile(
+        session_description="Alignment (bootstrapped from source NWB by ethograph).",
+        identifier=str(uuid4()),
+        session_start_time=datetime.now(tzlocal()),
+    )
+
+    for start, stop in trials_rows:
+        nwbfile.add_trial(start_time=start, stop_time=stop)
+
+    for info in series_info:
+        kwargs = {
+            "name": info["name"],
+            "description": info["description"],
+            "external_file": info["external_file"],
+            "format": "external",
+            "starting_frame": info["starting_frame"],
+        }
+        if "timestamps" in info:
+            kwargs["timestamps"] = info["timestamps"]
+        elif "rate" in info:
+            kwargs["rate"] = info["rate"]
+            kwargs["starting_time"] = info["starting_time"]
+        nwbfile.add_acquisition(ImageSeries(**kwargs))
+
+    with NWBHDF5IO(str(output_path), "w") as io:
+        io.write(nwbfile)
+
+    logger.info(
+        "Bootstrapped alignment.nwb from %s (%d ImageSeries)",
+        source_nwb.name,
+        len(series_info),
+    )
+    return output_path
+
+
 def _resolve_alignment(source_path: str | Path):
     """Resolve alignment source with priority order.
 
     For source ``.nwb`` files:
     1. Source NWB trials table.
     2. Sidecar ``.ethograph/alignment.nwb``.
-    3. Sidecar metadata TSV with ``start_time`` and ``stop_time``.
+    3. Bootstrap alignment.nwb from source NWB ImageSeries (if any have external files).
+    4. Sidecar metadata TSV with ``start_time`` and ``stop_time``.
 
     For other source paths:
     1. Sidecar ``.ethograph/alignment.nwb``.
@@ -163,6 +252,10 @@ def _resolve_alignment(source_path: str | Path):
             sidecar_alignment = make_nwb_alignment(sidecar_nwb)
             if not sidecar_alignment.trials_df.empty:
                 return sidecar_alignment
+        else:
+            bootstrapped = _bootstrap_alignment_nwb(source)
+            if bootstrapped is not None:
+                return make_nwb_alignment(bootstrapped)
 
         sidecar_tsv = metadata_tsv_path(source)
         tsv_alignment = _tsv_timing_alignment(sidecar_tsv)
@@ -280,62 +373,6 @@ def _load_pynapple_dataset(file_path: str) -> LoadResult:
         catalog=catalog,
         data_loader=loader,
         source_collection=_build_source_collection_pynapple(data, trials_ep),
-    )
-
-
-def _load_remote_nwb(project_dir: str) -> LoadResult:
-    """Load a remote NWB dataset via DANDI streaming.
-
-    Reads DANDI provenance (``nwb_dandiset_id``, ``nwb_asset_id``) from
-    ``.ethograph/alignment.nwb`` and streams the NWB file via ``remfile``.
-    """
-    from ethograph.io.catalog import read_trial_intervals
-    from ethograph.utils.dandi import open_nwb_dandi
-
-    project_path = Path(project_dir)
-    alignment_path = project_path / ".ethograph" / "alignment.nwb"
-
-    sio = make_nwb_alignment(alignment_path)
-    provenance = sio.provenance or {}
-
-    dandiset_id = provenance["nwb_dandiset_id"]
-    asset_id = provenance["nwb_asset_id"]
-
-    nwb_obj, nwb_io, h5_file, rf = open_nwb_dandi(dandiset_id, asset_id)
-    catalog, combo_cat = catalog_from_nwb(h5_file)
-    trial_intervals = read_trial_intervals(h5_file)
-    loader = NWBLoader(h5_file, catalog, combo_catalog=combo_cat)
-
-    if trial_intervals:
-        loader.set_trial_intervals(trial_intervals)
-        trial_ids = list(range(1, len(trial_intervals) + 1))
-    else:
-        trial_ids = [1]
-
-    converter = NWBLabelConverter(nwb_path=h5_file)
-    all_labels_df = converter.resolve_labels(
-        source_path=project_dir,
-        trial_ids=trial_ids,
-        trials_df=sio.trials_df,
-        labels_path=project_path / "labels.tsv",
-    )
-    metadata_df, metadata_path = load_metadata_df(
-        source_path=project_dir,
-        nwb_alignment=sio,
-        trial_ids=trial_ids,
-    )
-    return LoadResult(
-        dt=None,
-        trial_ids=trial_ids,
-        nwb_alignment=sio,
-        metadata_df=metadata_df,
-        metadata_path=metadata_path,
-        all_labels_df=all_labels_df,
-        catalog=catalog,
-        data_loader=loader,
-        source_collection=_build_source_collection_nwb(h5_file, combo_cat, trial_intervals),
-        nwb_local=None,
-        nwb_video_folder=str(project_path),
     )
 
 

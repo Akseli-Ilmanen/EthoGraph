@@ -123,13 +123,6 @@ def test_catalog_shared_columns(multi_tsdframe_data):
     assert list(cat.combo_values("columns")) == ["x", "y", "z"]
 
 
-def test_catalog_detects_rgb():
-    t = np.arange(100)
-    rgb = nap.TsdFrame(t=t, d=np.random.rand(100, 3), columns=["R", "G", "B"])
-    data = {"angle_rgb": rgb}
-    cat = catalog_from_pynapple(data)
-    assert "angle_rgb" in cat.colors
-
 
 def test_catalog_detects_changepoints():
     cp_times = np.array([10.0, 25.0, 50.0, 75.0])

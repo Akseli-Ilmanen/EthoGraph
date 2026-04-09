@@ -335,7 +335,9 @@ class PoseDisplayManager:
                 pr = slice_pose_to_frames(pr, start_frame, end_frame)
             return pr
 
-        pose_keys = sio.pose_keys if sio and hasattr(sio, "pose_keys") else []
+        pose_keys = list(getattr(self.app_state, "nwb_pose_keys", None) or [])
+        if not pose_keys and sio:
+            pose_keys = sio.pose_keys
         if pose_keys and camera_idx < len(pose_keys):
             nwb_file = self._get_nwb_file()
             if nwb_file is None:
