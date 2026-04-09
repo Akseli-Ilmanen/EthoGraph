@@ -76,7 +76,9 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
                     df.loc[current, "offset_s"] - df.loc[current, "onset_s"]
                 )
 
-    df.sort_values(["individual", "onset_global"], inplace=True)
+    
+    if "onset_global" in df.columns:
+        df.sort_values(["individual", "onset_global"], inplace=True)
                 
     return df
 
