@@ -294,7 +294,10 @@ class TrialTree(xr.DataTree):
 
         Auto-discovers ``.ethograph/alignment.nwb`` next to the file.
         """
+        
         tree = xr.open_datatree(path, engine="netcdf4")
+        
+     
         tree.__class__ = cls
         tree._source_path = path
         nwb = discover_nwb(path)

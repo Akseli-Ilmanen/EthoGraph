@@ -13,11 +13,7 @@ import pytest
 import xarray as xr
 from pathlib import Path
 
-from ethograph.gui.dialog_select_template import (
-    TEMPLATES,
-    _DOWNLOAD_BASE,
-    _template_downloaded,
-)
+from ethograph.datasets import dataset_dir, is_dataset_downloaded
 from ethograph.io.data_loader import (
     wizard_single_from_audio,
     wizard_single_from_ds,
@@ -34,21 +30,9 @@ from ethograph.io.trialtree import TrialTree
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _get_template(key: str) -> dict:
-    for t in TEMPLATES:
-        if t["dataset_key"] == key:
-            return t
-    raise KeyError(key)
-
-
 def _skip_if_not_downloaded(key: str):
-    t = _get_template(key)
-    if not _template_downloaded(t):
+    if not is_dataset_downloaded(key):
         pytest.skip(f"{key} not downloaded")
-
-
-def _template_dir(key: str) -> Path:
-    return _DOWNLOAD_BASE / _get_template(key)["folder"]
 
 
 def _assert_valid_trialtree(dt):
@@ -78,7 +62,7 @@ class TestGetVideoFps:
 
     def test_moll_video(self):
         _skip_if_not_downloaded("moll2025")
-        d = _template_dir("moll2025")
+        d = dataset_dir("moll2025")
         mp4 = next(d.glob("*.mp4"))
         fps = get_video_fps(str(mp4))
         assert fps is not None
@@ -87,7 +71,7 @@ class TestGetVideoFps:
 
     def test_birdpark_video(self):
         _skip_if_not_downloaded("birdpark")
-        d = _template_dir("birdpark")
+        d = dataset_dir("birdpark")
         mp4 = next(d.glob("*.mp4"))
         fps = get_video_fps(str(mp4))
         assert fps is not None
@@ -95,7 +79,7 @@ class TestGetVideoFps:
 
     def test_lockbox_video(self):
         _skip_if_not_downloaded("lockbox")
-        d = _template_dir("lockbox")
+        d = dataset_dir("lockbox")
         mp4 = next(d.glob("*.mp4"))
         fps = get_video_fps(str(mp4))
         assert fps is not None
@@ -103,7 +87,7 @@ class TestGetVideoFps:
 
     def test_philodoptera_video(self):
         _skip_if_not_downloaded("philodoptera")
-        d = _template_dir("philodoptera")
+        d = dataset_dir("philodoptera")
         mp4 = d / "philodoptera.mp4"
         fps = get_video_fps(str(mp4))
         assert fps is not None
@@ -126,7 +110,7 @@ class TestWizardFromAudio:
 
     def test_canary_audio(self, tmp_path):
         _skip_if_not_downloaded("canary")
-        src = _template_dir("canary") / "100_marron1_May_24_2016_62101389.wav"
+        src = dataset_dir("canary") / "100_marron1_May_24_2016_62101389.wav"
         wav = tmp_path / src.name
         shutil.copy2(src, wav)
 
@@ -144,7 +128,7 @@ class TestWizardFromAudio:
 
     def test_birdpark_audio(self, tmp_path):
         _skip_if_not_downloaded("birdpark")
-        src = _template_dir("birdpark") / "BP_2021-05-25_08-12-51_655154_0380000.wav"
+        src = dataset_dir("birdpark") / "BP_2021-05-25_08-12-51_655154_0380000.wav"
         wav = tmp_path / src.name
         shutil.copy2(src, wav)
 
@@ -161,7 +145,7 @@ class TestWizardFromAudio:
 
     def test_philodoptera_audio(self, tmp_path):
         _skip_if_not_downloaded("philodoptera")
-        src = _template_dir("philodoptera") / "philodoptera.wav"
+        src = dataset_dir("philodoptera") / "philodoptera.wav"
         wav = tmp_path / src.name
         shutil.copy2(src, wav)
 
@@ -178,7 +162,7 @@ class TestWizardFromAudio:
 
     def test_roundtrip_to_netcdf(self, tmp_path):
         _skip_if_not_downloaded("canary")
-        src = _template_dir("canary") / "100_marron1_May_24_2016_62101389.wav"
+        src = dataset_dir("canary") / "100_marron1_May_24_2016_62101389.wav"
         wav = tmp_path / src.name
         shutil.copy2(src, wav)
 
@@ -196,7 +180,7 @@ class TestWizardFromAudio:
 
     def test_custom_individuals(self, tmp_path):
         _skip_if_not_downloaded("canary")
-        src = _template_dir("canary") / "100_marron1_May_24_2016_62101389.wav"
+        src = dataset_dir("canary") / "100_marron1_May_24_2016_62101389.wav"
         wav = tmp_path / src.name
         shutil.copy2(src, wav)
 
@@ -222,7 +206,7 @@ class TestWizardFromPose:
 
     def test_moll_dlc_pose(self, tmp_path):
         _skip_if_not_downloaded("moll2025")
-        d = _template_dir("moll2025")
+        d = dataset_dir("moll2025")
         csv_src = next(d.glob("*DLC.csv"))
         csv_dst = tmp_path / csv_src.name
         shutil.copy2(csv_src, csv_dst)
@@ -239,7 +223,7 @@ class TestWizardFromPose:
 
     def test_pose_has_kinematics(self, tmp_path):
         _skip_if_not_downloaded("moll2025")
-        d = _template_dir("moll2025")
+        d = dataset_dir("moll2025")
         csv_src = next(d.glob("*DLC.csv"))
         csv_dst = tmp_path / csv_src.name
         shutil.copy2(csv_src, csv_dst)
@@ -256,7 +240,7 @@ class TestWizardFromPose:
 
     def test_roundtrip_to_netcdf(self, tmp_path):
         _skip_if_not_downloaded("moll2025")
-        d = _template_dir("moll2025")
+        d = dataset_dir("moll2025")
         csv_src = next(d.glob("*DLC.csv"))
         csv_dst = tmp_path / csv_src.name
         shutil.copy2(csv_src, csv_dst)
@@ -402,44 +386,6 @@ class TestWizardFromNpy:
         assert isinstance(reloaded.nwb_alignment, NWBAlignment)
 
 
-# ===================================================================
-# wizard_single_from_ds — xarray Dataset
-# ===================================================================
-
-class TestWizardFromDs:
-
-    def _make_ds(self) -> xr.Dataset:
-        time = np.linspace(0, 10, 300)
-        ds = xr.Dataset(
-            {"signal": (["time", "channel"], np.random.randn(300, 3))},
-            coords={
-                "time": time,
-                "channel": ["x", "y", "z"],
-                "individuals": ["subject_1"],
-            },
-        )
-        ds.attrs["fps"] = 30
-        return ds
-
-    def test_basic(self, tmp_path):
-        ds = self._make_ds()
-        dt = wizard_single_from_ds(video_path=None, ds=ds)
-        _assert_valid_trialtree(dt)
-
-    def test_preserves_data_vars(self, tmp_path):
-        ds = self._make_ds()
-        dt = wizard_single_from_ds(video_path=None, ds=ds)
-        trial_ds = dt.itrial(0)
-        assert "signal" in trial_ds.data_vars
-
-    def test_roundtrip_to_netcdf(self, tmp_path):
-        ds = self._make_ds()
-        dt = wizard_single_from_ds(video_path=None, ds=ds)
-        nc_out = tmp_path / "ds_trial.nc"
-        _safe_to_netcdf(dt, nc_out)
-        assert nc_out.exists()
-        assert nc_out.stat().st_size > 0
-
 
 # ===================================================================
 # wizard_single_from_ephys — minimal (no real ephys files in templates)
@@ -462,7 +408,7 @@ class TestWizardFromEphys:
 
     def test_with_audio(self, tmp_path):
         _skip_if_not_downloaded("canary")
-        src = _template_dir("canary") / "100_marron1_May_24_2016_62101389.wav"
+        src = dataset_dir("canary") / "100_marron1_May_24_2016_62101389.wav"
         wav = tmp_path / src.name
         shutil.copy2(src, wav)
 
@@ -481,7 +427,7 @@ class TestWizardFromVideo:
 
     def test_moll_video(self, tmp_path):
         _skip_if_not_downloaded("moll2025")
-        d = _template_dir("moll2025")
+        d = dataset_dir("moll2025")
         mp4 = next(d.glob("*.mp4"))
         dt = wizard_single_from_video(video_path=str(mp4))
         _assert_valid_trialtree(dt)

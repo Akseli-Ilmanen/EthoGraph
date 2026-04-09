@@ -352,11 +352,28 @@ class NWBLabelConverter(LabelConverter):
         rows = self._global_to_trial_rows(self._epochs, trials_df)
         return self._rows_to_labels_df(rows)
 
-    # kept for backwards compat with wizard_nwb.py
-    def from_nwb(self, nwb, trials_df: pd.DataFrame) -> pd.DataFrame:
-        """Extract labels from NWB and return a TSV-compatible all-labels DataFrame."""
+    def from_nwb(
+        self,
+        nwb,
+        trials_df: pd.DataFrame,
+        sources: list[str] | None = None,
+    ) -> pd.DataFrame:
+        """Extract labels from NWB and return a TSV-compatible all-labels DataFrame.
+
+        Parameters
+        ----------
+        sources : list[str] | None
+            If given, only include epochs whose ``source`` field is in this
+            list.  ``None`` means include all sources.
+        """
         if self._epochs is None:
             self._load(nwb)
+        if sources is not None:
+            keep = set(sources)
+            self._epochs = [e for e in self._epochs if e["source"] in keep]
+            self._label_map = build_mapping_from_labels(
+                sorted({e["label_name"] for e in self._epochs})
+            )
         return self.extract(trials_df)
 
     def _extract_behavioral_epochs(self, nwb) -> list[dict]:

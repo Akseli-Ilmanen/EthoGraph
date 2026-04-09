@@ -7,21 +7,20 @@ from qtpy.QtWidgets import QApplication, QMessageBox
 import ethograph as eto
 import ethograph.utils.paths as paths_module
 from ethograph.gui.app_state import ObservableAppState
-from ethograph.gui.dialog_select_template import (
-    TEMPLATES,
-    _DOWNLOAD_BASE,
-    _build_alignment_nwb,
-    _resolve_template_paths,
-    _template_dir,
-    _template_downloaded,
+from ethograph.datasets import (
+    DATASETS,
+    DOWNLOAD_BASE,
+    dataset_dir,
+    get_gui_assets,
+    is_dataset_downloaded,
+    resolve_dataset_paths,
 )
 from ethograph.gui.widgets_meta import MetaWidget
 from ethograph.io.catalog import catalog_from_xarray
 from ethograph.utils.download import (
-    EXAMPLE_DATASETS,
+    build_alignment_nwb,
     download_assets,
     ensure_default_configs,
-    is_downloaded,
     write_example_configs,
 )
 
@@ -30,37 +29,28 @@ def pytest_addoption(parser):
     parser.addoption("--show", action="store_true", default=False, help="Show napari viewer for 15s after each test")
 
 
-BIRDPARK_DIR = _DOWNLOAD_BASE / "BirdPark"
+BIRDPARK_DIR = dataset_dir("birdpark")
 BIRDPARK_NC = BIRDPARK_DIR / "copExpBP08_trim.nc"
-MOLL_DIR = _DOWNLOAD_BASE / "Moll2025"
+MOLL_DIR = dataset_dir("moll2025")
 MOLL_NC = MOLL_DIR / "Trial_data.nc"
-MOLL_PYNAPPLE_DIR = _DOWNLOAD_BASE / "Moll2025_pynapple"
-
-
-def _get_template(key: str) -> dict:
-    for template in TEMPLATES:
-        if template["dataset_key"] == key:
-            return template
-    raise KeyError(key)
+MOLL_PYNAPPLE_DIR = DOWNLOAD_BASE / "Moll2025_pynapple"
 
 
 def _skip_if_not_downloaded(key: str) -> None:
-    template = _get_template(key)
-    if not _template_downloaded(template):
+    if not is_dataset_downloaded(key):
         pytest.skip(f"{key} not downloaded")
 
 
-def _ensure_alignment_nwb(template: dict) -> None:
+def _ensure_alignment_nwb(key: str) -> None:
     """Build alignment.nwb only when it does not already exist."""
-    nwb_path = _template_dir(template) / ".ethograph" / "alignment.nwb"
+    nwb_path = dataset_dir(key) / ".ethograph" / "alignment.nwb"
     if not nwb_path.exists():
-        _build_alignment_nwb(template)
+        build_alignment_nwb(key)
 
 
-def _apply_template(meta, template_key: str, downsample: bool = False) -> None:
-    template = _get_template(template_key)
-    _ensure_alignment_nwb(template)
-    resolved = _resolve_template_paths(template)
+def _apply_template(meta, key: str, downsample: bool = False) -> None:
+    _ensure_alignment_nwb(key)
+    resolved = resolve_dataset_paths(key)
 
     io = meta.io_widget
     io._clear_all_line_edits()
@@ -88,11 +78,11 @@ def _apply_template(meta, template_key: str, downsample: bool = False) -> None:
     QApplication.processEvents()
 
 
-def _load_template_gui(gui, template_key: str, downsample: bool = False):
-    _skip_if_not_downloaded(template_key)
+def _load_template_gui(gui, key: str, downsample: bool = False):
+    _skip_if_not_downloaded(key)
     viewer, meta = gui
-    _apply_template(meta, template_key, downsample=downsample)
-    assert meta.app_state.ready, f"Failed to load {template_key}"
+    _apply_template(meta, key, downsample=downsample)
+    assert meta.app_state.ready, f"Failed to load {key}"
     return viewer, meta
 
 
@@ -100,26 +90,26 @@ def _load_template_gui(gui, template_key: str, downsample: bool = False):
 # Dataset download — runs once per session
 # ---------------------------------------------------------------------------
 
-def _ensure_dataset(key: str, folder: Path):
+def _ensure_dataset(key: str):
     """Download example dataset if not already present."""
-    info = EXAMPLE_DATASETS[key]
-    if not is_downloaded(key, folder):
-        folder.mkdir(parents=True, exist_ok=True)
+    if not is_dataset_downloaded(key):
+        dest = dataset_dir(key)
+        dest.mkdir(parents=True, exist_ok=True)
         download_assets(
-            release_tag=info["release_tag"],
-            assets=info["assets_gui"],
-            dest=folder,
+            release_tag=DATASETS[key]["release_tag"],
+            assets=get_gui_assets(key),
+            dest=dest,
         )
         ensure_default_configs()
-        write_example_configs(key, folder)
+        write_example_configs(key, dest)
 
 
 def pytest_configure(config):
     """Ensure both required datasets exist before any test runs."""
-    _ensure_dataset("birdpark", BIRDPARK_DIR)
+    _ensure_dataset("birdpark")
     assert BIRDPARK_NC.exists(), f"BirdPark NC not found after download: {BIRDPARK_NC}"
 
-    _ensure_dataset("moll2025", MOLL_DIR)
+    _ensure_dataset("moll2025")
     assert MOLL_NC.exists(), f"Moll2025 NC not found after download: {MOLL_NC}"
 
 
@@ -270,13 +260,13 @@ def philodoptera_gui(gui, qtbot):
 def canary_gui(gui, qtbot):
     _skip_if_not_downloaded("canary")
     viewer, meta = gui
-    template = _get_template("canary")
-    resolved = _resolve_template_paths(template)
+    ds_info = DATASETS["canary"]
+    resolved = resolve_dataset_paths("canary")
     nc_path = resolved.get("nc_file_path")
     if not nc_path:
-        audio_name = template.get("audio_file")
+        audio_name = ds_info.get("audio_file")
         if audio_name:
-            candidate = _template_dir(template) / (Path(audio_name).stem + ".nc")
+            candidate = dataset_dir("canary") / (Path(audio_name).stem + ".nc")
             if candidate.exists():
                 nc_path = str(candidate)
     if not nc_path or not Path(nc_path).exists():

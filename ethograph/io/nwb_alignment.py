@@ -375,9 +375,9 @@ class NWBAlignment:
 
     @cached_property
     def provenance(self) -> dict | None:
-        """Provenance metadata stored in NWB scratch namespace."""
+        """Provenance metadata from ``provenance.yaml`` next to alignment.nwb."""
         from ethograph.utils.nwb import read_provenance
-        return read_provenance(self.nwb)
+        return read_provenance(self._path.parent)
 
     @property
     def pose_keys(self) -> list[str]:
@@ -392,35 +392,15 @@ class NWBAlignment:
         return self.devices("pose")
 
     def update_provenance(self, updates: dict) -> None:
-        """Update provenance fields in the alignment.nwb file.
+        """Merge *updates* into ``provenance.yaml`` next to alignment.nwb."""
+        from ethograph.utils.nwb import read_provenance, write_provenance
 
-        Merges ``updates`` into existing provenance, rewrites scratch.
-        Only works for file-backed alignments (not from_nwb_object).
-        """
-        import h5py
-
-        if not self._path.exists():
-            return
-        current = dict(self.provenance or {})
+        current = dict(read_provenance(self._path.parent) or {})
         current.update(updates)
+        write_provenance(self._path.parent, current)
 
-        self.close()
-        # Clear cached provenance so next access re-reads
         if "provenance" in self.__dict__:
             del self.__dict__["provenance"]
-
-        import json
-        with h5py.File(str(self._path), "a") as f:
-            scratch_grp = f.get("scratch")
-            if scratch_grp is None:
-                scratch_grp = f.create_group("scratch")
-            prov_ds = scratch_grp.get("ethograph_provenance/data")
-            new_val = json.dumps(current)
-            if prov_ds is not None:
-                prov_ds[()] = new_val
-            else:
-                grp = scratch_grp.require_group("ethograph_provenance")
-                grp.create_dataset("data", data=new_val)
 
     def start_time(self, trial) -> float:
         if not self.has_real_timing:

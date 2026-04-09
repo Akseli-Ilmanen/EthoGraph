@@ -6,7 +6,7 @@ import pytest
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication
 
-from ethograph.gui.dialog_select_template import _DOWNLOAD_BASE
+from ethograph.datasets import dataset_dir
 from ethograph.labels.intervals import find_interval_at
 
 
@@ -204,13 +204,13 @@ class TestMoll2025Pynapple:
 
     @pytest.fixture(autouse=True)
     def _check_npz(self):
-        dest = _DOWNLOAD_BASE / "Moll2025"
+        dest = dataset_dir("moll2025")
         self._speed_npz = dest / "beakTip_speed.npz"
         if not self._speed_npz.exists():
             pytest.skip("Moll2025 pynapple .npz not downloaded")
 
-    def test_load_npz_into_gui(self, gui, qtbot):
-        viewer, meta = gui
+    def test_load_npz_into_gui(self, moll2025_gui):
+        _, meta = moll2025_gui
         io = meta.io_widget
         io._clear_all_line_edits()
         io.nc_file_path_edit.setText(str(self._speed_npz))

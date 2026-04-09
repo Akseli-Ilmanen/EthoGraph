@@ -1,8 +1,21 @@
 """Download example datasets from GitHub releases."""
 
+import logging
 from pathlib import Path
 from typing import Callable
 from urllib.request import urlopen
+
+from ethograph.datasets import (
+    DATASETS,
+    DOWNLOAD_BASE,
+    dataset_dir,
+    get_gui_assets,
+    get_notebook_assets,
+    is_dataset_downloaded,
+    resolve_dataset_paths,
+)
+
+logger = logging.getLogger(__name__)
 
 _RELEASE_BASE = "https://github.com/Akseli-Ilmanen/EthoGraph/releases/download"
 
@@ -31,61 +44,6 @@ DEFAULT_MAPPING = (
     "20 Walk\n"
     "21 Wipe\n"
 )
-
-# Per-dataset configs that override the global default.
-# Written into dest/.ethograph/ after download.
-EXAMPLE_CONFIGS: dict[str, dict[str, str]] = {
-    "moll2025": {
-        "mapping.txt": (
-            "0 background\n"
-            "1 pullOutStick\n"
-            "2 diagonalToBox\n"
-            "3 toss\n"
-            "4 swoop\n"
-            "5 reachLeftCorner\n"
-            "6 right\n"
-            "7 pullOutAlongWall\n"
-            "8 swoopOut\n"
-            "9 stickToDisp\n"
-            "10 stickInDisp\n"
-            "11 lookToPellet\n"
-            "12 snapPellet\n"
-            "13 eat\n"
-            "14 reachRightCorner\n"
-            "15 nodding\n"
-        ),
-        "space.yaml": (
-            "# Reference geometry for Moll2025 aviary.\n"
-            "# Points are 3D [x, y, z] in metres. Edges connect points by index.\n"
-            "\n"
-            "references:\n"
-            "  - name: aviary\n"
-            "    vertices:\n"
-            "      - [-7.00,  0.00, 0.65]   # 0: floor front-left\n"
-            "      - [-7.00,  9.80, 0.65]   # 1: floor back-left\n"
-            "      - [ 6.80,  9.80, 0.65]   # 2: floor back-right\n"
-            "      - [ 6.80,  0.00, 0.65]   # 3: floor front-right\n"
-            "      - [-7.00,  0.00, 2.75]   # 4: ceiling front-left\n"
-            "      - [-7.00,  9.80, 2.75]   # 5: ceiling back-left\n"
-            "      - [ 6.80,  9.80, 2.75]   # 6: ceiling back-right\n"
-            "      - [ 6.80,  0.00, 2.75]   # 7: ceiling front-right\n"
-            "    edges:\n"
-            "      - [0, 1]\n"
-            "      - [1, 2]\n"
-            "      - [2, 3]\n"
-            "      - [3, 0]\n"
-            "      - [4, 5]\n"
-            "      - [5, 6]\n"
-            "      - [6, 7]\n"
-            "      - [7, 4]\n"
-            "      - [0, 4]\n"
-            "      - [1, 5]\n"
-            "      - [2, 6]\n"
-            "      - [3, 7]\n"
-            "    color: black\n"
-        ),
-    },
-}
 
 
 _OPEN_TSV_VBS = (
@@ -167,133 +125,10 @@ def ensure_default_configs() -> None:
             setup.write_text(_SETUP_TSV_MAC, encoding="utf-8")
             setup.chmod(0o755)
 
-EXAMPLE_DATASETS = {
-    "moll2025": {
-        "release_tag": "moll2025",
-        "assets_notebook": [
-            "Trial_data.nc",
-            "2024-12-17_115_Crow1-cam-1.mp4",
-            "2024-12-17_115_Crow1-cam-1DLC.csv",
-            "2024-12-17_115_Crow1-cam-2DLC.csv",
-            "2024-12-17_115_Crow1_DLC_3D.csv",
-            "2024-12-17_115_Crow1-cam-1_s3d.npy",
-            "2024-12-18_041_Crow1-cam-1.mp4",
-            "2024-12-18_041_Crow1-cam-1DLC.csv",
-            "2024-12-18_041_Crow1-cam-2DLC.csv",
-            "2024-12-18_041_Crow1_DLC_3D.csv",
-            "2024-12-18_041_Crow1-cam-1_s3d.npy",
-        ],
-        "assets_pynapple": [
-            "beakTip_speed.npz",
-            "beakTip_velocity.npz",
-            "beakTip_position.npz",
-            "trials.npz",
-        ],
-        "assets_gui": [
-            "Trial_data.nc",
-            "Trial_data_labels.tsv",
-            "2024-12-17_115_Crow1-cam-1.mp4",
-            "2024-12-17_115_Crow1-cam-1DLC.csv",
-            "2024-12-18_041_Crow1-cam-1.mp4",
-            "2024-12-18_041_Crow1-cam-1DLC.csv",
-        ],
-        "size_mb": 14,
-    },
-    "birdpark": {
-        "release_tag": "birdpark",
-        "assets_gui": [
-            "copExpBP08_trim.nc",
-            "BP_2021-05-25_08-12-51_655154_0380000.mp4",
-            "BP_2021-05-25_08-12-51_655154_0380000.wav",
-        ],
-        "assets_notebook": [
-            "copExpBP08_trim.nc",
-            "BP_2021-05-25_08-12-51_655154_0380000.mp4",
-            "BP_2021-05-25_08-12-51_655154_0380000.wav",
-        ],
-        "size_mb": 76,
-    },
-    "philodoptera": {
-        "release_tag": "philodoptera",
-        "assets_gui": [
-            "philodoptera.nc",
-            "philodoptera.mp4",
-            "philodoptera.wav",
-            "philodoptera.csv",
-        ],
-        "assets_notebook": [
-            "philodoptera.nc",
-            "philodoptera.mp4",
-            "philodoptera.wav",
-            "philodoptera.csv",
-        ],
-        "size_mb": 4,
-    },
-    "lockbox": {
-        "release_tag": "lockbox",
-        "assets_gui": [
-            "lockbox.nc",
-            "_downsample_info.json",
-            "2021-02-15_07-32-44_segment1_mouse324_ball_front-view.mp4",
-            "2021-02-15_07-32-44_segment1_mouse324_ball_front-view-tracks_individual_0.csv",
-            "2021-02-15_07-32-44_segment1_mouse324_ball_side-view.mp4",
-            "2021-02-15_07-32-44_segment1_mouse324_ball_side-view-tracks_individual_0.csv",
-            "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view.mp4",
-            "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view.mp4",
-            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view.mp4",
-            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view.mp4",
-            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment3_mouse291_stick_front-view.mp4",
-            "2021-05-31_07-34-21_segment3_mouse291_stick_front-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment3_mouse291_stick_side-view.mp4",
-            "2021-05-31_07-34-21_segment3_mouse291_stick_side-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view.mp4",
-            "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view-tracks_individual_0.csv",
-        ],
-        "assets_notebook": [
-            "lockbox.nc",
-            "2021-02-15_07-32-44_segment1_mouse324_ball_front-view.mp4",
-            "2021-02-15_07-32-44_segment1_mouse324_ball_front-view-tracks_individual_0.csv",
-            "2021-02-15_07-32-44_segment1_mouse324_ball_side-view.mp4",
-            "2021-02-15_07-32-44_segment1_mouse324_ball_side-view-tracks_individual_0.csv",
-            "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view.mp4",
-            "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view.mp4",
-            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view.mp4",
-            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view.mp4",
-            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment3_mouse291_stick_front-view.mp4",
-            "2021-05-31_07-34-21_segment3_mouse291_stick_front-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment3_mouse291_stick_side-view.mp4",
-            "2021-05-31_07-34-21_segment3_mouse291_stick_side-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view.mp4",
-            "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view-tracks_individual_0.csv",
-        ],
-        "size_mb": 70,
-    },
-    "canary": {
-        "release_tag": "canary",
-        "assets_gui": [
-            "100_marron1_May_24_2016_62101389.audacity.txt",
-            "100_marron1_May_24_2016_62101389.wav",
-        ],
-        "assets_notebook": [
-            "100_marron1_May_24_2016_62101389.audacity.txt",
-            "100_marron1_May_24_2016_62101389.wav",
-        ],
-        "size_mb": 2,
-    },
-}
-
 
 def write_example_configs(dataset_key: str, dest: Path) -> None:
     """Write bundled config files into ``dest/.ethograph/``."""
-    configs = EXAMPLE_CONFIGS.get(dataset_key)
+    configs = DATASETS.get(dataset_key, {}).get("configs")
     if not configs:
         return
     from ethograph.utils.paths import SETTINGS_DIR
@@ -345,12 +180,52 @@ def download_assets(
             on_progress(i + 1, name)
 
 
-def is_downloaded(release_tag: str, dest: Path) -> bool:
-    """Check whether all GUI assets for a dataset are already present."""
-    info = EXAMPLE_DATASETS.get(release_tag)
-    if info is None:
-        return False
-    return all((Path(dest) / name).exists() for name in info["assets_gui"])
+def build_alignment_nwb(key: str) -> None:
+    """Create an alignment.nwb from the dataset's media mapping and NC file."""
+    ds = DATASETS[key]
+    media_rows = ds.get("media")
+    if not media_rows:
+        return
+    dest = dataset_dir(key)
+    nc_filename = ds.get("nc_filename")
+    if not nc_filename:
+        return
+    nc_path = dest / nc_filename
+    if not nc_path.exists():
+        return
+
+    import pandas as pd
+    import ethograph as eto
+    from ethograph.utils.nwb import build_nwb_from_trial_table
+
+    dt = eto.open(str(nc_path))
+    trials = dt.trials
+    fps = dt.itrial(0).attrs.get("fps", None)
+
+    rows = []
+    for trial_id, media in zip(trials, media_rows):
+        row = {"trial": trial_id}
+        row.update(media)
+        rows.append(row)
+
+    trial_table = pd.DataFrame(rows)
+    nwb_path = dest / ".ethograph" / "alignment.nwb"
+    stream_rates: dict[str, float] = {}
+    if fps is not None:
+        stream_rates["video"] = float(fps)
+        stream_rates["pose"] = float(fps)
+
+    audio_cols = [c for c in trial_table.columns if c.startswith("audio_")]
+    if audio_cols:
+        first_audio_file = dest / str(trial_table[audio_cols[0]].iloc[0])
+        if first_audio_file.exists():
+            from ethograph.utils.audio import get_audio_sr
+            sr = get_audio_sr(str(first_audio_file))
+            if sr is not None:
+                stream_rates["audio"] = float(sr)
+
+    build_nwb_from_trial_table(trial_table, stream_rates=stream_rates, output_path=nwb_path)
+    logger.info("Created alignment NWB: %s", nwb_path)
 
 
 def download_example_dataset(
@@ -366,7 +241,7 @@ def download_example_dataset(
     Parameters
     ----------
     key : str
-        One of ``"moll2025"``, ``"birdpark"``, ``"philodoptera"``.
+        One of the keys in ``DATASETS``.
     dest : Path
         Directory to download into.
     verbose : bool
@@ -376,8 +251,8 @@ def download_example_dataset(
     -------
     Path to ``mapping.txt`` if one was created, otherwise ``None``.
     """
-    info = EXAMPLE_DATASETS[key]
-    assets = info["assets_notebook"]
+    info = DATASETS[key]
+    assets = get_notebook_assets(key)
 
     def _print_progress(count: int, name: str) -> None:
         total = len(assets)
@@ -440,15 +315,14 @@ def setup_birdpark_continuous(
     from pynwb.image import ImageSeries
 
     if dest is None:
-        dest = Path.home() / ".ethograph" / "example_data" / "BirdParkContinuous"
+        dest = DOWNLOAD_BASE / "BirdParkContinuous"
 
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=True)
 
-    bp_info = EXAMPLE_DATASETS["birdpark"]
-    bp_src = Path.home() / ".ethograph" / "example_data" / "BirdPark"
+    bp_src = dataset_dir("birdpark")
 
-    for asset in bp_info["assets_gui"]:
+    for asset in get_gui_assets("birdpark"):
         src = bp_src / asset
         dst = dest / asset
         if dst.exists():
@@ -562,12 +436,12 @@ def setup_moll2025_pynapple(
     from pynwb.image import ImageSeries
 
     if dest is None:
-        dest = Path.home() / ".ethograph" / "example_data" / "Moll2025_pynapple"
+        dest = DOWNLOAD_BASE / "Moll2025_pynapple"
 
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=True)
 
-    moll_src = Path.home() / ".ethograph" / "example_data" / "Moll2025"
+    moll_src = dataset_dir("moll2025")
     if not moll_src.exists():
         raise FileNotFoundError(
             f"Moll2025 source not found: {moll_src}. "
@@ -575,7 +449,7 @@ def setup_moll2025_pynapple(
         )
 
     # Copy pynapple assets + extras
-    pynapple_assets = EXAMPLE_DATASETS["moll2025"]["assets_pynapple"]
+    pynapple_assets = DATASETS["moll2025"].get("assets_pynapple", [])
     extra_assets = ["beakTip_angle_rgb.npz", "beakTip_speed_troughs.npz"]
     labels_tsv = "Trial_data_labels.tsv"
 
@@ -614,17 +488,7 @@ def setup_moll2025_pynapple(
         raise ValueError(f"No IntervalSet found in {trials_npz}")
 
     # Moll2025: trial 1 = recording 115, trial 2 = recording 41
-    media_per_trial = [
-        {
-            "video_cam-1": "2024-12-17_115_Crow1-cam-1.mp4",
-            "pose_cam-1": "2024-12-17_115_Crow1-cam-1DLC.csv",
-        },
-        {
-            "video_cam-1": "2024-12-18_041_Crow1-cam-1.mp4",
-            "pose_cam-1": "2024-12-18_041_Crow1-cam-1DLC.csv",
-        },
-    ]
-
+    media_per_trial = DATASETS["moll2025"]["media"]
     fps = 200.0
 
     from datetime import datetime
@@ -693,3 +557,15 @@ def setup_moll2025_pynapple(
         print(f"  video/pose from: {moll_src}")
 
     return dest
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat re-exports (used by external code / notebooks)
+# ---------------------------------------------------------------------------
+
+EXAMPLE_DATASETS = DATASETS
+EXAMPLE_CONFIGS = {k: v["configs"] for k, v in DATASETS.items() if "configs" in v}
+
+def is_downloaded(key: str, dest: Path) -> bool:  # noqa: ARG001
+    """Deprecated — use ``is_dataset_downloaded(key)`` instead."""
+    return is_dataset_downloaded(key)

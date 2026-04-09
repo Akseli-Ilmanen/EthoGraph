@@ -19,186 +19,56 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
 )
 
+from ethograph.datasets import (
+    DATASETS,
+    DOWNLOAD_BASE,
+    dataset_dir,
+    get_gui_assets,
+    is_dataset_downloaded,
+    resolve_dataset_paths,
+)
 from ethograph.gui.notify import notify_dialog
-
 from ethograph.utils.download import (
-    EXAMPLE_DATASETS,
+    build_alignment_nwb,
     download_assets,
     ensure_default_configs,
-    is_downloaded,
     write_example_configs,
 )
 
 _ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "examples" / "assets"
-_DOWNLOAD_BASE = Path.home() / ".ethograph" / "example_data"
 
-TEMPLATES = [
-    {
-        "name": "Moll et al., 2025 — Tool-using crows",
-        "image": "moll1.png",
-        "paper_url": "https://doi.org/10.1016/j.cub.2025.08.033",
-        "dataset_key": "moll2025",
-        "folder": "Moll2025",
-        "nc_filename": "Trial_data.nc",
-        "has_audio": False,
-        "import_labels": True,
-        "media": [
-            {"video_cam-1": "2024-12-17_115_Crow1-cam-1.mp4", "pose_cam-1": "2024-12-17_115_Crow1-cam-1DLC.csv"},
-            {"video_cam-1": "2024-12-18_041_Crow1-cam-1.mp4", "pose_cam-1": "2024-12-18_041_Crow1-cam-1DLC.csv"},
-        ],
-    },
-    {
-        "name": "Rüttimann et al., 2025 — Zebra finches in BirdPark",
-        "image": "birdpark0.png",
-        "paper_url": "https://doi.org/10.7717/peerj.20203",
-        "dataset_key": "birdpark",
-        "folder": "BirdPark",
-        "nc_filename": "copExpBP08_trim.nc",
-        "has_audio": True,
-        "media": [
-            {
-                "video_cam-1": "BP_2021-05-25_08-12-51_655154_0380000.mp4",
-                "audio_mic-1": "BP_2021-05-25_08-12-51_655154_0380000.wav",
-            },
-        ],
-    },
-    {
-        "name": "Philodoptera — Motor control of sound production in crickets",
-        "image": "cricket0.png",
-        "paper_url": "",
-        "dataset_key": "philodoptera",
-        "folder": "Philodoptera",
-        "nc_filename": "philodoptera.nc",
-        
-        "has_audio": True,
-        "media": [
-            {
-                "video_cam-1": "philodoptera.mp4",
-                "audio_mic-1": "philodoptera.wav",
-                "pose_cam-1": "philodoptera.csv",
-            },
-        ],
-    },
-    {
-        "name": "Reiske et al., 2025 — Mouse Lockbox",
-        "image": "lockbox2.gif",
-        "paper_url": "https://arxiv.org/abs/2505.15408",
-        "dataset_key": "lockbox",
-        "folder": "Lockbox",
-        "nc_filename": "lockbox.nc",
-        "has_audio": False,
-        "media": [
-            {
-                "video_front-view": "2021-02-15_07-32-44_segment1_mouse324_ball_front-view.mp4",
-                "video_side-view": "2021-02-15_07-32-44_segment1_mouse324_ball_side-view.mp4",
-                "video_top-down-view": "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view.mp4",
-                "pose_front-view": "2021-02-15_07-32-44_segment1_mouse324_ball_front-view-tracks_individual_0.csv",
-                "pose_side-view": "2021-02-15_07-32-44_segment1_mouse324_ball_side-view-tracks_individual_0.csv",
-                "pose_top-down-view": "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view-tracks_individual_0.csv",
-            },
-            {
-                "video_front-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view.mp4",
-                "video_side-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view.mp4",
-                "video_top-down-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view.mp4",
-                "pose_front-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view-tracks_individual_0.csv",
-                "pose_side-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view-tracks_individual_0.csv",
-                "pose_top-down-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view-tracks_individual_0.csv",
-            },
-            {
-                "video_front-view": "2021-05-31_07-34-21_segment3_mouse291_stick_front-view.mp4",
-                "video_side-view": "2021-05-31_07-34-21_segment3_mouse291_stick_side-view.mp4",
-                "video_top-down-view": "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view.mp4",
-                "pose_front-view": "2021-05-31_07-34-21_segment3_mouse291_stick_front-view-tracks_individual_0.csv",
-                "pose_side-view": "2021-05-31_07-34-21_segment3_mouse291_stick_side-view-tracks_individual_0.csv",
-                "pose_top-down-view": "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view-tracks_individual_0.csv",
-            },
-        ],
-    },
-    {
-        "name": "Giraudon et al. 2021 - Canary song",
-        "image": "canary.png",
-        "dataset_url": "https://zenodo.org/records/6521932",
-        "dataset_key": "canary",
-        "folder": "Canary",
-        "nc_filename": None,
-        "has_audio": True,
-        "audio_file": "100_marron1_May_24_2016_62101389.wav",
-        "labels_file": "100_marron1_May_24_2016_62101389.audacity.txt",
-    },
-]
+# Backward-compat re-exports used by test code
+_DOWNLOAD_BASE = DOWNLOAD_BASE
+TEMPLATES = list(DATASETS.values())
 
 
-def _build_alignment_nwb(template: dict) -> None:
-    """Create an alignment.nwb from the template's media mapping and NC file."""
-    media_rows = template.get("media")
-    if not media_rows:
-        return
-    dest = _DOWNLOAD_BASE / template["folder"]
-    nc_path = dest / template["nc_filename"]
-    if not nc_path.exists():
-        return
-
-    import pandas as pd
-    import ethograph as eto
-    from ethograph.utils.nwb import build_nwb_from_trial_table
-
-    dt = eto.open(str(nc_path))
-    trials = dt.trials  # preserve insertion order to match media list
-    fps = dt.itrial(0).attrs.get("fps", None)
-
-    rows = []
-    for trial_id, media in zip(trials, media_rows):
-        row = {"trial": trial_id}
-        row.update(media)
-        rows.append(row)
-
-    trial_table = pd.DataFrame(rows)
-    nwb_path = dest / ".ethograph" / "alignment.nwb"
-    stream_rates = {}
-    if fps is not None:
-        stream_rates["video"] = float(fps)
-        stream_rates["pose"] = float(fps)
-
-    # Detect audio streams and read sample rate from the first available file
-    audio_cols = [c for c in trial_table.columns if c.startswith("audio_")]
-    if audio_cols:
-        first_audio_file = dest / str(trial_table[audio_cols[0]].iloc[0])
-        if first_audio_file.exists():
-            from ethograph.utils.audio import get_audio_sr
-            sr = get_audio_sr(str(first_audio_file))
-            if sr is not None:
-                stream_rates["audio"] = float(sr)
-
-    build_nwb_from_trial_table(trial_table, stream_rates=stream_rates, output_path=nwb_path)
-    logger.info("Created alignment NWB: %s", nwb_path)
+def _template_dir(key_or_dict) -> Path:
+    """Backward-compat helper — accepts a key or a legacy template dict."""
+    if isinstance(key_or_dict, str):
+        return dataset_dir(key_or_dict)
+    return DOWNLOAD_BASE / key_or_dict["folder"]
 
 
-def _template_dir(template: dict) -> Path:
-    return _DOWNLOAD_BASE / template["folder"]
+def _template_downloaded(key_or_dict) -> bool:
+    """Backward-compat helper — accepts a key or a legacy template dict."""
+    if isinstance(key_or_dict, str):
+        return is_dataset_downloaded(key_or_dict)
+    return is_dataset_downloaded(key_or_dict["dataset_key"])
 
 
-def _template_downloaded(template: dict) -> bool:
-    return is_downloaded(template["dataset_key"], _template_dir(template))
+def _resolve_template_paths(key_or_dict) -> dict:
+    """Backward-compat helper — accepts a key or a legacy template dict."""
+    if isinstance(key_or_dict, str):
+        return resolve_dataset_paths(key_or_dict)
+    return resolve_dataset_paths(key_or_dict["dataset_key"])
 
 
-def _resolve_template_paths(template: dict) -> dict:
-    dest = str(_template_dir(template))
-    nc_filename = template.get("nc_filename")
-    nc = str(_template_dir(template) / nc_filename) if nc_filename else ""
-    result = {
-        "name": template["name"],
-        "dataset_key": template["dataset_key"],
-        "nc_file_path": nc,
-        "video_folder": dest,
-        "audio_folder": dest if template.get("has_audio") else "",
-        "pose_folder": dest,
-        "import_labels": template.get("import_labels", False),
-    }
-    if template.get("labels_file"):
-        result["labels_file"] = str(_template_dir(template) / template["labels_file"])
-    if template.get("audio_file"):
-        result["audio_file"] = str(_template_dir(template) / template["audio_file"])
-    return result
+def _build_alignment_nwb(key_or_dict) -> None:
+    """Backward-compat helper — accepts a key or a legacy template dict."""
+    if isinstance(key_or_dict, str):
+        build_alignment_nwb(key_or_dict)
+    else:
+        build_alignment_nwb(key_or_dict["dataset_key"])
 
 
 class _DownloadWorker(QThread):
@@ -208,21 +78,21 @@ class _DownloadWorker(QThread):
     finished = Signal()
     error = Signal(str)
 
-    def __init__(self, template: dict):
+    def __init__(self, key: str):
         super().__init__()
-        self._template = template
+        self._key = key
         self._cancelled = False
 
     def cancel(self):
         self._cancelled = True
 
     def run(self):
-        info = EXAMPLE_DATASETS[self._template["dataset_key"]]
+        info = DATASETS[self._key]
         try:
             download_assets(
                 release_tag=info["release_tag"],
-                assets=info["assets_gui"],
-                dest=_template_dir(self._template),
+                assets=get_gui_assets(self._key),
+                dest=dataset_dir(self._key),
                 on_progress=self.progress.emit,
                 cancelled=lambda: self._cancelled,
             )
@@ -247,15 +117,16 @@ class TemplateDialog(QDialog):
         outer.setSpacing(12)
         self.setLayout(outer)
 
-        for i, template in enumerate(TEMPLATES):
+        for i, key in enumerate(DATASETS):
             if i % self._CARDS_PER_ROW == 0:
                 row = QHBoxLayout()
                 row.setSpacing(12)
                 outer.addLayout(row)
-            card = self._create_card(template)
+            card = self._create_card(key)
             row.addWidget(card)
 
-    def _create_card(self, template: dict) -> QFrame:
+    def _create_card(self, key: str) -> QFrame:
+        ds = DATASETS[key]
         card = QFrame()
         card.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
         card.setCursor(Qt.PointingHandCursor)
@@ -268,7 +139,7 @@ class TemplateDialog(QDialog):
         card.setLayout(card_layout)
 
         image_label = QLabel()
-        image_path = _ASSETS_DIR / template["image"]
+        image_path = _ASSETS_DIR / ds["image"]
         if image_path.exists():
             if image_path.suffix.lower() == ".gif":
                 movie = QMovie(str(image_path))
@@ -286,14 +157,14 @@ class TemplateDialog(QDialog):
             image_label.setFixedSize(220, 160)
         card_layout.addWidget(image_label, alignment=Qt.AlignCenter)
 
-        text_label = QLabel(template["name"])
+        text_label = QLabel(ds["name"])
         text_label.setWordWrap(True)
         text_label.setAlignment(Qt.AlignCenter)
         card_layout.addWidget(text_label)
 
-        link_url = template.get("paper_url") or template.get("dataset_url")
+        link_url = ds.get("paper_url") or ds.get("dataset_url")
         if link_url:
-            link_text = "Open dataset" if template.get("dataset_url") and not template.get("paper_url") else "Open paper"
+            link_text = "Open dataset" if ds.get("dataset_url") and not ds.get("paper_url") else "Open paper"
             link = QPushButton(link_text)
             link.setFlat(True)
             link.setCursor(Qt.PointingHandCursor)
@@ -303,41 +174,42 @@ class TemplateDialog(QDialog):
 
         status = QLabel()
         status.setAlignment(Qt.AlignCenter)
-        if _template_downloaded(template):
+        if is_dataset_downloaded(key):
             status.setText("Downloaded")
             status.setStyleSheet("color: green; font-weight: bold;")
         else:
-            size_mb = EXAMPLE_DATASETS[template["dataset_key"]]["size_mb"]
-            status.setText(f"Click to download (~{size_mb} MB)")
+            status.setText(f"Click to download (~{ds['size_mb']} MB)")
             status.setStyleSheet("color: gray;")
         card_layout.addWidget(status)
 
-        card.mousePressEvent = lambda event, t=template: self._on_card_clicked(t)
+        card.mousePressEvent = lambda event, k=key: self._on_card_clicked(k)
         return card
 
-    def _on_card_clicked(self, template: dict):
-        if _template_downloaded(template):
-            self._finalize_template(template)
+    def _on_card_clicked(self, key: str):
+        if is_dataset_downloaded(key):
+            self._finalize(key)
             return
-        self._download_and_select(template)
+        self._download_and_select(key)
 
-    def _finalize_template(self, template: dict):
-        if template.get("nc_filename") is None and template.get("audio_file"):
-            self._generate_nc_from_audio(template)
+    def _finalize(self, key: str):
+        ds = DATASETS[key]
+        if ds.get("nc_filename") is None and ds.get("audio_file"):
+            self._generate_nc_from_audio(key)
             return
         ensure_default_configs()
-        write_example_configs(template["dataset_key"], _template_dir(template))
+        write_example_configs(key, dataset_dir(key))
         try:
-            _build_alignment_nwb(template)
+            build_alignment_nwb(key)
         except Exception:
             logger.warning("Failed to build alignment NWB", exc_info=True)
-        self.selected_template = _resolve_template_paths(template)
+        self.selected_template = resolve_dataset_paths(key)
         self.accept()
 
-    def _generate_nc_from_audio(self, template: dict):
-        dest = _template_dir(template)
-        audio_path = str(dest / template["audio_file"])
-        nc_path = str(dest / (Path(template["audio_file"]).stem + ".nc"))
+    def _generate_nc_from_audio(self, key: str):
+        ds = DATASETS[key]
+        dest = dataset_dir(key)
+        audio_path = str(dest / ds["audio_file"])
+        nc_path = str(dest / (Path(ds["audio_file"]).stem + ".nc"))
 
         if not Path(nc_path).exists():
             try:
@@ -355,16 +227,15 @@ class TemplateDialog(QDialog):
                 notify_dialog(f"Failed to generate .nc from audio:\n{e}", "error", "Error", self)
                 return
 
-        resolved = _resolve_template_paths(template)
+        resolved = resolve_dataset_paths(key)
         resolved["nc_file_path"] = nc_path
         resolved["audio_folder"] = str(dest)
         logger.debug("Canary template resolved paths: %s", resolved)
         self.selected_template = resolved
         self.accept()
 
-    def _download_and_select(self, template: dict):
-        info = EXAMPLE_DATASETS[template["dataset_key"]]
-        assets = info["assets_gui"]
+    def _download_and_select(self, key: str):
+        assets = get_gui_assets(key)
         progress = QProgressDialog(
             "Downloading example data...", "Cancel", 0, len(assets), self
         )
@@ -373,7 +244,7 @@ class TemplateDialog(QDialog):
         progress.setMinimumDuration(0)
         progress.setValue(0)
 
-        worker = _DownloadWorker(template)
+        worker = _DownloadWorker(key)
 
         def on_progress(count, name):
             if not progress.wasCanceled():
@@ -383,7 +254,7 @@ class TemplateDialog(QDialog):
         def on_finished():
             progress.close()
             worker.deleteLater()
-            self._finalize_template(template)
+            self._finalize(key)
 
         def on_error(msg):
             progress.close()

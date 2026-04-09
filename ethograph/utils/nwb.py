@@ -627,43 +627,42 @@ def create_alignment_from_streams(
                 )
             )
 
-    if provenance:
-        write_provenance(nwbfile, provenance)
-
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     with NWBHDF5IO(str(output), "w") as io:
         io.write(nwbfile)
 
+    if provenance:
+        write_provenance(output.parent, provenance)
+
     return output
 
 
 # ---------------------------------------------------------------------------
-# Provenance helpers
+# Provenance helpers  (.ethograph/provenance.yaml)
 # ---------------------------------------------------------------------------
 
-
-def write_provenance(nwbfile: NWBFile, provenance: dict) -> None:
-    """Store provenance metadata in NWB scratch namespace as JSON."""
-    import json
-
-    nwbfile.add_scratch(
-        data=np.array([json.dumps(provenance)]),
-        name="ethograph_provenance",
-        description="ethograph alignment provenance metadata",
-    )
+_PROVENANCE_FILENAME = "provenance.yaml"
 
 
-def read_provenance(nwbfile) -> dict | None:
-    """Read provenance metadata from NWB scratch namespace."""
-    import json
+def write_provenance(ethograph_dir: str | Path, provenance: dict) -> None:
+    """Write provenance metadata to ``provenance.yaml`` in *ethograph_dir*."""
+    import yaml
 
-    scratch = getattr(nwbfile, "scratch", None)
-    if scratch and "ethograph_provenance" in scratch:
-        val = scratch["ethograph_provenance"].data[:]
-        if isinstance(val, bytes):
-            val = val.decode("utf-8")
-        return json.loads(str(val))
-    return None
+    path = Path(ethograph_dir) / _PROVENANCE_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        yaml.safe_dump(provenance, f, default_flow_style=False)
+
+
+def read_provenance(ethograph_dir: str | Path) -> dict | None:
+    """Read provenance metadata from ``provenance.yaml`` in *ethograph_dir*."""
+    import yaml
+
+    path = Path(ethograph_dir) / _PROVENANCE_FILENAME
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return yaml.safe_load(f) or None
 
 

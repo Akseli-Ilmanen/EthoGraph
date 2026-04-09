@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-import urllib.request
 import webbrowser
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +12,7 @@ from dandi.dandiapi import DandiAPIClient
 
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
+    QAbstractItemView,
     QButtonGroup,
     QCheckBox,
     QDialog,
@@ -20,12 +20,16 @@ from qtpy.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSpinBox,
     QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -41,7 +45,7 @@ from ethograph.io.nwb_import import (
     probe_label_sources,
     read_trials_table,
 )
-from ethograph.utils.dandi import open_nwb_dandi
+from ethograph.utils.dandi import download_clip, open_nwb_dandi
 
 logger = logging.getLogger(__name__)
 
@@ -69,20 +73,35 @@ def _stream_in_browser(url: str, title: str = "DANDI Video") -> None:
     webbrowser.open(path.as_uri())
 
 
-def _download_file(url: str, dest: Path) -> None:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(url) as resp:
-        with open(dest, "wb") as f:
-            while True:
-                chunk = resp.read(65536)
-                if not chunk:
-                    break
-                f.write(chunk)
+_SORT_VALUE_ROLE = Qt.UserRole + 1
+
+
+class _NumericTableItem(QTableWidgetItem):
+    def __lt__(self, other):
+        my_val = self.data(_SORT_VALUE_ROLE)
+        other_val = other.data(_SORT_VALUE_ROLE)
+        if my_val is not None and other_val is not None:
+            return my_val < other_val
+        return super().__lt__(other)
 
 
 # =====================================================================
 # Page 0: Source selection
 # =====================================================================
+
+_EXAMPLE_DATASETS = [
+    (
+        "IBL Brainwide Map",
+        "000409",
+        "64e3fb86-928c-4079-865c-b364205b502e",
+    ),
+    (
+        "Neuropixels + 3D pose (DANNCE)",
+        "001771",
+        "2026-02-12-1",
+    ),
+]
+
 
 class _SourcePage(QWidget):
     """Enter DANDI dataset + session identifiers."""
@@ -91,15 +110,12 @@ class _SourcePage(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
 
-        layout.addWidget(QLabel("<b>Step 1 \u2014 DANDI Source</b>"))
+        layout.addWidget(QLabel("<b>Step 1 of 3 \u2014 DANDI Source</b>"))
         layout.addSpacing(8)
 
         dandi_info = QLabel(
-            "Enter the Dandiset ID and the Session EID to find all NWB files "
-            "and videos for that recording session.<br><br>"
-            "<b>Dataset ID</b>: 6-digit number (e.g. 000409)<br>"
-            "<b>Session EID</b>: UUID identifying the recording session<br>"
-            "&nbsp;&nbsp;(e.g. 64e3fb86-928c-4079-865c-b364205b502e)"
+            "Enter the Dandiset ID and the Session EID, or pick an "
+            "example dataset below."
         )
         dandi_info.setWordWrap(True)
         layout.addWidget(dandi_info)
@@ -111,14 +127,37 @@ class _SourcePage(QWidget):
         dandi_form.addRow("Dataset ID:", self.dandiset_edit)
 
         self.session_eid_edit = QLineEdit()
-        self.session_eid_edit.setPlaceholderText("e.g. 64e3fb86-928c-4079-865c-b364205b502e")
+        self.session_eid_edit.setPlaceholderText(
+            "e.g. 64e3fb86-928c-4079-865c-b364205b502e (part after _ses-...)"
+        )
         dandi_form.addRow("Session EID:", self.session_eid_edit)
 
-        example_btn = QPushButton("Use example (dandiset 000409)")
-        example_btn.clicked.connect(self._fill_example)
-        dandi_form.addRow(example_btn)
-
         layout.addLayout(dandi_form)
+
+        # Example datasets list
+        layout.addSpacing(8)
+        layout.addWidget(QLabel("<b>Example datasets</b>"))
+        for name, dandiset_id, session_eid in _EXAMPLE_DATASETS:
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 2, 0, 2)
+
+            btn = QPushButton(f"{name}  \u2014  {dandiset_id} / {session_eid}")
+            btn.setStyleSheet(
+                "text-align: left; padding: 6px 10px; font-size: 12px;"
+            )
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.clicked.connect(
+                lambda checked, d=dandiset_id, s=session_eid: self._fill(d, s)
+            )
+            row_layout.addWidget(btn, stretch=1)
+
+            dandi_url = f"https://dandiarchive.org/dandiset/{dandiset_id}"
+            link = QLabel(styled_link(dandi_url, "DANDI link"))
+            link.setOpenExternalLinks(True)
+            row_layout.addWidget(link)
+
+            layout.addWidget(row)
 
         links = QLabel(
             'Browse datasets on '
@@ -132,9 +171,9 @@ class _SourcePage(QWidget):
 
         layout.addStretch()
 
-    def _fill_example(self):
-        self.dandiset_edit.setText("000409")
-        self.session_eid_edit.setText("64e3fb86-928c-4079-865c-b364205b502e")
+    def _fill(self, dandiset_id: str, session_eid: str):
+        self.dandiset_edit.setText(dandiset_id)
+        self.session_eid_edit.setText(session_eid)
 
     def get_source(self) -> dict:
         return {
@@ -150,16 +189,16 @@ class _SourcePage(QWidget):
 
 
 # =====================================================================
-# Page 1: Data options + output
+# Page 1: Data options
 # =====================================================================
 
 class _DataOptionsPage(QWidget):
-    """Video, pose, behavioral series, labels, ephys, and output folder."""
+    """Video, pose, behavioral series, labels, ephys."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("<b>Step 2 \u2014 Data & Output</b>"))
+        layout.addWidget(QLabel("<b>Step 2 of 3 \u2014 Data Options</b>"))
         layout.addSpacing(4)
 
         scroll = QScrollArea()
@@ -173,41 +212,6 @@ class _DataOptionsPage(QWidget):
         self._video_checkboxes: list[QCheckBox] = []
         self._video_cb_layout = QVBoxLayout()
         vg.addLayout(self._video_cb_layout)
-
-        mode_row = QHBoxLayout()
-        self._rb_stream = QRadioButton("Stream from DANDI")
-        self._rb_download = QRadioButton("Download locally")
-        self._rb_stream.setChecked(True)
-        bg = QButtonGroup(self)
-        bg.addButton(self._rb_stream)
-        bg.addButton(self._rb_download)
-        self._rb_download.toggled.connect(self._on_download_toggled)
-        mode_row.addWidget(self._rb_stream)
-        mode_row.addWidget(self._rb_download)
-        mode_row.addStretch()
-        vg.addLayout(mode_row)
-
-        self._stream_note = QLabel(
-            "Streaming works for playback but seeking/jumping may be slow."
-        )
-        self._stream_note.setWordWrap(True)
-        self._stream_note.setStyleSheet("color: #888; font-style: italic; margin-left: 20px;")
-        vg.addWidget(self._stream_note)
-
-        self._download_row = QWidget()
-        dir_row = QHBoxLayout(self._download_row)
-        dir_row.setContentsMargins(0, 0, 0, 0)
-        dir_row.addWidget(QLabel("Download folder:"))
-        self.download_dir_edit = QLineEdit()
-        self.download_dir_edit.setPlaceholderText("Select folder...")
-        self.download_dir_edit.setReadOnly(True)
-        dir_btn = QPushButton("Browse")
-        dir_btn.clicked.connect(self._browse_download_dir)
-        dir_row.addWidget(self.download_dir_edit)
-        dir_row.addWidget(dir_btn)
-        self._download_row.setVisible(False)
-        vg.addWidget(self._download_row)
-
         self._video_group.hide()
         self._inner_layout.addWidget(self._video_group)
 
@@ -235,10 +239,10 @@ class _DataOptionsPage(QWidget):
         # --- Behavioral labels ---
         self._labels_group = QGroupBox("Behavioral labels")
         lg = QVBoxLayout(self._labels_group)
-        lg.addWidget(QLabel("Select label source to import (or none):"))
-        self._label_radios: list[QRadioButton] = []
-        self._label_radio_layout = QVBoxLayout()
-        lg.addLayout(self._label_radio_layout)
+        lg.addWidget(QLabel("Select label sources to import:"))
+        self._label_checkboxes: list[QCheckBox] = []
+        self._label_cb_layout = QVBoxLayout()
+        lg.addLayout(self._label_cb_layout)
         self._labels_group.hide()
         self._inner_layout.addWidget(self._labels_group)
 
@@ -252,37 +256,9 @@ class _DataOptionsPage(QWidget):
         self._ephys_group.hide()
         self._inner_layout.addWidget(self._ephys_group)
 
-        # --- Output ---
-        out_group = QGroupBox("Output")
-        outg = QHBoxLayout(out_group)
-        self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText("Project folder...")
-        self.output_edit.setReadOnly(True)
-        out_browse = QPushButton("Browse")
-        out_browse.clicked.connect(self._browse_output)
-        outg.addWidget(self.output_edit)
-        outg.addWidget(out_browse)
-        self._inner_layout.addWidget(out_group)
-
         self._inner_layout.addStretch()
         scroll.setWidget(inner)
         layout.addWidget(scroll)
-
-    # -- Callbacks --
-
-    def _on_download_toggled(self, checked: bool):
-        self._download_row.setVisible(checked)
-        self._stream_note.setVisible(not checked)
-
-    def _browse_download_dir(self):
-        folder = QFileDialog.getExistingDirectory(self, "Select download folder")
-        if folder:
-            self.download_dir_edit.setText(folder)
-
-    def _browse_output(self):
-        folder = QFileDialog.getExistingDirectory(self, "Select project folder")
-        if folder:
-            self.output_edit.setText(folder)
 
     # -- Populate --
 
@@ -319,8 +295,8 @@ class _DataOptionsPage(QWidget):
 
                 url = info.get("url", "")
                 if url:
-                    stream_btn = QPushButton("Stream \u25b6")
-                    stream_btn.setFixedWidth(90)
+                    stream_btn = QPushButton("Preview stream \u25b6")
+                    stream_btn.setFixedWidth(120)
                     stream_btn.clicked.connect(
                         lambda checked, u=url, n=name: _stream_in_browser(u, n)
                     )
@@ -362,22 +338,18 @@ class _DataOptionsPage(QWidget):
             self._behavior_group.hide()
 
         # Labels
-        for rb in self._label_radios:
-            self._label_radio_layout.removeWidget(rb)
-            rb.deleteLater()
-        self._label_radios.clear()
+        for cb in self._label_checkboxes:
+            self._label_cb_layout.removeWidget(cb)
+            cb.deleteLater()
+        self._label_checkboxes.clear()
 
         if label_sources:
-            none_rb = QRadioButton("None")
-            none_rb._source = None
-            none_rb.setChecked(True)
-            self._label_radio_layout.addWidget(none_rb)
-            self._label_radios.append(none_rb)
             for entry in label_sources:
-                rb = QRadioButton(entry["description"])
-                rb._source = entry["source"]
-                self._label_radio_layout.addWidget(rb)
-                self._label_radios.append(rb)
+                cb = QCheckBox(entry["description"])
+                cb._source = entry["source"]
+                cb.setChecked(True)
+                self._label_cb_layout.addWidget(cb)
+                self._label_checkboxes.append(cb)
             self._labels_group.show()
         else:
             self._labels_group.hide()
@@ -415,14 +387,8 @@ class _DataOptionsPage(QWidget):
     def get_selected_videos(self) -> list[str]:
         return [cb._video_name for cb in self._video_checkboxes if cb.isChecked()]
 
-    def wants_download(self) -> bool:
-        return self._rb_download.isChecked()
-
-    def get_selected_label_source(self) -> str | None:
-        for rb in self._label_radios:
-            if rb.isChecked():
-                return rb._source
-        return None
+    def get_selected_label_sources(self) -> list[str]:
+        return [cb._source for cb in self._label_checkboxes if cb.isChecked()]
 
     def get_selected_ephys_series(self) -> str | None:
         for rb in self._ephys_radios:
@@ -430,11 +396,153 @@ class _DataOptionsPage(QWidget):
                 return rb._series_name
         return None
 
+
+# =====================================================================
+# Page 2: Trial selection + download + output
+# =====================================================================
+
+class _TrialsPage(QWidget):
+    """Select trials to download and set output path."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("<b>Step 3 of 3 \u2014 Trials & Output</b>"))
+        layout.addSpacing(4)
+
+        # --- Trial selection ---
+        self._trial_group = QGroupBox("Trial selection")
+        tg = QVBoxLayout(self._trial_group)
+
+        self._rb_all = QRadioButton("All trials")
+        self._rb_first_n = QRadioButton("First N trials:")
+        self._rb_select = QRadioButton("Select specific trials from table below")
+        self._rb_all.setChecked(True)
+        rb_grp = QButtonGroup(self)
+        for rb in (self._rb_all, self._rb_first_n, self._rb_select):
+            rb_grp.addButton(rb)
+            tg.addWidget(rb)
+
+        n_row = QHBoxLayout()
+        self.n_spin = QSpinBox()
+        self.n_spin.setRange(1, 100000)
+        self.n_spin.setValue(5)
+        n_row.addWidget(QLabel("  N ="))
+        n_row.addWidget(self.n_spin)
+        n_row.addStretch()
+        tg.addLayout(n_row)
+
+        self.trials_table = QTableWidget(0, 0)
+        self.trials_table.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.trials_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.trials_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeToContents
+        )
+        tg.addWidget(self.trials_table)
+        self._rb_select.toggled.connect(self._on_select_toggled)
+
+        layout.addWidget(self._trial_group)
+
+        self._summary_label = QLabel("")
+        self._summary_label.setStyleSheet(
+            "color: #888; font-style: italic; padding: 4px;"
+        )
+        layout.addWidget(self._summary_label)
+
+        # --- Download folder ---
+        dl_group = QGroupBox("Download folder")
+        dlg = QHBoxLayout(dl_group)
+        self.download_dir_edit = QLineEdit()
+        self.download_dir_edit.setPlaceholderText("Select folder for video clips...")
+        self.download_dir_edit.setReadOnly(True)
+        dl_browse = QPushButton("Browse")
+        dl_browse.clicked.connect(self._browse_download_dir)
+        dlg.addWidget(self.download_dir_edit)
+        dlg.addWidget(dl_browse)
+        layout.addWidget(dl_group)
+
+        # --- Output ---
+        out_group = QGroupBox("Output")
+        outg = QHBoxLayout(out_group)
+        self.output_edit = QLineEdit()
+        self.output_edit.setPlaceholderText("Project folder...")
+        self.output_edit.setReadOnly(True)
+        out_browse = QPushButton("Browse")
+        out_browse.clicked.connect(self._browse_output)
+        outg.addWidget(self.output_edit)
+        outg.addWidget(out_browse)
+        layout.addWidget(out_group)
+
+    def _on_select_toggled(self, checked: bool):
+        self.trials_table.setSelectionMode(
+            QAbstractItemView.MultiSelection if checked
+            else QAbstractItemView.NoSelection
+        )
+
+    def _browse_download_dir(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select download folder")
+        if folder:
+            self.download_dir_edit.setText(folder)
+
+    def _browse_output(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select project folder")
+        if folder:
+            self.output_edit.setText(folder)
+
+    def populate(self, nwb) -> None:
+        total = (
+            len(nwb.trials)
+            if nwb.trials is not None and len(nwb.trials) > 0
+            else 1
+        )
+        self._trial_group.setVisible(total > 1)
+
+        if nwb.trials is not None and len(nwb.trials) > 0:
+            df = nwb.trials.to_dataframe()
+            self.trials_table.setSortingEnabled(False)
+            self.trials_table.setRowCount(len(df))
+            self.trials_table.setColumnCount(len(df.columns))
+            self.trials_table.setHorizontalHeaderLabels(list(df.columns))
+            for r, (_, row) in enumerate(df.iterrows()):
+                for c, val in enumerate(row):
+                    if isinstance(val, (int, float)):
+                        item = _NumericTableItem(
+                            f"{val:.3f}" if isinstance(val, float) else str(val)
+                        )
+                        item.setData(_SORT_VALUE_ROLE, float(val))
+                    else:
+                        item = QTableWidgetItem(str(val))
+                    if c == 0:
+                        item.setData(Qt.UserRole, r)
+                    item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                    self.trials_table.setItem(r, c, item)
+            self.trials_table.setSortingEnabled(True)
+            self.n_spin.setMaximum(len(df))
+            self._summary_label.setText(f"{len(df)} trials available")
+        else:
+            self._summary_label.setText(
+                "No trials table found \u2014 single trial will be created."
+            )
+
+    def get_trial_indices(self, total: int) -> list[int]:
+        if self._rb_all.isChecked():
+            return list(range(total))
+        if self._rb_first_n.isChecked():
+            return list(range(min(self.n_spin.value(), total)))
+        visual_rows = sorted(
+            {idx.row() for idx in self.trials_table.selectedIndexes()}
+        )
+        if not visual_rows:
+            return list(range(total))
+        return sorted(
+            self.trials_table.item(r, 0).data(Qt.UserRole) for r in visual_rows
+        )
+
     def validate(self) -> str | None:
         if not self.output_edit.text():
             return "Please select a project folder."
-        if self.wants_download() and not self.download_dir_edit.text():
-            return "Please select a download folder for videos."
+        if not self.download_dir_edit.text():
+            return "Please select a download folder for video clips."
         return None
 
 
@@ -443,7 +551,7 @@ class _DataOptionsPage(QWidget):
 # =====================================================================
 
 class NWBImportDialog(QDialog):
-    """2-step wizard: DANDI source \u2192 data options & output."""
+    """3-step wizard: DANDI source \u2192 data options \u2192 trials & output."""
 
     def __init__(self, app_state, io_widget, parent=None):
         super().__init__(parent)
@@ -459,6 +567,7 @@ class NWBImportDialog(QDialog):
         self._cameras_with_pose: list[str] = []
         self._video_info: dict[str, dict] = {}
         self._dandi_asset_id: str | None = None
+        self._trials_df = None
 
         self._setup_ui()
 
@@ -468,8 +577,10 @@ class NWBImportDialog(QDialog):
         self._stack = QStackedWidget()
         self._page_source = _SourcePage()
         self._page_options = _DataOptionsPage()
+        self._page_trials = _TrialsPage()
         self._stack.addWidget(self._page_source)
         self._stack.addWidget(self._page_options)
+        self._stack.addWidget(self._page_trials)
         layout.addWidget(self._stack)
 
         nav = QHBoxLayout()
@@ -490,8 +601,9 @@ class NWBImportDialog(QDialog):
         layout.addLayout(nav)
 
     def _on_previous(self):
-        if self._stack.currentIndex() > 0:
-            self._stack.setCurrentIndex(0)
+        page = self._stack.currentIndex()
+        if page > 0:
+            self._stack.setCurrentIndex(page - 1)
             self._update_nav()
 
     def _on_next(self):
@@ -503,7 +615,11 @@ class NWBImportDialog(QDialog):
                 return
             self._connect_to_nwb()
         elif page == 1:
-            err = self._page_options.validate()
+            self._populate_trials_page()
+            self._stack.setCurrentIndex(2)
+            self._update_nav()
+        elif page == 2:
+            err = self._page_trials.validate()
             if err:
                 notify_dialog(err, "warning", "Input error", self)
                 return
@@ -514,8 +630,10 @@ class NWBImportDialog(QDialog):
         self._prev_btn.setEnabled(page > 0)
         if page == 0:
             self._next_btn.setText("Connect & Preview \u2192")
-        else:
+        elif page == 2:
             self._next_btn.setText("Create project")
+        else:
+            self._next_btn.setText("Next \u2192")
 
     # ------------------------------------------------------------------
     # Connect to DANDI and probe NWB metadata
@@ -615,53 +733,73 @@ class NWBImportDialog(QDialog):
             behavioral, labels, ephys,
         )
 
-        default_dir = self._default_download_dir(source)
-        project_name = self._default_project_dirname()
-        if self._video_info:
-            self._page_options.download_dir_edit.setText(str(default_dir))
-        self._page_options.output_edit.setText(str(default_dir / project_name))
-
         self._stack.setCurrentIndex(1)
         self._update_nav()
+
+    # ------------------------------------------------------------------
+    # Populate trials page
+    # ------------------------------------------------------------------
+
+    def _populate_trials_page(self):
+        self._page_trials.populate(self._nwb)
+        self._trials_df = read_trials_table(self._nwb)
+
+        source = self._page_source.get_source()
+        default_dir = self._default_download_dir(source)
+        project_name = self._default_project_dirname()
+        self._page_trials.download_dir_edit.setText(str(default_dir))
+        self._page_trials.output_edit.setText(str(default_dir / project_name))
 
     # ------------------------------------------------------------------
     # Build project
     # ------------------------------------------------------------------
 
     def _build_project(self):
-        output_path = self._page_options.output_edit.text()
+        output_path = self._page_trials.output_edit.text()
+        download_dir = self._page_trials.download_dir_edit.text()
         selected_videos = self._page_options.get_selected_videos()
-        wants_download = self._page_options.wants_download()
-        download_dir = (
-            self._page_options.download_dir_edit.text() if wants_download else None
-        )
         include_pose = self._page_options.pose_checkbox.isChecked()
-        label_source = self._page_options.get_selected_label_source()
+        label_sources = self._page_options.get_selected_label_sources()
         source_info = self._page_source.get_source()
+
+        total_trials = (
+            len(self._nwb.trials)
+            if self._nwb.trials is not None and len(self._nwb.trials) > 0
+            else 1
+        )
+        trial_indices = self._page_trials.get_trial_indices(total_trials)
 
         def _build():
             import av
             import numpy as np
             from ethograph.utils.nwb import create_alignment_from_streams
 
-            trials_df = read_trials_table(self._nwb)
+            trials_df = self._trials_df
+            if trial_indices is not None:
+                trials_df = trials_df.iloc[trial_indices].reset_index(drop=True)
 
             project_dir = Path(output_path)
             ethograph_dir = project_dir / ".ethograph"
             ethograph_dir.mkdir(parents=True, exist_ok=True)
 
-            # Download whole video files if requested
-            if wants_download and download_dir:
-                dl_dir = Path(download_dir)
-                dl_dir.mkdir(parents=True, exist_ok=True)
+            output_dir = Path(download_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Download per-trial video clips
+            for _, row in trials_df.iterrows():
+                trial_id = int(row["trial"])
                 for vname in selected_videos:
                     url = self._video_info.get(vname, {}).get("url", "")
                     if not url:
                         continue
-                    dest = dl_dir / f"{vname}.mp4"
-                    if not dest.exists():
-                        logger.info("Downloading %s ...", vname)
-                        _download_file(url, dest)
+                    clip_path = output_dir / f"{vname}_trial_{trial_id}.mp4"
+                    if clip_path.exists():
+                        continue
+                    cam_start = self._video_info.get(vname, {}).get("start", 0.0)
+                    t_start = float(row["start_time"]) - cam_start
+                    t_stop = float(row["stop_time"]) - cam_start
+                    logger.info("Downloading %s trial %d ...", vname, trial_id)
+                    download_clip(url, t_start, t_stop, clip_path)
 
             # Build video streams for alignment.nwb
             streams = []
@@ -684,16 +822,14 @@ class NWBImportDialog(QDialog):
                 if not rate:
                     continue
 
-                if wants_download and download_dir:
-                    file_path = str(Path(download_dir) / f"{vname}.mp4")
-                else:
-                    file_path = url
-
+                files = [
+                    str(output_dir / f"{vname}_trial_{int(row['trial'])}.mp4")
+                    for _, row in trials_df.iterrows()
+                ]
                 streams.append({
                     "name": f"video_{vname}",
-                    "files": [file_path],
+                    "files": files,
                     "rate": rate,
-                    "starting_time": info.get("start", 0.0),
                 })
 
             # Pose streams
@@ -755,9 +891,11 @@ class NWBImportDialog(QDialog):
             )
 
             # Labels
-            if label_source:
+            if label_sources:
                 converter = NWBLabelConverter()
-                all_labels_df = converter.from_nwb(self._nwb, trials_df)
+                all_labels_df = converter.from_nwb(
+                    self._nwb, trials_df, sources=label_sources
+                )
                 write_mapping_file(
                     ethograph_dir / "mapping.txt", converter.label_map
                 )
@@ -769,7 +907,9 @@ class NWBImportDialog(QDialog):
 
             save_labels_tsv(project_dir / "labels.tsv", all_labels_df)
 
-        progress = BusyProgressDialog("Setting up project...", parent=self)
+        progress = BusyProgressDialog(
+            "Downloading video clips & setting up project...", parent=self
+        )
         (_, error) = progress.execute(_build)
 
         if progress.was_cancelled or error:
@@ -782,9 +922,8 @@ class NWBImportDialog(QDialog):
         self.app_state.nc_file_path = output_path
         self.io_widget.nc_file_path_edit.setText(output_path)
 
-        if wants_download and download_dir:
-            self.app_state.video_folder = download_dir
-            self.io_widget.video_folder_edit.setText(download_dir)
+        self.app_state.video_folder = download_dir
+        self.io_widget.video_folder_edit.setText(download_dir)
 
         from qtpy.QtCore import QTimer
         QTimer.singleShot(0, self.io_widget._on_load_clicked)

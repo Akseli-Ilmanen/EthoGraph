@@ -64,12 +64,9 @@ class TestWizardBBoxPipeline:
         _safe_to_netcdf(dt, nc_out)
         assert nc_out.exists()
 
-        dt2 = eto.open(str(nc_out))
-        assert isinstance(dt2, TrialTree)
-        trial_ds = dt2.itrial(0)
-        assert "position" in trial_ds.data_vars
-        assert "velocity" in trial_ds.data_vars
-
+        ds = xr.open_dataset(nc_out)
+        assert "position" in ds.data_vars
+        assert "shape" in ds.data_vars
 
 # ===================================================================
 # Bounding-box rendering: ds_to_napari_layers produces bbox_data

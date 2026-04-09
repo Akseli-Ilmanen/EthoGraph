@@ -322,8 +322,8 @@ class TestPlotPopulatedAfterLoad:
 
 class TestTrialSwitchUpdatesPlot:
 
-    def test_lineplot_data_changes_on_trial_switch(self, birdpark_gui):
-        _, meta = birdpark_gui
+    def test_lineplot_data_changes_on_trial_switch(self, moll2025_gui):
+        _, meta = moll2025_gui
         if len(meta.app_state.trials) < 2:
             pytest.skip("Need 2+ trials")
         lp = meta.plot_container.line_plot
@@ -336,8 +336,8 @@ class TestTrialSwitchUpdatesPlot:
         changed = (not np.array_equal(x1, x2)) or (not np.array_equal(y1, y2))
         assert changed, "LinePlot data identical after trial switch"
 
-    def test_lineplot_has_data_every_trial(self, birdpark_gui):
-        _, meta = birdpark_gui
+    def test_lineplot_has_data_every_trial(self, moll2025_gui):
+        _, meta = moll2025_gui
         lp = meta.plot_container.line_plot
         for trial in meta.app_state.trials:
             meta.navigation_widget.trials_combo.setCurrentText(str(trial))
@@ -346,8 +346,8 @@ class TestTrialSwitchUpdatesPlot:
             x, y = _get_curve_data(lp.plot_items)
             assert x is not None and len(x) > 0, f"No curve data on trial {trial}"
 
-    def test_xlim_updates_on_trial_switch(self, birdpark_gui):
-        _, meta = birdpark_gui
+    def test_xlim_updates_on_trial_switch(self, moll2025_gui):
+        _, meta = moll2025_gui
         if len(meta.app_state.trials) < 2:
             pytest.skip("Need 2+ trials")
         meta.navigation_widget.next_trial()
@@ -362,8 +362,8 @@ class TestTrialSwitchUpdatesPlot:
 
 class TestFeatureSwitchUpdatesPlot:
 
-    def test_switching_feature_changes_plot_data(self, birdpark_gui):
-        _, meta = birdpark_gui
+    def test_switching_feature_changes_plot_data(self, moll2025_gui):
+        _, meta = moll2025_gui
         features_combo = meta.data_widget.combos["features"]
         if features_combo.count() < 2:
             pytest.skip("Need 2+ features")

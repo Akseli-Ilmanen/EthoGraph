@@ -1067,7 +1067,7 @@ class DataWidget(QWidget):
 
         # Row 4: Neo-Viewer checkbox + Neo stream combo
         self.panels_row4_layout.addWidget(self.neo_viewer_checkbox)
-        self._neo_stream_label = QLabel("Stream:")
+        self._neo_stream_label = QLabel("Preview stream:")
         self.neo_stream_combo = QComboBox()
         self.neo_stream_combo.setObjectName("neo_stream_combo")
         self.neo_stream_combo.currentTextChanged.connect(self._on_neo_stream_changed)

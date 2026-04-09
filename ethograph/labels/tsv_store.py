@@ -159,7 +159,8 @@ def save_labels_tsv(path: str | Path, df: pd.DataFrame) -> None:
     cols += [c for c in out.columns if c not in cols]
     out = out[cols]
     
-    out = out[out["duration"] >= 0.0] # Shouldn't occur, but just in case.
+    duration = out["offset_s"] - out["onset_s"]
+    out = out[duration >= 0.0] # Shouldn't occur, but just in case.
 
     tmp = path.with_suffix(".tsv.tmp")
     out.to_csv(tmp, sep="\t", index=False, encoding="utf-8-sig")

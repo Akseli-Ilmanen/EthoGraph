@@ -32,7 +32,7 @@ from movement.kinematics import (
 )
 
 from ethograph.gui.notify import notify_dialog
-from ethograph.io.metadata_table import load_metadata_df, load_metadata_tsv, metadata_tsv_path
+from ethograph.io.metadata_table import empty_metadata_df, load_metadata_df, load_metadata_tsv, metadata_tsv_path
 from ethograph.io.trialtree import TrialTree
 from ethograph.io.nwb_alignment import EmpytAlignment, TableAlignment, discover_nwb, make_nwb_alignment
 from ethograph.labels.converters import (
@@ -40,23 +40,28 @@ from ethograph.labels.converters import (
     PynappleLabelConverter,
     resolve_labels_tsv,
 )
+from ethograph.labels.tsv_store import init_empty_labels
 
 logger = logging.getLogger(__name__)
+
+
+def _default_trial_ids() -> list[int]:
+    return [1]
 
 
 @dataclass
 class LoadResult:
     """Everything ``load_dataset`` returns — no dt.attrs transport."""
 
-    dt: Any  # TrialTree (or None for future NWB-only path)
-    trial_ids: list[int | str]
-    nwb_alignment: Any = None  # NWBAlignment 
-    metadata_df: pd.DataFrame = None
+    dt: Any = None  # TrialTree (or None for NWB-only path)
+    trial_ids: list[int | str] = field(default_factory=_default_trial_ids)
+    nwb_alignment: Any = field(default_factory=EmpytAlignment)
+    metadata_df: pd.DataFrame = field(default_factory=lambda: empty_metadata_df([1]))
     metadata_path: str | None = None
-    all_labels_df: pd.DataFrame = None
+    all_labels_df: pd.DataFrame = field(default_factory=lambda: init_empty_labels([]))
     catalog: DataCatalog = None
     data_loader: Any = None
-    source_collection: Any = None
+    source_collection: SourceCollection = field(default_factory=SourceCollection)
     nwb_local: str | None = None
     nwb_video_folder: str | None = None
 
@@ -102,35 +107,23 @@ def _is_pynapple_path_folder(file_path: str) -> bool:
     
 
 
-def _read_dandi_provenance(alignment_path: Path) -> dict | None:
-    """Read DANDI provenance from alignment.nwb using h5py (lightweight)."""
-    import json
+def _read_dandi_provenance(ethograph_dir: Path) -> dict | None:
+    """Read DANDI provenance from .ethograph/provenance.yaml."""
+    from ethograph.utils.nwb import read_provenance
 
-    import h5py
-
-    try:
-        with h5py.File(str(alignment_path), "r") as f:
-            prov_ds = f.get("scratch/ethograph_provenance/data")
-            if prov_ds is None:
-                return None
-            val = prov_ds[()]
-            if isinstance(val, bytes):
-                val = val.decode("utf-8")
-            prov = json.loads(str(val))
-            if prov.get("nwb_dandiset_id") and prov.get("nwb_asset_id"):
-                return prov
-    except (OSError, json.JSONDecodeError, KeyError):
-        pass
+    prov = read_provenance(ethograph_dir)
+    if prov and prov.get("nwb_dandiset_id") and prov.get("nwb_asset_id"):
+        return prov
     return None
 
 
 def _is_remote_nwb(file_path: str) -> bool:
     """Check if path is a remote NWB project with DANDI provenance."""
     p = Path(file_path)
-    alignment = p / ".ethograph" / "alignment.nwb"
-    if not (p.is_dir() and alignment.exists()):
+    ethograph_dir = p / ".ethograph"
+    if not (p.is_dir() and ethograph_dir.exists()):
         return False
-    return _read_dandi_provenance(alignment) is not None
+    return _read_dandi_provenance(ethograph_dir) is not None
 
 
 def _resolve_alignment(source_path: str | Path):
@@ -359,7 +352,7 @@ def _load_trialtree(file_path: str) -> LoadResult:
         for node in dt.children.values()
     ):
         ds = xr.open_dataset(file_path, engine="netcdf4")
-        dt = _wizard_single_trialtree(ds)
+        dt = _wizard_ds_to_continuous_dt(ds)
         dt._source_path = file_path
 
 
@@ -426,6 +419,10 @@ def load_dataset(
     if file_path.endswith(".nc"):
         return _load_trialtree(file_path)
 
+    raise ValueError(
+        f"Unsupported file type: {Path(file_path).suffix!r}. "
+        "Expected .nc, .nwb, .npz, a pynapple folder, or a DANDI project directory."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -516,14 +513,25 @@ def _build_source_collection_xarray(dt: TrialTree, nwb_alignment=None) -> Source
 # ---------------------------------------------------------------------------
 
 
-def _wizard_single_trialtree(ds: xr.Dataset) -> TrialTree:
+def _wizard_ds_to_continuous_dt(ds: xr.Dataset) -> TrialTree:
     """Wrap a single xr.Dataset as a one-trial continuous TrialTree."""
-    duration = eto.get_ds_duration(ds) or 0.0
-    epochs = pd.DataFrame({
-        "trial": [1],
-        "start_time": [0.0],
-        "stop_time": [duration],
-    })
+    
+    
+    
+    duration = eto.get_ds_duration(ds)
+    if duration is not None:
+        epochs = pd.DataFrame({
+            "trial": [1],
+            "start_time": [0.0],
+            "stop_time": [duration],
+        })
+    else:
+        epochs = pd.DataFrame({
+            "trial": [1],
+            "start_time": [0.0],
+        })
+        
+    
     return TrialTree.from_continuous(ds, epochs)
 
 
@@ -554,7 +562,13 @@ def _wizard_single_media_helper(
             row["audio_mic-1_start"] = float(audio_offset)
 
     trial_table = pd.DataFrame([row])
-    fps = dt.itrial(0).attrs.get("fps", 30)
+    
+    if isinstance(dt.itrial(0), xr.Dataset):
+        fps = dt.itrial(0).attrs.get("fps")
+    elif isinstance(dt, xr.Dataset):
+        fps = dt.attrs.get("fps")
+    else:
+        fps = None
 
     stream_rates: dict[str, float] = {}
     if video_path:
@@ -610,7 +624,7 @@ def wizard_single_from_pose(
     if len(ds.individuals) > 1:
         compute_pairwise_distances(ds.position, dim="individuals", pairs="all")
 
-    dt = _wizard_single_trialtree(ds)
+    dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(
         dt, video_path=video_path, pose_path=pose_path, video_offset=video_offset
     )
@@ -620,9 +634,8 @@ def wizard_single_from_pose(
 def wizard_single_from_ds(
     video_path, ds: xr.Dataset, video_offset: float | None = None
 ):
-    dt = _wizard_single_trialtree(ds)
-    _wizard_single_media_helper(dt, video_path=video_path, video_offset=video_offset)
-    return dt
+    _wizard_single_media_helper(ds, video_path=video_path, video_offset=video_offset)
+    return ds
 
 
 def wizard_single_from_npy_file(
@@ -667,7 +680,7 @@ def wizard_single_from_npy_file(
             video_path, fps=ds.attrs["fps"], time_coord_name="time_video"
         )
 
-    dt = _wizard_single_trialtree(ds)
+    dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(dt, video_path=video_path, video_offset=video_offset)
     return dt
 
@@ -698,7 +711,7 @@ def wizard_single_from_ephys(
             video_path, fps=ds.attrs["fps"], time_coord_name="time_video"
         )
 
-    dt = _wizard_single_trialtree(ds)
+    dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(
         dt,
         video_path=video_path,
@@ -742,7 +755,7 @@ def wizard_single_from_video(
     )
     ds.attrs["fps"] = fps
 
-    dt = _wizard_single_trialtree(ds)
+    dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(dt, video_path=video_path)
     return dt
 
@@ -773,7 +786,7 @@ def wizard_single_from_audio(
             video_path, fps=ds.attrs["fps"], time_coord_name="time_video"
         )
 
-    dt = _wizard_single_trialtree(ds)
+    dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(
         dt,
         video_path=video_path,

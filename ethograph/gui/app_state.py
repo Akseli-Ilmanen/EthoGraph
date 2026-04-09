@@ -845,6 +845,10 @@ class ObservableAppState(QObject):
                 print(f"  {_CATEGORY_LABELS[cat]}")
                 print(f"{'='*50}")
                 current_cat = cat
+            
+            if isinstance(value, list) and len(value) > 10:
+                value = f"{value[:10]}... (total {len(value)} items)"
+                
             print(f"  {key}: {value}")
 
     def load_from_dict(self, state_dict: dict):
