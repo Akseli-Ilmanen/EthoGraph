@@ -150,6 +150,14 @@ def get_time_coord(da: xr.DataArray) -> xr.DataArray | None:
     return da.coords[time_coord]
 
 
+def get_ds_duration(ds: xr.Dataset) -> float | None:
+    """Get duration of xarray.Dataset in seconds."""
+    durations = []
+    for var in ds.data_vars.values():
+        time_coord = get_time_coord(var)
+        if time_coord is not None:
+            durations.append(float(time_coord.max() - time_coord.min()))
+    return max(durations) if durations else None
 
 
 

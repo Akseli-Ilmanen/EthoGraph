@@ -359,7 +359,7 @@ def _load_trialtree(file_path: str) -> LoadResult:
         for node in dt.children.values()
     ):
         ds = xr.open_dataset(file_path, engine="netcdf4")
-        dt = eto.dataset_to_basic_trialtree(ds)
+        dt = _wizard_single_trialtree(ds)
         dt._source_path = file_path
 
 
@@ -512,8 +512,19 @@ def _build_source_collection_xarray(dt: TrialTree, nwb_alignment=None) -> Source
 
 
 # ---------------------------------------------------------------------------
-# Wizard helpers (unchanged)
+# Wizard helpers
 # ---------------------------------------------------------------------------
+
+
+def _wizard_single_trialtree(ds: xr.Dataset) -> TrialTree:
+    """Wrap a single xr.Dataset as a one-trial continuous TrialTree."""
+    duration = eto.get_ds_duration(ds) or 0.0
+    epochs = pd.DataFrame({
+        "trial": [1],
+        "start_time": [0.0],
+        "stop_time": [duration],
+    })
+    return TrialTree.from_continuous(ds, epochs)
 
 
 def _wizard_single_media_helper(
@@ -599,7 +610,7 @@ def wizard_single_from_pose(
     if len(ds.individuals) > 1:
         compute_pairwise_distances(ds.position, dim="individuals", pairs="all")
 
-    dt = eto.dataset_to_basic_trialtree(ds, video_motion=False)
+    dt = _wizard_single_trialtree(ds)
     _wizard_single_media_helper(
         dt, video_path=video_path, pose_path=pose_path, video_offset=video_offset
     )
@@ -609,7 +620,7 @@ def wizard_single_from_pose(
 def wizard_single_from_ds(
     video_path, ds: xr.Dataset, video_offset: float | None = None
 ):
-    dt = eto.dataset_to_basic_trialtree(ds)
+    dt = _wizard_single_trialtree(ds)
     _wizard_single_media_helper(dt, video_path=video_path, video_offset=video_offset)
     return dt
 
@@ -650,9 +661,13 @@ def wizard_single_from_npy_file(
     )
     ds.attrs["fps"] = fps
 
-    dt = eto.dataset_to_basic_trialtree(
-        ds, video_path=video_path, video_motion=video_motion
-    )
+    if video_motion and video_path is not None:
+        from ethograph.features.movement import extract_video_motion
+        ds["video_motion"] = extract_video_motion(
+            video_path, fps=ds.attrs["fps"], time_coord_name="time_video"
+        )
+
+    dt = _wizard_single_trialtree(ds)
     _wizard_single_media_helper(dt, video_path=video_path, video_offset=video_offset)
     return dt
 
@@ -677,9 +692,13 @@ def wizard_single_from_ephys(
     ds = xr.Dataset(coords={"individuals": individuals})
     ds.attrs["fps"] = fps
 
-    dt = eto.dataset_to_basic_trialtree(
-        ds, video_path=video_path, video_motion=video_motion
-    )
+    if video_motion and video_path is not None:
+        from ethograph.features.movement import extract_video_motion
+        ds["video_motion"] = extract_video_motion(
+            video_path, fps=ds.attrs["fps"], time_coord_name="time_video"
+        )
+
+    dt = _wizard_single_trialtree(ds)
     _wizard_single_media_helper(
         dt,
         video_path=video_path,
@@ -723,7 +742,7 @@ def wizard_single_from_video(
     )
     ds.attrs["fps"] = fps
 
-    dt = eto.dataset_to_basic_trialtree(ds, video_motion=False)
+    dt = _wizard_single_trialtree(ds)
     _wizard_single_media_helper(dt, video_path=video_path)
     return dt
 
@@ -748,9 +767,13 @@ def wizard_single_from_audio(
     ds = xr.Dataset(coords={"individuals": individuals})
     ds.attrs["fps"] = fps
 
-    dt = eto.dataset_to_basic_trialtree(
-        ds, video_path=video_path, video_motion=video_motion
-    )
+    if video_motion and video_path is not None:
+        from ethograph.features.movement import extract_video_motion
+        ds["video_motion"] = extract_video_motion(
+            video_path, fps=ds.attrs["fps"], time_coord_name="time_video"
+        )
+
+    dt = _wizard_single_trialtree(ds)
     _wizard_single_media_helper(
         dt,
         video_path=video_path,
