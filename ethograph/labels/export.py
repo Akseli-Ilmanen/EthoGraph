@@ -42,41 +42,8 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
                 
                 
     print(f"Corrected {counter} offsets with gap smaller than {eps:.3f} seconds.")
+                        
             
-            
-            
-                
-
-    # Internal to crow lab, we had a legacy labeling system that was frame-wise(200 Hz), and this correction should fix those labels.
-    dt = 1 / 200  # 5 ms frame rate
-    group_cols = [c for c in ["session", "trial", "individual"] if c in df.columns]
-    for _, group in df.groupby(group_cols):
-        individual = group["individual"].iloc[0]
-        
-        # Won't affect other users.
-        if not any(name in individual for name in ["Ivy", "Freddy"]):
-            continue
-
-        session_str = group["session"].iloc[0] if "session" in group.columns else "?"
-        trial_str = group["trial"].iloc[0] if "trial" in group.columns else "?"
-        print(f"Processing session {session_str}, trial {trial_str}, individual {individual}")
-        
-        idx = group.index
-        
-        for i in range(len(idx) - 1):
-            current = idx[i]
-            next_row = idx[i + 1]
-            
-            gap = df.loc[next_row, "onset_s"] - df.loc[current, "offset_s"]
-            
-            if abs(gap - dt) < eps:
-                df.loc[current, "offset_s"] = df.loc[next_row, "onset_s"] - eps
-                df.loc[current, "offset_global"] = df.loc[next_row, "onset_global"] - eps
-                df.loc[current, "duration"] = (
-                    df.loc[current, "offset_s"] - df.loc[current, "onset_s"]
-                )
-
-    
     if "onset_global" in df.columns:
         df.sort_values(["individual", "onset_global"], inplace=True)
                 
