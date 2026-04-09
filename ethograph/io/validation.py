@@ -203,9 +203,6 @@ def validate_dataset(
         errors.append("Xarray dataset ('ds') must have 'individuals' coordinate")
 
     for feat_name in catalog.features:
-        if feat_name not in ds.data_vars:
-            errors.append(f"Feature variable '{feat_name}' missing from trial '{ds.attrs.get('trial', '?')}'")
-            continue
         feat_var = ds[feat_name]
         has_time_coord = any('time' in str(dim).lower() for dim in feat_var.dims)
         if not has_time_coord:
