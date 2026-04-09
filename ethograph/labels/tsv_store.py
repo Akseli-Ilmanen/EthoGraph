@@ -146,6 +146,9 @@ def save_labels_tsv(path: str | Path, df: pd.DataFrame) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     out = df.copy()
+    
+    
+    
     preferred = [
         "session", "trial", "session_trial", "individual", "labels",
         "onset_s", "offset_s", "trial_onset",  "trial_offset","onset_global", "offset_global",
@@ -155,6 +158,8 @@ def save_labels_tsv(path: str | Path, df: pd.DataFrame) -> None:
     cols = [c for c in preferred if c in out.columns]
     cols += [c for c in out.columns if c not in cols]
     out = out[cols]
+    
+    out = out[out["duration"] >= 0.0] # Shouldn't occur, but just in case.
 
     tmp = path.with_suffix(".tsv.tmp")
     out.to_csv(tmp, sep="\t", index=False, encoding="utf-8-sig")
