@@ -425,3 +425,130 @@ class TestMollLinePlot:
             f"No recognizable plot item found. Types: "
             f"{[type(i).__name__ for i in lp.plot_items]}"
         )
+
+
+# ===================================================================
+# Pynapple-loaded Moll2025 — same tests on different backend
+# ===================================================================
+
+class TestMollPynappleLoading:
+
+    def test_state_after_load(self, moll2025_pynapple_gui):
+        _, meta = moll2025_pynapple_gui
+        s = meta.app_state
+        assert s.ready is True
+        assert s.ds is not None
+
+    def test_two_trials(self, moll2025_pynapple_gui):
+        _, meta = moll2025_pynapple_gui
+        assert len(meta.app_state.trials) == 2
+
+    def test_features_available(self, moll2025_pynapple_gui):
+        _, meta = moll2025_pynapple_gui
+        combo = meta.data_widget.combos.get("features")
+        assert combo is not None
+        items = [combo.itemText(i) for i in range(combo.count())]
+        assert "beakTip_speed" in items
+        assert "beakTip_position" in items
+
+    def test_labels_df_exists(self, moll2025_pynapple_gui):
+        _, meta = moll2025_pynapple_gui
+        df = meta.app_state._all_labels_df
+        assert df is not None
+
+
+class TestMollPynappleLinePlot:
+
+    def test_lineplot_has_data(self, moll2025_pynapple_gui):
+        _, meta = moll2025_pynapple_gui
+
+        from ethograph.utils.qt import set_combo_to_value
+        set_combo_to_value(meta.data_widget.combos["features"], "beakTip_speed")
+        QApplication.processEvents()
+        meta.data_widget.update_main_plot()
+        QApplication.processEvents()
+
+        lp = meta.plot_container.line_plot
+        assert len(lp.plot_items) > 0, "LinePlot has no plot items"
+
+        import pyqtgraph as pg
+        for item in lp.plot_items:
+            if isinstance(item, (pg.PlotDataItem, pg.PlotCurveItem)):
+                x, y = item.getData()
+                assert x is not None and len(x) > 0
+                assert y is not None and len(y) > 0
+                break
+
+    def test_cycle_all_features(self, moll2025_pynapple_gui):
+        _, meta = moll2025_pynapple_gui
+        features_combo = meta.data_widget.combos["features"]
+        lp = meta.plot_container.line_plot
+        for i in range(features_combo.count()):
+            text = features_combo.itemText(i)
+            if text in ("Spectrogram", "Waveform"):
+                continue
+            features_combo.setCurrentIndex(i)
+            QApplication.processEvents()
+            assert len(lp.plot_items) > 0, f"Feature '{text}' produced no plot items"
+
+
+class TestMollPynappleSpacePlot:
+
+    def test_space_2d_has_data(self, moll2025_pynapple_gui):
+        _, meta = moll2025_pynapple_gui
+
+        meta.app_state.space_plot_type = "Space Plot"
+        if hasattr(meta.data_widget, "space_view_combo"):
+            meta.data_widget.space_view_combo.setCurrentText("Space Plot")
+            QApplication.processEvents()
+
+        meta.data_widget.update_space_plot()
+        QApplication.processEvents()
+
+        sp = meta.data_widget.space_plot
+        assert sp is not None, "SpacePlot not created"
+
+        sp.cb_3d.setChecked(False)
+        QApplication.processEvents()
+        sp.refresh()
+        QApplication.processEvents()
+
+        assert sp._trajectory_pos is not None, "No trajectory data"
+        X, Y, Z = sp._trajectory_pos
+        assert X is not None and len(X) > 0
+        assert Y is not None and len(Y) > 0
+        assert np.any(np.isfinite(X))
+        assert np.any(np.isfinite(Y))
+
+
+class TestMollPynappleLabellingWithoutChangepoints:
+
+    def test_label_at_exact_click_times(self, moll2025_pynapple_gui):
+        _, meta = moll2025_pynapple_gui
+
+        lw = meta.labels_widget
+        if not lw._mappings or 1 not in lw._mappings:
+            pytest.skip("No label mapping 1")
+
+        meta.changepoints_widget.changepoint_correction_checkbox.setChecked(False)
+        QApplication.processEvents()
+
+        t_start = 1.0
+        t_end = 2.0
+        lw.activate_label(1)
+        lw._on_plot_clicked({"x": t_start, "button": Qt.LeftButton})
+        assert lw.first_click == pytest.approx(t_start)
+
+        lw._on_plot_clicked({"x": t_end, "button": Qt.LeftButton})
+        QApplication.processEvents()
+
+        df = meta.app_state.label_intervals
+        assert df is not None and not df.empty, "No label created"
+
+        individual = lw._current_individual()
+        idx = find_interval_at(df, (t_start + t_end) / 2, individual)
+        assert idx is not None, "Label not found at midpoint"
+        row = df.loc[idx]
+        assert row["labels"] == 1
+        assert row["onset_s"] == pytest.approx(t_start, abs=0.01)
+        assert row["offset_s"] == pytest.approx(t_end, abs=0.01)

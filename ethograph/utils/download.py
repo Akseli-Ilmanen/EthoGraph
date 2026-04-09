@@ -402,3 +402,294 @@ def download_example_dataset(
             print(f"  mapping: {mapping_path}")
         return mapping_path
     return None
+
+
+def setup_birdpark_continuous(
+    dest: Path | None = None,
+    n_trials: int = 3,
+    chunk: float = 20.0,
+    verbose: bool = True,
+) -> Path:
+    """Create a BirdPark Continuous variant with a multi-trial alignment NWB.
+
+    Symlinks (or copies on Windows) the BirdPark assets into *dest* and
+    creates a ``.ethograph/alignment.nwb`` that treats the single 60 s
+    recording as session-wide continuous media split into *n_trials* trials.
+
+    Parameters
+    ----------
+    dest
+        Output directory. Defaults to ``~/.ethograph/example_data/BirdParkContinuous``.
+    n_trials
+        Number of equal-length trials to split the recording into.
+    chunk
+        Duration of each trial in seconds.
+    verbose
+        Print progress to stdout.
+
+    Returns
+    -------
+    Path to the created directory.
+    """
+    import shutil
+
+    import numpy as np
+    import pandas as pd
+    import pynwb
+    from pynwb import NWBHDF5IO
+    from pynwb.image import ImageSeries
+
+    if dest is None:
+        dest = Path.home() / ".ethograph" / "example_data" / "BirdParkContinuous"
+
+    dest = Path(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+
+    bp_info = EXAMPLE_DATASETS["birdpark"]
+    bp_src = Path.home() / ".ethograph" / "example_data" / "BirdPark"
+
+    for asset in bp_info["assets_gui"]:
+        src = bp_src / asset
+        dst = dest / asset
+        if dst.exists():
+            continue
+        if not src.exists():
+            raise FileNotFoundError(
+                f"BirdPark asset not found: {src}. "
+                "Download birdpark first via download_example_dataset('birdpark', ...)"
+            )
+        shutil.copy2(src, dst)
+        if verbose:
+            print(f"  copied {asset}")
+
+    # Also copy the .nc
+    nc_name = "copExpBP08_trim.nc"
+    nc_dst = dest / nc_name
+    if not nc_dst.exists():
+        shutil.copy2(bp_src / nc_name, nc_dst)
+
+    video_name = "BP_2021-05-25_08-12-51_655154_0380000.mp4"
+    audio_name = "BP_2021-05-25_08-12-51_655154_0380000.wav"
+    fps = 47.68
+
+    epochs = pd.DataFrame({
+        "trial": list(range(1, n_trials + 1)),
+        "start_time": [i * chunk for i in range(n_trials)],
+        "stop_time": [(i + 1) * chunk for i in range(n_trials)],
+    })
+
+    from datetime import datetime
+    from uuid import uuid4
+    from dateutil.tz import tzlocal
+
+    nwbfile = pynwb.NWBFile(
+        session_description="BirdPark continuous — session-wide media alignment.",
+        identifier=str(uuid4()),
+        session_start_time=datetime.now(tzlocal()),
+    )
+
+    nwbfile.add_trial_column(name="trial", description="Trial number")
+    nwbfile.add_trial_column(name="video_cam-1", description="video filename")
+    nwbfile.add_trial_column(name="audio_mic-1", description="audio filename")
+    for _, row in epochs.iterrows():
+        nwbfile.add_trial(
+            start_time=float(row["start_time"]),
+            stop_time=float(row["stop_time"]),
+            trial=row["trial"],
+            **{"video_cam-1": video_name, "audio_mic-1": audio_name},
+        )
+
+    session_end = float(epochs["stop_time"].max())
+    n_video_frames = int(session_end * fps)
+    video_ts = np.arange(n_video_frames) / fps
+
+    nwbfile.create_device(name="cam-1", description="video device cam-1")
+    nwbfile.add_acquisition(
+        ImageSeries(
+            name="video_cam-1",
+            description="video from cam-1",
+            external_file=[video_name],
+            format="external",
+            starting_frame=np.array([0], dtype=np.int32),
+            timestamps=video_ts,
+        )
+    )
+
+    nwb_path = dest / ".ethograph" / "alignment.nwb"
+    nwb_path.parent.mkdir(parents=True, exist_ok=True)
+    with NWBHDF5IO(str(nwb_path), "w") as io:
+        io.write(nwbfile)
+
+    ensure_default_configs()
+
+    if verbose:
+        print(f"BirdPark Continuous ready at {dest}")
+        print(f"  {n_trials} trials x {chunk}s, alignment: {nwb_path}")
+
+    return dest
+
+
+def setup_moll2025_pynapple(
+    dest: Path | None = None,
+    verbose: bool = True,
+) -> Path:
+    """Create a Moll2025 Pynapple variant with alignment NWB linking to original media.
+
+    Copies pynapple ``.npz`` files and labels TSV, writes configs
+    (``mapping.txt``, ``space.yaml``), and creates
+    ``.ethograph/alignment.nwb`` whose trials table references the video
+    and pose files in the original ``Moll2025`` folder.
+
+    Parameters
+    ----------
+    dest
+        Output directory.  Defaults to
+        ``~/.ethograph/example_data/Moll2025_pynapple``.
+    verbose
+        Print progress to stdout.
+
+    Returns
+    -------
+    Path to the created directory.
+    """
+    import shutil
+
+    import numpy as np
+    import pandas as pd
+    import pynapple as nap
+    import pynwb
+    from pynwb import NWBHDF5IO
+    from pynwb.image import ImageSeries
+
+    if dest is None:
+        dest = Path.home() / ".ethograph" / "example_data" / "Moll2025_pynapple"
+
+    dest = Path(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+
+    moll_src = Path.home() / ".ethograph" / "example_data" / "Moll2025"
+    if not moll_src.exists():
+        raise FileNotFoundError(
+            f"Moll2025 source not found: {moll_src}. "
+            "Download moll2025 first via download_example_dataset('moll2025', ...)"
+        )
+
+    # Copy pynapple assets + extras
+    pynapple_assets = EXAMPLE_DATASETS["moll2025"]["assets_pynapple"]
+    extra_assets = ["beakTip_angle_rgb.npz", "beakTip_speed_troughs.npz"]
+    labels_tsv = "Trial_data_labels.tsv"
+
+    for asset in pynapple_assets + extra_assets:
+        src = moll_src / asset
+        dst_file = dest / asset
+        if dst_file.exists() or not src.exists():
+            continue
+        shutil.copy2(src, dst_file)
+        if verbose:
+            print(f"  copied {asset}")
+
+    labels_src = moll_src / labels_tsv
+    labels_dst = dest / labels_tsv
+    if labels_src.exists() and not labels_dst.exists():
+        shutil.copy2(labels_src, labels_dst)
+        if verbose:
+            print(f"  copied {labels_tsv}")
+
+    # Write configs
+    write_example_configs("moll2025", dest)
+
+    # Read trial epochs from pynapple trials.npz
+    trials_npz = dest / "trials.npz"
+    trials_obj = nap.load_file(str(trials_npz))
+    if isinstance(trials_obj, nap.IntervalSet):
+        trials_ep = trials_obj
+    elif isinstance(trials_obj, dict):
+        trials_ep = next(
+            (v for v in trials_obj.values() if isinstance(v, nap.IntervalSet)),
+            None,
+        )
+    else:
+        trials_ep = None
+    if trials_ep is None:
+        raise ValueError(f"No IntervalSet found in {trials_npz}")
+
+    # Moll2025: trial 1 = recording 115, trial 2 = recording 41
+    media_per_trial = [
+        {
+            "video_cam-1": "2024-12-17_115_Crow1-cam-1.mp4",
+            "pose_cam-1": "2024-12-17_115_Crow1-cam-1DLC.csv",
+        },
+        {
+            "video_cam-1": "2024-12-18_041_Crow1-cam-1.mp4",
+            "pose_cam-1": "2024-12-18_041_Crow1-cam-1DLC.csv",
+        },
+    ]
+
+    fps = 200.0
+
+    from datetime import datetime
+    from uuid import uuid4
+    from dateutil.tz import tzlocal
+
+    nwbfile = pynwb.NWBFile(
+        session_description="Moll2025 pynapple — alignment to original media.",
+        identifier=str(uuid4()),
+        session_start_time=datetime.now(tzlocal()),
+    )
+
+    nwbfile.add_trial_column(name="trial", description="Trial number")
+    nwbfile.add_trial_column(name="video_cam-1", description="video filename")
+    nwbfile.add_trial_column(name="pose_cam-1", description="pose filename")
+    for i in range(len(trials_ep)):
+        trial_id = i + 1
+        media = media_per_trial[i] if i < len(media_per_trial) else {}
+        nwbfile.add_trial(
+            start_time=float(trials_ep.start[i]),
+            stop_time=float(trials_ep.end[i]),
+            trial=trial_id,
+            **{
+                "video_cam-1": media.get("video_cam-1", ""),
+                "pose_cam-1": media.get("pose_cam-1", ""),
+            },
+        )
+
+    # Per-trial ImageSeries — each trial has its own video file
+    nwbfile.create_device(name="cam-1", description="video device cam-1")
+    video_files = [media_per_trial[i]["video_cam-1"] for i in range(len(trials_ep))]
+    n_frames_per_trial = [
+        int((float(trials_ep.end[i]) - float(trials_ep.start[i])) * fps)
+        for i in range(len(trials_ep))
+    ]
+    timestamps_parts = []
+    starting_frames = []
+    frame_count = 0
+    for i in range(len(trials_ep)):
+        t0 = float(trials_ep.start[i])
+        n = n_frames_per_trial[i]
+        ts = t0 + np.arange(n) / fps
+        timestamps_parts.append(ts)
+        starting_frames.append(frame_count)
+        frame_count += n
+
+    nwbfile.add_acquisition(
+        ImageSeries(
+            name="video_cam-1",
+            description="video from cam-1",
+            external_file=video_files,
+            format="external",
+            starting_frame=np.array(starting_frames, dtype=np.int32),
+            timestamps=np.concatenate(timestamps_parts),
+        )
+    )
+
+    nwb_path = dest / ".ethograph" / "alignment.nwb"
+    nwb_path.parent.mkdir(parents=True, exist_ok=True)
+    with NWBHDF5IO(str(nwb_path), "w") as io:
+        io.write(nwbfile)
+
+    if verbose:
+        print(f"Moll2025 Pynapple ready at {dest}")
+        print(f"  {len(trials_ep)} trials, alignment: {nwb_path}")
+        print(f"  video/pose from: {moll_src}")
+
+    return dest

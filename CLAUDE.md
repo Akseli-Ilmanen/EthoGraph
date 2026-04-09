@@ -84,7 +84,7 @@ ethograph/gui/
     plot_sources               # Plot-facing data sources + buffering (PlotSource, FileSource, XarraySource, WindowedBuffer)
     app_state.py              # Central state management (AppStateSpec + ObservableAppState)
     data_sources.py           # build_audio_source() -> FileSource
-    data_loader.py            # Dataset loading: .nc, .nwb, pynapple, NWB project dirs
+    data_loader.py            # Dataset loading: .nc, .nwb, pynapple, remote DANDI NWB
     pose_render.py            # Pose loading (direct NWB + movement), filtering, PoseDisplayManager
     plots_container.py        # UnifiedPanelContainer — multi-panel layout
     plots_base.py             # Abstract base class for all plots (BasePlot)
@@ -237,7 +237,7 @@ Replaces the old `type_vars_dict` pattern with two explicit abstractions:
 - `resolve_media_path(trial, stream, device, fallback_folder)` — try ImageSeries path → NWB-relative → fallback folder + filename. URL-aware: returns URLs directly, prefers local fallback_folder copy if available.
 - `stream_offset_for_trial(trial, stream, device)` — trial-relative offset derived from ImageSeries timing
 
-**Priority order** (`_resolve_alignment` in `data_loader.py`, used for standalone file loading only): For `.nwb` sources: source NWB → sidecar alignment.nwb → sidecar metadata TSV. For other sources: sidecar alignment.nwb → sidecar metadata TSV. Project directories bypass `_resolve_alignment` — `_load_nwb_project` reads alignment.nwb directly.
+**Priority order** (`_resolve_alignment` in `data_loader.py`, used for standalone file loading only): For `.nwb` sources: source NWB → sidecar alignment.nwb → sidecar metadata TSV. For other sources: sidecar alignment.nwb → sidecar metadata TSV. Remote DANDI projects bypass `_resolve_alignment` — `_load_remote_nwb` reads alignment.nwb directly.
 
 **Path fallback**: ImageSeries stores original paths (or URLs for DANDI). If files move, `resolve_media_path` extracts the filename and joins with a user-specified fallback folder (`video_folder`, `audio_folder`, etc.).
 
@@ -247,11 +247,11 @@ Replaces the old `type_vars_dict` pattern with two explicit abstractions:
 
 ### Data Loading: `data_loader.py`
 
-The GUI supports loading `.nc` (NetCDF), `.nwb`, `.npz`, pynapple folders, and NWB project directories. Dispatch in `data_loader.py`:
-- `.nc` → `eto.open()` + `catalog_from_xarray()`. If `.nc` has `nwb_source` attr, also attaches a `PynappleLoader` for lazy NWB features.
+The GUI supports loading `.nc` (NetCDF), `.nwb`, `.npz`, pynapple folders, and remote DANDI NWB projects. Dispatch in `data_loader.py`:
+- Remote DANDI project dir (has `.ethograph/alignment.nwb` with DANDI provenance) → `_load_remote_nwb()`: opens via `open_nwb_dandi()` + `NWBLoader` (direct HDF5 slicing). Alignment from alignment.nwb.
 - `.nwb` → `catalog_from_nwb()` + `NWBLoader` (direct HDF5 slicing via `ComboCatalog`).
 - `.npz`/folder → `load_nap_data()` + `catalog_from_pynapple()` + `PynappleLoader`.
-- NWB project dir (has `.ethograph/alignment.nwb`) → reads provenance from alignment.nwb to determine source. Local NWB: loads via pynapple. DANDI remote: opens via `open_nwb_dandi()` + `NWBLoader` (direct HDF5 slicing). Alignment always from alignment.nwb.
+- `.nc` → `eto.open()` + `catalog_from_xarray()`. If `.nc` has `nwb_source` attr, also attaches a `PynappleLoader` for lazy NWB features.
 
 `load_dataset()` returns `(dt, all_labels_df, catalog)` where `catalog` is a `DataCatalog`.
 

@@ -315,7 +315,7 @@ class PoseDisplayManager:
             try:
                 pr = load_pose_from_file(
                     pose_path,
-                    self.app_state.ds.source_software,
+                    getattr(self.app_state.ds, "source_software", None),
                     self._resolve_camera_fps(camera_idx),
                 )
             except (OSError, ValueError, KeyError) as e:

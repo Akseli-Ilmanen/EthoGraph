@@ -34,6 +34,7 @@ BIRDPARK_DIR = _DOWNLOAD_BASE / "BirdPark"
 BIRDPARK_NC = BIRDPARK_DIR / "copExpBP08_trim.nc"
 MOLL_DIR = _DOWNLOAD_BASE / "Moll2025"
 MOLL_NC = MOLL_DIR / "Trial_data.nc"
+MOLL_PYNAPPLE_DIR = _DOWNLOAD_BASE / "Moll2025_pynapple"
 
 
 def _get_template(key: str) -> dict:
@@ -298,3 +299,32 @@ def canary_gui(gui, qtbot):
 @pytest.fixture
 def birdpark_gui_downsampled(gui, qtbot):
     return _load_template_gui(gui, "birdpark", downsample=True)
+
+
+@pytest.fixture
+def moll2025_pynapple_gui(gui, qtbot):
+    """Load Moll2025 pynapple .npz data with alignment NWB linking to original media."""
+    npz_dir = MOLL_PYNAPPLE_DIR
+    speed_npz = npz_dir / "beakTip_speed.npz"
+    alignment = npz_dir / ".ethograph" / "alignment.nwb"
+    if not speed_npz.exists():
+        pytest.skip("Moll2025_pynapple not set up")
+    if not alignment.exists():
+        from ethograph.utils.download import setup_moll2025_pynapple
+        setup_moll2025_pynapple(npz_dir)
+    assert alignment.exists(), f"alignment.nwb not found at {alignment}"
+
+    viewer, meta = gui
+    io = meta.io_widget
+    io._clear_all_line_edits()
+
+    meta.app_state._suspend_local_autoload = True
+    io.nc_file_path_edit.setText(str(speed_npz))
+    meta.app_state.nc_file_path = str(speed_npz)
+    meta.app_state._suspend_local_autoload = False
+
+    meta.data_widget.on_load_clicked()
+    QApplication.processEvents()
+
+    assert meta.app_state.ready, "Failed to load Moll2025 pynapple"
+    return viewer, meta

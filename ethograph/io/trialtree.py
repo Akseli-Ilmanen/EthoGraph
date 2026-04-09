@@ -105,7 +105,7 @@ class TrialTree(xr.DataTree):
         time_dims = [d for d in ds.dims if "time" in d.lower()]
 
         sel = {dim: slice(start, stop) for dim in time_dims}
-        sliced = ds.sel(sel, method="nearest")
+        sliced = ds.sel(sel)
 
         for dim in time_dims:
             if dim in sliced.coords:

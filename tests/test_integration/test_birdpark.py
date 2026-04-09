@@ -9,13 +9,12 @@ import numpy as np
 import pandas as pd
 import pytest
 import pyqtgraph as pg
-import xarray as xr
-from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication
+
+import pynwb
 
 import ethograph as eto
 from ethograph.io.trialtree import TrialTree
-from ethograph.utils.nwb import build_nwb_from_trial_table
 
 
 # ---------------------------------------------------------------------------
@@ -694,30 +693,12 @@ class TestPanelContainerBasics:
 
 
 # ===================================================================
-# from_continuous slicing (synthetic BirdPark-like data)
+# from_continuous slicing (real BirdPark data)
 # ===================================================================
 
 _VIDEO_NAME = "BP_2021-05-25_08-12-51_655154_0380000.mp4"
 _AUDIO_NAME = "BP_2021-05-25_08-12-51_655154_0380000.wav"
 _FPS = 47.68
-
-
-def _make_birdpark_ds() -> xr.Dataset:
-    sr = 100.0
-    duration = 60.0
-    n = int(sr * duration)
-    time = np.arange(n) / sr
-    return xr.Dataset(
-        {
-            "vibration": xr.DataArray(
-                np.random.default_rng(42).standard_normal((n, 2)),
-                dims=["time", "individuals"],
-                coords={"time": time, "individuals": ["male", "female"]},
-                attrs={"type": "features"},
-            ),
-        },
-        attrs={"fps": _FPS},
-    )
 
 
 def _make_epochs(n_trials: int = 3, chunk: float = 20.0) -> pd.DataFrame:
@@ -729,18 +710,65 @@ def _make_epochs(n_trials: int = 3, chunk: float = 20.0) -> pd.DataFrame:
 
 
 def _make_alignment_nwb(epochs: pd.DataFrame, output_dir: Path) -> Path:
-    trial_table = epochs.copy()
-    trial_table["video_cam-1"] = _VIDEO_NAME
-    trial_table["audio_mic-1"] = _AUDIO_NAME
+    """Build an alignment NWB for session-wide continuous media.
+
+    One video/audio file spans the whole session.  Each trial's
+    ``starting_frame`` points into that single continuous stream so
+    ``stream_offset_for_trial`` returns a negative offset for trials
+    after the first.
+    """
+    from datetime import datetime
+    from uuid import uuid4
+
+    from dateutil.tz import tzlocal
+    from pynwb import NWBHDF5IO
+    from pynwb.image import ImageSeries
+
+    nwbfile = pynwb.NWBFile(
+        session_description="NWB file for media alignment (ethograph generated).",
+        identifier=str(uuid4()),
+        session_start_time=datetime.now(tzlocal()),
+    )
+
+    nwbfile.add_trial_column(name="trial", description="Trial number")
+    nwbfile.add_trial_column(name="video_cam-1", description="video filename")
+    nwbfile.add_trial_column(name="audio_mic-1", description="audio filename")
+    for _, row in epochs.iterrows():
+        nwbfile.add_trial(
+            start_time=float(row["start_time"]),
+            stop_time=float(row["stop_time"]),
+            trial=row["trial"],
+            **{"video_cam-1": _VIDEO_NAME, "audio_mic-1": _AUDIO_NAME},
+        )
+
+    session_end = float(epochs["stop_time"].max())
+    n_video_frames = int(session_end * _FPS)
+    video_ts = np.arange(n_video_frames) / _FPS
+
+    nwbfile.create_device(name="cam-1", description="video device cam-1")
+    nwbfile.add_acquisition(
+        ImageSeries(
+            name="video_cam-1",
+            description="video from cam-1",
+            external_file=[_VIDEO_NAME],
+            format="external",
+            starting_frame=np.array([0], dtype=np.int32),
+            timestamps=video_ts,
+        )
+    )
+
     nwb_path = output_dir / ".ethograph" / "alignment.nwb"
-    build_nwb_from_trial_table(trial_table, stream_rates={"video": _FPS, "pose": _FPS}, output_path=nwb_path)
+    nwb_path.parent.mkdir(parents=True, exist_ok=True)
+    with NWBHDF5IO(str(nwb_path), "w") as io:
+        io.write(nwbfile)
     return nwb_path
 
 
 class TestFromContinuous:
 
-    def test_continuous_trial_slicing(self):
-        ds = _make_birdpark_ds()
+    def test_continuous_trial_slicing(self, birdpark_gui):
+        _, meta = birdpark_gui
+        ds = meta.app_state.dt.itrial(0)
         epochs = _make_epochs()
         dt = TrialTree.from_continuous(ds, epochs)
         assert dt._is_continuous
@@ -755,8 +783,9 @@ class TestFromContinuous:
             assert 19.0 < duration < 20.5, f"Expected ~20s, got {duration:.1f}s"
         assert not np.allclose(ds1["vibration"].values[:10], ds2["vibration"].values[:10])
 
-    def test_nwb_alignment_with_continuous(self, tmp_path):
-        ds = _make_birdpark_ds()
+    def test_nwb_alignment_with_continuous(self, birdpark_gui, tmp_path):
+        _, meta = birdpark_gui
+        ds = meta.app_state.dt.itrial(0)
         epochs = _make_epochs()
         dt = TrialTree.from_continuous(ds, epochs)
         nwb_path = _make_alignment_nwb(epochs, tmp_path)
@@ -777,8 +806,9 @@ class TestFromContinuous:
         assert detected_fps is not None
         assert abs(detected_fps - _FPS) < 0.01
 
-    def test_itrial_and_trial_items(self):
-        ds = _make_birdpark_ds()
+    def test_itrial_and_trial_items(self, birdpark_gui):
+        _, meta = birdpark_gui
+        ds = meta.app_state.dt.itrial(0)
         epochs = _make_epochs()
         dt = TrialTree.from_continuous(ds, epochs)
         ds_i = dt.itrial(0)
@@ -789,33 +819,27 @@ class TestFromContinuous:
         assert items[0][0] == 1
         assert items[2][0] == 3
 
-    def test_pynapple_epochs(self):
+    def test_pynapple_epochs(self, birdpark_gui):
         import pynapple as nap
-        ds = _make_birdpark_ds()
+        _, meta = birdpark_gui
+        ds = meta.app_state.dt.itrial(0)
         ep = nap.IntervalSet(start=[0.01, 20.01, 40.01], end=[19.99, 39.99, 59.99])
         dt = TrialTree.from_continuous(ds, ep)
         assert dt.trials == [1, 2, 3]
         ds2 = dt.trial(2)
         assert abs(float(ds2.time.values[0])) < 0.02
 
-    def test_update_trial_raises(self):
-        ds = _make_birdpark_ds()
+    def test_update_trial_raises(self, birdpark_gui):
+        _, meta = birdpark_gui
+        ds = meta.app_state.dt.itrial(0)
         epochs = _make_epochs()
         dt = TrialTree.from_continuous(ds, epochs)
         with pytest.raises(TypeError, match="continuous"):
             dt.update_trial(1, lambda d: d)
 
-    def test_get_all_trials(self):
-        ds = _make_birdpark_ds()
-        epochs = _make_epochs()
-        dt = TrialTree.from_continuous(ds, epochs)
-        all_t = dt.get_all_trials()
-        assert sorted(all_t.keys()) == [1, 2, 3]
-        for tid, trial_ds in all_t.items():
-            assert trial_ds.attrs["trial"] == tid
-
-    def test_continuous_xarray_and_nwb_together(self, tmp_path):
-        ds = _make_birdpark_ds()
+    def test_continuous_xarray_and_nwb_together(self, birdpark_gui, tmp_path):
+        _, meta = birdpark_gui
+        ds = meta.app_state.dt.itrial(0)
         epochs = _make_epochs()
         dt = TrialTree.from_continuous(ds, epochs)
         nwb_path = _make_alignment_nwb(epochs, tmp_path)

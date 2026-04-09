@@ -95,16 +95,42 @@ def _is_nwb_file(file_path: str) -> bool:
     return Path(file_path).suffix == ".nwb"
 
 
-def _is_pynapple_path(file_path: str) -> bool:
+def _is_pynapple_path_folder(file_path: str) -> bool:
     """Check if path is a pynapple folder or .npz file."""
     p = Path(file_path)
-    return p.is_dir() or p.suffix == ".npz"
+    return p.suffix == ".npz" or (p.is_dir() and any(p.glob("**/*.npz")))
+    
 
 
-def _is_nwb_project_dir(file_path: str) -> bool:
-    """Check if path is an NWB project directory (created by the NWB wizard)."""
+def _read_dandi_provenance(alignment_path: Path) -> dict | None:
+    """Read DANDI provenance from alignment.nwb using h5py (lightweight)."""
+    import json
+
+    import h5py
+
+    try:
+        with h5py.File(str(alignment_path), "r") as f:
+            prov_ds = f.get("scratch/ethograph_provenance/data")
+            if prov_ds is None:
+                return None
+            val = prov_ds[()]
+            if isinstance(val, bytes):
+                val = val.decode("utf-8")
+            prov = json.loads(str(val))
+            if prov.get("nwb_dandiset_id") and prov.get("nwb_asset_id"):
+                return prov
+    except (OSError, json.JSONDecodeError, KeyError):
+        pass
+    return None
+
+
+def _is_remote_nwb(file_path: str) -> bool:
+    """Check if path is a remote NWB project with DANDI provenance."""
     p = Path(file_path)
-    return p.is_dir() and (p / ".ethograph" / "alignment.nwb").exists()
+    alignment = p / ".ethograph" / "alignment.nwb"
+    if not (p.is_dir() and alignment.exists()):
+        return False
+    return _read_dandi_provenance(alignment) is not None
 
 
 def _resolve_alignment(source_path: str | Path):
@@ -229,7 +255,12 @@ def _load_pynapple_dataset(file_path: str) -> LoadResult:
     trials_ep = _ensure_trials_ep(data, trials_ep)
     catalog = catalog_from_pynapple(data, trials_ep)
     loader = PynappleLoader(data, trials_ep, catalog)
-    nwb_path = file_path if _is_nwb_file(file_path) else None
+
+    parent = Path(file_path).parent if not Path(file_path).is_dir() else Path(file_path)
+    sidecar = parent / ".ethograph" / "alignment.nwb"
+    nwb_path = str(sidecar) if sidecar.exists() else None
+        
+        
     trial_ids = list(range(1, len(trials_ep) + 1))
 
     sio = make_nwb_alignment(nwb_path)
@@ -259,15 +290,14 @@ def _load_pynapple_dataset(file_path: str) -> LoadResult:
     )
 
 
-def _load_nwb_project(project_dir: str) -> LoadResult:
-    """Load an NWB project directory created by the NWB import wizard.
+def _load_remote_nwb(project_dir: str) -> LoadResult:
+    """Load a remote NWB dataset via DANDI streaming.
 
-    Alignment and provenance are always read from ``.ethograph/alignment.nwb``.
-    Provenance determines the data source:
-    - ``nwb_local``: local NWB path → pynapple loading
-    - ``nwb_dandiset_id`` + ``nwb_asset_id``: remote DANDI → NWBLoader
+    Reads DANDI provenance (``nwb_dandiset_id``, ``nwb_asset_id``) from
+    ``.ethograph/alignment.nwb`` and streams the NWB file via ``remfile``.
     """
     from ethograph.io.catalog import read_trial_intervals
+    from ethograph.utils.dandi import open_nwb_dandi
 
     project_path = Path(project_dir)
     alignment_path = project_path / ".ethograph" / "alignment.nwb"
@@ -275,88 +305,44 @@ def _load_nwb_project(project_dir: str) -> LoadResult:
     sio = make_nwb_alignment(alignment_path)
     provenance = sio.provenance or {}
 
-    nwb_source = provenance.get("nwb_local")
+    dandiset_id = provenance["nwb_dandiset_id"]
+    asset_id = provenance["nwb_asset_id"]
 
+    nwb_obj, nwb_io, h5_file, rf = open_nwb_dandi(dandiset_id, asset_id)
+    catalog, combo_cat = catalog_from_nwb(h5_file)
+    trial_intervals = read_trial_intervals(h5_file)
+    loader = NWBLoader(h5_file, catalog, combo_catalog=combo_cat)
 
-    if nwb_source and Path(nwb_source).exists():
-        # Local NWB: load via pynapple
-        from ethograph.io.pynapple import load_nap_data
+    if trial_intervals:
+        loader.set_trial_intervals(trial_intervals)
+        trial_ids = list(range(1, len(trial_intervals) + 1))
+    else:
+        trial_ids = [1]
 
-        data, trials_ep = load_nap_data(nwb_source)
-        trials_ep = _ensure_trials_ep(data, trials_ep)
-        catalog = catalog_from_pynapple(data, trials_ep)
-        loader = PynappleLoader(data, trials_ep, catalog)
-        trial_ids = list(range(1, len(trials_ep) + 1))
-
-        converter = PynappleLabelConverter(data, trials_ep)
-        all_labels_df = converter.resolve_labels(
-            source_path=nwb_source,
-            trial_ids=trial_ids,
-            labels_path=project_path / "labels.tsv",
-        )
-        metadata_df, metadata_path = load_metadata_df(
-            source_path=nwb_source,
-            nwb_alignment=sio,
-            trial_ids=trial_ids,
-        )
-        return LoadResult(
-            dt=None,
-            trial_ids=trial_ids,
-            nwb_alignment=sio,
-            metadata_df=metadata_df,
-            metadata_path=metadata_path,
-            all_labels_df=all_labels_df,
-            catalog=catalog,
-            data_loader=loader,
-            source_collection=_build_source_collection_pynapple(data, trials_ep),
-            nwb_local=nwb_source,
-        )
-
-    dandiset_id = provenance.get("nwb_dandiset_id")
-    asset_id = provenance.get("nwb_asset_id")
-    if dandiset_id and asset_id:
-        # Remote DANDI: load via NWBLoader (direct HDF5 slicing)
-        from ethograph.utils.dandi import open_nwb_dandi
-
-        nwb_obj, nwb_io, h5_file, rf = open_nwb_dandi(dandiset_id, asset_id)
-        catalog, combo_cat = catalog_from_nwb(h5_file)
-        trial_intervals = read_trial_intervals(h5_file)
-        loader = NWBLoader(h5_file, catalog, combo_catalog=combo_cat)
-
-        if trial_intervals:
-            loader.set_trial_intervals(trial_intervals)
-            trial_ids = list(range(1, len(trial_intervals) + 1))
-        else:
-            trial_ids = [1]
-
-        converter = NWBLabelConverter(nwb_path=h5_file)
-        all_labels_df = converter.resolve_labels(
-            source_path=project_dir,
-            trial_ids=trial_ids,
-            trials_df=sio.trials_df,
-            labels_path=project_path / "labels.tsv",
-        )
-        metadata_df, metadata_path = load_metadata_df(
-            source_path=project_dir,
-            nwb_alignment=sio,
-            trial_ids=trial_ids,
-        )
-        return LoadResult(
-            dt=None,
-            trial_ids=trial_ids,
-            nwb_alignment=sio,
-            metadata_df=metadata_df,
-            metadata_path=metadata_path,
-            all_labels_df=all_labels_df,
-            catalog=catalog,
-            data_loader=loader,
-            source_collection=_build_source_collection_nwb(h5_file, combo_cat, trial_intervals),
-            nwb_local=None,
-        )
-
-    raise ValueError(
-        "alignment.nwb provenance has neither 'nwb_local' nor DANDI identifiers. "
-        "Cannot determine data source."
+    converter = NWBLabelConverter(nwb_path=h5_file)
+    all_labels_df = converter.resolve_labels(
+        source_path=project_dir,
+        trial_ids=trial_ids,
+        trials_df=sio.trials_df,
+        labels_path=project_path / "labels.tsv",
+    )
+    metadata_df, metadata_path = load_metadata_df(
+        source_path=project_dir,
+        nwb_alignment=sio,
+        trial_ids=trial_ids,
+    )
+    return LoadResult(
+        dt=None,
+        trial_ids=trial_ids,
+        nwb_alignment=sio,
+        metadata_df=metadata_df,
+        metadata_path=metadata_path,
+        all_labels_df=all_labels_df,
+        catalog=catalog,
+        data_loader=loader,
+        source_collection=_build_source_collection_nwb(h5_file, combo_cat, trial_intervals),
+        nwb_local=None,
+        nwb_video_folder=str(project_path),
     )
 
 
@@ -424,17 +410,17 @@ def load_dataset(
     """Load dataset from file path.
 
     Supports ``.nc`` (NetCDF), ``.nwb``, ``.npz``, pynapple folders,
-    and NWB project directories (with ``.ethograph/dandi.json``).
+    and remote NWB projects (DANDI provenance in ``.ethograph/alignment.nwb``).
 
     Returns a :class:`LoadResult` with dt, labels, catalog, and metadata.
     """
-    if _is_nwb_project_dir(file_path):
-        return _load_nwb_project(file_path)
+    if _is_remote_nwb(file_path):
+        return _load_remote_nwb(file_path)
 
     if _is_nwb_file(file_path):
         return _load_nwb_dataset(file_path)
 
-    if _is_pynapple_path(file_path):
+    if _is_pynapple_path_folder(file_path):
         return _load_pynapple_dataset(file_path)
 
     if file_path.endswith(".nc"):

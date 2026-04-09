@@ -90,7 +90,7 @@ def test_full_project_load(tmp_path):
     """End-to-end: create alignment.nwb with provenance, load, verify alignment + cameras."""
     import pandas as pd
 
-    from ethograph.io.data_loader import _load_nwb_project
+    from ethograph.io.data_loader import _load_remote_nwb
     from ethograph.labels.tsv_store import init_empty_labels, save_labels_tsv
     from ethograph.utils.nwb import create_alignment_from_streams
 
@@ -140,7 +140,7 @@ def test_full_project_load(tmp_path):
     )
     save_labels_tsv(project_dir / "labels.tsv", init_empty_labels(["1", "2", "3"]))
 
-    result = _load_nwb_project(str(project_dir))
+    result = _load_remote_nwb(str(project_dir))
 
     # Core assertions
     assert result.data_loader is not None

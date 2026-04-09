@@ -921,44 +921,8 @@ class NWBImportDialog(QDialog):
                 raw_asset=raw_asset,
             )
 
-            nwb = widget.nwbfile
-            cameras_with_pose = widget.available_cameras
-            video_info = widget.video_info
-            dandi_asset_id = (processed_asset or raw_asset).identifier
 
-            # Fallback: discover video assets from DANDI when NWB has
-            # no ImageSeries or the URL resolution failed.
-            has_usable_urls = any(info.get("url") for info in video_info.values())
-            if not has_usable_urls:
-                asset_id = processed_asset.identifier if processed_asset else None
-                dandi_videos = find_video_assets(dandiset_id, nwb, asset_id=asset_id)
-                if dandi_videos:
-                    discovered = {stem: url for stem, url in dandi_videos}
-                    for name, info in video_info.items():
-                        for stem, url in discovered.items():
-                            if name.lower() in stem.lower() or stem.lower() in name.lower():
-                                info["url"] = url
-                                discovered.pop(stem)
-                                break
-                    for stem, url in discovered.items():
-                        video_info[stem] = {"url": url, "start": 0.0, "end": 0.0}
 
-            if video_info:
-                with ThreadPoolExecutor(max_workers=max(1, len(video_info))) as pool:
-                    futures = {
-                        name: pool.submit(probe_dandi_video_metadata, info["url"])
-                        for name, info in video_info.items() if info.get("url")
-                    }
-                    for name, future in futures.items():
-                        try:
-                            video_info[name].update(future.result(timeout=30))
-                        except Exception:
-                            pass
-
-            session_assets_dict = {"raw": raw_asset, "processed": processed_asset}
-            behavioral = probe_behavioral_series(nwb)
-            labels = probe_label_sources(nwb)
-            ephys = probe_electrical_series(nwb)
             return nwb, cameras_with_pose, video_info, behavioral, labels, ephys, session_assets_dict, dandi_asset_id
 
         progress = BusyProgressDialog("Accessing NWB metadata...", parent=self)

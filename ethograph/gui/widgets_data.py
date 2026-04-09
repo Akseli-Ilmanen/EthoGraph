@@ -831,6 +831,12 @@ class DataWidget(QWidget):
         """Phase 6: Create controls, restore defaults, enable UI."""
         self._create_trial_controls()
 
+        # TrialsWidget._apply_filters may have overwritten app_state.trials
+        # with an empty list (e.g. when metadata_df mismatches trial_ids).
+        # Restore from the authoritative LoadResult.
+        if not self.app_state.trials and ctx.trials:
+            self.app_state.trials = ctx.trials
+
         self._restore_or_set_defaults()
         self._set_controls_enabled(True)
         self.app_state.ready = True

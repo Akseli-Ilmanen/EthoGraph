@@ -174,7 +174,6 @@ class HelpWidget(QWidget):
             print(f"  Store type: {type(store).__name__} (backend={store.backend})")
             print(f"  Features: {store.features}")
             print(f"  Dims: {list(store.dims.keys())}")
-            print(f"  Colors: {store.colors}")
             print(f"  Changepoint names: {store.changepoint_names}")
             if hasattr(store, '_ds'):
                 store_ds = store._ds
