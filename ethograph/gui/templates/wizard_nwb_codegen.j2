@@ -5,7 +5,7 @@ import natsort
 import pandas as pd
 from pathlib import Path
 import ethograph as eto
-from ethograph.io.nwb_alignment import alignment_media_per_trial
+from ethograph.io.nwb_alignment import align_media_per_trial
 {% if any_pose %}
 from movement.io import load_poses
 {% endif %}
@@ -73,7 +73,7 @@ nwb_path = Path("{{ output_path }}").parent / ".ethograph" / "alignment.nwb"
 nwb_path = Path(".ethograph") / "alignment.nwb"
 {% endif %}
 
-alignment_media_per_trial(
+align_media_per_trial(
     trial_table=session_table,
     stream_rates={{ stream_rates_literal }},
     output_path=nwb_path,

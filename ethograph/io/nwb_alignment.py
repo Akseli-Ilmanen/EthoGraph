@@ -1050,7 +1050,7 @@ def _resolve_media_path(filename: Any, media_root: Path | None) -> Path | None:
     return path if path.exists() else None
 
 
-def alignment_media_per_trial(
+def align_media_per_trial(
     trial_table: pd.DataFrame,
     stream_rates: dict[str, float] | None = None,
     output_path: Path | None = None,
@@ -1149,7 +1149,7 @@ def alignment_media_per_trial(
 
 
 
-def alignment_media_from_streams(
+def align_media_from_streams(
     trials: pd.DataFrame,
     streams: list[dict],
     output_path: str | Path,
@@ -1309,3 +1309,31 @@ def alignment_media_from_streams(
         io.write(nwbfile)
 
     return output
+
+
+from pathlib import Path
+import numpy as np
+from pynwb import NWBHDF5IO
+
+
+def update_trials_columns(
+    nwb_path: Path,
+    trial_column: str,
+    updates: dict[int, dict[str, float]],
+) -> None:
+    """Update columns of the trials table for rows identified by ``trial_column``."""
+    with NWBHDF5IO(str(nwb_path), mode="r+", load_namespaces=True) as io:
+        nwbfile = io.read()
+        table = nwbfile.intervals["trials"] if "trials" in nwbfile.intervals else nwbfile.trials
+        if table is None:
+            raise KeyError("No trials table found in nwbfile.intervals or nwbfile.trials")
+
+        trial_ids = np.asarray(table[trial_column][:])
+        for trial_id, column_updates in updates.items():
+            row_idx = np.where(trial_ids == trial_id)[0]
+            if row_idx.size == 0:
+                raise KeyError(f"Trial {trial_id} not found in {trial_column!r}")
+            for col_name, value in column_updates.items():
+                table[col_name].data[row_idx[0]] = value
+
+        io.write(nwbfile)
