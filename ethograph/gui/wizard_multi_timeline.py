@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
-from collections import Counter
+import math
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -34,11 +33,8 @@ from qtpy.QtWidgets import (
 
 from ethograph.gui.wizard_multi_codegen import generate_alignment_code
 from ethograph.gui.dialog_function_params import _do_open_source
-from ethograph.io.time_model import TimeRange
 from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
-from ethograph.utils.stream_durations import get_audio_duration, get_ephys_duration, get_pose_duration, get_video_duration
-from ethograph.utils.xr_utils import get_time_coord
 
 logger = logging.getLogger(__name__)
 
@@ -180,89 +176,51 @@ def draw_session_timeline(
 ) -> float:
     """Draw a timeline from NWB acquisition ImageSeries.
 
-    Each ImageSeries with ``external_file`` gets one row.  Per-file bars
-    are drawn using ``starting_frame`` + ``timestamps`` (or ``rate``) to
-    determine each file's time span.  Trial boundaries from the trials
-    table are shown as dotted vertical lines.
+    Each ImageSeries with ``external_file`` gets one row.  Time spans are
+    read via ``NWBAlignment.file_time_spans``.  Trial boundaries from the
+    trials table are shown as dotted vertical lines.
     """
     from ethograph.io.nwb_alignment import NWBAlignment
 
     sio = nwb_alignment
     items: list = items_out if items_out is not None else []
 
-    nwb = sio.nwb if isinstance(sio, NWBAlignment) else None
-    if nwb is None or not nwb.acquisition:
-        return 1.0
+    if not isinstance(sio, NWBAlignment) or not sio.nwb or not sio.nwb.acquisition:
+        return 0.0
 
-    # Collect acquisition items with external files
-    acq_items: list[tuple[str, str, Any]] = []  # (label, stream, series)
-    for acq_name, series in nwb.acquisition.items():
-        if not hasattr(series, "external_file") or not series.external_file:
-            continue
-        stream = acq_name.split("_", 1)[0] if "_" in acq_name else acq_name
-        acq_items.append((acq_name, stream, series))
+    # Collect acquisition names that have external files
+    acq_names = [
+        name for name, series in sio.nwb.acquisition.items()
+        if getattr(series, "external_file", None)
+    ]
+    if not acq_names:
+        return 0.0
 
-    if not acq_items:
-        return 1.0
-
-    n_rows = len(acq_items)
-    rows_rev = list(reversed(acq_items))
-    y_ticks = [(i + 0.5, rows_rev[i][0]) for i in range(n_rows)]
+    n_rows = len(acq_names)
+    rows_rev = list(reversed(acq_names))
+    y_ticks = [(i + 0.5, rows_rev[i]) for i in range(n_rows)]
     plot.getAxis("left").setTicks([y_ticks])
     plot.setYRange(-0.2, n_rows + 0.2)
 
     max_t = 0.0
 
-    # --- Draw per-file bars from ImageSeries timing ---
-    for row_idx, (acq_name, stream, series) in enumerate(rows_rev):
+    for row_idx, acq_name in enumerate(rows_rev):
+        stream = acq_name.split("_", 1)[0] if "_" in acq_name else acq_name
+        device = acq_name.split("_", 1)[1] if "_" in acq_name else None
+
         color = pg.mkColor(MODALITY_COLORS.get(stream, "#888888"))
         color.setAlpha(160)
         bar_brush = pg.mkBrush(color)
         bar_pen = pg.mkPen(color.lighter(130), width=1)
         y_base = row_idx
 
-        files = list(series.external_file)
-        sf = (
-            [int(f) for f in series.starting_frame]
-            if getattr(series, "starting_frame", None) is not None
-            else [0] * len(files)
-        )
-        timestamps = getattr(series, "timestamps", None)
-        rate = getattr(series, "rate", None)
-        starting_time = float(series.starting_time) if getattr(series, "starting_time", None) is not None else 0.0
-
-        for i in range(len(files)):
-            frame_start = sf[i]
-            frame_end = sf[i + 1] if i + 1 < len(files) else None
-
-            if timestamps is not None and len(timestamps) > 0:
-                ts = np.asarray(timestamps)
-                t_start = float(ts[frame_start]) if frame_start < len(ts) else 0.0
-                if frame_end is not None and frame_end < len(ts):
-                    t_end = float(ts[frame_end - 1])
-                else:
-                    t_end = float(ts[-1])
-            elif rate and rate > 0:
-                t_start = starting_time + frame_start / rate
-                if frame_end is not None:
-                    t_end = starting_time + frame_end / rate
-                else:
-                    t_end = t_start + 1.0
-            else:
-                continue
-
-            if t_end <= t_start:
-                continue
-
-            bar = _make_rounded_bar(
-                t_start, t_end, y_base + 0.3, y_base + 0.7,
-                bar_brush, bar_pen,
-            )
+        for _filepath, t_start, t_end in sio.file_time_spans(stream, device):
+            bar = _make_rounded_bar(t_start, t_end, y_base + 0.3, y_base + 0.7, bar_brush, bar_pen)
             plot.addItem(bar)
             items.append(bar)
             max_t = max(max_t, t_end)
 
-    # --- Trial boundary lines ---
+    # Trial boundary lines
     trial_df = getattr(sio, "trials_df", pd.DataFrame())
     trials = trial_df["trial"].tolist() if not trial_df.empty and "trial" in trial_df.columns else []
 
@@ -276,29 +234,30 @@ def draw_session_timeline(
         items.append(line)
 
         t1 = sio.stop_time(trial_id)
-        mid = (t0 + (t1 or t0 + 1.0)) / 2
+        label_x = (t0 + t1) / 2 if t1 is not None else t0
         lbl = pg.TextItem(str(trial_id), color="#aaaaaa", anchor=(0.5, 1.0))
-        lbl.setPos(mid, n_rows + 0.1)
+        lbl.setPos(label_x, n_rows + 0.1)
         plot.addItem(lbl)
         items.append(lbl)
 
-        if t1:
+        if t1 is not None:
             max_t = max(max_t, t1)
 
-    total = max(max_t, 1.0)
-    plot.setXRange(0, min(total, 120), padding=0.02)
-    return total
+    if max_t <= 0.0:
+        return 0.0
+    plot.setXRange(0, min(max_t, 120), padding=0.02)
+    return max_t
 
 
 
 def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
-    durations: dict[str, dict[str, float]] = {}
+    from ethograph.utils.stream_durations import probe_duration
 
+    durations: dict[str, dict[str, float]] = {}
     for name in ["video", "pose", "audio", "ephys"]:
         cfg: ModalityConfig = getattr(state, name)
         if not cfg.enabled:
             continue
-        durs: dict[str, float] = {}
 
         if cfg.pattern and cfg.pattern.files:
             files = cfg.pattern.files
@@ -307,17 +266,11 @@ def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
         else:
             continue
 
+        durs: dict[str, float] = {}
         for f in files:
             fp = str(f)
-            dur = None
-            if name == "video":
-                dur = get_video_duration(fp)
-            elif name == "audio":
-                dur = get_audio_duration(fp)
-            elif name == "pose":
-                dur = get_pose_duration(fp, cfg.fps)
-            elif name == "ephys":
-                dur = get_ephys_duration(fp)
+            fps = cfg.fps if name == "pose" else None
+            dur = probe_duration(fp, name, fps)
             if dur is not None:
                 durs[fp] = dur
 
@@ -505,191 +458,114 @@ class TimelinePage(QWidget):
         self._plot.getAxis("left").setTicks([y_ticks])
         self._plot.setYRange(-0.2, n_rows + 0.2)
 
-        max_time = 0.0
-
-        # Build per-trial cumulative offsets for aligned mode
-        trial_cum_offsets: dict[int, float] = {}
-        trial_durs: list[float] = []
-        if state.files_aligned_to_trials and state.trial_table is not None:
-            n_trials = len(state.trial_table)
-
-            if state.is_fully_aligned() and {
-                "start_time", "stop_time",
-            }.issubset(state.trial_table.columns):
-                starts = pd.to_numeric(state.trial_table["start_time"], errors="coerce")
-                stops = pd.to_numeric(state.trial_table["stop_time"], errors="coerce")
-                table_durs = (stops - starts).to_numpy(dtype=float)
-                trial_durs = [float(d) for d in table_durs if np.isfinite(d) and d > 0]
-
-            if len(trial_durs) != n_trials:
-                per_trial: list[list[float]] = [[] for _ in range(n_trials)]
-                for mod_name in ["video", "audio", "pose", "ephys"]:
-                    mod_values = list(durations.get(mod_name, {}).values())
-                    if not mod_values:
-                        continue
-                    last = float(mod_values[-1])
-                    for i in range(n_trials):
-                        d = float(mod_values[i]) if i < len(mod_values) else last
-                        if np.isfinite(d) and d > 0:
-                            per_trial[i].append(d)
-
-                trial_durs = [max(vals) if vals else 0.0 for vals in per_trial]
-
-            cum = 0.0
-            for i, d in enumerate(trial_durs):
-                trial_cum_offsets[i] = cum
-                cum += d
-
-        trial_index_by_key: dict[object, int] = {}
+        # Trial start times by row index (for aligned_to_trial file_mode)
         trial_start_by_index: dict[int, float] = {}
+        trial_index_by_key: dict[object, int] = {}
         if state.trial_table is not None and "trial" in state.trial_table.columns:
             for idx, tid in enumerate(state.trial_table["trial"].tolist()):
                 trial_index_by_key[tid] = idx
                 trial_index_by_key[str(tid)] = idx
-                norm_tid = _normalize_trial_key(tid)
-                if norm_tid is not None:
-                    trial_index_by_key[norm_tid] = idx
-
+                norm = _normalize_trial_key(tid)
+                if norm is not None:
+                    trial_index_by_key[norm] = idx
             if "start_time" in state.trial_table.columns:
                 starts = pd.to_numeric(state.trial_table["start_time"], errors="coerce")
                 for idx, t0 in enumerate(starts.tolist()):
                     if np.isfinite(t0):
                         trial_start_by_index[idx] = float(t0)
 
-        # Group files by device
+        # Map file path → device string for multi-device streams
         file_device_map: dict[str, dict[str, str]] = {}
         file_trial_index_map: dict[str, dict[str, int]] = {}
         for name in enabled_modalities:
             cfg: ModalityConfig = getattr(state, name)
-            if cfg.pattern and cfg.pattern.files:
-                dev_role = "mic" if name == "audio" else "camera"
-                summary = cfg.pattern.summary()
-                if dev_role in summary:
-                    mapping: dict[str, str] = {}
-                    trial_mapping: dict[str, int] = {}
-                    for f in cfg.pattern.files:
-                        row_data = extract_file_row(
-                            f, cfg.pattern.segments, cfg.pattern.tokenize_mode,
-                            regex_pattern=cfg.pattern.regex_pattern,
-                        )
-                        fp = str(f)
-                        mapping[fp] = row_data.get(dev_role, "")
-                        trial_val = _normalize_trial_key(row_data.get("trial"))
-                        if trial_val is not None:
-                            idx = trial_index_by_key.get(trial_val)
-                            if idx is None:
-                                idx = trial_index_by_key.get(str(trial_val))
-                            if idx is not None:
-                                trial_mapping[fp] = idx
-                    file_device_map[name] = mapping
-                    if trial_mapping:
-                        file_trial_index_map[name] = trial_mapping
+            if not (cfg.pattern and cfg.pattern.files):
+                continue
+            dev_role = "mic" if name == "audio" else "camera"
+            summary = cfg.pattern.summary()
+            if dev_role not in summary:
+                continue
+            mapping: dict[str, str] = {}
+            trial_mapping: dict[str, int] = {}
+            for f in cfg.pattern.files:
+                row_data = extract_file_row(
+                    f, cfg.pattern.segments, cfg.pattern.tokenize_mode,
+                    regex_pattern=cfg.pattern.regex_pattern,
+                )
+                fp = str(f)
+                mapping[fp] = row_data.get(dev_role, "")
+                trial_val = _normalize_trial_key(row_data.get("trial"))
+                if trial_val is not None:
+                    idx = trial_index_by_key.get(trial_val) or trial_index_by_key.get(str(trial_val))
+                    if idx is not None:
+                        trial_mapping[fp] = idx
+            file_device_map[name] = mapping
+            if trial_mapping:
+                file_trial_index_map[name] = trial_mapping
 
         # Draw file bars
+        max_time = 0.0
         for row_idx, (label, name, device) in enumerate(rows_reversed):
             cfg: ModalityConfig = getattr(state, name)
             color = pg.mkColor(MODALITY_COLORS.get(name, "#888888"))
             color.setAlpha(160)
+            bar_pen = pg.mkPen(color.lighter(130), width=1)
+            bar_brush = pg.mkBrush(color)
             y_base = row_idx
             offset = cfg.constant_offset
 
             mod_durs = durations.get(name, {})
-            if device is not None and name in file_device_map:
-                dev_map = file_device_map[name]
-                filtered = {fp: dur for fp, dur in mod_durs.items() if dev_map.get(fp) == device}
-            else:
-                filtered = mod_durs
+            filtered = (
+                {fp: dur for fp, dur in mod_durs.items() if file_device_map[name].get(fp) == device}
+                if device is not None and name in file_device_map
+                else mod_durs
+            )
 
-            bar_pen = pg.mkPen(color.lighter(130), width=1)
-            bar_brush = pg.mkBrush(color)
+            cum = 0.0
+            for filepath, dur in filtered.items():
+                if not math.isfinite(dur):
+                    continue
+                if cfg.file_mode == "aligned_to_trial":
+                    trial_idx = file_trial_index_map.get(name, {}).get(filepath)
+                    x_start = offset + trial_start_by_index.get(trial_idx, cum) if trial_idx is not None else offset + cum
+                else:
+                    x_start = offset + cum
+                cum += dur
 
-            if state.files_aligned_to_trials and trial_cum_offsets:
-                cum = 0.0
-                for i, (filepath, dur) in enumerate(filtered.items()):
-                    x_start = offset + trial_cum_offsets.get(i, cum)
-                    bar = _make_rounded_bar(
-                        x_start, x_start + dur,
-                        y_base + 0.3, y_base + 0.7,
-                        bar_brush, bar_pen,
-                    )
-                    self._plot.addItem(bar)
-                    self._items.append(bar)
-                    end = x_start + dur
-                    if end > max_time:
-                        max_time = end
-                    cum += dur
-            else:
-                aligned_cum = 0.0
-                for filepath, dur in filtered.items():
-                    x_start = offset
-                    if cfg.file_mode == "aligned_to_trial":
-                        trial_idx = file_trial_index_map.get(name, {}).get(filepath)
-                        if trial_idx is not None:
-                            if trial_start_by_index:
-                                x_start = offset + trial_start_by_index.get(trial_idx, 0.0)
-                            elif trial_cum_offsets:
-                                x_start = offset + trial_cum_offsets.get(trial_idx, aligned_cum)
-                            else:
-                                x_start = offset + aligned_cum
-                        else:
-                            x_start = offset + aligned_cum
+                if not math.isfinite(x_start):
+                    continue
+                bar = _make_rounded_bar(x_start, x_start + dur, y_base + 0.3, y_base + 0.7, bar_brush, bar_pen)
+                self._plot.addItem(bar)
+                self._items.append(bar)
+                max_time = max(max_time, x_start + dur)
 
-                    bar = _make_rounded_bar(
-                        x_start, x_start + dur,
-                        y_base + 0.3, y_base + 0.7,
-                        bar_brush, bar_pen,
-                    )
-                    self._plot.addItem(bar)
-                    self._items.append(bar)
-                    end = x_start + dur
-                    if end > max_time:
-                        max_time = end
-                    if cfg.file_mode == "aligned_to_trial":
-                        aligned_cum += dur
+        # Draw trial boundaries from start_time column
+        if state.trial_table is not None and "start_time" in state.trial_table.columns:
+            for _, row in state.trial_table.iterrows():
+                t0 = float(row["start_time"])
+                if not math.isfinite(t0):
+                    continue
+                line = pg.InfiniteLine(
+                    pos=t0, angle=90,
+                    pen=pg.mkPen("#ffffff", width=1, style=Qt.PenStyle.DotLine),
+                )
+                self._plot.addItem(line)
+                self._items.append(line)
 
-        # Draw trial boundaries
-        if state.trial_table is not None and "trial" in state.trial_table.columns:
-            trial_ids = state.trial_table["trial"].tolist()
-            if state.files_aligned_to_trials and trial_durs:
-                cum = 0.0
-                for i, tid in enumerate(trial_ids):
-                    d = trial_durs[i] if i < len(trial_durs) else trial_durs[-1]
-                    line = pg.InfiniteLine(
-                        pos=cum, angle=90,
-                        pen=pg.mkPen("#ffffff", width=1, style=Qt.PenStyle.DotLine),
-                    )
-                    self._plot.addItem(line)
-                    self._items.append(line)
+                tid = row.get("trial", "")
+                lbl = pg.TextItem(str(tid), color="#aaaaaa", anchor=(0.5, 1.0))
+                lbl.setPos(t0, n_rows + 0.1)
+                self._plot.addItem(lbl)
+                self._items.append(lbl)
 
-                    label = pg.TextItem(str(tid), color="#aaaaaa", anchor=(0.5, 1.0))
-                    label.setPos(cum + d / 2, n_rows + 0.1)
-                    self._plot.addItem(label)
-                    self._items.append(label)
-                    cum += d
+                if "stop_time" in state.trial_table.columns:
+                    t1 = float(row["stop_time"])
+                    if math.isfinite(t1):
+                        max_time = max(max_time, t1)
 
-            elif "start_time" in state.trial_table.columns:
-                for _, row in state.trial_table.iterrows():
-                    t0 = float(row["start_time"])
-                    line = pg.InfiniteLine(
-                        pos=t0, angle=90,
-                        pen=pg.mkPen("#ffffff", width=1, style=Qt.PenStyle.DotLine),
-                    )
-                    self._plot.addItem(line)
-                    self._items.append(line)
-
-                    tid = row.get("trial", "")
-                    label = pg.TextItem(str(tid), color="#aaaaaa", anchor=(0.5, 1.0))
-                    label.setPos(t0, n_rows + 0.1)
-                    self._plot.addItem(label)
-                    self._items.append(label)
-
-                    if "stop_time" in state.trial_table.columns:
-                        t1 = float(row["stop_time"])
-                        if t1 > max_time:
-                            max_time = t1
-
-        self._total_duration = max(max_time, 1.0)
-        self._plot.setXRange(0, min(self._total_duration, 120), padding=0.02)
+        if max_time > 0.0 and math.isfinite(max_time):
+            self._total_duration = max_time
+            self._plot.setXRange(0, min(max_time, 120), padding=0.02)
 
     # ------------------------------------------------------------------
     # Aligned table view

@@ -581,7 +581,7 @@ def _wizard_single_media_helper(
     audio_offset: float | None = None,
 ):
     """Create a minimal NWB alignment file for a single-trial wizard."""
-    from ethograph.utils.nwb import build_nwb_from_trial_table
+    from ethograph.io.nwb_alignment import alignment_media_per_trial
 
     row: dict = {"trial": 1, "start_time": 0.0}
 
@@ -622,7 +622,7 @@ def _wizard_single_media_helper(
         output_dir = Path.cwd()
 
     nwb_path = output_dir / ".ethograph" / "alignment.nwb"
-    build_nwb_from_trial_table(
+    alignment_media_per_trial(
         trial_table, stream_rates=stream_rates, output_path=nwb_path
     )
 

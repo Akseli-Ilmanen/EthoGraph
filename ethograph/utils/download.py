@@ -182,12 +182,13 @@ def download_assets(
 
 def build_alignment_nwb(key: str) -> None:
     """Create an alignment.nwb from the dataset's media mapping and NC file."""
-    ds = DATASETS[key]
-    media_rows = ds.get("media")
+    dataset = DATASETS[key]
+    media_rows = dataset.get("media")
     if not media_rows:
         return
+    
     dest = dataset_dir(key)
-    nc_filename = ds.get("nc_filename")
+    nc_filename = dataset.get("nc_filename")
     if not nc_filename:
         return
     nc_path = dest / nc_filename
@@ -196,15 +197,33 @@ def build_alignment_nwb(key: str) -> None:
 
     import pandas as pd
     import ethograph as eto
-    from ethograph.utils.nwb import build_nwb_from_trial_table
+    from ethograph.io.nwb_alignment import alignment_media_per_trial
+    from ethograph.utils.stream_durations import get_audio_duration, get_video_duration
 
     dt = eto.open(str(nc_path))
     trials = dt.trials
-    fps = dt.itrial(0).attrs.get("fps", None)
+    fps = dt.itrial(0).fps
+    
 
+        
+        
     rows = []
     for trial_id, media in zip(trials, media_rows):
-        row = {"trial": trial_id}
+        
+        if "video_cam-1" in media:
+            video_path = dest / media["video_cam-1"]
+            stop_time = get_video_duration(str(video_path))
+        elif "audio_mic-1" in media:
+            audio_path = dest / media["audio_mic-1"]
+            stop_time = get_audio_duration(str(audio_path))
+        elif key == "canary":
+            audio_path = dest / media["audio_file"]
+            stop_time = get_audio_duration(str(audio_path))
+        elif key == "lockbox":
+            stop_time = dt.trial(trial_id).time.values[-1]
+        
+        
+        row = {"trial": trial_id, "start_time": 0, "stop_time": stop_time}
         row.update(media)
         rows.append(row)
 
@@ -224,7 +243,7 @@ def build_alignment_nwb(key: str) -> None:
             if sr is not None:
                 stream_rates["audio"] = float(sr)
 
-    build_nwb_from_trial_table(trial_table, stream_rates=stream_rates, output_path=nwb_path)
+    alignment_media_per_trial(trial_table, stream_rates=stream_rates, output_path=nwb_path)
     logger.info("Created alignment NWB: %s", nwb_path)
 
 

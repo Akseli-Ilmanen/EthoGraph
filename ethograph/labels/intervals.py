@@ -523,11 +523,9 @@ def _resolve_overlaps(df: pd.DataFrame, eps: float = 1e-3) -> pd.DataFrame:
     for ind, group in df.groupby("individual", sort=False):
         group = group.sort_values("onset_s").reset_index(drop=True)
         for i in range(len(group) - 1):
-            if group.at[i, "offset_s"] > group.at[i + 1, "onset_s"]:
+            if group.at[i, "offset_s"] > group.at[i + 1, "onset_s"] - eps:
                 if group.at[i, "labels"] != group.at[i + 1, "labels"]:
                     group.at[i, "offset_s"] = group.at[i + 1, "onset_s"] - eps
-            elif group.at[i, "offset_s"] == group.at[i + 1, "onset_s"]:
-                group.at[i, "offset_s"] = group.at[i + 1, "onset_s"] - eps
         groups.append(group)
 
     result = pd.concat(groups, ignore_index=True)
