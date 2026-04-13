@@ -44,7 +44,10 @@ class EthographSeq(crowsetta.interface.SeqLike):
     @classmethod
     def from_file(cls, annot_path: str | Path, **kwargs) -> EthographSeq:
         annot_path = Path(annot_path)
-        df = pd.read_csv(annot_path, sep="\t", encoding="utf-8-sig")
+        if annot_path.suffix.lower() in (".xlsx", ".xls"):
+            df = pd.read_excel(annot_path)
+        else:
+            df = pd.read_csv(annot_path, sep=None, engine="python", encoding="utf-8-sig")
         return cls(
             onsets_s=df["onset_s"].values,
             offsets_s=df["offset_s"].values,

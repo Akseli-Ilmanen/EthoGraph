@@ -116,20 +116,18 @@ ethograph/labels/
     tsv_store.py              # TSV file I/O, per-trial access, validation (n_samples per-trial metadata)
     predictions.py            # Load model predictions (.npy/.pickle), confidence via 1-entropy
     crowsetta_format.py       # EthographSeq Crowsetta format (export adapter, int→string labels)
-    converters.py             # Crowsetta/NWB import converters
+    converters.py             # Crowsetta/pynapple import converters
     export.py                 # enrich_labels_df(), correct_offsets_trial()
 
 ethograph/io/
-    catalog.py                # Unified DataCatalog + DataLoader (XarrayLoader, PynappleLoader, NWBLoader)
-    nwb_backend.py            # NWB traversal + combo detection: open_nwb, catalog_nwb, ComboCatalog, load_slice
+    catalog.py                # Unified DataCatalog + DataLoader (XarrayLoader, PynappleLoader), pose series discovery
     trialtree.py              # TrialTree (xr.DataTree subclass)
     time_model.py             # TimeRange, RestrictionWindow, TrialAlignment, TimeSource, SourceCollection, restriction builders
-    time_sources.py           # Concrete adapters: XarrayTrialSource, PynappleSource, NWBTimeSource
+    time_sources.py           # Concrete adapters: XarrayTrialSource, PynappleSource
     dataset.py                # dataset_to_basic_trialtree, downsample_trialtree
-    feature_store.py          # Backwards-compat re-exports from catalog.py
     validation.py             # validate_datatree, extract_type_vars (delegates to catalog)
     pynapple.py               # Pynapple/NWB loading: load_nap_data, detect_trials, changepoint helpers
-    restrict.py               # Re-exports from time_model.py (backwards compat, can be deleted)
+
 
 ethograph/utils/
     io.py                     # Standalone I/O functions
@@ -147,14 +145,13 @@ The codebase has two distinct source protocols:
 - **`PlotSource`** (Protocol) — `name`, `time_range`, `sampling_rate`, `identity`, `get_data(t0, t1)`
 - `FileSource` — wraps any loader with `rate`/`__len__`/`__getitem__` (audioio, ephys, memmap)
 - `XarraySource` — wraps `xr.Dataset`, returns time-sliced datasets from `get_data()`
-- `NWBSource` — lazy HDF5 streaming from NWB TimeSeries/ImageSeries (no xarray conversion, supports remote via remfile)
 - `PynappleSource` — lazy access to pynapple Tsd/TsdFrame objects via `restrict()`
 - `WindowedBuffer` — viewport-aware cache. Loads wider than viewport, reloads on pan past buffer. Works with all PlotSource implementations.
 
 **Navigation layer** (`io/time_model.py` + `io/time_sources.py`) — session-level time metadata:
 - **`TimeSource`** (Protocol) — `name`, `time_range`, `sampling_rate`, `get_data(t0, t1)`
 - `SourceCollection` — registry that computes `union_range`, `intersection_range`, `find_trial(t)`
-- Concrete adapters: `XarrayTrialSource`, `PynappleSource`, `NWBTimeSource`
+- Concrete adapters: `XarrayTrialSource`, `PynappleSource`
 
 `SourceCollection` only uses `time_range` metadata — it never calls `get_data()`.
 
@@ -189,7 +186,7 @@ Core types in `ethograph/io/time_model.py` (canonical home, re-exported from `gu
 
 **`TimeRange`** — immutable time interval with `union()`, `intersect()`, `contains()`, `overlaps()`.
 
-**`TimeSource`** (Protocol) — one time-aligned data source: `name`, `time_range`, `sampling_rate`, `get_data(t0, t1) → (timestamps, values)`. Concrete adapters in `time_sources.py`: `XarrayTrialSource`, `PynappleSource`, `NWBTimeSource`.
+**`TimeSource`** (Protocol) — one time-aligned data source: `name`, `time_range`, `sampling_rate`, `get_data(t0, t1) → (timestamps, values)`. Concrete adapters in `time_sources.py`: `XarrayTrialSource`, `PynappleSource`.
 
 **`SourceCollection`** — Neurosift-inspired registry of `TimeSource` objects. Provides `union_range` (full navigable extent), `intersection_range` (overlap of all sources), `session_range` (min trial start to max trial end), `sources_at(t)`, trial bookmarks (`trial_range`, `find_trial`, `trial_offset`). Built during dataset loading in `data_loader.py`, stored as `app_state.source_collection`.
 
@@ -211,20 +208,19 @@ Core types in `ethograph/io/time_model.py` (canonical home, re-exported from `gu
 
 Replaces the old `type_vars_dict` pattern with two explicit abstractions:
 
-**`DataCatalog`** — declares what's available: features, dimensions (combos), streams. Built by `catalog_from_xarray()`, `catalog_from_pynapple()`, or `catalog_from_nwb()`. Features are auto-detected: all `data_vars` with a time dimension (xarray) or all `Tsd`/`TsdFrame`/`TsdTensor` objects (pynapple) — no `attrs["type"]` annotation needed. The GUI creates combo boxes from `catalog.combos`. Colors are handled separately: the GUI always creates a "Colors" combo populated with all features, with an "rgb suffix" checkbox (default on) that filters to features containing "rgb" in their name.
+**`DataCatalog`** — declares what's available: features, dimensions (combos), streams. Built by `catalog_from_xarray()` or `catalog_from_pynapple()`. Features are auto-detected: all `data_vars` with a time dimension (xarray) or all `Tsd`/`TsdFrame`/`TsdTensor` objects (pynapple) — no `attrs["type"]` annotation needed. The GUI creates combo boxes from `catalog.combos`. Colors are handled separately: the GUI always creates a "Colors" combo populated with all features, with an "rgb suffix" checkbox (default on) that filters to features containing "rgb" in their name.
 
-**`DataLoader`** (Protocol) — backend-agnostic data access. `select(feature, selections, t0, t1) → PlotData`. Follows the `sel_valid` principle: combo selections can be overspecified, loaders ignore dimensions that don't exist on the target feature.
+**`DataLoader`** (Protocol) — backend-agnostic data access. `select(feature, selections, t0, t1) → PlotData`. Callers always pass `t0, t1` (absolute session times for pynapple, trial-relative for xarray). Follows the `sel_valid` principle: combo selections can be overspecified, loaders ignore dimensions that don't exist on the target feature.
 
 **`PlotData`** — source-agnostic dataclass: `time`, `data` (numpy `(T,)` or `(T,D)`), `dim_labels`, `title`, `ylabel`, `color_data`, `changepoints`, `boundary_events`. Consumed by `render_plot_data()` in `plots_lineplot.py`.
 
 **Concrete loaders:**
-- `XarrayLoader` — wraps `xr.Dataset`, delegates to `sel_valid()`. Updated on trial change via `update_ds()`.
-- `PynappleLoader` — wraps raw pynapple dict. Lazy: data never copied to xarray. Uses `restrict()` for trial + time window, column indexing for dim selection.
-- `NWBLoader` — wraps NWB file via `nwb_catalog` + `ComboCatalog`. Supports local and remote (remfile) access. Time slicing via rate-based indexing or `np.searchsorted` on timestamps.
+- `XarrayLoader` — wraps `xr.Dataset`, delegates to `sel_valid()`. Updated on trial change via `update_ds()`. t0/t1 are optional (viewport slicing within the already-per-trial dataset).
+- `PynappleLoader` — stateless: no trial state. Callers pass absolute session times as `t0, t1` to `select()`. The loader `restrict()`-s to that range, subtracts `t0` so returned time starts near 0. Trial management lives in `SourceCollection` / the GUI, not the loader.
+
+NWB files are loaded via pynapple (which handles NWB → in-memory conversion). No dedicated NWB loader exists — pynapple's native NWB support is sufficient. The only direct NWB access is `_find_pose_series_names()` / `_discover_pose_keypoints()` in `catalog.py`, which scan NWB files with h5py to identify `PoseEstimationSeries` leaf names for the keypoints combo.
 
 **Shared column dimensions:** `_compute_shared_column_dims()` (in `catalog.py`) groups TsdFrame objects by their column values. Objects with identical columns (e.g. position & velocity both with x/y/z) share one dimension name → one combo in the GUI.
-
-**NWB Backend** (`nwb_backend.py`): NWB traversal + combo detection in one file. `NWBCatalog` with `TimeSeriesRecord`s, `ComboCatalog` with `filter()`, `load_slice()`, `load_stacked()`.
 
 ### Alignment System: `nwb_alignment.py`
 
@@ -237,7 +233,7 @@ Replaces the old `type_vars_dict` pattern with two explicit abstractions:
 - `resolve_media_path(trial, stream, device, fallback_folder)` — try ImageSeries path → NWB-relative → fallback folder + filename. URL-aware: returns URLs directly, prefers local fallback_folder copy if available.
 - `stream_offset_for_trial(trial, stream, device)` — trial-relative offset derived from ImageSeries timing
 
-**Priority order** (`_resolve_alignment` in `data_loader.py`, used for standalone file loading only): For `.nwb` sources: source NWB → sidecar alignment.nwb → sidecar metadata TSV. For other sources: sidecar alignment.nwb → sidecar metadata TSV. Remote DANDI projects bypass `_resolve_alignment` — `_load_remote_nwb` reads alignment.nwb directly.
+**Priority order** (`_resolve_alignment` in `data_loader.py`): For `.nwb` sources: source NWB trials → sidecar alignment.nwb → bootstrap from ImageSeries → sidecar metadata TSV. For other sources: sidecar alignment.nwb → sidecar metadata TSV.
 
 **Path fallback**: ImageSeries stores original paths (or URLs for DANDI). If files move, `resolve_media_path` extracts the filename and joins with a user-specified fallback folder (`video_folder`, `audio_folder`, etc.).
 
@@ -247,13 +243,11 @@ Replaces the old `type_vars_dict` pattern with two explicit abstractions:
 
 ### Data Loading: `data_loader.py`
 
-The GUI supports loading `.nc` (NetCDF), `.nwb`, `.npz`, pynapple folders, and remote DANDI NWB projects. Dispatch in `data_loader.py`:
-- Remote DANDI project dir (has `.ethograph/alignment.nwb` with DANDI provenance) → `_load_remote_nwb()`: opens via `open_nwb_dandi()` + `NWBLoader` (direct HDF5 slicing). Alignment from alignment.nwb.
-- `.nwb` → `catalog_from_nwb()` + `NWBLoader` (direct HDF5 slicing via `ComboCatalog`).
-- `.npz`/folder → `load_nap_data()` + `catalog_from_pynapple()` + `PynappleLoader`.
-- `.nc` → `eto.open()` + `catalog_from_xarray()`. If `.nc` has `nwb_source` attr, also attaches a `PynappleLoader` for lazy NWB features.
+The GUI supports loading `.nc` (NetCDF), `.npz`, and pynapple folders. NWB files are loaded through pynapple. Dispatch in `data_loader.py`:
+- `.npz`/folder (including NWB via pynapple) → `load_nap_data()` + `catalog_from_pynapple()` + `PynappleLoader`.
+- `.nc` → `eto.open()` + `catalog_from_xarray()` + `XarrayLoader`.
 
-`load_dataset()` returns `(dt, all_labels_df, catalog)` where `catalog` is a `DataCatalog`.
+`load_dataset()` returns a `LoadResult` dataclass with `dt`, `all_labels_df`, `catalog`, `data_loader`, `source_collection`, and metadata.
 
 ### Pose Rendering: `pose_render.py`
 
@@ -291,22 +285,9 @@ data = buffer.get(t0=10.0, t1=20.0)  # SampleSlice(timestamps, values)
 **Source Types:**
 - `FileSource` — audioio, ephys, memmap loaders (existing)
 - `XarraySource` — xr.Dataset slicing (existing)
-- `NWBSource` — **NEW** — Direct HDF5 streaming from NWB TimeSeries/ImageSeries
-  - Lazy metadata read (no file open until needed)
-  - Supports explicit timestamps or rate-based timing
-  - Enabling point for remfile/remote streaming
-- `PynappleSource` — **NEW** — Direct pynapple Tsd/TsdFrame access
+- `PynappleSource` — Direct pynapple Tsd/TsdFrame access
   - Wraps `restrict()` for time slicing
   - No xarray intermediate
-
-**Why no xarray conversion?**
-- `nwb_import.py` currently converts NWB → xarray → DataLoader. This is memory-heavy and slow.
-- New sources are file-aware: HDF5 for NWB, in-memory for pynapple.
-- `WindowedBuffer` caches only the viewport window, not the full dataset.
-- Enables future remote streaming (remfile) without refactoring.
-
-**Usage in DataLoader:**
-Future refactor to pass `NWBSource` / `PynappleSource` directly to plots instead of converting to xarray. Catalog/metadata layer (`DataCatalog`) remains unchanged.
 
 ### Video Sync: `video_sync.py`
 

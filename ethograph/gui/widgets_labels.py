@@ -830,9 +830,13 @@ class LabelsWidget(QWidget):
         Works entirely in the time domain. Also considers audio changepoints.
         """
         store = getattr(self.app_state, 'data_loader', None)
-        if store is not None:
+        if store is not None and hasattr(store, 'get_cp_times'):
             feature = getattr(self.app_state, 'features_sel', None)
-            cp_times = store.get_cp_times(feature)
+            wb = self.app_state.window_bounds
+            if wb is not None:
+                cp_times = store.get_cp_times(feature, t0=wb.start_s, t1=wb.end_s)
+            else:
+                cp_times = store.get_cp_times(feature)
             if len(cp_times) == 0:
                 return t_clicked
             nearest_idx = np.argmin(np.abs(cp_times - t_clicked))

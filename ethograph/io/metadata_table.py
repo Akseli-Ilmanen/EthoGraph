@@ -40,6 +40,93 @@ _LEGACY_SKIP_EXTENSIONS = frozenset({
 })
 
 
+def validate_metadata_timing(df: pd.DataFrame, path: str | Path | None = None) -> None:
+    """Validate a metadata DataFrame for use as trial timing source.
+
+    Raises ValueError with a specific message for every detectable problem.
+    Call this when the user *explicitly* provides a metadata file.
+
+    Required columns: ``trial``, ``start_time``, ``stop_time``.
+    """
+    label = f" in {Path(path).name}" if path else ""
+
+    if df.empty:
+        raise ValueError(f"Metadata table{label} is empty")
+
+    missing = [c for c in ("start_time", "stop_time") if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"Metadata table{label} missing column(s): {', '.join(missing)}"
+        )
+
+    # Check trial column
+    if "trial" not in df.columns:
+        raise ValueError(
+            f"Metadata table{label} missing required 'trial' column"
+        )
+
+    # Check numeric types
+    for col in ("start_time", "stop_time"):
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            raise ValueError(
+                f"Column '{col}'{label} must be numeric, "
+                f"got {df[col].dtype}"
+            )
+
+    starts = df["start_time"].values
+    stops = df["stop_time"].values
+
+    # Check for NaN
+    nan_starts = np.isnan(starts)
+    nan_stops = np.isnan(stops)
+    if nan_starts.any():
+        rows = np.where(nan_starts)[0] + 1
+        raise ValueError(
+            f"NaN in 'start_time'{label} at row(s): {list(rows)}"
+        )
+    if nan_stops.any():
+        rows = np.where(nan_stops)[0] + 1
+        raise ValueError(
+            f"NaN in 'stop_time'{label} at row(s): {list(rows)}"
+        )
+
+    # Check start < stop per row
+    inverted = starts >= stops
+    if inverted.any():
+        rows = np.where(inverted)[0] + 1
+        raise ValueError(
+            f"start_time >= stop_time{label} at row(s): {list(rows)}"
+        )
+
+    # Check monotonic starts
+    if len(starts) > 1 and not np.all(np.diff(starts) > 0):
+        raise ValueError(
+            f"'start_time' values{label} are not strictly increasing"
+        )
+
+    # Check duplicate trial IDs
+    trials = df["trial"].values
+    uniq, counts = np.unique(trials, return_counts=True)
+    dups = uniq[counts > 1]
+    if len(dups) > 0:
+        raise ValueError(
+            f"Duplicate trial IDs{label}: {list(dups)}"
+        )
+
+
+def trials_ep_from_metadata_df(df: pd.DataFrame):
+    """Build a pynapple IntervalSet from a metadata DataFrame with timing columns.
+
+    Returns None if the DataFrame lacks ``start_time`` / ``stop_time``.
+    """
+    if df.empty or "start_time" not in df.columns or "stop_time" not in df.columns:
+        return None
+
+    from ethograph.io.nwb_alignment import _build_trials_ep
+
+    return _build_trials_ep(df)
+
+
 def metadata_tsv_path(nc_path: str | Path) -> Path:
     """Derive the metadata TSV path from a dataset file path."""
     p = Path(nc_path).resolve()
@@ -47,8 +134,12 @@ def metadata_tsv_path(nc_path: str | Path) -> Path:
 
 
 def load_metadata_tsv(path: str | Path) -> pd.DataFrame:
-    """Load a metadata TSV file."""
-    df = pd.read_csv(path, sep="\t")
+    """Load a metadata TSV, CSV, or Excel file."""
+    path = Path(path)
+    if path.suffix.lower() in (".xlsx", ".xls"):
+        df = pd.read_excel(path)
+    else:
+        df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
     if "trial" not in df.columns:
         raise ValueError(f"Metadata table {path} missing required 'trial' column")
     return df
@@ -145,9 +236,11 @@ def load_metadata_df(
     5. Metadata stored on a pynapple IntervalSet.
     6. Empty table with one row per trial.
     """
+    _TABULAR_EXTS = {".tsv", ".csv", ".xlsx", ".xls"}
+
     if metadata_path is not None:
         path = Path(metadata_path)
-        if path.suffix.lower() == ".tsv" and path.exists():
+        if path.suffix.lower() in _TABULAR_EXTS and path.exists():
             return _normalise_trial_column(load_metadata_tsv(path), trial_ids), str(path)
         if path.suffix.lower() == ".nwb" and path.exists():
             alignment = make_nwb_alignment(path)
@@ -158,7 +251,7 @@ def load_metadata_df(
 
     if source_path is not None:
         source = Path(source_path)
-        if source.suffix.lower() == ".tsv" and source.exists():
+        if source.suffix.lower() in _TABULAR_EXTS and source.exists():
             return _normalise_trial_column(load_metadata_tsv(source), trial_ids), str(source)
         if source.suffix.lower() == ".nwb" and source.exists():
             alignment = make_nwb_alignment(source)

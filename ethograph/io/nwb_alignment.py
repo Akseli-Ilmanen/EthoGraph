@@ -780,6 +780,8 @@ def _build_trials_ep(df: pd.DataFrame, session_end: float | None = None):
     for i in range(n - 1):
         if np.isnan(safe_ends[i]):
             safe_ends[i] = starts[i + 1] - _EPOCH_GAP
+        elif safe_ends[i] >= starts[i + 1]:
+            safe_ends[i] = starts[i + 1] - _EPOCH_GAP
 
     trial_ids = df["trial"].values if "trial" in df.columns else np.arange(1, n + 1)
 

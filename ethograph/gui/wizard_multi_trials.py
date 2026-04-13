@@ -421,9 +421,8 @@ class TrialsPage(QWidget):
         if not (result and result[0]):
             return
         path = result[0]
-        sep = "\t" if path.endswith(".tsv") else ","
         try:
-            df = pd.read_csv(path, sep=sep)
+            df = pd.read_csv(path, sep=None, engine="python")  # Let pandas sniff the separator
             self._imported_df = df
             self._imported_path = path
             self._update_import_table()

@@ -602,6 +602,12 @@ class SpacePlot(QWidget):
         ds_kwargs = dict(self.app_state.get_ds_kwargs())
         ds_kwargs.update(self._get_keypoint_selection())
         t0, t1 = self._get_window_time_range()
+        if t0 is None or t1 is None:
+            wb = self.app_state.window_bounds
+            if wb is not None:
+                t0, t1 = wb.start_s, wb.end_s
+        if t0 is None or t1 is None:
+            return
 
         time_x, data_x = _select_axis(store, x_item, ds_kwargs, t0=t0, t1=t1)
         time_y, data_y = _select_axis(store, y_item, ds_kwargs, t0=t0, t1=t1)

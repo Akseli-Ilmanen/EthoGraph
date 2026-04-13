@@ -164,7 +164,10 @@ class LinePlot(BasePlot):
         try:
             store = self._store
             if store is not None:
-                pd = store.select(feature_sel, selections)
+                wb = self.app_state.window_bounds
+                if wb is None:
+                    return
+                pd = store.select(feature_sel, selections, t0=wb.start_s, t1=wb.end_s)
                 if pd is None:
                     return
                 data = pd.data

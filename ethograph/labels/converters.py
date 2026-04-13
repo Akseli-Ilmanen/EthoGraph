@@ -308,92 +308,6 @@ class CrowsettaLabelConverter(LabelConverter):
         return df
 
 
-# ---------------------------------------------------------------------------
-# NWB interval label converter
-# ---------------------------------------------------------------------------
-
-
-class NWBLabelConverter(LabelConverter):
-    """Extract behavioural-epoch labels from an NWB file.
-
-    Supports lazy (path-based) and eager (pynwb-object) construction.
-    Epochs are converted to trial-relative intervals via ``trials_df``.
-    """
-
-    name = "nwb_intervals"
-
-    def __init__(self, nwb_path: str | Path | None = None, *, nwb=None) -> None:
-        super().__init__()
-        self._nwb_path = str(nwb_path) if nwb_path else None
-        self._epochs: list[dict] | None = None
-        if nwb is not None:
-            self._load(nwb)
-
-    def _ensure_loaded(self) -> None:
-        if self._epochs is not None:
-            return
-        if self._nwb_path is None:
-            self._epochs = []
-            return
-        import pynwb
-        with pynwb.NWBHDF5IO(self._nwb_path, "r") as io:
-            self._load(io.read())
-
-    def _load(self, nwb) -> None:
-        self._epochs = self._extract_behavioral_epochs(nwb)
-        self._label_map = build_mapping_from_labels(
-            sorted({e["label_name"] for e in self._epochs})
-        )
-
-    def extract(self, trials_df: pd.DataFrame | None = None) -> pd.DataFrame:
-        self._ensure_loaded()
-        if not self._epochs or trials_df is None or trials_df.empty:
-            return init_empty_labels([])
-        rows = self._global_to_trial_rows(self._epochs, trials_df)
-        return self._rows_to_labels_df(rows)
-
-    def from_nwb(
-        self,
-        nwb,
-        trials_df: pd.DataFrame,
-        sources: list[str] | None = None,
-    ) -> pd.DataFrame:
-        """Extract labels from NWB and return a TSV-compatible all-labels DataFrame.
-
-        Parameters
-        ----------
-        sources : list[str] | None
-            If given, only include epochs whose ``source`` field is in this
-            list.  ``None`` means include all sources.
-        """
-        if self._epochs is None:
-            self._load(nwb)
-        if sources is not None:
-            keep = set(sources)
-            self._epochs = [e for e in self._epochs if e["source"] in keep]
-            self._label_map = build_mapping_from_labels(
-                sorted({e["label_name"] for e in self._epochs})
-            )
-        return self.extract(trials_df)
-
-    def _extract_behavioral_epochs(self, nwb) -> list[dict]:
-        import pynwb
-        individual = _get_nwb_individual(nwb)
-        epochs: list[dict] = []
-
-        if nwb.epochs is not None and len(nwb.epochs) > 0:
-            self._collect_time_intervals(nwb.epochs, "epochs", individual, epochs)
-
-        for mod_key, mod in nwb.processing.items():
-            for iface_key, iface in mod.data_interfaces.items():
-                if isinstance(iface, pynwb.epoch.TimeIntervals):
-                    self._collect_time_intervals(iface, f"{mod_key}/{iface_key}", individual, epochs)
-                elif isinstance(iface, pynwb.behavior.BehavioralEpochs):
-                    for series_name, series in iface.interval_series.items():
-                        self._collect_interval_series(series, f"{mod_key}/{iface_key}/{series_name}", individual, epochs)
-
-        return epochs
-
     @staticmethod
     def _collect_time_intervals(table, source: str, individual: str, out: list[dict]) -> None:
         df = table.to_dataframe()
@@ -460,13 +374,30 @@ class PynappleLabelConverter(LabelConverter):
                 continue
             if key.lower() in self.SKIP_KEYS:
                 continue
-            for i in range(len(obj)):
-                epochs.append({
-                    "onset_s": float(obj.start[i]),
-                    "offset_s": float(obj.end[i]),
-                    "label_name": key,
-                    "individual": "individual_0",
-                })
+
+            meta_cols = list(getattr(obj, "metadata_columns", []))
+            starts = np.asarray(obj.start)
+            ends = np.asarray(obj.end)
+
+            if not meta_cols:
+                epochs.extend(
+                    {"onset_s": float(s), "offset_s": float(e),
+                     "label_name": key, "individual": "individual_0"}
+                    for s, e in zip(starts, ends)
+                )
+            else:
+                meta = pd.DataFrame({c: np.asarray(obj[c]) for c in meta_cols})
+                for group_key, group in meta.groupby(meta_cols):
+                    label_name = (
+                        "_".join(str(v) for v in group_key)
+                        if isinstance(group_key, tuple) else str(group_key)
+                    )
+                    idx = group.index.values
+                    epochs.extend(
+                        {"onset_s": float(s), "offset_s": float(e),
+                         "label_name": label_name, "individual": "individual_0"}
+                        for s, e in zip(starts[idx], ends[idx])
+                    )
         return epochs
 
     def extract(self, trials_df: pd.DataFrame | None = None) -> pd.DataFrame:
@@ -481,14 +412,6 @@ class PynappleLabelConverter(LabelConverter):
 # Helpers
 # ---------------------------------------------------------------------------
 
-
-def _get_nwb_individual(nwb) -> str:
-    subject = getattr(nwb, "subject", None)
-    if subject:
-        sid = getattr(subject, "subject_id", None)
-        if sid:
-            return str(sid)
-    return "individual_0"
 
 
 def trials_df_from_intervalset(trials_ep) -> pd.DataFrame:

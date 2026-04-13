@@ -688,6 +688,7 @@ class DataWidget(QWidget):
             result = load_dataset(
                 nc_file_path,
                 progress_callback=getattr(self.app_state, "_progress_callback", None),
+                metadata_path=self.app_state.metadata_path,
             )
         except (OSError, ValueError, KeyError) as e:
             logger.exception("load_dataset failed")
@@ -861,6 +862,7 @@ class DataWidget(QWidget):
 
         self.update_trials_combo()
         self._load_trial_with_fallback()
+        self._disable_empty_panels()
 
         if self.navigation_widget:
             self.navigation_widget.set_mappings(self.labels_widget._mappings)
@@ -1908,6 +1910,39 @@ class DataWidget(QWidget):
 
         self.on_trial_changed()
 
+    def _panel_has_data(self, name: str) -> bool:
+        """Check whether a panel would actually display data for the current trial."""
+        if name in ("audiotrace", "spectrogram"):
+            return bool(self.app_state.audio_path)
+        if name == "featureplot":
+            return bool(self.catalog and self.catalog.features)
+        if name == "neo_viewer":
+            neo_plot = getattr(self.plot_container, 'neo_trace_plot', None)
+            return neo_plot is not None and getattr(neo_plot, '_source', None) is not None
+        if name == "phy_viewer":
+            return bool(self.app_state.has_neurons)
+        if name == "video_viewer":
+            return bool(self.app_state.video_path)
+        if name == "pose_markers":
+            return bool(self.app_state.video_path)
+        return True
+
+    def _disable_empty_panels(self):
+        """Uncheck and hide plot panels that have no data after first trial load."""
+        for defn in _PANEL_DEFS:
+            checkbox = getattr(self, f"{defn.name}_checkbox", None)
+            if checkbox is None or not checkbox.isChecked():
+                continue
+            if self._panel_has_data(defn.name):
+                continue
+            checkbox.blockSignals(True)
+            checkbox.setChecked(False)
+            checkbox.blockSignals(False)
+            if defn.container_method and self.plot_container:
+                getattr(self.plot_container, defn.container_method)(False)
+            if defn.on_toggle:
+                getattr(self, defn.on_toggle)(False)
+
     def _validate_media_files(
         self,
         nwb_alignment=None,
@@ -2005,17 +2040,13 @@ class DataWidget(QWidget):
 
         self.pose_frame_path = self.app_state.ds.attrs.get("frame_path")
 
-        # Update data_loader trial index (pynapple: restrict changes;
-        # xarray: XarrayLoader.update_ds swaps the backing dataset)
+        # Update data_loader (xarray only: swap the backing dataset)
         store = self.app_state.data_loader
         trial_idx = self.app_state.trials.index(trials_sel)
-        if store is not None:
-            store.set_trial(trial_idx)
-            if hasattr(store, 'update_ds'):
-                store.update_ds(self.app_state.ds)
+        if store is not None and hasattr(store, 'update_ds'):
+            store.update_ds(self.app_state.ds)
 
-        # Sync SourceCollection: only update trial index, not dataset
-        # (DataLoader handles dataset access; sources are for range queries)
+        # Sync SourceCollection trial index for time-range queries
         sc = getattr(self.app_state, 'source_collection', None)
         if sc is not None:
             for src in sc.sources.values():

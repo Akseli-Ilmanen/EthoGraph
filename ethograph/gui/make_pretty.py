@@ -174,6 +174,24 @@ class LayoutManager:
             # when layer docks are also hidden.
             central.setMaximumHeight(0)
 
+        # When hiding the central widget, Qt auto-expands the bottom dock (plot
+        # container) into the freed vertical space, squashing left docks (space
+        # plot / layers).  Counteract by explicitly setting the plot dock height.
+        if not visible and self._plot_dock is not None:
+            def _constrain_plot_height():
+                total_h = self._qt_window.height()
+                if total_h <= 0:
+                    return
+                plot_h = max(
+                    PLOT_CONTAINER_MIN_HEIGHT,
+                    int(total_h * VERTICAL_SPLIT_RATIO),
+                )
+                self._qt_window.resizeDocks(
+                    [self._plot_dock], [plot_h], Qt.Vertical,
+                )
+
+            QTimer.singleShot(50, _constrain_plot_height)
+
     def set_sidebar_default_width(
         self, sidebar_widget: QWidget, ratio: float,
     ) -> None:

@@ -20,11 +20,9 @@ from ethograph.utils.nwb import create_alignment, create_alignment_from_streams
 from ethograph.io.catalog import (
     DataCatalog,
     DataLoader,
-    NWBLoader,
     PlotData,
     PynappleLoader,
     XarrayLoader,
-    catalog_from_nwb,
     catalog_from_pynapple,
     catalog_from_xarray,
 )

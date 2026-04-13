@@ -273,11 +273,20 @@ class IOWidget(QWidget):
 
         self._load_layout.addRow("Alignment:", alignment_row)
 
+        meta_template_btn = QPushButton("Template")
+        meta_template_btn.setObjectName("metadata_template_button")
+        meta_template_btn.setToolTip(
+            "Save a template metadata file (TSV) with example columns.\n"
+            "Open it in Excel, fill in your conditions, and save."
+        )
+        meta_template_btn.clicked.connect(self._save_metadata_template)
+
         self.metadata_path_edit = self._create_path_widget(
             self._load_layout,
             label="Metadata:",
             object_name="metadata_path",
             browse_callback=lambda: self._browse_metadata_file(),
+            extra_buttons=[meta_template_btn],
         )
         self.video_folder_edit = self._create_path_widget(
             self._load_layout,
@@ -1208,7 +1217,7 @@ class IOWidget(QWidget):
             combo.addItems(["None"])
             combo.setCurrentText("None")
 
-    def _create_path_widget(self, target_layout, label, object_name, browse_callback):
+    def _create_path_widget(self, target_layout, label, object_name, browse_callback, extra_buttons=None):
         line_edit = QLineEdit()
         line_edit.setObjectName(f"{object_name}_edit")
         if object_name == "nc_file_path":
@@ -1235,6 +1244,9 @@ class IOWidget(QWidget):
 
         row_layout = QHBoxLayout()
         row_layout.addWidget(line_edit)
+        if extra_buttons:
+            for btn in extra_buttons:
+                row_layout.addWidget(btn)
         row_layout.addWidget(browse_button)
         if object_name == "nc_file_path":
             browse_folder_button = QPushButton("Browse folder")
@@ -1407,13 +1419,14 @@ class IOWidget(QWidget):
             self.app_state.nwb_file_path = path  # auto-syncs to app_state.nwb_alignment
 
     def _browse_metadata_file(self):
-        """Browse for a metadata source file (TSV, NWB, or NPZ)."""
+        """Browse for a metadata source file (TSV, CSV, Excel, NWB, or NPZ)."""
         result = QFileDialog.getOpenFileName(
             None,
             caption="Open metadata file",
             filter=(
-                "Metadata files (*.tsv *.nwb *.npz);;"
-                "TSV files (*.tsv);;"
+                "Metadata files (*.tsv *.csv *.xlsx *.xls *.nwb *.npz);;"
+                "TSV/CSV files (*.tsv *.csv);;"
+                "Excel files (*.xlsx *.xls);;"
                 "NWB files (*.nwb);;"
                 "Pynapple files (*.npz);;"
                 "All files (*)"
@@ -1423,6 +1436,61 @@ class IOWidget(QWidget):
         if path:
             self.metadata_path_edit.setText(path)
             self.app_state.metadata_path = path
+
+    def _save_metadata_template(self):
+        """Save a metadata template TSV that users can fill in with Excel."""
+        import pandas as pd
+
+        nc_path = self.app_state.nc_file_path
+        if nc_path:
+            default_dir = str(Path(nc_path).parent)
+            default_name = Path(nc_path).stem + "_metadata.tsv"
+        else:
+            default_dir = ""
+            default_name = "metadata.tsv"
+
+        path, _ = QFileDialog.getSaveFileName(
+            None,
+            caption="Save metadata template",
+            dir=str(Path(default_dir) / default_name) if default_dir else default_name,
+            filter="TSV files (*.tsv);;CSV files (*.csv);;All files (*)",
+        )
+        if not path:
+            return
+
+        trials = getattr(self.app_state, "trials", None)
+        if trials:
+            trial_ids = list(trials)
+        else:
+            trial_ids = [1, 2, 3]
+
+        df = pd.DataFrame({
+            "trial": trial_ids,
+            "start_time": [""] * len(trial_ids),
+            "stop_time": [""] * len(trial_ids),
+            "condition": [""] * len(trial_ids),
+        })
+
+        path = Path(path)
+        if path.suffix.lower() in (".csv",):
+            df.to_csv(path, index=False)
+        else:
+            df.to_csv(path, sep="\t", index=False)
+
+        self.metadata_path_edit.setText(str(path))
+        self.app_state.metadata_path = str(path)
+        logger.info("Saved metadata template to %s", path)
+
+        import subprocess, sys
+        try:
+            if sys.platform == "win32":
+                os.startfile(str(path))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(path)])
+            else:
+                subprocess.Popen(["xdg-open", str(path)])
+        except OSError:
+            logger.warning("Could not open %s in default application", path)
 
     def _auto_discover_nwb(self):
         """Auto-discover alignment.nwb near the loaded data file."""

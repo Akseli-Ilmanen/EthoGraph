@@ -116,7 +116,10 @@ def load_labels_tsv(path: str | Path) -> pd.DataFrame:
     if not path.exists():
         return _empty_all_labels()
 
-    df = pd.read_csv(path, sep="\t", encoding="utf-8-sig")
+    if path.suffix.lower() in (".xlsx", ".xls"):
+        df = pd.read_excel(path)
+    else:
+        df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
     validate_labels_tsv(df, path)
 
     for col in INTERVAL_COLUMNS:

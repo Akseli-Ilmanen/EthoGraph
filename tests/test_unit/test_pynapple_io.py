@@ -167,7 +167,7 @@ def test_store_get_type_vars(multi_tsdframe_data):
 def test_store_select_tsd(multi_tsdframe_data):
     """Selecting a Tsd feature returns 1-D data."""
     store = PynappleStore(multi_tsdframe_data)
-    pd = store.select("speed", {})
+    pd = store.select("speed", {}, t0=0.0, t1=10.0)
     assert pd is not None
     assert pd.data.ndim == 1
     assert len(pd.time) == len(pd.data)
@@ -176,7 +176,7 @@ def test_store_select_tsd(multi_tsdframe_data):
 def test_store_select_tsdframe_all_columns(multi_tsdframe_data):
     """Without column selection, TsdFrame returns 2-D data."""
     store = PynappleStore(multi_tsdframe_data)
-    pd = store.select("position", {})
+    pd = store.select("position", {}, t0=0.0, t1=10.0)
     assert pd is not None
     assert pd.data.ndim == 2
     assert pd.data.shape[1] == 3
@@ -186,60 +186,43 @@ def test_store_select_tsdframe_all_columns(multi_tsdframe_data):
 def test_store_select_tsdframe_single_column(multi_tsdframe_data):
     """With column selection, TsdFrame returns 1-D data."""
     store = PynappleStore(multi_tsdframe_data)
-    pd = store.select("position", {"columns": "x"})
+    pd = store.select("position", {"columns": "x"}, t0=0.0, t1=10.0)
     assert pd is not None
     assert pd.data.ndim == 1
 
 
 def test_store_select_with_time_window(multi_tsdframe_data):
-    """Time window restricts the returned data."""
+    """Narrower time window restricts the returned data."""
     store = PynappleStore(multi_tsdframe_data)
-    full = store.select("speed", {})
+    full = store.select("speed", {}, t0=0.0, t1=10.0)
     windowed = store.select("speed", {}, t0=2.0, t1=5.0)
     assert windowed is not None
     assert len(windowed.time) < len(full.time)
-    assert windowed.time[0] >= 2.0 - 0.1
-    assert windowed.time[-1] <= 5.0 + 0.1
+    assert windowed.time[0] >= 0.0 - 0.1
+    assert windowed.time[-1] <= 3.0 + 0.1
 
 
 def test_store_trial_relative_time():
-    """With trials, returned times are trial-relative (start near 0)."""
+    """Passing absolute t0/t1 returns trial-relative times (start near 0)."""
     trials = nap.IntervalSet(start=[100, 200], end=[110, 210])
     t = np.linspace(100, 210, 11000)
     speed = nap.Tsd(t=t, d=np.random.randn(len(t)), time_support=trials)
     data = {"speed": speed}
 
-    store = PynappleStore(data, trials)
-    store.set_trial(0)
-    pd = store.select("speed", {})
+    store = PynappleStore(data)
+    pd = store.select("speed", {}, t0=100.0, t1=110.0)
     assert pd is not None
     assert pd.time[0] < 1.0  # trial-relative, near 0
     assert pd.time[-1] <= 10.5
 
-    store.set_trial(1)
-    pd2 = store.select("speed", {})
+    pd2 = store.select("speed", {}, t0=200.0, t1=210.0)
     assert pd2 is not None
     assert pd2.time[0] < 1.0
 
 
 def test_store_select_nonexistent_feature(multi_tsdframe_data):
     store = PynappleStore(multi_tsdframe_data)
-    assert store.select("nonexistent", {}) is None
-
-
-def test_store_n_trials_with_intervalset():
-    trials = nap.IntervalSet(start=[0, 10, 20], end=[5, 15, 25])
-    t = np.linspace(0, 25, 2500)
-    data = {"speed": nap.Tsd(t=t, d=np.random.randn(2500), time_support=trials)}
-    store = PynappleStore(data, trials)
-    assert store.n_trials == 3
-
-
-def test_store_n_trials_without_intervalset():
-    t = np.linspace(0, 10, 1000)
-    data = {"speed": nap.Tsd(t=t, d=np.random.randn(1000))}
-    store = PynappleStore(data)
-    assert store.n_trials == 1
+    assert store.select("nonexistent", {}, t0=0.0, t1=10.0) is None
 
 
 def test_store_select_sparse_changepoints():
@@ -256,7 +239,7 @@ def test_store_select_sparse_changepoints():
     )
 
     store = PynappleStore({"speed": speed, "cps": group})
-    pd = store.select("speed", {})
+    pd = store.select("speed", {}, t0=0.0, t1=10.0)
     assert pd is not None
     assert pd.changepoints is not None
     cp_binary = list(pd.changepoints.values())[0]
@@ -282,7 +265,7 @@ def test_store_select_dense_tsd_changepoints():
     )
 
     store = PynappleStore({"speed": speed, "cps": group})
-    pd = store.select("speed", {})
+    pd = store.select("speed", {}, t0=0.0, t1=10.0)
     assert pd is not None
     assert pd.changepoints is not None
     cp_binary = list(pd.changepoints.values())[0]
@@ -309,7 +292,7 @@ def test_store_get_cp_times_sparse():
     )
 
     store = PynappleStore({"speed": speed, "cps": group})
-    result = store.get_cp_times("speed")
+    result = store.get_cp_times("speed", t0=0.0, t1=10.0)
     assert len(result) == 3
     np.testing.assert_allclose(result, cp_times, atol=1e-6)
 
@@ -317,5 +300,5 @@ def test_store_get_cp_times_sparse():
 def test_store_get_cp_times_no_changepoints():
     t = np.linspace(0, 10, 1000)
     store = PynappleStore({"speed": nap.Tsd(t=t, d=np.random.randn(1000))})
-    result = store.get_cp_times("speed")
+    result = store.get_cp_times("speed", t0=0.0, t1=10.0)
     assert len(result) == 0

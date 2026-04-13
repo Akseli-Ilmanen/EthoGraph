@@ -99,6 +99,43 @@ fi
 """
 
 
+def _register_tsv_windows(vbs_path: Path) -> None:
+    """Register .tsv → Excel file association via the current-user registry."""
+    import winreg
+
+    cls = r"Software\Classes"
+    vbs_str = str(vbs_path)
+
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"{cls}\.tsv") as key:
+        winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "TsvFile")
+
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"{cls}\TsvFile") as key:
+        winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Tab-Separated Values")
+
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"{cls}\TsvFile\DefaultIcon") as key:
+        winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "excel.exe,1")
+
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"{cls}\TsvFile\shell") as key:
+        winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "openexcel")
+
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"{cls}\TsvFile\shell\openexcel") as key:
+        winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Open TSV with Excel")
+        winreg.SetValueEx(key, "FriendlyAppName", 0, winreg.REG_SZ, "Excel (Tab-Separated)")
+
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"{cls}\TsvFile\shell\openexcel\command") as key:
+        winreg.SetValueEx(key, "", 0, winreg.REG_SZ, f'wscript.exe "{vbs_str}" "%1"')
+
+
+def _register_tsv_mac() -> None:
+    """Set Excel as default app for .tsv on macOS via duti (if available)."""
+    import subprocess
+
+    try:
+        subprocess.run(["duti", "-s", "com.microsoft.Excel", ".tsv", "all"], check=True)
+    except FileNotFoundError:
+        logger.debug("duti not installed — skipping .tsv association on macOS")
+
+
 def ensure_default_configs() -> None:
     """Write default configs to ``~/.ethograph/`` if they don't exist yet."""
     import sys
@@ -116,14 +153,12 @@ def ensure_default_configs() -> None:
         vbs = internal / "open-tsv.vbs"
         if not vbs.exists():
             vbs.write_text(_OPEN_TSV_VBS, encoding="utf-8")
-        reg = global_dir / "Double-click to open TSV files in Excel.reg"
-        if not reg.exists():
-            reg.write_text(_tsv_reg_content(vbs), encoding="utf-8")
+        try:
+            _register_tsv_windows(vbs)
+        except OSError:
+            logger.debug("Could not write TSV registry keys", exc_info=True)
     elif sys.platform == "darwin":
-        setup = global_dir / "Double-click to open TSV files in Excel.command"
-        if not setup.exists():
-            setup.write_text(_SETUP_TSV_MAC, encoding="utf-8")
-            setup.chmod(0o755)
+        _register_tsv_mac()
 
 
 def write_example_configs(dataset_key: str, dest: Path) -> None:

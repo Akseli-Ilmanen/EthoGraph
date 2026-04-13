@@ -14,10 +14,8 @@ import xarray as xr
 import ethograph as eto
 from ethograph.io.catalog import (
     DataCatalog,
-    NWBLoader,
     PynappleLoader,
     XarrayLoader,
-    catalog_from_nwb,
     catalog_from_pynapple,
     catalog_from_xarray,
 )
@@ -32,11 +30,17 @@ from movement.kinematics import (
 )
 
 from ethograph.gui.notify import notify_dialog
-from ethograph.io.metadata_table import empty_metadata_df, load_metadata_df, load_metadata_tsv, metadata_tsv_path
+from ethograph.io.metadata_table import (
+    empty_metadata_df,
+    load_metadata_df,
+    load_metadata_tsv,
+    metadata_tsv_path,
+    trials_ep_from_metadata_df,
+    validate_metadata_timing,
+)
 from ethograph.io.trialtree import TrialTree
 from ethograph.io.nwb_alignment import EmpytAlignment, TableAlignment, discover_nwb, make_nwb_alignment
 from ethograph.labels.converters import (
-    NWBLabelConverter,
     PynappleLabelConverter,
     resolve_labels_tsv,
 )
@@ -64,6 +68,7 @@ class LoadResult:
     source_collection: SourceCollection = field(default_factory=SourceCollection)
     nwb_local: str | None = None
     nwb_video_folder: str | None = None
+    pynapple_data: dict | None = None
 
 
 def _detect_audio_rate(audio_path: str) -> float:
@@ -73,15 +78,37 @@ def _detect_audio_rate(audio_path: str) -> float:
         return float(loader.rate)
 
 
-def _ensure_trials_ep(data: dict, trials_ep):
-    """Guarantee a valid trials IntervalSet.
+def _resolve_trials_ep(data: dict, trials_ep, *, metadata_path: str | Path | None = None):
+    """Resolve trials IntervalSet from available sources.
 
-    When no explicit trials are found, synthesize a single trial spanning
-    the full time range of all loaded time-series objects.
+    Priority:
+    1. User-supplied metadata file (``metadata_path``) with timing columns.
+    2. ``trials_ep`` detected from the data source.
+
+    Returns None when no trial information is available.  The caller
+    (or app_state) is responsible for a final synthetic-single-trial
+    fallback if needed.
     """
+    if metadata_path is not None:
+        path = Path(metadata_path)
+        if not path.exists():
+            raise ValueError(f"Metadata file not found: {path}")
+        df = load_metadata_tsv(path)
+        if "start_time" in df.columns and "stop_time" in df.columns:
+            validate_metadata_timing(df, path)
+            return trials_ep_from_metadata_df(df)
+
     if trials_ep is not None and len(trials_ep) > 0:
         return trials_ep
 
+    return None
+
+
+def synthesize_single_trial(data: dict):
+    """Create a single-trial IntervalSet spanning all loaded time-series.
+
+    Raises ValueError if no time-series data is found.
+    """
     import pynapple as nap
 
     starts: list[float] = []
@@ -95,35 +122,12 @@ def _ensure_trials_ep(data: dict, trials_ep):
     return nap.IntervalSet(start=min(starts), end=max(ends))
 
 
-def _is_nwb_file(file_path: str) -> bool:
-    """Check if path is a standalone .nwb file."""
-    return Path(file_path).suffix == ".nwb"
-
-
 def _is_pynapple_path_folder(file_path: str) -> bool:
     """Check if path is a pynapple folder or .npz file."""
     p = Path(file_path)
-    return p.suffix == ".npz" or (p.is_dir() and any(p.glob("**/*.npz")))
+    return p.suffix in {".npz", ".nwb"} or (p.is_dir() and any(p.glob("**/*.npz"))) or (p.is_dir() and any(p.glob("**/*.nwb")))
     
 
-
-def _read_dandi_provenance(ethograph_dir: Path) -> dict | None:
-    """Read DANDI provenance from .ethograph/provenance.yaml."""
-    from ethograph.utils.nwb import read_provenance
-
-    prov = read_provenance(ethograph_dir)
-    if prov and prov.get("nwb_dandiset_id") and prov.get("nwb_asset_id"):
-        return prov
-    return None
-
-
-def _is_remote_nwb(file_path: str) -> bool:
-    """Check if path is a remote NWB project with DANDI provenance."""
-    p = Path(file_path)
-    ethograph_dir = p / ".ethograph"
-    if not (p.is_dir() and ethograph_dir.exists()):
-        return False
-    return _read_dandi_provenance(ethograph_dir) is not None
 
 
 def _bootstrap_alignment_nwb(source_nwb: Path) -> Path | None:
@@ -277,88 +281,42 @@ def _resolve_alignment(source_path: str | Path):
 
 
 
-# ---------------------------------------------------------------------------
-# NWB direct loading
-# ---------------------------------------------------------------------------
-
-
-def _load_nwb_dataset(file_path: str) -> LoadResult:
-    """Load a standalone .nwb file via direct HDF5 slicing.
-
-    Uses ``catalog`` for combo detection and ``NWBLoader``
-    for time-sliced data access (no pynapple intermediate).
-    """
-    from ethograph.io.catalog import read_trial_intervals
-
-    catalog, combo_cat = catalog_from_nwb(file_path)
-    trial_intervals = read_trial_intervals(file_path)
-
-    loader = NWBLoader(file_path, catalog, combo_catalog=combo_cat)
-    if trial_intervals:
-        loader.set_trial_intervals(trial_intervals)
-        trial_ids = list(range(1, len(trial_intervals) + 1))
-    else:
-        trial_ids = [1]
-
-    sio = _resolve_alignment(file_path)
-
-    converter = NWBLabelConverter(nwb_path=file_path)
-    all_labels_df = converter.resolve_labels(
-        source_path=file_path,
-        trial_ids=trial_ids,
-        trials_df=sio.trials_df if hasattr(sio, "trials_df") else None,
-    )
-    metadata_df, metadata_path = load_metadata_df(
-        source_path=file_path,
-        nwb_alignment=sio,
-        trial_ids=trial_ids,
-    )
-
-    return LoadResult(
-        dt=None,
-        trial_ids=trial_ids,
-        nwb_alignment=sio,
-        metadata_df=metadata_df,
-        metadata_path=metadata_path,
-        all_labels_df=all_labels_df,
-        catalog=catalog,
-        data_loader=loader,
-        source_collection=_build_source_collection_nwb(file_path, combo_cat, trial_intervals),
-        nwb_local=file_path,
-    )
-
 
 # ---------------------------------------------------------------------------
 # Pynapple loading (.npz, folders)
 # ---------------------------------------------------------------------------
 
 
-def _load_pynapple_dataset(file_path: str) -> LoadResult:
+def _load_pynapple_dataset(
+    file_path: str,
+    metadata_path: str | None = None,
+) -> LoadResult:
     """Load a pynapple .npz file or folder."""
     from ethograph.io.pynapple import load_nap_data
 
     data, trials_ep = load_nap_data(file_path)
-    trials_ep = _ensure_trials_ep(data, trials_ep)
-    catalog = catalog_from_pynapple(data, trials_ep)
-    loader = PynappleLoader(data, trials_ep, catalog)
+    trials_ep = _resolve_trials_ep(data, trials_ep, metadata_path=metadata_path)
+
+    catalog = catalog_from_pynapple(data, source_path=file_path)
+    loader = PynappleLoader(data, catalog)
 
     parent = Path(file_path).parent if not Path(file_path).is_dir() else Path(file_path)
     sidecar = parent / ".ethograph" / "alignment.nwb"
     nwb_path = str(sidecar) if sidecar.exists() else None
-        
-        
-    trial_ids = list(range(1, len(trials_ep) + 1))
+
+    trial_ids = list(range(1, len(trials_ep) + 1)) if trials_ep is not None else [1]
 
     sio = make_nwb_alignment(nwb_path)
 
-    converter = PynappleLabelConverter(data, trials_ep)
+    converter = PynappleLabelConverter(data)
     all_labels_df = converter.resolve_labels(
         source_path=file_path,
         trial_ids=trial_ids,
     )
 
-    metadata_df, metadata_path = load_metadata_df(
+    resolved_metadata_df, resolved_metadata_path = load_metadata_df(
         source_path=file_path,
+        metadata_path=metadata_path,
         nwb_alignment=sio,
         trial_ids=trial_ids,
     )
@@ -367,17 +325,21 @@ def _load_pynapple_dataset(file_path: str) -> LoadResult:
         dt=None,
         trial_ids=trial_ids,
         nwb_alignment=sio,
-        metadata_df=metadata_df,
-        metadata_path=metadata_path,
+        metadata_df=resolved_metadata_df,
+        metadata_path=resolved_metadata_path,
         all_labels_df=all_labels_df,
         catalog=catalog,
         data_loader=loader,
         source_collection=_build_source_collection_pynapple(data, trials_ep),
+        pynapple_data=data,
     )
 
 
 
-def _load_trialtree(file_path: str) -> LoadResult:
+def _load_trialtree(
+    file_path: str,
+    metadata_path: str | None = None,
+) -> LoadResult:
     """Load a TrialTree or xarray.Dataset from a .nc file."""
     dt = eto.open(file_path)
 
@@ -395,8 +357,9 @@ def _load_trialtree(file_path: str) -> LoadResult:
 
 
     sio = _resolve_alignment(file_path)
-    metadata_df, metadata_path = load_metadata_df(
+    resolved_metadata_df, resolved_metadata_path = load_metadata_df(
         source_path=file_path,
+        metadata_path=metadata_path,
         nwb_alignment=sio,
         trial_ids=dt.trials,
     )
@@ -419,8 +382,8 @@ def _load_trialtree(file_path: str) -> LoadResult:
         dt=dt,
         trial_ids=dt.trials,
         nwb_alignment=sio,
-        metadata_df=metadata_df,
-        metadata_path=metadata_path,
+        metadata_df=resolved_metadata_df,
+        metadata_path=resolved_metadata_path,
         all_labels_df=all_labels_df,
         catalog=catalog,
         data_loader=XarrayLoader(dt.itrial(0), catalog),
@@ -436,25 +399,26 @@ def _load_trialtree(file_path: str) -> LoadResult:
 def load_dataset(
     file_path: str,
     progress_callback: Callable[[str], None] | None = None,
+    metadata_path: str | None = None,
 ) -> LoadResult:
     """Load dataset from file path.
 
-    Supports ``.nc`` (NetCDF), ``.nwb``, ``.npz``, pynapple folders,
-    and remote NWB projects (DANDI provenance in ``.ethograph/alignment.nwb``).
+    Supports ``.nc`` (NetCDF), ``.nwb``, ``.npz``, pynapple folders.
+
+    Parameters
+    ----------
+    metadata_path
+        Optional path to a TSV/CSV/Excel file with ``trial``, ``start_time``,
+        ``stop_time`` columns.  When provided, trial boundaries are read from
+        this file instead of the data source.
 
     Returns a :class:`LoadResult` with dt, labels, catalog, and metadata.
     """
-    if _is_remote_nwb(file_path):
-        return _load_remote_nwb(file_path)
-
-    if _is_nwb_file(file_path):
-        return _load_nwb_dataset(file_path)
-
     if _is_pynapple_path_folder(file_path):
-        return _load_pynapple_dataset(file_path)
+        return _load_pynapple_dataset(file_path, metadata_path=metadata_path)
 
     if file_path.endswith(".nc"):
-        return _load_trialtree(file_path)
+        return _load_trialtree(file_path, metadata_path=metadata_path)
 
     raise ValueError(
         f"Unsupported file type: {Path(file_path).suffix!r}. "
@@ -486,30 +450,6 @@ def _build_source_collection_pynapple(
         )
     return sc
 
-
-def _build_source_collection_nwb(
-    file_path: str,
-    combo_catalog,
-    trial_intervals: list[tuple[float, float]] | None = None,
-) -> SourceCollection:
-    """Build SourceCollection from NWB combo catalog."""
-    from ethograph.io.time_sources import NWBTimeSource
-
-    sc = SourceCollection()
-    for entry in combo_catalog.features:
-        sc.add(NWBTimeSource(
-            name=entry.display_name,
-            source_path=file_path,
-            entry=entry,
-            combo_catalog=combo_catalog,
-        ))
-    if trial_intervals:
-        sc.set_trials(
-            ids=list(range(1, len(trial_intervals) + 1)),
-            starts=[t[0] for t in trial_intervals],
-            stops=[t[1] for t in trial_intervals],
-        )
-    return sc
 
 
 def _build_source_collection_xarray(dt: TrialTree, nwb_alignment=None) -> SourceCollection:

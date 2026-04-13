@@ -1103,8 +1103,11 @@ class ChangepointsWidget(QWidget):
     def _extract_cp_times(self, ds, ds_kwargs):
         """Extract changepoint times from either backend."""
         store = getattr(self.app_state, 'data_loader', None)
-        if store is not None:
+        if store is not None and hasattr(store, 'get_cp_times'):
             feature = getattr(self.app_state, 'features_sel', None)
+            wb = self.app_state.window_bounds
+            if wb is not None:
+                return store.get_cp_times(feature, t0=wb.start_s, t1=wb.end_s)
             return store.get_cp_times(feature)
 
         time_coord = self.app_state.time_coord

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     import pynapple as nap
     import xarray as xr
 
-    from ethograph.io.catalog import ComboCatalog, FeatureEntry
+
 
 
 # ---------------------------------------------------------------------------
@@ -128,62 +128,4 @@ class PynappleSource:
             return np.array([], dtype=np.float64), np.array([])
         return restricted.t.astype(np.float64), np.asarray(restricted.values)
 
-
-# ---------------------------------------------------------------------------
-# NWBTimeSource
-# ---------------------------------------------------------------------------
-
-
-class NWBTimeSource:
-    """TimeSource wrapping one NWB TimeSeries via ComboCatalog.
-
-    Uses HDF5 slicing (rate-based or searchsorted on timestamps).
-    Compatible with local files and remote access via remfile.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        source_path: str,
-        entry: FeatureEntry,
-        combo_catalog: ComboCatalog,
-    ) -> None:
-        self._name = name
-        self._source_path = source_path
-        self._entry = entry
-        self._combo_catalog = combo_catalog
-        self._time_range = self._compute_range()
-
-    def _compute_range(self) -> TimeRange:
-        tr = self._entry.record.time_range
-        return TimeRange(tr[0], tr[1]) if tr else TimeRange(0.0, 0.0)
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def time_range(self) -> TimeRange:
-        return self._time_range
-
-    @property
-    def sampling_rate(self) -> float | None:
-        return self._entry.record.rate
-
-    def get_data(self, t0: float, t1: float) -> tuple[np.ndarray, np.ndarray]:
-        from ethograph.utils.nwb import open_nwb
-
-        combo_sel = {"feature": self._entry.display_name}
-
-        with open_nwb(self._source_path) as h5:
-            stacked = self._combo_catalog.load_stacked(h5, t0, t1, **combo_sel)
-
-        if stacked.data.size == 0:
-            return np.array([], dtype=np.float64), np.array([])
-
-        data = stacked.data
-        if data.ndim == 2 and data.shape[1] == 1:
-            data = data[:, 0]
-
-        return stacked.timestamps.astype(np.float64), data
 

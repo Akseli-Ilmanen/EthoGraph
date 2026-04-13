@@ -30,7 +30,13 @@ from ethograph.labels.tsv_store import (
     set_trial_in_tsv,
     set_trial_meta_attr,
 )
-from ethograph.io.metadata_table import load_metadata_df
+from ethograph.io.metadata_table import (
+    load_metadata_df,
+    load_metadata_tsv,
+    trials_ep_from_metadata_df,
+    validate_metadata_timing,
+)
+from ethograph.io.data_loader import synthesize_single_trial
 from ethograph.utils.paths import auto_git_commit
 
 logger = logging.getLogger(__name__)
@@ -576,6 +582,17 @@ class ObservableAppState(QObject):
                     )
                     self._values[name] = resolved_path or value
                     self.metadata_df = metadata_df
+
+                    # Read raw file for timing (load_metadata_df may strip
+                    # timing columns depending on which fallback path it took).
+                    raw_path = Path(resolved_path or value)
+                    if raw_path.suffix.lower() in {".tsv", ".csv", ".xlsx", ".xls"} and raw_path.exists():
+                        raw_df = load_metadata_tsv(raw_path)
+                        if "start_time" in raw_df.columns and "stop_time" in raw_df.columns:
+                            validate_metadata_timing(raw_df, raw_path)
+                            new_ep = trials_ep_from_metadata_df(raw_df)
+                            if new_ep is not None:
+                                self._rebuild_trials_from_ep(new_ep)
                 else:
                     self.metadata_df = None
 
@@ -583,6 +600,31 @@ class ObservableAppState(QObject):
 
         super().__setattr__(name, value)
 
+
+    def _rebuild_trials_from_ep(self, trials_ep) -> None:
+        """Propagate new trial boundaries to source_collection.
+
+        The data_loader is stateless w.r.t. trials — callers pass t0/t1
+        directly to ``select()``, so no loader update is needed here.
+        """
+        trial_ids = list(range(1, len(trials_ep) + 1))
+        self.trials = trial_ids
+
+        # Rebuild source_collection trial bookmarks
+        sc = getattr(self, "source_collection", None)
+        if sc is not None:
+            sc.set_trials(
+                ids=trial_ids,
+                starts=[float(s) for s in trials_ep.start],
+                stops=[float(e) for e in trials_ep.end],
+            )
+
+        # Update alignment so .trials_ep reflects the new epochs
+        alignment = getattr(self, "nwb_alignment", None)
+        if alignment is not None and hasattr(alignment, "_trials_ep_cache"):
+            alignment._trials_ep_cache = trials_ep
+
+        logger.info("Rebuilt %d trials from metadata timing columns", len(trial_ids))
 
     # --- Dynamic _sel variables ---
     def get_ds_kwargs(self):
