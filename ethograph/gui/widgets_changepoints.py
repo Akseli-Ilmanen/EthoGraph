@@ -1166,6 +1166,7 @@ class ChangepointsWidget(QWidget):
         all_params = self.get_correction_params()
         ds_kwargs = self.app_state.get_ds_kwargs()
         all_params["cp_kwargs"] = ds_kwargs
+        print("all_params:", all_params)  # Debugging line
 
         try:
             if mode == "single_trial":
@@ -1176,6 +1177,9 @@ class ChangepointsWidget(QWidget):
                 self.app_state.label_intervals = corrected_df
                 self.app_state.set_trial_meta_attr(trial, 'changepoint_corrected', 1)
                 self._update_cp_status()
+
+            
+            
 
             if mode == "all_trials":
                 if self.app_state.get_global_meta_attr("changepoint_corrected", 0) == 1:
@@ -1195,6 +1199,8 @@ class ChangepointsWidget(QWidget):
 
             if self.data_widget:
                 self.data_widget.update_main_plot()
+            
+
         except (ValueError, IndexError, RuntimeError) as e:
             logger.exception("Changepoint correction failed")
             notify(f"Changepoint correction failed: {e}", "warning")

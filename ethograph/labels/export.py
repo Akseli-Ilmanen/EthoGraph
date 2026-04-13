@@ -25,12 +25,15 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
     
     counter = 0
     for _, group in df.groupby("individual"):
+        
+        
         idx = group.index.tolist()
         for i in range(len(idx) - 1):
+            trial = group.loc[idx[i], "trial"]
             gap = df.loc[idx[i + 1], "onset_s"] - df.loc[idx[i], "offset_s"]
             
             if gap < 0:
-                raise ValueError(f"Negative gap of {gap:.3f} seconds between intervals for individual {group['individual'].iloc[0]} at index {idx[i]} and {idx[i + 1]}. Check your data for overlapping intervals.")
+                print(f"Negative gap of {gap:.3f} seconds between intervals for individual {group['individual'].iloc[0]} at index {idx[i]} and {idx[i + 1]} in trial {trial}. Check your data for overlapping intervals.")
             
             if gap < eps:
                 counter += 1
