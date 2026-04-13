@@ -1,13 +1,26 @@
-import pytest
-import numpy as np
 from pathlib import Path
+
+import napari
+import pytest
+from qtpy.QtWidgets import QApplication, QMessageBox
+
 import ethograph as eto
-from ethograph.gui.dialog_select_template import _DOWNLOAD_BASE
+import ethograph.utils.paths as paths_module
+from ethograph.gui.app_state import ObservableAppState
+from ethograph.datasets import (
+    DATASETS,
+    DOWNLOAD_BASE,
+    dataset_dir,
+    get_gui_assets,
+    is_dataset_downloaded,
+    resolve_dataset_paths,
+)
+from ethograph.gui.widgets_meta import MetaWidget
+from ethograph.io.catalog import catalog_from_xarray
 from ethograph.utils.download import (
-    EXAMPLE_DATASETS,
+    build_alignment_nwb,
     download_assets,
     ensure_default_configs,
-    is_downloaded,
     write_example_configs,
 )
 
@@ -15,81 +28,142 @@ from ethograph.utils.download import (
 def pytest_addoption(parser):
     parser.addoption("--show", action="store_true", default=False, help="Show napari viewer for 15s after each test")
 
-BIRDPARK_DIR = _DOWNLOAD_BASE / "BirdPark"
+
+BIRDPARK_DIR = dataset_dir("birdpark")
 BIRDPARK_NC = BIRDPARK_DIR / "copExpBP08_trim.nc"
-MOLL_NC = _DOWNLOAD_BASE / "Moll2025" / "Trial_data.nc"
+MOLL_DIR = dataset_dir("moll2025")
+MOLL_NC = MOLL_DIR / "Trial_data.nc"
+MOLL_PYNAPPLE_DIR = DOWNLOAD_BASE / "Moll2025_pynapple"
 
 
-TEST_DATA_DIR = BIRDPARK_DIR
-TEST_NC_PATH = MOLL_NC
+def _skip_if_not_downloaded(key: str) -> None:
+    if not is_dataset_downloaded(key):
+        pytest.skip(f"{key} not downloaded")
 
 
-def _ensure_dataset(key: str, folder: Path):
+def _ensure_alignment_nwb(key: str) -> None:
+    """Build alignment.nwb only when it does not already exist."""
+    nwb_path = dataset_dir(key) / ".ethograph" / "alignment.nwb"
+    if not nwb_path.exists():
+        build_alignment_nwb(key)
+
+
+def _apply_template(meta, key: str, downsample: bool = False) -> None:
+    _ensure_alignment_nwb(key)
+    resolved = resolve_dataset_paths(key)
+
+    io = meta.io_widget
+    io._clear_all_line_edits()
+
+    if resolved["nc_file_path"]:
+        io.nc_file_path_edit.setText(resolved["nc_file_path"])
+        meta.app_state.nc_file_path = resolved["nc_file_path"]
+    if resolved["video_folder"]:
+        io.video_folder_edit.setText(resolved["video_folder"])
+        meta.app_state.video_folder = resolved["video_folder"]
+    if resolved["audio_folder"]:
+        io.audio_folder_edit.setText(resolved["audio_folder"])
+        meta.app_state.audio_folder = resolved["audio_folder"]
+    if resolved.get("pose_folder"):
+        io.pose_folder_edit.setText(resolved["pose_folder"])
+        meta.app_state.pose_folder = resolved["pose_folder"]
+    if resolved.get("import_labels"):
+        io.import_labels_checkbox.setChecked(True)
+
+    io.downsample_checkbox.setChecked(downsample)
+    if downsample:
+        io.downsample_spin.setValue(100)
+
+    meta.data_widget.on_load_clicked()
+    QApplication.processEvents()
+
+
+def _load_template_gui(gui, key: str, downsample: bool = False):
+    _skip_if_not_downloaded(key)
+    viewer, meta = gui
+    _apply_template(meta, key, downsample=downsample)
+    assert meta.app_state.ready, f"Failed to load {key}"
+    return viewer, meta
+
+
+# ---------------------------------------------------------------------------
+# Dataset download — runs once per session
+# ---------------------------------------------------------------------------
+
+def _ensure_dataset(key: str):
     """Download example dataset if not already present."""
-    info = EXAMPLE_DATASETS[key]
-    if not is_downloaded(key, folder):
-        folder.mkdir(parents=True, exist_ok=True)
+    if not is_dataset_downloaded(key):
+        dest = dataset_dir(key)
+        dest.mkdir(parents=True, exist_ok=True)
         download_assets(
-            release_tag=info["release_tag"],
-            assets=info["assets_gui"],
-            dest=folder,
+            release_tag=DATASETS[key]["release_tag"],
+            assets=get_gui_assets(key),
+            dest=dest,
         )
         ensure_default_configs()
-        write_example_configs(key, folder)
+        write_example_configs(key, dest)
 
 
-def _require_birdpark():
-    _ensure_dataset("birdpark", BIRDPARK_DIR)
-    assert BIRDPARK_NC.exists(), f"BirdPark data not found after download: {BIRDPARK_NC}"
+def pytest_configure(config):
+    """Ensure both required datasets exist before any test runs."""
+    _ensure_dataset("birdpark")
+    assert BIRDPARK_NC.exists(), f"BirdPark NC not found after download: {BIRDPARK_NC}"
+
+    _ensure_dataset("moll2025")
+    assert MOLL_NC.exists(), f"Moll2025 NC not found after download: {MOLL_NC}"
+
+
+# ---------------------------------------------------------------------------
+# Data fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def moll2025_nc_path() -> str:
+    return str(MOLL_NC)
 
 
 @pytest.fixture
-def test_nc_path():
-    _require_birdpark()
-    return str(TEST_NC_PATH)
+def birdpark_data_dir() -> str:
+    return str(BIRDPARK_DIR)
 
 
 @pytest.fixture
-def test_data_dir():
-    _require_birdpark()
-    return str(TEST_DATA_DIR)
+def moll2025_trial_tree(moll2025_nc_path):
+    return eto.open(moll2025_nc_path)
 
 
 @pytest.fixture
-def trial_tree(test_nc_path):
-    return eto.open(test_nc_path)
+def moll2025_first_trial_ds(moll2025_trial_tree):
+    return moll2025_trial_tree.itrial(0)
 
 
 @pytest.fixture
-def first_trial_ds(trial_tree):
-    return trial_tree.itrial(0)
+def moll2025_catalog(moll2025_first_trial_ds, moll2025_trial_tree):
+    return catalog_from_xarray(moll2025_first_trial_ds, moll2025_trial_tree)
 
 
 @pytest.fixture
-def catalog(first_trial_ds, trial_tree):
-    from ethograph.io.catalog import catalog_from_xarray
-    return catalog_from_xarray(first_trial_ds, trial_tree)
-
-
-@pytest.fixture
-def type_vars_dict(catalog):
+def moll2025_type_vars_dict(moll2025_catalog):
     """Backwards-compat fixture — prefer ``catalog`` in new tests."""
-    return catalog.to_type_vars_dict()
+    return moll2025_catalog.to_type_vars_dict()
 
 
 @pytest.fixture
-def label_dt(trial_tree):
-    return trial_tree.get_label_dt()
+def moll2025_label_dt(moll2025_trial_tree):
+    return moll2025_trial_tree.get_label_dt()
 
 
 @pytest.fixture
 def app_state(qtbot, tmp_path):
-    from ethograph.gui.app_state import ObservableAppState
     yaml_path = str(tmp_path / "test_gui_settings.yaml")
     state = ObservableAppState(yaml_path=yaml_path, auto_save_interval=999999)
     yield state
     state.stop_auto_save()
 
+
+# ---------------------------------------------------------------------------
+# Dialog suppression
+# ---------------------------------------------------------------------------
 
 @pytest.fixture(autouse=True)
 def _suppress_dialogs(monkeypatch):
@@ -101,18 +175,18 @@ def _suppress_dialogs(monkeypatch):
 
     monkeypatch.setattr(_notify_mod, "SUPPRESS", True)
 
-    from qtpy.QtWidgets import QMessageBox
-
     _noop = lambda *a, **kw: QMessageBox.Ok
     monkeypatch.setattr(QMessageBox, "critical", _noop)
     monkeypatch.setattr(QMessageBox, "warning", _noop)
     monkeypatch.setattr(QMessageBox, "information", _noop)
 
 
+# ---------------------------------------------------------------------------
+# GUI fixtures
+# ---------------------------------------------------------------------------
+
 @pytest.fixture
 def gui(request, qtbot, tmp_path, monkeypatch):
-    import ethograph.utils.paths as paths_module
-
     show = request.config.getoption("--show")
 
     test_config_dir = tmp_path / ".ethograph"
@@ -123,11 +197,9 @@ def gui(request, qtbot, tmp_path, monkeypatch):
         lambda data_dir=None: test_config_dir,
     )
 
-    import napari
     viewer = napari.Viewer(show=show)
     qtbot.addWidget(viewer.window._qt_window)
 
-    from ethograph.gui.widgets_meta import MetaWidget
     meta = MetaWidget(viewer)
     meta._check_unsaved_changes = lambda event: True
 
@@ -137,30 +209,10 @@ def gui(request, qtbot, tmp_path, monkeypatch):
     viewer.close()
 
 
-@pytest.fixture
-def loaded_gui(gui, qtbot):
-    from qtpy.QtWidgets import QApplication
-
-    _require_birdpark()
-
-    viewer, meta = gui
-    meta.io_widget.nc_file_path_edit.setText(str(TEST_NC_PATH))
-    meta.app_state.nc_file_path = str(TEST_NC_PATH)
-    meta.io_widget.downsample_checkbox.setChecked(False)
-
-    meta.data_widget.on_load_clicked()
-    QApplication.processEvents()
-
-    return viewer, meta
-
 
 @pytest.fixture
-def no_video_gui(gui, qtbot):
+def birdpark_audio_only_gui(gui, qtbot):
     """Load birdpark dataset with audio folder only (no video) — triggers 3-panel mode."""
-    from qtpy.QtWidgets import QApplication
-
-    _require_birdpark()
-
     viewer, meta = gui
     nc_path = str(BIRDPARK_NC)
 
@@ -179,18 +231,90 @@ def no_video_gui(gui, qtbot):
 
 
 @pytest.fixture
-def loaded_gui_downsampled(gui, qtbot):
-    from qtpy.QtWidgets import QApplication
+def no_video_gui(birdpark_audio_only_gui):
+    """Backward-compatible alias for tests that still request no_video_gui."""
+    return birdpark_audio_only_gui
 
-    _require_birdpark()
+
+@pytest.fixture
+def birdpark_gui(gui, qtbot):
+    return _load_template_gui(gui, "birdpark")
+
+
+@pytest.fixture
+def moll2025_gui(gui, qtbot):
+    return _load_template_gui(gui, "moll2025")
+
+
+@pytest.fixture
+def lockbox_gui(gui, qtbot):
+    return _load_template_gui(gui, "lockbox")
+
+
+@pytest.fixture
+def philodoptera_gui(gui, qtbot):
+    return _load_template_gui(gui, "philodoptera")
+
+
+@pytest.fixture
+def canary_gui(gui, qtbot):
+    _skip_if_not_downloaded("canary")
+    viewer, meta = gui
+    ds_info = DATASETS["canary"]
+    resolved = resolve_dataset_paths("canary")
+    nc_path = resolved.get("nc_file_path")
+    if not nc_path:
+        audio_name = ds_info.get("audio_file")
+        if audio_name:
+            candidate = dataset_dir("canary") / (Path(audio_name).stem + ".nc")
+            if candidate.exists():
+                nc_path = str(candidate)
+    if not nc_path or not Path(nc_path).exists():
+        pytest.skip("Canary .nc is missing; generate it via template dialog first")
+
+    io = meta.io_widget
+    io._clear_all_line_edits()
+    io.nc_file_path_edit.setText(nc_path)
+    meta.app_state.nc_file_path = nc_path
+    if resolved.get("audio_folder"):
+        io.audio_folder_edit.setText(resolved["audio_folder"])
+        meta.app_state.audio_folder = resolved["audio_folder"]
+
+    meta.data_widget.on_load_clicked()
+    QApplication.processEvents()
+    assert meta.app_state.ready, "Failed to load canary"
+    return viewer, meta
+
+
+@pytest.fixture
+def birdpark_gui_downsampled(gui, qtbot):
+    return _load_template_gui(gui, "birdpark", downsample=True)
+
+
+@pytest.fixture
+def moll2025_pynapple_gui(gui, qtbot):
+    """Load Moll2025 pynapple .npz data with alignment NWB linking to original media."""
+    npz_dir = MOLL_PYNAPPLE_DIR
+    speed_npz = npz_dir / "beakTip_speed.npz"
+    alignment = npz_dir / ".ethograph" / "alignment.nwb"
+    if not speed_npz.exists():
+        pytest.skip("Moll2025_pynapple not set up")
+    if not alignment.exists():
+        from ethograph.utils.download import setup_moll2025_pynapple
+        setup_moll2025_pynapple(npz_dir)
+    assert alignment.exists(), f"alignment.nwb not found at {alignment}"
 
     viewer, meta = gui
-    meta.io_widget.nc_file_path_edit.setText(str(TEST_NC_PATH))
-    meta.app_state.nc_file_path = str(TEST_NC_PATH)
-    meta.io_widget.downsample_checkbox.setChecked(True)
-    meta.io_widget.downsample_spin.setValue(100)
+    io = meta.io_widget
+    io._clear_all_line_edits()
+
+    meta.app_state._suspend_local_autoload = True
+    io.nc_file_path_edit.setText(str(speed_npz))
+    meta.app_state.nc_file_path = str(speed_npz)
+    meta.app_state._suspend_local_autoload = False
 
     meta.data_widget.on_load_clicked()
     QApplication.processEvents()
 
+    assert meta.app_state.ready, "Failed to load Moll2025 pynapple"
     return viewer, meta

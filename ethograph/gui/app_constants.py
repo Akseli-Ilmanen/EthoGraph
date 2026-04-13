@@ -25,8 +25,7 @@ LABELS_OVERLAY_FALLBACK_SIZE = (100, 100)
 # Qt maximum size sentinel (QWIDGETSIZE_MAX) used to un-cap widget dimensions.
 MAX_WIDGET_SIZE = 16777215
 
-# No-video mode panel layout (widgets_meta.py)
-NO_VIDEO_PANEL_WIDTH_RATIO = 0.75
+
 SIDEBAR_DEFAULT_WIDTH_RATIO = 0.40
 SIDEBAR_AFTER_LOAD_WIDTH_RATIO = 0.25
 SIDEBAR_MIN_WIDTH_PX = 280

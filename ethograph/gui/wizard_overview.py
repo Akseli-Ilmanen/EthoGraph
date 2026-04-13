@@ -26,7 +26,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ethograph.gui.makepretty import styled_link
+from ethograph.gui.make_pretty import styled_link
 from ethograph.gui.notify import notify_dialog
 
 if TYPE_CHECKING:
@@ -156,14 +156,11 @@ class _ModeSelectionPage(QWidget):
         mb_lay.addWidget(self._rb_multi)
         layout.addWidget(multi_box)
 
-        # --- NWB section ---
-        nwb_box = QGroupBox("NWB file")
+        # --- NWB / DANDI section ---
+        nwb_box = QGroupBox("DANDI archive")
         nb_lay = QVBoxLayout(nwb_box)
-        self._rb_nwb_local = QRadioButton("1) Local .nwb file")
-        self._rb_nwb_dandi = QRadioButton("2) DANDI archive (downloading individual trials/ streaming)")
-        self._top_group.addButton(self._rb_nwb_local)
+        self._rb_nwb_dandi = QRadioButton("Download from DANDI")
         self._top_group.addButton(self._rb_nwb_dandi)
-        nb_lay.addWidget(self._rb_nwb_local)
         nb_lay.addWidget(self._rb_nwb_dandi)
         layout.addWidget(nwb_box)
 
@@ -189,7 +186,7 @@ class _ModeSelectionPage(QWidget):
     def get_mode(self) -> str:
         if self._rb_multi.isChecked():
             return "multi"
-        if self._rb_nwb_local.isChecked() or self._rb_nwb_dandi.isChecked():
+        if self._rb_nwb_dandi.isChecked():
             return "nwb"
         return "single"
 
@@ -201,8 +198,6 @@ class _ModeSelectionPage(QWidget):
             if rb.isChecked():
                 return name
 
-    def is_nwb_local(self) -> bool:
-        return self._rb_nwb_local.isChecked()
 
 
 # ─── Page 1: modality selection ──────────────────────────────────────────────
@@ -460,11 +455,6 @@ class NCWizardDialog(QDialog):
         from ethograph.gui.wizard_nwb import NWBImportDialog
 
         dialog = NWBImportDialog(self.app_state, self.io_widget, self)
-        if self._page_mode.is_nwb_local():
-            dialog._page_source._rb_local.setChecked(True)
-        else:
-            dialog._page_source._rb_dandi.setChecked(True)
-            dialog._page_source._toggle_source()
         if dialog.exec_():
             self.accept()
 

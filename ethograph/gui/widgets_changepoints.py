@@ -40,7 +40,7 @@ from ethograph.features.changepoints import (
 from ethograph.features.audio_changepoints import get_audio_changepoints
 
 from .dialog_function_params import open_function_params_dialog, get_registry
-from .makepretty import styled_link
+from .make_pretty import styled_link
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +63,6 @@ _RUPTURES_REGISTRY_MAP = {
 _KINEMATIC_REGISTRY_MAP = {
     "troughs": "find_troughs",
     "turning_points": "find_turning_points",
-}
-
-_OSCILLATORY_REGISTRY_MAP = {
-    "detect_oscillatory_events": "oscillatory_events",
 }
 
 
@@ -135,19 +131,16 @@ class ChangepointsWidget(QWidget):
         self._create_changepoints_panel()
         self._create_ruptures_panel()
         self._create_audio_cp_panel()
-        self._create_oscillatory_panel()
         self._create_correction_params_panel()
 
         main_layout.addWidget(self.changepoints_panel)
         main_layout.addWidget(self.ruptures_panel)
         main_layout.addWidget(self.audio_cp_panel)
-        main_layout.addWidget(self.oscillatory_panel)
         main_layout.addWidget(self.correction_params_panel)
 
         self.changepoints_panel.hide()
         self.ruptures_panel.hide()
         self.audio_cp_panel.hide()
-        self.oscillatory_panel.hide()
         self.correction_params_panel.show()
         self.correction_toggle.setText("CP Correction")
 
@@ -245,7 +238,6 @@ class ChangepointsWidget(QWidget):
             ("cp_toggle", "Kinematic CPs", False, self._toggle_changepoints),
             ("ruptures_toggle", "Ruptures", False, self._toggle_ruptures),
             ("audio_cp_toggle", "Audio CPs", False, self._toggle_audio_cps),
-            ("oscillatory_toggle", "Oscillatory", False, self._toggle_oscillatory),
         ]
         for attr, label, checked, callback in toggle_defs:
             btn = QPushButton(label)
@@ -263,7 +255,6 @@ class ChangepointsWidget(QWidget):
             "kinematic": (self.changepoints_panel, self.cp_toggle, "Kinematic CPs"),
             "ruptures": (self.ruptures_panel, self.ruptures_toggle, "Ruptures"),
             "audio_cps": (self.audio_cp_panel, self.audio_cp_toggle, "Audio CPs"),
-            "oscillatory": (self.oscillatory_panel, self.oscillatory_toggle, "Oscillatory"),
         }
         for name, (panel, toggle, label) in panels.items():
             if name == panel_name:
@@ -284,13 +275,8 @@ class ChangepointsWidget(QWidget):
     def _toggle_audio_cps(self):
         self._show_panel("audio_cps" if self.audio_cp_toggle.isChecked() else "correction")
 
-    def _toggle_oscillatory(self):
-        self._show_panel("oscillatory" if self.oscillatory_toggle.isChecked() else "correction")
-        if self.oscillatory_toggle.isChecked():
-            self._update_oscillatory_source_state()
-
     def _toggle_correction_params(self):
-        self._show_panel("correction" if self.correction_toggle.isChecked() else "oscillatory")
+        self._show_panel("correction" if self.correction_toggle.isChecked() else "audio_cps")
 
     def _refresh_layout(self):
         if self.meta_widget:
@@ -446,83 +432,9 @@ class ChangepointsWidget(QWidget):
 
         layout.addLayout(button_layout)
 
-    def _create_oscillatory_panel(self):
-        self.oscillatory_panel = QWidget()
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 4, 0, 0)
-        self.oscillatory_panel.setLayout(layout)
-
-        row1 = QHBoxLayout()
-        row1.addWidget(QLabel("Source:"))
-        self.osc_source_combo = QComboBox()
-        self.osc_source_combo.setToolTip(
-            "Data source for oscillatory event detection.\n"
-            "Ephys Trace: single-channel ephys (multichannel not supported)\n"
-            "Audio Trace: single-channel audio waveform\n"
-            "Current Feature: currently selected dataset feature"
-        )
-        self.osc_source_combo.addItems(["Ephys Trace", "Audio Trace", "Current Feature"])
-        row1.addWidget(self.osc_source_combo)
-        layout.addLayout(row1)
-
-        row2 = QHBoxLayout()
-        row2.addWidget(QLabel("Method:"))
-        self.osc_method_combo = QComboBox()
-        self.osc_method_combo.addItems(["detect_oscillatory_events"])
-        row2.addWidget(self.osc_method_combo)
-
-        self.osc_configure_btn = QPushButton("Configure...")
-        self.osc_configure_btn.setToolTip("Open parameter editor for oscillatory event detection")
-        self.osc_configure_btn.clicked.connect(self._open_oscillatory_params)
-        row2.addWidget(self.osc_configure_btn)
-        layout.addLayout(row2)
-
-        button_layout = QHBoxLayout()
-
-        self.osc_detect_btn = QPushButton("Detect")
-        self.osc_detect_btn.setToolTip("Detect oscillatory events in selected data source")
-        self.osc_detect_btn.clicked.connect(self._compute_oscillatory_events)
-        button_layout.addWidget(self.osc_detect_btn)
-
-        self.osc_clear_btn = QPushButton("Clear")
-        self.osc_clear_btn.setToolTip("Remove all oscillatory events from plots and dataset")
-        self.osc_clear_btn.clicked.connect(self._clear_oscillatory_events)
-        button_layout.addWidget(self.osc_clear_btn)
-
-        self.osc_count_label = QLabel("")
-        button_layout.addWidget(self.osc_count_label)
-
-        button_layout.addStretch()
-
-        ref_label = QLabel(styled_link(
-            "https://pynapple.org/user_guide/12_filtering.html#detecting-oscillatory-events",
-            "pynapple (Viejo et al., 2023)",
-        ))
-        ref_label.setOpenExternalLinks(True)
-        ref_label.setToolTip("Open pynapple filtering documentation")
-        button_layout.addWidget(ref_label)
-
-        layout.addLayout(button_layout)
-
-        self._update_oscillatory_source_state()
-
-    def _update_oscillatory_source_state(self):
-        has_raw_ephys = bool(self.app_state.has_neo or self.app_state.has_neurons)
-        model = self.osc_source_combo.model()
-        ephys_item = model.item(0)  # "Ephys Trace"
-        ephys_item.setEnabled(has_raw_ephys)
-        if not has_raw_ephys and self.osc_source_combo.currentIndex() == 0:
-            self.osc_source_combo.setCurrentIndex(1)
-
     # =========================================================================
     # Configure... dialog openers
     # =========================================================================
-
-    def _open_oscillatory_params(self):
-        method = self.osc_method_combo.currentText()
-        key = _OSCILLATORY_REGISTRY_MAP.get(method)
-        if key and open_function_params_dialog(key, self.app_state, parent=self) is not None:
-            self._compute_oscillatory_events()
 
     def _open_kinematic_params(self):
         method = self.method_combo.currentText()
@@ -634,14 +546,9 @@ class ChangepointsWidget(QWidget):
                 if result is not None:
                     self.plot_container.draw_audio_changepoints(*result)
 
-                osc_result = self._get_oscillatory_events_from_ds()
-                if osc_result is not None:
-                    self.plot_container.draw_oscillatory_events(*osc_result)
-
                 self._draw_dataset_changepoints_on_plot()
             else:
                 self.plot_container.clear_audio_changepoints()
-                self.plot_container.clear_oscillatory_events()
                 self.plot_container.clear_dataset_changepoints()
 
         self.request_plot_update.emit()
@@ -775,130 +682,6 @@ class ChangepointsWidget(QWidget):
             self.plot_container.draw_audio_changepoints(onsets, offsets)
 
         self._ensure_changepoints_visible()
-
-    # =========================================================================
-    # Oscillatory event detection (pynapple)
-    # =========================================================================
-
-    def _store_oscillatory_events_to_ds(
-        self, onsets: np.ndarray, offsets: np.ndarray, target_feature: str, method: str
-    ):
-        ds = self.app_state.ds
-        if ds is None:
-            return
-        new_ds = ds.copy()
-        for var in ("osc_event_onsets", "osc_event_offsets"):
-            if var in new_ds.data_vars:
-                new_ds = new_ds.drop_vars(var)
-        attrs = {"type": "oscillatory_events", "target_feature": target_feature, "method": method}
-        new_ds["osc_event_onsets"] = xr.DataArray(onsets, dims=["osc_event"], attrs=attrs)
-        new_ds["osc_event_offsets"] = xr.DataArray(offsets, dims=["osc_event"], attrs=attrs)
-        self._update_trial_dataset(new_ds)
-
-    def _get_oscillatory_events_from_ds(self) -> tuple[np.ndarray, np.ndarray] | None:
-        ds = getattr(self.app_state, "ds", None)
-        if ds is None:
-            return None
-        if "osc_event_onsets" not in ds.data_vars or "osc_event_offsets" not in ds.data_vars:
-            return None
-        return ds["osc_event_onsets"].values, ds["osc_event_offsets"].values
-
-    def _compute_oscillatory_events(self):
-        from .dialog_busy_progress import BusyProgressDialog
-        from ethograph.features.oscillatory import detect_oscillatory_events_np
-
-        source = self.osc_source_combo.currentText()
-        method = self.osc_method_combo.currentText()
-        key = _OSCILLATORY_REGISTRY_MAP.get(method)
-        params = self._get_cached_params(key) if key else {}
-
-        if source == "Ephys Trace":
-            from .plots_ephystrace import get_loader as get_ephys_loader
-            ephys_path, stream_id, channel_idx = self.app_state.get_ephys_source()
-            if not ephys_path:
-                notify("No ephys data loaded", "warning")
-                return
-            loader = get_ephys_loader(ephys_path, stream_id=stream_id)
-            if loader is None:
-                notify("Could not open ephys file", "warning")
-                return
-            sample_rate = float(loader.rate)
-            raw = loader[:]
-            if raw.ndim > 1:
-                raw = raw[:, min(channel_idx, raw.shape[1] - 1)]
-            signal_array = np.asarray(raw, dtype=np.float64)
-            target_feature = f"ephys_ch{channel_idx}"
-
-        elif source == "Audio Trace":
-            audio_path, channel_idx = self.app_state.get_audio_source()
-            if not audio_path:
-                notify("No audio data loaded", "warning")
-                return
-            data, sample_rate = aio.load_audio(audio_path)
-            sample_rate = float(sample_rate)
-            if data.ndim > 1:
-                data = data[:, channel_idx]
-            signal_array = np.asarray(data, dtype=np.float64)
-            target_feature = "Audio Waveform"
-
-        else:  # Current Feature
-            features_sel = self.app_state.features_sel
-            if not features_sel or features_sel in ("Audio Waveform", "Ephys trace", "firing_rate"):
-                notify("Select a standard dataset feature (not Audio/Ephys/Firing rate)", "warning")
-                return
-            ds_kwargs = self.app_state.get_ds_kwargs()
-            data, _ = eto.sel_valid(self.app_state.ds[features_sel], ds_kwargs)
-            feature_sr = self.app_state.get_feature_sr()
-            
-            if np.asarray(data).ndim > 1:
-                notify("Oscillatory event detection requires 1-D data. Select a single dimension.", "warning")
-                return
-            
-
-            signal_array = np.asarray(data, dtype=np.float64).ravel()
-            target_feature = features_sel
-
-        def _run():
-            return detect_oscillatory_events_np(
-                data=signal_array, sr=feature_sr, **params,
-            )
-
-        dialog = BusyProgressDialog("Detecting oscillatory events...", parent=self)
-        result, error = dialog.execute(_run)
-
-        if dialog.was_cancelled:
-            return
-        if error:
-            notify(f"Error detecting oscillatory events: {error}", "warning")
-            return
-
-        onsets, offsets = result
-        if len(onsets) == 0:
-            notify("No oscillatory events detected. Try adjusting parameters (freq_band, thresh_band).")
-            return
-
-        self._store_oscillatory_events_to_ds(onsets, offsets, target_feature, method)
-        self.osc_count_label.setText(f"{len(onsets)} events")
-        notify(f"Detected {len(onsets)} oscillatory events")
-
-        if self.plot_container:
-            self.plot_container.draw_oscillatory_events(onsets, offsets)
-
-        self._ensure_changepoints_visible()
-
-    def _clear_oscillatory_events(self):
-        ds = getattr(self.app_state, "ds", None)
-        if ds is not None:
-            vars_to_drop = [v for v in ("osc_event_onsets", "osc_event_offsets") if v in ds.data_vars]
-            if vars_to_drop:
-                self._update_trial_dataset(ds.drop_vars(vars_to_drop))
-
-        self.osc_count_label.setText("")
-
-        if self.plot_container:
-            self.plot_container.clear_oscillatory_events()
-
-        self.request_plot_update.emit()
 
     # =========================================================================
     # Kinematic (dataset) changepoint detection
@@ -1331,9 +1114,6 @@ class ChangepointsWidget(QWidget):
         if "audio_cp_onsets" in ds.data_vars and "audio_cp_offsets" in ds.data_vars:
             all_cp_times.append(ds["audio_cp_onsets"].values.astype(np.float64))
             all_cp_times.append(ds["audio_cp_offsets"].values.astype(np.float64))
-        if "osc_event_onsets" in ds.data_vars and "osc_event_offsets" in ds.data_vars:
-            all_cp_times.append(ds["osc_event_onsets"].values.astype(np.float64))
-            all_cp_times.append(ds["osc_event_offsets"].values.astype(np.float64))
         if len(all_cp_times) > 1:
             cp_times = np.unique(np.concatenate(all_cp_times))
         return cp_times
@@ -1455,14 +1235,7 @@ class ChangepointsWidget(QWidget):
             self.automatic_stitch_gap_spin.value(),
         )
 
-    def _get_active_sr(self) -> float | None:
-        ds = getattr(self.app_state, "ds", None)
-        if ds is not None and "audio_cp_onsets" in ds.data_vars:
-            audio_path, _ = self.app_state.get_audio_source()
-            if audio_path:
-                _, sr = aio.load_audio(audio_path)
-                return float(sr)
-        return self.app_state.get_feature_sr()
+
 
     # =========================================================================
     # Changepoint navigation (jump forward/backward between CPs)
@@ -1494,7 +1267,6 @@ class ChangepointsWidget(QWidget):
         video = getattr(self.app_state, 'video', None)
         if video:
             return video.frame_to_time(self.app_state.current_frame)
-        return self.plot_container.time_slider.current_time
 
     def _get_jump_cp_times(self) -> np.ndarray | None:
         last_panel = getattr(self.plot_container, '_last_clicked_panel', 'feature')
@@ -1527,8 +1299,7 @@ class ChangepointsWidget(QWidget):
             video.blockSignals(True)
             video.seek_to_frame(new_frame)
             video.blockSignals(False)
-        else:
-            self.plot_container.time_slider.set_slider_time(time_s)
+
 
         self.plot_container.update_time_marker_by_time(time_s)
 

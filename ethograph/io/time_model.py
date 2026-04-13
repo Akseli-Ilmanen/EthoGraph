@@ -38,9 +38,6 @@ class TimeRange:
     def duration(self) -> float:
         return self.end_s - self.start_s
 
-    def overlaps(self, other: TimeRange) -> bool:
-        return self.start_s < other.end_s and other.start_s < self.end_s
-
     def union(self, other: TimeRange) -> TimeRange:
         return TimeRange(min(self.start_s, other.start_s), max(self.end_s, other.end_s))
 
@@ -157,9 +154,7 @@ def compute_trial_video_bounds(
     )
 
 
-# Backward-compat aliases for older imports.
-TrialAlignment = TrialVideoBounds
-compute_trial_alignment = compute_trial_video_bounds
+
 
 
 def _resolve_trial_end(
@@ -251,9 +246,6 @@ class SourceCollection:
     def add(self, source: TimeSource) -> None:
         self._sources[source.name] = source
 
-    def remove(self, name: str) -> None:
-        self._sources.pop(name, None)
-
     @property
     def sources(self) -> dict[str, TimeSource]:
         return dict(self._sources)
@@ -301,11 +293,6 @@ class SourceCollection:
     def trial_range(self, idx: int) -> TimeRange:
         start, end = self._trial_intervals[idx]
         return TimeRange(start, end)
-
-    def trial_local_range(self, idx: int) -> TimeRange:
-        """Trial range in local (0-based) time."""
-        start, end = self._trial_intervals[idx]
-        return TimeRange(0.0, end - start)
 
     def trial_offset(self, idx: int) -> float:
         """Session-absolute start time of a trial."""
@@ -363,9 +350,6 @@ class SourceCollection:
             return TimeRange(min(starts), max(ends))
         return self.union_range
 
-    def sources_at(self, t: float) -> list[TimeSource]:
-        """Return sources that have data at time *t*."""
-        return [s for s in self._sources.values() if s.time_range.contains(t)]
 
 
 # ---------------------------------------------------------------------------

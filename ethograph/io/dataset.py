@@ -10,7 +10,6 @@ from scipy.ndimage import gaussian_filter1d
 from ethograph.features.movement import get_angle_rgb, extract_video_motion
 
 from ethograph.utils.xr_utils import get_time_coord
-from ethograph.labels.intervals import INTERVAL_COLUMNS
 from ethograph.io.trialtree import TrialTree
 
 
@@ -61,9 +60,7 @@ def dataset_to_basic_trialtree(ds, video_path: str | None = None, video_motion: 
     if video_motion and video_path is not None:
         ds["video_motion"] = extract_video_motion(video_path, fps=ds.fps, time_coord_name="time_video")
 
-    for feat in list(ds.data_vars):
-        if feat not in INTERVAL_COLUMNS and feat != "confidence":
-            ds[feat].attrs["type"] = "features"
+ 
 
     ds.attrs["trial"] = 1
     return TrialTree.from_datasets([ds])
@@ -277,7 +274,6 @@ def add_angle_rgb_to_ds(ds: xr.Dataset, smoothing_params: dict) -> xr.Dataset:
 
     * ``angles`` -- heading angle in radians.
     * ``angle_rgb`` -- ``(R, G, B)`` triplet per time-step
-      (``attrs["type"] = "colors"``).
 
     Parameters
     ----------
@@ -335,7 +331,6 @@ def add_angle_rgb_to_ds(ds: xr.Dataset, smoothing_params: dict) -> xr.Dataset:
     )
 
     ds["angle_rgb"] = angle_rgb
-    ds["angle_rgb"].attrs["type"] = "colors"
 
     return ds
 

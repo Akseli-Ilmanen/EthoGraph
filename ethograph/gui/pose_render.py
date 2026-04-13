@@ -315,7 +315,7 @@ class PoseDisplayManager:
             try:
                 pr = load_pose_from_file(
                     pose_path,
-                    self.app_state.ds.source_software,
+                    getattr(self.app_state.ds, "source_software", None),
                     self._resolve_camera_fps(camera_idx),
                 )
             except (OSError, ValueError, KeyError) as e:
@@ -336,12 +336,13 @@ class PoseDisplayManager:
             return pr
 
         pose_keys = list(getattr(self.app_state, "nwb_pose_keys", None) or [])
+        if not pose_keys and sio:
+            pose_keys = sio.pose_keys
         if pose_keys and camera_idx < len(pose_keys):
             nwb_file = self._get_nwb_file()
             if nwb_file is None:
                 return None
             try:
-                # TODO: based of scope range, load in this
                 trial_id = self.app_state.trials_sel
                 t_start = sio.start_time(trial_id) if trial_id else None
                 t_stop = sio.stop_time(trial_id) if trial_id else None

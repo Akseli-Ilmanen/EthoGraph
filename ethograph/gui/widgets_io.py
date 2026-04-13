@@ -38,17 +38,9 @@ from .app_state import AppStateSpec
 from .notify import notify_dialog
 from .wizard_overview import NCWizardDialog
 from .dialog_select_template import TemplateDialog
+from ethograph.utils.qt import populate_if_exists
 
 logger = logging.getLogger(__name__)
-
-
-def _populate_if_exists(line_edit: QLineEdit, path: str | Path | None) -> None:
-    """Set a QLineEdit's text only if *path* points to an existing file or folder."""
-    if path is None:
-        return
-    p = Path(path)
-    if p.exists():
-        line_edit.setText(str(p))
 
 
 class IOWidget(QWidget):
@@ -237,7 +229,7 @@ class IOWidget(QWidget):
         self.load_panel.setLayout(self._load_layout)
 
         # Button row
-        self.reset_button = QPushButton("🔄️Reset gui_settings.yaml")
+        self.reset_button = QPushButton("Reset gui_settings.yaml")
         self.reset_button.setObjectName("reset_button")
         self.reset_button.clicked.connect(self._on_reset_gui_clicked)
 
@@ -245,7 +237,7 @@ class IOWidget(QWidget):
         self.create_nc_button.setObjectName("create_nc_button")
         self.create_nc_button.clicked.connect(self._on_create_nc_clicked)
 
-        self.template_button = QPushButton("🐦‍⬛Select templates")
+        self.template_button = QPushButton("💡Select templates")
         self.template_button.setObjectName("template_button")
         self.template_button.clicked.connect(self._on_select_template_clicked)
 
@@ -773,7 +765,7 @@ class IOWidget(QWidget):
 
         self.label_file_path_edit = QLineEdit()
         if self.import_labels_checkbox.isChecked() and self.app_state.nc_file_path:
-            _populate_if_exists(self.label_file_path_edit, labels_tsv_path(self.app_state.nc_file_path))
+            populate_if_exists(self.label_file_path_edit, labels_tsv_path(self.app_state.nc_file_path))
         input_layout.addWidget(self.label_file_path_edit)
 
         self.labels_browse_btn = QPushButton("Browse")
@@ -1260,7 +1252,7 @@ class IOWidget(QWidget):
         if state == 2 and self.app_state.nc_file_path:
             tsv = labels_tsv_path(self.app_state.nc_file_path)
             if hasattr(self, "label_file_path_edit"):
-                _populate_if_exists(self.label_file_path_edit, tsv)
+                populate_if_exists(self.label_file_path_edit, tsv)
 
     def _on_clear_path_clicked(self, object_name, line_edit):
         line_edit.setText("")
@@ -1436,6 +1428,10 @@ class IOWidget(QWidget):
         """Auto-discover alignment.nwb near the loaded data file."""
         from ethograph.utils.paths import find_nwb_file
 
+        # Skip if data_loader already provided a valid alignment
+        if self.app_state.nwb_alignment is not None:
+            return
+
         nc_path = self.app_state.nc_file_path
         if not nc_path:
             return
@@ -1447,11 +1443,12 @@ class IOWidget(QWidget):
             logger.info("Using source NWB for alignment: %s", source)
             return
 
-        data_dir = str(Path(nc_path).parent)
+        # For project directories, search inside the dir itself
+        data_dir = str(source) if source.is_dir() else str(source.parent)
         nwb = find_nwb_file(data_dir)
         if nwb is not None:
             self.nwb_file_path_edit.setText(str(nwb))
-            self.app_state.nwb_file_path = str(nwb)  # auto-syncs to app_state.nwb_alignment
+            self.app_state.nwb_file_path = str(nwb)
             logger.info("Auto-discovered NWB alignment: %s", nwb)
 
     def _auto_discover_metadata(self):
@@ -1460,7 +1457,7 @@ class IOWidget(QWidget):
         if not nc_path:
             return
         tsv = metadata_tsv_path(nc_path)
-        _populate_if_exists(self.metadata_path_edit, tsv)
+        populate_if_exists(self.metadata_path_edit, tsv)
         if tsv.exists():
             self.app_state.metadata_path = str(tsv)
 

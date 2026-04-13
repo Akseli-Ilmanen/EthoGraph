@@ -32,36 +32,37 @@ from movement.kinematics import (
 )
 
 from ethograph.gui.notify import notify_dialog
-from ethograph.io.metadata_table import load_metadata_df, load_metadata_tsv, metadata_tsv_path
+from ethograph.io.metadata_table import empty_metadata_df, load_metadata_df, load_metadata_tsv, metadata_tsv_path
 from ethograph.io.trialtree import TrialTree
 from ethograph.io.nwb_alignment import EmpytAlignment, TableAlignment, discover_nwb, make_nwb_alignment
-from ethograph.labels.tsv_store import (
-    init_empty_labels,
-    labels_tsv_path,
-    load_labels_tsv,
-    save_labels_tsv,
+from ethograph.labels.converters import (
+    NWBLabelConverter,
+    PynappleLabelConverter,
+    resolve_labels_tsv,
 )
+from ethograph.labels.tsv_store import init_empty_labels
 
 logger = logging.getLogger(__name__)
+
+
+def _default_trial_ids() -> list[int]:
+    return [1]
 
 
 @dataclass
 class LoadResult:
     """Everything ``load_dataset`` returns — no dt.attrs transport."""
 
-    dt: Any  # TrialTree (or None for future NWB-only path)
-    trial_ids: list[int | str]
-    nwb_alignment: Any = None  # NWBAlignment 
-    metadata_df: pd.DataFrame = None
+    dt: Any = None  # TrialTree (or None for NWB-only path)
+    trial_ids: list[int | str] = field(default_factory=_default_trial_ids)
+    nwb_alignment: Any = field(default_factory=EmpytAlignment)
+    metadata_df: pd.DataFrame = field(default_factory=lambda: empty_metadata_df([1]))
     metadata_path: str | None = None
-    all_labels_df: pd.DataFrame = None
+    all_labels_df: pd.DataFrame = field(default_factory=lambda: init_empty_labels([]))
     catalog: DataCatalog = None
     data_loader: Any = None
-    source_collection: Any = None
+    source_collection: SourceCollection = field(default_factory=SourceCollection)
     nwb_local: str | None = None
-    nwb_pose_keys: list[str] | None = None
-    nwb_ephys_series: str | None = None
-    nwb_ephys_path: str | None = None
     nwb_video_folder: str | None = None
 
 
@@ -72,21 +73,145 @@ def _detect_audio_rate(audio_path: str) -> float:
         return float(loader.rate)
 
 
+def _ensure_trials_ep(data: dict, trials_ep):
+    """Guarantee a valid trials IntervalSet.
+
+    When no explicit trials are found, synthesize a single trial spanning
+    the full time range of all loaded time-series objects.
+    """
+    if trials_ep is not None and len(trials_ep) > 0:
+        return trials_ep
+
+    import pynapple as nap
+
+    starts: list[float] = []
+    ends: list[float] = []
+    for obj in data.values():
+        if isinstance(obj, (nap.Tsd, nap.TsdFrame, nap.TsdTensor)) and len(obj) > 0:
+            starts.append(float(obj.t[0]))
+            ends.append(float(obj.t[-1]))
+    if not starts:
+        raise ValueError("No time-series data found — cannot determine session extent")
+    return nap.IntervalSet(start=min(starts), end=max(ends))
+
+
 def _is_nwb_file(file_path: str) -> bool:
     """Check if path is a standalone .nwb file."""
     return Path(file_path).suffix == ".nwb"
 
 
-def _is_pynapple_path(file_path: str) -> bool:
+def _is_pynapple_path_folder(file_path: str) -> bool:
     """Check if path is a pynapple folder or .npz file."""
     p = Path(file_path)
-    return p.is_dir() or p.suffix == ".npz"
+    return p.suffix == ".npz" or (p.is_dir() and any(p.glob("**/*.npz")))
+    
 
 
-def _is_nwb_project_dir(file_path: str) -> bool:
-    """Check if path is an NWB project directory (created by the NWB wizard)."""
+def _read_dandi_provenance(ethograph_dir: Path) -> dict | None:
+    """Read DANDI provenance from .ethograph/provenance.yaml."""
+    from ethograph.utils.nwb import read_provenance
+
+    prov = read_provenance(ethograph_dir)
+    if prov and prov.get("nwb_dandiset_id") and prov.get("nwb_asset_id"):
+        return prov
+    return None
+
+
+def _is_remote_nwb(file_path: str) -> bool:
+    """Check if path is a remote NWB project with DANDI provenance."""
     p = Path(file_path)
-    return p.is_dir() and (p / ".ethograph" / "nwb_metadata").exists()
+    ethograph_dir = p / ".ethograph"
+    if not (p.is_dir() and ethograph_dir.exists()):
+        return False
+    return _read_dandi_provenance(ethograph_dir) is not None
+
+
+def _bootstrap_alignment_nwb(source_nwb: Path) -> Path | None:
+    """Create ``.ethograph/alignment.nwb`` from a source NWB's acquisition ImageSeries.
+
+    When loading a standalone ``.nwb`` that has ImageSeries with
+    ``external_file`` but no sidecar alignment.nwb yet, this bootstraps
+    one so the GUI can resolve media paths and stream rates.
+    """
+    from datetime import datetime
+    from uuid import uuid4
+
+    from dateutil.tz import tzlocal
+    from pynwb import NWBHDF5IO, NWBFile
+    from pynwb.image import ImageSeries
+
+    with NWBHDF5IO(str(source_nwb), "r") as io:
+        nwb = io.read()
+
+        series_info = []
+        for name, obj in nwb.acquisition.items():
+            if not isinstance(obj, ImageSeries):
+                continue
+            if obj.external_file is None or len(obj.external_file) == 0:
+                continue
+            info = {
+                "name": name,
+                "description": obj.description or name,
+                "external_file": list(obj.external_file),
+                "starting_frame": (
+                    np.array(obj.starting_frame, dtype=np.int32)
+                    if obj.starting_frame is not None
+                    else np.zeros(1, dtype=np.int32)
+                ),
+            }
+            if obj.timestamps is not None:
+                info["timestamps"] = np.array(obj.timestamps)
+            elif obj.rate is not None:
+                info["rate"] = float(obj.rate)
+                info["starting_time"] = float(obj.starting_time or 0.0)
+            series_info.append(info)
+
+        if not series_info:
+            return None
+
+        trials_rows = []
+        if nwb.trials is not None and len(nwb.trials) > 0:
+            trials_df = nwb.trials.to_dataframe()
+            for _, row in trials_df.iterrows():
+                trials_rows.append((float(row["start_time"]), float(row["stop_time"])))
+
+    output_dir = source_nwb.parent / ".ethograph"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "alignment.nwb"
+
+    nwbfile = NWBFile(
+        session_description="Alignment (bootstrapped from source NWB by ethograph).",
+        identifier=str(uuid4()),
+        session_start_time=datetime.now(tzlocal()),
+    )
+
+    for start, stop in trials_rows:
+        nwbfile.add_trial(start_time=start, stop_time=stop)
+
+    for info in series_info:
+        kwargs = {
+            "name": info["name"],
+            "description": info["description"],
+            "external_file": info["external_file"],
+            "format": "external",
+            "starting_frame": info["starting_frame"],
+        }
+        if "timestamps" in info:
+            kwargs["timestamps"] = info["timestamps"]
+        elif "rate" in info:
+            kwargs["rate"] = info["rate"]
+            kwargs["starting_time"] = info["starting_time"]
+        nwbfile.add_acquisition(ImageSeries(**kwargs))
+
+    with NWBHDF5IO(str(output_path), "w") as io:
+        io.write(nwbfile)
+
+    logger.info(
+        "Bootstrapped alignment.nwb from %s (%d ImageSeries)",
+        source_nwb.name,
+        len(series_info),
+    )
+    return output_path
 
 
 def _resolve_alignment(source_path: str | Path):
@@ -95,7 +220,8 @@ def _resolve_alignment(source_path: str | Path):
     For source ``.nwb`` files:
     1. Source NWB trials table.
     2. Sidecar ``.ethograph/alignment.nwb``.
-    3. Sidecar metadata TSV with ``start_time`` and ``stop_time``.
+    3. Bootstrap alignment.nwb from source NWB ImageSeries (if any have external files).
+    4. Sidecar metadata TSV with ``start_time`` and ``stop_time``.
 
     For other source paths:
     1. Sidecar ``.ethograph/alignment.nwb``.
@@ -126,6 +252,10 @@ def _resolve_alignment(source_path: str | Path):
             sidecar_alignment = make_nwb_alignment(sidecar_nwb)
             if not sidecar_alignment.trials_df.empty:
                 return sidecar_alignment
+        else:
+            bootstrapped = _bootstrap_alignment_nwb(source)
+            if bootstrapped is not None:
+                return make_nwb_alignment(bootstrapped)
 
         sidecar_tsv = metadata_tsv_path(source)
         tsv_alignment = _tsv_timing_alignment(sidecar_tsv)
@@ -146,41 +276,6 @@ def _resolve_alignment(source_path: str | Path):
     return EmpytAlignment()
 
 
-# ---------------------------------------------------------------------------
-# Lightweight TrialTree from trial info (no temp NWB needed)
-# ---------------------------------------------------------------------------
-
-
-def _minimal_trialtree(
-    trial_ids: list[int],
-    durations: list[float] | None = None,
-) -> TrialTree:
-    """Build a minimal TrialTree with lightweight trial nodes.
-
-    Parameters
-    ----------
-    trial_ids
-        List of trial identifiers.
-    durations
-        Per-trial durations in seconds.  Used only for the ``time``
-        coordinate on each dummy dataset.  If *None*, a placeholder
-        ``[0.0, 1.0]`` coordinate is used (actual data comes from the
-        DataLoader, not from these datasets).
-    """
-    datasets = []
-    for i, tid in enumerate(trial_ids):
-        dur = durations[i] if durations else 1.0
-        ds = xr.Dataset(
-            coords={
-                "time": np.array([0.0, dur]),
-                "individuals": ["individual_0"],
-            }
-        )
-        ds.attrs["trial"] = tid
-        datasets.append(ds)
-
-    return TrialTree.from_datasets(datasets, validate=False)
-
 
 # ---------------------------------------------------------------------------
 # NWB direct loading
@@ -190,10 +285,10 @@ def _minimal_trialtree(
 def _load_nwb_dataset(file_path: str) -> LoadResult:
     """Load a standalone .nwb file via direct HDF5 slicing.
 
-    Uses ``nwb_backend`` for catalog + combo detection and ``NWBLoader``
+    Uses ``catalog`` for combo detection and ``NWBLoader``
     for time-sliced data access (no pynapple intermediate).
     """
-    from ethograph.io.nwb_backend import read_trial_intervals
+    from ethograph.io.catalog import read_trial_intervals
 
     catalog, combo_cat = catalog_from_nwb(file_path)
     trial_intervals = read_trial_intervals(file_path)
@@ -205,14 +300,14 @@ def _load_nwb_dataset(file_path: str) -> LoadResult:
     else:
         trial_ids = [1]
 
-    tsv_path = labels_tsv_path(Path(file_path))
-    if tsv_path.exists():
-        all_labels_df = load_labels_tsv(tsv_path)
-        logger.info("Loaded labels from %s", tsv_path.name)
-    else:
-        all_labels_df = init_empty_labels(trial_ids)
-
     sio = _resolve_alignment(file_path)
+
+    converter = NWBLabelConverter(nwb_path=file_path)
+    all_labels_df = converter.resolve_labels(
+        source_path=file_path,
+        trial_ids=trial_ids,
+        trials_df=sio.trials_df if hasattr(sio, "trials_df") else None,
+    )
     metadata_df, metadata_path = load_metadata_df(
         source_path=file_path,
         nwb_alignment=sio,
@@ -243,74 +338,27 @@ def _load_pynapple_dataset(file_path: str) -> LoadResult:
     from ethograph.io.pynapple import load_nap_data
 
     data, trials_ep = load_nap_data(file_path)
+    trials_ep = _ensure_trials_ep(data, trials_ep)
     catalog = catalog_from_pynapple(data, trials_ep)
     loader = PynappleLoader(data, trials_ep, catalog)
-    nwb_path = file_path if _is_nwb_file(file_path) else None
-    trial_ids = list(range(1, len(trials_ep) + 1)) if trials_ep is not None and len(trials_ep) > 0 else [1]
 
-    
-    return LoadResult(
-        dt=None,
+    parent = Path(file_path).parent if not Path(file_path).is_dir() else Path(file_path)
+    sidecar = parent / ".ethograph" / "alignment.nwb"
+    nwb_path = str(sidecar) if sidecar.exists() else None
+        
+        
+    trial_ids = list(range(1, len(trials_ep) + 1))
+
+    sio = make_nwb_alignment(nwb_path)
+
+    converter = PynappleLabelConverter(data, trials_ep)
+    all_labels_df = converter.resolve_labels(
+        source_path=file_path,
         trial_ids=trial_ids,
-        nwb_alignment=make_nwb_alignment(nwb_path),
-        metadata_df=load_metadata_df(
-            source_path=file_path,
-            nwb_alignment=make_nwb_alignment(nwb_path),
-            trial_ids=trial_ids,
-        )[0],
-        metadata_path=load_metadata_df(
-            source_path=file_path,
-            nwb_alignment=make_nwb_alignment(nwb_path),
-            trial_ids=trial_ids,
-        )[1],
-        all_labels_df=init_empty_labels(trial_ids),
-        catalog=catalog,
-        data_loader=loader,
-        source_collection=_build_source_collection_pynapple(data, trials_ep),
     )
 
-
-def _load_nwb_project(project_dir: str) -> LoadResult:
-    """Load an NWB project directory created by the NWB import wizard."""
-    import json
-
-    from ethograph.io.pynapple import load_nap_data
-
-    project_path = Path(project_dir)
-    config_path = project_path / ".ethograph" / "nwb_metadata"
-    alignment_path = project_path / ".ethograph" / "alignment.nwb"
-
-    with open(config_path) as f:
-        config = json.load(f)
-
-    nwb_source = config.get("nwb_local")
-    if not nwb_source:
-        dandiset_id = config.get("nwb_source_dandiset")
-        session_eid = config.get("nwb_source_session")
-        if dandiset_id and session_eid:
-            raise NotImplementedError(
-                f"DANDI streaming re-open not yet supported. "
-                f"Download the NWB file locally first. "
-                f"(dandiset={dandiset_id}, session={session_eid})"
-            )
-        raise ValueError("No NWB source path found in nwb_metadata")
-
-    data, trials_ep = load_nap_data(nwb_source)
-    catalog = catalog_from_pynapple(data, trials_ep)
-    loader = PynappleLoader(data, trials_ep, catalog)
-    nwb = str(alignment_path) if alignment_path.exists() else nwb_source
-    trial_ids = list(range(1, len(trials_ep) + 1)) if trials_ep is not None and len(trials_ep) > 0 else [1]
-    
-    labels_path = project_path / "labels.tsv"
-    if labels_path.exists():
-        all_labels_df = load_labels_tsv(labels_path)
-        logger.info("Loaded labels from %s", labels_path)
-    else:
-        all_labels_df = init_empty_labels(trial_ids)
-
-    sio = make_nwb_alignment(nwb)
     metadata_df, metadata_path = load_metadata_df(
-        source_path=nwb_source,
+        source_path=file_path,
         nwb_alignment=sio,
         trial_ids=trial_ids,
     )
@@ -325,44 +373,14 @@ def _load_nwb_project(project_dir: str) -> LoadResult:
         catalog=catalog,
         data_loader=loader,
         source_collection=_build_source_collection_pynapple(data, trials_ep),
-        nwb_local=nwb_source,
-        nwb_pose_keys=config.get("nwb_pose_keys"),
-        nwb_ephys_series=config.get("nwb_ephys_series"),
-        nwb_ephys_path=config.get("nwb_ephys_path"),
     )
 
 
-# ---------------------------------------------------------------------------
-# Main entry point
-# ---------------------------------------------------------------------------
 
-
-def load_dataset(
-    file_path: str,
-    require_fps: bool = True,
-    progress_callback: Callable[[str], None] | None = None,
-    max_trials: int | None = None,
-    dandiset_id: str | None = None,
-    import_labels: bool = True,
-) -> LoadResult:
-    """Load dataset from file path.
-
-    Supports ``.nc`` (NetCDF), ``.nwb``, ``.npz``, pynapple folders,
-    and NWB project directories (with ``.ethograph/nwb_metadata``).
-
-    Returns a :class:`LoadResult` with dt, labels, catalog, and metadata.
-    """
-    if _is_nwb_project_dir(file_path):
-        return _load_nwb_project(file_path)
-
-    if _is_nwb_file(file_path):
-        return _load_nwb_dataset(file_path)
-
-    if _is_pynapple_path(file_path):
-        return _load_pynapple_dataset(file_path)
-
-    # --- xarray (.nc) path ---
+def _load_trialtree(file_path: str) -> LoadResult:
+    """Load a TrialTree or xarray.Dataset from a .nc file."""
     dt = eto.open(file_path)
+
 
     # Plain Dataset .nc files (e.g. Movement datasets) have no trial children.
     # Wrap them as a single-trial TrialTree so the GUI can work with them directly.
@@ -371,8 +389,10 @@ def load_dataset(
         for node in dt.children.values()
     ):
         ds = xr.open_dataset(file_path, engine="netcdf4")
-        dt = eto.dataset_to_basic_trialtree(ds)
+        dt = _wizard_ds_to_continuous_dt(ds)
         dt._source_path = file_path
+
+
 
     sio = _resolve_alignment(file_path)
     metadata_df, metadata_path = load_metadata_df(
@@ -383,7 +403,9 @@ def load_dataset(
 
     catalog = catalog_from_xarray(dt.itrial(0), dt, nwb_alignment=sio)
 
-    errors = validate_datatree(dt, require_fps=require_fps)
+
+    # TODO: ugly, rewreite with better validation, notify code. 
+    errors = validate_datatree(dt)
     if errors:
         error_msg = "\n".join(f"• {e}" for e in errors)
         suffix_msg = "\n\nSee documentation: XXX"
@@ -391,38 +413,7 @@ def load_dataset(
         notify_dialog(msg, "error", "Validation Error")
         raise ValueError(msg)
 
-    nc_path = Path(file_path)
-    tsv_path = labels_tsv_path(nc_path)
-
-    if tsv_path.exists():
-        all_labels_df = load_labels_tsv(tsv_path)
-        logger.info("Loaded labels from %s", tsv_path.name)
-    else:
-        all_labels_df = init_empty_labels(dt.trials)
-
-    data_loader = None
-    nwb_local = dt.attrs.get("nwb_local")
-    if nwb_local and Path(nwb_local).exists():
-        try:
-            from ethograph.io.pynapple import load_nap_data
-
-            data, trials_ep = load_nap_data(nwb_local)
-            nap_catalog = catalog_from_pynapple(data, trials_ep)
-            data_loader = PynappleLoader(data, trials_ep, nap_catalog)
-            for f in nap_catalog.features:
-                if f not in catalog.features:
-                    catalog.features.append(f)
-            for c in nap_catalog.colors:
-                if c not in catalog.colors:
-                    catalog.colors.append(c)
-            for cp in nap_catalog.changepoints:
-                if cp not in catalog.changepoints:
-                    catalog.changepoints.append(cp)
-            for name, spec in nap_catalog.combos.items():
-                if name not in catalog.combos:
-                    catalog.combos[name] = spec
-        except Exception as e:
-            logger.warning("Failed to load pynapple store from %s: %s", nwb_local, e)
+    all_labels_df = resolve_labels_tsv(file_path, dt.trials)
 
     return LoadResult(
         dt=dt,
@@ -432,9 +423,42 @@ def load_dataset(
         metadata_path=metadata_path,
         all_labels_df=all_labels_df,
         catalog=catalog,
-        data_loader=data_loader,
+        data_loader=XarrayLoader(dt.itrial(0), catalog),
         source_collection=_build_source_collection_xarray(dt, nwb_alignment=sio),
-        nwb_local=nwb_local,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
+
+def load_dataset(
+    file_path: str,
+    progress_callback: Callable[[str], None] | None = None,
+) -> LoadResult:
+    """Load dataset from file path.
+
+    Supports ``.nc`` (NetCDF), ``.nwb``, ``.npz``, pynapple folders,
+    and remote NWB projects (DANDI provenance in ``.ethograph/alignment.nwb``).
+
+    Returns a :class:`LoadResult` with dt, labels, catalog, and metadata.
+    """
+    if _is_remote_nwb(file_path):
+        return _load_remote_nwb(file_path)
+
+    if _is_nwb_file(file_path):
+        return _load_nwb_dataset(file_path)
+
+    if _is_pynapple_path_folder(file_path):
+        return _load_pynapple_dataset(file_path)
+
+    if file_path.endswith(".nc"):
+        return _load_trialtree(file_path)
+
+    raise ValueError(
+        f"Unsupported file type: {Path(file_path).suffix!r}. "
+        "Expected .nc, .nwb, .npz, a pynapple folder, or a DANDI project directory."
     )
 
 
@@ -522,8 +546,30 @@ def _build_source_collection_xarray(dt: TrialTree, nwb_alignment=None) -> Source
 
 
 # ---------------------------------------------------------------------------
-# Wizard helpers (unchanged)
+# Wizard helpers
 # ---------------------------------------------------------------------------
+
+
+def _wizard_ds_to_continuous_dt(ds: xr.Dataset) -> TrialTree:
+    """Wrap a single xr.Dataset as a one-trial continuous TrialTree."""
+    
+    
+    
+    duration = eto.get_ds_duration(ds)
+    if duration is not None:
+        epochs = pd.DataFrame({
+            "trial": [1],
+            "start_time": [0.0],
+            "stop_time": [duration],
+        })
+    else:
+        epochs = pd.DataFrame({
+            "trial": [1],
+            "start_time": [0.0],
+        })
+        
+    
+    return TrialTree.from_continuous(ds, epochs)
 
 
 def _wizard_single_media_helper(
@@ -553,7 +599,13 @@ def _wizard_single_media_helper(
             row["audio_mic-1_start"] = float(audio_offset)
 
     trial_table = pd.DataFrame([row])
-    fps = dt.itrial(0).attrs.get("fps", 30)
+    
+    if isinstance(dt.itrial(0), xr.Dataset):
+        fps = dt.itrial(0).attrs.get("fps")
+    elif isinstance(dt, xr.Dataset):
+        fps = dt.attrs.get("fps")
+    else:
+        fps = None
 
     stream_rates: dict[str, float] = {}
     if video_path:
@@ -609,7 +661,7 @@ def wizard_single_from_pose(
     if len(ds.individuals) > 1:
         compute_pairwise_distances(ds.position, dim="individuals", pairs="all")
 
-    dt = eto.dataset_to_basic_trialtree(ds, video_motion=False)
+    dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(
         dt, video_path=video_path, pose_path=pose_path, video_offset=video_offset
     )
@@ -619,9 +671,8 @@ def wizard_single_from_pose(
 def wizard_single_from_ds(
     video_path, ds: xr.Dataset, video_offset: float | None = None
 ):
-    dt = eto.dataset_to_basic_trialtree(ds)
-    _wizard_single_media_helper(dt, video_path=video_path, video_offset=video_offset)
-    return dt
+    _wizard_single_media_helper(ds, video_path=video_path, video_offset=video_offset)
+    return ds
 
 
 def wizard_single_from_npy_file(
@@ -660,9 +711,13 @@ def wizard_single_from_npy_file(
     )
     ds.attrs["fps"] = fps
 
-    dt = eto.dataset_to_basic_trialtree(
-        ds, video_path=video_path, video_motion=video_motion
-    )
+    if video_motion and video_path is not None:
+        from ethograph.features.movement import extract_video_motion
+        ds["video_motion"] = extract_video_motion(
+            video_path, fps=ds.attrs["fps"], time_coord_name="time_video"
+        )
+
+    dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(dt, video_path=video_path, video_offset=video_offset)
     return dt
 
@@ -687,9 +742,13 @@ def wizard_single_from_ephys(
     ds = xr.Dataset(coords={"individuals": individuals})
     ds.attrs["fps"] = fps
 
-    dt = eto.dataset_to_basic_trialtree(
-        ds, video_path=video_path, video_motion=video_motion
-    )
+    if video_motion and video_path is not None:
+        from ethograph.features.movement import extract_video_motion
+        ds["video_motion"] = extract_video_motion(
+            video_path, fps=ds.attrs["fps"], time_coord_name="time_video"
+        )
+
+    dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(
         dt,
         video_path=video_path,
@@ -733,7 +792,7 @@ def wizard_single_from_video(
     )
     ds.attrs["fps"] = fps
 
-    dt = eto.dataset_to_basic_trialtree(ds, video_motion=False)
+    dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(dt, video_path=video_path)
     return dt
 
@@ -758,9 +817,13 @@ def wizard_single_from_audio(
     ds = xr.Dataset(coords={"individuals": individuals})
     ds.attrs["fps"] = fps
 
-    dt = eto.dataset_to_basic_trialtree(
-        ds, video_path=video_path, video_motion=video_motion
-    )
+    if video_motion and video_path is not None:
+        from ethograph.features.movement import extract_video_motion
+        ds["video_motion"] = extract_video_motion(
+            video_path, fps=ds.attrs["fps"], time_coord_name="time_video"
+        )
+
+    dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(
         dt,
         video_path=video_path,

@@ -10,7 +10,6 @@ from ethograph.io.nwb_alignment import (
     _build_trials_ep,
 )
 from ethograph.io.time_model import (
-    TimeRange,
     infer_slider_range,
 )
 

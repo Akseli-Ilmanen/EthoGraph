@@ -20,6 +20,71 @@ _NWB_FILENAME = "alignment.nwb"
 _SETTINGS_DIR = ".ethograph"
 _SENTINEL = object()
 
+# Extension → stream mapping, checked in order (first match wins).
+# Video before audio because .mp4/.avi/.mov are in both sets but are
+# primarily video containers.
+_STREAM_EXTENSION_MAP: list[tuple[str, set[str]]] = []  # populated lazily
+
+
+def _get_stream_extension_map() -> list[tuple[str, set[str]]]:
+    """Build (stream, extensions) list on first call."""
+    if _STREAM_EXTENSION_MAP:
+        return _STREAM_EXTENSION_MAP
+    from ethograph.io.validation import (
+        AUDIO_EXTENSIONS,
+        POSE_EXTENSIONS,
+        VIDEO_EXTENSIONS,
+    )
+    _STREAM_EXTENSION_MAP.extend([
+        ("video", VIDEO_EXTENSIONS),
+        ("pose", POSE_EXTENSIONS),
+        ("audio", AUDIO_EXTENSIONS),
+    ])
+    return _STREAM_EXTENSION_MAP
+
+
+def _classify_imageseries(nwb) -> dict[str, list[str]]:
+    """Classify acquisition ImageSeries by the extensions of their external files.
+
+    Returns ``{stream: [acq_name, ...]}`` for items whose names don't follow
+    the ``{stream}_{device}`` convention but whose external files match known
+    media extensions.
+    """
+    from pynwb.image import ImageSeries
+
+    result: dict[str, list[str]] = {}
+    if not nwb.acquisition:
+        return result
+
+    ext_map = _get_stream_extension_map()
+
+    for name, obj in nwb.acquisition.items():
+        if not isinstance(obj, ImageSeries):
+            continue
+        if obj.external_file is None or len(obj.external_file) == 0:
+            continue
+
+        # Already follows {stream}_{device} convention — skip classification
+        if any(name.startswith(f"{s}_") for s in _KNOWN_STREAMS):
+            continue
+
+        # Check the first non-empty external file extension
+        ext = None
+        for f in obj.external_file:
+            f_str = str(f).strip()
+            if f_str:
+                ext = Path(f_str).suffix.lower()
+                break
+        if not ext:
+            continue
+
+        for stream, exts in ext_map:
+            if ext in exts:
+                result.setdefault(stream, []).append(name)
+                break
+
+    return result
+
 
 def discover_nwb(nc_path: str | Path) -> Path | None:
     """Find an NWB session file near a data file.
@@ -83,12 +148,6 @@ class EmpytAlignment:
     def stop_time(self, trial) -> float | None:
         return None
 
-    def trial_duration(self, trial) -> float:
-        stop = self.stop_time(trial)
-        if stop is None:
-            raise ValueError(f"Trial {trial} has no known stop time")
-        return stop - self.start_time(trial)
-
     def stream_offset_for_trial(self, trial, stream: str, device: str | None = None) -> float:
         return 0.0
 
@@ -103,6 +162,10 @@ class EmpytAlignment:
         fallback_folder: str | None = None,
     ) -> str | None:
         return None
+    
+    def electrical_series(self) -> list[dict]:
+        """Discover ElectricalSeries in acquisition. Returns list of {name, path, n_channels, rate}."""
+        return []
 
     @property
     def trials_ep(self) -> Any:
@@ -209,6 +272,17 @@ class NWBAlignment:
         self._trials_df_cache: pd.DataFrame | None = None
         self._rate_dict: dict[tuple[str, str | None], float] = {}
 
+    @classmethod
+    def from_nwb_object(cls, nwb_obj) -> "NWBAlignment":
+        """Create alignment from an already-opened pynwb NWBFile object."""
+        instance = cls.__new__(cls)
+        instance._path = Path(".")
+        instance._io = None
+        instance._nwb = nwb_obj
+        instance._trials_df_cache = None
+        instance._rate_dict = {}
+        return instance
+
     def _open(self) -> None:
         if self._nwb is not None:
             return
@@ -275,6 +349,26 @@ class NWBAlignment:
         except (ValueError, TypeError):
             return None
 
+    # ── Acquisition lookup ──
+
+    def _find_acquisition(self, stream: str, device: str | None = None):
+        """Find an acquisition item by ``{stream}_{device}`` or by direct name.
+
+        Handles extension-classified items where the device name *is* the
+        acquisition name (not prefixed with ``{stream}_``).
+        """
+        nwb = self.nwb
+        if not nwb.acquisition:
+            return None
+        acq_name = f"{stream}_{device}" if device else stream
+        acq = nwb.acquisition.get(acq_name)
+        if acq is not None:
+            return acq
+        # Fallback: device name is the raw acquisition name
+        if device:
+            return nwb.acquisition.get(device)
+        return None
+
     # ── Media access ──
 
     def get_media(self, trial, stream: str, device: str | None = None) -> str | None:
@@ -289,15 +383,22 @@ class NWBAlignment:
         return None
 
     def devices(self, stream: str) -> list[str]:
-        """Discover devices from trials table columns AND acquisition items."""
+        """Discover devices from trials table columns AND acquisition items.
+
+        Three sources, checked in order:
+        1. Trials table columns (``video_cam_1`` → device ``cam_1``).
+        2. Acquisition ImageSeries following ``{stream}_{device}`` naming.
+        3. Acquisition ImageSeries whose ``external_file`` extensions match
+           known media types (e.g. ``.mp4`` → video, ``.wav`` → audio).
+        """
         devs: list[str] = []
 
-        # From trials table columns
+        # 1. From trials table columns
         df = self.trials_df
         if not df.empty:
             devs = _parse_stream_columns(list(df.columns), stream)
 
-        # From acquisition ImageSeries names
+        # 2. From acquisition ImageSeries with {stream}_{device} naming
         nwb = self.nwb
         prefix = f"{stream}_"
         if nwb.acquisition:
@@ -306,6 +407,12 @@ class NWBAlignment:
                     dev = name[len(prefix):]
                     if dev and dev not in devs:
                         devs.append(dev)
+
+        # 3. From extension-based classification of remaining ImageSeries
+        classified = _classify_imageseries(nwb)
+        for acq_name in classified.get(stream, []):
+            if acq_name not in devs:
+                devs.append(acq_name)
 
         return devs
 
@@ -316,6 +423,27 @@ class NWBAlignment:
     @property
     def mics(self) -> list[str]:
         return self.devices("audio")
+
+    def electrical_series(self) -> list[dict]:
+        """Discover ElectricalSeries in acquisition. Returns list of {name, path, n_channels, rate}."""
+        import pynwb.ecephys
+
+        nwb = self.nwb
+        if not nwb.acquisition:
+            return []
+        results = []
+        for name, obj in nwb.acquisition.items():
+            if not isinstance(obj, pynwb.ecephys.ElectricalSeries):
+                continue
+            n_ch = obj.data.shape[1] if hasattr(obj.data, "shape") and obj.data.ndim > 1 else 1
+            rate = float(obj.rate) if obj.rate else None
+            results.append({
+                "name": name,
+                "path": str(self._path),
+                "n_channels": n_ch,
+                "rate": rate,
+            })
+        return results
 
     # ── Timing ──
 
@@ -343,6 +471,12 @@ class NWBAlignment:
                 return True
         return False
 
+    @property
+    def pose_keys(self) -> list[str]:
+        """Pose estimation container names from acquisition ImageSeries."""
+        return self.devices("pose")
+
+
     def start_time(self, trial) -> float:
         if not self.has_real_timing:
             return 0.0
@@ -365,12 +499,6 @@ class NWBAlignment:
                 return float(val)
         return None
 
-    def trial_duration(self, trial) -> float:
-        stop = self.stop_time(trial)
-        if stop is None:
-            raise ValueError(f"Trial {trial} has no known stop time")
-        return stop - self.start_time(trial)
-
     def stream_offset_for_trial(
         self, trial, stream: str, device: str | None = None,
     ) -> float:
@@ -383,9 +511,7 @@ class NWBAlignment:
         trial_start = self.start_time(trial)
         trial_idx = self._trial_index(trial)
 
-        nwb = self.nwb
-        acq_name = f"{stream}_{device}" if device else stream
-        acq = nwb.acquisition.get(acq_name) if nwb.acquisition else None
+        acq = self._find_acquisition(stream, device)
         if acq is None:
             return 0.0
 
@@ -425,22 +551,20 @@ class NWBAlignment:
         if key in self._rate_dict:
             return self._rate_dict[key]
 
-        nwb = self.nwb
-        if not nwb.acquisition:
-            return None
-
         from ethograph.utils.nwb import resolve_timeseries_timing
 
-        if device:
-            acq = nwb.acquisition.get(f"{stream}_{device}")
-            if acq is not None:
-                rate, _ = resolve_timeseries_timing(acq)
-                return rate
+        acq = self._find_acquisition(stream, device)
+        if acq is not None:
+            rate, _ = resolve_timeseries_timing(acq)
+            return rate
 
-        for name, acq in nwb.acquisition.items():
-            if name.startswith(f"{stream}_"):
-                rate, _ = resolve_timeseries_timing(acq)
-                return rate
+        # Fallback: scan all {stream}_* items
+        nwb = self.nwb
+        if nwb.acquisition:
+            for name, acq in nwb.acquisition.items():
+                if name.startswith(f"{stream}_"):
+                    rate, _ = resolve_timeseries_timing(acq)
+                    return rate
 
         return None
 
@@ -480,9 +604,7 @@ class NWBAlignment:
         2. Fallback: trial table filename + ``fallback_folder``.
         3. Returns ``None`` if unresolvable.
         """
-        nwb = self.nwb
-        acq_name = f"{stream}_{device}" if device else stream
-        acq = nwb.acquisition.get(acq_name) if nwb.acquisition else None
+        acq = self._find_acquisition(stream, device)
 
         trial_idx = self._trial_index(trial)
         nwb_base_dir = self._path.parent
@@ -500,6 +622,15 @@ class NWBAlignment:
 
             if file_idx < len(files):
                 raw_path = files[file_idx]
+                # URLs returned directly
+                if _is_url(raw_path):
+                    # If fallback_folder has a local copy, prefer that
+                    if fallback_folder:
+                        filename = _filename_from_url_or_path(raw_path)
+                        candidate = os.path.normpath(os.path.join(fallback_folder, filename))
+                        if os.path.isfile(candidate):
+                            return candidate
+                    return raw_path
                 # Try the stored path directly
                 if os.path.isfile(raw_path):
                     return raw_path
@@ -508,7 +639,7 @@ class NWBAlignment:
                 if rel.is_file():
                     return str(rel)
                 # Fallback: filename + folder
-                filename = Path(raw_path).name
+                filename = _filename_from_url_or_path(raw_path)
                 if fallback_folder:
                     candidate = os.path.normpath(os.path.join(fallback_folder, filename))
                     if os.path.isfile(candidate):
@@ -517,10 +648,13 @@ class NWBAlignment:
         # Last resort: trial table filename + fallback_folder
         media_file = self.get_media(trial, stream, device)
         if media_file:
+            if _is_url(media_file):
+                return media_file
             if os.path.isfile(media_file):
                 return media_file
             if fallback_folder:
-                candidate = os.path.normpath(os.path.join(fallback_folder, Path(media_file).name))
+                filename = _filename_from_url_or_path(media_file)
+                candidate = os.path.normpath(os.path.join(fallback_folder, filename))
                 if os.path.isfile(candidate):
                     return candidate
 
@@ -595,6 +729,18 @@ class NWBAlignment:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _is_url(path: str) -> bool:
+    return path.startswith(("http://", "https://"))
+
+
+def _filename_from_url_or_path(path: str) -> str:
+    """Extract filename from a URL or filesystem path (Windows-safe)."""
+    if _is_url(path):
+        from urllib.parse import urlparse
+        return Path(urlparse(path).path).name
+    return Path(path).name
 
 
 def _build_trials_ep(df: pd.DataFrame, session_end: float | None = None):

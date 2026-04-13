@@ -268,8 +268,10 @@ class VideoManager:
         ext = Path(video_path).suffix.lower()
         if ext in ('.avi', '.mov') and not self._video_format_warned:
             self._video_format_warned = True
+            # TODO: update link
             notify(
                 f"Video format '{ext}' may have inaccurate frame seeking. "
+                
                 f"See https://ethograph.readthedocs.io/en/latest/troubleshooting/",
                 "warning",
             )

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     import pynapple as nap
     import xarray as xr
 
-    from ethograph.io.nwb_backend import ComboCatalog, FeatureEntry
+    from ethograph.io.catalog import ComboCatalog, FeatureEntry
 
 
 # ---------------------------------------------------------------------------
@@ -69,11 +69,6 @@ class XarrayTrialSource:
     @property
     def sampling_rate(self) -> float | None:
         return self._sampling_rate
-
-    def set_dataset(self, ds: xr.Dataset) -> None:
-        """Swap backing dataset on trial change."""
-        self._ds = ds
-        self._update_range()
 
     def get_data(self, t0: float, t1: float) -> tuple[np.ndarray, np.ndarray]:
         if self._name not in self._ds.data_vars:
@@ -160,14 +155,8 @@ class NWBTimeSource:
         self._time_range = self._compute_range()
 
     def _compute_range(self) -> TimeRange:
-        rec = self._entry.record
-        if rec.rate and rec.rate > 0:
-            start = rec.starting_time or 0.0
-            end = start + rec.shape[0] / rec.rate
-            return TimeRange(start, end)
-        if rec.timestamps_range:
-            return TimeRange(rec.timestamps_range[0], rec.timestamps_range[1])
-        return TimeRange(0.0, 0.0)
+        tr = self._entry.record.time_range
+        return TimeRange(tr[0], tr[1]) if tr else TimeRange(0.0, 0.0)
 
     @property
     def name(self) -> str:
@@ -182,7 +171,7 @@ class NWBTimeSource:
         return self._entry.record.rate
 
     def get_data(self, t0: float, t1: float) -> tuple[np.ndarray, np.ndarray]:
-        from ethograph.io.nwb_backend import open_nwb
+        from ethograph.utils.nwb import open_nwb
 
         combo_sel = {"feature": self._entry.display_name}
 
@@ -198,42 +187,3 @@ class NWBTimeSource:
 
         return stacked.timestamps.astype(np.float64), data
 
-
-# ---------------------------------------------------------------------------
-# MediaTimeSource — metadata-only source from NWB ImageSeries
-# ---------------------------------------------------------------------------
-
-
-class MediaTimeSource:
-    """TimeSource representing an external media stream (video, audio, pose).
-
-    Does not load actual data — only provides time range and rate from
-    NWB ImageSeries metadata. Used by SourceCollection for range queries
-    so that ``union_range`` includes media file durations.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        start_s: float,
-        end_s: float,
-        rate: float | None,
-    ) -> None:
-        self._name = name
-        self._time_range = TimeRange(start_s, end_s)
-        self._sampling_rate = rate
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def time_range(self) -> TimeRange:
-        return self._time_range
-
-    @property
-    def sampling_rate(self) -> float | None:
-        return self._sampling_rate
-
-    def get_data(self, t0: float, t1: float) -> tuple[np.ndarray, np.ndarray]:
-        return np.array([], dtype=np.float64), np.array([])

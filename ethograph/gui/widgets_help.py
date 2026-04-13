@@ -138,11 +138,9 @@ class HelpWidget(QWidget):
             print(f"  Trials in labels: {sorted(all_labels['trial'].unique())}")
 
         if all_labels is not None and not all_labels.empty:
-            print("\n  Per-trial metadata columns:")
-            for col in ["human_verified", "changepoint_corrected", "prediction_source"]:
-                if col in all_labels.columns:
-                    print(f"    {col}: {all_labels.groupby('trial')[col].first().to_dict()}")
-
+            print(all_labels.to_string(max_rows=20, index=False))
+            
+            
         print(SEP)
         print("=" * 60)
         print("  CURRENT TRIAL  labels + meta")
@@ -174,7 +172,6 @@ class HelpWidget(QWidget):
             print(f"  Store type: {type(store).__name__} (backend={store.backend})")
             print(f"  Features: {store.features}")
             print(f"  Dims: {list(store.dims.keys())}")
-            print(f"  Colors: {store.colors}")
             print(f"  Changepoint names: {store.changepoint_names}")
             if hasattr(store, '_ds'):
                 store_ds = store._ds
@@ -215,7 +212,7 @@ class HelpWidget(QWidget):
             print("  No trials_ep available.")
         else:
             df = trials_ep.as_dataframe()
-            print(df.to_string())
+            print(df.to_string(max_rows=20))
 
 
         print(SEP)
@@ -251,7 +248,7 @@ class HelpWidget(QWidget):
 
         print(SEP)
         print("=" * 60)
-        print("  TRIAL ALIGNMENT")
+        print("  TRIAL/ VIDEO BOUNDS")
         print("=" * 60)
         alignment = getattr(self.app_state, 'trial_alignment', None)
         if alignment is None:

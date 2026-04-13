@@ -98,7 +98,6 @@ def is_integer_array(arr: np.ndarray) -> bool:
 
 def validate_required_attrs(
     ds: xr.Dataset,
-    require_fps: bool = True,
 ) -> list[str]:
     """Validate required dataset attributes.
 
@@ -106,8 +105,6 @@ def validate_required_attrs(
     ----------
     ds : xarray.Dataset
         Dataset to validate.
-    require_fps : bool
-        When False, missing ``fps`` is not an error (audio-only mode).
 
     Returns
     -------
@@ -119,8 +116,7 @@ def validate_required_attrs(
     if "fps" in ds.attrs:
         if not isinstance(ds.attrs["fps"], Number) or ds.attrs["fps"] <= 0:
             errors.append("'fps' must be a positive number")
-    elif require_fps:
-        errors.append("Xarray dataset ('ds') must have 'fps' attribute")
+
 
     if "trial" not in ds.attrs:
         errors.append("Xarray dataset ('ds') must have 'trial' attribute")
@@ -181,46 +177,9 @@ def validate_changepoints(ds: xr.Dataset) -> list[str]:
     return errors
 
 
-def validate_colors(ds: xr.Dataset) -> list[str]:
-    """Validate color variables.
-
-    Parameters
-    ----------
-    ds : xarray.Dataset
-        Dataset containing color variables.
-
-    Returns
-    -------
-    list[str]
-        Validation error messages (empty if valid).
-    """
-    errors = []
-    color_ds = ds.filter_by_attrs(type='colors')
-
-    for var_name, data_array in color_ds.data_vars.items():
-        if 'RGB' not in data_array.dims:
-            errors.append(f"Color variable '{var_name}' must have 'RGB' dimension")
-            continue
-
-        flat = data_array.transpose(..., 'RGB').values.reshape(-1, 3)
-
-        is_valid_rgb = (
-            flat.shape[1] == 3 and
-            ((0 <= flat.min() <= flat.max() <= 1) or
-            (0 <= flat.min() <= flat.max() <= 255))
-        )
-        if not is_valid_rgb:
-            errors.append(
-                f"Color variable '{var_name}' must have RGB values in [0,1] or [0,255]"
-            )
-
-    return errors
-
-
 def validate_dataset(
     ds: xr.Dataset,
     catalog,
-    require_fps: bool = True,
 ) -> list[str]:
     """Validate dataset structure and data types.
 
@@ -230,8 +189,6 @@ def validate_dataset(
         The dataset to validate.
     catalog : DataCatalog
         Feature/dimension catalog (from ``catalog_from_xarray``).
-    require_fps : bool
-        When False, missing ``fps`` is not an error.
 
     Returns
     -------
@@ -240,30 +197,21 @@ def validate_dataset(
     """
     errors = []
 
-    errors.extend(validate_required_attrs(ds, require_fps=require_fps))
+    errors.extend(validate_required_attrs(ds))
 
     if "individuals" not in ds.coords or len(ds.coords["individuals"]) == 0:
         errors.append("Xarray dataset ('ds') must have 'individuals' coordinate")
 
     for feat_name in catalog.features:
-        if feat_name not in ds.data_vars:
-            errors.append(f"Feature variable '{feat_name}' missing from trial '{ds.attrs.get('trial', '?')}'")
-            continue
         feat_var = ds[feat_name]
         has_time_coord = any('time' in str(dim).lower() for dim in feat_var.dims)
         if not has_time_coord:
             errors.append(f"Feature variable '{feat_name}' must have a coordinate containing 'time'. E.g. 'time', 'time_labels', 'time_aux', etc.")
-
-    feat_ds = ds.filter_by_attrs(type='features')
-    for var_name, var in feat_ds.data_vars.items():
-        if not isinstance(var.values, np.ndarray):
-            errors.append(f"Feature '{var_name}' must be an array")
+        if not isinstance(feat_var.values, np.ndarray):
+            errors.append(f"Feature '{feat_name}' must be an array")
 
     if catalog.changepoints:
         errors.extend(validate_changepoints(ds))
-
-    if catalog.colors:
-        errors.extend(validate_colors(ds))
 
     return errors
 
@@ -306,7 +254,6 @@ def _possible_trial_conditions(ds: xr.Dataset, dt: "TrialTree") -> list[str]:
     
 def validate_datatree(
     dt: "TrialTree",
-    require_fps: bool = True,
 ) -> list[str]:
     """Validate a TrialTree for consistency and data integrity.
 
@@ -320,7 +267,6 @@ def validate_datatree(
     ----------
     dt : TrialTree
         Tree to validate.
-    require_fps : bool
         When False, missing ``fps`` is not an error.
 
     Returns
@@ -345,7 +291,6 @@ def validate_datatree(
     for idx in sample_indices:
         errors.extend(validate_dataset(
             datasets[idx], catalog,
-            require_fps=require_fps,
         ))
 
     return list(set(errors))

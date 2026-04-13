@@ -9,7 +9,6 @@ from ethograph.io.catalog import (
     _compute_shared_column_dims,
     catalog_from_pynapple,
 )
-from ethograph.gui.data_loader import _minimal_trialtree
 from ethograph.io.pynapple import detect_trials
 
 
@@ -57,39 +56,6 @@ def test_detect_trials_not_found():
     data = {"speed": nap.Tsd(t=np.arange(10), d=np.zeros(10))}
     assert detect_trials(data) is None
 
-
-# ---------------------------------------------------------------------------
-# Folder loading (sibling files)
-# ---------------------------------------------------------------------------
-
-
-def test_load_nap_data_from_folder(tmp_path, simple_nap_data):
-    """Loading a folder picks up all npz files including trials."""
-    from ethograph.io.pynapple import load_nap_data
-
-    simple_nap_data["speed"].save(str(tmp_path / "speed"))
-    simple_nap_data["velocity"].save(str(tmp_path / "velocity"))
-    simple_nap_data["trials"].save(str(tmp_path / "trials"))
-
-    data, trials_ep = load_nap_data(str(tmp_path))
-    assert "speed" in data
-    assert "velocity" in data
-    assert trials_ep is not None
-    assert len(trials_ep) == 2
-
-
-def test_load_nap_data_single_npz_loads_siblings(tmp_path, simple_nap_data):
-    """Loading a single .npz also loads sibling files from same directory."""
-    from ethograph.io.pynapple import load_nap_data
-
-    simple_nap_data["speed"].save(str(tmp_path / "speed"))
-    simple_nap_data["trials"].save(str(tmp_path / "trials"))
-
-    data, trials_ep = load_nap_data(str(tmp_path / "speed.npz"))
-    assert "speed" in data
-    assert "trials" in data
-    assert trials_ep is not None
-    assert len(trials_ep) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -157,13 +123,6 @@ def test_catalog_shared_columns(multi_tsdframe_data):
     assert list(cat.combo_values("columns")) == ["x", "y", "z"]
 
 
-def test_catalog_detects_rgb():
-    t = np.arange(100)
-    rgb = nap.TsdFrame(t=t, d=np.random.rand(100, 3), columns=["R", "G", "B"])
-    data = {"angle_rgb": rgb}
-    cat = catalog_from_pynapple(data)
-    assert "angle_rgb" in cat.colors
-
 
 def test_catalog_detects_changepoints():
     cp_times = np.array([10.0, 25.0, 50.0, 75.0])
@@ -178,44 +137,6 @@ def test_catalog_skips_intervalset(simple_nap_data):
     cat = catalog_from_pynapple(simple_nap_data)
     assert "trials" not in cat.features
 
-
-# ---------------------------------------------------------------------------
-# Lightweight TrialTree from intervals
-# ---------------------------------------------------------------------------
-
-
-def test_minimal_trialtree_has_trials(simple_nap_data):
-    trials_ep = simple_nap_data["trials"]
-    trial_ids = list(range(1, len(trials_ep) + 1))
-    durations = [float(trials_ep.end[i] - trials_ep.start[i]) for i in range(len(trials_ep))]
-    dt = _minimal_trialtree(trial_ids, durations=durations)
-    assert len(dt.trials) == 2
-
-
-def test_minimal_trialtree_no_data_vars(simple_nap_data):
-    """Lightweight TrialTree should NOT contain feature data variables."""
-    trials_ep = simple_nap_data["trials"]
-    trial_ids = list(range(1, len(trials_ep) + 1))
-    durations = [float(trials_ep.end[i] - trials_ep.start[i]) for i in range(len(trials_ep))]
-    dt = _minimal_trialtree(trial_ids, durations=durations)
-    ds = dt.itrial(0)
-    assert "speed" not in ds.data_vars
-    assert "velocity" not in ds.data_vars
-
-
-def test_minimal_trialtree_has_time_coord(simple_nap_data):
-    trials_ep = simple_nap_data["trials"]
-    trial_ids = list(range(1, len(trials_ep) + 1))
-    durations = [float(trials_ep.end[i] - trials_ep.start[i]) for i in range(len(trials_ep))]
-    dt = _minimal_trialtree(trial_ids, durations=durations)
-    ds = dt.itrial(0)
-    assert "time" in ds.coords
-    assert ds.time.values[0] < 1.0  # trial-relative
-
-
-def test_minimal_trialtree_single_trial():
-    dt = _minimal_trialtree([1])
-    assert len(dt.trials) == 1
 
 
 # ---------------------------------------------------------------------------

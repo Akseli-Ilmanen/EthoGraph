@@ -20,7 +20,7 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
     """
     if df.empty:
         return df
-    eps = 1e-3
+    eps = 1e-4
     df = df.copy().sort_values(["individual", "onset_s"]).reset_index(drop=True)
     
     counter = 0
@@ -28,48 +28,28 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
         idx = group.index.tolist()
         for i in range(len(idx) - 1):
             gap = df.loc[idx[i + 1], "onset_s"] - df.loc[idx[i], "offset_s"]
-            if abs(gap) < eps:
-                df.loc[idx[i], "offset_s"] = df.loc[idx[i + 1], "onset_s"] - eps
+            
+            if gap < 0:
+                raise ValueError(f"Negative gap of {gap:.3f} seconds between intervals for individual {group['individual'].iloc[0]} at index {idx[i]} and {idx[i + 1]}. Check your data for overlapping intervals.")
+            
+            if gap < eps:
                 counter += 1
+                
+                df.loc[idx[i], "offset_s"] = df.loc[idx[i + 1], "onset_s"] - eps
+                df.loc[idx[i], "duration"] = df.loc[idx[i], "offset_s"] - df.loc[idx[i], "onset_s"]
+
+            
+                if "offset_global" in df.columns and "onset_global" in df.columns:
+                    df.loc[idx[i], "offset_global"] = df.loc[idx[i + 1], "onset_global"] - eps
+                    df.loc[idx[i], "duration"] = df.loc[idx[i], "offset_s"] - df.loc[idx[i], "onset_s"]
+                
                 
                 
     print(f"Corrected {counter} offsets with gap smaller than {eps:.3f} seconds.")
-                
-                
+                        
             
-            
-            
-                
-
-    # Internal to crow lab, we had a legacy labeling system that was frame-wise(200 Hz), and this correction should fix those labels.
-    dt = 1 / 200  # 5 ms frame rate
-    group_cols = ["trial", "individual"]
-    if "session" in df.columns:
-        group_cols.insert(0, "session")
-    for _, group in df.groupby(group_cols):
-        individual = group["individual"].iloc[0]
-        
-        # Won't affect other users.
-        if not any(name in individual for name in ["Ivy", "Freddy"]):
-            continue
-
-        print(f"Processing session {group['session'].iloc[0]}, trial {group['trial'].iloc[0]}, individual {individual}")
-        
-        idx = group.index
-        
-        for i in range(len(idx) - 1):
-            current = idx[i]
-            next_row = idx[i + 1]
-            
-            gap = df.loc[next_row, "onset_s"] - df.loc[current, "offset_s"]
-            
-            if abs(gap - dt) < eps:
-                df.loc[current, "offset_s"] = df.loc[next_row, "onset_s"] - eps
-                df.loc[current, "offset_global"] = df.loc[next_row, "onset_global"] - eps
-                df.loc[current, "duration"] = (
-                    df.loc[current, "offset_s"] - df.loc[current, "onset_s"]
-                )
-
+    if "onset_global" in df.columns:
+        df.sort_values(["individual", "onset_global"], inplace=True)
                 
     return df
 

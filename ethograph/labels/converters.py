@@ -1,13 +1,22 @@
-"""External format converters: crowsetta, NWB, and other label I/O formats."""
+"""External format converters: crowsetta, NWB, pynapple, and other label I/O."""
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from ethograph.labels.intervals import _rows_to_df, empty_intervals, load_mapping
+from ethograph.labels.tsv_store import (
+    TRIAL_META_DEFAULTS,
+    init_empty_labels,
+    labels_tsv_path,
+    load_labels_tsv,
+)
+
+logger = logging.getLogger(__name__)
 
 CROWSETTA_SEQ_FORMATS = [
     "aud-seq",
@@ -18,6 +27,143 @@ CROWSETTA_SEQ_FORMATS = [
     "timit",
     "yarden",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Base converter
+# ---------------------------------------------------------------------------
+
+
+class LabelConverter:
+    """Base class for converting external label sources to ethograph intervals.
+
+    Subclasses override :meth:`extract` to pull intervals from their source
+    (NWB, pynapple, crowsetta, …).  The shared :meth:`resolve_labels` method
+    centralises the "TSV on disk → extract from source → empty" fallback chain
+    used by every ``LoadResult``-producing function in ``data_loader``.
+    """
+
+    name: str = "base"
+
+    def __init__(self) -> None:
+        self._label_map: dict[str, int] = {}
+
+    @property
+    def label_map(self) -> dict[str, int]:
+        return self._label_map
+
+    def extract(self, trials_df: pd.DataFrame | None = None) -> pd.DataFrame:
+        """Return an all-labels DataFrame (with ``trial`` column).
+
+        Parameters
+        ----------
+        trials_df
+            Must contain ``trial``, ``start_time``, ``stop_time`` columns.
+            Required for sources with global timestamps (NWB, pynapple).
+        """
+        raise NotImplementedError
+
+    # -- shared helpers ----------------------------------------------------
+
+    def _global_to_trial_rows(
+        self,
+        epochs: list[dict],
+        trials_df: pd.DataFrame,
+    ) -> list[dict]:
+        """Convert global-time epochs to trial-relative interval rows."""
+        has_trial_col = "trial" in trials_df.columns
+        rows: list[dict] = []
+        for idx, (_, trial_row) in enumerate(trials_df.iterrows()):
+            t_start, t_stop = trial_row["start_time"], trial_row["stop_time"]
+            trial_id = trial_row["trial"] if has_trial_col else idx
+            for ep in epochs:
+                if ep["offset_s"] <= t_start or ep["onset_s"] >= t_stop:
+                    continue
+                label_id = self._label_map.get(ep["label_name"], 0)
+                if label_id == 0:
+                    continue
+                rows.append({
+                    "onset_s": max(0.0, ep["onset_s"] - t_start),
+                    "offset_s": min(t_stop - t_start, ep["offset_s"] - t_start),
+                    "labels": label_id,
+                    "individual": ep.get("individual", "individual_0"),
+                    "trial": trial_id,
+                })
+        return rows
+
+    def _rows_to_labels_df(self, rows: list[dict]) -> pd.DataFrame:
+        """Build a TSV-compatible all-labels DataFrame from row dicts."""
+        if not rows:
+            return init_empty_labels([])
+        df = pd.DataFrame(rows)
+        for col, default in TRIAL_META_DEFAULTS.items():
+            df[col] = default
+        return df
+
+    # -- resolve (TSV → extract → empty) ----------------------------------
+
+    def resolve_labels(
+        self,
+        source_path: str | Path,
+        trial_ids: list,
+        trials_df: pd.DataFrame | None = None,
+        labels_path: Path | None = None,
+    ) -> pd.DataFrame:
+        """Load labels with fallback: existing TSV → extract from source → empty.
+
+        Parameters
+        ----------
+        source_path
+            Primary data file; used to derive the default TSV path.
+        trial_ids
+            Trial identifiers (for the empty-labels fallback).
+        trials_df
+            Passed to :meth:`extract` for global→trial conversion.
+        labels_path
+            Override the TSV path (e.g. for NWB project directories).
+        """
+        tsv = labels_path if labels_path is not None else labels_tsv_path(Path(source_path))
+        if tsv.exists():
+            logger.info("Loaded labels from %s", tsv.name)
+            return load_labels_tsv(tsv)
+        df = self.extract(trials_df)
+        if not df.empty:
+            logger.info("Extracted %d label intervals via %s", len(df), self.name)
+            return df
+        return init_empty_labels(trial_ids)
+
+
+def resolve_labels_tsv(
+    source_path: str | Path,
+    trial_ids: list,
+    labels_path: Path | None = None,
+) -> pd.DataFrame:
+    """Load labels from TSV if it exists, otherwise return empty.
+
+    Use this when there is no converter (e.g. xarray/nc files).
+    """
+    tsv = labels_path if labels_path is not None else labels_tsv_path(Path(source_path))
+    if tsv.exists():
+        logger.info("Loaded labels from %s", tsv.name)
+        return load_labels_tsv(tsv)
+    return init_empty_labels(trial_ids)
+
+
+# ---------------------------------------------------------------------------
+# Standalone helpers (kept for backwards compat / direct use)
+# ---------------------------------------------------------------------------
+
+
+def build_mapping_from_labels(string_labels: list[str]) -> dict[str, int]:
+    """Build a name->id mapping from a list of unique string labels.
+
+    Sorts labels alphabetically; 0 is reserved for 'background'.
+    """
+    unique = sorted(set(string_labels))
+    mapping = {"background": 0}
+    for i, name in enumerate(unique, start=1):
+        mapping[name] = i
+    return mapping
 
 
 def crowsetta_to_intervals(
@@ -47,18 +193,6 @@ def crowsetta_to_intervals(
         })
 
     return _rows_to_df(rows)
-
-
-def build_mapping_from_labels(string_labels: list[str]) -> dict[str, int]:
-    """Build a name->id mapping from a list of unique string labels.
-
-    Sorts labels alphabetically; 0 is reserved for 'background'.
-    """
-    unique = sorted(set(string_labels))
-    mapping = {"background": 0}
-    for i, name in enumerate(unique, start=1):
-        mapping[name] = i
-    return mapping
 
 
 def extract_crowsetta_labels(
@@ -133,19 +267,77 @@ def resolve_crowsetta_mapping(
 
 
 # ---------------------------------------------------------------------------
+# Crowsetta converter
+# ---------------------------------------------------------------------------
+
+
+class CrowsettaLabelConverter(LabelConverter):
+    """Convert crowsetta annotation files to ethograph intervals.
+
+    Crowsetta labels are already in file-local time, so no trial table
+    is needed for time conversion.  If a ``trials_df`` is provided the
+    first trial id is attached; otherwise ``trial=1``.
+    """
+
+    name = "crowsetta"
+
+    def __init__(
+        self,
+        file_path: str | Path,
+        format_name: str,
+        name_to_id: dict[str, int],
+        individual: str = "ind0",
+    ) -> None:
+        super().__init__()
+        self._file_path = file_path
+        self._format_name = format_name
+        self._label_map = dict(name_to_id)
+        self._individual = individual
+
+    def extract(self, trials_df: pd.DataFrame | None = None) -> pd.DataFrame:
+        df = crowsetta_to_intervals(
+            self._file_path, self._format_name, self._label_map, self._individual,
+        )
+        if df.empty:
+            return init_empty_labels([])
+        trial_id = trials_df.iloc[0]["trial"] if trials_df is not None and len(trials_df) > 0 else 1
+        df["trial"] = trial_id
+        for col, default in TRIAL_META_DEFAULTS.items():
+            if col not in df.columns:
+                df[col] = default
+        return df
+
+
+# ---------------------------------------------------------------------------
 # NWB interval label converter
 # ---------------------------------------------------------------------------
 
-class NWBLabelConverter:
-    name = "interval_labels"
 
-    def __init__(self, include_sources: set[str] | None = None):
+class NWBLabelConverter(LabelConverter):
+    """Extract behavioural-epoch labels from an NWB file.
+
+    Supports lazy (path-based) and eager (pynwb-object) construction.
+    Epochs are converted to trial-relative intervals via ``trials_df``.
+    """
+
+    name = "nwb_intervals"
+
+    def __init__(self, nwb_path: str | Path | None = None, *, nwb=None) -> None:
+        super().__init__()
+        self._nwb_path = str(nwb_path) if nwb_path else None
         self._epochs: list[dict] | None = None
-        self._label_map: dict[str, int] = {}
+        if nwb is not None:
+            self._load(nwb)
 
-    @property
-    def label_map(self) -> dict[str, int]:
-        return self._label_map
+    def _ensure_loaded(self) -> None:
+        if self._epochs is not None:
+            return
+        if self._nwb_path is None:
+            self._epochs = []
+            return
+        import pynwb
+        with pynwb.NWBHDF5IO(self._nwb_path, "r") as io:
+            self._load(io.read())
 
     def _load(self, nwb) -> None:
         self._epochs = self._extract_behavioral_epochs(nwb)
@@ -153,40 +345,36 @@ class NWBLabelConverter:
             sorted({e["label_name"] for e in self._epochs})
         )
 
-    def from_nwb(self, nwb, trials_df: pd.DataFrame) -> pd.DataFrame:
-        """Extract labels from NWB and return a TSV-compatible all-labels DataFrame."""
-        from ethograph.labels.tsv_store import TRIAL_META_DEFAULTS
+    def extract(self, trials_df: pd.DataFrame | None = None) -> pd.DataFrame:
+        self._ensure_loaded()
+        if not self._epochs or trials_df is None or trials_df.empty:
+            return init_empty_labels([])
+        rows = self._global_to_trial_rows(self._epochs, trials_df)
+        return self._rows_to_labels_df(rows)
 
+    def from_nwb(
+        self,
+        nwb,
+        trials_df: pd.DataFrame,
+        sources: list[str] | None = None,
+    ) -> pd.DataFrame:
+        """Extract labels from NWB and return a TSV-compatible all-labels DataFrame.
+
+        Parameters
+        ----------
+        sources : list[str] | None
+            If given, only include epochs whose ``source`` field is in this
+            list.  ``None`` means include all sources.
+        """
         if self._epochs is None:
             self._load(nwb)
-
-        individual = _get_nwb_individual(nwb)
-        all_rows = []
-        for _, row in trials_df.iterrows():
-            t_start, t_stop = row["start_time"], row["stop_time"]
-            trial_rows = [
-                {
-                    "onset_s": max(0.0, ep["onset_s"] - t_start),
-                    "offset_s": min(t_stop - t_start, ep["offset_s"] - t_start),
-                    "labels": self._label_map.get(ep["label_name"], 0),
-                    "individual": ep.get("individual", individual),
-                    "trial": row["trial"],
-                }
-                for ep in self._epochs
-                if ep["offset_s"] > t_start
-                and ep["onset_s"] < t_stop
-                and self._label_map.get(ep["label_name"], 0) != 0
-            ]
-            all_rows.extend(trial_rows)
-
-        if not all_rows:
-            from ethograph.labels.tsv_store import init_empty_labels
-            return init_empty_labels([])
-
-        df = pd.DataFrame(all_rows)
-        for col, default in TRIAL_META_DEFAULTS.items():
-            df[col] = default
-        return df
+        if sources is not None:
+            keep = set(sources)
+            self._epochs = [e for e in self._epochs if e["source"] in keep]
+            self._label_map = build_mapping_from_labels(
+                sorted({e["label_name"] for e in self._epochs})
+            )
+        return self.extract(trials_df)
 
     def _extract_behavioral_epochs(self, nwb) -> list[dict]:
         import pynwb
@@ -237,6 +425,63 @@ class NWBLabelConverter:
                 })
 
 
+# ---------------------------------------------------------------------------
+# Pynapple interval label converter
+# ---------------------------------------------------------------------------
+
+
+class PynappleLabelConverter(LabelConverter):
+    """Extract labels from pynapple IntervalSet objects.
+
+    Collects every ``nap.IntervalSet`` in the data dict whose key is
+    **not** ``"trials"`` or ``"epochs"`` (those are trial boundaries,
+    not labels).  Each IntervalSet name becomes a label class.
+    """
+
+    name = "pynapple_intervals"
+
+    SKIP_KEYS = frozenset({"trials", "epochs"})
+
+    def __init__(self, data: dict, trials_ep=None) -> None:
+        super().__init__()
+        self._trials_df = trials_df_from_intervalset(trials_ep)
+        self._epochs = self._extract_interval_epochs(data)
+        if self._epochs:
+            self._label_map = build_mapping_from_labels(
+                sorted({e["label_name"] for e in self._epochs})
+            )
+
+    def _extract_interval_epochs(self, data: dict) -> list[dict]:
+        import pynapple as nap
+
+        epochs: list[dict] = []
+        for key, obj in data.items():
+            if not isinstance(obj, nap.IntervalSet):
+                continue
+            if key.lower() in self.SKIP_KEYS:
+                continue
+            for i in range(len(obj)):
+                epochs.append({
+                    "onset_s": float(obj.start[i]),
+                    "offset_s": float(obj.end[i]),
+                    "label_name": key,
+                    "individual": "individual_0",
+                })
+        return epochs
+
+    def extract(self, trials_df: pd.DataFrame | None = None) -> pd.DataFrame:
+        t_df = trials_df if trials_df is not None else self._trials_df
+        if not self._epochs or t_df.empty:
+            return init_empty_labels([])
+        rows = self._global_to_trial_rows(self._epochs, t_df)
+        return self._rows_to_labels_df(rows)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
 def _get_nwb_individual(nwb) -> str:
     subject = getattr(nwb, "subject", None)
     if subject:
@@ -244,3 +489,14 @@ def _get_nwb_individual(nwb) -> str:
         if sid:
             return str(sid)
     return "individual_0"
+
+
+def trials_df_from_intervalset(trials_ep) -> pd.DataFrame:
+    """Build a trials DataFrame from a pynapple IntervalSet."""
+    if trials_ep is None or len(trials_ep) == 0:
+        return pd.DataFrame(columns=["trial", "start_time", "stop_time"])
+    return pd.DataFrame({
+        "trial": list(range(1, len(trials_ep) + 1)),
+        "start_time": [float(s) for s in trials_ep.start],
+        "stop_time": [float(e) for e in trials_ep.end],
+    })

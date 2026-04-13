@@ -415,6 +415,10 @@ class TrialsWidget(QWidget):
         except (ValueError, TypeError):
             sorted_trials = sorted(filtered, key=str)
 
+        # Never produce an empty trial list — fall back to unfiltered.
+        if not sorted_trials:
+            sorted_trials = list(self._base_trials)
+
         # Keep table and navigation in sync with filtered subset.
         for row_idx in range(self._table.rowCount()):
             item = self._table.item(row_idx, 0)

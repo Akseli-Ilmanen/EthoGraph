@@ -1,18 +1,27 @@
 from __future__ import annotations
 
 from qtpy.QtCore import Qt, QTimer
-from qtpy.QtGui import QGuiApplication, QFont
-from qtpy.QtWidgets import QComboBox, QDockWidget, QStyledItemDelegate, QWidget
+from qtpy.QtGui import QGuiApplication
+from qtpy.QtWidgets import QDockWidget, QWidget
 
 from .app_constants import (
     LAYER_DOCK_WIDTH_RATIO,
     LAYOUT_RELEASE_DELAY_MS,
     MAX_WIDGET_SIZE,
-    NO_VIDEO_PANEL_WIDTH_RATIO,
     PLOT_CONTAINER_MIN_HEIGHT,
     SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
     SIDEBAR_MIN_WIDTH_PX,
     VERTICAL_SPLIT_RATIO,
+)
+
+# Re-export moved helpers for backwards compatibility
+from ethograph.utils.qt import (  # noqa: F401
+    ElidedDelegate,
+    apply_compact_widget_style,
+    find_combo_index,
+    get_combo_value,
+    normalize_child_layouts,
+    set_combo_to_value,
 )
 
 _LINK_COLOR = "#87CEEB"
@@ -27,127 +36,12 @@ REDUNDANT_PREFIXES = [
 ]
 
 
-class ElidedDelegate(QStyledItemDelegate):
-    def __init__(self, elide_mode=Qt.ElideMiddle, parent=None):
-        super().__init__(parent)
-        self._elide_mode = elide_mode
-
-    def paint(self, painter, option, index):
-        text = index.data(Qt.DisplayRole)
-        if text:
-            metrics = painter.fontMetrics()
-            elided = metrics.elidedText(text, self._elide_mode, option.rect.width())
-            painter.drawText(option.rect, Qt.AlignVCenter | Qt.AlignLeft, elided)
-        else:
-            super().paint(painter, option, index)
-
-
 def clean_display_labels(labels: list[str]) -> list[str]:
     """Strip a prefix from all labels when every label shares that prefix."""
     for prefix in REDUNDANT_PREFIXES:
         if labels and all(label.startswith(prefix) for label in labels):
             labels = [label[len(prefix):] for label in labels]
     return labels
-
-
-def get_combo_value(combo: QComboBox) -> str:
-    data = combo.currentData(Qt.ItemDataRole.UserRole)
-    return data if data is not None else combo.currentText()
-
-
-def find_combo_index(combo: QComboBox, value: str) -> int:
-    idx = combo.findData(value, Qt.ItemDataRole.UserRole)
-    if idx < 0:
-        idx = combo.findText(str(value))
-    return idx
-
-
-def set_combo_to_value(combo: QComboBox, value: str) -> None:
-    idx = find_combo_index(combo, str(value))
-    if idx >= 0:
-        combo.setCurrentIndex(idx)
-
-
-def apply_compact_widget_style(widget: QWidget, font_size: int = 8) -> None:
-    """Apply compact font and stylesheet to a widget subtree."""
-    font = QFont()
-    font.setPointSize(font_size)
-    widget.setFont(font)
-
-    widget.setStyleSheet(f"""
-        * {{
-            font-size: {font_size}pt;
-            padding: 2px;
-            margin: 1px;
-        }}
-        QLabel {{
-            font-size: {font_size}pt;
-            padding: 2px;
-        }}
-        QPushButton {{
-            font-size: {font_size}pt;
-            padding: 4px 8px;
-        }}
-        QComboBox {{
-            font-size: {font_size}pt;
-            padding: 2px 4px;
-        }}
-        QSpinBox, QDoubleSpinBox {{
-            font-size: {font_size}pt;
-            padding: 2px;
-        }}
-        QLineEdit {{
-            font-size: {font_size}pt;
-            padding: 2px 4px;
-        }}
-        QGroupBox {{
-            margin-top: 4px;
-            margin-bottom: 2px;
-            padding-top: 12px;
-        }}
-        QGroupBox::title {{
-            padding: 2px 4px;
-        }}
-        QFrame {{
-            margin: 1px;
-            padding: 1px;
-        }}
-        QCollapsible {{
-            margin: 1px;
-            padding: 1px;
-            border: none;
-            spacing: 2px;
-        }}
-        QCollapsible > QToolButton {{
-            padding: 2px 6px;
-            margin: 1px;
-            min-height: 18px;
-            max-height: 20px;
-            border: none;
-            border-bottom: 1px solid palette(mid);
-        }}
-        QCollapsible > QFrame {{
-            margin: 2px;
-            padding: 2px;
-            border: none;
-        }}
-    """)
-
-
-def normalize_child_layouts(root: QWidget, spacing: int, margin: int) -> None:
-    """Apply consistent spacing/margins to direct child widget layouts."""
-    layout = root.layout()
-    if layout is None:
-        return
-    for i in range(layout.count()):
-        item = layout.itemAt(i)
-        child = item.widget() if item else None
-        child_layout = child.layout() if child is not None else None
-        if child_layout is None:
-            continue
-        child_layout.setSpacing(spacing)
-        child_layout.setContentsMargins(margin, margin, margin, margin)
-
 
 
 class LayoutManager:
@@ -266,38 +160,6 @@ class LayoutManager:
         if docks:
             self._qt_window.resizeDocks(docks, sizes, Qt.Horizontal)
 
-    def configure_no_video(self, navigation_widget: QWidget) -> None:
-        for dock in self._layer_docks:
-            dock.hide()
-
-        central = self._qt_window.centralWidget()
-        if central:
-            central.hide()
-
-        if self._plot_dock is not None:
-            self._qt_window.removeDockWidget(self._plot_dock)
-            self._qt_window.addDockWidget(Qt.LeftDockWidgetArea, self._plot_dock)
-            self._plot_dock.show()
-
-            def _apply_dock_ratio():
-                total_width = self._qt_window.width()
-                if total_width <= 0:
-                    return
-                panel_width = int(total_width * NO_VIDEO_PANEL_WIDTH_RATIO)
-                sidebar_width = total_width - panel_width
-                for dock in self._qt_window.findChildren(QDockWidget):
-                    if dock is self._plot_dock:
-                        continue
-                    if dock.isVisible() and dock.widget() is not None:
-                        self._qt_window.resizeDocks(
-                            [self._plot_dock, dock],
-                            [panel_width, sidebar_width],
-                            Qt.Horizontal,
-                        )
-                        break
-
-            QTimer.singleShot(0, _apply_dock_ratio)
-
 
 
     def set_video_viewer_visible(self, visible: bool) -> None:
@@ -342,7 +204,7 @@ class LayoutManager:
         # Apply once after the initial layout settles to avoid repeated dock churn.
         QTimer.singleShot(0, _apply_sidebar_ratio)
 
-    def reset_layout(self, *, show_layers: bool, show_space: bool, has_video: bool) -> None:
+    def reset_layout(self, *, show_layers: bool, show_space: bool) -> None:
         """Re-dock all floating panels and restore the default arrangement."""
         # Re-scan in case docks were created since last register
         self.register_docks()
@@ -383,8 +245,8 @@ class LayoutManager:
             else:
                 self._space_dock.setVisible(False)
 
-        # 5. Restore video viewer
-        self.set_video_viewer_visible(has_video)
+        # 5. Always show video viewer (user can hide manually)
+        self.set_video_viewer_visible(True)
 
         # 6. Re-apply standard sizing after Qt processes the layout changes
         def _apply_sizes():
@@ -397,7 +259,7 @@ class LayoutManager:
                 self._qt_window.resizeDocks(
                     [self._sidebar_dock], [target_w], Qt.Horizontal,
                 )
-            if has_video and self._plot_dock:
+            if self._plot_dock:
                 total_h = self._qt_window.height()
                 plot_h = max(
                     PLOT_CONTAINER_MIN_HEIGHT,

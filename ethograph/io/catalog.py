@@ -3,6 +3,7 @@
 Replaces the old type_vars_dict pattern with:
 - DataCatalog: what dimensions/features are available (builds combo boxes)
 - DataLoader: how to load data (select by feature + combo dims + time window → PlotData)
+- ComboCatalog: NWB-specific combo detection and time-slice loading
 
 Three backends, same interface. Differs in how combo dims are discovered,
 how selection works (sel_valid principle: overspecified combos are OK), and
@@ -12,13 +13,16 @@ how time slicing works.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Protocol, Sequence, runtime_checkable
 
 import numpy as np
 
 if TYPE_CHECKING:
     import pynapple as nap
     import xarray as xr
+
+    import pandas as pd
 
     from ethograph.io.trialtree import TrialTree
 
@@ -66,7 +70,6 @@ class DataCatalog:
 
     combos: dict[str, ComboSpec] = field(default_factory=dict)
     features: list[str] = field(default_factory=list)
-    colors: list[str] = field(default_factory=list)
     changepoints: list[str] = field(default_factory=list)
     cameras: list[str] = field(default_factory=list)
     mics: list[str] = field(default_factory=list)
@@ -82,8 +85,6 @@ class DataCatalog:
         for name, spec in self.combos.items():
             tvd[name] = np.array(spec.values) if spec.values else []
         tvd["features"] = self.features
-        if self.colors:
-            tvd["colors"] = self.colors
         if self.changepoints:
             tvd["changepoints"] = self.changepoints
         if self.cameras:
@@ -92,6 +93,360 @@ class DataCatalog:
             tvd["mics"] = np.array(self.mics)
         tvd["trial_conditions"] = self.trial_conditions
         return tvd
+
+
+# ---------------------------------------------------------------------------
+# NWB data records
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class TimeSeriesRecord:
+    """Metadata for one TimeSeries discovered inside an NWB file."""
+
+    path: str
+    name: str
+    neurodata_type: str
+    description: str
+    shape: tuple[int, ...]
+    dtype: str
+    unit: str
+    rate: float | None
+    starting_time: float | None
+    n_timestamps: int | None
+    timestamps_range: tuple[float, float] | None
+
+    @property
+    def duration(self) -> float | None:
+        if self.rate and self.starting_time is not None:
+            return self.shape[0] / self.rate
+        if self.timestamps_range:
+            return self.timestamps_range[1] - self.timestamps_range[0]
+        return None
+
+    @property
+    def time_range(self) -> tuple[float, float] | None:
+        if self.timestamps_range:
+            return self.timestamps_range
+        if self.rate and self.starting_time is not None:
+            end = self.starting_time + self.shape[0] / self.rate
+            return (self.starting_time, end)
+        return None
+
+    @property
+    def is_regularly_sampled(self) -> bool:
+        return self.rate is not None
+
+    def time_to_slice(self, t_start: float, t_stop: float) -> slice:
+        if self.rate and self.starting_time is not None:
+            i0 = int((t_start - self.starting_time) * self.rate)
+            i1 = int((t_stop - self.starting_time) * self.rate)
+            return slice(max(i0, 0), min(i1, self.shape[0]))
+        raise ValueError(
+            "Irregular timestamps: use np.searchsorted on the timestamps dataset"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class TimeIntervalsRecord:
+    """Metadata for one TimeIntervals table discovered inside an NWB file."""
+
+    path: str
+    name: str
+    neurodata_type: str
+    description: str
+    n_rows: int
+    column_names: tuple[str, ...]
+    time_range: tuple[float, float] | None
+
+
+# ---------------------------------------------------------------------------
+# NWB combo detection: FeatureEntry, path parsing, tag inference
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class FeatureEntry:
+    path: str
+    display_name: str
+    neurodata_type: str
+    shape: tuple[int, ...]
+    rate: float | None
+    tags: dict[str, str]
+    record: TimeSeriesRecord
+    columns: tuple[str, ...] = ()
+    has_confidence: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class TimeSlice:
+    data: np.ndarray
+    timestamps: np.ndarray
+    feature: FeatureEntry
+    confidence: np.ndarray | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StackedSlice:
+    data: np.ndarray
+    timestamps: np.ndarray
+    labels: tuple[str, ...]
+    confidence: np.ndarray | None = None
+
+
+_SPATIAL_TYPES = frozenset({"PoseEstimationSeries", "SpatialSeries"})
+_SPACE_LABELS = {2: ("x", "y"), 3: ("x", "y", "z")}
+
+
+def _infer_columns(neurodata_type: str, shape: tuple[int, ...]) -> tuple[str, ...]:
+    if neurodata_type in _SPATIAL_TYPES and len(shape) >= 2:
+        labels = _SPACE_LABELS.get(shape[-1])
+        if labels:
+            return labels
+    return ()
+
+
+def _parent_group(path: str) -> str | None:
+    """Extract the parent group name from an NWB path (e.g. 'LeftCamera')."""
+    parts = path.strip("/").split("/")
+    return parts[-2] if len(parts) >= 2 else None
+
+
+def _detect_combos(
+    records: Sequence[TimeSeriesRecord],
+) -> tuple[dict[str, ComboSpec], list[FeatureEntry]]:
+    """Flat feature list with optional keypoints/camera combos for pose data."""
+    features: list[FeatureEntry] = []
+    keypoint_names: set[str] = set()
+    feature_names: list[str] = []
+    camera_names: set[str] = set()
+    has_space = False
+
+    for r in records:
+        leaf = r.name
+        cols = _infer_columns(r.neurodata_type, r.shape)
+        is_pose = r.neurodata_type == "PoseEstimationSeries"
+
+        if is_pose:
+            camera = _parent_group(r.path)
+            tags: dict[str, str] = {"keypoint": leaf}
+            if camera:
+                tags["camera"] = camera
+                camera_names.add(camera)
+            keypoint_names.add(leaf)
+        else:
+            tags = {"feature": leaf}
+            feature_names.append(leaf)
+
+        if cols:
+            has_space = True
+
+        features.append(FeatureEntry(
+            path=r.path,
+            display_name=leaf,
+            neurodata_type=r.neurodata_type,
+            shape=r.shape,
+            rate=r.rate,
+            tags=tags,
+            record=r,
+            columns=cols,
+            has_confidence=is_pose,
+        ))
+
+    combos: dict[str, ComboSpec] = {}
+    if keypoint_names:
+        combos["keypoint"] = ComboSpec("keypoint", tuple(sorted(keypoint_names)))
+    if camera_names:
+        combos["camera"] = ComboSpec("camera", tuple(sorted(camera_names)))
+    if feature_names:
+        combos["feature"] = ComboSpec("feature", tuple(sorted(feature_names)))
+    if has_space:
+        space_vals: set[str] = set()
+        for f in features:
+            space_vals.update(f.columns)
+        combos["space"] = ComboSpec("space", tuple(sorted(space_vals)))
+
+    return combos, features
+
+
+# ---------------------------------------------------------------------------
+# ComboCatalog: time-slice loading via H5Like handle
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ComboCatalog:
+    combos: dict[str, ComboSpec]
+    features: tuple[FeatureEntry, ...]
+
+    def filter(self, **kwargs: str) -> tuple[FeatureEntry, ...]:
+        return tuple(
+            f for f in self.features
+            if all(
+                f.tags.get(k) == v
+                for k, v in kwargs.items()
+                if k in f.tags
+            )
+            and any(k in f.tags for k in kwargs)
+        )
+
+    def load_stacked(
+        self,
+        h5: H5Like,
+        t0: float,
+        t1: float,
+        **combo_sel: str,
+    ) -> StackedSlice:
+        entry_sel, column_sel = self._split_sel(combo_sel)
+        entries = self._sel_valid_entries(entry_sel)
+
+        slices: list[TimeSlice] = []
+        for entry in entries:
+            data, timestamps, confidence = _read_time_slice(h5, entry, t0, t1)
+            slices.append(TimeSlice(
+                data=data, timestamps=timestamps, feature=entry, confidence=confidence,
+            ))
+
+        if not slices:
+            return StackedSlice(
+                data=np.empty((0, 0)),
+                timestamps=np.empty(0),
+                labels=(),
+            )
+
+        stacked = _stack_slices(slices)
+        return _apply_column_sel(stacked, column_sel)
+
+    def _sel_valid_entries(
+        self, sel: dict[str, str],
+    ) -> tuple[FeatureEntry, ...]:
+        if not sel:
+            return self.features
+        return tuple(
+            f for f in self.features
+            if all(f.tags[k] == v for k, v in sel.items() if k in f.tags)
+            and any(k in f.tags for k in sel)
+        )
+
+    def _split_sel(
+        self, combo_sel: dict[str, str],
+    ) -> tuple[dict[str, str], dict[str, str]]:
+        entry_keys = {"keypoint", "feature", "camera"}
+        entry_sel = {k: v for k, v in combo_sel.items() if k in entry_keys}
+        column_sel = {k: v for k, v in combo_sel.items() if k not in entry_keys}
+        return entry_sel, column_sel
+
+    def __repr__(self) -> str:
+        combo_summary = {k: len(v) for k, v in self.combos.items()}
+        return f"ComboCatalog(features={len(self.features)}, combos={combo_summary})"
+
+
+def _read_time_slice(
+    h5: H5Like,
+    entry: FeatureEntry,
+    t0: float,
+    t1: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    rec = entry.record
+    grp = h5[rec.path]
+    data_ds = grp["data"]
+    ts_ds = grp.get("timestamps")
+    conf_ds = grp.get("confidence") if entry.has_confidence else None
+
+    if rec.rate and rec.starting_time is not None:
+        s = rec.time_to_slice(t0, t1)
+        data = data_ds[s]
+        timestamps = rec.starting_time + np.arange(s.start, s.stop) / rec.rate
+        confidence = conf_ds[s] if conf_ds is not None else None
+    elif ts_ds is not None:
+        all_ts = ts_ds[:]
+        mask = (all_ts >= t0) & (all_ts <= t1)
+        idx = np.nonzero(mask)[0]
+        if len(idx) == 0:
+            data = np.empty((0, *data_ds.shape[1:]), dtype=data_ds.dtype)
+            timestamps = np.empty(0)
+            confidence = np.empty(0) if conf_ds is not None else None
+        else:
+            s = slice(int(idx[0]), int(idx[-1]) + 1)
+            data = data_ds[s]
+            timestamps = all_ts[s]
+            confidence = conf_ds[s] if conf_ds is not None else None
+    else:
+        raise ValueError(f"No timing info for {rec.path}")
+
+    return data, timestamps, confidence
+
+
+def _labels_for_entry(entry: FeatureEntry) -> list[str]:
+    name = entry.display_name
+    if entry.columns:
+        return [f"{name}_{c}" for c in entry.columns]
+    return [name]
+
+
+def _stack_slices(slices: list[TimeSlice]) -> StackedSlice:
+    timestamps = slices[0].timestamps
+    labels: list[str] = []
+    arrays: list[np.ndarray] = []
+    conf_arrays: list[np.ndarray] = []
+    has_any_confidence = False
+
+    for s in slices:
+        entry_labels = _labels_for_entry(s.feature)
+        labels.extend(entry_labels)
+
+        d = s.data
+        if d.ndim == 1:
+            d = d[:, np.newaxis]
+        arrays.append(d)
+
+        if s.confidence is not None:
+            has_any_confidence = True
+            conf_arrays.append(s.confidence)
+
+    stacked = np.concatenate(arrays, axis=1)
+
+    confidence = None
+    if has_any_confidence:
+        confidence = np.concatenate(
+            [c[:, np.newaxis] if c.ndim == 1 else c for c in conf_arrays], axis=1
+        ) if conf_arrays else None
+
+    return StackedSlice(
+        data=stacked,
+        timestamps=timestamps,
+        labels=tuple(labels),
+        confidence=confidence,
+    )
+
+
+def _apply_column_sel(stacked: StackedSlice, column_sel: dict[str, str]) -> StackedSlice:
+    if not column_sel:
+        return stacked
+    mask = list(range(len(stacked.labels)))
+    for key, val in column_sel.items():
+        suffix = f"_{val}"
+        candidate = [i for i in mask if stacked.labels[i].endswith(suffix)]
+        if candidate:
+            mask = candidate
+    if len(mask) == len(stacked.labels):
+        return stacked
+    return StackedSlice(
+        data=stacked.data[:, mask],
+        timestamps=stacked.timestamps,
+        labels=tuple(stacked.labels[i] for i in mask),
+        confidence=stacked.confidence,
+    )
+
+
+# ---------------------------------------------------------------------------
+# build_combos: NWBCatalog → ComboCatalog
+# ---------------------------------------------------------------------------
+
+
+def build_combos(catalog: NWBCatalog) -> ComboCatalog:
+    combos, features = _detect_combos(catalog.timeseries)
+    return ComboCatalog(combos=combos, features=tuple(features))
 
 
 # ---------------------------------------------------------------------------
@@ -134,9 +489,6 @@ class DataLoader(Protocol):
     def dims(self) -> dict[str, np.ndarray]: ...
 
     @property
-    def colors(self) -> list[str]: ...
-
-    @property
     def changepoint_names(self) -> list[str]: ...
 
     def get_type_vars(self) -> dict: ...
@@ -167,10 +519,6 @@ class _CatalogMixin:
             for n, s in self._catalog.combos.items()
             if n != "features"
         }
-
-    @property
-    def colors(self) -> list[str]:
-        return self._catalog.colors
 
     @property
     def changepoint_names(self) -> list[str]:
@@ -591,7 +939,7 @@ class NWBLoader(_CatalogMixin):
 
     def __init__(
         self,
-        source: str,
+        source,
         catalog: DataCatalog,
         combo_catalog: Any | None = None,
     ) -> None:
@@ -601,8 +949,6 @@ class NWBLoader(_CatalogMixin):
         self._trial_intervals: list[tuple[float, float]] = []
 
         if combo_catalog is None:
-            from ethograph.io.nwb_backend import build_combos, catalog_nwb
-
             nwb_cat = catalog_nwb(source)
             self._combo_catalog = build_combos(nwb_cat)
         else:
@@ -632,6 +978,14 @@ class NWBLoader(_CatalogMixin):
         self._trial_intervals = intervals
 
     def feature_dims(self, feature: str) -> dict[str, list[str]]:
+        if feature == "pose_estimation":
+            result: dict[str, list[str]] = {}
+            for key in ("keypoint", "camera", "space"):
+                spec = self._combo_catalog.combos.get(key)
+                if spec and spec.values:
+                    result[key] = list(spec.values)
+            return result
+
         entries = self._combo_catalog.filter(feature=feature)
         if not entries:
             entries = self._combo_catalog.filter(keypoint=feature)
@@ -650,7 +1004,7 @@ class NWBLoader(_CatalogMixin):
         t1: float | None = None,
         color_variable: str | None = None,
     ) -> PlotData | None:
-        from ethograph.io.nwb_backend import open_nwb
+        from ethograph.utils.nwb import open_nwb
 
         offset = self._trial_offset
 
@@ -662,21 +1016,24 @@ class NWBLoader(_CatalogMixin):
         else:
             abs_t0, abs_t1 = 0.0, 1e9
 
-        # Build combo selection — map feature name into the right tag
-        combo_sel = {}
-        for k, v in selections.items():
-            if k in ("module", "group", "keypoint", "feature", "space"):
-                combo_sel[k] = v
-
-        # Add the feature itself to selection if it matches an entry
-        display_names = {e.display_name for e in self._combo_catalog.features}
-        keypoint_names = {
-            e.tags.get("keypoint", "") for e in self._combo_catalog.features
-        }
-        if feature in display_names:
-            combo_sel["feature"] = feature
-        elif feature in keypoint_names:
-            combo_sel["keypoint"] = feature
+        combo_sel: dict[str, str] = {}
+        if feature == "pose_estimation":
+            if "keypoint" in selections:
+                combo_sel["keypoint"] = selections["keypoint"]
+            if "camera" in selections:
+                combo_sel["camera"] = selections["camera"]
+        else:
+            keypoint_names = {
+                e.tags.get("keypoint", "") for e in self._combo_catalog.features
+            }
+            if feature in keypoint_names:
+                combo_sel["keypoint"] = feature
+                if "camera" in selections:
+                    combo_sel["camera"] = selections["camera"]
+            else:
+                combo_sel["feature"] = feature
+        if "space" in selections:
+            combo_sel["space"] = selections["space"]
 
         with open_nwb(self._source) as h5:
             stacked = self._combo_catalog.load_stacked(
@@ -761,6 +1118,22 @@ def _compute_shared_column_dims(
 # Dimensions that are internal to color variables — never show as user combos
 _HIDDEN_DIMS = frozenset({"RGB", "RGBA"})
 
+# Variables that are never user-selectable features
+_EXCLUDED_VARS = frozenset({"onset_s", "offset_s", "labels", "individual", "boundary_events"})
+
+
+def _feature_vars(ds: xr.Dataset) -> list[str]:
+    """All data_vars with a time dimension, minus changepoints and internal vars."""
+    features = []
+    for name, var in ds.data_vars.items():
+        if name in _EXCLUDED_VARS:
+            continue
+        if var.attrs.get("type") == "changepoints":
+            continue
+        if any("time" in str(d).lower() for d in var.dims):
+            features.append(name)
+    return features
+
 
 def _auto_catalog_xarray(ds: xr.Dataset) -> DataCatalog:
     """Quick catalog from a Dataset when no TrialTree is available."""
@@ -772,14 +1145,11 @@ def _auto_catalog_xarray(ds: xr.Dataset) -> DataCatalog:
         vals = tuple(ds.coords["individuals"].values.astype(str))
         combos["individuals"] = ComboSpec("individuals", vals)
 
-    features_list = list(ds.filter_by_attrs(type="features").data_vars)
-    colors_list = list(ds.filter_by_attrs(type="colors").data_vars)
+    features_list = _feature_vars(ds)
     changepoints_list = list(ds.filter_by_attrs(type="changepoints").data_vars)
 
     if features_list:
         combos["features"] = ComboSpec("features", tuple(features_list))
-    if colors_list:
-        combos["colors"] = ComboSpec("colors", tuple(colors_list))
 
     for name in find_temporal_dims(ds):
         if name in combos or name.upper() in _HIDDEN_DIMS:
@@ -797,7 +1167,6 @@ def _auto_catalog_xarray(ds: xr.Dataset) -> DataCatalog:
     return DataCatalog(
         combos=combos,
         features=features_list,
-        colors=colors_list,
         changepoints=changepoints_list,
     )
 
@@ -820,14 +1189,11 @@ def catalog_from_xarray(ds: xr.Dataset, dt: TrialTree, nwb_alignment=None) -> Da
         vals = tuple(ds.coords["individuals"].values.astype(str))
         combos["individuals"] = ComboSpec("individuals", vals)
 
-    features_list = list(ds.filter_by_attrs(type="features").data_vars)
-    colors_list = list(ds.filter_by_attrs(type="colors").data_vars)
+    features_list = _feature_vars(ds)
     changepoints_list = list(ds.filter_by_attrs(type="changepoints").data_vars)
 
     if features_list:
         combos["features"] = ComboSpec("features", tuple(features_list))
-    if colors_list:
-        combos["colors"] = ComboSpec("colors", tuple(colors_list))
 
     extra_dims = find_temporal_dims(ds)
     for name in extra_dims:
@@ -851,7 +1217,6 @@ def catalog_from_xarray(ds: xr.Dataset, dt: TrialTree, nwb_alignment=None) -> Da
     return DataCatalog(
         combos=combos,
         features=features_list,
-        colors=colors_list,
         changepoints=changepoints_list,
         cameras=cameras,
         mics=mics,
@@ -877,7 +1242,6 @@ def catalog_from_pynapple(
     combos["individuals"] = ComboSpec("individuals", ("individual_0",))
 
     features: list[str] = []
-    colors: list[str] = []
     changepoints: list[str] = []
 
     for key, obj in data.items():
@@ -895,27 +1259,18 @@ def catalog_from_pynapple(
             features.append(key)
 
             if isinstance(obj, nap.TsdFrame):
-                cols_lower = [c.lower() for c in obj.columns]
-                is_color = "rgb" in key.lower() or set(cols_lower) == {"r", "g", "b"}
-                if is_color:
-                    colors.append(key)
-                else:
-                    # Only add column dims for non-color TsdFrames
-                    dim_name = dim_map.get(key, f"{key}_columns")
-                    if dim_name not in combos:
-                        combos[dim_name] = ComboSpec(
-                            dim_name, tuple(str(c) for c in obj.columns)
-                        )
+                dim_name = dim_map.get(key, f"{key}_columns")
+                if dim_name not in combos:
+                    combos[dim_name] = ComboSpec(
+                        dim_name, tuple(str(c) for c in obj.columns)
+                    )
 
     if features:
         combos["features"] = ComboSpec("features", tuple(features))
-    if colors:
-        combos["colors"] = ComboSpec("colors", tuple(colors))
 
     return DataCatalog(
         combos=combos,
         features=features,
-        colors=colors,
         changepoints=changepoints,
         trial_conditions=[],
     )
@@ -927,8 +1282,6 @@ def catalog_from_nwb(source: str) -> tuple[DataCatalog, Any]:
     Returns ``(catalog, combo_catalog)`` — the combo_catalog is passed
     to :class:`NWBLoader` to avoid re-scanning the file.
     """
-    from ethograph.io.nwb_backend import build_combos, catalog_nwb
-
     nwb_cat = catalog_nwb(source)
     combo_cat = build_combos(nwb_cat)
 
@@ -938,8 +1291,15 @@ def catalog_from_nwb(source: str) -> tuple[DataCatalog, Any]:
     for name, spec in combo_cat.combos.items():
         combos[name] = ComboSpec(name, spec.values)
 
-    for entry in combo_cat.features:
-        features.append(entry.display_name)
+    has_pose = any(e.neurodata_type == "PoseEstimationSeries" for e in combo_cat.features)
+    non_pose = [e.display_name for e in combo_cat.features if e.neurodata_type != "PoseEstimationSeries"]
+
+    if has_pose:
+        features.append("pose_estimation")
+    features.extend(non_pose)
+
+    if features:
+        combos["features"] = ComboSpec("features", tuple(features))
 
     combos["individuals"] = ComboSpec("individuals", ("individual_0",))
 
@@ -949,3 +1309,276 @@ def catalog_from_nwb(source: str) -> tuple[DataCatalog, Any]:
         trial_conditions=[],
     )
     return catalog, combo_cat
+
+
+# ---------------------------------------------------------------------------
+# NWBCatalog: result of scanning an NWB file
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class NWBCatalog:
+    source: str
+    backend: NWBBackend
+    timeseries: tuple[TimeSeriesRecord, ...]
+    intervals: tuple[TimeIntervalsRecord, ...]
+
+    def __repr__(self) -> str:
+        return (
+            f"NWBCatalog(source={self.source!r}, "
+            f"timeseries={len(self.timeseries)}, "
+            f"intervals={len(self.intervals)})"
+        )
+
+
+# ---------------------------------------------------------------------------
+# NWB H5 scanning helpers (used by catalog_nwb / read_trial_intervals)
+# ---------------------------------------------------------------------------
+
+_TIMESERIES_TYPES = frozenset({
+    "TimeSeries",
+    "SpatialSeries",
+    "IntervalSeries",
+    "PoseEstimationSeries",
+    "AnnotationSeries",
+    "AbstractFeatureSeries",
+    "IndexSeries",
+    "ImageSeries",
+})
+
+_SKIP_MODULES = frozenset({"ecephys", "ophys", "ogen"})
+
+_ALLOWED_ROOTS = ("processing/", "stimulus/", "intervals/", "intervals", "trials", "epochs")
+
+_INTERVAL_TYPES = frozenset({
+    "TimeIntervals",
+    "DynamicTable",
+})
+
+
+def _read_h5_scalar(ds: Any, default: str = "") -> str:
+    if ds is None:
+        return default
+    try:
+        val = ds[()]
+    except Exception:
+        return default
+    if isinstance(val, bytes):
+        return val.decode()
+    return str(val)
+
+
+def _read_h5_attr(obj: Any, key: str, default: Any = None) -> Any:
+    try:
+        return obj.attrs.get(key, default)
+    except Exception:
+        return default
+
+
+def _is_h5_group(obj: Any) -> bool:
+    import h5py
+
+    if isinstance(obj, h5py.Group):
+        return True
+    try:
+        type_name = type(obj).__name__
+        if "Group" in type_name or "File" in type_name:
+            return True
+    except Exception:
+        pass
+    return hasattr(obj, "keys") and hasattr(obj, "attrs") and not hasattr(obj, "shape")
+
+
+def _is_h5_dataset(obj: Any) -> bool:
+    return hasattr(obj, "shape") and hasattr(obj, "dtype")
+
+
+def _should_visit(name: str) -> bool:
+    if not any(name.startswith(root) for root in _ALLOWED_ROOTS):
+        return False
+    parts = name.split("/")
+    return not any(p in _SKIP_MODULES for p in parts)
+
+
+def _collect_timeseries(file: H5Like) -> list[TimeSeriesRecord]:
+    """Walk an NWB H5 file and return all TimeSeries-like groups."""
+    records: list[TimeSeriesRecord] = []
+
+    def _visitor(name: str, obj: Any) -> None:
+        if not _should_visit(name):
+            return
+        if not _is_h5_group(obj):
+            return
+
+        ndt = _read_h5_attr(obj, "neurodata_type", "")
+        if isinstance(ndt, bytes):
+            ndt = ndt.decode()
+        if ndt not in _TIMESERIES_TYPES and "TimeSeries" not in ndt:
+            return
+
+        data = obj.get("data")
+        if data is None or not _is_h5_dataset(data):
+            return
+
+        ts_ds = obj.get("timestamps")
+        st_ds = obj.get("starting_time")
+
+        rate_val = _read_h5_attr(obj, "rate")
+        if rate_val is None and st_ds is not None:
+            rate_val = _read_h5_attr(st_ds, "rate")
+
+        ts_range = None
+        n_ts = None
+        if ts_ds is not None and _is_h5_dataset(ts_ds) and ts_ds.shape[0] > 0:
+            n_ts = ts_ds.shape[0]
+            try:
+                ts_range = (float(ts_ds[0]), float(ts_ds[-1]))
+            except Exception:
+                pass
+
+        starting_time = None
+        if st_ds is not None:
+            try:
+                starting_time = float(st_ds[()])
+            except Exception:
+                pass
+
+        records.append(TimeSeriesRecord(
+            path=f"/{name}",
+            name=name.rsplit("/", 1)[-1],
+            neurodata_type=ndt,
+            description=_read_h5_scalar(obj.get("description")),
+            shape=tuple(data.shape),
+            dtype=str(data.dtype),
+            unit=_read_h5_scalar(obj.get("unit"), "unknown"),
+            rate=float(rate_val) if rate_val is not None else None,
+            starting_time=starting_time,
+            n_timestamps=n_ts,
+            timestamps_range=ts_range,
+        ))
+
+    file.visititems(_visitor)
+    return records
+
+
+def _collect_intervals(file: H5Like) -> list[TimeIntervalsRecord]:
+    """Walk an NWB H5 file and return all TimeIntervals groups."""
+    records: list[TimeIntervalsRecord] = []
+
+    def _visitor(name: str, obj: Any) -> None:
+        if not _should_visit(name):
+            return
+        if not _is_h5_group(obj):
+            return
+
+        ndt = _read_h5_attr(obj, "neurodata_type", "")
+        if isinstance(ndt, bytes):
+            ndt = ndt.decode()
+        if ndt not in _INTERVAL_TYPES:
+            return
+
+        start_ds = obj.get("start_time")
+        stop_ds = obj.get("stop_time")
+        if start_ds is None or not _is_h5_dataset(start_ds):
+            return
+
+        n_rows = start_ds.shape[0]
+
+        time_range = None
+        if n_rows > 0 and stop_ds is not None and _is_h5_dataset(stop_ds):
+            try:
+                time_range = (float(start_ds[0]), float(stop_ds[-1]))
+            except Exception:
+                pass
+
+        col_names: list[str] = []
+        for key in obj.keys():
+            child = obj.get(key)
+            if child is not None and _is_h5_dataset(child):
+                col_names.append(key)
+
+        records.append(TimeIntervalsRecord(
+            path=f"/{name}",
+            name=name.rsplit("/", 1)[-1],
+            neurodata_type=ndt,
+            description=_read_h5_scalar(obj.get("description")),
+            n_rows=n_rows,
+            column_names=tuple(sorted(col_names)),
+            time_range=time_range,
+        ))
+
+    file.visititems(_visitor)
+    return records
+
+
+# ---------------------------------------------------------------------------
+# catalog_nwb + read_trial_intervals: scan an NWB file
+# ---------------------------------------------------------------------------
+
+
+def catalog_nwb(
+    source,
+    backend=None,
+) -> NWBCatalog:
+    """Scan an NWB file and return an NWBCatalog of its TimeSeries and intervals."""
+    from ethograph.utils.nwb import NWBBackend, _infer_backend, open_nwb
+
+    is_path = isinstance(source, (str, Path))
+    source_str = str(source) if is_path else repr(source)
+    resolved_backend = backend or (
+        _infer_backend(source_str) if is_path else NWBBackend.LOCAL
+    )
+
+    with open_nwb(source, backend) as f:
+        ts_records = _collect_timeseries(f)
+        iv_records = _collect_intervals(f)
+
+    return NWBCatalog(
+        source=source_str,
+        backend=resolved_backend,
+        timeseries=tuple(ts_records),
+        intervals=tuple(iv_records),
+    )
+
+
+def read_trial_intervals(
+    source: str | H5Like,
+    backend: NWBBackend | None = None,
+) -> list[tuple[float, float]]:
+    """Read trial (start, stop) pairs from an NWB file's trials table.
+
+    Looks for ``/intervals/trials`` or the first ``TimeIntervals`` group
+    that has ``start_time`` and ``stop_time`` datasets.
+    Returns an empty list if no trials table is found.
+    """
+    from ethograph.utils.nwb import open_nwb
+
+    with open_nwb(source, backend) as f:
+        # Try standard trials table first
+        for path in ("intervals/trials", "trials"):
+            grp = None
+            try:
+                grp = f[path]
+            except (KeyError, Exception):
+                continue
+            if grp is None:
+                continue
+            start_ds = grp.get("start_time")
+            stop_ds = grp.get("stop_time")
+            if start_ds is not None and stop_ds is not None:
+                starts = start_ds[:]
+                stops = stop_ds[:]
+                return [(float(s), float(e)) for s, e in zip(starts, stops)]
+
+        # Fallback: scan for any TimeIntervals with start/stop
+        iv_records = _collect_intervals(f)
+        for rec in iv_records:
+            grp = f[rec.path]
+            start_ds = grp.get("start_time")
+            stop_ds = grp.get("stop_time")
+            if start_ds is not None and stop_ds is not None:
+                starts = start_ds[:]
+                stops = stop_ds[:]
+                return [(float(s), float(e)) for s, e in zip(starts, stops)]
+
+    return []

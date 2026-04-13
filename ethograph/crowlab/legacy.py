@@ -201,36 +201,9 @@ def correct_offsets(df: pd.DataFrame) -> pd.DataFrame:
                 df.loc[row_i, "offset_s"] = df.loc[row_j, "onset_s"] - eps
                 df.loc[row_i, "offset_global"] = df.loc[row_j, "onset_global"] - eps
                 df.loc[row_i, "duration"] = df.loc[row_i, "offset_s"] - df.loc[row_i, "onset_s"]
-
-
-
-
-    # Internal to crow lab, we had a legacy labeling system that was frame-wise(200 Hz), and this correction should fix those labels.
-    dt = 1 / 200  # 5 ms frame rate
-    for _, group in df.groupby(["session", "trial", "individual"]):
-        individual = group["individual"].iloc[0]
-        
-        # Won't affect other users.
-        if not any(name in individual for name in ["Ivy", "Freddy"]):
-            continue
-
-        print(f"Processing session {group['session'].iloc[0]}, trial {group['trial'].iloc[0]}, individual {individual}")
-        
-        idx = group.index
-        
-        for i in range(len(idx) - 1):
-            current = idx[i]
-            next_row = idx[i + 1]
-            
-            gap = df.loc[next_row, "onset_s"] - df.loc[current, "offset_s"]
-            
-            if abs(gap - dt) < eps:
-                df.loc[current, "offset_s"] = df.loc[next_row, "onset_s"] - eps
-                df.loc[current, "offset_global"] = df.loc[next_row, "onset_global"] - eps
-                df.loc[current, "duration"] = (
-                    df.loc[current, "offset_s"] - df.loc[current, "onset_s"]
-                )
-
+    
+    delta = df["onset_s"] - df["offset_s"].shift(1)
+    assert delta.min() >= eps
 
     return df
 
@@ -314,7 +287,6 @@ def convert_session_to_nwb(dt: TrialTree, output_path: str | Path | None = None)
             row["start_time"] = 0.0
 
         row["stop_time"] = row["start_time"] + dt.trial(trial_id).time.values[-1]
-        print(f"Trial {trial_id}: start_time={row['start_time']}, stop_time={row['stop_time']}")
 
         # Extract media columns
         for stream in ("video", "audio", "pose"):

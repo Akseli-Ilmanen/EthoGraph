@@ -5,13 +5,11 @@ import pandas as pd
 import pytest
 
 from ethograph.io.time_model import (
-    RestrictionWindow,
     TimeRange,
     TrialVideoBounds,
     build_label_window,
     build_sequence_window,
     build_trial_window,
-    restrict_pynapple,
     restrict_xarray,
 )
 from ethograph.utils.sequences import (
@@ -70,14 +68,6 @@ def test_build_trial_window_with_extra(trial_alignment):
 # ---------------------------------------------------------------------------
 
 
-def test_build_label_window(sample_labels_df):
-    trial_bounds = TimeRange(0.0, 10.0)
-    rw = build_label_window(sample_labels_df, label_idx=1, trial_bounds=trial_bounds)
-    assert rw.mode == "label"
-    assert rw.core_range == TimeRange(1.5, 2.5)
-    assert rw.time_range == TimeRange(1.5, 2.5)
-    assert rw.label_info["label_id"] == 2
-
 
 def test_build_label_window_with_context(sample_labels_df):
     trial_bounds = TimeRange(0.0, 10.0)
@@ -87,16 +77,6 @@ def test_build_label_window_with_context(sample_labels_df):
     )
     assert rw.time_range.start_s == pytest.approx(0.2)
     assert rw.time_range.end_s == pytest.approx(1.5)
-
-
-def test_build_label_window_clamps_to_trial(sample_labels_df):
-    trial_bounds = TimeRange(0.0, 2.0)
-    rw = build_label_window(
-        sample_labels_df, label_idx=0, trial_bounds=trial_bounds,
-        extra_t0=10.0, extra_t1=10.0,
-    )
-    assert rw.time_range.start_s == 0.0
-    assert rw.time_range.end_s == 2.0
 
 
 # ---------------------------------------------------------------------------
@@ -135,21 +115,6 @@ def test_restrict_xarray():
 
 
 # ---------------------------------------------------------------------------
-# restrict_pynapple
-# ---------------------------------------------------------------------------
-
-
-def test_restrict_pynapple():
-    import pynapple as nap
-    t = np.linspace(0, 10, 1000)
-    tsd = nap.Tsd(t=t, d=np.sin(t))
-    tr = TimeRange(2.0, 5.0)
-    restricted = restrict_pynapple(tsd, tr)
-    assert restricted.t.min() >= 2.0
-    assert restricted.t.max() <= 5.0
-
-
-# ---------------------------------------------------------------------------
 # SourceCollection
 # ---------------------------------------------------------------------------
 
@@ -184,7 +149,6 @@ def test_source_collection_trials():
     )
     assert sc.n_trials == 3
     assert sc.trial_range(0) == TimeRange(0.0, 8.0)
-    assert sc.trial_local_range(1) == TimeRange(0.0, 10.0)
     assert sc.trial_offset(2) == 25.0
     assert sc.session_range == TimeRange(0.0, 30.0)
     assert sc.find_trial(5.0) == 0

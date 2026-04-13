@@ -3,7 +3,7 @@
 import logging
 import os
 import time as _time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict
 
@@ -11,12 +11,11 @@ import numpy as np
 import xarray as xr
 import pandas as pd
 from napari.viewer import Viewer
-from qtpy.QtCore import QSortFilterProxyModel, Qt, QTimer
+from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QCompleter,
     QDoubleSpinBox,
     QFormLayout,
     QGridLayout,
@@ -48,11 +47,12 @@ from .app_constants import (
     SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
 )
 from ethograph.io.data_loader import load_dataset
-from .makepretty import (
+from .make_pretty import clean_display_labels
+from ethograph.utils.qt import (
     ElidedDelegate,
-    clean_display_labels,
     find_combo_index,
     get_combo_value,
+    make_searchable,
     set_combo_to_value,
 )
 from .plots_ephystrace import get_loader as get_ephys_loader
@@ -127,28 +127,48 @@ _PANEL_DEFS: list[_PanelDef] = [
               requires="has_features"),
     _PanelDef("video_viewer", "VideoViewer",  row=1,
               state_attr="video_viewer_visible",
-              on_toggle="_on_video_viewer_toggle",
-              requires="has_video"),
+              on_toggle="_on_video_viewer_toggle"),
     _PanelDef("pose_markers", "PoseMarkers",  row=1,
               state_attr="pose_markers_visible",
-              on_toggle="_on_pose_markers_toggle",
-              requires="has_pose"),
+              on_toggle="_on_pose_markers_toggle"),
 ]
 
 
-def make_searchable(combo_box: QComboBox) -> None:
-    combo_box.setFocusPolicy(Qt.StrongFocus)
-    combo_box.setEditable(True)
-    combo_box.setInsertPolicy(QComboBox.NoInsert)
+class _LoadError(Exception):
+    """Raised during any loading phase to abort with a user-visible message."""
 
-    filter_model = QSortFilterProxyModel(combo_box)
-    filter_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
-    filter_model.setSourceModel(combo_box.model())
 
-    completer = QCompleter(filter_model, combo_box)
-    completer.setCompletionMode(QCompleter.UnfilteredPopupCompletion)
-    combo_box.setCompleter(completer)
-    combo_box.lineEdit().textEdited.connect(filter_model.setFilterFixedString)
+@dataclass
+class _LoadContext:
+    """Accumulated load state -- app_state is not mutated until _apply_to_state.
+
+    Each loading phase reads from and writes to this context.  If any phase
+    raises ``_LoadError``, the load is cancelled and app_state remains clean.
+    """
+
+    result: object  # LoadResult from data_loader.load_dataset
+    nc_file_path: str
+    catalog: object  # DataCatalog
+
+    # Inferred media availability
+    has_audio: bool = False
+    has_neo: bool = False
+    has_neurons: bool = False
+    cameras: list = field(default_factory=list)
+    nwb_local: str | None = None
+
+    # NWB-embedded ephys
+    nwb_ephys_display: str | None = None
+    nwb_ephys_entry: tuple | None = None
+
+    # Dataset (possibly downsampled)
+    dt: object = None
+    ds: object = None
+    trials: list = field(default_factory=list)
+    all_labels_df: object = None
+    data_loader: object = None
+    downsample_factor: int | None = None
+    video_folder_override: str | None = None
 
 
 class DataPanel(QWidget):
@@ -377,13 +397,16 @@ class DataPanel(QWidget):
     def _on_pose_match_clicked(self):
         from .dialog_pose_video_matcher import PoseVideoMatcherDialog
 
-        nwb_local = getattr(self.app_state, "nwb_local", None)
-        pose_keys = getattr(self.app_state, "nwb_pose_keys", None) or []
         sio = getattr(self.app_state, "nwb_alignment", None)
-        cameras = sio.cameras if sio else []
 
-        if not pose_keys and nwb_local:
-            pose_keys = _detect_nwb_pose_keys(nwb_local) or []
+        # Saved mapping from local_settings, then NWB acquisition, then detection
+        pose_keys = list(getattr(self.app_state, "nwb_pose_keys", None) or [])
+        if not pose_keys and sio:
+            pose_keys = sio.pose_keys
+        if not pose_keys:
+            nwb_local = getattr(self.app_state, "nwb_local", None)
+            if nwb_local:
+                pose_keys = _detect_nwb_pose_keys(nwb_local) or []
 
         if not pose_keys:
             from ethograph.gui.notify import notify
@@ -400,10 +423,8 @@ class DataPanel(QWidget):
         )
         if dialog.exec_():
             mapping = dialog.get_mapping()
-            # mapping is [(video_stem, pose_key), ...] — store as ordered pose keys
             ordered_keys = [pose_key for _, pose_key in mapping]
             self.app_state.nwb_pose_keys = ordered_keys
-            self.app_state.has_pose = True
             if self._update_pose_callback:
                 self._update_pose_callback()
 
@@ -637,117 +658,165 @@ class DataWidget(QWidget):
 
         nc_file_path = self.io_widget.get_nc_file_path()
 
+        # Phases 1-4: pure computation — app_state is untouched.
+        try:
+            ctx = self._phase_load_data(nc_file_path)
+            self._phase_infer_media(ctx)
+            self._phase_prepare_dataset(ctx)
+            self._phase_validate(ctx)
+        except _LoadError as e:
+            self._cancel_load(str(e))
+            return
+
+        # Phase 5: single commit point — mutate app_state.
+        try:
+            self._apply_to_state(ctx)
+        except _LoadError as e:
+            self._cancel_load(str(e))
+            return
+
+        # Phase 6: UI setup (app_state is now consistent).
+        self._setup_ui_after_load(ctx)
+
+    # ------------------------------------------------------------------
+    # Loading phases
+    # ------------------------------------------------------------------
+
+    def _phase_load_data(self, nc_file_path: str) -> _LoadContext:
+        """Phase 1: Load dataset from disk.  May show downsample dialog."""
         try:
             result = load_dataset(
                 nc_file_path,
-                require_fps=self.app_state.has_pose,
                 progress_callback=getattr(self.app_state, "_progress_callback", None),
-                max_trials=getattr(self.app_state, "_dandi_max_trials", None),
-                dandiset_id=getattr(self.app_state, "_dandi_dandiset_id", None),
-                import_labels=self.io_widget.import_labels_checkbox.isChecked(),
             )
-            self.app_state.dt = result.dt
-            all_labels_df = result.all_labels_df
-            self.app_state.metadata_df = result.metadata_df
-            self.app_state.metadata_path = result.metadata_path
-            self.catalog = result.catalog
-            if result.nwb_video_folder and not self.app_state.video_folder:
-                from .dialog_video_downsample import offer_downsample
-                nwb_video_folder = offer_downsample(str(result.nwb_video_folder), parent=self)
-                self.app_state.video_folder = nwb_video_folder
         except (OSError, ValueError, KeyError) as e:
-            self._cancel_load(f"Failed to load dataset: {e}")
-            return
+            logger.exception("load_dataset failed")
+            raise _LoadError(f"Failed to load dataset: {type(e).__name__}: {e}") from e
 
-        self.app_state.trial_conditions = self.catalog.trial_conditions
+        video_folder_override = None
+        if result.nwb_video_folder and not self.app_state.video_folder:
+            from .dialog_video_downsample import offer_downsample
+            video_folder_override = offer_downsample(str(result.nwb_video_folder), parent=self)
 
-        self._pending_loader = result.data_loader
+        return _LoadContext(
+            result=result,
+            nc_file_path=nc_file_path,
+            catalog=result.catalog,
+            dt=result.dt,
+            all_labels_df=result.all_labels_df,
+            nwb_local=result.nwb_local,
+            video_folder_override=video_folder_override,
+        )
+
+    def _phase_infer_media(self, ctx: _LoadContext) -> None:
+        """Phase 2: Detect video/audio/pose/ephys availability."""
+        result = ctx.result
+        sio = result.nwb_alignment
+
+
+        ctx.has_audio = bool(sio.mics) if sio else False
+
+        # NWB-embedded ephys — detect directly from the NWB file
+        if sio:
+            eseries = sio.electrical_series()
+            if eseries:
+                first = eseries[0]
+                ctx.nwb_ephys_display = f"{first['name']} (NWB)"
+                ctx.nwb_ephys_entry = (first["path"], "0", 0)
+
+        ctx.has_neo = bool(self.app_state.ephys_path) or bool(ctx.nwb_ephys_entry)
+        ctx.has_neurons = bool(self.app_state.neurons_path)
+
+    def _phase_prepare_dataset(self, ctx: _LoadContext) -> None:
+        """Phase 3: Downsample, resolve trials, build first ds + DataLoader."""
+        downsample_factor = self.io_widget.get_downsample_factor()
+        if downsample_factor is not None and ctx.dt is not None:
+            ctx.dt = eto.downsample_trialtree(ctx.dt, downsample_factor)
+            ctx.downsample_factor = downsample_factor
+            logger.info("Downsampled data by factor %d", downsample_factor)
+
+        ctx.trials = sorted(ctx.result.trial_ids)
+        if ctx.dt is not None:
+            ctx.ds = ctx.dt.trial(ctx.trials[0])
+        else:
+            ctx.ds = xr.Dataset()
+
+        store = ctx.result.data_loader
+        if store is None:
+            from ethograph.io.catalog import XarrayLoader, catalog_from_xarray
+            cat = catalog_from_xarray(ctx.ds, ctx.dt)
+            store = XarrayLoader(ctx.ds, cat)
+        ctx.data_loader = store
+
+    def _phase_validate(self, ctx: _LoadContext) -> None:
+        """Phase 4: Validate media files for the first trial."""
+        video_folder = ctx.video_folder_override or self.app_state.video_folder
+        missing = self._validate_media_files(
+            nwb_alignment=ctx.result.nwb_alignment,
+            first_trial=ctx.trials[0],
+            video_folder=video_folder,
+            audio_folder=self.app_state.audio_folder,
+            pose_folder=self.app_state.pose_folder,
+        )
+        if missing:
+            raise _LoadError(
+                "Missing media files for first trial:\n" + "\n".join(missing)
+            )
+
+    def _apply_to_state(self, ctx: _LoadContext) -> None:
+        """Phase 5: Single commit — mutate app_state from accumulated context."""
+        # Suppress signal handlers during bulk mutation so that handlers
+        # checking app_state.ready don't react to partially-set state.
+        self.app_state.ready = False
+
+        result = ctx.result
+
+        self.app_state.dt = ctx.dt
+        self.app_state.metadata_df = result.metadata_df
+        self.app_state.metadata_path = result.metadata_path
+        self.catalog = ctx.catalog
+
+        if ctx.video_folder_override:
+            self.app_state.video_folder = ctx.video_folder_override
+
+        self.app_state.trial_conditions = ctx.catalog.trial_conditions
         self.app_state.source_collection = result.source_collection
         self.app_state.nwb_alignment = result.nwb_alignment
 
-        # Infer media availability from NWB acquisition items
-        sio = self.app_state.nwb_alignment
-        cameras_list = sio.cameras if sio else []
-        has_nwb_pose = bool(result.nwb_local and result.nwb_pose_keys)
-        has_remote_cameras = any(is_url(c) for c in cameras_list)
 
-        # Video: cameras detected (from trials table or acquisition) + folder or full paths
-        self.app_state.has_video = (
-            bool(cameras_list)
-            or has_remote_cameras
-            or has_nwb_pose
-        )
-        # Auto-detect NWB pose keys from processing modules if not set by wizard
-        if not result.nwb_pose_keys and result.nwb_local:
-            auto_pose_keys = _detect_nwb_pose_keys(result.nwb_local)
-            if auto_pose_keys:
-                result = result._replace(nwb_pose_keys=auto_pose_keys) if hasattr(result, '_replace') else result
-                if not hasattr(result, '_replace'):
-                    result.nwb_pose_keys = auto_pose_keys
-                has_nwb_pose = True
+        self.app_state.has_audio = ctx.has_audio
 
-        self.app_state.has_pose = (
-            bool(sio.devices("pose"))
-            or has_nwb_pose
-        )
-        self.app_state.has_audio = bool(sio.mics)
 
-        # Store NWB config on app_state for later access
-        if result.nwb_pose_keys:
-            self.app_state.nwb_pose_keys = result.nwb_pose_keys
-        if result.nwb_local:
-            self.app_state.nwb_local = result.nwb_local
+        if ctx.nwb_local:
+            self.app_state.nwb_local = ctx.nwb_local
 
         # NWB-embedded ephys
-        nwb_ephys_series = result.nwb_ephys_series
-        nwb_ephys_path = result.nwb_ephys_path
-        if nwb_ephys_series and nwb_ephys_path:
+        if ctx.nwb_ephys_display and ctx.nwb_ephys_entry:
             if not self.app_state.ephys_path:
-                self.app_state.ephys_path = nwb_ephys_path
-            display_name = f"{nwb_ephys_series} (NWB)"
-            self.app_state.ephys_source_map[display_name] = (nwb_ephys_path, "0", 0)
-            self.app_state.ephys_stream_sel = display_name
+                self.app_state.ephys_path = ctx.nwb_ephys_entry[0]
+            self.app_state.ephys_source_map[ctx.nwb_ephys_display] = ctx.nwb_ephys_entry
+            self.app_state.ephys_stream_sel = ctx.nwb_ephys_display
 
-        self.app_state.has_neo = bool(self.app_state.ephys_path) or bool(nwb_ephys_series and nwb_ephys_path)
-        self.app_state.has_neurons = bool(self.app_state.neurons_path)
+        self.app_state.has_neo = ctx.has_neo
+        self.app_state.has_neurons = ctx.has_neurons
 
-        # Populate ephys_source_map (streams are NOT added to features list)
+        # Expand ephys streams (mutates io_widget + app_state.ephys_source_map)
         if self.app_state.ephys_path:
             try:
                 self.io_widget._expand_ephys_with_streams(
-                    self.app_state.ephys_path, self.app_state.ds,
+                    self.app_state.ephys_path, ctx.ds,
                 )
             except (OSError, ValueError, KeyError) as e:
-                self._cancel_load(f"Failed to load ephys features: {e}")
-                return
-            
-
-        downsample_factor = self.io_widget.get_downsample_factor()
-        if downsample_factor is not None and self.app_state.dt is not None:
-            self.app_state.dt = eto.downsample_trialtree(self.app_state.dt, downsample_factor)
-            self.app_state.downsample_factor_used = downsample_factor
-            logger.info("Downsampled data by factor %d", downsample_factor)
-        else:
-            self.app_state.downsample_factor_used = None
+                logger.exception("Ephys stream expansion failed")
+                raise _LoadError(f"Failed to load ephys features: {type(e).__name__}: {e}") from e
 
         self.io_widget.disable_downsample_controls()
+        self.app_state.downsample_factor_used = ctx.downsample_factor
 
-        self.app_state._all_labels_df = all_labels_df
-
-        self.app_state.trials = sorted(result.trial_ids)
-        if self.app_state.dt is not None:
-            self.app_state.ds = self.app_state.dt.trial(self.app_state.trials[0])
-        else:
-            self.app_state.ds = xr.Dataset()
-
-        # Now ds is set — create or finalize DataLoader
-        store = self._pending_loader
-        if store is None:
-            from ethograph.io.catalog import XarrayLoader, catalog_from_xarray
-            cat = catalog_from_xarray(self.app_state.ds, self.app_state.dt)
-            store = XarrayLoader(self.app_state.ds, cat)
-        self.app_state.data_loader = store
-        self._pending_loader = None
+        self.app_state._all_labels_df = ctx.all_labels_df
+        self.app_state.trials = ctx.trials if ctx.trials else [1]
+        self.app_state.ds = ctx.ds
+        self.app_state.data_loader = ctx.data_loader
 
         # Set trials_sel early so _expand_mics_with_channels / get_media
         # can resolve filenames during UI creation.
@@ -759,22 +828,22 @@ class DataWidget(QWidget):
         if not trial or is_nan or trial not in self.app_state.trials:
             self.app_state.trials_sel = self.app_state.trials[0]
 
-        missing = self._validate_media_files()
-        if missing:
-
-            self._cancel_load(
-                "Missing media files for first trial:\n" + "\n".join(missing)
-            )
-            return
-
+    def _setup_ui_after_load(self, ctx: _LoadContext) -> None:
+        """Phase 6: Create controls, restore defaults, enable UI."""
         self._create_trial_controls()
+
+        # TrialsWidget._apply_filters may have overwritten app_state.trials
+        # with an empty list (e.g. when metadata_df mismatches trial_ids).
+        # Restore from the authoritative LoadResult.
+        if not self.app_state.trials and ctx.trials:
+            self.app_state.trials = ctx.trials
 
         self._restore_or_set_defaults()
         self._set_controls_enabled(True)
         self.app_state.ready = True
 
         self.io_widget.on_load_complete()
-        self.labels_widget.refresh_mapping_for_data_dir(Path(nc_file_path).parent)
+        self.labels_widget.refresh_mapping_for_data_dir(Path(ctx.nc_file_path).parent)
         self.changepoints_widget.setEnabled(True)
         self.plot_settings_widget.set_enabled_state()
         if self.ephys_widget:
@@ -861,15 +930,14 @@ class DataWidget(QWidget):
                 continue
             self._create_combo_widget(combo_name, list(combo_spec.values))
 
+        self._create_colors_combo()
+
         # Restore camera combos
         has_nwb_pose = getattr(self.app_state, "nwb_local", None) and (
             "position" in self.app_state.ds.data_vars
             or any(k.startswith("position_") for k in self.app_state.ds.data_vars)
         )
         cameras = self.app_state.nwb_alignment.cameras
-        has_remote_cameras = any(is_url(c) for c in cameras)
-        if has_nwb_pose or has_remote_cameras:
-            self.app_state.has_video = True
         slot_layout = self.slot_layout
 
         # Slot 1: Layers / Space Plot toggle
@@ -882,14 +950,13 @@ class DataWidget(QWidget):
         slot_layout.addWidget(self.space_view_combo)
 
         # Slot 2: Camera selection (first camera)
-        if self.app_state.has_video and len(cameras) > 0:
-            self.primary_camera_combo = QComboBox()
-            self.primary_camera_combo.setObjectName("primary_camera_combo")
-            self.primary_camera_combo.addItems([str(c) for c in cameras])
-            self.primary_camera_combo.setItemDelegate(ElidedDelegate(parent=self.primary_camera_combo))
-            self.primary_camera_combo.currentTextChanged.connect(self._on_primary_camera_changed)
-            self.controls.append(self.primary_camera_combo)
-            slot_layout.addWidget(self.primary_camera_combo)
+        self.primary_camera_combo = QComboBox()
+        self.primary_camera_combo.setObjectName("primary_camera_combo")
+        self.primary_camera_combo.addItems([str(c) for c in cameras])
+        self.primary_camera_combo.setItemDelegate(ElidedDelegate(parent=self.primary_camera_combo))
+        self.primary_camera_combo.currentTextChanged.connect(self._on_primary_camera_changed)
+        self.controls.append(self.primary_camera_combo)
+        slot_layout.addWidget(self.primary_camera_combo)
 
         if len(cameras) > 1:
             from .video_manager import MAX_EXTRA_CAMERAS
@@ -1001,7 +1068,7 @@ class DataWidget(QWidget):
 
         # Row 4: Neo-Viewer checkbox + Neo stream combo
         self.panels_row4_layout.addWidget(self.neo_viewer_checkbox)
-        self._neo_stream_label = QLabel("Stream:")
+        self._neo_stream_label = QLabel("Preview stream:")
         self.neo_stream_combo = QComboBox()
         self.neo_stream_combo.setObjectName("neo_stream_combo")
         self.neo_stream_combo.currentTextChanged.connect(self._on_neo_stream_changed)
@@ -1516,17 +1583,78 @@ class DataWidget(QWidget):
         self.io_widget.set_controls_enabled(enabled)
         self.app_state.ready = enabled
 
+    def _create_colors_combo(self):
+        """Create the Colors combo populated with all features, filtered by rgb suffix."""
+        all_features = list(self.catalog.features)
+        if not all_features:
+            return
+
+        combo = QComboBox()
+        combo.setObjectName("colors_combo")
+        combo.currentIndexChanged.connect(self._on_combo_changed)
+
+        rgb_checkbox = QCheckBox("rgb suffix")
+        rgb_checkbox.setObjectName("colors_rgb_suffix_checkbox")
+        rgb_checkbox.setToolTip("Only show features with 'rgb' in the name")
+        rgb_checkbox.setChecked(True)
+        rgb_checkbox.stateChanged.connect(self._on_rgb_suffix_changed)
+        self._colors_rgb_checkbox = rgb_checkbox
+
+        self._populate_colors_combo(combo, all_features, rgb_filter=True)
+        make_searchable(combo)
+
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(5)
+        combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        row_layout.addWidget(combo)
+        row_layout.addWidget(rgb_checkbox)
+
+        self.coords_groupbox_layout.addRow("Colors:", row_widget)
+        self.combos["colors"] = combo
+        self.controls.append(combo)
+        self.controls.append(rgb_checkbox)
+
+    def _populate_colors_combo(self, combo: QComboBox, features: list[str], rgb_filter: bool):
+        prev = get_combo_value(combo) if combo.count() > 0 else "None"
+        combo.blockSignals(True)
+        combo.clear()
+        raw_items = ["None"]
+        if rgb_filter:
+            raw_items += [f for f in features if "rgb" in f.lower()]
+        else:
+            raw_items += features
+        display_items = clean_display_labels(raw_items)
+        for display, raw in zip(display_items, raw_items):
+            combo.addItem(display, raw)
+        # Restore previous selection if still available
+        for i in range(combo.count()):
+            if combo.itemData(i) == prev:
+                combo.setCurrentIndex(i)
+                break
+        combo.blockSignals(False)
+
+    def _on_rgb_suffix_changed(self, _state: int):
+        combo = self.combos.get("colors")
+        if combo is None:
+            return
+        rgb_filter = self._colors_rgb_checkbox.isChecked()
+        self._populate_colors_combo(combo, list(self.catalog.features), rgb_filter)
+        self.app_state.set_key_sel("colors", get_combo_value(combo))
+        if self.app_state.ready and self.plot_container:
+            current_plot = self.plot_container.get_current_plot()
+            xmin, xmax = current_plot.get_current_xlim()
+            self.update_main_plot(t0=xmin, t1=xmax)
+
     def _create_combo_widget(self, key, vars):
-        excluded_from_all = {"individuals", "features", "colors", "cameras", "mics"}
+        excluded_from_all = {"individuals", "features", "cameras", "mics"}
         show_all_checkbox = key not in excluded_from_all
 
         combo = QComboBox()
         combo.setObjectName(f"{key}_combo")
         combo.currentIndexChanged.connect(self._on_combo_changed)
-        if key == "colors":
-            raw_items = ["None"] + [str(var) for var in vars]
-        else:
-            raw_items = [str(var) for var in vars]
+        raw_items = [str(var) for var in vars]
         display_items = clean_display_labels(raw_items)
         for display, raw in zip(display_items, raw_items):
             combo.addItem(display, raw)
@@ -1584,7 +1712,7 @@ class DataWidget(QWidget):
             xmin, xmax = current_plot.get_current_xlim()
             self.update_main_plot(t0=xmin, t1=xmax)
 
-            if key in ["individuals", "keypoints", "colors"]:
+            if key in ["individuals", "keypoints"]:
                 if self.space_plot and self.space_plot.isVisible():
                     self.space_plot.refresh()
 
@@ -1780,12 +1908,26 @@ class DataWidget(QWidget):
 
         self.on_trial_changed()
 
-    def _validate_media_files(self) -> list[str]:
-        missing = []
-        sio = self.app_state.nwb_alignment
-        first_trial = self.app_state.trials[0]
+    def _validate_media_files(
+        self,
+        nwb_alignment=None,
+        first_trial=None,
+        video_folder=None,
+        audio_folder=None,
+        pose_folder=None,
+    ) -> list[str]:
+        sio = nwb_alignment if nwb_alignment is not None else self.app_state.nwb_alignment
+        if first_trial is None:
+            first_trial = self.app_state.trials[0]
+        if video_folder is None:
+            video_folder = self.app_state.video_folder
+        if audio_folder is None:
+            audio_folder = self.app_state.audio_folder
+        if pose_folder is None:
+            pose_folder = self.app_state.pose_folder
 
-        video_folder = self.app_state.video_folder
+        missing = []
+
         if video_folder:
             for cam in sio.cameras:
                 vid = sio.get_media(first_trial, "video", device=cam)
@@ -1795,7 +1937,6 @@ class DataWidget(QWidget):
                 if not os.path.isfile(path):
                     missing.append(f"Video: {path}")
 
-        audio_folder = self.app_state.audio_folder
         if audio_folder:
             mics = sio.mics
             if not mics:
@@ -1813,7 +1954,6 @@ class DataWidget(QWidget):
                     if not os.path.isfile(path):
                         missing.append(f"Audio: {path}")
 
-        pose_folder = self.app_state.pose_folder
         if pose_folder:
             cameras = sio.cameras
             if not cameras:
@@ -1894,10 +2034,8 @@ class DataWidget(QWidget):
 
         if hasattr(self, 'view_mode_combo'):
             self._apply_view_mode_for_feature()
-            view_mode = self.view_mode_combo.currentText()
-            if view_mode.startswith("Heatmap"):
-                self.plot_container.heatmap_plot._clear_buffer()
-
+            
+       
         self.app_state.label_intervals = self.app_state.get_trial_intervals(trials_sel)
 
         self._build_trial_alignment(trials_sel)
@@ -1911,6 +2049,7 @@ class DataWidget(QWidget):
         self.update_label()
         if self.ephys_widget:
             self.ephys_widget.on_trial_changed()
+            
         preserve = getattr(self.app_state, '_preserve_x_range_next', False)
         self.app_state._preserve_x_range_next = False
         self.update_main_plot(preserve_x_range=preserve)
@@ -1919,7 +2058,7 @@ class DataWidget(QWidget):
         except Exception:
             logger.debug("update_space_plot failed", exc_info=True)
 
-        self.plot_container.update_time_range_from_data()
+
         self.plot_container.update_time_marker_by_time(0.0)
 
         self._update_confidence_overlay()
@@ -2052,7 +2191,7 @@ class DataWidget(QWidget):
 
     def update_pose(self):
         """Refresh primary and extra camera pose layers through PoseDisplayManager."""
-        if self.pose_mgr is None or not self.app_state.has_pose:
+        if self.pose_mgr is None:
             return
         if not self.app_state.pose_markers_visible:
             return
@@ -2078,14 +2217,11 @@ class DataWidget(QWidget):
         self.layout_mgr.toggle_layer_docks_with_anchor(show_layers)
 
         if text == "Space Plot":
-            if not self.app_state.has_video:
-                self.layout_mgr.set_video_viewer_visible(False)
             self.update_space_plot()
         else:
             if self.space_plot:
                 self.space_plot.hide()
-            if not self.app_state.has_video:
-                self.layout_mgr.configure_no_video(self.navigation_widget)
+  
 
     def _on_primary_camera_changed(self, camera_name):
         if not self.app_state.ready or not camera_name:

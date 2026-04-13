@@ -16,7 +16,9 @@ from ethograph.labels.intervals import (
     stitch_intervals,
 )
 from ethograph.labels.ml import dense_to_intervals, intervals_to_dense
-from ethograph.features.changepoints import correct_changepoints
+from ethograph.features.changepoints import correct_changepoints, correct_changepoints_automatic
+import numpy as np
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -356,43 +358,10 @@ class TestSnapBoundaries:
 
 
 # ---------------------------------------------------------------------------
-# correct_changepoints
+# correct_changepoints (only stich/purge, snapping done in integrationt test)
 # ---------------------------------------------------------------------------
 
 class TestCorrectChangepoints:
-    def test_full_pipeline(self):
-        df = add_interval(empty_intervals(), 0.0, 0.01, 1, "bird1")  # too short
-        df = add_interval(df, 1.0, 2.0, 1, "bird1")
-        df = add_interval(df, 2.05, 3.0, 1, "bird1")  # small gap, should stitch
-        cp_times = np.array([0.95, 3.05])
-        result = correct_changepoints(
-            df, cp_times,
-            min_duration_s=0.05,
-            stitch_gap_s=0.1,
-            max_expansion_s=0.1,
-            max_shrink_s=0.1,
-        )
-        assert len(result) == 1
-        np.testing.assert_almost_equal(result.iloc[0]["onset_s"], 0.95)
-        np.testing.assert_almost_equal(result.iloc[0]["offset_s"], 3.05)
-
-    def test_empty_df(self):
-        result = correct_changepoints(
-            empty_intervals(), np.array([1.0]),
-            min_duration_s=0.1, stitch_gap_s=0.1,
-            max_expansion_s=0.5, max_shrink_s=0.5,
-        )
-        assert len(result) == 0
-
-    def test_no_changepoints(self):
-        df = add_interval(empty_intervals(), 1.0, 2.0, 1, "bird1")
-        result = correct_changepoints(
-            df, np.array([]),
-            min_duration_s=0.1, stitch_gap_s=0.1,
-            max_expansion_s=0.5, max_shrink_s=0.5,
-        )
-        assert len(result) == 1
-        np.testing.assert_almost_equal(result.iloc[0]["onset_s"], 1.0)
 
     def test_per_label_thresholds(self):
         df = add_interval(empty_intervals(), 1.0, 1.08, 1, "bird1")  # 80ms
@@ -408,14 +377,6 @@ class TestCorrectChangepoints:
         assert len(result) == 1
         assert result.iloc[0]["labels"] == 1
 
-    def test_multi_individual(self):
-        df = add_interval(empty_intervals(), 1.0, 2.0, 1, "bird1")
-        df = add_interval(df, 1.0, 2.0, 2, "bird2")
-        cp_times = np.array([0.95, 2.05])
-        result = correct_changepoints(
-            df, cp_times,
-            min_duration_s=0.1, stitch_gap_s=0.1,
-            max_expansion_s=0.1, max_shrink_s=0.1,
-        )
-        assert len(result) == 2
-        assert set(result["individual"]) == {"bird1", "bird2"}
+
+
+

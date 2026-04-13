@@ -26,7 +26,6 @@ for trial_id in range(1, 6):
             np.random.randn(n_time),
             dims=["time"],
             coords={"time": np.arange(n_time) / 30.0},
-            attrs={"type": "features"},
         )},
     )
     ds.attrs["trial"] = trial_id
@@ -169,7 +168,6 @@ da = xr.DataArray(
     data,  # e.g. shape: (n_time, n_individuals, n_keypoints, 3)
     dims=["time", "individuals", "keypoints", "space"],
     coords={"time": time_vec},
-    attrs={"type": "features"},
 )
 ds = xr.Dataset({"position": da})
 ds.attrs["fps"] = sample_rate

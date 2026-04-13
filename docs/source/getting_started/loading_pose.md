@@ -57,6 +57,5 @@ These appear in the Feature dropdown and are useful for identifying movement ons
 | `coords["individuals"]` | From pose file |
 | `coords["keypoints"]` | From pose file |
 | `coords["space"]` | `["x", "y"]` (or `["x", "y", "z"]` for 3D) |
-| `attrs["type"]` on each feature | `"features"` |
 
 For the full {class}`xarray.Dataset` structure see {doc}`data_requirements`.

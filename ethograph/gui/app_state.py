@@ -19,7 +19,7 @@ import ethograph as eto
 from ethograph.gui.notify import notify
 from ethograph.io.time_model import RestrictionWindow, TimeRange, TrialVideoBounds
 
-from .makepretty import find_combo_index
+from ethograph.utils.qt import find_combo_index
 from ethograph.labels.intervals import empty_intervals
 from ethograph.labels.tsv_store import (
     get_trial_from_tsv,
@@ -31,7 +31,7 @@ from ethograph.labels.tsv_store import (
     set_trial_meta_attr,
 )
 from ethograph.io.metadata_table import load_metadata_df
-
+from ethograph.utils.paths import auto_git_commit
 
 logger = logging.getLogger(__name__)
 
@@ -40,39 +40,7 @@ SIMPLE_SIGNAL_TYPES = (int, float, str, bool)
 
 
 
-def _auto_git_commit(label_path: Path) -> None:
-    """Auto-commit a label file if the parent folder is a git repository."""
-    repo_dir = str(label_path.parent)
-    try:
-        result = subprocess.run(
-            ["git", "-C", repo_dir, "rev-parse", "--is-inside-work-tree"],
-            capture_output=True, text=True,
-        )
-    except FileNotFoundError:
-        raise ValueError("git is not installed or not found on PATH.")
 
-    if result.returncode != 0:
-        raise ValueError(
-            f"Remote backup folder is not a git repository: {repo_dir}\n"
-            "Run 'git init' in that folder first, or use 'Save with timestamp' mode."
-        )
-
-    try:
-        subprocess.run(
-            ["git", "-C", repo_dir, "add", label_path.name],
-            check=True, capture_output=True, text=True,
-        )
-        subprocess.run(
-            ["git", "-C", repo_dir, "commit", "-m", f"Labels updated: {label_path.name}"],
-            check=True, capture_output=True, text=True,
-        )
-        subprocess.run(
-            ["git", "-C", repo_dir, "push"],
-            check=True, capture_output=True, text=True,
-        )
-        logger.info("Auto-committed and pushed %s to git", label_path.name)
-    except subprocess.CalledProcessError as e:
-        raise ValueError(f"git commit/push failed: {e.stderr.strip() or e.stdout.strip() or str(e)}")
 
 
 def get_signal_type(type_hint):
@@ -191,8 +159,6 @@ class AppStateSpec:
         "downsample_factor": (int, 100, True),
         
         # Boolean
-        "has_video": (bool, False, False),
-        "has_pose": (bool, False, False),
         "has_audio": (bool, False, False),
         "has_neo": (bool, False, False),
         "has_neurons": (bool, False, False),
@@ -205,7 +171,6 @@ class AppStateSpec:
         "video_folder": (str | None, None, True, SCOPE_LOCAL),
         "audio_folder": (str | None, None, True, SCOPE_LOCAL),
         "pose_folder": (str | None, None, True, SCOPE_LOCAL),
-        "nwb_pose_keys": (list | None, None, True, SCOPE_LOCAL),
         "ephys_path": (str | None, None, True, SCOPE_LOCAL),
         "neurons_path": (str | None, None, True, SCOPE_LOCAL),
         
@@ -217,6 +182,7 @@ class AppStateSpec:
         
         
         
+        "nwb_pose_keys": (list[str], [], True, SCOPE_LOCAL),
         "pose_hide_threshold": (float, 0.9, True),
 
         # Plotting
@@ -435,7 +401,23 @@ class ObservableAppState(QObject):
 
     @property
     def window_bounds(self) -> TimeRange | None:
-        """Effective display window — restriction window if set, else trial bounds."""
+        """Core data range — the actual trial/label/sequence extent without padding.
+
+        Plots use this for x-axis limits and zoom constraints.
+        The padded ``restrict_window.time_range`` is for slider/scroll limits.
+        """
+        rw = getattr(self, 'restrict_window', None)
+        if rw is not None:
+            return rw.core_range
+        return self.trial_bounds
+
+    @property
+    def padded_bounds(self) -> TimeRange | None:
+        """Padded display range including before/after context.
+
+        Use for scroll/slider limits where the user should be able to pan
+        beyond the core trial range.
+        """
         rw = getattr(self, 'restrict_window', None)
         if rw is not None:
             return rw.time_range
@@ -459,19 +441,6 @@ class ObservableAppState(QObject):
         return value
 
     
-
-    def get_feature_sr(self, position: bool = False) -> float | None:
-        ds = getattr(self, "ds", None)
-        feature_sel = getattr(self, "features_sel", None)
-        if ds is None:
-            return None
-        if position:
-            tc = eto.get_time_coord(ds["position"])
-        elif feature_sel and feature_sel in ds.data_vars:
-            tc = eto.get_time_coord(ds[feature_sel])
-        if tc is None or len(tc) < 2:
-            return None
-        return float(1.0 / np.median(np.diff(tc)))
 
 
 
@@ -589,9 +558,12 @@ class ObservableAppState(QObject):
                 self.load_local_settings()
 
             # Auto-sync nwb_file_path → nwb_alignment
+            # Skip if alignment was already set by the data loader (e.g. remote NWB)
             if name == "nwb_file_path":
-                from ethograph.io.nwb_alignment import make_nwb_alignment
-                self.nwb_alignment = make_nwb_alignment(value)
+                existing = getattr(self, "nwb_alignment", None)
+                if existing is None or getattr(existing, "_path", None) is not None:
+                    from ethograph.io.nwb_alignment import make_nwb_alignment
+                    self.nwb_alignment = make_nwb_alignment(value)
 
             if name == "metadata_path":
                 if value:
@@ -890,6 +862,10 @@ class ObservableAppState(QObject):
                 print(f"  {_CATEGORY_LABELS[cat]}")
                 print(f"{'='*50}")
                 current_cat = cat
+            
+            if isinstance(value, list) and len(value) > 10:
+                value = f"{value[:10]}... (total {len(value)} items)"
+                
             print(f"  {key}: {value}")
 
     def load_from_dict(self, state_dict: dict):
@@ -1123,7 +1099,7 @@ class ObservableAppState(QObject):
             if effective_remote_mode in ("overwrite", "git"):
                 save_labels_tsv(remote_file, save_df)
                 if effective_remote_mode == "git":
-                    _auto_git_commit(remote_file)
+                    auto_git_commit(remote_file)
             else:
                 save_labels_tsv(remote_dir / f"{stem}_labels_{timestamp}.tsv", save_df)
 
