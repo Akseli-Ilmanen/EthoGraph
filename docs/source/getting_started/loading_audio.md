@@ -22,7 +22,7 @@ In the **I/O widget**, click **Create with own data** — the wizard opens.
 2. Click **Next** — the dialog opens
 3. Set **Audio file** (`.wav`, `.mp3`, `.mp4`, `.flac`)
 4. Optionally set **Video file** — frame rate is auto-detected; audio sample rate is read-only (auto-detected)
-5. Set **Output path** for the generated `trials.nc`
+5. Set **Output path** for the generated `session.nc`
 6. Click **Generate .nc file**
 7. The I/O widget auto-populates -> click **Load**
 
@@ -47,7 +47,7 @@ For **multiple separate `.wav` files** (one per mic), use the multi-trial wizard
 | **Audio sample rate** | Read-only — auto-detected from file |
 | **Individuals** | Optional, comma-separated |
 | **Load video motion features** | Extracts frame-to-frame motion signal from video |
-| **Output path** | Where to save the generated `trials.nc` |
+| **Output path** | Where to save the generated `session.nc` |
 
 ---
 

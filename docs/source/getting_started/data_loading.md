@@ -1,7 +1,7 @@
 (target-data-loading)=
 # Loading Data
 
-EthoGraph works with NetCDF (`.nc`) session files. You can either load a pre-made `trials.nc`[^1] or create one from your own data using the built-in creation dialog. `trials.nc` files store behavioural data, labels, and metadata from a multi-trial session in **one file**.
+EthoGraph works with NetCDF (`.nc`) session files. You can either load a pre-made `session.nc`[^1] or create one from your own data using the built-in creation dialog. `session.nc` files store behavioural data, labels, and metadata from a multi-trial session in **one file**.
 
 ---
 
@@ -13,9 +13,9 @@ The quickest way to explore the GUI: click **Select templates** in the I/O widge
 
 ---
 
-## Option 1: Load a pre-made trials.nc
+## Option 1: Load a pre-made session.nc
 
-If you already have a `trials.nc` file (e.g. from an ethograph pipeline or {doc}`loading_script`):
+If you already have a `session.nc` file (e.g. from an ethograph pipeline or {doc}`loading_script`):
 
 1. In the **I/O** widget, select your session data **file** (`.nc`)
 2. Select the video **folder** containing camera recordings (`.mp4`) [^4]
@@ -26,9 +26,9 @@ If you already have a `trials.nc` file (e.g. from an ethograph pipeline or {doc}
 
 ---
 
-## Option 2: Create a trials.nc from your own data
+## Option 2: Create a session.nc from your own data
 
-Click **Create with own data** in the I/O widget. A dialog guides you through creating a `trials.nc` from several supported sources. After generation the I/O fields are auto-populated so you can click **Load** immediately.
+Click **Create with own data** in the I/O widget. A dialog guides you through creating a `session.nc` from several supported sources. After generation the I/O fields are auto-populated so you can click **Load** immediately.
 
 The dialog handles **single-file** workflows. For multiple trials, multiple cameras, or multiple microphone files a short Python script is required.
 
@@ -48,7 +48,7 @@ The dialog handles **single-file** workflows. For multiple trials, multiple came
 ```
 processed_data/
     └── ses-20220509/
-        ├── trials.nc                 # Main behavioural dataset (required)
+        ├── session.nc                 # Main behavioural dataset (required)
         └── labels/                   # Label files (created by GUI)
             ├── session_labels_20240315_143022.nc
             └── session_labels_20240316_091045.nc
@@ -77,7 +77,7 @@ rawdata/
             └── cluster_info.tsv
 ```
 
-[^1]: `trials.nc` is just an example file name; you may name it differently.
+[^1]: `session.nc` is just an example file name; you may name it differently.
 
 [^2]: If your video files (e.g. `.mp4`) contain audio, the video and audio folder will be the same.
 

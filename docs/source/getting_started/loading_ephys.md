@@ -5,7 +5,7 @@ Use this path for extracellular electrophysiology data, with optional Kilosort s
 
 At least one of: an ephys file **or** a Kilosort folder is required.
 
-Ephys is a **session-wide stream** — the raw recording file is selected in the GUI rather than embedded in the `trials.nc`. For datasets with multiple behavioural trials alongside ephys, see {ref}`Ephys with multiple trials <target-ephys-multi-trial>`.
+Ephys is a **session-wide stream** — the raw recording file is selected in the GUI rather than embedded in the `session.nc`. For datasets with multiple behavioural trials alongside ephys, see {ref}`Ephys with multiple trials <target-ephys-multi-trial>`.
 
 ---
 
@@ -22,7 +22,7 @@ In the **I/O widget**, click **Create with own data** — the wizard opens.
 2. Click **Next** — the dialog opens
 3. Set **Ephys file** and/or **Kilosort folder**
 4. Optionally set **Video file** or **Audio file**
-5. Set **Output path** for the generated `trials.nc`
+5. Set **Output path** for the generated `session.nc`
 6. Click **Generate .nc file**
 7. The I/O widget auto-populates -> click **Load**
 
@@ -40,7 +40,7 @@ In the **I/O widget**, click **Create with own data** — the wizard opens.
 | **Video onset in ephys** | Time offset (s) where video starts relative to ephys recording |
 | **Audio file** | Optional |
 | **Audio onset in ephys** | Time offset (s) where audio starts relative to ephys recording |
-| **Output path** | Where to save the generated `trials.nc` |
+| **Output path** | Where to save the generated `session.nc` |
 
 ---
 
@@ -122,13 +122,13 @@ If an ephys file is already open in the trace panel, EthoGraph warns if the samp
 (target-ephys-multi-trial)=
 ## Ephys with multiple trials
 
-Ephys is session-wide. If you have separate video/audio files per trial, build a `trials.nc` first (see {doc}`loading_script`), then select the ephys file separately in the I/O widget.
+Ephys is session-wide. If you have separate video/audio files per trial, build a `session.nc` first (see {doc}`loading_script`), then select the ephys file separately in the I/O widget.
 
 If the ephys clock differs from the behavioural reference, record the offset in your script:
 
 ```python
 dt.set_stream_offset("ephys", 0.0)   # adjust to match your setup
-dt.save("trials.nc")
+dt.save("session.nc")
 ```
 
 ---

@@ -34,7 +34,7 @@ for trial_id in range(1, 6):
 
 dt = eto.from_datasets(datasets)
 dt.set_media("video", [[f"trial{i:03d}.mp4"] for i in range(1, 6)])
-dt.save("trials.nc")
+dt.save("session.nc")
 ```
 
 ---
@@ -85,7 +85,7 @@ dt.set_media("audio",
 
 ## Ephys with multiple trials
 
-Ephys is session-wide — select the file in the GUI rather than embedding it in `trials.nc`. If clocks differ, record the offset:
+Ephys is session-wide — select the file in the GUI rather than embedding it in `session.nc`. If clocks differ, record the offset:
 
 ```python
 dt.set_stream_offset("ephys", 0.0)   # seconds; adjust to match your setup

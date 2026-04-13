@@ -168,7 +168,7 @@ class _ModeSelectionPage(QWidget):
         tut_box = QGroupBox("Examples")
         tut_lay = QVBoxLayout(tut_box)
         tut_text = QLabel(
-            "These are real-world datasets that have been created or converted to trials.nc format:"
+            "These are real-world datasets that have been created or converted to session.nc format:"
         )
         tut_text.setWordWrap(True)
         tut_lay.addWidget(tut_text)

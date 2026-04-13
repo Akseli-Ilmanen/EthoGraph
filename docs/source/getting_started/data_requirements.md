@@ -404,7 +404,7 @@ dt.set_media("pose",
 # If the ephys clock differs from the reference, set the offset:
 dt.set_stream_offset("ephys", 0.0)
 
-dt.save("trials.nc")
+dt.save("session.nc")
 ```
 
 ---

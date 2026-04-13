@@ -138,7 +138,7 @@ class PoseFileDialog(QDialog):
         output_layout = QHBoxLayout(output_widget)
         output_layout.setContentsMargins(0, 0, 0, 0)
         self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText("Select output location for trials.nc...")
+        self.output_edit.setPlaceholderText("Select output location for session.nc...")
         self.output_edit.setReadOnly(True)
         output_browse = QPushButton("Browse")
         output_browse.clicked.connect(self._on_output_browse)
@@ -183,7 +183,7 @@ class PoseFileDialog(QDialog):
     def _on_output_browse(self):
         result = QFileDialog.getSaveFileName(
             self,
-            caption="Save trials.nc file",
+            caption="Save session.nc file",
             filter="NetCDF files (*.nc);;All files (*)",
         )
         if result and result[0]:
@@ -313,7 +313,7 @@ class XarrayDatasetDialog(QDialog):
         output_layout = QHBoxLayout(output_widget)
         output_layout.setContentsMargins(0, 0, 0, 0)
         self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText("Select output location for trials.nc...")
+        self.output_edit.setPlaceholderText("Select output location for session.nc...")
         self.output_edit.setReadOnly(True)
         output_browse = QPushButton("Browse")
         output_browse.clicked.connect(self._on_output_browse)
@@ -355,7 +355,7 @@ class XarrayDatasetDialog(QDialog):
     def _on_output_browse(self):
         result = QFileDialog.getSaveFileName(
             self,
-            caption="Save trials.nc file",
+            caption="Save session.nc file",
             filter="NetCDF files (*.nc);;All files (*)",
         )
         if result and result[0]:
@@ -491,7 +491,7 @@ class AudioFileDialog(QDialog):
         output_layout = QHBoxLayout(output_widget)
         output_layout.setContentsMargins(0, 0, 0, 0)
         self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText("Select output location for trials.nc...")
+        self.output_edit.setPlaceholderText("Select output location for session.nc...")
         self.output_edit.setReadOnly(True)
         output_browse = QPushButton("Browse")
         output_browse.clicked.connect(self._on_output_browse)
@@ -538,7 +538,7 @@ class AudioFileDialog(QDialog):
     def _on_output_browse(self):
         result = QFileDialog.getSaveFileName(
             self,
-            caption="Save trials.nc file",
+            caption="Save session.nc file",
             filter="NetCDF files (*.nc);;All files (*)",
         )
         if result and result[0]:
@@ -690,7 +690,7 @@ class NpyFileDialog(QDialog):
         output_layout = QHBoxLayout(output_widget)
         output_layout.setContentsMargins(0, 0, 0, 0)
         self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText("Select output location for trials.nc...")
+        self.output_edit.setPlaceholderText("Select output location for session.nc...")
         self.output_edit.setReadOnly(True)
         output_browse = QPushButton("Browse")
         output_browse.clicked.connect(self._on_output_browse)
@@ -735,7 +735,7 @@ class NpyFileDialog(QDialog):
     def _on_output_browse(self):
         result = QFileDialog.getSaveFileName(
             self,
-            caption="Save trials.nc file",
+            caption="Save session.nc file",
             filter="NetCDF files (*.nc);;All files (*)",
         )
         if result and result[0]:
@@ -960,7 +960,7 @@ class EphysFileDialog(QDialog):
         output_layout = QHBoxLayout(output_widget)
         output_layout.setContentsMargins(0, 0, 0, 0)
         self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText("Select output location for trials.nc...")
+        self.output_edit.setPlaceholderText("Select output location for session.nc...")
         self.output_edit.setReadOnly(True)
         output_browse = QPushButton("Browse")
         output_browse.clicked.connect(self._on_output_browse)
@@ -1056,7 +1056,7 @@ class EphysFileDialog(QDialog):
 
     def _on_output_browse(self):
         result = QFileDialog.getSaveFileName(
-            self, caption="Save trials.nc file",
+            self, caption="Save session.nc file",
             filter="NetCDF files (*.nc);;All files (*)",
         )
         if result and result[0]:

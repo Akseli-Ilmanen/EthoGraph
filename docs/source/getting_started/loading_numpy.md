@@ -20,7 +20,7 @@ In the **I/O widget**, click **Create with own data** — the wizard opens.
 3. Set **Npy file** (`.npy`)
 4. Set **Data sampling rate** (Hz)
 5. Optionally set **Video file** — frame rate is auto-detected
-6. Set **Output path** for the generated `trials.nc`
+6. Set **Output path** for the generated `session.nc`
 7. Click **Generate .nc file**
 8. The I/O widget auto-populates -> click **Load**
 
@@ -37,7 +37,7 @@ In the **I/O widget**, click **Create with own data** — the wizard opens.
 | **Data sampling rate** | Hz — required |
 | **Individuals** | Optional, comma-separated |
 | **Load video motion features** | Extracts frame-to-frame motion signal from video |
-| **Output path** | Where to save the generated `trials.nc` |
+| **Output path** | Where to save the generated `session.nc` |
 
 ---
 
@@ -66,7 +66,7 @@ ds = xr.Dataset({
 ds.attrs["trial"] = 1
 
 dt = eto.dataset_to_basic_trialtree(ds)
-dt.save("trials.nc")
+dt.save("session.nc")
 ```
 
 ---

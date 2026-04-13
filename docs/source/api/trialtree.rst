@@ -39,7 +39,7 @@ Open an existing ``.nc`` file or build from a list of datasets.
 
    import ethograph as eto
 
-   dt = eto.open("path/to/trials.nc")
+   dt = eto.open("path/to/session.nc")
    dt.trials  # [1, 2, 3, ...]
 
 .. automethod:: TrialTree.open
@@ -290,7 +290,7 @@ Saving
 
 .. code-block:: python
 
-   dt.save("path/to/trials.nc")
+   dt.save("path/to/session.nc")
    dt.save()  # overwrite the file it was loaded from
 
 .. automethod:: TrialTree.save

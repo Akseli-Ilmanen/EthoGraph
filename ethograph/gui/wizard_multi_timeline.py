@@ -410,7 +410,7 @@ class TimelinePage(QWidget):
         _out_row.setContentsMargins(0, 0, 0, 0)
         _out_row.addWidget(QLabel("Output path:"))
         self._output_edit = QLineEdit()
-        self._output_edit.setPlaceholderText("Select output location for trials.nc...")
+        self._output_edit.setPlaceholderText("Select output location for session.nc...")
         self._output_edit.setReadOnly(True)
         out_browse = QPushButton("Browse")
         out_browse.clicked.connect(self._browse_output)
@@ -662,7 +662,7 @@ class TimelinePage(QWidget):
     def _browse_output(self):
         result = QFileDialog.getSaveFileName(
             self, "Save dataset",
-            "trials.nc",
+            "session.nc",
             "NetCDF files (*.nc);;All files (*)",
         )
         if result and result[0]:

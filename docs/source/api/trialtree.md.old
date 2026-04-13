@@ -35,7 +35,7 @@ Open an existing `.nc` file or build from a list of datasets.
 ```python
 import ethograph as eto
 
-dt = eto.open("path/to/trials.nc")
+dt = eto.open("path/to/session.nc")
 dt.trials  # [1, 2, 3, ...]
 ```
 
@@ -287,7 +287,7 @@ empty_dt = dt.get_label_dt(empty=True)
 ## Saving
 
 ```python
-dt.save("path/to/trials.nc")
+dt.save("path/to/session.nc")
 dt.save()  # overwrite the file it was loaded from
 ```
 

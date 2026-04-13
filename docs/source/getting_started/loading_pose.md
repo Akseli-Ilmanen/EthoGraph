@@ -20,7 +20,7 @@ In the **I/O widget**, click **Create with own data** — the wizard opens.
 2. Click **Next** — the dialog opens
 3. Set **Source software** (DeepLabCut, SLEAP, LightningPose, ...) and **Pose file** (`.h5` or `.csv`)
 4. Optionally set **Video file** — frame rate is auto-detected from the video
-5. Set **Output path** for the generated `trials.nc`
+5. Set **Output path** for the generated `session.nc`
 6. Click **Generate .nc file**
 7. The I/O widget auto-populates -> click **Load**
 
@@ -45,7 +45,7 @@ These appear in the Feature dropdown and are useful for identifying movement ons
 | **Video file** | Optional — frame rate auto-detected |
 | **Frame rate** | Auto-detected from video; set manually if no video |
 | **Video onset in pose** | Time offset (s) where video starts relative to pose stream |
-| **Output path** | Where to save the generated `trials.nc` |
+| **Output path** | Where to save the generated `session.nc` |
 
 ---
 

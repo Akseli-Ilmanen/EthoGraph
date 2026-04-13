@@ -23,20 +23,9 @@ For the full API with all methods, parameters, and code examples, see {doc}`../a
 
 Access trials by ID or by index, iterate over them, or apply a function to all trials at once. See {meth}`~ethograph.io.trialtree.TrialTree.trial`, {meth}`~ethograph.io.trialtree.TrialTree.itrial`, {meth}`~ethograph.io.trialtree.TrialTree.trial_items`, {meth}`~ethograph.io.trialtree.TrialTree.map_trials`.
 
-### Media files
+claude to do
+add examples for trial, itrial, map:_trials
 
-Video, audio, and pose filenames are stored at the session level (not inside individual trial datasets). Filenames are stored as **filename-only strings** so datasets remain valid when folders are moved. See {meth}`~ethograph.io.trialtree.TrialTree.set_media`, {meth}`~ethograph.io.trialtree.TrialTree.get_media`.
-
-| Stream | Device dimension |
-|--------|-----------------|
-| `"video"` | `"cameras"` |
-| `"audio"` | `"mics"` |
-| `"pose"` | `"cameras"` |
-| `"ephys"` | *(none — session-wide, selected in GUI)* |
-
-### Session table and timing
-
-Trial start/stop times, stream offsets, and session metadata are stored in the `"session"` child node. When timing is available, pynapple integration provides {class}`pynapple.IntervalSet` objects for restricting neural data to trial windows. See {meth}`~ethograph.io.trialtree.TrialTree.start_time`, {meth}`~ethograph.io.trialtree.TrialTree.trial_epoch`, {meth}`~ethograph.io.trialtree.TrialTree.restrict`.
 
 ### Stream offsets
 
@@ -55,7 +44,7 @@ In-place mutations (changing attribute values, modifying existing arrays) work d
 ```python
 import ethograph as eto
 
-dt = eto.open("trials.nc")       # load
-dt.save("trials.nc")             # save
+dt = eto.open("session.nc")       # load
+dt.save("session.nc")             # save
 dt = eto.from_datasets([ds1, ds2])  # build from datasets
 ```
