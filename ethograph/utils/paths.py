@@ -2,11 +2,15 @@
 
 import glob
 import json
+import logging
 import os
 from pathlib import Path
 import re
-import ethograph as eto
 import subprocess
+
+import ethograph as eto
+
+logger = logging.getLogger(__name__)
 
 
 def get_project_root(start: Path | None = None) -> Path:

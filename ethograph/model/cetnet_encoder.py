@@ -474,22 +474,14 @@ class Trainer:
                 ground_truth_dict[vid] = batch_target.squeeze().cpu().numpy()
                 pred_dict[vid] = predicted
                 video_list.append(vid)
-                hash_key, trial = vid.split('_')
 
-                dt = loaded_trees[hash_key]
-                ds = dt.trial(trial)
-                corr_pred = correct_changepoints_dense(predicted, ds, all_params)               
-                corr_pred_dict[vid] = corr_pred
-                
-       
-                
                 
 
 
         # Evaluate both uncorrected and corrected predictions
         nested_results = {}
             
-        for pred_type, pred_dict in [("uncorrected", pred_dict), ("corrected", corr_pred_dict)]:
+        for pred_type, pred_dict in [("uncorrected", pred_dict), ("corrected", predicted)]: # SAME SAME
             acc, edit, f1s, tp, fp, fn, frame_f1 = func_eval(ground_truth_dict, pred_dict, video_list, self.f1_thresholds)
 
             

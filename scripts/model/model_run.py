@@ -125,7 +125,8 @@ boundary_radius = all_params.get("boundary_radius")
 # global
 project_root = eto.get_project_root()
 from ethograph.utils.paths import find_config
-mapping_path = find_config("mapping.txt") or project_root / "configs" / "mapping.txt"
+mapping_path = all_params["mapping_file"]
+print(f"Using mapping file: {mapping_path}")
 
 
 # data/

@@ -28,11 +28,16 @@ _DIALOG = {
 _DEFAULT_TITLE = {"error": "Error", "warning": "Warning", "info": "Info"}
 
 
+
+# TODO: make cleaner
 def notify(message: str, severity: str = "info") -> None:
     """Show a napari toast notification and log to console."""
-    logger.info("[%s] %s", severity.upper(), message)
-    if not SUPPRESS:
-        _TOAST[severity](message)
+    try:
+        logger.info("[%s] %s", severity.upper(), message)
+        if not SUPPRESS:
+            _TOAST[severity](message)
+    except Exception:
+        logger.exception("notify failed: %s", message)
 
 
 def notify_dialog(
@@ -42,7 +47,10 @@ def notify_dialog(
     parent: object | None = None,
 ) -> None:
     """Show a modal QMessageBox and log to console."""
-    title = title or _DEFAULT_TITLE[severity]
-    logger.info("[%s] %s", title, message)
-    if not SUPPRESS:
-        _DIALOG[severity](parent, title, message)
+    try:
+        title = title or _DEFAULT_TITLE[severity]
+        logger.info("[%s] %s", title, message)
+        if not SUPPRESS:
+            _DIALOG[severity](parent, title, message)
+    except Exception:
+        logger.exception("notify_dialog failed: %s", message)

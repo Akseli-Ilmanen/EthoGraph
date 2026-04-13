@@ -16,7 +16,6 @@ from ethograph.io.dataset import (
 )
 from ethograph.utils.xr_utils import get_ds_duration, get_time_coord, sel_valid
 from ethograph.utils.paths import get_project_root
-from ethograph.utils.nwb import create_alignment, create_alignment_from_streams
 from ethograph.io.catalog import (
     DataCatalog,
     DataLoader,

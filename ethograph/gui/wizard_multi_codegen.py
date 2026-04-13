@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,10 +10,7 @@ from typing import TYPE_CHECKING
 import jinja2
 
 from ethograph.io.validation import (
-    VIDEO_EXTENSIONS,
-    AUDIO_EXTENSIONS,
-    POSE_EXTENSIONS,
-    EPHYS_EXTENSIONS,
+    AUDIO_EXTENSIONS, EPHYS_EXTENSIONS, POSE_EXTENSIONS, VIDEO_EXTENSIONS,
 )
 
 if TYPE_CHECKING:
@@ -25,7 +21,7 @@ _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
 # ---------------------------------------------------------------------------
-# Template context dataclasses
+# Context dataclass
 # ---------------------------------------------------------------------------
 
 
@@ -37,57 +33,23 @@ class ModalityContext:
     single_file_path: str = ""
     nested_subfolders: bool = False
     extensions: list[str] = field(default_factory=list)
-    regex: str | None = None
-    has_trial_role: bool = False
-    device_labels: list[str] | None = None
+    regex: str | None = None          # non-anchored pattern for .search()
+    device_role: str | None = None    # named group that carries device: "camera" | "mic"
     constant_offset: float = 0.0
     fps: float | None = None
+    audio_sr: float | None = None
 
 
 # ---------------------------------------------------------------------------
-# Regex inference
+# Regex: non-anchored pattern from wizard segments
 # ---------------------------------------------------------------------------
 
-
-def _infer_value_pattern(values: list[str]) -> str:
-    if not values:
-        return r'[^/._-]+'
-
-    if all(v.isdigit() for v in values):
-        lengths = {len(v) for v in values}
-        return rf'\d{{{lengths.pop()}}}' if len(lengths) == 1 else r'\d+'
-
-    m = [re.match(r'^([A-Za-z_]+)(\d+)$', v) for v in values]
-    if all(m):
-        prefixes = {x.group(1) for x in m}
-        nums = [x.group(2) for x in m]
-        if len(prefixes) == 1:
-            prefix = re.escape(prefixes.pop())
-            lengths = {len(n) for n in nums}
-            if len(lengths) == 1:
-                return rf'{prefix}\d{{{lengths.pop()}}}'
-            return rf'{prefix}\d+'
-
-    prefix = os.path.commonprefix(values)
-    if prefix and len(prefix) > 1:
-        return rf'{re.escape(prefix)}[^/._-]+'
-
-    lengths = {len(v) for v in values if v}
-    if len(lengths) == 1:
-        return rf'[^/._-]{{{lengths.pop()}}}'
-
-    if len(values) <= 10:
-        return '|'.join(re.escape(v) for v in values)
-
-    return r'[^/._-]+'
-
-
-TOKEN_PATTERN = r'[^/\.]+'
+_TOKEN = r'[^/._\-\s]+'
 
 
 def _segments_to_regex(pattern: FilePattern) -> str | None:
-    from ethograph.gui.wizard_media_files import FOLDER_POSITION
-    from ethograph.gui.wizard_media_files import _tokenize, _find_token_spans
+    """Return a non-anchored regex with named groups for role-bearing segments."""
+    from ethograph.gui.wizard_media_files import FOLDER_POSITION, _tokenize, _find_token_spans
 
     has_roles = any(
         seg.varying and seg.role and seg.role != "ignore"
@@ -97,31 +59,27 @@ def _segments_to_regex(pattern: FilePattern) -> str | None:
     if not has_roles or not pattern.files:
         return None
 
-    ref_file = pattern.files[0].stem
-    tokens = _tokenize(ref_file, pattern.tokenize_mode)
-    spans = _find_token_spans(ref_file, tokens)
+    ref = pattern.files[0].stem
+    tokens = _tokenize(ref, pattern.tokenize_mode)
+    spans = _find_token_spans(ref, tokens)
 
-    regex_parts = []
+    parts: list[str] = []
     prev_end = 0
-
     for idx, seg in enumerate(pattern.segments):
         if seg.position == FOLDER_POSITION:
             continue
         if idx < len(spans) and prev_end < spans[idx][0]:
-            delim = ref_file[prev_end:spans[idx][0]]
-            regex_parts.append(re.escape(delim))
+            parts.append(re.escape(ref[prev_end: spans[idx][0]]))
         if idx < len(spans):
             prev_end = spans[idx][1]
-
         if seg.varying and seg.role and seg.role != "ignore":
-            value_pattern = _infer_value_pattern(seg.values)
-            regex_parts.append(f"(?P<{seg.role}>{value_pattern})")
+            parts.append(f"(?P<{seg.role}>{_TOKEN})")
         elif not seg.varying:
-            regex_parts.append(re.escape(seg.text))
+            parts.append(re.escape(seg.text))
         else:
-            regex_parts.append(TOKEN_PATTERN)
+            parts.append(_TOKEN)
 
-    return "^" + "".join(regex_parts) + "$"
+    return "".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -131,10 +89,6 @@ def _segments_to_regex(pattern: FilePattern) -> str | None:
 
 def _escape_path(path: str) -> str:
     return path.replace("\\", "\\\\")
-
-
-def _escape_regex(pattern: str) -> str:
-    return pattern.replace('"', '\\"')
 
 
 def _get_extensions(name: str) -> list[str]:
@@ -147,27 +101,27 @@ def _get_extensions(name: str) -> list[str]:
     return sorted(mapping.get(name, []))
 
 
-def _device_labels_for(name: str, state: WizardState) -> list[str] | None:
-    if name in ("video", "pose") and state.camera_names:
-        return state.camera_names
-    if name == "audio" and state.mic_names:
-        return state.mic_names
-    return None
-
-
 def _build_modality_context(name: str, cfg: ModalityConfig, state: WizardState) -> ModalityContext:
-    if cfg.pattern and cfg.pattern.files:
-        extensions = sorted({f.suffix.lower() for f in cfg.pattern.files if f.suffix})
-    else:
-        extensions = _get_extensions(name)[:3]
+    extensions = (
+        sorted({f.suffix.lower() for f in cfg.pattern.files if f.suffix})
+        if cfg.pattern and cfg.pattern.files
+        else _get_extensions(name)[:3]
+    )
 
     regex = None
-    has_trial_role = False
     if cfg.pattern and cfg.pattern.segments:
-        raw = _segments_to_regex(cfg.pattern)
-        if raw:
-            regex = _escape_regex(raw)
-            has_trial_role = any(seg.role == "trial" for seg in cfg.pattern.segments)
+        if cfg.pattern.regex_pattern:
+            regex = cfg.pattern.regex_pattern.replace('"', '\\"')
+        else:
+            raw = _segments_to_regex(cfg.pattern)
+            if raw:
+                regex = raw.replace('"', '\\"')
+
+    device_role = (
+        "mic" if name == "audio"
+        else "camera" if name in ("video", "pose")
+        else None
+    )
 
     return ModalityContext(
         name=name,
@@ -177,69 +131,27 @@ def _build_modality_context(name: str, cfg: ModalityConfig, state: WizardState) 
         nested_subfolders=cfg.nested_subfolders,
         extensions=extensions,
         regex=regex,
-        has_trial_role=has_trial_role,
-        device_labels=_device_labels_for(name, state),
+        device_role=device_role,
         constant_offset=cfg.constant_offset,
         fps=cfg.fps,
+        audio_sr=cfg.audio_sr if name == "audio" else None,
     )
 
 
-def _build_session_table_context(
-    state: WizardState,
-    modalities: list[ModalityContext],
-) -> dict:
-    has_trial_metadata = False
-    trial_source = None
+def _stream_rates_literal(modalities: list[ModalityContext]) -> str:
+    rates: dict[str, float] = {}
     for mod in modalities:
-        if mod.has_trial_role:
-            has_trial_metadata = True
-            trial_source = mod.name
-            break
-
-    if state.trial_table_path:
-        sep = "\\t" if state.trial_table_path.endswith(".tsv") else ","
-        return {
-            "session_table_source": "csv",
-            "trial_table_path": _escape_path(state.trial_table_path),
-            "trial_table_sep": sep,
-        }
-
-    if state.trial_table is not None and len(state.trial_table) <= 5:
-        inline = {
-            col: state.trial_table[col].tolist()
-            for col in state.trial_table.columns
-        }
-        return {"session_table_source": "inline", "trial_table_inline": inline}
-
-    if state.trial_table is not None:
-        return {
-            "session_table_source": "programmatic",
-            "n_trials": len(state.trial_table),
-            "has_start_stop": "start_time" in state.trial_table.columns,
-        }
-
-    if has_trial_metadata:
-        return {
-            "session_table_source": "metadata",
-            "trial_metadata_source": trial_source,
-        }
-
-    file_source = next(
-        (mod.name for mod in modalities if mod.name in ("video", "pose", "audio") and mod.folder_path),
-        None,
-    )
-    if file_source:
-        return {"session_table_source": "infer", "file_count_source": file_source}
-
-    return {"session_table_source": "fallback"}
+        if mod.name in ("video", "pose") and mod.fps:
+            rates[mod.name] = float(mod.fps)
+        elif mod.name == "audio" and mod.audio_sr:
+            rates[mod.name] = float(mod.audio_sr)
+    if not rates:
+        return "{}  # TODO: add sampling rates, e.g. {\"video\": 30.0}"
+    return "{" + ", ".join(f'"{k}": {v}' for k, v in rates.items()) + "}"
 
 
-def _build_offsets(modalities: list[ModalityContext]) -> list[tuple[str, float]]:
-    return [
-        (mod.name, mod.constant_offset)
-        for mod in modalities
-        if mod.constant_offset != 0.0
-    ]
+def _offsets(modalities: list[ModalityContext]) -> list[tuple[str, float]]:
+    return [(m.name, m.constant_offset) for m in modalities if m.constant_offset != 0.0]
 
 
 def _build_template_context(state: WizardState) -> dict:
@@ -248,22 +160,26 @@ def _build_template_context(state: WizardState) -> dict:
         for name in ("video", "pose", "audio", "ephys")
         if getattr(state, name).enabled
     ]
-
     media_modalities = [m for m in modalities if m.name in ("video", "pose", "audio")]
-
     pose_mod = next((m for m in modalities if m.name == "pose"), None)
-    pose_has_trial_metadata = pose_mod is not None and pose_mod.has_trial_role
 
-    ctx: dict = {
+    trial_table_source = None
+    trial_table_sep = ","
+    if state.trial_table_path:
+        trial_table_source = state.trial_table_path
+        trial_table_sep = "\\t" if state.trial_table_path.endswith(".tsv") else ","
+
+    return {
         "modalities": modalities,
         "media_modalities": media_modalities,
-        "pose_has_trial_metadata": pose_has_trial_metadata,
-        "has_session_table": state.trial_table is not None,
-        "offsets": _build_offsets(modalities),
+        "any_pose": pose_mod is not None,
+        "pose_fps": float(pose_mod.fps) if pose_mod and pose_mod.fps else None,
+        "stream_rates_literal": _stream_rates_literal(modalities),
+        "trial_table_source": _escape_path(trial_table_source) if trial_table_source else None,
+        "trial_table_sep": trial_table_sep,
         "output_path": _escape_path(state.output_path) if state.output_path else None,
+        "offsets": _offsets(modalities),
     }
-    ctx.update(_build_session_table_context(state, modalities))
-    return ctx
 
 
 # ---------------------------------------------------------------------------
@@ -303,20 +219,7 @@ def _get_env() -> jinja2.Environment:
 
 
 def generate_alignment_code(state: WizardState) -> str:
-    """Generate executable Python code that reproduces the user's alignment setup.
-
-    Uses the NWB-based template that creates an alignment.nwb file
-    as the source of truth for media paths and timing.
-
-    Parameters
-    ----------
-    state
-        Complete wizard state with modality configs and trial table.
-
-    Returns
-    -------
-    Rendered Python code as a string.
-    """
+    """Generate executable Python code that reproduces the user's alignment setup."""
     ctx = _build_template_context(state)
     template = _get_env().get_template("wizard_nwb_codegen.j2")
     rendered = template.render(ctx)
@@ -324,9 +227,5 @@ def generate_alignment_code(state: WizardState) -> str:
 
 
 def _clean_blank_lines(text: str) -> str:
-    """Collapse runs of 3+ blank lines into 2, strip trailing whitespace."""
-    import re as _re
-
-    text = _re.sub(r'\n{4,}', '\n\n\n', text)
-    lines = [line.rstrip() for line in text.split('\n')]
-    return '\n'.join(lines)
+    text = re.sub(r'\n{4,}', '\n\n\n', text)
+    return '\n'.join(line.rstrip() for line in text.split('\n'))

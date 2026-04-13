@@ -1,242 +1,109 @@
-{# wizard_nwb_codegen.j2 — Jinja2 template for ethograph NWB alignment setup code #}
+{# wizard_nwb_codegen.j2 — ethograph alignment setup (re-runnable on new data) #}
 # conda activate ethograph
 import re
 import natsort
-import numpy as np
 import pandas as pd
 from pathlib import Path
-from collections import defaultdict
-from datetime import datetime
-from uuid import uuid4
-
-from dateutil.tz import tzlocal
-from pynwb import NWBFile, NWBHDF5IO
-from pynwb.image import ImageSeries
-
 import ethograph as eto
+from ethograph.io.nwb_alignment import align_media_per_trial
+{% if any_pose %}
 from movement.io import load_poses
-from movement.kinematics import compute_velocity, compute_speed
-from ethograph.utils.nwb import sync_acquisition_from_trials
+{% endif %}
 
-# ─── 1. Find media files ───
-# Regex patterns may not always work directly, update for your needs.
-{% for mod in modalities %}
+{% if trial_table_source %}
+# ─── 1. Session table (from file) ───
+session_table = pd.read_csv("{{ trial_table_source }}", sep="{{ trial_table_sep }}")
 
+{% else %}
+# ─── 1. Discover media files ───
+# You may need to adjust regex/patterns.
+{% for mod in media_modalities %}
 {% if mod.file_mode == "single" %}
-{{ mod.name }}_file = Path("{{ mod.single_file_path }}")
+{{ mod.name }}_by_trial = {"session": {"0": Path("{{ mod.single_file_path }}")}}
 {% elif mod.folder_path %}
 {{ mod.name }}_folder = Path("{{ mod.folder_path }}")
 {% if mod.extensions | length == 1 %}
-{% if mod.nested_subfolders %}
-{{ mod.name }}_files = natsort.natsorted({{ mod.name }}_folder.glob("**/*{{ mod.extensions[0] }}"))
+{{ mod.name }}_files = natsort.natsorted({{ mod.name }}_folder.glob("{{ '**/*' if mod.nested_subfolders else '*' }}{{ mod.extensions[0] }}"))
 {% else %}
-{{ mod.name }}_files = natsort.natsorted({{ mod.name }}_folder.glob("*{{ mod.extensions[0] }}"))
-{% endif %}
-{% else %}
-{% set glob_prefix = "**/*" if mod.nested_subfolders else "*" %}
 {{ mod.name }}_files = natsort.natsorted(
-    p for pattern in [{{ mod.extensions | map('format_glob', glob_prefix) | join(', ') }}]
-    for p in {{ mod.name }}_folder.glob(pattern)
+    f for ext in [{{ mod.extensions | map('format_glob', '') | join(', ') }}]
+    for f in {{ mod.name }}_folder.glob("{{ '**/*' if mod.nested_subfolders else '*' }}" + ext)
 )
 {% endif %}
+
 {% if mod.regex %}
-
 {{ mod.name }}_pattern = re.compile(r"{{ mod.regex }}")
-{% if mod.has_trial_role and mod.file_mode == "aligned_to_trial" %}
 {{ mod.name }}_by_trial = {}
-for file_path in {{ mod.name }}_files:
-    match = {{ mod.name }}_pattern.search(file_path.stem)
-    if match:
-        trial = int(match["trial"]) if match["trial"].isdigit() else match["trial"]
-        {{ mod.name }}_by_trial.setdefault(trial, []).append(file_path)
+for _f in {{ mod.name }}_files:
+    _m = {{ mod.name }}_pattern.search(_f.stem)
+    if _m:
+        _trial = int(_m["trial"]) if _m["trial"].isdigit() else _m["trial"]
+{% if mod.device_role %}
+        _device = _m["{{ mod.device_role }}"] if "{{ mod.device_role }}" in _m.groupdict() else "0"
 {% else %}
-{{ mod.name }}_metadata = []
-for f in {{ mod.name }}_files:
-    match = {{ mod.name }}_pattern.search(f.stem)
-    if match:
-        groups = match.groupdict()
-        groups = {k: int(v) if v.isdigit() else v for k, v in groups.items()}
-        {{ mod.name }}_metadata.append(groups)
+        _device = "0"
 {% endif %}
+        {{ mod.name }}_by_trial.setdefault(_trial, {})[_device] = _f
+{% else %}
+# No trial/device pattern detected — files treated as ordered trials with device "0"
+{{ mod.name }}_by_trial = {i + 1: {"0": f} for i, f in enumerate({{ mod.name }}_files)}
 {% endif %}
 {% endif %}
 {% endfor %}
 
-# ─── 2. Create session table ───
+# ─── 2. Build session table ───
+_all_trials = sorted(set().union(*(d.keys() for d in [{% for mod in media_modalities %}{{ mod.name }}_by_trial, {% endfor %}])))
+_all_devices = sorted({dev for d in [{% for mod in media_modalities %}{{ mod.name }}_by_trial, {% endfor %}] for files in d.values() for dev in files})
 
-{% if session_table_source == "csv" %}
-# Load session table from imported file
-session_table = pd.read_csv("{{ trial_table_path }}", sep="{{ trial_table_sep }}")
-{% elif session_table_source == "inline" %}
-session_table = pd.DataFrame({
-{% for col, vals in trial_table_inline.items() %}
-    '{{ col }}': {{ vals }},
-{% endfor %}
-})
-{% elif session_table_source == "programmatic" %}
-# {{ n_trials }} trials - construct programmatically
-session_table = pd.DataFrame({
-    'trial': list(range(1, {{ n_trials + 1 }})),
-{% if has_start_stop %}
-    'start_time': ...,  # Your trial start times
-    'stop_time': ...,   # Your trial stop times
-{% endif %}
-})
-{% elif session_table_source == "metadata" %}
-# Extract unique trials from {{ trial_metadata_source }} metadata
-unique_trials = sorted(set(m['trial'] for m in {{ trial_metadata_source }}_metadata))
-session_table = pd.DataFrame({
-    'trial': unique_trials,
-})
-{% elif session_table_source == "infer" %}
-# Infer number of trials from file count
-n_trials = len({{ file_count_source }}_files)
-session_table = pd.DataFrame({
-    'trial': list(range(1, n_trials + 1)),
-})
-{% else %}
-# TODO: Specify number of trials
-n_trials = ...  # Set your trial count
-session_table = pd.DataFrame({
-    'trial': list(range(1, n_trials + 1)),
-})
-{% endif %}
-
-# ─── 3. Build media-by-trial structure ───
-
-media_by_trial = defaultdict(lambda: defaultdict(dict))
-
+session_table = pd.DataFrame({"trial": _all_trials})
 {% for mod in media_modalities %}
-{% if mod.has_trial_role and mod.file_mode == "aligned_to_trial" %}
-# {{ mod.name }}: per-trial files
-for trial, files in {{ mod.name }}_by_trial.items():
-{% if mod.device_labels %}
-    for f in files:
-{% for dev in mod.device_labels %}
-        if "{{ dev }}" in f.stem:
-            media_by_trial[trial]["{{ mod.name }}"]["{{ dev }}"] = f
+for _dev in _all_devices:
+    session_table[f"{{ mod.name }}_{_dev}"] = [
+        str({{ mod.name }}_by_trial.get(_t, {}).get(_dev) or "") for _t in _all_trials
+    ]
 {% endfor %}
-{% else %}
-    if files:
-        media_by_trial[trial]["{{ mod.name }}"]["0"] = files[0]
-{% endif %}
-
-{% elif mod.file_mode == "single" %}
-# {{ mod.name }}: single session file
-for trial in session_table["trial"]:
-    media_by_trial[trial]["{{ mod.name }}"]["0"] = {{ mod.name }}_file
+# Drop columns that are entirely empty
+session_table = session_table.loc[:, (session_table != "").any()]
 
 {% endif %}
-{% endfor %}
-
-# Derive labels
-cam_labels = sorted({
-    cam
-    for trial_data in media_by_trial.values()
-    for stream_data in trial_data.values()
-    for cam in stream_data
-})
-stream_names = sorted({
-    stream
-    for trial_data in media_by_trial.values()
-    for stream in trial_data
-})
-
-# ─── 4. Build NWB file (alignment source of truth) ───
-
+# ─── 3. Build NWB alignment file ───
 {% if output_path %}
-output_dir = Path("{{ output_path }}").parent
+nwb_path = Path("{{ output_path }}").parent / ".ethograph" / "alignment.nwb"
 {% else %}
-output_dir = Path(".")
+nwb_path = Path(".ethograph") / "alignment.nwb"
 {% endif %}
-nwb_path = output_dir / ".ethograph" / "alignment.nwb"
 
-nwbfile = NWBFile(
-    session_description="NWB file for media alignment (ethograph generated).",
-    identifier=str(uuid4()),
-    session_start_time=datetime.now(tzlocal()),
+align_media_per_trial(
+    trial_table=session_table,
+    stream_rates={{ stream_rates_literal }},
+    output_path=nwb_path,
+{% if pose_fps %}
+    pose_fps={{ pose_fps }},
+{% endif %}
 )
 
-# Trial columns
-nwbfile.add_trial_column(name="trial", description="Trial number")
-for cam in cam_labels:
-    for stream in stream_names:
-        nwbfile.add_trial_column(
-            name=f"{stream}_{cam}",
-            description=f"{stream} filename for {cam}",
-        )
-
-# Trial rows
-all_trials = sorted(media_by_trial.keys())
-for trial in all_trials:
-    row = {"trial": trial, "start_time": 0.0, "stop_time": 1.0}
-    for cam in cam_labels:
-        for stream in stream_names:
-            path = media_by_trial[trial].get(stream, {}).get(cam)
-            row[f"{stream}_{cam}"] = path.name if path else ""
-    nwbfile.add_trial(**row)
-
-# Derive ImageSeries from trials table
-camera_fps = {{ modalities[0].fps if modalities and modalities[0].fps else 30 }}.0
-sync_acquisition_from_trials(nwbfile, cam_labels, camera_fps)
-
-# Save NWB
-nwb_path.parent.mkdir(parents=True, exist_ok=True)
-with NWBHDF5IO(str(nwb_path), "w") as io:
-    io.write(nwbfile)
-
-print(f"Saved alignment NWB: {nwb_path}")
-print(nwbfile.trials.to_dataframe())
-
-# ─── 5. Load trial datasets ───
-
-# TODO: Replace with your actual dataset loading logic
+# ─── 4. Load trial datasets and save ───
+# TODO: populate ds_list with per-trial xarray Datasets
+{% if any_pose %}
+# Example with pose data:
+# ds_list = []
+# for trial in session_table["trial"]:
+#     pose_path = session_table.loc[session_table["trial"] == trial, "pose_0"].iloc[0]
+#     ds = load_poses.from_dlc_file(pose_path, fps={{ pose_fps }})
+#     ds.attrs["trial"] = trial
+#     ds_list.append(ds)
+{% endif %}
 ds_list = []
-{% if pose_has_trial_metadata %}
-for trial in session_table['trial']:
-    trial_pose_files = pose_by_trial.get(trial, [])
-    if not trial_pose_files:
-        continue
-
-    ds = load_poses.from_dlc_file(trial_pose_files[0], fps=camera_fps)
-    ds["velocity"] = compute_velocity(ds.position)
-    ds["speed"] = compute_speed(ds.position)
-    ds.attrs["trial"] = trial
-
-    ds_list.append(ds)
-{% else %}
-for idx, file in enumerate(pose_files, start=1):
-    ds = load_poses.from_dlc_file(file, fps=camera_fps)
-    ds["velocity"] = compute_velocity(ds.position)
-    ds["speed"] = compute_speed(ds.position)
-    ds.attrs["trial"] = idx
-    ds_list.append(ds)
-{% endif %}
-
-# ─── 6. Create TrialTree ───
-
-{% if has_session_table %}
-dt = eto.from_datasets(ds_list, session_table=session_table)
-{% else %}
 dt = eto.from_datasets(ds_list)
-{% endif %}
-dt.nwb_path = str(nwb_path)
-# Inspect first trial of TrialTree
-dt.itrial(0)
-
-{% if offsets %}
-# ─── 7. Stream offsets ───
-# Note: Stream offsets are now stored in the NWB acquisition items.
-# For non-zero offsets, re-run sync_acquisition_from_trials with adjusted start times.
-{% for stream, offset in offsets %}
-# {{ stream }} offset: {{ offset }} s
-{% endfor %}
-{% endif %}
-
-# ─── 8. Save to NetCDF ───
-
 {% if output_path %}
 dt.save("{{ output_path }}")
 {% else %}
-dt.save("output.nc")  # TODO: set your output path
+dt.save("output.nc")  # TODO: set output path
+{% endif %}
+{% if offsets %}
+
+# Stream offsets stored in NWB ImageSeries
+{% for stream, offset in offsets %}
+# {{ stream }}: {{ offset }} s
+{% endfor %}
 {% endif %}

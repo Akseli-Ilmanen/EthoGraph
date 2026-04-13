@@ -237,7 +237,7 @@ NWB files are loaded via pynapple (which handles NWB → in-memory conversion). 
 
 **Path fallback**: ImageSeries stores original paths (or URLs for DANDI). If files move, `resolve_media_path` extracts the filename and joins with a user-specified fallback folder (`video_folder`, `audio_folder`, etc.).
 
-**`build_nwb_from_trial_table`** (`utils/nwb.py`) creates ImageSeries for ALL streams via `sync_acquisition_for_streams(nwbfile, stream_rates)`. Takes `stream_rates: dict[str, float]` — no hardcoded FPS values.
+**`align_media_per_trial`** (`utils/nwb.py`) creates ImageSeries for ALL streams via `sync_acquisition_for_streams(nwbfile, stream_rates)`. Takes `stream_rates: dict[str, float]` — no hardcoded FPS values.
 
 **`create_alignment_from_streams`** (`utils/nwb.py`) — flexible alignment creation accepting per-trial or session-wide files, optional `provenance` dict. Used by the NWB wizard to create alignment.nwb.
 

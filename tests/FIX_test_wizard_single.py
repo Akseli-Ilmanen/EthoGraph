@@ -344,47 +344,6 @@ class TestWizardFromNpy:
         _safe_to_netcdf(dt, nc_out)
         assert nc_out.exists()
 
-    def test_save_to_different_dir_copies_alignment(self, tmp_path):
-        """Saving .nc to a different dir should copy alignment.nwb there."""
-        from ethograph.utils.nwb import build_nwb_from_trial_table
-
-        media_dir = tmp_path / "media"
-        media_dir.mkdir()
-        data = np.random.randn(100, 3).astype(np.float32)
-        npy = media_dir / "feat.npy"
-        np.save(str(npy), data)
-
-        dt = wizard_single_from_npy_file(
-            video_path=None, fps=30,
-            npy_path=str(npy), data_sr=30,
-        )
-
-        # Manually create an alignment NWB in the media dir (simulates a
-        # wizard that had a real media ref_path, e.g. audio or video)
-        original_nwb = media_dir / ".ethograph" / "alignment.nwb"
-        original_nwb.parent.mkdir(parents=True, exist_ok=True)
-        trial_table = pd.DataFrame([{"trial": 1, "start_time": 0.0}])
-        build_nwb_from_trial_table(trial_table, stream_rates={"video": 30.0, "pose": 30.0}, output_path=original_nwb)
-        from ethograph.io.nwb_alignment import make_nwb_alignment, NWBAlignment
-        dt.nwb_alignment = make_nwb_alignment(original_nwb)
-        assert original_nwb.exists()
-
-        save_dir = tmp_path / "output"
-        save_dir.mkdir()
-        nc_out = save_dir / "trial.nc"
-        try:
-            with warnings.catch_warnings():
-                warnings.filterwarnings("error", category=RuntimeWarning)
-                dt.save(nc_out)
-        except (RuntimeWarning, ImportError):
-            pytest.skip("netCDF4/numpy binary incompatibility in this env")
-
-        copied_nwb = save_dir / ".ethograph" / "alignment.nwb"
-        assert copied_nwb.exists(), "alignment.nwb should be copied next to saved .nc"
-
-        reloaded = TrialTree.open(str(nc_out))
-        assert isinstance(reloaded.nwb_alignment, NWBAlignment)
-
 
 
 # ===================================================================

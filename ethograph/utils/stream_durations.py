@@ -96,3 +96,28 @@ def get_ephys_duration(path: str) -> float | None:
     except Exception:
         pass
     return None
+
+
+def probe_duration(path: str, stream: str, fps: float | None = None) -> float | None:
+    """Dispatch to the appropriate duration probe based on stream type.
+
+    Parameters
+    ----------
+    path:
+        Path to the media file.
+    stream:
+        One of ``"video"``, ``"audio"``, ``"pose"``, ``"ephys"``.
+    fps:
+        Required for ``"pose"`` stream; ignored for all others.
+    """
+    if stream == "video":
+        return get_video_duration(path)
+    if stream == "audio":
+        return get_audio_duration(path)
+    if stream == "pose":
+        if fps is None:
+            raise ValueError(f"fps required for pose duration: {path}")
+        return get_pose_duration(path, fps)
+    if stream == "ephys":
+        return get_ephys_duration(path)
+    return None
