@@ -929,6 +929,7 @@ def sync_acquisition_for_streams(
 
             external_files = valid[col].tolist()
 
+
             start_col = f"{col}_start"
             if start_col in df.columns:
                 starts = valid[start_col].values.astype(float)
@@ -1318,18 +1319,41 @@ from pathlib import Path
 import numpy as np
 from pynwb import NWBHDF5IO
 
+from contextlib import contextmanager
+from pathlib import Path
+import gc, os, tempfile
+from pynwb import NWBHDF5IO
+
+@contextmanager
+def edit_nwb(path):
+    path = Path(path)
+    fd, tmp = tempfile.mkstemp(suffix=".nwb", dir=path.parent)
+    os.close(fd)
+    tmp = Path(tmp)
+    try:
+        with NWBHDF5IO(str(path), "r", load_namespaces=True) as read_io:
+            nwbfile = read_io.read()
+            yield nwbfile
+            with NWBHDF5IO(str(tmp), "w") as write_io:
+                write_io.export(src_io=read_io, nwbfile=nwbfile)
+        del nwbfile
+        gc.collect()
+        os.replace(tmp, path)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
+
 
 def update_trials_columns(
     nwb_path: Path,
     trial_column: str,
     updates: dict[int, dict[str, float]],
+    stream_rates: dict[str, float] | None = None,
 ) -> None:
-    """Update columns of the trials table for rows identified by ``trial_column``."""
-    with NWBHDF5IO(str(nwb_path), mode="r+", load_namespaces=True) as io:
-        nwbfile = io.read()
-        table = nwbfile.intervals["trials"] if "trials" in nwbfile.intervals else nwbfile.trials
+    with edit_nwb(nwb_path) as nwbfile:
+        table = nwbfile.trials
         if table is None:
-            raise KeyError("No trials table found in nwbfile.intervals or nwbfile.trials")
+            raise KeyError("No trials table found")
 
         trial_ids = np.asarray(table[trial_column][:])
         for trial_id, column_updates in updates.items():
@@ -1339,4 +1363,5 @@ def update_trials_columns(
             for col_name, value in column_updates.items():
                 table[col_name].data[row_idx[0]] = value
 
-        io.write(nwbfile)
+        if stream_rates:
+            sync_acquisition_for_streams(nwbfile, stream_rates)
