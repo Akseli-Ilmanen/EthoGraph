@@ -1,31 +1,7 @@
-NWBLabelConverter
-=================
+:orphan:
 
-.. currentmodule:: ethograph.labels.converters
+NWBLabelConverter (removed)
+===========================
 
-.. autoclass:: NWBLabelConverter
-   :members:
-   :show-inheritance:
-
-   
-   
-   
-   
-   
-   
-   
-   
-   
-
-   
-   .. rubric:: Methods
-
-   .. autosummary::
-
-   
-   
-   
-      ~NWBLabelConverter.from_nwb
-   
-   
-   
+This class has been removed. See :class:`ethograph.labels.converters.LabelConverter`
+and its subclasses instead.

@@ -13,62 +13,6 @@ from ethograph.utils.xr_utils import get_time_coord
 from ethograph.io.trialtree import TrialTree
 
 
-### ---------- Data creation ---------------------------
-
-def dataset_to_basic_trialtree(ds, video_path: str | None = None, video_motion: bool = False) -> TrialTree:
-    """Wrap a single xarray Dataset as a one-trial TrialTree ready for the GUI.
-
-    Convenience function for quick exploration: takes a bare Dataset (e.g.
-    loaded from a CSV or computed in a notebook), adds empty interval labels
-    if none exist, marks every non-label variable as a plottable feature,
-    and returns a TrialTree that :func:`ethograph.open` and the GUI can work
-    with.
-
-    Parameters
-    ----------
-    ds : xarray.Dataset
-        A single-trial dataset.  Must have at least one variable with a
-        time-like dimension.  If ``attrs["trial"]`` is missing it is set
-        to ``1``.
-    video_path : str, optional
-        Path to a video file.  When given together with *video_motion*,
-        a ``video_motion`` feature is extracted and added to the dataset.
-    video_motion : bool
-        If ``True`` and *video_path* is provided, compute frame-to-frame
-        pixel motion and store it as ``ds["video_motion"]``.
-
-    Returns
-    -------
-    TrialTree
-        A single-trial tree that can be saved with ``dt.save("out.nc")``
-        or opened in the ethograph GUI.
-
-    Examples
-    --------
-    >>> import xarray as xr, numpy as np, ethograph as eto
-    >>> ds = xr.Dataset({
-    ...     "speed": xr.DataArray(
-    ...         np.random.rand(300, 7),
-    ...         dims=["time", "keypoints"],
-    ...         coords={"time": np.linspace(0, 10, 300)},
-    ...     ),
-    ... })
-    >>> dt = eto.dataset_to_basic_trialtree(ds)
-    >>> dt.save("quick_look.nc")
-    """
-
-    if video_motion and video_path is not None:
-        ds["video_motion"] = extract_video_motion(video_path, fps=ds.fps, time_coord_name="time_video")
-
- 
-
-    ds.attrs["trial"] = 1
-    return TrialTree.from_datasets([ds])
-
-
-
-
-
 
 
 def downsample_trialtree(dt: TrialTree, factor: int) -> TrialTree:

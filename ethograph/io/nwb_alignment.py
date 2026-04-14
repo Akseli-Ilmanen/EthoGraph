@@ -386,10 +386,11 @@ class NWBAlignment:
         """Discover devices from trials table columns AND acquisition items.
 
         Three sources, checked in order:
-        1. Trials table columns (``video_cam_1`` → device ``cam_1``).
+
+        1. Trials table columns (``video_cam_1`` -> device ``cam_1``).
         2. Acquisition ImageSeries following ``{stream}_{device}`` naming.
         3. Acquisition ImageSeries whose ``external_file`` extensions match
-           known media types (e.g. ``.mp4`` → video, ``.wav`` → audio).
+           known media types (e.g. ``.mp4`` -> video, ``.wav`` -> audio).
         """
         devs: list[str] = []
 

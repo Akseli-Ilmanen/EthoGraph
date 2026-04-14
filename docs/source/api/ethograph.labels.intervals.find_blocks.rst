@@ -1,6 +1,6 @@
-ethograph.labels.intervals.find\_blocks
-=======================================
+:orphan:
 
-.. currentmodule:: ethograph.labels.intervals
+find\_blocks (moved)
+====================
 
-.. autofunction:: find_blocks
+This function has been moved to :func:`ethograph.labels.ml.find_blocks`.

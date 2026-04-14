@@ -16,11 +16,9 @@
 
     
     add_angle_rgb_to_ds
-    
+
     add_changepoints_to_ds
-    
-    dataset_to_basic_trialtree
-    
+
     downsample_trialtree
     
 

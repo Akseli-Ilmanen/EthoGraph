@@ -82,7 +82,7 @@ These columns convert trial-relative times to session-absolute times. They only 
 
 ```{tip}
 **When to use which time?**
-- Use `onset_s` / `offset_s` when working within a single trial (plotting, video sync, ML training).
+- Use `onset_s` / `offset_s` when working within a single trial (plotting, ML training).
 - Use `onset_global` / `offset_global` when aligning across trials or comparing to session-level events (e.g. neural recordings with session-absolute timestamps).
 ```
 

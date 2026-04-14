@@ -190,7 +190,23 @@ class TrialTree(xr.DataTree):
     # ------------------------------------------------------------------
 
     def trial(self, trial) -> xr.Dataset:
-        """Return the dataset for the given trial ID."""
+        """Return the dataset for the given trial ID.
+
+        Parameters
+        ----------
+        trial : int or str
+            Trial identifier matching ``ds.attrs["trial"]``.
+
+        Examples
+        --------
+        >>> import ethograph as eto
+        >>> dt = eto.open("session.nc")
+        >>> ds = dt.trial(1)
+        >>> ds.attrs["trial"]
+        1
+        >>> ds["speed"]  # access a feature variable
+        <xarray.DataArray 'speed' (time: 9000, keypoints: 4)>
+        """
         if self._is_continuous:
             if trial not in self._trial_epochs:
                 raise KeyError(f"No epoch found for trial {trial!r}")
@@ -201,7 +217,26 @@ class TrialTree(xr.DataTree):
         return ds
 
     def itrial(self, trial_idx: int) -> xr.Dataset:
-        """Return the dataset at an integer index (0-based)."""
+        """Return the dataset at an integer index (0-based).
+
+        Parameters
+        ----------
+        trial_idx : int
+            Zero-based index into the list of trials.
+
+        Examples
+        --------
+        >>> import ethograph as eto
+        >>> dt = eto.open("session.nc")
+        >>> dt.trials
+        [1, 2, 3]
+        >>> ds = dt.itrial(0)   # same as dt.trial(1)
+        >>> ds.attrs["trial"]
+        1
+        >>> ds = dt.itrial(2)   # same as dt.trial(3)
+        >>> ds.attrs["trial"]
+        3
+        """
         if self._is_continuous:
             trial_ids = sorted(self._trial_epochs.keys())
             if trial_idx >= len(trial_ids):

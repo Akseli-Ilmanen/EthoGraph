@@ -1,4 +1,6 @@
-trees\_to\_df
-=============
+:orphan:
 
-.. currentmodule:: ethograph.labels.export
+trees\_to\_df (removed)
+========================
+
+This function has been removed.

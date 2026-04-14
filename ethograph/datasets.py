@@ -69,11 +69,11 @@ DATASETS: dict[str, dict] = {
                 "15 nodding\n"
             ),
             "space.yaml": (
-                "# Reference geometry for Moll2025 aviary.\n"
+                "# Reference geometry for Moll2025 setup.\n"
                 "# Points are 3D [x, y, z] in metres. Edges connect points by index.\n"
                 "\n"
                 "references:\n"
-                "  - name: aviary\n"
+                "  - name: setup\n"
                 "    vertices:\n"
                 "      - [-7.00,  0.00, 0.65]   # 0: floor front-left\n"
                 "      - [-7.00,  9.80, 0.65]   # 1: floor back-left\n"
@@ -252,6 +252,45 @@ def is_dataset_downloaded(key: str) -> bool:
         return False
     dest = dataset_dir(key)
     return all((dest / name).exists() for name in get_gui_assets(key))
+
+
+def sample_data() -> "xr.Dataset":
+    """Download and return one trial of real pose data (Moll et al., 2025).
+
+    Downloads the Moll2025 crow tool-use dataset (~14 MB) on first call,
+    then returns ``itrial(0)`` — an :class:`xarray.Dataset` with position,
+    velocity, speed, and acceleration for 14 keypoints.
+
+    Returns
+    -------
+    xarray.Dataset
+        Single-trial dataset with dimensions ``(time, space, keypoints, individuals)``.
+
+    Examples
+    --------
+    >>> import ethograph as eto
+    >>> ds = eto.sample_data()
+    >>> ds["speed"]
+    <xarray.DataArray 'speed' (time: ..., keypoints: 14, individuals: 1)>
+    """
+    from ethograph.utils.download import download_assets
+
+    key = "moll2025"
+    info = DATASETS[key]
+    dest = dataset_dir(key)
+    nc_path = dest / info["nc_filename"]
+
+    if not nc_path.exists():
+        dest.mkdir(parents=True, exist_ok=True)
+        download_assets(
+            release_tag=info["release_tag"],
+            assets=[info["nc_filename"]],
+            dest=dest,
+        )
+
+    import ethograph as eto
+    dt = eto.open(str(nc_path))
+    return dt.itrial(0)
 
 
 def resolve_dataset_paths(key: str) -> dict:

@@ -6,23 +6,47 @@ TrialTree
 
 .. currentmodule:: ethograph.io.trialtree
 
-TrialTree is a thin wrapper around :class:`xarray.DataTree` for
-multi-trial behavioural datasets. Each trial is a child node holding an
-:class:`xarray.Dataset`, and the tree provides convenience methods for
-accessing, iterating, and modifying trials.
+:class:`TrialTree` is a wrapper around :class:`xarray.DataTree` that stores
+one :class:`xarray.Dataset` per trial. Build one from a list of datasets,
+then access each trial by ID or index:
 
-.. code-block:: text
+.. code-block:: python
 
-   TrialTree (root)
-   +-- "session"  ->  xr.Dataset  (timing, media filenames, stream offsets)
-   +-- "1"  ->  xr.Dataset  (trial 1: features, coords, attrs)
-   +-- "2"  ->  xr.Dataset  (trial 2)
-   +-- "3"  ->  xr.Dataset  (trial 3)
-   +-- ...
+   import numpy as np, xarray as xr, ethograph as eto
 
-The dataset format builds on :mod:`movement` conventions for representing
-pose estimation and behavioural time series. For the :class:`xarray.Dataset`
-structure expected inside each trial, see :doc:`../getting_started/data_requirements`.
+   # Build: one xr.Dataset per trial
+   datasets = []
+   for i in range(1, 4):
+       ds = xr.Dataset({"speed": xr.DataArray(np.random.rand(300), dims=["time"],
+                                               coords={"time": np.arange(300) / 30.0})})
+       ds.attrs["trial"] = i
+       ds.attrs["fps"] = 30.0
+       datasets.append(ds)
+
+   dt = eto.from_datasets(datasets)
+
+   # Access by trial ID (label-based, like xr.Dataset.sel)
+   ds = dt.trial(2)
+   ds.attrs["trial"]   # 2
+   ds["speed"]          # the speed DataArray for trial 2
+
+   # Access by integer index (0-based, like xr.Dataset.isel)
+   ds = dt.itrial(0)
+   ds.attrs["trial"]   # 1
+
+   # List all trial IDs
+   dt.trials            # [1, 2, 3]
+
+   # Save / load
+   dt.save("session.nc")
+   dt = eto.open("session.nc")
+
+Media file paths, trial timing, and stream offsets live in a separate
+NWB alignment file (``<project>/.ethograph/alignment.nwb``), accessed via
+``dt.nwb_alignment``. See :ref:`Media and alignment <target-trialtree-media-api>`.
+
+For the :class:`xarray.Dataset` structure expected inside each trial, see
+:doc:`../getting_started/data_requirements`.
 
 .. autoclass:: TrialTree
    :no-members:
@@ -30,49 +54,33 @@ structure expected inside each trial, see :doc:`../getting_started/data_requirem
 
 ----
 
-Opening and creating
---------------------
-
-Open an existing ``.nc`` file or build from a list of datasets.
-
-.. code-block:: python
-
-   import ethograph as eto
-
-   dt = eto.open("path/to/session.nc")
-   dt.trials  # [1, 2, 3, ...]
+Creating
+--------
 
 .. automethod:: TrialTree.open
 
 .. automethod:: TrialTree.from_datasets
 
-To create a :class:`TrialTree` from a single dataset (e.g. from a
-:mod:`movement` dataset or numpy array):
+.. automethod:: TrialTree.from_continuous
 
-.. code-block:: python
-
-   ds = ...  # your xr.Dataset with a time dimension
-   dt = eto.dataset_to_basic_trialtree(ds)
-
-.. autofunction:: ethograph.io.dataset.dataset_to_basic_trialtree
+.. automethod:: TrialTree.from_datatree
 
 ----
 
 Accessing trials
 ----------------
 
-Inspired by :meth:`~xarray.Dataset.sel` / :meth:`~xarray.Dataset.isel`:
-
-.. code-block:: python
-
-   ds = dt.trial(1)      # by trial ID (label-based)
-   ds = dt.itrial(0)     # by integer index (0-based)
-
 .. automethod:: TrialTree.trial
 
 .. automethod:: TrialTree.itrial
 
 .. autoproperty:: TrialTree.trials
+
+.. automethod:: TrialTree.get_all_trials
+
+.. automethod:: TrialTree.get_common_attrs
+
+.. automethod:: TrialTree.get_trial_metadata
 
 ----
 
@@ -130,57 +138,62 @@ Filtering
 
 .. _target-trialtree-media-api:
 
-Media files
------------
+Media files and alignment
+-------------------------
 
-Media filenames are stored in the session node via :meth:`~TrialTree.set_media`.
-Call it once per stream:
+Media filenames, trial timing, and stream offsets are stored in an **NWB
+alignment file** at ``<project>/.ethograph/alignment.nwb``, not inside the
+``.nc`` dataset. The alignment is accessed via ``dt.nwb_alignment``, which
+is an :class:`~ethograph.io.nwb_alignment.NWBAlignment` (or its null-object
+:class:`~ethograph.io.nwb_alignment.EmpytAlignment` when no NWB file is found).
 
-.. list-table::
-   :header-rows: 1
-
-   * - Stream
-     - Default layout
-     - Device dimension
-   * - ``"video"``
-     - per-trial
-     - ``"cameras"``
-   * - ``"audio"``
-     - per-trial
-     - ``"mics"``
-   * - ``"pose"``
-     - per-trial
-     - ``"cameras"``
-   * - ``"ephys"``
-     - session-wide
-     - *(none)*
+Create alignment files with :func:`~ethograph.io.nwb_alignment.align_media_per_trial`
+or :func:`~ethograph.io.nwb_alignment.align_media_from_streams`:
 
 .. code-block:: python
 
-   # Two cameras, three trials
-   dt.set_media("video",
-       [["trial001_cam1.mp4", "trial001_cam2.mp4"],
-        ["trial002_cam1.mp4", "trial002_cam2.mp4"],
-        ["trial003_cam1.mp4", "trial003_cam2.mp4"]],
-       device_labels=["left", "right"],
+   import pandas as pd
+   from ethograph.io.nwb_alignment import align_media_per_trial
+
+   trial_table = pd.DataFrame({
+       "trial": [1, 2, 3],
+       "video_cam-1": ["t1.mp4", "t2.mp4", "t3.mp4"],
+       "pose_cam-1":  ["t1.h5", "t2.h5", "t3.h5"],
+   })
+
+   align_media_per_trial(
+       trial_table,
+       stream_rates={"video": 30.0, "pose": 30.0},
+       output_path=".ethograph/alignment.nwb",
    )
 
-   # Session-wide audio
-   dt.set_media("audio",
-       ["session_ch1.wav", "session_ch2.wav"],
-       device_labels=["mic-1", "mic-2"],
-       per_trial=False,
-   )
+Columns follow the ``{stream}_{device}`` convention (e.g. ``video_cam-1``,
+``audio_mic-1``).
 
-.. automethod:: TrialTree.set_media
+.. autofunction:: ethograph.io.nwb_alignment.align_media_per_trial
 
-.. automethod:: TrialTree.get_media
+.. autofunction:: ethograph.io.nwb_alignment.align_media_from_streams
 
-.. automethod:: TrialTree.devices
+Reading alignment metadata
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. autoproperty:: TrialTree.cameras
+.. code-block:: python
 
-.. autoproperty:: TrialTree.mics
+   alignment = dt.nwb_alignment
+   alignment.cameras           # ["cam-1", "cam-2"]
+   alignment.mics              # ["mic-1"]
+   alignment.start_time(1)     # trial 1 start (seconds)
+   alignment.get_media(1, "video", "cam-1")  # "t1.mp4"
+
+.. autoclass:: ethograph.io.nwb_alignment.NWBAlignment
+   :members: cameras, mics, start_time, stop_time, get_media, devices,
+             resolve_media_path, stream_offset_for_trial, get_stream_rate,
+             electrical_series, trials_df, has_real_timing, print_session
+   :no-inherited-members:
+
+.. autofunction:: ethograph.io.nwb_alignment.discover_nwb
+
+.. autofunction:: ethograph.io.nwb_alignment.make_nwb_alignment
 
 ----
 
@@ -189,56 +202,16 @@ Call it once per stream:
 Session table and timing
 -------------------------
 
-The session table is an :class:`xarray.Dataset` in the ``"session"`` child
-node. It holds trial timing, media filenames, and stream offset attributes.
+Trial timing (start/stop) is stored in the NWB alignment file's trials
+table. When present, it enables session-mode navigation and restricting
+neural data to trial windows.
 
 .. code-block:: python
 
-   import pandas as pd
-
-   session_table = pd.DataFrame({
-       "trial": [1, 2],
-       "start_time": [0.0, 120.5],
-       "stop_time": [120.0, 245.0],
-   })
-   dt = eto.from_datasets(datasets, session_table=session_table)
-
-   dt.start_time(1)          # 0.0
-   dt.stop_time(1)           # 120.0
-   dt.trial_duration(1)      # 120.0
-
-.. autoproperty:: TrialTree.session
-
-.. automethod:: TrialTree.set_session_table
-
-.. automethod:: TrialTree.session_to_dataframe
-
-.. automethod:: TrialTree.print_session
-
-.. automethod:: TrialTree.start_time
-
-.. automethod:: TrialTree.stop_time
-
-.. automethod:: TrialTree.trial_duration
-
-----
-
-Pynapple integration
---------------------
-
-Trial epochs are exposed as :class:`pynapple.IntervalSet` objects for
-restricting neural data to trial windows:
-
-.. code-block:: python
-
-   epoch = dt.trial_epoch(1)
-   spikes_t1 = dt.restrict(spikes, 1)
-
-.. autoproperty:: TrialTree.trials_ep
-
-.. automethod:: TrialTree.trial_epoch
-
-.. automethod:: TrialTree.restrict
+   alignment = dt.nwb_alignment
+   alignment.start_time(1)      # 0.0
+   alignment.stop_time(1)       # 120.0
+   alignment.trials_df          # full trials DataFrame
 
 ----
 
@@ -247,19 +220,28 @@ restricting neural data to trial windows:
 Stream offsets
 --------------
 
-For session-wide streams, :meth:`~TrialTree.set_stream_offset` specifies
-when sample 0 of the file occurs in session-absolute time.
-:meth:`~TrialTree.source_start_time` then computes the trial-relative offset:
+For session-wide streams (e.g. ephys), the offset specifies when sample 0
+of the file occurs in session time. This is stored in the alignment file
+via :func:`~ethograph.io.nwb_alignment.align_media_from_streams` using the
+``starting_time`` field:
 
 .. code-block:: python
 
-   dt.set_stream_offset("ephys", 0.0)
-   dt.source_start_time(1, "video")   # 0.0 (per-trial)
-   dt.source_start_time(2, "ephys")   # e.g. -120.5 (session-wide)
+   from ethograph.io.nwb_alignment import align_media_from_streams
 
-.. automethod:: TrialTree.set_stream_offset
+   streams = [
+       {"name": "video_cam-1", "files": ["t1.mp4", "t2.mp4"], "rate": 30.0},
+       {"name": "ephys_probe-1", "files": ["session.dat"],
+        "rate": 30000.0, "starting_time": 0.5},
+   ]
+   align_media_from_streams(trials_df, streams, ".ethograph/alignment.nwb")
 
-.. automethod:: TrialTree.source_start_time
+To query offsets at runtime:
+
+.. code-block:: python
+
+   alignment = dt.nwb_alignment
+   alignment.stream_offset_for_trial(1, "ephys")   # offset in seconds
 
 ----
 
@@ -278,11 +260,6 @@ and ``trial``, plus per-trial metadata columns.
    df = load_labels_tsv("data_labels.tsv")
    print(df[df["trial"] == 1])  # labels for trial 1
 
-For backward compatibility with older ``.nc`` files that embed labels,
-:meth:`~TrialTree.get_label_dt` can extract them for migration:
-
-.. automethod:: TrialTree.get_label_dt
-
 ----
 
 Saving
@@ -293,4 +270,35 @@ Saving
    dt.save("path/to/session.nc")
    dt.save()  # overwrite the file it was loaded from
 
+When saving to a new directory, the alignment NWB is automatically copied
+alongside the ``.nc`` file.
+
 .. automethod:: TrialTree.save
+
+----
+
+NWB import helpers
+------------------
+
+These functions probe NWB files to discover available data for import:
+
+.. autofunction:: ethograph.io.nwb_import.read_trials_table
+
+.. autofunction:: ethograph.io.nwb_import.probe_behavioral_series
+
+.. autofunction:: ethograph.io.nwb_import.probe_electrical_series
+
+.. autofunction:: ethograph.io.nwb_import.probe_label_sources
+
+----
+
+Dataset utilities
+-----------------
+
+Functions for building and augmenting datasets:
+
+.. autofunction:: ethograph.io.dataset.downsample_trialtree
+
+.. autofunction:: ethograph.io.dataset.add_changepoints_to_ds
+
+.. autofunction:: ethograph.io.dataset.add_angle_rgb_to_ds

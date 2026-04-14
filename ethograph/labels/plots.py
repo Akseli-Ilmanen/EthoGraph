@@ -18,6 +18,7 @@ def plot_label_segments(
     individual: Optional[str] = None,
     is_main: bool = True,
     fraction: float = 0.2,
+    alpha: float = 0.8,
 ) -> None:
     """Plot label segments from an intervals DataFrame.
 
@@ -48,7 +49,7 @@ def plot_label_segments(
     for _, row in df.iterrows():
         draw_label_rectangle(
             ax, row["onset_s"], row["offset_s"], int(row["labels"]),
-            label_mappings, is_main, fraction=fraction,
+            label_mappings, is_main, fraction=fraction, alpha=alpha
         )
 
 
@@ -60,6 +61,8 @@ def draw_label_rectangle(
     label_mappings: Dict[int, Dict],
     is_main: bool = True,
     fraction: Optional[float] = None,
+    alpha: float = 0.8,
+
 ) -> None:
     """Draw a label rectangle on a matplotlib axis.
 
@@ -84,7 +87,7 @@ def draw_label_rectangle(
     color = label_mappings[labels]["color"]
 
     if is_main:
-        ax.axvspan(start_time, end_time, alpha=0.7, color=color, zorder=-10)
+        ax.axvspan(start_time, end_time, alpha=alpha, color=color, zorder=-10)
     else:
         y_min, y_max = ax.get_ylim()
         height = (y_max - y_min) * fraction
@@ -93,7 +96,7 @@ def draw_label_rectangle(
             end_time - start_time,
             height,
             color=color,
-            alpha=0.8,
+            alpha=alpha,
             zorder=10,
         )
         ax.add_patch(rect)

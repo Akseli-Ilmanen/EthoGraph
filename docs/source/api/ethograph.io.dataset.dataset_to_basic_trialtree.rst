@@ -1,6 +1,10 @@
-dataset\_to\_basic\_trialtree
-=============================
+:orphan:
 
-.. currentmodule:: ethograph.io.dataset
+dataset\_to\_basic\_trialtree (removed)
+=======================================
 
-.. autofunction:: dataset_to_basic_trialtree
+This function has been removed. Use :func:`ethograph.from_datasets` instead:
+
+.. code-block:: python
+
+   dt = eto.from_datasets([ds])

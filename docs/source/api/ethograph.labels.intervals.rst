@@ -14,6 +14,7 @@ ethograph.labels.intervals
     empty_intervals
     load_mapping
     load_label_mapping
+    save_label_mapping
     add_interval
     delete_interval
     find_interval_at

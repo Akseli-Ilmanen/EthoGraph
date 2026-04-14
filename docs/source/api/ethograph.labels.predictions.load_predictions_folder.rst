@@ -1,6 +1,7 @@
-﻿load\_predictions\_folder
-=========================
+:orphan:
 
-.. currentmodule:: ethograph.labels.predictions
+load\_predictions\_folder (removed)
+====================================
 
-.. autofunction:: load_predictions_folder
+This function has been removed. See :class:`ethograph.labels.predictions.PredictionsStore`
+instead.

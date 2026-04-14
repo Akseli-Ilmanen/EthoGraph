@@ -5,6 +5,14 @@ ethograph.labels.predictions
 
 .. currentmodule:: ethograph.labels.predictions
 
+.. rubric:: Classes
+
+.. autosummary::
+    :toctree:
+    :nosignatures:
+
+    PredictionsStore
+
 .. rubric:: Functions
 
 .. autosummary::
@@ -13,4 +21,3 @@ ethograph.labels.predictions
 
     load_prediction_file
     prediction_to_labels_and_confidence
-    load_predictions_folder

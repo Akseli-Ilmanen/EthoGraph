@@ -1,6 +1,6 @@
-correct\_offsets
-================
+:orphan:
 
-.. currentmodule:: ethograph.labels.export
+correct\_offsets (renamed)
+==========================
 
-.. autofunction:: correct_offsets
+This function has been renamed to :func:`ethograph.labels.export.correct_offsets_trial`.

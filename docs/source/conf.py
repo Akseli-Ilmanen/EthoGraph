@@ -121,6 +121,7 @@ intersphinx_mapping = {
         "https://movement.neuroinformatics.dev/latest/",
         None,
     ),
+    "pynwb": ("https://pynwb.readthedocs.io/en/stable/", None),
 }
 
 # -- Options for HTML output -------------------------------------------------

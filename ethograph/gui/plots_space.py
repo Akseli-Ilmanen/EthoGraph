@@ -210,17 +210,19 @@ def _render_reference_3d(gl_widget, ref: ReferenceGeometry):
     if verts.shape[1] < 3:
         verts = np.column_stack([verts, np.zeros(len(verts))])
 
-    segments = []
+    # GL cannot render NaN vertex positions, so draw each edge as a
+    # separate line segment using mode='lines' (vertex pairs).
+    pairs = []
     for i0, i1 in ref.edges:
-        segments.extend([verts[i0], verts[i1], [np.nan, np.nan, np.nan]])
-    if not segments:
+        pairs.extend([verts[i0], verts[i1]])
+    if not pairs:
         return
-    segments = segments[:-1]  # drop trailing NaN separator
 
     color = _color_to_rgba(ref.color)
     wireframe = gl.GLLinePlotItem(
-        pos=np.array(segments, dtype=np.float32),
-        color=color, width=2, antialias=True,
+        pos=np.array(pairs, dtype=np.float32),
+        color=color, width=2, antialias=True, mode='lines',
+        glOptions='opaque',
     )
     gl_widget.addItem(wireframe)
 
@@ -329,7 +331,16 @@ class SpacePlot(QWidget):
 
         root.addLayout(row2)
 
-        # Plot area (created on first update)
+        # Plot area — stable container that stays in the layout; the actual
+        # PlotWidget / GLViewWidget is swapped inside it.
+        self._plot_holder = QWidget()
+        self._plot_holder_layout = QVBoxLayout()
+        self._plot_holder_layout.setContentsMargins(0, 0, 0, 0)
+        self._plot_holder.setLayout(self._plot_holder_layout)
+        self._plot_holder.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding)
+        root.addWidget(self._plot_holder, 1)
+
         self.space_widget = None
         self.is_3d = False
         self._plot_container = None
@@ -639,6 +650,12 @@ class SpacePlot(QWidget):
         use_3d = view_3d and data_z is not None
         locked = getattr(self.app_state, 'space_lock_axes', False)
 
+        # GL cannot render NaN positions — interpolate before 3D rendering
+        if use_3d:
+            data_x = interpolate_nans(data_x)
+            data_y = interpolate_nans(data_y)
+            data_z = interpolate_nans(data_z)
+
         # Save current ranges before rebuilding the widget
         saved_ranges = self._capture_ranges() if locked else None
 
@@ -676,19 +693,22 @@ class SpacePlot(QWidget):
 
 
     def _rebuild_plot_widget(self, view_3d: bool):
-        """Remove old widget and create the right type."""
+        """Remove old widget and create the right type inside the holder."""
         if self.space_widget is not None:
-            self.layout().removeWidget(self.space_widget)
+            self._plot_holder_layout.removeWidget(self.space_widget)
+            self.space_widget.hide()
             self.space_widget.deleteLater()
 
         if view_3d:
             self.space_widget = gl.GLViewWidget()
             self.space_widget.setBackgroundColor('w')
+            self.space_widget.setSizePolicy(
+                QSizePolicy.Expanding, QSizePolicy.Expanding)
         else:
             self.space_widget = pg.PlotWidget()
             self.space_widget.setBackground('w')
 
-        self.layout().addWidget(self.space_widget)
+        self._plot_holder_layout.addWidget(self.space_widget)
 
     def _load_references(self) -> list[ReferenceGeometry]:
         """Load reference geometry from space.yaml or arena.yaml."""
@@ -723,11 +743,14 @@ class SpacePlot(QWidget):
 
         is_gl = isinstance(self.space_widget, gl.GLViewWidget)
         for ref in refs:
-            if is_gl:
-                _render_reference_3d(self.space_widget, ref)
-            else:
-                plot_item = self.space_widget.getPlotItem()
-                _render_reference_2d(plot_item, ref)
+            try:
+                if is_gl:
+                    _render_reference_3d(self.space_widget, ref)
+                else:
+                    plot_item = self.space_widget.getPlotItem()
+                    _render_reference_2d(plot_item, ref)
+            except Exception:
+                logger.exception("Failed to draw reference %s", ref.name)
 
     # --- Percentile axis limits (zoom constraints) --------------------------
 

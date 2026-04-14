@@ -3,8 +3,7 @@
 # Old format (arena.xy_polygon + z_bot/z_top) is still supported.
 
 references:
-  # Aviary walls — 4 floor corners + 4 ceiling corners, edges form a box
-  - name: aviary
+  - name: setup
     vertices:
       #       x      y     z
       - [-7.00,  0.00, 0.65]   # 0: floor front-left

@@ -19,7 +19,6 @@ ethograph.labels.tsv_store
     set_trial_in_tsv
     get_trial_meta
     set_trial_meta_attr
-    migrate_label_dt_to_tsv
     init_empty_labels
 
 .. rubric:: Constants

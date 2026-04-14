@@ -1,7 +1,37 @@
 (target-data-loading)=
 # Loading Data
 
-EthoGraph works with NetCDF (`.nc`) session files. You can either load a pre-made `session.nc`[^1] or create one from your own data using the built-in creation dialog. `session.nc` files store behavioural data, labels, and metadata from a multi-trial session in **one file**.
+EthoGraph supports three loading paths depending on your data format:
+
+| Source | How to load |
+|--------|-------------|
+| `.nc` (NetCDF) | {class}`~ethograph.io.trialtree.TrialTree` (multi-trial) or single {class}`xarray.Dataset` |
+| `.nwb` (NWB) | NWB file from DANDI, NeuroConv, or custom pynwb script |
+| `.npz` / folder (Pynapple) | Pynapple-saved data |
+
+## xarray: Dataset vs TrialTree
+
+A single {class}`xarray.Dataset` holds one trial's worth of data (features, coordinates, attributes).
+A {class}`~ethograph.io.trialtree.TrialTree` wraps multiple datasets — one per trial — into a single `.nc` file.
+
+```python
+import ethograph as eto
+
+# Single trial: wrap one Dataset
+dt = eto.from_datasets([ds])
+
+# Multiple trials: wrap many Datasets
+dt = eto.from_datasets([ds_trial1, ds_trial2, ds_trial3])
+
+# Continuous recording + trial epochs
+dt = eto.from_continuous(ds, epochs_df)
+
+# Access individual trials
+ds = dt.trial(1)      # by ID
+ds = dt.itrial(0)     # by index
+```
+
+See {doc}`trialtree` for full usage.
 
 ---
 
@@ -13,7 +43,11 @@ The quickest way to explore the GUI: click **Select templates** in the I/O widge
 
 ---
 
-## Option 1: Load a pre-made session.nc
+## Load a pre-made session
+
+::::{tab-set}
+
+:::{tab-item} NetCDF (.nc)
 
 If you already have a `session.nc` file (e.g. from an ethograph pipeline or {doc}`loading_script`):
 
@@ -24,18 +58,44 @@ If you already have a `session.nc` file (e.g. from an ethograph pipeline or {doc
 5. [Optional] Select the ephys **file** (`.rhd`, `.abf`, ...) or the **Kilosort folder**
 6. Click **Load**
 
+Media paths are resolved from `.ethograph/alignment.nwb` if present, with fallback to the folders selected above.
+:::
+
+:::{tab-item} NWB (.nwb)
+
+NWB files are self-contained — EthoGraph reads trials, features, and media references directly:
+
+1. In the **I/O** widget, select your `.nwb` file
+2. [Optional] Select a local video folder if videos are not embedded or URLs
+3. Click **Load**
+
+EthoGraph uses {func}`~ethograph.io.nwb_import.read_trials_table` to extract trial boundaries and {func}`~ethograph.io.nwb_import.probe_behavioral_series` to discover available time-series. NWB data is loaded via pynapple internally.
+:::
+
+:::{tab-item} Pynapple (.npz / folder)
+
+Pynapple data saved with {func}`~pynapple.save_file` or pynapple folders:
+
+1. In the **I/O** widget, select your `.npz` file or pynapple folder
+2. [Optional] Select video/audio/tracking folders
+3. Click **Load**
+
+Trial structure is detected automatically from {class}`~pynapple.IntervalSet` objects in the data. See {func}`~ethograph.io.pynapple.load_nap_data`.
+:::
+
+::::
+
 ---
 
-## Option 2: Create a session.nc from your own data
+## Create a session from your own data
 
-Click **Create with own data** in the I/O widget. A dialog guides you through creating a `session.nc` from several supported sources. After generation the I/O fields are auto-populated so you can click **Load** immediately.
+Click **Create with own data** in the I/O widget. A dialog guides you through creating a session from several supported sources. After generation the I/O fields are auto-populated so you can click **Load** immediately.
 
-The dialog handles **single-file** workflows. For multiple trials, multiple cameras, or multiple microphone files a short Python script is required.
+The dialog handles **single-file** workflows. For multiple trials, multiple cameras, or multiple microphone files, use the **Multiple trials** tab in the wizard, or write a short Python script.
 
 | Format | When to use | Guide |
 |--------|-------------|-------|
 | Pose file | DLC, SLEAP, LightningPose `.h5`/`.csv` | {doc}`loading_pose` |
-| Xarray dataset | Movement-style `.nc` | {doc}`loading_pose` |
 | Audio file | Vocal / acoustic data | {doc}`loading_audio` |
 | Numpy file | Pre-computed feature array | {doc}`loading_numpy` |
 | Ephys recording | Raw electrophysiology +/- Kilosort | {doc}`loading_ephys` |
@@ -46,19 +106,18 @@ The dialog handles **single-file** workflows. For multiple trials, multiple came
 ## Folder structure
 
 ```
-processed_data/
-    └── ses-20220509/
-        ├── session.nc                 # Main behavioural dataset (required)
-        └── labels/                   # Label files (created by GUI)
-            ├── session_labels_20240315_143022.nc
-            └── session_labels_20240316_091045.nc
+my_project/
+    ├── session.nc                     # Behavioural dataset (xarray)
+    ├── .ethograph/
+    │   └── alignment.nwb              # Media paths, trial timing, stream offsets
+    └── labels/                        # Label files (created by GUI)
+        ├── session_labels_20240315.tsv
+        └── mapping.txt
 rawdata/
 └── ses-20220509/
     ├── video/
     │   ├── camera1_trial001.mp4
-    │   ├── camera1_trial002.mp4
-    │   ├── camera2_trial001.mp4
-    │   └── camera2_trial002.mp4
+    │   └── camera2_trial001.mp4
     ├── tracking/
     │   ├── trial001_pose.h5
     │   └── ...
@@ -77,7 +136,7 @@ rawdata/
             └── cluster_info.tsv
 ```
 
-[^1]: `session.nc` is just an example file name; you may name it differently.
+For NWB or pynapple workflows, the `.ethograph/alignment.nwb` file is created automatically by the GUI on first load if media files are present.
 
 [^2]: If your video files (e.g. `.mp4`) contain audio, the video and audio folder will be the same.
 

@@ -354,11 +354,25 @@ class TestMollSpacePlot:
         assert np.any(np.isfinite(Y)), "Y data is all NaN"
         assert sp._trajectory_times is not None and len(sp._trajectory_times) > 0
 
+        # Verify actual plot items are rendered on the 2D widget
+        import pyqtgraph as pg
+        plot_item = sp.space_widget.getPlotItem()
+        trajectory_items = [
+            item for item in plot_item.items
+            if isinstance(item, (pg.PlotCurveItem, pg.PlotDataItem))
+            or hasattr(item, '_is_trajectory')
+        ]
+        assert len(trajectory_items) > 0, (
+            f"No trajectory items rendered on 2D space plot. "
+            f"Items: {[type(i).__name__ for i in plot_item.items]}"
+        )
+
     def test_space_3d_has_data(self, moll2025_gui):
         _, meta = moll2025_gui
         _navigate_to_trial(meta, TRIAL)
 
         meta.app_state.space_plot_type = "Space Plot"
+        meta.app_state.space_show_references = True
         if hasattr(meta.data_widget, 'space_view_combo'):
             meta.data_widget.space_view_combo.setCurrentText("Space Plot")
             QApplication.processEvents()
@@ -386,6 +400,50 @@ class TestMollSpacePlot:
         assert np.any(np.isfinite(Y))
         assert np.any(np.isfinite(Z)), "Z data is all NaN"
         assert sp.is_3d is True
+
+        # Verify the GL widget and its container have Expanding policy
+        # so the layout doesn't collapse the plot to zero pixels.
+        from qtpy.QtWidgets import QSizePolicy
+        w = sp.space_widget
+        assert w.sizePolicy().horizontalPolicy() == QSizePolicy.Expanding, (
+            f"GLViewWidget horizontal policy is {w.sizePolicy().horizontalPolicy()}, "
+            f"expected Expanding ({QSizePolicy.Expanding})"
+        )
+        holder = sp._plot_holder
+        assert holder.sizePolicy().verticalPolicy() == QSizePolicy.Expanding, (
+            "Plot holder vertical policy must be Expanding"
+        )
+
+        # Verify actual GL items are rendered on the 3D widget
+        import pyqtgraph.opengl as gl
+        gl_items = [
+            item for item in sp.space_widget.items
+            if isinstance(item, (gl.GLLinePlotItem, gl.GLScatterPlotItem))
+        ]
+        assert len(gl_items) > 0, (
+            f"No GL items rendered on 3D space plot. "
+            f"Items: {[type(i).__name__ for i in sp.space_widget.items]}"
+        )
+        # Verify the trajectory line has valid (non-empty) position data
+        trajectory_lines = [
+            item for item in gl_items
+            if isinstance(item, gl.GLLinePlotItem)
+            and getattr(item, '_is_trajectory', False)
+        ]
+        assert len(trajectory_lines) > 0, "No trajectory GLLinePlotItem found"
+
+        # Verify space.yaml reference geometry is rendered (wireframe)
+        non_trajectory = [
+            item for item in sp.space_widget.items
+            if isinstance(item, gl.GLLinePlotItem)
+            and not getattr(item, '_is_trajectory', False)
+        ]
+        refs = sp._load_references()
+        if refs:
+            assert len(non_trajectory) > 0, (
+                f"space.yaml has {len(refs)} references but none rendered. "
+                f"GL items: {[type(i).__name__ for i in sp.space_widget.items]}"
+            )
 
 
 # ===================================================================
@@ -519,6 +577,16 @@ class TestMollPynappleSpacePlot:
         assert Y is not None and len(Y) > 0
         assert np.any(np.isfinite(X))
         assert np.any(np.isfinite(Y))
+
+        # Verify actual plot items are rendered
+        import pyqtgraph as pg
+        plot_item = sp.space_widget.getPlotItem()
+        trajectory_items = [
+            item for item in plot_item.items
+            if isinstance(item, (pg.PlotCurveItem, pg.PlotDataItem))
+            or hasattr(item, '_is_trajectory')
+        ]
+        assert len(trajectory_items) > 0, "No trajectory items rendered on 2D space plot"
 
 
 class TestMollPynappleLabellingWithoutChangepoints:

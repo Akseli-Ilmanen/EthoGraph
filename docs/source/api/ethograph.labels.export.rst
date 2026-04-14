@@ -1,4 +1,4 @@
-﻿ethograph.labels.export
+ethograph.labels.export
 =======================
 
 .. automodule:: ethograph.labels.export
@@ -14,7 +14,5 @@
     :toctree:
     :nosignatures:
 
-    
-    correct_offsets
-    
-
+    correct_offsets_trial
+    enrich_labels_df

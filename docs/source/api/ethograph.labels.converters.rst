@@ -12,10 +12,9 @@
     :toctree:
     :nosignatures:
 
-    
-    NWBLabelConverter
-    
-
+    LabelConverter
+    CrowsettaLabelConverter
+    PynappleLabelConverter
 
 
 

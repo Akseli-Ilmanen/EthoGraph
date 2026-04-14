@@ -44,7 +44,7 @@ For **multiple separate `.wav` files** (one per mic), use the multi-trial wizard
 | **Audio file** | `.wav`, `.mp3`, `.mp4`, `.flac` |
 | **Video frame rate** | Auto-detected from video |
 | **Video onset in audio** | Time offset (s) where video starts relative to audio stream |
-| **Audio sample rate** | Read-only — auto-detected from file |
+| **Audio sample rate** | float |
 | **Individuals** | Optional, comma-separated |
 | **Load video motion features** | Extracts frame-to-frame motion signal from video |
 | **Output path** | Where to save the generated `session.nc` |

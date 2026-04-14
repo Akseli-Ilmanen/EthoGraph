@@ -12,7 +12,6 @@ from ethograph.io.dataset import (
     add_angle_rgb_to_ds,
     add_changepoints_to_ds,
     downsample_trialtree,
-    dataset_to_basic_trialtree,
 )
 from ethograph.utils.xr_utils import get_ds_duration, get_time_coord, sel_valid
 from ethograph.utils.paths import get_project_root
@@ -26,6 +25,7 @@ from ethograph.io.catalog import (
     catalog_from_xarray,
 )
 from ethograph.io.pynapple import load_nap_data
+from ethograph.datasets import sample_data
 from ethograph.io.time_model import (
     SourceCollection,
     TimeRange,

@@ -109,7 +109,6 @@ hp_filtered = False
 
 EthoGraph reads `dat_path`, `n_channels_dat`, and `sample_rate` from it. If the file is missing or `dat_path` no longer points to a valid file, a dialog prompts for the values and writes a new `params.py` so the step is not repeated.
 
-If an ephys file is already open in the trace panel, EthoGraph warns if the sample rate in `params.py` differs from the file header by more than 1 Hz.
 
 ### What gets loaded
 
@@ -123,23 +122,3 @@ If an ephys file is already open in the trace panel, EthoGraph warns if the samp
 ## Ephys with multiple trials
 
 Ephys is session-wide. If you have separate video/audio files per trial, build a `session.nc` first (see {doc}`loading_script`), then select the ephys file separately in the I/O widget.
-
-If the ephys clock differs from the behavioural reference, record the offset in your script:
-
-```python
-dt.set_stream_offset("ephys", 0.0)   # adjust to match your setup
-dt.save("session.nc")
-```
-
----
-
-## Stream alignment
-
-When multiple streams run on different clocks, set offsets so traces align to behaviour:
-
-```python
-dt.set_stream_offset("ephys", 0.0)   # ephys is the reference
-dt.set_stream_offset("audio", 0.23)  # audio lags by 230 ms
-```
-
-{meth}`~ethograph.io.trialtree.TrialTree.source_start_time` returns the trial-relative time of ephys sample 0. See {ref}`TrialTree API — Stream offsets <target-trialtree-offsets-api>` for the full API.
