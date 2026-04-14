@@ -898,7 +898,12 @@ class EphysTracePlot(BasePlot):
 
     @property
     def _ephys_offset(self) -> float:
-        return float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0)
+        """Session-absolute time corresponding to trial-relative t=0 for the ephys file stream."""
+        scalar = float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0)
+        trial = getattr(self.app_state, 'trials_sel', None)
+        align = getattr(self.app_state, 'nwb_alignment', None)
+        trial_start = float(align.start_time(trial) or 0.0) if (trial is not None and align is not None) else 0.0
+        return trial_start + scalar
 
     @property
     def _trial_duration(self) -> float | None:

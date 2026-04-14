@@ -24,6 +24,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ethograph.gui.notify import notify
 from ethograph.io.time_model import (
     RestrictionWindow,
     TimeRange,
@@ -566,10 +567,14 @@ class NavigationWidget(QWidget):
         trials = getattr(self.app_state, "trials", None)
         if not trials:
             return
+        if trials_sel not in trials and str(trials_sel) not in [str(t) for t in trials]:
+            notify(f"Unknown trial: {trials_sel!r}", severity="warning")
+            return
         try:
             self.app_state.set_key_sel("trials", trials_sel)
         except KeyError:
-            self.app_state.trials_sel = trials[0]
+            notify(f"Unknown trial: {trials_sel!r}", severity="warning")
+            return
         self.app_state.trial_changed.emit()
         self._update_counter()
         tb = self.app_state.trial_bounds
@@ -851,7 +856,15 @@ class NavigationWidget(QWidget):
         return self.app_state.video_fps
 
     def _on_fps_changed(self):
-        fps_playback = float(self.fps_playback_edit.text())
+        text = self.fps_playback_edit.text()
+        try:
+            fps_playback = float(text)
+        except ValueError:
+            notify(f"Invalid playback FPS: {text!r}", severity="warning")
+            return
+        if fps_playback <= 0:
+            notify(f"Playback FPS must be positive (got {fps_playback})", severity="warning")
+            return
         self.app_state.fps_playback = fps_playback
         qt_dims = self.viewer.window.qt_viewer.dims
         if qt_dims.slider_widgets:

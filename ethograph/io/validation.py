@@ -124,19 +124,7 @@ def validate_required_attrs(
     return errors
 
 
-def validate_media_files_session(dt: "TrialTree") -> list[str]:
-    """Validate session-level media file entries.
 
-    Checks that media paths referenced in nwb_alignment are non-empty.
-    """
-    errors = []
-    sio = dt.nwb_alignment
-    # Basic check: ensure nwb_alignment is accessible
-    try:
-        _ = sio.cameras
-    except Exception:
-        pass
-    return errors
 
 
 def validate_changepoints(ds: xr.Dataset) -> list[str]:
@@ -203,7 +191,12 @@ def validate_dataset(
         errors.append("Xarray dataset ('ds') must have 'individuals' coordinate")
 
     for feat_name in catalog.features:
-        feat_var = ds[feat_name]
+        try:
+            feat_var = ds[feat_name]
+        except KeyError:
+            print(f"Warning: Feature '{feat_name}' listed in catalog but not found in dataset. Skipping validation for this feature.")
+            continue
+
         has_time_coord = any('time' in str(dim).lower() for dim in feat_var.dims)
         if not has_time_coord:
             errors.append(f"Feature variable '{feat_name}' must have a coordinate containing 'time'. E.g. 'time', 'time_labels', 'time_aux', etc.")
@@ -284,7 +277,7 @@ def validate_datatree(
         return ["No trial datasets found in TrialTree"]
 
     errors = []
-    errors.extend(validate_media_files_session(dt))
+
 
     sample_size = min(5, len(datasets))
     sample_indices = np.random.choice(len(datasets), size=sample_size, replace=False)

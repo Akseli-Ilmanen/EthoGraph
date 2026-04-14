@@ -20,6 +20,7 @@ def override_napari_shortcuts(viewer):
         'Ctrl-a', 'Ctrl-s', 'Ctrl-x', 'Ctrl-v', 'Ctrl-l', 'Ctrl-enter', 'Ctrl-d',
         'Ctrl-e', 'Ctrl-f', 'Ctrl-i', 'Ctrl-k', 'Ctrl-c', 'Ctrl-m', 'Ctrl-t',
         'Ctrl-Left', 'Ctrl-Right',
+        'Shift-A', 'Shift-S', 'Shift-E', 'Shift-F', 'Shift-C', 'Shift-K',
     ]
 
     all_keys = number_keys + qwerty_row + home_row + control_row + other + combos
@@ -260,25 +261,25 @@ def bind_global_shortcuts(meta_widget):
     @viewer.bind_key("shift+a", overwrite=True)
     def toggle_audiotrace(v):
         cb = data_widget.audiotrace_checkbox
-        if cb.isVisible():
+        if cb.isEnabled():
             cb.setChecked(not cb.isChecked())
 
     @viewer.bind_key("shift+s", overwrite=True)
     def toggle_spectrogram(v):
         cb = data_widget.spectrogram_checkbox
-        if cb.isVisible():
+        if cb.isEnabled():
             cb.setChecked(not cb.isChecked())
 
     @viewer.bind_key("shift+e", overwrite=True)
     def toggle_ephys(v):
         cb = getattr(data_widget, 'phy_viewer_checkbox', None)
-        if cb and cb.isVisible():
+        if cb and cb.isEnabled():
             cb.setChecked(not cb.isChecked())
 
     @viewer.bind_key("shift+f", overwrite=True)
     def toggle_featureplot(v):
         cb = data_widget.featureplot_checkbox
-        if cb.isVisible():
+        if cb.isEnabled():
             cb.setChecked(not cb.isChecked())
 
     @viewer.bind_key("shift+c", overwrite=True)

@@ -1406,15 +1406,24 @@ class EphysWidget(QWidget):
         layout.addWidget(btn)
         dialog.exec_()
 
+    def _trial_start_session(self) -> float:
+        trial = getattr(self.app_state, 'trials_sel', None)
+        align = getattr(self.app_state, 'nwb_alignment', None)
+        if trial is None or align is None:
+            return 0.0
+        return float(align.start_time(trial) or 0.0)
+
     def _trial_ep(self) -> nap.IntervalSet | None:
-        ephys_offset = float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0)
         window_bounds = self.app_state.window_bounds
         if window_bounds is None:
             return None
-        return nap.IntervalSet(ephys_offset, ephys_offset + window_bounds.duration)
+        t0 = self._ephys_offset()
+        return nap.IntervalSet(t0, t0 + window_bounds.duration)
 
     def _ephys_offset(self) -> float:
-        return float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0)
+        """Session-absolute time corresponding to trial-relative t=0 for spike streams."""
+        ephys_offset = float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0)
+        return self._trial_start_session() + ephys_offset
 
     def _restrict_to_trial(self, cluster_id: int, sr: float) -> tuple[np.ndarray, np.ndarray]:
         """Return (times_local_s, samples_abs) for cluster_id restricted to current trial."""
