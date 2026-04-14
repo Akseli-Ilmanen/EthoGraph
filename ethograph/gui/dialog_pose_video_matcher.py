@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
 
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
@@ -55,8 +54,8 @@ from ethograph.io.validation import POSE_EXTENSIONS, VIDEO_EXTENSIONS
 def get_trial_stem(filename: str, trial_ids: list) -> str:
     """Strip the trial-specific substring from a filename stem.
 
-    Tries common separator patterns (``_``, ``-``, ``.``) and both suffix
-    and prefix positions.  Falls back to the bare stem if nothing matches.
+    Tries common separator patterns (``_``, ``-``, ``.``) in suffix, prefix,
+    and mid-stem positions.  Falls back to the bare stem if nothing matches.
 
     Examples
     --------
@@ -64,6 +63,8 @@ def get_trial_stem(filename: str, trial_ids: list) -> str:
     'leftcam'
     >>> get_trial_stem("trial2_rightpose.h5", [1, 2, 3])
     'rightpose'
+    >>> get_trial_stem("2024-12-17_115_Crow1-cam-1.mp4", [115, 116])
+    '2024-12-17_Crow1-cam-1'
     """
     stem = Path(filename).stem
     for trial_id in trial_ids:
@@ -76,6 +77,10 @@ def get_trial_stem(filename: str, trial_ids: list) -> str:
             # Prefix: 1_leftcam
             if stem.startswith(f"{s}{sep}"):
                 return stem[len(s) + len(sep) :].lstrip("_-.")
+            # Mid-stem: date_115_camera
+            mid = f"{sep}{s}{sep}"
+            if mid in stem:
+                return stem.replace(mid, sep, 1).strip("_-.")
         # Bare numeric suffix without separator: leftcam1
         if s.isdigit() and stem.endswith(s) and len(stem) > len(s):
             candidate = stem[: -len(s)].rstrip("_-.")
@@ -246,8 +251,8 @@ class PoseVideoMatcherWidget(QWidget):
 class PoseVideoMatcherDialog(QDialog):
     """Wraps PoseVideoMatcherWidget in a modal dialog with OK / Cancel.
 
-    When ``nwb_registry`` is provided the pose column is populated from NWB
-    processing module entries instead of scanning for pose files on disk.
+    When ``pose_items`` is provided the pose column is populated directly
+    (e.g. from NWB processing module entries) instead of scanning disk.
     """
 
     def __init__(
@@ -256,8 +261,7 @@ class PoseVideoMatcherDialog(QDialog):
         pose_folder: str,
         trial_ids: list,
         parent: QWidget | None = None,
-        nwb_registry: dict[str, dict[str, Any]] | None = None,
-        pose_items: list = None,
+        pose_items: list[str] | None = None,
     ):
         super().__init__(parent)
         self.setWindowTitle("Match video cameras to pose files")
@@ -267,7 +271,7 @@ class PoseVideoMatcherDialog(QDialog):
         layout = QVBoxLayout(self)
         self._matcher = PoseVideoMatcherWidget()
 
-        if nwb_registry is not None:
+        if pose_items is not None:
             video_stems = get_unique_stems(video_folder, trial_ids, VIDEO_EXTENSIONS)
             self._matcher.set_items_direct(video_stems, pose_items)
         else:

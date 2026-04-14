@@ -1529,6 +1529,19 @@ class IOWidget(QWidget):
         if tsv.exists():
             self.app_state.metadata_path = str(tsv)
 
+    def _try_auto_populate_alignment(self, selected_path: str) -> None:
+        """Populate the alignment field from .ethograph/alignment.nwb if not already set."""
+        if self.nwb_file_path_edit.text().strip():
+            return
+        from ethograph.utils.paths import find_nwb_file
+
+        p = Path(selected_path)
+        data_dir = str(p) if p.is_dir() else str(p.parent)
+        nwb = find_nwb_file(data_dir)
+        if nwb is not None:
+            self.nwb_file_path_edit.setText(str(nwb))
+            logger.info("Auto-populated alignment from browse: %s", nwb)
+
     def _browse_data_file(self):
         """Browse for a data file (.nc, .nwb, .npz)."""
         result = QFileDialog.getOpenFileName(
@@ -1540,6 +1553,7 @@ class IOWidget(QWidget):
         if path:
             self.nc_file_path_edit.setText(path)
             self.app_state.nc_file_path = path
+            self._try_auto_populate_alignment(path)
 
     def _browse_data_folder(self):
         """Browse for a pynapple data folder."""
@@ -1550,6 +1564,7 @@ class IOWidget(QWidget):
         if path:
             self.nc_file_path_edit.setText(path)
             self.app_state.nc_file_path = path
+            self._try_auto_populate_alignment(path)
 
     def _maybe_downsample_videos(self, folder: str) -> str:
         """Offer to downsample high-res videos. Returns the folder to use."""

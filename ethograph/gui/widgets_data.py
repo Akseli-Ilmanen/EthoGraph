@@ -104,14 +104,12 @@ _PANEL_DEFS: list[_PanelDef] = [
               state_attr="audiotrace_visible",
               container_method="set_audiotrace_visible",
               autoscale_plot="audio_trace_plot",
-              on_toggle="_on_audio_panel_toggle",
-              requires="has_audio"),
+              on_toggle="_on_audio_panel_toggle"),
     _PanelDef("spectrogram",  "Spectrogram",  row=1, audio_row=True,
               state_attr="spectrogram_visible",
               container_method="set_spectrogram_visible",
               autoscale_plot="spectrogram_plot",
-              on_toggle="_on_audio_panel_toggle",
-              requires="has_audio"),
+              on_toggle="_on_audio_panel_toggle"),
     _PanelDef("neo_viewer",   "Neo-Viewer",   row=1,
               container_method="set_neo_visible",
               on_toggle="_on_neo_panel_toggle",
@@ -418,7 +416,6 @@ class DataPanel(QWidget):
             pose_folder=getattr(self.app_state, "pose_folder", "") or "",
             trial_ids=getattr(self.app_state, "trials", []),
             parent=self,
-            nwb_registry={},
             pose_items=pose_keys,
         )
         if dialog.exec_():
@@ -1106,9 +1103,6 @@ class DataWidget(QWidget):
             self.neural_view_combo.show()
             self.ephys_widget.configure_ephys_trace_plot()
 
-        if not self.app_state.has_audio:
-            for w in self._audio_row_widgets:
-                w.setEnabled(False)
         self.video_mgr.set_audio_row_widgets(self._audio_row_widgets)
 
         # Overlays
@@ -1421,7 +1415,7 @@ class DataWidget(QWidget):
             getattr(self, defn.on_toggle)(visible)
 
     def _on_audio_panel_toggle(self, visible: bool):
-        if visible and self.plot_container and self.app_state.has_audio:
+        if visible and self.plot_container:
             self.plot_container.update_audio_panels()
 
     def _on_neo_panel_toggle(self, visible: bool):

@@ -49,8 +49,6 @@ from ethograph.labels.tsv_store import init_empty_labels
 logger = logging.getLogger(__name__)
 
 
-def _default_trial_ids() -> list[int]:
-    return [1]
 
 
 @dataclass
@@ -58,7 +56,7 @@ class LoadResult:
     """Everything ``load_dataset`` returns — no dt.attrs transport."""
 
     dt: Any = None  # TrialTree (or None for NWB-only path)
-    trial_ids: list[int | str] = field(default_factory=_default_trial_ids)
+    trial_ids: list[int | str] = field(default_factory=lambda: [1])
     nwb_alignment: Any = field(default_factory=EmpytAlignment)
     metadata_df: pd.DataFrame = field(default_factory=lambda: empty_metadata_df([1]))
     metadata_path: str | None = None

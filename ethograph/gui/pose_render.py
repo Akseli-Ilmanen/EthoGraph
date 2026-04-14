@@ -287,7 +287,7 @@ class PoseDisplayManager:
         return cameras[camera_idx] if camera_idx < len(cameras) else str(camera_idx)
 
     def _resolve_camera_fps(self, camera_idx: int) -> float:
-        sio = self.app_state.nwb_alignment
+        sio = self.app_state.nwb_alignment # sio = session io (legacy name)
         cameras = sio.cameras
         if camera_idx < len(cameras):
             fps = sio.get_stream_rate("video", cameras[camera_idx])

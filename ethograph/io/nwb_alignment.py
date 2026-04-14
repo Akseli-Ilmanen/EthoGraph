@@ -322,6 +322,9 @@ class NWBAlignment:
                 match = df[df["trial"] == int(trial)]
             if not match.empty:
                 return match.iloc[0]
+            # Single-row tables (e.g. "session" label) — fall back to the only row
+            if len(df) == 1:
+                return df.iloc[0]
             return None
         # No trial column: use 1-based integer lookup into row index
         idx = self._trial_to_iloc(trial)
