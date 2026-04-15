@@ -1,0 +1,9 @@
+sphinx
+sphinx-autobuild
+pydata-sphinx-theme
+sphinx-autodoc-typehints
+sphinx-sitemap
+sphinx-design
+myst-nb
+linkify-it-py
+setuptools-scm

@@ -119,6 +119,7 @@ docs = [
     "pydata-sphinx-theme",
     "sphinx-autodoc-typehints",
     "sphinx-sitemap",
+    "sphinx-design",
     "myst-nb",
     "linkify-it-py",
     "setuptools-scm",
@@ -173,6 +174,10 @@ ignore = [
     "docs/",
     "docs/source/",
 ]
+
+[tool.codespell]
+ignore-words-list = "eto,extention"
+skip = "*.ipynb,docs/build/*,docs/jupyter_execute/*"
 
 [tool.ruff]
 line-length = 79
