@@ -31,7 +31,6 @@ jobs:
         with:
           python-version: '3.12'
           check-links: false
-          use-make: true
 
   deploy_sphinx_docs:
     name: Deploy Sphinx Docs
