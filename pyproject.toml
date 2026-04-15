@@ -175,10 +175,6 @@ ignore = [
     "docs/source/",
 ]
 
-[tool.codespell]
-ignore-words-list = "eto,extention"
-skip = "*.ipynb,docs/build/*,docs/jupyter_execute/*"
-
 [tool.ruff]
 line-length = 79
 exclude = ["__init__.py", "build", ".eggs"]
@@ -215,5 +211,6 @@ commands =
 """
 
 [tool.codespell]
-skip = '.git'
+skip = '.git,*.ipynb,docs/build/*,docs/jupyter_execute/*'
 check-hidden = true
+ignore-words-list = "eto,extention"
