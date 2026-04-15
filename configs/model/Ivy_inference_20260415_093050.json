@@ -36,11 +36,11 @@
     "30": 1.5,
     "40": 2.0
   },
-  "action": "train",
+  "action": "inference",
   "mapping_file": "D:\\Akseli\\Code\\ethograph\\configs\\crowlab\\mapping.txt",
-  "target_individual": "Poppy",
+  "target_individual": "Ivy",
   "cp_kwargs": {
-    "individuals": "Poppy",
+    "individuals": "Ivy",
     "keypoints": "beakTip"
   },
   "feat_kwargs": {
@@ -48,22 +48,18 @@
       "beakTip",
       "stickTip"
     ],
-    "individuals": "Poppy"
+    "individuals": "Ivy"
   },
   "trainDataReady": false,
-  "train_nc_paths": [
-    "D:\\Akseli\\AI_data\\derivatives\\sub-02_id-Poppy\\ses-000_date-20260308_01\\behav\\Trial_data.nc",
-    "D:\\Akseli\\AI_data\\derivatives\\sub-02_id-Poppy\\ses-000_date-20260309_01\\behav\\Trial_data.nc",
-    "D:\\Akseli\\AI_data\\derivatives\\sub-02_id-Poppy\\ses-000_date-20260310_01\\behav\\Trial_data.nc"
-  ],
   "test_nc_paths": [
-    "D:\\Akseli\\AI_data\\derivatives\\sub-02_id-Poppy\\ses-000_date-20260308_01\\behav\\Trial_data.nc"
+    "D:\\Akseli\\AI_data\\derivatives\\sub-01_id-Ivy\\ses-000_date-20260414_01\\behav\\Trial_data.nc"
   ],
-  "config": "configs/model\\Poppy_train_20260414_180413.json",
+  "config": "configs/model\\Ivy_inference_20260415_093050.json",
   "split": "1",
-  "result_dir": "D:\\Akseli\\Code\\ethograph\\result\\Poppy_train_20260414_180413\\split_1",
-  "dataset_dir": "D:\\Akseli\\Code\\ethograph\\data\\Poppy_train_20260414_180413",
-  "feature_dim": 70,
+  "result_dir": "D:\\Akseli\\Code\\ethograph\\result\\Ivy_inference_20260415_093050\\split_1",
+  "model_path": "D:\\Akseli\\Code\\ethograph\\configs\\crowlab\\model\\Ivy_train_20260202_191138_epoch-100.model",
+  "dataset_dir": "D:\\Akseli\\Code\\ethograph\\data\\Ivy_inference_20260415_093050",
+  "feature_dim": 76,
   "remote_backup_path": "D:/Akseli/Code/syllable_labels",
   "apply_changepoint_correction": true,
   "av_speed_coupled": false,
@@ -119,7 +115,7 @@
   "downsample_factor": 100,
   "env_cutoff": 500.0,
   "env_rate": 2000.0,
-  "fps_playback": 240.0,
+  "fps_playback": 70.0,
   "fr_bin_size": 0.01,
   "fr_sigma": 2.0,
   "freq_cutoffs_max": 10000.0,
@@ -144,6 +140,7 @@
     "space": true
   },
   "cp_label_thresholds": {
+    "2": 0.03,
     "3": 0.03,
     "8": 0.03,
     "9": 0.03,

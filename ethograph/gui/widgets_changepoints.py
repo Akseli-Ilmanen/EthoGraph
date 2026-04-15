@@ -988,6 +988,28 @@ class ChangepointsWidget(QWidget):
         manual_layout.addWidget(manual_note)
         manual_layout.addLayout(manual_grid)
 
+        steps_layout = QHBoxLayout()
+        self.cp_step_purge_cb = QCheckBox("1. Purge")
+        self.cp_step_purge_cb.setChecked(self.app_state.cp_step_purge)
+        self.cp_step_purge_cb.setToolTip("Remove intervals shorter than min label length")
+        self.cp_step_stitch_cb = QCheckBox("2. Stitch")
+        self.cp_step_stitch_cb.setChecked(self.app_state.cp_step_stitch)
+        self.cp_step_stitch_cb.setToolTip("Merge same-label intervals across small gaps")
+        self.cp_step_snap_cb = QCheckBox("3. Snap to changepoints")
+        self.cp_step_snap_cb.setChecked(self.app_state.cp_step_snap)
+        self.cp_step_snap_cb.setToolTip("Snap interval boundaries to nearest changepoint")
+        self.cp_step_purge_after_cb = QCheckBox("4. Purge again")
+        self.cp_step_purge_after_cb.setChecked(self.app_state.cp_step_purge_after)
+        self.cp_step_purge_after_cb.setToolTip("Remove short intervals created by snapping")
+        self.cp_step_purge_cb.stateChanged.connect(lambda v: setattr(self.app_state, "cp_step_purge", bool(v)))
+        self.cp_step_stitch_cb.stateChanged.connect(lambda v: setattr(self.app_state, "cp_step_stitch", bool(v)))
+        self.cp_step_snap_cb.stateChanged.connect(lambda v: setattr(self.app_state, "cp_step_snap", bool(v)))
+        self.cp_step_purge_after_cb.stateChanged.connect(lambda v: setattr(self.app_state, "cp_step_purge_after", bool(v)))
+        for cb in (self.cp_step_purge_cb, self.cp_step_stitch_cb, self.cp_step_snap_cb, self.cp_step_purge_after_cb):
+            steps_layout.addWidget(cb)
+        steps_layout.addStretch()
+        manual_layout.addLayout(steps_layout)
+
         button_layout = QHBoxLayout()
 
         self.per_label_btn = QPushButton("Per-label thresholds...")
@@ -1145,6 +1167,10 @@ class ChangepointsWidget(QWidget):
             max_expansion_s=max_expansion_s,
             max_shrink_s=max_shrink_s,
             label_thresholds_s=label_thresholds_s or None,
+            do_purge=self.cp_step_purge_cb.isChecked(),
+            do_stitch=self.cp_step_stitch_cb.isChecked(),
+            do_snap=self.cp_step_snap_cb.isChecked(),
+            do_purge_after=self.cp_step_purge_after_cb.isChecked(),
         )
         
     def cp_correction_from_labelling(self):

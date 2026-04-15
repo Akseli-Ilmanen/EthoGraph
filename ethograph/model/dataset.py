@@ -103,8 +103,11 @@ def extract_features_per_trial(ds, all_params):
     
     # s3d = ds.s3d.values
     ds = ds.drop_vars("s3d")
+    ds = ds.drop_vars("angle_rgb") # 
     
     feat_ds = ds.sel(**feat_kwargs).squeeze().filter_by_attrs(type="features")
+    
+    
     features = feat_ds.to_stacked_array('features', sample_dims=['time']).values # flatten across non-time dimensions
     shape1 = features.shape
     features = features[:, ~np.all(np.isnan(features), axis=0)]

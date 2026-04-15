@@ -419,9 +419,9 @@ class IOWidget(QWidget):
         local_backup_row.addWidget(local_backup_label)
         self.local_backup_edit = QLineEdit()
         self.local_backup_edit.setReadOnly(True)
-        self.local_backup_edit.setPlaceholderText("label_backups/")
+        self.local_backup_edit.setPlaceholderText("labels/backups/")
         if self.app_state.nc_file_path:
-            backup_dir = str(Path(self.app_state.nc_file_path).parent / "label_backups")
+            backup_dir = str(Path(self.app_state.nc_file_path).parent / "labels" / "backups")
             self.local_backup_edit.setText(backup_dir)
         local_backup_row.addWidget(self.local_backup_edit)
         layout.addLayout(local_backup_row)

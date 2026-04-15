@@ -234,6 +234,10 @@ class AppStateSpec:
         "audio_cp_silence_threshold": (float, 0.1, True),
         "show_changepoints": (bool, True, True),
         "apply_changepoint_correction": (bool, True, True),
+        "cp_step_purge": (bool, True, True),
+        "cp_step_stitch": (bool, True, True),
+        "cp_step_snap": (bool, True, True),
+        "cp_step_purge_after": (bool, True, True),
         "automatic_min_label_length_s": (float, 1e-3, True),
         "automatic_stitch_gap_s": (float, 0.0, True),
         "remote_backup_path": (str | None, None, True),
@@ -1117,7 +1121,7 @@ class ObservableAppState(QObject):
         save_labels_tsv(canonical_tsv, save_df)
 
         # 2. Local backup with timestamp
-        backup_dir = nc_path.parent / "label_backups"
+        backup_dir = nc_path.parent / "labels" / "backups"
         backup_dir.mkdir(exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         save_labels_tsv(backup_dir / f"{stem}_labels_{timestamp}.tsv", save_df)

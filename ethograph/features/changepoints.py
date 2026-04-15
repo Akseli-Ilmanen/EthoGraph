@@ -210,23 +210,31 @@ def correct_changepoints(
     max_expansion_s: float,
     max_shrink_s: float,
     label_thresholds_s: dict[int, float] | None = None,
+    do_purge: bool = True,
+    do_stitch: bool = True,
+    do_snap: bool = True,
+    do_purge_after: bool = True,
 ) -> pd.DataFrame:
     """Full interval-native correction pipeline.
 
     Steps:
-        1. purge_short_intervals — pre-cleanup
-        2. stitch_intervals — merge same-label across small gaps
-        3. snap_boundaries — snap to changepoint times
-        4. purge_short_intervals — post-cleanup (snapping may create short intervals)
+        1. purge_short_intervals — pre-cleanup (do_purge)
+        2. stitch_intervals — merge same-label across small gaps (do_stitch)
+        3. snap_boundaries — snap to changepoint times (do_snap)
+        4. purge_short_intervals — post-cleanup (do_purge_after)
     """
     if df.empty:
         return df.copy()
 
-    result = purge_short_intervals(df, min_duration_s, label_thresholds_s)
-    result = stitch_intervals(result, stitch_gap_s)
-
-    result = snap_boundaries(result, cp_times, max_expansion_s, max_shrink_s)
-    result = purge_short_intervals(result, min_duration_s, label_thresholds_s)
+    result = df
+    if do_purge:
+        result = purge_short_intervals(result, min_duration_s, label_thresholds_s)
+    if do_stitch:
+        result = stitch_intervals(result, stitch_gap_s)
+    if do_snap:
+        result = snap_boundaries(result, cp_times, max_expansion_s, max_shrink_s)
+    if do_purge_after:
+        result = purge_short_intervals(result, min_duration_s, label_thresholds_s)
 
     return result
 

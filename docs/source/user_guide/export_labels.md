@@ -9,9 +9,11 @@ Labels are stored in a **TSV file** alongside the `.nc` data file. The `.nc` fil
 session_20260903/
     data.nc                    # features, ephys, trial structure (read-only)
     data_labels.tsv            # labels (single source of truth)
+    labels/
     label_backups/
         data_labels_20240315_192005.tsv   # auto-backup on every save
 ```
+TODO. rewrite labels/backups, labels/predictions ...
 
 The TSV uses integer label IDs in the ``labels`` column. Label names are managed centrally in ``mapping.txt`` -- rename a label once there, and it applies everywhere.
 

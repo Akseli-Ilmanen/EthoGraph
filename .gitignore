@@ -1,9 +1,7 @@
 data/
 logging/
 result/
-neurosift/
-pynaviz/
-docs_OLD/
+configs/crowlab/model/
 *.mp4
 *.avi
 *.mkv
@@ -14,6 +12,7 @@ docs_OLD/
 *.npy
 *.csv
 *.tsv
+*.npz
 
 
 

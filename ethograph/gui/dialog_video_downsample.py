@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 import shutil
 import subprocess
 from pathlib import Path
@@ -82,14 +83,20 @@ def _get_video_resolution(path: str) -> tuple[int, int] | None:
 
 
 def scan_large_videos(
-    folder: str, threshold_height: int = RESOLUTION_THRESHOLD,
+    folder: str, threshold_height: int = RESOLUTION_THRESHOLD, sample: int = 5,
 ) -> list[tuple[str, int, int]]:
-    """Return list of (filename, width, height) for videos above the threshold."""
-    large = []
+    """Return list of (filename, width, height) for videos above the threshold.
+
+    Probes a random sample of up to *sample* files to infer whether the folder
+    contains high-resolution videos, then returns matching entries from that sample.
+    """
     folder_path = Path(folder)
-    for f in sorted(folder_path.iterdir()):
-        if f.suffix.lower() not in VIDEO_EXTENSIONS:
-            continue
+    all_videos = sorted(
+        f for f in folder_path.iterdir() if f.suffix.lower() in VIDEO_EXTENSIONS
+    )
+    probed = random.sample(all_videos, min(sample, len(all_videos)))
+    large = []
+    for f in probed:
         res = _get_video_resolution(str(f))
         if res is None:
             continue

@@ -14,7 +14,6 @@ import ethograph as eto
 
 
 params_rigid = {
-"Note": "Purge, stich and other changepoint_params determiend in configs/changepoints_settings.yaml",
 "fps": 200,
 "good_s3d_feats": None,
 "changepoint_feats": {
@@ -51,7 +50,7 @@ if __name__ == "__main__":
 
 
    # need to comment out for train-all
-   action="train" # "train", "inference", "CV", "ablation"
+   action="inference" # "train", "inference", "CV", "ablation"
    # eval run manually via terminal
    
    trainDataReady = False
@@ -60,7 +59,7 @@ if __name__ == "__main__":
    model_path = os.path.join(eto.get_project_root(), "configs", "crowlab", "model", "Ivy_train_20260202_191138_epoch-100.model")
    # model_path = r"D:\Akseli\Code\ethograph\result\Poppy_train_20260331_175332\split_1\epoch-100.model"
 
-   target_individual = "Poppy" # predict labels for this individual
+   target_individual = "Ivy" # predict labels for this individual
    
    cp_kwargs = {
       "individuals": target_individual,
@@ -74,65 +73,16 @@ if __name__ == "__main__":
    
 
    from ethograph.utils.paths import find_config
-   mapping_file = os.path.join(eto.get_project_root(), "configs", "crowlab", "mapping.txt") # CHANGE FOR Ivy/poppy
+   mapping_file = os.path.join(eto.get_project_root(), "configs", "crowlab", "mapping_Ivy.txt") # CHANGE FOR Ivy/poppy
    
    
    nc_paths = [
-      r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260308_01\behav\Trial_data.nc",
-      r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260309_01\behav\Trial_data.nc",
-      r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260310_01\behav\Trial_data.nc",
-      # r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260413_01\behav\Trial_data.nc",
+      r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260413_01\behav\Trial_data.nc",
+      r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260414_01\behav\Trial_data.nc",
+      r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260415_01\behav\Trial_data.nc",
    ]
    
    
-   # nc_paths = [
-   #    # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260309_01\behav\Trial_data.nc"
-   #    # r"D:\Akseli\CrowBench\ses-000_date-20250526_01\behav\Trial_data.nc",
-   #    # r"D:\Akseli\CrowBench\ses-000_date-20250526_02\behav\Trial_data.nc",
-   #    # r"D:\Akseli\CrowBench\ses-000_date-20250527_01\behav\Trial_data.nc",
-   #    # r"D:\Akseli\CrowBench\ses-000_date-20250527_02\behav\Trial_data.nc",
-   #    # r"D:\Akseli\CrowBench\ses-000_date-20250528_01\behav\Trial_data.nc",
-   # ]
-
-
-   # nc_paths = [      
-   #    r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260308_01\behav\Trial_data.nc"
-   #    # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250527_01\behav\Trial_data.nc", 
-   #    # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250527_02\behav\Trial_data.nc", 
-   #    # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250528_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250526_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250526_02\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250528_02\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250529_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250530_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-03_id-Freddy\ses-000_date-20250602_01\behav\Trial_data.nc"
-      
-
-
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250306_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250309_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250503_02\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250514_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250504_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250505_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250307_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250308_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250506_02\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250507_02\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250507_03\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250508_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250508_02\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250509_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250512_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250513_01\behav\Trial_data.nc",      
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250515_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250516_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250519_01\behav\Trial_data.nc",
-      
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250521_01\behav\Trial_data.nc",
-   #    # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250522_01\behav\Trial_data.nc"             
-   # ]
-         
    
    params_dynamic = copy.deepcopy(params_rigid)
    params_dynamic['action'] = action
@@ -171,7 +121,7 @@ if __name__ == "__main__":
          params_dynamic[f'split_{fold_id+1}'] = {"train_nc_paths": train_nc_paths, "test_nc_paths": test_nc_paths}
 
 
-      config_path = save_config(params_dynamic, 'configs/model', action)
+      config_path = save_config(params_dynamic, 'configs/crowlab/model', action)
          
       eto.get_project_root()
    
