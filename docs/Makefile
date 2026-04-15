@@ -14,6 +14,11 @@ help:
 
 .PHONY: help Makefile
 
+# html target uses -b (not -M) so output lands in BUILDDIR, not BUILDDIR/html.
+# This is what the deploy action expects (it publishes BUILDDIR directly).
+html: Makefile
+	@$(SPHINXBUILD) -b html "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+
 # Catch-all target: route all unknown targets to Sphinx using the new
 # "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
 %: Makefile
