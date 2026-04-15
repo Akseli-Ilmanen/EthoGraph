@@ -1,0 +1,913 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Tool-using crows - Moll et al., 2025 &#8212; ethograph</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=7f76b32a3354e82990f2" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=7f76b32a3354e82990f2" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=5c2b050f" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=7f76b32a3354e82990f2"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=7f76b32a3354e82990f2" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=7f76b32a3354e82990f2" />
+
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'examples/create_dataset_Moll25';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/examples/create_dataset_Moll25.html" />
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Social rats - PAIR-R24M" href="convert_dataset_pair24.html" />
+    <link rel="prev" title="Sound production in philodoptera" href="create_dataset_cricket.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class=" navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/icon.png" class="logo__image only-light" alt=""/>
+    <img src="../_static/icon.png" class="logo__image only-dark pst-js-only" alt=""/>
+  
+  
+    <p class="title logo__title">ethograph</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class=" navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../user_guide/index.html">
+    User guide
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../api_index.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../community/index.html">
+    Community
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/Akseli-Ilmanen/ethograph" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../user_guide/index.html">
+    User guide
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../api_index.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../community/index.html">
+    Community
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/Akseli-Ilmanen/ethograph" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar"><svg class="pst-icon svg-inline--fa" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="create_dataset_cricket.html">Sound production in philodoptera</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Tool-using crows - Moll et al., 2025</a></li>
+<li class="toctree-l1"><a class="reference internal" href="convert_dataset_pair24.html">Social rats - PAIR-R24M</a></li>
+<li class="toctree-l1"><a class="reference internal" href="convert_dataset_birdpark.html">Flying &amp; singing zebra finches - Birdpark</a></li>
+<li class="toctree-l1"><a class="reference internal" href="convert_datset_lockbox.html">Tool-using mice - Lockbox</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Examples</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Tool-using crows - Moll et al., 2025</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section class="tex2jax_ignore mathjax_ignore" id="tool-using-crows-moll-et-al-2025">
+<h1>Tool-using crows - Moll et al., 2025<a class="headerlink" href="#tool-using-crows-moll-et-al-2025" title="Link to this heading">#</a></h1>
+<p>Dataset includes behavioural data from 2 trials:</p>
+<ul class="simple">
+<li><p>Videos published in Moll et al., 2025¹, see available online <a class="reference external" href="https://www.sciencedirect.com/science/article/pii/S0960982225011005?via%3Dihub#mmc1">here</a>. We recorded with two cameras (<code class="docutils literal notranslate"><span class="pre">cam-1</span></code>, <code class="docutils literal notranslate"><span class="pre">cam-2</span></code>), but only video from left camera (<code class="docutils literal notranslate"><span class="pre">cam-2</span></code>) is shared.</p></li>
+<li><p>DeepLabCut² pose files generated for the videos of each camera and 3D pose file <code class="docutils literal notranslate"><span class="pre">*_DLC_3D.csv</span></code> generated using <a class="reference external" href="https://deeplabcut.github.io/DeepLabCut/docs/Overviewof3D.html">3D triangulation</a>.</p></li>
+<li><p>Video features files (<code class="docutils literal notranslate"><span class="pre">_s3d.npy</span></code>) generated using the Video Features repository³</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Trial_data.nc</span></code> file with behavioural features (kinematic, video features), changepoints, custom colours, and trial meta data.</p></li>
+</ul>
+<p>Below is a example script how one can generate the <code class="docutils literal notranslate"><span class="pre">Trial_data.nc</span></code> file from the raw data.</p>
+<hr class="docutils" />
+<p>¹ Moll, F. W., Würzler, J., &amp; Nieder, A. (2025). Learned precision tool use in carrion crows. Current Biology, 35(19), 4845-4852.e3. <a class="reference external" href="https://doi.org/10.1016/j.cub.2025.08.033">https://doi.org/10.1016/j.cub.2025.08.033</a></p>
+<p>² Nath, T., Mathis, A., Chen, A. C., Patel, A., Bethge, M., &amp; Mathis, M. W. (2019). Using DeepLabCut for 3D markerless pose estimation across species and behaviors. Nature Protocols, 14(7), 2152–2176. <a class="reference external" href="https://doi.org/10.1038/s41596-019-0176-0">https://doi.org/10.1038/s41596-019-0176-0</a></p>
+<p>³ Iashin, V. (2020). Video Features [Computer software]. <a class="reference external" href="https://github.com/v-iashin/video_features">https://github.com/v-iashin/video_features</a></p>
+<a class="reference internal image-reference" href="../_images/moll1.png"><img alt="../_images/moll1.png" src="../_images/moll1.png" style="width: 600px;" />
+</a>
+<a class="reference internal image-reference" href="../_images/moll2.png"><img alt="../_images/moll2.png" src="../_images/moll2.png" style="width: 900px;" />
+</a>
+<p>Left: Figure 1C from Moll et al., 2025¹</p>
+<p>Right: Screenshot from GUI. Bottom line plot shows speed of beak tip.</p>
+<section id="file-structure">
+<h2>File structure<a class="headerlink" href="#file-structure" title="Link to this heading">#</a></h2>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>Moll2025/
+├── labels/                                    # GUI saved label files
+├── 2024-12-17_115_Crow1-cam-1.mp4             # video (trial 115)
+├── 2024-12-17_115_Crow1-cam-1DLC.csv          # 2D pose cam-1
+├── 2024-12-17_115_Crow1-cam-2DLC.csv          # 2D pose cam-2
+├── 2024-12-17_115_Crow1_DLC_3D.csv            # 3D triangulated pose
+├── 2024-12-17_115_Crow1-cam-1_s3d.npy         # Video features
+├
+├── 2024-12-18_041_Crow1-cam-1.mp4             # video (trial 41)
+├── 2024-12-18_041_Crow1-cam-1DLC.csv          # 2D pose cam-1
+├── 2024-12-18_041_Crow1-cam-2DLC.csv          # 2D pose cam-2
+├── 2024-12-18_041_Crow1_DLC_3D.csv            # 3D triangulated pose
+├── 2024-12-18_041_Crow1-cam-1_s3d.npy         # Video features
+└── Trial_data.nc                              # all behavioural and meta data in one place
+</pre></div>
+</div>
+</section>
+<section id="filename-convention">
+<h2>Filename convention<a class="headerlink" href="#filename-convention" title="Link to this heading">#</a></h2>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>2024-12-17_115_Crow1-cam-1DLC.csv
+2024-12-17_115_Crow1-cam-1.mp4
+│            │   │
+│            │   └── bird ID
+│            └────── trial number
+└─────────────────── session date
+</pre></div>
+</div>
+<p>Using a similar file convention across related files (video, 2D pose, 3D pose), makes it easier to match file names across trials using regex.</p>
+</section>
+<section id="download-example-data">
+<h2>Download example data<a class="headerlink" href="#download-example-data" title="Link to this heading">#</a></h2>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.utils.download</span><span class="w"> </span><span class="kn">import</span> <span class="n">download_example_dataset</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">_here</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">__vsc_ipynb_file__</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span>  <span class="c1"># VS Code</span>
+<span class="k">except</span> <span class="ne">NameError</span><span class="p">:</span>
+    <span class="n">_here</span> <span class="o">=</span> <span class="n">Path</span><span class="p">()</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>                 <span class="c1"># Jupyter Lab / Notebook (CWD = notebook dir)</span>
+
+<span class="n">data_folder</span> <span class="o">=</span> <span class="n">_here</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">&quot;data&quot;</span> <span class="o">/</span> <span class="s2">&quot;Moll2025&quot;</span>
+<span class="n">download_example_dataset</span><span class="p">(</span><span class="s2">&quot;moll2025&quot;</span><span class="p">,</span> <span class="n">data_folder</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">data_folder: </span><span class="si">{</span><span class="n">data_folder</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Downloading Trial_data.nc... (0/11)
+Downloading Trial_data.nc... (1/11)
+Downloading 2024-12-17_115_Crow1-cam-1.mp4... (1/11)
+Downloading 2024-12-17_115_Crow1-cam-1.mp4... (2/11)
+Downloading 2024-12-17_115_Crow1-cam-1DLC.csv... (2/11)
+Downloading 2024-12-17_115_Crow1-cam-1DLC.csv... (3/11)
+Downloading 2024-12-17_115_Crow1-cam-2DLC.csv... (3/11)
+Downloading 2024-12-17_115_Crow1-cam-2DLC.csv... (4/11)
+Downloading 2024-12-17_115_Crow1_DLC_3D.csv... (4/11)
+Downloading 2024-12-17_115_Crow1_DLC_3D.csv... (5/11)
+Downloading 2024-12-17_115_Crow1-cam-1_s3d.npy... (5/11)
+Downloading 2024-12-17_115_Crow1-cam-1_s3d.npy... (6/11)
+Downloading 2024-12-18_041_Crow1-cam-1.mp4... (6/11)
+Downloading 2024-12-18_041_Crow1-cam-1.mp4... (7/11)
+Downloading 2024-12-18_041_Crow1-cam-1DLC.csv... (7/11)
+Downloading 2024-12-18_041_Crow1-cam-1DLC.csv... (8/11)
+Downloading 2024-12-18_041_Crow1-cam-2DLC.csv... (8/11)
+Downloading 2024-12-18_041_Crow1-cam-2DLC.csv... (9/11)
+Downloading 2024-12-18_041_Crow1_DLC_3D.csv... (9/11)
+Downloading 2024-12-18_041_Crow1_DLC_3D.csv... (10/11)
+Downloading 2024-12-18_041_Crow1-cam-1_s3d.npy... (10/11)
+  2024-12-18_041_Crow1-cam-1_s3d.npy (11/11)
+  mapping: d:\Akseli\Code\ethograph\data\Moll2025\.ethograph\mapping.txt
+
+data_folder: d:\Akseli\Code\ethograph\data\Moll2025
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="build-nwb-alignment">
+<h2>Build NWB alignment<a class="headerlink" href="#build-nwb-alignment" title="Link to this heading">#</a></h2>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">natsort</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.nwb_alignment</span><span class="w"> </span><span class="kn">import</span> <span class="n">align_media_per_trial</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">_here</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">__vsc_ipynb_file__</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span>
+<span class="k">except</span> <span class="ne">NameError</span><span class="p">:</span>
+    <span class="n">_here</span> <span class="o">=</span> <span class="n">Path</span><span class="p">()</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+
+<span class="n">data_folder</span> <span class="o">=</span> <span class="n">_here</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">&quot;data&quot;</span> <span class="o">/</span> <span class="s2">&quot;Moll2025&quot;</span>
+<span class="n">fps</span> <span class="o">=</span> <span class="mi">200</span>
+
+<span class="c1"># ─── 1. Discover media files ───</span>
+<span class="c1"># Filename examples:</span>
+<span class="c1">#   2024-12-17_115_Crow1-cam-1.mp4</span>
+<span class="c1">#   2024-12-17_115_Crow1-cam-1DLC.csv</span>
+<span class="c1">#   2024-12-17_115_Crow1_DLC_3D.csv</span>
+<span class="n">video_pattern</span>    <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;_(?P&lt;trial&gt;\d+)_Crow1-cam-1\.mp4$&quot;</span><span class="p">)</span>
+<span class="n">pose_2d_pattern</span>  <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;_(?P&lt;trial&gt;\d+)_Crow1-cam-1DLC\.csv$&quot;</span><span class="p">)</span>
+<span class="n">pose_3d_pattern</span>  <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;_(?P&lt;trial&gt;\d+)_Crow1_DLC_3D\.csv$&quot;</span><span class="p">)</span>
+
+<span class="c1"># cam-1 video — for visualization in the GUI</span>
+<span class="n">video_by_trial</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">natsort</span><span class="o">.</span><span class="n">natsorted</span><span class="p">(</span><span class="n">data_folder</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;*-cam-1.mp4&quot;</span><span class="p">)):</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">video_pattern</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">m</span><span class="p">:</span>
+        <span class="n">video_by_trial</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">])]</span> <span class="o">=</span> <span class="n">f</span>
+
+<span class="c1"># 2D DLC cam-1 — for GUI pose overlay</span>
+<span class="n">pose_2d_by_trial</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">natsort</span><span class="o">.</span><span class="n">natsorted</span><span class="p">(</span><span class="n">data_folder</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;*-cam-1DLC.csv&quot;</span><span class="p">)):</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">pose_2d_pattern</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">m</span><span class="p">:</span>
+        <span class="n">pose_2d_by_trial</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">])]</span> <span class="o">=</span> <span class="n">f</span>
+
+<span class="c1"># 3D DLC — used as pose source for kinematics</span>
+<span class="n">pose_3d_by_trial</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">natsort</span><span class="o">.</span><span class="n">natsorted</span><span class="p">(</span><span class="n">data_folder</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;*_DLC_3D.csv&quot;</span><span class="p">)):</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">pose_3d_pattern</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">m</span><span class="p">:</span>
+        <span class="n">pose_3d_by_trial</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">])]</span> <span class="o">=</span> <span class="n">f</span>
+
+<span class="c1"># ─── 2. Build session table ───</span>
+<span class="n">_all_trials</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">video_by_trial</span><span class="p">)</span> <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">pose_2d_by_trial</span><span class="p">)</span> <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">pose_3d_by_trial</span><span class="p">))</span>
+
+<span class="n">session_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s2">&quot;trial&quot;</span><span class="p">:</span>         <span class="n">_all_trials</span><span class="p">,</span>
+    <span class="s2">&quot;video_cam-1&quot;</span><span class="p">:</span>   <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">video_by_trial</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>    <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">_all_trials</span><span class="p">],</span>
+    <span class="s2">&quot;pose_2d&quot;</span><span class="p">:</span>       <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">pose_2d_by_trial</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>  <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">_all_trials</span><span class="p">],</span>
+    <span class="s2">&quot;pose_3d&quot;</span><span class="p">:</span>       <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">pose_3d_by_trial</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>  <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">_all_trials</span><span class="p">],</span> <span class="c1"># Only needed for kinematics, not marker overlay.</span>
+<span class="p">})</span>
+<span class="n">session_table</span> <span class="o">=</span> <span class="n">session_table</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="p">(</span><span class="n">session_table</span> <span class="o">!=</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">()]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">session_table</span><span class="o">.</span><span class="n">to_string</span><span class="p">())</span>
+
+<span class="n">session_table_filt</span> <span class="o">=</span> <span class="n">session_table</span><span class="p">[[</span><span class="s2">&quot;trial&quot;</span><span class="p">,</span> <span class="s2">&quot;video_cam-1&quot;</span><span class="p">,</span> <span class="s2">&quot;pose_2d&quot;</span><span class="p">]]</span>
+
+<span class="c1"># ─── 3. Build NWB alignment ───</span>
+<span class="n">nwb_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;.ethograph&quot;</span> <span class="o">/</span> <span class="s2">&quot;alignment.nwb&quot;</span>
+<span class="n">align_media_per_trial</span><span class="p">(</span>
+    <span class="n">trial_table</span><span class="o">=</span><span class="n">session_table_filt</span><span class="p">,</span>
+    <span class="n">stream_rates</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;video&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">),</span> <span class="s2">&quot;pose&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">)},</span>
+    <span class="n">output_path</span><span class="o">=</span><span class="n">nwb_path</span><span class="p">,</span>
+    <span class="n">pose_fps</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">),</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>   trial                                                            video_cam-1                                                                   pose_2d                                                                 pose_3d
+0     41  d:\Akseli\Code\ethograph\data\Moll2025\2024-12-18_041_Crow1-cam-1.mp4  d:\Akseli\Code\ethograph\data\Moll2025\2024-12-18_041_Crow1-cam-1DLC.csv  d:\Akseli\Code\ethograph\data\Moll2025\2024-12-18_041_Crow1_DLC_3D.csv
+1    115  d:\Akseli\Code\ethograph\data\Moll2025\2024-12-17_115_Crow1-cam-1.mp4  d:\Akseli\Code\ethograph\data\Moll2025\2024-12-17_115_Crow1-cam-1DLC.csv  d:\Akseli\Code\ethograph\data\Moll2025\2024-12-17_115_Crow1_DLC_3D.csv
+</pre></div>
+</div>
+<div class="output text_html">
+        <style>
+            .container-fields {
+                font-family: "Open Sans", Arial, sans-serif;
+            }
+            .container-fields .field-value {
+                color: #00788E;
+            }
+            .container-fields details > summary {
+                cursor: pointer;
+                display: list-item;
+            }
+            .container-fields details > summary:hover {
+                color: #0A6EAA;
+            }
+        </style>
+        
+        <script>
+            function copyToClipboard(text) {
+                navigator.clipboard.writeText(text).then(function() {
+                    console.log('Copied to clipboard: ' + text);
+                }, function(err) {
+                    console.error('Could not copy text: ', err);
+                });
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+                let fieldKeys = document.querySelectorAll('.container-fields .field-key');
+                fieldKeys.forEach(function(fieldKey) {
+                    fieldKey.addEventListener('click', function() {
+                        let accessCode = fieldKey.getAttribute('title').replace('Access code: ', '');
+                        copyToClipboard(accessCode);
+                    });
+                });
+            });
+        </script>
+        <div class='container-wrap'><div class='container-header'><div class='xr-obj-type'><h3>root (NWBFile)</h3></div></div><div style="margin-left: 0px;" class="container-fields"><span class="field-key" title=".session_description">session_description: </span><span class="field-value">NWB file for media alignment (ethograph generated).</span></div><div style="margin-left: 0px;" class="container-fields"><span class="field-key" title=".identifier">identifier: </span><span class="field-value">dfeda7ff-30d5-4fdb-97ec-cd2b080a4f81</span></div><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".session_start_time"><b>session_start_time</b></summary><span class="field-key">2026-04-14 18:35:23.440187+02:00</span></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".timestamps_reference_time"><b>timestamps_reference_time</b></summary><span class="field-key">2026-04-14 18:35:23.440187+02:00</span></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".file_create_date"><b>file_create_date</b></summary><details><summary style="display: list-item; margin-left: 20px;" class="container-fields field-key" title=".file_create_date[0]"><b>0</b></summary><span class="field-key">2026-04-14 18:35:23.440187+02:00</span></details></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".trials"><b>trials <span style='font-weight: normal; color: #888;'>(TimeIntervals)</span></b></summary><div style="margin-left: 20px;" class="container-fields"><span class="field-key" title=".trials">description: </span><span class="field-value">experimental trials</span></div><details><summary style="display: list-item; margin-left: 20px;" class="container-fields field-key" title=".trials"><b>table</b></summary><table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>start_time</th>
+      <th>stop_time</th>
+      <th>trial</th>
+      <th>video_cam-1</th>
+      <th>pose_2d</th>
+    </tr>
+    <tr>
+      <th>id</th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>0.000</td>
+      <td>5.385</td>
+      <td>41</td>
+      <td>d:\Akseli\Code\ethograph\data\Moll2025\2024-12-18_041_Crow1-cam-1.mp4</td>
+      <td>d:\Akseli\Code\ethograph\data\Moll2025\2024-12-18_041_Crow1-cam-1DLC.csv</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>5.385</td>
+      <td>11.230</td>
+      <td>115</td>
+      <td>d:\Akseli\Code\ethograph\data\Moll2025\2024-12-17_115_Crow1-cam-1.mp4</td>
+      <td>d:\Akseli\Code\ethograph\data\Moll2025\2024-12-17_115_Crow1-cam-1DLC.csv</td>
+    </tr>
+  </tbody>
+</table></details></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".devices"><b>devices</b></summary><details><summary style="display: list-item; margin-left: 20px;" class="container-fields field-key" title=".devices['cam-1']"><b>cam-1 <span style='font-weight: normal; color: #888;'>(Device)</span></b></summary><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".devices['cam-1'].description">description: </span><span class="field-value">video device cam-1</span></div></details><details><summary style="display: list-item; margin-left: 20px;" class="container-fields field-key" title=".devices['2d']"><b>2d <span style='font-weight: normal; color: #888;'>(Device)</span></b></summary><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".devices['2d'].description">description: </span><span class="field-value">pose device 2d</span></div></details></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".acquisition"><b>acquisition</b></summary><details><summary style="display: list-item; margin-left: 20px;" class="container-fields field-key" title=".acquisition['video_cam-1']"><b>video_cam-1 <span style='font-weight: normal; color: #888;'>(ImageSeries)</span></b></summary><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['video_cam-1'].resolution">resolution: </span><span class="field-value">-1.0</span></div><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['video_cam-1'].comments">comments: </span><span class="field-value">no comments</span></div><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['video_cam-1'].description">description: </span><span class="field-value">video from cam-1</span></div><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['video_cam-1'].conversion">conversion: </span><span class="field-value">1.0</span></div><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['video_cam-1'].offset">offset: </span><span class="field-value">0.0</span></div><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['video_cam-1'].unit">unit: </span><span class="field-value">unknown</span></div><details><summary style="display: list-item; margin-left: 40px;" class="container-fields field-key" title=".acquisition['video_cam-1'].data"><b>data</b></summary><div style="margin-left: 60px;" class="container-fields">NumPy array<br><table class="data-info"><tbody><tr><th style="text-align: left">Data type</th><td style="text-align: left">uint8</td></tr><tr><th style="text-align: left">Shape</th><td style="text-align: left">(0, 0, 0)</td></tr><tr><th style="text-align: left">Array size</th><td style="text-align: left">0.00 bytes</td></tr></tbody></table><br>[]</div></details><details><summary style="display: list-item; margin-left: 40px;" class="container-fields field-key" title=".acquisition['video_cam-1'].timestamps"><b>timestamps</b></summary><div style="margin-left: 60px;" class="container-fields">NumPy array<br><table class="data-info"><tbody><tr><th style="text-align: left">Data type</th><td style="text-align: left">float64</td></tr><tr><th style="text-align: left">Shape</th><td style="text-align: left">(2246,)</td></tr><tr><th style="text-align: left">Array size</th><td style="text-align: left">17.55 KiB</td></tr></tbody></table></div></details><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['video_cam-1'].timestamps_unit">timestamps_unit: </span><span class="field-value">seconds</span></div><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['video_cam-1'].interval">interval: </span><span class="field-value">1</span></div><details><summary style="display: list-item; margin-left: 40px;" class="container-fields field-key" title=".acquisition['video_cam-1'].external_file"><b>external_file</b></summary><div style="margin-left: 60px;" class="container-fields"><span class="field-key" title=".acquisition['video_cam-1'].external_file[0]">0: </span><span class="field-value">d:\Akseli\Code\ethograph\data\Moll2025\2024-12-18_041_Crow1-cam-1.mp4</span></div><div style="margin-left: 60px;" class="container-fields"><span class="field-key" title=".acquisition['video_cam-1'].external_file[0][1]">1: </span><span class="field-value">d:\Akseli\Code\ethograph\data\Moll2025\2024-12-17_115_Crow1-cam-1.mp4</span></div></details><details><summary style="display: list-item; margin-left: 40px;" class="container-fields field-key" title=".acquisition['video_cam-1'].starting_frame"><b>starting_frame</b></summary><div style="margin-left: 60px;" class="container-fields">NumPy array<br><table class="data-info"><tbody><tr><th style="text-align: left">Data type</th><td style="text-align: left">int32</td></tr><tr><th style="text-align: left">Shape</th><td style="text-align: left">(2,)</td></tr><tr><th style="text-align: left">Array size</th><td style="text-align: left">8.00 bytes</td></tr></tbody></table><br>[   0 1077]</div></details><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['video_cam-1'].format">format: </span><span class="field-value">external</span></div></details><details><summary style="display: list-item; margin-left: 20px;" class="container-fields field-key" title=".acquisition['pose_2d']"><b>pose_2d <span style='font-weight: normal; color: #888;'>(ImageSeries)</span></b></summary><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['pose_2d'].resolution">resolution: </span><span class="field-value">-1.0</span></div><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['pose_2d'].comments">comments: </span><span class="field-value">no comments</span></div><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['pose_2d'].description">description: </span><span class="field-value">pose from 2d</span></div><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['pose_2d'].conversion">conversion: </span><span class="field-value">1.0</span></div><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['pose_2d'].offset">offset: </span><span class="field-value">0.0</span></div><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['pose_2d'].unit">unit: </span><span class="field-value">unknown</span></div><details><summary style="display: list-item; margin-left: 40px;" class="container-fields field-key" title=".acquisition['pose_2d'].data"><b>data</b></summary><div style="margin-left: 60px;" class="container-fields">NumPy array<br><table class="data-info"><tbody><tr><th style="text-align: left">Data type</th><td style="text-align: left">uint8</td></tr><tr><th style="text-align: left">Shape</th><td style="text-align: left">(0, 0, 0)</td></tr><tr><th style="text-align: left">Array size</th><td style="text-align: left">0.00 bytes</td></tr></tbody></table><br>[]</div></details><details><summary style="display: list-item; margin-left: 40px;" class="container-fields field-key" title=".acquisition['pose_2d'].timestamps"><b>timestamps</b></summary><div style="margin-left: 60px;" class="container-fields">NumPy array<br><table class="data-info"><tbody><tr><th style="text-align: left">Data type</th><td style="text-align: left">float64</td></tr><tr><th style="text-align: left">Shape</th><td style="text-align: left">(2246,)</td></tr><tr><th style="text-align: left">Array size</th><td style="text-align: left">17.55 KiB</td></tr></tbody></table></div></details><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['pose_2d'].timestamps_unit">timestamps_unit: </span><span class="field-value">seconds</span></div><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['pose_2d'].interval">interval: </span><span class="field-value">1</span></div><details><summary style="display: list-item; margin-left: 40px;" class="container-fields field-key" title=".acquisition['pose_2d'].external_file"><b>external_file</b></summary><div style="margin-left: 60px;" class="container-fields"><span class="field-key" title=".acquisition['pose_2d'].external_file[0]">0: </span><span class="field-value">d:\Akseli\Code\ethograph\data\Moll2025\2024-12-18_041_Crow1-cam-1DLC.csv</span></div><div style="margin-left: 60px;" class="container-fields"><span class="field-key" title=".acquisition['pose_2d'].external_file[0][1]">1: </span><span class="field-value">d:\Akseli\Code\ethograph\data\Moll2025\2024-12-17_115_Crow1-cam-1DLC.csv</span></div></details><details><summary style="display: list-item; margin-left: 40px;" class="container-fields field-key" title=".acquisition['pose_2d'].starting_frame"><b>starting_frame</b></summary><div style="margin-left: 60px;" class="container-fields">NumPy array<br><table class="data-info"><tbody><tr><th style="text-align: left">Data type</th><td style="text-align: left">int32</td></tr><tr><th style="text-align: left">Shape</th><td style="text-align: left">(2,)</td></tr><tr><th style="text-align: left">Array size</th><td style="text-align: left">8.00 bytes</td></tr></tbody></table><br>[   0 1077]</div></details><div style="margin-left: 40px;" class="container-fields"><span class="field-key" title=".acquisition['pose_2d'].format">format: </span><span class="field-value">external</span></div></details></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".analysis"><b>analysis</b></summary></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".scratch"><b>scratch</b></summary></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".processing"><b>processing</b></summary></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".stimulus"><b>stimulus</b></summary></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".stimulus_template"><b>stimulus_template</b></summary></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".lab_meta_data"><b>lab_meta_data</b></summary></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".device_models"><b>device_models</b></summary></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".electrode_groups"><b>electrode_groups</b></summary></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".icephys_electrodes"><b>icephys_electrodes</b></summary></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".ogen_sites"><b>ogen_sites</b></summary></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".imaging_planes"><b>imaging_planes</b></summary></details><details><summary style="display: list-item; margin-left: 0px;" class="container-fields field-key" title=".intervals"><b>intervals</b></summary></details></div></div></div>
+</div>
+</section>
+<section id="create-dataset">
+<h2>Create dataset<a class="headerlink" href="#create-dataset" title="Link to this heading">#</a></h2>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">movement.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_poses</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">movement.kinematics</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_pairwise_distances</span><span class="p">,</span> <span class="n">compute_velocity</span><span class="p">,</span> <span class="n">compute_acceleration</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">movement.utils.vector</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_norm</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.features.movement</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_distance_to_constant</span><span class="p">,</span> <span class="n">Position3DCalibration</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.features.changepoints</span><span class="w"> </span><span class="kn">import</span> <span class="n">find_troughs_binary</span><span class="p">,</span> <span class="n">find_nearest_turning_points_binary</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.features.preprocessing</span><span class="w"> </span><span class="kn">import</span> <span class="n">gaussian_smoothing</span>
+
+<span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span>
+    <span class="s2">&quot;ignore&quot;</span><span class="p">,</span>
+    <span class="n">message</span><span class="o">=</span><span class="s2">&quot;Confidence array was not provided.Setting to an array of NaNs&quot;</span><span class="p">,</span>
+    <span class="n">module</span><span class="o">=</span><span class="s2">&quot;movement.validators.datasets&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">clip_distance</span> <span class="o">=</span> <span class="mi">50</span>  <span class="c1"># exclude unrealistic distances (&gt; 50 cm)</span>
+<span class="n">smoothing_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;sigma&quot;</span><span class="p">:</span> <span class="mf">1.5</span><span class="p">,</span> <span class="s2">&quot;axis&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;mode&quot;</span><span class="p">:</span> <span class="s2">&quot;constant&quot;</span><span class="p">,</span> <span class="s2">&quot;cval&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">}</span>
+
+<span class="c1"># Subset of S3D video features with high Cohen&#39;s D for a label (Crow 1)</span>
+<span class="n">good_s3d_feats</span> <span class="o">=</span> <span class="p">[</span><span class="mi">326</span><span class="p">,</span> <span class="mi">327</span><span class="p">,</span> <span class="mi">292</span><span class="p">,</span> <span class="mi">363</span><span class="p">,</span> <span class="mi">219</span><span class="p">,</span> <span class="mi">192</span><span class="p">,</span> <span class="mi">260</span><span class="p">,</span> <span class="mi">66</span><span class="p">,</span> <span class="mi">332</span><span class="p">,</span> <span class="mi">199</span><span class="p">,</span>
+                  <span class="mi">288</span><span class="p">,</span> <span class="mi">763</span><span class="p">,</span> <span class="mi">837</span><span class="p">,</span> <span class="mi">182</span><span class="p">,</span> <span class="mi">24</span><span class="p">,</span> <span class="mi">218</span><span class="p">,</span> <span class="mi">213</span><span class="p">,</span> <span class="mi">21</span><span class="p">,</span> <span class="mi">733</span><span class="p">,</span> <span class="mi">242</span><span class="p">]</span>
+
+<span class="c1"># Stationary locations</span>
+<span class="n">disp_xyz</span> <span class="o">=</span> <span class="p">[</span><span class="o">-</span><span class="mf">10.23</span><span class="p">,</span> <span class="o">-</span><span class="mf">5.907</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.395</span><span class="p">]</span>
+
+<span class="n">ds_list</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">session_table</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+    <span class="n">trial</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span>
+    <span class="n">dlc_3d_path</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;pose_3d&quot;</span><span class="p">]</span>
+
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">load_poses</span><span class="o">.</span><span class="n">from_dlc_file</span><span class="p">(</span><span class="n">dlc_3d_path</span><span class="p">,</span> <span class="n">fps</span><span class="o">=</span><span class="n">fps</span><span class="p">)</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">assign_coords</span><span class="p">(</span><span class="n">individuals</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;Crow1&quot;</span><span class="p">])</span>
+    <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">trial</span>
+
+    <span class="c1"># 3D calibration</span>
+    <span class="n">calibration</span> <span class="o">=</span> <span class="n">Position3DCalibration</span><span class="p">()</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">calibration</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span>
+
+    <span class="c1"># Kinematics</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;position&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">gaussian_smoothing</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">,</span> <span class="o">**</span><span class="n">smoothing_params</span><span class="p">)</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;velocity&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_velocity</span><span class="p">(</span>
+        <span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;stickTip&quot;</span><span class="p">,</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">])</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="nb">min</span><span class="o">=-</span><span class="mi">150</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="mi">150</span><span class="p">)</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_norm</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">velocity</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;stickTip&quot;</span><span class="p">,</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">]))</span>
+    <span class="n">smooth_2x</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">smoothing_params</span><span class="p">,</span> <span class="s2">&quot;sigma&quot;</span><span class="p">:</span> <span class="n">smoothing_params</span><span class="p">[</span><span class="s2">&quot;sigma&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">2</span><span class="p">}</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;acceleration&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_acceleration</span><span class="p">(</span>
+        <span class="n">gaussian_smoothing</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">,</span> <span class="o">**</span><span class="n">smooth_2x</span><span class="p">)</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;stickTip&quot;</span><span class="p">,</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">])</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="nb">min</span><span class="o">=-</span><span class="mi">1500</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="mi">1500</span><span class="p">)</span>
+
+    <span class="c1"># Distance features</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;pellet_beakTip_dist&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_pairwise_distances</span><span class="p">(</span>
+        <span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">,</span> <span class="s2">&quot;keypoints&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;pellet&quot;</span><span class="p">:</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">}</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">clip_distance</span><span class="p">)</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;pellet_stickTip_dist&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_pairwise_distances</span><span class="p">(</span>
+        <span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">,</span> <span class="s2">&quot;keypoints&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;pellet&quot;</span><span class="p">:</span> <span class="s2">&quot;stickTip&quot;</span><span class="p">}</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">clip_distance</span><span class="p">)</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;disp_beakTip_dist&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_distance_to_constant</span><span class="p">(</span>
+        <span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">,</span> <span class="n">reference_point</span><span class="o">=</span><span class="n">disp_xyz</span><span class="p">,</span> <span class="n">keypoint</span><span class="o">=</span><span class="s2">&quot;beakTip&quot;</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">clip_distance</span><span class="p">)</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;disp_stickTip_dist&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_distance_to_constant</span><span class="p">(</span>
+        <span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">,</span> <span class="n">reference_point</span><span class="o">=</span><span class="n">disp_xyz</span><span class="p">,</span> <span class="n">keypoint</span><span class="o">=</span><span class="s2">&quot;stickTip&quot;</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">clip_distance</span><span class="p">)</span>
+
+    <span class="c1"># Keep subset of keypoints</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;beakTip&quot;</span><span class="p">,</span> <span class="s2">&quot;stickTip&quot;</span><span class="p">,</span> <span class="s2">&quot;pellet&quot;</span><span class="p">])</span>
+
+    <span class="c1"># Video features (S3D)</span>
+    <span class="n">s3d_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">dlc_3d_path</span><span class="p">)</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;_DLC_3D.csv&quot;</span><span class="p">,</span> <span class="s2">&quot;-cam-1_s3d.npy&quot;</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">s3d_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="n">s3d_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">s3d_path</span><span class="p">)</span>
+        <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;s3d&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">((</span><span class="s2">&quot;time&quot;</span><span class="p">,</span> <span class="s2">&quot;s3d_dims&quot;</span><span class="p">),</span> <span class="n">s3d_data</span><span class="p">[:,</span> <span class="n">good_s3d_feats</span><span class="p">])</span>
+
+    <span class="c1"># Changepoints</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">add_changepoints_to_ds</span><span class="p">(</span>
+        <span class="n">ds</span><span class="o">=</span><span class="n">ds</span><span class="p">,</span> <span class="n">target_feature</span><span class="o">=</span><span class="s2">&quot;speed&quot;</span><span class="p">,</span> <span class="n">changepoint_name</span><span class="o">=</span><span class="s2">&quot;troughs&quot;</span><span class="p">,</span>
+        <span class="n">changepoint_func</span><span class="o">=</span><span class="n">find_troughs_binary</span><span class="p">,</span> <span class="n">prominence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">distance</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">add_changepoints_to_ds</span><span class="p">(</span>
+        <span class="n">ds</span><span class="o">=</span><span class="n">ds</span><span class="p">,</span> <span class="n">target_feature</span><span class="o">=</span><span class="s2">&quot;speed&quot;</span><span class="p">,</span> <span class="n">changepoint_name</span><span class="o">=</span><span class="s2">&quot;turning_points&quot;</span><span class="p">,</span>
+        <span class="n">changepoint_func</span><span class="o">=</span><span class="n">find_nearest_turning_points_binary</span><span class="p">,</span>
+        <span class="n">threshold</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">max_value</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">prominence</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Colour for line plots</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">add_angle_rgb_to_ds</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">smoothing_params</span><span class="o">=</span><span class="n">smoothing_params</span><span class="p">)</span>
+
+    <span class="c1"># Trial metadata</span>
+    <span class="k">if</span> <span class="nb">int</span><span class="p">(</span><span class="n">trial</span><span class="p">)</span> <span class="o">==</span> <span class="mi">41</span><span class="p">:</span>
+        <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;pellet_position&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;right&quot;</span>
+    <span class="k">elif</span> <span class="nb">int</span><span class="p">(</span><span class="n">trial</span><span class="p">)</span> <span class="o">==</span> <span class="mi">115</span><span class="p">:</span>
+        <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;pellet_position&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;left&quot;</span>
+
+    <span class="n">ds_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span>
+
+<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_datasets</span><span class="p">(</span><span class="n">ds_list</span><span class="p">)</span>
+<span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;Trial_data.nc&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saved to </span><span class="si">{</span><span class="n">data_folder</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="s1">&#39;Trial_data.nc&#39;</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Saved to d:\Akseli\Code\ethograph\data\Moll2025\Trial_data.nc
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="create_dataset_cricket.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Sound production in philodoptera</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="convert_dataset_pair24.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Social rats - PAIR-R24M</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#file-structure">File structure</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#filename-convention">Filename convention</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#download-example-data">Download example data</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#build-nwb-alignment">Build NWB alignment</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#create-dataset">Create dataset</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/examples/create_dataset_Moll25.ipynb.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=7f76b32a3354e82990f2"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=7f76b32a3354e82990f2"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2022, Akseli Ilmanen.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.17.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

@@ -1,0 +1,928 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ethograph.labels.converters &#8212; ethograph</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=7f76b32a3354e82990f2" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=7f76b32a3354e82990f2" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css?v=5c2b050f" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../../../_static/scripts/fontawesome.js?digest=7f76b32a3354e82990f2"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=7f76b32a3354e82990f2" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=7f76b32a3354e82990f2" />
+
+    <script src="../../../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/ethograph/labels/converters';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/_modules/ethograph/labels/converters.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../../../_static/searchtools.js"></script>
+    <script src="../../../_static/language_data.js"></script>
+    <script src="../../../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class=" navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/icon.png" class="logo__image only-light" alt=""/>
+    <img src="../../../_static/icon.png" class="logo__image only-dark pst-js-only" alt=""/>
+  
+  
+    <p class="title logo__title">ethograph</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class=" navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../user_guide/index.html">
+    User guide
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../examples/index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../api_index.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../community/index.html">
+    Community
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/Akseli-Ilmanen/ethograph" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar hide-on-wide">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../user_guide/index.html">
+    User guide
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../examples/index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../api_index.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../community/index.html">
+    Community
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/Akseli-Ilmanen/ethograph" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="../../ethograph.html" class="nav-link">ethograph</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">ethograph.labels.converters</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for ethograph.labels.converters</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;External format converters: crowsetta, NWB, pynapple, and other label I/O.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">_rows_to_df</span><span class="p">,</span> <span class="n">empty_intervals</span><span class="p">,</span> <span class="n">load_mapping</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.tsv_store</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">TRIAL_META_DEFAULTS</span><span class="p">,</span>
+    <span class="n">init_empty_labels</span><span class="p">,</span>
+    <span class="n">labels_tsv_path</span><span class="p">,</span>
+    <span class="n">load_labels_tsv</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="n">CROWSETTA_SEQ_FORMATS</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;aud-seq&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;simple-seq&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;generic-seq&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;notmat&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;textgrid&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;timit&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;yarden&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Base converter</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="LabelConverter">
+<a class="viewcode-back" href="../../../api/ethograph.labels.converters.LabelConverter.html#ethograph.labels.converters.LabelConverter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LabelConverter</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base class for converting external label sources to ethograph intervals.</span>
+
+<span class="sd">    Subclasses override :meth:`extract` to pull intervals from their source</span>
+<span class="sd">    (NWB, pynapple, crowsetta, …).  The shared :meth:`resolve_labels` method</span>
+<span class="sd">    centralises the &quot;TSV on disk → extract from source → empty&quot; fallback chain</span>
+<span class="sd">    used by every ``LoadResult``-producing function in ``data_loader``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;base&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_label_map</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">label_map</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_label_map</span>
+
+<div class="viewcode-block" id="LabelConverter.extract">
+<a class="viewcode-back" href="../../../api/ethograph.labels.converters.LabelConverter.html#ethograph.labels.converters.LabelConverter.extract">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">extract</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trials_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return an all-labels DataFrame (with ``trial`` column).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        trials_df</span>
+<span class="sd">            Must contain ``trial``, ``start_time``, ``stop_time`` columns.</span>
+<span class="sd">            Required for sources with global timestamps (NWB, pynapple).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+
+    <span class="c1"># -- shared helpers ----------------------------------------------------</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_global_to_trial_rows</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">epochs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span>
+        <span class="n">trials_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert global-time epochs to trial-relative interval rows.&quot;&quot;&quot;</span>
+        <span class="n">has_trial_col</span> <span class="o">=</span> <span class="s2">&quot;trial&quot;</span> <span class="ow">in</span> <span class="n">trials_df</span><span class="o">.</span><span class="n">columns</span>
+        <span class="n">rows</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">trial_row</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">trials_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">()):</span>
+            <span class="n">t_start</span><span class="p">,</span> <span class="n">t_stop</span> <span class="o">=</span> <span class="n">trial_row</span><span class="p">[</span><span class="s2">&quot;start_time&quot;</span><span class="p">],</span> <span class="n">trial_row</span><span class="p">[</span><span class="s2">&quot;stop_time&quot;</span><span class="p">]</span>
+            <span class="n">trial_id</span> <span class="o">=</span> <span class="n">trial_row</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="n">has_trial_col</span> <span class="k">else</span> <span class="n">idx</span>
+            <span class="k">for</span> <span class="n">ep</span> <span class="ow">in</span> <span class="n">epochs</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">ep</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">t_start</span> <span class="ow">or</span> <span class="n">ep</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">t_stop</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="n">label_id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_label_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">ep</span><span class="p">[</span><span class="s2">&quot;label_name&quot;</span><span class="p">],</span> <span class="mi">0</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">label_id</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                    <span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">ep</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">t_start</span><span class="p">),</span>
+                    <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="nb">min</span><span class="p">(</span><span class="n">t_stop</span> <span class="o">-</span> <span class="n">t_start</span><span class="p">,</span> <span class="n">ep</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">t_start</span><span class="p">),</span>
+                    <span class="s2">&quot;labels&quot;</span><span class="p">:</span> <span class="n">label_id</span><span class="p">,</span>
+                    <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="n">ep</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;individual&quot;</span><span class="p">,</span> <span class="s2">&quot;individual_0&quot;</span><span class="p">),</span>
+                    <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="n">trial_id</span><span class="p">,</span>
+                <span class="p">})</span>
+        <span class="k">return</span> <span class="n">rows</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_rows_to_labels_df</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rows</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build a TSV-compatible all-labels DataFrame from row dicts.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">rows</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">init_empty_labels</span><span class="p">([])</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">default</span> <span class="ow">in</span> <span class="n">TRIAL_META_DEFAULTS</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">default</span>
+        <span class="k">return</span> <span class="n">df</span>
+
+    <span class="c1"># -- resolve (TSV → extract → empty) ----------------------------------</span>
+
+<div class="viewcode-block" id="LabelConverter.resolve_labels">
+<a class="viewcode-back" href="../../../api/ethograph.labels.converters.LabelConverter.html#ethograph.labels.converters.LabelConverter.resolve_labels">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">resolve_labels</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">source_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+        <span class="n">trial_ids</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
+        <span class="n">trials_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">labels_path</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load labels with fallback: existing TSV → extract from source → empty.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        source_path</span>
+<span class="sd">            Primary data file; used to derive the default TSV path.</span>
+<span class="sd">        trial_ids</span>
+<span class="sd">            Trial identifiers (for the empty-labels fallback).</span>
+<span class="sd">        trials_df</span>
+<span class="sd">            Passed to :meth:`extract` for global→trial conversion.</span>
+<span class="sd">        labels_path</span>
+<span class="sd">            Override the TSV path (e.g. for NWB project directories).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">tsv</span> <span class="o">=</span> <span class="n">labels_path</span> <span class="k">if</span> <span class="n">labels_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">labels_tsv_path</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">source_path</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">tsv</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loaded labels from </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">tsv</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">load_labels_tsv</span><span class="p">(</span><span class="n">tsv</span><span class="p">)</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">extract</span><span class="p">(</span><span class="n">trials_df</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Extracted </span><span class="si">%d</span><span class="s2"> label intervals via </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">df</span>
+        <span class="k">return</span> <span class="n">init_empty_labels</span><span class="p">(</span><span class="n">trial_ids</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">resolve_labels_tsv</span><span class="p">(</span>
+    <span class="n">source_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">trial_ids</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
+    <span class="n">labels_path</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load labels from TSV if it exists, otherwise return empty.</span>
+
+<span class="sd">    Use this when there is no converter (e.g. xarray/nc files).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">tsv</span> <span class="o">=</span> <span class="n">labels_path</span> <span class="k">if</span> <span class="n">labels_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">labels_tsv_path</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">source_path</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">tsv</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loaded labels from </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">tsv</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">load_labels_tsv</span><span class="p">(</span><span class="n">tsv</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">init_empty_labels</span><span class="p">(</span><span class="n">trial_ids</span><span class="p">)</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Standalone helpers (kept for backwards compat / direct use)</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="build_mapping_from_labels">
+<a class="viewcode-back" href="../../../api/ethograph.labels.converters.build_mapping_from_labels.html#ethograph.labels.converters.build_mapping_from_labels">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_mapping_from_labels</span><span class="p">(</span><span class="n">string_labels</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a name-&gt;id mapping from a list of unique string labels.</span>
+
+<span class="sd">    Sorts labels alphabetically; 0 is reserved for &#39;background&#39;.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">unique</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">string_labels</span><span class="p">))</span>
+    <span class="n">mapping</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;background&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">}</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">unique</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="n">mapping</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span>
+    <span class="k">return</span> <span class="n">mapping</span></div>
+
+
+
+<div class="viewcode-block" id="crowsetta_to_intervals">
+<a class="viewcode-back" href="../../../api/ethograph.labels.converters.crowsetta_to_intervals.html#ethograph.labels.converters.crowsetta_to_intervals">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">crowsetta_to_intervals</span><span class="p">(</span>
+    <span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">format_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">name_to_id</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+    <span class="n">individual</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;ind0&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert a crowsetta annotation file to an intervals DataFrame.&quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">crowsetta</span>
+
+    <span class="n">scribe</span> <span class="o">=</span> <span class="n">crowsetta</span><span class="o">.</span><span class="n">Transcriber</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="n">format_name</span><span class="p">)</span>
+    <span class="n">annot</span> <span class="o">=</span> <span class="n">scribe</span><span class="o">.</span><span class="n">from_file</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span><span class="o">.</span><span class="n">to_annot</span><span class="p">()</span>
+    <span class="n">seq</span> <span class="o">=</span> <span class="n">annot</span><span class="o">.</span><span class="n">seq</span>
+
+    <span class="n">rows</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">segment</span> <span class="ow">in</span> <span class="n">seq</span><span class="o">.</span><span class="n">segments</span><span class="p">:</span>
+        <span class="n">label_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">segment</span><span class="o">.</span><span class="n">label</span><span class="p">)</span>
+        <span class="n">label_id</span> <span class="o">=</span> <span class="n">name_to_id</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">label_str</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">label_id</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">label_id</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+            <span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">segment</span><span class="o">.</span><span class="n">onset_s</span><span class="p">),</span>
+            <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">segment</span><span class="o">.</span><span class="n">offset_s</span><span class="p">),</span>
+            <span class="s2">&quot;labels&quot;</span><span class="p">:</span> <span class="n">label_id</span><span class="p">,</span>
+            <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
+        <span class="p">})</span>
+
+    <span class="k">return</span> <span class="n">_rows_to_df</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="extract_crowsetta_labels">
+<a class="viewcode-back" href="../../../api/ethograph.labels.converters.extract_crowsetta_labels.html#ethograph.labels.converters.extract_crowsetta_labels">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_crowsetta_labels</span><span class="p">(</span>
+    <span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">format_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract unique string labels from a crowsetta annotation file.&quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">crowsetta</span>
+
+    <span class="n">scribe</span> <span class="o">=</span> <span class="n">crowsetta</span><span class="o">.</span><span class="n">Transcriber</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="n">format_name</span><span class="p">)</span>
+    <span class="n">annot</span> <span class="o">=</span> <span class="n">scribe</span><span class="o">.</span><span class="n">from_file</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span><span class="o">.</span><span class="n">to_annot</span><span class="p">()</span>
+    <span class="k">return</span> <span class="nb">list</span><span class="p">({</span><span class="nb">str</span><span class="p">(</span><span class="n">seg</span><span class="o">.</span><span class="n">label</span><span class="p">)</span> <span class="k">for</span> <span class="n">seg</span> <span class="ow">in</span> <span class="n">annot</span><span class="o">.</span><span class="n">seq</span><span class="o">.</span><span class="n">segments</span><span class="p">})</span></div>
+
+
+
+<div class="viewcode-block" id="write_mapping_file">
+<a class="viewcode-back" href="../../../api/ethograph.labels.converters.write_mapping_file.html#ethograph.labels.converters.write_mapping_file">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">write_mapping_file</span><span class="p">(</span>
+    <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">name_to_id</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Write a mapping file in &#39;&lt;id&gt; &lt;name&gt;&#39; format.&quot;&quot;&quot;</span>
+    <span class="n">output_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">output_path</span><span class="p">)</span>
+    <span class="n">output_path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">name_to_id</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">])]</span>
+    <span class="n">output_path</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="resolve_crowsetta_mapping">
+<a class="viewcode-back" href="../../../api/ethograph.labels.converters.resolve_crowsetta_mapping.html#ethograph.labels.converters.resolve_crowsetta_mapping">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">resolve_crowsetta_mapping</span><span class="p">(</span>
+    <span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">format_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">mapping_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">configs_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Check existing mapping against crowsetta labels; create new if needed.&quot;&quot;&quot;</span>
+    <span class="n">file_labels</span> <span class="o">=</span> <span class="n">extract_crowsetta_labels</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="n">format_name</span><span class="p">)</span>
+
+    <span class="n">mapping_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">mapping_path</span><span class="p">)</span>
+    <span class="n">configs_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">configs_dir</span><span class="p">)</span>
+
+    <span class="n">existing_names</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">mapping_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">mapping_path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">f</span><span class="p">:</span>
+                    <span class="n">parts</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+                        <span class="n">existing_names</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">parts</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="ne">UnicodeDecodeError</span><span class="p">):</span>
+            <span class="k">pass</span>
+
+    <span class="n">non_bg_labels</span> <span class="o">=</span> <span class="p">[</span><span class="n">l</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">file_labels</span> <span class="k">if</span> <span class="n">l</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;background&quot;</span><span class="p">,</span> <span class="s2">&quot;sil&quot;</span><span class="p">)]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">non_bg_labels</span><span class="p">:</span>
+        <span class="n">non_bg_labels</span> <span class="o">=</span> <span class="n">file_labels</span>
+
+    <span class="n">overlap</span> <span class="o">=</span> <span class="n">existing_names</span> <span class="o">&amp;</span> <span class="nb">set</span><span class="p">(</span><span class="n">non_bg_labels</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">overlap</span> <span class="o">==</span> <span class="nb">set</span><span class="p">(</span><span class="n">non_bg_labels</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">overlap</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">class_to_idx</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">load_mapping</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">mapping_path</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">class_to_idx</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+    <span class="n">warning</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">overlap</span> <span class="ow">and</span> <span class="n">overlap</span> <span class="o">!=</span> <span class="nb">set</span><span class="p">(</span><span class="n">non_bg_labels</span><span class="p">):</span>
+        <span class="n">missing</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">non_bg_labels</span><span class="p">)</span> <span class="o">-</span> <span class="n">overlap</span>
+        <span class="n">warning</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Mapping file contains </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">overlap</span><span class="p">)</span><span class="si">}</span><span class="s2"> of </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">non_bg_labels</span><span class="p">)</span><span class="si">}</span><span class="s2"> labels. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Missing: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">name_to_id</span> <span class="o">=</span> <span class="n">build_mapping_from_labels</span><span class="p">(</span><span class="n">non_bg_labels</span><span class="p">)</span>
+    <span class="n">new_path</span> <span class="o">=</span> <span class="n">configs_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;mapping_</span><span class="si">{</span><span class="n">format_name</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;-&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;_&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">.txt&quot;</span>
+    <span class="n">write_mapping_file</span><span class="p">(</span><span class="n">new_path</span><span class="p">,</span> <span class="n">name_to_id</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">name_to_id</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">new_path</span><span class="p">),</span> <span class="n">warning</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Crowsetta converter</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="CrowsettaLabelConverter">
+<a class="viewcode-back" href="../../../api/ethograph.labels.converters.CrowsettaLabelConverter.html#ethograph.labels.converters.CrowsettaLabelConverter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CrowsettaLabelConverter</span><span class="p">(</span><span class="n">LabelConverter</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert crowsetta annotation files to ethograph intervals.</span>
+
+<span class="sd">    Crowsetta labels are already in file-local time, so no trial table</span>
+<span class="sd">    is needed for time conversion.  If a ``trials_df`` is provided the</span>
+<span class="sd">    first trial id is attached; otherwise ``trial=1``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;crowsetta&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+        <span class="n">format_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">name_to_id</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+        <span class="n">individual</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;ind0&quot;</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_file_path</span> <span class="o">=</span> <span class="n">file_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_format_name</span> <span class="o">=</span> <span class="n">format_name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_label_map</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">name_to_id</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_individual</span> <span class="o">=</span> <span class="n">individual</span>
+
+<div class="viewcode-block" id="CrowsettaLabelConverter.extract">
+<a class="viewcode-back" href="../../../api/ethograph.labels.converters.CrowsettaLabelConverter.html#ethograph.labels.converters.CrowsettaLabelConverter.extract">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">extract</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trials_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">crowsetta_to_intervals</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_file_path</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_format_name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_label_map</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_individual</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">init_empty_labels</span><span class="p">([])</span>
+        <span class="n">trial_id</span> <span class="o">=</span> <span class="n">trials_df</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="n">trials_df</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">trials_df</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mi">1</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">trial_id</span>
+        <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">default</span> <span class="ow">in</span> <span class="n">TRIAL_META_DEFAULTS</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+                <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">default</span>
+        <span class="k">return</span> <span class="n">df</span></div>
+
+
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_collect_time_intervals</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="n">source</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">individual</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">out</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">to_dataframe</span><span class="p">()</span>
+        <span class="n">label_col</span> <span class="o">=</span> <span class="s2">&quot;label&quot;</span> <span class="k">if</span> <span class="s2">&quot;label&quot;</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+            <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                <span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;start_time&quot;</span><span class="p">]),</span>
+                <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;stop_time&quot;</span><span class="p">]),</span>
+                <span class="s2">&quot;label_name&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="n">label_col</span><span class="p">])</span> <span class="k">if</span> <span class="n">label_col</span> <span class="k">else</span> <span class="n">source</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+                <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
+                <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="n">source</span><span class="p">,</span>
+            <span class="p">})</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_collect_interval_series</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="n">source</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">individual</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">out</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">series</span><span class="o">.</span><span class="n">data</span><span class="p">[:])</span>
+        <span class="n">timestamps</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">series</span><span class="o">.</span><span class="n">timestamps</span><span class="p">[:])</span>
+        <span class="n">label_name</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="n">source</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">starts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">data</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">starts</span><span class="p">:</span>
+            <span class="n">j</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">))</span> <span class="k">if</span> <span class="n">data</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">j</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                    <span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">timestamps</span><span class="p">[</span><span class="n">i</span><span class="p">]),</span>
+                    <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">timestamps</span><span class="p">[</span><span class="n">j</span><span class="p">]),</span>
+                    <span class="s2">&quot;label_name&quot;</span><span class="p">:</span> <span class="n">label_name</span><span class="p">,</span>
+                    <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
+                    <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="n">source</span><span class="p">,</span>
+                <span class="p">})</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Pynapple interval label converter</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="PynappleLabelConverter">
+<a class="viewcode-back" href="../../../api/ethograph.labels.converters.PynappleLabelConverter.html#ethograph.labels.converters.PynappleLabelConverter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PynappleLabelConverter</span><span class="p">(</span><span class="n">LabelConverter</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract labels from pynapple IntervalSet objects.</span>
+
+<span class="sd">    Collects every ``nap.IntervalSet`` in the data dict whose key is</span>
+<span class="sd">    **not** ``&quot;trials&quot;`` or ``&quot;epochs&quot;`` (those are trial boundaries,</span>
+<span class="sd">    not labels).  Each IntervalSet name becomes a label class.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;pynapple_intervals&quot;</span>
+
+    <span class="n">SKIP_KEYS</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">({</span><span class="s2">&quot;trials&quot;</span><span class="p">,</span> <span class="s2">&quot;epochs&quot;</span><span class="p">})</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">trials_ep</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_trials_df</span> <span class="o">=</span> <span class="n">trials_df_from_intervalset</span><span class="p">(</span><span class="n">trials_ep</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_epochs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_extract_interval_epochs</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_epochs</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_label_map</span> <span class="o">=</span> <span class="n">build_mapping_from_labels</span><span class="p">(</span>
+                <span class="nb">sorted</span><span class="p">({</span><span class="n">e</span><span class="p">[</span><span class="s2">&quot;label_name&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_epochs</span><span class="p">})</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_extract_interval_epochs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">pynapple</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nap</span>
+
+        <span class="n">epochs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">obj</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">nap</span><span class="o">.</span><span class="n">IntervalSet</span><span class="p">):</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="n">key</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">SKIP_KEYS</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="n">meta_cols</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="s2">&quot;metadata_columns&quot;</span><span class="p">,</span> <span class="p">[]))</span>
+            <span class="n">starts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">start</span><span class="p">)</span>
+            <span class="n">ends</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">end</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">meta_cols</span><span class="p">:</span>
+                <span class="n">epochs</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+                    <span class="p">{</span><span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">s</span><span class="p">),</span> <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">e</span><span class="p">),</span>
+                     <span class="s2">&quot;label_name&quot;</span><span class="p">:</span> <span class="n">key</span><span class="p">,</span> <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="s2">&quot;individual_0&quot;</span><span class="p">}</span>
+                    <span class="k">for</span> <span class="n">s</span><span class="p">,</span> <span class="n">e</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">starts</span><span class="p">,</span> <span class="n">ends</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">meta</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="n">c</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">obj</span><span class="p">[</span><span class="n">c</span><span class="p">])</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">meta_cols</span><span class="p">})</span>
+                <span class="k">for</span> <span class="n">group_key</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">meta</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">meta_cols</span><span class="p">):</span>
+                    <span class="n">label_name</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="s2">&quot;_&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">group_key</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">group_key</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">group_key</span><span class="p">)</span>
+                    <span class="p">)</span>
+                    <span class="n">idx</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">values</span>
+                    <span class="n">epochs</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+                        <span class="p">{</span><span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">s</span><span class="p">),</span> <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">e</span><span class="p">),</span>
+                         <span class="s2">&quot;label_name&quot;</span><span class="p">:</span> <span class="n">label_name</span><span class="p">,</span> <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="s2">&quot;individual_0&quot;</span><span class="p">}</span>
+                        <span class="k">for</span> <span class="n">s</span><span class="p">,</span> <span class="n">e</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">starts</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">ends</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span>
+                    <span class="p">)</span>
+        <span class="k">return</span> <span class="n">epochs</span>
+
+<div class="viewcode-block" id="PynappleLabelConverter.extract">
+<a class="viewcode-back" href="../../../api/ethograph.labels.converters.PynappleLabelConverter.html#ethograph.labels.converters.PynappleLabelConverter.extract">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">extract</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trials_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+        <span class="n">t_df</span> <span class="o">=</span> <span class="n">trials_df</span> <span class="k">if</span> <span class="n">trials_df</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trials_df</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_epochs</span> <span class="ow">or</span> <span class="n">t_df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">init_empty_labels</span><span class="p">([])</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_global_to_trial_rows</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_epochs</span><span class="p">,</span> <span class="n">t_df</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rows_to_labels_df</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Helpers</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">trials_df_from_intervalset</span><span class="p">(</span><span class="n">trials_ep</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a trials DataFrame from a pynapple IntervalSet.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">trials_ep</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">trials_ep</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">,</span> <span class="s2">&quot;start_time&quot;</span><span class="p">,</span> <span class="s2">&quot;stop_time&quot;</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+        <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">trials_ep</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)),</span>
+        <span class="s2">&quot;start_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">trials_ep</span><span class="o">.</span><span class="n">start</span><span class="p">],</span>
+        <span class="s2">&quot;stop_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">trials_ep</span><span class="o">.</span><span class="n">end</span><span class="p">],</span>
+    <span class="p">})</span>
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=7f76b32a3354e82990f2"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=7f76b32a3354e82990f2"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2022, Akseli Ilmanen.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.17.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

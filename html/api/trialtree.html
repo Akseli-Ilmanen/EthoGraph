@@ -1,0 +1,1517 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>TrialTree &#8212; ethograph</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=7f76b32a3354e82990f2" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=7f76b32a3354e82990f2" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=5c2b050f" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=7f76b32a3354e82990f2"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=7f76b32a3354e82990f2" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=7f76b32a3354e82990f2" />
+
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'api/trialtree';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/api/trialtree.html" />
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="open" href="ethograph.open.html" />
+    <link rel="prev" title="API reference" href="../api_index.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class=" navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/icon.png" class="logo__image only-light" alt=""/>
+    <img src="../_static/icon.png" class="logo__image only-dark pst-js-only" alt=""/>
+  
+  
+    <p class="title logo__title">ethograph</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class=" navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../user_guide/index.html">
+    User guide
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../examples/index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="../api_index.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../community/index.html">
+    Community
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/Akseli-Ilmanen/ethograph" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../user_guide/index.html">
+    User guide
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../examples/index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="../api_index.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../community/index.html">
+    Community
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/Akseli-Ilmanen/ethograph" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar"><svg class="pst-icon svg-inline--fa" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">TrialTree</a></li>
+</ul>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="ethograph.open.html">open</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ethograph.from_datasets.html">from_datasets</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ethograph.load_nap_data.html">load_nap_data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ethograph.downsample_trialtree.html">downsample_trialtree</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ethograph.sel_valid.html">sel_valid</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ethograph.align_media_per_trial.html">align_media_per_trial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ethograph.align_media_from_streams.html">align_media_from_streams</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ethograph.NWBAlignment.html">NWBAlignment</a></li>
+</ul>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="ethograph.io.dataset.html">ethograph.io.dataset</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.dataset.add_angle_rgb_to_ds.html">add_angle_rgb_to_ds</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.dataset.add_changepoints_to_ds.html">add_changepoints_to_ds</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.dataset.downsample_trialtree.html">downsample_trialtree</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="ethograph.io.nwb_alignment.html">ethograph.io.nwb_alignment</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.nwb_alignment.EmpytAlignment.html">EmpytAlignment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.nwb_alignment.NWBAlignment.html">NWBAlignment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.nwb_alignment.TableAlignment.html">TableAlignment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.nwb_alignment.align_media_from_streams.html">align_media_from_streams</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.nwb_alignment.align_media_per_trial.html">align_media_per_trial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.nwb_alignment.discover_nwb.html">discover_nwb</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.nwb_alignment.edit_nwb.html">edit_nwb</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.nwb_alignment.make_nwb_alignment.html">make_nwb_alignment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.nwb_alignment.sync_acquisition_for_streams.html">sync_acquisition_for_streams</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.nwb_alignment.update_trials_columns.html">update_trials_columns</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="ethograph.io.nwb_import.html">ethograph.io.nwb_import</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.nwb_import.probe_behavioral_series.html">probe_behavioral_series</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.nwb_import.probe_electrical_series.html">probe_electrical_series</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.nwb_import.probe_label_sources.html">probe_label_sources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.nwb_import.read_trials_table.html">read_trials_table</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="ethograph.io.pynapple.html">ethograph.io.pynapple</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.pynapple.add_angle_rgb_to_nap.html">add_angle_rgb_to_nap</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.pynapple.add_changepoints_to_nap.html">add_changepoints_to_nap</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.pynapple.detect_trials.html">detect_trials</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.pynapple.flatten_nap_folder.html">flatten_nap_folder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.pynapple.get_metadata.html">get_metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.pynapple.load_nap_data.html">load_nap_data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.io.pynapple.parse_nwb_types.html">parse_nwb_types</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="ethograph.labels.intervals.html">ethograph.labels.intervals</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.intervals.empty_intervals.html">empty_intervals</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.intervals.load_mapping.html">ethograph.labels.intervals.load_mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.intervals.load_label_mapping.html">ethograph.labels.intervals.load_label_mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.intervals.save_label_mapping.html">save_label_mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.intervals.add_interval.html">add_interval</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.intervals.delete_interval.html">delete_interval</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.intervals.find_interval_at.html">find_interval_at</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.intervals.get_interval_bounds.html">get_interval_bounds</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.intervals.purge_short_intervals.html">purge_short_intervals</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.intervals.stitch_intervals.html">stitch_intervals</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.intervals.snap_boundaries.html">snap_boundaries</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="ethograph.labels.ml.html">ethograph.labels.ml</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.ml.dense_to_intervals.html">ethograph.labels.ml.dense_to_intervals</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.ml.intervals_to_dense.html">ethograph.labels.ml.intervals_to_dense</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.ml.get_labels_start_end_indices.html">ethograph.labels.ml.get_labels_start_end_indices</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.ml.find_blocks.html">ethograph.labels.ml.find_blocks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.ml.stitch_gaps.html">ethograph.labels.ml.stitch_gaps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.ml.purge_small_blocks.html">ethograph.labels.ml.purge_small_blocks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.ml.fix_endings.html">ethograph.labels.ml.fix_endings</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="ethograph.labels.tsv_store.html">ethograph.labels.tsv_store</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.tsv_store.labels_tsv_path.html">labels_tsv_path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.tsv_store.validate_labels_tsv.html">validate_labels_tsv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.tsv_store.load_labels_tsv.html">load_labels_tsv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.tsv_store.save_labels_tsv.html">save_labels_tsv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.tsv_store.get_trial_from_tsv.html">get_trial_from_tsv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.tsv_store.set_trial_in_tsv.html">set_trial_in_tsv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.tsv_store.get_trial_meta.html">get_trial_meta</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.tsv_store.set_trial_meta_attr.html">set_trial_meta_attr</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.tsv_store.init_empty_labels.html">init_empty_labels</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="ethograph.labels.predictions.html">ethograph.labels.predictions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.predictions.PredictionsStore.html">PredictionsStore</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.predictions.load_prediction_file.html">load_prediction_file</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.predictions.prediction_to_labels_and_confidence.html">prediction_to_labels_and_confidence</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="ethograph.labels.crowsetta_format.html">ethograph.labels.crowsetta_format</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.crowsetta_format.EthographSeq.html">ethograph.labels.crowsetta_format.EthographSeq</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="ethograph.labels.converters.html">ethograph.labels.converters</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.converters.LabelConverter.html">LabelConverter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.converters.CrowsettaLabelConverter.html">CrowsettaLabelConverter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.converters.PynappleLabelConverter.html">PynappleLabelConverter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.converters.build_mapping_from_labels.html">build_mapping_from_labels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.converters.crowsetta_to_intervals.html">crowsetta_to_intervals</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.converters.extract_crowsetta_labels.html">extract_crowsetta_labels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.converters.resolve_crowsetta_mapping.html">resolve_crowsetta_mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.converters.write_mapping_file.html">write_mapping_file</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="ethograph.labels.export.html">ethograph.labels.export</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.export.correct_offsets_trial.html">correct_offsets_trial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.export.enrich_labels_df.html">enrich_labels_df</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="ethograph.labels.plots.html">ethograph.labels.plots</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.plots.draw_label_rectangle.html">draw_label_rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.plots.plot_label_segments.html">plot_label_segments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.labels.plots.plot_label_segments_multirow.html">plot_label_segments_multirow</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="ethograph.utils.xr_utils.html">ethograph.utils.xr_utils</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.utils.xr_utils.get_time_coord.html">get_time_coord</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ethograph.utils.xr_utils.sel_valid.html">sel_valid</a></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../api_index.html" class="nav-link">API reference</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">TrialTree</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="trialtree">
+<span id="target-trialtree"></span><span id="target-trialtree-api"></span><h1>TrialTree<a class="headerlink" href="#trialtree" title="Link to this heading">#</a></h1>
+<p><a class="reference internal" href="#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><code class="xref py py-class docutils literal notranslate"><span class="pre">TrialTree</span></code></a> is a wrapper around <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.DataTree</span></code></a> that stores
+one <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> per trial. Build one from a list of datasets,
+then access each trial by ID or index:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span><span class="o">,</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span><span class="o">,</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+
+<span class="c1"># Build: one xr.Dataset per trial</span>
+<span class="n">datasets</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">):</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">({</span><span class="s2">&quot;speed&quot;</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">300</span><span class="p">),</span> <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">],</span>
+                                            <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">300</span><span class="p">)</span> <span class="o">/</span> <span class="mf">30.0</span><span class="p">})})</span>
+    <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span>
+    <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;fps&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">30.0</span>
+    <span class="n">datasets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span>
+
+<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_datasets</span><span class="p">(</span><span class="n">datasets</span><span class="p">)</span>
+
+<span class="c1"># Access by trial ID (label-based, like xr.Dataset.sel)</span>
+<span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span>   <span class="c1"># 2</span>
+<span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span>          <span class="c1"># the speed DataArray for trial 2</span>
+
+<span class="c1"># Access by integer index (0-based, like xr.Dataset.isel)</span>
+<span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span>   <span class="c1"># 1</span>
+
+<span class="c1"># List all trial IDs</span>
+<span class="n">dt</span><span class="o">.</span><span class="n">trials</span>            <span class="c1"># [1, 2, 3]</span>
+
+<span class="c1"># Save / load</span>
+<span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
+<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Media file paths, trial timing, and stream offsets live in a separate
+NWB alignment file (<code class="docutils literal notranslate"><span class="pre">&lt;project&gt;/.ethograph/alignment.nwb</span></code>), accessed via
+<code class="docutils literal notranslate"><span class="pre">dt.nwb_alignment</span></code>. See <a class="reference internal" href="#target-trialtree-media-api"><span class="std std-ref">Media and alignment</span></a>.</p>
+<p>For the <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> structure expected inside each trial, see
+<a class="reference internal" href="../getting_started/data_requirements.html"><span class="doc">Data Format Requirements</span></a>.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ethograph.io.trialtree.</span></span><span class="sig-name descname"><span class="pre">TrialTree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<hr class="docutils" />
+<section id="creating">
+<h2>Creating<a class="headerlink" href="#creating" title="Link to this heading">#</a></h2>
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.open">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">open</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.open"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.open" title="Link to this definition">#</a></dt>
+<dd><p>Load a TrialTree from a NetCDF file.</p>
+<p>Auto-discovers <code class="docutils literal notranslate"><span class="pre">.ethograph/alignment.nwb</span></code> next to the file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><code class="xref py py-class docutils literal notranslate"><span class="pre">TrialTree</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.from_datasets">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">from_datasets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datasets</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">validate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.from_datasets"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.from_datasets" title="Link to this definition">#</a></dt>
+<dd><p>Build a TrialTree from a list of xarray Datasets.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>datasets</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code></a>[<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Dataset</span></code></a>]</span>) – Each dataset must have a unique <code class="docutils literal notranslate"><span class="pre">attrs[&quot;trial&quot;]</span></code> key.</p></li>
+<li><p><strong>validate</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span>) – Run validation after construction.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><code class="xref py py-class docutils literal notranslate"><span class="pre">TrialTree</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.from_continuous">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">from_continuous</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">epochs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.from_continuous"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.from_continuous" title="Link to this definition">#</a></dt>
+<dd><p>Build a TrialTree from a single continuous recording + trial epochs.</p>
+<p>Unlike <a class="reference internal" href="#ethograph.io.trialtree.TrialTree.from_datasets" title="ethograph.io.trialtree.TrialTree.from_datasets"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_datasets()</span></code></a> which requires pre-split data, this
+stores one shared dataset and slices on demand when <a class="reference internal" href="#ethograph.io.trialtree.TrialTree.trial" title="ethograph.io.trialtree.TrialTree.trial"><code class="xref py py-meth docutils literal notranslate"><span class="pre">trial()</span></code></a>
+is called.  Time coordinates are shifted to 0 per trial.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ds</strong> (<span class="sphinx_autodoc_typehints-type">xr.Dataset</span>) – Full recording dataset.  Must have at least one dimension
+whose name contains <code class="docutils literal notranslate"><span class="pre">&quot;time&quot;</span></code>.</p></li>
+<li><p><strong>epochs</strong> (<span class="sphinx_autodoc_typehints-type">pd.DataFrame | nap.IntervalSet</span>) – <p>Trial boundaries.  Accepts:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">pd.DataFrame</span></code> with columns <code class="docutils literal notranslate"><span class="pre">trial</span></code>, <code class="docutils literal notranslate"><span class="pre">start_time</span></code>,
+<code class="docutils literal notranslate"><span class="pre">stop_time</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">nap.IntervalSet</span></code> — trial IDs taken from a <code class="docutils literal notranslate"><span class="pre">&quot;trial&quot;</span></code>
+metadata column, or <code class="docutils literal notranslate"><span class="pre">1,</span> <span class="pre">2,</span> <span class="pre">…</span></code> if absent.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type">TrialTree</span></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">epochs</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+<span class="gp">... </span>    <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">&quot;start_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">60.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">&quot;stop_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">60.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">,</span> <span class="mf">180.0</span><span class="p">],</span>
+<span class="gp">... </span><span class="p">})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">TrialTree</span><span class="o">.</span><span class="n">from_continuous</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">epochs</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># returns 60-120s slice, time shifted to 0</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.from_datatree">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attrs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.from_datatree"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.from_datatree" title="Link to this definition">#</a></dt>
+<dd><p>Wrap an existing DataTree as a TrialTree.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>source</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><code class="xref py py-class docutils literal notranslate"><span class="pre">TrialTree</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span>) – Original TrialTree to copy <code class="docutils literal notranslate"><span class="pre">nwb_alignment</span></code> and <code class="docutils literal notranslate"><span class="pre">_source_path</span></code> from.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><code class="xref py py-class docutils literal notranslate"><span class="pre">TrialTree</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<hr class="docutils" />
+<section id="accessing-trials">
+<h2>Accessing trials<a class="headerlink" href="#accessing-trials" title="Link to this heading">#</a></h2>
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.trial">
+<span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">trial</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trial</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.trial"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.trial" title="Link to this definition">#</a></dt>
+<dd><p>Return the dataset for the given trial ID.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>trial</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Trial identifier matching <code class="docutils literal notranslate"><span class="pre">ds.attrs[&quot;trial&quot;]</span></code>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Dataset</span></code></a></span></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span>
+<span class="go">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span>  <span class="c1"># access a feature variable</span>
+<span class="go">&lt;xarray.DataArray &#39;speed&#39; (time: 9000, keypoints: 4)&gt;</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.itrial">
+<span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">itrial</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trial_idx</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.itrial"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.itrial" title="Link to this definition">#</a></dt>
+<dd><p>Return the dataset at an integer index (0-based).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>trial_idx</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Zero-based index into the list of trials.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Dataset</span></code></a></span></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span><span class="o">.</span><span class="n">trials</span>
+<span class="go">[1, 2, 3]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>   <span class="c1"># same as dt.trial(1)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span>
+<span class="go">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>   <span class="c1"># same as dt.trial(3)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span>
+<span class="go">3</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.trials">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">trials</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.trials" title="Link to this definition">#</a></dt>
+<dd><p>List of trial identifiers.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.get_all_trials">
+<span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">get_all_trials</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.get_all_trials"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.get_all_trials" title="Link to this definition">#</a></dt>
+<dd><p>Return a dict mapping trial ID to Dataset for all trials.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Dataset</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.get_common_attrs">
+<span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">get_common_attrs</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.get_common_attrs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.get_common_attrs" title="Link to this definition">#</a></dt>
+<dd><p>Return attributes that are identical across all trials.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.get_trial_metadata">
+<span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">get_trial_metadata</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trial</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.get_trial_metadata"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.get_trial_metadata" title="Link to this definition">#</a></dt>
+<dd><p>Return condition metadata for a single trial as a dict.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<hr class="docutils" />
+<section id="iterating-over-trials">
+<h2>Iterating over trials<a class="headerlink" href="#iterating-over-trials" title="Link to this heading">#</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">trial_id</span><span class="p">,</span> <span class="n">ds</span> <span class="ow">in</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial_items</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Trial </span><span class="si">{</span><span class="n">trial_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">time</span><span class="p">)</span><span class="si">}</span><span class="s2"> timepoints&quot;</span><span class="p">)</span>
+
+<span class="c1"># Apply a function to every trial, returning a new TrialTree</span>
+<span class="n">dt_smoothed</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">map_trials</span><span class="p">(</span><span class="k">lambda</span> <span class="n">ds</span><span class="p">:</span> <span class="n">smooth</span><span class="p">(</span><span class="n">ds</span><span class="p">))</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.trial_items">
+<span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">trial_items</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.trial_items"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.trial_items" title="Link to this definition">#</a></dt>
+<dd><p>Iterate over <code class="docutils literal notranslate"><span class="pre">(trial_id,</span> <span class="pre">dataset)</span></code> pairs for all trial nodes.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.map_trials">
+<span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">map_trials</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.map_trials"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.map_trials" title="Link to this definition">#</a></dt>
+<dd><p>Apply <em>func</em> to every trial dataset and return a new TrialTree.</p>
+<p>For continuous trees, materialises sliced datasets into a
+standard per-node TrialTree so <em>func</em> results can be stored.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><code class="xref py py-class docutils literal notranslate"><span class="pre">TrialTree</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<hr class="docutils" />
+<section id="modifying-trials">
+<h2>Modifying trials<a class="headerlink" href="#modifying-trials" title="Link to this heading">#</a></h2>
+<p><strong>In-place mutations</strong> work directly through <a class="reference internal" href="#ethograph.io.trialtree.TrialTree.trial" title="ethograph.io.trialtree.TrialTree.trial"><code class="xref py py-meth docutils literal notranslate"><span class="pre">trial()</span></code></a> because
+the returned dataset shares its underlying data with the tree:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;human_verified&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">1</span><span class="p">)[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">[:</span><span class="mi">10</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+</pre></div>
+</div>
+<p><strong>Structural changes</strong> (adding/removing variables) require
+<a class="reference internal" href="#ethograph.io.trialtree.TrialTree.update_trial" title="ethograph.io.trialtree.TrialTree.update_trial"><code class="xref py py-meth docutils literal notranslate"><span class="pre">update_trial()</span></code></a>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dt</span><span class="o">.</span><span class="n">update_trial</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">ds</span><span class="p">:</span> <span class="n">ds</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span>
+    <span class="n">smoothed_speed</span><span class="o">=</span><span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+<span class="p">))</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.update_trial">
+<span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">update_trial</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trial</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">func</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.update_trial"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.update_trial" title="Link to this definition">#</a></dt>
+<dd><p>Read-modify-write a single trial’s dataset.</p>
+<p>Not supported for continuous trees — call <code class="xref py py-meth docutils literal notranslate"><span class="pre">materialise()</span></code>
+first if you need per-trial mutation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<hr class="docutils" />
+<section id="filtering">
+<h2>Filtering<a class="headerlink" href="#filtering" title="Link to this heading">#</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dt_tone_a</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">filter_by_attr</span><span class="p">(</span><span class="s2">&quot;stimulus&quot;</span><span class="p">,</span> <span class="s2">&quot;tone_A&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.filter_by_attr">
+<span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">filter_by_attr</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">attr_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attr_value</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.filter_by_attr"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.filter_by_attr" title="Link to this definition">#</a></dt>
+<dd><p>Return a new TrialTree containing only trials that match an attribute.</p>
+<p>Checks the metadata table first; falls back to <code class="docutils literal notranslate"><span class="pre">ds.attrs</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><code class="xref py py-class docutils literal notranslate"><span class="pre">TrialTree</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<hr class="docutils" />
+</section>
+<section id="media-files-and-alignment">
+<span id="target-trialtree-media-api"></span><h2>Media files and alignment<a class="headerlink" href="#media-files-and-alignment" title="Link to this heading">#</a></h2>
+<p>Media filenames, trial timing, and stream offsets are stored in an <strong>NWB
+alignment file</strong> at <code class="docutils literal notranslate"><span class="pre">&lt;project&gt;/.ethograph/alignment.nwb</span></code>, not inside the
+<code class="docutils literal notranslate"><span class="pre">.nc</span></code> dataset. The alignment is accessed via <code class="docutils literal notranslate"><span class="pre">dt.nwb_alignment</span></code>, which
+is an <a class="reference internal" href="#ethograph.io.nwb_alignment.NWBAlignment" title="ethograph.io.nwb_alignment.NWBAlignment"><code class="xref py py-class docutils literal notranslate"><span class="pre">NWBAlignment</span></code></a> (or its null-object
+<a class="reference internal" href="ethograph.io.nwb_alignment.EmpytAlignment.html#ethograph.io.nwb_alignment.EmpytAlignment" title="ethograph.io.nwb_alignment.EmpytAlignment"><code class="xref py py-class docutils literal notranslate"><span class="pre">EmpytAlignment</span></code></a> when no NWB file is found).</p>
+<p>Create alignment files with <a class="reference internal" href="#ethograph.io.nwb_alignment.align_media_per_trial" title="ethograph.io.nwb_alignment.align_media_per_trial"><code class="xref py py-func docutils literal notranslate"><span class="pre">align_media_per_trial()</span></code></a>
+or <a class="reference internal" href="#ethograph.io.nwb_alignment.align_media_from_streams" title="ethograph.io.nwb_alignment.align_media_from_streams"><code class="xref py py-func docutils literal notranslate"><span class="pre">align_media_from_streams()</span></code></a>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.nwb_alignment</span><span class="w"> </span><span class="kn">import</span> <span class="n">align_media_per_trial</span>
+
+<span class="n">trial_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
+    <span class="s2">&quot;video_cam-1&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.mp4&quot;</span><span class="p">,</span> <span class="s2">&quot;t2.mp4&quot;</span><span class="p">,</span> <span class="s2">&quot;t3.mp4&quot;</span><span class="p">],</span>
+    <span class="s2">&quot;pose_cam-1&quot;</span><span class="p">:</span>  <span class="p">[</span><span class="s2">&quot;t1.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;t2.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;t3.h5&quot;</span><span class="p">],</span>
+<span class="p">})</span>
+
+<span class="n">align_media_per_trial</span><span class="p">(</span>
+    <span class="n">trial_table</span><span class="p">,</span>
+    <span class="n">stream_rates</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;video&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span> <span class="s2">&quot;pose&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">},</span>
+    <span class="n">output_path</span><span class="o">=</span><span class="s2">&quot;.ethograph/alignment.nwb&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Columns follow the <code class="docutils literal notranslate"><span class="pre">{stream}_{device}</span></code> convention (e.g. <code class="docutils literal notranslate"><span class="pre">video_cam-1</span></code>,
+<code class="docutils literal notranslate"><span class="pre">audio_mic-1</span></code>).</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.io.nwb_alignment.align_media_per_trial">
+<span class="sig-prename descclassname"><span class="pre">ethograph.io.nwb_alignment.</span></span><span class="sig-name descname"><span class="pre">align_media_per_trial</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trial_table</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream_rates</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">session_description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'NWB</span> <span class="pre">file</span> <span class="pre">for</span> <span class="pre">media</span> <span class="pre">alignment</span> <span class="pre">(ethograph</span> <span class="pre">generated).'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">media_root</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pose_fps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_alignment.html#align_media_per_trial"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_alignment.align_media_per_trial" title="Link to this definition">#</a></dt>
+<dd><p>Create an alignment.nwb from a trial table.</p>
+<p>This is the primary user-facing function for creating alignment files.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trial_table</strong> (<span class="sphinx_autodoc_typehints-type">pd.DataFrame</span>) – <p>DataFrame with <code class="docutils literal notranslate"><span class="pre">trial</span></code> column and <code class="docutils literal notranslate"><span class="pre">{stream}_{device}</span></code> filename
+columns.  <code class="docutils literal notranslate"><span class="pre">start_time</span></code> / <code class="docutils literal notranslate"><span class="pre">stop_time</span></code> are optional – omit for
+aligned-to-trial data.</p>
+<dl class="simple">
+<dt>Example::</dt><dd><p>trial | video_cam-1    | audio_mic-1   | pose_cam-1
+1     | cam1_t1.mp4    | mic1_t1.wav   | cam1_t1.h5
+2     | cam1_t2.mp4    | mic1_t2.wav   | cam1_t2.h5</p>
+</dd>
+</dl>
+</p></li>
+<li><p><strong>stream_rates</strong> (<span class="sphinx_autodoc_typehints-type">dict[str, float] | None</span>) – Sampling rate per stream.  Must include every stream that has
+columns in the table.  Example:
+<code class="docutils literal notranslate"><span class="pre">{&quot;video&quot;:</span> <span class="pre">30.0,</span> <span class="pre">&quot;audio&quot;:</span> <span class="pre">48000.0,</span> <span class="pre">&quot;pose&quot;:</span> <span class="pre">30.0}</span></code></p></li>
+<li><p><strong>output_path</strong> (<span class="sphinx_autodoc_typehints-type">Path | None</span>) – Where to write the <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> file.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Path to the created NWB file.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span><span class="o">,</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+<span class="gp">... </span>    <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">&quot;video_cam-1&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.mp4&quot;</span><span class="p">,</span> <span class="s2">&quot;t2.mp4&quot;</span><span class="p">,</span> <span class="s2">&quot;t3.mp4&quot;</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">&quot;pose_cam-1&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;t2.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;t3.h5&quot;</span><span class="p">],</span>
+<span class="gp">... </span><span class="p">})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">eto</span><span class="o">.</span><span class="n">create_alignment</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;video&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span> <span class="s2">&quot;pose&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">},</span> <span class="s2">&quot;out/.ethograph/alignment.nwb&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.io.nwb_alignment.align_media_from_streams">
+<span class="sig-prename descclassname"><span class="pre">ethograph.io.nwb_alignment.</span></span><span class="sig-name descname"><span class="pre">align_media_from_streams</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trials</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">streams</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_alignment.html#align_media_from_streams"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_alignment.align_media_from_streams" title="Link to this definition">#</a></dt>
+<dd><p>Create an alignment.nwb for unaligned / complex scenarios.</p>
+<p>The trials table contains only timing (no filenames).  All file
+references go into ImageSeries acquisition items.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trials</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v3.0.2)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – DataFrame with <code class="docutils literal notranslate"><span class="pre">trial</span></code>, <code class="docutils literal notranslate"><span class="pre">start_time</span></code>, <code class="docutils literal notranslate"><span class="pre">stop_time</span></code>.</p></li>
+<li><p><strong>streams</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>]</span>) – <p>List of stream dicts, each with:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;video_cam-1&quot;</span><span class="p">,</span>       <span class="c1"># acquisition item name</span>
+    <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.mp4&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>    <span class="c1"># one per trial (full paths)</span>
+    <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span>                <span class="c1"># sampling rate</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>For session-wide files (one file spanning all trials):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;audio_mic-1&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;session.wav&quot;</span><span class="p">],</span>
+    <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">44100.0</span><span class="p">,</span>
+    <span class="s2">&quot;starting_time&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>        <span class="c1"># when file starts in session time</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>For streams with explicit timestamps (irregular):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;ephys_probe-1&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;session.dat&quot;</span><span class="p">],</span>
+    <span class="s2">&quot;timestamps&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.001</span><span class="p">,</span> <span class="o">...</span><span class="p">]),</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</p></li>
+<li><p><strong>output_path</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></a></span>) – Where to write the <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> file.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Path to the created NWB file.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>Per-trial video + pose, session-wide audio:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">trials</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+<span class="gp">... </span>    <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">&quot;start_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">10.5</span><span class="p">,</span> <span class="mf">22.3</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">&quot;stop_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">8.2</span><span class="p">,</span> <span class="mf">19.1</span><span class="p">,</span> <span class="mf">30.0</span><span class="p">],</span>
+<span class="gp">... </span><span class="p">})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">streams</span> <span class="o">=</span> <span class="p">[</span>
+<span class="gp">... </span>    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;video_cam-1&quot;</span><span class="p">,</span> <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.mp4&quot;</span><span class="p">,</span> <span class="s2">&quot;t2.mp4&quot;</span><span class="p">,</span> <span class="s2">&quot;t3.mp4&quot;</span><span class="p">],</span> <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">},</span>
+<span class="gp">... </span>    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;pose_cam-1&quot;</span><span class="p">,</span> <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;t2.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;t3.h5&quot;</span><span class="p">],</span> <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">},</span>
+<span class="gp">... </span>    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;audio_mic-1&quot;</span><span class="p">,</span> <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;session.wav&quot;</span><span class="p">],</span> <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">48000.0</span><span class="p">,</span> <span class="s2">&quot;starting_time&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">},</span>
+<span class="gp">... </span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">eto</span><span class="o">.</span><span class="n">create_alignment_from_streams</span><span class="p">(</span><span class="n">trials</span><span class="p">,</span> <span class="n">streams</span><span class="p">,</span> <span class="s2">&quot;.ethograph/alignment.nwb&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<section id="reading-alignment-metadata">
+<h3>Reading alignment metadata<a class="headerlink" href="#reading-alignment-metadata" title="Link to this heading">#</a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">alignment</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">nwb_alignment</span>
+<span class="n">alignment</span><span class="o">.</span><span class="n">cameras</span>           <span class="c1"># [&quot;cam-1&quot;, &quot;cam-2&quot;]</span>
+<span class="n">alignment</span><span class="o">.</span><span class="n">mics</span>              <span class="c1"># [&quot;mic-1&quot;]</span>
+<span class="n">alignment</span><span class="o">.</span><span class="n">start_time</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>     <span class="c1"># trial 1 start (seconds)</span>
+<span class="n">alignment</span><span class="o">.</span><span class="n">get_media</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;video&quot;</span><span class="p">,</span> <span class="s2">&quot;cam-1&quot;</span><span class="p">)</span>  <span class="c1"># &quot;t1.mp4&quot;</span>
+</pre></div>
+</div>
+<dl class="py class">
+<dt class="sig sig-object py" id="ethograph.io.nwb_alignment.NWBAlignment">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ethograph.io.nwb_alignment.</span></span><span class="sig-name descname"><span class="pre">NWBAlignment</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">nwb_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_alignment.html#NWBAlignment"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_alignment.NWBAlignment" title="Link to this definition">#</a></dt>
+<dd><p>Session metadata backed by an NWB file.</p>
+<p>All external media (video, audio, pose) are stored as ImageSeries
+in acquisition with <code class="docutils literal notranslate"><span class="pre">{stream}_{device}</span></code> naming.  Timing comes from
+<code class="docutils literal notranslate"><span class="pre">rate</span></code> or <code class="docutils literal notranslate"><span class="pre">timestamps</span></code> on the ImageSeries.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.nwb_alignment.NWBAlignment.devices">
+<span class="sig-name descname"><span class="pre">devices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stream</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_alignment.html#NWBAlignment.devices"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_alignment.NWBAlignment.devices" title="Link to this definition">#</a></dt>
+<dd><p>Discover devices from trials table columns AND acquisition items.</p>
+<p>Three sources, checked in order:</p>
+<ol class="arabic simple">
+<li><p>Trials table columns (<code class="docutils literal notranslate"><span class="pre">video_cam_1</span></code> -&gt; device <code class="docutils literal notranslate"><span class="pre">cam_1</span></code>).</p></li>
+<li><p>Acquisition ImageSeries following <code class="docutils literal notranslate"><span class="pre">{stream}_{device}</span></code> naming.</p></li>
+<li><p>Acquisition ImageSeries whose <code class="docutils literal notranslate"><span class="pre">external_file</span></code> extensions match
+known media types (e.g. <code class="docutils literal notranslate"><span class="pre">.mp4</span></code> -&gt; video, <code class="docutils literal notranslate"><span class="pre">.wav</span></code> -&gt; audio).</p></li>
+</ol>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.nwb_alignment.NWBAlignment.electrical_series">
+<span class="sig-name descname"><span class="pre">electrical_series</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_alignment.html#NWBAlignment.electrical_series"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_alignment.NWBAlignment.electrical_series" title="Link to this definition">#</a></dt>
+<dd><p>Discover ElectricalSeries in acquisition. Returns list of {name, path, n_channels, rate}.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.nwb_alignment.NWBAlignment.get_stream_rate">
+<span class="sig-name descname"><span class="pre">get_stream_rate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stream</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_alignment.html#NWBAlignment.get_stream_rate"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_alignment.NWBAlignment.get_stream_rate" title="Link to this definition">#</a></dt>
+<dd><p>Read the sampling rate for a stream from its acquisition ImageSeries.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="ethograph.io.nwb_alignment.NWBAlignment.has_real_timing">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">has_real_timing</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><a class="headerlink" href="#ethograph.io.nwb_alignment.NWBAlignment.has_real_timing" title="Link to this definition">#</a></dt>
+<dd><p>Whether the trials table has meaningful start/stop times.</p>
+<p>Returns False when all trials have identical placeholder timing
+(e.g. start=0.0, stop=1.0 for every row), which indicates the
+NWB was generated without real session timing.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.nwb_alignment.NWBAlignment.resolve_media_path">
+<span class="sig-name descname"><span class="pre">resolve_media_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trial</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fallback_folder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_alignment.html#NWBAlignment.resolve_media_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_alignment.NWBAlignment.resolve_media_path" title="Link to this definition">#</a></dt>
+<dd><p>Resolve the full path for a media file.</p>
+<ol class="arabic simple">
+<li><p>Try the ImageSeries <code class="docutils literal notranslate"><span class="pre">external_file</span></code> path for this trial (if on disk).</p></li>
+<li><p>Fallback: trial table filename + <code class="docutils literal notranslate"><span class="pre">fallback_folder</span></code>.</p></li>
+<li><p>Returns <code class="docutils literal notranslate"><span class="pre">None</span></code> if unresolvable.</p></li>
+</ol>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.nwb_alignment.NWBAlignment.stream_offset_for_trial">
+<span class="sig-name descname"><span class="pre">stream_offset_for_trial</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trial</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_alignment.html#NWBAlignment.stream_offset_for_trial"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_alignment.NWBAlignment.stream_offset_for_trial" title="Link to this definition">#</a></dt>
+<dd><p>Trial-relative time of sample 0 for a stream’s file.</p>
+<p>For per-trial aligned media returns 0.0.
+For session-wide media returns the file’s start relative to the trial.
+Reads timing from the acquisition ImageSeries.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.io.nwb_alignment.discover_nwb">
+<span class="sig-prename descclassname"><span class="pre">ethograph.io.nwb_alignment.</span></span><span class="sig-name descname"><span class="pre">discover_nwb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">nc_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_alignment.html#discover_nwb"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_alignment.discover_nwb" title="Link to this definition">#</a></dt>
+<dd><p>Find an NWB session file near a data file.</p>
+<p>Search order:
+1. <code class="docutils literal notranslate"><span class="pre">&lt;dir&gt;/.ethograph/alignment.nwb</span></code>
+2. Any <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> file in <code class="docutils literal notranslate"><span class="pre">&lt;dir&gt;/.ethograph/</span></code></p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.io.nwb_alignment.make_nwb_alignment">
+<span class="sig-prename descclassname"><span class="pre">ethograph.io.nwb_alignment.</span></span><span class="sig-name descname"><span class="pre">make_nwb_alignment</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">nwb_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_alignment.html#make_nwb_alignment"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_alignment.make_nwb_alignment" title="Link to this definition">#</a></dt>
+<dd><p>Create a EmpytAlignment from an NWB path, falling back to base EmpytAlignment.</p>
+</dd></dl>
+
+<hr class="docutils" />
+</section>
+</section>
+<section id="session-table-and-timing">
+<span id="target-trialtree-session-api"></span><h2>Session table and timing<a class="headerlink" href="#session-table-and-timing" title="Link to this heading">#</a></h2>
+<p>Trial timing (start/stop) is stored in the NWB alignment file’s trials
+table. When present, it enables session-mode navigation and restricting
+neural data to trial windows.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">alignment</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">nwb_alignment</span>
+<span class="n">alignment</span><span class="o">.</span><span class="n">start_time</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>      <span class="c1"># 0.0</span>
+<span class="n">alignment</span><span class="o">.</span><span class="n">stop_time</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>       <span class="c1"># 120.0</span>
+<span class="n">alignment</span><span class="o">.</span><span class="n">trials_df</span>          <span class="c1"># full trials DataFrame</span>
+</pre></div>
+</div>
+<hr class="docutils" />
+</section>
+<section id="stream-offsets">
+<span id="target-trialtree-offsets-api"></span><h2>Stream offsets<a class="headerlink" href="#stream-offsets" title="Link to this heading">#</a></h2>
+<p>For session-wide streams (e.g. ephys), the offset specifies when sample 0
+of the file occurs in session time. This is stored in the alignment file
+via <a class="reference internal" href="#ethograph.io.nwb_alignment.align_media_from_streams" title="ethograph.io.nwb_alignment.align_media_from_streams"><code class="xref py py-func docutils literal notranslate"><span class="pre">align_media_from_streams()</span></code></a> using the
+<code class="docutils literal notranslate"><span class="pre">starting_time</span></code> field:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.nwb_alignment</span><span class="w"> </span><span class="kn">import</span> <span class="n">align_media_from_streams</span>
+
+<span class="n">streams</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;video_cam-1&quot;</span><span class="p">,</span> <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.mp4&quot;</span><span class="p">,</span> <span class="s2">&quot;t2.mp4&quot;</span><span class="p">],</span> <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;ephys_probe-1&quot;</span><span class="p">,</span> <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;session.dat&quot;</span><span class="p">],</span>
+     <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">30000.0</span><span class="p">,</span> <span class="s2">&quot;starting_time&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
+<span class="p">]</span>
+<span class="n">align_media_from_streams</span><span class="p">(</span><span class="n">trials_df</span><span class="p">,</span> <span class="n">streams</span><span class="p">,</span> <span class="s2">&quot;.ethograph/alignment.nwb&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>To query offsets at runtime:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">alignment</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">nwb_alignment</span>
+<span class="n">alignment</span><span class="o">.</span><span class="n">stream_offset_for_trial</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;ephys&quot;</span><span class="p">)</span>   <span class="c1"># offset in seconds</span>
+</pre></div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="labels">
+<h2>Labels<a class="headerlink" href="#labels" title="Link to this heading">#</a></h2>
+<p>Labels are stored in a <strong>TSV file</strong> alongside the <code class="docutils literal notranslate"><span class="pre">.nc</span></code> file (see
+<span class="xref std std-doc">Label Storage</span> for the full format spec).
+The TSV uses columns <code class="docutils literal notranslate"><span class="pre">onset_s</span></code>, <code class="docutils literal notranslate"><span class="pre">offset_s</span></code>, <code class="docutils literal notranslate"><span class="pre">labels</span></code> (int), <code class="docutils literal notranslate"><span class="pre">individual</span></code>,
+and <code class="docutils literal notranslate"><span class="pre">trial</span></code>, plus per-trial metadata columns.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.tsv_store</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_labels_tsv</span><span class="p">,</span> <span class="n">save_labels_tsv</span>
+
+<span class="n">df</span> <span class="o">=</span> <span class="n">load_labels_tsv</span><span class="p">(</span><span class="s2">&quot;data_labels.tsv&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">])</span>  <span class="c1"># labels for trial 1</span>
+</pre></div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="saving">
+<h2>Saving<a class="headerlink" href="#saving" title="Link to this heading">#</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;path/to/session.nc&quot;</span><span class="p">)</span>
+<span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>  <span class="c1"># overwrite the file it was loaded from</span>
+</pre></div>
+</div>
+<p>When saving to a new directory, the alignment NWB is automatically copied
+alongside the <code class="docutils literal notranslate"><span class="pre">.nc</span></code> file.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.save">
+<span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">save</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.save"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.save" title="Link to this definition">#</a></dt>
+<dd><p>Write the TrialTree to a NetCDF file.</p>
+<p>Continuous trees are materialised into per-trial nodes before
+saving so the file can be re-opened with <a class="reference internal" href="#ethograph.io.trialtree.TrialTree.open" title="ethograph.io.trialtree.TrialTree.open"><code class="xref py py-meth docutils literal notranslate"><span class="pre">open()</span></code></a>.</p>
+<p>Uses an atomic write (temp file then rename) to avoid partial writes.
+If an alignment NWB exists and the save directory differs from where
+the NWB lives, a copy is placed in <code class="docutils literal notranslate"><span class="pre">&lt;save_dir&gt;/.ethograph/</span></code> so that
+<a class="reference internal" href="#ethograph.io.trialtree.TrialTree.open" title="ethograph.io.trialtree.TrialTree.open"><code class="xref py py-meth docutils literal notranslate"><span class="pre">open()</span></code></a> can discover it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<hr class="docutils" />
+<section id="nwb-import-helpers">
+<h2>NWB import helpers<a class="headerlink" href="#nwb-import-helpers" title="Link to this heading">#</a></h2>
+<p>These functions probe NWB files to discover available data for import:</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.io.nwb_import.read_trials_table">
+<span class="sig-prename descclassname"><span class="pre">ethograph.io.nwb_import.</span></span><span class="sig-name descname"><span class="pre">read_trials_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">nwb</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_import.html#read_trials_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_import.read_trials_table" title="Link to this definition">#</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v3.0.2)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.io.nwb_import.probe_behavioral_series">
+<span class="sig-prename descclassname"><span class="pre">ethograph.io.nwb_import.</span></span><span class="sig-name descname"><span class="pre">probe_behavioral_series</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">nwb</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_import.html#probe_behavioral_series"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_import.probe_behavioral_series" title="Link to this definition">#</a></dt>
+<dd><p>List all behavioral time-series interfaces available for import.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.io.nwb_import.probe_electrical_series">
+<span class="sig-prename descclassname"><span class="pre">ethograph.io.nwb_import.</span></span><span class="sig-name descname"><span class="pre">probe_electrical_series</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">nwb</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_import.html#probe_electrical_series"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_import.probe_electrical_series" title="Link to this definition">#</a></dt>
+<dd><p>List all ElectricalSeries in nwb.acquisition.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.io.nwb_import.probe_label_sources">
+<span class="sig-prename descclassname"><span class="pre">ethograph.io.nwb_import.</span></span><span class="sig-name descname"><span class="pre">probe_label_sources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">nwb</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_import.html#probe_label_sources"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_import.probe_label_sources" title="Link to this definition">#</a></dt>
+<dd><p>List all potential interval label sources in the NWB file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<hr class="docutils" />
+<section id="dataset-utilities">
+<h2>Dataset utilities<a class="headerlink" href="#dataset-utilities" title="Link to this heading">#</a></h2>
+<p>Functions for building and augmenting datasets:</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.io.dataset.downsample_trialtree">
+<span class="sig-prename descclassname"><span class="pre">ethograph.io.dataset.</span></span><span class="sig-name descname"><span class="pre">downsample_trialtree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">factor</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/dataset.html#downsample_trialtree"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.dataset.downsample_trialtree" title="Link to this definition">#</a></dt>
+<dd><p>Downsample every trial in a TrialTree using a min-max envelope.</p>
+<p>For each contiguous block of <em>factor</em> samples, two values are kept:
+the block minimum and maximum.  This preserves peaks and troughs
+(important for spike-like signals) while reducing the number of
+samples by roughly <code class="docutils literal notranslate"><span class="pre">factor</span> <span class="pre">/</span> <span class="pre">2</span></code>.</p>
+<p>All time-like dimensions in every trial are downsampled independently,
+so datasets with mixed sampling rates (e.g. 30 Hz pose + 44 kHz audio)
+are handled correctly.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dt</strong> (<a class="reference internal" href="#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><em>TrialTree</em></a>) – Input tree.  Not modified in place.</p></li>
+<li><p><strong>factor</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Number of raw samples per envelope block.  For example, <code class="docutils literal notranslate"><span class="pre">factor=10</span></code>
+on a 30 Hz signal produces ~6 Hz output (2 points per block).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>New tree with downsampled data.  Each trial’s <code class="docutils literal notranslate"><span class="pre">attrs</span></code> includes
+<code class="docutils literal notranslate"><span class="pre">downsample_factor</span></code> and <code class="docutils literal notranslate"><span class="pre">downsample_method</span></code> for provenance.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree">TrialTree</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;high_rate_experiment.nc&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt_small</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">downsample_trialtree</span><span class="p">(</span><span class="n">dt</span><span class="p">,</span> <span class="n">factor</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt_small</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;experiment_downsampled.nc&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.io.dataset.add_changepoints_to_ds">
+<span class="sig-prename descclassname"><span class="pre">ethograph.io.dataset.</span></span><span class="sig-name descname"><span class="pre">add_changepoints_to_ds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_feature</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">changepoint_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">changepoint_func</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">func_kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/dataset.html#add_changepoints_to_ds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.dataset.add_changepoints_to_ds" title="Link to this definition">#</a></dt>
+<dd><p>Detect changepoints in a feature and store them in the dataset.</p>
+<p>Applies <em>changepoint_func</em> independently along every non-time
+dimension (e.g. per keypoint, per individual) using
+<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.apply_ufunc.html#xarray.apply_ufunc" title="(in xarray v2026.4.0)"><code class="xref py py-func docutils literal notranslate"><span class="pre">xarray.apply_ufunc()</span></code></a> with <code class="docutils literal notranslate"><span class="pre">vectorize=True</span></code>.  The result is an
+<code class="docutils literal notranslate"><span class="pre">int8</span></code> binary array (1 = changepoint, 0 = not) stored as
+<code class="docutils literal notranslate"><span class="pre">ds[&quot;{target_feature}_{changepoint_name}&quot;]</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><em>xarray.Dataset</em></a>) – Trial dataset containing <em>target_feature</em>.</p></li>
+<li><p><strong>target_feature</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the variable to run detection on (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;speed&quot;</span></code>).</p></li>
+<li><p><strong>changepoint_name</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Suffix for the output variable name.  The stored variable will be
+called <code class="docutils literal notranslate"><span class="pre">&quot;{target_feature}_{changepoint_name}&quot;</span></code> (e.g.
+<code class="docutils literal notranslate"><span class="pre">&quot;speed_troughs&quot;</span></code>).</p></li>
+<li><p><strong>changepoint_func</strong> (<em>callable</em>) – A function <code class="docutils literal notranslate"><span class="pre">f(x,</span> <span class="pre">**kwargs)</span> <span class="pre">-&gt;</span> <span class="pre">array[int8]</span></code> that takes a 1-D
+numpy array and returns a same-length binary indicator.</p></li>
+<li><p><strong>**func_kwargs</strong> – Forwarded to <em>changepoint_func</em>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The input dataset with the changepoint variable added in place.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)">xarray.Dataset</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.features.changepoints</span><span class="w"> </span><span class="kn">import</span> <span class="n">find_troughs_binary</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;experiment.nc&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">add_changepoints_to_ds</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">ds</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">target_feature</span><span class="o">=</span><span class="s2">&quot;speed&quot;</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">changepoint_name</span><span class="o">=</span><span class="s2">&quot;troughs&quot;</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">changepoint_func</span><span class="o">=</span><span class="n">find_troughs_binary</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">prominence</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed_troughs&quot;</span><span class="p">]</span>
+<span class="go">&lt;xarray.DataArray &#39;speed_troughs&#39; (time: 9000, keypoints: 7)&gt;</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.io.dataset.add_angle_rgb_to_ds">
+<span class="sig-prename descclassname"><span class="pre">ethograph.io.dataset.</span></span><span class="sig-name descname"><span class="pre">add_angle_rgb_to_ds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">smoothing_params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/dataset.html#add_angle_rgb_to_ds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.dataset.add_angle_rgb_to_ds" title="Link to this definition">#</a></dt>
+<dd><p>Compute heading angles and RGB color-coding from 2-D position data.</p>
+<p>For each individual/keypoint combination, calculates the heading angle
+from consecutive (x, y) positions and maps it to an RGB color via
+<code class="xref py py-func docutils literal notranslate"><span class="pre">get_angle_rgb()</span></code>. Gaussian smoothing
+is applied before angle computation.</p>
+<p>Adds two variables to <em>ds</em>:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">angles</span></code> – heading angle in radians.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">angle_rgb</span></code> – <code class="docutils literal notranslate"><span class="pre">(R,</span> <span class="pre">G,</span> <span class="pre">B)</span></code> triplet per time-step</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><em>xarray.Dataset</em></a>) – Dataset containing a <code class="docutils literal notranslate"><span class="pre">position</span></code> variable with at least
+<code class="docutils literal notranslate"><span class="pre">space=[&quot;x&quot;,</span> <span class="pre">&quot;y&quot;]</span></code> and a time dimension.</p></li>
+<li><p><strong>smoothing_params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – Keyword arguments forwarded to
+<a class="reference external" href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter1d.html#scipy.ndimage.gaussian_filter1d" title="(in SciPy v1.17.0)"><code class="xref py py-func docutils literal notranslate"><span class="pre">scipy.ndimage.gaussian_filter1d()</span></code></a> (e.g. <code class="docutils literal notranslate"><span class="pre">{&quot;sigma&quot;:</span> <span class="pre">3}</span></code>).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The input dataset with <code class="docutils literal notranslate"><span class="pre">angles</span></code> and <code class="docutils literal notranslate"><span class="pre">angle_rgb</span></code> added in-place.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)">xarray.Dataset</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="../api_index.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">API reference</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="ethograph.open.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">open</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree"><code class="docutils literal notranslate"><span class="pre">TrialTree</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#creating">Creating</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree.open"><code class="docutils literal notranslate"><span class="pre">TrialTree.open()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree.from_datasets"><code class="docutils literal notranslate"><span class="pre">TrialTree.from_datasets()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree.from_continuous"><code class="docutils literal notranslate"><span class="pre">TrialTree.from_continuous()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree.from_datatree"><code class="docutils literal notranslate"><span class="pre">TrialTree.from_datatree()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#accessing-trials">Accessing trials</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree.trial"><code class="docutils literal notranslate"><span class="pre">TrialTree.trial()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree.itrial"><code class="docutils literal notranslate"><span class="pre">TrialTree.itrial()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree.trials"><code class="docutils literal notranslate"><span class="pre">TrialTree.trials</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree.get_all_trials"><code class="docutils literal notranslate"><span class="pre">TrialTree.get_all_trials()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree.get_common_attrs"><code class="docutils literal notranslate"><span class="pre">TrialTree.get_common_attrs()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree.get_trial_metadata"><code class="docutils literal notranslate"><span class="pre">TrialTree.get_trial_metadata()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#iterating-over-trials">Iterating over trials</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree.trial_items"><code class="docutils literal notranslate"><span class="pre">TrialTree.trial_items()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree.map_trials"><code class="docutils literal notranslate"><span class="pre">TrialTree.map_trials()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#modifying-trials">Modifying trials</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree.update_trial"><code class="docutils literal notranslate"><span class="pre">TrialTree.update_trial()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#filtering">Filtering</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree.filter_by_attr"><code class="docutils literal notranslate"><span class="pre">TrialTree.filter_by_attr()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#media-files-and-alignment">Media files and alignment</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.align_media_per_trial"><code class="docutils literal notranslate"><span class="pre">align_media_per_trial()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.align_media_from_streams"><code class="docutils literal notranslate"><span class="pre">align_media_from_streams()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#reading-alignment-metadata">Reading alignment metadata</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.NWBAlignment"><code class="docutils literal notranslate"><span class="pre">NWBAlignment</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.NWBAlignment.devices"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.devices()</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.NWBAlignment.electrical_series"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.electrical_series()</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.NWBAlignment.get_stream_rate"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.get_stream_rate()</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.NWBAlignment.has_real_timing"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.has_real_timing</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.NWBAlignment.resolve_media_path"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.resolve_media_path()</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.NWBAlignment.stream_offset_for_trial"><code class="docutils literal notranslate"><span class="pre">NWBAlignment.stream_offset_for_trial()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.discover_nwb"><code class="docutils literal notranslate"><span class="pre">discover_nwb()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_alignment.make_nwb_alignment"><code class="docutils literal notranslate"><span class="pre">make_nwb_alignment()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#session-table-and-timing">Session table and timing</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#stream-offsets">Stream offsets</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#labels">Labels</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#saving">Saving</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.trialtree.TrialTree.save"><code class="docutils literal notranslate"><span class="pre">TrialTree.save()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#nwb-import-helpers">NWB import helpers</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_import.read_trials_table"><code class="docutils literal notranslate"><span class="pre">read_trials_table()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_import.probe_behavioral_series"><code class="docutils literal notranslate"><span class="pre">probe_behavioral_series()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_import.probe_electrical_series"><code class="docutils literal notranslate"><span class="pre">probe_electrical_series()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_import.probe_label_sources"><code class="docutils literal notranslate"><span class="pre">probe_label_sources()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#dataset-utilities">Dataset utilities</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.dataset.downsample_trialtree"><code class="docutils literal notranslate"><span class="pre">downsample_trialtree()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.dataset.add_changepoints_to_ds"><code class="docutils literal notranslate"><span class="pre">add_changepoints_to_ds()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.dataset.add_angle_rgb_to_ds"><code class="docutils literal notranslate"><span class="pre">add_angle_rgb_to_ds()</span></code></a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/api/trialtree.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=7f76b32a3354e82990f2"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=7f76b32a3354e82990f2"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2022, Akseli Ilmanen.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.17.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

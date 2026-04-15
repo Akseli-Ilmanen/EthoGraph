@@ -1,0 +1,992 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ethograph.labels.ml &#8212; ethograph</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=7f76b32a3354e82990f2" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=7f76b32a3354e82990f2" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css?v=5c2b050f" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../../../_static/scripts/fontawesome.js?digest=7f76b32a3354e82990f2"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=7f76b32a3354e82990f2" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=7f76b32a3354e82990f2" />
+
+    <script src="../../../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/ethograph/labels/ml';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/_modules/ethograph/labels/ml.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../../../_static/searchtools.js"></script>
+    <script src="../../../_static/language_data.js"></script>
+    <script src="../../../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class=" navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/icon.png" class="logo__image only-light" alt=""/>
+    <img src="../../../_static/icon.png" class="logo__image only-dark pst-js-only" alt=""/>
+  
+  
+    <p class="title logo__title">ethograph</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class=" navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../user_guide/index.html">
+    User guide
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../examples/index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../api_index.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../community/index.html">
+    Community
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/Akseli-Ilmanen/ethograph" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar hide-on-wide">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../user_guide/index.html">
+    User guide
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../examples/index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../api_index.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../community/index.html">
+    Community
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/Akseli-Ilmanen/ethograph" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="../../ethograph.html" class="nav-link">ethograph</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">ethograph.labels.ml</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for ethograph.labels.ml</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Dense (array-based) label operations for ML pipelines.</span>
+
+<span class="sd">This module provides tools for converting between the interval-based label</span>
+<span class="sd">format (used by the GUI and TSV storage) and dense integer arrays (used by</span>
+<span class="sd">ML models).  It also contains post-processing operations commonly applied</span>
+<span class="sd">to model predictions before evaluation or storage.</span>
+
+<span class="sd">Typical ML workflow</span>
+<span class="sd">-------------------</span>
+<span class="sd">1. **Load labels from TSV** → ``pd.DataFrame`` with ``onset_s``, ``offset_s``,</span>
+<span class="sd">   ``labels``, ``individual`` (plus ``n_samples`` per-trial metadata).</span>
+<span class="sd">2. **Convert to dense** → ``intervals_to_dense(df, sample_rate, individuals, n_samples)``</span>
+<span class="sd">   gives an ``(n_samples, n_individuals)`` int8 array ready for training.</span>
+<span class="sd">3. **Run model** → get a dense prediction array of shape ``(T,)`` or ``(T, n_classes)``.</span>
+<span class="sd">4. **Post-process** → ``purge_small_blocks`` → ``stitch_gaps`` → ``fix_endings``.</span>
+<span class="sd">5. **Convert back** → ``dense_to_intervals(pred, individuals, sample_rate=sr)``</span>
+<span class="sd">   gives an intervals DataFrame for storage or evaluation.</span>
+
+<span class="sd">The ``n_samples`` value stored in the TSV file (per-trial metadata) tells you</span>
+<span class="sd">exactly how long the dense array should be — you only need to additionally</span>
+<span class="sd">know the ``sample_rate`` to drive the conversion.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">_rows_to_df</span>
+
+
+<span class="c1"># ── Primitives ───────────────────────────────────────────────────────────</span>
+
+<div class="viewcode-block" id="find_blocks">
+<a class="viewcode-back" href="../../../api/ethograph.labels.ml.find_blocks.html#ethograph.labels.ml.find_blocks">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">find_blocks</span><span class="p">(</span><span class="n">mask</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Find contiguous True blocks in a boolean array.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mask : np.ndarray</span>
+<span class="sd">        Boolean array.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    starts : np.ndarray</span>
+<span class="sd">        Start indices of True blocks.</span>
+<span class="sd">    ends : np.ndarray</span>
+<span class="sd">        End indices (inclusive) of True blocks.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; mask = np.array([False, True, True, False, True])</span>
+<span class="sd">    &gt;&gt;&gt; starts, ends = find_blocks(mask)</span>
+<span class="sd">    &gt;&gt;&gt; starts</span>
+<span class="sd">    array([1, 4])</span>
+<span class="sd">    &gt;&gt;&gt; ends</span>
+<span class="sd">    array([2, 4])</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">padded</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(([</span><span class="mi">0</span><span class="p">],</span> <span class="n">mask</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">),</span> <span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+    <span class="n">diff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">padded</span><span class="p">)</span>
+    <span class="n">starts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">diff</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">ends</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">diff</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">starts</span><span class="p">,</span> <span class="n">ends</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_segments</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">bg_class</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Find contiguous labeled segments in a 1-D array.</span>
+
+<span class="sd">    Example: ``[0,1,1,1,0,2,2]`` → ``[(1,1,4), (2,5,7)]``</span>
+<span class="sd">    Each tuple is ``(label, start_index, end_index_exclusive)``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">padded</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">col</span><span class="p">,</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]])</span>
+    <span class="n">change_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">padded</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">padded</span><span class="p">[</span><span class="mi">1</span><span class="p">:])[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="n">segments</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">change_indices</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="n">start</span> <span class="o">=</span> <span class="n">change_indices</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">end</span> <span class="o">=</span> <span class="n">change_indices</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="n">label</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">col</span><span class="p">[</span><span class="n">start</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">label</span> <span class="o">!=</span> <span class="n">bg_class</span><span class="p">:</span>
+            <span class="n">segments</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">label</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">segments</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_labels_start_end_times</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">time_coord</span><span class="p">,</span> <span class="n">individual</span><span class="p">,</span> <span class="n">bg_class</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert segments to time intervals (inclusive end).&quot;&quot;&quot;</span>
+    <span class="n">segments</span> <span class="o">=</span> <span class="n">_get_segments</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">bg_class</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">[{</span>
+        <span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time_coord</span><span class="p">[</span><span class="n">start</span><span class="p">]),</span>
+        <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time_coord</span><span class="p">[</span><span class="n">end</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]),</span>
+        <span class="s2">&quot;labels&quot;</span><span class="p">:</span> <span class="n">label</span><span class="p">,</span>
+        <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
+    <span class="p">}</span> <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="ow">in</span> <span class="n">segments</span><span class="p">]</span>
+
+
+<span class="c1"># ── Interval ↔ Dense conversion ─────────────────────────────────────────</span>
+
+<div class="viewcode-block" id="dense_to_intervals">
+<a class="viewcode-back" href="../../../api/ethograph.labels.ml.dense_to_intervals.html#ethograph.labels.ml.dense_to_intervals">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">dense_to_intervals</span><span class="p">(</span>
+    <span class="n">dense_array</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">individuals</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">time_coord</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert a dense label array to an intervals DataFrame.</span>
+
+<span class="sd">    Provide either *sample_rate* (uniform spacing starting at t = 0) or an</span>
+<span class="sd">    explicit *time_coord* array.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    dense_array : np.ndarray</span>
+<span class="sd">        Shape ``(n_samples,)`` for a single individual, or</span>
+<span class="sd">        ``(n_samples, n_individuals)`` for multiple.</span>
+<span class="sd">    individuals : list[str]</span>
+<span class="sd">        Individual identifiers — length must match the second axis.</span>
+<span class="sd">    sample_rate : float, optional</span>
+<span class="sd">        Sampling rate in Hz.  Timestamps are computed as</span>
+<span class="sd">        ``np.arange(n_samples) / sample_rate``.</span>
+<span class="sd">    time_coord : np.ndarray, optional</span>
+<span class="sd">        Explicit time array of length ``n_samples``.  Use this when timestamps</span>
+<span class="sd">        are non-uniform or do not start at zero.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pd.DataFrame</span>
+<span class="sd">        Intervals with columns ``onset_s``, ``offset_s``, ``labels``,</span>
+<span class="sd">        ``individual``.  ``offset_s`` is **inclusive** (last sample of the</span>
+<span class="sd">        segment).</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If neither *sample_rate* nor *time_coord* is given, or if the number</span>
+<span class="sd">        of individuals does not match the array width.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Convert a 1-D dense array at 10 Hz:</span>
+
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; from ethograph.labels.ml import dense_to_intervals</span>
+<span class="sd">    &gt;&gt;&gt; labels = np.array([0, 1, 1, 1, 0, 2, 2])</span>
+<span class="sd">    &gt;&gt;&gt; df = dense_to_intervals(labels, [&quot;crow_A&quot;], sample_rate=10.0)</span>
+<span class="sd">    &gt;&gt;&gt; df[[&quot;onset_s&quot;, &quot;offset_s&quot;, &quot;labels&quot;]].values.tolist()</span>
+<span class="sd">    [[0.1, 0.3, 1], [0.5, 0.6, 2]]</span>
+
+<span class="sd">    With explicit timestamps:</span>
+
+<span class="sd">    &gt;&gt;&gt; times = np.array([0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6])</span>
+<span class="sd">    &gt;&gt;&gt; df = dense_to_intervals(labels, [&quot;crow_A&quot;], time_coord=times)</span>
+<span class="sd">    &gt;&gt;&gt; df[&quot;onset_s&quot;].tolist()</span>
+<span class="sd">    [0.1, 0.5]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dense_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">dense_array</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">sample_rate</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">time_coord</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Provide either sample_rate or time_coord&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">time_coord</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">time_coord</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">dense_array</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">/</span> <span class="n">sample_rate</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">time_coord</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">time_coord</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">dense_array</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">dense_array</span> <span class="o">=</span> <span class="n">dense_array</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">dense_array</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">individuals</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;dense_array has </span><span class="si">{</span><span class="n">dense_array</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2"> columns but &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">individuals</span><span class="p">)</span><span class="si">}</span><span class="s2"> individuals given&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">rows</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">ind_idx</span><span class="p">,</span> <span class="n">ind_name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">individuals</span><span class="p">):</span>
+        <span class="n">col</span> <span class="o">=</span> <span class="n">dense_array</span><span class="p">[:,</span> <span class="n">ind_idx</span><span class="p">]</span>
+        <span class="n">rows</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">_get_labels_start_end_times</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">time_coord</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">ind_name</span><span class="p">)))</span>
+
+    <span class="k">return</span> <span class="n">_rows_to_df</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="intervals_to_dense">
+<a class="viewcode-back" href="../../../api/ethograph.labels.ml.intervals_to_dense.html#ethograph.labels.ml.intervals_to_dense">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">intervals_to_dense</span><span class="p">(</span>
+    <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+    <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">individuals</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">n_samples</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert an intervals DataFrame to a dense label array.</span>
+
+<span class="sd">    Each interval is mapped onto the nearest sample indices using</span>
+<span class="sd">    ``round(time * sample_rate)``.  Overlapping intervals for the same</span>
+<span class="sd">    individual are resolved by last-write-wins.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    df : pd.DataFrame</span>
+<span class="sd">        Intervals DataFrame with columns ``onset_s``, ``offset_s``, ``labels``,</span>
+<span class="sd">        ``individual``.</span>
+<span class="sd">    sample_rate : float</span>
+<span class="sd">        Sampling rate in Hz (e.g. 30.0 for 30 fps video features).</span>
+<span class="sd">    individuals : list[str]</span>
+<span class="sd">        Individual identifiers.  The output column order matches this list.</span>
+<span class="sd">    n_samples : int</span>
+<span class="sd">        Number of output time steps.  Typically available as per-trial</span>
+<span class="sd">        ``n_samples`` metadata in the TSV file.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    np.ndarray</span>
+<span class="sd">        Dense label array of shape ``(n_samples, len(individuals))``, dtype</span>
+<span class="sd">        ``int8``.  Background (unlabeled) time steps are 0.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import pandas as pd</span>
+<span class="sd">    &gt;&gt;&gt; from ethograph.labels.ml import intervals_to_dense</span>
+<span class="sd">    &gt;&gt;&gt; df = pd.DataFrame({</span>
+<span class="sd">    ...     &quot;onset_s&quot;: [0.1, 0.5], &quot;offset_s&quot;: [0.3, 0.6],</span>
+<span class="sd">    ...     &quot;labels&quot;: [1, 2], &quot;individual&quot;: [&quot;A&quot;, &quot;A&quot;],</span>
+<span class="sd">    ... })</span>
+<span class="sd">    &gt;&gt;&gt; dense = intervals_to_dense(df, sample_rate=10.0, individuals=[&quot;A&quot;], n_samples=7)</span>
+<span class="sd">    &gt;&gt;&gt; dense[:, 0].tolist()</span>
+<span class="sd">    [0, 1, 1, 1, 0, 2, 2]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dense</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_samples</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">individuals</span><span class="p">)),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">)</span>
+    <span class="n">ind_to_idx</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">individuals</span><span class="p">)}</span>
+
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">ind_idx</span> <span class="o">=</span> <span class="n">ind_to_idx</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;individual&quot;</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">ind_idx</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">start_idx</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sample_rate</span><span class="p">))</span>
+        <span class="n">end_idx</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sample_rate</span><span class="p">))</span>
+        <span class="n">start_idx</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">start_idx</span><span class="p">)</span>
+        <span class="n">end_idx</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">n_samples</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">end_idx</span><span class="p">)</span>
+        <span class="n">dense</span><span class="p">[</span><span class="n">start_idx</span> <span class="p">:</span> <span class="n">end_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">ind_idx</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">])</span>
+
+    <span class="k">return</span> <span class="n">dense</span></div>
+
+
+
+<span class="c1"># ── Segment index extraction ────────────────────────────────────────────</span>
+
+<div class="viewcode-block" id="get_labels_start_end_indices">
+<a class="viewcode-back" href="../../../api/ethograph.labels.ml.get_labels_start_end_indices.html#ethograph.labels.ml.get_labels_start_end_indices">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_labels_start_end_indices</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">bg_class</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return segment boundaries as sample indices (exclusive end).</span>
+
+<span class="sd">    Useful for slicing dense arrays or computing segment-level metrics.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    col : array-like</span>
+<span class="sd">        1-D dense label array.</span>
+<span class="sd">    bg_class : int</span>
+<span class="sd">        Background class to ignore (default 0).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    labels : list[int]</span>
+<span class="sd">        Label class for each segment.</span>
+<span class="sd">    starts : list[int]</span>
+<span class="sd">        Start index (inclusive) of each segment.</span>
+<span class="sd">    ends : list[int]</span>
+<span class="sd">        End index (**exclusive**) — use ``array[start:end]`` to slice.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; from ethograph.labels.ml import get_labels_start_end_indices</span>
+<span class="sd">    &gt;&gt;&gt; labels, starts, ends = get_labels_start_end_indices([0,1,1,1,0,2,2])</span>
+<span class="sd">    &gt;&gt;&gt; labels</span>
+<span class="sd">    [1, 2]</span>
+<span class="sd">    &gt;&gt;&gt; starts</span>
+<span class="sd">    [1, 5]</span>
+<span class="sd">    &gt;&gt;&gt; ends</span>
+<span class="sd">    [4, 7]</span>
+<span class="sd">    &gt;&gt;&gt; # To extract the first segment from a feature array:</span>
+<span class="sd">    &gt;&gt;&gt; # segment_features = features[starts[0]:ends[0], :]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">segments</span> <span class="o">=</span> <span class="n">_get_segments</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">bg_class</span><span class="p">)</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">segments</span><span class="p">]</span>
+    <span class="n">starts</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">segments</span><span class="p">]</span>
+    <span class="n">ends</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">segments</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">labels</span><span class="p">,</span> <span class="n">starts</span><span class="p">,</span> <span class="n">ends</span></div>
+
+
+
+<span class="c1"># ── Dense post-processing ────────────────────────────────────────────────</span>
+
+<div class="viewcode-block" id="stitch_gaps">
+<a class="viewcode-back" href="../../../api/ethograph.labels.ml.stitch_gaps.html#ethograph.labels.ml.stitch_gaps">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">stitch_gaps</span><span class="p">(</span>
+    <span class="n">labels</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">max_gap_len</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">skip_labels</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Fill small background gaps between same-label segments.</span>
+
+<span class="sd">    Scans the dense label array for short runs of zeros (background) flanked</span>
+<span class="sd">    by the same non-zero label on both sides.  When the gap is at most</span>
+<span class="sd">    *max_gap_len* samples, it is filled with that label.</span>
+
+<span class="sd">    This is typically used **after** model prediction to clean up fragmented</span>
+<span class="sd">    outputs where a behaviour is briefly interrupted by a few background frames.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    labels : np.ndarray</span>
+<span class="sd">        1-D dense label array (int), where 0 = background.</span>
+<span class="sd">    max_gap_len : int</span>
+<span class="sd">        Maximum gap length **in samples** to fill.  Gaps longer than this are</span>
+<span class="sd">        left untouched.  Convert from seconds: ``int(gap_s * sample_rate)``.</span>
+<span class="sd">    skip_labels : set[int], optional</span>
+<span class="sd">        Labels whose trailing gaps should **never** be filled.  For example,</span>
+<span class="sd">        ``skip_labels={3}`` means that a gap preceded by label 3 is always kept</span>
+<span class="sd">        even if the same label follows.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    np.ndarray</span>
+<span class="sd">        Copy of *labels* with qualifying gaps filled.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Basic gap stitching at 30 Hz (fill gaps up to 5 frames):</span>
+
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; from ethograph.labels.ml import stitch_gaps</span>
+<span class="sd">    &gt;&gt;&gt; pred = np.array([1, 1, 0, 1, 1, 0, 0, 0, 2, 2])</span>
+<span class="sd">    &gt;&gt;&gt; stitch_gaps(pred, max_gap_len=2).tolist()</span>
+<span class="sd">    [1, 1, 1, 1, 1, 0, 0, 0, 2, 2]</span>
+
+<span class="sd">    The single-frame gap (index 2) is filled because label 1 appears on both</span>
+<span class="sd">    sides.  The 3-frame gap (indices 5–7) is left alone because it exceeds</span>
+<span class="sd">    ``max_gap_len=2``.</span>
+
+<span class="sd">    Using ``skip_labels`` to protect specific transitions:</span>
+
+<span class="sd">    &gt;&gt;&gt; pred = np.array([3, 3, 0, 3, 3])</span>
+<span class="sd">    &gt;&gt;&gt; stitch_gaps(pred, max_gap_len=2, skip_labels={3}).tolist()</span>
+<span class="sd">    [3, 3, 0, 3, 3]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">skip_labels</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">skip_labels</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+
+    <span class="n">stitched</span> <span class="o">=</span> <span class="n">labels</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">zero_starts</span><span class="p">,</span> <span class="n">zero_ends</span> <span class="o">=</span> <span class="n">find_blocks</span><span class="p">(</span><span class="n">labels</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">zero_starts</span><span class="p">,</span> <span class="n">zero_ends</span><span class="p">):</span>
+        <span class="n">gap_len</span> <span class="o">=</span> <span class="n">end</span> <span class="o">-</span> <span class="n">start</span>
+
+        <span class="k">if</span> <span class="n">gap_len</span> <span class="o">&gt;</span> <span class="n">max_gap_len</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="n">left_label</span> <span class="o">=</span> <span class="n">labels</span><span class="p">[</span><span class="n">start</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">start</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mi">0</span>
+        <span class="n">right_label</span> <span class="o">=</span> <span class="n">labels</span><span class="p">[</span><span class="n">end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">end</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">else</span> <span class="mi">0</span>
+
+        <span class="k">if</span> <span class="n">left_label</span> <span class="ow">in</span> <span class="n">skip_labels</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="k">if</span> <span class="n">left_label</span> <span class="o">!=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">left_label</span> <span class="o">==</span> <span class="n">right_label</span><span class="p">:</span>
+            <span class="n">stitched</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">left_label</span>
+
+    <span class="k">return</span> <span class="n">stitched</span></div>
+
+
+
+<div class="viewcode-block" id="purge_small_blocks">
+<a class="viewcode-back" href="../../../api/ethograph.labels.ml.purge_small_blocks.html#ethograph.labels.ml.purge_small_blocks">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">purge_small_blocks</span><span class="p">(</span>
+    <span class="n">labels</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">min_length</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">label_thresholds</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Remove label blocks shorter than a threshold (set to background).</span>
+
+<span class="sd">    Scans the dense label array for contiguous runs of the same non-zero</span>
+<span class="sd">    label.  If a run is shorter than its threshold, every sample in it is</span>
+<span class="sd">    set to 0 (background).</span>
+
+<span class="sd">    This is the dense-array counterpart of</span>
+<span class="sd">    :func:`~ethograph.labels.intervals.purge_short_intervals` (which works</span>
+<span class="sd">    in seconds on interval DataFrames).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    labels : np.ndarray</span>
+<span class="sd">        1-D dense label array (int), where 0 = background.</span>
+<span class="sd">    min_length : int</span>
+<span class="sd">        Default minimum block length **in samples**.  Blocks shorter than</span>
+<span class="sd">        this are zeroed out.  Convert from seconds:</span>
+<span class="sd">        ``int(min_duration_s * sample_rate)``.</span>
+<span class="sd">    label_thresholds : dict[int, int], optional</span>
+<span class="sd">        Per-label minimum lengths that override *min_length*.  For example,</span>
+<span class="sd">        ``{1: 10, 3: 30}`` means label 1 needs ≥10 samples and label 3</span>
+<span class="sd">        needs ≥30 samples; all other labels use *min_length*.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    np.ndarray</span>
+<span class="sd">        Copy of *labels* with short blocks zeroed out.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Remove any block shorter than 3 samples:</span>
+
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; from ethograph.labels.ml import purge_small_blocks</span>
+<span class="sd">    &gt;&gt;&gt; pred = np.array([0, 1, 0, 2, 2, 2, 2, 0])</span>
+<span class="sd">    &gt;&gt;&gt; purge_small_blocks(pred, min_length=3).tolist()</span>
+<span class="sd">    [0, 0, 0, 2, 2, 2, 2, 0]</span>
+
+<span class="sd">    With per-label thresholds (label 2 needs ≥5 samples):</span>
+
+<span class="sd">    &gt;&gt;&gt; purge_small_blocks(pred, min_length=1, label_thresholds={2: 5}).tolist()</span>
+<span class="sd">    [0, 1, 0, 0, 0, 0, 0, 0]</span>
+
+<span class="sd">    Typical pipeline — purge then stitch:</span>
+
+<span class="sd">    &gt;&gt;&gt; pred = np.array([1,1,1, 0, 1, 0, 1,1,1])</span>
+<span class="sd">    &gt;&gt;&gt; cleaned = purge_small_blocks(pred, min_length=2)  # remove isolated 1-sample</span>
+<span class="sd">    &gt;&gt;&gt; cleaned.tolist()</span>
+<span class="sd">    [1, 1, 1, 0, 0, 0, 1, 1, 1]</span>
+<span class="sd">    &gt;&gt;&gt; stitch_gaps(cleaned, max_gap_len=4).tolist()</span>
+<span class="sd">    [1, 1, 1, 1, 1, 1, 1, 1, 1]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">labels</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">label_thresholds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">label_thresholds</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">label_thresholds</span> <span class="o">=</span> <span class="p">{</span><span class="nb">int</span><span class="p">(</span><span class="n">k</span><span class="p">):</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">label_thresholds</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+
+    <span class="n">output</span> <span class="o">=</span> <span class="n">labels</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="n">padded</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">labels</span><span class="p">,</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]])</span>
+    <span class="n">change_mask</span> <span class="o">=</span> <span class="n">padded</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">padded</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+    <span class="n">change_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">change_mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">change_indices</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="n">start_idx</span> <span class="o">=</span> <span class="n">change_indices</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">end_idx</span> <span class="o">=</span> <span class="n">change_indices</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">start_idx</span> <span class="o">&gt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">):</span>
+            <span class="k">continue</span>
+
+        <span class="n">label_val</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">labels</span><span class="p">[</span><span class="n">start_idx</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">label_val</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="n">threshold</span> <span class="o">=</span> <span class="n">label_thresholds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">label_val</span><span class="p">,</span> <span class="n">min_length</span><span class="p">)</span>
+        <span class="n">run_length</span> <span class="o">=</span> <span class="n">end_idx</span> <span class="o">-</span> <span class="n">start_idx</span>
+
+        <span class="k">if</span> <span class="n">run_length</span> <span class="o">&lt;</span> <span class="n">threshold</span><span class="p">:</span>
+            <span class="n">output</span><span class="p">[</span><span class="n">start_idx</span><span class="p">:</span><span class="n">end_idx</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">return</span> <span class="n">output</span></div>
+
+
+
+<div class="viewcode-block" id="fix_endings">
+<a class="viewcode-back" href="../../../api/ethograph.labels.ml.fix_endings.html#ethograph.labels.ml.fix_endings">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">fix_endings</span><span class="p">(</span><span class="n">labels</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">changepoints</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extend label endings by one sample at changepoint boundaries.</span>
+
+<span class="sd">    When a labelled segment ends and the very next sample is a changepoint,</span>
+<span class="sd">    the segment is extended by one sample.  This accounts for the common</span>
+<span class="sd">    off-by-one between predicted segment boundaries and detected changepoints.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    labels : np.ndarray</span>
+<span class="sd">        1-D dense label array (int).</span>
+<span class="sd">    changepoints : array-like</span>
+<span class="sd">        Either a boolean mask of the same length (True = changepoint), or an</span>
+<span class="sd">        array of integer changepoint indices.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    np.ndarray</span>
+<span class="sd">        Copy of *labels* with qualifying endings extended by one sample.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; from ethograph.labels.ml import fix_endings</span>
+<span class="sd">    &gt;&gt;&gt; labels = np.array([0, 1, 1, 0, 0, 2, 2, 0])</span>
+<span class="sd">    &gt;&gt;&gt; cps     = np.array([0, 0, 0, 1, 0, 0, 0, 1], dtype=bool)</span>
+<span class="sd">    &gt;&gt;&gt; fix_endings(labels, cps).tolist()</span>
+<span class="sd">    [0, 1, 1, 1, 0, 2, 2, 2]</span>
+
+<span class="sd">    The segment of label 1 ended at index 2, and index 3 is a changepoint,</span>
+<span class="sd">    so label 1 is extended to index 3.  Same for label 2 at index 7.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">labels_out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">changepoints_arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">changepoints</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">changepoints_arr</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="nb">bool</span> <span class="ow">or</span> <span class="p">(</span>
+        <span class="n">changepoints_arr</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="nb">int</span> <span class="ow">and</span> <span class="nb">set</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">changepoints_arr</span><span class="p">))</span><span class="o">.</span><span class="n">issubset</span><span class="p">({</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">})</span>
+    <span class="p">):</span>
+        <span class="n">changepoints_idxs</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">changepoints_arr</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">changepoints_idxs</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">changepoints</span><span class="p">)</span>
+
+    <span class="n">is_nonzero</span> <span class="o">=</span> <span class="n">labels_out</span> <span class="o">!=</span> <span class="mi">0</span>
+    <span class="n">is_zero_next</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">labels_out</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="p">[</span><span class="kc">False</span><span class="p">]])</span>
+    <span class="n">segment_ends</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">is_nonzero</span> <span class="o">&amp;</span> <span class="n">is_zero_next</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">for</span> <span class="n">seg_end</span> <span class="ow">in</span> <span class="n">segment_ends</span><span class="p">:</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">seg_end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="ow">in</span> <span class="n">changepoints_idxs</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">labels_out</span><span class="p">[</span><span class="n">seg_end</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">labels_out</span><span class="p">[</span><span class="n">seg_end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">labels_out</span><span class="p">[</span><span class="n">seg_end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">labels_out</span><span class="p">[</span><span class="n">seg_end</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">labels_out</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=7f76b32a3354e82990f2"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=7f76b32a3354e82990f2"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2022, Akseli Ilmanen.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.17.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

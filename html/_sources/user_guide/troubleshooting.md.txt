@@ -1,0 +1,79 @@
+(target-troubleshooting)=
+# Troubleshooting
+
+Report bugs on [GitHub Issues](https://github.com/Akseli-Ilmanen/ethograph/issues).
+
+---
+
+## Quick fixes
+
+| Problem | Solution |
+|---------|----------|
+| Unexpected error in the GUI | Save labels (`Ctrl + S`), then restart the GUI. Save semi-regularly! |
+| Error during data loading | Click **Reset gui_settings.yaml** in the I/O widget to reset the state of the GUI. |
+
+---
+
+## FAQ
+
+### My dataset format is not supported
+
+I/O support for new data formats is actively being expanded. If your format is not yet represented, please send a sample dataset to [akseli.ilmanen@gmail.com](mailto:akseli.ilmanen@gmail.com) and I will work on adding loading support for it.
+
+
+### What does this button do?
+
+A lot of buttons, spinners, dropdowns, etc. have a little description tooltip when you hover over them.
+
+### Video seek warnings with `.avi` / `.mov` files
+
+If you see warnings like `Seek problem with frame 206! pts: 208; target: 206`, your video container format has unreliable keyframe indexing. Frame display may be off by 1-2 frames when scrubbing or seeking.
+
+**Quick fix:** Ignore inaccurate frame-seeking, and suppress warning in `Navigation controls` using `Filter warnings` checkbox.
+
+**Proper fix:** Transcode to MP4 with H.264 for frame-accurate seeking:
+
+```bash
+# Linux / macOS / Git Bash
+for f in *.avi; do ffmpeg -y -i "$f" -c:v libx264 -pix_fmt yuv420p -preset superfast -crf 23 "${f%.avi}.mp4"; done
+
+# Windows CMD
+for %f in (*.avi) do ffmpeg -y -i "%f" -c:v libx264 -pix_fmt yuv420p -preset superfast -crf 23 "%~nf.mp4"
+
+# Windows PowerShell
+Get-ChildItem *.avi | ForEach-Object { ffmpeg -y -i $_.FullName -c:v libx264 -pix_fmt yuv420p -preset superfast -crf 23 "$($_.DirectoryName)\$($_.BaseName).mp4" }
+```
+
+### Installation fails with "resolution-too-deep"
+
+This happens when using plain `pip` to install ethograph with extras like
+`[gui]` or `[all]`. The dependency tree (napari + movement + pynwb) is too
+complex for pip's resolver.
+
+**Fix:** Use `uv` instead of `pip`:
+
+```bash
+uv pip install "ethograph[all]"
+```
+
+See {doc}`../getting_started/installation` for full instructions.
+
+### Opening `.tsv` label files in Excel
+
+Excel on Windows may not correctly parse `.tsv` files when double-clicked due to regional delimiter settings.
+
+**Automatic fix:** EthoGraph automatically registers `.tsv` files to open correctly in Excel with tab delimiters the first time you run it. On Windows this writes to the current-user registry (no admin prompt); on macOS it uses `duti` if installed.
+
+If the association is not working, you can re-run it manually:
+
+```python
+from ethograph.utils.download import ensure_default_configs
+ensure_default_configs()
+```
+
+**Manual alternative:**
+
+1. Open Excel -> **File -> Open -> Browse**
+2. Change file filter to **"All Files (\*.\*)"**
+3. Select the `.tsv` file
+4. In the Text Import Wizard, select **Tab** as delimiter
