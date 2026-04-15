@@ -40,7 +40,7 @@ Format specs for xarray, pynapple, and NWB backends.
 installation
 wizard
 data_loading
+user_manual
 data_requirements
-data_guide
 trialtree
 ```

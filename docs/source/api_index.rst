@@ -27,6 +27,12 @@ Top-level functions
 
    open
    from_datasets
+   load_nap_data
+   downsample_trialtree
+   sel_valid
+   align_media_per_trial
+   align_media_from_streams
+   NWBAlignment
 
 
 .. rubric:: Modules
@@ -37,6 +43,9 @@ Top-level functions
    :nosignatures:
 
    ethograph.io.dataset
+   ethograph.io.nwb_alignment
+   ethograph.io.nwb_import
+   ethograph.io.pynapple
    ethograph.labels.intervals
    ethograph.labels.ml
    ethograph.labels.tsv_store

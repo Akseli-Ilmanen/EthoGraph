@@ -83,7 +83,7 @@
 | `Ctrl+H` | Cycle neural view: 1-ch Trace -> Multi Trace -> Raster |
 | **Ctrl+Wheel** | Adjust display gain |
 
-## 3D Space / PCA Plot
+## 3D Space
 
 | Control | Action |
 |---------|--------|
