@@ -50,7 +50,7 @@
     <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/api/pynapple_io.html" />
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Labels" href="labels.html" />
+    <link rel="next" title="NWB alignment" href="nwb_alignment.html" />
     <link rel="prev" title="Dataset" href="dataset.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -350,12 +350,12 @@
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="changepoints.html">Changepoints</a></li>
-<li class="toctree-l1"><a class="reference internal" href="nwb_alignment.html">NWB alignment</a></li>
 <li class="toctree-l1"><a class="reference internal" href="trialtree.html">TrialTree</a></li>
 <li class="toctree-l1"><a class="reference internal" href="dataset.html">Dataset</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Pynapple IO</a></li>
+<li class="toctree-l1"><a class="reference internal" href="nwb_alignment.html">NWB alignment</a></li>
 <li class="toctree-l1"><a class="reference internal" href="labels.html">Labels</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changepoints.html">Changepoints</a></li>
 <li class="toctree-l1"><a class="reference internal" href="xr_utils.html">xr_utils</a></li>
 </ul>
 </div>
@@ -528,17 +528,6 @@ import (trials, behavioural series, electrical series, label sources).</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="ethograph.io.nwb_import.probe_behavioral_series">
-<span class="sig-prename descclassname"><span class="pre">ethograph.io.nwb_import.</span></span><span class="sig-name descname"><span class="pre">probe_behavioral_series</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">nwb</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_import.html#probe_behavioral_series"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_import.probe_behavioral_series" title="Link to this definition">#</a></dt>
-<dd><p>List all behavioral time-series interfaces available for import.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>]</span></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="ethograph.io.nwb_import.probe_electrical_series">
 <span class="sig-prename descclassname"><span class="pre">ethograph.io.nwb_import.</span></span><span class="sig-name descname"><span class="pre">probe_electrical_series</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">nwb</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/nwb_import.html#probe_electrical_series"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.nwb_import.probe_electrical_series" title="Link to this definition">#</a></dt>
 <dd><p>List all ElectricalSeries in nwb.acquisition.</p>
@@ -583,11 +572,11 @@ import (trials, behavioural series, electrical series, label sources).</p>
       </div>
     </a>
     <a class="right-next"
-       href="labels.html"
+       href="nwb_alignment.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Labels</p>
+        <p class="prev-next-title">NWB alignment</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -625,7 +614,6 @@ import (trials, behavioural series, electrical series, label sources).</p>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#nwb-import-probes">NWB import probes</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_import.read_trials_table"><code class="docutils literal notranslate"><span class="pre">read_trials_table()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_import.probe_behavioral_series"><code class="docutils literal notranslate"><span class="pre">probe_behavioral_series()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_import.probe_electrical_series"><code class="docutils literal notranslate"><span class="pre">probe_electrical_series()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.nwb_import.probe_label_sources"><code class="docutils literal notranslate"><span class="pre">probe_label_sources()</span></code></a></li>
 </ul>

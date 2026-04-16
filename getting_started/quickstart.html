@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>TrialTree &#8212; ethograph</title>
+    <title>Quickstart &#8212; ethograph</title>
   
   
   
@@ -45,13 +45,13 @@
     <script src="../_static/doctools.js?v=9bcbadda"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/design-tabs.js?v=f930bc37"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'getting_started/trialtree';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'getting_started/quickstart';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
-    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/getting_started/trialtree.html" />
+    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/getting_started/quickstart.html" />
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Data Format Requirements" href="data_requirements.html" />
-    <link rel="prev" title="Multi-trial setup" href="multi_trial.html" />
+    <link rel="next" title="Getting Started Wizard" href="wizard.html" />
+    <link rel="prev" title="Installation" href="installation.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -351,14 +351,14 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Quickstart</a></li>
 <li class="toctree-l1"><a class="reference internal" href="wizard.html">Getting Started Wizard</a></li>
-<li class="toctree-l1 current active has-children"><a class="reference internal" href="data_loading.html">Loading Data</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l1 has-children"><a class="reference internal" href="data_loading.html">Loading Data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="loading_pose.html">From a pose file</a></li>
 <li class="toctree-l2"><a class="reference internal" href="loading_audio.html">From an audio file</a></li>
 <li class="toctree-l2"><a class="reference internal" href="loading_numpy.html">From a numpy file</a></li>
 <li class="toctree-l2"><a class="reference internal" href="loading_ephys.html">From an ephys recording</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multi_trial.html">Multi-trial setup</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">TrialTree</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="data_requirements.html">Data Format Requirements</a></li>
@@ -405,10 +405,7 @@
     
     <li class="breadcrumb-item"><a href="index.html" class="nav-link">Getting started</a></li>
     
-    
-    <li class="breadcrumb-item"><a href="data_loading.html" class="nav-link">Loading Data</a></li>
-    
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">TrialTree</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Quickstart</span></li>
   </ul>
 </nav>
 </div>
@@ -425,15 +422,36 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section class="tex2jax_ignore mathjax_ignore" id="trialtree">
-<span id="target-trialtree-getting-started"></span><h1>TrialTree<a class="headerlink" href="#trialtree" title="Link to this heading">#</a></h1>
-<p><a class="reference internal" href="../api/trialtree.html#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><code class="xref py py-class docutils literal notranslate"><span class="pre">TrialTree</span></code></a> is the core data structure in ethograph — a wrapper around <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.DataTree</span></code></a> that stores one <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> per trial.</p>
-<p>Each child node holds one trial’s data (timeseries, features, attributes), and the tree as a whole carries session-level metadata (media paths, stream offsets, alignment). You get trial access by ID or index, iteration, in-place and structural mutation, filtering, and continuous-mode lazy slicing — all while preserving xarray semantics.</p>
-<p>For the <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> structure expected inside each trial, see <a class="reference internal" href="data_requirements.html"><span class="doc">Data Format Requirements</span></a>.</p>
-<div class="admonition seealso">
-<p class="admonition-title">See also</p>
-<p>For usage examples and the full API — creating, accessing, iterating, modifying, filtering, saving — see <a class="reference internal" href="../api/trialtree.html"><span class="doc">TrialTree</span></a>.</p>
+  <section class="tex2jax_ignore mathjax_ignore" id="quickstart">
+<span id="target-quickstart"></span><h1>Quickstart<a class="headerlink" href="#quickstart" title="Link to this heading">#</a></h1>
+<p>The fastest way to explore the GUI: use the desktop/Start Menu shortcut, or launch from the terminal:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ethograph<span class="w"> </span>launch
+</pre></div>
 </div>
+<p>Then click <strong>Select templates</strong> in the I/O widget, pick a dataset, and click <strong>Load</strong>.</p>
+<p><img alt="Template dataset selection" src="../_images/datasets.png" /></p>
+<p>Template datasets come with pre-loaded video, features, and labels so you can immediately try navigation, labeling, and visualization without preparing any data.</p>
+<section id="template-datasets">
+<h2>Template datasets<a class="headerlink" href="#template-datasets" title="Link to this heading">#</a></h2>
+<p>The following datasets are available as templates. Full conversion scripts are in the <code class="docutils literal notranslate"><span class="pre">examples/</span></code> folder.</p>
+<p><strong>Tool-using crows</strong> — Learned precision tool use in carrion crows. Two trials with video, 3D pose (DeepLabCut), kinematics, and video features.</p>
+<blockquote>
+<div><p>Moll, F. W., Würzler, J., &amp; Nieder, A. (2025). Learned precision tool use in carrion crows. <em>Current Biology</em>, 35(19), 4845–4852.e3. <a class="reference external" href="https://doi.org/10.1016/j.cub.2025.08.033">https://doi.org/10.1016/j.cub.2025.08.033</a></p>
+</div></blockquote>
+<p><strong>Tool-using mice</strong> — Behaviour recognition for mice solving mechanical puzzle lockboxes. Six trials with multi-camera video and pose.</p>
+<blockquote>
+<div><p>Reiske, P., Boon, M. N., Andresen, N., Traverso, S., Hohlbaum, K., Lewejohann, L., Thöne-Reineke, C., Hellwich, O., &amp; Sprekeler, H. (2025). Mouse Lockbox Dataset: Behavior Recognition for Mice Solving Lockboxes (arXiv:2505.15408). arXiv. <a class="reference external" href="https://doi.org/10.48550/arXiv.2505.15408">https://doi.org/10.48550/arXiv.2505.15408</a></p>
+</div></blockquote>
+<p><strong>Social rats</strong> — Multi-animal 3D pose dataset of dyadic interactions in laboratory rats. Six cameras, chunked into trials.</p>
+<blockquote>
+<div><p>Marshall, J., Klibaite, U., Gellis, A., Aldarondo, D., Olveczky, B., &amp; Dunn, T. W. (2021). The PAIR-R24M Dataset for Multi-animal 3D Pose Estimation. <em>Proceedings of the Neural Information Processing Systems Track on Datasets and Benchmarks</em>, 1. <a class="reference external" href="https://datasets-benchmarks-proceedings.neurips.cc/paper/2021/hash/1ff8a7b5dc7a7d1f0ed65aaa29c04b1e-Abstract-round1.html">https://datasets-benchmarks-proceedings.neurips.cc/paper/2021/hash/1ff8a7b5dc7a7d1f0ed65aaa29c04b1e-Abstract-round1.html</a></p>
+</div></blockquote>
+<p><strong>Flying &amp; singing zebra finches</strong> — Multimodal dataset of zebra finch groups with synchronized video, microphone arrays, and backpack-mounted accelerometers.</p>
+<blockquote>
+<div><p>Rüttimann, L., Wang, Y., Rychen, J., Tomka, T., Hörster, H., &amp; Hahnloser, R. H. R. (2025). Multimodal system for recording individual-level behaviors in songbird groups. <em>PeerJ</em>, 13, e20203. <a class="reference external" href="https://doi.org/10.7717/peerj.20203">https://doi.org/10.7717/peerj.20203</a></p>
+</div></blockquote>
+<p><strong>Cricket stridulation</strong> — Sound production in <em>Pholidoptera littoralis</em> with synchronized video, audio, and DeepLabCut pose.</p>
+</section>
 </section>
 
 
@@ -447,20 +465,20 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="multi_trial.html"
+       href="installation.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Multi-trial setup</p>
+        <p class="prev-next-title">Installation</p>
       </div>
     </a>
     <a class="right-next"
-       href="data_requirements.html"
+       href="wizard.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Data Format Requirements</p>
+        <p class="prev-next-title">Getting Started Wizard</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -476,9 +494,21 @@
 
 
   <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#template-datasets">Template datasets</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/getting_started/trialtree.md.txt">
+    <a href="../_sources/getting_started/quickstart.md.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

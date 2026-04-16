@@ -351,6 +351,7 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
 <li class="toctree-l1"><a class="reference internal" href="wizard.html">Getting Started Wizard</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="data_loading.html">Loading Data</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="loading_pose.html">From a pose file</a></li>
@@ -358,7 +359,6 @@
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">From a numpy file</a></li>
 <li class="toctree-l2"><a class="reference internal" href="loading_ephys.html">From an ephys recording</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multi_trial.html">Multi-trial setup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="trialtree.html">TrialTree</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="data_requirements.html">Data Format Requirements</a></li>
@@ -459,29 +459,17 @@ In the <strong>I/O widget</strong>, click <strong>Create with own data</strong> 
 </tr>
 </thead>
 <tbody>
+<tr class="row-even"><td><p><strong>Npy file</strong></p></td>
+<td><p>2D array — shape <code class="docutils literal notranslate"><span class="pre">(n_samples,</span> <span class="pre">n_vars)</span></code> or <code class="docutils literal notranslate"><span class="pre">(n_vars,</span> <span class="pre">n_samples)</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Data sampling rate</strong></p></td>
+<td><p>Hz</p></td>
+</tr>
 <tr class="row-even"><td><p><strong>Video file</strong></p></td>
 <td><p>Optional</p></td>
 </tr>
-<tr class="row-odd"><td><p><strong>Npy file</strong></p></td>
-<td><p>2D array — shape <code class="docutils literal notranslate"><span class="pre">(n_samples,</span> <span class="pre">n_vars)</span></code> or <code class="docutils literal notranslate"><span class="pre">(n_vars,</span> <span class="pre">n_samples)</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><strong>Video frame rate</strong></p></td>
-<td><p>Auto-detected from video</p></td>
-</tr>
-<tr class="row-odd"><td><p><strong>Video onset in npy</strong></p></td>
-<td><p>Time offset (s) where video starts relative to data stream</p></td>
-</tr>
-<tr class="row-even"><td><p><strong>Data sampling rate</strong></p></td>
-<td><p>Hz — required</p></td>
-</tr>
-<tr class="row-odd"><td><p><strong>Individuals</strong></p></td>
-<td><p>Optional, comma-separated</p></td>
-</tr>
-<tr class="row-even"><td><p><strong>Load video motion features</strong></p></td>
-<td><p>Extracts frame-to-frame motion signal from video</p></td>
-</tr>
 <tr class="row-odd"><td><p><strong>Output path</strong></p></td>
-<td><p>Where to save the generated <code class="docutils literal notranslate"><span class="pre">session.nc</span></code></p></td>
+<td><p></p></td>
 </tr>
 </tbody>
 </table>

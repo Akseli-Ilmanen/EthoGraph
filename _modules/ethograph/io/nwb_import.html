@@ -436,8 +436,6 @@
     <span class="k">return</span> <span class="n">t0</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">iface</span><span class="o">.</span><span class="n">rate</span><span class="p">)</span>
 
 
-<div class="viewcode-block" id="probe_behavioral_series">
-<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.nwb_import.probe_behavioral_series">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">probe_behavioral_series</span><span class="p">(</span><span class="n">nwb</span><span class="p">:</span> <span class="n">NWBFile</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;List all behavioral time-series interfaces available for import.&quot;&quot;&quot;</span>
     <span class="n">SKIP_MODULES</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;ecephys&quot;</span><span class="p">,</span> <span class="s2">&quot;ophys&quot;</span><span class="p">,</span> <span class="s2">&quot;ogen&quot;</span><span class="p">}</span>
@@ -462,8 +460,7 @@
                 <span class="s2">&quot;interface&quot;</span><span class="p">:</span> <span class="n">iface_name</span><span class="p">,</span>
                 <span class="s2">&quot;n_samples&quot;</span><span class="p">:</span> <span class="n">n</span><span class="p">,</span>
             <span class="p">})</span>
-    <span class="k">return</span> <span class="n">results</span></div>
-
+    <span class="k">return</span> <span class="n">results</span>
 
 
 <div class="viewcode-block" id="probe_electrical_series">

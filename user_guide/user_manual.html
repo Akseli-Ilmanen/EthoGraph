@@ -355,6 +355,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="labels/index.html">Labels</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="labels/labelling_gui.html">Labelling in the GUI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="labels/mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/branches.html">Label branches</a></li>
 <li class="toctree-l2"><a class="reference internal" href="labels/importing.html">Importing labels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="labels/exporting.html">Exporting labels</a></li>
 </ul>
@@ -442,7 +443,7 @@
 <tbody>
 <tr class="row-even"><td><p><strong>Video</strong></p></td>
 <td><p>Napari viewer</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">.mp4</span></code>, <code class="docutils literal notranslate"><span class="pre">.mov</span></code>, …  (via <a class="reference external" href="https://pyav.org/docs/stable/">pyav</a>)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.mp4</span></code> (recommended), <code class="docutils literal notranslate"><span class="pre">.avi</span></code>, <code class="docutils literal notranslate"><span class="pre">.mov</span></code> (via <a class="reference external" href="https://pyav.org/docs/stable/">pyav</a>)</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>Pose/ BoundingBox</strong></p></td>
 <td><p>Overlay on video</p></td>
@@ -466,6 +467,10 @@
 </tr>
 </tbody>
 </table>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">.avi</span></code> and <code class="docutils literal notranslate"><span class="pre">.mov</span></code> files have inaccurate frame seeking (off by 1–2 frames). For best results, transcode to <code class="docutils literal notranslate"><span class="pre">.mp4</span></code> with H.264. See <a class="reference internal" href="troubleshooting.html"><span class="doc">Troubleshooting</span></a>.</p>
 </div>
 <hr class="docutils" />
 <p>Feature data can be loaded via three backends:</p>
@@ -495,6 +500,15 @@
 <p>Unlike a plain numpy array, all three formats carry explicit timestamps with each value.
 This allows <code class="docutils literal notranslate"><span class="pre">ethograph</span></code> to automatically align data of different sampling rates and
 modalities (video, audio &amp; electrophysiology).</p>
+<section id="labelling">
+<h2>Labelling<a class="headerlink" href="#labelling" title="Link to this heading">#</a></h2>
+<p>Ethograph is a labelling GUI for marking the onset and offset of behavioural
+events. Press a number key to select a label class, click on the timeseries plot to
+mark the onset, click again to mark the offset, then press <strong>V</strong> to play back
+the segment you just labelled.</p>
+<a class="reference internal image-reference" href="../_images/label_basic.gif"><img alt="Labelling workflow — select class, click onset, click offset, press V to review" src="../_images/label_basic.gif" style="width: 100%;" />
+</a>
+</section>
 <section id="feature-dropdowns">
 <h2>Feature dropdowns<a class="headerlink" href="#feature-dropdowns" title="Link to this heading">#</a></h2>
 <p>To showcase some <code class="docutils literal notranslate"><span class="pre">ethograph</span></code> functionalities, we will use pose data from a carrion crow performing a tool-use task (Moll et al., 2025¹). The <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> is from one behavioural trial, and shows position, velocity, speed, and acceleration for 3 keypoints tracked in 3D.</p>
@@ -1205,7 +1219,7 @@ speed with .sel:   KeyError: &quot;&#39;space&#39; is not a valid dimension or c
 </section>
 <section id="changepoints">
 <h2>Changepoints<a class="headerlink" href="#changepoints" title="Link to this heading">#</a></h2>
-<p>Besides looking at the <code class="docutils literal notranslate"><span class="pre">z-velocity</span></code>, one can also identify good candidates for semgentation boundaries by looking at where there are minima or turnings points in the <code class="docutils literal notranslate"><span class="pre">beakTip</span></code> speed curve. We call these kinematic <code class="docutils literal notranslate"><span class="pre">/user_guide/changepoints</span></code>.</p>
+<p>Besides looking at the <code class="docutils literal notranslate"><span class="pre">z-velocity</span></code>, one can also identify good candidates for segmentation boundaries by looking at where there are minima or turning points in the <code class="docutils literal notranslate"><span class="pre">beakTip</span></code> speed curve. We call these kinematic <a class="reference internal" href="changepoints/index.html"><span class="doc">changepoints</span></a>.</p>
 <div class="cell tag_hide-input docutils container">
 <details class="admonition hide above-input">
 <summary aria-label="Toggle hidden content">
@@ -1437,6 +1451,7 @@ across all three backends.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#labelling">Labelling</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#feature-dropdowns">Feature dropdowns</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changepoints">Changepoints</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#building-a-trialtree">Building a TrialTree</a></li>

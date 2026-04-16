@@ -50,7 +50,7 @@
     <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/api_index.html" />
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Changepoints" href="api/changepoints.html" />
+    <link rel="next" title="TrialTree" href="api/trialtree.html" />
     <link rel="prev" title="Tool-using mice - Lockbox" href="examples/convert_datset_lockbox.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -350,12 +350,12 @@
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="api/changepoints.html">Changepoints</a></li>
-<li class="toctree-l1"><a class="reference internal" href="api/nwb_alignment.html">NWB alignment</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api/trialtree.html">TrialTree</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api/dataset.html">Dataset</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api/pynapple_io.html">Pynapple IO</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/nwb_alignment.html">NWB alignment</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api/labels.html">Labels</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/changepoints.html">Changepoints</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api/xr_utils.html">xr_utils</a></li>
 </ul>
 </div>
@@ -419,75 +419,9 @@
 <p>Organized by module group. Each page has full signatures with type hints,
 examples, and cross-links to the user guide.</p>
 <div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="api/changepoints.html">Changepoints</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="api/changepoints.html#detection">Detection</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/changepoints.html#merging-and-time-extraction">Merging and time extraction</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/changepoints.html#label-correction">Label correction</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/changepoints.html#changepoint-features">Changepoint features</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/changepoints.html#storage-format">Storage format</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="api/nwb_alignment.html">NWB alignment</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="api/nwb_alignment.html#creating-alignment-files">Creating alignment files</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/nwb_alignment.html#reading-alignment-metadata">Reading alignment metadata</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/nwb_alignment.html#nwb-import-helpers">NWB import helpers</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="api/trialtree.html">TrialTree</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="api/trialtree.html#ethograph.io.trialtree.TrialTree"><code class="docutils literal notranslate"><span class="pre">TrialTree</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/trialtree.html#creating">Creating</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/trialtree.html#accessing-trials">Accessing trials</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/trialtree.html#iterating-over-trials">Iterating over trials</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/trialtree.html#modifying-trials">Modifying trials</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/trialtree.html#filtering">Filtering</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/trialtree.html#saving">Saving</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/trialtree.html#see-also">See also</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="api/dataset.html">Dataset</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="api/dataset.html#resampling">Resampling</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/dataset.html#building">Building</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="api/pynapple_io.html">Pynapple IO</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="api/pynapple_io.html#loading">Loading</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/pynapple_io.html#building">Building</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/pynapple_io.html#nwb-import-probes">NWB import probes</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="api/labels.html">Labels</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="api/labels.html#interval-operations">Interval operations</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/labels.html#dense-interval-conversion-ml">Dense ↔ interval conversion (ML)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/labels.html#tsv-storage">TSV storage</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/labels.html#predictions">Predictions</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/labels.html#crowsetta-pynapple-converters">Crowsetta / pynapple converters</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/labels.html#export-helpers">Export helpers</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/labels.html#plotting">Plotting</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="api/xr_utils.html">xr_utils</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="api/xr_utils.html#ethograph.utils.xr_utils.sel_valid"><code class="docutils literal notranslate"><span class="pre">sel_valid()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="api/xr_utils.html#ethograph.utils.xr_utils.get_time_coord"><code class="docutils literal notranslate"><span class="pre">get_time_coord()</span></code></a></li>
-</ul>
-</li>
-</ul>
 </div>
-<hr class="docutils" />
 <p class="rubric">At a glance</p>
 <dl class="simple">
-<dt><a class="reference internal" href="api/changepoints.html"><span class="doc">Changepoints</span></a></dt><dd><p>Detection (<a class="reference internal" href="api/ethograph.features.changepoints.find_peaks_binary.html#ethograph.features.changepoints.find_peaks_binary" title="ethograph.features.changepoints.find_peaks_binary"><code class="xref py py-func docutils literal notranslate"><span class="pre">find_peaks_binary()</span></code></a>,
-<a class="reference internal" href="api/ethograph.features.changepoints.find_troughs_binary.html#ethograph.features.changepoints.find_troughs_binary" title="ethograph.features.changepoints.find_troughs_binary"><code class="xref py py-func docutils literal notranslate"><span class="pre">find_troughs_binary()</span></code></a>,
-<a class="reference internal" href="api/ethograph.features.changepoints.find_nearest_turning_points_binary.html#ethograph.features.changepoints.find_nearest_turning_points_binary" title="ethograph.features.changepoints.find_nearest_turning_points_binary"><code class="xref py py-func docutils literal notranslate"><span class="pre">find_nearest_turning_points_binary()</span></code></a>),
-merging/time extraction, label correction, and the binary / smooth
-Laplacian / segment-ID
-<a class="reference internal" href="api/ethograph.features.changepoints.more_changepoint_features.html#ethograph.features.changepoints.more_changepoint_features" title="ethograph.features.changepoints.more_changepoint_features"><code class="xref py py-func docutils literal notranslate"><span class="pre">more_changepoint_features()</span></code></a>
-used by downstream segmentation models.</p>
-</dd>
-<dt><a class="reference internal" href="api/nwb_alignment.html"><span class="doc">NWB alignment</span></a></dt><dd><p><a class="reference internal" href="api/nwb_alignment.html#ethograph.io.nwb_alignment.NWBAlignment" title="ethograph.io.nwb_alignment.NWBAlignment"><code class="xref py py-class docutils literal notranslate"><span class="pre">NWBAlignment</span></code></a>,
-<a class="reference internal" href="api/nwb_alignment.html#ethograph.io.nwb_alignment.align_media_per_trial" title="ethograph.io.nwb_alignment.align_media_per_trial"><code class="xref py py-func docutils literal notranslate"><span class="pre">align_media_per_trial()</span></code></a>,
-<a class="reference internal" href="api/nwb_alignment.html#ethograph.io.nwb_alignment.align_media_from_streams" title="ethograph.io.nwb_alignment.align_media_from_streams"><code class="xref py py-func docutils literal notranslate"><span class="pre">align_media_from_streams()</span></code></a>.</p>
-</dd>
 <dt><a class="reference internal" href="api/trialtree.html"><span class="doc">TrialTree</span></a></dt><dd><p>The <a class="reference internal" href="api/trialtree.html#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><code class="xref py py-class docutils literal notranslate"><span class="pre">TrialTree</span></code></a> data structure,
 <a class="reference internal" href="api/ethograph.open.html#ethograph.open" title="ethograph.open"><code class="xref py py-func docutils literal notranslate"><span class="pre">open()</span></code></a>, <a class="reference internal" href="api/ethograph.from_datasets.html#ethograph.from_datasets" title="ethograph.from_datasets"><code class="xref py py-func docutils literal notranslate"><span class="pre">from_datasets()</span></code></a>, trial
 access, iteration, filtering, and saving.</p>
@@ -505,8 +439,20 @@ access, iteration, filtering, and saving.</p>
 <a class="reference internal" href="api/pynapple_io.html#ethograph.io.pynapple.add_angle_rgb_to_nap" title="ethograph.io.pynapple.add_angle_rgb_to_nap"><code class="xref py py-func docutils literal notranslate"><span class="pre">add_angle_rgb_to_nap()</span></code></a>, plus NWB-import
 probes.</p>
 </dd>
+<dt><a class="reference internal" href="api/nwb_alignment.html"><span class="doc">NWB alignment</span></a></dt><dd><p><a class="reference internal" href="api/nwb_alignment.html#ethograph.io.nwb_alignment.NWBAlignment" title="ethograph.io.nwb_alignment.NWBAlignment"><code class="xref py py-class docutils literal notranslate"><span class="pre">NWBAlignment</span></code></a>,
+<a class="reference internal" href="api/nwb_alignment.html#ethograph.io.nwb_alignment.align_media_per_trial" title="ethograph.io.nwb_alignment.align_media_per_trial"><code class="xref py py-func docutils literal notranslate"><span class="pre">align_media_per_trial()</span></code></a>,
+<a class="reference internal" href="api/nwb_alignment.html#ethograph.io.nwb_alignment.align_media_from_streams" title="ethograph.io.nwb_alignment.align_media_from_streams"><code class="xref py py-func docutils literal notranslate"><span class="pre">align_media_from_streams()</span></code></a>.</p>
+</dd>
 <dt><a class="reference internal" href="api/labels.html"><span class="doc">Labels</span></a></dt><dd><p>Interval operations, TSV storage, dense ↔ interval conversion,
 predictions, Crowsetta/pynapple converters, export, and plotting.</p>
+</dd>
+<dt><a class="reference internal" href="api/changepoints.html"><span class="doc">Changepoints</span></a></dt><dd><p>Detection (<a class="reference internal" href="api/ethograph.features.changepoints.find_peaks_binary.html#ethograph.features.changepoints.find_peaks_binary" title="ethograph.features.changepoints.find_peaks_binary"><code class="xref py py-func docutils literal notranslate"><span class="pre">find_peaks_binary()</span></code></a>,
+<a class="reference internal" href="api/ethograph.features.changepoints.find_troughs_binary.html#ethograph.features.changepoints.find_troughs_binary" title="ethograph.features.changepoints.find_troughs_binary"><code class="xref py py-func docutils literal notranslate"><span class="pre">find_troughs_binary()</span></code></a>,
+<a class="reference internal" href="api/ethograph.features.changepoints.find_nearest_turning_points_binary.html#ethograph.features.changepoints.find_nearest_turning_points_binary" title="ethograph.features.changepoints.find_nearest_turning_points_binary"><code class="xref py py-func docutils literal notranslate"><span class="pre">find_nearest_turning_points_binary()</span></code></a>),
+merging/time extraction, label correction, and the binary / smooth
+Laplacian / segment-ID
+<a class="reference internal" href="api/ethograph.features.changepoints.more_changepoint_features.html#ethograph.features.changepoints.more_changepoint_features" title="ethograph.features.changepoints.more_changepoint_features"><code class="xref py py-func docutils literal notranslate"><span class="pre">more_changepoint_features()</span></code></a>
+used by downstream segmentation models.</p>
 </dd>
 <dt><a class="reference internal" href="api/xr_utils.html"><span class="doc">xr_utils</span></a></dt><dd><p><a class="reference internal" href="api/xr_utils.html#ethograph.utils.xr_utils.sel_valid" title="ethograph.utils.xr_utils.sel_valid"><code class="xref py py-func docutils literal notranslate"><span class="pre">sel_valid()</span></code></a> and
 <a class="reference internal" href="api/xr_utils.html#ethograph.utils.xr_utils.get_time_coord" title="ethograph.utils.xr_utils.get_time_coord"><code class="xref py py-func docutils literal notranslate"><span class="pre">get_time_coord()</span></code></a>.</p>
@@ -534,11 +480,11 @@ predictions, Crowsetta/pynapple converters, export, and plotting.</p>
       </div>
     </a>
     <a class="right-next"
-       href="api/changepoints.html"
+       href="api/trialtree.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Changepoints</p>
+        <p class="prev-next-title">TrialTree</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

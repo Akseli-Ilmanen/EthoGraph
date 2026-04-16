@@ -351,6 +351,7 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
 <li class="toctree-l1"><a class="reference internal" href="wizard.html">Getting Started Wizard</a></li>
 <li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">Loading Data</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="loading_pose.html">From a pose file</a></li>
@@ -358,7 +359,6 @@
 <li class="toctree-l2"><a class="reference internal" href="loading_numpy.html">From a numpy file</a></li>
 <li class="toctree-l2"><a class="reference internal" href="loading_ephys.html">From an ephys recording</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multi_trial.html">Multi-trial setup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="trialtree.html">TrialTree</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="data_requirements.html">Data Format Requirements</a></li>
@@ -444,74 +444,6 @@
 </tbody>
 </table>
 </div>
-<section id="xarray-dataset-vs-trialtree">
-<h2>xarray: Dataset vs TrialTree<a class="headerlink" href="#xarray-dataset-vs-trialtree" title="Link to this heading">#</a></h2>
-<p>A single <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> holds one trial’s worth of data (features, coordinates, attributes).
-A <a class="reference internal" href="../api/trialtree.html#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><code class="xref py py-class docutils literal notranslate"><span class="pre">TrialTree</span></code></a> wraps multiple datasets — one per trial — into a single <code class="docutils literal notranslate"><span class="pre">.nc</span></code> file.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
-
-<span class="c1"># Single trial: wrap one Dataset</span>
-<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_datasets</span><span class="p">([</span><span class="n">ds</span><span class="p">])</span>
-
-<span class="c1"># Multiple trials: wrap many Datasets</span>
-<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_datasets</span><span class="p">([</span><span class="n">ds_trial1</span><span class="p">,</span> <span class="n">ds_trial2</span><span class="p">,</span> <span class="n">ds_trial3</span><span class="p">])</span>
-
-<span class="c1"># Continuous recording + trial epochs</span>
-<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_continuous</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">epochs_df</span><span class="p">)</span>
-
-<span class="c1"># Access individual trials</span>
-<span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>      <span class="c1"># by ID</span>
-<span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>     <span class="c1"># by index</span>
-</pre></div>
-</div>
-<p>See <a class="reference internal" href="trialtree.html"><span class="doc">TrialTree</span></a> for full usage.</p>
-</section>
-<hr class="docutils" />
-<section id="try-the-gui-with-template-datasets">
-<h2>Try the GUI with template datasets<a class="headerlink" href="#try-the-gui-with-template-datasets" title="Link to this heading">#</a></h2>
-<p>The quickest way to explore the GUI: click <strong>Select templates</strong> in the I/O widget, pick a dataset, and click <strong>Load</strong>.</p>
-<p><img alt="Template dataset selection" src="../_images/datasets.png" /></p>
-</section>
-<hr class="docutils" />
-<section id="load-a-pre-made-session">
-<h2>Load a pre-made session<a class="headerlink" href="#load-a-pre-made-session" title="Link to this heading">#</a></h2>
-<div class="sd-tab-set docutils">
-<input checked="checked" id="sd-tab-item-0" name="sd-tab-set-0" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-0">
-NetCDF (.nc)</label><div class="sd-tab-content docutils">
-<p>If you already have a <code class="docutils literal notranslate"><span class="pre">session.nc</span></code> file (e.g. from an ethograph pipeline or <a class="reference internal" href="multi_trial.html"><span class="doc">Multi-trial setup</span></a>):</p>
-<ol class="arabic simple">
-<li><p>In the <strong>I/O</strong> widget, select your session data <strong>file</strong> (<code class="docutils literal notranslate"><span class="pre">.nc</span></code>)</p></li>
-<li><p>Select the video <strong>folder</strong> containing camera recordings (<code class="docutils literal notranslate"><span class="pre">.mp4</span></code>) <a class="footnote-reference brackets" href="#id6" id="id1" role="doc-noteref"><span class="fn-bracket">[</span>4<span class="fn-bracket">]</span></a></p></li>
-<li><p>[Optional] Select the audio <strong>folder</strong> containing microphone recordings (<code class="docutils literal notranslate"><span class="pre">.wav</span></code>, <code class="docutils literal notranslate"><span class="pre">.mp3</span></code>, <code class="docutils literal notranslate"><span class="pre">.mp4</span></code>) <a class="footnote-reference brackets" href="#id4" id="id2" role="doc-noteref"><span class="fn-bracket">[</span>2<span class="fn-bracket">]</span></a></p></li>
-<li><p>[Optional] Select the tracking <strong>folder</strong> containing pose estimation files (<code class="docutils literal notranslate"><span class="pre">.h5</span></code>, <code class="docutils literal notranslate"><span class="pre">.csv</span></code>) <a class="footnote-reference brackets" href="#id5" id="id3" role="doc-noteref"><span class="fn-bracket">[</span>3<span class="fn-bracket">]</span></a></p></li>
-<li><p>[Optional] Select the ephys <strong>file</strong> (<code class="docutils literal notranslate"><span class="pre">.rhd</span></code>, <code class="docutils literal notranslate"><span class="pre">.abf</span></code>, …) or the <strong>Kilosort folder</strong></p></li>
-<li><p>Click <strong>Load</strong></p></li>
-</ol>
-<p>Media paths are resolved from <code class="docutils literal notranslate"><span class="pre">.ethograph/alignment.nwb</span></code> if present, with fallback to the folders selected above.</p>
-</div>
-<input id="sd-tab-item-1" name="sd-tab-set-0" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-1">
-NWB (.nwb)</label><div class="sd-tab-content docutils">
-<p>NWB files are self-contained — EthoGraph reads trials, features, and media references directly:</p>
-<ol class="arabic simple">
-<li><p>In the <strong>I/O</strong> widget, select your <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> file</p></li>
-<li><p>[Optional] Select a local video folder if folder specifeid in ImageSseries external files changed CLAUDE rephrase.</p></li>
-<li><p>Click <strong>Load</strong></p></li>
-</ol>
-</div>
-<input id="sd-tab-item-2" name="sd-tab-set-0" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-2">
-Pynapple (.npz / folder)</label><div class="sd-tab-content docutils">
-<p>Pynapple data saved with <code class="xref py py-func docutils literal notranslate"><span class="pre">save_file()</span></code> or pynapple folders:</p>
-<ol class="arabic simple">
-<li><p>In the <strong>I/O</strong> widget, select your <code class="docutils literal notranslate"><span class="pre">.npz</span></code> file or pynapple folder</p></li>
-<li><p>[Optional] Select video/audio/tracking folders.</p></li>
-<li><p>Click <strong>Load</strong></p></li>
-</ol>
-</div>
-</div>
-</section>
 <hr class="docutils" />
 <section id="create-a-session-from-your-own-data">
 <h2>Create a session from your own data<a class="headerlink" href="#create-a-session-from-your-own-data" title="Link to this heading">#</a></h2>
@@ -548,35 +480,106 @@ Pynapple (.npz / folder)</label><div class="sd-tab-content docutils">
 </tbody>
 </table>
 </div>
+<hr class="docutils" />
+</section>
+<hr class="docutils" />
+<section id="load-a-pre-made-session">
+<h2>Load a pre-made session<a class="headerlink" href="#load-a-pre-made-session" title="Link to this heading">#</a></h2>
+<div class="sd-tab-set docutils">
+<input checked="checked" id="sd-tab-item-0" name="sd-tab-set-0" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-0">
+NetCDF (.nc)</label><div class="sd-tab-content docutils">
+<p>If you already have a <code class="docutils literal notranslate"><span class="pre">session.nc</span></code> file (e.g. from an ethograph pipeline or <a class="reference internal" href="multi_trial.html"><span class="doc">Multi-trial setup</span></a>):</p>
+<ol class="arabic simple">
+<li><p>In the <strong>I/O</strong> widget, select your session data <strong>file</strong> (<code class="docutils literal notranslate"><span class="pre">.nc</span></code>)</p></li>
+<li><p>Select the video <strong>folder</strong> containing camera recordings (<code class="docutils literal notranslate"><span class="pre">.mp4</span></code>)</p></li>
+<li><p>[Optional] Select the audio <strong>folder</strong> containing microphone recordings (<code class="docutils literal notranslate"><span class="pre">.wav</span></code>, <code class="docutils literal notranslate"><span class="pre">.mp3</span></code>, <code class="docutils literal notranslate"><span class="pre">.mp4</span></code>)</p></li>
+<li><p>[Optional] Select the tracking <strong>folder</strong> containing pose estimation files (<code class="docutils literal notranslate"><span class="pre">.h5</span></code>, <code class="docutils literal notranslate"><span class="pre">.csv</span></code>)</p></li>
+<li><p>[Optional] Select an ephys <strong>file</strong> (<code class="docutils literal notranslate"><span class="pre">.rhd</span></code>, <code class="docutils literal notranslate"><span class="pre">.abf</span></code>, …) containing raw multi-channel data</p></li>
+<li><p>[Optional] Select a <strong>Kilosort folder</strong> to display single neurons</p></li>
+<li><p>Click <strong>Load</strong></p></li>
+</ol>
+<p>Media paths are resolved from <code class="docutils literal notranslate"><span class="pre">.ethograph/alignment.nwb</span></code> if present, with fallback to the folders selected above.</p>
+</div>
+<input id="sd-tab-item-1" name="sd-tab-set-0" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-1">
+NWB (.nwb)</label><div class="sd-tab-content docutils">
+<p>NWB files are self-contained — EthoGraph reads trials, behavioural time series (e.g. <code class="xref py py-class docutils literal notranslate"><span class="pre">PoseEstimationSeries</span></code>), and media references directly:</p>
+<ol class="arabic simple">
+<li><p>In the <strong>I/O</strong> widget, select your <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> file</p></li>
+<li><p>[Optional] Select a local video folder if the paths stored in <a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.image.html#pynwb.image.ImageSeries" title="(in PyNWB v3.1.2)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ImageSeries</span></code></a> <code class="docutils literal notranslate"><span class="pre">.external_file</span></code> no longer point to the correct location</p></li>
+<li><p>Click <strong>Load</strong></p></li>
+</ol>
+</div>
+<input id="sd-tab-item-2" name="sd-tab-set-0" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-2">
+Pynapple (.npz / folder)</label><div class="sd-tab-content docutils">
+<p>Pynapple data saved with <code class="xref py py-func docutils literal notranslate"><span class="pre">save_file()</span></code> or pynapple folders:</p>
+<ol class="arabic simple">
+<li><p>In the <strong>I/O</strong> widget, select your <code class="docutils literal notranslate"><span class="pre">.npz</span></code> file or pynapple folder</p></li>
+<li><p>[Optional] Select video/audio/tracking folders</p></li>
+<li><p>[Optional] Select a <strong>pynapple folder</strong> containing spike-sorted units to display single neurons</p></li>
+<li><p>Click <strong>Load</strong></p></li>
+</ol>
+</div>
+</div>
+</section>
+<section id="xarray-dataset-vs-trialtree">
+<h2>xarray: Dataset vs TrialTree<a class="headerlink" href="#xarray-dataset-vs-trialtree" title="Link to this heading">#</a></h2>
+<p>You can save your <code class="docutils literal notranslate"><span class="pre">session.nc</span></code> as either a plain <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> or a <a class="reference internal" href="../api/trialtree.html#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><code class="xref py py-class docutils literal notranslate"><span class="pre">TrialTree</span></code></a>. The GUI accepts both.</p>
+<p><strong>Plain Dataset</strong> — a single <code class="docutils literal notranslate"><span class="pre">xr.Dataset</span></code> saved with <code class="xref py py-func docutils literal notranslate"><span class="pre">xarray.Dataset.to_netcdf()</span></code>. When loaded, it is automatically treated as a single trial:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+
+<span class="n">ds</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
+<span class="n">ds</span><span class="o">.</span><span class="n">to_netcdf</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
+<span class="c1"># → GUI loads this as one trial</span>
+</pre></div>
+</div>
+<p><strong>TrialTree</strong> — wraps multiple datasets (one per trial) into a single <code class="docutils literal notranslate"><span class="pre">.nc</span></code> file. Use this when your experiment has multiple trials:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+
+<span class="c1"># Multiple trials: one Dataset per trial</span>
+<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_datasets</span><span class="p">([</span><span class="n">ds_trial1</span><span class="p">,</span> <span class="n">ds_trial2</span><span class="p">,</span> <span class="n">ds_trial3</span><span class="p">])</span>
+<span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
+
+<span class="c1"># Access individual trials</span>
+<span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>      <span class="c1"># by ID</span>
+<span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>     <span class="c1"># by index</span>
+</pre></div>
+</div>
+<p>If you have a session-long <code class="docutils literal notranslate"><span class="pre">xr.Dataset</span></code> that you want to split into trials, see <a class="reference internal" href="multi_trial.html#target-from-continuous"><span class="std std-ref">Splitting a continuous recording</span></a> in the multi-trial guide.</p>
+<p>See <a class="reference internal" href="../api/trialtree.html"><span class="doc">TrialTree</span></a> for full TrialTree usage.</p>
 </section>
 <hr class="docutils" />
 <section id="folder-structure">
 <h2>Folder structure<a class="headerlink" href="#folder-structure" title="Link to this heading">#</a></h2>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>~/.ethograph/                          # Global user defaults 
+<div class="sd-tab-set docutils">
+<input checked="checked" id="sd-tab-item-3" name="sd-tab-set-1" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-3">
+xarray (.nc)</label><div class="sd-tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>~/.ethograph/                          # Global user defaults
     ├── mapping.txt                    # Default integer label_id → name mapping
     ├── space.yaml                     # Extra config for space plot
-    └── gui_settings.yaml              # Across-session GUI state (changepoint settings, axes settings, ...)
+    └── gui_settings.yaml              # Across-session GUI state
 
 my_project/
-    ├── session.nc                     # Behavioural dataset (xarray)
+    ├── session.nc                     # Behavioural dataset (TrialTree or plain Dataset)
     ├── .ethograph/
-    │   └── alignment.nwb              # Media paths, trial timing, stream offsets
-    │   └── local_settings.yaml        # Session-specific GUI state (feature selection, last paths, ...)
+    │   ├── alignment.nwb              # Media paths, trial timing, stream offsets
+    │   └── local_settings.yaml        # Session-specific GUI state
     │
-    ├── labels/                        # Label files (created by GUI)
-    │   ├── session_labels.tsv         # Most uptodate version in root folder
-    │   └── backups/                  
-    │       ├── session_labels_20240315_101230.tsv
-    │       └── session_labels_20240315_142051.tsv
-    └── predictions_asformer_20240215/ 
-        ├── trial1.npy
-        └── trial2.npy
-rawdata/
-└── ses-20220509/
+    ├── labels/
+    │   ├── session_labels.tsv         # Current labels
+    │   └── backups/
+    │       └── session_labels_20240315_101230.tsv
+    ├── predictions_asformer_20240215/
+    │   ├── trial1.npy
+    │   └── trial2.npy
+    │
     ├── video/
     │   ├── camera1_trial001.mp4
     │   └── camera2_trial001.mp4
-    ├── tracking/
+    ├── tracking/                      # External pose files (DLC, SLEAP, ...)
     │   ├── trial001_pose.h5
     │   └── ...
     ├── audio/
@@ -594,7 +597,73 @@ rawdata/
             └── cluster_info.tsv
 </pre></div>
 </div>
-<p>For NWB or pynapple workflows, the <code class="docutils literal notranslate"><span class="pre">.ethograph/alignment.nwb</span></code> file is created automatically by the GUI on first load if media files are present.</p>
+</div>
+<input id="sd-tab-item-4" name="sd-tab-set-1" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-4">
+NWB (.nwb)</label><div class="sd-tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>~/.ethograph/                          # Global user defaults
+    ├── mapping.txt
+    ├── space.yaml
+    └── gui_settings.yaml
+
+my_project/
+    ├── session.nwb                    # Self-contained: trials, time series,
+    │                                  # pose (PoseEstimationSeries), video
+    │                                  # refs (ImageSeries.external_file)
+    ├── .ethograph/
+    │   ├── alignment.nwb              # Sidecar for stream offsets &amp; overrides
+    │   └── local_settings.yaml
+    │
+    ├── labels/
+    │   ├── session_labels.tsv
+    │   └── backups/
+    │       └── ...
+    ├── predictions_asformer_20240215/
+    │   ├── trial1.npy
+    │   └── trial2.npy
+    │
+    └── video/                         # Only needed if ImageSeries paths
+        ├── camera1_trial001.mp4       # no longer point to the right location
+        └── camera2_trial001.mp4
+</pre></div>
+</div>
+<p>Pose estimation and other behavioural time series are stored inside the <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> file — no external tracking folder needed.</p>
+</div>
+<input id="sd-tab-item-5" name="sd-tab-set-1" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-5">
+Pynapple (.npz / folder)</label><div class="sd-tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>~/.ethograph/                          # Global user defaults
+    ├── mapping.txt
+    ├── space.yaml
+    └── gui_settings.yaml
+
+my_project/
+    ├── position.npz                   # Pynapple Tsd/TsdFrame objects
+    ├── speed.npz
+    ├── units.npz                      # TsGroup of spike times
+    ├── .ethograph/
+    │   ├── alignment.nwb              # Media paths, trial timing, stream offsets
+    │   └── local_settings.yaml
+    │
+    ├── labels/
+    │   ├── session_labels.tsv
+    │   └── backups/
+    │       └── ...
+    ├── predictions_asformer_20240215/
+    │   ├── trial1.npy
+    │   └── trial2.npy
+    │
+    ├── video/
+    │   ├── camera1_trial001.mp4
+    │   └── ...
+    └── audio/
+        ├── mic1_trial001.wav
+        └── ...
+</pre></div>
+</div>
+</div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">.ethograph/alignment.nwb</span></code> sidecar is created automatically by the GUI on first load when media files are present.</p>
 <div class="toctree-wrapper compound">
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="loading_pose.html">From a pose file</a></li>
@@ -602,26 +671,10 @@ rawdata/
 <li class="toctree-l1"><a class="reference internal" href="loading_numpy.html">From a numpy file</a></li>
 <li class="toctree-l1"><a class="reference internal" href="loading_ephys.html">From an ephys recording</a></li>
 <li class="toctree-l1"><a class="reference internal" href="multi_trial.html">Multi-trial setup</a></li>
-<li class="toctree-l1"><a class="reference internal" href="trialtree.html">TrialTree</a></li>
 </ul>
 </div>
 </section>
 </section>
-<hr class="footnotes docutils" />
-<aside class="footnote-list brackets">
-<aside class="footnote brackets" id="id4" role="doc-footnote">
-<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">2</a><span class="fn-bracket">]</span></span>
-<p>If your video files (e.g. <code class="docutils literal notranslate"><span class="pre">.mp4</span></code>) contain audio, the video and audio folder will be the same.</p>
-</aside>
-<aside class="footnote brackets" id="id5" role="doc-footnote">
-<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">3</a><span class="fn-bracket">]</span></span>
-<p>Pose files are loaded via the <code class="xref py py-mod docutils literal notranslate"><span class="pre">movement</span></code> library.</p>
-</aside>
-<aside class="footnote brackets" id="id6" role="doc-footnote">
-<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">4</a><span class="fn-bracket">]</span></span>
-<p>You can also load <code class="docutils literal notranslate"><span class="pre">.avi</span></code> and <code class="docutils literal notranslate"><span class="pre">.mov</span></code> files, but they have inaccurate frame seeking (off by 1-2 frames). For best results, transcode to <code class="docutils literal notranslate"><span class="pre">.mp4</span></code> with H.264. See <a class="reference internal" href="../user_guide/troubleshooting.html"><span class="doc">Troubleshooting</span></a>.</p>
-</aside>
-</aside>
 
 
                 </article>
@@ -670,10 +723,9 @@ rawdata/
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#xarray-dataset-vs-trialtree">xarray: Dataset vs TrialTree</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#try-the-gui-with-template-datasets">Try the GUI with template datasets</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#load-a-pre-made-session">Load a pre-made session</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#create-a-session-from-your-own-data">Create a session from your own data</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#load-a-pre-made-session">Load a pre-made session</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#xarray-dataset-vs-trialtree">xarray: Dataset vs TrialTree</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#folder-structure">Folder structure</a></li>
 </ul>
   </nav></div>

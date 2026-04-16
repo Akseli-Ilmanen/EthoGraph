@@ -8,6 +8,7 @@ tools, and exporting to TSV / Crowsetta formats.
 
 labelling_gui
 mapping
+branches
 importing
 exporting
 ```

@@ -40,22 +40,6 @@ For **multiple separate `.wav` files** (one per mic), use the multi-trial wizard
 
 | Field | Notes |
 |-------|-------|
-| **Video file** | Optional |
 | **Audio file** | `.wav`, `.mp3`, `.mp4`, `.flac` |
-| **Video frame rate** | Auto-detected from video |
-| **Video onset in audio** | Time offset (s) where video starts relative to audio stream |
-| **Audio sample rate** | float |
-| **Individuals** | Optional, comma-separated |
-| **Load video motion features** | Extracts frame-to-frame motion signal from video |
-| **Output path** | Where to save the generated `session.nc` |
-
----
-
-## Data requirements
-
-| Attribute | Value |
-|-----------|-------|
-| `attrs["fps"]` | Not required for audio-only datasets |
-| `coords["individuals"]` | Optional |
-
-See {ref}`Data Format Requirements — Audio only <target-data-requirements>`.
+| **Video file** | Optional |
+| **Output path** | |

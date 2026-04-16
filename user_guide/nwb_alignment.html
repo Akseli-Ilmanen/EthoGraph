@@ -355,6 +355,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="labels/index.html">Labels</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="labels/labelling_gui.html">Labelling in the GUI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="labels/mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/branches.html">Label branches</a></li>
 <li class="toctree-l2"><a class="reference internal" href="labels/importing.html">Importing labels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="labels/exporting.html">Exporting labels</a></li>
 </ul>
@@ -431,33 +432,15 @@
                   
   <section class="tex2jax_ignore mathjax_ignore" id="nwb-alignment">
 <span id="target-nwb-alignment"></span><h1>NWB alignment<a class="headerlink" href="#nwb-alignment" title="Link to this heading">#</a></h1>
-<p>EthoGraph stores all <strong>session metadata</strong> — trial timing, media file paths,
-stream offsets — in an
-<a class="reference external" href="https://www.nwb.org/">NWB</a> file at <code class="docutils literal notranslate"><span class="pre">&lt;project&gt;/.ethograph/alignment.nwb</span></code>.
-The behavioural data (<code class="docutils literal notranslate"><span class="pre">.nc</span></code>, <code class="docutils literal notranslate"><span class="pre">.npz</span></code>, …) stays focused on features; the
-alignment file describes how those features line up with video, audio,
+<p>EthoGraph treats <a class="reference external" href="https://www.nwb.org/">NWB</a> as a native format — when you
+load an <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> file, session metadata (trial timing, media paths, stream
+offsets) is read directly from it. For other formats (xarray <code class="docutils literal notranslate"><span class="pre">.nc</span></code>, <code class="docutils literal notranslate"><span class="pre">.npz</span></code>,
+pynapple folders) that lack this metadata, EthoGraph creates a sidecar
+<strong><code class="docutils literal notranslate"><span class="pre">.ethograph/alignment.nwb</span></code></strong> file that ties features to video, audio,
 ephys, and trial structure.</p>
 <p>This page explains what the alignment file contains and how to read / write
 it. For the step-by-step workflow of creating one alongside a multi-trial
 dataset, see <a class="reference internal" href="../getting_started/multi_trial.html"><span class="doc">Multi-trial setup</span></a>.</p>
-<hr class="docutils" />
-<section id="why-a-separate-alignment-file">
-<h2>Why a separate alignment file?<a class="headerlink" href="#why-a-separate-alignment-file" title="Link to this heading">#</a></h2>
-<ul class="simple">
-<li><p><strong>Portability</strong>: media filenames are stored as basename only, so datasets
-move between machines without rewriting paths inside the <code class="docutils literal notranslate"><span class="pre">.nc</span></code>.</p></li>
-<li><p><strong>Reproducibility</strong>: the alignment records <em>which</em> media file, sample
-rate, and clock offset was used for each trial — in a standardised NWB
-format that other tools can read.</p></li>
-<li><p><strong>Single source of truth</strong>: trial start/stop, per-trial media, and
-stream offsets all live in one file instead of scattered across dataset
-attributes.</p></li>
-</ul>
-<p>For <strong>standalone <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> sources</strong> the source NWB already contains this
-metadata, so no sidecar file is created — EthoGraph reads the alignment
-directly from the source NWB. For all other sources (<code class="docutils literal notranslate"><span class="pre">.nc</span></code>, <code class="docutils literal notranslate"><span class="pre">.npz</span></code>,
-pynapple folders), <code class="docutils literal notranslate"><span class="pre">.ethograph/alignment.nwb</span></code> is written alongside.</p>
-</section>
 <hr class="docutils" />
 <section id="what-the-alignment-file-contains">
 <h2>What the alignment file contains<a class="headerlink" href="#what-the-alignment-file-contains" title="Link to this heading">#</a></h2>
@@ -632,7 +615,6 @@ stream-spec options (<code class="docutils literal notranslate"><span class="pre
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#why-a-separate-alignment-file">Why a separate alignment file?</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#what-the-alignment-file-contains">What the alignment file contains</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#trial-relative-vs-session-absolute-time">Trial-relative vs session-absolute time</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#reading-an-existing-alignment-file">Reading an existing alignment file</a></li>

@@ -30,14 +30,10 @@ In the **I/O widget**, click **Create with own data** — the wizard opens.
 
 | Field | Notes |
 |-------|-------|
-| **Video file** | Optional |
 | **Npy file** | 2D array — shape `(n_samples, n_vars)` or `(n_vars, n_samples)` |
-| **Video frame rate** | Auto-detected from video |
-| **Video onset in npy** | Time offset (s) where video starts relative to data stream |
-| **Data sampling rate** | Hz — required |
-| **Individuals** | Optional, comma-separated |
-| **Load video motion features** | Extracts frame-to-frame motion signal from video |
-| **Output path** | Where to save the generated `session.nc` |
+| **Data sampling rate** | Hz |
+| **Video file** | Optional |
+| **Output path** | |
 
 ---
 

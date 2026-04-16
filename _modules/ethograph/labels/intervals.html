@@ -716,8 +716,19 @@
 
 <div class="viewcode-block" id="find_interval_at">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.find_interval_at">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">find_interval_at</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">time_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">individual</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">find_interval_at</span><span class="p">(</span>
+    <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+    <span class="n">time_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">individual</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">label_ids</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Return DataFrame index of interval containing *time_s* for *individual*.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    label_ids : set[int] | None</span>
+<span class="sd">        When given, only match intervals whose ``labels`` value is in this set.</span>
+<span class="sd">        Useful for restricting to the active branch.</span>
 
 <span class="sd">    Returns ``None`` if no non-background interval contains the time.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -727,6 +738,8 @@
         <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">time_s</span><span class="p">)</span>
         <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span>
     <span class="p">)</span>
+    <span class="k">if</span> <span class="n">label_ids</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span> <span class="o">&amp;</span> <span class="n">df</span><span class="p">[</span><span class="s2">&quot;labels&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">label_ids</span><span class="p">)</span>
     <span class="n">matches</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">matches</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">None</span>

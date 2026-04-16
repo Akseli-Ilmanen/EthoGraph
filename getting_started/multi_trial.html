@@ -50,7 +50,7 @@
     <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/getting_started/multi_trial.html" />
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="TrialTree" href="trialtree.html" />
+    <link rel="next" title="Data Format Requirements" href="data_requirements.html" />
     <link rel="prev" title="From an ephys recording" href="loading_ephys.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -351,6 +351,7 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
 <li class="toctree-l1"><a class="reference internal" href="wizard.html">Getting Started Wizard</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="data_loading.html">Loading Data</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="loading_pose.html">From a pose file</a></li>
@@ -358,7 +359,6 @@
 <li class="toctree-l2"><a class="reference internal" href="loading_numpy.html">From a numpy file</a></li>
 <li class="toctree-l2"><a class="reference internal" href="loading_ephys.html">From an ephys recording</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Multi-trial setup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="trialtree.html">TrialTree</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="data_requirements.html">Data Format Requirements</a></li>
@@ -463,6 +463,39 @@ change media paths without re-exporting features.</p>
 </div>
 <p><strong>Column naming convention</strong>: <code class="docutils literal notranslate"><span class="pre">{stream}_{device}</span></code> — e.g. <code class="docutils literal notranslate"><span class="pre">video_cam-1</span></code>,
 <code class="docutils literal notranslate"><span class="pre">audio_mic-1</span></code>, <code class="docutils literal notranslate"><span class="pre">pose_cam-1</span></code>.</p>
+<hr class="docutils" />
+</section>
+<section id="splitting-a-continuous-recording-into-trials">
+<span id="target-from-continuous"></span><h2>Splitting a continuous recording into trials<a class="headerlink" href="#splitting-a-continuous-recording-into-trials" title="Link to this heading">#</a></h2>
+<p>If you have a single session-long <code class="docutils literal notranslate"><span class="pre">xr.Dataset</span></code> but want to parcelate it into a trial structure, use <code class="xref py py-func docutils literal notranslate"><span class="pre">eto.from_continuous()</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+
+<span class="c1"># A continuous 10-minute recording at 30 fps</span>
+<span class="n">n_samples</span> <span class="o">=</span> <span class="mi">18000</span>
+<span class="n">time</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_samples</span><span class="p">)</span> <span class="o">/</span> <span class="mf">30.0</span>
+
+<span class="n">ds</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">({</span>
+    <span class="s2">&quot;speed&quot;</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="n">n_samples</span><span class="p">),</span> <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">],</span>
+                          <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="n">time</span><span class="p">}),</span>
+<span class="p">})</span>
+
+<span class="c1"># Define trial boundaries (seconds)</span>
+<span class="n">epochs</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
+    <span class="s2">&quot;start_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">,</span> <span class="mf">300.0</span><span class="p">],</span>
+    <span class="s2">&quot;stop_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">100.0</span><span class="p">,</span> <span class="mf">250.0</span><span class="p">,</span> <span class="mf">500.0</span><span class="p">],</span>
+<span class="p">})</span>
+
+<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_continuous</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">epochs</span><span class="p">)</span>
+<span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
+
+<span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># returns the 120–250 s slice, time shifted to start at 0</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">from_continuous</span></code> slices the dataset on demand and shifts time coordinates to 0 for each trial.</p>
 </section>
 <hr class="docutils" />
 <section id="minimal-example">
@@ -630,35 +663,11 @@ alignment model.</p>
 media files.</p>
 </section>
 <hr class="docutils" />
-<section id="trial-conditions">
-<h2>Trial conditions<a class="headerlink" href="#trial-conditions" title="Link to this heading">#</a></h2>
-<p>Add metadata to each trial for filtering in the Navigation widget and for
-export:</p>
-<div class="sd-tab-set docutils">
-<input checked="checked" id="sd-tab-item-3" name="sd-tab-set-1" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-3">
-Xarray attrs</label><div class="sd-tab-content docutils">
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;stimulus&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;tone_A&quot;</span>
-</pre></div>
-</div>
-</div>
-<input id="sd-tab-item-4" name="sd-tab-set-1" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-4">
-Alignment column</label><div class="sd-tab-content docutils">
-<p>Add extra columns to the trial table before creating the alignment:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">trial_table</span><span class="p">[</span><span class="s2">&quot;stimulus&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;tone_A&quot;</span><span class="p">,</span> <span class="s2">&quot;tone_B&quot;</span><span class="p">,</span> <span class="s2">&quot;tone_A&quot;</span><span class="p">,</span> <span class="s2">&quot;tone_B&quot;</span><span class="p">,</span> <span class="s2">&quot;tone_A&quot;</span><span class="p">]</span>
-<span class="n">align_media_per_trial</span><span class="p">(</span><span class="n">trial_table</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</div>
-</section>
-<hr class="docutils" />
 <section id="full-worked-example">
 <h2>Full worked example<a class="headerlink" href="#full-worked-example" title="Link to this heading">#</a></h2>
 <div class="sd-tab-set docutils">
-<input checked="checked" id="sd-tab-item-5" name="sd-tab-set-2" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-5">
+<input checked="checked" id="sd-tab-item-3" name="sd-tab-set-1" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-3">
 Xarray</label><div class="sd-tab-content docutils">
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
@@ -717,8 +726,8 @@ Xarray</label><div class="sd-tab-content docutils">
 </pre></div>
 </div>
 </div>
-<input id="sd-tab-item-6" name="sd-tab-set-2" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-6">
+<input id="sd-tab-item-4" name="sd-tab-set-1" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-4">
 NWB</label><div class="sd-tab-content docutils">
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># NWB files already store trials, media references, and features together.</span>
 <span class="c1"># For DANDI datasets:</span>
@@ -870,11 +879,11 @@ and channel mapping.</p>
       </div>
     </a>
     <a class="right-next"
-       href="trialtree.html"
+       href="data_requirements.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">TrialTree</p>
+        <p class="prev-next-title">Data Format Requirements</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -898,11 +907,11 @@ and channel mapping.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#how-alignment-works">How alignment works</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#splitting-a-continuous-recording-into-trials">Splitting a continuous recording into trials</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#minimal-example">Minimal example</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#multiple-cameras">Multiple cameras</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#per-trial-audio">Per-trial audio</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#trial-timing">Trial timing</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#trial-conditions">Trial conditions</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#full-worked-example">Full worked example</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#session-wide-streams">Session-wide streams</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#session-wide-audio">Session-wide audio</a></li>
