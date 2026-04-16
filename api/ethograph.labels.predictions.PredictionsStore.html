@@ -434,7 +434,7 @@ formats. Additional formats can be added to <code class="docutils literal notran
 <tr class="row-even"><td><p><a class="reference internal" href="labels.html#ethograph.labels.predictions.PredictionsStore.get_file" title="ethograph.labels.predictions.PredictionsStore.get_file"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_file</span></code></a>(trial, trial_list)</p></td>
 <td><p>Return the prediction file path for a trial, or None.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="labels.html#ethograph.labels.predictions.PredictionsStore.load_all" title="ethograph.labels.predictions.PredictionsStore.load_all"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_all</span></code></a>(dt, individual[, confidence_threshold])</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="labels.html#ethograph.labels.predictions.PredictionsStore.load_all" title="ethograph.labels.predictions.PredictionsStore.load_all"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_all</span></code></a>(dt, individual[, ...])</p></td>
 <td><p>Load all trials — convert to intervals and compute confidence levels.</p></td>
 </tr>
 </tbody>
@@ -467,16 +467,20 @@ The returned array is not cached — call again to re-load if needed.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="ethograph.labels.predictions.PredictionsStore.load_all">
-<span class="sig-name descname"><span class="pre">load_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">confidence_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.75</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/predictions.html#PredictionsStore.load_all"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.predictions.PredictionsStore.load_all" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">load_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">confidence_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.75</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">segment_confidence_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.6</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/predictions.html#PredictionsStore.load_all"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.predictions.PredictionsStore.load_all" title="Link to this definition">#</a></dt>
 <dd><p>Load all trials — convert to intervals and compute confidence levels.</p>
 <p>Confidence arrays are computed in one pass then discarded; only the
-per-trial high/low classification is kept.</p>
+per-trial high/low classification is kept.  The same two-condition
+criterion used in the confidence PDF is applied: a trial is “low” if
+its overall mean confidence &lt; <em>confidence_threshold</em> OR any labeled
+segment’s mean confidence &lt; <em>segment_confidence_threshold</em>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dt</strong> (<a class="reference internal" href="trialtree.html#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><em>TrialTree</em></a>)</p></li>
 <li><p><strong>individual</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>)</p></li>
-<li><p><strong>confidence_threshold</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Mean confidence below which a trial is marked <code class="docutils literal notranslate"><span class="pre">&quot;low&quot;</span></code>.</p></li>
+<li><p><strong>confidence_threshold</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Frame-level threshold; overall trial mean below this → “low”.</p></li>
+<li><p><strong>segment_confidence_threshold</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Segment-level threshold; any segment mean below this → “low”.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>

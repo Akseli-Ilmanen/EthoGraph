@@ -564,18 +564,24 @@
         <span class="n">dt</span><span class="p">,</span>
         <span class="n">individual</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
         <span class="n">confidence_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.75</span><span class="p">,</span>
+        <span class="n">segment_confidence_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.6</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Load all trials — convert to intervals and compute confidence levels.</span>
 
 <span class="sd">        Confidence arrays are computed in one pass then discarded; only the</span>
-<span class="sd">        per-trial high/low classification is kept.</span>
+<span class="sd">        per-trial high/low classification is kept.  The same two-condition</span>
+<span class="sd">        criterion used in the confidence PDF is applied: a trial is &quot;low&quot; if</span>
+<span class="sd">        its overall mean confidence &lt; *confidence_threshold* OR any labeled</span>
+<span class="sd">        segment&#39;s mean confidence &lt; *segment_confidence_threshold*.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        dt : TrialTree</span>
 <span class="sd">        individual : str</span>
 <span class="sd">        confidence_threshold : float</span>
-<span class="sd">            Mean confidence below which a trial is marked ``&quot;low&quot;``.</span>
+<span class="sd">            Frame-level threshold; overall trial mean below this → &quot;low&quot;.</span>
+<span class="sd">        segment_confidence_threshold : float</span>
+<span class="sd">            Segment-level threshold; any segment mean below this → &quot;low&quot;.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -604,10 +610,6 @@
                 <span class="sa">f</span><span class="s2">&quot;Trial </span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="s2">: predictions length </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span><span class="si">}</span><span class="s2"> != time_coord length </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">time_coord</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
             <span class="p">)</span>
 
-            <span class="k">if</span> <span class="n">confidence</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">level</span> <span class="o">=</span> <span class="s2">&quot;low&quot;</span> <span class="k">if</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">confidence</span><span class="p">))</span> <span class="o">&lt;</span> <span class="n">confidence_threshold</span> <span class="k">else</span> <span class="s2">&quot;high&quot;</span>
-                <span class="n">confidence_levels</span><span class="p">[</span><span class="n">trial</span><span class="p">]</span> <span class="o">=</span> <span class="n">level</span>
-
             <span class="n">intervals</span> <span class="o">=</span> <span class="n">dense_to_intervals</span><span class="p">(</span><span class="n">labels</span><span class="p">,</span> <span class="p">[</span><span class="n">individual</span><span class="p">],</span> <span class="n">time_coord</span><span class="o">=</span><span class="n">time_coord</span><span class="p">)</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">intervals</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
                 <span class="n">intervals</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;trial&quot;</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span>
@@ -615,6 +617,18 @@
                 <span class="n">intervals</span><span class="p">[</span><span class="s2">&quot;human_verified&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
                 <span class="n">intervals</span><span class="p">[</span><span class="s2">&quot;changepoint_corrected&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
                 <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">intervals</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">confidence</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">mean_conf</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">confidence</span><span class="p">))</span>
+                <span class="n">has_low_segment</span> <span class="o">=</span> <span class="kc">False</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">intervals</span><span class="o">.</span><span class="n">empty</span> <span class="ow">and</span> <span class="s2">&quot;onset_s&quot;</span> <span class="ow">in</span> <span class="n">intervals</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">seg</span> <span class="ow">in</span> <span class="n">intervals</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+                        <span class="n">seg_mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">time_coord</span> <span class="o">&gt;=</span> <span class="n">seg</span><span class="p">[</span><span class="s2">&quot;onset_s&quot;</span><span class="p">])</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">time_coord</span> <span class="o">&lt;=</span> <span class="n">seg</span><span class="p">[</span><span class="s2">&quot;offset_s&quot;</span><span class="p">])</span>
+                        <span class="k">if</span> <span class="n">seg_mask</span><span class="o">.</span><span class="n">any</span><span class="p">()</span> <span class="ow">and</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">confidence</span><span class="p">[</span><span class="n">seg_mask</span><span class="p">]))</span> <span class="o">&lt;</span> <span class="n">segment_confidence_threshold</span><span class="p">:</span>
+                            <span class="n">has_low_segment</span> <span class="o">=</span> <span class="kc">True</span>
+                            <span class="k">break</span>
+                <span class="n">low</span> <span class="o">=</span> <span class="n">mean_conf</span> <span class="o">&lt;</span> <span class="n">confidence_threshold</span> <span class="ow">or</span> <span class="n">has_low_segment</span>
+                <span class="n">confidence_levels</span><span class="p">[</span><span class="n">trial</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;low&quot;</span> <span class="k">if</span> <span class="n">low</span> <span class="k">else</span> <span class="s2">&quot;high&quot;</span>
 
         <span class="k">if</span> <span class="n">rows</span><span class="p">:</span>
             <span class="n">all_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>

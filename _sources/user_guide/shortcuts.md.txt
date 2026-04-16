@@ -59,13 +59,14 @@
 |----------|--------|
 | `Ctrl+R` | Refresh line plot |
 | `Ctrl+A` | Toggle autoscale |
+| Left double-click | Autoscale (once) |
 | `Ctrl+L` | Toggle lock axes |
 | `Ctrl+Enter` | Apply current plot settings |
 
 ## Panel Toggles
 
 | Shortcut | Action |
-|----------|--------|
+|----------|--------
 | `Shift+A` | Toggle audio trace panel |
 | `Shift+S` | Toggle spectrogram panel |
 | `Shift+E` | Toggle ephys panel |
