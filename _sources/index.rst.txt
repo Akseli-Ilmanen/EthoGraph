@@ -19,3 +19,4 @@ multimodal timeseries behavioural data. It is built upon
 `PyQtGraph <https://www.pyqtgraph.org/>`_, and 
 `Movement <https://movement.neuroinformatics.dev/>`_.
 
+Note this GUI is still in development. I welcome people testing it and providing feedback!
