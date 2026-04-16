@@ -37,13 +37,6 @@ Detection methods (kinematic, audio, ruptures) and label-boundary correction.
 
 
 
-:::{grid-item-card} {fas}`sliders` Plot settings
-:link: plot_settings
-:link-type: doc
-
-Zoom, axes, and per-panel display options.
-:::
-
 :::{grid-item-card} {fas}`keyboard` Shortcuts
 :link: shortcuts
 :link-type: doc
@@ -68,7 +61,6 @@ user_manual
 nwb_alignment
 labels/index
 changepoints/index
-plot_settings
 shortcuts
 troubleshooting
 ```

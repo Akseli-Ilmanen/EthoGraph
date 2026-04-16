@@ -26,7 +26,9 @@
 | **Left Click** | Select label (when not in label mode) |
 | **Double Left Click** | Autoscale axes |
 | **Right Click** | Seek video to clicked time |
-| **Right Click + Drag** | Adjust X/Y axis limits (PyQtGraph built-in) |
+| **Mouse wheel** | Zoom in/out both axes |
+| **Right Click + drag horizontally** | Zoom in/out along the time axis |
+| **Right Click + drag vertically** | Zoom in/out along the y-axis |
 
 ## Labelling
 
