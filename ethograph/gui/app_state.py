@@ -240,6 +240,7 @@ class AppStateSpec:
         "cp_step_purge_after": (bool, True, True),
         "automatic_min_label_length_s": (float, 1e-3, True),
         "automatic_stitch_gap_s": (float, 0.0, True),
+        "remote_backup_enabled": (bool, False, True),
         "remote_backup_path": (str | None, None, True),
         "remote_backup_mode": (str, "timestamp", True),
         "remote_path_depth": (int, 0, True),
@@ -1131,7 +1132,7 @@ class ObservableAppState(QObject):
         #   0 = flat (Trial_data_labels.tsv)
         #   1 = behav/Trial_data_labels.tsv
         #   2 = ses-000/behav/Trial_data_labels.tsv  (etc.)
-        if effective_remote_path:
+        if self.remote_backup_enabled and effective_remote_path:
             remote_root = Path(effective_remote_path)
             depth = self.remote_path_depth
             if depth > 0:

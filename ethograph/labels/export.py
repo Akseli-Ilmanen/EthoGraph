@@ -48,7 +48,7 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
                 
                 
                 
-    print(f"Corrected {counter} offsets with gap smaller than {eps:.3f} seconds.")
+    print(f"Corrected {counter} offsets with gap smaller than {eps:.5f} seconds.")
                         
             
     if "onset_global" in df.columns:

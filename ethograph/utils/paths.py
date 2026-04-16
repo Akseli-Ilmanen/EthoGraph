@@ -233,33 +233,43 @@ def extract_trial_info_from_filename(path):
 
 
 def auto_git_commit(label_path: Path) -> None:
-    """Auto-commit a label file if the parent folder is a git repository."""
-    repo_dir = str(label_path.parent)
+    """Auto-commit a label file if it lives inside a git repository."""
+    file_dir = str(label_path.parent)
     try:
-        result = subprocess.run(
-            ["git", "-C", repo_dir, "rev-parse", "--is-inside-work-tree"],
+        root_result = subprocess.run(
+            ["git", "-C", file_dir, "rev-parse", "--show-toplevel"],
             capture_output=True, text=True,
         )
     except FileNotFoundError:
         raise ValueError("git is not installed or not found on PATH.")
 
-    if result.returncode != 0:
+    if root_result.returncode != 0:
         raise ValueError(
-            f"Remote backup folder is not a git repository: {repo_dir}\n"
-            "Run 'git init' in that folder first, or use 'Save with timestamp' mode."
+            f"Remote backup folder is not inside a git repository: {file_dir}\n"
+            f"git said: {root_result.stderr.strip()}\n"
+            "Run 'git init' in an ancestor folder first, or use 'Save with timestamp' mode."
         )
+
+    repo_root = Path(root_result.stdout.strip())
+    rel_path = label_path.relative_to(repo_root)
 
     try:
         subprocess.run(
-            ["git", "-C", repo_dir, "add", label_path.name],
+            ["git", "-C", str(repo_root), "add", str(rel_path)],
             check=True, capture_output=True, text=True,
         )
-        subprocess.run(
-            ["git", "-C", repo_dir, "commit", "-m", f"Labels updated: {label_path.name}"],
-            check=True, capture_output=True, text=True,
+        commit_result = subprocess.run(
+            ["git", "-C", str(repo_root), "commit", "-m", f"Labels updated: {label_path.name}"],
+            capture_output=True, text=True,
         )
+        if commit_result.returncode != 0:
+            msg = commit_result.stderr.strip() or commit_result.stdout.strip()
+            if "nothing to commit" in msg:
+                logger.info("git: nothing to commit for %s", label_path.name)
+                return
+            raise subprocess.CalledProcessError(commit_result.returncode, "git commit", output=commit_result.stdout, stderr=commit_result.stderr)
         subprocess.run(
-            ["git", "-C", repo_dir, "push"],
+            ["git", "-C", str(repo_root), "push"],
             check=True, capture_output=True, text=True,
         )
         logger.info("Auto-committed and pushed %s to git", label_path.name)

@@ -542,10 +542,13 @@ class LabelsWidget(QWidget):
             return
         individual = self.app_state.individuals_sel or "default"
         threshold = self.io_widget.pred_confidence_threshold_spin.value()
+        seg_threshold = self.io_widget.pred_segment_confidence_threshold_spin.value()
         try:
             store = PredictionsStore(folder)
             labels_df, confidence_levels = store.load_all(
-                self.app_state.dt, individual, confidence_threshold=threshold,
+                self.app_state.dt, individual,
+                confidence_threshold=threshold,
+                segment_confidence_threshold=seg_threshold,
             )
         except (FileNotFoundError, ValueError, AssertionError) as e:
             notify(str(e), severity="error")
@@ -564,6 +567,7 @@ class LabelsWidget(QWidget):
         if self.data_widget:
             self.data_widget.pred_show_predictions.setEnabled(True)
             self.data_widget.pred_show_predictions.setChecked(True)
+            self.data_widget.refresh_trials_confidence()
         self.io_widget.pred_confidence_pdf_btn.setEnabled(True)
         self.io_widget.pred_file_path_edit.setText(folder)
 
@@ -598,6 +602,8 @@ class LabelsWidget(QWidget):
             self.app_state.pred_confidence_levels = {
                 t: "low" if is_low else "high" for t, is_low in highlighted.items()
             }
+            if self.data_widget:
+                self.data_widget.refresh_trials_confidence()
             os.startfile(str(pdf_path))
         except Exception as e:
             notify(str(e), severity="error")

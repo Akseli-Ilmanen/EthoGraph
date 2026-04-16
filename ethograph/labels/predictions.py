@@ -155,18 +155,24 @@ class PredictionsStore:
         dt,
         individual: str,
         confidence_threshold: float = 0.75,
+        segment_confidence_threshold: float = 0.6,
     ) -> tuple[pd.DataFrame, dict[int | str, str]]:
         """Load all trials — convert to intervals and compute confidence levels.
 
         Confidence arrays are computed in one pass then discarded; only the
-        per-trial high/low classification is kept.
+        per-trial high/low classification is kept.  The same two-condition
+        criterion used in the confidence PDF is applied: a trial is "low" if
+        its overall mean confidence < *confidence_threshold* OR any labeled
+        segment's mean confidence < *segment_confidence_threshold*.
 
         Parameters
         ----------
         dt : TrialTree
         individual : str
         confidence_threshold : float
-            Mean confidence below which a trial is marked ``"low"``.
+            Frame-level threshold; overall trial mean below this → "low".
+        segment_confidence_threshold : float
+            Segment-level threshold; any segment mean below this → "low".
 
         Returns
         -------
@@ -195,10 +201,6 @@ class PredictionsStore:
                 f"Trial {trial}: predictions length {len(labels)} != time_coord length {len(time_coord)}"
             )
 
-            if confidence is not None:
-                level = "low" if float(np.mean(confidence)) < confidence_threshold else "high"
-                confidence_levels[trial] = level
-
             intervals = dense_to_intervals(labels, [individual], time_coord=time_coord)
             if not intervals.empty:
                 intervals.insert(0, "trial", trial)
@@ -206,6 +208,18 @@ class PredictionsStore:
                 intervals["human_verified"] = 0
                 intervals["changepoint_corrected"] = 0
                 rows.append(intervals)
+
+            if confidence is not None:
+                mean_conf = float(np.mean(confidence))
+                has_low_segment = False
+                if not intervals.empty and "onset_s" in intervals.columns:
+                    for _, seg in intervals.iterrows():
+                        seg_mask = (time_coord >= seg["onset_s"]) & (time_coord <= seg["offset_s"])
+                        if seg_mask.any() and float(np.mean(confidence[seg_mask])) < segment_confidence_threshold:
+                            has_low_segment = True
+                            break
+                low = mean_conf < confidence_threshold or has_low_segment
+                confidence_levels[trial] = "low" if low else "high"
 
         if rows:
             all_df = pd.concat(rows, ignore_index=True)

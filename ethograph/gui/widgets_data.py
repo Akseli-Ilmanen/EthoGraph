@@ -915,6 +915,19 @@ class DataWidget(QWidget):
     # ------------------------------------------------------------------
 
 
+    def refresh_trials_confidence(self) -> None:
+        """Merge pred_confidence_levels into the Trials tab as a 'confidence' column."""
+        if getattr(self, "trials_widget", None) is None:
+            return
+        confidence_levels: dict = getattr(self.app_state, "pred_confidence_levels", {})
+        mdf = self.app_state.metadata_df if self.app_state.metadata_df is not None else pd.DataFrame({"trial": self.app_state.trials})
+        mdf = mdf.copy()
+        if confidence_levels:
+            mdf["confidence"] = mdf["trial"].map(confidence_levels)
+        elif "confidence" in mdf.columns:
+            mdf = mdf.drop(columns=["confidence"])
+        self.trials_widget.setup(mdf)
+
     def _create_trial_controls(self):
         self.io_widget.create_device_controls(self.catalog)
         self.navigation_widget.setup_trial_conditions(self.catalog)
@@ -923,6 +936,7 @@ class DataWidget(QWidget):
         if getattr(self, "trials_widget", None) is not None:
             mdf = self.app_state.metadata_df if self.app_state.metadata_df is not None else pd.DataFrame({"trial": self.app_state.trials})
             self.trials_widget.setup(mdf)
+            self.refresh_trials_confidence()
 
         for combo_name, combo_spec in self.catalog.combos.items():
             if not combo_spec.values:
@@ -1803,6 +1817,25 @@ class DataWidget(QWidget):
                         set_combo_to_value(combo, vals_str[0])
                         self.app_state.set_key_sel(key, vals_str[0])
 
+
+        # Restore colors combo (not in catalog.combos, created separately)
+        colors_combo = self.combos.get("colors")
+        if colors_combo is not None and self.app_state.key_sel_exists("colors"):
+            saved_color = self.app_state.get_key_sel("colors")
+            if saved_color is not None:
+                idx = find_combo_index(colors_combo, str(saved_color))
+                if idx < 0 and hasattr(self, "_colors_rgb_checkbox"):
+                    # Saved value not visible with rgb filter on — disable it
+                    self._colors_rgb_checkbox.blockSignals(True)
+                    self._colors_rgb_checkbox.setChecked(False)
+                    self._colors_rgb_checkbox.blockSignals(False)
+                    self._populate_colors_combo(colors_combo, list(self.catalog.features), rgb_filter=False)
+                    idx = find_combo_index(colors_combo, str(saved_color))
+                if idx >= 0:
+                    colors_combo.blockSignals(True)
+                    colors_combo.setCurrentIndex(idx)
+                    colors_combo.blockSignals(False)
+                    self.app_state.set_key_sel("colors", saved_color)
 
         if self.app_state.key_sel_exists("trials"):
             saved_trial = self.app_state.get_key_sel("trials")

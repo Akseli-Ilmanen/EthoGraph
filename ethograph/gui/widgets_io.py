@@ -432,11 +432,15 @@ class IOWidget(QWidget):
         remote_group_layout.setSpacing(4)
         remote_group.setLayout(remote_group_layout)
 
+        self.remote_backup_enabled_cb = QCheckBox("Enable remote backup")
+        self.remote_backup_enabled_cb.setChecked(self.app_state.remote_backup_enabled)
+        remote_group_layout.addWidget(self.remote_backup_enabled_cb)
+
         remote_path_row = QHBoxLayout()
         self.remote_backup_edit = QLineEdit()
-        self.remote_backup_edit.setPlaceholderText("(optional) cloud/git folder...")
+        self.remote_backup_edit.setPlaceholderText("cloud/git folder...")
         self.remote_backup_edit.setToolTip(
-            "Optional path to a remote folder for label backups.\n"
+            "Path to a remote folder for label backups.\n"
             "Useful for syncing labels via cloud storage or a git repository."
         )
         if self.app_state.remote_backup_path:
@@ -459,7 +463,7 @@ class IOWidget(QWidget):
             "Timestamp: each save creates a new file (safe, auditable).\n"
             "Overwrite: saves a single file, no version control.\n"
             "Overwrite + git commit: saves a single file and auto-commits.\n"
-            "  Requires the remote folder to be a git repo (run 'git init' once)."
+            "  Requires the remote folder to be inside a git repo."
         )
         mode_map = {"timestamp": 0, "overwrite": 1, "git": 2}
         self.remote_save_mode_combo.setCurrentIndex(mode_map.get(self.app_state.remote_backup_mode, 0))
@@ -486,6 +490,19 @@ class IOWidget(QWidget):
         )
         remote_options_row.addWidget(self.remote_depth_combo)
         remote_group_layout.addLayout(remote_options_row)
+
+        self._remote_backup_controls = [
+            self.remote_backup_edit, remote_browse_btn,
+            self.remote_save_mode_combo, self.remote_depth_combo,
+        ]
+
+        def _on_remote_enabled(checked: bool):
+            self.app_state.remote_backup_enabled = checked
+            for w in self._remote_backup_controls:
+                w.setEnabled(checked)
+
+        self.remote_backup_enabled_cb.toggled.connect(_on_remote_enabled)
+        _on_remote_enabled(self.app_state.remote_backup_enabled)
 
         layout.addWidget(remote_group)
 
