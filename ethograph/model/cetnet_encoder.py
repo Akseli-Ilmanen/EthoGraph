@@ -481,7 +481,7 @@ class Trainer:
         # Evaluate both uncorrected and corrected predictions
         nested_results = {}
             
-        for pred_type, pred_dict in [("uncorrected", pred_dict), ("corrected", predicted)]: # SAME SAME
+        for pred_type, pred_dict in [("uncorrected", pred_dict), ("corrected", pred_dict)]: # SAME SAME
             acc, edit, f1s, tp, fp, fn, frame_f1 = func_eval(ground_truth_dict, pred_dict, video_list, self.f1_thresholds)
 
             
