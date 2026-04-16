@@ -168,11 +168,9 @@ position = nap.TsdFrame(
 
 :::{tab-item} NWB
 
-EthoGraph discovers features automatically via
-{func}`~ethograph.io.nwb_import.probe_behavioral_series`, which lists every
-{class}`~pynwb.TimeSeries` in processing modules (excluding `ecephys`, `ophys`,
-`ogen`). NWB data is loaded via pynapple, so all {class}`~pynwb.TimeSeries`
-become pynapple objects internally.
+EthoGraph discovers features automatically from NWB processing modules
+(excluding `ecephys`, `ophys`, `ogen`). NWB data is loaded via pynapple,
+so all {class}`~pynwb.TimeSeries` become pynapple objects internally.
 :::
 
 ::::

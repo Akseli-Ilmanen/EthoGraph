@@ -58,8 +58,6 @@ NWB import helpers
 
 .. autofunction:: read_trials_table
 
-.. autofunction:: probe_behavioral_series
-
 .. autofunction:: probe_electrical_series
 
 .. autofunction:: probe_label_sources

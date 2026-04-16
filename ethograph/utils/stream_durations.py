@@ -98,6 +98,51 @@ def get_ephys_duration(path: str) -> float | None:
     return None
 
 
+def get_kilosort_duration(folder: str) -> float | None:
+    """Estimate recording duration from a kilosort output folder.
+
+    Uses ``spike_times.npy`` (in samples) and ``params.py`` (sample_rate).
+    Falls back to the raw ``.dat`` file referenced in params if available.
+    """
+    import numpy as np
+
+    folder_path = Path(folder)
+    spike_times_file = folder_path / "spike_times.npy"
+    params_file = folder_path / "params.py"
+
+    if not spike_times_file.exists() or not params_file.exists():
+        return None
+
+    try:
+        namespace: dict = {}
+        exec(params_file.read_text(), namespace)
+        sample_rate = float(namespace.get("sample_rate", 0))
+        if sample_rate <= 0:
+            return None
+    except Exception:
+        return None
+
+    # Try raw dat file first (most accurate)
+    dat_path_str = namespace.get("dat_path", "")
+    if dat_path_str:
+        dat_path = Path(dat_path_str)
+        if not dat_path.is_absolute():
+            dat_path = folder_path / dat_path
+        dur = get_ephys_duration(str(dat_path)) if dat_path.is_file() else None
+        if dur is not None:
+            return dur
+
+    # Fall back to max spike time
+    try:
+        spike_times = np.load(str(spike_times_file)).ravel()
+        if len(spike_times) == 0:
+            return None
+        max_sample = float(spike_times.max())
+        return max_sample / sample_rate
+    except Exception:
+        return None
+
+
 def probe_duration(path: str, stream: str, fps: float | None = None) -> float | None:
     """Dispatch to the appropriate duration probe based on stream type.
 

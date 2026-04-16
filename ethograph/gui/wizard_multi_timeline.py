@@ -168,43 +168,108 @@ def _make_rounded_bar(
     return item
 
 
+def _collect_ephys_rows(
+    nwb_alignment,
+    app_state=None,
+) -> list[tuple[str, float, float]]:
+    """Collect ephys timeline spans from NWB ElectricalSeries or app_state paths.
+
+    Returns list of (label, t_start, t_end) tuples — one per ephys source.
+    """
+    from ethograph.io.nwb_alignment import NWBAlignment
+    from ethograph.utils.stream_durations import get_ephys_duration, get_kilosort_duration
+
+    rows: list[tuple[str, float, float]] = []
+    sio = nwb_alignment
+
+    # 1. NWB ElectricalSeries
+    if isinstance(sio, NWBAlignment):
+        for info in sio.electrical_series():
+            rate = info.get("rate")
+            name = info.get("name", "ephys")
+            if rate and rate > 0:
+                try:
+                    acq = sio.nwb.acquisition[name]
+                    n_samples = acq.data.shape[0]
+                    starting_time = float(acq.starting_time) if getattr(acq, "starting_time", None) is not None else 0.0
+                    dur = n_samples / rate
+                    rows.append((f"ephys: {name}", starting_time, starting_time + dur))
+                except Exception:
+                    pass
+
+    if rows:
+        return rows
+
+    # 2. Fall back to app_state ephys_path / neurons_path
+    if app_state is None:
+        return rows
+
+    ephys_path = getattr(app_state, "ephys_path", None)
+    neurons_path = getattr(app_state, "neurons_path", None)
+
+    dur = None
+    label = "ephys"
+    if ephys_path:
+        dur = get_ephys_duration(ephys_path)
+        label = f"ephys: {Path(ephys_path).name}"
+    if dur is None and neurons_path:
+        dur = get_kilosort_duration(neurons_path)
+        label = f"ephys: {Path(neurons_path).name}"
+
+    if dur is not None:
+        rows.append((label, 0.0, dur))
+
+    return rows
+
+
 def draw_session_timeline(
     plot: pg.PlotWidget,
     nwb_alignment,
     items_out: list | None = None,
     extra_streams: list[str] | None = None,
+    app_state=None,
 ) -> float:
-    """Draw a timeline from NWB acquisition ImageSeries.
+    """Draw a timeline from NWB acquisition ImageSeries and ElectricalSeries.
 
-    Each ImageSeries with ``external_file`` gets one row.  Time spans are
-    read via ``NWBAlignment.file_time_spans``.  Trial boundaries from the
-    trials table are shown as dotted vertical lines.
+    Each ImageSeries with ``external_file`` gets one row.  Ephys rows are
+    drawn from ElectricalSeries or app_state paths.  Trial boundaries from
+    the trials table are shown as dotted vertical lines.
     """
     from ethograph.io.nwb_alignment import NWBAlignment
 
     sio = nwb_alignment
     items: list = items_out if items_out is not None else []
+    is_nwb = isinstance(sio, NWBAlignment) and sio.nwb and sio.nwb.acquisition
 
-    if not isinstance(sio, NWBAlignment) or not sio.nwb or not sio.nwb.acquisition:
+    # Collect acquisition names that have external files (video/audio/pose)
+    acq_names = []
+    if is_nwb:
+        acq_names = [
+            name for name, series in sio.nwb.acquisition.items()
+            if getattr(series, "external_file", None)
+        ]
+
+    # Collect ephys rows
+    ephys_rows = _collect_ephys_rows(sio, app_state)
+
+    if not acq_names and not ephys_rows:
         return 0.0
 
-    # Collect acquisition names that have external files
-    acq_names = [
-        name for name, series in sio.nwb.acquisition.items()
-        if getattr(series, "external_file", None)
-    ]
-    if not acq_names:
-        return 0.0
-
-    n_rows = len(acq_names)
-    rows_rev = list(reversed(acq_names))
+    # Build combined row list: media acquisitions + ephys
+    all_row_names = list(acq_names) + [label for label, _, _ in ephys_rows]
+    n_rows = len(all_row_names)
+    rows_rev = list(reversed(all_row_names))
     y_ticks = [(i + 0.5, rows_rev[i]) for i in range(n_rows)]
     plot.getAxis("left").setTicks([y_ticks])
     plot.setYRange(-0.2, n_rows + 0.2)
 
     max_t = 0.0
 
-    for row_idx, acq_name in enumerate(rows_rev):
+    # Draw media acquisition bars
+    for row_idx, row_name in enumerate(rows_rev):
+        if row_name not in acq_names:
+            continue
+        acq_name = row_name
         stream = acq_name.split("_", 1)[0] if "_" in acq_name else acq_name
         device = acq_name.split("_", 1)[1] if "_" in acq_name else None
 
@@ -219,6 +284,20 @@ def draw_session_timeline(
             plot.addItem(bar)
             items.append(bar)
             max_t = max(max_t, t_end)
+
+    # Draw ephys bars
+    for ephys_label, t_start, t_end in ephys_rows:
+        row_idx = rows_rev.index(ephys_label)
+        color = pg.mkColor(MODALITY_COLORS.get("ephys", "#b07ae8"))
+        color.setAlpha(160)
+        bar_brush = pg.mkBrush(color)
+        bar_pen = pg.mkPen(color.lighter(130), width=1)
+        y_base = row_idx
+
+        bar = _make_rounded_bar(t_start, t_end, y_base + 0.3, y_base + 0.7, bar_brush, bar_pen)
+        plot.addItem(bar)
+        items.append(bar)
+        max_t = max(max_t, t_end)
 
     # Trial boundary lines
     trial_df = getattr(sio, "trials_df", pd.DataFrame())
@@ -251,7 +330,7 @@ def draw_session_timeline(
 
 
 def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
-    from ethograph.utils.stream_durations import probe_duration
+    from ethograph.utils.stream_durations import get_kilosort_duration, probe_duration
 
     durations: dict[str, dict[str, float]] = {}
     for name in ["video", "pose", "audio", "ephys"]:
@@ -263,6 +342,11 @@ def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
             files = cfg.pattern.files
         elif cfg.single_file_path:
             files = [Path(cfg.single_file_path)]
+        elif name == "ephys" and cfg.neurons_path:
+            dur = get_kilosort_duration(cfg.neurons_path)
+            if dur is not None:
+                durations[name] = {cfg.neurons_path: dur}
+            continue
         else:
             continue
 
@@ -273,6 +357,12 @@ def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
             dur = probe_duration(fp, name, fps)
             if dur is not None:
                 durs[fp] = dur
+
+        # Ephys: fall back to kilosort folder if raw file probing failed
+        if not durs and name == "ephys" and cfg.neurons_path:
+            dur = get_kilosort_duration(cfg.neurons_path)
+            if dur is not None:
+                durs[cfg.neurons_path] = dur
 
         if durs:
             durations[name] = durs
@@ -750,6 +840,7 @@ class TimelinePage(QWidget):
             self._viz_stack.setCurrentIndex(1)
             self._total_duration = draw_session_timeline(
                 self._plot, sio, items_out=self._items,
+                app_state=app_state,
             )
 
 

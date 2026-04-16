@@ -1,34 +1,16 @@
 (target-nwb-alignment)=
 # NWB alignment
 
-EthoGraph stores all **session metadata** — trial timing, media file paths,
-stream offsets — in an
-[NWB](https://www.nwb.org/) file at `<project>/.ethograph/alignment.nwb`.
-The behavioural data (`.nc`, `.npz`, ...) stays focused on features; the
-alignment file describes how those features line up with video, audio,
+EthoGraph treats [NWB](https://www.nwb.org/) as a native format — when you
+load an `.nwb` file, session metadata (trial timing, media paths, stream
+offsets) is read directly from it. For other formats (xarray `.nc`, `.npz`,
+pynapple folders) that lack this metadata, EthoGraph creates a sidecar
+**`.ethograph/alignment.nwb`** file that ties features to video, audio,
 ephys, and trial structure.
 
 This page explains what the alignment file contains and how to read / write
 it. For the step-by-step workflow of creating one alongside a multi-trial
 dataset, see {doc}`../getting_started/multi_trial`.
-
----
-
-## Why a separate alignment file?
-
-- **Portability**: media filenames are stored as basename only, so datasets
-  move between machines without rewriting paths inside the `.nc`.
-- **Reproducibility**: the alignment records *which* media file, sample
-  rate, and clock offset was used for each trial — in a standardised NWB
-  format that other tools can read.
-- **Single source of truth**: trial start/stop, per-trial media, and
-  stream offsets all live in one file instead of scattered across dataset
-  attributes.
-
-For **standalone `.nwb` sources** the source NWB already contains this
-metadata, so no sidecar file is created — EthoGraph reads the alignment
-directly from the source NWB. For all other sources (`.nc`, `.npz`,
-pynapple folders), `.ethograph/alignment.nwb` is written alongside.
 
 ---
 

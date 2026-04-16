@@ -7,33 +7,18 @@ Organized by module group. Each page has full signatures with type hints,
 examples, and cross-links to the user guide.
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
+   :hidden:
 
-   api/changepoints
-   api/nwb_alignment
    api/trialtree
    api/dataset
    api/pynapple_io
+   api/nwb_alignment
    api/labels
+   api/changepoints
    api/xr_utils
 
-----
-
 .. rubric:: At a glance
-
-:doc:`Changepoints <api/changepoints>`
-    Detection (:func:`~ethograph.features.changepoints.find_peaks_binary`,
-    :func:`~ethograph.features.changepoints.find_troughs_binary`,
-    :func:`~ethograph.features.changepoints.find_nearest_turning_points_binary`),
-    merging/time extraction, label correction, and the binary / smooth
-    Laplacian / segment-ID
-    :func:`~ethograph.features.changepoints.more_changepoint_features`
-    used by downstream segmentation models.
-
-:doc:`NWB alignment <api/nwb_alignment>`
-    :class:`~ethograph.io.nwb_alignment.NWBAlignment`,
-    :func:`~ethograph.io.nwb_alignment.align_media_per_trial`,
-    :func:`~ethograph.io.nwb_alignment.align_media_from_streams`.
 
 :doc:`TrialTree <api/trialtree>`
     The :class:`~ethograph.io.trialtree.TrialTree` data structure,
@@ -55,9 +40,23 @@ examples, and cross-links to the user guide.
     :func:`~ethograph.io.pynapple.add_angle_rgb_to_nap`, plus NWB-import
     probes.
 
+:doc:`NWB alignment <api/nwb_alignment>`
+    :class:`~ethograph.io.nwb_alignment.NWBAlignment`,
+    :func:`~ethograph.io.nwb_alignment.align_media_per_trial`,
+    :func:`~ethograph.io.nwb_alignment.align_media_from_streams`.
+
 :doc:`Labels <api/labels>`
     Interval operations, TSV storage, dense ↔ interval conversion,
     predictions, Crowsetta/pynapple converters, export, and plotting.
+
+:doc:`Changepoints <api/changepoints>`
+    Detection (:func:`~ethograph.features.changepoints.find_peaks_binary`,
+    :func:`~ethograph.features.changepoints.find_troughs_binary`,
+    :func:`~ethograph.features.changepoints.find_nearest_turning_points_binary`),
+    merging/time extraction, label correction, and the binary / smooth
+    Laplacian / segment-ID
+    :func:`~ethograph.features.changepoints.more_changepoint_features`
+    used by downstream segmentation models.
 
 :doc:`xr_utils <api/xr_utils>`
     :func:`~ethograph.utils.xr_utils.sel_valid` and

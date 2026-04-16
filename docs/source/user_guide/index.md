@@ -25,7 +25,7 @@ Complete walkthrough: loading data, labelling, changepoints, export.
 :link-type: doc
 
 
-Labelling in the GUI, importing from Crowsetta formats, exporting TSV.
+Labelling in the GUI, importing/exporting labels.
 :::
 
 :::{grid-item-card} {fas}`wave-square` Changepoints
