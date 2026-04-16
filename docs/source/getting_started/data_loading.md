@@ -9,81 +9,6 @@ EthoGraph supports three loading paths depending on your data format:
 | `.nwb` (NWB) | NWB file from DANDI, NeuroConv, or custom pynwb script |
 | `.npz` / folder (Pynapple) | Pynapple-saved data |
 
-## xarray: Dataset vs TrialTree
-
-A single {class}`xarray.Dataset` holds one trial's worth of data (features, coordinates, attributes).
-A {class}`~ethograph.io.trialtree.TrialTree` wraps multiple datasets — one per trial — into a single `.nc` file.
-
-```python
-import ethograph as eto
-
-# Single trial: wrap one Dataset
-dt = eto.from_datasets([ds])
-
-# Multiple trials: wrap many Datasets
-dt = eto.from_datasets([ds_trial1, ds_trial2, ds_trial3])
-
-# Continuous recording + trial epochs
-dt = eto.from_continuous(ds, epochs_df)
-
-# Access individual trials
-ds = dt.trial(1)      # by ID
-ds = dt.itrial(0)     # by index
-```
-
-See {doc}`trialtree` for full usage.
-
----
-
-## Try the GUI with template datasets
-
-The quickest way to explore the GUI: click **Select templates** in the I/O widget, pick a dataset, and click **Load**.
-
-![Template dataset selection](../media/datasets.png)
-
----
-
-## Load a pre-made session
-
-::::{tab-set}
-
-:::{tab-item} NetCDF (.nc)
-
-If you already have a `session.nc` file (e.g. from an ethograph pipeline or {doc}`loading_script`):
-
-1. In the **I/O** widget, select your session data **file** (`.nc`)
-2. Select the video **folder** containing camera recordings (`.mp4`) [^4]
-3. [Optional] Select the audio **folder** containing microphone recordings (`.wav`, `.mp3`, `.mp4`) [^2]
-4. [Optional] Select the tracking **folder** containing pose estimation files (`.h5`, `.csv`) [^3]
-5. [Optional] Select the ephys **file** (`.rhd`, `.abf`, ...) or the **Kilosort folder**
-6. Click **Load**
-
-Media paths are resolved from `.ethograph/alignment.nwb` if present, with fallback to the folders selected above.
-:::
-
-:::{tab-item} NWB (.nwb)
-
-NWB files are self-contained — EthoGraph reads trials, features, and media references directly:
-
-1. In the **I/O** widget, select your `.nwb` file
-2. [Optional] Select a local video folder if videos are not embedded or URLs
-3. Click **Load**
-
-EthoGraph uses {func}`~ethograph.io.nwb_import.read_trials_table` to extract trial boundaries and {func}`~ethograph.io.nwb_import.probe_behavioral_series` to discover available time-series. NWB data is loaded via pynapple internally.
-:::
-
-:::{tab-item} Pynapple (.npz / folder)
-
-Pynapple data saved with {func}`~pynapple.save_file` or pynapple folders:
-
-1. In the **I/O** widget, select your `.npz` file or pynapple folder
-2. [Optional] Select video/audio/tracking folders
-3. Click **Load**
-
-Trial structure is detected automatically from {class}`~pynapple.IntervalSet` objects in the data. See {func}`~ethograph.io.pynapple.load_nap_data`.
-:::
-
-::::
 
 ---
 
@@ -99,26 +24,123 @@ The dialog handles **single-file** workflows. For multiple trials, multiple came
 | Audio file | Vocal / acoustic data | {doc}`loading_audio` |
 | Numpy file | Pre-computed feature array | {doc}`loading_numpy` |
 | Ephys recording | Raw electrophysiology +/- Kilosort | {doc}`loading_ephys` |
-| Custom script | Multi-trial, multi-cam, multi-mic | {doc}`loading_script` |
+| Custom script | Multi-trial, multi-cam, multi-mic | {doc}`multi_trial` |
+
+---
+
+---
+
+## Load a pre-made session
+
+::::{tab-set}
+
+:::{tab-item} NetCDF (.nc)
+
+If you already have a `session.nc` file (e.g. from an ethograph pipeline or {doc}`multi_trial`):
+
+1. In the **I/O** widget, select your session data **file** (`.nc`)
+2. Select the video **folder** containing camera recordings (`.mp4`)
+3. [Optional] Select the audio **folder** containing microphone recordings (`.wav`, `.mp3`, `.mp4`)
+4. [Optional] Select the tracking **folder** containing pose estimation files (`.h5`, `.csv`)
+5. [Optional] Select an ephys **file** (`.rhd`, `.abf`, ...) containing raw multi-channel data
+6. [Optional] Select a **Kilosort folder** to display single neurons
+7. Click **Load**
+
+Media paths are resolved from `.ethograph/alignment.nwb` if present, with fallback to the folders selected above.
+:::
+
+:::{tab-item} NWB (.nwb)
+
+NWB files are self-contained — EthoGraph reads trials, behavioural time series (e.g. {class}`~pynwb.behavior.PoseEstimationSeries`), and media references directly:
+
+1. In the **I/O** widget, select your `.nwb` file
+2. [Optional] Select a local video folder if the paths stored in {class}`~pynwb.image.ImageSeries` `.external_file` no longer point to the correct location
+3. Click **Load**
+
+:::
+
+:::{tab-item} Pynapple (.npz / folder)
+
+Pynapple data saved with {func}`~pynapple.save_file` or pynapple folders:
+
+1. In the **I/O** widget, select your `.npz` file or pynapple folder
+2. [Optional] Select video/audio/tracking folders
+3. [Optional] Select a **pynapple folder** containing spike-sorted units to display single neurons
+4. Click **Load**
+
+:::
+
+::::
+
+
+
+
+## xarray: Dataset vs TrialTree
+
+You can save your `session.nc` as either a plain {class}`xarray.Dataset` or a {class}`~ethograph.io.trialtree.TrialTree`. The GUI accepts both.
+
+**Plain Dataset** — a single `xr.Dataset` saved with {func}`xarray.Dataset.to_netcdf`. When loaded, it is automatically treated as a single trial:
+
+```python
+import xarray as xr
+
+ds = xr.Dataset(...)
+ds.to_netcdf("session.nc")
+# → GUI loads this as one trial
+```
+
+**TrialTree** — wraps multiple datasets (one per trial) into a single `.nc` file. Use this when your experiment has multiple trials:
+
+```python
+import ethograph as eto
+
+# Multiple trials: one Dataset per trial
+dt = eto.from_datasets([ds_trial1, ds_trial2, ds_trial3])
+dt.save("session.nc")
+
+# Access individual trials
+ds = dt.trial(1)      # by ID
+ds = dt.itrial(0)     # by index
+```
+
+If you have a session-long `xr.Dataset` that you want to split into trials, see {ref}`Splitting a continuous recording <target-from-continuous>` in the multi-trial guide.
+
+See {doc}`../api/trialtree` for full TrialTree usage.
+
+
 
 ---
 
 ## Folder structure
 
+::::{tab-set}
+
+:::{tab-item} xarray (.nc)
+
 ```
+~/.ethograph/                          # Global user defaults
+    ├── mapping.txt                    # Default integer label_id → name mapping
+    ├── space.yaml                     # Extra config for space plot
+    └── gui_settings.yaml              # Across-session GUI state
+
 my_project/
-    ├── session.nc                     # Behavioural dataset (xarray)
+    ├── session.nc                     # Behavioural dataset (TrialTree or plain Dataset)
     ├── .ethograph/
-    │   └── alignment.nwb              # Media paths, trial timing, stream offsets
-    └── labels/                        # Label files (created by GUI)
-        ├── session_labels_20240315.tsv
-        └── mapping.txt
-rawdata/
-└── ses-20220509/
+    │   ├── alignment.nwb              # Media paths, trial timing, stream offsets
+    │   └── local_settings.yaml        # Session-specific GUI state
+    │
+    ├── labels/
+    │   ├── session_labels.tsv         # Current labels
+    │   └── backups/
+    │       └── session_labels_20240315_101230.tsv
+    ├── predictions_asformer_20240215/
+    │   ├── trial1.npy
+    │   └── trial2.npy
+    │
     ├── video/
     │   ├── camera1_trial001.mp4
     │   └── camera2_trial001.mp4
-    ├── tracking/
+    ├── tracking/                      # External pose files (DLC, SLEAP, ...)
     │   ├── trial001_pose.h5
     │   └── ...
     ├── audio/
@@ -136,13 +158,78 @@ rawdata/
             └── cluster_info.tsv
 ```
 
-For NWB or pynapple workflows, the `.ethograph/alignment.nwb` file is created automatically by the GUI on first load if media files are present.
+:::
 
-[^2]: If your video files (e.g. `.mp4`) contain audio, the video and audio folder will be the same.
+:::{tab-item} NWB (.nwb)
 
-[^3]: Pose files are loaded via the {mod}`movement` library.
+```
+~/.ethograph/                          # Global user defaults
+    ├── mapping.txt
+    ├── space.yaml
+    └── gui_settings.yaml
 
-[^4]: You can also load `.avi` and `.mov` files, but they have inaccurate frame seeking (off by 1-2 frames). For best results, transcode to `.mp4` with H.264. See {doc}`../user_guide/troubleshooting`.
+my_project/
+    ├── session.nwb                    # Self-contained: trials, time series,
+    │                                  # pose (PoseEstimationSeries), video
+    │                                  # refs (ImageSeries.external_file)
+    ├── .ethograph/
+    │   ├── alignment.nwb              # Sidecar for stream offsets & overrides
+    │   └── local_settings.yaml
+    │
+    ├── labels/
+    │   ├── session_labels.tsv
+    │   └── backups/
+    │       └── ...
+    ├── predictions_asformer_20240215/
+    │   ├── trial1.npy
+    │   └── trial2.npy
+    │
+    └── video/                         # Only needed if ImageSeries paths
+        ├── camera1_trial001.mp4       # no longer point to the right location
+        └── camera2_trial001.mp4
+```
+
+Pose estimation and other behavioural time series are stored inside the `.nwb` file — no external tracking folder needed.
+
+:::
+
+:::{tab-item} Pynapple (.npz / folder)
+
+```
+~/.ethograph/                          # Global user defaults
+    ├── mapping.txt
+    ├── space.yaml
+    └── gui_settings.yaml
+
+my_project/
+    ├── position.npz                   # Pynapple Tsd/TsdFrame objects
+    ├── speed.npz
+    ├── units.npz                      # TsGroup of spike times
+    ├── .ethograph/
+    │   ├── alignment.nwb              # Media paths, trial timing, stream offsets
+    │   └── local_settings.yaml
+    │
+    ├── labels/
+    │   ├── session_labels.tsv
+    │   └── backups/
+    │       └── ...
+    ├── predictions_asformer_20240215/
+    │   ├── trial1.npy
+    │   └── trial2.npy
+    │
+    ├── video/
+    │   ├── camera1_trial001.mp4
+    │   └── ...
+    └── audio/
+        ├── mic1_trial001.wav
+        └── ...
+```
+
+:::
+
+::::
+
+The `.ethograph/alignment.nwb` sidecar is created automatically by the GUI on first load when media files are present.
 
 ```{toctree}
 :maxdepth: 1
@@ -151,5 +238,5 @@ loading_pose
 loading_audio
 loading_numpy
 loading_ephys
-loading_script
+multi_trial
 ```

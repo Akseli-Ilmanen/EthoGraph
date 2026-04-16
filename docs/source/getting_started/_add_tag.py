@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-nb_path = Path(__file__).parent / "data_guide.ipynb"
+nb_path = Path(__file__).parent / "user_manual.ipynb"
 with open(nb_path) as f:
     nb = json.load(f)
 

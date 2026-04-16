@@ -144,6 +144,7 @@ class NapariVideoSync(QObject):
         if _get_current_play_status and self.qt_viewer:
             if _get_current_play_status(self.qt_viewer):
                 self.qt_viewer.dims.stop()
+        self._stop_audio()
         self.playback_stopped.emit()
 
     def toggle_pause_resume(self):

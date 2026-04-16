@@ -3,7 +3,7 @@
 
 Use this path if you have pose estimation output from DeepLabCut, SLEAP, LightningPose, or any other tracker that produces `.h5` or `.csv` files — with or without a matching video.
 
-The **Create dialog** handles single recordings (one trial) without any scripting. For multiple trials or multiple cameras, see {doc}`loading_script`.
+The **Create dialog** handles single recordings (one trial) without any scripting. For multiple trials or multiple cameras, see {doc}`multi_trial`.
 
 ---
 
@@ -32,7 +32,7 @@ Beyond raw position, the loader automatically computes kinematic features for ea
 
 - Velocity, acceleration, speed
 
-These appear in the Feature dropdown and are useful for identifying movement onset/offset. See {ref}`Kinematic changepoints <target-changepoints>`.
+These appear in the Feature dropdown and are useful for identifying movement onset/offset. See {ref}`Kinematic changepoints <target-kinematic-changepoints>`.
 
 ---
 
@@ -42,20 +42,6 @@ These appear in the Feature dropdown and are useful for identifying movement ons
 |-------|-------|
 | **Source software** | DeepLabCut, SLEAP, LightningPose, ... |
 | **Pose file** | `.h5` or `.csv` |
-| **Video file** | Optional — frame rate auto-detected |
-| **Frame rate** | Auto-detected from video; set manually if no video |
-| **Video onset in pose** | Time offset (s) where video starts relative to pose stream |
-| **Output path** | Where to save the generated `session.nc` |
-
----
-
-## Data requirements
-
-| Attribute | Value |
-|-----------|-------|
-| `attrs["fps"]` | Auto-detected from video, or set in the dialog |
-| `coords["individuals"]` | From pose file |
-| `coords["keypoints"]` | From pose file |
-| `coords["space"]` | `["x", "y"]` (or `["x", "y", "z"]` for 3D) |
-
-For the full {class}`xarray.Dataset` structure see {doc}`data_requirements`.
+| **Video file** | Optional |
+| **Frame rate** | |
+| **Output path** | |

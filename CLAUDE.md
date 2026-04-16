@@ -84,7 +84,7 @@ ethograph/gui/
     plot_sources               # Plot-facing data sources + buffering (PlotSource, FileSource, XarraySource, WindowedBuffer)
     app_state.py              # Central state management (AppStateSpec + ObservableAppState)
     data_sources.py           # build_audio_source() -> FileSource
-    data_loader.py            # Dataset loading: .nc, .nwb, pynapple, remote DANDI NWB
+    data_loader.py            # Dataset loading: .nc, .nwb, pynapple (DANDI files loaded after local download)
     pose_render.py            # Pose loading (direct NWB + movement), filtering, PoseDisplayManager
     plots_container.py        # UnifiedPanelContainer — multi-panel layout
     plots_base.py             # Abstract base class for all plots (BasePlot)
@@ -224,22 +224,20 @@ NWB files are loaded via pynapple (which handles NWB → in-memory conversion). 
 
 ### Alignment System: `nwb_alignment.py`
 
-**Rule: Always create `alignment.nwb` for project directories.** The NWB wizard always produces `.ethograph/alignment.nwb` — for DANDI remote projects, local NWB projects, and non-NWB data alike. This eliminates the decision logic "source NWB vs sidecar alignment.nwb". For standalone `.nwb` file loading (no project dir), the source NWB is used directly via `_resolve_alignment`.
+**Rule: Always create `alignment.nwb` for project directories.** The NWB wizard always produces `.ethograph/alignment.nwb` — for DANDI-downloaded projects, local NWB projects, and non-NWB data alike. This eliminates the decision logic "source NWB vs sidecar alignment.nwb". For standalone `.nwb` file loading (no project dir), the source NWB is used directly via `_resolve_alignment`.
 
-**Provenance**: alignment.nwb stores provenance metadata in NWB `scratch` namespace (key `ethograph_provenance`). For DANDI projects this includes `nwb_dandiset_id`, `nwb_asset_id`, `nwb_pose_keys`, etc. Read via `NWBAlignment.provenance`. Written via `write_provenance()` / `read_provenance()` in `utils/nwb.py`.
-
-**`NWBAlignment`** reads any NWB file for session metadata. Constructed from a file path (`NWBAlignment(path)`) or an already-opened pynwb object (`NWBAlignment.from_nwb_object(nwb_obj)` — used for DANDI remote streaming). Key methods:
+**`NWBAlignment`** reads any NWB file for session metadata. Constructed from a file path (`NWBAlignment(path)`). Key methods:
 - `get_stream_rate(stream, device)` — read `.rate` from any ImageSeries
-- `resolve_media_path(trial, stream, device, fallback_folder)` — try ImageSeries path → NWB-relative → fallback folder + filename. URL-aware: returns URLs directly, prefers local fallback_folder copy if available.
+- `resolve_media_path(trial, stream, device, fallback_folder)` — try ImageSeries path → NWB-relative → fallback folder + filename.
 - `stream_offset_for_trial(trial, stream, device)` — trial-relative offset derived from ImageSeries timing
 
 **Priority order** (`_resolve_alignment` in `data_loader.py`): For `.nwb` sources: source NWB trials → sidecar alignment.nwb → bootstrap from ImageSeries → sidecar metadata TSV. For other sources: sidecar alignment.nwb → sidecar metadata TSV.
 
-**Path fallback**: ImageSeries stores original paths (or URLs for DANDI). If files move, `resolve_media_path` extracts the filename and joins with a user-specified fallback folder (`video_folder`, `audio_folder`, etc.).
+**Path fallback**: ImageSeries stores original paths. If files move, `resolve_media_path` extracts the filename and joins with a user-specified fallback folder (`video_folder`, `audio_folder`, etc.).
 
 **`align_media_per_trial`** (`utils/nwb.py`) creates ImageSeries for ALL streams via `sync_acquisition_for_streams(nwbfile, stream_rates)`. Takes `stream_rates: dict[str, float]` — no hardcoded FPS values.
 
-**`create_alignment_from_streams`** (`utils/nwb.py`) — flexible alignment creation accepting per-trial or session-wide files, optional `provenance` dict. Used by the NWB wizard to create alignment.nwb.
+**`align_media_from_streams`** (`io/nwb_alignment.py`) — flexible alignment creation accepting per-trial or session-wide files. Used by the NWB wizard to create alignment.nwb.
 
 ### Data Loading: `data_loader.py`
 
@@ -338,14 +336,3 @@ Bridge pattern: intervals→dense→correct→intervals. Kinematic CPs stored as
 - Color variables are identified by name: any feature with "rgb" in the name (case-insensitive) is offered in the Colors combo. No `attrs["type"] = "colors"` needed.
 - Media/session metadata: for NWB sources, read from the source NWB directly; for non-NWB sources, from `.ethograph/alignment.nwb`
 - Labels: stored in `_labels.tsv` (not inside `.nc`). Legacy `.nc` labels auto-migrate on first load.
-
-## Roadmap
-
-### Testing
-Add tests for changepoints, plot content verification, model predictions loaded.
-
-### Integration with models
-Audio: vocalpy/vak. Video: DLC2Action.
-
-### Labels I/O
-TODO: Crowsetta export (CSV, Audacity, BORIS, Raven). Interval-native changepoint correction (eliminate dense bridge).

@@ -5,5 +5,5 @@
 
 data_requirements
 data_loading
-trialtree
+../api/trialtree
 ```

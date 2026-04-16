@@ -810,12 +810,10 @@ class LabelsWidget(QWidget):
         if df is None or df.empty:
             return False
 
-        idx = find_interval_at(df, t_clicked, individual)
+        active_ids = self.app_state.active_label_ids
+        idx = find_interval_at(df, t_clicked, individual, label_ids=active_ids)
         if idx is not None:
             onset_s, offset_s, labels = get_interval_bounds(df, idx)
-            active_ids = self.app_state.active_label_ids
-            if active_ids is not None and labels not in active_ids:
-                return False
             self.current_labels = labels
             self.current_labels_pos = idx
             self.current_labels_is_prediction = False
@@ -1065,10 +1063,10 @@ class LabelsWidget(QWidget):
             css_color = "white"
             active_ids = self.app_state.active_label_ids
             if df is not None and not df.empty:
-                idx = find_interval_at(df, time_s, ind)
+                idx = find_interval_at(df, time_s, ind, label_ids=active_ids)
                 if idx is not None:
                     _, _, labels = get_interval_bounds(df, idx)
-                    if labels in mappings and labels != 0 and (active_ids is None or labels in active_ids):
+                    if labels in mappings and labels != 0:
                         text = mappings[labels]["name"]
                         color = mappings[labels]["color"]
                         if hasattr(color, 'tolist'):

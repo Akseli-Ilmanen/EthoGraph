@@ -5,7 +5,7 @@ Use this path for acoustic or vocal data, with or without video.
 
 Supported formats: `.wav`, `.mp3`, `.mp4`, `.flac`. If your `.mp4` video contains audio, point both fields at the same file.
 
-The **Create dialog** handles single recordings. For multiple separate microphone files or multiple trials, see {doc}`loading_script`.
+The **Create dialog** handles single recordings. For multiple separate microphone files or multiple trials, see {doc}`multi_trial`.
 
 ---
 
@@ -40,22 +40,6 @@ For **multiple separate `.wav` files** (one per mic), use the multi-trial wizard
 
 | Field | Notes |
 |-------|-------|
-| **Video file** | Optional |
 | **Audio file** | `.wav`, `.mp3`, `.mp4`, `.flac` |
-| **Video frame rate** | Auto-detected from video |
-| **Video onset in audio** | Time offset (s) where video starts relative to audio stream |
-| **Audio sample rate** | float |
-| **Individuals** | Optional, comma-separated |
-| **Load video motion features** | Extracts frame-to-frame motion signal from video |
-| **Output path** | Where to save the generated `session.nc` |
-
----
-
-## Data requirements
-
-| Attribute | Value |
-|-----------|-------|
-| `attrs["fps"]` | Not required for audio-only datasets |
-| `coords["individuals"]` | Optional |
-
-See {ref}`Data Format Requirements — Audio only <target-data-requirements>`.
+| **Video file** | Optional |
+| **Output path** | |

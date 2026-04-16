@@ -39,7 +39,7 @@ def downsample_trialtree(dt: TrialTree, factor: int) -> TrialTree:
     -------
     TrialTree
         New tree with downsampled data.  Each trial's ``attrs`` includes
-        ``downsample_factor`` and ``downsample_method`` for provenance.
+        ``downsample_factor`` and ``downsample_method``.
 
     Examples
     --------

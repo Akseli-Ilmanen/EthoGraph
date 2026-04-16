@@ -1122,7 +1122,7 @@ class ObservableAppState(QObject):
 
         # 2. Local backup with timestamp
         backup_dir = nc_path.parent / "labels" / "backups"
-        backup_dir.mkdir(exist_ok=True)
+        backup_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         save_labels_tsv(backup_dir / f"{stem}_labels_{timestamp}.tsv", save_df)
 

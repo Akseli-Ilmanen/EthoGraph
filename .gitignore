@@ -6,6 +6,7 @@ configs/crowlab/model/
 *.avi
 *.mkv
 *.mov
+!docs/source/_static/videos/*.mp4
 *.wav
 *.nc
 *.nwb

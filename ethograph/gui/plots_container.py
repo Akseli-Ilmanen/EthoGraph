@@ -348,7 +348,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             else:
                 ind = "default"
 
-        idx = find_interval_at(df, time_s, ind)
+        active_ids = self.app_state.active_label_ids
+        idx = find_interval_at(df, time_s, ind, label_ids=active_ids)
         if idx is not None:
             _, _, label_id = get_interval_bounds(df, idx)
             if label_id in mappings and label_id != 0:

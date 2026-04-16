@@ -26,7 +26,9 @@
 | **Left Click** | Select label (when not in label mode) |
 | **Double Left Click** | Autoscale axes |
 | **Right Click** | Seek video to clicked time |
-| **Right Click + Drag** | Adjust X/Y axis limits (PyQtGraph built-in) |
+| **Mouse wheel** | Zoom in/out both axes |
+| **Right Click + drag horizontally** | Zoom in/out along the time axis |
+| **Right Click + drag vertically** | Zoom in/out along the y-axis |
 
 ## Labelling
 
@@ -37,7 +39,7 @@
 | Left-click on label | Select existing label |
 | `Ctrl+E` | Edit selected label boundaries (after selecting label, click twice for new boundaries) |
 | `Ctrl+D` | Delete selected label (after selecting label) |
-| `Ctrl+S` | Save labels `.nc` file. (Save `session` only via button). |
+| `Ctrl+S` | Save `labels.tsv` file.
 | `Ctrl+Y` | Switch between labels and predictions |
 | `Ctrl+V` | 'Verify predictions' by editing once or this shortcut |
 
@@ -83,7 +85,7 @@
 | `Ctrl+H` | Cycle neural view: 1-ch Trace -> Multi Trace -> Raster |
 | **Ctrl+Wheel** | Adjust display gain |
 
-## 3D Space / PCA Plot
+## 3D Space
 
 | Control | Action |
 |---------|--------|

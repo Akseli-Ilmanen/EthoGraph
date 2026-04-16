@@ -421,7 +421,51 @@ def more_changepoint_features(
     sigmas: List[float],
     distribution: Literal["gaussian", "laplacian"] = "laplacian",
 ) -> np.ndarray:
-    """Create changepoint-based features from binary changepoint array."""
+    """Create changepoint-based features from a binary changepoint array.
+
+    Generates three complementary representations that help a model learn
+    changepoint locations:
+
+    - **Binary changepoints** — exact changepoint positions (0/1 mask).
+      Example: ``0 0 0 0 1 0 0 0 1 0 0 0 0 0``
+    - **Smooth changepoints** — proximity to the nearest changepoint, rendered
+      as Laplacian (or Gaussian) peaks centred at each changepoint index.
+      Example: ``0 0 0 .3 1 .3 0 .3 1 .3 0 0 0 0``
+    - **Segment IDs** — unique identifier for each contiguous region between
+      changepoints (normalised to [0, 1]).
+      Example: ``0 0 0 0 1 1 1 1 2 2 2 2 2 2``
+
+    Smooth changepoints use a Laplacian kernel by default:
+
+    .. math::
+
+        \\text{smooth}(t) = \\sum_i \\exp\\!\\left(-\\frac{|t - i|}{\\sigma}\\right)
+
+    where :math:`i` are the changepoint indices and :math:`\\sigma` controls
+    the peak width. Laplacians have a narrow peak that points directly at the
+    changepoint while their long tails remain visible from far away. Passing
+    multiple ``sigmas`` (e.g. ``[0.5, 3, 5]``) yields features at several
+    scales.
+
+    Additionally, weighted versions emphasise changepoints where the target
+    feature (e.g. speed) is low, by multiplying the smooth features with
+    :math:`\\exp(-x / (\\bar{x} + \\epsilon))`. This helps the model
+    distinguish speed minima before/after movements (low speed) from minima
+    occurring within different movements.
+
+    Args:
+        changepoint_binary: Binary (0/1) array marking changepoint locations.
+        targ_feat_vals: Target feature values (e.g. speed) used to weight the
+            smooth changepoint features.
+        sigmas: Kernel widths for the smooth changepoint representation.
+        distribution: ``"laplacian"`` (default) or ``"gaussian"`` kernel.
+
+    Returns:
+        2D array of shape ``(T, 1 + 2 * len(sigmas) + 1)`` stacking the
+        binary mask, one smooth feature per sigma, their weighted (speed-
+        emphasised, z-normalised) counterparts, and the normalised segment
+        IDs.
+    """
     features = [changepoint_binary]
     seq_length = len(changepoint_binary)
     changepoint_indices = np.where(changepoint_binary)[0]

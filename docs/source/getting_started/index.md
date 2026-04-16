@@ -10,6 +10,13 @@
 How to install ethograph.
 :::
 
+:::{grid-item-card} {fas}`rocket` Quickstart
+:link: quickstart
+:link-type: doc
+
+Try the GUI immediately with built-in template datasets.
+:::
+
 :::{grid-item-card} {fas}`hat-wizard` Setup wizard
 :link: wizard
 :link-type: doc
@@ -24,7 +31,7 @@ Answer a few questions to get personalised setup instructions for your data.
 Load `.nc`, `.nwb`, or pynapple files into the GUI.
 :::
 
-:::{grid-item-card} {fas}`list-check` Data requirements
+:::{grid-item-card} {fas}`list-check` Data format requirements
 :link: data_requirements
 :link-type: doc
 
@@ -37,10 +44,10 @@ Format specs for xarray, pynapple, and NWB backends.
 :maxdepth: 2
 :hidden:
 
+
 installation
+quickstart
 wizard
 data_loading
 data_requirements
-data_guide
-trialtree
 ```

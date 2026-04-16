@@ -25,6 +25,11 @@ from ethograph.io.catalog import (
     catalog_from_xarray,
 )
 from ethograph.io.pynapple import load_nap_data
+from ethograph.io.nwb_alignment import (
+    NWBAlignment,
+    align_media_per_trial,
+    align_media_from_streams,
+)
 from ethograph.datasets import sample_data
 from ethograph.io.time_model import (
     SourceCollection,

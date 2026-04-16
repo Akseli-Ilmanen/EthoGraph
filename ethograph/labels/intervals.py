@@ -303,8 +303,19 @@ def delete_interval(df: pd.DataFrame, idx: int) -> pd.DataFrame:
     return df.drop(index=idx).reset_index(drop=True)
 
 
-def find_interval_at(df: pd.DataFrame, time_s: float, individual: str) -> int | None:
+def find_interval_at(
+    df: pd.DataFrame,
+    time_s: float,
+    individual: str,
+    label_ids: set[int] | None = None,
+) -> int | None:
     """Return DataFrame index of interval containing *time_s* for *individual*.
+
+    Parameters
+    ----------
+    label_ids : set[int] | None
+        When given, only match intervals whose ``labels`` value is in this set.
+        Useful for restricting to the active branch.
 
     Returns ``None`` if no non-background interval contains the time.
     """
@@ -314,6 +325,8 @@ def find_interval_at(df: pd.DataFrame, time_s: float, individual: str) -> int | 
         & (df["offset_s"] >= time_s)
         & (df["labels"] != 0)
     )
+    if label_ids is not None:
+        mask = mask & df["labels"].isin(label_ids)
     matches = df.index[mask]
     if len(matches) == 0:
         return None
