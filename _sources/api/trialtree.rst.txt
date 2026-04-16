@@ -59,6 +59,21 @@ Creating
 
 .. automethod:: TrialTree.from_continuous
 
+For a single long recording with trial epochs, :meth:`~TrialTree.from_continuous`
+slices on demand instead of copying data:
+
+.. code-block:: python
+
+   import pandas as pd
+
+   epochs = pd.DataFrame({
+       "trial": [1, 2, 3],
+       "start_time": [0.0, 60.0, 120.0],
+       "stop_time": [60.0, 120.0, 180.0],
+   })
+   dt = eto.from_continuous(ds, epochs)
+   dt.trial(2)  # returns 60–120 s slice, time shifted to 0
+
 .. automethod:: TrialTree.from_datatree
 
 ----

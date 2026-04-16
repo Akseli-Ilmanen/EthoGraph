@@ -552,28 +552,25 @@ Pynapple (.npz / folder)</label><div class="sd-tab-content docutils">
 <hr class="docutils" />
 <section id="folder-structure">
 <h2>Folder structure<a class="headerlink" href="#folder-structure" title="Link to this heading">#</a></h2>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>~/.ethograph/                          # Global user defaults (fallback for per-project configs)
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>~/.ethograph/                          # Global user defaults 
     ├── mapping.txt                    # Default integer label_id → name mapping
-    ├── space.yaml                     # Default napari viewer / camera setup
-    └── gui_settings.yaml              # Persisted GUI state (window layout, last paths, ...)
+    ├── space.yaml                     # Extra config for space plot
+    └── gui_settings.yaml              # Across-session GUI state (changepoint settings, axes settings, ...)
 
 my_project/
     ├── session.nc                     # Behavioural dataset (xarray)
     ├── .ethograph/
     │   └── alignment.nwb              # Media paths, trial timing, stream offsets
+    │   └── local_settings.yaml        # Session-specific GUI state (feature selection, last paths, ...)
+    │
     ├── labels/                        # Label files (created by GUI)
-    │   ├── session_labels.tsv         # Canonical labels (onset_s, offset_s, labels, ...)
-    │   ├── mapping.txt                # Integer label_id → name mapping (overrides ~/.ethograph)
-    │   └── backups/                   # Timestamped snapshots written on each save
+    │   ├── session_labels.tsv         # Most uptodate version in root folder
+    │   └── backups/                  
     │       ├── session_labels_20240315_101230.tsv
     │       └── session_labels_20240315_142051.tsv
-    ├── predictions_dlc2action/        # Per-trial model predictions (.npy / .pickle)
-    │   ├── dlc2action_trial1.pickle   # (T, n_classes) softmax → labels + confidence
-    │   └── dlc2action_trial2.npy
-    └── predictions_cetnet_20260330/   # Multiple prediction sets can coexist
-        └── uncorr/
-            ├── trial1.npy
-            └── trial2.npy
+    └── predictions_asformer_20240215/ 
+        ├── trial1.npy
+        └── trial2.npy
 rawdata/
 └── ses-20220509/
     ├── video/

@@ -68,7 +68,7 @@ EthoGraph uses [Neo](https://neo.readthedocs.io) to read files with recognised h
 | `.tbk` / `.tev` / `.tsq` / ... | TDT |
 | `.trc` | Micromed |
 | `.edr`, `.wcp` | WinEDR / WinWCP |
-| `.nwb` | NWB (local or remote URL) |
+| `.nwb` | NWB file|
 
 When a format supports multiple signal streams (e.g. amplifier vs auxiliary channels in Intan), the GUI lets you select the desired stream from a combo box.
 

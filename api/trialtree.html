@@ -530,6 +530,19 @@ metadata column, or <code class="docutils literal notranslate"><span class="pre"
 </div>
 </dd></dl>
 
+<p>For a single long recording with trial epochs, <a class="reference internal" href="#ethograph.io.trialtree.TrialTree.from_continuous" title="ethograph.io.trialtree.TrialTree.from_continuous"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_continuous()</span></code></a>
+slices on demand instead of copying data:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">epochs</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
+    <span class="s2">&quot;start_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">60.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">],</span>
+    <span class="s2">&quot;stop_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">60.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">,</span> <span class="mf">180.0</span><span class="p">],</span>
+<span class="p">})</span>
+<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_continuous</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">epochs</span><span class="p">)</span>
+<span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># returns 60–120 s slice, time shifted to 0</span>
+</pre></div>
+</div>
 <dl class="py method">
 <dt class="sig sig-object py" id="ethograph.io.trialtree.TrialTree.from_datatree">
 <em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">TrialTree.</span></span><span class="sig-name descname"><span class="pre">from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attrs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/trialtree.html#TrialTree.from_datatree"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.trialtree.TrialTree.from_datatree" title="Link to this definition">#</a></dt>

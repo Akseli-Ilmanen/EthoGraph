@@ -418,8 +418,8 @@
 <h2>Model predictions import<a class="headerlink" href="#model-predictions-import" title="Link to this heading">#</a></h2>
 <p>Import predictions from action segmentation models (DLC2Action, ASFormer, MS-TCN) directly in the GUI. Per-trial prediction files (<code class="docutils literal notranslate"><span class="pre">.npy</span></code>/<code class="docutils literal notranslate"><span class="pre">.pickle</span></code>) with shape <code class="docutils literal notranslate"><span class="pre">(T,</span> <span class="pre">n_classes)</span></code> or <code class="docutils literal notranslate"><span class="pre">(T,)</span></code> will be converted to label intervals with confidence overlay (1 - entropy of classwise softmax).</p>
 </section>
-<section id="more-sosphiticated-changepoint-detection">
-<h2>More sosphiticated changepoint detection<a class="headerlink" href="#more-sosphiticated-changepoint-detection" title="Link to this heading">#</a></h2>
+<section id="more-sophisticated-changepoint-detection">
+<h2>More sophisticated changepoint detection<a class="headerlink" href="#more-sophisticated-changepoint-detection" title="Link to this heading">#</a></h2>
 <p>Current methods are fast (gradient based, RMS-based, etc.), but could also use ML for detection. Important that it’s easily reproducable, so it represents a reliable feature in feature space. Sometimes the changepoint correction post-model output makes things worse, transformer learns better representation than simple gradient based methods.</p>
 </section>
 <section id="changepoint-features">
@@ -475,7 +475,7 @@
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-predictions-import">Model predictions import</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#more-sosphiticated-changepoint-detection">More sosphiticated changepoint detection</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#more-sophisticated-changepoint-detection">More sophisticated changepoint detection</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changepoint-features">Changepoint features</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#other">Other</a></li>
 </ul>

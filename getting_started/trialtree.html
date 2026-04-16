@@ -428,89 +428,12 @@
   <section class="tex2jax_ignore mathjax_ignore" id="trialtree">
 <span id="target-trialtree-getting-started"></span><h1>TrialTree<a class="headerlink" href="#trialtree" title="Link to this heading">#</a></h1>
 <p><a class="reference internal" href="../api/trialtree.html#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><code class="xref py py-class docutils literal notranslate"><span class="pre">TrialTree</span></code></a> is the core data structure in ethograph — a wrapper around <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.DataTree</span></code></a> that stores one <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> per trial.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
-
-<span class="c1"># Build: one xr.Dataset per trial</span>
-<span class="n">datasets</span> <span class="o">=</span> <span class="p">[]</span>
-<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">):</span>
-    <span class="n">ds</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">({</span><span class="s2">&quot;speed&quot;</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">300</span><span class="p">),</span> <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">],</span>
-                                            <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">300</span><span class="p">)</span> <span class="o">/</span> <span class="mf">30.0</span><span class="p">})})</span>
-    <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span>
-    <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;fps&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">30.0</span>
-    <span class="n">datasets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span>
-
-<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_datasets</span><span class="p">(</span><span class="n">datasets</span><span class="p">)</span>
-
-<span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>          <span class="c1"># xr.Dataset for trial 2  (label-based)</span>
-<span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>         <span class="c1"># xr.Dataset for trial 1  (0-based index)</span>
-<span class="n">dt</span><span class="o">.</span><span class="n">trials</span>            <span class="c1"># [1, 2, 3]</span>
-</pre></div>
-</div>
+<p>Each child node holds one trial’s data (timeseries, features, attributes), and the tree as a whole carries session-level metadata (media paths, stream offsets, alignment). You get trial access by ID or index, iteration, in-place and structural mutation, filtering, and continuous-mode lazy slicing — all while preserving xarray semantics.</p>
+<p>For the <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> structure expected inside each trial, see <a class="reference internal" href="data_requirements.html"><span class="doc">Data Format Requirements</span></a>.</p>
 <div class="admonition seealso">
 <p class="admonition-title">See also</p>
-<p>For the full API with all methods, parameters, and code examples, see <a class="reference internal" href="../api/trialtree.html"><span class="doc">TrialTree</span></a>.</p>
+<p>For usage examples and the full API — creating, accessing, iterating, modifying, filtering, saving — see <a class="reference internal" href="../api/trialtree.html"><span class="doc">TrialTree</span></a>.</p>
 </div>
-<section id="accessing-trials">
-<h2>Accessing trials<a class="headerlink" href="#accessing-trials" title="Link to this heading">#</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># By trial ID (like xr.Dataset.sel)</span>
-<span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
-<span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span>   <span class="c1"># 2</span>
-<span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span>          <span class="c1"># the speed DataArray for trial 2</span>
-
-<span class="c1"># By integer index (like xr.Dataset.isel)</span>
-<span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-<span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span>   <span class="c1"># 1</span>
-</pre></div>
-</div>
-</section>
-<section id="iterating">
-<h2>Iterating<a class="headerlink" href="#iterating" title="Link to this heading">#</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">trial_id</span><span class="p">,</span> <span class="n">ds</span> <span class="ow">in</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial_items</span><span class="p">():</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Trial </span><span class="si">{</span><span class="n">trial_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">time</span><span class="p">)</span><span class="si">}</span><span class="s2"> timepoints&quot;</span><span class="p">)</span>
-
-<span class="c1"># Apply a function to every trial, returning a new TrialTree</span>
-<span class="n">dt_smooth</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">map_trials</span><span class="p">(</span><span class="k">lambda</span> <span class="n">ds</span><span class="p">:</span> <span class="n">ds</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span>
-</pre></div>
-</div>
-</section>
-<section id="modifying-trials">
-<h2>Modifying trials<a class="headerlink" href="#modifying-trials" title="Link to this heading">#</a></h2>
-<p>In-place mutations (changing attribute values, modifying existing arrays) work directly through <a class="reference internal" href="../api/trialtree.html#ethograph.io.trialtree.TrialTree.trial" title="ethograph.io.trialtree.TrialTree.trial"><code class="xref py py-meth docutils literal notranslate"><span class="pre">trial()</span></code></a>. Structural changes (adding/removing variables) require <a class="reference internal" href="../api/trialtree.html#ethograph.io.trialtree.TrialTree.update_trial" title="ethograph.io.trialtree.TrialTree.update_trial"><code class="xref py py-meth docutils literal notranslate"><span class="pre">update_trial()</span></code></a>:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># In-place: modifying existing data</span>
-<span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;stimulus&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;tone_A&quot;</span>
-<span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">1</span><span class="p">)[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">[:</span><span class="mi">10</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
-
-<span class="c1"># Structural: adding a new variable</span>
-<span class="n">dt</span><span class="o">.</span><span class="n">update_trial</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">ds</span><span class="p">:</span> <span class="n">ds</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span>
-    <span class="n">smoothed_speed</span><span class="o">=</span><span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
-<span class="p">))</span>
-</pre></div>
-</div>
-</section>
-<section id="saving-and-loading">
-<h2>Saving and loading<a class="headerlink" href="#saving-and-loading" title="Link to this heading">#</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
-<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
-</pre></div>
-</div>
-</section>
-<section id="continuous-mode">
-<h2>Continuous mode<a class="headerlink" href="#continuous-mode" title="Link to this heading">#</a></h2>
-<p>For a single long recording with trial epochs, use <a class="reference internal" href="../api/trialtree.html#ethograph.io.trialtree.TrialTree.from_continuous" title="ethograph.io.trialtree.TrialTree.from_continuous"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_continuous()</span></code></a> — it slices on demand instead of copying data:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
-
-<span class="n">epochs</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
-    <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
-    <span class="s2">&quot;start_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">60.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">],</span>
-    <span class="s2">&quot;stop_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">60.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">,</span> <span class="mf">180.0</span><span class="p">],</span>
-<span class="p">})</span>
-<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_continuous</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">epochs</span><span class="p">)</span>
-<span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># returns 60–120 s slice, time shifted to 0</span>
-</pre></div>
-</div>
-</section>
 </section>
 
 
@@ -551,22 +474,6 @@
                 <dialog id="pst-secondary-sidebar-modal"></dialog>
                 <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
 
-
-  <div class="sidebar-secondary-item">
-<div
-    id="pst-page-navigation-heading-2"
-    class="page-toc tocsection onthispage">
-    <i class="fa-solid fa-list"></i> On this page
-  </div>
-  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
-    <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#accessing-trials">Accessing trials</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#iterating">Iterating</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#modifying-trials">Modifying trials</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#saving-and-loading">Saving and loading</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#continuous-mode">Continuous mode</a></li>
-</ul>
-  </nav></div>
 
   <div class="sidebar-secondary-item">
 
