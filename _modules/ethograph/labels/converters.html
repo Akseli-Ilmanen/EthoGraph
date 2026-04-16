@@ -428,7 +428,7 @@
 
 
 <div class="viewcode-block" id="LabelConverter">
-<a class="viewcode-back" href="../../../api/ethograph.labels.converters.LabelConverter.html#ethograph.labels.converters.LabelConverter">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.converters.LabelConverter">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">LabelConverter</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Base class for converting external label sources to ethograph intervals.</span>
 
@@ -557,7 +557,7 @@
 
 
 <div class="viewcode-block" id="build_mapping_from_labels">
-<a class="viewcode-back" href="../../../api/ethograph.labels.converters.build_mapping_from_labels.html#ethograph.labels.converters.build_mapping_from_labels">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.converters.build_mapping_from_labels">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">build_mapping_from_labels</span><span class="p">(</span><span class="n">string_labels</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a name-&gt;id mapping from a list of unique string labels.</span>
 
@@ -572,7 +572,7 @@
 
 
 <div class="viewcode-block" id="crowsetta_to_intervals">
-<a class="viewcode-back" href="../../../api/ethograph.labels.converters.crowsetta_to_intervals.html#ethograph.labels.converters.crowsetta_to_intervals">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.converters.crowsetta_to_intervals">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">crowsetta_to_intervals</span><span class="p">(</span>
     <span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
     <span class="n">format_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
@@ -604,7 +604,7 @@
 
 
 <div class="viewcode-block" id="extract_crowsetta_labels">
-<a class="viewcode-back" href="../../../api/ethograph.labels.converters.extract_crowsetta_labels.html#ethograph.labels.converters.extract_crowsetta_labels">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.converters.extract_crowsetta_labels">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">extract_crowsetta_labels</span><span class="p">(</span>
     <span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
     <span class="n">format_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
@@ -619,7 +619,7 @@
 
 
 <div class="viewcode-block" id="write_mapping_file">
-<a class="viewcode-back" href="../../../api/ethograph.labels.converters.write_mapping_file.html#ethograph.labels.converters.write_mapping_file">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.converters.write_mapping_file">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">write_mapping_file</span><span class="p">(</span>
     <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
     <span class="n">name_to_id</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
@@ -633,7 +633,7 @@
 
 
 <div class="viewcode-block" id="resolve_crowsetta_mapping">
-<a class="viewcode-back" href="../../../api/ethograph.labels.converters.resolve_crowsetta_mapping.html#ethograph.labels.converters.resolve_crowsetta_mapping">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.converters.resolve_crowsetta_mapping">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">resolve_crowsetta_mapping</span><span class="p">(</span>
     <span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
     <span class="n">format_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
@@ -689,7 +689,7 @@
 
 
 <div class="viewcode-block" id="CrowsettaLabelConverter">
-<a class="viewcode-back" href="../../../api/ethograph.labels.converters.CrowsettaLabelConverter.html#ethograph.labels.converters.CrowsettaLabelConverter">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.converters.CrowsettaLabelConverter">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">CrowsettaLabelConverter</span><span class="p">(</span><span class="n">LabelConverter</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert crowsetta annotation files to ethograph intervals.</span>
 
@@ -768,7 +768,7 @@
 
 
 <div class="viewcode-block" id="PynappleLabelConverter">
-<a class="viewcode-back" href="../../../api/ethograph.labels.converters.PynappleLabelConverter.html#ethograph.labels.converters.PynappleLabelConverter">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.converters.PynappleLabelConverter">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">PynappleLabelConverter</span><span class="p">(</span><span class="n">LabelConverter</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract labels from pynapple IntervalSet objects.</span>
 

@@ -3,7 +3,7 @@
 
 Use this path if you have pose estimation output from DeepLabCut, SLEAP, LightningPose, or any other tracker that produces `.h5` or `.csv` files — with or without a matching video.
 
-The **Create dialog** handles single recordings (one trial) without any scripting. For multiple trials or multiple cameras, see {doc}`loading_script`.
+The **Create dialog** handles single recordings (one trial) without any scripting. For multiple trials or multiple cameras, see {doc}`multi_trial`.
 
 ---
 

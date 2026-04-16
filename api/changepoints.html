@@ -1,0 +1,928 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Changepoints &#8212; ethograph</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=7f76b32a3354e82990f2" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=7f76b32a3354e82990f2" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=5c2b050f" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=7f76b32a3354e82990f2"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=7f76b32a3354e82990f2" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=7f76b32a3354e82990f2" />
+
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/design-tabs.js?v=f930bc37"></script>
+    <script>window.MathJax = {"options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'api/changepoints';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/api/changepoints.html" />
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="NWB alignment" href="nwb_alignment.html" />
+    <link rel="prev" title="API reference" href="../api_index.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class=" navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/icon.png" class="logo__image only-light" alt=""/>
+    <img src="../_static/icon.png" class="logo__image only-dark pst-js-only" alt=""/>
+  
+  
+    <p class="title logo__title">ethograph</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class=" navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../user_guide/index.html">
+    User guide
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../examples/index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="../api_index.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../community/index.html">
+    Community
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/Akseli-Ilmanen/ethograph" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../user_guide/index.html">
+    User guide
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../examples/index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="../api_index.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../community/index.html">
+    Community
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/Akseli-Ilmanen/ethograph" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar"><svg class="pst-icon svg-inline--fa" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Changepoints</a></li>
+<li class="toctree-l1"><a class="reference internal" href="nwb_alignment.html">NWB alignment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="trialtree.html">TrialTree</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dataset.html">Dataset</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pynapple_io.html">Pynapple IO</a></li>
+<li class="toctree-l1"><a class="reference internal" href="labels.html">Labels</a></li>
+<li class="toctree-l1"><a class="reference internal" href="xr_utils.html">xr_utils</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../api_index.html" class="nav-link">API reference</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Changepoints</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="changepoints">
+<span id="target-changepoints-api"></span><h1>Changepoints<a class="headerlink" href="#changepoints" title="Link to this heading">#</a></h1>
+<p>Changepoint detection finds candidate behavioural boundaries in kinematic,
+audio, and spectral time series. Ethograph exposes detectors (binary masks
+aligned to the signal’s time axis), merging and snapping utilities, and
+feature generators that turn changepoints into model-ready inputs.</p>
+<p>See <a class="reference internal" href="../user_guide/changepoints/index.html"><span class="doc">Changepoints</span></a> for the conceptual overview and
+the <a class="reference internal" href="#target-changepoint-features-api"><span class="std std-ref">changepoint features</span></a> section
+below for the representations used by downstream segmentation models.</p>
+<hr class="docutils" />
+<section id="detection">
+<h2>Detection<a class="headerlink" href="#detection" title="Link to this heading">#</a></h2>
+<p>Detectors consume a 1-D signal and return a binary (0/1) mask of the same
+length. NaN boundaries in the input are always added as changepoints so that
+valid/invalid transitions are not lost.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.features.changepoints.find_peaks_binary">
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">find_peaks_binary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#find_peaks_binary"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.find_peaks_binary" title="Link to this definition">#</a></dt>
+<dd><p>scipy.signal.find_peaks + NaN boundaries -&gt; binary mask.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.features.changepoints.find_troughs_binary">
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">find_troughs_binary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#find_troughs_binary"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.find_troughs_binary" title="Link to this definition">#</a></dt>
+<dd><p>Find troughs (local minima) + NaN boundaries -&gt; binary mask.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.features.changepoints.find_nearest_turning_points_binary">
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">find_nearest_turning_points_binary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prominence</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">distance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#find_nearest_turning_points_binary"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.find_nearest_turning_points_binary" title="Link to this definition">#</a></dt>
+<dd><p>Convert a 1D signal into a binary mask marking boundaries of peak regions.</p>
+<p>Identifies peaks in the signal, then finds the nearest “turning points”
+(where the gradient is near zero) on either side of each peak. These
+turning points define the boundaries of peak regions. The result is a
+binary mask where 1 indicates a turning-point boundary.</p>
+<dl class="simple">
+<dt>The algorithm works in four steps:</dt><dd><ol class="arabic simple">
+<li><p>Compute the gradient of x and find indices where <a href="#id1"><span class="problematic" id="id2">|gradient|</span></a> &lt; threshold,
+treating these as candidate turning points (near-stationary regions).</p></li>
+<li><p>Find peaks in x using scipy.signal.find_peaks with any additional kwargs.</p></li>
+<li><p>For each peak, select the closest turning point to its left and right.</p></li>
+<li><p>Add boundaries at NaN transitions in the original signal.</p></li>
+</ol>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> – Input 1D signal.</p></li>
+<li><p><strong>threshold</strong> – Maximum absolute gradient value to qualify as a turning point.
+Lower values select only very flat regions. Default is 1.</p></li>
+<li><p><strong>max_value</strong> – If set, discard turning points where x exceeds this value.
+Useful for ignoring turning points on high plateaus.</p></li>
+<li><p><strong>**kwargs</strong> – Passed to scipy.signal.find_peaks (e.g. height, distance,
+prominence).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Binary array of same length as x, with 1 at turning-point boundaries
+and NaN-transition boundaries, 0 elsewhere.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.features.changepoints.add_NaN_boundaries">
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">add_NaN_boundaries</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">changepoints</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#add_NaN_boundaries"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.add_NaN_boundaries" title="Link to this definition">#</a></dt>
+<dd><p>Merge NaN-transition boundaries with other changepoints -&gt; binary mask.</p>
+</dd></dl>
+
+<p>To attach detectors to a <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> or a pynapple object:</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.io.dataset.add_changepoints_to_ds">
+<span class="sig-prename descclassname"><span class="pre">ethograph.io.dataset.</span></span><span class="sig-name descname"><span class="pre">add_changepoints_to_ds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_feature</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">changepoint_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">changepoint_func</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">func_kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/dataset.html#add_changepoints_to_ds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.dataset.add_changepoints_to_ds" title="Link to this definition">#</a></dt>
+<dd><p>Detect changepoints in a feature and store them in the dataset.</p>
+<p>Applies <em>changepoint_func</em> independently along every non-time
+dimension (e.g. per keypoint, per individual) using
+<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.apply_ufunc.html#xarray.apply_ufunc" title="(in xarray v2026.4.0)"><code class="xref py py-func docutils literal notranslate"><span class="pre">xarray.apply_ufunc()</span></code></a> with <code class="docutils literal notranslate"><span class="pre">vectorize=True</span></code>.  The result is an
+<code class="docutils literal notranslate"><span class="pre">int8</span></code> binary array (1 = changepoint, 0 = not) stored as
+<code class="docutils literal notranslate"><span class="pre">ds[&quot;{target_feature}_{changepoint_name}&quot;]</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><em>xarray.Dataset</em></a>) – Trial dataset containing <em>target_feature</em>.</p></li>
+<li><p><strong>target_feature</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the variable to run detection on (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;speed&quot;</span></code>).</p></li>
+<li><p><strong>changepoint_name</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Suffix for the output variable name.  The stored variable will be
+called <code class="docutils literal notranslate"><span class="pre">&quot;{target_feature}_{changepoint_name}&quot;</span></code> (e.g.
+<code class="docutils literal notranslate"><span class="pre">&quot;speed_troughs&quot;</span></code>).</p></li>
+<li><p><strong>changepoint_func</strong> (<em>callable</em>) – A function <code class="docutils literal notranslate"><span class="pre">f(x,</span> <span class="pre">**kwargs)</span> <span class="pre">-&gt;</span> <span class="pre">array[int8]</span></code> that takes a 1-D
+numpy array and returns a same-length binary indicator.</p></li>
+<li><p><strong>**func_kwargs</strong> – Forwarded to <em>changepoint_func</em>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The input dataset with the changepoint variable added in place.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)">xarray.Dataset</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.features.changepoints</span><span class="w"> </span><span class="kn">import</span> <span class="n">find_troughs_binary</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;experiment.nc&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">add_changepoints_to_ds</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">ds</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">target_feature</span><span class="o">=</span><span class="s2">&quot;speed&quot;</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">changepoint_name</span><span class="o">=</span><span class="s2">&quot;troughs&quot;</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">changepoint_func</span><span class="o">=</span><span class="n">find_troughs_binary</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">prominence</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed_troughs&quot;</span><span class="p">]</span>
+<span class="go">&lt;xarray.DataArray &#39;speed_troughs&#39; (time: 9000, keypoints: 7)&gt;</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.io.pynapple.add_changepoints_to_nap">
+<span class="sig-prename descclassname"><span class="pre">ethograph.io.pynapple.</span></span><span class="sig-name descname"><span class="pre">add_changepoints_to_nap</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_feature</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">changepoint_func</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">func_kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/pynapple.html#add_changepoints_to_nap"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.pynapple.add_changepoints_to_nap" title="Link to this definition">#</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type">nap.TsGroup</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<hr class="docutils" />
+<section id="merging-and-time-extraction">
+<h2>Merging and time extraction<a class="headerlink" href="#merging-and-time-extraction" title="Link to this heading">#</a></h2>
+<p>Changepoints stored as multiple <code class="docutils literal notranslate"><span class="pre">attrs[&quot;type&quot;]</span> <span class="pre">==</span> <span class="pre">&quot;changepoints&quot;</span></code>
+DataArrays can be merged into a single boolean mask, or converted directly
+to absolute times (seconds) for use by the GUI and correction pipeline.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.features.changepoints.merge_changepoints">
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">merge_changepoints</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#merge_changepoints"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.merge_changepoints" title="Link to this definition">#</a></dt>
+<dd><p>Merge all changepoint variables in a dataset into a single boolean mask.</p>
+<p>Combines every variable with <code class="docutils literal notranslate"><span class="pre">attrs[&quot;type&quot;]</span> <span class="pre">==</span> <span class="pre">&quot;changepoints&quot;</span></code> using
+logical OR across all non-time dimensions.  All changepoint variables
+must share the same <code class="docutils literal notranslate"><span class="pre">target_feature</span></code> attribute.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ds</strong> (<em>xr.Dataset</em>) – Dataset containing one or more changepoint variables.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>ds</strong> (<em>xr.Dataset</em>) – Copy of the input with a new <code class="docutils literal notranslate"><span class="pre">&quot;changepoints&quot;</span></code> DataArray
+(float 0/1) replacing the individual changepoint variables.</p></li>
+<li><p><strong>target_feature</strong> (<em>str</em>) – The shared <code class="docutils literal notranslate"><span class="pre">target_feature</span></code> attribute from the input variables.</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If changepoint variables reference different target features.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.features.changepoints.extract_cp_times">
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">extract_cp_times</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">cp_kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#extract_cp_times"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.extract_cp_times" title="Link to this definition">#</a></dt>
+<dd><p>Extract merged changepoint times from dataset.</p>
+<p>Replaces the inline pattern: merge_changepoints -&gt; binary -&gt; np.where -&gt; times.
+Returns empty array if no CP variables exist.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.features.changepoints.snap_to_nearest_changepoint_time">
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">snap_to_nearest_changepoint_time</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t_clicked</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feature_sel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">ds_kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#snap_to_nearest_changepoint_time"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.snap_to_nearest_changepoint_time" title="Link to this definition">#</a></dt>
+<dd><p>Snap a clicked time (seconds) to the nearest changepoint time.</p>
+<p>Works entirely in the time domain — no index conversion needed.
+Combines kinematic, audio, and oscillation changepoints.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<hr class="docutils" />
+<section id="label-correction">
+<h2>Label correction<a class="headerlink" href="#label-correction" title="Link to this heading">#</a></h2>
+<p>Snap interval-based labels to nearby changepoints. The full pipeline
+(<code class="docutils literal notranslate"><span class="pre">correct_changepoints</span></code>) runs purge → stitch → snap → purge; see
+<a class="reference internal" href="../user_guide/changepoints/correction.html"><span class="doc">Changepoint correction</span></a> for parameter guidance.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.features.changepoints.correct_changepoints">
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">correct_changepoints</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp_times</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_duration_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stitch_gap_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_expansion_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_shrink_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_thresholds_s</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">do_purge</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">do_stitch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">do_snap</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">do_purge_after</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#correct_changepoints"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.correct_changepoints" title="Link to this definition">#</a></dt>
+<dd><p>Full interval-native correction pipeline.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v3.0.2)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span></p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Steps:</dt><dd><ol class="arabic simple">
+<li><p>purge_short_intervals — pre-cleanup (do_purge)</p></li>
+<li><p>stitch_intervals — merge same-label across small gaps (do_stitch)</p></li>
+<li><p>snap_boundaries — snap to changepoint times (do_snap)</p></li>
+<li><p>purge_short_intervals — post-cleanup (do_purge_after)</p></li>
+</ol>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.features.changepoints.correct_changepoints_automatic">
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">correct_changepoints_automatic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_duration_s</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stitch_gap_s</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#correct_changepoints_automatic"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.correct_changepoints_automatic" title="Link to this definition">#</a></dt>
+<dd><p>Lightweight cleanup used while manually creating labels.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v3.0.2)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.features.changepoints.correct_changepoints_dense">
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">correct_changepoints_dense</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">labels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">all_params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#correct_changepoints_dense"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.correct_changepoints_dense" title="Link to this definition">#</a></dt>
+<dd><p>Correct dense label arrays using changepoints (legacy ML pipeline).</p>
+<p>Operates on integer label arrays, not interval DataFrames.
+Use <a class="reference internal" href="ethograph.features.changepoints.correct_changepoints.html#ethograph.features.changepoints.correct_changepoints" title="ethograph.features.changepoints.correct_changepoints"><code class="xref py py-func docutils literal notranslate"><span class="pre">correct_changepoints()</span></code></a> for the modern interval-native pipeline.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>labels</strong> (<em>array-like</em>) – Dense integer label array of shape (T,).</p></li>
+<li><p><strong>ds</strong> (<em>xr.Dataset</em>) – Trial dataset containing changepoint variables.</p></li>
+<li><p><strong>all_params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – <p>Keys:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">cp_kwargs</span></code>: Selection kwargs forwarded to <code class="docutils literal notranslate"><span class="pre">ds.sel()</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">min_label_length_s</span></code>: Minimum label duration in seconds.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">stitch_gap_len_s</span></code>: Maximum gap to stitch in seconds.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">label_thresholds_s</span></code>: Per-label minimum durations (dict).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">changepoint_params</span></code>: Dict with <code class="docutils literal notranslate"><span class="pre">max_expansion_s</span></code> and
+<code class="docutils literal notranslate"><span class="pre">max_shrink_s</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fps</span></code>: Frame rate used to convert seconds to sample counts.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Corrected integer label array of the same shape as <code class="docutils literal notranslate"><span class="pre">labels</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<hr class="docutils" />
+</section>
+<section id="changepoint-features">
+<span id="target-changepoint-features-api"></span><h2>Changepoint features<a class="headerlink" href="#changepoint-features" title="Link to this heading">#</a></h2>
+<p>Once changepoints have been curated, they are converted into learnable
+features for action- and audio-segmentation models (transformers, MS-TCN,
+DLC2Action, ASFormer, …). Three complementary representations let the
+model pick up changepoint structure at different scales:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 29.4%" />
+<col style="width: 70.6%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Feature</p></th>
+<th class="head"><p>Example (changepoints at t=4 and t=8)</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Binary changepoints</strong> — exact positions</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">1</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">1</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Smooth changepoints</strong> — proximity to nearest changepoint</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">.3</span> <span class="pre">1</span> <span class="pre">.3</span> <span class="pre">0</span> <span class="pre">.3</span> <span class="pre">1</span> <span class="pre">.3</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Segment IDs</strong> — unique ID per inter-changepoint region</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">1</span> <span class="pre">1</span> <span class="pre">1</span> <span class="pre">1</span> <span class="pre">2</span> <span class="pre">2</span> <span class="pre">2</span> <span class="pre">2</span> <span class="pre">2</span> <span class="pre">2</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Smooth changepoints use a Laplacian kernel centred at each changepoint
+index <span class="math notranslate nohighlight">\(i\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\text{smooth}(t) = \sum_i \exp\!\left(-\frac{|t - i|}{\sigma}\right)\]</div>
+<p>Laplacian peaks are narrow (so they pinpoint the changepoint) but have long
+tails (so they remain visible from far away). Passing several
+<code class="docutils literal notranslate"><span class="pre">sigmas</span></code> — e.g. <code class="docutils literal notranslate"><span class="pre">[0.5,</span> <span class="pre">3,</span> <span class="pre">5]</span></code> — yields a multi-scale view.</p>
+<p>Weighted variants emphasise changepoints where a target signal <code class="docutils literal notranslate"><span class="pre">x</span></code>
+(typically speed) is low, via <span class="math notranslate nohighlight">\(\exp(-x / (\bar{x} + \epsilon))\)</span>. This
+helps models distinguish speed minima before/after movements from minima
+occurring <em>within</em> a movement.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="ethograph.features.changepoints.more_changepoint_features">
+<span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">more_changepoint_features</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">changepoint_binary</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">targ_feat_vals</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigmas</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">distribution</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'laplacian'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#more_changepoint_features"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.more_changepoint_features" title="Link to this definition">#</a></dt>
+<dd><p>Create changepoint-based features from a binary changepoint array.</p>
+<p>Generates three complementary representations that help a model learn
+changepoint locations:</p>
+<ul class="simple">
+<li><p><strong>Binary changepoints</strong> — exact changepoint positions (0/1 mask).
+Example: <code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">1</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">1</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span></code></p></li>
+<li><p><strong>Smooth changepoints</strong> — proximity to the nearest changepoint, rendered
+as Laplacian (or Gaussian) peaks centred at each changepoint index.
+Example: <code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">.3</span> <span class="pre">1</span> <span class="pre">.3</span> <span class="pre">0</span> <span class="pre">.3</span> <span class="pre">1</span> <span class="pre">.3</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span></code></p></li>
+<li><p><strong>Segment IDs</strong> — unique identifier for each contiguous region between
+changepoints (normalised to [0, 1]).
+Example: <code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">0</span> <span class="pre">1</span> <span class="pre">1</span> <span class="pre">1</span> <span class="pre">1</span> <span class="pre">2</span> <span class="pre">2</span> <span class="pre">2</span> <span class="pre">2</span> <span class="pre">2</span> <span class="pre">2</span></code></p></li>
+</ul>
+<p>Smooth changepoints use a Laplacian kernel by default:</p>
+<div class="math notranslate nohighlight">
+\[\text{smooth}(t) = \sum_i \exp\!\left(-\frac{|t - i|}{\sigma}\right)\]</div>
+<p>where <span class="math notranslate nohighlight">\(i\)</span> are the changepoint indices and <span class="math notranslate nohighlight">\(\sigma\)</span> controls
+the peak width. Laplacians have a narrow peak that points directly at the
+changepoint while their long tails remain visible from far away. Passing
+multiple <code class="docutils literal notranslate"><span class="pre">sigmas</span></code> (e.g. <code class="docutils literal notranslate"><span class="pre">[0.5,</span> <span class="pre">3,</span> <span class="pre">5]</span></code>) yields features at several
+scales.</p>
+<p>Additionally, weighted versions emphasise changepoints where the target
+feature (e.g. speed) is low, by multiplying the smooth features with
+<span class="math notranslate nohighlight">\(\exp(-x / (\bar{x} + \epsilon))\)</span>. This helps the model
+distinguish speed minima before/after movements (low speed) from minima
+occurring within different movements.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>changepoint_binary</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a></span>) – Binary (0/1) array marking changepoint locations.</p></li>
+<li><p><strong>targ_feat_vals</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a></span>) – Target feature values (e.g. speed) used to weight the
+smooth changepoint features.</p></li>
+<li><p><strong>sigmas</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.List" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a>]</span>) – Kernel widths for the smooth changepoint representation.</p></li>
+<li><p><strong>distribution</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Literal</span></code></a>[<code class="docutils literal notranslate"><span class="pre">'gaussian'</span></code>, <code class="docutils literal notranslate"><span class="pre">'laplacian'</span></code>]</span>) – <code class="docutils literal notranslate"><span class="pre">&quot;laplacian&quot;</span></code> (default) or <code class="docutils literal notranslate"><span class="pre">&quot;gaussian&quot;</span></code> kernel.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>2D array of shape <code class="docutils literal notranslate"><span class="pre">(T,</span> <span class="pre">1</span> <span class="pre">+</span> <span class="pre">2</span> <span class="pre">*</span> <span class="pre">len(sigmas)</span> <span class="pre">+</span> <span class="pre">1)</span></code> stacking the
+binary mask, one smooth feature per sigma, their weighted (speed-
+emphasised, z-normalised) counterparts, and the normalised segment
+IDs.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<hr class="docutils" />
+<section id="storage-format">
+<h2>Storage format<a class="headerlink" href="#storage-format" title="Link to this heading">#</a></h2>
+<p>Kinematic changepoints are stored as binary (<code class="docutils literal notranslate"><span class="pre">int8</span></code>) DataArrays sharing
+their feature’s time axis, tagged with <code class="docutils literal notranslate"><span class="pre">attrs[&quot;type&quot;]</span> <span class="pre">=</span> <span class="pre">&quot;changepoints&quot;</span></code>
+and <code class="docutils literal notranslate"><span class="pre">attrs[&quot;target_feature&quot;]</span></code>. Audio changepoints, which would be
+prohibitively large at audio sample rates, are stored instead as
+<code class="docutils literal notranslate"><span class="pre">audio_cp_onsets</span></code> / <code class="docutils literal notranslate"><span class="pre">audio_cp_offsets</span></code> float pairs. See
+<a class="reference internal" href="../user_guide/changepoints/kinematic.html"><span class="doc">Kinematic changepoints</span></a> and
+<a class="reference internal" href="../user_guide/changepoints/audio.html"><span class="doc">Audio changepoints</span></a> for examples.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="../api_index.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">API reference</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="nwb_alignment.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">NWB alignment</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#detection">Detection</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.find_peaks_binary"><code class="docutils literal notranslate"><span class="pre">find_peaks_binary()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.find_troughs_binary"><code class="docutils literal notranslate"><span class="pre">find_troughs_binary()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.find_nearest_turning_points_binary"><code class="docutils literal notranslate"><span class="pre">find_nearest_turning_points_binary()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.add_NaN_boundaries"><code class="docutils literal notranslate"><span class="pre">add_NaN_boundaries()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.dataset.add_changepoints_to_ds"><code class="docutils literal notranslate"><span class="pre">add_changepoints_to_ds()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.io.pynapple.add_changepoints_to_nap"><code class="docutils literal notranslate"><span class="pre">add_changepoints_to_nap()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#merging-and-time-extraction">Merging and time extraction</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.merge_changepoints"><code class="docutils literal notranslate"><span class="pre">merge_changepoints()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.extract_cp_times"><code class="docutils literal notranslate"><span class="pre">extract_cp_times()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.snap_to_nearest_changepoint_time"><code class="docutils literal notranslate"><span class="pre">snap_to_nearest_changepoint_time()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#label-correction">Label correction</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.correct_changepoints"><code class="docutils literal notranslate"><span class="pre">correct_changepoints()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.correct_changepoints_automatic"><code class="docutils literal notranslate"><span class="pre">correct_changepoints_automatic()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.correct_changepoints_dense"><code class="docutils literal notranslate"><span class="pre">correct_changepoints_dense()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changepoint-features">Changepoint features</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.features.changepoints.more_changepoint_features"><code class="docutils literal notranslate"><span class="pre">more_changepoint_features()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#storage-format">Storage format</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/api/changepoints.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=7f76b32a3354e82990f2"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=7f76b32a3354e82990f2"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2022, Akseli Ilmanen.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.17.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

@@ -357,11 +357,11 @@
 <li class="toctree-l2"><a class="reference internal" href="loading_audio.html">From an audio file</a></li>
 <li class="toctree-l2"><a class="reference internal" href="loading_numpy.html">From a numpy file</a></li>
 <li class="toctree-l2"><a class="reference internal" href="loading_ephys.html">From an ephys recording</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multi_trial.html">Multi-trial setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="trialtree.html">TrialTree</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1"><a class="reference internal" href="user_manual.html">User Manual</a></li>
 <li class="toctree-l1"><a class="reference internal" href="data_requirements.html">Data Format Requirements</a></li>
-<li class="toctree-l1"><a class="reference internal" href="trialtree.html">TrialTree</a></li>
 </ul>
 </div>
 </nav></div>
@@ -479,7 +479,7 @@ A <a class="reference internal" href="../api/trialtree.html#ethograph.io.trialtr
 <input checked="checked" id="sd-tab-item-0" name="sd-tab-set-0" type="radio">
 <label class="sd-tab-label" for="sd-tab-item-0">
 NetCDF (.nc)</label><div class="sd-tab-content docutils">
-<p>If you already have a <code class="docutils literal notranslate"><span class="pre">session.nc</span></code> file (e.g. from an ethograph pipeline or <span class="xref std std-doc">loading_script</span>):</p>
+<p>If you already have a <code class="docutils literal notranslate"><span class="pre">session.nc</span></code> file (e.g. from an ethograph pipeline or <a class="reference internal" href="multi_trial.html"><span class="doc">Multi-trial setup</span></a>):</p>
 <ol class="arabic simple">
 <li><p>In the <strong>I/O</strong> widget, select your session data <strong>file</strong> (<code class="docutils literal notranslate"><span class="pre">.nc</span></code>)</p></li>
 <li><p>Select the video <strong>folder</strong> containing camera recordings (<code class="docutils literal notranslate"><span class="pre">.mp4</span></code>) <a class="footnote-reference brackets" href="#id6" id="id1" role="doc-noteref"><span class="fn-bracket">[</span>4<span class="fn-bracket">]</span></a></p></li>
@@ -496,10 +496,9 @@ NWB (.nwb)</label><div class="sd-tab-content docutils">
 <p>NWB files are self-contained — EthoGraph reads trials, features, and media references directly:</p>
 <ol class="arabic simple">
 <li><p>In the <strong>I/O</strong> widget, select your <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> file</p></li>
-<li><p>[Optional] Select a local video folder if videos are not embedded or URLs</p></li>
+<li><p>[Optional] Select a local video folder if folder specifeid in ImageSseries external files changed CLAUDE rephrase.</p></li>
 <li><p>Click <strong>Load</strong></p></li>
 </ol>
-<p>EthoGraph uses <a class="reference internal" href="../api/trialtree.html#ethograph.io.nwb_import.read_trials_table" title="ethograph.io.nwb_import.read_trials_table"><code class="xref py py-func docutils literal notranslate"><span class="pre">read_trials_table()</span></code></a> to extract trial boundaries and <a class="reference internal" href="../api/trialtree.html#ethograph.io.nwb_import.probe_behavioral_series" title="ethograph.io.nwb_import.probe_behavioral_series"><code class="xref py py-func docutils literal notranslate"><span class="pre">probe_behavioral_series()</span></code></a> to discover available time-series. NWB data is loaded via pynapple internally.</p>
 </div>
 <input id="sd-tab-item-2" name="sd-tab-set-0" type="radio">
 <label class="sd-tab-label" for="sd-tab-item-2">
@@ -507,10 +506,9 @@ Pynapple (.npz / folder)</label><div class="sd-tab-content docutils">
 <p>Pynapple data saved with <code class="xref py py-func docutils literal notranslate"><span class="pre">save_file()</span></code> or pynapple folders:</p>
 <ol class="arabic simple">
 <li><p>In the <strong>I/O</strong> widget, select your <code class="docutils literal notranslate"><span class="pre">.npz</span></code> file or pynapple folder</p></li>
-<li><p>[Optional] Select video/audio/tracking folders</p></li>
+<li><p>[Optional] Select video/audio/tracking folders.</p></li>
 <li><p>Click <strong>Load</strong></p></li>
 </ol>
-<p>Trial structure is detected automatically from <a class="reference external" href="https://pynapple.org/generated/pynapple.IntervalSet.html#pynapple.IntervalSet" title="(in pynapple v0.11.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">IntervalSet</span></code></a> objects in the data. See <a class="reference internal" href="../api/ethograph.io.pynapple.load_nap_data.html#ethograph.io.pynapple.load_nap_data" title="ethograph.io.pynapple.load_nap_data"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_nap_data()</span></code></a>.</p>
 </div>
 </div>
 </section>
@@ -545,7 +543,7 @@ Pynapple (.npz / folder)</label><div class="sd-tab-content docutils">
 </tr>
 <tr class="row-even"><td><p>Custom script</p></td>
 <td><p>Multi-trial, multi-cam, multi-mic</p></td>
-<td><p><span class="xref std std-doc">loading_script</span></p></td>
+<td><p><a class="reference internal" href="multi_trial.html"><span class="doc">Multi-trial setup</span></a></p></td>
 </tr>
 </tbody>
 </table>
@@ -606,6 +604,8 @@ rawdata/
 <li class="toctree-l1"><a class="reference internal" href="loading_audio.html">From an audio file</a></li>
 <li class="toctree-l1"><a class="reference internal" href="loading_numpy.html">From a numpy file</a></li>
 <li class="toctree-l1"><a class="reference internal" href="loading_ephys.html">From an ephys recording</a></li>
+<li class="toctree-l1"><a class="reference internal" href="multi_trial.html">Multi-trial setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="trialtree.html">TrialTree</a></li>
 </ul>
 </div>
 </section>

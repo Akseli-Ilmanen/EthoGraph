@@ -423,7 +423,7 @@
 <span class="c1"># ── Empty DataFrame ──────────────────────────────────────────────────────</span>
 
 <div class="viewcode-block" id="empty_intervals">
-<a class="viewcode-back" href="../../../api/ethograph.labels.intervals.empty_intervals.html#ethograph.labels.intervals.empty_intervals">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.empty_intervals">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">empty_intervals</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Create an empty intervals DataFrame with the correct columns and dtypes.</span>
 
@@ -451,7 +451,7 @@
 <span class="c1"># ── Mapping loaders ─────────────────────────────────────────────────────</span>
 
 <div class="viewcode-block" id="load_mapping">
-<a class="viewcode-back" href="../../../api/ethograph.labels.intervals.load_mapping.html#ethograph.labels.intervals.load_mapping">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.load_mapping">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_mapping</span><span class="p">(</span><span class="n">mapping_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Load a class-name ↔ index mapping file.</span>
 
@@ -505,7 +505,7 @@
 
 
 <div class="viewcode-block" id="load_label_mapping">
-<a class="viewcode-back" href="../../../api/ethograph.labels.intervals.load_label_mapping.html#ethograph.labels.intervals.load_label_mapping">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.load_label_mapping">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_label_mapping</span><span class="p">(</span><span class="n">mapping_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">=</span> <span class="s2">&quot;mapping.txt&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Load a label mapping with colors for visualization.</span>
 
@@ -593,7 +593,7 @@
 
 
 <div class="viewcode-block" id="save_label_mapping">
-<a class="viewcode-back" href="../../../api/ethograph.labels.intervals.save_label_mapping.html#ethograph.labels.intervals.save_label_mapping">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.save_label_mapping">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">save_label_mapping</span><span class="p">(</span><span class="n">mapping_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span> <span class="n">mappings</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Write a label mapping back to disk, preserving branch assignments.</span>
 
@@ -619,7 +619,7 @@
 <span class="c1"># ── Interval operations ─────────────────────────────────────────────────</span>
 
 <div class="viewcode-block" id="add_interval">
-<a class="viewcode-back" href="../../../api/ethograph.labels.intervals.add_interval.html#ethograph.labels.intervals.add_interval">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.add_interval">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">add_interval</span><span class="p">(</span>
     <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
     <span class="n">onset_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
@@ -707,7 +707,7 @@
 
 
 <div class="viewcode-block" id="delete_interval">
-<a class="viewcode-back" href="../../../api/ethograph.labels.intervals.delete_interval.html#ethograph.labels.intervals.delete_interval">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.delete_interval">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">delete_interval</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Drop interval by DataFrame index.&quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="n">df</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="n">idx</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
@@ -715,7 +715,7 @@
 
 
 <div class="viewcode-block" id="find_interval_at">
-<a class="viewcode-back" href="../../../api/ethograph.labels.intervals.find_interval_at.html#ethograph.labels.intervals.find_interval_at">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.find_interval_at">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">find_interval_at</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">time_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">individual</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Return DataFrame index of interval containing *time_s* for *individual*.</span>
 
@@ -735,7 +735,7 @@
 
 
 <div class="viewcode-block" id="get_interval_bounds">
-<a class="viewcode-back" href="../../../api/ethograph.labels.intervals.get_interval_bounds.html#ethograph.labels.intervals.get_interval_bounds">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.get_interval_bounds">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_interval_bounds</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Return ``(onset_s, offset_s, labels)`` for interval at *idx*.&quot;&quot;&quot;</span>
     <span class="n">row</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
@@ -744,7 +744,7 @@
 
 
 <div class="viewcode-block" id="purge_short_intervals">
-<a class="viewcode-back" href="../../../api/ethograph.labels.intervals.purge_short_intervals.html#ethograph.labels.intervals.purge_short_intervals">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.purge_short_intervals">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">purge_short_intervals</span><span class="p">(</span>
     <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
     <span class="n">min_duration_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
@@ -787,7 +787,7 @@
 
 
 <div class="viewcode-block" id="stitch_intervals">
-<a class="viewcode-back" href="../../../api/ethograph.labels.intervals.stitch_intervals.html#ethograph.labels.intervals.stitch_intervals">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.stitch_intervals">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">stitch_intervals</span><span class="p">(</span>
     <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
     <span class="n">max_gap_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
@@ -861,7 +861,7 @@
 
 
 <div class="viewcode-block" id="snap_boundaries">
-<a class="viewcode-back" href="../../../api/ethograph.labels.intervals.snap_boundaries.html#ethograph.labels.intervals.snap_boundaries">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.snap_boundaries">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">snap_boundaries</span><span class="p">(</span>
     <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
     <span class="n">cp_times</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>

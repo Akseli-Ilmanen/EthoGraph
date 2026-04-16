@@ -37,7 +37,7 @@
 | Left-click on label | Select existing label |
 | `Ctrl+E` | Edit selected label boundaries (after selecting label, click twice for new boundaries) |
 | `Ctrl+D` | Delete selected label (after selecting label) |
-| `Ctrl+S` | Save labels `.nc` file. (Save `session` only via button). |
+| `Ctrl+S` | Save `labels.tsv` file.
 | `Ctrl+Y` | Switch between labels and predictions |
 | `Ctrl+V` | 'Verify predictions' by editing once or this shortcut |
 

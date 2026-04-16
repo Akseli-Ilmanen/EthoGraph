@@ -3,55 +3,62 @@
 API reference
 =============
 
+Organized by module group. Each page has full signatures with type hints,
+examples, and cross-links to the user guide.
+
 .. toctree::
-   :hidden:
+   :maxdepth: 2
 
+   api/changepoints
+   api/nwb_alignment
    api/trialtree
+   api/dataset
+   api/pynapple_io
+   api/labels
+   api/xr_utils
 
+----
 
-TrialTree
----------
+.. rubric:: At a glance
 
-The core data structure — see the full :doc:`TrialTree API <api/trialtree>`
-for detailed documentation with interleaved examples.
+:doc:`Changepoints <api/changepoints>`
+    Detection (:func:`~ethograph.features.changepoints.find_peaks_binary`,
+    :func:`~ethograph.features.changepoints.find_troughs_binary`,
+    :func:`~ethograph.features.changepoints.find_nearest_turning_points_binary`),
+    merging/time extraction, label correction, and the binary / smooth
+    Laplacian / segment-ID
+    :func:`~ethograph.features.changepoints.more_changepoint_features`
+    used by downstream segmentation models.
 
+:doc:`NWB alignment <api/nwb_alignment>`
+    :class:`~ethograph.io.nwb_alignment.NWBAlignment`,
+    :func:`~ethograph.io.nwb_alignment.align_media_per_trial`,
+    :func:`~ethograph.io.nwb_alignment.align_media_from_streams`.
 
-Top-level functions
--------------------
+:doc:`TrialTree <api/trialtree>`
+    The :class:`~ethograph.io.trialtree.TrialTree` data structure,
+    :func:`~ethograph.open`, :func:`~ethograph.from_datasets`, trial
+    access, iteration, filtering, and saving.
 
-.. currentmodule:: ethograph
+:doc:`Dataset <api/dataset>`
+    Xarray-side dataset builders:
+    :func:`~ethograph.io.dataset.dataset_to_basic_trialtree`,
+    :func:`~ethograph.io.dataset.downsample_trialtree`,
+    :func:`~ethograph.io.dataset.add_changepoints_to_ds`,
+    :func:`~ethograph.io.dataset.add_angle_rgb_to_ds`.
 
-.. autosummary::
-   :toctree: api
-   :nosignatures:
+:doc:`Pynapple IO <api/pynapple_io>`
+    Pynapple loaders and augmenters:
+    :func:`~ethograph.io.pynapple.load_nap_data`,
+    :func:`~ethograph.io.pynapple.detect_trials`,
+    :func:`~ethograph.io.pynapple.add_changepoints_to_nap`,
+    :func:`~ethograph.io.pynapple.add_angle_rgb_to_nap`, plus NWB-import
+    probes.
 
-   open
-   from_datasets
-   load_nap_data
-   downsample_trialtree
-   sel_valid
-   align_media_per_trial
-   align_media_from_streams
-   NWBAlignment
+:doc:`Labels <api/labels>`
+    Interval operations, TSV storage, dense ↔ interval conversion,
+    predictions, Crowsetta/pynapple converters, export, and plotting.
 
-
-.. rubric:: Modules
-
-.. autosummary::
-   :toctree: api
-   :recursive:
-   :nosignatures:
-
-   ethograph.io.dataset
-   ethograph.io.nwb_alignment
-   ethograph.io.nwb_import
-   ethograph.io.pynapple
-   ethograph.labels.intervals
-   ethograph.labels.ml
-   ethograph.labels.tsv_store
-   ethograph.labels.predictions
-   ethograph.labels.crowsetta_format
-   ethograph.labels.converters
-   ethograph.labels.export
-   ethograph.labels.plots
-   ethograph.utils.xr_utils
+:doc:`xr_utils <api/xr_utils>`
+    :func:`~ethograph.utils.xr_utils.sel_valid` and
+    :func:`~ethograph.utils.xr_utils.get_time_coord`.

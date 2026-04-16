@@ -437,7 +437,7 @@
 
 
 <div class="viewcode-block" id="probe_behavioral_series">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.io.nwb_import.probe_behavioral_series">[docs]</a>
+<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.nwb_import.probe_behavioral_series">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">probe_behavioral_series</span><span class="p">(</span><span class="n">nwb</span><span class="p">:</span> <span class="n">NWBFile</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;List all behavioral time-series interfaces available for import.&quot;&quot;&quot;</span>
     <span class="n">SKIP_MODULES</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;ecephys&quot;</span><span class="p">,</span> <span class="s2">&quot;ophys&quot;</span><span class="p">,</span> <span class="s2">&quot;ogen&quot;</span><span class="p">}</span>
@@ -467,7 +467,7 @@
 
 
 <div class="viewcode-block" id="probe_electrical_series">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.io.nwb_import.probe_electrical_series">[docs]</a>
+<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.nwb_import.probe_electrical_series">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">probe_electrical_series</span><span class="p">(</span><span class="n">nwb</span><span class="p">:</span> <span class="n">NWBFile</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;List all ElectricalSeries in nwb.acquisition.&quot;&quot;&quot;</span>
     <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
@@ -488,7 +488,7 @@
 
 
 <div class="viewcode-block" id="probe_label_sources">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.io.nwb_import.probe_label_sources">[docs]</a>
+<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.nwb_import.probe_label_sources">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">probe_label_sources</span><span class="p">(</span><span class="n">nwb</span><span class="p">:</span> <span class="n">NWBFile</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;List all potential interval label sources in the NWB file.&quot;&quot;&quot;</span>
     <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
@@ -527,7 +527,7 @@
 
 
 <div class="viewcode-block" id="read_trials_table">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.io.nwb_import.read_trials_table">[docs]</a>
+<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.nwb_import.read_trials_table">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">read_trials_table</span><span class="p">(</span><span class="n">nwb</span><span class="p">:</span> <span class="n">NWBFile</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
     <span class="k">if</span> <span class="n">nwb</span><span class="o">.</span><span class="n">trials</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">nwb</span><span class="o">.</span><span class="n">trials</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="n">duration</span> <span class="o">=</span> <span class="n">_get_max_duration</span><span class="p">(</span><span class="n">nwb</span><span class="p">)</span>

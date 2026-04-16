@@ -420,7 +420,7 @@
 
 
 <div class="viewcode-block" id="parse_nwb_types">
-<a class="viewcode-back" href="../../../api/ethograph.io.pynapple.parse_nwb_types.html#ethograph.io.pynapple.parse_nwb_types">[docs]</a>
+<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.pynapple.parse_nwb_types">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">parse_nwb_types</span><span class="p">(</span><span class="n">nwb</span><span class="p">:</span> <span class="n">nap</span><span class="o">.</span><span class="n">NWBFile</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">type</span><span class="p">]:</span>
     <span class="n">result</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">nwb</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">):</span>
@@ -435,7 +435,7 @@
 
 
 <div class="viewcode-block" id="get_metadata">
-<a class="viewcode-back" href="../../../api/ethograph.io.pynapple.get_metadata.html#ethograph.io.pynapple.get_metadata">[docs]</a>
+<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.pynapple.get_metadata">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_metadata</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
     <span class="n">meta</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="nb">type</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">}</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">nap</span><span class="o">.</span><span class="n">TsGroup</span><span class="p">):</span>
@@ -453,7 +453,7 @@
 
 
 <div class="viewcode-block" id="flatten_nap_folder">
-<a class="viewcode-back" href="../../../api/ethograph.io.pynapple.flatten_nap_folder.html#ethograph.io.pynapple.flatten_nap_folder">[docs]</a>
+<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.pynapple.flatten_nap_folder">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">flatten_nap_folder</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">load_metadata</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
     <span class="n">flat</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
@@ -508,7 +508,7 @@
 
 
 <div class="viewcode-block" id="add_changepoints_to_nap">
-<a class="viewcode-back" href="../../../api/ethograph.io.pynapple.add_changepoints_to_nap.html#ethograph.io.pynapple.add_changepoints_to_nap">[docs]</a>
+<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.pynapple.add_changepoints_to_nap">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">add_changepoints_to_nap</span><span class="p">(</span>
     <span class="n">data</span><span class="p">:</span> <span class="n">nap</span><span class="o">.</span><span class="n">Tsd</span> <span class="o">|</span> <span class="n">nap</span><span class="o">.</span><span class="n">TsdFrame</span> <span class="o">|</span> <span class="n">nap</span><span class="o">.</span><span class="n">TsGroup</span><span class="p">,</span>
     <span class="n">target_feature</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
@@ -539,7 +539,7 @@
 
 
 <div class="viewcode-block" id="add_angle_rgb_to_nap">
-<a class="viewcode-back" href="../../../api/ethograph.io.pynapple.add_angle_rgb_to_nap.html#ethograph.io.pynapple.add_angle_rgb_to_nap">[docs]</a>
+<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.pynapple.add_angle_rgb_to_nap">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">add_angle_rgb_to_nap</span><span class="p">(</span>
     <span class="n">tsdframe</span><span class="p">:</span> <span class="n">nap</span><span class="o">.</span><span class="n">TsdFrame</span><span class="p">,</span>
     <span class="n">smoothing_params</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
@@ -571,7 +571,7 @@
 
 
 <div class="viewcode-block" id="detect_trials">
-<a class="viewcode-back" href="../../../api/ethograph.io.pynapple.detect_trials.html#ethograph.io.pynapple.detect_trials">[docs]</a>
+<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.pynapple.detect_trials">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">detect_trials</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">nap</span><span class="o">.</span><span class="n">IntervalSet</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Find a trials IntervalSet in a loaded pynapple data dict.&quot;&quot;&quot;</span>
     <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;trials&quot;</span><span class="p">,</span> <span class="s2">&quot;epochs&quot;</span><span class="p">,</span> <span class="s2">&quot;intervals&quot;</span><span class="p">):</span>
@@ -608,7 +608,7 @@
 
 
 <div class="viewcode-block" id="load_nap_data">
-<a class="viewcode-back" href="../../../api/ethograph.load_nap_data.html#ethograph.io.pynapple.load_nap_data">[docs]</a>
+<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.pynapple.load_nap_data">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_nap_data</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="n">nap</span><span class="o">.</span><span class="n">IntervalSet</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Load pynapple data from a file or folder.</span>
 

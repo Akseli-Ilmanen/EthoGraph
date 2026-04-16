@@ -24,7 +24,7 @@ Answer a few questions to get personalised setup instructions for your data.
 Load `.nc`, `.nwb`, or pynapple files into the GUI.
 :::
 
-:::{grid-item-card} {fas}`list-check` Data requirements
+:::{grid-item-card} {fas}`list-check` Data format requirements
 :link: data_requirements
 :link-type: doc
 
@@ -37,10 +37,9 @@ Format specs for xarray, pynapple, and NWB backends.
 :maxdepth: 2
 :hidden:
 
+
 installation
 wizard
 data_loading
-user_manual
 data_requirements
-trialtree
 ```

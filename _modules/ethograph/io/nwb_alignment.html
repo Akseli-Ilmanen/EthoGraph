@@ -480,7 +480,7 @@
 
 
 <div class="viewcode-block" id="discover_nwb">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.discover_nwb">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.discover_nwb">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">discover_nwb</span><span class="p">(</span><span class="n">nc_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Find an NWB session file near a data file.</span>
 
@@ -502,7 +502,7 @@
 
 
 <div class="viewcode-block" id="make_nwb_alignment">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.make_nwb_alignment">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.make_nwb_alignment">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">make_nwb_alignment</span><span class="p">(</span><span class="n">nwb_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a EmpytAlignment from an NWB path, falling back to base EmpytAlignment.&quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">nwb_path</span> <span class="ow">and</span> <span class="n">Path</span><span class="p">(</span><span class="n">nwb_path</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
@@ -517,7 +517,7 @@
 
 
 <div class="viewcode-block" id="EmpytAlignment">
-<a class="viewcode-back" href="../../../api/ethograph.io.nwb_alignment.EmpytAlignment.html#ethograph.EmpytAlignment">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.EmpytAlignment">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">EmpytAlignment</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Base session metadata interface with null-object defaults.</span>
 
@@ -596,7 +596,7 @@
 
 
 <div class="viewcode-block" id="TableAlignment">
-<a class="viewcode-back" href="../../../api/ethograph.io.nwb_alignment.TableAlignment.html#ethograph.TableAlignment">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.TableAlignment">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">TableAlignment</span><span class="p">(</span><span class="n">EmpytAlignment</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Alignment backed by a tabular dataframe with trial timing columns.</span>
 
@@ -666,7 +666,7 @@
 
 
 <div class="viewcode-block" id="NWBAlignment">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.NWBAlignment">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.NWBAlignment">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">NWBAlignment</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Session metadata backed by an NWB file.</span>
 
@@ -799,7 +799,7 @@
         <span class="k">return</span> <span class="kc">None</span>
 
 <div class="viewcode-block" id="NWBAlignment.devices">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.NWBAlignment.devices">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.NWBAlignment.devices">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">devices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Discover devices from trials table columns AND acquisition items.</span>
 
@@ -845,7 +845,7 @@
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">devices</span><span class="p">(</span><span class="s2">&quot;audio&quot;</span><span class="p">)</span>
 
 <div class="viewcode-block" id="NWBAlignment.electrical_series">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.NWBAlignment.electrical_series">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.NWBAlignment.electrical_series">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">electrical_series</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Discover ElectricalSeries in acquisition. Returns list of {name, path, n_channels, rate}.&quot;&quot;&quot;</span>
         <span class="kn">import</span><span class="w"> </span><span class="nn">pynwb.ecephys</span>
@@ -923,7 +923,7 @@
         <span class="k">return</span> <span class="kc">None</span>
 
 <div class="viewcode-block" id="NWBAlignment.stream_offset_for_trial">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.NWBAlignment.stream_offset_for_trial">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.NWBAlignment.stream_offset_for_trial">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">stream_offset_for_trial</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span> <span class="n">trial</span><span class="p">,</span> <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
@@ -1022,7 +1022,7 @@
     <span class="c1"># ── Stream rate ──</span>
 
 <div class="viewcode-block" id="NWBAlignment.get_stream_rate">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.NWBAlignment.get_stream_rate">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.NWBAlignment.get_stream_rate">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_stream_rate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Read the sampling rate for a stream from its acquisition ImageSeries.&quot;&quot;&quot;</span>
         <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
@@ -1074,7 +1074,7 @@
     <span class="c1"># ── Media path resolution ──</span>
 
 <div class="viewcode-block" id="NWBAlignment.resolve_media_path">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.NWBAlignment.resolve_media_path">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.NWBAlignment.resolve_media_path">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">resolve_media_path</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">trial</span><span class="p">,</span>
@@ -1328,7 +1328,7 @@
 
 
 <div class="viewcode-block" id="sync_acquisition_for_streams">
-<a class="viewcode-back" href="../../../api/ethograph.io.nwb_alignment.sync_acquisition_for_streams.html#ethograph.sync_acquisition_for_streams">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.sync_acquisition_for_streams">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">sync_acquisition_for_streams</span><span class="p">(</span>
     <span class="n">nwbfile</span><span class="p">:</span> <span class="n">NWBFile</span><span class="p">,</span>
     <span class="n">stream_rates</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span>
@@ -1496,7 +1496,7 @@
 
 
 <div class="viewcode-block" id="align_media_per_trial">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.align_media_per_trial">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.align_media_per_trial">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">align_media_per_trial</span><span class="p">(</span>
     <span class="n">trial_table</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
     <span class="n">stream_rates</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -1516,10 +1516,6 @@
 <span class="sd">        columns.  ``start_time`` / ``stop_time`` are optional -- omit for</span>
 <span class="sd">        aligned-to-trial data.</span>
 
-<span class="sd">        Example::</span>
-<span class="sd">            trial | video_cam-1    | audio_mic-1   | pose_cam-1</span>
-<span class="sd">            1     | cam1_t1.mp4    | mic1_t1.wav   | cam1_t1.h5</span>
-<span class="sd">            2     | cam1_t2.mp4    | mic1_t2.wav   | cam1_t2.h5</span>
 
 <span class="sd">    stream_rates</span>
 <span class="sd">        Sampling rate per stream.  Must include every stream that has</span>
@@ -1598,7 +1594,7 @@
 
 
 <div class="viewcode-block" id="align_media_from_streams">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.align_media_from_streams">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.align_media_from_streams">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">align_media_from_streams</span><span class="p">(</span>
     <span class="n">trials</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
     <span class="n">streams</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span>
@@ -1772,7 +1768,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">pynwb</span><span class="w"> </span><span class="kn">import</span> <span class="n">NWBHDF5IO</span>
 
 <div class="viewcode-block" id="edit_nwb">
-<a class="viewcode-back" href="../../../api/ethograph.io.nwb_alignment.edit_nwb.html#ethograph.edit_nwb">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.edit_nwb">[docs]</a>
 <span class="nd">@contextmanager</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">edit_nwb</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
     <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
@@ -1795,7 +1791,7 @@
 
 
 <div class="viewcode-block" id="update_trials_columns">
-<a class="viewcode-back" href="../../../api/ethograph.io.nwb_alignment.update_trials_columns.html#ethograph.update_trials_columns">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.update_trials_columns">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">update_trials_columns</span><span class="p">(</span>
     <span class="n">nwb_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
     <span class="n">trial_column</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>

@@ -50,8 +50,8 @@
     <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/user_guide/index.html" />
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Plot Settings" href="plot_settings.html" />
-    <link rel="prev" title="TrialTree" href="../getting_started/trialtree.html" />
+    <link rel="next" title="User Manual" href="user_manual.html" />
+    <link rel="prev" title="Data Format Requirements" href="../getting_started/data_requirements.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -350,6 +350,23 @@
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="user_manual.html">User Manual</a></li>
+<li class="toctree-l1"><a class="reference internal" href="nwb_alignment.html">NWB alignment</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="labels/index.html">Labels</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="labels/labelling_gui.html">Labelling in the GUI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/importing.html">Importing labels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/exporting.html">Exporting labels</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="changepoints/index.html">Changepoints</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/overview.html">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/kinematic.html">Kinematic changepoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/audio.html">Audio changepoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/ruptures.html">Ruptures</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/correction.html">Changepoint correction</a></li>
+</ul>
+</details></li>
 <li class="toctree-l1"><a class="reference internal" href="plot_settings.html">Plot Settings</a></li>
 <li class="toctree-l1"><a class="reference internal" href="shortcuts.html">Keyboard Shortcuts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
@@ -412,32 +429,76 @@
                   
   <section class="tex2jax_ignore mathjax_ignore" id="user-guide">
 <h1>User guide<a class="headerlink" href="#user-guide" title="Link to this heading">#</a></h1>
+<p>Start with the <strong>user manual</strong> for an end-to-end walkthrough, then dive into
+the topic pages for the individual features.</p>
+<div class="sd-container-fluid sd-sphinx-override sd-mb-4 docutils">
+<div class="sd-row sd-row-cols-1 sd-row-cols-xs-1 sd-row-cols-sm-2 sd-row-cols-md-2 sd-row-cols-lg-2 sd-g-3 sd-g-xs-3 sd-g-sm-3 sd-g-md-3 sd-g-lg-3 docutils">
+<div class="sd-col sd-d-flex-row docutils">
+<div class="sd-card sd-sphinx-override sd-w-100 sd-shadow-sm sd-card-hover docutils">
+<div class="sd-card-body docutils">
+<div class="sd-card-title sd-font-weight-bold docutils">
+<span class="fas fa-book-open"></span> User manual</div>
+<p class="sd-card-text">Complete walkthrough: loading data, labelling, changepoints, export.</p>
+</div>
+<a class="sd-stretched-link sd-hide-link-text reference internal" href="user_manual.html"><span class="doc">User Manual</span></a></div>
+</div>
+<div class="sd-col sd-d-flex-row docutils">
+<div class="sd-card sd-sphinx-override sd-w-100 sd-shadow-sm sd-card-hover docutils">
+<div class="sd-card-body docutils">
+<div class="sd-card-title sd-font-weight-bold docutils">
+<span class="fas fa-link"></span> NWB alignment</div>
+<p class="sd-card-text"><code class="docutils literal notranslate"><span class="pre">alignment.nwb</span></code>: trial timing, media paths, stream offsets.</p>
+</div>
+<a class="sd-stretched-link sd-hide-link-text reference internal" href="nwb_alignment.html"><span class="doc">NWB alignment</span></a></div>
+</div>
+<div class="sd-col sd-d-flex-row docutils">
+<div class="sd-card sd-sphinx-override sd-w-100 sd-shadow-sm sd-card-hover docutils">
+<div class="sd-card-body docutils">
+<div class="sd-card-title sd-font-weight-bold docutils">
+<span class="fas fa-tags"></span> Labels</div>
+<p class="sd-card-text">Labelling in the GUI, importing from Crowsetta formats, exporting TSV.</p>
+</div>
+<a class="sd-stretched-link sd-hide-link-text reference internal" href="labels/index.html"><span class="doc">Labels</span></a></div>
+</div>
+<div class="sd-col sd-d-flex-row docutils">
+<div class="sd-card sd-sphinx-override sd-w-100 sd-shadow-sm sd-card-hover docutils">
+<div class="sd-card-body docutils">
+<div class="sd-card-title sd-font-weight-bold docutils">
+<span class="fas fa-wave-square"></span> Changepoints</div>
+<p class="sd-card-text">Detection methods (kinematic, audio, ruptures) and label-boundary correction.</p>
+</div>
+<a class="sd-stretched-link sd-hide-link-text reference internal" href="changepoints/index.html"><span class="doc">Changepoints</span></a></div>
+</div>
+<div class="sd-col sd-d-flex-row docutils">
+<div class="sd-card sd-sphinx-override sd-w-100 sd-shadow-sm sd-card-hover docutils">
+<div class="sd-card-body docutils">
+<div class="sd-card-title sd-font-weight-bold docutils">
+<span class="fas fa-sliders"></span> Plot settings</div>
+<p class="sd-card-text">Zoom, axes, and per-panel display options.</p>
+</div>
+<a class="sd-stretched-link sd-hide-link-text reference internal" href="plot_settings.html"><span class="doc">Plot Settings</span></a></div>
+</div>
+<div class="sd-col sd-d-flex-row docutils">
+<div class="sd-card sd-sphinx-override sd-w-100 sd-shadow-sm sd-card-hover docutils">
+<div class="sd-card-body docutils">
+<div class="sd-card-title sd-font-weight-bold docutils">
+<span class="fas fa-keyboard"></span> Shortcuts</div>
+<p class="sd-card-text">Keyboard shortcuts reference.</p>
+</div>
+<a class="sd-stretched-link sd-hide-link-text reference internal" href="shortcuts.html"><span class="doc">Keyboard Shortcuts</span></a></div>
+</div>
+<div class="sd-col sd-d-flex-row docutils">
+<div class="sd-card sd-sphinx-override sd-w-100 sd-shadow-sm sd-card-hover docutils">
+<div class="sd-card-body docutils">
+<div class="sd-card-title sd-font-weight-bold docutils">
+<span class="fas fa-wrench"></span> Troubleshooting</div>
+<p class="sd-card-text">Common issues and fixes.</p>
+</div>
+<a class="sd-stretched-link sd-hide-link-text reference internal" href="troubleshooting.html"><span class="doc">Troubleshooting</span></a></div>
+</div>
+</div>
+</div>
 <div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="plot_settings.html">Plot Settings</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="plot_settings.html#zooming">Zooming</a></li>
-<li class="toctree-l2"><a class="reference internal" href="plot_settings.html#axes">Axes</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="shortcuts.html">Keyboard Shortcuts</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="shortcuts.html#video-audio-control">Video/Audio Control</a></li>
-<li class="toctree-l2"><a class="reference internal" href="shortcuts.html#navigation">Navigation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="shortcuts.html#mouse-controls">Mouse Controls</a></li>
-<li class="toctree-l2"><a class="reference internal" href="shortcuts.html#labelling">Labelling</a></li>
-<li class="toctree-l2"><a class="reference internal" href="shortcuts.html#selection-cycling">Selection Cycling</a></li>
-<li class="toctree-l2"><a class="reference internal" href="shortcuts.html#plot-controls">Plot Controls</a></li>
-<li class="toctree-l2"><a class="reference internal" href="shortcuts.html#panel-toggles">Panel Toggles</a></li>
-<li class="toctree-l2"><a class="reference internal" href="shortcuts.html#changepoint-navigation">Changepoint Navigation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="shortcuts.html#ephys-trace">Ephys Trace</a></li>
-<li class="toctree-l2"><a class="reference internal" href="shortcuts.html#d-space">3D Space</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#quick-fixes">Quick fixes</a></li>
-<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#faq">FAQ</a></li>
-</ul>
-</li>
-</ul>
 </div>
 </section>
 
@@ -452,20 +513,20 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="../getting_started/trialtree.html"
+       href="../getting_started/data_requirements.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">TrialTree</p>
+        <p class="prev-next-title">Data Format Requirements</p>
       </div>
     </a>
     <a class="right-next"
-       href="plot_settings.html"
+       href="user_manual.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Plot Settings</p>
+        <p class="prev-next-title">User Manual</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

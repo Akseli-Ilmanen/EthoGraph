@@ -425,7 +425,7 @@
 <span class="c1"># ── Primitives ───────────────────────────────────────────────────────────</span>
 
 <div class="viewcode-block" id="find_blocks">
-<a class="viewcode-back" href="../../../api/ethograph.labels.ml.find_blocks.html#ethograph.labels.ml.find_blocks">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.ml.find_blocks">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">find_blocks</span><span class="p">(</span><span class="n">mask</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Find contiguous True blocks in a boolean array.</span>
 
@@ -492,7 +492,7 @@
 <span class="c1"># ── Interval ↔ Dense conversion ─────────────────────────────────────────</span>
 
 <div class="viewcode-block" id="dense_to_intervals">
-<a class="viewcode-back" href="../../../api/ethograph.labels.ml.dense_to_intervals.html#ethograph.labels.ml.dense_to_intervals">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.ml.dense_to_intervals">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">dense_to_intervals</span><span class="p">(</span>
     <span class="n">dense_array</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
     <span class="n">individuals</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
@@ -579,7 +579,7 @@
 
 
 <div class="viewcode-block" id="intervals_to_dense">
-<a class="viewcode-back" href="../../../api/ethograph.labels.ml.intervals_to_dense.html#ethograph.labels.ml.intervals_to_dense">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.ml.intervals_to_dense">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">intervals_to_dense</span><span class="p">(</span>
     <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
     <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
@@ -643,7 +643,7 @@
 <span class="c1"># ── Segment index extraction ────────────────────────────────────────────</span>
 
 <div class="viewcode-block" id="get_labels_start_end_indices">
-<a class="viewcode-back" href="../../../api/ethograph.labels.ml.get_labels_start_end_indices.html#ethograph.labels.ml.get_labels_start_end_indices">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.ml.get_labels_start_end_indices">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_labels_start_end_indices</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">bg_class</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Return segment boundaries as sample indices (exclusive end).</span>
 
@@ -689,7 +689,7 @@
 <span class="c1"># ── Dense post-processing ────────────────────────────────────────────────</span>
 
 <div class="viewcode-block" id="stitch_gaps">
-<a class="viewcode-back" href="../../../api/ethograph.labels.ml.stitch_gaps.html#ethograph.labels.ml.stitch_gaps">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.ml.stitch_gaps">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">stitch_gaps</span><span class="p">(</span>
     <span class="n">labels</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
     <span class="n">max_gap_len</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
@@ -767,7 +767,7 @@
 
 
 <div class="viewcode-block" id="purge_small_blocks">
-<a class="viewcode-back" href="../../../api/ethograph.labels.ml.purge_small_blocks.html#ethograph.labels.ml.purge_small_blocks">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.ml.purge_small_blocks">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">purge_small_blocks</span><span class="p">(</span>
     <span class="n">labels</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
     <span class="n">min_length</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
@@ -862,7 +862,7 @@
 
 
 <div class="viewcode-block" id="fix_endings">
-<a class="viewcode-back" href="../../../api/ethograph.labels.ml.fix_endings.html#ethograph.labels.ml.fix_endings">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.ml.fix_endings">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">fix_endings</span><span class="p">(</span><span class="n">labels</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">changepoints</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Extend label endings by one sample at changepoint boundaries.</span>
 

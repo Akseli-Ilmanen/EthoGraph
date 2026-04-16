@@ -419,7 +419,7 @@
 
 
 <div class="viewcode-block" id="load_prediction_file">
-<a class="viewcode-back" href="../../../api/ethograph.labels.predictions.load_prediction_file.html#ethograph.labels.predictions.load_prediction_file">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.predictions.load_prediction_file">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_prediction_file</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Load a prediction file (.npy or .pickle). Returns a numpy array.</span>
 
@@ -452,7 +452,7 @@
 
 
 <div class="viewcode-block" id="prediction_to_labels_and_confidence">
-<a class="viewcode-back" href="../../../api/ethograph.labels.predictions.prediction_to_labels_and_confidence.html#ethograph.labels.predictions.prediction_to_labels_and_confidence">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.predictions.prediction_to_labels_and_confidence">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">prediction_to_labels_and_confidence</span><span class="p">(</span>
     <span class="n">pred</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
@@ -489,7 +489,7 @@
 
 
 <div class="viewcode-block" id="PredictionsStore">
-<a class="viewcode-back" href="../../../api/ethograph.labels.predictions.PredictionsStore.html#ethograph.labels.predictions.PredictionsStore">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.predictions.PredictionsStore">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">PredictionsStore</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Lazy per-trial loader for a predictions folder.</span>
 
@@ -533,7 +533,7 @@
                 <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">[</span><span class="n">trial</span><span class="p">]</span> <span class="o">=</span> <span class="n">p</span>
 
 <div class="viewcode-block" id="PredictionsStore.get_file">
-<a class="viewcode-back" href="../../../api/ethograph.labels.predictions.PredictionsStore.html#ethograph.labels.predictions.PredictionsStore.get_file">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.predictions.PredictionsStore.get_file">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trial</span><span class="p">,</span> <span class="n">trial_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the prediction file path for a trial, or None.&quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_resolve</span><span class="p">(</span><span class="n">trial_list</span><span class="p">)</span>
@@ -541,7 +541,7 @@
 
 
 <div class="viewcode-block" id="PredictionsStore.get_confidence">
-<a class="viewcode-back" href="../../../api/ethograph.labels.predictions.PredictionsStore.html#ethograph.labels.predictions.PredictionsStore.get_confidence">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.predictions.PredictionsStore.get_confidence">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_confidence</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trial</span><span class="p">,</span> <span class="n">dt</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Load and return the confidence array for one trial.</span>
 
@@ -558,7 +558,7 @@
 
 
 <div class="viewcode-block" id="PredictionsStore.load_all">
-<a class="viewcode-back" href="../../../api/ethograph.labels.predictions.PredictionsStore.html#ethograph.labels.predictions.PredictionsStore.load_all">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.predictions.PredictionsStore.load_all">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">load_all</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">dt</span><span class="p">,</span>

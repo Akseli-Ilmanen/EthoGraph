@@ -51,7 +51,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Keyboard Shortcuts" href="shortcuts.html" />
-    <link rel="prev" title="User guide" href="index.html" />
+    <link rel="prev" title="Changepoint correction" href="changepoints/correction.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -350,6 +350,23 @@
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="user_manual.html">User Manual</a></li>
+<li class="toctree-l1"><a class="reference internal" href="nwb_alignment.html">NWB alignment</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="labels/index.html">Labels</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="labels/labelling_gui.html">Labelling in the GUI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/importing.html">Importing labels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/exporting.html">Exporting labels</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="changepoints/index.html">Changepoints</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/overview.html">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/kinematic.html">Kinematic changepoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/audio.html">Audio changepoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/ruptures.html">Ruptures</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/correction.html">Changepoint correction</a></li>
+</ul>
+</details></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Plot Settings</a></li>
 <li class="toctree-l1"><a class="reference internal" href="shortcuts.html">Keyboard Shortcuts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
@@ -417,7 +434,6 @@
 <span id="target-plot-settings"></span><h1>Plot Settings<a class="headerlink" href="#plot-settings" title="Link to this heading">#</a></h1>
 <section id="zooming">
 <h2>Zooming<a class="headerlink" href="#zooming" title="Link to this heading">#</a></h2>
-<p><img alt="zooming" src="media/zooming.gif" /></p>
 <ul class="simple">
 <li><p><strong>Mouse wheel</strong>: Zoom in/out both axes</p></li>
 <li><p><strong>Zoom horizontally</strong>: Right-click (hold) drag horizontally to zoom in/out along the time axis</p></li>
@@ -427,7 +443,6 @@
 </section>
 <section id="axes">
 <h2>Axes<a class="headerlink" href="#axes" title="Link to this heading">#</a></h2>
-<p><img alt="axes_settings" src="media/axes_settings.gif" /></p>
 <ul class="simple">
 <li><p><strong>Auto-scale axes</strong> (<code class="docutils literal notranslate"><span class="pre">Ctrl</span> <span class="pre">+</span> <span class="pre">A</span></code>): Automatically adjust Y-axis based on visible data. Helpful when switching between features.</p></li>
 <li><p><strong>Lock axes</strong> (<code class="docutils literal notranslate"><span class="pre">Ctrl</span> <span class="pre">+</span> <span class="pre">L</span></code>): Lock Y-axis to specific values for consistent viewing.</p></li>
@@ -446,12 +461,12 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="index.html"
+       href="changepoints/correction.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">User guide</p>
+        <p class="prev-next-title">Changepoint correction</p>
       </div>
     </a>
     <a class="right-next"

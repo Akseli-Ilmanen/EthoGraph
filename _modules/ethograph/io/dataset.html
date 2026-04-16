@@ -409,7 +409,7 @@
 
 
 <div class="viewcode-block" id="downsample_trialtree">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.downsample_trialtree">[docs]</a>
+<a class="viewcode-back" href="../../../api/ethograph.io.dataset.downsample_trialtree.html#ethograph.io.dataset.downsample_trialtree">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">downsample_trialtree</span><span class="p">(</span><span class="n">dt</span><span class="p">:</span> <span class="n">TrialTree</span><span class="p">,</span> <span class="n">factor</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrialTree</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Downsample every trial in a TrialTree using a min-max envelope.</span>
 
@@ -434,7 +434,7 @@
 <span class="sd">    -------</span>
 <span class="sd">    TrialTree</span>
 <span class="sd">        New tree with downsampled data.  Each trial&#39;s ``attrs`` includes</span>
-<span class="sd">        ``downsample_factor`` and ``downsample_method`` for provenance.</span>
+<span class="sd">        ``downsample_factor`` and ``downsample_method``.</span>
 
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
@@ -533,7 +533,7 @@
 
 
 <div class="viewcode-block" id="add_changepoints_to_ds">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.add_changepoints_to_ds">[docs]</a>
+<a class="viewcode-back" href="../../../api/ethograph.io.dataset.add_changepoints_to_ds.html#ethograph.io.dataset.add_changepoints_to_ds">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">add_changepoints_to_ds</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">target_feature</span><span class="p">,</span> <span class="n">changepoint_name</span><span class="p">,</span> <span class="n">changepoint_func</span><span class="p">,</span> <span class="o">**</span><span class="n">func_kwargs</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Detect changepoints in a feature and store them in the dataset.</span>
 
@@ -606,7 +606,7 @@
 
 
 <div class="viewcode-block" id="add_angle_rgb_to_ds">
-<a class="viewcode-back" href="../../../api/trialtree.html#ethograph.add_angle_rgb_to_ds">[docs]</a>
+<a class="viewcode-back" href="../../../api/ethograph.io.dataset.add_angle_rgb_to_ds.html#ethograph.io.dataset.add_angle_rgb_to_ds">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">add_angle_rgb_to_ds</span><span class="p">(</span><span class="n">ds</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">,</span> <span class="n">smoothing_params</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute heading angles and RGB color-coding from 2-D position data.</span>
 

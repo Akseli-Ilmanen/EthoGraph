@@ -418,17 +418,21 @@
 <h2>Model predictions import<a class="headerlink" href="#model-predictions-import" title="Link to this heading">#</a></h2>
 <p>Import predictions from action segmentation models (DLC2Action, ASFormer, MS-TCN) directly in the GUI. Per-trial prediction files (<code class="docutils literal notranslate"><span class="pre">.npy</span></code>/<code class="docutils literal notranslate"><span class="pre">.pickle</span></code>) with shape <code class="docutils literal notranslate"><span class="pre">(T,</span> <span class="pre">n_classes)</span></code> or <code class="docutils literal notranslate"><span class="pre">(T,)</span></code> will be converted to label intervals with confidence overlay (1 - entropy of classwise softmax).</p>
 </section>
-<section id="more-sosphiticated-changepoitn-detection">
-<h2>More sosphiticated changepoitn detection<a class="headerlink" href="#more-sosphiticated-changepoitn-detection" title="Link to this heading">#</a></h2>
-<p>Current methods are fast (gradient based, RMS-based, etc.), but could also use ML for detection. Important that it’s easily reproducable, so it represents a reliable feature in feature space.
-Sometimes the changepoint correction post-model output makes things works, transformer learns better rpresentation than simple gradient based methods.</p>
+<section id="more-sosphiticated-changepoint-detection">
+<h2>More sosphiticated changepoint detection<a class="headerlink" href="#more-sosphiticated-changepoint-detection" title="Link to this heading">#</a></h2>
+<p>Current methods are fast (gradient based, RMS-based, etc.), but could also use ML for detection. Important that it’s easily reproducable, so it represents a reliable feature in feature space. Sometimes the changepoint correction post-model output makes things worse, transformer learns better representation than simple gradient based methods.</p>
 </section>
 <section id="changepoint-features">
 <h2>Changepoint features<a class="headerlink" href="#changepoint-features" title="Link to this heading">#</a></h2>
-<p>Changepoint features to aid action and audio segmentation models.</p>
+<p>Using <a class="reference internal" href="../api/ethograph.features.changepoints.more_changepoint_features.html#ethograph.features.changepoints.more_changepoint_features" title="ethograph.features.changepoints.more_changepoint_features"><code class="xref py py-func docutils literal notranslate"><span class="pre">more_changepoint_features()</span></code></a> massively improved fine-grained accuracy for <a class="reference external" href="https://github.com/ChinaYi/ASFormer">ASFormer</a>, would be cool if this could be exported generally to segmentation models (DlC2Action, etc.)</p>
 </section>
-<section id="dandi-streaming">
-<h2>Dandi streaming<a class="headerlink" href="#dandi-streaming" title="Link to this heading">#</a></h2>
+<section id="other">
+<h2>Other<a class="headerlink" href="#other" title="Link to this heading">#</a></h2>
+<ul class="simple">
+<li><p>Audio changepoints</p></li>
+<li><p>Interactive PSTH <code class="docutils literal notranslate"><span class="pre">ethograph.gui.widgets_psth</span></code></p></li>
+<li><p>Single-trial neural dimensionality reduction techniques, visualize label segments in latent spaces</p></li>
+</ul>
 </section>
 </section>
 
@@ -471,9 +475,9 @@ Sometimes the changepoint correction post-model output makes things works, trans
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-predictions-import">Model predictions import</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#more-sosphiticated-changepoitn-detection">More sosphiticated changepoitn detection</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#more-sosphiticated-changepoint-detection">More sosphiticated changepoint detection</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changepoint-features">Changepoint features</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#dandi-streaming">Dandi streaming</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#other">Other</a></li>
 </ul>
   </nav></div>
 

@@ -445,7 +445,7 @@
 <span class="c1"># ---------------------------------------------------------------------------</span>
 
 <div class="viewcode-block" id="labels_tsv_path">
-<a class="viewcode-back" href="../../../api/ethograph.labels.tsv_store.labels_tsv_path.html#ethograph.labels.tsv_store.labels_tsv_path">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.labels_tsv_path">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">labels_tsv_path</span><span class="p">(</span><span class="n">nc_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span> <span class="n">suffix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Derive the labels TSV path from the .nc file path.</span>
 
@@ -469,7 +469,7 @@
 
 
 <div class="viewcode-block" id="validate_labels_tsv">
-<a class="viewcode-back" href="../../../api/ethograph.labels.tsv_store.validate_labels_tsv.html#ethograph.labels.tsv_store.validate_labels_tsv">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.validate_labels_tsv">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">validate_labels_tsv</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that a labels DataFrame has all required columns.</span>
 
@@ -489,7 +489,7 @@
 
 
 <div class="viewcode-block" id="load_labels_tsv">
-<a class="viewcode-back" href="../../../api/ethograph.labels.tsv_store.load_labels_tsv.html#ethograph.labels.tsv_store.load_labels_tsv">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.load_labels_tsv">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_labels_tsv</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Load labels from a TSV file.</span>
 
@@ -538,7 +538,7 @@
 
 
 <div class="viewcode-block" id="save_labels_tsv">
-<a class="viewcode-back" href="../../../api/ethograph.labels.tsv_store.save_labels_tsv.html#ethograph.labels.tsv_store.save_labels_tsv">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.save_labels_tsv">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">save_labels_tsv</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span> <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Save labels DataFrame to TSV. Uses atomic write (tmp + rename).</span>
 
@@ -590,7 +590,7 @@
 <span class="c1"># ---------------------------------------------------------------------------</span>
 
 <div class="viewcode-block" id="get_trial_from_tsv">
-<a class="viewcode-back" href="../../../api/ethograph.labels.tsv_store.get_trial_from_tsv.html#ethograph.labels.tsv_store.get_trial_from_tsv">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.get_trial_from_tsv">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_trial_from_tsv</span><span class="p">(</span><span class="n">all_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract all rows for a single trial from the all-labels DataFrame.</span>
 
@@ -611,7 +611,7 @@
 
 
 <div class="viewcode-block" id="set_trial_in_tsv">
-<a class="viewcode-back" href="../../../api/ethograph.labels.tsv_store.set_trial_in_tsv.html#ethograph.labels.tsv_store.set_trial_in_tsv">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.set_trial_in_tsv">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">set_trial_in_tsv</span><span class="p">(</span>
     <span class="n">all_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">trial</span><span class="p">,</span> <span class="n">trial_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
@@ -641,7 +641,7 @@
 <span class="c1"># ---------------------------------------------------------------------------</span>
 
 <div class="viewcode-block" id="get_trial_meta">
-<a class="viewcode-back" href="../../../api/ethograph.labels.tsv_store.get_trial_meta.html#ethograph.labels.tsv_store.get_trial_meta">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.get_trial_meta">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_trial_meta</span><span class="p">(</span><span class="n">all_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">trial</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Read per-trial metadata from columns. Returns dict with defaults for missing trials.&quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">all_df</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">all_df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
@@ -663,7 +663,7 @@
 
 
 <div class="viewcode-block" id="set_trial_meta_attr">
-<a class="viewcode-back" href="../../../api/ethograph.labels.tsv_store.set_trial_meta_attr.html#ethograph.labels.tsv_store.set_trial_meta_attr">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.set_trial_meta_attr">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">set_trial_meta_attr</span><span class="p">(</span><span class="n">all_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">trial</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Set a per-trial metadata column value for all rows of a trial.&quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">all_df</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -676,7 +676,7 @@
 
 
 <div class="viewcode-block" id="init_empty_labels">
-<a class="viewcode-back" href="../../../api/ethograph.labels.tsv_store.init_empty_labels.html#ethograph.labels.tsv_store.init_empty_labels">[docs]</a>
+<a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.init_empty_labels">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">init_empty_labels</span><span class="p">(</span><span class="n">trials</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Create empty labels DataFrame.&quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="n">_empty_all_labels</span><span class="p">()</span></div>

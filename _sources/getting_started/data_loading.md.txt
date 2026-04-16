@@ -49,7 +49,7 @@ The quickest way to explore the GUI: click **Select templates** in the I/O widge
 
 :::{tab-item} NetCDF (.nc)
 
-If you already have a `session.nc` file (e.g. from an ethograph pipeline or {doc}`loading_script`):
+If you already have a `session.nc` file (e.g. from an ethograph pipeline or {doc}`multi_trial`):
 
 1. In the **I/O** widget, select your session data **file** (`.nc`)
 2. Select the video **folder** containing camera recordings (`.mp4`) [^4]
@@ -66,10 +66,8 @@ Media paths are resolved from `.ethograph/alignment.nwb` if present, with fallba
 NWB files are self-contained — EthoGraph reads trials, features, and media references directly:
 
 1. In the **I/O** widget, select your `.nwb` file
-2. [Optional] Select a local video folder if videos are not embedded or URLs
+2. [Optional] Select a local video folder if folder specifeid in ImageSseries external files changed CLAUDE rephrase.
 3. Click **Load**
-
-EthoGraph uses {func}`~ethograph.io.nwb_import.read_trials_table` to extract trial boundaries and {func}`~ethograph.io.nwb_import.probe_behavioral_series` to discover available time-series. NWB data is loaded via pynapple internally.
 :::
 
 :::{tab-item} Pynapple (.npz / folder)
@@ -77,10 +75,9 @@ EthoGraph uses {func}`~ethograph.io.nwb_import.read_trials_table` to extract tri
 Pynapple data saved with {func}`~pynapple.save_file` or pynapple folders:
 
 1. In the **I/O** widget, select your `.npz` file or pynapple folder
-2. [Optional] Select video/audio/tracking folders
+2. [Optional] Select video/audio/tracking folders.
 3. Click **Load**
 
-Trial structure is detected automatically from {class}`~pynapple.IntervalSet` objects in the data. See {func}`~ethograph.io.pynapple.load_nap_data`.
 :::
 
 ::::
@@ -99,7 +96,7 @@ The dialog handles **single-file** workflows. For multiple trials, multiple came
 | Audio file | Vocal / acoustic data | {doc}`loading_audio` |
 | Numpy file | Pre-computed feature array | {doc}`loading_numpy` |
 | Ephys recording | Raw electrophysiology +/- Kilosort | {doc}`loading_ephys` |
-| Custom script | Multi-trial, multi-cam, multi-mic | {doc}`loading_script` |
+| Custom script | Multi-trial, multi-cam, multi-mic | {doc}`multi_trial` |
 
 ---
 
@@ -166,5 +163,6 @@ loading_pose
 loading_audio
 loading_numpy
 loading_ephys
-loading_script
+multi_trial
+trialtree
 ```
