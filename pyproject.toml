@@ -33,6 +33,7 @@ dependencies = [
     "pyyaml",
     "crowsetta",
     "pynwb",
+    "h5py",
 ]
 
 [project.urls]
@@ -61,19 +62,15 @@ audio = [
     "sounddevice",
 ]
 
-# NWB: read/write NWB files, DANDI integration
-nwb = [
-    "h5py",
+# DANDI: download datasets from the DANDI archive (heavy: ~40 transitive deps)
+dandi = [
     "dandi",
-    "remfile",
-    "lindi",
 ]
 
 # Neural: spike sorting, firing rates, ephys analysis
 neural = [
     "phylib>=2.6.4",
     "neo",
-    "h5py",
 ]
 
 # GUI: napari-based graphical interface with all plot types
@@ -97,7 +94,7 @@ gui = [
 # Everything
 all = [
     "ethograph[gui]",
-    "ethograph[nwb]",
+    "ethograph[dandi]",
 ]
 
 # Development

@@ -4,8 +4,6 @@
 
 ## Zooming
 
-![zooming](../media/zooming.gif)
-
 - **Mouse wheel**: Zoom in/out both axes
 - **Zoom horizontally**: Right-click (hold) drag horizontally to zoom in/out along the time axis
 - **Zoom vertically**: Right-click (hold) drag vertically to zoom out along y-axis
@@ -14,8 +12,6 @@
 
 
 ## Axes
-
-![axes_settings](../media/axes_settings.gif)
 
 - **Auto-scale axes** (`Ctrl + A`): Automatically adjust Y-axis based on visible data. Helpful when switching between features.
 - **Lock axes** (`Ctrl + L`): Lock Y-axis to specific values for consistent viewing.

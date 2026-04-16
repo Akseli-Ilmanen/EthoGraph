@@ -1,6 +1,14 @@
 (target-installation)=
 # Installation
 
+```{warning}
+**ethograph is not yet published on PyPI.** Until the first release,
+install directly from the GitHub repository (see
+[Install from source](#install-from-source) below). All `pip install
+ethograph` commands on this page will only work after the package is
+published.
+```
+
 ## Prerequisites
 
 ethograph requires **Python 3.11 or later**.
@@ -142,12 +150,14 @@ pipelines without pulling in GUI dependencies.
 uv pip install ethograph
 ```
 
-### With NWB support
 
-To read and write NWB files and access data from DANDI:
+### DANDI archive downloads
+
+To browse and download datasets from the [DANDI
+archive](https://dandiarchive.org/) via the GUI wizard:
 
 ```bash
-uv pip install "ethograph[nwb]"
+uv pip install "ethograph[dandi]"
 ```
 
 ### Everything
@@ -167,22 +177,23 @@ You can combine them as needed:
 |------------|-------------------------------------------------------|
 | `audio`    | Audio waveforms, spectrograms, vocal segmentation     |
 | `neural`   | Spike sorting analysis tools (phylib, neo)            |
-| `nwb`      | NWB file I/O, DANDI access                            |
+| `dandi`    | DANDI archive download client (heavy, opt-in)         |
 | `gui`      | Full graphical interface (includes `audio` + `neural`) |
-| `all`      | Everything above                                      |
+| `all`      | Everything above (`gui` + `dandi`)                    |
 | `dev`      | Testing and linting tools                             |
 | `docs`     | Documentation build dependencies                     |
 
 Combine extras with commas:
 
 ```bash
-uv pip install "ethograph[nwb,gui]"
+uv pip install "ethograph[gui,dandi]"
 ```
 
-## Install from source (before PyPI release)
+(install-from-source)=
+## Install from source
 
-If ethograph is not yet published on PyPI, install directly from your local
-clone:
+Use this method while ethograph is not yet on PyPI, or whenever you
+want to track the latest development version:
 
 ```bash
 git clone https://github.com/Akseli-Ilmanen/ethograph.git

@@ -1076,10 +1076,6 @@ def align_media_per_trial(
         columns.  ``start_time`` / ``stop_time`` are optional -- omit for
         aligned-to-trial data.
 
-        Example::
-            trial | video_cam-1    | audio_mic-1   | pose_cam-1
-            1     | cam1_t1.mp4    | mic1_t1.wav   | cam1_t1.h5
-            2     | cam1_t2.mp4    | mic1_t2.wav   | cam1_t2.h5
 
     stream_rates
         Sampling rate per stream.  Must include every stream that has

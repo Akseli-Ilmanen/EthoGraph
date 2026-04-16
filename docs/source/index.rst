@@ -13,8 +13,6 @@
 ethograph
 =========
 
-A multimodal timeseries GUI for neuroethology.
-
 EthoGraph is a graphical user interface for visualizing and segmenting
 multimodal timeseries behavioural data. It is built upon
 `napari <https://napari.org>`_,

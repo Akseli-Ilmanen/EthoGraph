@@ -121,4 +121,4 @@ EthoGraph reads `dat_path`, `n_channels_dat`, and `sample_rate` from it. If the 
 (target-ephys-multi-trial)=
 ## Ephys with multiple trials
 
-Ephys is session-wide. If you have separate video/audio files per trial, build a `session.nc` first (see {doc}`loading_script`), then select the ephys file separately in the I/O widget.
+Ephys is session-wide. If you have separate video/audio files per trial, build a `session.nc` first (see {doc}`multi_trial`), then select the ephys file separately in the I/O widget.

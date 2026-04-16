@@ -41,10 +41,6 @@ then access each trial by ID or index:
    dt.save("session.nc")
    dt = eto.open("session.nc")
 
-Media file paths, trial timing, and stream offsets live in a separate
-NWB alignment file (``<project>/.ethograph/alignment.nwb``), accessed via
-``dt.nwb_alignment``. See :ref:`Media and alignment <target-trialtree-media-api>`.
-
 For the :class:`xarray.Dataset` structure expected inside each trial, see
 :doc:`../getting_started/data_requirements`.
 
@@ -136,132 +132,6 @@ Filtering
 
 ----
 
-.. _target-trialtree-media-api:
-
-Media files and alignment
--------------------------
-
-Media filenames, trial timing, and stream offsets are stored in an **NWB
-alignment file** at ``<project>/.ethograph/alignment.nwb``, not inside the
-``.nc`` dataset. The alignment is accessed via ``dt.nwb_alignment``, which
-is an :class:`~ethograph.io.nwb_alignment.NWBAlignment` (or its null-object
-:class:`~ethograph.io.nwb_alignment.EmpytAlignment` when no NWB file is found).
-
-Create alignment files with :func:`~ethograph.io.nwb_alignment.align_media_per_trial`
-or :func:`~ethograph.io.nwb_alignment.align_media_from_streams`:
-
-.. code-block:: python
-
-   import pandas as pd
-   from ethograph.io.nwb_alignment import align_media_per_trial
-
-   trial_table = pd.DataFrame({
-       "trial": [1, 2, 3],
-       "video_cam-1": ["t1.mp4", "t2.mp4", "t3.mp4"],
-       "pose_cam-1":  ["t1.h5", "t2.h5", "t3.h5"],
-   })
-
-   align_media_per_trial(
-       trial_table,
-       stream_rates={"video": 30.0, "pose": 30.0},
-       output_path=".ethograph/alignment.nwb",
-   )
-
-Columns follow the ``{stream}_{device}`` convention (e.g. ``video_cam-1``,
-``audio_mic-1``).
-
-.. autofunction:: ethograph.io.nwb_alignment.align_media_per_trial
-
-.. autofunction:: ethograph.io.nwb_alignment.align_media_from_streams
-
-Reading alignment metadata
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. code-block:: python
-
-   alignment = dt.nwb_alignment
-   alignment.cameras           # ["cam-1", "cam-2"]
-   alignment.mics              # ["mic-1"]
-   alignment.start_time(1)     # trial 1 start (seconds)
-   alignment.get_media(1, "video", "cam-1")  # "t1.mp4"
-
-.. autoclass:: ethograph.io.nwb_alignment.NWBAlignment
-   :members: cameras, mics, start_time, stop_time, get_media, devices,
-             resolve_media_path, stream_offset_for_trial, get_stream_rate,
-             electrical_series, trials_df, has_real_timing, print_session
-   :no-inherited-members:
-
-.. autofunction:: ethograph.io.nwb_alignment.discover_nwb
-
-.. autofunction:: ethograph.io.nwb_alignment.make_nwb_alignment
-
-----
-
-.. _target-trialtree-session-api:
-
-Session table and timing
--------------------------
-
-Trial timing (start/stop) is stored in the NWB alignment file's trials
-table. When present, it enables session-mode navigation and restricting
-neural data to trial windows.
-
-.. code-block:: python
-
-   alignment = dt.nwb_alignment
-   alignment.start_time(1)      # 0.0
-   alignment.stop_time(1)       # 120.0
-   alignment.trials_df          # full trials DataFrame
-
-----
-
-.. _target-trialtree-offsets-api:
-
-Stream offsets
---------------
-
-For session-wide streams (e.g. ephys), the offset specifies when sample 0
-of the file occurs in session time. This is stored in the alignment file
-via :func:`~ethograph.io.nwb_alignment.align_media_from_streams` using the
-``starting_time`` field:
-
-.. code-block:: python
-
-   from ethograph.io.nwb_alignment import align_media_from_streams
-
-   streams = [
-       {"name": "video_cam-1", "files": ["t1.mp4", "t2.mp4"], "rate": 30.0},
-       {"name": "ephys_probe-1", "files": ["session.dat"],
-        "rate": 30000.0, "starting_time": 0.5},
-   ]
-   align_media_from_streams(trials_df, streams, ".ethograph/alignment.nwb")
-
-To query offsets at runtime:
-
-.. code-block:: python
-
-   alignment = dt.nwb_alignment
-   alignment.stream_offset_for_trial(1, "ephys")   # offset in seconds
-
-----
-
-Labels
-------
-
-Labels are stored in a **TSV file** alongside the ``.nc`` file (see
-:doc:`Label Storage <../user_guide/export_labels>` for the full format spec).
-The TSV uses columns ``onset_s``, ``offset_s``, ``labels`` (int), ``individual``,
-and ``trial``, plus per-trial metadata columns.
-
-.. code-block:: python
-
-   from ethograph.labels.tsv_store import load_labels_tsv, save_labels_tsv
-
-   df = load_labels_tsv("data_labels.tsv")
-   print(df[df["trial"] == 1])  # labels for trial 1
-
-----
-
 Saving
 ------
 
@@ -270,35 +140,23 @@ Saving
    dt.save("path/to/session.nc")
    dt.save()  # overwrite the file it was loaded from
 
-When saving to a new directory, the alignment NWB is automatically copied
-alongside the ``.nc`` file.
+When saving to a new directory, the NWB alignment file is automatically
+copied alongside the ``.nc``.
 
 .. automethod:: TrialTree.save
 
 ----
 
-NWB import helpers
-------------------
+See also
+--------
 
-These functions probe NWB files to discover available data for import:
-
-.. autofunction:: ethograph.io.nwb_import.read_trials_table
-
-.. autofunction:: ethograph.io.nwb_import.probe_behavioral_series
-
-.. autofunction:: ethograph.io.nwb_import.probe_electrical_series
-
-.. autofunction:: ethograph.io.nwb_import.probe_label_sources
-
-----
-
-Dataset utilities
------------------
-
-Functions for building and augmenting datasets:
-
-.. autofunction:: ethograph.io.dataset.downsample_trialtree
-
-.. autofunction:: ethograph.io.dataset.add_changepoints_to_ds
-
-.. autofunction:: ethograph.io.dataset.add_angle_rgb_to_ds
+- :doc:`dataset` — dataset builders (:func:`~ethograph.io.dataset.downsample_trialtree`,
+  :func:`~ethograph.io.dataset.add_changepoints_to_ds`,
+  :func:`~ethograph.io.dataset.add_angle_rgb_to_ds`).
+- :doc:`pynapple_io` — pynapple loading (:func:`~ethograph.io.pynapple.load_nap_data`,
+  :func:`~ethograph.io.pynapple.add_changepoints_to_nap`) and NWB-import probes.
+- :doc:`nwb_alignment` — trial timing, media paths, stream offsets via
+  ``dt.nwb_alignment``.
+- :doc:`labels` — TSV label sidecar format and helpers.
+- :doc:`changepoints` — detection, merging, time extraction, and label
+  correction.
