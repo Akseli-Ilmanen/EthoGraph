@@ -72,14 +72,15 @@ if __name__ == "__main__":
    
    
 
-   from ethograph.utils.paths import find_config
+
    mapping_file = os.path.join(eto.get_project_root(), "configs", "crowlab", "mapping_Ivy.txt") # CHANGE FOR Ivy/poppy
    
    
    nc_paths = [
-      r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260413_01\behav\Trial_data.nc",
-      r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260414_01\behav\Trial_data.nc",
-      r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260415_01\behav\Trial_data.nc",
+      # r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260413_01\behav\Trial_data.nc",
+      # r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260414_01\behav\Trial_data.nc",
+      # r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260415_01\behav\Trial_data.nc",
+      r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260416_01\behav\Trial_data.nc",
    ]
    
    

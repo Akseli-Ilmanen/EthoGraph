@@ -963,6 +963,7 @@ class LabelsWidget(QWidget):
 
         self.old_labels_pos = self.current_labels_pos
         self.old_labels = self.current_labels
+        self.selected_labels = self.current_labels
 
         self.ready_for_label_click = True
         self.first_click = None

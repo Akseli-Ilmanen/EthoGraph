@@ -11,3 +11,6 @@ Plot settings
 
 Make tutorials
 - wizard multi trials
+
+Installation.md
+- either simplify toml file, or have pip istanll ethograph[gui] without audio, neural possible

@@ -85,7 +85,7 @@ gui = [
     "jinja2",
     "natsort",
     "tqdm",
-    "nwb-video-widgets @ git+https://github.com/Akseli-Ilmanen/nwb-video-widgets.git",
+    "nwb-video-widgets",
     # audio extras (inlined — self-referential extras don't resolve for local installs)
     "audioio",
     "soundfile",
