@@ -432,12 +432,12 @@
                   
   <section class="tex2jax_ignore mathjax_ignore" id="nwb-alignment">
 <span id="target-nwb-alignment"></span><h1>NWB alignment<a class="headerlink" href="#nwb-alignment" title="Link to this heading">#</a></h1>
-<p>EthoGraph treats <a class="reference external" href="https://www.nwb.org/">NWB</a> as a native format — when you
-load an <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> file, session metadata (trial timing, media paths, stream
-offsets) is read directly from it. For other formats (xarray <code class="docutils literal notranslate"><span class="pre">.nc</span></code>, <code class="docutils literal notranslate"><span class="pre">.npz</span></code>,
-pynapple folders) that lack this metadata, EthoGraph creates a sidecar
-<strong><code class="docutils literal notranslate"><span class="pre">.ethograph/alignment.nwb</span></code></strong> file that ties features to video, audio,
-ephys, and trial structure.</p>
+<p>EthoGraph stores session metadata (trial timing, media paths, stream
+offsets) in NWB. For <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> sources the source file is used directly —
+no sidecar is created and edits go back into the source. For other
+formats (xarray <code class="docutils literal notranslate"><span class="pre">.nc</span></code>, <code class="docutils literal notranslate"><span class="pre">.npz</span></code>, pynapple folders) a sidecar
+<strong><code class="docutils literal notranslate"><span class="pre">.ethograph/alignment.nwb</span></code></strong> is written next to the data file to tie
+features to video, audio, ephys, and trial structure.</p>
 <p>This page explains what the alignment file contains and how to read / write
 it. For the step-by-step workflow of creating one alongside a multi-trial
 dataset, see <a class="reference internal" href="../getting_started/multi_trial.html"><span class="doc">Multi-trial setup</span></a>.</p>
