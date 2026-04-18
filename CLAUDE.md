@@ -224,14 +224,14 @@ NWB files are loaded via pynapple (which handles NWB → in-memory conversion). 
 
 ### Alignment System: `nwb_alignment.py`
 
-**Rule: Always create `alignment.nwb` for project directories.** The NWB wizard always produces `.ethograph/alignment.nwb` — for DANDI-downloaded projects, local NWB projects, and non-NWB data alike. This eliminates the decision logic "source NWB vs sidecar alignment.nwb". For standalone `.nwb` file loading (no project dir), the source NWB is used directly via `_resolve_alignment`.
+**Rule: `.nwb` sources are read directly; `.ethograph/alignment.nwb` sidecars only exist for non-NWB sources.** Since NWB files are local and writable, edits go into the source NWB (via `edit_nwb` in `nwb_alignment.py`). No bootstrap copies, no two-file divergence. Wizards still produce `.ethograph/alignment.nwb` for `.nc` / `.npz` / pynapple-folder projects that have no NWB to write into.
 
 **`NWBAlignment`** reads any NWB file for session metadata. Constructed from a file path (`NWBAlignment(path)`). Key methods:
 - `get_stream_rate(stream, device)` — read `.rate` from any ImageSeries
 - `resolve_media_path(trial, stream, device, fallback_folder)` — try ImageSeries path → NWB-relative → fallback folder + filename.
 - `stream_offset_for_trial(trial, stream, device)` — trial-relative offset derived from ImageSeries timing
 
-**Priority order** (`_resolve_alignment` in `data_loader.py`): For `.nwb` sources: source NWB trials → sidecar alignment.nwb → bootstrap from ImageSeries → sidecar metadata TSV. For other sources: sidecar alignment.nwb → sidecar metadata TSV.
+**Priority order** (`_resolve_alignment` in `data_loader.py`): For `.nwb` sources: source NWB trials → sidecar metadata TSV (timing only). For non-NWB sources: sidecar `.ethograph/alignment.nwb` → sidecar metadata TSV.
 
 **Path fallback**: ImageSeries stores original paths. If files move, `resolve_media_path` extracts the filename and joins with a user-specified fallback folder (`video_folder`, `audio_folder`, etc.).
 
@@ -334,5 +334,5 @@ Bridge pattern: intervals→dense→correct→intervals. Kinematic CPs stored as
 - NetCDF with trials. Time coords: `time`, `time_aux`, etc. (any containing 'time')
 - All `data_vars` with a time dimension are features (no `attrs["type"]` required). Changepoints still use `attrs["type"] = "changepoints"`.
 - Color variables are identified by name: any feature with "rgb" in the name (case-insensitive) is offered in the Colors combo. No `attrs["type"] = "colors"` needed.
-- Media/session metadata: for NWB sources, read from the source NWB directly; for non-NWB sources, from `.ethograph/alignment.nwb`
+- Media/session metadata: for `.nwb` sources, read from the source NWB directly (no sidecar created); for non-NWB sources, from `.ethograph/alignment.nwb`
 - Labels: stored in `_labels.tsv` (not inside `.nc`). Legacy `.nc` labels auto-migrate on first load.

@@ -13,7 +13,7 @@ Don't skip this step; it may take a minute.
 
 To create a new behavioural label:
 
-1. Press one of the number keys to activate a specific behavioural label.
+1. Press one of the number/letters keys to activate a specific behavioural label.
 2. Click twice on the line plot to define the start and end boundaries of the label.
 3. The label will be created and displayed with a color-coded overlay.
 

@@ -128,104 +128,15 @@ def _is_pynapple_path_folder(file_path: str) -> bool:
 
 
 
-def _bootstrap_alignment_nwb(source_nwb: Path) -> Path | None:
-    """Create ``.ethograph/alignment.nwb`` from a source NWB's acquisition ImageSeries.
-
-    When loading a standalone ``.nwb`` that has ImageSeries with
-    ``external_file`` but no sidecar alignment.nwb yet, this bootstraps
-    one so the GUI can resolve media paths and stream rates.
-    """
-    from datetime import datetime
-    from uuid import uuid4
-
-    from dateutil.tz import tzlocal
-    from pynwb import NWBHDF5IO, NWBFile
-    from pynwb.image import ImageSeries
-
-    with NWBHDF5IO(str(source_nwb), "r") as io:
-        nwb = io.read()
-
-        series_info = []
-        for name, obj in nwb.acquisition.items():
-            if not isinstance(obj, ImageSeries):
-                continue
-            if obj.external_file is None or len(obj.external_file) == 0:
-                continue
-            info = {
-                "name": name,
-                "description": obj.description or name,
-                "external_file": list(obj.external_file),
-                "starting_frame": (
-                    np.array(obj.starting_frame, dtype=np.int32)
-                    if obj.starting_frame is not None
-                    else np.zeros(1, dtype=np.int32)
-                ),
-            }
-            if obj.timestamps is not None:
-                info["timestamps"] = np.array(obj.timestamps)
-            elif obj.rate is not None:
-                info["rate"] = float(obj.rate)
-                info["starting_time"] = float(obj.starting_time or 0.0)
-            series_info.append(info)
-
-        if not series_info:
-            return None
-
-        trials_rows = []
-        if nwb.trials is not None and len(nwb.trials) > 0:
-            trials_df = nwb.trials.to_dataframe()
-            for _, row in trials_df.iterrows():
-                trials_rows.append((float(row["start_time"]), float(row["stop_time"])))
-
-    output_dir = source_nwb.parent / ".ethograph"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / "alignment.nwb"
-
-    nwbfile = NWBFile(
-        session_description="Alignment (bootstrapped from source NWB by ethograph).",
-        identifier=str(uuid4()),
-        session_start_time=datetime.now(tzlocal()),
-    )
-
-    for start, stop in trials_rows:
-        nwbfile.add_trial(start_time=start, stop_time=stop)
-
-    for info in series_info:
-        kwargs = {
-            "name": info["name"],
-            "description": info["description"],
-            "external_file": info["external_file"],
-            "format": "external",
-            "starting_frame": info["starting_frame"],
-        }
-        if "timestamps" in info:
-            kwargs["timestamps"] = info["timestamps"]
-        elif "rate" in info:
-            kwargs["rate"] = info["rate"]
-            kwargs["starting_time"] = info["starting_time"]
-        nwbfile.add_acquisition(ImageSeries(**kwargs))
-
-    with NWBHDF5IO(str(output_path), "w") as io:
-        io.write(nwbfile)
-
-    logger.info(
-        "Bootstrapped alignment.nwb from %s (%d ImageSeries)",
-        source_nwb.name,
-        len(series_info),
-    )
-    return output_path
-
-
 def _resolve_alignment(source_path: str | Path):
     """Resolve alignment source with priority order.
 
-    For source ``.nwb`` files:
-    1. Source NWB trials table.
-    2. Sidecar ``.ethograph/alignment.nwb``.
-    3. Bootstrap alignment.nwb from source NWB ImageSeries (if any have external files).
-    4. Sidecar metadata TSV with ``start_time`` and ``stop_time``.
+    For source ``.nwb`` files: use the source NWB directly. Trials and
+    ImageSeries (media paths, stream rates) are read from the source.
+    Falls back to a sidecar metadata TSV for timing if the source has
+    no trials table.
 
-    For other source paths:
+    For other source paths (``.nc``, ``.npz``, pynapple folders):
     1. Sidecar ``.ethograph/alignment.nwb``.
     2. Sidecar metadata TSV with ``start_time`` and ``stop_time``.
     """
@@ -248,22 +159,10 @@ def _resolve_alignment(source_path: str | Path):
         source_alignment = make_nwb_alignment(source)
         if not source_alignment.trials_df.empty:
             return source_alignment
-
-        sidecar_nwb = discover_nwb(source)
-        if sidecar_nwb is not None and Path(sidecar_nwb).exists():
-            sidecar_alignment = make_nwb_alignment(sidecar_nwb)
-            if not sidecar_alignment.trials_df.empty:
-                return sidecar_alignment
-        else:
-            bootstrapped = _bootstrap_alignment_nwb(source)
-            if bootstrapped is not None:
-                return make_nwb_alignment(bootstrapped)
-
         sidecar_tsv = metadata_tsv_path(source)
         tsv_alignment = _tsv_timing_alignment(sidecar_tsv)
         if tsv_alignment is not None:
             return tsv_alignment
-
         return source_alignment
 
     sidecar_nwb = discover_nwb(source)

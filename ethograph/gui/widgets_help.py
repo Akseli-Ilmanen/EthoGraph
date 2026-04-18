@@ -38,11 +38,11 @@ class HelpWidget(QWidget):
 
         help_layout = QHBoxLayout()
         self.docs_button = QPushButton("📚 Documentation")
-        self.docs_button.clicked.connect(lambda: webbrowser.open("https://ethograph.readthedocs.io/en/latest/"))
+        self.docs_button.clicked.connect(lambda: webbrowser.open("https://Akseli-Ilmanen.github.io/ethograph"))
         help_layout.addWidget(self.docs_button)
 
         self.shortcuts_button = QPushButton("⌨ Shortcuts")
-        self.shortcuts_button.clicked.connect(lambda: webbrowser.open("https://ethograph.readthedocs.io/en/latest/user_guide/shortcuts.html"))
+        self.shortcuts_button.clicked.connect(lambda: webbrowser.open("https://Akseli-Ilmanen.github.io/ethograph/user_guide/shortcuts.html"))
         help_layout.addWidget(self.shortcuts_button)
 
         self.github_button = QPushButton("🔗 GitHub Issues")
