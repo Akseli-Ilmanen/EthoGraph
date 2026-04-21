@@ -268,11 +268,10 @@ class VideoManager:
         ext = Path(video_path).suffix.lower()
         if ext in ('.avi', '.mov') and not self._video_format_warned:
             self._video_format_warned = True
-            # TODO: update link
             notify(
                 f"Video format '{ext}' may have inaccurate frame seeking. "
                 
-                f"See https://ethograph.readthedocs.io/en/latest/troubleshooting/",
+                f"See https://akseli-ilmanen.github.io/ethograph/user_guide/troubleshooting.html",
                 "warning",
             )
 
@@ -379,6 +378,7 @@ class VideoManager:
     # ------------------------------------------------------------------
 
     def add_camera(self, camera_name: str, video_path: str, layout_mgr, meta_widget, *, reader=None):
+        print(f"[add_camera] {camera_name}, exists={camera_name in self._extra_widgets}, reader={reader is not None}")
         if camera_name in self._extra_widgets:
             self._update_existing_camera(camera_name, video_path, reader=reader)
             return
@@ -404,12 +404,14 @@ class VideoManager:
         self._sync_widget_to_current_time(widget)
 
     def _update_existing_camera(self, camera_name: str, video_path: str, *, reader=None):
+        print(f"[update_existing_camera] {camera_name}, path={video_path}")
         if reader is None:
             reader = FastVideoReader(video_path, read_format='rgb24')
             _ = reader.shape
         fps = float(reader.stream.guessed_rate)
         self._store_camera_fps_in_session(camera_name, fps)
         video_data, time_offset = self._prepare_extra_video(reader, fps, camera_name)
+        print(f"[update_existing_camera] {camera_name}, fps={fps}, time_offset={time_offset}, video_data type={type(video_data).__name__}, shape={video_data.shape}")
         widget = self._extra_widgets[camera_name]
         widget.set_video(video_data, fps=fps, time_offset=time_offset)
         widget.show()

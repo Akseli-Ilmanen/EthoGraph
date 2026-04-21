@@ -14,8 +14,6 @@ from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
 from ethograph.labels.intervals import INTERVAL_COLUMNS
 from ethograph.io.trialtree import TrialTree
-from ethograph.io.nwb_alignment import align_media_per_trial
-
 INTERVAL_COLUMNS = {"trial", "onset_s", "offset_s", "labels", "individual"}
 
 
@@ -43,7 +41,7 @@ def build_multi_trial_dt(state: WizardState) -> TrialTree:
     dt = TrialTree.from_datasets(datasets, validate=True)
 
     # Build NWB file with trials table + acquisition items
-    nwb_path = align_media_per_trial(dt, state, trial_table, trial_ids, fps)
+    nwb_path = _build_nwb_file(dt, state, trial_table, trial_ids, fps)
     if nwb_path:
         from ethograph.io.nwb_alignment import make_nwb_alignment
         state.nwb_alignment = make_nwb_alignment(nwb_path)

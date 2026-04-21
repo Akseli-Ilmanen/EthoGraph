@@ -2355,19 +2355,20 @@ class DataWidget(QWidget):
 
     def _init_or_update_extra_cameras(self):
         if not hasattr(self, '_extra_camera_combos'):
+            print("[extra_cams] no _extra_camera_combos attr, returning early")
             return
         desired = self._get_desired_extra_cameras()
+        print(f"[extra_cams] desired={desired}, existing={set(self.video_mgr.extra_widgets.keys())}")
         to_add: dict[str, str] = {}
         for camera_name in desired:
-            widget = self.video_mgr.extra_widgets.get(camera_name)
-            if widget is not None and widget.isVisible():
-                continue
             video_path = self.video_mgr._resolve_video_path(camera_name, self.app_state.video_folder)
+            print(f"[extra_cams] {camera_name} -> path={video_path}")
             if video_path:
                 to_add[camera_name] = video_path
 
         from .video_manager import VideoManager
         readers = VideoManager.open_readers_parallel(to_add)
+        print(f"[extra_cams] readers opened for: {list(readers.keys())}")
 
         for camera_name, video_path in to_add.items():
             self.video_mgr.add_camera(
