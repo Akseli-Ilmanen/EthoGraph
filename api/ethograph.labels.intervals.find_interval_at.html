@@ -410,7 +410,8 @@
 <dl class="py function">
 <dt class="sig sig-object py" id="ethograph.labels.intervals.find_interval_at">
 <span class="sig-prename descclassname"><span class="pre">ethograph.labels.intervals.</span></span><span class="sig-name descname"><span class="pre">find_interval_at</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/intervals.html#find_interval_at"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.intervals.find_interval_at" title="Link to this definition">#</a></dt>
-<dd><p>Return DataFrame index of interval containing <em>time_s</em> for <em>individual</em>.</p>
+<dd><p>Return DataFrame index of state interval containing <em>time_s</em> for <em>individual</em>.</p>
+<p>Point events are never returned here — use <code class="xref py py-func docutils literal notranslate"><span class="pre">find_point_at()</span></code> for those.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

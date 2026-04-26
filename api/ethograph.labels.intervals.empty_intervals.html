@@ -414,7 +414,7 @@
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>Empty DataFrame with columns <code class="docutils literal notranslate"><span class="pre">onset_s</span></code>, <code class="docutils literal notranslate"><span class="pre">offset_s</span></code>, <code class="docutils literal notranslate"><span class="pre">labels</span></code>,
-<code class="docutils literal notranslate"><span class="pre">individual</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">individual</span></code>, <code class="docutils literal notranslate"><span class="pre">event_type</span></code>.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p>pd.DataFrame</p>
@@ -424,7 +424,7 @@
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">empty_intervals</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">empty_intervals</span><span class="p">()</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
-<span class="go">[&#39;onset_s&#39;, &#39;offset_s&#39;, &#39;labels&#39;, &#39;individual&#39;]</span>
+<span class="go">[&#39;onset_s&#39;, &#39;offset_s&#39;, &#39;labels&#39;, &#39;individual&#39;, &#39;event_type&#39;]</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
 <span class="go">0</span>
 </pre></div>

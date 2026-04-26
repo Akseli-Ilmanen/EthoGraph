@@ -483,7 +483,6 @@ In the <strong>I/O widget</strong>, click <strong>Create with own data</strong> 
 <p>The dialog creates generic variable names (<code class="docutils literal notranslate"><span class="pre">var_0</span></code>, <code class="docutils literal notranslate"><span class="pre">var_1</span></code>, …). To give columns meaningful names, create the dataset via a short script instead:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
 
 <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;features.npy&quot;</span><span class="p">)</span>   <span class="c1"># shape: (n_samples, n_vars)</span>
 <span class="n">sr</span> <span class="o">=</span> <span class="mf">1000.0</span>
@@ -498,10 +497,8 @@ In the <strong>I/O widget</strong>, click <strong>Create with own data</strong> 
         <span class="p">},</span>
     <span class="p">)</span>
 <span class="p">})</span>
-<span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
 
-<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">dataset_to_basic_trialtree</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span>
-<span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
+<span class="n">ds</span><span class="o">.</span><span class="n">to_netcdf</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
 </section>

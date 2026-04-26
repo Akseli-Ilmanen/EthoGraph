@@ -396,11 +396,15 @@
 <p>Interval-based label representation and core primitives for EthoGraph.</p>
 <dl class="simple">
 <dt>Labels are stored as a pandas DataFrame with columns:</dt><dd><p>onset_s    (float64) - start time in seconds
-offset_s   (float64) - end time in seconds
+offset_s   (float64) - end time in seconds (NaN for point events)
 labels     (int32)   - label class ID (nonzero)
-individual (str)     - individual identifier</p>
+individual (str)     - individual identifier
+event_type (str)     - “state” (interval) or “point” (instantaneous)</p>
 </dd>
 </dl>
+<p>Use <code class="docutils literal notranslate"><span class="pre">split_by_kind(df)</span></code> at the top of every interval operation so points
+pass through untouched. <code class="docutils literal notranslate"><span class="pre">states_only(df)</span></code> / <code class="docutils literal notranslate"><span class="pre">points_only(df)</span></code> are for
+read-only consumers (dense conversion, plot rendering).</p>
 <p class="rubric">Functions</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table">
 <tbody>
@@ -414,7 +418,7 @@ individual (str)     - individual identifier</p>
 <td><p>Load a label mapping with colors for visualization.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="labels.html#ethograph.labels.intervals.save_label_mapping" title="ethograph.labels.intervals.save_label_mapping"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_label_mapping</span></code></a></p></td>
-<td><p>Write a label mapping back to disk, preserving branch assignments.</p></td>
+<td><p>Write a label mapping back to disk, preserving branch and event_type.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="labels.html#ethograph.labels.intervals.add_interval" title="ethograph.labels.intervals.add_interval"><code class="xref py py-obj docutils literal notranslate"><span class="pre">add_interval</span></code></a></p></td>
 <td><p>Add an interval, resolving overlaps for the same individual.</p></td>
@@ -423,7 +427,7 @@ individual (str)     - individual identifier</p>
 <td><p>Drop interval by DataFrame index.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="labels.html#ethograph.labels.intervals.find_interval_at" title="ethograph.labels.intervals.find_interval_at"><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_interval_at</span></code></a></p></td>
-<td><p>Return DataFrame index of interval containing <em>time_s</em> for <em>individual</em>.</p></td>
+<td><p>Return DataFrame index of state interval containing <em>time_s</em> for <em>individual</em>.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="labels.html#ethograph.labels.intervals.get_interval_bounds" title="ethograph.labels.intervals.get_interval_bounds"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_interval_bounds</span></code></a></p></td>
 <td><p>Return <code class="docutils literal notranslate"><span class="pre">(onset_s,</span> <span class="pre">offset_s,</span> <span class="pre">labels)</span></code> for interval at <em>idx</em>.</p></td>

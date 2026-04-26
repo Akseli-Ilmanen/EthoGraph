@@ -44,7 +44,6 @@ The dialog creates generic variable names (`var_0`, `var_1`, ...). To give colum
 ```python
 import numpy as np
 import xarray as xr
-import ethograph as eto
 
 data = np.load("features.npy")   # shape: (n_samples, n_vars)
 sr = 1000.0
@@ -59,10 +58,8 @@ ds = xr.Dataset({
         },
     )
 })
-ds.attrs["trial"] = 1
 
-dt = eto.dataset_to_basic_trialtree(ds)
-dt.save("session.nc")
+ds.to_netcdf("session.nc")
 ```
 
 ---

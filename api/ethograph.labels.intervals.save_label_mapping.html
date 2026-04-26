@@ -410,7 +410,10 @@
 <dl class="py function">
 <dt class="sig sig-object py" id="ethograph.labels.intervals.save_label_mapping">
 <span class="sig-prename descclassname"><span class="pre">ethograph.labels.intervals.</span></span><span class="sig-name descname"><span class="pre">save_label_mapping</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mapping_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mappings</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/intervals.html#save_label_mapping"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.intervals.save_label_mapping" title="Link to this definition">#</a></dt>
-<dd><p>Write a label mapping back to disk, preserving branch assignments.</p>
+<dd><p>Write a label mapping back to disk, preserving branch and event_type.</p>
+<p>Lines have the form <code class="docutils literal notranslate"><span class="pre">&lt;id&gt;</span> <span class="pre">&lt;name&gt;</span> <span class="pre">&lt;branch&gt;</span> <span class="pre">&lt;event_type&gt;</span></code> for scalar IDs.
+The <code class="docutils literal notranslate"><span class="pre">event_type</span></code> column is omitted when it equals the default
+(<code class="docutils literal notranslate"><span class="pre">&quot;state&quot;</span></code>) so files stay backward-compatible with older readers.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

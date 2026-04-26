@@ -452,14 +452,17 @@ corresponding action names. Keeping string↔int separate means:</p>
 <hr class="docutils" />
 <section id="format">
 <h2>Format<a class="headerlink" href="#format" title="Link to this heading">#</a></h2>
-<p>Whitespace-delimited, one label per line, <code class="docutils literal notranslate"><span class="pre">&lt;id&gt;</span> <span class="pre">&lt;name&gt;</span></code>:</p>
+<p>Whitespace-delimited, one label per line.  The full schema is
+<code class="docutils literal notranslate"><span class="pre">&lt;id&gt;</span> <span class="pre">&lt;name&gt;</span> <span class="pre">[&lt;branch&gt;]</span> <span class="pre">[&lt;event_type&gt;]</span></code> — both trailing fields are
+optional with defaults (<code class="docutils literal notranslate"><span class="pre">branch=0</span></code>, <code class="docutils literal notranslate"><span class="pre">event_type=state</span></code>):</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="mi">0</span> <span class="n">background</span>
 <span class="mi">1</span> <span class="n">pullOutStick</span>
 <span class="mi">2</span> <span class="n">diagonalToBox</span>
-<span class="mi">3</span> <span class="n">toss</span>
-<span class="mi">4</span> <span class="n">nod</span>
-<span class="mi">5</span> <span class="n">reachLeftCorner</span>
-<span class="o">...</span>
+<span class="mi">3</span> <span class="n">toss</span> <span class="mi">0</span>
+<span class="mi">4</span> <span class="n">nod</span> <span class="mi">1</span>
+<span class="mi">5</span> <span class="n">reachLeftCorner</span> <span class="mi">0</span>
+<span class="mi">11</span> <span class="n">peck</span> <span class="mi">0</span> <span class="n">point</span>
+<span class="mi">12</span> <span class="n">call</span> <span class="mi">1</span> <span class="n">point</span>
 </pre></div>
 </div>
 <p>Rules:</p>
@@ -470,7 +473,15 @@ and model loss.</p></li>
 <li><p>Names should be valid identifiers (no spaces) so they round-trip through
 Crowsetta text formats cleanly.</p></li>
 <li><p>Trailing whitespace is ignored; blank lines are skipped.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">branch</span></code> is an optional integer grouping labels for independent labeling
+(see <a class="reference internal" href="branches.html"><span class="doc">Label branches</span></a>).  Defaults to <code class="docutils literal notranslate"><span class="pre">0</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">event_type</span></code> is <code class="docutils literal notranslate"><span class="pre">&quot;state&quot;</span></code> (interval, default) or <code class="docutils literal notranslate"><span class="pre">&quot;point&quot;</span></code> (instantaneous
+marker — see <a class="reference internal" href="#target-point-events"><span class="std std-ref">State vs point events</span></a> below).  Lines without it are
+treated as state events, so existing mapping files keep working unchanged.</p></li>
 </ul>
+<p>To declare a <em>point</em> class without a custom branch you must still write the
+default branch explicitly, because the columns are positional:
+<code class="docutils literal notranslate"><span class="pre">11</span> <span class="pre">peck</span> <span class="pre">0</span> <span class="pre">point</span></code> — not <code class="docutils literal notranslate"><span class="pre">11</span> <span class="pre">peck</span> <span class="pre">point</span></code>.</p>
 <p>Read / write programmatically:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_mapping</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.converters</span><span class="w"> </span><span class="kn">import</span> <span class="n">write_mapping_file</span>
@@ -537,6 +548,38 @@ project.</p>
 auto-generation logic.</p>
 <hr class="docutils" />
 </section>
+<section id="state-vs-point-events">
+<span id="target-point-events"></span><h2>State vs point events<a class="headerlink" href="#state-vs-point-events" title="Link to this heading">#</a></h2>
+<p>Every label is one of two kinds:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Kind</p></th>
+<th class="head"><p>Stored as</p></th>
+<th class="head"><p>Use for</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">state</span></code></p></td>
+<td><p>interval (<code class="docutils literal notranslate"><span class="pre">onset_s</span></code>, <code class="docutils literal notranslate"><span class="pre">offset_s</span></code>)</p></td>
+<td><p>Behaviours with a duration: walk, syllable</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">point</span></code></p></td>
+<td><p>instant (<code class="docutils literal notranslate"><span class="pre">onset_s</span></code> only, <code class="docutils literal notranslate"><span class="pre">offset_s</span></code> is <code class="docutils literal notranslate"><span class="pre">NaN</span></code>)</p></td>
+<td><p>Instantaneous events: peck, brief call</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The kind is declared per class in <code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code> (4th column, see above) and
+stored per row in the TSV (<code class="docutils literal notranslate"><span class="pre">event_type</span></code> column).  When a class is declared
+<code class="docutils literal notranslate"><span class="pre">point</span></code> in <code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>, the labelling shortcut drops a marker at the
+playhead instead of starting an interval drag.</p>
+<p>Point events pass through every interval operation (purge, stitch, snap,
+changepoint correction) untouched — they have no duration, so concepts like
+“too short” or “stitch the gap” don’t apply to them.  Internally this is
+enforced by <code class="docutils literal notranslate"><span class="pre">split_by_kind()</span></code> in <code class="docutils literal notranslate"><span class="pre">ethograph.labels.intervals</span></code>.</p>
+<hr class="docutils" />
+</section>
 </section>
 
 
@@ -589,6 +632,7 @@ auto-generation logic.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#format">Format</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#resolution-order">Resolution order</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#auto-generated-mappings">Auto-generated mappings</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#state-vs-point-events">State vs point events</a></li>
 </ul>
   </nav></div>
 

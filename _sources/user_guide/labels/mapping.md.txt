@@ -18,16 +18,19 @@ corresponding action names. Keeping string↔int separate means:
 
 ## Format
 
-Whitespace-delimited, one label per line, `<id> <name>`:
+Whitespace-delimited, one label per line.  The full schema is
+`<id> <name> [<branch>] [<event_type>]` — both trailing fields are
+optional with defaults (`branch=0`, `event_type=state`):
 
 ```
 0 background
 1 pullOutStick
 2 diagonalToBox
-3 toss
-4 nod
-5 reachLeftCorner
-...
+3 toss 0
+4 nod 1
+5 reachLeftCorner 0
+11 peck 0 point
+12 call 1 point
 ```
 
 Rules:
@@ -38,6 +41,15 @@ Rules:
 - Names should be valid identifiers (no spaces) so they round-trip through
   Crowsetta text formats cleanly.
 - Trailing whitespace is ignored; blank lines are skipped.
+- `branch` is an optional integer grouping labels for independent labeling
+  (see {doc}`branches`).  Defaults to `0`.
+- `event_type` is `"state"` (interval, default) or `"point"` (instantaneous
+  marker — see {ref}`target-point-events` below).  Lines without it are
+  treated as state events, so existing mapping files keep working unchanged.
+
+To declare a *point* class without a custom branch you must still write the
+default branch explicitly, because the columns are positional:
+`11 peck 0 point` — not `11 peck point`.
 
 Read / write programmatically:
 
@@ -97,6 +109,28 @@ project.
 See {func}`~ethograph.labels.converters.resolve_crowsetta_mapping` and
 {func}`~ethograph.labels.converters.build_mapping_from_labels` for the
 auto-generation logic.
+
+---
+
+(target-point-events)=
+## State vs point events
+
+Every label is one of two kinds:
+
+| Kind     | Stored as                   | Use for                                   |
+|----------|-----------------------------|-------------------------------------------|
+| `state`  | interval (`onset_s`, `offset_s`) | Behaviours with a duration: walk, syllable  |
+| `point`  | instant (`onset_s` only, `offset_s` is `NaN`) | Instantaneous events: peck, brief call |
+
+The kind is declared per class in `mapping.txt` (4th column, see above) and
+stored per row in the TSV (`event_type` column).  When a class is declared
+`point` in `mapping.txt`, the labelling shortcut drops a marker at the
+playhead instead of starting an interval drag.
+
+Point events pass through every interval operation (purge, stitch, snap,
+changepoint correction) untouched — they have no duration, so concepts like
+"too short" or "stitch the gap" don't apply to them.  Internally this is
+enforced by `split_by_kind()` in `ethograph.labels.intervals`.
 
 ---
 

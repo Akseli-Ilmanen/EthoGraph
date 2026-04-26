@@ -480,7 +480,8 @@ to inactive branches).  <code class="docutils literal notranslate"><span class="
 <dl class="py function">
 <dt class="sig sig-object py" id="ethograph.labels.intervals.find_interval_at">
 <span class="sig-prename descclassname"><span class="pre">ethograph.labels.intervals.</span></span><span class="sig-name descname"><span class="pre">find_interval_at</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">individual</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/intervals.html#find_interval_at"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.intervals.find_interval_at" title="Link to this definition">#</a></dt>
-<dd><p>Return DataFrame index of interval containing <em>time_s</em> for <em>individual</em>.</p>
+<dd><p>Return DataFrame index of state interval containing <em>time_s</em> for <em>individual</em>.</p>
+<p>Point events are never returned here — use <code class="xref py py-func docutils literal notranslate"><span class="pre">find_point_at()</span></code> for those.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -513,7 +514,7 @@ Useful for restricting to the active branch.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>Empty DataFrame with columns <code class="docutils literal notranslate"><span class="pre">onset_s</span></code>, <code class="docutils literal notranslate"><span class="pre">offset_s</span></code>, <code class="docutils literal notranslate"><span class="pre">labels</span></code>,
-<code class="docutils literal notranslate"><span class="pre">individual</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">individual</span></code>, <code class="docutils literal notranslate"><span class="pre">event_type</span></code>.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p>pd.DataFrame</p>
@@ -523,7 +524,7 @@ Useful for restricting to the active branch.</p></li>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">empty_intervals</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">empty_intervals</span><span class="p">()</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
-<span class="go">[&#39;onset_s&#39;, &#39;offset_s&#39;, &#39;labels&#39;, &#39;individual&#39;]</span>
+<span class="go">[&#39;onset_s&#39;, &#39;offset_s&#39;, &#39;labels&#39;, &#39;individual&#39;, &#39;event_type&#39;]</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
 <span class="go">0</span>
 </pre></div>
@@ -618,12 +619,15 @@ Useful for restricting to the active branch.</p></li>
 <dd><p>Load a label mapping with colors for visualization.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>mapping_file</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> or </em><em>Path</em>) – Path to the mapping file.  Each line is <code class="docutils literal notranslate"><span class="pre">&lt;id&gt;</span> <span class="pre">&lt;name&gt;</span> <span class="pre">[&lt;branch&gt;]</span></code>
-where <em>branch</em> is an optional integer (default 0) grouping labels
-into branches for independent labeling.</p>
+<dd class="field-odd"><p><strong>mapping_file</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> or </em><em>Path</em>) – Path to the mapping file.  Each line is
+<code class="docutils literal notranslate"><span class="pre">&lt;id&gt;</span> <span class="pre">&lt;name&gt;</span> <span class="pre">[&lt;branch&gt;]</span> <span class="pre">[&lt;event_type&gt;]</span></code> where <em>branch</em> is an
+optional integer (default 0) grouping labels into branches for
+independent labeling, and <em>event_type</em> is <code class="docutils literal notranslate"><span class="pre">&quot;state&quot;</span></code> (default) or
+<code class="docutils literal notranslate"><span class="pre">&quot;point&quot;</span></code>.  Missing trailing columns inherit their defaults.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">{label_id:</span> <span class="pre">{&quot;name&quot;:</span> <span class="pre">str,</span> <span class="pre">&quot;color&quot;:</span> <span class="pre">ndarray(3,),</span> <span class="pre">&quot;order&quot;:</span> <span class="pre">int,</span> <span class="pre">&quot;branch&quot;:</span> <span class="pre">int}}</span></code>.</p>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">{label_id:</span> <span class="pre">{&quot;name&quot;:</span> <span class="pre">str,</span> <span class="pre">&quot;color&quot;:</span> <span class="pre">ndarray(3,),</span> <span class="pre">&quot;order&quot;:</span> <span class="pre">int,</span>
+<span class="pre">&quot;branch&quot;:</span> <span class="pre">int,</span> <span class="pre">&quot;event_type&quot;:</span> <span class="pre">str}}</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)">int</a>, <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a>]</p>
@@ -666,7 +670,10 @@ into branches for independent labeling.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="ethograph.labels.intervals.save_label_mapping">
 <span class="sig-prename descclassname"><span class="pre">ethograph.labels.intervals.</span></span><span class="sig-name descname"><span class="pre">save_label_mapping</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mapping_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mappings</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/intervals.html#save_label_mapping"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.intervals.save_label_mapping" title="Link to this definition">#</a></dt>
-<dd><p>Write a label mapping back to disk, preserving branch assignments.</p>
+<dd><p>Write a label mapping back to disk, preserving branch and event_type.</p>
+<p>Lines have the form <code class="docutils literal notranslate"><span class="pre">&lt;id&gt;</span> <span class="pre">&lt;name&gt;</span> <span class="pre">&lt;branch&gt;</span> <span class="pre">&lt;event_type&gt;</span></code> for scalar IDs.
+The <code class="docutils literal notranslate"><span class="pre">event_type</span></code> column is omitted when it equals the default
+(<code class="docutils literal notranslate"><span class="pre">&quot;state&quot;</span></code>) so files stay backward-compatible with older readers.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
