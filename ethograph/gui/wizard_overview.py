@@ -164,6 +164,16 @@ class _ModeSelectionPage(QWidget):
         nb_lay.addWidget(self._rb_nwb_dandi)
         layout.addWidget(nwb_box)
 
+        # --- External event-coding software section ---
+        ext_box = QGroupBox("External event-coding software")
+        ext_lay = QVBoxLayout(ext_box)
+        self._rb_boris = QRadioButton(
+            "Import from BORIS project (.boris) — events + media -> alignment.nwb + labels.tsv"
+        )
+        self._top_group.addButton(self._rb_boris)
+        ext_lay.addWidget(self._rb_boris)
+        layout.addWidget(ext_box)
+
         layout.addSpacing(10)
         tut_box = QGroupBox("Examples")
         tut_lay = QVBoxLayout(tut_box)
@@ -188,6 +198,8 @@ class _ModeSelectionPage(QWidget):
             return "multi"
         if self._rb_nwb_dandi.isChecked():
             return "nwb"
+        if self._rb_boris.isChecked():
+            return "boris"
         return "single"
 
     def get_single_type(self) -> str:
@@ -426,6 +438,9 @@ class NCWizardDialog(QDialog):
         elif mode == "nwb":
             self._open_nwb_dialog()
 
+        elif mode == "boris":
+            self._open_boris_dialog()
+
         elif mode == "multi":
             self._stack.setCurrentIndex(1)
             self._update_nav()
@@ -455,6 +470,13 @@ class NCWizardDialog(QDialog):
         from ethograph.gui.wizard_nwb import NWBImportDialog
 
         dialog = NWBImportDialog(self.app_state, self.io_widget, self)
+        if dialog.exec_():
+            self.accept()
+
+    def _open_boris_dialog(self):
+        from ethograph.gui.wizard_boris import BorisImportDialog
+
+        dialog = BorisImportDialog(self.app_state, self.io_widget, self)
         if dialog.exec_():
             self.accept()
 

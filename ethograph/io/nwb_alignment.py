@@ -1218,6 +1218,7 @@ def align_media_from_streams(
     from datetime import datetime
     from uuid import uuid4
 
+    import pynwb
     from dateutil.tz import tzlocal
     from pynwb import NWBHDF5IO
     from pynwb.image import ImageSeries

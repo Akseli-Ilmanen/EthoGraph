@@ -129,9 +129,8 @@ def bind_global_shortcuts(meta_widget):
 
     @viewer.bind_key("ctrl+y", overwrite=True)
     def toggle_label_pred(v):
-        status = io_widget.pred_show_predictions.isChecked()
-        io_widget.pred_show_predictions.setChecked(not status)
-        labels_widget._on_pred_show_predictions_changed()
+        if data_widget is not None:
+            data_widget.toggle_predictions_slot()
 
     if 'Ctrl-A' in viewer.keymap:
         del viewer.keymap['Ctrl-A']

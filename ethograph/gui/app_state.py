@@ -342,7 +342,12 @@ class ObservableAppState(QObject):
         self._all_labels_df: pd.DataFrame | None = None
         self._metadata_df: pd.DataFrame | None = None
         self._label_mappings: dict | None = None
-        self._active_branches: set[int] = {0}
+        # Label rendering slots — Main (full plot rectangles), Top1 + Top2 (top strips).
+        # Main is always a branch index (or None to hide). Top1/Top2 may be a branch
+        # index, the literal "predictions", or None.
+        self._main_labels_source: int | None = 0
+        self._top1_source: int | str | None = None
+        self._top2_source: int | str | None = None
         
   
         from ethograph.io.nwb_alignment import EmpytAlignment
@@ -374,17 +379,31 @@ class ObservableAppState(QObject):
     
     @property
     def active_label_ids(self) -> set[int] | None:
-        """Return label IDs belonging to currently active branches.
+        """Return label IDs belonging to any branch currently shown in a label slot.
 
         Returns None when no mappings are loaded (meaning all IDs allowed).
+        Predictions slots don't contribute — predictions are rendered separately
+        and don't gate click/edit behavior.
         """
         mappings = self._label_mappings
         if not mappings:
             return None
+        active = self._active_branches
         return {
             lid for lid, data in mappings.items()
-            if isinstance(lid, int) and data.get("branch", 0) in self._active_branches
+            if isinstance(lid, int) and data.get("branch", 0) in active
         }
+
+    @property
+    def _active_branches(self) -> set[int]:
+        """Set of branch indices currently displayed in any slot (main, top1, top2)."""
+        out: set[int] = set()
+        if isinstance(self._main_labels_source, int):
+            out.add(self._main_labels_source)
+        for slot in (self._top1_source, self._top2_source):
+            if isinstance(slot, int):
+                out.add(slot)
+        return out
 
     @property
     def trial_bounds(self) -> TimeRange | None:
@@ -544,7 +563,7 @@ class ObservableAppState(QObject):
         raise AttributeError(name)
 
     def __setattr__(self, name, value):
-        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map", "ephys_source_map", "ephys_stream_sel", "_suspend_local_autoload", "_all_labels_df", "_metadata_df", "_label_mappings", "_active_branches"):
+        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map", "ephys_source_map", "ephys_stream_sel", "_suspend_local_autoload", "_all_labels_df", "_metadata_df", "_label_mappings", "_main_labels_source", "_top1_source", "_top2_source"):
             super().__setattr__(name, value)
             return
 

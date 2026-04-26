@@ -11,13 +11,13 @@ from qtpy.QtCore import QMimeData, QSize, Qt, Signal
 from qtpy.QtGui import QColor, QDrag
 from qtpy.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
@@ -36,12 +36,26 @@ from ethograph.labels.plots import plot_confidence_pdf
 from ethograph.labels.predictions import PredictionsStore
 from ethograph.labels.tsv_store import save_labels_tsv
 from ethograph.labels.intervals import (
+    EVENT_TYPE_POINT,
+    EVENT_TYPE_STATE,
     add_interval,
+    add_point,
     delete_interval,
     empty_intervals,
     find_interval_at,
+    find_point_at,
     get_interval_bounds,
 )
+
+# Glyphs used to indicate the kind of a label in the table.
+#   ━ (horizontal bar) = state event — visually conveys "spans across time"
+#   ● (filled circle)  = point event — visually conveys "single moment"
+# Chosen so the two are unmistakable at a glance, and don't collide with the
+# parenthesised shortcut letter.
+_EVENT_TYPE_GLYPH = {
+    EVENT_TYPE_STATE: "━",
+    EVENT_TYPE_POINT: "●",
+}
 from ethograph.utils.paths import find_mapping_file
 
 
@@ -160,10 +174,10 @@ class LabelsWidget(QWidget):
 
         # UI components — branch tables
         self.labels_table = None  # kept for backward compat; points to active branch table
-        self._branch_sections: dict[int, dict] = {}  # branch_idx → {"checkbox", "table", "widget"}
+        self._branch_sections: dict[int, dict] = {}  # branch_idx → {"label", "table", "widget"}
         self._branches_layout = None
         self._mapping_file_path: str | None = None
-        self._previous_branch: int | None = None
+        self._previous_main_branch: int | None = None
 
         self._setup_ui()
 
@@ -173,7 +187,9 @@ class LabelsWidget(QWidget):
         self._mapping_file_path = str(mapping_path) if mapping_path else None
         self._mappings = load_label_mapping(mapping_path) if mapping_path else {}
         self.app_state._label_mappings = self._mappings
-        self.app_state._active_branches = {0}
+        self.app_state._main_labels_source = 0
+        self.app_state._top1_source = None
+        self.app_state._top2_source = None
         self._populate_labels_table()
 
     def refresh_mapping_for_data_dir(self, data_dir: Path | str):
@@ -226,27 +242,53 @@ class LabelsWidget(QWidget):
     def plot_all_labels(self, intervals_df, predictions_df=None):
         """Plot all labels for current trial based on interval data.
 
-        Delegates to PlotContainer for centralized, synchronized label drawing
-        across all plot types.
+        Builds the per-slot draw config (Main / Top1 / Top2) from the
+        currently selected sources in app_state and forwards to PlotContainer.
 
         Args:
             intervals_df: DataFrame with onset_s, offset_s, labels, individual columns
             predictions_df: Optional prediction intervals DataFrame
         """
-        if intervals_df is None or self.plot_container is None:
+        if self.plot_container is None:
             return
 
-        show_predictions = (
-            predictions_df is not None and
-            self.data_widget is not None and
-            self.data_widget.pred_show_predictions.isChecked()
-        )
+        slots = self._compute_label_slots(intervals_df, predictions_df)
+        self.plot_container.draw_all_labels(slots)
 
-        self.plot_container.draw_all_labels(
-            intervals_df,
-            predictions_df=predictions_df,
-            show_predictions=show_predictions,
-        )
+    def _compute_label_slots(self, intervals_df, predictions_df):
+        """Convert the Main/Top1/Top2 source selections into draw-ready slot dicts."""
+        state = self.app_state
+        sources = [
+            ("main", state._main_labels_source),
+            ("top1", state._top1_source),
+            ("top2", state._top2_source),
+        ]
+        slots: list[dict] = []
+        for position, source in sources:
+            if source is None:
+                continue
+            if source == "predictions":
+                if predictions_df is None or predictions_df.empty:
+                    continue
+                slots.append({
+                    "df": predictions_df,
+                    "label_ids": None,
+                    "position": position,
+                })
+            elif isinstance(source, int):
+                if intervals_df is None or intervals_df.empty:
+                    continue
+                branch_ids = {
+                    lid for lid, data in self._mappings.items()
+                    if isinstance(lid, int) and lid != 0
+                       and data.get("branch", 0) == source
+                }
+                slots.append({
+                    "df": intervals_df,
+                    "label_ids": branch_ids,
+                    "position": position,
+                })
+        return slots
 
     def sizeHint(self):
         return QSize(300, LABELS_WIDGET_SIZE_HINT_HEIGHT)
@@ -258,6 +300,18 @@ class LabelsWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # Legend explaining the per-label glyphs (above Branch 0).
+        legend = QLabel(
+            f"  {_EVENT_TYPE_GLYPH[EVENT_TYPE_STATE]} state event"
+            f"   ·   {_EVENT_TYPE_GLYPH[EVENT_TYPE_POINT]} point event"
+            "   (right-click a label to change)"
+        )
+        legend.setStyleSheet(
+            "QLabel { color: #aaa; font-size: 11px; padding: 2px 0px; }"
+        )
+        legend.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        layout.addWidget(legend)
 
         # Scrollable area for branch tables
         scroll = QScrollArea()
@@ -313,10 +367,18 @@ class LabelsWidget(QWidget):
 
         table.itemSelectionChanged.connect(self._on_table_selection_changed)
         table.label_moved.connect(self._on_label_dropped)
+        table.setContextMenuPolicy(Qt.CustomContextMenu)
+        table.customContextMenuRequested.connect(
+            lambda pos, t=table: self._on_label_context_menu(t, pos)
+        )
         return table
 
-    def _add_branch_section(self, branch_idx: int, *, checked: bool = True):
-        """Add a UI section (checkbox + table) for a branch."""
+    def _add_branch_section(self, branch_idx: int):
+        """Add a UI section (header label + table) for a branch.
+
+        Branch visibility is no longer per-branch — it's controlled by the
+        Main / Top1 / Top2 dropdowns in the Overlays panel of the Data widget.
+        """
         if branch_idx in self._branch_sections:
             return
 
@@ -327,12 +389,10 @@ class LabelsWidget(QWidget):
 
         header_row = QHBoxLayout()
         header_row.setContentsMargins(0, 0, 0, 0)
-        checkbox = QCheckBox(f"Branch {branch_idx}")
-        checkbox.setChecked(checked)
-        checkbox.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
-        checkbox.setStyleSheet("QCheckBox { color: #ccc; font-weight: bold; }")
-        checkbox.toggled.connect(lambda state, b=branch_idx: self._on_branch_toggled(b, state))
-        header_row.addWidget(checkbox)
+        header_label = QLabel(f"Branch {branch_idx}")
+        header_label.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        header_label.setStyleSheet("QLabel { color: #ccc; font-weight: bold; }")
+        header_row.addWidget(header_label)
         if branch_idx > 0:
             delete_btn = QPushButton("x")
             delete_btn.setFixedSize(20, 20)
@@ -347,7 +407,7 @@ class LabelsWidget(QWidget):
         section_layout.addWidget(table)
 
         self._branch_sections[branch_idx] = {
-            "checkbox": checkbox,
+            "label": header_label,
             "table": table,
             "widget": section_widget,
         }
@@ -356,20 +416,21 @@ class LabelsWidget(QWidget):
         insert_pos = self._branches_layout.count() - 1
         self._branches_layout.insertWidget(insert_pos, section_widget)
 
-        if checked:
-            self.app_state._active_branches.add(branch_idx)
-        else:
-            self.app_state._active_branches.discard(branch_idx)
-
         # Set labels_table to first branch for backward compat
         if self.labels_table is None:
             self.labels_table = table
 
     def _add_new_branch(self):
-        """Add a new empty branch (triggered by '+' button)."""
+        """Add a new empty branch (triggered by '+' button).
+
+        After creating, ask DataWidget to refresh the slot dropdowns and
+        auto-fill the new branch into Top1 (or Top2 if Top1 is taken).
+        """
         existing = set(self._branch_sections.keys())
         new_idx = max(existing, default=-1) + 1
-        self._add_branch_section(new_idx, checked=False)
+        self._add_branch_section(new_idx)
+        if self.data_widget is not None:
+            self.data_widget.refresh_label_slot_dropdowns(new_branch=new_idx)
 
     def _delete_branch(self, branch_idx: int):
         """Delete a branch. Only allowed if it has no labels."""
@@ -385,45 +446,28 @@ class LabelsWidget(QWidget):
         section = self._branch_sections.pop(branch_idx)
         section["widget"].setParent(None)
         section["widget"].deleteLater()
-        self.app_state._active_branches.discard(branch_idx)
+        # Clear any slots that referenced the deleted branch.
+        if self.app_state._main_labels_source == branch_idx:
+            self.app_state._main_labels_source = 0 if 0 in self._branch_sections else None
+        if self.app_state._top1_source == branch_idx:
+            self.app_state._top1_source = None
+        if self.app_state._top2_source == branch_idx:
+            self.app_state._top2_source = None
         if self.labels_table is section["table"]:
             self.labels_table = next(
                 (s["table"] for s in self._branch_sections.values()), None
             )
-
-    def _on_branch_toggled(self, branch_idx: int, checked: bool):
-        """Handle branch checkbox toggle — only one branch active at a time (radio)."""
-        if not checked:
-            # Don't allow unchecking the only active branch
-            if self.app_state._active_branches == {branch_idx}:
-                self._branch_sections[branch_idx]["checkbox"].blockSignals(True)
-                self._branch_sections[branch_idx]["checkbox"].setChecked(True)
-                self._branch_sections[branch_idx]["checkbox"].blockSignals(False)
-                return
-            self.app_state._active_branches.discard(branch_idx)
-        else:
-            # Uncheck all other branches (radio behavior)
-            old_active = next(iter(self.app_state._active_branches), None)
-            if old_active is not None and old_active != branch_idx:
-                self._previous_branch = old_active
-            self.app_state._active_branches = {branch_idx}
-            for b, section in self._branch_sections.items():
-                if b != branch_idx:
-                    section["checkbox"].blockSignals(True)
-                    section["checkbox"].setChecked(False)
-                    section["checkbox"].blockSignals(False)
-        self._sync_active_label_ids()
-        if self.data_widget:
-            self.data_widget.update_main_plot(preserve_x_range=True)
-        self.refresh_labels_shapes_layer()
+        if self.data_widget is not None:
+            self.data_widget.refresh_label_slot_dropdowns()
 
     def toggle_branch(self):
-        """Switch between current and previous active branch (Shift+B)."""
-        current = next(iter(self.app_state._active_branches), None)
-        target = self._previous_branch
+        """Cycle the Main labels slot to the previously-selected branch (Shift+B)."""
+        current = self.app_state._main_labels_source
+        target = self._previous_main_branch
         if target is None or target not in self._branch_sections or target == current:
             return
-        self._branch_sections[target]["checkbox"].setChecked(True)
+        if self.data_widget is not None:
+            self.data_widget.set_main_labels_branch(target)
 
     def _on_label_dropped(self, label_id: int, target_branch: int):
         """Handle a label being dragged from one branch table to another."""
@@ -442,14 +486,56 @@ class LabelsWidget(QWidget):
         self.refresh_labels_shapes_layer()
         notify(f"Moved '{self._mappings[label_id]['name']}' to branch {target_branch}")
 
+    def _on_label_context_menu(self, table: QTableWidget, pos):
+        """Right-click on a label cell -> show event-type toggle menu."""
+        item = table.itemAt(pos)
+        if item is None:
+            return
+        label_id = item.data(Qt.UserRole)
+        if label_id is None or label_id not in self._mappings:
+            return
+
+        current = self._mappings[label_id].get("event_type", EVENT_TYPE_STATE)
+        target = EVENT_TYPE_POINT if current == EVENT_TYPE_STATE else EVENT_TYPE_STATE
+        target_label = "Point event" if target == EVENT_TYPE_POINT else "State event"
+
+        menu = QMenu(table)
+        action = menu.addAction(f"Mark as {target_label}")
+        chosen = menu.exec_(table.viewport().mapToGlobal(pos))
+        if chosen is action:
+            self._set_label_event_type(label_id, target)
+
+    def _set_label_event_type(self, label_id: int, event_type: str):
+        """Switch a label between state and point; persist to mapping.txt."""
+        if label_id not in self._mappings:
+            return
+        if self._mappings[label_id].get("event_type", EVENT_TYPE_STATE) == event_type:
+            return
+        self._mappings[label_id]["event_type"] = event_type
+        self.app_state._label_mappings = self._mappings
+        self._save_current_mapping()
+        self._populate_labels_table()
+        self.refresh_labels_shapes_layer()
+        kind_label = "point event" if event_type == EVENT_TYPE_POINT else "state event"
+        notify(f"'{self._mappings[label_id]['name']}' is now a {kind_label}")
+
     def _save_current_mapping(self):
         """Write the current mappings back to the loaded mapping.txt file."""
         path = self._mapping_file_path
         if not path and self.io_widget:
             path = self.io_widget.mapping_file_path_edit.text()
         if not path:
+            logger.warning("_save_current_mapping: no path set, skipping save")
             return
         save_label_mapping(path, self._mappings)
+        n_point = sum(
+            1 for d in self._mappings.values()
+            if isinstance(d, dict) and d.get("event_type") == EVENT_TYPE_POINT
+        )
+        logger.info(
+            "Saved mapping to %s (%d labels, %d point)",
+            path, len(self._mappings), n_point,
+        )
 
     def _sync_active_label_ids(self):
         """Push current active label IDs to plot container."""
@@ -476,15 +562,26 @@ class LabelsWidget(QWidget):
         try:
             self._mappings = load_label_mapping(Path(mapping_path))
             self._mapping_file_path = mapping_path
+            n_point = sum(
+                1 for d in self._mappings.values()
+                if isinstance(d, dict) and d.get("event_type") == EVENT_TYPE_POINT
+            )
+            logger.info(
+                "Loaded mapping from %s (%d labels, %d point)",
+                mapping_path, len(self._mappings), n_point,
+            )
             self.app_state._label_mappings = self._mappings
-            # Reset active branches — only the first branch starts active
+            # Reset slots — Main starts on the first branch present in the file.
             new_branches = {
                 data.get("branch", 0)
                 for data in self._mappings.values()
                 if isinstance(data, dict)
             }
             first_branch = min(new_branches) if new_branches else 0
-            self.app_state._active_branches = {first_branch}
+            self.app_state._main_labels_source = first_branch
+            self.app_state._top1_source = None
+            self.app_state._top2_source = None
+            self._previous_main_branch = None
             # Remove stale branch UI sections
             for b in list(self._branch_sections):
                 section = self._branch_sections.pop(b)
@@ -498,6 +595,8 @@ class LabelsWidget(QWidget):
                 self.data_widget.navigation_widget.set_mappings(self._mappings)
             self._populate_labels_table()
             self._sync_active_label_ids()
+            if self.data_widget is not None:
+                self.data_widget.refresh_label_slot_dropdowns()
             self.refresh_labels_shapes_layer()
             if self.data_widget:
                 self.data_widget.update_main_plot(preserve_x_range=True)
@@ -565,9 +664,8 @@ class LabelsWidget(QWidget):
         self.app_state.pred_confidence_levels = confidence_levels
 
         if self.data_widget:
-            self.data_widget.pred_show_predictions.setEnabled(True)
-            self.data_widget.pred_show_predictions.setChecked(True)
             self.data_widget.refresh_trials_confidence()
+            self.data_widget.refresh_label_slot_dropdowns(predictions_added=True)
         self.io_widget.pred_confidence_pdf_btn.setEnabled(True)
         self.io_widget.pred_file_path_edit.setText(folder)
 
@@ -644,7 +742,7 @@ class LabelsWidget(QWidget):
         # Ensure branch sections exist for all branches in the mapping
         for b in sorted(branches):
             if b not in self._branch_sections:
-                self._add_branch_section(b, checked=(b in self.app_state._active_branches))
+                self._add_branch_section(b)
 
         # Remove sections for branches that no longer have any labels,
         # but keep user-added empty branches (those with no mapping entries yet)
@@ -672,9 +770,15 @@ class LabelsWidget(QWidget):
                 table.setItem(row, col_offset, id_item)
 
                 shortcut = self.labels_TO_KEY.get(_id, "?")
-                name_with_shortcut = f"{data['name']} ({shortcut})"
+                event_type = data.get("event_type", EVENT_TYPE_STATE)
+                glyph = _EVENT_TYPE_GLYPH.get(event_type, _EVENT_TYPE_GLYPH[EVENT_TYPE_STATE])
+                name_with_shortcut = f"{glyph} {data['name']} ({shortcut})"
                 name_item = QTableWidgetItem(name_with_shortcut)
                 name_item.setData(Qt.UserRole, _id)
+                kind_label = "Point event" if event_type == EVENT_TYPE_POINT else "State event"
+                name_item.setToolTip(
+                    f"{kind_label} — right-click to change"
+                )
                 table.setItem(row, col_offset + 1, name_item)
 
                 color_item = QTableWidgetItem()
@@ -717,9 +821,9 @@ class LabelsWidget(QWidget):
         if _id not in self._mappings:
             return
 
-        # Block activation if label's branch is not active
+        # Only labels in the Main slot's branch can be edited.
         label_branch = self._mappings[_id].get("branch", 0)
-        if label_branch not in self.app_state._active_branches:
+        if label_branch != self.app_state._main_labels_source:
             return
 
         self.selected_labels = _id
@@ -797,16 +901,27 @@ class LabelsWidget(QWidget):
             else:
                 t_snapped = t_clicked
 
-            if self.first_click is None:
+            # Point events: single click drops a marker at the snapped time.
+            # State events: two clicks bound the interval.
+            if self._active_label_is_point():
+                self._apply_point(t_snapped)
+            elif self.first_click is None:
                 self.first_click = t_snapped
             else:
                 self.second_click = t_snapped
                 self._apply_label()
 
+    def _active_label_is_point(self) -> bool:
+        """True iff the currently selected label class is declared as a point."""
+        lid = self.selected_labels
+        if not lid or lid not in self._mappings:
+            return False
+        return self._mappings[lid].get("event_type", EVENT_TYPE_STATE) == EVENT_TYPE_POINT
+
 
 
     def _check_labels_click(self, t_clicked: float, individual: str) -> bool:
-        """Check if the click is on an existing interval and select it.
+        """Check if the click is on an existing interval or point, and select it.
 
         Args:
             t_clicked: Time in seconds of the click
@@ -817,6 +932,24 @@ class LabelsWidget(QWidget):
             return False
 
         active_ids = self.app_state.active_label_ids
+
+        # Points take precedence over overlapping state intervals: they're
+        # smaller targets, so a near-hit is almost certainly intentional.
+        # State intervals are only selected when no point matches.
+        tolerance_s = self._point_click_tolerance_s()
+        idx = find_point_at(df, t_clicked, individual, tolerance_s, label_ids=active_ids)
+        if idx is not None:
+            row = df.loc[idx]
+            t = float(row["onset_s"])
+            labels = int(row["labels"])
+            self.current_labels = labels
+            self.current_labels_pos = idx
+            self.current_labels_is_prediction = False
+            self.highlight_spaceplot.emit(t, t)
+            self.selected_labels = labels
+            return True
+
+        # No point near the click — fall through to state intervals.
         idx = find_interval_at(df, t_clicked, individual, label_ids=active_ids)
         if idx is not None:
             onset_s, offset_s, labels = get_interval_bounds(df, idx)
@@ -827,6 +960,24 @@ class LabelsWidget(QWidget):
             self.selected_labels = labels
             return True
         return False
+
+    def _point_click_tolerance_s(self) -> float:
+        """Click tolerance for picking a point event, in seconds.
+
+        Scales with the visible time range so a few pixels of slop translate
+        to a sensible time window at any zoom level.  Falls back to 0.05 s
+        when the plot's current x-range cannot be read.
+        """
+        plot = getattr(self.plot_container, "current_plot", None)
+        if plot is not None and hasattr(plot, "get_current_xlim"):
+            try:
+                xmin, xmax = plot.get_current_xlim()
+                visible = float(xmax) - float(xmin)
+                if visible > 0:
+                    return visible * 0.005
+            except (AttributeError, TypeError, ValueError):
+                pass
+        return 0.05
 
     def _snap_to_changepoint_time(self, t_clicked: float) -> float:
         """Snap the clicked time (seconds) to the nearest changepoint time.
@@ -920,6 +1071,49 @@ class LabelsWidget(QWidget):
 
         
 
+    def _apply_point(self, t_clicked: float):
+        """Insert a point event at *t_clicked* for the active label class.
+
+        Single-click counterpart to :meth:`_apply_label`.  Snapping happens
+        upstream in :meth:`_on_plot_clicked`, so *t_clicked* is already
+        snapped if changepoint correction is enabled.
+
+        If we entered label-click mode via :meth:`_edit_label`
+        (``old_labels_pos`` set), the previous row is deleted first so the
+        point effectively moves to the new time.
+        """
+        individual = self._current_individual()
+
+        df = self.app_state.label_intervals
+        if df is None:
+            df = empty_intervals()
+
+        if self.old_labels_pos is not None:
+            if self.old_labels_pos in df.index:
+                df = delete_interval(df, self.old_labels_pos)
+            self.old_labels_pos = None
+            self.old_labels = None
+
+        df = add_point(df, t_clicked, self.selected_labels, individual)
+        self.app_state.label_intervals = df
+        self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
+
+        self.current_labels_pos = None  # selecting an existing point comes later
+        self.current_labels = self.selected_labels
+        self.current_labels_is_prediction = False
+
+        self.first_click = None
+        self.second_click = None
+        self.ready_for_label_click = False
+
+        if self.io_widget:
+            self.io_widget._human_verification_true(mode="single_trial")
+        self._mark_changes_unsaved()
+        if self.data_widget:
+            self.data_widget.update_main_plot(preserve_x_range=True)
+        self._seek_to_frame(t_clicked)
+        self.refresh_labels_shapes_layer()
+
     def _seek_to_frame(self, time_s: float):
         """Seek video and update time marker to the specified time in seconds."""
         if hasattr(self.app_state, 'video') and self.app_state.video:
@@ -979,6 +1173,12 @@ class LabelsWidget(QWidget):
             return
 
         onset_s, offset_s, _ = get_interval_bounds(df, self.current_labels_pos)
+
+        # Point events have offset_s = NaN; there's nothing to play back.
+        if not np.isfinite(offset_s) or offset_s <= onset_s:
+            notify("Playback only works for state events, not point events.",
+                   severity="warning")
+            return
 
         if self.app_state.video:
             start_frame = self.app_state.video.time_to_frame(onset_s)

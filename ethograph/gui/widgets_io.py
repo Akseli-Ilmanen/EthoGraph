@@ -637,12 +637,14 @@ class IOWidget(QWidget):
 
         min_duration = self.purge_min_duration_spin.value()
 
+        from ethograph.labels.intervals import purge_short_intervals
+
         def purge(df):
             if df.empty:
                 return df, 0
-            mask = (df["offset_s"] - df["onset_s"]) >= min_duration
-            count = len(df) - mask.sum()                
-            return df[mask].copy().reset_index(drop=True), count
+            before = len(df)
+            out = purge_short_intervals(df, min_duration)
+            return out.reset_index(drop=True), before - len(out)
 
         counter = 0
         
@@ -1101,7 +1103,12 @@ class IOWidget(QWidget):
         logger.info("NWB auto-set video folder: %s", video_folder)
 
     def _apply_nwb_epoch_mapping(self):
-        """If NWB epochs were imported, write mapping file and load into labels widget."""
+        """If NWB epochs were imported, write mapping file and load into labels widget.
+
+        Writes the mapping only on first load (when the file doesn't already
+        exist).  On subsequent loads the existing file is reused so user edits
+        (branch assignments, ``event_type`` toggles) are preserved.
+        """
         dt = getattr(self.app_state, "dt", None)
         if dt is None:
             return
@@ -1109,17 +1116,31 @@ class IOWidget(QWidget):
         if not epoch_mapping or not isinstance(epoch_mapping, dict):
             return
 
-        from ethograph.labels.converters import write_mapping_file
+        from ethograph.labels.intervals import EVENT_TYPE_STATE, save_label_mapping
 
         data_dir = Path(self.app_state.nc_file_path).parent if self.app_state.nc_file_path else None
         mapping_path = default_config_dir(data_dir) / "mapping_nwb_epochs.txt"
-        write_mapping_file(mapping_path, epoch_mapping)
+
+        if not mapping_path.exists():
+            save_label_mapping(
+                mapping_path,
+                {
+                    label_id: {
+                        "name": name,
+                        "branch": 0,
+                        "event_type": EVENT_TYPE_STATE,
+                    }
+                    for name, label_id in epoch_mapping.items()
+                },
+            )
+            n_labels = len(epoch_mapping) - 1  # exclude background
+            logger.info("NWB auto-created mapping with %d epoch labels: %s", n_labels, mapping_path)
+        else:
+            logger.info("Reusing existing NWB epoch mapping (preserving user edits): %s", mapping_path)
+
         self.mapping_file_path_edit.setText(str(mapping_path))
         if self.labels_widget:
             self.labels_widget._reload_mapping(str(mapping_path))
-
-        n_labels = len(epoch_mapping) - 1  # exclude background
-        logger.info("NWB auto-created mapping with %d epoch labels: %s", n_labels, mapping_path)
 
     def _ensure_crowsetta_formats(self):
         """Add crowsetta formats to labels combo if not already present."""

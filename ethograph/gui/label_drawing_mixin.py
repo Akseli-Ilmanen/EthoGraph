@@ -5,6 +5,8 @@ from typing import Any, Dict
 import numpy as np
 import pyqtgraph as pg
 
+from ethograph.labels.intervals import EVENT_TYPE_POINT
+
 from .app_constants import (
     PREDICTION_LABELS_HEIGHT_RATIO,
     SPECTROGRAM_LABELS_HEIGHT_RATIO,
@@ -26,6 +28,12 @@ from .app_constants import (
     Z_INDEX_PREDICTIONS,
     Z_INDEX_CHANGEPOINTS,
 )
+
+# Point events render as a vertical line in the label class's color.  Thicker
+# than CP lines (so they read as user-coded data, not reference markers) and
+# drawn above the state-event rectangles but below the changepoint markers.
+_POINT_EVENT_LINE_WIDTH = 4.0
+_POINT_EVENT_Z_INDEX = Z_INDEX_CHANGEPOINTS - 1
 
 
 class LabelDrawingMixin:
@@ -92,8 +100,16 @@ class LabelDrawingMixin:
 
         return visible
 
-    def draw_all_labels(self, intervals_df, predictions_df=None, show_predictions=False):
-        if intervals_df is None or not self.label_mappings:
+    def draw_all_labels(self, slots):
+        """Render label slots on every eligible plot.
+
+        slots: list of dicts ``{"df", "label_ids", "position"}``.
+          - ``df``: DataFrame with onset_s, offset_s, labels (and optional event_type).
+          - ``label_ids``: filter set; if None, every non-zero label is drawn (used
+            for the predictions slot, since it isn't gated by branch membership).
+          - ``position``: ``"main"``, ``"top1"`` or ``"top2"``.
+        """
+        if not self.label_mappings:
             return
 
         eligible = set(self._get_label_eligible_plots())
@@ -102,9 +118,12 @@ class LabelDrawingMixin:
             self._clear_labels_on_plot(plot)
             if plot not in eligible:
                 continue
-            self._draw_intervals_on_plot(plot, intervals_df, is_main=True)
-            if predictions_df is not None and show_predictions:
-                self._draw_intervals_on_plot(plot, predictions_df, is_main=False)
+            for slot in slots or []:
+                self._draw_intervals_on_plot(
+                    plot, slot["df"],
+                    label_ids=slot.get("label_ids"),
+                    position=slot["position"],
+                )
 
     def _clear_labels_on_plot(self, plot):
         if not hasattr(plot, "label_items"):
@@ -117,19 +136,39 @@ class LabelDrawingMixin:
                 pass
         plot.label_items.clear()
 
-    def _draw_intervals_on_plot(self, plot, intervals_df, is_main=True):
+    def _draw_intervals_on_plot(self, plot, intervals_df, label_ids=None, position="main"):
         if not hasattr(plot, "label_items"):
             plot.label_items = []
         if intervals_df is None or intervals_df.empty:
             return
-        active_ids = getattr(self, "_active_label_ids", None)
+        has_event_type = "event_type" in intervals_df.columns
         for _, row in intervals_df.iterrows():
             labels = int(row["labels"])
             if labels == 0:
                 continue
-            if active_ids is not None and labels not in active_ids:
+            if label_ids is not None and labels not in label_ids:
                 continue
-            self._draw_single_label(plot, row["onset_s"], row["offset_s"], labels, is_main)
+            is_point = has_event_type and row["event_type"] == EVENT_TYPE_POINT
+            if is_point:
+                self._draw_single_point(plot, row["onset_s"], labels)
+            else:
+                self._draw_single_label(plot, row["onset_s"], row["offset_s"], labels, position)
+
+    def _draw_single_point(self, plot, time_s, labels):
+        """Draw a point event as a thick vertical line in the label's color."""
+        if labels not in self.label_mappings:
+            return
+        color_rgb = tuple(int(c * 255) for c in self.label_mappings[labels]["color"])
+        line = pg.InfiniteLine(
+            pos=time_s, angle=90,
+            pen=pg.mkPen(color=(*color_rgb, 230),
+                         width=_POINT_EVENT_LINE_WIDTH,
+                         style=pg.QtCore.Qt.SolidLine),
+            movable=False,
+        )
+        line.setZValue(_POINT_EVENT_Z_INDEX)
+        plot.plot_item.addItem(line)
+        plot.label_items.append(line)
 
     def _is_bottom_strip_plot(self, plot) -> bool:
         """Whether this plot should use bottom-strip style labels."""
@@ -147,10 +186,20 @@ class LabelDrawingMixin:
     def _is_inverted_y_plot(self, plot) -> bool:
         return plot is getattr(self, "heatmap_plot", None)
 
-    def _draw_single_label(self, plot, start_time, end_time, labels, is_main=True):
+    def _draw_single_label(self, plot, start_time, end_time, labels, position="main"):
+        """Draw a single label rectangle.
+
+        position: ``"main"`` -> standard full-plot rectangle (or bottom strip on
+        spectrogram-style plots, or top strip on inverted-Y heatmap).
+        ``"top1"``/``"top2"`` -> stacked thin top strips, drawn over the main
+        rectangles. Top2 sits directly under Top1 so two prediction-like
+        sources can co-exist visibly.
+        """
         if labels not in self.label_mappings:
             return
         color_rgb = tuple(int(c * 255) for c in self.label_mappings[labels]["color"])
+
+        is_main = (position == "main")
 
         if is_main and not self._is_bottom_strip_plot(plot):
             self._draw_standard_label(plot, start_time, end_time, color_rgb)
@@ -160,21 +209,34 @@ class LabelDrawingMixin:
         y_lo, y_hi = plot.plot_item.getViewBox().viewRange()[1]
         degenerate = y_hi <= y_lo
 
-        if is_main and inverted_y:
-            # Main label on inverted plot (heatmap): top strip
+        if is_main:
+            # Main on a bottom-strip plot: bottom strip (or top strip when y is inverted)
             height = SPECTROGRAM_FALLBACK_Y_HEIGHT if degenerate else (y_hi - y_lo) * SPECTROGRAM_LABELS_HEIGHT_RATIO
-            y_top = PREDICTION_FALLBACK_Y_TOP if degenerate else y_hi
-            y0, y1, z, alpha = y_top - height, y_top, Z_INDEX_LABELS, 220
-        elif not is_main and not inverted_y:
-            # Prediction label on normal plot: smaller top strip
-            height = PREDICTION_FALLBACK_Y_HEIGHT if degenerate else (y_hi - y_lo) * PREDICTION_LABELS_HEIGHT_RATIO
-            y_top = PREDICTION_FALLBACK_Y_TOP if degenerate else y_hi
-            y0, y1, z, alpha = y_top - height, y_top, Z_INDEX_PREDICTIONS, 200
+            if inverted_y:
+                y_top = PREDICTION_FALLBACK_Y_TOP if degenerate else y_hi
+                y0, y1 = y_top - height, y_top
+            else:
+                y_bottom = 0 if degenerate else y_lo
+                y0, y1 = y_bottom, y_bottom + height
+            z, alpha = Z_INDEX_LABELS, 220
         else:
-            # Bottom strip: main-on-normal or prediction-on-inverted
-            height = SPECTROGRAM_FALLBACK_Y_HEIGHT if degenerate else (y_hi - y_lo) * SPECTROGRAM_LABELS_HEIGHT_RATIO
-            y_bottom = 0 if degenerate else y_lo
-            y0, y1, z, alpha = y_bottom, y_bottom + height, Z_INDEX_PREDICTIONS, 220
+            # Top1 / Top2: stacked thin strips at the y_hi side. On heatmaps
+            # (inverted_y) the strips visually appear at the bottom of the
+            # screen, mirroring how the existing main bar already works there.
+            height = PREDICTION_FALLBACK_Y_HEIGHT if degenerate else (y_hi - y_lo) * PREDICTION_LABELS_HEIGHT_RATIO
+            slot_idx = 0 if position == "top1" else 1
+            if inverted_y:
+                y_bottom = 0 if degenerate else y_lo
+                y0 = y_bottom + slot_idx * height
+                y1 = y0 + height
+            else:
+                y_top = PREDICTION_FALLBACK_Y_TOP if degenerate else y_hi
+                y1 = y_top - slot_idx * height
+                y0 = y1 - height
+            # Top2 a touch dimmer than Top1 so they're distinguishable when
+            # they show overlapping classes.
+            alpha = 200 if slot_idx == 0 else 170
+            z = Z_INDEX_PREDICTIONS + slot_idx
 
         self._draw_label_region(plot, start_time, end_time, color_rgb, y0, y1, z, alpha)
 

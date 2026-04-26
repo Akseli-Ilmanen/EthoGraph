@@ -298,8 +298,17 @@ class DataPanel(QWidget):
         parent_layout.addWidget(self.panels_groupbox)
 
         self.overlays_groupbox = QGroupBox("Overlays")
-        self.overlays_layout = QHBoxLayout()
-        self.overlays_layout.setSpacing(15)
+        # Two rows: row 1 holds the label-slot dropdowns, row 2 the
+        # secondary toggles (Confidence, Envelope, ...).
+        self.overlays_layout = QVBoxLayout()
+        self.overlays_layout.setSpacing(2)
+        self.overlays_layout.setContentsMargins(4, 4, 4, 4)
+        self.overlays_row1_layout = QHBoxLayout()
+        self.overlays_row1_layout.setSpacing(15)
+        self.overlays_row2_layout = QHBoxLayout()
+        self.overlays_row2_layout.setSpacing(15)
+        self.overlays_layout.addLayout(self.overlays_row1_layout)
+        self.overlays_layout.addLayout(self.overlays_row2_layout)
         self.overlays_groupbox.setLayout(self.overlays_layout)
         parent_layout.addWidget(self.overlays_groupbox)
 
@@ -524,6 +533,8 @@ class DataWidget(QWidget):
         self.panels_row5_layout = panel.panels_row5_layout
         self.overlays_groupbox = panel.overlays_groupbox
         self.overlays_layout = panel.overlays_layout
+        self.overlays_row1_layout = panel.overlays_row1_layout
+        self.overlays_row2_layout = panel.overlays_row2_layout
         self.pose_groupbox = panel.pose_groupbox
         self.pose_hide_threshold_spin = panel.pose_hide_threshold_spin
         self.pose_show_text_checkbox = panel.pose_show_text_checkbox
@@ -1119,32 +1130,65 @@ class DataWidget(QWidget):
 
         self.video_mgr.set_audio_row_widgets(self._audio_row_widgets)
 
-        # Overlays
-        overlays_layout = self.overlays_layout
-        self.show_labels_checkbox = QCheckBox("Labels")
-        self.show_labels_checkbox.setChecked(self.app_state.labels_visible)
-        self.show_labels_checkbox.stateChanged.connect(self._on_labels_overlay_toggled)
-        overlays_layout.addWidget(self.show_labels_checkbox)
+        # Overlays row 1 — three dropdowns choose what is rendered as labels.
+        # Main fills the entire plot (except top strips). Top1 / Top2 are
+        # narrow top strips, each independently configurable to a label
+        # branch or to the imported predictions. Label sits flush against
+        # its combo; an explicit gap separates the three label/combo groups.
+        row1 = self.overlays_row1_layout
+        row1.setSpacing(2)
+        _GROUP_GAP = 6
+        _COMBO_WIDTH = 72
 
-        self.pred_show_predictions = QCheckBox("Predictions")
-        self.pred_show_predictions.setChecked(False)
-        self.pred_show_predictions.setEnabled(False)
-        self.pred_show_predictions.stateChanged.connect(self._on_pred_show_predictions_changed)
-        overlays_layout.addWidget(self.pred_show_predictions)
+        row1.addWidget(QLabel("Main:"))
+        self.main_labels_combo = QComboBox()
+        self.main_labels_combo.setFixedWidth(_COMBO_WIDTH)
+        self.main_labels_combo.currentIndexChanged.connect(
+            lambda _i: self._on_label_slot_changed("main")
+        )
+        row1.addWidget(self.main_labels_combo)
+        row1.addSpacing(_GROUP_GAP)
+
+        row1.addWidget(QLabel("Top 1:"))
+        self.top1_labels_combo = QComboBox()
+        self.top1_labels_combo.setFixedWidth(_COMBO_WIDTH)
+        self.top1_labels_combo.currentIndexChanged.connect(
+            lambda _i: self._on_label_slot_changed("top1")
+        )
+        row1.addWidget(self.top1_labels_combo)
+        row1.addSpacing(_GROUP_GAP)
+
+        row1.addWidget(QLabel("Top 2:"))
+        self.top2_labels_combo = QComboBox()
+        self.top2_labels_combo.setFixedWidth(_COMBO_WIDTH)
+        self.top2_labels_combo.currentIndexChanged.connect(
+            lambda _i: self._on_label_slot_changed("top2")
+        )
+        row1.addWidget(self.top2_labels_combo)
+
+        row1.addStretch()
+
+        # Overlays row 2 — secondary scalar overlays.
+        row2 = self.overlays_row2_layout
 
         self.show_confidence_checkbox = QCheckBox("Confidence")
         self.show_confidence_checkbox.setChecked(False)
         self.show_confidence_checkbox.stateChanged.connect(self._update_confidence_overlay)
-        overlays_layout.addWidget(self.show_confidence_checkbox)
+        row2.addWidget(self.show_confidence_checkbox)
 
         self.show_envelope_checkbox = QCheckBox("Envelope")
         self.show_envelope_checkbox.setChecked(False)
         self.show_envelope_checkbox.stateChanged.connect(self._on_envelope_overlay_changed)
         self.show_envelope_checkbox.hide()
-        overlays_layout.addWidget(self.show_envelope_checkbox)
+        row2.addWidget(self.show_envelope_checkbox)
 
-        overlays_layout.addStretch()
+        row2.addStretch()
+
         self._set_controls_enabled(False)
+
+        # Populate the slot dropdowns with whatever branches the labels widget
+        # already has — this happens after data load, so branches exist.
+        self.refresh_label_slot_dropdowns()
 
     # ------------------------------------------------------------------
     # Combo / checkbox handlers
@@ -1181,8 +1225,148 @@ class DataWidget(QWidget):
                 return
         self.plot_container.hide_confidence_plot()
 
-    def _on_pred_show_predictions_changed(self):
-        self.refresh_lineplot()
+    # ------------------------------------------------------------------
+    # Label slot dropdowns (Main / Top1 / Top2)
+    # ------------------------------------------------------------------
+
+    def _label_slot_options(self, *, allow_predictions: bool, allow_none: bool):
+        """Build (display_text, value) pairs for a label slot dropdown.
+
+        Branches are read from the labels widget's mapping. Predictions is
+        offered iff a predictions df has been loaded.
+        """
+        options: list[tuple[str, object]] = []
+        if allow_none:
+            options.append(("(none)", None))
+        if self.labels_widget is not None:
+            for branch_idx in sorted(self.labels_widget._branch_sections):
+                options.append((f"Branch {branch_idx}", branch_idx))
+        if allow_predictions and self.app_state.pred_labels_df is not None:
+            options.append(("Predict", "predictions"))
+        return options
+
+    def _populate_label_slot_combo(self, combo: QComboBox, options, current_value):
+        """Re-fill *combo* with *options*, restoring *current_value* if present."""
+        combo.blockSignals(True)
+        combo.clear()
+        chosen_index = 0
+        for i, (text, value) in enumerate(options):
+            combo.addItem(text, userData=value)
+            if value == current_value:
+                chosen_index = i
+        if options:
+            combo.setCurrentIndex(chosen_index)
+        combo.blockSignals(False)
+
+    def refresh_label_slot_dropdowns(self, *, new_branch: int | None = None,
+                                     predictions_added: bool = False):
+        """Repopulate the three slot dropdowns from current branches/predictions.
+
+        Auto-fill rules:
+          - new_branch: place the new branch into Top1 if free, else Top2.
+            If both are taken, leave them alone.
+          - predictions_added: same auto-fill rule, value="predictions".
+        """
+        if not hasattr(self, "main_labels_combo"):
+            return
+
+        state = self.app_state
+
+        # Auto-fill Top1/Top2 before repopulating, so the new value is selected.
+        if new_branch is not None and new_branch != state._main_labels_source:
+            if state._top1_source is None:
+                state._top1_source = new_branch
+            elif state._top2_source is None:
+                state._top2_source = new_branch
+        if predictions_added:
+            already_in_slot = (
+                state._top1_source == "predictions"
+                or state._top2_source == "predictions"
+            )
+            if not already_in_slot:
+                if state._top1_source is None:
+                    state._top1_source = "predictions"
+                elif state._top2_source is None:
+                    state._top2_source = "predictions"
+
+        main_opts = self._label_slot_options(allow_predictions=False, allow_none=True)
+        top_opts = self._label_slot_options(allow_predictions=True, allow_none=True)
+
+        self._populate_label_slot_combo(
+            self.main_labels_combo, main_opts, state._main_labels_source,
+        )
+        self._populate_label_slot_combo(
+            self.top1_labels_combo, top_opts, state._top1_source,
+        )
+        self._populate_label_slot_combo(
+            self.top2_labels_combo, top_opts, state._top2_source,
+        )
+
+    def set_main_labels_branch(self, branch_idx: int):
+        """Programmatic main-slot change (used by Shift+B shortcut)."""
+        idx = self.main_labels_combo.findData(branch_idx)
+        if idx < 0:
+            return
+        self.main_labels_combo.setCurrentIndex(idx)
+
+    def toggle_predictions_slot(self):
+        """Toggle predictions in/out of the Top1/Top2 slots (Ctrl+Y).
+
+        If predictions is already in a slot, clear it. Otherwise drop it
+        into the first free slot (Top1, then Top2). No-op when no
+        predictions have been imported.
+        """
+        if self.app_state.pred_labels_df is None:
+            return
+        state = self.app_state
+        if state._top1_source == "predictions":
+            target_combo, target = self.top1_labels_combo, None
+            state_attr = "_top1_source"
+        elif state._top2_source == "predictions":
+            target_combo, target = self.top2_labels_combo, None
+            state_attr = "_top2_source"
+        elif state._top1_source is None:
+            target_combo, target = self.top1_labels_combo, "predictions"
+            state_attr = "_top1_source"
+        elif state._top2_source is None:
+            target_combo, target = self.top2_labels_combo, "predictions"
+            state_attr = "_top2_source"
+        else:
+            return  # both slots taken by something else
+        idx = target_combo.findData(target)
+        if idx < 0:
+            # Combo wasn't populated yet — set state directly and refresh.
+            setattr(state, state_attr, target)
+            self.refresh_label_slot_dropdowns()
+            return
+        target_combo.setCurrentIndex(idx)
+
+    def _on_label_slot_changed(self, slot: str):
+        """User changed Main / Top1 / Top2 dropdown — persist + redraw."""
+        state = self.app_state
+        combo = {
+            "main": self.main_labels_combo,
+            "top1": self.top1_labels_combo,
+            "top2": self.top2_labels_combo,
+        }[slot]
+        new_value = combo.currentData()
+        if slot == "main":
+            prev = state._main_labels_source
+            if isinstance(prev, int) and prev != new_value and self.labels_widget:
+                self.labels_widget._previous_main_branch = prev
+            state._main_labels_source = new_value
+        elif slot == "top1":
+            state._top1_source = new_value
+        else:
+            state._top2_source = new_value
+
+        if self.labels_widget is not None:
+            self.labels_widget._sync_active_label_ids()
+        if self.app_state.ready:
+            ds_kwargs = self.app_state.get_ds_kwargs()
+            self.update_label_plot(ds_kwargs)
+        if self.labels_widget is not None:
+            self.labels_widget.refresh_labels_shapes_layer()
 
     def cycle_neural_view(self):
         if not hasattr(self, 'neural_view_combo') or not self.neural_view_combo.isVisible():
@@ -1390,17 +1574,6 @@ class DataWidget(QWidget):
         self._update_extra_camera_combo_items(cameras)
 
 
-
-    def _on_labels_overlay_toggled(self, state):
-        visible = state == Qt.Checked
-        self.app_state.labels_visible = visible
-        if self.plot_container:
-            if visible:
-                ds_kwargs = self.app_state.get_ds_kwargs()
-                self.update_label_plot(ds_kwargs)
-            else:
-                for plot in self.plot_container._get_all_plots():
-                    self.plot_container._clear_labels_on_plot(plot)
 
     def _is_autoscale_on(self) -> bool:
         return (
@@ -2146,7 +2319,14 @@ class DataWidget(QWidget):
         self.update_label_plot(ds_kwargs)
 
     def update_label_plot(self, ds_kwargs):
-        if not self.app_state.labels_visible:
+        # Labels are hidden when every slot is None.
+        state = self.app_state
+        any_slot = (
+            state._main_labels_source is not None
+            or state._top1_source is not None
+            or state._top2_source is not None
+        )
+        if not any_slot:
             if self.plot_container:
                 for plot in self.plot_container._get_all_plots():
                     self.plot_container._clear_labels_on_plot(plot)
@@ -2159,11 +2339,7 @@ class DataWidget(QWidget):
             intervals_df = intervals_df[intervals_df["individual"] == selected_ind]
 
         predictions_df = None
-
-        if (
-            self.pred_show_predictions.isChecked()
-            and self.app_state.pred_labels_df is not None
-        ):
+        if self.app_state.pred_labels_df is not None:
             trial = self.app_state.trials_sel
             df = self.app_state.pred_labels_df
             predictions_df = df[df["trial"] == trial] if "trial" in df.columns else df

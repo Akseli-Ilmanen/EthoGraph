@@ -26,7 +26,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ethograph.labels.intervals import _rows_to_df
+from ethograph.labels.intervals import _rows_to_df, states_only
 
 
 # ── Primitives ───────────────────────────────────────────────────────────
@@ -224,6 +224,7 @@ def intervals_to_dense(
     """
     dense = np.zeros((n_samples, len(individuals)), dtype=np.int8)
     ind_to_idx = {name: i for i, name in enumerate(individuals)}
+    df = states_only(df)
 
     for _, row in df.iterrows():
         ind_idx = ind_to_idx.get(row["individual"])

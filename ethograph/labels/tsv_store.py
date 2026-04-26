@@ -24,15 +24,18 @@ import numpy as np
 import pandas as pd
 
 from ethograph.labels.intervals import (
+    EVENT_TYPE_POINT,
+    EVENT_TYPE_STATE,
     INTERVAL_COLUMNS,
     INTERVAL_DTYPES,
     empty_intervals,
+    ensure_event_type,
 )
 
 logger = logging.getLogger(__name__)
 
 TSV_COLUMNS = [
-    "trial", "individual", "labels", "onset_s", "offset_s", 
+    "trial", "individual", "labels", "onset_s", "offset_s", "event_type",
     "human_verified", "changepoint_corrected", "prediction_source", "n_samples",
 ]
 
@@ -122,6 +125,7 @@ def load_labels_tsv(path: str | Path) -> pd.DataFrame:
         df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
     validate_labels_tsv(df, path)
 
+    ensure_event_type(df)
     for col in INTERVAL_COLUMNS:
         if col in df.columns and col in INTERVAL_DTYPES:
             df[col] = df[col].astype(INTERVAL_DTYPES[col])
@@ -154,16 +158,18 @@ def save_labels_tsv(path: str | Path, df: pd.DataFrame) -> None:
     
     preferred = [
         "session", "trial", "session_trial", "individual", "labels",
-        "onset_s", "offset_s", "trial_onset",  "trial_offset","onset_global", "offset_global",
+        "onset_s", "offset_s", "event_type",
+        "trial_onset",  "trial_offset","onset_global", "offset_global",
         "duration", "sequence_idx", "sequence",
         "human_verified", "changepoint_corrected", "prediction_source", "n_samples",
     ]
     cols = [c for c in preferred if c in out.columns]
     cols += [c for c in out.columns if c not in cols]
     out = out[cols]
-    
+
+    # Drop negative-duration state intervals; keep point events (NaN offset).
     duration = out["offset_s"] - out["onset_s"]
-    out = out[duration >= 0.0] # Shouldn't occur, but just in case.
+    out = out[duration.isna() | (duration >= 0.0)]
 
     tmp = path.with_suffix(".tsv.tmp")
     out.to_csv(tmp, sep="\t", index=False, encoding="utf-8-sig")
@@ -216,6 +222,7 @@ def set_trial_in_tsv(
     old_meta = get_trial_meta(all_df, trial)
     other = all_df[all_df["trial"] != trial]
 
+    trial_df = ensure_event_type(trial_df.copy())
     new_rows = trial_df[INTERVAL_COLUMNS].copy()
     new_rows.insert(0, "trial", trial)
     for col, default in TRIAL_META_DEFAULTS.items():

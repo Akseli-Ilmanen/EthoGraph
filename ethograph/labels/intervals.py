@@ -2,9 +2,14 @@
 
 Labels are stored as a pandas DataFrame with columns:
     onset_s    (float64) - start time in seconds
-    offset_s   (float64) - end time in seconds
+    offset_s   (float64) - end time in seconds (NaN for point events)
     labels     (int32)   - label class ID (nonzero)
     individual (str)     - individual identifier
+    event_type (str)     - "state" (interval) or "point" (instantaneous)
+
+Use ``split_by_kind(df)`` at the top of every interval operation so points
+pass through untouched. ``states_only(df)`` / ``points_only(df)`` are for
+read-only consumers (dense conversion, plot rendering).
 """
 
 from __future__ import annotations
@@ -17,13 +22,18 @@ import pandas as pd
 
 # ── Constants ────────────────────────────────────────────────────────────
 
-INTERVAL_COLUMNS = ["onset_s", "offset_s", "labels", "individual"]
+EVENT_TYPE_STATE = "state"
+EVENT_TYPE_POINT = "point"
+EVENT_TYPES = (EVENT_TYPE_STATE, EVENT_TYPE_POINT)
+
+INTERVAL_COLUMNS = ["onset_s", "offset_s", "labels", "individual", "event_type"]
 
 INTERVAL_DTYPES = {
     "onset_s": np.float64,
     "offset_s": np.float64,
     "labels": np.int32,
     "individual": object,
+    "event_type": object,
 }
 
 
@@ -36,20 +46,78 @@ def empty_intervals() -> pd.DataFrame:
     -------
     pd.DataFrame
         Empty DataFrame with columns ``onset_s``, ``offset_s``, ``labels``,
-        ``individual``.
+        ``individual``, ``event_type``.
 
     Examples
     --------
     >>> from ethograph.labels.intervals import empty_intervals
     >>> df = empty_intervals()
     >>> df.columns.tolist()
-    ['onset_s', 'offset_s', 'labels', 'individual']
+    ['onset_s', 'offset_s', 'labels', 'individual', 'event_type']
     >>> len(df)
     0
     """
     return pd.DataFrame(
         {col: pd.Series(dtype=INTERVAL_DTYPES[col]) for col in INTERVAL_COLUMNS}
     )
+
+
+# ── Event-kind helpers (use these to avoid forgetting guards) ───────────
+
+def ensure_event_type(df: pd.DataFrame) -> pd.DataFrame:
+    """Add an ``event_type`` column defaulting to ``"state"`` if missing.
+
+    Mutates and returns *df*.  Use on freshly-loaded DataFrames so downstream
+    code can rely on the column existing.
+    """
+    if "event_type" not in df.columns:
+        df["event_type"] = EVENT_TYPE_STATE
+    else:
+        df["event_type"] = df["event_type"].fillna(EVENT_TYPE_STATE).astype(object)
+    return df
+
+
+def states_only(df: pd.DataFrame) -> pd.DataFrame:
+    """Return rows that are state events (intervals).
+
+    Backwards-compatible: a DataFrame without ``event_type`` is treated as
+    all-states.
+    """
+    if df.empty or "event_type" not in df.columns:
+        return df
+    return df[df["event_type"] == EVENT_TYPE_STATE]
+
+
+def points_only(df: pd.DataFrame) -> pd.DataFrame:
+    """Return rows that are point events (instantaneous)."""
+    if df.empty or "event_type" not in df.columns:
+        return df.iloc[0:0]
+    return df[df["event_type"] == EVENT_TYPE_POINT]
+
+
+def split_by_kind(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split a DataFrame into ``(states, points)``.
+
+    Use at the top of any interval-aware operation::
+
+        states, points = split_by_kind(df)
+        # ... transform states ...
+        return pd.concat([transformed_states, points], ignore_index=True)
+
+    This is the canonical way to keep point events unaffected by interval
+    operations (purge, stitch, snap, etc.).
+    """
+    return states_only(df), points_only(df)
+
+
+def _recombine(transformed_states: pd.DataFrame, points: pd.DataFrame) -> pd.DataFrame:
+    """Concat transformed states with untouched points, sorted by onset."""
+    if points.empty:
+        return transformed_states.reset_index(drop=True)
+    out = pd.concat([transformed_states, points], ignore_index=True)
+    out.sort_values("onset_s", inplace=True, kind="stable", na_position="last")
+    out.reset_index(drop=True, inplace=True)
+    return out
 
 
 # ── Mapping loaders ─────────────────────────────────────────────────────
@@ -111,14 +179,17 @@ def load_label_mapping(mapping_file: str | Path = "mapping.txt") -> Dict[int, Di
     Parameters
     ----------
     mapping_file : str or Path
-        Path to the mapping file.  Each line is ``<id> <name> [<branch>]``
-        where *branch* is an optional integer (default 0) grouping labels
-        into branches for independent labeling.
+        Path to the mapping file.  Each line is
+        ``<id> <name> [<branch>] [<event_type>]`` where *branch* is an
+        optional integer (default 0) grouping labels into branches for
+        independent labeling, and *event_type* is ``"state"`` (default) or
+        ``"point"``.  Missing trailing columns inherit their defaults.
 
     Returns
     -------
     dict[int, dict]
-        ``{label_id: {"name": str, "color": ndarray(3,), "order": int, "branch": int}}``.
+        ``{label_id: {"name": str, "color": ndarray(3,), "order": int,
+        "branch": int, "event_type": str}}``.
 
     Raises
     ------
@@ -173,25 +244,31 @@ def load_label_mapping(mapping_file: str | Path = "mapping.txt") -> Dict[int, Di
                     "color": _GAP_COLOR,
                     "order": order,
                     "branch": 0,
+                    "event_type": EVENT_TYPE_STATE,
                 }
             else:
                 label_id = int(parts[0])
-                if len(parts) >= 3:
-                    branch = int(parts[2])
-                else:
-                    branch = 0
+                branch = int(parts[2]) if len(parts) >= 3 else 0
+                event_type = parts[3] if len(parts) >= 4 else EVENT_TYPE_STATE
+                if event_type not in EVENT_TYPES:
+                    event_type = EVENT_TYPE_STATE
                 label_mappings[label_id] = {
                     "name": parts[1],
                     "color": np.array(_LABEL_COLORS[label_id % len(_LABEL_COLORS)]) / 255.0,
                     "order": label_id,
                     "branch": branch,
+                    "event_type": event_type,
                 }
 
     return label_mappings
 
 
 def save_label_mapping(mapping_file: str | Path, mappings: Dict[int, Dict]) -> None:
-    """Write a label mapping back to disk, preserving branch assignments.
+    """Write a label mapping back to disk, preserving branch and event_type.
+
+    Lines have the form ``<id> <name> <branch> <event_type>`` for scalar IDs.
+    The ``event_type`` column is omitted when it equals the default
+    (``"state"``) so files stay backward-compatible with older readers.
 
     Parameters
     ----------
@@ -207,11 +284,49 @@ def save_label_mapping(mapping_file: str | Path, mappings: Dict[int, Dict]) -> N
         if isinstance(label_id, tuple):
             lines.append(f"({label_id[0]},{label_id[1]}) {data['name']} {data['order']}")
         else:
-            lines.append(f"{label_id} {data['name']} {data.get('branch', 0)}")
+            event_type = data.get("event_type", EVENT_TYPE_STATE)
+            base = f"{label_id} {data['name']} {data.get('branch', 0)}"
+            if event_type != EVENT_TYPE_STATE:
+                base = f"{base} {event_type}"
+            lines.append(base)
     mapping_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 # ── Interval operations ─────────────────────────────────────────────────
+
+def add_point(
+    df: pd.DataFrame,
+    time_s: float,
+    labels: int,
+    individual: str,
+) -> pd.DataFrame:
+    """Add a point event (instantaneous label) at *time_s*.
+
+    Point events are stored with ``offset_s = NaN`` and
+    ``event_type = "point"``.  They are never trimmed, split, or merged by
+    :func:`add_interval`, :func:`purge_short_intervals`,
+    :func:`stitch_intervals`, or :func:`snap_boundaries`.
+
+    Returns
+    -------
+    pd.DataFrame
+        Updated DataFrame sorted by ``onset_s``.
+    """
+    new_row = {
+        "onset_s": float(time_s),
+        "offset_s": float("nan"),
+        "labels": int(labels),
+        "individual": individual,
+        "event_type": EVENT_TYPE_POINT,
+    }
+    new_df = pd.DataFrame([new_row])
+    for col, dtype in INTERVAL_DTYPES.items():
+        new_df[col] = new_df[col].astype(dtype)
+    result = pd.concat([df, new_df], ignore_index=True)
+    result.sort_values("onset_s", inplace=True, kind="stable", na_position="last")
+    result.reset_index(drop=True, inplace=True)
+    return result
+
 
 def add_interval(
     df: pd.DataFrame,
@@ -259,9 +374,10 @@ def add_interval(
     if onset_s > offset_s:
         onset_s, offset_s = offset_s, onset_s
 
-    mask_same_ind = df["individual"] == individual
-    other = df[~mask_same_ind]
-    same = df[mask_same_ind].copy()
+    states_df, points_df = split_by_kind(df)
+    mask_same_ind = states_df["individual"] == individual
+    other = states_df[~mask_same_ind]
+    same = states_df[mask_same_ind].copy()
 
     kept: list[dict] = []
     for _, row in same.iterrows():
@@ -292,10 +408,8 @@ def add_interval(
     )
 
     new_same = _rows_to_df(kept)
-    result = pd.concat([other, new_same], ignore_index=True)
-    result.sort_values("onset_s", inplace=True)
-    result.reset_index(drop=True, inplace=True)
-    return result
+    transformed_states = pd.concat([other, new_same], ignore_index=True)
+    return _recombine(transformed_states, points_df)
 
 
 def delete_interval(df: pd.DataFrame, idx: int) -> pd.DataFrame:
@@ -309,7 +423,9 @@ def find_interval_at(
     individual: str,
     label_ids: set[int] | None = None,
 ) -> int | None:
-    """Return DataFrame index of interval containing *time_s* for *individual*.
+    """Return DataFrame index of state interval containing *time_s* for *individual*.
+
+    Point events are never returned here — use :func:`find_point_at` for those.
 
     Parameters
     ----------
@@ -323,6 +439,36 @@ def find_interval_at(
         (df["individual"] == individual)
         & (df["onset_s"] <= time_s)
         & (df["offset_s"] >= time_s)
+        & (df["labels"] != 0)
+    )
+    if "event_type" in df.columns:
+        mask = mask & (df["event_type"] == EVENT_TYPE_STATE)
+    if label_ids is not None:
+        mask = mask & df["labels"].isin(label_ids)
+    matches = df.index[mask]
+    if len(matches) == 0:
+        return None
+    return int(matches[0])
+
+
+def find_point_at(
+    df: pd.DataFrame,
+    time_s: float,
+    individual: str,
+    tolerance_s: float,
+    label_ids: set[int] | None = None,
+) -> int | None:
+    """Return DataFrame index of point event near *time_s* for *individual*.
+
+    A point matches if ``|onset_s - time_s| <= tolerance_s``.  Caller chooses
+    the tolerance — typically a few pixels' worth of plot time.
+    """
+    if "event_type" not in df.columns or df.empty:
+        return None
+    mask = (
+        (df["event_type"] == EVENT_TYPE_POINT)
+        & (df["individual"] == individual)
+        & ((df["onset_s"] - time_s).abs() <= tolerance_s)
         & (df["labels"] != 0)
     )
     if label_ids is not None:
@@ -371,12 +517,13 @@ def purge_short_intervals(
     if label_thresholds_s is None:
         label_thresholds_s = {}
 
-    durations = df["offset_s"] - df["onset_s"]
-    thresholds = df["labels"].map(
+    states_df, points_df = split_by_kind(df)
+    durations = states_df["offset_s"] - states_df["onset_s"]
+    thresholds = states_df["labels"].map(
         lambda lid: label_thresholds_s.get(lid, min_duration_s)
     )
     keep = durations >= thresholds
-    return df[keep].reset_index(drop=True)
+    return _recombine(states_df[keep], points_df)
 
 
 def stitch_intervals(
@@ -413,13 +560,15 @@ def stitch_intervals(
     if df.empty:
         return df.copy()
 
+    states_df, points_df = split_by_kind(df)
+
     if individual is not None:
-        mask = df["individual"] == individual
-        other = df[~mask]
-        target = df[mask].copy()
+        mask = states_df["individual"] == individual
+        other = states_df[~mask]
+        target = states_df[mask].copy()
     else:
         other = empty_intervals()
-        target = df.copy()
+        target = states_df.copy()
 
     target.sort_values(["individual", "onset_s"], inplace=True)
     target.reset_index(drop=True, inplace=True)
@@ -444,10 +593,8 @@ def stitch_intervals(
         merged.append(current)
         i = j
 
-    result = pd.concat([other, _rows_to_df(merged)], ignore_index=True)
-    result.sort_values("onset_s", inplace=True)
-    result.reset_index(drop=True, inplace=True)
-    return result
+    transformed_states = pd.concat([other, _rows_to_df(merged)], ignore_index=True)
+    return _recombine(transformed_states, points_df)
 
 
 def snap_boundaries(
@@ -477,10 +624,11 @@ def snap_boundaries(
     if df.empty or len(cp_times) == 0:
         return df.copy()
 
+    states_df, points_df = split_by_kind(df)
     cp_times = np.sort(cp_times)
     rows = []
 
-    for _, row in df.iterrows():
+    for _, row in states_df.iterrows():
         onset = row["onset_s"]
         offset = row["offset_s"]
 
@@ -498,12 +646,11 @@ def snap_boundaries(
             "individual": row["individual"],
         })
 
-    result = _rows_to_df(rows)
-    result.sort_values(["individual", "onset_s"], inplace=True)
-    result.reset_index(drop=True, inplace=True)
-
-    result = _resolve_overlaps(result)
-    return result
+    transformed = _rows_to_df(rows)
+    transformed.sort_values(["individual", "onset_s"], inplace=True)
+    transformed.reset_index(drop=True, inplace=True)
+    transformed = _resolve_overlaps(transformed)
+    return _recombine(transformed, points_df)
 
 
 # ── Private helpers ──────────────────────────────────────────────────────
@@ -550,7 +697,12 @@ def _resolve_overlaps(df: pd.DataFrame, eps: float = 1e-3) -> pd.DataFrame:
 def _rows_to_df(rows: list[dict]) -> pd.DataFrame:
     if not rows:
         return empty_intervals()
-    df = pd.DataFrame(rows, columns=INTERVAL_COLUMNS)
+    df = pd.DataFrame(rows)
+    if "event_type" not in df.columns:
+        df["event_type"] = EVENT_TYPE_STATE
+    else:
+        df["event_type"] = df["event_type"].fillna(EVENT_TYPE_STATE).astype(object)
+    df = df.reindex(columns=INTERVAL_COLUMNS)
     for col, dtype in INTERVAL_DTYPES.items():
         df[col] = df[col].astype(dtype)
     return df

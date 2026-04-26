@@ -53,7 +53,7 @@ def sample_intervals():
 class TestEmptyIntervals:
     def test_columns(self):
         df = empty_intervals()
-        assert list(df.columns) == ["onset_s", "offset_s", "labels", "individual"]
+        assert list(df.columns) == ["onset_s", "offset_s", "labels", "individual", "event_type"]
 
     def test_empty(self):
         df = empty_intervals()
