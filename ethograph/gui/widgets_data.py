@@ -2535,9 +2535,6 @@ class DataWidget(QWidget):
         desired = self._get_desired_extra_cameras()
         to_add: dict[str, str] = {}
         for camera_name in desired:
-            widget = self.video_mgr.extra_widgets.get(camera_name)
-            if widget is not None and widget.isVisible():
-                continue
             video_path = self.video_mgr._resolve_video_path(camera_name, self.app_state.video_folder)
             if video_path:
                 to_add[camera_name] = video_path
