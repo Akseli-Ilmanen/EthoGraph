@@ -63,7 +63,6 @@ from ethograph.utils.nwb import resolve_timeseries_timing
 from .app_constants import BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER_EPHYS, EPHYSTRACE_DEBOUNCE_MS
 from ..io.plot_sources import FileSource, PlotSource
 from .plots_base import BasePlot, ThrottleDebounce
-from .video_manager import is_url
 
 
 def _nice_round(value: float) -> float:
@@ -165,12 +164,7 @@ class NWBEphysLoader:
         import pynwb
 
         self._rf = None
-        if is_url(path):
-            import remfile
-            self._rf = remfile.File(path)
-            self._h5 = h5py.File(self._rf, "r")
-        else:
-            self._h5 = h5py.File(path, "r")
+        self._h5 = h5py.File(path, "r")
 
         self._io = pynwb.NWBHDF5IO(file=self._h5, load_namespaces=True)
         with warnings.catch_warnings():
