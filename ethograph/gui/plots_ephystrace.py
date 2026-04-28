@@ -1434,6 +1434,7 @@ class EphysTracePlot(BasePlot):
 
 
     def _draw_spike_waveforms_multi(self, t0: float, t1: float):
+        """Spike waveforms for single cluster, drawn on neighbouring channels"""
         sr = self.buffer.ephys_sr
         half_w = int(self._spike_snippet_ms * 0.001 * sr)
         cache_start = self.buffer._cache_start
@@ -1503,6 +1504,7 @@ class EphysTracePlot(BasePlot):
             self._spike_waveform_items.append(item)
 
     def _draw_multi_cluster_waveforms(self, t0: float, t1: float):
+        """Draw spike waveforms for multiple clusters, each with its own color and set of channels."""
         sr = self.buffer.ephys_sr
         half_w = int(self._spike_snippet_ms * 0.001 * sr)
         cache_start = self.buffer._cache_start
