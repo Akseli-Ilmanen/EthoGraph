@@ -38,6 +38,44 @@ from ethograph.gui.wizard_overview import ModalityConfig, WizardState
 
 logger = logging.getLogger(__name__)
 
+
+class TimeAxis(pg.AxisItem):
+    """AxisItem that formats tick labels as H:MM, M:SS or seconds depending on scale.
+
+    Values are expected in seconds. The formatting switches based on the `spacing`
+    parameter provided by pyqtgraph when asking for tick strings.
+    """
+
+    def tickStrings(self, values, scale, spacing):
+        out = []
+        for v in values:
+            try:
+                s = float(v)
+            except Exception:
+                out.append("")
+                continue
+
+            # Hours if ticks are spaced by >= 1 hour
+            if spacing >= 3600:
+                h = int(s // 3600)
+                m = int((s % 3600) // 60)
+                out.append(f"{h:d}:{m:02d}")
+            # Minutes:Seconds if spacing >= 1 minute
+            elif spacing >= 60:
+                m = int(s // 60)
+                sec = int(s % 60)
+                out.append(f"{m:d}:{sec:02d}")
+            else:
+                # Seconds with adaptive precision
+                if spacing < 1:
+                    out.append(f"{s:.2f}")
+                elif spacing < 5:
+                    out.append(f"{s:.1f}")
+                else:
+                    out.append(f"{int(round(s))}")
+
+        return out
+
 # Colors per modality (matching dialog_media_files.py palette)
 MODALITY_COLORS = {
     "video": "#50c8b4",
@@ -428,10 +466,10 @@ class TimelinePage(QWidget):
         ))
         timeline_layout.addSpacing(4)
 
-        self._plot = pg.PlotWidget()
+        self._plot = pg.PlotWidget(axisItems={"bottom": TimeAxis(orientation="bottom")})
         self._plot.setBackground("#1a1d21")
         self._plot.showGrid(x=True, y=False, alpha=0.15)
-        self._plot.setLabel("bottom", "Time (s)")
+        self._plot.setLabel("bottom", "Time")
         self._plot.setMouseEnabled(x=True, y=False)
         self._plot.getAxis("left").setTicks([])
         timeline_layout.addWidget(self._plot, stretch=1)
