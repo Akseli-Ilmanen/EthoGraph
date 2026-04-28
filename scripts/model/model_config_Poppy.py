@@ -51,7 +51,7 @@ if __name__ == "__main__":
 
 
    # need to comment out for train-all
-   action="inference" # "train", "inference", "CV", "ablation"
+   action="train" # "train", "inference", "CV", "ablation"
    # eval run manually via terminal
    
    trainDataReady = False
@@ -78,9 +78,8 @@ if __name__ == "__main__":
    
    
    nc_paths = [
-      # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260308_01\behav\Trial_data.nc",
-      # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260309_01\behav\Trial_data.nc",
-      # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260310_01\behav\Trial_data.nc",
+      r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260308_01\behav\Trial_data.nc",
+      r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260309_01\behav\Trial_data.nc",
       r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260310_01\behav\Trial_data.nc",
       r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260311_01\behav\Trial_data.nc",
       r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260312_01\behav\Trial_data.nc",
