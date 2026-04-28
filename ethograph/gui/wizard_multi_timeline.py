@@ -40,14 +40,24 @@ logger = logging.getLogger(__name__)
 
 
 class TimeAxis(pg.AxisItem):
-    """AxisItem that formats tick labels as H:MM, M:SS or seconds depending on scale.
+    """AxisItem that formats tick labels based on total duration and value.
 
-    Values are expected in seconds. The formatting switches based on the `spacing`
-    parameter provided by pyqtgraph when asking for tick strings.
+    Rules:
+    - If total duration > 1 hour  → HH:MM:SS
+    - Else if value > 5 minutes   → M:SS
+    - Else                        → seconds
     """
 
     def tickStrings(self, values, scale, spacing):
         out = []
+
+        # Get total visible duration
+        try:
+            min_val, max_val = self.range
+            duration = max_val - min_val
+        except Exception:
+            duration = 0
+
         for v in values:
             try:
                 s = float(v)
@@ -55,18 +65,21 @@ class TimeAxis(pg.AxisItem):
                 out.append("")
                 continue
 
-            # Hours if ticks are spaced by >= 1 hour
-            if spacing >= 3600:
+            # 🔑 Rule 1: long recordings → always HH:MM:SS
+            if duration > 3600:
                 h = int(s // 3600)
                 m = int((s % 3600) // 60)
-                out.append(f"{h:d}:{m:02d}")
-            # Minutes:Seconds if spacing >= 1 minute
-            elif spacing >= 60:
+                sec = int(s % 60)
+                out.append(f"{h:d}:{m:02d}:{sec:02d}")
+
+            # Rule 2: medium values → M:SS
+            elif s > 300:
                 m = int(s // 60)
                 sec = int(s % 60)
                 out.append(f"{m:d}:{sec:02d}")
+
+            # Rule 3: short values → seconds
             else:
-                # Seconds with adaptive precision
                 if spacing < 1:
                     out.append(f"{s:.2f}")
                 elif spacing < 5:
