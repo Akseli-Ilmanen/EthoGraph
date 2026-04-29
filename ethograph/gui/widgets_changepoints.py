@@ -1029,7 +1029,7 @@ class ChangepointsWidget(QWidget):
         self.cp_correction_trial_btn.clicked.connect(lambda: self._cp_correction("single_trial"))
         correction_layout.addWidget(self.cp_correction_trial_btn)
 
-        self.cp_correction_all_trials_btn = QPushButton("All Trials")
+        self.cp_correction_all_trials_btn = QPushButton("All Trials (Filtered only)")
         self.cp_correction_all_trials_btn.clicked.connect(lambda: self._cp_correction("all_trials"))
         correction_layout.addWidget(self.cp_correction_all_trials_btn)
 

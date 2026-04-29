@@ -84,8 +84,8 @@ if __name__ == "__main__":
       # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260311_01\behav\Trial_data.nc",
       # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260312_01\behav\Trial_data.nc",
       # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260304_01\behav\Trial_data.nc",
-      r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260305_01\behav\Trial_data.nc", # MISSING ACCELEROMETER FEATURES?
-      r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260305_02\behav\Trial_data.nc",
+      # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260305_01\behav\Trial_data.nc", # MISSING ACCELEROMETER FEATURES?
+      # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260305_02\behav\Trial_data.nc",
       # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260306_01\behav\Trial_data.nc",
       # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260307_01\behav\Trial_data.nc",
       # r"D:\Akseli\AI_data\derivatives\sub-02_id-Poppy\ses-000_date-20260313_01\behav\Trial_data.nc",
