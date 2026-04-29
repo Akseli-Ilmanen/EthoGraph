@@ -87,6 +87,9 @@ class IOWidget(QWidget):
             self.neurons_path_edit.setText(self.app_state.neurons_path)
         self.ephys_offset_edit.setText(f"{float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0):g}")
 
+        # Auto-discover metadata file on startup
+        self._auto_discover_metadata()
+
     def _wire_app_state_path_signals(self):
         self.app_state.nc_file_path_changed.connect(
             lambda value: self.nc_file_path_edit.setText(value or "")

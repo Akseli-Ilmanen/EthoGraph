@@ -135,7 +135,6 @@ class AppStateSpec:
         "labels_confidence_ds": (xr.Dataset | None, None, False),
         "pred_labels_df": (pd.DataFrame | None, None, False),
         "pred_store": (object, None, False),
-        "pred_confidence_levels": (dict, {}, False),
         "pred_confidence_threshold": (float, 0.75, True),
         "pred_segment_confidence_threshold": (float, 0.6, True),
         "trial_conditions": (list | None, None, False),
