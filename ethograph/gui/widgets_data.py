@@ -823,6 +823,7 @@ class DataWidget(QWidget):
         self.app_state.downsample_factor_used = ctx.downsample_factor
 
         self.app_state._all_labels_df = ctx.all_labels_df
+        self.app_state._labels_file_path = ctx.result.labels_file_path
         self.app_state.trials = ctx.trials if ctx.trials else [1]
         self.app_state.ds = ctx.ds
         self.app_state.data_loader = ctx.data_loader

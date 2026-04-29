@@ -172,6 +172,7 @@ class AppStateSpec:
 
         # Paths
         "nc_file_path": (str | None, None, False),
+        "_labels_file_path": (str | None, None, False),  # Tracks active labels file (canonical or predictions)
         "nwb_file_path": (str | None, None, True, SCOPE_LOCAL),
         "video_folder": (str | None, None, True, SCOPE_LOCAL),
         "audio_folder": (str | None, None, True, SCOPE_LOCAL),
@@ -1110,7 +1111,7 @@ class ObservableAppState(QObject):
         return ""
 
     def save_labels(self, remote_path: str | None = None, remote_mode: str | None = None) -> None:
-        """Save labels to canonical TSV + local backup + optional remote backup.
+        """Save labels to active file (canonical or predictions TSV) + local backup + optional remote backup.
 
         Parameters
         ----------
@@ -1135,9 +1136,12 @@ class ObservableAppState(QObject):
         enriched = enrich_labels_df(self._all_labels_df, nwb_alignment=self.nwb_alignment, keep_attrs=keep_attrs, dt=self.dt)
         save_df = enriched if not enriched.empty else self._all_labels_df
 
-        # 1. Canonical location (sibling to .nc)
-        canonical_tsv = labels_tsv_path(nc_path, suffix)
-        save_labels_tsv(canonical_tsv, save_df)
+        # 1. Primary file: use _labels_file_path if set (predictions/custom), otherwise canonical
+        if self._labels_file_path and Path(self._labels_file_path).exists():
+            primary_tsv = Path(self._labels_file_path)
+        else:
+            primary_tsv = labels_tsv_path(nc_path, suffix)
+        save_labels_tsv(primary_tsv, save_df)
 
         # 2. Local backup with timestamp
         backup_dir = nc_path.parent / "labels" / "backups"

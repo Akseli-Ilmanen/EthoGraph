@@ -858,6 +858,7 @@ class IOWidget(QWidget):
             return
 
         self.app_state._all_labels_df = load_labels_tsv(file_path)
+        self.app_state._labels_file_path = file_path  # Track which file is active
         self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
         self.label_file_path_edit.setText(file_path)
 
@@ -1038,19 +1039,20 @@ class IOWidget(QWidget):
         """Common post-import: save converted TSV, load into app state, refresh UI."""
         from ethograph.labels.tsv_store import save_labels_tsv, TRIAL_META_DEFAULTS
 
-        self.app_state.label_intervals = intervals_df
-
+        # Set the complete imported dataframe as the active labels
+        self.app_state._all_labels_df = intervals_df
+        
         trial = getattr(self.app_state, "trials_sel", None)
         if trial is not None:
-            self.app_state.set_trial_intervals(trial, intervals_df)
+            self.app_state.label_intervals = self.app_state.get_trial_intervals(trial)
 
         # For non-.tsv formats, save the converted TSV and show in output row
         fmt = self.labels_format_combo.currentText()
         if fmt != ".tsv" and self.app_state.nc_file_path:
             tsv_out = labels_tsv_path(self.app_state.nc_file_path)
-            all_df = self.app_state._all_labels_df
-            if all_df is not None and not all_df.empty:
-                save_labels_tsv(tsv_out, all_df)
+            if intervals_df is not None and not intervals_df.empty:
+                save_labels_tsv(tsv_out, intervals_df)
+            self.app_state._labels_file_path = str(tsv_out)  # Track the converted TSV as active
             self.labels_output_edit.setText(str(tsv_out))
 
         if hasattr(self, "changepoints_widget") and self.changepoints_widget:
