@@ -1172,5 +1172,5 @@ class ObservableAppState(QObject):
             else:
                 save_labels_tsv(remote_dir / f"{stem}_labels_{timestamp}.tsv", save_df)
 
-        notify(f"Saved labels: {canonical_tsv.name}")
+        notify(f"Saved labels: {primary_tsv.name}")
         self.changes_saved = True
