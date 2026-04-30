@@ -1133,7 +1133,7 @@ class ObservableAppState(QObject):
         # Enrich with computed columns (duration, sequence, global timing, trial attrs)
         from ethograph.labels.export import enrich_labels_df
         keep_attrs = self.trial_conditions if self.trial_conditions else []
-        enriched = enrich_labels_df(self._all_labels_df, nwb_alignment=self.nwb_alignment, keep_attrs=keep_attrs, dt=self.dt)
+        enriched = enrich_labels_df(self._all_labels_df, nwb_alignment=self.nwb_alignment, keep_attrs=keep_attrs, dt=self.dt, metadata_df=self.metadata_df)
         save_df = enriched if not enriched.empty else self._all_labels_df
 
         # 1. Primary file: use _labels_file_path if set (predictions/custom), otherwise canonical
