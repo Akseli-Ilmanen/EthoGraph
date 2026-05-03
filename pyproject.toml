@@ -53,25 +53,7 @@ ethograph-gui = "ethograph.cli:launch"
 ethograph-gui = "ethograph.gui:napari.yaml"
 
 [project.optional-dependencies]
-# Audio: waveform display, spectrograms, audio changepoint detection
-audio = [
-    "audioio",
-    "soundfile",
-    "vocalpy",
-    # vocalseg must be installed manually: pip install git+https://github.com/timsainb/vocalization-segmentation.git
-    "sounddevice",
-]
 
-# DANDI: download datasets from the DANDI archive (heavy: ~40 transitive deps)
-dandi = [
-    "dandi",
-]
-
-# Neural: spike visualization, firing rates, ephys analysis
-neural = [
-    "phylib>=2.6.4",
-    "neo",
-]
 
 # GUI: napari-based graphical interface with all plot types
 gui = [
@@ -86,21 +68,20 @@ gui = [
     "natsort",
     "tqdm",
     "nwb-video-widgets",
-    # audio extras (inlined — self-referential extras don't resolve for local installs)
     "audioio",
     "soundfile",
     "vocalpy",
     # vocalseg must be installed manually: pip install git+https://github.com/timsainb/vocalization-segmentation.git
     "sounddevice",
-    # neural extras (inlined)
     "phylib>=2.6.4",
     "neo",
 ]
 
-# Everything
-all = [
-    "ethograph[gui, audio, dandi, neural, dev, docs]",
+# DANDI: download datasets from the DANDI archive (heavy: ~40 transitive deps)
+dandi = [
+    "dandi",
 ]
+
 
 # Development
 dev = [
