@@ -67,7 +67,7 @@ dandi = [
     "dandi",
 ]
 
-# Neural: spike sorting, firing rates, ephys analysis
+# Neural: spike visualization, firing rates, ephys analysis
 neural = [
     "phylib>=2.6.4",
     "neo",
@@ -99,8 +99,7 @@ gui = [
 
 # Everything
 all = [
-    "ethograph[gui]",
-    "ethograph[dandi]",
+    "ethograph[gui, audio, dandi, neural, dev, docs]",
 ]
 
 # Development
@@ -145,7 +144,7 @@ include = ["ethograph*"]
 exclude = ["tests", "docs*"]
 
 [tool.setuptools.package-data]
-"ethograph.gui" = ["*.yaml"]
+"ethograph.gui" = ["*.yaml", "assets/templates/*"]
 ethograph = ["assets/*"]
 
 [tool.setuptools_scm]
