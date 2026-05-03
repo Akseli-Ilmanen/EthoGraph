@@ -149,14 +149,6 @@ archive](https://dandiarchive.org/) via the GUI wizard:
 uv pip install "ethograph[dandi]"
 ```
 
-### Everything
-
-Install all optional dependencies (GUI + NWB):
-
-```bash
-uv pip install "ethograph[all]"
-```
-
 ### Optional dependency groups
 
 ethograph uses optional extras to keep the base install lightweight.
@@ -175,25 +167,10 @@ Combine extras with commas:
 uv pip install "ethograph[gui,dandi, dev, docs]"
 ```
 
-(install-from-source)=
-## Install from source
-
-Use this method while ethograph is not yet on PyPI, or whenever you
-want to track the latest development version:
-
-```bash
-git clone https://github.com/Akseli-Ilmanen/ethograph.git
-cd ethograph
-uv pip install -e ".[gui]"
-```
-
-The `-e` flag installs in **editable mode** — code changes take effect
-immediately without reinstalling.
 
 ## For developers
 
-To install ethograph in editable mode with all optional dependencies and
-development tools, see {doc}`../community/contributing`.
+To install latest development version in editable mode see {doc}`../community/contributing`.
 
 
 ## Update the package

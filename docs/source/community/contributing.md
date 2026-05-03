@@ -21,7 +21,7 @@ development tools:
 ```bash
 git clone https://github.com/Akseli-Ilmanen/ethograph
 cd ethograph
-uv pip install -e ".[all,dev,docs]"
+uv pip install -e ".[gui,dandi,dev,docs]"
 ```
 
 See {doc}`../getting_started/installation` for details on setting up a virtual
