@@ -35,7 +35,7 @@ from ethograph.utils.download import (
     write_example_configs,
 )
 
-_ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "examples" / "assets"
+_ASSETS_DIR = DOWNLOAD_BASE / "assets"
 
 # Backward-compat re-exports used by test code
 _DOWNLOAD_BASE = DOWNLOAD_BASE
@@ -69,6 +69,35 @@ def _build_alignment_nwb(key_or_dict) -> None:
         build_alignment_nwb(key_or_dict)
     else:
         build_alignment_nwb(key_or_dict["dataset_key"])
+
+
+class _PreviewImageWorker(QThread):
+    """Downloads preview images for all datasets silently in the background."""
+
+    image_ready = Signal(str)  # emits dataset key when its image is downloaded
+
+    def __init__(self):
+        super().__init__()
+
+    def run(self):
+        _ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+        for key, ds in DATASETS.items():
+            image_name = ds.get("image")
+            if not image_name:
+                continue
+            local_path = _ASSETS_DIR / image_name
+            if local_path.exists():
+                self.image_ready.emit(key)
+                continue
+            try:
+                from ethograph.utils.download import _RELEASE_BASE
+                from urllib.request import urlopen
+                url = f"{_RELEASE_BASE}/{ds['release_tag']}/{image_name}"
+                with urlopen(url) as resp:  # noqa: S310
+                    local_path.write_bytes(resp.read())
+                self.image_ready.emit(key)
+            except Exception:
+                pass
 
 
 class _DownloadWorker(QThread):
@@ -112,6 +141,7 @@ class TemplateDialog(QDialog):
         super().__init__(parent)
         self.selected_template = None
         self.setWindowTitle("Select Templates")
+        self._image_labels: dict[str, QLabel] = {}
 
         outer = QVBoxLayout()
         outer.setSpacing(12)
@@ -124,6 +154,10 @@ class TemplateDialog(QDialog):
                 outer.addLayout(row)
             card = self._create_card(key)
             row.addWidget(card)
+
+        self._preview_worker = _PreviewImageWorker()
+        self._preview_worker.image_ready.connect(self._on_image_ready)
+        self._preview_worker.start()
 
     def _create_card(self, key: str) -> QFrame:
         ds = DATASETS[key]
@@ -139,22 +173,10 @@ class TemplateDialog(QDialog):
         card.setLayout(card_layout)
 
         image_label = QLabel()
-        image_path = _ASSETS_DIR / ds["image"]
-        if image_path.exists():
-            if image_path.suffix.lower() == ".gif":
-                movie = QMovie(str(image_path))
-                movie.setScaledSize(QSize(220, 160))
-                image_label.setMovie(movie)
-                movie.start()
-            else:
-                pixmap = QPixmap(str(image_path))
-                image_label.setPixmap(
-                    pixmap.scaled(220, 160, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                )
-        else:
-            image_label.setText("(image not found)")
-            image_label.setAlignment(Qt.AlignCenter)
-            image_label.setFixedSize(220, 160)
+        image_label.setFixedSize(220, 160)
+        image_label.setAlignment(Qt.AlignCenter)
+        self._image_labels[key] = image_label
+        self._load_image_into_label(image_label, ds.get("image", ""))
         card_layout.addWidget(image_label, alignment=Qt.AlignCenter)
 
         text_label = QLabel(ds["name"])
@@ -184,6 +206,32 @@ class TemplateDialog(QDialog):
 
         card.mousePressEvent = lambda event, k=key: self._on_card_clicked(k)
         return card
+
+    def _load_image_into_label(self, label: QLabel, image_name: str) -> None:
+        if not image_name:
+            label.setText("(no preview)")
+            return
+        image_path = _ASSETS_DIR / image_name
+        if not image_path.exists():
+            label.setText("Downloading preview...")
+            return
+        if image_path.suffix.lower() == ".gif":
+            movie = QMovie(str(image_path))
+            movie.setScaledSize(QSize(220, 160))
+            label.setMovie(movie)
+            movie.start()
+        else:
+            pixmap = QPixmap(str(image_path))
+            label.setPixmap(
+                pixmap.scaled(220, 160, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            )
+
+    def _on_image_ready(self, key: str) -> None:
+        label = self._image_labels.get(key)
+        if label is None:
+            return
+        ds = DATASETS[key]
+        self._load_image_into_label(label, ds.get("image", ""))
 
     def _on_card_clicked(self, key: str):
         if is_dataset_downloaded(key):
