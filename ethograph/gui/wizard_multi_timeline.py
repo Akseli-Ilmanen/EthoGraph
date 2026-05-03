@@ -38,6 +38,57 @@ from ethograph.gui.wizard_overview import ModalityConfig, WizardState
 
 logger = logging.getLogger(__name__)
 
+
+class TimeAxis(pg.AxisItem):
+    """AxisItem that formats tick labels based on total duration and value.
+
+    Rules:
+    - If total duration > 1 hour  → HH:MM:SS
+    - Else if value > 5 minutes   → M:SS
+    - Else                        → seconds
+    """
+
+    def tickStrings(self, values, scale, spacing):
+        out = []
+
+        # Get total visible duration
+        try:
+            min_val, max_val = self.range
+            duration = max_val - min_val
+        except Exception:
+            duration = 0
+
+        for v in values:
+            try:
+                s = float(v)
+            except Exception:
+                out.append("")
+                continue
+
+            # 🔑 Rule 1: long recordings → always HH:MM:SS
+            if duration > 3600:
+                h = int(s // 3600)
+                m = int((s % 3600) // 60)
+                sec = int(s % 60)
+                out.append(f"{h:d}:{m:02d}:{sec:02d}")
+
+            # Rule 2: medium values → M:SS
+            elif s > 300:
+                m = int(s // 60)
+                sec = int(s % 60)
+                out.append(f"{m:d}:{sec:02d}")
+
+            # Rule 3: short values → seconds
+            else:
+                if spacing < 1:
+                    out.append(f"{s:.2f}")
+                elif spacing < 5:
+                    out.append(f"{s:.1f}")
+                else:
+                    out.append(f"{int(round(s))}")
+
+        return out
+
 # Colors per modality (matching dialog_media_files.py palette)
 MODALITY_COLORS = {
     "video": "#50c8b4",
@@ -428,10 +479,10 @@ class TimelinePage(QWidget):
         ))
         timeline_layout.addSpacing(4)
 
-        self._plot = pg.PlotWidget()
+        self._plot = pg.PlotWidget(axisItems={"bottom": TimeAxis(orientation="bottom")})
         self._plot.setBackground("#1a1d21")
         self._plot.showGrid(x=True, y=False, alpha=0.15)
-        self._plot.setLabel("bottom", "Time (s)")
+        self._plot.setLabel("bottom", "Time")
         self._plot.setMouseEnabled(x=True, y=False)
         self._plot.getAxis("left").setTicks([])
         timeline_layout.addWidget(self._plot, stretch=1)

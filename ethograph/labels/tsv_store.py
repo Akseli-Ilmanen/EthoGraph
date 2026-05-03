@@ -153,6 +153,10 @@ def save_labels_tsv(path: str | Path, df: pd.DataFrame) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     out = df.copy()
+    if "onset_global" in out.columns:
+        out = out.sort_values("onset_global").reset_index(drop=True)
+    else:
+        out = out.sort_values(["trial", "onset_s"]).reset_index(drop=True)
     
     
     

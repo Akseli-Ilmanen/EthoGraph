@@ -64,12 +64,13 @@ def enrich_labels_df(
     nwb_alignment=None,
     keep_attrs: list[str] | None = None,
     dt=None,
+    metadata_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Enrich a raw labels DataFrame with computed columns for analysis export.
 
     Takes the in-memory ``_all_labels_df`` (with columns ``onset_s``, ``offset_s``,
     ``labels``, ``individual``, ``trial``) and adds session timing, duration,
-    sequence info, and trial attributes.
+    sequence info, and trial attributes from metadata_df and ds.attrs.
 
     Parameters
     ----------
@@ -81,6 +82,10 @@ def enrich_labels_df(
         Trial-level ``ds.attrs`` keys to include as extra columns (xarray only).
     dt : TrialTree, optional
         Xarray data tree (only needed for ``keep_attrs`` and session name).
+    metadata_df : pd.DataFrame, optional
+        Trial metadata table. Columns are merged per trial into the enriched output.
+        If metadata_df contains "poscat" or "num_pellets", those are used instead
+        of falling back to ds.attrs.
 
     Returns
     -------
@@ -104,6 +109,13 @@ def enrich_labels_df(
     if session_name is not None:
         valid["session"] = session_name
         valid["session_trial"] = valid["trial"].apply(lambda t: f"{session_name}_{t}")
+
+    # Determine which legacy attrs to fetch from ds (only if not in metadata_df)
+    legacy_fallback_attrs = []
+    if metadata_df is None or "poscat" not in metadata_df.columns:
+        legacy_fallback_attrs.append("poscat")
+    if metadata_df is None or "num_pellets" not in metadata_df.columns:
+        legacy_fallback_attrs.append("num_pellets")
 
     # Per-trial: sequence, sequence_idx, timing, attrs
     enriched_rows = []
@@ -131,14 +143,34 @@ def enrich_labels_df(
         if t_stop is not None:
             group["trial_offset"] = t_stop
 
-        # Trial attrs
-        try:
-            ds = dt.trial(trial_id)
-            for attr in keep_attrs:
-                if attr in ds.attrs:
-                    group[attr] = ds.attrs[attr]
-        except (KeyError, ValueError):
-            pass
+        # Trial attrs from metadata_df (primary source)
+        if metadata_df is not None and not metadata_df.empty:
+            # Support both "trial" column or index
+            if "trial" in metadata_df.columns:
+                trial_meta = metadata_df[metadata_df["trial"] == trial_id]
+            else:
+                # Try by index
+                try:
+                    trial_meta = metadata_df.loc[[trial_id]]
+                except KeyError:
+                    trial_meta = pd.DataFrame()
+
+            if not trial_meta.empty:
+                # Skip computed/derived columns that shouldn't be exported
+                skip_cols = {"trial", "offsets_corrected", "small_labels_purged", "model_confidence", "model_confidence_level"}
+                for col in trial_meta.columns:
+                    if col not in skip_cols:
+                        group[col] = trial_meta[col].iloc[0]
+
+        # Legacy fallback: poscat and num_pellets from ds.attrs only if not in metadata_df
+        if legacy_fallback_attrs:
+            try:
+                ds = dt.trial(trial_id)
+                for attr in legacy_fallback_attrs:
+                    if attr in ds.attrs:
+                        group[attr] = ds.attrs[attr]
+            except (KeyError, ValueError, AttributeError):
+                pass
 
         enriched_rows.append(group)
 

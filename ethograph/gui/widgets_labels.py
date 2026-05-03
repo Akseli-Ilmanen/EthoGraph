@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from napari.viewer import Viewer
 from qtpy.QtCore import QMimeData, QSize, Qt, Signal
 from qtpy.QtGui import QColor, QDrag
@@ -34,6 +35,7 @@ from ethograph.features.changepoints import snap_to_nearest_changepoint_time
 from ethograph.labels.intervals import load_label_mapping, save_label_mapping
 from ethograph.labels.plots import plot_confidence_pdf
 from ethograph.labels.predictions import PredictionsStore
+from ethograph.io.metadata_table import save_metadata_tsv, metadata_tsv_path, empty_metadata_df
 from ethograph.labels.tsv_store import save_labels_tsv
 from ethograph.labels.intervals import (
     EVENT_TYPE_POINT,
@@ -661,7 +663,6 @@ class LabelsWidget(QWidget):
         self.app_state.pred_labels_df = labels_df
         self.app_state.pred_store = store
         self.app_state.pred_confidence_threshold = threshold
-        self.app_state.pred_confidence_levels = confidence_levels
 
         if self.data_widget:
             self.data_widget.refresh_trials_confidence()
@@ -697,9 +698,43 @@ class LabelsWidget(QWidget):
                 confidence_threshold=self.app_state.pred_confidence_threshold,
                 segment_confidence_threshold=self.app_state.pred_segment_confidence_threshold,
             )
-            self.app_state.pred_confidence_levels = {
-                t: "low" if is_low else "high" for t, is_low in highlighted.items()
-            }
+
+            # Update metadata table with mean model confidence per trial
+            mdf = getattr(self.app_state, 'metadata_df', None)
+            if mdf is None or mdf.empty:
+                mdf = empty_metadata_df(self.app_state.trials)
+            else:
+                mdf = mdf.copy()
+            if 'trial' not in mdf.columns:
+                mdf['trial'] = list(self.app_state.trials)
+
+            mdf_index = mdf.set_index('trial', drop=False)
+            for trial in self.app_state.trials:
+                arr = confidence_map.get(trial)
+                try:
+                    mean_confidence = float(np.nanmean(arr)) if arr is not None else float('nan')
+                except Exception:
+                    mean_confidence = float('nan')
+                mdf_index.loc[trial, 'model_confidence'] = mean_confidence
+                mdf_index.loc[trial, 'model_confidence_level'] = 'low' if highlighted.get(trial, False) else 'high'
+
+            mdf_updated = mdf_index.reset_index(drop=True)
+            self.app_state.metadata_df = mdf_updated
+
+            # Save to metadata TSV (explicit metadata_path or sidecar next to nc)
+            md_path = getattr(self.app_state, 'metadata_path', None)
+            if not md_path and getattr(self.app_state, 'nc_file_path', None):
+                md_path = metadata_tsv_path(self.app_state.nc_file_path)
+            if md_path:
+                try:
+                    save_metadata_tsv(md_path, mdf_updated)
+                    # ensure app_state knows about the metadata path
+                    if not getattr(self.app_state, 'metadata_path', None):
+                        self.app_state.metadata_path = str(md_path)
+                    notify(f"Saved metadata with model confidence to {Path(md_path).name}")
+                except Exception as e:
+                    notify(f"Failed saving metadata: {e}", severity="warning")
+
             if self.data_widget:
                 self.data_widget.refresh_trials_confidence()
             os.startfile(str(pdf_path))
@@ -1097,6 +1132,10 @@ class LabelsWidget(QWidget):
         df = add_point(df, t_clicked, self.selected_labels, individual)
         self.app_state.label_intervals = df
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
+
+        # Post purge/stitch step
+        self.changepoints_widget.cp_correction_from_labelling()
+        df = self.app_state.label_intervals
 
         self.current_labels_pos = None  # selecting an existing point comes later
         self.current_labels = self.selected_labels

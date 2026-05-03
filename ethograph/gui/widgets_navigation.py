@@ -776,7 +776,10 @@ class NavigationWidget(QWidget):
             master.vb.setXRange(onset_s - extra_t0, offset_s + extra_t1, padding=0)
 
         self.plot_container.update_time_marker_by_time(onset_s)
-   
+
+        video = getattr(self.app_state, "video", None)
+        if video is not None and not self.autoplay_checkbox.isChecked():
+            video.seek_to_frame(video.time_to_frame(onset_s))
 
         if self.autoplay_checkbox.isChecked():
             self._play_interval(onset_s, offset_s)

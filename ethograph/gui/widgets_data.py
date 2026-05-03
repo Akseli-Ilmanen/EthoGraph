@@ -823,6 +823,7 @@ class DataWidget(QWidget):
         self.app_state.downsample_factor_used = ctx.downsample_factor
 
         self.app_state._all_labels_df = ctx.all_labels_df
+        self.app_state._labels_file_path = ctx.result.labels_file_path
         self.app_state.trials = ctx.trials if ctx.trials else [1]
         self.app_state.ds = ctx.ds
         self.app_state.data_loader = ctx.data_loader
@@ -927,16 +928,12 @@ class DataWidget(QWidget):
 
 
     def refresh_trials_confidence(self) -> None:
-        """Merge pred_confidence_levels into the Trials tab as a 'confidence' column."""
+        """Refresh the Trials tab with current metadata."""
         if getattr(self, "trials_widget", None) is None:
             return
-        confidence_levels: dict = getattr(self.app_state, "pred_confidence_levels", {})
-        mdf = self.app_state.metadata_df if self.app_state.metadata_df is not None else pd.DataFrame({"trial": self.app_state.trials})
-        mdf = mdf.copy()
-        if confidence_levels:
-            mdf["confidence"] = mdf["trial"].map(confidence_levels)
-        elif "confidence" in mdf.columns:
-            mdf = mdf.drop(columns=["confidence"])
+        mdf = self.app_state.metadata_df
+        if mdf is None or mdf.empty:
+            mdf = pd.DataFrame({"trial": self.app_state.trials})
         self.trials_widget.setup(mdf)
 
     def _create_trial_controls(self):

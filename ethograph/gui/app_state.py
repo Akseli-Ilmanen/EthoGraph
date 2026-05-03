@@ -135,7 +135,6 @@ class AppStateSpec:
         "labels_confidence_ds": (xr.Dataset | None, None, False),
         "pred_labels_df": (pd.DataFrame | None, None, False),
         "pred_store": (object, None, False),
-        "pred_confidence_levels": (dict, {}, False),
         "pred_confidence_threshold": (float, 0.75, True),
         "pred_segment_confidence_threshold": (float, 0.6, True),
         "trial_conditions": (list | None, None, False),
@@ -173,6 +172,7 @@ class AppStateSpec:
 
         # Paths
         "nc_file_path": (str | None, None, False),
+        "_labels_file_path": (str | None, None, False),  # Tracks active labels file (canonical or predictions)
         "nwb_file_path": (str | None, None, True, SCOPE_LOCAL),
         "video_folder": (str | None, None, True, SCOPE_LOCAL),
         "audio_folder": (str | None, None, True, SCOPE_LOCAL),
@@ -1111,7 +1111,7 @@ class ObservableAppState(QObject):
         return ""
 
     def save_labels(self, remote_path: str | None = None, remote_mode: str | None = None) -> None:
-        """Save labels to canonical TSV + local backup + optional remote backup.
+        """Save labels to active file (canonical or predictions TSV) + local backup + optional remote backup.
 
         Parameters
         ----------
@@ -1133,12 +1133,15 @@ class ObservableAppState(QObject):
         # Enrich with computed columns (duration, sequence, global timing, trial attrs)
         from ethograph.labels.export import enrich_labels_df
         keep_attrs = self.trial_conditions if self.trial_conditions else []
-        enriched = enrich_labels_df(self._all_labels_df, nwb_alignment=self.nwb_alignment, keep_attrs=keep_attrs, dt=self.dt)
+        enriched = enrich_labels_df(self._all_labels_df, nwb_alignment=self.nwb_alignment, keep_attrs=keep_attrs, dt=self.dt, metadata_df=self.metadata_df)
         save_df = enriched if not enriched.empty else self._all_labels_df
 
-        # 1. Canonical location (sibling to .nc)
-        canonical_tsv = labels_tsv_path(nc_path, suffix)
-        save_labels_tsv(canonical_tsv, save_df)
+        # 1. Primary file: use _labels_file_path if set (predictions/custom), otherwise canonical
+        if self._labels_file_path and Path(self._labels_file_path).exists():
+            primary_tsv = Path(self._labels_file_path)
+        else:
+            primary_tsv = labels_tsv_path(nc_path, suffix)
+        save_labels_tsv(primary_tsv, save_df)
 
         # 2. Local backup with timestamp
         backup_dir = nc_path.parent / "labels" / "backups"
@@ -1169,5 +1172,5 @@ class ObservableAppState(QObject):
             else:
                 save_labels_tsv(remote_dir / f"{stem}_labels_{timestamp}.tsv", save_df)
 
-        notify(f"Saved labels: {canonical_tsv.name}")
+        notify(f"Saved labels: {primary_tsv.name}")
         self.changes_saved = True

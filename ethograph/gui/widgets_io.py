@@ -87,6 +87,9 @@ class IOWidget(QWidget):
             self.neurons_path_edit.setText(self.app_state.neurons_path)
         self.ephys_offset_edit.setText(f"{float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0):g}")
 
+        # Auto-discover metadata file on startup
+        self._auto_discover_metadata()
+
     def _wire_app_state_path_signals(self):
         self.app_state.nc_file_path_changed.connect(
             lambda value: self.nc_file_path_edit.setText(value or "")
@@ -369,7 +372,7 @@ class IOWidget(QWidget):
         self.human_verify_trial_btn = QPushButton("Single Trial")
         self.human_verify_trial_btn.clicked.connect(lambda: self._human_verification_true("single_trial"))
         hv_row.addWidget(self.human_verify_trial_btn)
-        self.human_verify_all_trials_btn = QPushButton("All Trials")
+        self.human_verify_all_trials_btn = QPushButton("All Trials (Filtered only)")
         self.human_verify_all_trials_btn.clicked.connect(lambda: self._human_verification_true("all_trials"))
         hv_row.addWidget(self.human_verify_all_trials_btn)
         hv_row.addStretch()
@@ -381,7 +384,7 @@ class IOWidget(QWidget):
         self.correct_offsets_trial_btn = QPushButton("Single Trial")
         self.correct_offsets_trial_btn.clicked.connect(lambda: self._apply_correct_offsets("single_trial"))
         co_row.addWidget(self.correct_offsets_trial_btn)
-        self.correct_offsets_all_trials_btn = QPushButton("All Trials")
+        self.correct_offsets_all_trials_btn = QPushButton("All Trials (Filtered only)")
         self.correct_offsets_all_trials_btn.clicked.connect(lambda: self._apply_correct_offsets("all_trials"))
         co_row.addWidget(self.correct_offsets_all_trials_btn)
         co_row.addStretch()
@@ -400,7 +403,7 @@ class IOWidget(QWidget):
         self.purge_trial_btn = QPushButton("Single Trial")
         self.purge_trial_btn.clicked.connect(lambda: self._apply_purge_small_labels("single_trial"))
         purge_row.addWidget(self.purge_trial_btn)
-        self.purge_all_trials_btn = QPushButton("All Trials")
+        self.purge_all_trials_btn = QPushButton("All Trials (Filtered only)")
         self.purge_all_trials_btn.clicked.connect(lambda: self._apply_purge_small_labels("all_trials"))
         purge_row.addWidget(self.purge_all_trials_btn)
         purge_row.addStretch()
@@ -855,6 +858,7 @@ class IOWidget(QWidget):
             return
 
         self.app_state._all_labels_df = load_labels_tsv(file_path)
+        self.app_state._labels_file_path = file_path  # Track which file is active
         self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
         self.label_file_path_edit.setText(file_path)
 
@@ -1035,19 +1039,20 @@ class IOWidget(QWidget):
         """Common post-import: save converted TSV, load into app state, refresh UI."""
         from ethograph.labels.tsv_store import save_labels_tsv, TRIAL_META_DEFAULTS
 
-        self.app_state.label_intervals = intervals_df
-
+        # Set the complete imported dataframe as the active labels
+        self.app_state._all_labels_df = intervals_df
+        
         trial = getattr(self.app_state, "trials_sel", None)
         if trial is not None:
-            self.app_state.set_trial_intervals(trial, intervals_df)
+            self.app_state.label_intervals = self.app_state.get_trial_intervals(trial)
 
         # For non-.tsv formats, save the converted TSV and show in output row
         fmt = self.labels_format_combo.currentText()
         if fmt != ".tsv" and self.app_state.nc_file_path:
             tsv_out = labels_tsv_path(self.app_state.nc_file_path)
-            all_df = self.app_state._all_labels_df
-            if all_df is not None and not all_df.empty:
-                save_labels_tsv(tsv_out, all_df)
+            if intervals_df is not None and not intervals_df.empty:
+                save_labels_tsv(tsv_out, intervals_df)
+            self.app_state._labels_file_path = str(tsv_out)  # Track the converted TSV as active
             self.labels_output_edit.setText(str(tsv_out))
 
         if hasattr(self, "changepoints_widget") and self.changepoints_widget:

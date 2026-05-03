@@ -33,12 +33,36 @@ from qtpy.QtCore import QEvent, Qt, Signal
 import warnings
 from phylib.io.traces import get_ephys_reader
 
+# Neo IntanRawIO bug (present in ≤0.14.4, fixed in master via PR #1558):
+# In "one-file-per-signal" format, digitalin.dat is memmapped as (N_actual//num_ch, num_ch)
+# instead of (N_actual,). _demultiplex_digital_data then receives this 2D array and calls
+# `.flatten()` on the row-slice — doubling the element count and causing a ValueError.
+# Fix: flatten the full 2D memmap to 1D before slicing, which recovers the original packed
+# uint16 stream (C-order flatten = file order = correct sample order).
+def _fixed_intan_demultiplex_digital_data(self, raw_digital_data, channel_ids, i_start, i_stop):
+    n = i_stop - i_start
+    output = np.zeros((n, len(channel_ids)), dtype=np.uint16)
+    if raw_digital_data.ndim > 1:
+        raw_digital_data = raw_digital_data.flatten()
+    for channel_index, channel_id in enumerate(channel_ids):
+        native_order = self.native_channel_order[channel_id]
+        mask = np.uint16(1 << native_order)
+        demultiplex_data = np.bitwise_and(raw_digital_data, mask) > 0
+        output[:, channel_index] = demultiplex_data[i_start:i_stop].astype(np.uint16)
+    return output
+
+try:
+    import neo.rawio.intanrawio as _intan_module
+    _intan_module.IntanRawIO._demultiplex_digital_data = _fixed_intan_demultiplex_digital_data
+    logger.debug("Applied IntanRawIO._demultiplex_digital_data patch for 2-D digital memmap")
+except Exception as _patch_err:
+    logger.warning("Could not patch IntanRawIO._demultiplex_digital_data: %s", _patch_err)
+
 from ethograph.utils.nwb import resolve_timeseries_timing
 
 from .app_constants import BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER_EPHYS, EPHYSTRACE_DEBOUNCE_MS
 from ..io.plot_sources import FileSource, PlotSource
 from .plots_base import BasePlot, ThrottleDebounce
-from .video_manager import is_url
 
 
 def _nice_round(value: float) -> float:
@@ -140,12 +164,7 @@ class NWBEphysLoader:
         import pynwb
 
         self._rf = None
-        if is_url(path):
-            import remfile
-            self._rf = remfile.File(path)
-            self._h5 = h5py.File(self._rf, "r")
-        else:
-            self._h5 = h5py.File(path, "r")
+        self._h5 = h5py.File(path, "r")
 
         self._io = pynwb.NWBHDF5IO(file=self._h5, load_namespaces=True)
         with warnings.catch_warnings():
@@ -372,6 +391,14 @@ class GenericEphysLoader:
         self._n_samples = self._reader.get_signal_size(
             block_index=0, seg_index=0, stream_index=self._stream_idx,
         )
+        # Neo ≤0.14.4 bug: for Intan one-file-per-signal digital streams the memmap is shaped
+        # (N_actual // num_ch, num_ch), so get_signal_size() returns N_actual // num_ch.
+        # Recover the true sample count from the raw memmap's total element count.
+        if getattr(self._reader, 'file_format', None) == 'one-file-per-signal':
+            stream_name = self._reader.header["signal_streams"]["name"][self._stream_idx]
+            raw = getattr(self._reader, '_raw_data', {}).get(stream_name)
+            if raw is not None and raw.ndim > 1:
+                self._n_samples = raw.size  # shape[0]*shape[1] = N_actual
         self.starting_time = float(
             self._reader.get_signal_t_start(
                 block_index=0, seg_index=0, stream_index=self._stream_idx,
@@ -1407,6 +1434,7 @@ class EphysTracePlot(BasePlot):
 
 
     def _draw_spike_waveforms_multi(self, t0: float, t1: float):
+        """Spike waveforms for single cluster, drawn on neighbouring channels"""
         sr = self.buffer.ephys_sr
         half_w = int(self._spike_snippet_ms * 0.001 * sr)
         cache_start = self.buffer._cache_start
@@ -1476,6 +1504,7 @@ class EphysTracePlot(BasePlot):
             self._spike_waveform_items.append(item)
 
     def _draw_multi_cluster_waveforms(self, t0: float, t1: float):
+        """Draw spike waveforms for multiple clusters, each with its own color and set of channels."""
         sr = self.buffer.ephys_sr
         half_w = int(self._spike_snippet_ms * 0.001 * sr)
         cache_start = self.buffer._cache_start

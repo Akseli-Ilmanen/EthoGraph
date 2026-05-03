@@ -61,6 +61,7 @@ class LoadResult:
     metadata_df: pd.DataFrame = field(default_factory=lambda: empty_metadata_df([1]))
     metadata_path: str | None = None
     all_labels_df: pd.DataFrame = field(default_factory=lambda: init_empty_labels([]))
+    labels_file_path: str | None = None  # Path to the source labels TSV
     catalog: DataCatalog = None
     data_loader: Any = None
     source_collection: SourceCollection = field(default_factory=SourceCollection)
@@ -218,6 +219,11 @@ def _load_pynapple_dataset(
         trial_ids=trial_ids,
     )
 
+    # Determine which labels file path was used
+    from ethograph.labels.tsv_store import labels_tsv_path
+    tsv_path = labels_tsv_path(Path(file_path))
+    labels_file_path = str(tsv_path) if tsv_path.exists() else None
+
     return LoadResult(
         dt=None,
         trial_ids=trial_ids,
@@ -225,6 +231,7 @@ def _load_pynapple_dataset(
         metadata_df=resolved_metadata_df,
         metadata_path=resolved_metadata_path,
         all_labels_df=all_labels_df,
+        labels_file_path=labels_file_path,
         catalog=catalog,
         data_loader=loader,
         source_collection=_build_source_collection_pynapple(data, trials_ep),
@@ -273,6 +280,11 @@ def _load_trialtree(
         notify_dialog(msg, "error", "Validation Error")
         raise ValueError(msg)
 
+    # Determine which labels file path was used
+    from ethograph.labels.tsv_store import labels_tsv_path
+    tsv_path = labels_tsv_path(Path(file_path))
+    labels_file_path = str(tsv_path) if tsv_path.exists() else None
+
     all_labels_df = resolve_labels_tsv(file_path, dt.trials)
 
     return LoadResult(
@@ -282,6 +294,7 @@ def _load_trialtree(
         metadata_df=resolved_metadata_df,
         metadata_path=resolved_metadata_path,
         all_labels_df=all_labels_df,
+        labels_file_path=labels_file_path,
         catalog=catalog,
         data_loader=XarrayLoader(dt.itrial(0), catalog),
         source_collection=_build_source_collection_xarray(dt, nwb_alignment=sio),
