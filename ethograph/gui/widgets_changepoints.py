@@ -37,8 +37,6 @@ from ethograph.features.changepoints import (
     extract_cp_times,
     snap_to_nearest_changepoint_time,
 )
-from ethograph.features.audio_changepoints import get_audio_changepoints
-
 from .dialog_function_params import open_function_params_dialog, get_registry
 from .make_pretty import styled_link
 
@@ -641,6 +639,7 @@ class ChangepointsWidget(QWidget):
             params["noverlap"] = nperseg // 2
 
         def _run():
+            from ethograph.features.audio_changepoints import get_audio_changepoints
             return get_audio_changepoints(
                 method=method,
                 signal=signal_array,
