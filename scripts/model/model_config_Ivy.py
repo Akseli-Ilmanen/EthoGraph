@@ -56,7 +56,7 @@ if __name__ == "__main__":
    trainDataReady = False
    
    # model_path = r"D:\Akseli\Code\ethograph\configs\model\Freddy_train_20251021_164220.json" # only for inference mode
-   model_path = os.path.join(eto.get_project_root(), "configs", "crowlab", "model", "Ivy_train_20260202_191138_epoch-100.model")
+   model_path = os.path.join(eto.get_project_root(), "configs", "crowlab", "model", "Ivy_train_20260505_165238_epoch-100.model")
    # model_path = r"D:\Akseli\Code\ethograph\result\Poppy_train_20260331_175332\split_1\epoch-100.model"
 
    target_individual = "Ivy" # predict labels for this individual
@@ -77,11 +77,28 @@ if __name__ == "__main__":
    
    
    nc_paths = [
-      # r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260413_01\behav\Trial_data.nc",
+      # train
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250306_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250309_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250503_02\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250514_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250504_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250505_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250307_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250308_01\behav\Trial_data.nc",
+      # r"D:\Alice\AK_data\derivatives\sub-01_id-Ivy\ses-000_date-20250506_02\behav\Trial_data.nc",
       # r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260414_01\behav\Trial_data.nc",
-      # r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260415_01\behav\Trial_data.nc",
-      r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260416_01\behav\Trial_data.nc",
+      # r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260416_01\behav\Trial_data.nc",
+      
+      # inference
+      r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260413_01\behav\Trial_data.nc",
+      r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260415_01\behav\Trial_data.nc",
+      r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260417_01\behav\Trial_data.nc",
+      r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260420_01\behav\Trial_data.nc",
+      r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260421_01\behav\Trial_data.nc",
+      r"D:\Akseli\AI_data\derivatives\sub-01_id-Ivy\ses-000_date-20260424_01\behav\Trial_data.nc",
    ]
+   
    
    
    

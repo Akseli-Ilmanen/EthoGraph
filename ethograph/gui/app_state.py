@@ -1089,6 +1089,8 @@ class ObservableAppState(QObject):
         """Check if ALL trials with labels have a meta attr set to truthy."""
         if self._all_labels_df is None or self._all_labels_df.empty:
             return default
+        if not self.trials:
+            return default
         trials_with_labels = set(self._all_labels_df["trial"].unique())
         if not trials_with_labels:
             return default

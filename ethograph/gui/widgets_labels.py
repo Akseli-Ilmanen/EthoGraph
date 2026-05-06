@@ -36,7 +36,7 @@ from ethograph.labels.intervals import load_label_mapping, save_label_mapping
 from ethograph.labels.plots import plot_confidence_pdf
 from ethograph.labels.predictions import PredictionsStore
 from ethograph.io.metadata_table import save_metadata_tsv, metadata_tsv_path, empty_metadata_df
-from ethograph.labels.tsv_store import save_labels_tsv
+from ethograph.labels.tsv_store import labels_tsv_path, save_labels_tsv
 from ethograph.labels.intervals import (
     EVENT_TYPE_POINT,
     EVENT_TYPE_STATE,
@@ -659,6 +659,18 @@ class LabelsWidget(QWidget):
         labels_dir = folder_path.parent
         tsv_path = labels_dir / f"{folder_path.name}.tsv"
         save_labels_tsv(tsv_path, labels_df)
+
+        cb = getattr(self.io_widget, "create_labels_from_predictions_cb", None)
+        if (
+            cb is not None
+            and cb.isChecked()
+            and self.app_state.nc_file_path
+            and not labels_df.empty
+        ):
+            session_tsv = labels_tsv_path(self.app_state.nc_file_path)
+            if not session_tsv.exists():
+                save_labels_tsv(session_tsv, labels_df)
+                notify(f"Created session labels from predictions: {session_tsv.name}")
 
         self.app_state.pred_labels_df = labels_df
         self.app_state.pred_store = store

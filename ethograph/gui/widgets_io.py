@@ -737,6 +737,16 @@ class IOWidget(QWidget):
         folder_row.addWidget(self.import_predictions_btn)
         pred_group_layout.addLayout(folder_row)
 
+        self.create_labels_from_predictions_cb = QCheckBox(
+            "Create session labels file from predictions (if none exists)"
+        )
+        self.create_labels_from_predictions_cb.setChecked(False)
+        self.create_labels_from_predictions_cb.setToolTip(
+            "After importing predictions, save them as {session}_labels.tsv\n"
+            "only when that file does not already exist. Never overwrites."
+        )
+        pred_group_layout.addWidget(self.create_labels_from_predictions_cb)
+
         # Row 2: show checkbox + threshold + PDF button
         controls_row = QHBoxLayout()
         controls_row.setContentsMargins(0, 0, 0, 0)

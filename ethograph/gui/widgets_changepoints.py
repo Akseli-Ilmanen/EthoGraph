@@ -1212,8 +1212,7 @@ class ChangepointsWidget(QWidget):
 
             if mode == "all_trials":
                 if self.app_state.get_global_meta_attr("changepoint_corrected", 0) == 1:
-                    notify("Changepoint correction has already been applied to all trials. Don't re-apply.", "warning")
-                    return
+                    notify("Note: Changepoint correction was previously applied to all trials. Re-applying.")
 
                 # TODO: Mention in documentation, only Ctrl+Z functionality of the GUI.
                 self._save_correction_snapshot(mode)
@@ -1244,7 +1243,8 @@ class ChangepointsWidget(QWidget):
             return
 
         apply_cp = self.changepoint_correction_checkbox.isChecked()
-        self.cp_correction_all_trials_btn.setEnabled(apply_cp)
+        if hasattr(self, "_manual_correction_group"):
+            self._manual_correction_group.setEnabled(apply_cp)
         self.cp_correction_all_trials_btn.setToolTip("")
 
         trial_corrected = self.app_state.get_trial_meta(self.app_state.trials_sel).get('changepoint_corrected', 0)
