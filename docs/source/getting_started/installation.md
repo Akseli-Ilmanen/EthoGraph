@@ -1,18 +1,6 @@
 (target-installation)=
 # Installation
 
-```{warning}
-**ethograph is not yet published on PyPI.** Until the first release,
-install directly from the GitHub repository (see
-[Install from source](#install-from-source) below). All `pip install
-ethograph` commands on this page will only work after the package is
-published.
-```
-
-## Prerequisites
-
-ethograph requires **Python 3.11 or later**.
-We recommend installing it in an isolated virtual environment.
 
 ### Install ffmpeg
 
@@ -68,10 +56,11 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 :::
 
-:::{tab-item} Windows (PowerShell)
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+:::{tab-item} Windows
 ```
+winget install astral-sh.uv
+```
+Works from both PowerShell and Command Prompt. `winget` is built into Windows 11.
 :::
 
 ::::
@@ -160,14 +149,6 @@ archive](https://dandiarchive.org/) via the GUI wizard:
 uv pip install "ethograph[dandi]"
 ```
 
-### Everything
-
-Install all optional dependencies (GUI + NWB):
-
-```bash
-uv pip install "ethograph[all]"
-```
-
 ### Optional dependency groups
 
 ethograph uses optional extras to keep the base install lightweight.
@@ -175,39 +156,21 @@ You can combine them as needed:
 
 | Extra      | What it adds                                          |
 |------------|-------------------------------------------------------|
-| `audio`    | Audio waveforms, spectrograms, vocal segmentation     |
-| `neural`   | Spike sorting analysis tools (phylib, neo)            |
+| `gui`      | Full graphical interface  |
 | `dandi`    | DANDI archive download client (heavy, opt-in)         |
-| `gui`      | Full graphical interface (includes `audio` + `neural`) |
-| `all`      | Everything above (`gui` + `dandi`)                    |
 | `dev`      | Testing and linting tools                             |
 | `docs`     | Documentation build dependencies                     |
 
 Combine extras with commas:
 
 ```bash
-uv pip install "ethograph[gui,dandi]"
+uv pip install "ethograph[gui,dandi, dev, docs]"
 ```
 
-(install-from-source)=
-## Install from source
-
-Use this method while ethograph is not yet on PyPI, or whenever you
-want to track the latest development version:
-
-```bash
-git clone https://github.com/Akseli-Ilmanen/ethograph.git
-cd ethograph
-uv pip install -e ".[gui]"
-```
-
-The `-e` flag installs in **editable mode** — code changes take effect
-immediately without reinstalling.
 
 ## For developers
 
-To install ethograph in editable mode with all optional dependencies and
-development tools, see {doc}`../community/contributing`.
+To install latest development version in editable mode see {doc}`../community/contributing`.
 
 
 ## Update the package

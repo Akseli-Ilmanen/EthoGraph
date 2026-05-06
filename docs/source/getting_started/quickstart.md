@@ -25,7 +25,7 @@ The following datasets are available as templates. Full conversion scripts are i
 
 > Reiske, P., Boon, M. N., Andresen, N., Traverso, S., Hohlbaum, K., Lewejohann, L., Thöne-Reineke, C., Hellwich, O., & Sprekeler, H. (2025). Mouse Lockbox Dataset: Behavior Recognition for Mice Solving Lockboxes (arXiv:2505.15408). arXiv. https://doi.org/10.48550/arXiv.2505.15408
 
-**Social rats** — Multi-animal 3D pose dataset of dyadic interactions in laboratory rats. Six cameras, chunked into trials.
+**Social rats** — Multi-animal 3D pose dataset of dyadic interactions in laboratory rats recorded with 6 synchronized cameras
 
 > Marshall, J., Klibaite, U., Gellis, A., Aldarondo, D., Olveczky, B., & Dunn, T. W. (2021). The PAIR-R24M Dataset for Multi-animal 3D Pose Estimation. *Proceedings of the Neural Information Processing Systems Track on Datasets and Benchmarks*, 1. https://datasets-benchmarks-proceedings.neurips.cc/paper/2021/hash/1ff8a7b5dc7a7d1f0ed65aaa29c04b1e-Abstract-round1.html
 
