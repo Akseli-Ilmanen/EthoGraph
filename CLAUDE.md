@@ -212,7 +212,7 @@ Replaces the old `type_vars_dict` pattern with two explicit abstractions:
 
 **`DataLoader`** (Protocol) — backend-agnostic data access. `select(feature, selections, t0, t1) → PlotData`. Callers always pass `t0, t1` (absolute session times for pynapple, trial-relative for xarray). Follows the `sel_valid` principle: combo selections can be overspecified, loaders ignore dimensions that don't exist on the target feature.
 
-**`PlotData`** — source-agnostic dataclass: `time`, `data` (numpy `(T,)` or `(T,D)`), `dim_labels`, `title`, `ylabel`, `color_data`, `changepoints`, `boundary_events`. Consumed by `render_plot_data()` in `plots_lineplot.py`.
+**`PlotData`** — source-agnostic dataclass: `time`, `data` (numpy `(T,)` or `(T,D)`), `dim_labels`, `title`, `ylabel`, `color_data`, `changepoints`. Consumed by `render_plot_data()` in `plots_lineplot.py`.
 
 **Concrete loaders:**
 - `XarrayLoader` — wraps `xr.Dataset`, delegates to `sel_valid()`. Updated on trial change via `update_ds()`. t0/t1 are optional (viewport slicing within the already-per-trial dataset).

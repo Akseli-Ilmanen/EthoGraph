@@ -42,7 +42,6 @@ class PlotData:
     ylabel: str = ""
     color_data: np.ndarray | None = None
     changepoints: dict[str, np.ndarray] | None = None
-    boundary_events: np.ndarray | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -328,13 +327,6 @@ class XarrayLoader(_CatalogMixin):
             if cp_dict:
                 changepoints = cp_dict
 
-        boundary_events = None
-        if "boundary_events" in ds.data_vars:
-            raw = ds["boundary_events"].values
-            valid = raw[~np.isnan(raw)].astype(int)
-            valid = valid[(valid >= 0) & (valid < len(time))]
-            if len(valid) > 0:
-                boundary_events = time[valid]
 
         ylabel = var.attrs.get("ylabel", feature)
         title_parts = [f"Trial: {ds.attrs.get('trial')}"]
@@ -349,7 +341,6 @@ class XarrayLoader(_CatalogMixin):
             ylabel=ylabel,
             color_data=color_data,
             changepoints=changepoints,
-            boundary_events=boundary_events,
         )
 
     def time_range(self, feature: str | None = None) -> tuple[float, float]:
