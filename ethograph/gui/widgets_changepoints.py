@@ -1178,7 +1178,6 @@ class ChangepointsWidget(QWidget):
 
         min_duration_s, stitch_gap_s = self.get_apply_label_cleanup_params()
 
-        self._save_correction_snapshot("single_trial")
         trial = self.app_state.trials_sel
         corrected_df = correct_changepoints_automatic(
             self.app_state.get_trial_intervals(trial),

@@ -118,6 +118,7 @@ class IOWidget(QWidget):
         self.app_state.ephys_offset_changed.connect(
             lambda value: self.ephys_offset_edit.setText(f"{float(value or 0.0):g}")
         )
+        self.app_state.nc_file_path_changed.connect(lambda _: self._auto_discover_metadata())
 
 
     def _wire_path_edit_signals(self):

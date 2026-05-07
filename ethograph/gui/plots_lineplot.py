@@ -355,11 +355,7 @@ def render_plot_data(plot_item, plot_data: PlotData, show_changepoints=True) -> 
     else:
         logger.warning("Data ndim=%d not supported for plotting", plot_data.data.ndim)
 
-    if plot_data.boundary_events is not None:
-        for t_event in plot_data.boundary_events:
-            vline = pg.InfiniteLine(pos=t_event, angle=90, pen=pg.mkPen('k', width=2))
-            plot_item.addItem(vline)
-            items.append(vline)
+
 
     plot_item.setLabel('bottom', 'Time', units='s')
     plot_item.setLabel('left', plot_data.ylabel, Fontsize='14pt')
