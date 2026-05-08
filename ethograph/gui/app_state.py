@@ -233,6 +233,7 @@ class AppStateSpec:
         "audio_cp_min_syllable_length_s": (float, 0.02, True),
         "audio_cp_silence_threshold": (float, 0.1, True),
         "show_changepoints": (bool, True, True),
+        "plot_has_changepoints": (bool, False, False),
         "apply_changepoint_correction": (bool, True, True),
         "cp_step_purge": (bool, True, True),
         "cp_step_stitch": (bool, True, True),

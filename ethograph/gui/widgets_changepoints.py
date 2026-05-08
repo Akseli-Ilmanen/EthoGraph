@@ -1172,8 +1172,13 @@ class ChangepointsWidget(QWidget):
             do_purge_after=self.cp_step_purge_after_cb.isChecked(),
         )
         
+    def _current_feature_has_changepoints(self) -> bool:
+        return getattr(self.app_state, "plot_has_changepoints", False)
+
     def cp_correction_from_labelling(self):
         if not self.app_state.apply_changepoint_correction:
+            return
+        if not self._current_feature_has_changepoints():
             return
 
         min_duration_s, stitch_gap_s = self.get_apply_label_cleanup_params()
@@ -1193,7 +1198,7 @@ class ChangepointsWidget(QWidget):
         all_params = self.get_correction_params()
         ds_kwargs = self.app_state.get_ds_kwargs()
         all_params["cp_kwargs"] = ds_kwargs
-        print("all_params:", all_params)  # Debugging line
+
 
         try:
             if mode == "single_trial":

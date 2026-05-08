@@ -35,7 +35,7 @@ from ethograph.io.metadata_table import metadata_tsv_path
 from ethograph.labels.tsv_store import labels_tsv_path, load_labels_tsv
 
 from .app_state import AppStateSpec
-from .notify import notify_dialog
+from .notify import notify, notify_dialog
 from .wizard_overview import NCWizardDialog
 from .dialog_select_template import TemplateDialog
 from ethograph.utils.qt import populate_if_exists
@@ -595,18 +595,30 @@ class IOWidget(QWidget):
         if self.app_state.trials_sel is None:
             return
 
+        total_corrected = 0
+        total_negative = 0
+
         if mode == "single_trial":
             trial = self.app_state.trials_sel
-            df = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
+            df, corrected, negative = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
+            total_corrected += corrected
+            total_negative += negative
             self.app_state.set_trial_intervals(trial, df)
             self.app_state.label_intervals = df
             self.app_state.set_trial_meta_attr(trial, "offsets_corrected", 1)
         elif mode == "all_trials":
             for trial in self.app_state.trials:
-                df = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
+                df, corrected, negative = correct_offsets_trial(self.app_state.get_trial_intervals(trial))
+                total_corrected += corrected
+                total_negative += negative
                 self.app_state.set_trial_intervals(trial, df)
                 self.app_state.set_trial_meta_attr(trial, "offsets_corrected", 1)
             self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
+
+        msg = f"Corrected {total_corrected} offsets with gap < 1e-4 s."
+        if total_negative:
+            msg += f" {total_negative} negative gap(s) found — check for overlapping intervals."
+        notify(msg, "warning" if total_negative else None)
 
         self._update_correct_offsets_status()
         self.app_state.changes_saved = False
@@ -669,7 +681,7 @@ class IOWidget(QWidget):
             self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
         
             
-        print(f"Purged {counter} small labels shorter than {min_duration:.3f} seconds.")
+        notify(f"Purged {counter} label(s) shorter than {min_duration:.3f} s.")
 
         self._update_purge_small_labels_status()
         self.app_state.changes_saved = False

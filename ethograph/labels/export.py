@@ -9,7 +9,7 @@ import xarray as xr
 
 
 
-def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
+def correct_offsets_trial(df: pd.DataFrame) -> tuple[pd.DataFrame, int, int]:
     """Apply gap correction to a single trial's interval DataFrame.
 
     For each individual, pulls back ``offset_s`` when the gap to the next onset
@@ -17,44 +17,40 @@ def correct_offsets_trial(df: pd.DataFrame) -> pd.DataFrame:
 
     Works on the per-trial format (columns: trial, onset_s, offset_s, labels,
     individual) returned by ``app_state.get_trial_intervals()``.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, int, int]
+        Corrected DataFrame, number of offsets corrected, number of negative gaps found.
     """
     if df.empty:
-        return df
+        return df, 0, 0
     eps = 1e-4
     df = df.copy().sort_values(["individual", "onset_s"]).reset_index(drop=True)
-    
-    counter = 0
+
+    corrected = 0
+    negative_gaps = 0
     for _, group in df.groupby("individual"):
-        
-        
         idx = group.index.tolist()
         for i in range(len(idx) - 1):
-            trial = group.loc[idx[i], "trial"]
             gap = df.loc[idx[i + 1], "onset_s"] - df.loc[idx[i], "offset_s"]
-            
+
             if gap < 0:
-                print(f"Negative gap of {gap:.3f} seconds between intervals for individual {group['individual'].iloc[0]} at index {idx[i]} and {idx[i + 1]} in trial {trial}. Check your data for overlapping intervals.")
-            
+                negative_gaps += 1
+
             if gap < eps:
-                counter += 1
-                
+                corrected += 1
                 df.loc[idx[i], "offset_s"] = df.loc[idx[i + 1], "onset_s"] - eps
                 df.loc[idx[i], "duration"] = df.loc[idx[i], "offset_s"] - df.loc[idx[i], "onset_s"]
 
-            
                 if "offset_global" in df.columns and "onset_global" in df.columns:
                     df.loc[idx[i], "offset_global"] = df.loc[idx[i + 1], "onset_global"] - eps
                     df.loc[idx[i], "duration"] = df.loc[idx[i], "offset_s"] - df.loc[idx[i], "onset_s"]
-                
-                
-                
-    print(f"Corrected {counter} offsets with gap smaller than {eps:.5f} seconds.")
-                        
-            
+
     if "onset_global" in df.columns:
         df.sort_values(["individual", "onset_global"], inplace=True)
-                
-    return df
+
+    return df, corrected, negative_gaps
 
 
 

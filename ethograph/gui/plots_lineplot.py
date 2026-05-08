@@ -131,19 +131,19 @@ class LinePlot(BasePlot):
                 feature_sel, selections, t0=t0, t1=t1,
                 color_variable=color_var,
             )
-            if plot_data is None:
-                return
-            self.plot_items = render_plot_data(
-                self.plot_item, plot_data, show_changepoints=show_cp,
-            )
         else:
             buffered_ds = self._get_buffered_ds(t0, t1)
             if buffered_ds is None:
+                self.app_state.plot_has_changepoints = False
                 return
-            self.plot_items = plot_ds_variable(
-                self.plot_item, buffered_ds, selections, feature_sel,
-                color_variable=color_var, show_changepoints=show_cp,
-            )
+            plot_data = select_feature(buffered_ds, feature_sel, selections, color_var)
+
+        if plot_data is None:
+            self.app_state.plot_has_changepoints = False
+            return
+
+        self.app_state.plot_has_changepoints = bool(plot_data.changepoints)
+        self.plot_items = render_plot_data(self.plot_item, plot_data, show_changepoints=show_cp)
 
         for item in self.plot_items:
             if hasattr(item, 'setDownsampling'):
