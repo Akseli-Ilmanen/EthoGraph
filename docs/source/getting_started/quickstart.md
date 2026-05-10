@@ -1,5 +1,5 @@
 (target-quickstart)=
-# Quickstart
+# Quickstart with templates
 
 The fastest way to explore the GUI: use the desktop/Start Menu shortcut, or launch from the terminal:
 

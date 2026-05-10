@@ -20,6 +20,13 @@ Complete walkthrough: loading data, labelling, changepoints, export.
 `alignment.nwb`: trial timing, media paths, stream offsets.
 :::
 
+:::{grid-item-card} {fas}`table` Trial metadata
+:link: metadata
+:link-type: doc
+
+Per-trial conditions (metadata.tsv) and the Trials tab filter UI.
+:::
+
 :::{grid-item-card} {fas}`tags` Labels
 :link: labels/index
 :link-type: doc
@@ -59,6 +66,7 @@ Common issues and fixes.
 
 user_manual
 nwb_alignment
+metadata
 labels/index
 changepoints/index
 shortcuts

@@ -315,7 +315,7 @@ class LabelsWidget(QWidget):
         scroll.setFrameShape(QScrollArea.NoFrame)
         scroll_content = QWidget()
         self._branches_layout = QVBoxLayout(scroll_content)
-        self._branches_layout.setSpacing(2)
+        self._branches_layout.setSpacing(6)
         self._branches_layout.setContentsMargins(0, 0, 0, 0)
         self._branches_layout.addStretch()
         scroll.setWidget(scroll_content)
@@ -378,7 +378,7 @@ class LabelsWidget(QWidget):
 
         section_widget = QWidget()
         section_layout = QVBoxLayout(section_widget)
-        section_layout.setContentsMargins(0, 0, 0, 0)
+        section_layout.setContentsMargins(0, 4, 0, 0)
         section_layout.setSpacing(1)
 
         header_row = QHBoxLayout()
