@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>get_trial_meta &#8212; ethograph</title>
+    <title>Trial metadata and the Trials tab &#8212; ethograph</title>
   
   
   
@@ -45,11 +45,13 @@
     <script src="../_static/doctools.js?v=9bcbadda"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/design-tabs.js?v=f930bc37"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'api/ethograph.labels.tsv_store.get_trial_meta';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'user_guide/metadata';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
-    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/api/ethograph.labels.tsv_store.get_trial_meta.html" />
+    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/user_guide/metadata.html" />
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Labels" href="labels/index.html" />
+    <link rel="prev" title="NWB alignment" href="nwb_alignment.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -149,8 +151,8 @@
 </li>
 
 
-<li class="nav-item ">
-  <a class="nav-link nav-internal" href="../user_guide/index.html">
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
     User guide
   </a>
 </li>
@@ -272,8 +274,8 @@
 </li>
 
 
-<li class="nav-item ">
-  <a class="nav-link nav-internal" href="../user_guide/index.html">
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
     User guide
   </a>
 </li>
@@ -349,7 +351,30 @@
 <nav class="bd-docs-nav bd-links"
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
-  <div class="bd-toc-item navbar-nav"></div>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="user_manual.html">User Manual</a></li>
+<li class="toctree-l1"><a class="reference internal" href="nwb_alignment.html">NWB alignment</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Trial metadata and the Trials tab</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="labels/index.html">Labels</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="labels/labelling_gui.html">Labelling in the GUI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/branches.html">Label branches</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/importing.html">Importing labels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/exporting.html">Exporting labels</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="changepoints/index.html">Changepoints</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/overview.html">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/kinematic.html">Kinematic changepoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/audio.html">Audio changepoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/ruptures.html">Ruptures</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/correction.html">Changepoint correction</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="shortcuts.html">Keyboard Shortcuts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+</div>
 </nav></div>
     </div>
   
@@ -388,7 +413,10 @@
         <i class="fa-solid fa-home"></i>
       </a>
     </li>
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">get_trial_meta</span></li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">User guide</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Trial metadata and the Trials tab</span></li>
   </ul>
 </nav>
 </div>
@@ -405,19 +433,118 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="get-trial-meta">
-<h1>get_trial_meta<a class="headerlink" href="#get-trial-meta" title="Link to this heading">#</a></h1>
-<dl class="py function">
-<dt class="sig sig-object py" id="ethograph.labels.tsv_store.get_trial_meta">
-<span class="sig-prename descclassname"><span class="pre">ethograph.labels.tsv_store.</span></span><span class="sig-name descname"><span class="pre">get_trial_meta</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">all_df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trial</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/labels/tsv_store.html#get_trial_meta"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.labels.tsv_store.get_trial_meta" title="Link to this definition">#</a></dt>
-<dd><p>Read per-trial metadata from columns. Returns dict with defaults for missing trials.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
-</dd>
-</dl>
-</dd></dl>
-
+  <section class="tex2jax_ignore mathjax_ignore" id="trial-metadata-and-the-trials-tab">
+<span id="target-metadata"></span><h1>Trial metadata and the Trials tab<a class="headerlink" href="#trial-metadata-and-the-trials-tab" title="Link to this heading">#</a></h1>
+<p>EthoGraph lets you attach per-trial condition metadata (e.g. stimulus frequency,
+drug condition, recording depth) via a plain TSV file. Once loaded, the
+<strong>Trials tab</strong> in the GUI turns these columns into interactive filters so you
+can restrict navigation and analysis to any subset of trials.</p>
+<hr class="docutils" />
+<section id="the-metadata-tsv-file">
+<h2>The metadata TSV file<a class="headerlink" href="#the-metadata-tsv-file" title="Link to this heading">#</a></h2>
+<section id="file-format">
+<h3>File format<a class="headerlink" href="#file-format" title="Link to this heading">#</a></h3>
+<p>The file must be tab-separated (<code class="docutils literal notranslate"><span class="pre">.tsv</span></code>). Comma-separated (<code class="docutils literal notranslate"><span class="pre">.csv</span></code>) and Excel
+(<code class="docutils literal notranslate"><span class="pre">.xlsx</span></code>) are also accepted.</p>
+<p>One row per trial. The only required column is <strong><code class="docutils literal notranslate"><span class="pre">trial</span></code></strong>, which must match
+the trial identifiers in your dataset.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">trial</span>   <span class="n">pellet_side</span>   <span class="n">rewarded</span>   
+<span class="mi">1</span>       <span class="n">left</span>          <span class="n">yes</span>      
+<span class="mi">2</span>       <span class="n">right</span>         <span class="n">yes</span>       
+<span class="mi">3</span>       <span class="n">left</span>          <span class="n">no</span>       
+<span class="mi">4</span>       <span class="n">right</span>         <span class="n">yes</span>      
+<span class="mi">5</span>       <span class="n">left</span>          <span class="n">yes</span>       
+<span class="mi">6</span>       <span class="n">right</span>         <span class="n">no</span>       
+</pre></div>
+</div>
+<ul class="simple">
+<li><p>Column names are arbitrary — add as many as you need.</p></li>
+<li><p>Values can be strings, integers, or floats.</p></li>
+<li><p>Missing values are allowed.</p></li>
+</ul>
+</section>
+<section id="what-columns-to-include">
+<h3>What columns to include<a class="headerlink" href="#what-columns-to-include" title="Link to this heading">#</a></h3>
+<p>Any variable that differs across trials:</p>
+<ul class="simple">
+<li><p><strong>Categorical:</strong> pellet side (left/right), reward outcome, protocol variant, recording site, …</p></li>
+<li><p><strong>Numeric:</strong> trial number within session, stimulus_intensity, …</p></li>
+</ul>
+<p>Columns named <code class="docutils literal notranslate"><span class="pre">start_time</span></code> and <code class="docutils literal notranslate"><span class="pre">stop_time</span></code> (in seconds) are treated as trial
+timing and used to set navigation boundaries rather than shown as filterable
+conditions. Columns following the <code class="docutils literal notranslate"><span class="pre">video_*</span></code>, <code class="docutils literal notranslate"><span class="pre">audio_*</span></code>, <code class="docutils literal notranslate"><span class="pre">pose_*</span></code>, <code class="docutils literal notranslate"><span class="pre">ephys_*</span></code>
+naming convention are treated as media paths and are also hidden from the
+filter UI.</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="loading-metadata">
+<h2>Loading metadata<a class="headerlink" href="#loading-metadata" title="Link to this heading">#</a></h2>
+<section id="auto-detection">
+<h3>Auto-detection<a class="headerlink" href="#auto-detection" title="Link to this heading">#</a></h3>
+<p>When you load a dataset, EthoGraph automatically looks for a sidecar file named
+<code class="docutils literal notranslate"><span class="pre">{data_stem}_metadata.tsv</span></code> in the same folder. For example, loading <code class="docutils literal notranslate"><span class="pre">session.nc</span></code>
+will pick up <code class="docutils literal notranslate"><span class="pre">session_metadata.tsv</span></code> if it exists.</p>
+<p>The full priority order is:</p>
+<ol class="arabic simple">
+<li><p><strong>Explicit path</strong> set in the <strong>Metadata:</strong> field of the I/O panel (or via
+<code class="docutils literal notranslate"><span class="pre">metadata_path</span></code> in the API).</p></li>
+<li><p><strong>Sidecar TSV</strong> — <code class="docutils literal notranslate"><span class="pre">{stem}_metadata.tsv</span></code> next to the data file (auto-detected).</p></li>
+<li><p><strong>NWB trials table</strong> — extra columns in <code class="docutils literal notranslate"><span class="pre">nwb.trials</span></code> (for <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> sources).</p></li>
+<li><p><strong>Pynapple IntervalSet metadata</strong> — metadata columns from <code class="docutils literal notranslate"><span class="pre">.npz</span></code> or folder
+sources.</p></li>
+</ol>
+</section>
+<section id="using-a-custom-path-or-filename">
+<h3>Using a custom path or filename<a class="headerlink" href="#using-a-custom-path-or-filename" title="Link to this heading">#</a></h3>
+<p>If your file has a different name or location, point to it in the
+<strong>Metadata:</strong> field in the I/O panel (the browse button next to the field) before
+loading the dataset. The path is saved in the project settings and restored on
+next open.</p>
+</section>
+<section id="generating-a-template">
+<h3>Generating a template<a class="headerlink" href="#generating-a-template" title="Link to this heading">#</a></h3>
+<p>Click the <strong>Template</strong> button next to the Metadata field. EthoGraph writes a
+<code class="docutils literal notranslate"><span class="pre">{stem}_metadata.tsv</span></code> pre-populated with all trial IDs and opens it in the
+field — edit it in a spreadsheet editor, then reload the dataset.</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="the-trials-tab">
+<h2>The Trials tab<a class="headerlink" href="#the-trials-tab" title="Link to this heading">#</a></h2>
+<p>The <strong>Trials tab</strong> (collapsible panel in the sidebar) shows all trials in the
+loaded session as a table and lets you filter which trials are active in the
+navigator.</p>
+<section id="filtering-trials">
+<h3>Filtering trials<a class="headerlink" href="#filtering-trials" title="Link to this heading">#</a></h3>
+<p>Click the filter icon (≡) in any column header. Categorical columns show a
+checkbox list of unique values; numeric columns offer a <code class="docutils literal notranslate"><span class="pre">≥</span></code> / <code class="docutils literal notranslate"><span class="pre">≤</span></code> threshold.
+All active filters are AND-combined. A yellow icon indicates an active filter;
+click it again and choose <strong>Remove filter</strong> to clear it.</p>
+</section>
+<section id="effect-on-navigation">
+<h3>Effect on navigation<a class="headerlink" href="#effect-on-navigation" title="Link to this heading">#</a></h3>
+<p>Filtered-out trials are hidden in the table and removed from the trial
+navigator — the <em>Previous / Next trial</em> buttons and the trial slider skip them.
+The set of visible trials is updated live whenever a filter changes. <strong>Note</strong>:
+Operations such as changepoint corrrection across trials, or purging short labels
+are applied only to filtered trials.</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="export-labels">
+<h2>Export labels<a class="headerlink" href="#export-labels" title="Link to this heading">#</a></h2>
+<p>Metadata is also merged into exported label DataFrames automatically via
+<code class="docutils literal notranslate"><span class="pre">enrich_labels_df()</span></code>, so every label row carries the trial’s condition columns.</p>
+</section>
+<hr class="docutils" />
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading">#</a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="nwb_alignment.html"><span class="doc">NWB alignment</span></a> — trial timing metadata in NWB</p></li>
+<li><p><a class="reference internal" href="labels/index.html"><span class="doc">Labels</span></a> — label export and the enriched labels DataFrame</p></li>
+</ul>
+</section>
 </section>
 
 
@@ -430,6 +557,24 @@
                 <footer class="prev-next-footer d-print-none">
                   
 <div class="prev-next-area">
+    <a class="left-prev"
+       href="nwb_alignment.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">NWB alignment</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="labels/index.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Labels</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
 </div>
                 </footer>
               
@@ -449,14 +594,31 @@
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ethograph.labels.tsv_store.get_trial_meta"><code class="docutils literal notranslate"><span class="pre">get_trial_meta()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-metadata-tsv-file">The metadata TSV file</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#file-format">File format</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#what-columns-to-include">What columns to include</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#loading-metadata">Loading metadata</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#auto-detection">Auto-detection</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#using-a-custom-path-or-filename">Using a custom path or filename</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#generating-a-template">Generating a template</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-trials-tab">The Trials tab</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#filtering-trials">Filtering trials</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#effect-on-navigation">Effect on navigation</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#export-labels">Export labels</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#references">References</a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/api/ethograph.labels.tsv_store.get_trial_meta.rst.txt">
+    <a href="../_sources/user_guide/metadata.md.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

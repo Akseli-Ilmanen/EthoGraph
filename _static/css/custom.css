@@ -91,3 +91,13 @@ body[data-hide-sidebar="true"] .bd-main {
   margin-right: 0 !important;
   padding-right: 1.5rem;
 }
+
+/* Separate consecutive autofunction / autoclass entries within a section */
+.bd-article dl.py.function + dl.py.function,
+.bd-article dl.py.class + dl.py.class,
+.bd-article dl.py.function + dl.py.class,
+.bd-article dl.py.class + dl.py.function {
+  margin-top: 2.5em;
+  padding-top: 1.5em;
+  border-top: 1px solid var(--pst-color-border, #e0e0e0);
+}

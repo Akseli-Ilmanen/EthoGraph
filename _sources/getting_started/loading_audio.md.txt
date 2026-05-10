@@ -5,7 +5,7 @@ Use this path for acoustic or vocal data, with or without video.
 
 Supported formats: `.wav`, `.mp3`, `.mp4`, `.flac`. If your `.mp4` video contains audio, point both fields at the same file.
 
-The **Create dialog** handles single recordings. For multiple separate microphone files or multiple trials, see {doc}`multi_trial`.
+The **data wizard** handles single recordings. For multiple separate microphone files or multiple trials, see {doc}`multi_trial`.
 
 ---
 
