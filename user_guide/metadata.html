@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Trial metadata and the Trials tab &#8212; ethograph</title>
+    <title>Trial metadata &#8212; ethograph</title>
   
   
   
@@ -354,7 +354,7 @@
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="user_manual.html">User Manual</a></li>
 <li class="toctree-l1"><a class="reference internal" href="nwb_alignment.html">NWB alignment</a></li>
-<li class="toctree-l1 current active"><a class="current reference internal" href="#">Trial metadata and the Trials tab</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Trial metadata</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="labels/index.html">Labels</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="labels/labelling_gui.html">Labelling in the GUI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="labels/mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
@@ -416,7 +416,7 @@
     
     <li class="breadcrumb-item"><a href="index.html" class="nav-link">User guide</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Trial metadata and the Trials tab</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Trial metadata</span></li>
   </ul>
 </nav>
 </div>
@@ -433,11 +433,9 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section class="tex2jax_ignore mathjax_ignore" id="trial-metadata-and-the-trials-tab">
-<span id="target-metadata"></span><h1>Trial metadata and the Trials tab<a class="headerlink" href="#trial-metadata-and-the-trials-tab" title="Link to this heading">#</a></h1>
-<p>EthoGraph lets you attach per-trial condition metadata (e.g. stimulus frequency,
-drug condition, recording depth) via a plain TSV file. Once loaded, the
-<strong>Trials tab</strong> in the GUI turns these columns into interactive filters so you
+  <section class="tex2jax_ignore mathjax_ignore" id="trial-metadata">
+<span id="target-metadata"></span><h1>Trial metadata<a class="headerlink" href="#trial-metadata" title="Link to this heading">#</a></h1>
+<p>EthoGraph lets you attach per-trial condition metadata (e.g. stimulus conditions) via a plain TSV file. Once loaded, the <strong>Trials tab</strong> in the GUI turns these columns into interactive filters so you
 can restrict navigation and analysis to any subset of trials.</p>
 <hr class="docutils" />
 <section id="the-metadata-tsv-file">
@@ -448,13 +446,13 @@ can restrict navigation and analysis to any subset of trials.</p>
 (<code class="docutils literal notranslate"><span class="pre">.xlsx</span></code>) are also accepted.</p>
 <p>One row per trial. The only required column is <strong><code class="docutils literal notranslate"><span class="pre">trial</span></code></strong>, which must match
 the trial identifiers in your dataset.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">trial</span>   <span class="n">pellet_side</span>   <span class="n">rewarded</span>   
-<span class="mi">1</span>       <span class="n">left</span>          <span class="n">yes</span>      
-<span class="mi">2</span>       <span class="n">right</span>         <span class="n">yes</span>       
-<span class="mi">3</span>       <span class="n">left</span>          <span class="n">no</span>       
-<span class="mi">4</span>       <span class="n">right</span>         <span class="n">yes</span>      
-<span class="mi">5</span>       <span class="n">left</span>          <span class="n">yes</span>       
-<span class="mi">6</span>       <span class="n">right</span>         <span class="n">no</span>       
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">trial</span>   <span class="n">food_pellet_side</span>   <span class="n">rewarded</span>   
+<span class="mi">1</span>       <span class="n">left</span>               <span class="n">yes</span>      
+<span class="mi">2</span>       <span class="n">right</span>              <span class="n">yes</span>       
+<span class="mi">3</span>       <span class="n">left</span>               <span class="n">no</span>       
+<span class="mi">4</span>       <span class="n">right</span>              <span class="n">yes</span>      
+<span class="mi">5</span>       <span class="n">left</span>               <span class="n">yes</span>       
+<span class="mi">6</span>       <span class="n">right</span>              <span class="n">no</span>       
 </pre></div>
 </div>
 <ul class="simple">

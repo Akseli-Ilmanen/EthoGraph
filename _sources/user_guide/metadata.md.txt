@@ -1,9 +1,7 @@
 (target-metadata)=
-# Trial metadata and the Trials tab
+# Trial metadata
 
-EthoGraph lets you attach per-trial condition metadata (e.g. stimulus frequency,
-drug condition, recording depth) via a plain TSV file. Once loaded, the
-**Trials tab** in the GUI turns these columns into interactive filters so you
+EthoGraph lets you attach per-trial condition metadata (e.g. stimulus conditions) via a plain TSV file. Once loaded, the **Trials tab** in the GUI turns these columns into interactive filters so you
 can restrict navigation and analysis to any subset of trials.
 
 ---
@@ -19,13 +17,13 @@ One row per trial. The only required column is **`trial`**, which must match
 the trial identifiers in your dataset.
 
 ```
-trial   pellet_side   rewarded   
-1       left          yes      
-2       right         yes       
-3       left          no       
-4       right         yes      
-5       left          yes       
-6       right         no       
+trial   food_pellet_side   rewarded   
+1       left               yes      
+2       right              yes       
+3       left               no       
+4       right              yes      
+5       left               yes       
+6       right              no       
 ```
 
 - Column names are arbitrary — add as many as you need.
