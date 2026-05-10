@@ -405,7 +405,7 @@
 <span class="sd">    human_verified          - per-trial flag (0/1), repeated per row</span>
 <span class="sd">    changepoint_corrected   - per-trial flag (0/1), repeated per row</span>
 <span class="sd">    prediction_source       - path to prediction file that produced this label (empty if human)</span>
-<span class="sd">    </span>
+
 
 <span class="sd">Label names are managed centrally in mapping.txt.</span>
 <span class="sd">&quot;&quot;&quot;</span>
@@ -415,12 +415,9 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 
-<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">EVENT_TYPE_POINT</span><span class="p">,</span>
-    <span class="n">EVENT_TYPE_STATE</span><span class="p">,</span>
     <span class="n">INTERVAL_COLUMNS</span><span class="p">,</span>
     <span class="n">INTERVAL_DTYPES</span><span class="p">,</span>
     <span class="n">empty_intervals</span><span class="p">,</span>
@@ -430,12 +427,25 @@
 <span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
 
 <span class="n">TSV_COLUMNS</span> <span class="o">=</span> <span class="p">[</span>
-    <span class="s2">&quot;trial&quot;</span><span class="p">,</span> <span class="s2">&quot;individual&quot;</span><span class="p">,</span> <span class="s2">&quot;labels&quot;</span><span class="p">,</span> <span class="s2">&quot;onset_s&quot;</span><span class="p">,</span> <span class="s2">&quot;offset_s&quot;</span><span class="p">,</span> <span class="s2">&quot;event_type&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;human_verified&quot;</span><span class="p">,</span> <span class="s2">&quot;changepoint_corrected&quot;</span><span class="p">,</span> <span class="s2">&quot;prediction_source&quot;</span><span class="p">,</span> <span class="s2">&quot;n_samples&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;trial&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;individual&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;labels&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;onset_s&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;offset_s&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;event_type&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;human_verified&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;changepoint_corrected&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;prediction_source&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;n_samples&quot;</span><span class="p">,</span>
 <span class="p">]</span>
 
 <span class="c1"># Per-trial metadata columns (same value for all rows in a trial)</span>
-<span class="n">TRIAL_META_COLUMNS</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;human_verified&quot;</span><span class="p">,</span> <span class="s2">&quot;changepoint_corrected&quot;</span><span class="p">,</span> <span class="s2">&quot;prediction_source&quot;</span><span class="p">,</span> <span class="s2">&quot;n_samples&quot;</span><span class="p">]</span>
+<span class="n">TRIAL_META_COLUMNS</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;human_verified&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;changepoint_corrected&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;prediction_source&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;n_samples&quot;</span><span class="p">,</span>
+<span class="p">]</span>
 
 <span class="n">TRIAL_META_DEFAULTS</span> <span class="o">=</span> <span class="p">{</span>
     <span class="s2">&quot;human_verified&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
@@ -448,6 +458,7 @@
 <span class="c1"># ---------------------------------------------------------------------------</span>
 <span class="c1"># Path helpers</span>
 <span class="c1"># ---------------------------------------------------------------------------</span>
+
 
 <div class="viewcode-block" id="labels_tsv_path">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.labels_tsv_path">[docs]</a>
@@ -487,8 +498,7 @@
     <span class="n">missing</span> <span class="o">=</span> <span class="n">REQUIRED_COLUMNS</span> <span class="o">-</span> <span class="nb">set</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;Labels file </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2"> is missing required columns: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2">. &quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;Required: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">REQUIRED_COLUMNS</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Labels file </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2"> is missing required columns: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2">. Required: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">REQUIRED_COLUMNS</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
         <span class="p">)</span></div>
 
 
@@ -559,15 +569,31 @@
     <span class="n">path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
     <span class="n">out</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-    
-    
-    
+    <span class="k">if</span> <span class="s2">&quot;onset_global&quot;</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">&quot;onset_global&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">sort_values</span><span class="p">([</span><span class="s2">&quot;trial&quot;</span><span class="p">,</span> <span class="s2">&quot;onset_s&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
     <span class="n">preferred</span> <span class="o">=</span> <span class="p">[</span>
-        <span class="s2">&quot;session&quot;</span><span class="p">,</span> <span class="s2">&quot;trial&quot;</span><span class="p">,</span> <span class="s2">&quot;session_trial&quot;</span><span class="p">,</span> <span class="s2">&quot;individual&quot;</span><span class="p">,</span> <span class="s2">&quot;labels&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;onset_s&quot;</span><span class="p">,</span> <span class="s2">&quot;offset_s&quot;</span><span class="p">,</span> <span class="s2">&quot;event_type&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;trial_onset&quot;</span><span class="p">,</span>  <span class="s2">&quot;trial_offset&quot;</span><span class="p">,</span><span class="s2">&quot;onset_global&quot;</span><span class="p">,</span> <span class="s2">&quot;offset_global&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;duration&quot;</span><span class="p">,</span> <span class="s2">&quot;sequence_idx&quot;</span><span class="p">,</span> <span class="s2">&quot;sequence&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;human_verified&quot;</span><span class="p">,</span> <span class="s2">&quot;changepoint_corrected&quot;</span><span class="p">,</span> <span class="s2">&quot;prediction_source&quot;</span><span class="p">,</span> <span class="s2">&quot;n_samples&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;session&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;trial&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;session_trial&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;individual&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;labels&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;onset_s&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;offset_s&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;event_type&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;trial_onset&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;trial_offset&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;onset_global&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;offset_global&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;duration&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;sequence_idx&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;sequence&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;human_verified&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;changepoint_corrected&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;prediction_source&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;n_samples&quot;</span><span class="p">,</span>
     <span class="p">]</span>
     <span class="n">cols</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">preferred</span> <span class="k">if</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span>
     <span class="n">cols</span> <span class="o">+=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">columns</span> <span class="k">if</span> <span class="n">c</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">cols</span><span class="p">]</span>
@@ -591,11 +617,10 @@
     <span class="k">return</span> <span class="n">df</span>
 
 
-
-
 <span class="c1"># ---------------------------------------------------------------------------</span>
 <span class="c1"># Per-trial access</span>
 <span class="c1"># ---------------------------------------------------------------------------</span>
+
 
 <div class="viewcode-block" id="get_trial_from_tsv">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.get_trial_from_tsv">[docs]</a>
@@ -621,7 +646,9 @@
 <div class="viewcode-block" id="set_trial_in_tsv">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.set_trial_in_tsv">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">set_trial_in_tsv</span><span class="p">(</span>
-    <span class="n">all_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">trial</span><span class="p">,</span> <span class="n">trial_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+    <span class="n">all_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+    <span class="n">trial</span><span class="p">,</span>
+    <span class="n">trial_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Replace all rows for a trial in the all-labels DataFrame.</span>
 
@@ -648,6 +675,7 @@
 <span class="c1"># ---------------------------------------------------------------------------</span>
 <span class="c1"># Per-trial metadata (stored as columns, same value per trial)</span>
 <span class="c1"># ---------------------------------------------------------------------------</span>
+
 
 <div class="viewcode-block" id="get_trial_meta">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.tsv_store.get_trial_meta">[docs]</a>

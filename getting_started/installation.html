@@ -426,19 +426,8 @@
                   
   <section class="tex2jax_ignore mathjax_ignore" id="installation">
 <span id="target-installation"></span><h1>Installation<a class="headerlink" href="#installation" title="Link to this heading">#</a></h1>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p><strong>ethograph is not yet published on PyPI.</strong> Until the first release,
-install directly from the GitHub repository (see
-<a class="reference internal" href="#install-from-source">Install from source</a> below). All <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">ethograph</span></code> commands on this page will only work after the package is
-published.</p>
-</div>
-<section id="prerequisites">
-<h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading">#</a></h2>
-<p>ethograph requires <strong>Python 3.11 or later</strong>.
-We recommend installing it in an isolated virtual environment.</p>
 <section id="install-ffmpeg">
-<h3>Install ffmpeg<a class="headerlink" href="#install-ffmpeg" title="Link to this heading">#</a></h3>
+<h2>Install ffmpeg<a class="headerlink" href="#install-ffmpeg" title="Link to this heading">#</a></h2>
 <p>ethograph uses <a class="reference external" href="https://ffmpeg.org/">ffmpeg</a> for video and audio processing.
 Check if it is already installed:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ffmpeg<span class="w"> </span>-version
@@ -482,7 +471,7 @@ sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> <
 </div>
 </section>
 <section id="install-uv">
-<h3>Install uv<a class="headerlink" href="#install-uv" title="Link to this heading">#</a></h3>
+<h2>Install uv<a class="headerlink" href="#install-uv" title="Link to this heading">#</a></h2>
 <p><a class="reference external" href="https://docs.astral.sh/uv/">uv</a> is a fast Python package manager.
 ethograph uses uv for installation regardless of how you create your
 virtual environment.</p>
@@ -496,13 +485,13 @@ macOS / Linux</label><div class="sd-tab-content docutils">
 </div>
 <input id="sd-tab-item-4" name="sd-tab-set-1" type="radio">
 <label class="sd-tab-label" for="sd-tab-item-4">
-Windows (PowerShell)</label><div class="sd-tab-content docutils">
-<div class="highlight-powershell notranslate"><div class="highlight"><pre><span></span><span class="n">powershell</span> <span class="n">-ExecutionPolicy</span> <span class="n">ByPass</span> <span class="n">-c</span> <span class="s2">&quot;irm https://astral.sh/uv/install.ps1 | iex&quot;</span>
+Windows</label><div class="sd-tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">winget</span> <span class="n">install</span> <span class="n">astral</span><span class="o">-</span><span class="n">sh</span><span class="o">.</span><span class="n">uv</span>
 </pre></div>
 </div>
+<p>Works from both PowerShell and Command Prompt. <code class="docutils literal notranslate"><span class="pre">winget</span></code> is built into Windows 11.</p>
 </div>
 </div>
-</section>
 </section>
 <section id="create-a-virtual-environment">
 <h2>Create a virtual environment<a class="headerlink" href="#create-a-virtual-environment" title="Link to this heading">#</a></h2>
@@ -579,13 +568,6 @@ archive</a> via the GUI wizard:</p>
 </pre></div>
 </div>
 </section>
-<section id="everything">
-<h3>Everything<a class="headerlink" href="#everything" title="Link to this heading">#</a></h3>
-<p>Install all optional dependencies (GUI + NWB):</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[all]&quot;</span>
-</pre></div>
-</div>
-</section>
 <section id="optional-dependency-groups">
 <h3>Optional dependency groups<a class="headerlink" href="#optional-dependency-groups" title="Link to this heading">#</a></h3>
 <p>ethograph uses optional extras to keep the base install lightweight.
@@ -597,52 +579,30 @@ You can combine them as needed:</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">audio</span></code></p></td>
-<td><p>Audio waveforms, spectrograms, vocal segmentation</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">gui</span></code></p></td>
+<td><p>Full graphical interface</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">neural</span></code></p></td>
-<td><p>Spike sorting analysis tools (phylib, neo)</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dandi</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dandi</span></code></p></td>
 <td><p>DANDI archive download client (heavy, opt-in)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">gui</span></code></p></td>
-<td><p>Full graphical interface (includes <code class="docutils literal notranslate"><span class="pre">audio</span></code> + <code class="docutils literal notranslate"><span class="pre">neural</span></code>)</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">all</span></code></p></td>
-<td><p>Everything above (<code class="docutils literal notranslate"><span class="pre">gui</span></code> + <code class="docutils literal notranslate"><span class="pre">dandi</span></code>)</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dev</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dev</span></code></p></td>
 <td><p>Testing and linting tools</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">docs</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">docs</span></code></p></td>
 <td><p>Documentation build dependencies</p></td>
 </tr>
 </tbody>
 </table>
 </div>
 <p>Combine extras with commas:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui,dandi]&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui,dandi, dev, docs]&quot;</span>
 </pre></div>
 </div>
 </section>
-</section>
-<section id="install-from-source">
-<span id="id1"></span><h2>Install from source<a class="headerlink" href="#install-from-source" title="Link to this heading">#</a></h2>
-<p>Use this method while ethograph is not yet on PyPI, or whenever you
-want to track the latest development version:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/Akseli-Ilmanen/ethograph.git
-<span class="nb">cd</span><span class="w"> </span>ethograph
-uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[gui]&quot;</span>
-</pre></div>
-</div>
-<p>The <code class="docutils literal notranslate"><span class="pre">-e</span></code> flag installs in <strong>editable mode</strong> — code changes take effect
-immediately without reinstalling.</p>
 </section>
 <section id="for-developers">
 <h2>For developers<a class="headerlink" href="#for-developers" title="Link to this heading">#</a></h2>
-<p>To install ethograph in editable mode with all optional dependencies and
-development tools, see <a class="reference internal" href="../community/contributing.html"><span class="doc">Contributing</span></a>.</p>
+<p>To install latest development version in editable mode see <a class="reference internal" href="../community/contributing.html"><span class="doc">Contributing</span></a>.</p>
 </section>
 <section id="update-the-package">
 <h2>Update the package<a class="headerlink" href="#update-the-package" title="Link to this heading">#</a></h2>
@@ -717,21 +677,16 @@ uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </s
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prerequisites">Prerequisites</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#install-ffmpeg">Install ffmpeg</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#install-uv">Install uv</a></li>
-</ul>
-</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-ffmpeg">Install ffmpeg</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-uv">Install uv</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#create-a-virtual-environment">Create a virtual environment</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-the-package">Install the package</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#with-the-gui-recommended">With the GUI (recommended)</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#core-only-library">Core only (library)</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#dandi-archive-downloads">DANDI archive downloads</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#everything">Everything</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-dependency-groups">Optional dependency groups</a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-from-source">Install from source</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#for-developers">For developers</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#update-the-package">Update the package</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-training-experimental">Model training (experimental)</a></li>

@@ -456,17 +456,19 @@
                 <span class="n">n</span> <span class="o">=</span> <span class="n">iface</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">iface</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="s2">&quot;shape&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="nb">len</span><span class="p">(</span><span class="n">iface</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
             <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
                 <span class="n">n</span> <span class="o">=</span> <span class="mi">0</span>
-            <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
-                <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">mod_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">iface_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-                <span class="s2">&quot;module&quot;</span><span class="p">:</span> <span class="n">mod_name</span><span class="p">,</span>
-                <span class="s2">&quot;interface&quot;</span><span class="p">:</span> <span class="n">iface_name</span><span class="p">,</span>
-                <span class="s2">&quot;n_samples&quot;</span><span class="p">:</span> <span class="n">n</span><span class="p">,</span>
-            <span class="p">})</span>
+            <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">mod_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">iface_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;module&quot;</span><span class="p">:</span> <span class="n">mod_name</span><span class="p">,</span>
+                    <span class="s2">&quot;interface&quot;</span><span class="p">:</span> <span class="n">iface_name</span><span class="p">,</span>
+                    <span class="s2">&quot;n_samples&quot;</span><span class="p">:</span> <span class="n">n</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
     <span class="k">return</span> <span class="n">results</span>
 
 
 <div class="viewcode-block" id="probe_electrical_series">
-<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.nwb_import.probe_electrical_series">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.io.nwb_import.probe_electrical_series">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">probe_electrical_series</span><span class="p">(</span><span class="n">nwb</span><span class="p">:</span> <span class="n">NWBFile</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;List all ElectricalSeries in nwb.acquisition.&quot;&quot;&quot;</span>
     <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
@@ -476,18 +478,20 @@
         <span class="n">n_samples</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="s2">&quot;shape&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="nb">len</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
         <span class="n">n_channels</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="s2">&quot;shape&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">obj</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">ndim</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="mi">1</span>
         <span class="n">rate</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">rate</span><span class="p">)</span> <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">rate</span> <span class="k">else</span> <span class="kc">None</span>
-        <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
-            <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="n">name</span><span class="p">,</span>
-            <span class="s2">&quot;n_samples&quot;</span><span class="p">:</span> <span class="n">n_samples</span><span class="p">,</span>
-            <span class="s2">&quot;n_channels&quot;</span><span class="p">:</span> <span class="n">n_channels</span><span class="p">,</span>
-            <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="n">rate</span><span class="p">,</span>
-        <span class="p">})</span>
+        <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="n">name</span><span class="p">,</span>
+                <span class="s2">&quot;n_samples&quot;</span><span class="p">:</span> <span class="n">n_samples</span><span class="p">,</span>
+                <span class="s2">&quot;n_channels&quot;</span><span class="p">:</span> <span class="n">n_channels</span><span class="p">,</span>
+                <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="n">rate</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
     <span class="k">return</span> <span class="n">results</span></div>
 
 
 
 <div class="viewcode-block" id="probe_label_sources">
-<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.nwb_import.probe_label_sources">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.io.nwb_import.probe_label_sources">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">probe_label_sources</span><span class="p">(</span><span class="n">nwb</span><span class="p">:</span> <span class="n">NWBFile</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;List all potential interval label sources in the NWB file.&quot;&quot;&quot;</span>
     <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
@@ -506,16 +510,20 @@
                     <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">iface</span><span class="p">)</span>
                 <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
                     <span class="n">n</span> <span class="o">=</span> <span class="mi">0</span>
-                <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
-                    <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">mod_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">iface_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-                    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;TimeIntervals: </span><span class="si">{</span><span class="n">mod_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">iface_name</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2"> rows)&quot;</span><span class="p">,</span>
-                <span class="p">})</span>
+                <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="p">{</span>
+                        <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">mod_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">iface_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;TimeIntervals: </span><span class="si">{</span><span class="n">mod_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">iface_name</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2"> rows)&quot;</span><span class="p">,</span>
+                    <span class="p">}</span>
+                <span class="p">)</span>
             <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">iface</span><span class="p">,</span> <span class="n">pynwb</span><span class="o">.</span><span class="n">behavior</span><span class="o">.</span><span class="n">BehavioralEpochs</span><span class="p">):</span>
                 <span class="k">for</span> <span class="n">series_name</span> <span class="ow">in</span> <span class="n">iface</span><span class="o">.</span><span class="n">interval_series</span><span class="p">:</span>
-                    <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
-                        <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">mod_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">iface_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">series_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-                        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;IntervalSeries: </span><span class="si">{</span><span class="n">mod_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">iface_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">series_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-                    <span class="p">})</span>
+                    <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="p">{</span>
+                            <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">mod_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">iface_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">series_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                            <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;IntervalSeries: </span><span class="si">{</span><span class="n">mod_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">iface_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">series_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                        <span class="p">}</span>
+                    <span class="p">)</span>
     <span class="k">return</span> <span class="n">results</span></div>
 
 
@@ -526,7 +534,7 @@
 
 
 <div class="viewcode-block" id="read_trials_table">
-<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.nwb_import.read_trials_table">[docs]</a>
+<a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.io.nwb_import.read_trials_table">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">read_trials_table</span><span class="p">(</span><span class="n">nwb</span><span class="p">:</span> <span class="n">NWBFile</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
     <span class="k">if</span> <span class="n">nwb</span><span class="o">.</span><span class="n">trials</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">nwb</span><span class="o">.</span><span class="n">trials</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="n">duration</span> <span class="o">=</span> <span class="n">_get_max_duration</span><span class="p">(</span><span class="n">nwb</span><span class="p">)</span>
@@ -546,9 +554,9 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_resolve</span><span class="p">(</span><span class="n">val</span><span class="p">):</span>
-    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="s1">&#39;data&#39;</span><span class="p">):</span>  <span class="c1"># h5py / NWB lazy wrapper</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">):</span>  <span class="c1"># h5py / NWB lazy wrapper</span>
         <span class="n">val</span> <span class="o">=</span> <span class="n">val</span><span class="o">.</span><span class="n">data</span>
-    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="s1">&#39;__array__&#39;</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="s2">&quot;__array__&quot;</span><span class="p">):</span>
         <span class="n">val</span> <span class="o">=</span> <span class="n">val</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="k">if</span> <span class="n">val</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">val</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
     <span class="k">return</span> <span class="n">val</span>
 
@@ -571,7 +579,6 @@
         <span class="n">start</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">starting_time</span><span class="p">)</span> <span class="k">if</span> <span class="n">ts</span><span class="o">.</span><span class="n">starting_time</span> <span class="k">else</span> <span class="mf">0.0</span>
         <span class="k">return</span> <span class="n">start</span> <span class="o">+</span> <span class="n">n</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">rate</span><span class="p">)</span>
     <span class="k">return</span> <span class="kc">None</span>
-
 </pre></div>
 
                 </article>

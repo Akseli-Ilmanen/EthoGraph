@@ -28,7 +28,7 @@ Answer a few questions to get personalised setup instructions for your data.
 :link: data_loading
 :link-type: doc
 
-Load `.nc`, `.nwb`, or pynapple files into the GUI.
+Load pose, video, audio files or custom arrays in the GUI.
 :::
 
 :::{grid-item-card} {fas}`list-check` Data format requirements

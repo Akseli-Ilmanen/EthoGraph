@@ -437,18 +437,9 @@
                   
   <section class="tex2jax_ignore mathjax_ignore" id="label-mapping-mapping-txt">
 <span id="target-label-mapping"></span><h1>Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)<a class="headerlink" href="#label-mapping-mapping-txt" title="Link to this heading">#</a></h1>
-<p>EthoGraph uses <strong>integer label IDs</strong> everywhere — in the TSV (<code class="docutils literal notranslate"><span class="pre">labels</span></code>
-column), in predictions (<code class="docutils literal notranslate"><span class="pre">argmax</span></code> over softmax), and in on-screen number-key
-shortcuts. String names are kept in a separate <code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code> file and
-resolved only at the edges (display, Crowsetta export, plotting).</p>
-<p>This matches the convention used in the <a class="reference external" href="https://github.com/nus-cvml/awesome-temporal-action-segmentation">action-segmentation literature</a> where models predict a per-frame class index and a dataset-level <code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code> lists the
-corresponding action names. Keeping string↔int separate means:</p>
-<ul class="simple">
-<li><p>Models and EthoGraph agree on the same integer IDs without re-encoding.</p></li>
-<li><p>Rename a behaviour once in <code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code> and it propagates everywhere
-(old backups, predictions, exports).</p></li>
-<li><p>The <code class="docutils literal notranslate"><span class="pre">.tsv</span></code> files stay compact and language-neutral.</p></li>
-</ul>
+<p>EthoGraph uses <strong>integer label IDs</strong> , e.g. in the TSV file (<code class="docutils literal notranslate"><span class="pre">labels</span></code>
+column). The <code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code> contains a mapping from these integers to the label names. This is the same format as used in the <a class="reference external" href="https://github.com/nus-cvml/awesome-temporal-action-segmentation">action-segmentation literature</a> where models predict a per-frame class index and a dataset-level <code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code> lists the corresponding action names.</p>
+<p>One major benefit of this format is that if you rename a behaviour once in <code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>, it propagates everywhere (old backups, predictions, exports).</p>
 <hr class="docutils" />
 <section id="format">
 <h2>Format<a class="headerlink" href="#format" title="Link to this heading">#</a></h2>

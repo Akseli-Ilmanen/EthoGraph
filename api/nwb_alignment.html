@@ -437,7 +437,7 @@ runtime access via <code class="docutils literal notranslate"><span class="pre">
 <p>This is the primary user-facing function for creating alignment files.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>trial_table</strong> (<span class="sphinx_autodoc_typehints-type">pd.DataFrame</span>) – DataFrame with <code class="docutils literal notranslate"><span class="pre">trial</span></code> column and <code class="docutils literal notranslate"><span class="pre">{stream}_{device}</span></code> filename
+<dd class="field-odd"><p><strong>trial_table</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v3.0.2)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – DataFrame with <code class="docutils literal notranslate"><span class="pre">trial</span></code> column and <code class="docutils literal notranslate"><span class="pre">{stream}_{device}</span></code> filename
 columns.  <code class="docutils literal notranslate"><span class="pre">start_time</span></code> / <code class="docutils literal notranslate"><span class="pre">stop_time</span></code> are optional – omit for
 aligned-to-trial data.</p>
 </dd>
@@ -457,11 +457,13 @@ columns in the table.  Example:
 </dl>
 <p class="rubric">Examples</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span><span class="o">,</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
-<span class="gp">... </span>    <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
-<span class="gp">... </span>    <span class="s2">&quot;video_cam-1&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.mp4&quot;</span><span class="p">,</span> <span class="s2">&quot;t2.mp4&quot;</span><span class="p">,</span> <span class="s2">&quot;t3.mp4&quot;</span><span class="p">],</span>
-<span class="gp">... </span>    <span class="s2">&quot;pose_cam-1&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;t2.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;t3.h5&quot;</span><span class="p">],</span>
-<span class="gp">... </span><span class="p">})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">{</span>
+<span class="gp">... </span>        <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
+<span class="gp">... </span>        <span class="s2">&quot;video_cam-1&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.mp4&quot;</span><span class="p">,</span> <span class="s2">&quot;t2.mp4&quot;</span><span class="p">,</span> <span class="s2">&quot;t3.mp4&quot;</span><span class="p">],</span>
+<span class="gp">... </span>        <span class="s2">&quot;pose_cam-1&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;t2.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;t3.h5&quot;</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="p">}</span>
+<span class="gp">... </span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">eto</span><span class="o">.</span><span class="n">create_alignment</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;video&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span> <span class="s2">&quot;pose&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">},</span> <span class="s2">&quot;out/.ethograph/alignment.nwb&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -479,9 +481,9 @@ references go into ImageSeries acquisition items.</p>
 <li><p><strong>trials</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v3.0.2)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – DataFrame with <code class="docutils literal notranslate"><span class="pre">trial</span></code>, <code class="docutils literal notranslate"><span class="pre">start_time</span></code>, <code class="docutils literal notranslate"><span class="pre">stop_time</span></code>.</p></li>
 <li><p><strong>streams</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>]</span>) – <p>List of stream dicts, each with:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;video_cam-1&quot;</span><span class="p">,</span>       <span class="c1"># acquisition item name</span>
-    <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.mp4&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>    <span class="c1"># one per trial (full paths)</span>
-    <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span>                <span class="c1"># sampling rate</span>
+    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;video_cam-1&quot;</span><span class="p">,</span>  <span class="c1"># acquisition item name</span>
+    <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;t1.mp4&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>  <span class="c1"># one per trial (full paths)</span>
+    <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">,</span>  <span class="c1"># sampling rate</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -490,7 +492,7 @@ references go into ImageSeries acquisition items.</p>
     <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;audio_mic-1&quot;</span><span class="p">,</span>
     <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;session.wav&quot;</span><span class="p">],</span>
     <span class="s2">&quot;rate&quot;</span><span class="p">:</span> <span class="mf">44100.0</span><span class="p">,</span>
-    <span class="s2">&quot;starting_time&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>        <span class="c1"># when file starts in session time</span>
+    <span class="s2">&quot;starting_time&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>  <span class="c1"># when file starts in session time</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -558,13 +560,13 @@ and <code class="docutils literal notranslate"><span class="pre">rate</span></co
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>nwbfile</strong> (<span class="sphinx_autodoc_typehints-type">NWBFile</span>) – NWB file with a populated trials table.</p></li>
-<li><p><strong>stream_rates</strong> (<span class="sphinx_autodoc_typehints-type">dict[str, float]</span>) – Mapping of stream name to sampling rate, e.g.
+<li><p><strong>nwbfile</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">NWBFile</span></code></span>) – NWB file with a populated trials table.</p></li>
+<li><p><strong>stream_rates</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a>]</span>) – Mapping of stream name to sampling rate, e.g.
 <code class="docutils literal notranslate"><span class="pre">{&quot;video&quot;:</span> <span class="pre">30.0,</span> <span class="pre">&quot;audio&quot;:</span> <span class="pre">44100.0,</span> <span class="pre">&quot;pose&quot;:</span> <span class="pre">30.0}</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type">None</span></p>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span></p>
 </dd>
 </dl>
 </dd></dl>

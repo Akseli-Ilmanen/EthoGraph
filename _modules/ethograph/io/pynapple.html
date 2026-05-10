@@ -403,12 +403,9 @@
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pynapple</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nap</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.ndimage</span><span class="w"> </span><span class="kn">import</span> <span class="n">gaussian_filter1d</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.features.movement</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_angle_rgb</span>
-
-
 
 <span class="c1">## IO</span>
 
@@ -422,7 +419,7 @@
 
 
 <div class="viewcode-block" id="parse_nwb_types">
-<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.pynapple.parse_nwb_types">[docs]</a>
+<a class="viewcode-back" href="../../../api/ethograph.io.pynapple.parse_nwb_types.html#ethograph.io.pynapple.parse_nwb_types">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">parse_nwb_types</span><span class="p">(</span><span class="n">nwb</span><span class="p">:</span> <span class="n">nap</span><span class="o">.</span><span class="n">NWBFile</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">type</span><span class="p">]:</span>
     <span class="n">result</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">nwb</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">):</span>
@@ -437,7 +434,7 @@
 
 
 <div class="viewcode-block" id="get_metadata">
-<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.pynapple.get_metadata">[docs]</a>
+<a class="viewcode-back" href="../../../api/ethograph.io.pynapple.get_metadata.html#ethograph.io.pynapple.get_metadata">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_metadata</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
     <span class="n">meta</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="nb">type</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">}</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">nap</span><span class="o">.</span><span class="n">TsGroup</span><span class="p">):</span>
@@ -455,7 +452,7 @@
 
 
 <div class="viewcode-block" id="flatten_nap_folder">
-<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.pynapple.flatten_nap_folder">[docs]</a>
+<a class="viewcode-back" href="../../../api/ethograph.io.pynapple.flatten_nap_folder.html#ethograph.io.pynapple.flatten_nap_folder">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">flatten_nap_folder</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">load_metadata</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
     <span class="n">flat</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
@@ -477,7 +474,6 @@
                 <span class="n">entry</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">get_metadata</span><span class="p">(</span><span class="n">val</span><span class="p">))</span>
             <span class="n">flat</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">entry</span>
     <span class="k">return</span> <span class="n">flat</span></div>
-
 
 
 
@@ -517,6 +513,47 @@
     <span class="n">changepoint_func</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
     <span class="o">**</span><span class="n">func_kwargs</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">nap</span><span class="o">.</span><span class="n">TsGroup</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Detect changepoints in a pynapple time series and return them as a TsGroup.</span>
+
+<span class="sd">    Applies *changepoint_func* independently to each unit or column in *data*.</span>
+<span class="sd">    Returns a :class:`nap.TsGroup` where each unit contains the changepoint</span>
+<span class="sd">    timestamps for one source series.  Source metadata (label, feature name,</span>
+<span class="sd">    type) is stored as group metadata columns; if *data* is itself a</span>
+<span class="sd">    ``TsGroup``, its metadata columns are forwarded as well.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    data : nap.Tsd | nap.TsdFrame | nap.TsGroup</span>
+<span class="sd">        Input time series.  For a ``Tsd`` a single unit is produced; for a</span>
+<span class="sd">        ``TsdFrame`` one unit per column; for a ``TsGroup`` one unit per</span>
+<span class="sd">        neuron/unit.</span>
+<span class="sd">    target_feature : str</span>
+<span class="sd">        Human-readable label recorded in the output metadata</span>
+<span class="sd">        (e.g. ``&quot;speed&quot;``).</span>
+<span class="sd">    changepoint_func : callable</span>
+<span class="sd">        A function ``f(x, **kwargs) -&gt; array`` that accepts a 1-D numpy</span>
+<span class="sd">        array of values and returns an array of changepoint times (or a</span>
+<span class="sd">        binary indicator of the same length).</span>
+<span class="sd">    **func_kwargs</span>
+<span class="sd">        Forwarded to *changepoint_func*.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    nap.TsGroup</span>
+<span class="sd">        One unit per input series, containing changepoint timestamps.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import ethograph as eto</span>
+<span class="sd">    &gt;&gt;&gt; from ethograph.features.changepoints import find_troughs</span>
+<span class="sd">    &gt;&gt;&gt; data = eto.load_nap_data(&quot;experiment.nwb&quot;)</span>
+<span class="sd">    &gt;&gt;&gt; cp_group = eto.add_changepoints_to_nap(</span>
+<span class="sd">    ...     data[&quot;speed&quot;],</span>
+<span class="sd">    ...     target_feature=&quot;speed&quot;,</span>
+<span class="sd">    ...     changepoint_func=find_troughs,</span>
+<span class="sd">    ...     prominence=0.3,</span>
+<span class="sd">    ... )</span>
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">f</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">changepoint_func</span><span class="p">,</span> <span class="o">**</span><span class="n">func_kwargs</span><span class="p">)</span>
     <span class="n">units</span> <span class="o">=</span> <span class="n">_iter_units</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
 
@@ -548,6 +585,44 @@
     <span class="n">position_key</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;position&quot;</span><span class="p">,</span>
     <span class="n">xy_columns</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">],</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">nap</span><span class="o">.</span><span class="n">TsdFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute heading-angle RGB colour coding from 2-D position data.</span>
+
+<span class="sd">    Calculates the heading angle from consecutive (x, y) positions in</span>
+<span class="sd">    *tsdframe* and maps each angle to an RGB triplet via</span>
+<span class="sd">    :func:`~ethograph.features.movement.get_angle_rgb`.  Gaussian smoothing</span>
+<span class="sd">    is applied before angle computation.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    tsdframe : nap.TsdFrame</span>
+<span class="sd">        Position data with at least two columns (x and y).  If more than two</span>
+<span class="sd">        columns are present, *xy_columns* selects which two to use.</span>
+<span class="sd">    smoothing_params : dict</span>
+<span class="sd">        Keyword arguments forwarded to</span>
+<span class="sd">        :func:`scipy.ndimage.gaussian_filter1d` (e.g. ``{&quot;sigma&quot;: 3}``).</span>
+<span class="sd">    position_key : str, optional</span>
+<span class="sd">        Input type passed to ``get_angle_rgb`` (default ``&quot;position&quot;``).</span>
+<span class="sd">    xy_columns : list[str], optional</span>
+<span class="sd">        Column names to use as x and y when *tsdframe* has more than two</span>
+<span class="sd">        columns (default ``[&quot;x&quot;, &quot;y&quot;]``).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    nap.TsdFrame</span>
+<span class="sd">        A new ``TsdFrame`` with three columns ``[&quot;R&quot;, &quot;G&quot;, &quot;B&quot;]`` on the</span>
+<span class="sd">        same time support as *tsdframe*.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import ethograph as eto</span>
+<span class="sd">    &gt;&gt;&gt; data = eto.load_nap_data(&quot;experiment.nwb&quot;)</span>
+<span class="sd">    &gt;&gt;&gt; rgb = eto.add_angle_rgb_to_nap(</span>
+<span class="sd">    ...     data[&quot;position&quot;],</span>
+<span class="sd">    ...     smoothing_params={&quot;sigma&quot;: 3},</span>
+<span class="sd">    ... )</span>
+<span class="sd">    &gt;&gt;&gt; rgb.columns</span>
+<span class="sd">    [&#39;R&#39;, &#39;G&#39;, &#39;B&#39;]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">tsdframe</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
         <span class="n">tsdframe</span> <span class="o">=</span> <span class="n">tsdframe</span><span class="p">[</span><span class="n">xy_columns</span><span class="p">]</span>
 
@@ -559,7 +634,9 @@
     <span class="p">)</span>
 
     <span class="k">return</span> <span class="n">nap</span><span class="o">.</span><span class="n">TsdFrame</span><span class="p">(</span>
-        <span class="n">t</span><span class="o">=</span><span class="n">tsdframe</span><span class="o">.</span><span class="n">t</span><span class="p">,</span> <span class="n">d</span><span class="o">=</span><span class="n">rgb</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;R&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;B&quot;</span><span class="p">],</span>
+        <span class="n">t</span><span class="o">=</span><span class="n">tsdframe</span><span class="o">.</span><span class="n">t</span><span class="p">,</span>
+        <span class="n">d</span><span class="o">=</span><span class="n">rgb</span><span class="p">,</span>
+        <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;R&quot;</span><span class="p">,</span> <span class="s2">&quot;G&quot;</span><span class="p">,</span> <span class="s2">&quot;B&quot;</span><span class="p">],</span>
         <span class="n">time_support</span><span class="o">=</span><span class="n">tsdframe</span><span class="o">.</span><span class="n">time_support</span><span class="p">,</span>
     <span class="p">)</span></div>
 
@@ -573,7 +650,7 @@
 
 
 <div class="viewcode-block" id="detect_trials">
-<a class="viewcode-back" href="../../../api/pynapple_io.html#ethograph.io.pynapple.detect_trials">[docs]</a>
+<a class="viewcode-back" href="../../../api/ethograph.io.pynapple.detect_trials.html#ethograph.io.pynapple.detect_trials">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">detect_trials</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">nap</span><span class="o">.</span><span class="n">IntervalSet</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Find a trials IntervalSet in a loaded pynapple data dict.&quot;&quot;&quot;</span>
     <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;trials&quot;</span><span class="p">,</span> <span class="s2">&quot;epochs&quot;</span><span class="p">,</span> <span class="s2">&quot;intervals&quot;</span><span class="p">):</span>
@@ -637,8 +714,6 @@
 
     <span class="n">trials_ep</span> <span class="o">=</span> <span class="n">detect_trials</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">data</span><span class="p">,</span> <span class="n">trials_ep</span></div>
-
-
 
 </pre></div>
 

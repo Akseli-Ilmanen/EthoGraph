@@ -1,21 +1,16 @@
 (target-labelling-gui)=
 # Labelling in the GUI
 
-Before closing, you will be prompted to `update with labels and save` — this
-takes the `labels.nc` file and updates the `session` file with this info.
-Don't skip this step; it may take a minute.
-
----
-
 ## Creating labels
-
-![keyboard](../../media/keyboard.png)
 
 To create a new behavioural label:
 
-1. Press one of the number/letters keys to activate a specific behavioural label.
-2. Click twice on the line plot to define the start and end boundaries of the label.
+1. Press one of the number/letters keys (see image below) to activate a specific behavioural label.
+2. Click twice on the line plot to define the start and end boundaries of the label. For point events, click only once.
 3. The label will be created and displayed with a color-coded overlay.
+
+
+![keyboard](../../media/keyboard.png)
 
 ---
 

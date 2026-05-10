@@ -399,14 +399,7 @@
     <span class="k">pass</span>
 
     
-<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.trialtree</span><span class="w"> </span><span class="kn">import</span> <span class="n">TrialTree</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.dataset</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">add_angle_rgb_to_ds</span><span class="p">,</span>
-    <span class="n">add_changepoints_to_ds</span><span class="p">,</span>
-    <span class="n">downsample_trialtree</span><span class="p">,</span>
-<span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.utils.xr_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_ds_duration</span><span class="p">,</span> <span class="n">get_time_coord</span><span class="p">,</span> <span class="n">sel_valid</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.utils.paths</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_project_root</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">sample_data</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.catalog</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">DataCatalog</span><span class="p">,</span>
     <span class="n">DataLoader</span><span class="p">,</span>
@@ -416,18 +409,25 @@
     <span class="n">catalog_from_pynapple</span><span class="p">,</span>
     <span class="n">catalog_from_xarray</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.pynapple</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_nap_data</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.dataset</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">add_angle_rgb_to_ds</span><span class="p">,</span>
+    <span class="n">add_changepoints_to_ds</span><span class="p">,</span>
+    <span class="n">downsample_trialtree</span><span class="p">,</span>
+<span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.nwb_alignment</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">NWBAlignment</span><span class="p">,</span>
-    <span class="n">align_media_per_trial</span><span class="p">,</span>
     <span class="n">align_media_from_streams</span><span class="p">,</span>
+    <span class="n">align_media_per_trial</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">sample_data</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.pynapple</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_nap_data</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.time_model</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">SourceCollection</span><span class="p">,</span>
     <span class="n">TimeRange</span><span class="p">,</span>
     <span class="n">TimeSource</span><span class="p">,</span>
 <span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.trialtree</span><span class="w"> </span><span class="kn">import</span> <span class="n">TrialTree</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.utils.paths</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_project_root</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.utils.xr_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_ds_duration</span><span class="p">,</span> <span class="n">get_time_coord</span><span class="p">,</span> <span class="n">sel_valid</span>
 
 
 <div class="viewcode-block" id="open">

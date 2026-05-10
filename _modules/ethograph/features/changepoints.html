@@ -396,18 +396,27 @@
 <span></span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Literal</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.signal</span><span class="w"> </span><span class="kn">import</span> <span class="n">find_peaks</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.features.preprocessing</span><span class="w"> </span><span class="kn">import</span> <span class="n">z_normalize</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">purge_short_intervals</span><span class="p">,</span> <span class="n">snap_boundaries</span><span class="p">,</span> <span class="n">stitch_intervals</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.ml</span><span class="w"> </span><span class="kn">import</span> <span class="n">find_blocks</span><span class="p">,</span> <span class="n">fix_endings</span><span class="p">,</span> <span class="n">purge_small_blocks</span><span class="p">,</span> <span class="n">stitch_gaps</span>
-
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">purge_short_intervals</span><span class="p">,</span>
+    <span class="n">snap_boundaries</span><span class="p">,</span>
+    <span class="n">stitch_intervals</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.ml</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">find_blocks</span><span class="p">,</span>
+    <span class="n">fix_endings</span><span class="p">,</span>
+    <span class="n">purge_small_blocks</span><span class="p">,</span>
+    <span class="n">stitch_gaps</span><span class="p">,</span>
+<span class="p">)</span>
 
 <span class="c1"># ---------------------------------------------------------------------------</span>
 <span class="c1"># Internal helpers</span>
 <span class="c1"># ---------------------------------------------------------------------------</span>
+
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_nan_boundary_indices</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Return indices where NaN transitions occur (NaN-&gt;valid and valid-&gt;NaN).&quot;&quot;&quot;</span>
@@ -439,6 +448,7 @@
 <span class="c1"># NaN boundary handling (refactored to use helpers)</span>
 <span class="c1"># ---------------------------------------------------------------------------</span>
 
+
 <div class="viewcode-block" id="add_NaN_boundaries">
 <a class="viewcode-back" href="../../../api/ethograph.features.changepoints.add_NaN_boundaries.html#ethograph.features.changepoints.add_NaN_boundaries">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">add_NaN_boundaries</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">changepoints</span><span class="p">):</span>
@@ -455,6 +465,7 @@
 <span class="c1"># ---------------------------------------------------------------------------</span>
 <span class="c1"># Binary detection (dense binary masks for apply_ufunc / dataset storage)</span>
 <span class="c1"># ---------------------------------------------------------------------------</span>
+
 
 <div class="viewcode-block" id="find_peaks_binary">
 <a class="viewcode-back" href="../../../api/ethograph.features.changepoints.find_peaks_binary.html#ethograph.features.changepoints.find_peaks_binary">[docs]</a>
@@ -473,8 +484,7 @@
     <span class="k">return</span> <span class="n">add_NaN_boundaries</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">troughs</span><span class="p">)</span></div>
 
 
-         
-        
+
 <div class="viewcode-block" id="find_nearest_turning_points_binary">
 <a class="viewcode-back" href="../../../api/ethograph.features.changepoints.find_nearest_turning_points_binary.html#ethograph.features.changepoints.find_nearest_turning_points_binary">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">find_nearest_turning_points_binary</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">max_value</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">prominence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">distance</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
@@ -532,6 +542,7 @@
 <span class="c1"># Changepoint time extraction</span>
 <span class="c1"># ---------------------------------------------------------------------------</span>
 
+
 <div class="viewcode-block" id="extract_cp_times">
 <a class="viewcode-back" href="../../../api/ethograph.features.changepoints.extract_cp_times.html#ethograph.features.changepoints.extract_cp_times">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">extract_cp_times</span><span class="p">(</span><span class="n">ds</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">,</span> <span class="n">time</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="o">**</span><span class="n">cp_kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
@@ -544,7 +555,6 @@
     <span class="n">cp_ds</span> <span class="o">=</span> <span class="n">filtered</span><span class="o">.</span><span class="n">filter_by_attrs</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="s2">&quot;changepoints&quot;</span><span class="p">)</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">cp_ds</span><span class="o">.</span><span class="n">data_vars</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
-
 
     <span class="c1"># TODO: Do I want merging of changepoints</span>
     <span class="k">try</span><span class="p">:</span>
@@ -584,9 +594,7 @@
         <span class="n">cp_ds</span> <span class="o">=</span> <span class="n">filtered</span><span class="o">.</span><span class="n">filter_by_attrs</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="s2">&quot;changepoints&quot;</span><span class="p">)</span>
         <span class="n">cp_ds</span> <span class="o">=</span> <span class="n">cp_ds</span><span class="o">.</span><span class="n">filter_by_attrs</span><span class="p">(</span><span class="n">target_feature</span><span class="o">=</span><span class="n">feature_sel</span><span class="p">)</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">cp_ds</span><span class="o">.</span><span class="n">data_vars</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="n">cp_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span>
-                <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">cp_ds</span><span class="p">[</span><span class="n">var</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">var</span> <span class="ow">in</span> <span class="n">cp_ds</span><span class="o">.</span><span class="n">data_vars</span>
-            <span class="p">])</span>
+            <span class="n">cp_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">cp_ds</span><span class="p">[</span><span class="n">var</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">var</span> <span class="ow">in</span> <span class="n">cp_ds</span><span class="o">.</span><span class="n">data_vars</span><span class="p">])</span>
             <span class="n">cp_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">cp_indices</span><span class="p">)</span>
             <span class="n">valid</span> <span class="o">=</span> <span class="n">cp_indices</span><span class="p">[</span><span class="n">cp_indices</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">time</span><span class="p">)]</span>
             <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">valid</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
@@ -611,7 +619,6 @@
 
     <span class="n">nearest_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">cp_times</span> <span class="o">-</span> <span class="n">t_clicked</span><span class="p">))</span>
     <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">cp_times</span><span class="p">[</span><span class="n">nearest_idx</span><span class="p">])</span></div>
-
 
 
 
@@ -675,6 +682,7 @@
 <span class="c1"># Dense correction (legacy — kept for ML pipeline)</span>
 <span class="c1"># ---------------------------------------------------------------------------</span>
 
+
 <div class="viewcode-block" id="correct_changepoints_dense">
 <a class="viewcode-back" href="../../../api/ethograph.features.changepoints.correct_changepoints_dense.html#ethograph.features.changepoints.correct_changepoints_dense">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">correct_changepoints_dense</span><span class="p">(</span><span class="n">labels</span><span class="p">,</span> <span class="n">ds</span><span class="p">,</span> <span class="n">all_params</span><span class="p">):</span>
@@ -706,7 +714,6 @@
 <span class="sd">        Corrected integer label array of the same shape as ``labels``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">cp_kwargs</span> <span class="o">=</span> <span class="n">all_params</span><span class="p">[</span><span class="s2">&quot;cp_kwargs&quot;</span><span class="p">]</span>
-    
 
     <span class="c1"># FIX to work with min_label_length_</span>
     <span class="n">min_label_length</span> <span class="o">=</span> <span class="n">all_params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;min_label_length_s&quot;</span><span class="p">)</span>
@@ -714,7 +721,7 @@
     <span class="n">stitch_gap_len</span> <span class="o">=</span> <span class="n">all_params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;stitch_gap_len_s&quot;</span><span class="p">)</span>
     <span class="n">max_expansion</span> <span class="o">=</span> <span class="n">all_params</span><span class="p">[</span><span class="s2">&quot;changepoint_params&quot;</span><span class="p">][</span><span class="s2">&quot;max_expansion_s&quot;</span><span class="p">]</span>
     <span class="n">max_shrink</span> <span class="o">=</span> <span class="n">all_params</span><span class="p">[</span><span class="s2">&quot;changepoint_params&quot;</span><span class="p">][</span><span class="s2">&quot;max_shrink_s&quot;</span><span class="p">]</span>
-    
+
     <span class="n">min_label_length</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">min_label_length</span> <span class="o">*</span> <span class="n">all_params</span><span class="p">[</span><span class="s2">&quot;fps&quot;</span><span class="p">])</span>
     <span class="n">stitch_gap_len</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">stitch_gap_len</span> <span class="o">*</span> <span class="n">all_params</span><span class="p">[</span><span class="s2">&quot;fps&quot;</span><span class="p">])</span>
     <span class="n">max_expansion</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">max_expansion</span> <span class="o">*</span> <span class="n">all_params</span><span class="p">[</span><span class="s2">&quot;fps&quot;</span><span class="p">])</span>
@@ -722,7 +729,6 @@
     <span class="n">label_thresholds</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">thresh</span> <span class="ow">in</span> <span class="n">label_thresholds_s</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="n">label_thresholds</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">thresh</span> <span class="o">*</span> <span class="n">all_params</span><span class="p">[</span><span class="s2">&quot;fps&quot;</span><span class="p">])</span>
-    
 
     <span class="n">ds</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="o">**</span><span class="n">cp_kwargs</span><span class="p">)</span>
     <span class="n">ds_merged</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">merge_changepoints</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span>
@@ -770,9 +776,9 @@
                 <span class="k">if</span> <span class="n">corrected_labels</span><span class="p">[</span><span class="n">snap_end</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">corrected_labels</span><span class="p">[</span><span class="n">snap_end</span><span class="p">]</span> <span class="o">!=</span> <span class="n">label</span><span class="p">:</span>
                     <span class="n">snap_end</span> <span class="o">=</span> <span class="n">snap_end</span> <span class="o">-</span> <span class="mi">1</span>
 
-            <span class="n">corrected_labels</span><span class="p">[</span><span class="n">block_start</span><span class="p">:</span><span class="n">block_end</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">corrected_labels</span><span class="p">[</span><span class="n">block_start</span> <span class="p">:</span> <span class="n">block_end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
             <span class="k">if</span> <span class="n">snap_start</span> <span class="o">&lt;</span> <span class="n">snap_end</span><span class="p">:</span>
-                <span class="n">corrected_labels</span><span class="p">[</span><span class="n">snap_start</span><span class="p">:</span><span class="n">snap_end</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">label</span>
+                <span class="n">corrected_labels</span><span class="p">[</span><span class="n">snap_start</span> <span class="p">:</span> <span class="n">snap_end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">label</span>
 
     <span class="n">corrected_labels</span> <span class="o">=</span> <span class="n">purge_small_blocks</span><span class="p">(</span><span class="n">corrected_labels</span><span class="p">,</span> <span class="n">min_label_length</span><span class="p">)</span>
     <span class="n">corrected_labels</span> <span class="o">=</span> <span class="n">fix_endings</span><span class="p">(</span><span class="n">corrected_labels</span><span class="p">,</span> <span class="n">changepoints_binary</span><span class="p">)</span>
@@ -784,6 +790,7 @@
 <span class="c1"># ---------------------------------------------------------------------------</span>
 <span class="c1"># Merge changepoints</span>
 <span class="c1"># ---------------------------------------------------------------------------</span>
+
 
 <div class="viewcode-block" id="merge_changepoints">
 <a class="viewcode-back" href="../../../api/ethograph.features.changepoints.merge_changepoints.html#ethograph.features.changepoints.merge_changepoints">[docs]</a>
@@ -820,14 +827,13 @@
         <span class="n">target_feature</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cp_ds</span><span class="p">[</span><span class="n">var</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;target_feature&quot;</span><span class="p">])</span>
 
     <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">target_feature</span><span class="p">)</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Not allowed to merge changepoints for different target features: </span><span class="si">{</span><span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">target_feature</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Not allowed to merge changepoints for different target features: </span><span class="si">{</span><span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">target_feature</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
 
     <span class="n">dims</span> <span class="o">=</span> <span class="p">[</span><span class="n">dim</span> <span class="k">for</span> <span class="n">dim</span> <span class="ow">in</span> <span class="n">cp_ds</span><span class="o">.</span><span class="n">dims</span> <span class="k">if</span> <span class="n">dim</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;trials&quot;</span><span class="p">,</span> <span class="s2">&quot;time&quot;</span><span class="p">]]</span>
 
-    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;changepoints&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">cp_ds</span>
-                                <span class="o">.</span><span class="n">to_array</span><span class="p">()</span>
-                                <span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;variable&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">dims</span><span class="p">)</span>
-                                <span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">))</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;changepoints&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cp_ds</span><span class="o">.</span><span class="n">to_array</span><span class="p">()</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;variable&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">dims</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
     <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;changepoints&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;changepoints&quot;</span>
 
     <span class="n">ds</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">drop_vars</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">cp_ds</span><span class="o">.</span><span class="n">data_vars</span><span class="p">))</span>
@@ -839,6 +845,7 @@
 <span class="c1"># ---------------------------------------------------------------------------</span>
 <span class="c1"># ML feature engineering</span>
 <span class="c1"># ---------------------------------------------------------------------------</span>
+
 
 <div class="viewcode-block" id="more_changepoint_features">
 <a class="viewcode-back" href="../../../api/ethograph.features.changepoints.more_changepoint_features.html#ethograph.features.changepoints.more_changepoint_features">[docs]</a>

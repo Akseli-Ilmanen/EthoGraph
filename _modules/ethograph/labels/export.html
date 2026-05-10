@@ -393,20 +393,14 @@
                 <article class="bd-article">
                   
   <h1>Source code for ethograph.labels.export</h1><div class="highlight"><pre>
-<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="kn">import</span> <span class="n">TrialTree</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">empty_intervals</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
-
-
-
 
 
 <div class="viewcode-block" id="correct_offsets_trial">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.export.correct_offsets_trial">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">correct_offsets_trial</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">correct_offsets_trial</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Apply gap correction to a single trial&#39;s interval DataFrame.</span>
 
 <span class="sd">    For each individual, pulls back ``offset_s`` when the gap to the next onset</span>
@@ -414,46 +408,40 @@
 
 <span class="sd">    Works on the per-trial format (columns: trial, onset_s, offset_s, labels,</span>
 <span class="sd">    individual) returned by ``app_state.get_trial_intervals()``.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    tuple[pd.DataFrame, int, int]</span>
+<span class="sd">        Corrected DataFrame, number of offsets corrected, number of negative gaps found.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">df</span>
+        <span class="k">return</span> <span class="n">df</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
     <span class="n">eps</span> <span class="o">=</span> <span class="mf">1e-4</span>
     <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span><span class="o">.</span><span class="n">sort_values</span><span class="p">([</span><span class="s2">&quot;individual&quot;</span><span class="p">,</span> <span class="s2">&quot;onset_s&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-    
-    <span class="n">counter</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="n">corrected</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">negative_gaps</span> <span class="o">=</span> <span class="mi">0</span>
     <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">&quot;individual&quot;</span><span class="p">):</span>
-        
-        
         <span class="n">idx</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
-            <span class="n">trial</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="s2">&quot;trial&quot;</span><span class="p">]</span>
             <span class="n">gap</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="s2">&quot;onset_s&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="s2">&quot;offset_s&quot;</span><span class="p">]</span>
-            
+
             <span class="k">if</span> <span class="n">gap</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Negative gap of </span><span class="si">{</span><span class="n">gap</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2"> seconds between intervals for individual </span><span class="si">{</span><span class="n">group</span><span class="p">[</span><span class="s1">&#39;individual&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2"> at index </span><span class="si">{</span><span class="n">idx</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="si">}</span><span class="s2"> and </span><span class="si">{</span><span class="n">idx</span><span class="p">[</span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2"> in trial </span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="s2">. Check your data for overlapping intervals.&quot;</span><span class="p">)</span>
-            
+                <span class="n">negative_gaps</span> <span class="o">+=</span> <span class="mi">1</span>
+
             <span class="k">if</span> <span class="n">gap</span> <span class="o">&lt;</span> <span class="n">eps</span><span class="p">:</span>
-                <span class="n">counter</span> <span class="o">+=</span> <span class="mi">1</span>
-                
+                <span class="n">corrected</span> <span class="o">+=</span> <span class="mi">1</span>
                 <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="s2">&quot;onset_s&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">eps</span>
                 <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="s2">&quot;duration&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="s2">&quot;onset_s&quot;</span><span class="p">]</span>
 
-            
                 <span class="k">if</span> <span class="s2">&quot;offset_global&quot;</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="ow">and</span> <span class="s2">&quot;onset_global&quot;</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
                     <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="s2">&quot;offset_global&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="s2">&quot;onset_global&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">eps</span>
                     <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="s2">&quot;duration&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="s2">&quot;offset_s&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="s2">&quot;onset_s&quot;</span><span class="p">]</span>
-                
-                
-                
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Corrected </span><span class="si">{</span><span class="n">counter</span><span class="si">}</span><span class="s2"> offsets with gap smaller than </span><span class="si">{</span><span class="n">eps</span><span class="si">:</span><span class="s2">.5f</span><span class="si">}</span><span class="s2"> seconds.&quot;</span><span class="p">)</span>
-                        
-            
+
     <span class="k">if</span> <span class="s2">&quot;onset_global&quot;</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
         <span class="n">df</span><span class="o">.</span><span class="n">sort_values</span><span class="p">([</span><span class="s2">&quot;individual&quot;</span><span class="p">,</span> <span class="s2">&quot;onset_global&quot;</span><span class="p">],</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-                
-    <span class="k">return</span> <span class="n">df</span></div>
 
-
+    <span class="k">return</span> <span class="n">df</span><span class="p">,</span> <span class="n">corrected</span><span class="p">,</span> <span class="n">negative_gaps</span></div>
 
 
 
@@ -464,12 +452,13 @@
     <span class="n">nwb_alignment</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
     <span class="n">keep_attrs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">dt</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">metadata_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Enrich a raw labels DataFrame with computed columns for analysis export.</span>
 
 <span class="sd">    Takes the in-memory ``_all_labels_df`` (with columns ``onset_s``, ``offset_s``,</span>
 <span class="sd">    ``labels``, ``individual``, ``trial``) and adds session timing, duration,</span>
-<span class="sd">    sequence info, and trial attributes.</span>
+<span class="sd">    sequence info, and trial attributes from metadata_df and ds.attrs.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -481,6 +470,10 @@
 <span class="sd">        Trial-level ``ds.attrs`` keys to include as extra columns (xarray only).</span>
 <span class="sd">    dt : TrialTree, optional</span>
 <span class="sd">        Xarray data tree (only needed for ``keep_attrs`` and session name).</span>
+<span class="sd">    metadata_df : pd.DataFrame, optional</span>
+<span class="sd">        Trial metadata table. Columns are merged per trial into the enriched output.</span>
+<span class="sd">        If metadata_df contains &quot;poscat&quot; or &quot;num_pellets&quot;, those are used instead</span>
+<span class="sd">        of falling back to ds.attrs.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -504,6 +497,13 @@
     <span class="k">if</span> <span class="n">session_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">valid</span><span class="p">[</span><span class="s2">&quot;session&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">session_name</span>
         <span class="n">valid</span><span class="p">[</span><span class="s2">&quot;session_trial&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">valid</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">session_name</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">t</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Determine which legacy attrs to fetch from ds (only if not in metadata_df)</span>
+    <span class="n">legacy_fallback_attrs</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">metadata_df</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="s2">&quot;poscat&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">metadata_df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">legacy_fallback_attrs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;poscat&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">metadata_df</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="s2">&quot;num_pellets&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">metadata_df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">legacy_fallback_attrs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;num_pellets&quot;</span><span class="p">)</span>
 
     <span class="c1"># Per-trial: sequence, sequence_idx, timing, attrs</span>
     <span class="n">enriched_rows</span> <span class="o">=</span> <span class="p">[]</span>
@@ -531,14 +531,40 @@
         <span class="k">if</span> <span class="n">t_stop</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">group</span><span class="p">[</span><span class="s2">&quot;trial_offset&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">t_stop</span>
 
-        <span class="c1"># Trial attrs</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="n">trial_id</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">keep_attrs</span><span class="p">:</span>
-                <span class="k">if</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">:</span>
-                    <span class="n">group</span><span class="p">[</span><span class="n">attr</span><span class="p">]</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="n">attr</span><span class="p">]</span>
-        <span class="k">except</span> <span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
-            <span class="k">pass</span>
+        <span class="c1"># Trial attrs from metadata_df (primary source)</span>
+        <span class="k">if</span> <span class="n">metadata_df</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">metadata_df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+            <span class="c1"># Support both &quot;trial&quot; column or index</span>
+            <span class="k">if</span> <span class="s2">&quot;trial&quot;</span> <span class="ow">in</span> <span class="n">metadata_df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+                <span class="n">trial_meta</span> <span class="o">=</span> <span class="n">metadata_df</span><span class="p">[</span><span class="n">metadata_df</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">trial_id</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Try by index</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">trial_meta</span> <span class="o">=</span> <span class="n">metadata_df</span><span class="o">.</span><span class="n">loc</span><span class="p">[[</span><span class="n">trial_id</span><span class="p">]]</span>
+                <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+                    <span class="n">trial_meta</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">()</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">trial_meta</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+                <span class="c1"># Skip computed/derived columns that shouldn&#39;t be exported</span>
+                <span class="n">skip_cols</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s2">&quot;trial&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;offsets_corrected&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;small_labels_purged&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;model_confidence&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;model_confidence_level&quot;</span><span class="p">,</span>
+                <span class="p">}</span>
+                <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">trial_meta</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">skip_cols</span><span class="p">:</span>
+                        <span class="n">group</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">trial_meta</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># Legacy fallback: poscat and num_pellets from ds.attrs only if not in metadata_df</span>
+        <span class="k">if</span> <span class="n">legacy_fallback_attrs</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">ds</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="n">trial_id</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">legacy_fallback_attrs</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">:</span>
+                        <span class="n">group</span><span class="p">[</span><span class="n">attr</span><span class="p">]</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="n">attr</span><span class="p">]</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">):</span>
+                <span class="k">pass</span>
 
         <span class="n">enriched_rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
 

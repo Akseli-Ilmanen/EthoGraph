@@ -410,11 +410,42 @@
 <dl class="py function">
 <dt class="sig sig-object py" id="ethograph.io.pynapple.add_angle_rgb_to_nap">
 <span class="sig-prename descclassname"><span class="pre">ethograph.io.pynapple.</span></span><span class="sig-name descname"><span class="pre">add_angle_rgb_to_nap</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tsdframe</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">smoothing_params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">position_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'position'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xy_columns</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['x',</span> <span class="pre">'y']</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/io/pynapple.html#add_angle_rgb_to_nap"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.io.pynapple.add_angle_rgb_to_nap" title="Link to this definition">#</a></dt>
-<dd><dl class="field-list simple">
+<dd><p>Compute heading-angle RGB colour coding from 2-D position data.</p>
+<p>Calculates the heading angle from consecutive (x, y) positions in
+<em>tsdframe</em> and maps each angle to an RGB triplet via
+<code class="xref py py-func docutils literal notranslate"><span class="pre">get_angle_rgb()</span></code>.  Gaussian smoothing
+is applied before angle computation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tsdframe</strong> (<em>nap.TsdFrame</em>) – Position data with at least two columns (x and y).  If more than two
+columns are present, <em>xy_columns</em> selects which two to use.</p></li>
+<li><p><strong>smoothing_params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – Keyword arguments forwarded to
+<a class="reference external" href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter1d.html#scipy.ndimage.gaussian_filter1d" title="(in SciPy v1.17.0)"><code class="xref py py-func docutils literal notranslate"><span class="pre">scipy.ndimage.gaussian_filter1d()</span></code></a> (e.g. <code class="docutils literal notranslate"><span class="pre">{&quot;sigma&quot;:</span> <span class="pre">3}</span></code>).</p></li>
+<li><p><strong>position_key</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>optional</em>) – Input type passed to <code class="docutils literal notranslate"><span class="pre">get_angle_rgb</span></code> (default <code class="docutils literal notranslate"><span class="pre">&quot;position&quot;</span></code>).</p></li>
+<li><p><strong>xy_columns</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em><em>, </em><em>optional</em>) – Column names to use as x and y when <em>tsdframe</em> has more than two
+columns (default <code class="docutils literal notranslate"><span class="pre">[&quot;x&quot;,</span> <span class="pre">&quot;y&quot;]</span></code>).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A new <code class="docutils literal notranslate"><span class="pre">TsdFrame</span></code> with three columns <code class="docutils literal notranslate"><span class="pre">[&quot;R&quot;,</span> <span class="pre">&quot;G&quot;,</span> <span class="pre">&quot;B&quot;]</span></code> on the
+same time support as <em>tsdframe</em>.</p>
+</dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pynapple.org/generated/pynapple.TsdFrame.html#pynapple.TsdFrame" title="(in pynapple v0.11.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">TsdFrame</span></code></a></span></p>
+<dd class="field-odd"><p>nap.TsdFrame</p>
 </dd>
 </dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">load_nap_data</span><span class="p">(</span><span class="s2">&quot;experiment.nwb&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rgb</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">add_angle_rgb_to_nap</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">data</span><span class="p">[</span><span class="s2">&quot;position&quot;</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="n">smoothing_params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;sigma&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">},</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rgb</span><span class="o">.</span><span class="n">columns</span>
+<span class="go">[&#39;R&#39;, &#39;G&#39;, &#39;B&#39;]</span>
+</pre></div>
+</div>
 </dd></dl>
 
 </section>

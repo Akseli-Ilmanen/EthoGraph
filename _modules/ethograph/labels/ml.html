@@ -423,8 +423,8 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">_rows_to_df</span><span class="p">,</span> <span class="n">states_only</span>
 
-
 <span class="c1"># ── Primitives ───────────────────────────────────────────────────────────</span>
+
 
 <div class="viewcode-block" id="find_blocks">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.ml.find_blocks">[docs]</a>
@@ -483,15 +483,19 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">_get_labels_start_end_times</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">time_coord</span><span class="p">,</span> <span class="n">individual</span><span class="p">,</span> <span class="n">bg_class</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert segments to time intervals (inclusive end).&quot;&quot;&quot;</span>
     <span class="n">segments</span> <span class="o">=</span> <span class="n">_get_segments</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">bg_class</span><span class="p">)</span>
-    <span class="k">return</span> <span class="p">[{</span>
-        <span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time_coord</span><span class="p">[</span><span class="n">start</span><span class="p">]),</span>
-        <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time_coord</span><span class="p">[</span><span class="n">end</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]),</span>
-        <span class="s2">&quot;labels&quot;</span><span class="p">:</span> <span class="n">label</span><span class="p">,</span>
-        <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
-    <span class="p">}</span> <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="ow">in</span> <span class="n">segments</span><span class="p">]</span>
+    <span class="k">return</span> <span class="p">[</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;onset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time_coord</span><span class="p">[</span><span class="n">start</span><span class="p">]),</span>
+            <span class="s2">&quot;offset_s&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time_coord</span><span class="p">[</span><span class="n">end</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]),</span>
+            <span class="s2">&quot;labels&quot;</span><span class="p">:</span> <span class="n">label</span><span class="p">,</span>
+            <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="n">individual</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="ow">in</span> <span class="n">segments</span>
+    <span class="p">]</span>
 
 
 <span class="c1"># ── Interval ↔ Dense conversion ─────────────────────────────────────────</span>
+
 
 <div class="viewcode-block" id="dense_to_intervals">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.ml.dense_to_intervals">[docs]</a>
@@ -566,10 +570,7 @@
         <span class="n">dense_array</span> <span class="o">=</span> <span class="n">dense_array</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
 
     <span class="k">if</span> <span class="n">dense_array</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">individuals</span><span class="p">):</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;dense_array has </span><span class="si">{</span><span class="n">dense_array</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2"> columns but &quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">individuals</span><span class="p">)</span><span class="si">}</span><span class="s2"> individuals given&quot;</span>
-        <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;dense_array has </span><span class="si">{</span><span class="n">dense_array</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2"> columns but </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">individuals</span><span class="p">)</span><span class="si">}</span><span class="s2"> individuals given&quot;</span><span class="p">)</span>
 
     <span class="n">rows</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">ind_idx</span><span class="p">,</span> <span class="n">ind_name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">individuals</span><span class="p">):</span>
@@ -617,10 +618,14 @@
 <span class="sd">    --------</span>
 <span class="sd">    &gt;&gt;&gt; import pandas as pd</span>
 <span class="sd">    &gt;&gt;&gt; from ethograph.labels.ml import intervals_to_dense</span>
-<span class="sd">    &gt;&gt;&gt; df = pd.DataFrame({</span>
-<span class="sd">    ...     &quot;onset_s&quot;: [0.1, 0.5], &quot;offset_s&quot;: [0.3, 0.6],</span>
-<span class="sd">    ...     &quot;labels&quot;: [1, 2], &quot;individual&quot;: [&quot;A&quot;, &quot;A&quot;],</span>
-<span class="sd">    ... })</span>
+<span class="sd">    &gt;&gt;&gt; df = pd.DataFrame(</span>
+<span class="sd">    ...     {</span>
+<span class="sd">    ...         &quot;onset_s&quot;: [0.1, 0.5],</span>
+<span class="sd">    ...         &quot;offset_s&quot;: [0.3, 0.6],</span>
+<span class="sd">    ...         &quot;labels&quot;: [1, 2],</span>
+<span class="sd">    ...         &quot;individual&quot;: [&quot;A&quot;, &quot;A&quot;],</span>
+<span class="sd">    ...     }</span>
+<span class="sd">    ... )</span>
 <span class="sd">    &gt;&gt;&gt; dense = intervals_to_dense(df, sample_rate=10.0, individuals=[&quot;A&quot;], n_samples=7)</span>
 <span class="sd">    &gt;&gt;&gt; dense[:, 0].tolist()</span>
 <span class="sd">    [0, 1, 1, 1, 0, 2, 2]</span>
@@ -644,6 +649,7 @@
 
 
 <span class="c1"># ── Segment index extraction ────────────────────────────────────────────</span>
+
 
 <div class="viewcode-block" id="get_labels_start_end_indices">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.ml.get_labels_start_end_indices">[docs]</a>
@@ -671,7 +677,7 @@
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
 <span class="sd">    &gt;&gt;&gt; from ethograph.labels.ml import get_labels_start_end_indices</span>
-<span class="sd">    &gt;&gt;&gt; labels, starts, ends = get_labels_start_end_indices([0,1,1,1,0,2,2])</span>
+<span class="sd">    &gt;&gt;&gt; labels, starts, ends = get_labels_start_end_indices([0, 1, 1, 1, 0, 2, 2])</span>
 <span class="sd">    &gt;&gt;&gt; labels</span>
 <span class="sd">    [1, 2]</span>
 <span class="sd">    &gt;&gt;&gt; starts</span>
@@ -690,6 +696,7 @@
 
 
 <span class="c1"># ── Dense post-processing ────────────────────────────────────────────────</span>
+
 
 <div class="viewcode-block" id="stitch_gaps">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.ml.stitch_gaps">[docs]</a>
@@ -763,7 +770,7 @@
             <span class="k">continue</span>
 
         <span class="k">if</span> <span class="n">left_label</span> <span class="o">!=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">left_label</span> <span class="o">==</span> <span class="n">right_label</span><span class="p">:</span>
-            <span class="n">stitched</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">left_label</span>
+            <span class="n">stitched</span><span class="p">[</span><span class="n">start</span> <span class="p">:</span> <span class="n">end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">left_label</span>
 
     <span class="k">return</span> <span class="n">stitched</span></div>
 
@@ -821,7 +828,7 @@
 
 <span class="sd">    Typical pipeline — purge then stitch:</span>
 
-<span class="sd">    &gt;&gt;&gt; pred = np.array([1,1,1, 0, 1, 0, 1,1,1])</span>
+<span class="sd">    &gt;&gt;&gt; pred = np.array([1, 1, 1, 0, 1, 0, 1, 1, 1])</span>
 <span class="sd">    &gt;&gt;&gt; cleaned = purge_small_blocks(pred, min_length=2)  # remove isolated 1-sample</span>
 <span class="sd">    &gt;&gt;&gt; cleaned.tolist()</span>
 <span class="sd">    [1, 1, 1, 0, 0, 0, 1, 1, 1]</span>
@@ -891,7 +898,7 @@
 <span class="sd">    &gt;&gt;&gt; import numpy as np</span>
 <span class="sd">    &gt;&gt;&gt; from ethograph.labels.ml import fix_endings</span>
 <span class="sd">    &gt;&gt;&gt; labels = np.array([0, 1, 1, 0, 0, 2, 2, 0])</span>
-<span class="sd">    &gt;&gt;&gt; cps     = np.array([0, 0, 0, 1, 0, 0, 0, 1], dtype=bool)</span>
+<span class="sd">    &gt;&gt;&gt; cps = np.array([0, 0, 0, 1, 0, 0, 0, 1], dtype=bool)</span>
 <span class="sd">    &gt;&gt;&gt; fix_endings(labels, cps).tolist()</span>
 <span class="sd">    [0, 1, 1, 1, 0, 2, 2, 2]</span>
 
