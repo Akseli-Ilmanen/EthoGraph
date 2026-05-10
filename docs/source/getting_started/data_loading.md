@@ -125,22 +125,23 @@ See {doc}`../api/trialtree` for full TrialTree usage.
 
 my_project/
     ├── session.nc                     # Behavioural dataset (TrialTree or plain Dataset)
+    ├── session_labels.tsv             # Session labels
+    ├── session_metadata.tsv           # Trial-level metadata
     ├── .ethograph/
     │   ├── alignment.nwb              # Media paths, trial timing, stream offsets
     │   └── local_settings.yaml        # Session-specific GUI state
     │
     ├── labels/
-    │   ├── session_labels.tsv         # Current labels
-    │   └── backups/
-    │       └── session_labels_20240315_101230.tsv
-    ├── predictions_asformer_20240215/
-    │   ├── trial1.npy
-    │   └── trial2.npy
-    │
+    │   ├── backups/
+    │   │  └── session_labels_20240315_101230.tsv
+    │   └── predictions_asformer_20240215/
+    │       ├── trial1.npy
+    │       └── trial2.npy
+
     ├── video/
     │   ├── camera1_trial001.mp4
     │   └── camera2_trial001.mp4
-    ├── tracking/                      # External pose files (DLC, SLEAP, ...)
+    ├── pose/                      # External pose files (DLC, SLEAP, ...)
     │   ├── trial001_pose.h5
     │   └── ...
     ├── audio/
@@ -164,25 +165,28 @@ my_project/
 
 ```
 ~/.ethograph/                          # Global user defaults
-    ├── mapping.txt
-    ├── space.yaml
-    └── gui_settings.yaml
+    ├── mapping.txt                    # Default integer label_id → name mapping
+    ├── space.yaml                     # Extra config for space plot
+    └── gui_settings.yaml              # Across-session GUI state
 
 my_project/
     ├── session.nwb                    # Self-contained: trials, time series,
     │                                  # pose (PoseEstimationSeries), video
     │                                  # refs (ImageSeries.external_file)
+    |
+    ├── session_labels.tsv             # Session labels
+    ├── session_metadata.tsv           # Trial-level metadata
+    │    
     ├── .ethograph/
-    │   ├── alignment.nwb              # Sidecar for stream offsets & overrides
-    │   └── local_settings.yaml
+    │   ├── alignment.nwb              # inherit/overwrite alignment in session.nwb
+    │   └── local_settings.yaml        # Session-specific GUI state
     │
     ├── labels/
-    │   ├── session_labels.tsv
-    │   └── backups/
-    │       └── ...
-    ├── predictions_asformer_20240215/
-    │   ├── trial1.npy
-    │   └── trial2.npy
+    │   ├── backups/
+    │   │   └── session_labels_20240315_101230.tsv
+    │   └── predictions_asformer_20240215/
+    │       ├── trial1.npy
+    │       └── trial2.npy
     │
     └── video/                         # Only needed if ImageSeries paths
         ├── camera1_trial001.mp4       # no longer point to the right location
@@ -197,25 +201,28 @@ Pose estimation and other behavioural time series are stored inside the `.nwb` f
 
 ```
 ~/.ethograph/                          # Global user defaults
-    ├── mapping.txt
-    ├── space.yaml
-    └── gui_settings.yaml
+    ├── mapping.txt                    # Default integer label_id → name mapping
+    ├── space.yaml                     # Extra config for space plot
+    └── gui_settings.yaml              # Across-session GUI state
 
 my_project/
     ├── position.npz                   # Pynapple Tsd/TsdFrame objects
     ├── speed.npz
     ├── units.npz                      # TsGroup of spike times
+    │
+    ├── labels.tsv                     # Session labels
+    ├── metadata.tsv                   # Trial-level metadata
+    │
     ├── .ethograph/
     │   ├── alignment.nwb              # Media paths, trial timing, stream offsets
-    │   └── local_settings.yaml
+    │   └── local_settings.yaml        # Session-specific GUI state
     │
     ├── labels/
-    │   ├── session_labels.tsv
-    │   └── backups/
-    │       └── ...
-    ├── predictions_asformer_20240215/
-    │   ├── trial1.npy
-    │   └── trial2.npy
+    │   ├── backups/
+    │   │   └── labels_20240315_101230.tsv
+    │   └── predictions_asformer_20240215/
+    │       ├── trial1.npy
+    │       └── trial2.npy
     │
     ├── video/
     │   ├── camera1_trial001.mp4
