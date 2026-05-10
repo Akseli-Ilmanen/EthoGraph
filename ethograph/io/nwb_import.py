@@ -61,12 +61,14 @@ def probe_behavioral_series(nwb: NWBFile) -> list[dict]:
                 n = iface.data.shape[0] if hasattr(iface.data, "shape") else len(iface.data)
             except Exception:
                 n = 0
-            results.append({
-                "source": f"{mod_name}/{iface_name}",
-                "module": mod_name,
-                "interface": iface_name,
-                "n_samples": n,
-            })
+            results.append(
+                {
+                    "source": f"{mod_name}/{iface_name}",
+                    "module": mod_name,
+                    "interface": iface_name,
+                    "n_samples": n,
+                }
+            )
     return results
 
 
@@ -79,12 +81,14 @@ def probe_electrical_series(nwb: NWBFile) -> list[dict]:
         n_samples = obj.data.shape[0] if hasattr(obj.data, "shape") else len(obj.data)
         n_channels = obj.data.shape[1] if hasattr(obj.data, "shape") and obj.data.ndim > 1 else 1
         rate = float(obj.rate) if obj.rate else None
-        results.append({
-            "name": name,
-            "n_samples": n_samples,
-            "n_channels": n_channels,
-            "rate": rate,
-        })
+        results.append(
+            {
+                "name": name,
+                "n_samples": n_samples,
+                "n_channels": n_channels,
+                "rate": rate,
+            }
+        )
     return results
 
 
@@ -106,16 +110,20 @@ def probe_label_sources(nwb: NWBFile) -> list[dict]:
                     n = len(iface)
                 except Exception:
                     n = 0
-                results.append({
-                    "source": f"{mod_name}/{iface_name}",
-                    "description": f"TimeIntervals: {mod_name}/{iface_name} ({n} rows)",
-                })
+                results.append(
+                    {
+                        "source": f"{mod_name}/{iface_name}",
+                        "description": f"TimeIntervals: {mod_name}/{iface_name} ({n} rows)",
+                    }
+                )
             elif isinstance(iface, pynwb.behavior.BehavioralEpochs):
                 for series_name in iface.interval_series:
-                    results.append({
-                        "source": f"{mod_name}/{iface_name}/{series_name}",
-                        "description": f"IntervalSeries: {mod_name}/{iface_name}/{series_name}",
-                    })
+                    results.append(
+                        {
+                            "source": f"{mod_name}/{iface_name}/{series_name}",
+                            "description": f"IntervalSeries: {mod_name}/{iface_name}/{series_name}",
+                        }
+                    )
     return results
 
 
@@ -142,9 +150,9 @@ def read_trials_table(nwb: NWBFile) -> pd.DataFrame:
 
 
 def _resolve(val):
-    if hasattr(val, 'data'):  # h5py / NWB lazy wrapper
+    if hasattr(val, "data"):  # h5py / NWB lazy wrapper
         val = val.data
-    if hasattr(val, '__array__'):
+    if hasattr(val, "__array__"):
         val = val.item() if val.ndim == 0 else val.tolist()
     return val
 
@@ -167,4 +175,3 @@ def _ts_duration(ts: Any) -> float | None:
         start = float(ts.starting_time) if ts.starting_time else 0.0
         return start + n / float(ts.rate)
     return None
-

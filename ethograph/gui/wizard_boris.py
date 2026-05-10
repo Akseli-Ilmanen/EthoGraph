@@ -62,17 +62,20 @@ class BorisImportDialog(QDialog):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(
-            "<b>Convert a BORIS project to ethograph</b><br>"
-            "One ethograph trial = one media file in Player 1. "
-            "Events are split across file boundaries into trial-local intervals."
-        ))
+        layout.addWidget(
+            QLabel(
+                "<b>Convert a BORIS project to ethograph</b><br>"
+                "One ethograph trial = one media file in Player 1. "
+                "Events are split across file boundaries into trial-local intervals."
+            )
+        )
         layout.addSpacing(6)
 
         form = QFormLayout()
 
         self._boris_edit, row_boris = self._file_row(
-            "Select .boris project file…", self._on_browse_boris,
+            "Select .boris project file…",
+            self._on_browse_boris,
         )
         form.addRow("BORIS project:", row_boris)
 
@@ -81,7 +84,8 @@ class BorisImportDialog(QDialog):
         form.addRow("Observation:", self._obs_combo)
 
         self._out_edit, row_out = self._folder_row(
-            "Defaults to parent folder of .boris", self._on_browse_output,
+            "Defaults to parent folder of .boris",
+            self._on_browse_output,
         )
         form.addRow("Output folder:", row_out)
 
@@ -156,8 +160,10 @@ class BorisImportDialog(QDialog):
 
     def _on_browse_boris(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select BORIS project",
-            "", "BORIS project (*.boris *.boris.gz);;All files (*)",
+            self,
+            "Select BORIS project",
+            "",
+            "BORIS project (*.boris *.boris.gz);;All files (*)",
         )
         if not path:
             return
@@ -206,9 +212,7 @@ class BorisImportDialog(QDialog):
                 f"First observation: {n_files} media file(s), {n_events} event rows."
             )
         else:
-            self._summary.setText(
-                f"{n_beh} behaviors but no MEDIA observations — nothing to import."
-            )
+            self._summary.setText(f"{n_beh} behaviors but no MEDIA observations — nothing to import.")
 
     def _on_import(self):
         try:
@@ -217,13 +221,17 @@ class BorisImportDialog(QDialog):
             logger.exception("BORIS import failed")
             notify_dialog(
                 f"Import failed:\n{exc}\n\n{traceback.format_exc()}",
-                "error", "Import error", self,
+                "error",
+                "Import error",
+                self,
             )
             return
 
         notify_dialog(
             f"Imported BORIS project to:\n{self._out_edit.text()}",
-            "info", "Success", self,
+            "info",
+            "Success",
+            self,
         )
         self.accept()
 
@@ -265,10 +273,7 @@ class BorisImportDialog(QDialog):
         fps_info = observation.get("media_info", {}).get("fps", {})
         rates = {float(v) for v in fps_info.values() if v}
         if not rates:
-            raise ValueError(
-                "BORIS media_info.fps is empty; cannot write alignment.nwb without "
-                "a video frame rate"
-            )
+            raise ValueError("BORIS media_info.fps is empty; cannot write alignment.nwb without a video frame rate")
         if len(rates) > 1:
             raise ValueError(
                 f"Mixed FPS across media files ({sorted(rates)}); normalize the "
@@ -281,20 +286,24 @@ class BorisImportDialog(QDialog):
             search_dirs.insert(0, Path(video_folder))
         video_paths = resolve_media_paths(observation, search_dirs)
 
-        streams = [{
-            "name": "video_cam-1",
-            "files": video_paths,
-            "rate": rate,
-        }]
+        streams = [
+            {
+                "name": "video_cam-1",
+                "files": video_paths,
+                "rate": rate,
+            }
+        ]
 
         if pose_folder:
             pose_paths = match_pose_files(Path(pose_folder), video_paths)
             if pose_paths:
-                streams.append({
-                    "name": "pose_cam-1",
-                    "files": pose_paths,
-                    "rate": rate,
-                })
+                streams.append(
+                    {
+                        "name": "pose_cam-1",
+                        "files": pose_paths,
+                        "rate": rate,
+                    }
+                )
             else:
                 logger.warning("No pose files matched any video in %s", pose_folder)
 
@@ -313,5 +322,9 @@ class BorisImportDialog(QDialog):
 
         logger.info(
             "BORIS import: %s -> %s  (alignment=%s, mapping=%s, labels=%s)",
-            self._boris_path, out_dir, nwb_out, mapping_path, labels_path,
+            self._boris_path,
+            out_dir,
+            nwb_out,
+            mapping_path,
+            labels_path,
         )

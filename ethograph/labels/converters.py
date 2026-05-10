@@ -8,7 +8,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ethograph.labels.intervals import _rows_to_df, empty_intervals, load_mapping
+from ethograph.labels.intervals import (
+    _rows_to_df,
+    load_mapping,
+)
 from ethograph.labels.tsv_store import (
     TRIAL_META_DEFAULTS,
     init_empty_labels,
@@ -82,13 +85,15 @@ class LabelConverter:
                 label_id = self._label_map.get(ep["label_name"], 0)
                 if label_id == 0:
                     continue
-                rows.append({
-                    "onset_s": max(0.0, ep["onset_s"] - t_start),
-                    "offset_s": min(t_stop - t_start, ep["offset_s"] - t_start),
-                    "labels": label_id,
-                    "individual": ep.get("individual", "individual_0"),
-                    "trial": trial_id,
-                })
+                rows.append(
+                    {
+                        "onset_s": max(0.0, ep["onset_s"] - t_start),
+                        "offset_s": min(t_stop - t_start, ep["offset_s"] - t_start),
+                        "labels": label_id,
+                        "individual": ep.get("individual", "individual_0"),
+                        "trial": trial_id,
+                    }
+                )
         return rows
 
     def _rows_to_labels_df(self, rows: list[dict]) -> pd.DataFrame:
@@ -185,12 +190,14 @@ def crowsetta_to_intervals(
         label_id = name_to_id.get(label_str)
         if label_id is None or label_id == 0:
             continue
-        rows.append({
-            "onset_s": float(segment.onset_s),
-            "offset_s": float(segment.offset_s),
-            "labels": label_id,
-            "individual": individual,
-        })
+        rows.append(
+            {
+                "onset_s": float(segment.onset_s),
+                "offset_s": float(segment.offset_s),
+                "labels": label_id,
+                "individual": individual,
+            }
+        )
 
     return _rows_to_df(rows)
 
@@ -241,7 +248,7 @@ def resolve_crowsetta_mapping(
         except (OSError, UnicodeDecodeError):
             pass
 
-    non_bg_labels = [l for l in file_labels if l.lower() not in ("background", "sil")]
+    non_bg_labels = [lbl for lbl in file_labels if lbl.lower() not in ("background", "sil")]
     if not non_bg_labels:
         non_bg_labels = file_labels
 
@@ -254,10 +261,7 @@ def resolve_crowsetta_mapping(
     warning = None
     if overlap and overlap != set(non_bg_labels):
         missing = set(non_bg_labels) - overlap
-        warning = (
-            f"Mapping file contains {len(overlap)} of {len(non_bg_labels)} labels. "
-            f"Missing: {sorted(missing)}"
-        )
+        warning = f"Mapping file contains {len(overlap)} of {len(non_bg_labels)} labels. Missing: {sorted(missing)}"
 
     name_to_id = build_mapping_from_labels(non_bg_labels)
     new_path = configs_dir / f"mapping_{format_name.replace('-', '_')}.txt"
@@ -296,7 +300,10 @@ class CrowsettaLabelConverter(LabelConverter):
 
     def extract(self, trials_df: pd.DataFrame | None = None) -> pd.DataFrame:
         df = crowsetta_to_intervals(
-            self._file_path, self._format_name, self._label_map, self._individual,
+            self._file_path,
+            self._format_name,
+            self._label_map,
+            self._individual,
         )
         if df.empty:
             return init_empty_labels([])
@@ -307,19 +314,20 @@ class CrowsettaLabelConverter(LabelConverter):
                 df[col] = default
         return df
 
-
     @staticmethod
     def _collect_time_intervals(table, source: str, individual: str, out: list[dict]) -> None:
         df = table.to_dataframe()
         label_col = "label" if "label" in df.columns else None
         for _, row in df.iterrows():
-            out.append({
-                "onset_s": float(row["start_time"]),
-                "offset_s": float(row["stop_time"]),
-                "label_name": str(row[label_col]) if label_col else source.split("/")[-1],
-                "individual": individual,
-                "source": source,
-            })
+            out.append(
+                {
+                    "onset_s": float(row["start_time"]),
+                    "offset_s": float(row["stop_time"]),
+                    "label_name": str(row[label_col]) if label_col else source.split("/")[-1],
+                    "individual": individual,
+                    "source": source,
+                }
+            )
 
     @staticmethod
     def _collect_interval_series(series, source: str, individual: str, out: list[dict]) -> None:
@@ -330,13 +338,15 @@ class CrowsettaLabelConverter(LabelConverter):
         for i in starts:
             j = next((k for k in range(i + 1, len(data)) if data[k] < 0), None)
             if j is not None:
-                out.append({
-                    "onset_s": float(timestamps[i]),
-                    "offset_s": float(timestamps[j]),
-                    "label_name": label_name,
-                    "individual": individual,
-                    "source": source,
-                })
+                out.append(
+                    {
+                        "onset_s": float(timestamps[i]),
+                        "offset_s": float(timestamps[j]),
+                        "label_name": label_name,
+                        "individual": individual,
+                        "source": source,
+                    }
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -361,9 +371,7 @@ class PynappleLabelConverter(LabelConverter):
         self._trials_df = trials_df_from_intervalset(trials_ep)
         self._epochs = self._extract_interval_epochs(data)
         if self._epochs:
-            self._label_map = build_mapping_from_labels(
-                sorted({e["label_name"] for e in self._epochs})
-            )
+            self._label_map = build_mapping_from_labels(sorted({e["label_name"] for e in self._epochs}))
 
     def _extract_interval_epochs(self, data: dict) -> list[dict]:
         import pynapple as nap
@@ -381,21 +389,26 @@ class PynappleLabelConverter(LabelConverter):
 
             if not meta_cols:
                 epochs.extend(
-                    {"onset_s": float(s), "offset_s": float(e),
-                     "label_name": key, "individual": "individual_0"}
+                    {
+                        "onset_s": float(s),
+                        "offset_s": float(e),
+                        "label_name": key,
+                        "individual": "individual_0",
+                    }
                     for s, e in zip(starts, ends)
                 )
             else:
                 meta = pd.DataFrame({c: np.asarray(obj[c]) for c in meta_cols})
                 for group_key, group in meta.groupby(meta_cols):
-                    label_name = (
-                        "_".join(str(v) for v in group_key)
-                        if isinstance(group_key, tuple) else str(group_key)
-                    )
+                    label_name = "_".join(str(v) for v in group_key) if isinstance(group_key, tuple) else str(group_key)
                     idx = group.index.values
                     epochs.extend(
-                        {"onset_s": float(s), "offset_s": float(e),
-                         "label_name": label_name, "individual": "individual_0"}
+                        {
+                            "onset_s": float(s),
+                            "offset_s": float(e),
+                            "label_name": label_name,
+                            "individual": "individual_0",
+                        }
                         for s, e in zip(starts[idx], ends[idx])
                     )
         return epochs
@@ -413,13 +426,14 @@ class PynappleLabelConverter(LabelConverter):
 # ---------------------------------------------------------------------------
 
 
-
 def trials_df_from_intervalset(trials_ep) -> pd.DataFrame:
     """Build a trials DataFrame from a pynapple IntervalSet."""
     if trials_ep is None or len(trials_ep) == 0:
         return pd.DataFrame(columns=["trial", "start_time", "stop_time"])
-    return pd.DataFrame({
-        "trial": list(range(1, len(trials_ep) + 1)),
-        "start_time": [float(s) for s in trials_ep.start],
-        "stop_time": [float(e) for e in trials_ep.end],
-    })
+    return pd.DataFrame(
+        {
+            "trial": list(range(1, len(trials_ep) + 1)),
+            "start_time": [float(s) for s in trials_ep.start],
+            "stop_time": [float(e) for e in trials_ep.end],
+        }
+    )

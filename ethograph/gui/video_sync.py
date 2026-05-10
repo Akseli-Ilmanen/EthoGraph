@@ -1,6 +1,5 @@
 """Video synchronization for napari integration with audio playback support."""
 
-
 from typing import Optional
 
 import napari
@@ -14,7 +13,6 @@ try:
     from napari._qt._qapp_model.qactions._view import _get_current_play_status
 except ImportError:
     _get_current_play_status = None
-
 
 
 class NapariVideoSync(QObject):
@@ -60,7 +58,7 @@ class NapariVideoSync(QObject):
         self.total_duration = 0.0
 
         self.audio_sr = get_audio_sr(audio_source)
-        
+
         for layer in self.viewer.layers:
             if layer.name == "video" and hasattr(layer, "data"):
                 self.video_layer = layer
@@ -109,16 +107,11 @@ class NapariVideoSync(QObject):
 
             if self._segment_end_actual_frame is not None:
                 self._seg_frame_count += 1
- 
+
             self.frame_changed.emit(trial_frame)
 
-            if (
-                self._segment_end_actual_frame is not None
-                and actual_frame >= self._segment_end_actual_frame
-            ):
+            if self._segment_end_actual_frame is not None and actual_frame >= self._segment_end_actual_frame:
                 self._stop_segment_playback()
-
-
 
     def seek_to_frame(self, frame: int):
         if self.video_layer:
@@ -154,7 +147,6 @@ class NapariVideoSync(QObject):
 
         self.stop()
         self._stop_audio()
- 
 
         start_frame = max(0, min(int(start_frame), self.total_frames - 1))
         end_frame = max(0, min(int(end_frame), self.total_frames - 1))
@@ -188,7 +180,6 @@ class NapariVideoSync(QObject):
             self._audio_player = PlayAudio()
             self._audio_player.play(data=segment, rate=float(rate), blocking=False)
 
-
         if self.skip_frames:
             self._start_skip_playback()
         else:
@@ -197,14 +188,12 @@ class NapariVideoSync(QObject):
 
     def _check_playback_alive(self):
         current = self.viewer.dims.current_step[0]
-        napari_says_playing = _get_current_play_status(self.qt_viewer) if _get_current_play_status and self.qt_viewer else None
         skip_active = self._skip_timer.isActive()
 
         if self._seg_last_frame is not None and current == self._seg_last_frame:
             self._stall_count += 1
 
             if self._stall_count >= 1 and not skip_active:
-
                 next_frame = current + 1
                 if self._segment_end_actual_frame is not None and next_frame >= self._segment_end_actual_frame:
                     self._stop_segment_playback()
@@ -222,7 +211,6 @@ class NapariVideoSync(QObject):
             self._segment_end_actual_frame = None
             self.stop()
             self._stop_audio()
-
 
     def _start_skip_playback(self):
         max_render_fps = 30.0
@@ -242,14 +230,11 @@ class NapariVideoSync(QObject):
         self.viewer.dims.current_step = (next_frame,) + self.viewer.dims.current_step[1:]
         # dims.events.current_step fires synchronously → _on_napari_step_change handles segment stop
 
-
-
     def _stop_audio(self):
         if self._audio_player:
             self._audio_player.stop()
             self._audio_player.__exit__(None, None, None)
             self._audio_player = None
-   
 
     def cleanup(self):
         self.viewer.dims.events.current_step.disconnect(self._on_napari_step_change)

@@ -1,10 +1,9 @@
 import numpy as np
 import xarray as xr
-from scipy.ndimage import gaussian_filter1d, uniform_filter1d
 from scipy.interpolate import interp1d
+from scipy.ndimage import gaussian_filter1d, uniform_filter1d
+
 import ethograph as eto
-
-
 
 
 def downsample_with_antialiasing(time: np.ndarray, data: np.ndarray, factor: int) -> tuple[np.ndarray, np.ndarray]:
@@ -54,7 +53,7 @@ def resample_to_frames(
     factor = len(time_original) / len(time_target)
     if factor > 1:
         data = uniform_filter1d(data, size=int(round(factor)), axis=0)
-    f = interp1d(time_original, data, axis=0, fill_value='extrapolate')
+    f = interp1d(time_original, data, axis=0, fill_value="extrapolate")
     return f(time_target)
 
 
@@ -90,16 +89,12 @@ def interpolate_nans(arr: np.ndarray, axis: int = 0) -> np.ndarray:
         # Set leading/trailing NaNs to zero
         first_valid, last_valid = np.where(mask)[0][[0, -1]]
         result[:first_valid] = 0
-        result[last_valid + 1:] = 0
+        result[last_valid + 1 :] = 0
         return result
 
     if arr.ndim == 1:
         return interpolate_1d(arr)
     return np.apply_along_axis(interpolate_1d, axis, arr)
-
-
-
-
 
 
 def z_normalize(data: np.ndarray) -> np.ndarray:
@@ -119,10 +114,8 @@ def z_normalize(data: np.ndarray) -> np.ndarray:
     std[std == 0] = 1
     return (data - np.nanmean(data, axis=0)) / std
 
-def clip_by_percentiles(
-    features: np.ndarray,
-    percentile_range: tuple[float, float] = (1, 99)
-) -> np.ndarray:
+
+def clip_by_percentiles(features: np.ndarray, percentile_range: tuple[float, float] = (1, 99)) -> np.ndarray:
     """Clip feature values to percentile bounds.
 
     Parameters
@@ -142,8 +135,9 @@ def clip_by_percentiles(
     upper = np.nanpercentile(features, percentile_range[1], axis=0, keepdims=True)
 
     features_clipped = np.clip(features, lower, upper)
-        
+
     return features_clipped
+
 
 def gaussian_smoothing(da, **smoothing_params):
     """
@@ -162,12 +156,10 @@ def gaussian_smoothing(da, **smoothing_params):
         Smoothed position data.
     """
 
-    
     def nan_smooth(data):
         data = interpolate_nans(data)
         return gaussian_filter1d(data, **smoothing_params)
-    
-    
+
     time_dim = eto.get_time_coord(da).dims[0]
 
     smoothed = xr.apply_ufunc(
@@ -177,8 +169,8 @@ def gaussian_smoothing(da, **smoothing_params):
         output_core_dims=[[time_dim]],
         vectorize=True,
         dask="parallelized",
-        output_dtypes=[np.float64]
+        output_dtypes=[np.float64],
     )
     smoothed = smoothed.transpose(time_dim, ...)
-    
+
     return smoothed

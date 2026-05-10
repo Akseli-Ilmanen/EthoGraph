@@ -1,12 +1,6 @@
-import numpy as np
+from __future__ import annotations
+
 import pandas as pd
-from ethograph import TrialTree
-from pathlib import Path
-from ethograph.labels.intervals import empty_intervals
-import xarray as xr
-
-
-
 
 
 def correct_offsets_trial(df: pd.DataFrame) -> tuple[pd.DataFrame, int, int]:
@@ -51,8 +45,6 @@ def correct_offsets_trial(df: pd.DataFrame) -> tuple[pd.DataFrame, int, int]:
         df.sort_values(["individual", "onset_global"], inplace=True)
 
     return df, corrected, negative_gaps
-
-
 
 
 def enrich_labels_df(
@@ -153,7 +145,13 @@ def enrich_labels_df(
 
             if not trial_meta.empty:
                 # Skip computed/derived columns that shouldn't be exported
-                skip_cols = {"trial", "offsets_corrected", "small_labels_purged", "model_confidence", "model_confidence_level"}
+                skip_cols = {
+                    "trial",
+                    "offsets_corrected",
+                    "small_labels_purged",
+                    "model_confidence",
+                    "model_confidence_level",
+                }
                 for col in trial_meta.columns:
                     if col not in skip_cols:
                         group[col] = trial_meta[col].iloc[0]

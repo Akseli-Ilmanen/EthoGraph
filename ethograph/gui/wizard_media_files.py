@@ -4,6 +4,7 @@ Napari dock widget for media file discovery and pattern matching.
 Run standalone:  python media_discovery_widget.py
 Dock in napari:  viewer.window.add_dock_widget(MediaDiscoveryWidget(viewer))
 """
+
 from __future__ import annotations
 
 import logging
@@ -12,9 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from qtpy.QtCore import Qt, QTimer, Signal
-from qtpy.QtGui import QColor
+from qtpy.QtGui import QColor, QFont
 from qtpy.QtWidgets import (
-    QApplication,
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -30,9 +30,9 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.io.validation import (
-    VIDEO_EXTENSIONS,
     AUDIO_EXTENSIONS,
     POSE_EXTENSIONS,
+    VIDEO_EXTENSIONS,
 )
 from ethograph.utils.qt import mono_font
 
@@ -75,8 +75,6 @@ MAX_PREVIEW = 20
 FOLDER_POSITION = -1
 
 
-
-
 # ─── pattern analysis ────────────────────────────────────────────────────────
 
 
@@ -98,12 +96,7 @@ class FilePattern:
     regex_pattern: str | None = None
 
     def summary(self) -> dict[str, list[str]]:
-        return {
-            s.role: s.values
-            for s in self.segments
-            if s.varying and s.role and s.role != "ignore"
-        }
-
+        return {s.role: s.values for s in self.segments if s.varying and s.role and s.role != "ignore"}
 
 
 _TIMESTAMP_RE = re.compile(
@@ -190,14 +183,23 @@ def analyze_filenames_with_regex(files: list[Path], pattern: str) -> FilePattern
     for i, g in enumerate(group_names):
         vals = sorted(values_by_group[g])
         role = g if g in ("trial", "camera", "mic") else "ignore"
-        segments.append(Segment(
-            position=i, text="", varying=len(vals) > 1, values=vals, role=role,
-        ))
+        segments.append(
+            Segment(
+                position=i,
+                text="",
+                varying=len(vals) > 1,
+                values=vals,
+                role=role,
+            )
+        )
 
     suffix = matched_files[0].suffix
     return FilePattern(
-        segments, matched_files, suffix,
-        tokenize_mode="regex", regex_pattern=pattern,
+        segments,
+        matched_files,
+        suffix,
+        tokenize_mode="regex",
+        regex_pattern=pattern,
     )
 
 
@@ -210,8 +212,11 @@ def classify_stream(filename: str) -> str | None:
 
 
 def extract_file_row(
-    filepath: Path, segments: list[Segment], tokenize_mode: str = "smart",
-    *, regex_pattern: str | None = None,
+    filepath: Path,
+    segments: list[Segment],
+    tokenize_mode: str = "smart",
+    *,
+    regex_pattern: str | None = None,
 ) -> dict[str, str]:
     row: dict[str, str] = {"path": str(filepath)}
     if tokenize_mode == "regex" and regex_pattern:
@@ -437,7 +442,6 @@ class FilenameList(QWidget):
             self._rows.append(lbl)
 
 
-
 # ─── pattern editor ─────────────────────────────────────────────────────────
 
 
@@ -549,9 +553,7 @@ class PatternEditor(QWidget):
         self._emit_timer = QTimer()
         self._emit_timer.setSingleShot(True)
         self._emit_timer.setInterval(200)
-        self._emit_timer.timeout.connect(
-            lambda: self.pattern_changed.emit(self._build_regex())
-        )
+        self._emit_timer.timeout.connect(lambda: self.pattern_changed.emit(self._build_regex()))
 
     @staticmethod
     def _style_role_btn(btn: QPushButton, color: str, *, active: bool):
@@ -636,11 +638,7 @@ class PatternEditor(QWidget):
         end = start + len(sel)
         role = self._active_role
         # Replace any existing mark for this role + remove overlaps
-        self._marks = [
-            (s, e, r)
-            for s, e, r in self._marks
-            if r != role and (e <= start or s >= end)
-        ]
+        self._marks = [(s, e, r) for s, e, r in self._marks if r != role and (e <= start or s >= end)]
         self._marks.append((start, end, role))
         self._marks.sort()
         self._override = ""
@@ -670,10 +668,7 @@ class PatternEditor(QWidget):
         prev = 0
         for start, end, role in self._marks:
             if start > prev:
-                parts.append(
-                    f"<span style='color:{TEXT_DIM}'>"
-                    f"{self._reference[prev:start]}</span>"
-                )
+                parts.append(f"<span style='color:{TEXT_DIM}'>{self._reference[prev:start]}</span>")
             c = ROLE_COLORS.get(role, TEXT_DIM)
             parts.append(
                 f"<span style='color:{c};font-weight:bold;"
@@ -683,10 +678,7 @@ class PatternEditor(QWidget):
             )
             prev = end
         if prev < len(self._reference):
-            parts.append(
-                f"<span style='color:{TEXT_DIM}'>"
-                f"{self._reference[prev:]}</span>"
-            )
+            parts.append(f"<span style='color:{TEXT_DIM}'>{self._reference[prev:]}</span>")
         self._preview.setText("".join(parts))
 
     def _build_regex(self) -> str:
@@ -717,7 +709,12 @@ class PatternEditor(QWidget):
 class StreamPanel(QWidget):
     changed = Signal()
 
-    def __init__(self, stream: str, parent: QWidget | None = None, allowed_roles: list[str] | None = None):
+    def __init__(
+        self,
+        stream: str,
+        parent: QWidget | None = None,
+        allowed_roles: list[str] | None = None,
+    ):
         super().__init__(parent)
         self._stream = stream
         self._allowed_roles = allowed_roles
@@ -858,7 +855,8 @@ class StreamPanel(QWidget):
             if seg.varying and seg.role and seg.role != "ignore"
         }
         return StreamConfig(
-            folder=folder, role_map=role_map,
+            folder=folder,
+            role_map=role_map,
             nested=self._nested_cb.isChecked(),
             regex_pattern=self._pattern.regex_pattern,
         )
@@ -914,7 +912,9 @@ class SessionPreview(QWidget):
             if not pat:
                 continue
             stream = panel._stream
-            rows = [extract_file_row(f, pat.segments, pat.tokenize_mode, regex_pattern=pat.regex_pattern) for f in pat.files]
+            rows = [
+                extract_file_row(f, pat.segments, pat.tokenize_mode, regex_pattern=pat.regex_pattern) for f in pat.files
+            ]
             df = pd.DataFrame(rows)
             if "trial" not in df.columns:
                 continue
@@ -1000,8 +1000,7 @@ class MediaDiscoveryWidget(QWidget):
         for i, name in enumerate(("Video", "Pose", "Audio")):
             lbl = QLabel(name)
             lbl.setStyleSheet(
-                f"color:{TEXT_DIM}; font-size:{FS + 1}px; "
-                f"padding:0; background:transparent; border:none;"
+                f"color:{TEXT_DIM}; font-size:{FS + 1}px; padding:0; background:transparent; border:none;"
             )
             lbl.setCursor(Qt.CursorShape.PointingHandCursor)
             lbl.mousePressEvent = lambda _, idx=i: self._show_tab(idx)
@@ -1076,8 +1075,7 @@ class MediaDiscoveryWidget(QWidget):
                 )
             else:
                 lbl.setStyleSheet(
-                    f"color:{TEXT_DIM}; font-size:{FS + 1}px; "
-                    f"padding:0; background:transparent; border:none;"
+                    f"color:{TEXT_DIM}; font-size:{FS + 1}px; padding:0; background:transparent; border:none;"
                 )
 
     def _rebuild_session(self):
@@ -1102,9 +1100,7 @@ class MediaDiscoveryWidget(QWidget):
         self._rebuild_session()
 
     def _save_config(self):
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save media config", CONFIG_FILENAME, "JSON (*.json)"
-        )
+        path, _ = QFileDialog.getSaveFileName(self, "Save media config", CONFIG_FILENAME, "JSON (*.json)")
         if not path:
             return
         config = self.get_config()
@@ -1112,13 +1108,9 @@ class MediaDiscoveryWidget(QWidget):
         self._config_status.setText(f"saved → {Path(path).name}")
 
     def _load_config(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Load media config", "", "JSON (*.json)"
-        )
+        path, _ = QFileDialog.getOpenFileName(self, "Load media config", "", "JSON (*.json)")
         if not path:
             return
         config = MediaConfig.load(path)
         self.apply_config(config)
         self._config_status.setText(f"loaded ← {Path(path).name}")
-
-

@@ -33,7 +33,7 @@ def load_prediction_file(path: str | Path) -> np.ndarray:
     """
     path = Path(path)
     if path.suffix == ".npy":
-        arr = np.load(path, mmap_mode='r')
+        arr = np.load(path, mmap_mode="r")
         return arr
     elif path.suffix in (".pickle", ".pkl"):
         with open(path, "rb") as f:
@@ -44,9 +44,7 @@ def load_prediction_file(path: str | Path) -> np.ndarray:
             for key in ("predictions", "softmax", "probs", "probabilities"):
                 if key in data:
                     return np.asarray(data[key])
-            first_array = next(
-                (v for v in data.values() if isinstance(v, np.ndarray)), None
-            )
+            first_array = next((v for v in data.values() if isinstance(v, np.ndarray)), None)
             if first_array is not None:
                 return first_array
             raise ValueError(f"No numpy array found in pickle keys: {list(data.keys())}")
@@ -116,10 +114,7 @@ class PredictionsStore:
         self.folder = Path(folder)
         if not self.folder.exists():
             raise FileNotFoundError(f"Predictions folder not found: {self.folder}")
-        self._files: list[Path] = sorted(
-            p for p in self.folder.iterdir()
-            if p.suffix in (".npy", ".pickle", ".pkl")
-        )
+        self._files: list[Path] = sorted(p for p in self.folder.iterdir() if p.suffix in (".npy", ".pickle", ".pkl"))
         self._index: dict = {}  # {trial: Path} — populated lazily on first access
 
     def _resolve(self, trial_list: list) -> None:
@@ -235,7 +230,7 @@ def _extract_trial_from_filename(path: Path, trial_list: list) -> int | str | No
     stem = path.stem
 
     # Extract the number after 'trial' (e.g. cetnet_trial10_uncorr -> 10)
-    match = re.search(r'trial(\d+)', stem)
+    match = re.search(r"trial(\d+)", stem)
     if match:
         num = int(match.group(1))
         if num in trial_list:
@@ -245,7 +240,7 @@ def _extract_trial_from_filename(path: Path, trial_list: list) -> int | str | No
             return num
 
     # Fallback: trailing number in stem
-    match = re.search(r'(\d+)$', stem)
+    match = re.search(r"(\d+)$", stem)
     if match:
         num = int(match.group(1))
         if num in trial_list:

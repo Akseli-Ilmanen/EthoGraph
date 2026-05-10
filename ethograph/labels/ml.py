@@ -28,8 +28,8 @@ import pandas as pd
 
 from ethograph.labels.intervals import _rows_to_df, states_only
 
-
 # ── Primitives ───────────────────────────────────────────────────────────
+
 
 def find_blocks(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Find contiguous True blocks in a boolean array.
@@ -85,15 +85,19 @@ def _get_segments(col, bg_class=0):
 def _get_labels_start_end_times(col, time_coord, individual, bg_class=0):
     """Convert segments to time intervals (inclusive end)."""
     segments = _get_segments(col, bg_class)
-    return [{
-        "onset_s": float(time_coord[start]),
-        "offset_s": float(time_coord[end - 1]),
-        "labels": label,
-        "individual": individual,
-    } for label, start, end in segments]
+    return [
+        {
+            "onset_s": float(time_coord[start]),
+            "offset_s": float(time_coord[end - 1]),
+            "labels": label,
+            "individual": individual,
+        }
+        for label, start, end in segments
+    ]
 
 
 # ── Interval ↔ Dense conversion ─────────────────────────────────────────
+
 
 def dense_to_intervals(
     dense_array: np.ndarray,
@@ -166,10 +170,7 @@ def dense_to_intervals(
         dense_array = dense_array[:, np.newaxis]
 
     if dense_array.shape[1] != len(individuals):
-        raise ValueError(
-            f"dense_array has {dense_array.shape[1]} columns but "
-            f"{len(individuals)} individuals given"
-        )
+        raise ValueError(f"dense_array has {dense_array.shape[1]} columns but {len(individuals)} individuals given")
 
     rows: list[dict] = []
     for ind_idx, ind_name in enumerate(individuals):
@@ -214,10 +215,14 @@ def intervals_to_dense(
     --------
     >>> import pandas as pd
     >>> from ethograph.labels.ml import intervals_to_dense
-    >>> df = pd.DataFrame({
-    ...     "onset_s": [0.1, 0.5], "offset_s": [0.3, 0.6],
-    ...     "labels": [1, 2], "individual": ["A", "A"],
-    ... })
+    >>> df = pd.DataFrame(
+    ...     {
+    ...         "onset_s": [0.1, 0.5],
+    ...         "offset_s": [0.3, 0.6],
+    ...         "labels": [1, 2],
+    ...         "individual": ["A", "A"],
+    ...     }
+    ... )
     >>> dense = intervals_to_dense(df, sample_rate=10.0, individuals=["A"], n_samples=7)
     >>> dense[:, 0].tolist()
     [0, 1, 1, 1, 0, 2, 2]
@@ -240,6 +245,7 @@ def intervals_to_dense(
 
 
 # ── Segment index extraction ────────────────────────────────────────────
+
 
 def get_labels_start_end_indices(col, bg_class=0):
     """Return segment boundaries as sample indices (exclusive end).
@@ -265,7 +271,7 @@ def get_labels_start_end_indices(col, bg_class=0):
     Examples
     --------
     >>> from ethograph.labels.ml import get_labels_start_end_indices
-    >>> labels, starts, ends = get_labels_start_end_indices([0,1,1,1,0,2,2])
+    >>> labels, starts, ends = get_labels_start_end_indices([0, 1, 1, 1, 0, 2, 2])
     >>> labels
     [1, 2]
     >>> starts
@@ -283,6 +289,7 @@ def get_labels_start_end_indices(col, bg_class=0):
 
 
 # ── Dense post-processing ────────────────────────────────────────────────
+
 
 def stitch_gaps(
     labels: np.ndarray,
@@ -354,7 +361,7 @@ def stitch_gaps(
             continue
 
         if left_label != 0 and left_label == right_label:
-            stitched[start:end + 1] = left_label
+            stitched[start : end + 1] = left_label
 
     return stitched
 
@@ -409,7 +416,7 @@ def purge_small_blocks(
 
     Typical pipeline — purge then stitch:
 
-    >>> pred = np.array([1,1,1, 0, 1, 0, 1,1,1])
+    >>> pred = np.array([1, 1, 1, 0, 1, 0, 1, 1, 1])
     >>> cleaned = purge_small_blocks(pred, min_length=2)  # remove isolated 1-sample
     >>> cleaned.tolist()
     [1, 1, 1, 0, 0, 0, 1, 1, 1]
@@ -476,7 +483,7 @@ def fix_endings(labels: np.ndarray, changepoints) -> np.ndarray:
     >>> import numpy as np
     >>> from ethograph.labels.ml import fix_endings
     >>> labels = np.array([0, 1, 1, 0, 0, 2, 2, 0])
-    >>> cps     = np.array([0, 0, 0, 1, 0, 0, 0, 1], dtype=bool)
+    >>> cps = np.array([0, 0, 0, 1, 0, 0, 0, 1], dtype=bool)
     >>> fix_endings(labels, cps).tolist()
     [0, 1, 1, 1, 0, 2, 2, 2]
 

@@ -19,7 +19,7 @@ except ImportError as e:
     raise ImportError(
         "audioio, vocalpy, and vocalization-segmentation are required for "
         "audio changepoint detection. "
-        "Install them with: uv pip install \"ethograph[audio]\""
+        'Install them with: uv pip install "ethograph[audio]"'
     ) from e
 
 from ethograph.features.energy import _to_sound, env_ava, env_meansquared
@@ -53,9 +53,7 @@ def _prepare_audio(
     return np.asarray(signal, dtype=np.float64).ravel(), float(sr)
 
 
-def _compute_spect_range(
-    data_1d: np.ndarray, samplerate: int, **kwargs
-) -> tuple[float, float]:
+def _compute_spect_range(data_1d: np.ndarray, samplerate: int, **kwargs) -> tuple[float, float]:
     nperseg = kwargs.get("nperseg", 1024)
     noverlap = kwargs.get("noverlap", 512)
     min_freq = kwargs.get("min_freq", 30e3)

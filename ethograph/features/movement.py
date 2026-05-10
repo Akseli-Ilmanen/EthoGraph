@@ -19,7 +19,8 @@ from scipy.spatial.distance import cdist
 
 
 class Position3DCalibration:
-    """ Convert 3D positions from DLC to real-world coordinates."""
+    """Convert 3D positions from DLC to real-world coordinates."""
+
     def __init__(
         self,
         conv_factor: float = -2.60976 + 0.0937,
@@ -36,81 +37,81 @@ class Position3DCalibration:
         self.offset_z = offset_z
         self.rot_x = rot_x
         self.rot_y = rot_y
-        self.rot_z = rot_z  
-        
-        
+        self.rot_z = rot_z
+
     def _rotate_x(self, data: np.ndarray, theta: float) -> np.ndarray:
         theta = np.radians(theta)
-        rot_mat = np.array([
-            [1, 0, 0],
-            [0, np.cos(theta), -np.sin(theta)],
-            [0, np.sin(theta), np.cos(theta)]
-        ])
+        rot_mat = np.array(
+            [
+                [1, 0, 0],
+                [0, np.cos(theta), -np.sin(theta)],
+                [0, np.sin(theta), np.cos(theta)],
+            ]
+        )
         return data @ rot_mat
-    
+
     def _rotate_y(self, data: np.ndarray, theta: float) -> np.ndarray:
         theta = np.radians(theta)
-        rot_mat = np.array([
-            [np.cos(theta), 0, np.sin(theta)],
-            [0, 1, 0],
-            [-np.sin(theta), 0, np.cos(theta)]
-        ])
+        rot_mat = np.array(
+            [
+                [np.cos(theta), 0, np.sin(theta)],
+                [0, 1, 0],
+                [-np.sin(theta), 0, np.cos(theta)],
+            ]
+        )
         return data @ rot_mat
-    
+
     def _rotate_z(self, data: np.ndarray, theta: float) -> np.ndarray:
         theta = np.radians(theta)
-        rot_mat = np.array([
-            [np.cos(theta), -np.sin(theta), 0],
-            [np.sin(theta), np.cos(theta), 0],
-            [0, 0, 1]
-        ])
+        rot_mat = np.array(
+            [
+                [np.cos(theta), -np.sin(theta), 0],
+                [np.sin(theta), np.cos(theta), 0],
+                [0, 0, 1],
+            ]
+        )
         return data @ rot_mat
-    
+
     def transform(self, ds):
 
         pos_data = ds.position.values.copy()
-        
 
-        space_dim = ds.position.dims.index('space')
+        space_dim = ds.position.dims.index("space")
         # Move space dimension to last position for easier indexing
         pos_data = np.moveaxis(pos_data, space_dim, -1)
-        
+
         # Verify we have 3D coordinates
         if pos_data.shape[-1] != 3:
             raise ValueError(f"Expected 3 coordinates (x,y,z), got {pos_data.shape[-1]}")
-        
-        # Invert x-axis 
+
+        # Invert x-axis
         pos_data[..., 0] = -pos_data[..., 0]
-   
+
         # pos_data[..., 2] = -pos_data[..., 2] # z
-        
+
         # Convert units to cm
         pos_data *= self.conv_factor
-        
 
         pos_data[..., 0] -= self.offset_x
         pos_data[..., 1] -= self.offset_y
         pos_data[..., 2] -= self.offset_z
-        
+
         # Apply rotations - reshape to (N, 3) for matrix multiplication
         original_shape = pos_data.shape
         pos_data_flat = pos_data.reshape(-1, 3)
-        
+
         pos_data_flat = self._rotate_x(pos_data_flat, self.rot_x)
         pos_data_flat = self._rotate_y(pos_data_flat, self.rot_y)
         pos_data_flat = self._rotate_z(pos_data_flat, self.rot_z)
-        
-  
+
         pos_data = pos_data_flat.reshape(original_shape)
-        
+
         # Move space dimension back to original position
         pos_data = np.moveaxis(pos_data, -1, space_dim)
-        
 
         ds.position.values = pos_data
-        
-        return ds
 
+        return ds
 
 
 def compute_distance_to_constant(
@@ -119,11 +120,11 @@ def compute_distance_to_constant(
     keypoint: str = None,
     individual: str = None,
     metric: str = "euclidean",
-    **kwargs
+    **kwargs,
 ) -> xr.DataArray:
     """
     Compute distance from keypoint(s) to a constant reference point.
-    
+
     Parameters
     ----------
     data : xarray.Dataset
@@ -139,12 +140,12 @@ def compute_distance_to_constant(
         Distance metric (see scipy.spatial.distance.cdist)
     **kwargs
         Additional arguments for cdist
-    
+
     Returns
     -------
     xarray.DataArray
         Distances with preserved dimensions.
-    
+
     Raises
     ------
     ValueError
@@ -154,51 +155,52 @@ def compute_distance_to_constant(
         data = data.sel(keypoints=keypoint)
     if individual:
         data = data.sel(individuals=individual)
-    
+
     if isinstance(reference_point, (list, tuple)):
         reference_point = np.array(reference_point)
-    
-    space_coords = list(data.coords['space'].values)
+
+    space_coords = list(data.coords["space"].values)
     ref_len = len(reference_point)
-    
-    if space_coords == ['x', 'y'] and ref_len == 2:
-        space_selection = ['x', 'y']
-    elif space_coords == ['x', 'y', 'z'] and ref_len == 3:
-        space_selection = ['x', 'y', 'z']
+
+    if space_coords == ["x", "y"] and ref_len == 2:
+        space_selection = ["x", "y"]
+    elif space_coords == ["x", "y", "z"] and ref_len == 3:
+        space_selection = ["x", "y", "z"]
     else:
         raise ValueError(
             f"Dimension mismatch: space coords {space_coords} "
             f"incompatible with reference_point length {ref_len}. "
             f"Expected either ['x', 'y'] with len=2 or ['x', 'y', 'z'] with len=3"
         )
-    
+
     distances = xr.apply_ufunc(
         lambda pos: cdist(
             pos.reshape(-1, ref_len),
             reference_point.reshape(1, -1),
             metric=metric,
-            **kwargs
+            **kwargs,
         ).squeeze(),
         data.sel(space=space_selection),
         input_core_dims=[["space"]],
         vectorize=True,
         dask="parallelized",
-        output_dtypes=[np.float64]
+        output_dtypes=[np.float64],
     )
-    
+
     return distances
+
 
 def move_vector_to_rgb(data: np.ndarray) -> np.ndarray:
     """
     Source: https://www.s3dlib.org/examples/vectors/rgb_normals.html
-    
+
     Map (N,3) direction vectors (e.g. velocity) to RGB using the surface-normal convention.
-    
+
     Same as s3dlib's rgbColorXYZ:
         R = (sqrt(3)*x + 1) / 2
         G = (sqrt(3)*y + 1) / 2
         B = (sqrt(3)*z + 1) / 2
-    
+
     Vectors are normalized to unit length first.
     """
     norms = np.linalg.norm(data, axis=1, keepdims=True)
@@ -226,7 +228,7 @@ def calculate_movement_angles(data, input_type="position"):
             Only plain arrays supported.
         If input_type="velocity": array of shape (N, 2+) or xarray.DataArray
             with a "space" dimension containing "x", "y" (and optionally "z").
-            Velocity can be computed via 
+            Velocity can be computed via
             ``ds.move.compute_velocity()``, which uses np.gradient internally.
 
     input_type : str, {"position", "velocity"}
@@ -274,8 +276,6 @@ def calculate_movement_angles(data, input_type="position"):
     return azimuth, elevation
 
 
-
-
 def get_angle_rgb(xy_pos, smooth_func=None, smoothing_params=None, input_type="position"):
     """
     Convert movement angles to RGB colors using a colormap, with optional smoothing.
@@ -297,7 +297,7 @@ def get_angle_rgb(xy_pos, smooth_func=None, smoothing_params=None, input_type="p
         Angles in degrees (0-360°).
     """
     xy_pos = np.asarray(xy_pos)
-    
+
     if np.all(np.isnan(xy_pos)):
         nan_rgb = np.full((xy_pos.shape[0], 3), np.nan)
         nan_angles = np.full(xy_pos.shape[0], np.nan)
@@ -306,14 +306,10 @@ def get_angle_rgb(xy_pos, smooth_func=None, smoothing_params=None, input_type="p
     if smooth_func is not None:
         xy_pos = smooth_func(xy_pos, **smoothing_params)
 
-
-    cmap = mpl_cm.get_cmap('hsv', 256)
+    cmap = mpl_cm.get_cmap("hsv", 256)
     cm = cmap(np.linspace(0, 1, 256))[:, :3]  # Get RGB, exclude alpha
 
-
     curr_angles, _ = calculate_movement_angles(xy_pos, input_type)
-
-  
 
     # Replace NaN with 0 and clip to [-180, 180]
     curr_angles = np.nan_to_num(curr_angles, 0)
@@ -331,8 +327,6 @@ def get_angle_rgb(xy_pos, smooth_func=None, smoothing_params=None, input_type="p
     rgb_matrix = cm[cmap_indices]
 
     return rgb_matrix, angles
-
-
 
 
 def extract_video_motion(
@@ -372,56 +366,54 @@ def extract_video_motion(
         1-D array of motion values with a time coordinate in seconds.
     """
     video_path = Path(video_path)
-    
+
     if not video_path.exists():
         raise FileNotFoundError(f"Video not found: {video_path}")
-    
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_video = Path(tmp_dir) / "video.mp4"
         temp_path = Path(tmp_dir) / "motion.txt"
-        
+
         shutil.copy(video_path, tmp_video)
-        
+
         if sys.platform == "win32":
-            filter_str = f"scale={scale_width}:-1:flags=neighbor,format=gray,signalstats,metadata=print:file=motion.txt:key=lavfi.signalstats.YDIF"
+            filter_str = f"scale={scale_width}:-1:flags=neighbor,format=gray,signalstats,metadata=print:file=motion.txt:key=lavfi.signalstats.YDIF"  # noqa: E501
             cwd = tmp_dir
             input_path = "video.mp4"
         else:
             temp_path_ffmpeg = temp_path.as_posix()
-            filter_str = f"scale={scale_width}:-1:flags=neighbor,format=gray,signalstats,metadata=print:file={temp_path_ffmpeg}:key=lavfi.signalstats.YDIF"
+            filter_str = f"scale={scale_width}:-1:flags=neighbor,format=gray,signalstats,metadata=print:file={temp_path_ffmpeg}:key=lavfi.signalstats.YDIF"  # noqa: E501
             cwd = None
             input_path = tmp_video.as_posix()
-        
+
         cmd = ["ffmpeg", "-y"]
-        
+
         if hwaccel:
             cmd.extend(["-hwaccel", hwaccel])
         elif sys.platform == "darwin":
             cmd.extend(["-hwaccel", "videotoolbox"])
-        
+
         cmd.extend(["-i", input_path, "-vf", filter_str, "-f", "null", "-"])
-        
+
         if verbose:
             # Live output to terminal
             result = subprocess.run(cmd, cwd=cwd)
         else:
             result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
-        
+
         if result.returncode != 0:
-            err = result.stderr if hasattr(result, 'stderr') and result.stderr else "Unknown error"
+            err = result.stderr if hasattr(result, "stderr") and result.stderr else "Unknown error"
             raise RuntimeError(f"FFmpeg error: {err}")
-        
+
         text = temp_path.read_text()
         pattern = r"lavfi\.signalstats\.YDIF=(\d+\.?\d*)"
         motion = np.array([float(m) for m in re.findall(pattern, text)], dtype=np.float32)
-    
+
     return xr.DataArray(
         motion,
         dims=[time_coord_name],
         coords={time_coord_name: np.arange(len(motion)) / fps},
     )
-    
-    
 
 
 def compute_aux_velocity_and_speed(
@@ -464,46 +456,39 @@ def compute_aux_velocity_and_speed(
             f"Shape mismatch: a_aux_trial has {a_aux_trial.shape[0]} samples "
             f"but time_intan has {len(time_intan)} samples"
         )
-    
+
     dt = 1 / fps
-    
-    
+
     # MATLAB-style outlier detection (median + scaled MAD)
     med = np.median(a_aux_trial, axis=0)
     mad = np.median(np.abs(a_aux_trial - med), axis=0)
     threshold = 3 * mad * 1.4826
     outlier_mask = np.abs(a_aux_trial - med) > threshold
-    
+
     a_good = a_aux_trial.copy()
     a_good[outlier_mask] = np.nan
-    
-    drift = pd.DataFrame(a_good).rolling(
-        mov_mean_window1, center=True, min_periods=1
-    ).mean().values
-    
+
+    drift = pd.DataFrame(a_good).rolling(mov_mean_window1, center=True, min_periods=1).mean().values
+
     drift_interp = np.empty_like(a_aux_trial)
     for col in range(a_aux_trial.shape[1]):
         valid_idx = ~np.isnan(a_good[:, col])
         f = interpolate.interp1d(
             time_intan[valid_idx],
             drift[valid_idx, col],
-            kind='linear',
-            fill_value='extrapolate'
+            kind="linear",
+            fill_value="extrapolate",
         )
         drift_interp[:, col] = f(time_intan)
-    
+
     a_aux_trial_driftcorr = a_aux_trial - drift_interp
-    
+
     # Trapezoidal integration (matches MATLAB cumtrapz)
     v_aux_trial = cumulative_trapezoid(a_aux_trial_driftcorr, dx=dt, axis=0, initial=0)
-    
-    drift2 = pd.DataFrame(v_aux_trial).rolling(
-        mov_mean_window2, center=True, min_periods=1
-    ).mean().values
-    
+
+    drift2 = pd.DataFrame(v_aux_trial).rolling(mov_mean_window2, center=True, min_periods=1).mean().values
+
     v_aux_trial_driftcorr = v_aux_trial - drift2
     v_aux_speed = np.linalg.norm(v_aux_trial_driftcorr, axis=1)
-    
+
     return a_aux_trial_driftcorr, v_aux_trial_driftcorr, v_aux_speed
-
-

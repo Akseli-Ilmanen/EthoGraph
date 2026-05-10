@@ -19,19 +19,21 @@ All loaders expose the same interface consumed by EphysTraceBuffer:
 from __future__ import annotations
 
 import logging
-import numpy as np
 import threading
-import pyqtgraph as pg
 from pathlib import Path
 from typing import Optional, Protocol, runtime_checkable
 
+import numpy as np
+import pyqtgraph as pg
+
 logger = logging.getLogger(__name__)
 
-from numpy.typing import NDArray
-from qtpy.QtCore import QEvent, Qt, Signal
+import warnings  # noqa: E402
 
-import warnings
-from phylib.io.traces import get_ephys_reader
+from numpy.typing import NDArray  # noqa: E402
+from phylib.io.traces import get_ephys_reader  # noqa: E402
+from qtpy.QtCore import QEvent, Qt, Signal  # noqa: E402
+
 
 # Neo IntanRawIO bug (present in ≤0.14.4, fixed in master via PR #1558):
 # In "one-file-per-signal" format, digitalin.dat is memmapped as (N_actual//num_ch, num_ch)
@@ -51,18 +53,24 @@ def _fixed_intan_demultiplex_digital_data(self, raw_digital_data, channel_ids, i
         output[:, channel_index] = demultiplex_data[i_start:i_stop].astype(np.uint16)
     return output
 
+
 try:
     import neo.rawio.intanrawio as _intan_module
+
     _intan_module.IntanRawIO._demultiplex_digital_data = _fixed_intan_demultiplex_digital_data
     logger.debug("Applied IntanRawIO._demultiplex_digital_data patch for 2-D digital memmap")
 except Exception as _patch_err:
     logger.warning("Could not patch IntanRawIO._demultiplex_digital_data: %s", _patch_err)
 
-from ethograph.utils.nwb import resolve_timeseries_timing
+from ethograph.utils.nwb import resolve_timeseries_timing  # noqa: E402
 
-from .app_constants import BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER_EPHYS, EPHYSTRACE_DEBOUNCE_MS
-from ..io.plot_sources import FileSource, PlotSource
-from .plots_base import BasePlot, ThrottleDebounce
+from ..io.plot_sources import FileSource, PlotSource  # noqa: E402
+from .app_constants import (  # noqa: E402
+    BUFFER_COVERAGE_MARGIN,
+    DEFAULT_BUFFER_MULTIPLIER_EPHYS,
+    EPHYSTRACE_DEBOUNCE_MS,
+)
+from .plots_base import BasePlot, ThrottleDebounce  # noqa: E402
 
 
 def _nice_round(value: float) -> float:
@@ -87,10 +95,10 @@ def select_traces(traces, interval, sample_rate):
     start, end = interval
     i, j = int(round(sample_rate * start)), int(round(sample_rate * end))
     i = max(0, i)
-    if hasattr(traces, '__len__'):
+    if hasattr(traces, "__len__"):
         j = min(j, len(traces))
     data = traces[i:j]
-    if hasattr(data, 'astype'):
+    if hasattr(data, "astype"):
         data = np.asarray(data, dtype=np.float32)
     data = data - np.median(data, axis=0)
     return data
@@ -141,15 +149,13 @@ def _format_voltage_bar(raw_value: float, loader_units: str) -> tuple[float, str
 # Loader protocol
 # ---------------------------------------------------------------------------
 
+
 @runtime_checkable
 class EphysLoader(Protocol):
     rate: float
 
     def __len__(self) -> int: ...
     def __getitem__(self, key) -> NDArray: ...
-
-
-
 
 
 class NWBEphysLoader:
@@ -168,14 +174,17 @@ class NWBEphysLoader:
 
         self._io = pynwb.NWBHDF5IO(file=self._h5, load_namespaces=True)
         with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message=".*manufacturer.*deprecated", category=DeprecationWarning)
+            warnings.filterwarnings(
+                "ignore",
+                message=".*manufacturer.*deprecated",
+                category=DeprecationWarning,
+            )
             self._nwb = self._io.read()
 
         self._all_series = self._discover_electrical_series(self._nwb)
         if not self._all_series:
             raise ValueError(
-                f"No ElectricalSeries found in acquisition. "
-                f"Available keys: {list(self._nwb.acquisition.keys())}"
+                f"No ElectricalSeries found in acquisition. Available keys: {list(self._nwb.acquisition.keys())}"
             )
 
         if stream_id is None or stream_id not in self._all_series:
@@ -185,11 +194,8 @@ class NWBEphysLoader:
     @staticmethod
     def _discover_electrical_series(nwb) -> dict:
         import pynwb
-        return {
-            name: es
-            for name, es in nwb.acquisition.items()
-            if isinstance(es, pynwb.ecephys.ElectricalSeries)
-        }
+
+        return {name: es for name, es in nwb.acquisition.items() if isinstance(es, pynwb.ecephys.ElectricalSeries)}
 
     def _select_stream(self, stream_id: str):
         es = self._all_series[stream_id]
@@ -259,15 +265,15 @@ class NWBEphysLoader:
                 pass
 
 
-
 # Raw binary formats loaded via phylib (kilosort .dat files).
 # Not user-selectable via the ephys file browser — only loaded internally via Kilosort folder/phylib.
-_RAW_BINARY_EXTENSIONS = frozenset({'.dat', '.bin', '.raw', '.mda'})
+_RAW_BINARY_EXTENSIONS = frozenset({".dat", ".bin", ".raw", ".mda"})
 
 
 # ---------------------------------------------------------------------------
 # GenericEphysLoader – auto-detecting unified loader
 # ---------------------------------------------------------------------------
+
 
 class GenericEphysLoader:
     """Auto-detecting ephys loader.
@@ -299,30 +305,56 @@ class GenericEphysLoader:
         ".continuous": "OpenEphysRawIO",
         ".spikes": "OpenEphysRawIO",
         ".events": "OpenEphysRawIO",
-        ".ns1": "BlackrockRawIO", ".ns2": "BlackrockRawIO", ".ns3": "BlackrockRawIO",
-        ".ns4": "BlackrockRawIO", ".ns5": "BlackrockRawIO", ".ns6": "BlackrockRawIO",
-        ".nev": "BlackrockRawIO", ".sif": "BlackrockRawIO", ".ccf": "BlackrockRawIO",
+        ".ns1": "BlackrockRawIO",
+        ".ns2": "BlackrockRawIO",
+        ".ns3": "BlackrockRawIO",
+        ".ns4": "BlackrockRawIO",
+        ".ns5": "BlackrockRawIO",
+        ".ns6": "BlackrockRawIO",
+        ".nev": "BlackrockRawIO",
+        ".sif": "BlackrockRawIO",
+        ".ccf": "BlackrockRawIO",
         ".abf": "AxonRawIO",
-        ".axgx": "AxographRawIO", ".axgd": "AxographRawIO",
-        ".edf": "EDFRawIO", ".bdf": "EDFRawIO",
+        ".axgx": "AxographRawIO",
+        ".axgd": "AxographRawIO",
+        ".edf": "EDFRawIO",
+        ".bdf": "EDFRawIO",
         ".vhdr": "BrainVisionRawIO",
-        ".smr": "Spike2RawIO", ".smrx": "Spike2RawIO",
-        ".ncs": "NeuralynxRawIO", ".nse": "NeuralynxRawIO", ".ntt": "NeuralynxRawIO",
-        ".nvt": "NeuralynxRawIO", ".nrd": "NeuralynxRawIO",
+        ".smr": "Spike2RawIO",
+        ".smrx": "Spike2RawIO",
+        ".ncs": "NeuralynxRawIO",
+        ".nse": "NeuralynxRawIO",
+        ".ntt": "NeuralynxRawIO",
+        ".nvt": "NeuralynxRawIO",
+        ".nrd": "NeuralynxRawIO",
         ".trc": "MicromedRawIO",
-        ".plx": "PlexonRawIO", ".pl2": "Plexon2RawIO",
+        ".plx": "PlexonRawIO",
+        ".pl2": "Plexon2RawIO",
         ".rec": "SpikeGadgetsRawIO",
         ".meta": "SpikeGLXRawIO",
-        ".medd": "MedRawIO", ".rdat": "MedRawIO", ".ridx": "MedRawIO",
-        ".edr": "WinEdrRawIO", ".wcp": "WinWcpRawIO",
+        ".medd": "MedRawIO",
+        ".rdat": "MedRawIO",
+        ".ridx": "MedRawIO",
+        ".edr": "WinEdrRawIO",
+        ".wcp": "WinWcpRawIO",
         ".xdat": "NeuroNexusRawIO",
-        ".tbk": "TdtRawIO", ".tdx": "TdtRawIO", ".tev": "TdtRawIO",
-        ".tin": "TdtRawIO", ".tnt": "TdtRawIO", ".tsq": "TdtRawIO", ".sev": "TdtRawIO",
+        ".tbk": "TdtRawIO",
+        ".tdx": "TdtRawIO",
+        ".tev": "TdtRawIO",
+        ".tin": "TdtRawIO",
+        ".tnt": "TdtRawIO",
+        ".tsq": "TdtRawIO",
+        ".sev": "TdtRawIO",
     }
 
-    _DIR_BASED_RAWIO: frozenset[str] = frozenset({
-        "OpenEphysBinaryRawIO", "OpenEphysRawIO", "SpikeGLXRawIO", "TdtRawIO",
-    })
+    _DIR_BASED_RAWIO: frozenset[str] = frozenset(
+        {
+            "OpenEphysBinaryRawIO",
+            "OpenEphysRawIO",
+            "SpikeGLXRawIO",
+            "TdtRawIO",
+        }
+    )
 
     def __init__(
         self,
@@ -369,6 +401,7 @@ class GenericEphysLoader:
 
     def _init_neo(self, rawio_name: str, stream_id: str):
         import neo.rawio
+
         rawio_cls = getattr(neo.rawio, rawio_name, None)
         if rawio_cls is None:
             raise ValueError(f"Neo rawio class '{rawio_name}' not available in this Neo installation.")
@@ -389,25 +422,33 @@ class GenericEphysLoader:
         self.rate = float(ch["sampling_rate"][0])
         self.dtype = str(ch["dtype"][0])
         self._n_samples = self._reader.get_signal_size(
-            block_index=0, seg_index=0, stream_index=self._stream_idx,
+            block_index=0,
+            seg_index=0,
+            stream_index=self._stream_idx,
         )
         # Neo ≤0.14.4 bug: for Intan one-file-per-signal digital streams the memmap is shaped
         # (N_actual // num_ch, num_ch), so get_signal_size() returns N_actual // num_ch.
         # Recover the true sample count from the raw memmap's total element count.
-        if getattr(self._reader, 'file_format', None) == 'one-file-per-signal':
+        if getattr(self._reader, "file_format", None) == "one-file-per-signal":
             stream_name = self._reader.header["signal_streams"]["name"][self._stream_idx]
-            raw = getattr(self._reader, '_raw_data', {}).get(stream_name)
+            raw = getattr(self._reader, "_raw_data", {}).get(stream_name)
             if raw is not None and raw.ndim > 1:
                 self._n_samples = raw.size  # shape[0]*shape[1] = N_actual
         self.starting_time = float(
             self._reader.get_signal_t_start(
-                block_index=0, seg_index=0, stream_index=self._stream_idx,
+                block_index=0,
+                seg_index=0,
+                stream_index=self._stream_idx,
             )
         )
-        
+
     def _phylib_memmap(self, n_channels: int, sampling_rate: float, dtype: str, gain: float):
         memmap = get_ephys_reader(
-            self.path, n_channels=n_channels, sample_rate=sampling_rate, dtype=dtype, gain=gain
+            self.path,
+            n_channels=n_channels,
+            sample_rate=sampling_rate,
+            dtype=dtype,
+            gain=gain,
         )
         if memmap.ndim == 1:
             memmap = memmap[:, np.newaxis]
@@ -415,9 +456,7 @@ class GenericEphysLoader:
         self._n_channels = memmap.shape[1]
         self._n_samples = memmap.shape[0]
         self.rate = sampling_rate
-        self.dtype = str(memmap.dtype) if memmap.dtype != np.dtype('int16') else "int16"
-
-
+        self.dtype = str(memmap.dtype) if memmap.dtype != np.dtype("int16") else "int16"
 
     # -- Neo helpers --------------------------------------------------------
 
@@ -468,25 +507,28 @@ class GenericEphysLoader:
                 self._reader.header["signal_streams"]["name"],
             )
         }
-        
+
     def __getitem__(self, key) -> NDArray[np.float64]:
         if isinstance(key, slice):
             start, stop, _ = key.indices(self._n_samples)
         else:
             start, stop = key, key + 1
 
-        if getattr(self, '_loader', None) is not None:  # ← safe fallback
+        if getattr(self, "_loader", None) is not None:  # ← safe fallback
             return self._loader[start:stop]
 
         raw = self._reader.get_analogsignal_chunk(
-            block_index=0, seg_index=0,
-            i_start=start, i_stop=stop,
-            stream_index=self._stream_idx,    
+            block_index=0,
+            seg_index=0,
+            i_start=start,
+            i_stop=stop,
+            stream_index=self._stream_idx,
         )
-        
-        
+
         return self._reader.rescale_signal_raw_to_float(
-            raw, dtype="float64", stream_index=self._stream_idx,
+            raw,
+            dtype="float64",
+            stream_index=self._stream_idx,
         )
 
 
@@ -516,7 +558,13 @@ def get_loader(
                     stream_id=stream_id,
                 )
             except (OSError, ValueError, KeyError) as e:
-                logger.error("Failed to load ephys file %s: %s: %s", path, type(e).__name__, e, exc_info=True)
+                logger.error(
+                    "Failed to load ephys file %s: %s: %s",
+                    path,
+                    type(e).__name__,
+                    e,
+                    exc_info=True,
+                )
                 return None
         return _loader_cache[key]
 
@@ -556,7 +604,6 @@ class SharedEphysCache:
 # EphysTraceBuffer – min/max envelope downsampling
 # ---------------------------------------------------------------------------
 class EphysTraceBuffer:
-
     def __init__(self, loader: EphysLoader | None = None, channel: int = 0):
         self.loader = loader
         self.channel = channel
@@ -602,7 +649,12 @@ class EphysTraceBuffer:
         margin = int(n_view * BUFFER_COVERAGE_MARGIN)
         return self._cache_start <= start - margin and self._cache_stop >= stop + margin
 
-    def _build_cache(self, view_start: int | None = None, view_stop: int | None = None, scroll_direction: str = "right"):
+    def _build_cache(
+        self,
+        view_start: int | None = None,
+        view_stop: int | None = None,
+        scroll_direction: str = "right",
+    ):
         if self.loader is None:
             return
         seg_start = 0
@@ -636,11 +688,12 @@ class EphysTraceBuffer:
         # Precompute multi-resolution pyramid
         self._pyramid = {1: data}
         from .app_constants import PYRAMID_LEVELS
+
         for level in PYRAMID_LEVELS:
             n = data.shape[0] // level
             if n == 0:
                 continue
-            reshaped = data[:n * level].reshape(n, level, data.shape[1])
+            reshaped = data[: n * level].reshape(n, level, data.shape[1])
             minv = reshaped.min(axis=1)
             maxv = reshaped.max(axis=1)
             out = np.empty((2 * n, data.shape[1]), dtype=np.float32)
@@ -672,12 +725,13 @@ class EphysTraceBuffer:
             return None
         return self._cache[local_start:local_stop]
 
-
-
     # -- multi channel ------------------------------------------------------
 
     def get_multichannel_trace_data(
-        self, t0: float, t1: float, screen_width: int = 1920,
+        self,
+        t0: float,
+        t1: float,
+        screen_width: int = 1920,
         channel_range: tuple[int, int] | None = None,
         channel_indices: NDArray | None = None,
         y_positions: NDArray | None = None,
@@ -685,7 +739,7 @@ class EphysTraceBuffer:
         if self.loader is None:
             return None
 
-        total_ch = self.loader.n_channels if hasattr(self.loader, 'n_channels') else 1
+        total_ch = self.loader.n_channels if hasattr(self.loader, "n_channels") else 1
         if total_ch < 1:
             return None
 
@@ -710,15 +764,15 @@ class EphysTraceBuffer:
             ch_std_arr = self._cache_std[valid]
             n_ch = len(valid)
         else:
-            ch_start, ch_end = (channel_range or (0, total_ch - 1))
+            ch_start, ch_end = channel_range or (0, total_ch - 1)
             ch_start = max(0, ch_start)
             ch_end = min(total_ch - 1, ch_end)
             n_ch = ch_end - ch_start + 1
             if n_ch <= 0:
                 return None
-            data_all = data_all[:, ch_start:ch_end + 1]
-            ch_mean = self._cache_mean[ch_start:ch_end + 1]
-            ch_std_arr = self._cache_std[ch_start:ch_end + 1]
+            data_all = data_all[:, ch_start : ch_end + 1]
+            ch_mean = self._cache_mean[ch_start : ch_end + 1]
+            ch_std_arr = self._cache_std[ch_start : ch_end + 1]
 
         step = max(1, (stop - start) // screen_width)
 
@@ -727,10 +781,11 @@ class EphysTraceBuffer:
         local_stop = min(self._cache.shape[0], stop - self._cache_start)
         level = 1
         from .app_constants import PYRAMID_LEVELS
-        if step > 1 and hasattr(self, '_pyramid'):
-            for l in PYRAMID_LEVELS:
-                if step >= l and l in self._pyramid:
-                    level = l
+
+        if step > 1 and hasattr(self, "_pyramid"):
+            for ln in PYRAMID_LEVELS:
+                if step >= ln and ln in self._pyramid:
+                    level = ln
                     break
 
         if level > 1:
@@ -741,20 +796,26 @@ class EphysTraceBuffer:
             if pyr_i1 <= pyr_i0:
                 return None
             # Pyramid has all cache channels; slice to selected channels
-            pyr_slice = pyr_data[pyr_i0 * 2:pyr_i1 * 2]
+            pyr_slice = pyr_data[pyr_i0 * 2 : pyr_i1 * 2]
             if channel_indices is not None:
                 valid = channel_indices[channel_indices < pyr_slice.shape[1]]
                 display = pyr_slice[:, valid]
             else:
-                display = pyr_slice[:, ch_start:ch_end + 1]
+                display = pyr_slice[:, ch_start : ch_end + 1]
             n_display = pyr_i1 - pyr_i0
             aligned_start = self._cache_start + pyr_i0 * level
             half_level = level / 2
-            times = self._starting_time + np.arange(
-                aligned_start, aligned_start + 2 * n_display * half_level, half_level
-            ) / self.ephys_sr
+            times = (
+                self._starting_time
+                + np.arange(
+                    aligned_start,
+                    aligned_start + 2 * n_display * half_level,
+                    half_level,
+                )
+                / self.ephys_sr
+            )
             if len(times) > display.shape[0]:
-                times = times[:display.shape[0]]
+                times = times[: display.shape[0]]
         elif step > 1:
             # Inline min/max fallback (step doesn't match any pyramid level)
             n_segments = len(data_all) // step
@@ -769,9 +830,10 @@ class EphysTraceBuffer:
             display[1::2, :] = max_vals
             aligned_start = start
             half_step = step / 2
-            times = self._starting_time + np.arange(
-                aligned_start, aligned_start + 2 * n_segments * half_step, half_step
-            ) / self.ephys_sr
+            times = (
+                self._starting_time
+                + np.arange(aligned_start, aligned_start + 2 * n_segments * half_step, half_step) / self.ephys_sr
+            )
         else:
             display = data_all.copy()
             times = self._starting_time + np.arange(start, start + len(display)) / self.ephys_sr
@@ -802,43 +864,47 @@ class EphysTraceBuffer:
 # Phy-inspired color scheme
 # https://github.com/cortex-lab/phy/blob/master/phy/cluster/views/trace.py
 # Phy uses a purple→teal channel gradient: (.353,.161,.443) to (.133,.404,.396)
-_PHY_BG = '#000000'
-_PHY_TRACE_COLOR_0 = (90, 41, 113)   # deep purple — top channel
+_PHY_BG = "#000000"
+_PHY_TRACE_COLOR_0 = (90, 41, 113)  # deep purple — top channel
 _PHY_TRACE_COLOR_1 = (34, 103, 101)  # teal-green  — bottom channel
-_PHY_TRACE_SINGLE = '#808080'        # neutral gray for single-channel mode
-_PHY_AXIS = '#AAAAAA'
+_PHY_TRACE_SINGLE = "#808080"  # neutral gray for single-channel mode
+_PHY_AXIS = "#AAAAAA"
+
 
 class EphysTracePlot(BasePlot):
     _initializing = False
     """Extracellular waveform viewer inheriting BasePlot for full GUI integration."""
 
-    gain_scroll_requested = Signal(int)      # delta: +1 = increase, -1 = decrease
+    gain_scroll_requested = Signal(int)  # delta: +1 = increase, -1 = decrease
     visible_channels_changed = Signal(int, int)  # (first_visible_index, last_visible_index)
     y_space_changed = Signal()  # emitted when global y-coordinate space is rebuilt
-    seek_time_requested = Signal(float)      # emitted by jump_to_spike with exact spike time
+    seek_time_requested = Signal(float)  # emitted by jump_to_spike with exact spike time
 
     def __init__(self, app_state, parent=None):
         super().__init__(app_state, parent)
 
         self.setBackground(_PHY_BG)
-        for axis_name in ('left', 'bottom'):
+        for axis_name in ("left", "bottom"):
             axis = self.plot_item.getAxis(axis_name)
             axis.setPen(pg.mkPen(_PHY_AXIS))
             axis.setTextPen(pg.mkPen(_PHY_AXIS))
-        self.time_marker.setPen(pg.mkPen('#FF4444', width=2, style=pg.QtCore.Qt.DotLine))
+        self.time_marker.setPen(pg.mkPen("#FF4444", width=2, style=pg.QtCore.Qt.DotLine))
 
-        self.setLabel('left', 'Amplitude')
+        self.setLabel("left", "Amplitude")
 
-                    
         self.trace_item = pg.PlotDataItem(
-            connect='finite', antialias=False, skipFiniteCheck=True,
+            connect="finite",
+            antialias=False,
+            skipFiniteCheck=True,
         )
         self.trace_item.setPen(pg.mkPen(color=_PHY_TRACE_COLOR_0, width=1.5))
         self.addItem(self.trace_item)
 
         # Second trace item for alternating channel colors (teal, odd channels)
         self.trace_item2 = pg.PlotDataItem(
-            connect='finite', antialias=False, skipFiniteCheck=True,
+            connect="finite",
+            antialias=False,
+            skipFiniteCheck=True,
         )
         self.trace_item2.setPen(pg.mkPen(color=_PHY_TRACE_COLOR_1, width=1.0))
         self.addItem(self.trace_item2)
@@ -884,7 +950,6 @@ class EphysTracePlot(BasePlot):
         self._scale_v_text: pg.TextItem | None = None
         self._scale_h_text: pg.TextItem | None = None
 
-
         # Hardware (hw) channels vs Kilosort (KS) channels:
         #   hw = physical channel index in the recording file (e.g. Intan "A-009").
         #        The loader's __getitem__ and channel_names are indexed by hw.
@@ -926,9 +991,9 @@ class EphysTracePlot(BasePlot):
     @property
     def _ephys_offset(self) -> float:
         """Session-absolute time corresponding to trial-relative t=0 for the ephys file stream."""
-        scalar = float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0)
-        trial = getattr(self.app_state, 'trials_sel', None)
-        align = getattr(self.app_state, 'nwb_alignment', None)
+        scalar = float(getattr(self.app_state, "ephys_offset", 0.0) or 0.0)
+        trial = getattr(self.app_state, "trials_sel", None)
+        align = getattr(self.app_state, "nwb_alignment", None)
         trial_start = float(align.start_time(trial) or 0.0) if (trial is not None and align is not None) else 0.0
         return trial_start + scalar
 
@@ -951,9 +1016,6 @@ class EphysTracePlot(BasePlot):
         self._update_amplitude_label()
         if self.current_range and not type(self)._initializing:
             self.update_plot_content(*self.current_range)
-
-        
-
 
     def set_channel_range(self, ch_start: int, ch_end: int):
         self._channel_range = (ch_start, ch_end)
@@ -1034,7 +1096,8 @@ class EphysTracePlot(BasePlot):
                         factor = 1.1 if direction > 0 else 1.0 / 1.1
                         new_span = y_span * factor
                         self.plot_item.setYRange(
-                            y_center - new_span / 2, y_center + new_span / 2,
+                            y_center - new_span / 2,
+                            y_center + new_span / 2,
                             padding=0,
                         )
                         self._drag_gain_accum -= direction * step
@@ -1050,7 +1113,8 @@ class EphysTracePlot(BasePlot):
                         new_span = span * factor
                         center = (xmin + xmax) / 2
                         self.plot_item.setXRange(
-                            center - new_span / 2, center + new_span / 2,
+                            center - new_span / 2,
+                            center + new_span / 2,
                             padding=0,
                         )
                         self._drag_x_accum -= direction * step
@@ -1088,12 +1152,10 @@ class EphysTracePlot(BasePlot):
 
         self._update_multichannel(t0, t1)
 
-
         self.current_range = (t0, t1)
 
     _pen_single_thin = pg.mkPen(color=_PHY_TRACE_SINGLE, width=1.0)
     _pen_single_thick = pg.mkPen(color=_PHY_TRACE_SINGLE, width=2.0)
-
 
     def _update_multichannel(self, t0: float, t1: float):
         visible_t0, visible_t1 = t0, t1
@@ -1121,24 +1183,30 @@ class EphysTracePlot(BasePlot):
 
         # Buffer returns data with y_positions already baked in
         result = self.buffer.get_multichannel_trace_data(
-            t0_draw + self._ephys_offset, t1_draw + self._ephys_offset,
-            pixel_width_draw, channel_indices=ch_indices,
+            t0_draw + self._ephys_offset,
+            t1_draw + self._ephys_offset,
+            pixel_width_draw,
+            channel_indices=ch_indices,
             y_positions=y_positions,
         )
 
         if result is None:
-            logger.debug("_update_multichannel: No data for t0=%s, t1=%s, channels=%s", t0_draw, t1_draw, ch_indices)
+            logger.debug(
+                "_update_multichannel: No data for t0=%s, t1=%s, channels=%s",
+                t0_draw,
+                t1_draw,
+                ch_indices,
+            )
             return
 
         times, data_2d, step, n_ch = result
         times = times - self._ephys_offset
         n_t = data_2d.shape[0]
 
-
         # --- Two batched draw calls (alternating purple/teal per channel) ---
         # Split even channels -> trace_item (purple), odd -> trace_item2 (teal)
         even_chs = [i for i in range(n_ch) if i % 2 == 0]
-        odd_chs  = [i for i in range(n_ch) if i % 2 == 1]
+        odd_chs = [i for i in range(n_ch) if i % 2 == 1]
 
         def _pack(ch_list):
             if not ch_list:
@@ -1148,8 +1216,8 @@ class EphysTracePlot(BasePlot):
             yb = np.empty(pts, dtype=np.float32)
             for k, ch in enumerate(ch_list):
                 s = k * (n_t + 1)
-                xb[s:s + n_t] = times
-                yb[s:s + n_t] = data_2d[:, ch]
+                xb[s : s + n_t] = times
+                yb[s : s + n_t] = data_2d[:, ch]
                 xb[s + n_t] = np.nan
                 yb[s + n_t] = np.nan
             return xb, yb
@@ -1165,13 +1233,10 @@ class EphysTracePlot(BasePlot):
             self._last_visible_hw = current_visible
             self._last_n_ch = n_ch
             channel_names = self._get_channel_names(ch_indices)
-            ticks = [
-                (float(y_positions[i]), channel_names[i])
-                for i in range(n_ch)
-            ]
-            left_axis = self.plot_item.getAxis('left')
+            ticks = [(float(y_positions[i]), channel_names[i]) for i in range(n_ch)]
+            left_axis = self.plot_item.getAxis("left")
             left_axis.setTicks([ticks])
-            self.setLabel('left', '')
+            self.setLabel("left", "")
 
             # Emit visible channel range for range slider sync
             if self._hw_to_order_idx:
@@ -1201,7 +1266,7 @@ class EphysTracePlot(BasePlot):
         # Convert 0.2 mV to loader units, then to display units
         scale_voltage = 0.2  # mV
         loader_units = "a.u."
-        if self.buffer.loader is not None and hasattr(self.buffer.loader, 'units'):
+        if self.buffer.loader is not None and hasattr(self.buffer.loader, "units"):
             loader_units = self.buffer.loader.units
 
         factor = _UNIT_TO_VOLTS.get(loader_units)
@@ -1232,12 +1297,14 @@ class EphysTracePlot(BasePlot):
         v_x = [x_anchor, x_anchor]
         v_y = [y_anchor, y_anchor + voltage_bar_display]
         self._scale_v_line = pg.PlotDataItem(
-            v_x, v_y, pen=pg.mkPen('#FFFFFF', width=2),
+            v_x,
+            v_y,
+            pen=pg.mkPen("#FFFFFF", width=2),
         )
         self._scale_v_line.setZValue(900)
         vb.addItem(self._scale_v_line, ignoreBounds=True)
 
-        self._scale_v_text = pg.TextItem(v_label, color='#FFFFFF', anchor=(1.0, 0.5))
+        self._scale_v_text = pg.TextItem(v_label, color="#FFFFFF", anchor=(1.0, 0.5))
         self._scale_v_text.setPos(x_anchor - time_window * 0.005, y_anchor + voltage_bar_display / 2)
         self._scale_v_text.setZValue(900)
         vb.addItem(self._scale_v_text, ignoreBounds=True)
@@ -1246,7 +1313,9 @@ class EphysTracePlot(BasePlot):
         h_x = [x_anchor - time_bar_s, x_anchor]
         h_y = [y_anchor, y_anchor]
         self._scale_h_line = pg.PlotDataItem(
-            h_x, h_y, pen=pg.mkPen('#FFFFFF', width=2),
+            h_x,
+            h_y,
+            pen=pg.mkPen("#FFFFFF", width=2),
         )
         self._scale_h_line.setZValue(900)
         vb.addItem(self._scale_h_line, ignoreBounds=True)
@@ -1255,14 +1324,19 @@ class EphysTracePlot(BasePlot):
             h_label = f"{time_bar_ms / 1000:.1f} s"
         else:
             h_label = f"{time_bar_ms:.0f} ms"
-        self._scale_h_text = pg.TextItem(h_label, color='#FFFFFF', anchor=(0.5, 1.0))
+        self._scale_h_text = pg.TextItem(h_label, color="#FFFFFF", anchor=(0.5, 1.0))
         self._scale_h_text.setPos(x_anchor - time_bar_s / 2, y_anchor - (y_range[1] - y_range[0]) * 0.01)
         self._scale_h_text.setZValue(900)
         vb.addItem(self._scale_h_text, ignoreBounds=True)
 
     def _clear_scale_bars(self):
         vb = self.plot_item.getViewBox()
-        for attr in ('_scale_v_line', '_scale_h_line', '_scale_v_text', '_scale_h_text'):
+        for attr in (
+            "_scale_v_line",
+            "_scale_h_line",
+            "_scale_v_text",
+            "_scale_h_text",
+        ):
             item = getattr(self, attr, None)
             if item is not None:
                 try:
@@ -1277,12 +1351,12 @@ class EphysTracePlot(BasePlot):
         if self._probe_channel_order is not None:
             all_ch = self._probe_channel_order
         else:
-            total = self.buffer.loader.n_channels if hasattr(self.buffer.loader, 'n_channels') else 1
+            total = self.buffer.loader.n_channels if hasattr(self.buffer.loader, "n_channels") else 1
             all_ch = np.arange(total)
         if self._channel_range:
             lo = max(0, self._channel_range[0])
             hi = min(len(all_ch) - 1, self._channel_range[1])
-            return all_ch[lo:hi + 1]
+            return all_ch[lo : hi + 1]
         return all_ch
 
     def _all_ordered_channels(self) -> NDArray:
@@ -1292,7 +1366,7 @@ class EphysTracePlot(BasePlot):
             return self._probe_channel_order
         if self.buffer.loader is None:
             return np.array([], dtype=int)
-        total = self.buffer.loader.n_channels if hasattr(self.buffer.loader, 'n_channels') else 1
+        total = self.buffer.loader.n_channels if hasattr(self.buffer.loader, "n_channels") else 1
         return np.arange(total)
 
     def _setup_global_y_space(self):
@@ -1301,13 +1375,8 @@ class EphysTracePlot(BasePlot):
         if total == 0:
             return
         spacing = self.buffer.channel_spacing
-        self._hw_to_global_y = {
-            int(hw): (total - 1 - i) * spacing
-            for i, hw in enumerate(self._total_ordered_channels)
-        }
-        self._hw_to_order_idx = {
-            int(hw): i for i, hw in enumerate(self._total_ordered_channels)
-        }
+        self._hw_to_global_y = {int(hw): (total - 1 - i) * spacing for i, hw in enumerate(self._total_ordered_channels)}
+        self._hw_to_order_idx = {int(hw): i for i, hw in enumerate(self._total_ordered_channels)}
         margin = spacing * 1.5
         y_max = (total - 1) * spacing + margin
         max_y_range = 0.70 * total * spacing
@@ -1346,18 +1415,18 @@ class EphysTracePlot(BasePlot):
         return [f"Ch {i}" for i in hw_indices]
 
     def _reset_y_axis_ticks(self):
-        left_axis = self.plot_item.getAxis('left')
+        left_axis = self.plot_item.getAxis("left")
         left_axis.setTicks(None)
         self._update_amplitude_label()
 
     def _update_amplitude_label(self):
         loader = self.buffer.loader
-        units = ''
-        if loader is not None and hasattr(loader, 'units'):
+        units = ""
+        if loader is not None and hasattr(loader, "units"):
             units = loader.units
 
         channel_name = None
-        if loader is not None and hasattr(loader, 'channel_names'):
+        if loader is not None and hasattr(loader, "channel_names"):
             ch = self.buffer.channel
 
         if channel_name:
@@ -1365,10 +1434,10 @@ class EphysTracePlot(BasePlot):
         else:
             label = "Amplitude"
 
-        if units and units != 'a.u.':
-            self.setLabel('left', label, units=units)
+        if units and units != "a.u.":
+            self.setLabel("left", label, units=units)
         else:
-            self.setLabel('left', label)
+            self.setLabel("left", label)
 
     def set_spike_data(
         self,
@@ -1432,7 +1501,6 @@ class EphysTracePlot(BasePlot):
 
         self._draw_spike_waveforms_multi(t0, t1)
 
-
     def _draw_spike_waveforms_multi(self, t0: float, t1: float):
         """Spike waveforms for single cluster, drawn on neighbouring channels"""
         sr = self.buffer.ephys_sr
@@ -1452,8 +1520,8 @@ class EphysTracePlot(BasePlot):
         if cache_mean is None or cache_std is None:
             return
 
-        i_start = np.searchsorted(self._spike_times_local, t0, side='left')
-        i_end = np.searchsorted(self._spike_times_local, t1, side='right')
+        i_start = np.searchsorted(self._spike_times_local, t0, side="left")
+        i_end = np.searchsorted(self._spike_times_local, t1, side="right")
         spike_samples = self._spike_samples_abs[i_start:i_end]
         if len(spike_samples) == 0:
             return
@@ -1490,15 +1558,17 @@ class EphysTracePlot(BasePlot):
                 n = s1 - s0
                 snippet = (cache_data[s0:s1, ch] - ch_m) / ch_s
                 snippet = snippet * gain_factor + y_off
-                all_y[pos:pos + n] = snippet
-                all_t[pos:pos + n] = np.arange(s0 + cache_start, s1 + cache_start, dtype=np.float64) / sr - ephys_offset
+                all_y[pos : pos + n] = snippet
+                all_t[pos : pos + n] = (
+                    np.arange(s0 + cache_start, s1 + cache_start, dtype=np.float64) / sr - ephys_offset
+                )
                 pos += n
                 all_t[pos] = np.nan
                 all_y[pos] = np.nan
                 pos += 1
             if pos == 0:
                 continue
-            item = pg.PlotDataItem(all_t[:pos], all_y[:pos], pen=pen, connect='finite', antialias=False)
+            item = pg.PlotDataItem(all_t[:pos], all_y[:pos], pen=pen, connect="finite", antialias=False)
             item.setZValue(800)
             vb.addItem(item, ignoreBounds=True)
             self._spike_waveform_items.append(item)
@@ -1512,9 +1582,8 @@ class EphysTracePlot(BasePlot):
         cache_n_ch = self.buffer._cache.shape[1]
         cache_data = self.buffer._cache
 
-
         hw_to_y = self._hw_to_global_y
-        y_lo, y_hi = self.vb.viewRange()[1] 
+        y_lo, y_hi = self.vb.viewRange()[1]
         gain_factor = 0.75 ** (-self.buffer.display_gain)
         cache_mean = self.buffer._cache_mean
         cache_std = self.buffer._cache_std
@@ -1523,12 +1592,17 @@ class EphysTracePlot(BasePlot):
 
         vb = self.plot_item.getViewBox()
 
-        for spike_times_local, spike_samples_abs, channels, color in self._multi_spike_data:
+        for (
+            spike_times_local,
+            spike_samples_abs,
+            channels,
+            color,
+        ) in self._multi_spike_data:
             if len(spike_times_local) == 0:
                 continue
 
-            i_start = np.searchsorted(spike_times_local, t0, side='left')
-            i_end = np.searchsorted(spike_times_local, t1, side='right')
+            i_start = np.searchsorted(spike_times_local, t0, side="left")
+            i_end = np.searchsorted(spike_times_local, t1, side="right")
             spike_samples = spike_samples_abs[i_start:i_end]
             if len(spike_samples) == 0:
                 continue
@@ -1553,8 +1627,10 @@ class EphysTracePlot(BasePlot):
                     n = s1 - s0
                     snippet = (cache_data[s0:s1, ch] - ch_m) / ch_s
                     snippet = snippet * gain_factor + y_off
-                    all_y[pos:pos + n] = snippet
-                    all_t[pos:pos + n] = np.arange(s0 + cache_start, s1 + cache_start, dtype=np.float64) / sr - ephys_offset
+                    all_y[pos : pos + n] = snippet
+                    all_t[pos : pos + n] = (
+                        np.arange(s0 + cache_start, s1 + cache_start, dtype=np.float64) / sr - ephys_offset
+                    )
                     pos += n
                     all_t[pos] = np.nan
                     all_y[pos] = np.nan
@@ -1565,9 +1641,8 @@ class EphysTracePlot(BasePlot):
             all_t = all_t[:pos]
             all_y = all_y[:pos]
 
-
             pen = pg.mkPen(color=color, width=2.0)
-            item = pg.PlotDataItem(all_t, all_y, pen=pen, connect='finite', antialias=False)
+            item = pg.PlotDataItem(all_t, all_y, pen=pen, connect="finite", antialias=False)
             item.setZValue(800)
             vb.addItem(item, ignoreBounds=True)
             self._spike_waveform_items.append(item)
@@ -1643,7 +1718,8 @@ class EphysTracePlot(BasePlot):
             if self.current_range:
                 t0, t1 = self.current_range
                 self.buffer.ensure_cache(
-                    t0 + self._ephys_offset, t1 + self._ephys_offset,
+                    t0 + self._ephys_offset,
+                    t1 + self._ephys_offset,
                 )
             else:
                 self.buffer._build_cache()
@@ -1704,7 +1780,7 @@ class EphysTracePlot(BasePlot):
     def _on_view_range_changed(self):
         if not self.isVisible():
             return
-        if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
+        if not hasattr(self.app_state, "ds") or self.app_state.ds is None:
             return
         self._td.trigger()
 
@@ -1713,4 +1789,3 @@ class EphysTracePlot(BasePlot):
             return
         t0, t1 = self.get_current_xlim()
         self.update_plot_content(t0, t1)
-

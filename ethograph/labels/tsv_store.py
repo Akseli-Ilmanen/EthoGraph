@@ -10,7 +10,7 @@ File format:
     human_verified          - per-trial flag (0/1), repeated per row
     changepoint_corrected   - per-trial flag (0/1), repeated per row
     prediction_source       - path to prediction file that produced this label (empty if human)
-    
+
 
 Label names are managed centrally in mapping.txt.
 """
@@ -20,12 +20,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from ethograph.labels.intervals import (
-    EVENT_TYPE_POINT,
-    EVENT_TYPE_STATE,
     INTERVAL_COLUMNS,
     INTERVAL_DTYPES,
     empty_intervals,
@@ -35,12 +32,25 @@ from ethograph.labels.intervals import (
 logger = logging.getLogger(__name__)
 
 TSV_COLUMNS = [
-    "trial", "individual", "labels", "onset_s", "offset_s", "event_type",
-    "human_verified", "changepoint_corrected", "prediction_source", "n_samples",
+    "trial",
+    "individual",
+    "labels",
+    "onset_s",
+    "offset_s",
+    "event_type",
+    "human_verified",
+    "changepoint_corrected",
+    "prediction_source",
+    "n_samples",
 ]
 
 # Per-trial metadata columns (same value for all rows in a trial)
-TRIAL_META_COLUMNS = ["human_verified", "changepoint_corrected", "prediction_source", "n_samples"]
+TRIAL_META_COLUMNS = [
+    "human_verified",
+    "changepoint_corrected",
+    "prediction_source",
+    "n_samples",
+]
 
 TRIAL_META_DEFAULTS = {
     "human_verified": 0,
@@ -53,6 +63,7 @@ TRIAL_META_DEFAULTS = {
 # ---------------------------------------------------------------------------
 # Path helpers
 # ---------------------------------------------------------------------------
+
 
 def labels_tsv_path(nc_path: str | Path, suffix: str = "") -> Path:
     """Derive the labels TSV path from the .nc file path.
@@ -87,8 +98,7 @@ def validate_labels_tsv(df: pd.DataFrame, path: str | Path = "") -> None:
     missing = REQUIRED_COLUMNS - set(df.columns)
     if missing:
         raise ValueError(
-            f"Labels file {path} is missing required columns: {sorted(missing)}. "
-            f"Required: {sorted(REQUIRED_COLUMNS)}"
+            f"Labels file {path} is missing required columns: {sorted(missing)}. Required: {sorted(REQUIRED_COLUMNS)}"
         )
 
 
@@ -157,15 +167,27 @@ def save_labels_tsv(path: str | Path, df: pd.DataFrame) -> None:
         out = out.sort_values("onset_global").reset_index(drop=True)
     else:
         out = out.sort_values(["trial", "onset_s"]).reset_index(drop=True)
-    
-    
-    
+
     preferred = [
-        "session", "trial", "session_trial", "individual", "labels",
-        "onset_s", "offset_s", "event_type",
-        "trial_onset",  "trial_offset","onset_global", "offset_global",
-        "duration", "sequence_idx", "sequence",
-        "human_verified", "changepoint_corrected", "prediction_source", "n_samples",
+        "session",
+        "trial",
+        "session_trial",
+        "individual",
+        "labels",
+        "onset_s",
+        "offset_s",
+        "event_type",
+        "trial_onset",
+        "trial_offset",
+        "onset_global",
+        "offset_global",
+        "duration",
+        "sequence_idx",
+        "sequence",
+        "human_verified",
+        "changepoint_corrected",
+        "prediction_source",
+        "n_samples",
     ]
     cols = [c for c in preferred if c in out.columns]
     cols += [c for c in out.columns if c not in cols]
@@ -188,11 +210,10 @@ def _empty_all_labels() -> pd.DataFrame:
     return df
 
 
-
-
 # ---------------------------------------------------------------------------
 # Per-trial access
 # ---------------------------------------------------------------------------
+
 
 def get_trial_from_tsv(all_df: pd.DataFrame, trial) -> pd.DataFrame:
     """Extract all rows for a single trial from the all-labels DataFrame.
@@ -213,7 +234,9 @@ def get_trial_from_tsv(all_df: pd.DataFrame, trial) -> pd.DataFrame:
 
 
 def set_trial_in_tsv(
-    all_df: pd.DataFrame, trial, trial_df: pd.DataFrame,
+    all_df: pd.DataFrame,
+    trial,
+    trial_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """Replace all rows for a trial in the all-labels DataFrame.
 
@@ -239,6 +262,7 @@ def set_trial_in_tsv(
 # ---------------------------------------------------------------------------
 # Per-trial metadata (stored as columns, same value per trial)
 # ---------------------------------------------------------------------------
+
 
 def get_trial_meta(all_df: pd.DataFrame, trial) -> dict:
     """Read per-trial metadata from columns. Returns dict with defaults for missing trials."""

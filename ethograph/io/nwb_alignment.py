@@ -1,13 +1,15 @@
-""" Alignment of media streams, feature data and trial timing from alignment.nwb."""
+"""Alignment of media streams, feature data and trial timing from alignment.nwb."""
 
 from __future__ import annotations
 
 import logging
 import os
-import re
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pynwb import NWBFile
 
 import numpy as np
 import pandas as pd
@@ -35,11 +37,14 @@ def _get_stream_extension_map() -> list[tuple[str, set[str]]]:
         POSE_EXTENSIONS,
         VIDEO_EXTENSIONS,
     )
-    _STREAM_EXTENSION_MAP.extend([
-        ("video", VIDEO_EXTENSIONS),
-        ("pose", POSE_EXTENSIONS),
-        ("audio", AUDIO_EXTENSIONS),
-    ])
+
+    _STREAM_EXTENSION_MAP.extend(
+        [
+            ("video", VIDEO_EXTENSIONS),
+            ("pose", POSE_EXTENSIONS),
+            ("audio", AUDIO_EXTENSIONS),
+        ]
+    )
     return _STREAM_EXTENSION_MAP
 
 
@@ -158,11 +163,14 @@ class EmpytAlignment:
         pass
 
     def resolve_media_path(
-        self, trial, stream: str, device: str | None = None,
+        self,
+        trial,
+        stream: str,
+        device: str | None = None,
         fallback_folder: str | None = None,
     ) -> str | None:
         return None
-    
+
     def electrical_series(self) -> list[dict]:
         """Discover ElectricalSeries in acquisition. Returns list of {name, path, n_channels, rate}."""
         return []
@@ -235,7 +243,6 @@ class TableAlignment(EmpytAlignment):
 # ---------------------------------------------------------------------------
 
 
-
 def _parse_stream_columns(columns: list[str], stream: str) -> list[str]:
     """Extract device names from trial table columns for a given stream.
 
@@ -246,7 +253,7 @@ def _parse_stream_columns(columns: list[str], stream: str) -> list[str]:
     prefix = f"{stream}_"
     for col in columns:
         if col.startswith(prefix) and not col.endswith("_start"):
-            dev = col[len(prefix):]
+            dev = col[len(prefix) :]
             if dev and dev not in devices:
                 devices.append(dev)
     return devices
@@ -408,7 +415,7 @@ class NWBAlignment:
         if nwb.acquisition:
             for name in nwb.acquisition:
                 if name.startswith(prefix):
-                    dev = name[len(prefix):]
+                    dev = name[len(prefix) :]
                     if dev and dev not in devs:
                         devs.append(dev)
 
@@ -441,12 +448,14 @@ class NWBAlignment:
                 continue
             n_ch = obj.data.shape[1] if hasattr(obj.data, "shape") and obj.data.ndim > 1 else 1
             rate = float(obj.rate) if obj.rate else None
-            results.append({
-                "name": name,
-                "path": str(self._path),
-                "n_channels": n_ch,
-                "rate": rate,
-            })
+            results.append(
+                {
+                    "name": name,
+                    "path": str(self._path),
+                    "n_channels": n_ch,
+                    "rate": rate,
+                }
+            )
         return results
 
     # ── Timing ──
@@ -480,7 +489,6 @@ class NWBAlignment:
         """Pose estimation container names from acquisition ImageSeries."""
         return self.devices("pose")
 
-
     def start_time(self, trial) -> float:
         if not self.has_real_timing:
             return 0.0
@@ -504,7 +512,10 @@ class NWBAlignment:
         return None
 
     def stream_offset_for_trial(
-        self, trial, stream: str, device: str | None = None,
+        self,
+        trial,
+        stream: str,
+        device: str | None = None,
     ) -> float:
         """Trial-relative time of sample 0 for a stream's file.
 
@@ -549,9 +560,7 @@ class NWBAlignment:
 
     # ── File time spans ──
 
-    def file_time_spans(
-        self, stream: str, device: str | None = None
-    ) -> list[tuple[str, float, float]]:
+    def file_time_spans(self, stream: str, device: str | None = None) -> list[tuple[str, float, float]]:
         """Return [(filepath, t_start, t_end), ...] for each external file in the stream.
 
         Handles both NWB timing schemes (``timestamps`` and ``rate``).
@@ -576,11 +585,7 @@ class NWBAlignment:
             if timestamps is not None and len(timestamps) > 0:
                 ts = np.asarray(timestamps)
                 t_start = float(ts[frame_start]) if frame_start < len(ts) else float(ts[0])
-                t_end = (
-                    float(ts[frame_end - 1])
-                    if frame_end is not None and frame_end <= len(ts)
-                    else float(ts[-1])
-                )
+                t_end = float(ts[frame_end - 1]) if frame_end is not None and frame_end <= len(ts) else float(ts[-1])
             elif rate and rate > 0:
                 t_start = starting_time + frame_start / rate
                 if frame_end is None:
@@ -754,7 +759,7 @@ class NWBAlignment:
 
         nwb = self.nwb
         if nwb.acquisition:
-            print(f"\n  Acquisition items:")
+            print("\n  Acquisition items:")
             for name, acq in nwb.acquisition.items():
                 info = f"    {name}"
                 if hasattr(acq, "rate") and acq.rate:
@@ -790,6 +795,7 @@ def _filename_from_url_or_path(path: str) -> str:
     """Extract filename from a URL or filesystem path (Windows-safe)."""
     if _is_url(path):
         from urllib.parse import urlparse
+
         return Path(urlparse(path).path).name
     return Path(path).name
 
@@ -883,13 +889,10 @@ def _parse_stream_devices(columns: list[str]) -> dict[str, list[str]]:
         for stream in _KNOWN_STREAMS:
             prefix = f"{stream}_"
             if col.startswith(prefix) and not col.endswith("_start"):
-                device = col[len(prefix):]
+                device = col[len(prefix) :]
                 if device:
                     result.setdefault(stream, []).append(device)
     return result
-
-
-
 
 
 def sync_acquisition_for_streams(
@@ -932,7 +935,6 @@ def sync_acquisition_for_streams(
 
             external_files = valid[col].tolist()
 
-
             start_col = f"{col}_start"
             if start_col in df.columns:
                 starts = valid[start_col].values.astype(float)
@@ -943,22 +945,18 @@ def sync_acquisition_for_streams(
             starting_frames: list[int] = []
             frame_count = 0
 
-
-
             for i, (_, row) in enumerate(valid.iterrows()):
                 file_start = float(starts[i])
                 duration = float(row["stop_time"]) - float(row["start_time"])
                 n_samples = max(1, int(duration * rate))
-    
+
                 ts = file_start + np.arange(n_samples) / rate
                 timestamps_parts.append(ts)
                 starting_frames.append(frame_count)
                 frame_count += n_samples
 
             if device not in [d.name for d in nwbfile.devices.values()]:
-                nwbfile.create_device(
-                    name=device, description=f"{stream} device {device}"
-                )
+                nwbfile.create_device(name=device, description=f"{stream} device {device}")
 
             acq_name = f"{stream}_{device}"
             if acq_name in nwbfile.acquisition:
@@ -976,12 +974,6 @@ def sync_acquisition_for_streams(
             )
 
 
-
-
-
-
-
-
 def _infer_times_from_media(
     trial_table: pd.DataFrame,
     video_cols: list[str],
@@ -991,17 +983,19 @@ def _infer_times_from_media(
     pose_fps: float | None = None,
 ) -> pd.DataFrame:
     if not (video_cols or audio_cols or pose_cols):
-        raise ValueError(
-            "start_time/stop_time missing and no video_*/audio_*/pose_* columns to infer durations from"
-        )
+        raise ValueError("start_time/stop_time missing and no video_*/audio_*/pose_* columns to infer durations from")
 
     table = trial_table.copy()
     starts, stops = [], []
     cursor = 0.0
     for _, row in table.iterrows():
         duration = _probe_trial_duration(
-            row, video_cols, audio_cols, media_root,
-            pose_cols=pose_cols, pose_fps=pose_fps,
+            row,
+            video_cols,
+            audio_cols,
+            media_root,
+            pose_cols=pose_cols,
+            pose_fps=pose_fps,
         )
         starts.append(cursor)
         stops.append(cursor + duration)
@@ -1047,7 +1041,6 @@ def _probe_trial_duration(
     raise ValueError(f"Could not probe duration for trial row: {row.to_dict()}")
 
 
-
 def _resolve_media_path(filename: Any, media_root: Path | None) -> Path | None:
     if not filename or pd.isna(filename):
         return None
@@ -1091,19 +1084,21 @@ def align_media_per_trial(
     Examples
     --------
     >>> import pandas as pd, ethograph as eto
-    >>> table = pd.DataFrame({
-    ...     "trial": [1, 2, 3],
-    ...     "video_cam-1": ["t1.mp4", "t2.mp4", "t3.mp4"],
-    ...     "pose_cam-1": ["t1.h5", "t2.h5", "t3.h5"],
-    ... })
+    >>> table = pd.DataFrame(
+    ...     {
+    ...         "trial": [1, 2, 3],
+    ...         "video_cam-1": ["t1.mp4", "t2.mp4", "t3.mp4"],
+    ...         "pose_cam-1": ["t1.h5", "t2.h5", "t3.h5"],
+    ...     }
+    ... )
     >>> eto.create_alignment(table, {"video": 30.0, "pose": 30.0}, "out/.ethograph/alignment.nwb")
     """
     from datetime import datetime
     from uuid import uuid4
 
+    import pynwb
     from dateutil.tz import tzlocal
     from pynwb import NWBHDF5IO
-    import pynwb
 
     nwbfile = pynwb.NWBFile(
         session_description=session_description,
@@ -1118,9 +1113,17 @@ def align_media_per_trial(
     pose_cols = [c for c in media_cols if c.startswith("pose_")]
     has_times = {"start_time", "stop_time"}.issubset(trial_table.columns)
 
-    table = trial_table if has_times else _infer_times_from_media(
-        trial_table, video_cols, audio_cols, media_root,
-        pose_cols=pose_cols, pose_fps=pose_fps,
+    table = (
+        trial_table
+        if has_times
+        else _infer_times_from_media(
+            trial_table,
+            video_cols,
+            audio_cols,
+            media_root,
+            pose_cols=pose_cols,
+            pose_fps=pose_fps,
+        )
     )
 
     if "trial" in table.columns:
@@ -1151,7 +1154,6 @@ def align_media_per_trial(
     return nwbfile
 
 
-
 def align_media_from_streams(
     trials: pd.DataFrame,
     streams: list[dict],
@@ -1170,9 +1172,9 @@ def align_media_from_streams(
         List of stream dicts, each with::
 
             {
-                "name": "video_cam-1",       # acquisition item name
-                "files": ["t1.mp4", ...],    # one per trial (full paths)
-                "rate": 30.0,                # sampling rate
+                "name": "video_cam-1",  # acquisition item name
+                "files": ["t1.mp4", ...],  # one per trial (full paths)
+                "rate": 30.0,  # sampling rate
             }
 
         For session-wide files (one file spanning all trials)::
@@ -1181,7 +1183,7 @@ def align_media_from_streams(
                 "name": "audio_mic-1",
                 "files": ["session.wav"],
                 "rate": 44100.0,
-                "starting_time": 0.0,        # when file starts in session time
+                "starting_time": 0.0,  # when file starts in session time
             }
 
         For streams with explicit timestamps (irregular)::
@@ -1315,14 +1317,12 @@ def align_media_from_streams(
     return output
 
 
-from pathlib import Path
-import numpy as np
-from pynwb import NWBHDF5IO
+import gc  # noqa: E402
+import tempfile  # noqa: E402
+from contextlib import contextmanager  # noqa: E402
 
-from contextlib import contextmanager
-from pathlib import Path
-import gc, os, tempfile
-from pynwb import NWBHDF5IO
+from pynwb import NWBHDF5IO  # noqa: E402
+
 
 @contextmanager
 def edit_nwb(path):

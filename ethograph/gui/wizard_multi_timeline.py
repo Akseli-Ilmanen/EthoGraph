@@ -10,8 +10,16 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
-from qtpy.QtCore import QRegularExpression, QRectF, Qt
-from qtpy.QtGui import QColor, QBrush, QFont, QPainterPath, QPen, QSyntaxHighlighter, QTextCharFormat
+from qtpy.QtCore import QRectF, QRegularExpression, Qt
+from qtpy.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QPainterPath,
+    QPen,
+    QSyntaxHighlighter,
+    QTextCharFormat,
+)
 from qtpy.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -24,16 +32,16 @@ from qtpy.QtWidgets import (
     QPushButton,
     QSlider,
     QStackedWidget,
-    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from ethograph.gui.wizard_multi_codegen import generate_alignment_code
 from ethograph.gui.dialog_function_params import _do_open_source
 from ethograph.gui.wizard_media_files import extract_file_row
+from ethograph.gui.wizard_multi_codegen import generate_alignment_code
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
 
 logger = logging.getLogger(__name__)
@@ -89,6 +97,7 @@ class TimeAxis(pg.AxisItem):
 
         return out
 
+
 # Colors per modality (matching dialog_media_files.py palette)
 MODALITY_COLORS = {
     "video": "#50c8b4",
@@ -109,10 +118,38 @@ class PythonCodeHighlighter(QSyntaxHighlighter):
         keyword_fmt = QTextCharFormat()
         keyword_fmt.setForeground(QColor("#c586c0"))
         for kw in [
-            "and", "as", "assert", "break", "class", "continue", "def", "del",
-            "elif", "else", "except", "False", "finally", "for", "from", "if",
-            "import", "in", "is", "lambda", "None", "nonlocal", "not", "or",
-            "pass", "raise", "return", "True", "try", "while", "with", "yield",
+            "and",
+            "as",
+            "assert",
+            "break",
+            "class",
+            "continue",
+            "def",
+            "del",
+            "elif",
+            "else",
+            "except",
+            "False",
+            "finally",
+            "for",
+            "from",
+            "if",
+            "import",
+            "in",
+            "is",
+            "lambda",
+            "None",
+            "nonlocal",
+            "not",
+            "or",
+            "pass",
+            "raise",
+            "return",
+            "True",
+            "try",
+            "while",
+            "with",
+            "yield",
         ]:
             self._rules.append((QRegularExpression(rf"\\b{kw}\\b"), keyword_fmt))
 
@@ -145,12 +182,13 @@ class PythonCodeHighlighter(QSyntaxHighlighter):
 # Notebook conversion helper
 # ---------------------------------------------------------------------------
 
+
 def _code_to_notebook(code: str) -> dict:
     """Convert Python code with section markers to Jupyter notebook format."""
     import re
 
-    section_pattern = r'^# ─── \d+\. .+ ───$'
-    lines = code.split('\n')
+    section_pattern = r"^# ─── \d+\. .+ ───$"
+    lines = code.split("\n")
 
     cells = []
     current_cell_lines = []
@@ -158,29 +196,33 @@ def _code_to_notebook(code: str) -> dict:
     for line in lines:
         if re.match(section_pattern, line):
             if current_cell_lines:
-                cell_code = '\n'.join(current_cell_lines).strip()
+                cell_code = "\n".join(current_cell_lines).strip()
                 if cell_code:
-                    cells.append({
-                        "cell_type": "code",
-                        "execution_count": None,
-                        "metadata": {},
-                        "outputs": [],
-                        "source": cell_code.split('\n')
-                    })
+                    cells.append(
+                        {
+                            "cell_type": "code",
+                            "execution_count": None,
+                            "metadata": {},
+                            "outputs": [],
+                            "source": cell_code.split("\n"),
+                        }
+                    )
             current_cell_lines = [line]
         else:
             current_cell_lines.append(line)
 
     if current_cell_lines:
-        cell_code = '\n'.join(current_cell_lines).strip()
+        cell_code = "\n".join(current_cell_lines).strip()
         if cell_code:
-            cells.append({
-                "cell_type": "code",
-                "execution_count": None,
-                "metadata": {},
-                "outputs": [],
-                "source": cell_code.split('\n')
-            })
+            cells.append(
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": cell_code.split("\n"),
+                }
+            )
 
     notebook = {
         "cells": cells,
@@ -188,15 +230,12 @@ def _code_to_notebook(code: str) -> dict:
             "kernelspec": {
                 "display_name": "Python 3",
                 "language": "python",
-                "name": "python3"
+                "name": "python3",
             },
-            "language_info": {
-                "name": "python",
-                "version": "3.10.0"
-            }
+            "language_info": {"name": "python", "version": "3.10.0"},
         },
         "nbformat": 4,
-        "nbformat_minor": 4
+        "nbformat_minor": 4,
     }
 
     return notebook
@@ -206,9 +245,15 @@ def _code_to_notebook(code: str) -> dict:
 # Drawing helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_rounded_bar(
-    x0: float, x1: float, y0: float, y1: float,
-    brush: QBrush, pen: QPen, radius: float = 0.08,
+    x0: float,
+    x1: float,
+    y0: float,
+    y1: float,
+    brush: QBrush,
+    pen: QPen,
+    radius: float = 0.08,
 ) -> QGraphicsPathItem:
     path = QPainterPath()
     rect = QRectF(x0, y0, x1 - x0, y1 - y0)
@@ -228,7 +273,10 @@ def _collect_ephys_rows(
     Returns list of (label, t_start, t_end) tuples — one per ephys source.
     """
     from ethograph.io.nwb_alignment import NWBAlignment
-    from ethograph.utils.stream_durations import get_ephys_duration, get_kilosort_duration
+    from ethograph.utils.stream_durations import (
+        get_ephys_duration,
+        get_kilosort_duration,
+    )
 
     rows: list[tuple[str, float, float]] = []
     sio = nwb_alignment
@@ -295,10 +343,7 @@ def draw_session_timeline(
     # Collect acquisition names that have external files (video/audio/pose)
     acq_names = []
     if is_nwb:
-        acq_names = [
-            name for name, series in sio.nwb.acquisition.items()
-            if getattr(series, "external_file", None)
-        ]
+        acq_names = [name for name, series in sio.nwb.acquisition.items() if getattr(series, "external_file", None)]
 
     # Collect ephys rows
     ephys_rows = _collect_ephys_rows(sio, app_state)
@@ -357,7 +402,8 @@ def draw_session_timeline(
     for trial_id in trials:
         t0 = sio.start_time(trial_id)
         line = pg.InfiniteLine(
-            pos=t0, angle=90,
+            pos=t0,
+            angle=90,
             pen=pg.mkPen("#ffffff", width=1, style=Qt.PenStyle.DotLine),
         )
         plot.addItem(line)
@@ -379,9 +425,11 @@ def draw_session_timeline(
     return max_t
 
 
-
 def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
-    from ethograph.utils.stream_durations import get_kilosort_duration, probe_duration
+    from ethograph.utils.stream_durations import (
+        get_kilosort_duration,
+        probe_duration,
+    )
 
     durations: dict[str, dict[str, float]] = {}
     for name in ["video", "pose", "audio", "ephys"]:
@@ -421,7 +469,6 @@ def _compute_file_durations(state: WizardState) -> dict[str, dict[str, float]]:
     return durations
 
 
-
 def _normalize_trial_key(value: object) -> object:
     """Normalize trial identifiers so numeric strings match integer trial IDs."""
     if value is None:
@@ -458,9 +505,9 @@ class TimelinePage(QWidget):
         # --- Page 0: Aligned table view ---
         table_page = QWidget()
         table_layout = QVBoxLayout(table_page)
-        table_layout.addWidget(QLabel(
-            "All files are aligned to trials. Each row shows which files belong to each trial."
-        ))
+        table_layout.addWidget(
+            QLabel("All files are aligned to trials. Each row shows which files belong to each trial.")
+        )
         self._aligned_table = QTableWidget()
         self._aligned_table.setStyleSheet(
             "QTableWidget { background-color: #1a1d21; color: #d4d4d4; gridline-color: #3e3e3e; }"
@@ -473,10 +520,12 @@ class TimelinePage(QWidget):
         # --- Page 1: Timeline view ---
         timeline_page = QWidget()
         timeline_layout = QVBoxLayout(timeline_page)
-        timeline_layout.addWidget(QLabel(
-            "Review how your files align in time. "
-            "Colored bars show file durations; dotted lines mark trial boundaries."
-        ))
+        timeline_layout.addWidget(
+            QLabel(
+                "Review how your files align in time. "
+                "Colored bars show file durations; dotted lines mark trial boundaries."
+            )
+        )
         timeline_layout.addSpacing(4)
 
         self._plot = pg.PlotWidget(axisItems={"bottom": TimeAxis(orientation="bottom")})
@@ -510,20 +559,19 @@ class TimelinePage(QWidget):
         # Tab 2: Python code
         code_tab = QWidget()
         code_layout = QVBoxLayout(code_tab)
-        code_layout.addWidget(QLabel(
-            "Executable Python code that reproduces your alignment setup. "
-            "Copy this code to customize or debug your workflow."
-        ))
+        code_layout.addWidget(
+            QLabel(
+                "Executable Python code that reproduces your alignment setup. "
+                "Copy this code to customize or debug your workflow."
+            )
+        )
         code_layout.addSpacing(4)
 
         self._code_editor = QPlainTextEdit()
         self._code_editor.setReadOnly(True)
         self._code_editor.setFont(QFont("Consolas", 10))
         self._code_editor.setStyleSheet(
-            "QPlainTextEdit { "
-            "background-color: #1e1e1e; color: #d4d4d4; "
-            "border: 1px solid #3e3e3e; "
-            "}"
+            "QPlainTextEdit { background-color: #1e1e1e; color: #d4d4d4; border: 1px solid #3e3e3e; }"
         )
         self._code_highlighter = PythonCodeHighlighter(self._code_editor.document())
         code_layout.addWidget(self._code_editor, stretch=1)
@@ -578,10 +626,7 @@ class TimelinePage(QWidget):
         durations = _compute_file_durations(state)
         state.file_durations = durations
 
-        enabled_modalities = [
-            name for name in ["video", "pose", "audio", "ephys"]
-            if getattr(state, name).enabled
-        ]
+        enabled_modalities = [name for name in ["video", "pose", "audio", "ephys"] if getattr(state, name).enabled]
 
         # Build rows: each (label, modality_name, device_name_or_None)
         rows: list[tuple[str, str, str | None]] = []
@@ -630,7 +675,9 @@ class TimelinePage(QWidget):
             trial_mapping: dict[str, int] = {}
             for f in cfg.pattern.files:
                 row_data = extract_file_row(
-                    f, cfg.pattern.segments, cfg.pattern.tokenize_mode,
+                    f,
+                    cfg.pattern.segments,
+                    cfg.pattern.tokenize_mode,
                     regex_pattern=cfg.pattern.regex_pattern,
                 )
                 fp = str(f)
@@ -668,14 +715,23 @@ class TimelinePage(QWidget):
                     continue
                 if cfg.file_mode == "aligned_to_trial":
                     trial_idx = file_trial_index_map.get(name, {}).get(filepath)
-                    x_start = offset + trial_start_by_index.get(trial_idx, cum) if trial_idx is not None else offset + cum
+                    x_start = (
+                        offset + trial_start_by_index.get(trial_idx, cum) if trial_idx is not None else offset + cum
+                    )
                 else:
                     x_start = offset + cum
                 cum += dur
 
                 if not math.isfinite(x_start):
                     continue
-                bar = _make_rounded_bar(x_start, x_start + dur, y_base + 0.3, y_base + 0.7, bar_brush, bar_pen)
+                bar = _make_rounded_bar(
+                    x_start,
+                    x_start + dur,
+                    y_base + 0.3,
+                    y_base + 0.7,
+                    bar_brush,
+                    bar_pen,
+                )
                 self._plot.addItem(bar)
                 self._items.append(bar)
                 max_time = max(max_time, x_start + dur)
@@ -687,7 +743,8 @@ class TimelinePage(QWidget):
                 if not math.isfinite(t0):
                     continue
                 line = pg.InfiniteLine(
-                    pos=t0, angle=90,
+                    pos=t0,
+                    angle=90,
                     pen=pg.mkPen("#ffffff", width=1, style=Qt.PenStyle.DotLine),
                 )
                 self._plot.addItem(line)
@@ -723,9 +780,9 @@ class TimelinePage(QWidget):
 
         # Collect stream_device columns from the trial table
         stream_cols = [
-            c for c in state.trial_table.columns
-            if c not in ("trial", "start_time", "stop_time")
-            and not c.endswith("_start")
+            c
+            for c in state.trial_table.columns
+            if c not in ("trial", "start_time", "stop_time") and not c.endswith("_start")
         ]
 
         self._aligned_table.setRowCount(len(trial_ids))
@@ -739,9 +796,7 @@ class TimelinePage(QWidget):
                 cell = Path(str(val)).name if val else ""
                 self._aligned_table.setItem(row, col_idx + 1, QTableWidgetItem(cell))
 
-        self._aligned_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents
-        )
+        self._aligned_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
 
     def _populate_aligned_table_from_alignment(self, nwb_alignment):
         """Build a table from TrialTree's NWB session trials_df."""
@@ -753,9 +808,7 @@ class TimelinePage(QWidget):
         trial_col = df["trial"].tolist() if "trial" in df.columns else list(range(1, len(df) + 1))
 
         stream_cols = [
-            c for c in df.columns
-            if c not in ("trial", "start_time", "stop_time")
-            and not c.endswith("_start")
+            c for c in df.columns if c not in ("trial", "start_time", "stop_time") and not c.endswith("_start")
         ]
 
         self._aligned_table.setRowCount(len(trial_col))
@@ -769,9 +822,7 @@ class TimelinePage(QWidget):
                 cell = Path(str(val)).name if val else ""
                 self._aligned_table.setItem(row, col_idx + 1, QTableWidgetItem(cell))
 
-        self._aligned_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents
-        )
+        self._aligned_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
 
     def _get_devices(self, name: str, state: WizardState) -> list[str]:
         if name == "video" and state.camera_names:
@@ -802,7 +853,8 @@ class TimelinePage(QWidget):
 
     def _browse_output(self):
         result = QFileDialog.getSaveFileName(
-            self, "Save dataset",
+            self,
+            "Save dataset",
             "session.nc",
             "NetCDF files (*.nc);;All files (*)",
         )
@@ -865,9 +917,7 @@ class TimelinePage(QWidget):
         """
         self._clear()
         self._state = None
-        self._code_editor.setPlainText(
-            "# Open via the New Dataset Wizard to generate alignment code."
-        )
+        self._code_editor.setPlainText("# Open via the New Dataset Wizard to generate alignment code.")
 
         # Detect mode: timeline if start_time exists or no filename columns
         sio = getattr(app_state, "nwb_alignment", None)
@@ -880,9 +930,7 @@ class TimelinePage(QWidget):
         df = sio.trials_df
         has_timing = not df.empty and "start_time" in df.columns
         _STREAM_PREFIXES = ("video_", "pose_", "audio_", "ephys_")
-        has_filename_cols = not df.empty and any(
-            col.startswith(_STREAM_PREFIXES) for col in df.columns
-        )
+        has_filename_cols = not df.empty and any(col.startswith(_STREAM_PREFIXES) for col in df.columns)
 
         if has_filename_cols and not has_timing:
             self._viz_stack.setCurrentIndex(0)
@@ -890,8 +938,8 @@ class TimelinePage(QWidget):
         else:
             self._viz_stack.setCurrentIndex(1)
             self._total_duration = draw_session_timeline(
-                self._plot, sio, items_out=self._items,
+                self._plot,
+                sio,
+                items_out=self._items,
                 app_state=app_state,
             )
-
-

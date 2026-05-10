@@ -10,12 +10,15 @@ from typing import TYPE_CHECKING
 import jinja2
 
 from ethograph.io.validation import (
-    AUDIO_EXTENSIONS, EPHYS_EXTENSIONS, POSE_EXTENSIONS, VIDEO_EXTENSIONS,
+    AUDIO_EXTENSIONS,
+    EPHYS_EXTENSIONS,
+    POSE_EXTENSIONS,
+    VIDEO_EXTENSIONS,
 )
 
 if TYPE_CHECKING:
-    from ethograph.gui.wizard_overview import ModalityConfig, WizardState
     from ethograph.gui.wizard_media_files import FilePattern
+    from ethograph.gui.wizard_overview import ModalityConfig, WizardState
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
@@ -33,8 +36,8 @@ class ModalityContext:
     single_file_path: str = ""
     nested_subfolders: bool = False
     extensions: list[str] = field(default_factory=list)
-    regex: str | None = None          # non-anchored pattern for .search()
-    device_role: str | None = None    # named group that carries device: "camera" | "mic"
+    regex: str | None = None  # non-anchored pattern for .search()
+    device_role: str | None = None  # named group that carries device: "camera" | "mic"
     constant_offset: float = 0.0
     fps: float | None = None
     audio_sr: float | None = None
@@ -44,17 +47,19 @@ class ModalityContext:
 # Regex: non-anchored pattern from wizard segments
 # ---------------------------------------------------------------------------
 
-_TOKEN = r'[^/._\-\s]+'
+_TOKEN = r"[^/._\-\s]+"
 
 
 def _segments_to_regex(pattern: FilePattern) -> str | None:
     """Return a non-anchored regex with named groups for role-bearing segments."""
-    from ethograph.gui.wizard_media_files import FOLDER_POSITION, _tokenize, _find_token_spans
+    from ethograph.gui.wizard_media_files import (
+        FOLDER_POSITION,
+        _find_token_spans,
+        _tokenize,
+    )
 
     has_roles = any(
-        seg.varying and seg.role and seg.role != "ignore"
-        for seg in pattern.segments
-        if seg.position != FOLDER_POSITION
+        seg.varying and seg.role and seg.role != "ignore" for seg in pattern.segments if seg.position != FOLDER_POSITION
     )
     if not has_roles or not pattern.files:
         return None
@@ -69,7 +74,7 @@ def _segments_to_regex(pattern: FilePattern) -> str | None:
         if seg.position == FOLDER_POSITION:
             continue
         if idx < len(spans) and prev_end < spans[idx][0]:
-            parts.append(re.escape(ref[prev_end: spans[idx][0]]))
+            parts.append(re.escape(ref[prev_end : spans[idx][0]]))
         if idx < len(spans):
             prev_end = spans[idx][1]
         if seg.varying and seg.role and seg.role != "ignore":
@@ -117,11 +122,7 @@ def _build_modality_context(name: str, cfg: ModalityConfig, state: WizardState) 
             if raw:
                 regex = raw.replace('"', '\\"')
 
-    device_role = (
-        "mic" if name == "audio"
-        else "camera" if name in ("video", "pose")
-        else None
-    )
+    device_role = "mic" if name == "audio" else "camera" if name in ("video", "pose") else None
 
     return ModalityContext(
         name=name,
@@ -146,7 +147,7 @@ def _stream_rates_literal(modalities: list[ModalityContext]) -> str:
         elif mod.name == "audio" and mod.audio_sr:
             rates[mod.name] = float(mod.audio_sr)
     if not rates:
-        return "{}  # TODO: add sampling rates, e.g. {\"video\": 30.0}"
+        return '{}  # TODO: add sampling rates, e.g. {"video": 30.0}'
     return "{" + ", ".join(f'"{k}": {v}' for k, v in rates.items()) + "}"
 
 
@@ -227,5 +228,5 @@ def generate_alignment_code(state: WizardState) -> str:
 
 
 def _clean_blank_lines(text: str) -> str:
-    text = re.sub(r'\n{4,}', '\n\n\n', text)
-    return '\n'.join(line.rstrip() for line in text.split('\n'))
+    text = re.sub(r"\n{4,}", "\n\n\n", text)
+    return "\n".join(line.rstrip() for line in text.split("\n"))

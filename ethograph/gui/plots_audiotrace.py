@@ -12,8 +12,16 @@ from typing import Optional
 import numpy as np
 import pyqtgraph as pg
 
-from .app_constants import AUDIOTRACE_DEBOUNCE_MS, DEFAULT_BUFFER_MULTIPLIER_AUDIO
-from ..io.plot_sources import FileSource, PlotSource, SampleSlice, WindowedBuffer
+from ..io.plot_sources import (
+    FileSource,
+    PlotSource,
+    SampleSlice,
+    WindowedBuffer,
+)
+from .app_constants import (
+    AUDIOTRACE_DEBOUNCE_MS,
+    DEFAULT_BUFFER_MULTIPLIER_AUDIO,
+)
 from .plots_base import BasePlot, ThrottleDebounce
 from .plots_spectrogram import SharedAudioCache
 
@@ -29,14 +37,14 @@ class AudioTracePlot(BasePlot):
     def __init__(self, app_state, parent=None):
         super().__init__(app_state, parent)
 
-        self.setLabel('left', 'Amplitude')
+        self.setLabel("left", "Amplitude")
 
         self.trace_item = pg.PlotDataItem(
-            connect='all',
+            connect="all",
             antialias=False,
             skipFiniteCheck=True,
         )
-        self.trace_item.setPen(pg.mkPen(color='#00aa00', width=1.5))
+        self.trace_item.setPen(pg.mkPen(color="#00aa00", width=1.5))
         self.addItem(self.trace_item)
 
         self._buffer = WindowedBuffer(
@@ -82,14 +90,14 @@ class AudioTracePlot(BasePlot):
         self.trace_item.setData(times, amplitudes)
 
         if step > 1:
-            self.trace_item.setPen(pg.mkPen(color='#00aa00', width=1.0))
+            self.trace_item.setPen(pg.mkPen(color="#00aa00", width=1.0))
             self.trace_item.setSymbol(None)
         else:
-            self.trace_item.setPen(pg.mkPen(color='#00aa00', width=2.0))
+            self.trace_item.setPen(pg.mkPen(color="#00aa00", width=2.0))
             if len(times) < 200:
-                self.trace_item.setSymbol('o')
+                self.trace_item.setSymbol("o")
                 self.trace_item.setSymbolSize(4)
-                self.trace_item.setSymbolBrush('#00aa00')
+                self.trace_item.setSymbolBrush("#00aa00")
             else:
                 self.trace_item.setSymbol(None)
 
@@ -145,7 +153,7 @@ class AudioTracePlot(BasePlot):
     def _on_view_range_changed(self):
         if not self.isVisible():
             return
-        if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
+        if not hasattr(self.app_state, "ds") or self.app_state.ds is None:
             return
         self._td.trigger()
 
@@ -173,8 +181,8 @@ def _downsample_minmax(
     if len(ts) == 0:
         return None
 
-    i0 = int(np.searchsorted(ts, t0, side='left'))
-    i1 = int(np.searchsorted(ts, t1, side='right'))
+    i0 = int(np.searchsorted(ts, t0, side="left"))
+    i1 = int(np.searchsorted(ts, t1, side="right"))
     if i1 <= i0:
         return None
 

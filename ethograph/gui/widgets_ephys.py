@@ -11,7 +11,14 @@ import pandas as pd
 import pynapple as nap
 import pyqtgraph as pg
 from napari.viewer import Viewer
-from qtpy.QtCore import Qt, QItemSelectionModel, QRect, QRectF, QSortFilterProxyModel, Signal
+from qtpy.QtCore import (
+    QItemSelectionModel,
+    QRect,
+    QRectF,
+    QSortFilterProxyModel,
+    Qt,
+    Signal,
+)
 from qtpy.QtGui import QBrush, QColor, QPen, QStandardItem, QStandardItemModel
 from qtpy.QtWidgets import (
     QAbstractItemView,
@@ -39,37 +46,46 @@ from qtpy.QtWidgets import (
 )
 from scipy.ndimage import gaussian_filter1d
 
-from ethograph.features.neural import build_tsgroup, compute_pca, firing_rate_to_xarray
+from ethograph.features.neural import (
+    build_tsgroup,
+    compute_pca,
+    firing_rate_to_xarray,
+)
 from ethograph.gui.notify import notify
+from ethograph.utils.qt import (
+    find_combo_index,
+    get_combo_value,
+    set_combo_to_value,
+)
 
-from .app_constants import CLUSTER_TABLE_MAX_HEIGHT, CLUSTER_TABLE_ROW_HEIGHT
-from ethograph.utils.qt import find_combo_index, get_combo_value, set_combo_to_value
-from .plots_ephystrace import GenericEphysLoader, get_loader as get_ephys_loader
 from ..io.plot_sources import FileSource
+from .app_constants import CLUSTER_TABLE_MAX_HEIGHT, CLUSTER_TABLE_ROW_HEIGHT
+from .plots_ephystrace import GenericEphysLoader
+from .plots_ephystrace import get_loader as get_ephys_loader
 
 logger = logging.getLogger(__name__)
 
 _CLUSTER_COLORS = [
-    (228, 26, 28),    # red
-    (55, 126, 184),   # blue
-    (77, 175, 74),    # green
-    (152, 78, 163),   # purple
-    (255, 127, 0),    # orange
-    (255, 255, 51),   # yellow
-    (166, 86, 40),    # brown
+    (228, 26, 28),  # red
+    (55, 126, 184),  # blue
+    (77, 175, 74),  # green
+    (152, 78, 163),  # purple
+    (255, 127, 0),  # orange
+    (255, 255, 51),  # yellow
+    (166, 86, 40),  # brown
     (247, 129, 191),  # pink
     (153, 153, 153),  # grey
-    (0, 210, 213),    # cyan
-    (180, 210, 36),   # lime
-    (240, 60, 100),   # magenta
+    (0, 210, 213),  # cyan
+    (180, 210, 36),  # lime
+    (240, 60, 100),  # magenta
     (100, 180, 255),  # sky
-    (200, 130, 0),    # amber
+    (200, 130, 0),  # amber
     (100, 220, 150),  # mint
     (180, 100, 220),  # lavender
     (220, 180, 100),  # sand
-    (100, 140, 80),   # olive
+    (100, 140, 80),  # olive
     (220, 100, 100),  # coral
-    (80, 180, 180),   # teal
+    (80, 180, 180),  # teal
 ]
 
 _RAWIO_TO_DISPLAY = {
@@ -200,8 +216,8 @@ class ProbeChannelDialog(QDialog):
         self._plot_widget = pg.PlotWidget()
         self._plot_widget.setAspectLocked(True)
         self._plot_widget.showGrid(x=True, y=True, alpha=0.3)
-        self._plot_widget.setLabel('bottom', 'X position')
-        self._plot_widget.setLabel('left', 'Y position (depth)')
+        self._plot_widget.setLabel("bottom", "X position")
+        self._plot_widget.setLabel("left", "Y position (depth)")
         right_layout.addWidget(self._plot_widget)
 
         splitter.addWidget(left)
@@ -265,9 +281,10 @@ class ProbeChannelDialog(QDialog):
             self._plot_widget.removeItem(self._scatter)
 
         self._scatter = pg.ScatterPlotItem(
-            x=x, y=y,
+            x=x,
+            y=y,
             size=_PROBE_DOT_SIZE,
-            pen=pg.mkPen(color='w', width=0.5),
+            pen=pg.mkPen(color="w", width=0.5),
             brush=brushes,
             hoverable=True,
             hoverSize=_PROBE_DOT_SIZE + 4,
@@ -284,7 +301,7 @@ class ProbeChannelDialog(QDialog):
             hw_ch = int(self._channel_map[i])
             ti = pg.TextItem(
                 text=str(hw_ch),
-                color='w',
+                color="w",
                 anchor=(0.5, 0.5),
                 fill=pg.mkBrush(0, 0, 0, 160),
             )
@@ -412,7 +429,9 @@ class ParamsDialog(QDialog):
 
     def _browse_dat(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select raw ephys data file", "",
+            self,
+            "Select raw ephys data file",
+            "",
             "Raw data (*.dat *.bin *.raw);;All files (*)",
         )
         if path:
@@ -436,7 +455,7 @@ def _write_params_py(folder: Path, params: dict):
         f"dtype = '{params.get('dtype', 'int16')}'",
         f"offset = {params.get('offset', 0)}",
         f"sample_rate = {params.get('sample_rate', 30000.0)}",
-        f"hp_filtered = False",
+        "hp_filtered = False",
     ]
     (folder / "params.py").write_text("\n".join(lines) + "\n")
 
@@ -596,7 +615,10 @@ class _NumFilterDialog(QDialog):
     def get_filter(self) -> tuple[str, float] | None:
         if self._cleared:
             return None
-        return (">=" if self._op_combo.currentText() == "\u2265" else "<=", self._spin.value())
+        return (
+            ">=" if self._op_combo.currentText() == "\u2265" else "<=",
+            self._spin.value(),
+        )
 
 
 class _FilterHeaderView(QHeaderView):
@@ -701,7 +723,7 @@ class _ClusterIdDelegate(QStyledItemDelegate):
 class EphysWidget(QWidget):
     """Ephys controls with toggle-button tabs: Ephys trace | Neuron jumping."""
 
-    cluster_selected = Signal(int)   # emitted when a single cluster row is selected
+    cluster_selected = Signal(int)  # emitted when a single cluster row is selected
 
     def __init__(self, napari_viewer: Viewer, app_state, parent=None):
         super().__init__(parent=parent)
@@ -714,8 +736,8 @@ class EphysWidget(QWidget):
 
         self._cluster_df: pd.DataFrame | None = None
         self._spike_clusters: np.ndarray | None = None
-        self._spike_samples: np.ndarray | None = None   # raw integer Kilosort sample indices
-        self._spike_times_s: np.ndarray | None = None   # float64 seconds, derived on load
+        self._spike_samples: np.ndarray | None = None  # raw integer Kilosort sample indices
+        self._spike_times_s: np.ndarray | None = None  # float64 seconds, derived on load
         self._channel_positions: np.ndarray | None = None
         self._channel_map: np.ndarray | None = None
         self._probe_channel_order: np.ndarray | None = None
@@ -796,9 +818,7 @@ class EphysWidget(QWidget):
         if self._psth_dialog is None or not self._psth_dialog.isVisible():
             nav = getattr(self.data_widget, "navigation_widget", None)
             labels_w = getattr(self.data_widget, "labels_widget", None) if self.data_widget else None
-            self._psth_dialog = PSTHDialog(
-                self.app_state, self, labels_w, nav, parent=self
-            )
+            self._psth_dialog = PSTHDialog(self.app_state, self, labels_w, nav, parent=self)
             self._psth_dialog.trial_jump_requested.connect(self._on_psth_trial_jump)
 
         self._show_panel("traceview")
@@ -831,7 +851,6 @@ class EphysWidget(QWidget):
         group.setLayout(group_layout)
         layout.addWidget(group)
 
-
         # Channel spinbox
         self.ephys_channel_label = QLabel("Ephys channel:")
         self.ephys_channel_spin = QSpinBox()
@@ -849,9 +868,7 @@ class EphysWidget(QWidget):
         self.ephys_gain_spin.setSingleStep(0.1)
         self.ephys_gain_spin.setDecimals(1)
         self.ephys_gain_spin.setValue(0.0)
-        self.ephys_gain_spin.setToolTip(
-            "Display gain: negative = amplify, positive = attenuate (Ctrl+Wheel)"
-        )
+        self.ephys_gain_spin.setToolTip("Display gain: negative = amplify, positive = attenuate (Ctrl+Wheel)")
         self.ephys_gain_spin.valueChanged.connect(self._on_ephys_gain_changed)
 
         self.ephys_auto_gain_cb = QCheckBox("Auto gain")
@@ -883,7 +900,9 @@ class EphysWidget(QWidget):
         self.n_closest_spin = QSpinBox()
         self.n_closest_spin.setRange(1, 384)
         self.n_closest_spin.setValue(5)
-        self.n_closest_spin.setToolTip("Number of spatially closest channels for waveform display. Only works for non split/merged clusters.")
+        self.n_closest_spin.setToolTip(
+            "Number of spatially closest channels for waveform display. Only works for non split/merged clusters."
+        )
         self.n_closest_spin.valueChanged.connect(self._update_highlight_label)
         probe_row_layout.addWidget(self.n_closest_spin)
         probe_row_layout.addStretch()
@@ -898,7 +917,6 @@ class EphysWidget(QWidget):
         self._highlight_label = QLabel()
         self._update_highlight_label()
         _sel_row.addWidget(self._highlight_label)
-
 
         self._select_visible_btn = QPushButton("All visible rows")
         self._select_visible_btn.setToolTip(
@@ -966,9 +984,7 @@ class EphysWidget(QWidget):
         self.cluster_table.selectionModel().selectionChanged.connect(self._on_cluster_row_selected)
 
         cluster_table_header = QLabel("Cluster Table")
-        cluster_table_header.setStyleSheet(
-            "font-size: 11px; font-weight: bold; color: #aaa; padding: 2px 0px 0px 2px;"
-        )
+        cluster_table_header.setStyleSheet("font-size: 11px; font-weight: bold; color: #aaa; padding: 2px 0px 0px 2px;")
         layout.addWidget(cluster_table_header)
         layout.addWidget(self.cluster_table)
 
@@ -982,7 +998,6 @@ class EphysWidget(QWidget):
     # ------------------------------------------------------------------
     # Ephys trace handlers
     # ------------------------------------------------------------------
-
 
     def _resolve_phy_loader(self) -> tuple:
         """Return (loader, channel_idx) for the Phy-Viewer panel, or (None, 0).
@@ -1000,17 +1015,19 @@ class EphysWidget(QWidget):
         if not ephys_path:
             return None, 0
 
-        if (
-            self._kilosort_params
-            and Path(ephys_path).suffix.lower() in {".dat", ".bin", ".raw"}
-        ):
+        if self._kilosort_params and Path(ephys_path).suffix.lower() in {
+            ".dat",
+            ".bin",
+            ".raw",
+        }:
             n_ch = self._kilosort_params.get("n_channels_dat")
             if n_ch is None and self._channel_map is not None:
                 n_ch = int(self._channel_map.max()) + 1
             if n_ch is None:
                 return None, 0
             return get_ephys_loader(
-                ephys_path, stream_id,
+                ephys_path,
+                stream_id,
                 n_channels=n_ch,
                 sampling_rate=self._kilosort_params.get("sample_rate"),
             ), channel_idx
@@ -1041,8 +1058,8 @@ class EphysWidget(QWidget):
             self._populate_raster_all_spikes()
 
     def _on_ephys_channel_changed(self, channel: int):
-        stream_sel = getattr(self.app_state, 'ephys_stream_sel', None)
-        source_map = getattr(self.app_state, 'ephys_source_map', {})
+        stream_sel = getattr(self.app_state, "ephys_stream_sel", None)
+        source_map = getattr(self.app_state, "ephys_source_map", {})
         if stream_sel not in source_map:
             return
         filename, stream_id, _ = source_map[stream_sel]
@@ -1059,8 +1076,6 @@ class EphysWidget(QWidget):
             return
 
         ephys_plot = self.plot_container.ephys_trace_plot
-
-
 
         if mode == "Multi Trace":
             self.plot_container.set_neural_panel_mode("trace")
@@ -1104,7 +1119,10 @@ class EphysWidget(QWidget):
 
     def _open_probe_channel_dialog(self):
         if self._channel_positions is None or self._channel_map is None:
-            notify("No channel positions loaded — load a Kilosort folder first (not available for Pynapple).", "warning")
+            notify(
+                "No channel positions loaded — load a Kilosort folder first (not available for Pynapple).",
+                "warning",
+            )
             return
 
         current_selected = None
@@ -1138,7 +1156,7 @@ class EphysWidget(QWidget):
         self._custom_channel_set = hw_channels
         self._apply_probe_channel_filter()
 
-        if self.data_widget and hasattr(self.data_widget, 'neural_view_combo'):
+        if self.data_widget and hasattr(self.data_widget, "neural_view_combo"):
             if self.data_widget.neural_view_combo.currentText() != "Multi Trace":
                 self.data_widget.neural_view_combo.setCurrentText("Multi Trace")
 
@@ -1155,7 +1173,6 @@ class EphysWidget(QWidget):
         self.ephys_channel_spin.hide()
         self.ephys_gain_label.hide()
         self.ephys_gain_spin.hide()
-
 
     # ------------------------------------------------------------------
     # Neuron jumping panel (Kilosort / Pynapple)
@@ -1228,8 +1245,7 @@ class EphysWidget(QWidget):
         missing = [f for f in required_files if not (folder / f).exists()]
         if missing:
             notify(
-                f"Kilosort folder is missing required files:\n"
-                + "\n".join(f"  - {f}" for f in missing),
+                "Kilosort folder is missing required files:\n" + "\n".join(f"  - {f}" for f in missing),
                 "warning",
             )
             return
@@ -1246,8 +1262,7 @@ class EphysWidget(QWidget):
         dat_path_str = ks_params.get("dat_path", "")
         if dat_path_str and not Path(dat_path_str).is_file():
             notify(
-                f"dat_path not found on this machine:\n{dat_path_str}\n\n"
-                "Please update the path to the raw data file.",
+                f"dat_path not found on this machine:\n{dat_path_str}\n\nPlease update the path to the raw data file.",
                 "warning",
             )
             dialog = ParamsDialog(self, defaults=ks_params)
@@ -1269,7 +1284,7 @@ class EphysWidget(QWidget):
 
         cluster_info_path = folder / "cluster_info.tsv"
         if cluster_info_path.exists():
-            self._cluster_df = self._load_file(cluster_info_path, pd.read_csv, sep='\t')
+            self._cluster_df = self._load_file(cluster_info_path, pd.read_csv, sep="\t")
         else:
             notify("No cluster_info.tsv found — cluster table will be empty.", "warning")
             self._cluster_df = None
@@ -1304,11 +1319,11 @@ class EphysWidget(QWidget):
         self.app_state.has_neurons = True
 
         if self.data_widget:
-            phy_cb = getattr(self.data_widget, 'phy_viewer_checkbox', None)
+            phy_cb = getattr(self.data_widget, "phy_viewer_checkbox", None)
             if phy_cb:
                 phy_cb.show()
                 phy_cb.setChecked(True)
-            if hasattr(self.data_widget, '_populate_neo_stream_combo'):
+            if hasattr(self.data_widget, "_populate_neo_stream_combo"):
                 self.data_widget._populate_neo_stream_combo()
 
     def _load_pynapple_file(self, path: Path):
@@ -1323,8 +1338,7 @@ class EphysWidget(QWidget):
         if not hasattr(data, "keys") or "units" not in data:
             available = list(data.keys()) if hasattr(data, "keys") else []
             notify(
-                f"No 'units' key found in {path.name}.\n"
-                f"Available keys: {available}",
+                f"No 'units' key found in {path.name}.\nAvailable keys: {available}",
                 "warning",
             )
             return
@@ -1359,7 +1373,7 @@ class EphysWidget(QWidget):
         self.app_state.has_neurons = True
 
         if self.data_widget:
-            phy_cb = getattr(self.data_widget, 'phy_viewer_checkbox', None)
+            phy_cb = getattr(self.data_widget, "phy_viewer_checkbox", None)
             if phy_cb:
                 phy_cb.show()
                 phy_cb.setChecked(True)
@@ -1407,8 +1421,8 @@ class EphysWidget(QWidget):
         dialog.exec_()
 
     def _trial_start_session(self) -> float:
-        trial = getattr(self.app_state, 'trials_sel', None)
-        align = getattr(self.app_state, 'nwb_alignment', None)
+        trial = getattr(self.app_state, "trials_sel", None)
+        align = getattr(self.app_state, "nwb_alignment", None)
         if trial is None or align is None:
             return 0.0
         return float(align.start_time(trial) or 0.0)
@@ -1422,7 +1436,7 @@ class EphysWidget(QWidget):
 
     def _ephys_offset(self) -> float:
         """Session-absolute time corresponding to trial-relative t=0 for spike streams."""
-        ephys_offset = float(getattr(self.app_state, 'ephys_offset', 0.0) or 0.0)
+        ephys_offset = float(getattr(self.app_state, "ephys_offset", 0.0) or 0.0)
         return self._trial_start_session() + ephys_offset
 
     def _restrict_to_trial(self, cluster_id: int, sr: float) -> tuple[np.ndarray, np.ndarray]:
@@ -1538,7 +1552,7 @@ class EphysWidget(QWidget):
             except OSError:
                 pass
 
-        ephys_path_str = getattr(self.app_state, 'ephys_path', None)
+        ephys_path_str = getattr(self.app_state, "ephys_path", None)
         if ephys_path_str:
             ephys_path = Path(ephys_path_str)
             if ephys_path.is_file() and ephys_path.suffix.lower() in raw_exts:
@@ -1566,8 +1580,10 @@ class EphysWidget(QWidget):
             return
 
         loader = get_ephys_loader(
-            dat_path, stream_id="0",
-            n_channels=n_channels, sampling_rate=sr,
+            dat_path,
+            stream_id="0",
+            n_channels=n_channels,
+            sampling_rate=sr,
         )
         if loader is None:
             notify(f"Failed to open .dat file: {dat_path}", "warning")
@@ -1601,7 +1617,7 @@ class EphysWidget(QWidget):
         if not ephys_path:
             return None
         loader = get_ephys_loader(ephys_path, stream_id)
-        if loader is None or not hasattr(loader, 'channel_names'):
+        if loader is None or not hasattr(loader, "channel_names"):
             return None
         channel_names = loader.channel_names
         if channel_names is None:
@@ -1652,7 +1668,16 @@ class EphysWidget(QWidget):
         return isi_map
 
     def _populate_cluster_table(self, df: pd.DataFrame):
-        _PRIORITY = ["cluster_id", "ch", "sh", "KSLabel", "group", "fr", "Amplitude", "n_spikes"]
+        _PRIORITY = [
+            "cluster_id",
+            "ch",
+            "sh",
+            "KSLabel",
+            "group",
+            "fr",
+            "Amplitude",
+            "n_spikes",
+        ]
         _EXCLUDE = {"amp", "id_orig", "group_order"} | {c for c in df.columns if c.startswith("Unnamed")}
 
         ordered_cols = [c for c in _PRIORITY if c in df.columns]
@@ -1667,9 +1692,7 @@ class EphysWidget(QWidget):
 
         has_ch = "ch" in ordered_cols
         hw_names = self.get_hw_names(self._channel_map) if has_ch else None
-        has_distinct_hw = hw_names is not None and any(
-            name != f"Ch {hw}" for hw, name in hw_names.items()
-        )
+        has_distinct_hw = hw_names is not None and any(name != f"Ch {hw}" for hw, name in hw_names.items())
         hw_label = self._get_hardware_label() if has_distinct_hw else ""
 
         # Build header labels (group → Human, KSLabel → KS, cluster_id → id, ch → ch(KS) + ch(hw))
@@ -1747,8 +1770,7 @@ class EphysWidget(QWidget):
             else:
                 # Check whether the column has numeric sort values
                 is_numeric = any(
-                    model.item(row, col_idx) is not None
-                    and model.item(row, col_idx).data(_SORT_ROLE) is not None
+                    model.item(row, col_idx) is not None and model.item(row, col_idx).data(_SORT_ROLE) is not None
                     for row in range(model.rowCount())
                 )
                 if is_numeric:
@@ -1893,10 +1915,7 @@ class EphysWidget(QWidget):
         if not self.plot_container:
             return
 
-        has_ephys_trace = (
-            self._neurons_source == "kilosort"
-            and self.plot_container.is_ephystrace()
-        )
+        has_ephys_trace = self._neurons_source == "kilosort" and self.plot_container.is_ephystrace()
         sr = None
         if has_ephys_trace:
             ephys_plot = self.plot_container.ephys_trace_plot
@@ -1950,19 +1969,13 @@ class EphysWidget(QWidget):
         raster = self.plot_container.raster_plot
         raster.set_multi_cluster_spike_data(raster_entries)
 
-
     def _on_visible_channels_changed(self, _first: int, _last: int):
         pass
 
     def _apply_probe_channel_filter(self):
-        ch_col = (
-            self._find_col_by_header("", exact="ch")
-            or self._find_col_by_header("", exact="ch (KS)")
-        )
+        ch_col = self._find_col_by_header("", exact="ch") or self._find_col_by_header("", exact="ch (KS)")
         if self._custom_channel_set is not None and ch_col is not None:
-            self._cluster_proxy.set_visible_channel_filter(
-                set(int(c) for c in self._custom_channel_set), ch_col
-            )
+            self._cluster_proxy.set_visible_channel_filter(set(int(c) for c in self._custom_channel_set), ch_col)
         else:
             self._cluster_proxy.set_visible_channel_filter(None, None)
 
@@ -2036,7 +2049,9 @@ class EphysWidget(QWidget):
 
     @staticmethod
     def _get_closest_channels(
-        channel_positions: np.ndarray, channel_index: int, n: int | None = None,
+        channel_positions: np.ndarray,
+        channel_index: int,
+        n: int | None = None,
     ) -> np.ndarray:
         """Get the n channels closest to *channel_index* on the probe.
 
@@ -2090,7 +2105,9 @@ class EphysWidget(QWidget):
         peak_channels = np.nonzero(amplitude >= amplitude_threshold * max_amp)[0]
 
         close_channels = self._get_closest_channels(
-            self._channel_positions, best_channel, n_closest_channels,
+            self._channel_positions,
+            best_channel,
+            n_closest_channels,
         )
 
         channel_ids = np.intersect1d(peak_channels, close_channels)
@@ -2141,11 +2158,10 @@ class EphysWidget(QWidget):
             template = self._templates[cluster_id]
             n_closest = self.n_closest_spin.value()
             site_indices, _amp, _best = self._find_best_channels(
-                template, n_closest_channels=n_closest,
+                template,
+                n_closest_channels=n_closest,
             )
-            hw_channels = [
-                int(self._channel_map[i]) for i in site_indices if i < len(self._channel_map)
-            ]
+            hw_channels = [int(self._channel_map[i]) for i in site_indices if i < len(self._channel_map)]
             return hw_channels if hw_channels else [fallback_channel]
         return [fallback_channel]
 
@@ -2163,8 +2179,8 @@ class EphysWidget(QWidget):
         return self.ephys_channel_spin.value()
 
     def _apply_ephys_channel(self, channel: int):
-        stream_sel = getattr(self.app_state, 'ephys_stream_sel', None)
-        source_map = getattr(self.app_state, 'ephys_source_map', {})
+        stream_sel = getattr(self.app_state, "ephys_stream_sel", None)
+        source_map = getattr(self.app_state, "ephys_source_map", {})
         if not stream_sel or stream_sel not in source_map:
             return
 
@@ -2179,8 +2195,6 @@ class EphysWidget(QWidget):
             self.plot_container.ephys_trace_plot.set_channel(channel)
             xmin, xmax = self.plot_container.get_current_xlim()
             self.plot_container.ephys_trace_plot.update_plot_content(xmin, xmax)
-
-
 
     # ------------------------------------------------------------------
     # Firing rate panel
@@ -2295,7 +2309,10 @@ class EphysWidget(QWidget):
         mask = self._cluster_df["group"].isin(allowed)
         ids = self._cluster_df.loc[mask, "cluster_id"].values
         if len(ids) == 0:
-            notify(f"No clusters with group '{selection}' found in cluster table.", "warning")
+            notify(
+                f"No clusters with group '{selection}' found in cluster table.",
+                "warning",
+            )
             return None
         return ids
 
@@ -2344,8 +2361,11 @@ class EphysWidget(QWidget):
             return
 
         da = firing_rate_to_xarray(
-            self._spike_times_s, self._spike_clusters, bin_size,
-            t_start=start_time, t_stop=bounds.end_s,
+            self._spike_times_s,
+            self._spike_clusters,
+            bin_size,
+            t_start=start_time,
+            t_stop=bounds.end_s,
             cluster_ids=cluster_ids,
             _tsgroup=self._tsgroup,
         )
@@ -2364,9 +2384,7 @@ class EphysWidget(QWidget):
         if self.app_state.dt is not None:
             self.app_state.dt.update_trial(trial, lambda _: new_ds)
         self.app_state.ds = new_ds
-        self.fr_status_label.setText(
-            f"{len(cluster_ids)} clusters ({group_text})"
-        )
+        self.fr_status_label.setText(f"{len(cluster_ids)} clusters ({group_text})")
         self._enable_feature_item("Firing rate")
         self._update_cluster_id_combo()
 
@@ -2456,14 +2474,12 @@ class EphysWidget(QWidget):
         self.app_state.ds = new_ds
 
         ev = pca_da.attrs["explained_variance"]
-        self.pca_status_label.setText(
-            f"PC1: {ev[0]:.1%}  PC2: {ev[1]:.1%}  PC3: {ev[2]:.1%}"
-        )
+        self.pca_status_label.setText(f"PC1: {ev[0]:.1%}  PC2: {ev[1]:.1%}  PC3: {ev[2]:.1%}")
 
         self._enable_feature_item("PCA")
 
         # Switch to space plot so user can see PCA in the axis combos
-        slot1 = getattr(self.data_widget, 'space_view_combo', None)
+        slot1 = getattr(self.data_widget, "space_view_combo", None)
         if slot1 is not None:
             slot1.setCurrentText("Space Plot")
 
@@ -2481,19 +2497,17 @@ class EphysWidget(QWidget):
             self.data_widget.update_main_plot()
 
     def _get_any_ephys_loader(self):
-        source_map = getattr(self.app_state, 'ephys_source_map', {})
+        source_map = getattr(self.app_state, "ephys_source_map", {})
         if not source_map:
             return None
         filename, stream_id, _ = next(iter(source_map.values()))
         if os.path.isabs(filename):
             ephys_path = os.path.normpath(filename)
         else:
-            base_ephys_path = getattr(self.app_state, 'ephys_path', None)
+            base_ephys_path = getattr(self.app_state, "ephys_path", None)
             if not base_ephys_path:
                 return None
-            ephys_path = os.path.normpath(
-                os.path.join(os.path.dirname(base_ephys_path), filename)
-            )
+            ephys_path = os.path.normpath(os.path.join(os.path.dirname(base_ephys_path), filename))
         return get_ephys_loader(ephys_path, stream_id)
 
     # ------------------------------------------------------------------
@@ -2552,7 +2566,7 @@ class EphysWidget(QWidget):
 
     def get_stream_names(self) -> list[str]:
         """Return available ephys stream display names from the source map."""
-        source_map = getattr(self.app_state, 'ephys_source_map', {})
+        source_map = getattr(self.app_state, "ephys_source_map", {})
         return list(source_map.keys())
 
     def on_trial_changed(self):
@@ -2565,7 +2579,10 @@ class EphysWidget(QWidget):
         self.pca_status_label.setText("")
 
         features_combo = self.data_widget.combos.get("features")
-        if features_combo is not None and get_combo_value(features_combo) in ("firing_rate", "pca"):
+        if features_combo is not None and get_combo_value(features_combo) in (
+            "firing_rate",
+            "pca",
+        ):
             features_combo.setCurrentIndex(0)
 
         self.configure_ephys_trace_plot()
@@ -2599,5 +2616,5 @@ class EphysWidget(QWidget):
         self._on_cluster_row_selected()
 
     def _on_plot_changed(self, plot_type: str):
-        if plot_type == 'ephystrace':
+        if plot_type == "ephystrace":
             self.apply_probe_order()

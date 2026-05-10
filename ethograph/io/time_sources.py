@@ -19,8 +19,6 @@ if TYPE_CHECKING:
     import xarray as xr
 
 
-
-
 # ---------------------------------------------------------------------------
 # XarrayTrialSource
 # ---------------------------------------------------------------------------
@@ -127,5 +125,3 @@ class PynappleSource:
         if len(restricted) == 0:
             return np.array([], dtype=np.float64), np.array([])
         return restricted.t.astype(np.float64), np.asarray(restricted.values)
-
-

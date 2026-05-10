@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from qtpy.QtCore import Qt, QSortFilterProxyModel
+from qtpy.QtCore import QSortFilterProxyModel, Qt
 from qtpy.QtGui import QColor, QFont, QIcon, QPixmap
 from qtpy.QtWidgets import (
     QComboBox,
@@ -11,7 +11,6 @@ from qtpy.QtWidgets import (
     QStyledItemDelegate,
     QWidget,
 )
-
 
 # ── QComboBox helpers ────────────────────────────────────────────────────────
 

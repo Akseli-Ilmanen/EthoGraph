@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 import xarray as xr
 
-
 if TYPE_CHECKING:
     from ethograph.io.trialtree import TrialTree
 
@@ -18,24 +17,71 @@ if TYPE_CHECKING:
 # Supported file extensions (single source of truth)
 # ---------------------------------------------------------------------------
 
-# Not all tested 
+# Not all tested
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".wmv"}
 
 AUDIO_EXTENSIONS = {
-    ".wav", ".flac", ".ogg", ".mp3", ".aac",
-    ".mp4", ".avi", ".mov",
+    ".wav",
+    ".flac",
+    ".ogg",
+    ".mp3",
+    ".aac",
+    ".mp4",
+    ".avi",
+    ".mov",
 }
 
 POSE_EXTENSIONS = {".h5", ".hdf5", ".csv", ".slp", ".nwb"}
 
 EPHYS_EXTENSIONS = {
-    ".abf", ".axgd", ".axgx", ".bdf", ".ccf", ".continuous",
-    ".edr", ".edf", ".events", ".medd", ".meta", ".ncs", ".nev",
-    ".nrd", ".nse", ".ns1", ".ns2", ".ns3", ".ns4", ".ns5", ".ns6",
-    ".ntt", ".nvt", ".nwb", ".oebin", ".openephys", ".pl2", ".plx",
-    ".rdat", ".rec", ".rhd", ".rhs", ".ridx", ".sev", ".sif", ".smr",
-    ".smrx", ".spikes", ".tbk", ".tdx", ".tev", ".tin", ".tnt", ".trc",
-    ".tsq", ".vhdr", ".wcp", ".xdat",
+    ".abf",
+    ".axgd",
+    ".axgx",
+    ".bdf",
+    ".ccf",
+    ".continuous",
+    ".edr",
+    ".edf",
+    ".events",
+    ".medd",
+    ".meta",
+    ".ncs",
+    ".nev",
+    ".nrd",
+    ".nse",
+    ".ns1",
+    ".ns2",
+    ".ns3",
+    ".ns4",
+    ".ns5",
+    ".ns6",
+    ".ntt",
+    ".nvt",
+    ".nwb",
+    ".oebin",
+    ".openephys",
+    ".pl2",
+    ".plx",
+    ".rdat",
+    ".rec",
+    ".rhd",
+    ".rhs",
+    ".ridx",
+    ".sev",
+    ".sif",
+    ".smr",
+    ".smrx",
+    ".spikes",
+    ".tbk",
+    ".tdx",
+    ".tev",
+    ".tin",
+    ".tnt",
+    ".trc",
+    ".tsq",
+    ".vhdr",
+    ".wcp",
+    ".xdat",
 }
 
 
@@ -54,8 +100,6 @@ def _qt_filter(label: str, exts: set[str]) -> str:
 VIDEO_FILE_FILTER = _qt_filter("Video files", VIDEO_EXTENSIONS)
 AUDIO_FILE_FILTER = _qt_filter("Audio files", AUDIO_EXTENSIONS)
 EPHYS_FILE_FILTER = _qt_filter("Ephys files", EPHYS_EXTENSIONS)
-
-
 
 
 def find_temporal_dims(ds: xr.Dataset) -> set[str]:
@@ -80,7 +124,7 @@ def find_temporal_dims(ds: xr.Dataset) -> set[str]:
     time_dims = set()
 
     for var in ds.data_vars.values():
-        var_time_dims = {d for d in var.dims if 'time' in d}
+        var_time_dims = {d for d in var.dims if "time" in d}
         if var_time_dims:
             time_dims.update(var_time_dims)
             temporal.update(var.dims)
@@ -117,14 +161,10 @@ def validate_required_attrs(
         if not isinstance(ds.attrs["fps"], Number) or ds.attrs["fps"] <= 0:
             errors.append("'fps' must be a positive number")
 
-
     if "trial" not in ds.attrs:
         errors.append("Xarray dataset ('ds') must have 'trial' attribute")
 
     return errors
-
-
-
 
 
 def validate_changepoints(ds: xr.Dataset) -> list[str]:
@@ -141,26 +181,20 @@ def validate_changepoints(ds: xr.Dataset) -> list[str]:
         Validation error messages (empty if valid).
     """
     errors = []
-    cp_ds = ds.filter_by_attrs(type='changepoints')
+    cp_ds = ds.filter_by_attrs(type="changepoints")
 
     for var_name, var in cp_ds.data_vars.items():
         arr = var.values
 
         if not is_integer_array(arr):
-            errors.append(
-                f"Changepoint '{var_name}' must contain only integer values"
-            )
+            errors.append(f"Changepoint '{var_name}' must contain only integer values")
 
         if arr.min() < 0 or arr.max() > 1:
-            errors.append(
-                f"Changepoint '{var_name}' must have values in range [0, 1]"
-            )
+            errors.append(f"Changepoint '{var_name}' must have values in range [0, 1]")
 
         target = var.attrs.get("target_feature")
         if target and target not in ds.data_vars:
-            errors.append(
-                f"Changepoint '{var_name}' references non-existent target_feature '{target}'"
-            )
+            errors.append(f"Changepoint '{var_name}' references non-existent target_feature '{target}'")
 
     return errors
 
@@ -194,12 +228,16 @@ def validate_dataset(
         try:
             feat_var = ds[feat_name]
         except KeyError:
-            print(f"Warning: Feature '{feat_name}' listed in catalog but not found in dataset. Skipping validation for this feature.")
+            print(
+                f"Warning: Feature '{feat_name}' listed in catalog but not found in dataset. Skipping validation for this feature."  # noqa: E501
+            )
             continue
 
-        has_time_coord = any('time' in str(dim).lower() for dim in feat_var.dims)
+        has_time_coord = any("time" in str(dim).lower() for dim in feat_var.dims)
         if not has_time_coord:
-            errors.append(f"Feature variable '{feat_name}' must have a coordinate containing 'time'. E.g. 'time', 'time_labels', 'time_aux', etc.")
+            errors.append(
+                f"Feature variable '{feat_name}' must have a coordinate containing 'time'. E.g. 'time', 'time_labels', 'time_aux', etc."  # noqa: E501
+            )
         if not isinstance(feat_var.values, np.ndarray):
             errors.append(f"Feature '{feat_name}' must be an array")
 
@@ -214,8 +252,6 @@ def _extract_trial_datasets(dt: "TrialTree") -> list[xr.Dataset]:
     return [ds for _, ds in dt.trial_items()]
 
 
-
-
 def _possible_trial_conditions(ds: xr.Dataset, dt: "TrialTree") -> list[str]:
     """Identify possible trial condition attributes."""
     common_extensions = (
@@ -223,15 +259,15 @@ def _possible_trial_conditions(ds: xr.Dataset, dt: "TrialTree") -> list[str]:
         | AUDIO_EXTENSIONS
         | POSE_EXTENSIONS
         | EPHYS_EXTENSIONS
-        | {'.dat', '.bin', '.raw', '.mda'}
-        | {'.csv', '.h5', '.hdf5', '.npy'}
+        | {".dat", ".bin", ".raw", ".mda"}
+        | {".csv", ".h5", ".hdf5", ".npy"}
     )
 
     common_attrs = dt.get_common_attrs().keys()
 
     cond_attrs = []
     for key, value in ds.attrs.items():
-        if key in ['trial'] or key in common_attrs:
+        if key in ["trial"] or key in common_attrs:
             continue
 
         if isinstance(value, str):
@@ -243,8 +279,6 @@ def _possible_trial_conditions(ds: xr.Dataset, dt: "TrialTree") -> list[str]:
     return cond_attrs
 
 
-
-    
 def validate_datatree(
     dt: "TrialTree",
 ) -> list[str]:
@@ -278,12 +312,14 @@ def validate_datatree(
 
     errors = []
 
-
     sample_size = min(5, len(datasets))
     sample_indices = np.random.choice(len(datasets), size=sample_size, replace=False)
     for idx in sample_indices:
-        errors.extend(validate_dataset(
-            datasets[idx], catalog,
-        ))
+        errors.extend(
+            validate_dataset(
+                datasets[idx],
+                catalog,
+            )
+        )
 
     return list(set(errors))

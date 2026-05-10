@@ -2,20 +2,15 @@
 
 from __future__ import annotations
 
-import traceback
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-import numpy as np
 import pandas as pd
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QButtonGroup,
     QCheckBox,
-    QComboBox,
     QDialog,
-    QDoubleSpinBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -108,10 +103,14 @@ class WizardState:
         return any(cfg.is_continuous_mode for _, cfg in self.enabled_modalities())
 
     def is_fully_aligned(self) -> bool:
-        """Only scenario where is fully aligned, if trial intervals correspond to files, and video, pose, and audio are all aligned."""
+        """Only scenario where is fully aligned, if trial intervals correspond to files, and video, pose, and audio are all aligned."""  # noqa: E501
         enabled = self.enabled_modalities()
         non_ephys = [(name, cfg) for name, cfg in enabled if name != "ephys"]
-        return bool(non_ephys) and all(cfg.is_aligned_mode for _, cfg in non_ephys) and not self.has_continuous_modalities()
+        return (
+            bool(non_ephys)
+            and all(cfg.is_aligned_mode for _, cfg in non_ephys)
+            and not self.has_continuous_modalities()
+        )
 
 
 # ─── Page 0: mode selection ──────────────────────────────────────────────────
@@ -121,10 +120,7 @@ class _ModeSelectionPage(QWidget):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(
-            "<b>🧙Data wizard</b><br>"
-            "Select how your data is organized:"
-        ))
+        layout.addWidget(QLabel("<b>🧙Data wizard</b><br>Select how your data is organized:"))
         layout.addSpacing(12)
 
         self._top_group = QButtonGroup(self)
@@ -132,15 +128,20 @@ class _ModeSelectionPage(QWidget):
         # --- Single file section ---
         single_box = QGroupBox("Single trial")
         sb_lay = QVBoxLayout(single_box)
-        self._explanation = QLabel("Allows multiple modalities but only one file per modality (video/audio/pose/ephys). Great for quickly gettign started.")
+        self._explanation = QLabel(
+            "Allows multiple modalities but only one file per modality (video/audio/pose/ephys). Great for quickly gettign started."  # noqa: E501
+        )
         self._rb_pose = QRadioButton("1) From pose file (DLC, SLEAP, ...) or bounding boxes (VIA, ...)")
         self._rb_xarray = QRadioButton("2) From xarray dataset (Movement style)")
         self._rb_audio = QRadioButton("3) From audio file")
         self._rb_npy = QRadioButton("4) From npy file")
         self._rb_ephys = QRadioButton("5) From ephys file and/or kilosort folder")
         self._single_radios = [
-            self._rb_pose, self._rb_xarray, self._rb_audio,
-            self._rb_npy, self._rb_ephys,
+            self._rb_pose,
+            self._rb_xarray,
+            self._rb_audio,
+            self._rb_npy,
+            self._rb_ephys,
         ]
         for rb in self._single_radios:
             sb_lay.addWidget(rb)
@@ -151,7 +152,9 @@ class _ModeSelectionPage(QWidget):
         # --- Multi file section ---
         multi_box = QGroupBox("Multiple trials")
         mb_lay = QVBoxLayout(multi_box)
-        self._rb_multi = QRadioButton("Configure multi-trial dataset from multiple files within/across modalities with custom meta data.")
+        self._rb_multi = QRadioButton(
+            "Configure multi-trial dataset from multiple files within/across modalities with custom meta data."
+        )
         self._top_group.addButton(self._rb_multi)
         mb_lay.addWidget(self._rb_multi)
         layout.addWidget(multi_box)
@@ -177,16 +180,16 @@ class _ModeSelectionPage(QWidget):
         layout.addSpacing(10)
         tut_box = QGroupBox("Examples")
         tut_lay = QVBoxLayout(tut_box)
-        tut_text = QLabel(
-            "These are real-world datasets that have been created or converted to session.nc format:"
-        )
+        tut_text = QLabel("These are real-world datasets that have been created or converted to session.nc format:")
         tut_text.setWordWrap(True)
         tut_lay.addWidget(tut_text)
         tut_lay.addSpacing(5)
-        tut_link = QLabel(styled_link(
-            "https://github.com/Akseli-Ilmanen/EthoGraph/tree/main/examples",
-            "View examples for creating custom .nc files"
-        ))
+        tut_link = QLabel(
+            styled_link(
+                "https://github.com/Akseli-Ilmanen/EthoGraph/tree/main/examples",
+                "View examples for creating custom .nc files",
+            )
+        )
         tut_link.setOpenExternalLinks(True)
         tut_link.setTextFormat(Qt.RichText)
         tut_lay.addWidget(tut_link)
@@ -211,7 +214,6 @@ class _ModeSelectionPage(QWidget):
                 return name
 
 
-
 # ─── Page 1: modality selection ──────────────────────────────────────────────
 
 
@@ -219,10 +221,12 @@ class _ModalitySelectionPage(QWidget):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(
-            "<b>Step 1 — Select modalities</b><br>"
-            "Check each data type and choose aligned-trial files or continuous-session recording."
-        ))
+        layout.addWidget(
+            QLabel(
+                "<b>Step 1 — Select modalities</b><br>"
+                "Check each data type and choose aligned-trial files or continuous-session recording."
+            )
+        )
         layout.addSpacing(10)
 
         self._rows: dict[str, dict] = {}
@@ -238,9 +242,7 @@ class _ModalitySelectionPage(QWidget):
 
         layout.addStretch()
 
-    def _build_modality_row(
-        self, name: str, label: str, allow_multi: bool, device_label: str
-    ) -> tuple[QWidget, dict]:
+    def _build_modality_row(self, name: str, label: str, allow_multi: bool, device_label: str) -> tuple[QWidget, dict]:
         box = QGroupBox()
         box.setCheckable(True)
         box.setChecked(False)
@@ -258,12 +260,8 @@ class _ModalitySelectionPage(QWidget):
             mode_row = QHBoxLayout()
             rb_single = QRadioButton("Single file")
             if name in {"video", "pose", "audio"}:
-                rb_multi_reg = QRadioButton(
-                    f"Files aligned to trial period (Trials x {device_label})"
-                )
-                rb_multi_irr = QRadioButton(
-                    f"Continuous recording across session ({device_label})"
-                )
+                rb_multi_reg = QRadioButton(f"Files aligned to trial period (Trials x {device_label})")
+                rb_multi_irr = QRadioButton(f"Continuous recording across session ({device_label})")
             else:
                 rb_multi_reg = QRadioButton("Multiple files (regular/no gaps)")
                 rb_multi_irr = QRadioButton("Multiple files (variable gaps)")
@@ -417,6 +415,7 @@ class NCWizardDialog(QDialog):
             self._page_trials.collect_state(self._state)
             self._ensure_timeline_page()
             from ethograph.gui.dialog_busy_progress import BusyProgressDialog
+
             progress = BusyProgressDialog("Scanning files…", parent=self)
             _, err = progress.execute(self._page_timeline.populate_from_state, self._state)
             if err:

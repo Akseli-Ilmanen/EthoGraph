@@ -10,7 +10,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from qtpy.QtCore import QThread, Signal, Qt
+from qtpy.QtCore import Qt, QThread, Signal
 from qtpy.QtWidgets import (
     QApplication,
     QComboBox,
@@ -64,13 +64,20 @@ def _get_video_resolution(path: str) -> tuple[int, int] | None:
     try:
         result = subprocess.run(
             [
-                "ffprobe", "-v", "error",
-                "-select_streams", "v:0",
-                "-show_entries", "stream=width,height",
-                "-of", "csv=p=0:s=x",
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height",
+                "-of",
+                "csv=p=0:s=x",
                 path,
             ],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode != 0:
             return None
@@ -83,7 +90,9 @@ def _get_video_resolution(path: str) -> tuple[int, int] | None:
 
 
 def scan_large_videos(
-    folder: str, threshold_height: int = RESOLUTION_THRESHOLD, sample: int = 5,
+    folder: str,
+    threshold_height: int = RESOLUTION_THRESHOLD,
+    sample: int = 5,
 ) -> list[tuple[str, int, int]]:
     """Return list of (filename, width, height) for videos above the threshold.
 
@@ -91,9 +100,7 @@ def scan_large_videos(
     contains high-resolution videos, then returns matching entries from that sample.
     """
     folder_path = Path(folder)
-    all_videos = sorted(
-        f for f in folder_path.iterdir() if f.suffix.lower() in VIDEO_EXTENSIONS
-    )
+    all_videos = sorted(f for f in folder_path.iterdir() if f.suffix.lower() in VIDEO_EXTENSIONS)
     probed = random.sample(all_videos, min(sample, len(all_videos)))
     large = []
     for f in probed:
@@ -136,23 +143,29 @@ class _DownsampleWorker(QThread):
             try:
                 subprocess.run(
                     [
-                        "ffmpeg", "-y", "-i", src,
-                        "-vf", f"scale=-2:{self.target_height}",
-                        "-preset", "ultrafast",
-                        "-crf", "28",
-                        "-c:a", "copy",
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        src,
+                        "-vf",
+                        f"scale=-2:{self.target_height}",
+                        "-preset",
+                        "ultrafast",
+                        "-crf",
+                        "28",
+                        "-c:a",
+                        "copy",
                         dst,
                     ],
-                    capture_output=True, text=True,
+                    capture_output=True,
+                    text=True,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
                 if not os.path.isfile(dst):
                     self.error.emit(f"ffmpeg failed for {name}")
                     return
             except FileNotFoundError:
-                self.error.emit(
-                    "ffmpeg not found. Install ffmpeg and ensure it is on your PATH."
-                )
+                self.error.emit("ffmpeg not found. Install ffmpeg and ensure it is on your PATH.")
                 return
             except Exception as exc:
                 self.error.emit(str(exc))
@@ -162,7 +175,8 @@ class _DownsampleWorker(QThread):
 
 
 def offer_downsample(
-    folder: str, parent=None,
+    folder: str,
+    parent=None,
 ) -> str:
     """Check for large videos, prompt user, downsample if accepted.
 
@@ -185,16 +199,18 @@ def offer_downsample(
     dialog.setWindowTitle("High-resolution videos detected")
     layout = QVBoxLayout(dialog)
 
-    layout.addWidget(QLabel(
-        f"<b>{len(large)} video(s)</b> have resolution above {RESOLUTION_THRESHOLD}p "
-        f"(max {max_h}p).<br><br>"
-        "Downsampling image resolution will make playback significantly faster "
-        "without affecting temporal precision for labelling.<br>"
-        "<i>Note: high frame rate is not a problem (use frame skipping). "
-        "Only high image resolution affects performance.</i><br><br>"
-        "Pose overlays will be rescaled automatically to match the "
-        "downsampled resolution."
-    ))
+    layout.addWidget(
+        QLabel(
+            f"<b>{len(large)} video(s)</b> have resolution above {RESOLUTION_THRESHOLD}p "
+            f"(max {max_h}p).<br><br>"
+            "Downsampling image resolution will make playback significantly faster "
+            "without affecting temporal precision for labelling.<br>"
+            "<i>Note: high frame rate is not a problem (use frame skipping). "
+            "Only high image resolution affects performance.</i><br><br>"
+            "Pose overlays will be rescaled automatically to match the "
+            "downsampled resolution."
+        )
+    )
     layout.addWidget(QLabel(f"<pre>{file_list}</pre>"))
 
     form = QFormLayout()
@@ -223,7 +239,11 @@ def offer_downsample(
     filenames = [name for name, _, _ in large]
 
     progress = QProgressDialog(
-        "Starting downsample...", "Cancel", 0, len(filenames), parent,
+        "Starting downsample...",
+        "Cancel",
+        0,
+        len(filenames),
+        parent,
     )
     progress.setWindowTitle("Downsampling videos")
     progress.setWindowModality(Qt.WindowModal)
@@ -247,6 +267,7 @@ def offer_downsample(
         had_error = True
         progress.close()
         from .notify import notify_dialog
+
         notify_dialog(msg, "error", parent=parent)
 
     def on_all_done():
@@ -268,8 +289,7 @@ def offer_downsample(
 
     # Copy over any videos that were below threshold (not downsampled)
     all_videos = [
-        f.name for f in Path(folder).iterdir()
-        if f.suffix.lower() in VIDEO_EXTENSIONS and f.name not in filenames
+        f.name for f in Path(folder).iterdir() if f.suffix.lower() in VIDEO_EXTENSIONS and f.name not in filenames
     ]
     for name in all_videos:
         src = os.path.join(folder, name)
@@ -287,6 +307,9 @@ def offer_downsample(
         json.dump(meta, f)
 
     logger.info(
-        "Downsampled %d videos to %dp in %s", len(filenames), target_height, dst_folder,
+        "Downsampled %d videos to %dp in %s",
+        len(filenames),
+        target_height,
+        dst_folder,
     )
     return dst_folder

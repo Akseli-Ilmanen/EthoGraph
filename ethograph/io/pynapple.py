@@ -8,12 +8,9 @@ from pathlib import Path
 
 import numpy as np
 import pynapple as nap
-import xarray as xr
 from scipy.ndimage import gaussian_filter1d
 
 from ethograph.features.movement import get_angle_rgb
-
-
 
 ## IO
 
@@ -76,7 +73,6 @@ def flatten_nap_folder(data, load_metadata: bool = False) -> dict[str, dict]:
     return flat
 
 
-
 ### Features
 
 
@@ -111,6 +107,47 @@ def add_changepoints_to_nap(
     changepoint_func: Callable[[np.ndarray], np.ndarray],
     **func_kwargs,
 ) -> nap.TsGroup:
+    """Detect changepoints in a pynapple time series and return them as a TsGroup.
+
+    Applies *changepoint_func* independently to each unit or column in *data*.
+    Returns a :class:`nap.TsGroup` where each unit contains the changepoint
+    timestamps for one source series.  Source metadata (label, feature name,
+    type) is stored as group metadata columns; if *data* is itself a
+    ``TsGroup``, its metadata columns are forwarded as well.
+
+    Parameters
+    ----------
+    data : nap.Tsd | nap.TsdFrame | nap.TsGroup
+        Input time series.  For a ``Tsd`` a single unit is produced; for a
+        ``TsdFrame`` one unit per column; for a ``TsGroup`` one unit per
+        neuron/unit.
+    target_feature : str
+        Human-readable label recorded in the output metadata
+        (e.g. ``"speed"``).
+    changepoint_func : callable
+        A function ``f(x, **kwargs) -> array`` that accepts a 1-D numpy
+        array of values and returns an array of changepoint times (or a
+        binary indicator of the same length).
+    **func_kwargs
+        Forwarded to *changepoint_func*.
+
+    Returns
+    -------
+    nap.TsGroup
+        One unit per input series, containing changepoint timestamps.
+
+    Examples
+    --------
+    >>> import ethograph as eto
+    >>> from ethograph.features.changepoints import find_troughs
+    >>> data = eto.load_nap_data("experiment.nwb")
+    >>> cp_group = eto.add_changepoints_to_nap(
+    ...     data["speed"],
+    ...     target_feature="speed",
+    ...     changepoint_func=find_troughs,
+    ...     prominence=0.3,
+    ... )
+    """
     f = partial(changepoint_func, **func_kwargs)
     units = _iter_units(data)
 
@@ -139,6 +176,44 @@ def add_angle_rgb_to_nap(
     position_key: str = "position",
     xy_columns: list[str] = ["x", "y"],
 ) -> nap.TsdFrame:
+    """Compute heading-angle RGB colour coding from 2-D position data.
+
+    Calculates the heading angle from consecutive (x, y) positions in
+    *tsdframe* and maps each angle to an RGB triplet via
+    :func:`~ethograph.features.movement.get_angle_rgb`.  Gaussian smoothing
+    is applied before angle computation.
+
+    Parameters
+    ----------
+    tsdframe : nap.TsdFrame
+        Position data with at least two columns (x and y).  If more than two
+        columns are present, *xy_columns* selects which two to use.
+    smoothing_params : dict
+        Keyword arguments forwarded to
+        :func:`scipy.ndimage.gaussian_filter1d` (e.g. ``{"sigma": 3}``).
+    position_key : str, optional
+        Input type passed to ``get_angle_rgb`` (default ``"position"``).
+    xy_columns : list[str], optional
+        Column names to use as x and y when *tsdframe* has more than two
+        columns (default ``["x", "y"]``).
+
+    Returns
+    -------
+    nap.TsdFrame
+        A new ``TsdFrame`` with three columns ``["R", "G", "B"]`` on the
+        same time support as *tsdframe*.
+
+    Examples
+    --------
+    >>> import ethograph as eto
+    >>> data = eto.load_nap_data("experiment.nwb")
+    >>> rgb = eto.add_angle_rgb_to_nap(
+    ...     data["position"],
+    ...     smoothing_params={"sigma": 3},
+    ... )
+    >>> rgb.columns
+    ['R', 'G', 'B']
+    """
     if tsdframe.shape[1] > 2:
         tsdframe = tsdframe[xy_columns]
 
@@ -150,7 +225,9 @@ def add_angle_rgb_to_nap(
     )
 
     return nap.TsdFrame(
-        t=tsdframe.t, d=rgb, columns=["R", "G", "B"],
+        t=tsdframe.t,
+        d=rgb,
+        columns=["R", "G", "B"],
         time_support=tsdframe.time_support,
     )
 
@@ -222,5 +299,3 @@ def load_nap_data(path: str) -> tuple[dict, nap.IntervalSet | None]:
 
     trials_ep = detect_trials(data)
     return data, trials_ep
-
-

@@ -51,7 +51,6 @@ def format_file_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f} PB"
 
 
-
 class _NumericTableItem(QTableWidgetItem):
     def __lt__(self, other):
         my_val = self.data(_SORT_VALUE_ROLE)
@@ -64,6 +63,7 @@ class _NumericTableItem(QTableWidgetItem):
 # =====================================================================
 # Page 0: Dandiset browser
 # =====================================================================
+
 
 class _DandisetBrowserPage(QWidget):
     """Enter a dandiset ID and browse its NWB files."""
@@ -123,9 +123,7 @@ class _DandisetBrowserPage(QWidget):
         self._table.setHorizontalHeaderLabels(["Path", "Session", "Size", "Asset ID"])
         self._table.setSelectionMode(QAbstractItemView.MultiSelection)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self._table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.Stretch
-        )
+        self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self._table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self._table.setColumnHidden(3, True)
@@ -160,6 +158,7 @@ class _DandisetBrowserPage(QWidget):
         self._assets.clear()
 
         from qtpy.QtWidgets import QApplication
+
         QApplication.processEvents()
 
         try:
@@ -172,23 +171,24 @@ class _DandisetBrowserPage(QWidget):
             nwb_assets = [a for a in all_assets if a.path.endswith(".nwb")]
 
             if not nwb_assets:
-                self._status.setText(
-                    f"No NWB files found in dandiset {dandiset_id} "
-                    f"({len(all_assets)} total assets)."
-                )
+                self._status.setText(f"No NWB files found in dandiset {dandiset_id} ({len(all_assets)} total assets).")
                 return
 
             self._populate_table(nwb_assets)
             self._status.setText(
-                f"{len(nwb_assets)} NWB files in dandiset {dandiset_id} "
-                f"({len(all_assets)} total assets)"
+                f"{len(nwb_assets)} NWB files in dandiset {dandiset_id} ({len(all_assets)} total assets)"
             )
         except Exception as exc:
             s = str(exc).lower()
-            if any(kw in s for kw in (
-                "getaddrinfo failed", "failed to resolve",
-                "max retries exceeded", "name or service not known",
-            )):
+            if any(
+                kw in s
+                for kw in (
+                    "getaddrinfo failed",
+                    "failed to resolve",
+                    "max retries exceeded",
+                    "name or service not known",
+                )
+            ):
                 self._status.setText("No internet connection or DANDI unreachable.")
             else:
                 self._status.setText(f"Error: {exc}")
@@ -225,12 +225,14 @@ class _DandisetBrowserPage(QWidget):
             self._table.setItem(row, 2, size_item)
             self._table.setItem(row, 3, id_item)
 
-            self._assets.append({
-                "path": path,
-                "session": session,
-                "asset_id": asset.identifier,
-                "size": size,
-            })
+            self._assets.append(
+                {
+                    "path": path,
+                    "session": session,
+                    "asset_id": asset.identifier,
+                    "size": size,
+                }
+            )
 
         self._table.setSortingEnabled(True)
 
@@ -253,6 +255,7 @@ class _DandisetBrowserPage(QWidget):
 # =====================================================================
 # Page 1: Output folder + download
 # =====================================================================
+
 
 class _DownloadPage(QWidget):
     """Choose output folder."""
@@ -283,8 +286,7 @@ class _DownloadPage(QWidget):
         layout.addLayout(dir_row)
 
         self._info = QLabel(
-            "Files will be downloaded using <code>dandi download</code>. "
-            "Existing files are skipped automatically."
+            "Files will be downloaded using <code>dandi download</code>. Existing files are skipped automatically."
         )
         self._info.setWordWrap(True)
         self._info.setStyleSheet("color: #888; padding-top: 8px;")
@@ -298,10 +300,7 @@ class _DownloadPage(QWidget):
             self.output_edit.setText(folder)
 
     def set_summary(self, dandiset_id: str, paths: list[str]):
-        self._summary.setText(
-            f"<b>{len(paths)}</b> NWB file(s) from dandiset "
-            f"<b>{dandiset_id}</b> will be downloaded."
-        )
+        self._summary.setText(f"<b>{len(paths)}</b> NWB file(s) from dandiset <b>{dandiset_id}</b> will be downloaded.")
         default_dir = Path.home() / ".ethograph" / "dandi" / dandiset_id
         if not self.output_edit.text():
             self.output_edit.setText(str(default_dir))
@@ -315,6 +314,7 @@ class _DownloadPage(QWidget):
 # =====================================================================
 # Download worker thread
 # =====================================================================
+
 
 class _DownloadWorker(QThread):
     """Run ``dandi download`` in a background thread."""
@@ -339,12 +339,8 @@ class _DownloadWorker(QThread):
         output_dir = Path(self.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        urls = [
-            f"dandi://dandi/{self.dandiset_id}@draft/{p}" for p in self.paths
-        ]
-        self.progress.emit(
-            f"Downloading {len(urls)} file(s) via dandi..."
-        )
+        urls = [f"dandi://dandi/{self.dandiset_id}@draft/{p}" for p in self.paths]
+        self.progress.emit(f"Downloading {len(urls)} file(s) via dandi...")
 
         try:
             download(
@@ -357,15 +353,14 @@ class _DownloadWorker(QThread):
             self.finished_error.emit(f"Download failed:\n{exc}")
             return
 
-        downloaded = [
-            str(output_dir / Path(p).name) for p in self.paths
-        ]
+        downloaded = [str(output_dir / Path(p).name) for p in self.paths]
         self.finished_ok.emit(downloaded)
 
 
 # =====================================================================
 # Main wizard dialog
 # =====================================================================
+
 
 class NWBImportDialog(QDialog):
     """Two-step wizard: browse DANDI → download NWB files."""
@@ -484,6 +479,7 @@ class NWBImportDialog(QDialog):
         self.io_widget.video_folder_edit.setText(output_dir)
 
         from qtpy.QtCore import QTimer
+
         QTimer.singleShot(0, self.io_widget._on_load_clicked)
 
         n = len(downloaded_paths)

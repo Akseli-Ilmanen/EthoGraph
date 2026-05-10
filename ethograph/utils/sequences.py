@@ -118,12 +118,14 @@ def match_sequences(
             if [int(x) for x in window] == target:
                 match_indices = indices[start : start + len(target)]
                 match_rows = sorted_group.loc[match_indices]
-                matches.append({
-                    "trial": trial_id,
-                    "onset_s": float(match_rows["onset_s"].iloc[0]),
-                    "offset_s": float(match_rows["offset_s"].iloc[-1]),
-                    "match_rows": match_indices,
-                    "pattern": pattern,
-                })
+                matches.append(
+                    {
+                        "trial": trial_id,
+                        "onset_s": float(match_rows["onset_s"].iloc[0]),
+                        "offset_s": float(match_rows["offset_s"].iloc[-1]),
+                        "match_rows": match_indices,
+                        "pattern": pattern,
+                    }
+                )
 
     return matches

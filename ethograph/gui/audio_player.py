@@ -78,7 +78,7 @@ class AudioPlayer:
 
         from .plots_spectrogram import SharedAudioCache
 
-        audio_path = getattr(self.app_state, 'audio_path', None)
+        audio_path = getattr(self.app_state, "audio_path", None)
         if not audio_path:
             return
 
@@ -106,6 +106,7 @@ class AudioPlayer:
     def stop(self):
         try:
             import sounddevice as sd
+
             sd.stop()
         except ImportError:
             pass

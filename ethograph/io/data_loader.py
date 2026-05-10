@@ -10,17 +10,6 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 import xarray as xr
-
-import ethograph as eto
-from ethograph.io.catalog import (
-    DataCatalog,
-    PynappleLoader,
-    XarrayLoader,
-    catalog_from_pynapple,
-    catalog_from_xarray,
-)
-from ethograph.io.time_model import SourceCollection
-from ethograph.io.validation import validate_datatree
 from movement.io import load
 from movement.kinematics import (
     compute_acceleration,
@@ -29,7 +18,15 @@ from movement.kinematics import (
     compute_velocity,
 )
 
+import ethograph as eto
 from ethograph.gui.notify import notify_dialog
+from ethograph.io.catalog import (
+    DataCatalog,
+    PynappleLoader,
+    XarrayLoader,
+    catalog_from_pynapple,
+    catalog_from_xarray,
+)
 from ethograph.io.metadata_table import (
     empty_metadata_df,
     load_metadata_df,
@@ -38,8 +35,15 @@ from ethograph.io.metadata_table import (
     trials_ep_from_metadata_df,
     validate_metadata_timing,
 )
+from ethograph.io.nwb_alignment import (
+    EmpytAlignment,
+    TableAlignment,
+    discover_nwb,
+    make_nwb_alignment,
+)
+from ethograph.io.time_model import SourceCollection
 from ethograph.io.trialtree import TrialTree
-from ethograph.io.nwb_alignment import EmpytAlignment, TableAlignment, discover_nwb, make_nwb_alignment
+from ethograph.io.validation import validate_datatree
 from ethograph.labels.converters import (
     PynappleLabelConverter,
     resolve_labels_tsv,
@@ -47,8 +51,6 @@ from ethograph.labels.converters import (
 from ethograph.labels.tsv_store import init_empty_labels
 
 logger = logging.getLogger(__name__)
-
-
 
 
 @dataclass
@@ -73,6 +75,7 @@ class LoadResult:
 def _detect_audio_rate(audio_path: str) -> float:
     """Detect sample rate from an audio file via audioio."""
     from audioio import AudioLoader
+
     with AudioLoader(audio_path) as loader:
         return float(loader.rate)
 
@@ -124,9 +127,11 @@ def synthesize_single_trial(data: dict):
 def _is_pynapple_path_folder(file_path: str) -> bool:
     """Check if path is a pynapple folder or .npz file."""
     p = Path(file_path)
-    return p.suffix in {".npz", ".nwb"} or (p.is_dir() and any(p.glob("**/*.npz"))) or (p.is_dir() and any(p.glob("**/*.nwb")))
-    
-
+    return (
+        p.suffix in {".npz", ".nwb"}
+        or (p.is_dir() and any(p.glob("**/*.npz")))
+        or (p.is_dir() and any(p.glob("**/*.nwb")))
+    )
 
 
 def _resolve_alignment(source_path: str | Path):
@@ -178,8 +183,6 @@ def _resolve_alignment(source_path: str | Path):
     return EmpytAlignment()
 
 
-
-
 # ---------------------------------------------------------------------------
 # Pynapple loading (.npz, folders)
 # ---------------------------------------------------------------------------
@@ -221,6 +224,7 @@ def _load_pynapple_dataset(
 
     # Determine which labels file path was used
     from ethograph.labels.tsv_store import labels_tsv_path
+
     tsv_path = labels_tsv_path(Path(file_path))
     labels_file_path = str(tsv_path) if tsv_path.exists() else None
 
@@ -239,7 +243,6 @@ def _load_pynapple_dataset(
     )
 
 
-
 def _load_trialtree(
     file_path: str,
     metadata_path: str | None = None,
@@ -247,18 +250,12 @@ def _load_trialtree(
     """Load a TrialTree or xarray.Dataset from a .nc file."""
     dt = eto.open(file_path)
 
-
     # Plain Dataset .nc files (e.g. Movement datasets) have no trial children.
     # Wrap them as a single-trial TrialTree so the GUI can work with them directly.
-    if not dt.children or not any(
-        node.ds is not None and "trial" in node.ds.attrs
-        for node in dt.children.values()
-    ):
+    if not dt.children or not any(node.ds is not None and "trial" in node.ds.attrs for node in dt.children.values()):
         ds = xr.open_dataset(file_path, engine="netcdf4")
         dt = _wizard_ds_to_continuous_dt(ds)
         dt._source_path = file_path
-
-
 
     sio = _resolve_alignment(file_path)
     resolved_metadata_df, resolved_metadata_path = load_metadata_df(
@@ -270,8 +267,7 @@ def _load_trialtree(
 
     catalog = catalog_from_xarray(dt.itrial(0), dt, nwb_alignment=sio)
 
-
-    # TODO: ugly, rewreite with better validation, notify code. 
+    # TODO: ugly, rewreite with better validation, notify code.
     errors = validate_datatree(dt)
     if errors:
         error_msg = "\n".join(f"• {e}" for e in errors)
@@ -282,6 +278,7 @@ def _load_trialtree(
 
     # Determine which labels file path was used
     from ethograph.labels.tsv_store import labels_tsv_path
+
     tsv_path = labels_tsv_path(Path(file_path))
     labels_file_path = str(tsv_path) if tsv_path.exists() else None
 
@@ -342,10 +339,12 @@ def load_dataset(
 
 
 def _build_source_collection_pynapple(
-    data: dict, trials_ep=None,
+    data: dict,
+    trials_ep=None,
 ) -> SourceCollection:
     """Build SourceCollection from pynapple objects."""
     import pynapple as nap
+
     from ethograph.io.time_sources import PynappleSource
 
     sc = SourceCollection()
@@ -359,7 +358,6 @@ def _build_source_collection_pynapple(
             stops=[float(e) for e in trials_ep.end],
         )
     return sc
-
 
 
 def _build_source_collection_xarray(dt: TrialTree, nwb_alignment=None) -> SourceCollection:
@@ -402,23 +400,24 @@ def _build_source_collection_xarray(dt: TrialTree, nwb_alignment=None) -> Source
 
 def _wizard_ds_to_continuous_dt(ds: xr.Dataset) -> TrialTree:
     """Wrap a single xr.Dataset as a one-trial continuous TrialTree."""
-    
-    
-    
+
     duration = eto.get_ds_duration(ds)
     if duration is not None:
-        epochs = pd.DataFrame({
-            "trial": [1],
-            "start_time": [0.0],
-            "stop_time": [duration],
-        })
+        epochs = pd.DataFrame(
+            {
+                "trial": [1],
+                "start_time": [0.0],
+                "stop_time": [duration],
+            }
+        )
     else:
-        epochs = pd.DataFrame({
-            "trial": [1],
-            "start_time": [0.0],
-        })
-        
-    
+        epochs = pd.DataFrame(
+            {
+                "trial": [1],
+                "start_time": [0.0],
+            }
+        )
+
     return TrialTree.from_continuous(ds, epochs)
 
 
@@ -449,7 +448,7 @@ def _wizard_single_media_helper(
             row["audio_mic-1_start"] = float(audio_offset)
 
     trial_table = pd.DataFrame([row])
-    
+
     if isinstance(dt.itrial(0), xr.Dataset):
         fps = dt.itrial(0).attrs.get("fps")
     elif isinstance(dt, xr.Dataset):
@@ -472,9 +471,7 @@ def _wizard_single_media_helper(
         output_dir = Path.cwd()
 
     nwb_path = output_dir / ".ethograph" / "alignment.nwb"
-    align_media_per_trial(
-        trial_table, stream_rates=stream_rates, output_path=nwb_path
-    )
+    align_media_per_trial(trial_table, stream_rates=stream_rates, output_path=nwb_path)
 
     return dt
 
@@ -512,15 +509,11 @@ def wizard_single_from_pose(
         compute_pairwise_distances(ds.position, dim="individuals", pairs="all")
 
     dt = _wizard_ds_to_continuous_dt(ds)
-    _wizard_single_media_helper(
-        dt, video_path=video_path, pose_path=pose_path, video_offset=video_offset
-    )
+    _wizard_single_media_helper(dt, video_path=video_path, pose_path=pose_path, video_offset=video_offset)
     return dt
 
 
-def wizard_single_from_ds(
-    video_path, ds: xr.Dataset, video_offset: float | None = None
-):
+def wizard_single_from_ds(video_path, ds: xr.Dataset, video_offset: float | None = None):
     _wizard_single_media_helper(ds, video_path=video_path, video_offset=video_offset)
     return ds
 
@@ -563,9 +556,8 @@ def wizard_single_from_npy_file(
 
     if video_motion and video_path is not None:
         from ethograph.features.movement import extract_video_motion
-        ds["video_motion"] = extract_video_motion(
-            video_path, fps=ds.attrs["fps"], time_coord_name="time_video"
-        )
+
+        ds["video_motion"] = extract_video_motion(video_path, fps=ds.attrs["fps"], time_coord_name="time_video")
 
     dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(dt, video_path=video_path, video_offset=video_offset)
@@ -594,9 +586,8 @@ def wizard_single_from_ephys(
 
     if video_motion and video_path is not None:
         from ethograph.features.movement import extract_video_motion
-        ds["video_motion"] = extract_video_motion(
-            video_path, fps=ds.attrs["fps"], time_coord_name="time_video"
-        )
+
+        ds["video_motion"] = extract_video_motion(video_path, fps=ds.attrs["fps"], time_coord_name="time_video")
 
     dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(
@@ -632,9 +623,7 @@ def wizard_single_from_video(
             "individual 4",
         ]
 
-    motion = extract_video_motion(
-        video_path, fps=fps, verbose=False, scale_width=scale_width
-    )
+    motion = extract_video_motion(video_path, fps=fps, verbose=False, scale_width=scale_width)
 
     ds = xr.Dataset(
         {"video_motion": motion},
@@ -669,9 +658,8 @@ def wizard_single_from_audio(
 
     if video_motion and video_path is not None:
         from ethograph.features.movement import extract_video_motion
-        ds["video_motion"] = extract_video_motion(
-            video_path, fps=ds.attrs["fps"], time_coord_name="time_video"
-        )
+
+        ds["video_motion"] = extract_video_motion(video_path, fps=ds.attrs["fps"], time_coord_name="time_video")
 
     dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(

@@ -6,7 +6,13 @@ Merges what was previously split across:
 - ``EXAMPLE_CONFIGS`` in ``utils/download.py`` (per-dataset config files)
 """
 
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import xarray as xr
 
 DOWNLOAD_BASE = Path.home() / ".ethograph" / "example_data"
 
@@ -22,8 +28,14 @@ DATASETS: dict[str, dict] = {
         "has_audio": False,
         "import_labels": True,
         "media": [
-            {"video_cam-1": "2024-12-17_115_Crow1-cam-1.mp4", "pose_cam-1": "2024-12-17_115_Crow1-cam-1DLC.csv"},
-            {"video_cam-1": "2024-12-18_041_Crow1-cam-1.mp4", "pose_cam-1": "2024-12-18_041_Crow1-cam-1DLC.csv"},
+            {
+                "video_cam-1": "2024-12-17_115_Crow1-cam-1.mp4",
+                "pose_cam-1": "2024-12-17_115_Crow1-cam-1DLC.csv",
+            },
+            {
+                "video_cam-1": "2024-12-18_041_Crow1-cam-1.mp4",
+                "pose_cam-1": "2024-12-18_041_Crow1-cam-1DLC.csv",
+            },
         ],
         # Download
         "release_tag": "moll2025",
@@ -147,15 +159,15 @@ DATASETS: dict[str, dict] = {
                 "video_top-down-view": "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view.mp4",
                 "pose_front-view": "2021-02-15_07-32-44_segment1_mouse324_ball_front-view-tracks_individual_0.csv",
                 "pose_side-view": "2021-02-15_07-32-44_segment1_mouse324_ball_side-view-tracks_individual_0.csv",
-                "pose_top-down-view": "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view-tracks_individual_0.csv",
+                "pose_top-down-view": "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view-tracks_individual_0.csv",  # noqa: E501
             },
             {
                 "video_front-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view.mp4",
                 "video_side-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view.mp4",
                 "video_top-down-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view.mp4",
-                "pose_front-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view-tracks_individual_0.csv",
-                "pose_side-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view-tracks_individual_0.csv",
-                "pose_top-down-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view-tracks_individual_0.csv",
+                "pose_front-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view-tracks_individual_0.csv",  # noqa: E501
+                "pose_side-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view-tracks_individual_0.csv",  # noqa: E501
+                "pose_top-down-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view-tracks_individual_0.csv",  # noqa: E501
             },
             {
                 "video_front-view": "2021-05-31_07-34-21_segment3_mouse291_stick_front-view.mp4",
@@ -163,7 +175,7 @@ DATASETS: dict[str, dict] = {
                 "video_top-down-view": "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view.mp4",
                 "pose_front-view": "2021-05-31_07-34-21_segment3_mouse291_stick_front-view-tracks_individual_0.csv",
                 "pose_side-view": "2021-05-31_07-34-21_segment3_mouse291_stick_side-view-tracks_individual_0.csv",
-                "pose_top-down-view": "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view-tracks_individual_0.csv",
+                "pose_top-down-view": "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view-tracks_individual_0.csv",  # noqa: E501
             },
         ],
         "release_tag": "lockbox",
@@ -209,6 +221,7 @@ DATASETS: dict[str, dict] = {
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def get_gui_assets(key: str) -> list[str]:
     """Derive the GUI asset list from dataset metadata.
@@ -289,6 +302,7 @@ def sample_data() -> "xr.Dataset":
         )
 
     import ethograph as eto
+
     dt = eto.open(str(nc_path))
     return dt.itrial(0)
 

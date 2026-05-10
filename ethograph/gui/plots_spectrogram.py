@@ -3,27 +3,26 @@
 from __future__ import annotations
 
 import logging
-import os
 import threading
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-import numpy as np
-import pyqtgraph as pg
-from audioio import AudioLoader
-from qtpy.QtCore import Signal
-from scipy.signal import spectrogram
+import numpy as np  # noqa: E402
+import pyqtgraph as pg  # noqa: E402
+from audioio import AudioLoader  # noqa: E402
+from qtpy.QtCore import Signal  # noqa: E402
+from scipy.signal import spectrogram  # noqa: E402
 
-from ..io.plot_sources import PlotSource
-from .plots_base import BasePlot, ThrottleDebounce
-from .app_constants import (
-    SPECTROGRAM_DEBOUNCE_MS,
-    DEFAULT_BUFFER_MULTIPLIER_AUDIO,
+from ..io.plot_sources import PlotSource  # noqa: E402
+from .app_constants import (  # noqa: E402
     BUFFER_COVERAGE_MARGIN,
+    DEFAULT_BUFFER_MULTIPLIER_AUDIO,
     DEFAULT_FALLBACK_MAX_FREQUENCY,
+    SPECTROGRAM_DEBOUNCE_MS,
     Z_INDEX_BACKGROUND,
 )
+from .plots_base import BasePlot, ThrottleDebounce  # noqa: E402
 
 
 class SharedAudioCache:
@@ -57,7 +56,6 @@ class SharedAudioCache:
             cls._instances.clear()
 
 
-
 class SpectrogramPlot(BasePlot):
     """Spectrogram plot with shared sync and marker functionality from BasePlot."""
 
@@ -67,7 +65,7 @@ class SpectrogramPlot(BasePlot):
     def __init__(self, app_state, parent=None):
         super().__init__(app_state, parent)
 
-        self.setLabel('left', 'Frequency', units='Hz')
+        self.setLabel("left", "Frequency", units="Hz")
 
         self.spec_item = pg.ImageItem()
         self.spec_item.setZValue(Z_INDEX_BACKGROUND)
@@ -137,7 +135,6 @@ class SpectrogramPlot(BasePlot):
 
         self.current_range = (t0, t1)
 
-
     def apply_y_range(self, ymin: Optional[float], ymax: Optional[float]):
         """Apply frequency range for spectrogram."""
         if ymin is not None and ymax is not None:
@@ -150,7 +147,7 @@ class SpectrogramPlot(BasePlot):
         if self.source is not None:
             nyquist_freq = self.source.sampling_rate / 2
         else:
-            audio_path = getattr(self.app_state, 'audio_path', None)
+            audio_path = getattr(self.app_state, "audio_path", None)
             if audio_path:
                 try:
                     audio_loader = SharedAudioCache.get_loader(audio_path)
@@ -175,7 +172,6 @@ class SpectrogramPlot(BasePlot):
         )
         self.plot_item.setYRange(spec_ymin, spec_ymax, padding=0)
 
-
     def _apply_y_constraints(self):
         """Apply frequency-based y-axis constraints."""
         self._set_frequency_limits()
@@ -187,7 +183,7 @@ class SpectrogramPlot(BasePlot):
     def _on_view_range_changed(self):
         if not self.isVisible():
             return
-        if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
+        if not hasattr(self.app_state, "ds") or self.app_state.ds is None:
             return
         self._td.trigger()
 
@@ -196,9 +192,6 @@ class SpectrogramPlot(BasePlot):
             return
         t0, t1 = self.get_current_xlim()
         self.update_plot_content(t0, t1)
-
-
-
 
 
 class SpectrogramBuffer:
@@ -220,7 +213,7 @@ class SpectrogramBuffer:
         self.buffer_changed = False
 
     def _get_buffer_multiplier(self):
-        spec_buffer = getattr(self.app_state, 'spec_buffer', None)
+        spec_buffer = getattr(self.app_state, "spec_buffer", None)
         if spec_buffer is not None and spec_buffer > 0:
             return spec_buffer
         try:
@@ -266,7 +259,7 @@ class SpectrogramBuffer:
             self.buffer_t1 = max_time
 
         result = source.get_data(self.buffer_t0, self.buffer_t1)
-        audio_data = result.values if hasattr(result, 'values') else result
+        audio_data = result.values if hasattr(result, "values") else result
 
         if len(audio_data) == 0:
             return
@@ -285,11 +278,8 @@ class SpectrogramBuffer:
         if len(audio_data) < nfft:
             return
 
-        with np.errstate(under='ignore'):
-            freqs, times, Sxx = spectrogram(
-                audio_data, fs=self.fs,
-                nperseg=nfft, noverlap=nfft - hop
-            )
+        with np.errstate(under="ignore"):
+            freqs, times, Sxx = spectrogram(audio_data, fs=self.fs, nperseg=nfft, noverlap=nfft - hop)
 
         Sxx_db = 10 * np.log10(Sxx + 1e-10)
         np.nan_to_num(Sxx_db, copy=False, nan=-100.0, posinf=0.0, neginf=-100.0)

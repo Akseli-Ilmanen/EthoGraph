@@ -7,10 +7,8 @@ try:
     import audioio as aio
 except ImportError as e:
     raise ImportError(
-        "audioio is required for audio utilities. "
-        "Install it with: uv pip install \"ethograph[audio]\""
+        'audioio is required for audio utilities. Install it with: uv pip install "ethograph[audio]"'
     ) from e
-
 
 
 def get_audio_sr(audio_path: str) -> int | None:
@@ -49,17 +47,28 @@ def mp4_to_wav(mp4_path: str | Path, audio_sr: int) -> Path:
         Path to the created WAV file.
     """
     mp4_path = Path(mp4_path)
-    wav_path = mp4_path.with_suffix('.wav')
+    wav_path = mp4_path.with_suffix(".wav")
 
-    
-    subprocess.run([
-        'ffmpeg', '-i', str(mp4_path),
-        '-vn', '-acodec', 'pcm_s16le',
-        '-ar', str(audio_sr), '-ac', '1',
-        '-y', str(wav_path)
-    ], check=True, capture_output=True)
-    
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-i",
+            str(mp4_path),
+            "-vn",
+            "-acodec",
+            "pcm_s16le",
+            "-ar",
+            str(audio_sr),
+            "-ac",
+            "1",
+            "-y",
+            str(wav_path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
     if not wav_path.exists():
         raise RuntimeError(f"Failed to create WAV file: {wav_path}")
-    
+
     return str(wav_path)

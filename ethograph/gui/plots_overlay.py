@@ -179,13 +179,13 @@ class OverlayManager:
         host_plot.plot_item.scene().addItem(vb)
         vb.setXLink(host_plot.plot_item.vb)
 
-        host_plot.plot_item.showAxis('right')
-        right_axis = host_plot.plot_item.getAxis('right')
+        host_plot.plot_item.showAxis("right")
+        right_axis = host_plot.plot_item.getAxis("right")
         if axis_color:
             right_axis.setPen(pg.mkPen(color=axis_color))
             right_axis.setTextPen(pg.mkPen(color=axis_color))
         if axis_label:
-            right_axis.setLabel(axis_label, color=axis_color or 'k')
+            right_axis.setLabel(axis_label, color=axis_color or "k")
         right_axis.linkToView(vb)
 
         def update_geometry():
@@ -250,7 +250,7 @@ class OverlayManager:
 
         if not self._any_overlay_on_plot(host):
             try:
-                host.plot_item.hideAxis('right')
+                host.plot_item.hideAxis("right")
             except (RuntimeError, AttributeError):
                 pass
         else:
@@ -295,7 +295,7 @@ class OverlayManager:
 
     def _update_right_axis(self, host_plot):
         scaled_on_plot = [e for e in self._entries.values() if e.host_plot is host_plot]
-        right_axis = host_plot.plot_item.getAxis('right')
+        right_axis = host_plot.plot_item.getAxis("right")
 
         if scaled_on_plot:
             entry = scaled_on_plot[0]

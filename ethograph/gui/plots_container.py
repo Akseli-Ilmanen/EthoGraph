@@ -14,7 +14,6 @@ Panel stack (top to bottom, each optional except Feature Plot):
 from typing import Any, Dict
 
 import numpy as np
-from ethograph.io.time_model import TimeRange
 import pyqtgraph as pg
 from qtpy.QtCore import QSize, Qt, QTimer, Signal
 from qtpy.QtWidgets import (
@@ -26,23 +25,23 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ethograph.io.time_model import TimeRange
+from ethograph.labels.intervals import find_interval_at, get_interval_bounds
+
+from ..io.plot_sources import build_audio_source
 from .app_constants import (
     ENVELOPE_OVERLAY_COLOR,
     ENVELOPE_OVERLAY_DEBOUNCE_MS,
     ENVELOPE_OVERLAY_WIDTH,
     PLOT_CONTAINER_SIZE_HINT_HEIGHT,
 )
-
-import ethograph as eto
-from ethograph.labels.intervals import find_interval_at, get_interval_bounds
 from .audio_player import AudioPlayer
-from ..io.plot_sources import build_audio_source
 from .label_drawing_mixin import LabelDrawingMixin
 from .plots_audiotrace import AudioTracePlot
+from .plots_base import ThrottleDebounce
 from .plots_ephystrace import EphysTracePlot
 from .plots_heatmap import HeatmapPlot
 from .plots_lineplot import LinePlot
-from .plots_base import ThrottleDebounce
 from .plots_overlay import OverlayManager
 from .plots_raster import RasterPlot
 from .plots_spectrogram import SharedAudioCache, SpectrogramPlot
@@ -114,7 +113,14 @@ class TimeSlider(QWidget):
 # Values: dict mapping panel_name -> fraction of splitter height
 _PANEL_RATIOS = {
     # audio + ephys
-    (True, True): {"audiotrace": 0.10, "spectrogram": 0.15, "neo": 0.15, "ephys": 0.20, "raster": 0.10, "feature": 0.30},
+    (True, True): {
+        "audiotrace": 0.10,
+        "spectrogram": 0.15,
+        "neo": 0.15,
+        "ephys": 0.20,
+        "raster": 0.10,
+        "feature": 0.30,
+    },
     # audio only
     (True, False): {"audiotrace": 0.20, "spectrogram": 0.30, "feature": 0.50},
     # ephys only
@@ -213,7 +219,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.spectrogram_plot = SpectrogramPlot(app_state)
         self.line_plot = LinePlot(napari_viewer, app_state)
         self.heatmap_plot = HeatmapPlot(app_state)
-        self.neo_trace_plot = EphysTracePlot(app_state)   # Neo-Viewer panel
+        self.neo_trace_plot = EphysTracePlot(app_state)  # Neo-Viewer panel
         self.ephys_trace_plot = EphysTracePlot(app_state)  # Phy-Viewer panel
         self.raster_plot = RasterPlot(app_state)
 
@@ -243,9 +249,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.dataset_cp_items: list = []
 
         self.overlay_manager = OverlayManager()
-        self.line_plot.vb.sigYRangeChanged.connect(
-            lambda: self.overlay_manager.rescale_for_plot(self.line_plot)
-        )
+        self.line_plot.vb.sigYRangeChanged.connect(lambda: self.overlay_manager.rescale_for_plot(self.line_plot))
         self.audio_trace_plot.vb.sigYRangeChanged.connect(
             lambda: self.overlay_manager.rescale_for_plot(self.audio_trace_plot)
         )
@@ -272,8 +276,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._splitter.setChildrenCollapsible(False)
         main_layout.addWidget(self._splitter)
 
-    
-
         # Audio playback (no-video mode)
         self.audio_player = AudioPlayer(
             app_state,
@@ -291,8 +293,14 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._xlink_master = None
 
         # Connect zoom events for changepoint line style updates
-        for plot in (self.spectrogram_plot, self.audio_trace_plot,
-                     self.heatmap_plot, self.neo_trace_plot, self.ephys_trace_plot, self.raster_plot):
+        for plot in (
+            self.spectrogram_plot,
+            self.audio_trace_plot,
+            self.heatmap_plot,
+            self.neo_trace_plot,
+            self.ephys_trace_plot,
+            self.raster_plot,
+        ):
             plot.vb.sigRangeChanged.connect(self._on_plot_zoom)
 
         # Bidirectional y-axis sync between ephys trace and raster
@@ -304,13 +312,13 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         # Track which panel was last clicked (for changepoint navigation)
         self._last_clicked_panel = "feature"
-        self.audio_trace_plot.plot_clicked.connect(lambda _: setattr(self, '_last_clicked_panel', 'audio'))
-        self.spectrogram_plot.plot_clicked.connect(lambda _: setattr(self, '_last_clicked_panel', 'audio'))
-        self.line_plot.plot_clicked.connect(lambda _: setattr(self, '_last_clicked_panel', 'feature'))
-        self.heatmap_plot.plot_clicked.connect(lambda _: setattr(self, '_last_clicked_panel', 'feature'))
-        self.neo_trace_plot.plot_clicked.connect(lambda _: setattr(self, '_last_clicked_panel', 'neo'))
-        self.ephys_trace_plot.plot_clicked.connect(lambda _: setattr(self, '_last_clicked_panel', 'ephys'))
-        self.raster_plot.plot_clicked.connect(lambda _: setattr(self, '_last_clicked_panel', 'raster'))
+        self.audio_trace_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "audio"))
+        self.spectrogram_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "audio"))
+        self.line_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "feature"))
+        self.heatmap_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "feature"))
+        self.neo_trace_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "neo"))
+        self.ephys_trace_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "ephys"))
+        self.raster_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "raster"))
 
         # Add all panels to the splitter once, hidden. We never reparent them.
         # setVisible() is used to toggle; QSplitter collapses hidden children to zero.
@@ -340,11 +348,11 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             self._label_indicator.hide()
             return
 
-        ind = getattr(self.app_state, 'individuals_sel', None)
+        ind = getattr(self.app_state, "individuals_sel", None)
         if ind is None or ind in ("", "None"):
             ds = self.app_state.ds
-            if ds is not None and 'individuals' in ds.coords:
-                ind = str(ds.coords['individuals'].values[0])
+            if ds is not None and "individuals" in ds.coords:
+                ind = str(ds.coords["individuals"].values[0])
             else:
                 ind = "default"
 
@@ -355,7 +363,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             if label_id in mappings and label_id != 0:
                 entry = mappings[label_id]
                 color = entry["color"]
-                color_list = color.tolist() if hasattr(color, 'tolist') else list(color)
+                color_list = color.tolist() if hasattr(color, "tolist") else list(color)
                 self._label_indicator.update_label(entry["name"], color_list)
                 return
 
@@ -371,7 +379,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def configure_panels(self):
         """Called after data load to set up which panels are available."""
-   
+
         # Clear saved user sizes so defaults apply for the new dataset
         self._user_sizes.clear()
         self._update_panel_visibility()
@@ -418,7 +426,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # Hide x-axis ticks on all panels except the bottom-most visible one
         for i, name in enumerate(visible_names):
             widget = self._get_panel_widget(name)
-            is_last = (i == len(visible_names) - 1)
+            is_last = i == len(visible_names) - 1
             widget.plotItem.getAxis("bottom").setStyle(showValues=is_last)
             if not is_last:
                 widget.plotItem.setLabel("bottom", "")
@@ -471,7 +479,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # only if neither has a user-saved size yet.
         phy_names = {"ephys", "raster"}
         if "neo" in visible_names and any(n in phy_names for n in visible_names):
-            if "neo" not in self._user_sizes and not any(n in self._user_sizes for n in phy_names if n in visible_names):
+            if "neo" not in self._user_sizes and not any(
+                n in self._user_sizes for n in phy_names if n in visible_names
+            ):
                 neo_i = visible_names.index("neo")
                 phy_indices = [i for i, n in enumerate(visible_names) if n in phy_names]
                 neo_phy_total = raw[neo_i] + sum(raw[j] for j in phy_indices)
@@ -652,7 +662,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     def set_x_range(self, mode="default", curr_xlim=None, center_on_frame=None):
         master = self._xlink_master or self._feature_plot
         return master.set_x_range(
-            mode=mode, curr_xlim=curr_xlim, center_on_frame=center_on_frame,
+            mode=mode,
+            curr_xlim=curr_xlim,
+            center_on_frame=center_on_frame,
         )
 
     @property
@@ -679,7 +691,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def _on_seek_time_requested(self, time_s: float):
         self.update_time_marker_by_time(time_s)
-        video = getattr(self.app_state, 'video', None)
+        video = getattr(self.app_state, "video", None)
         if video:
             frame = video.time_to_frame(time_s)
             video.blockSignals(True)
@@ -688,7 +700,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             self.app_state.current_frame = frame
 
     def update_time_marker_and_window(self, frame_number):
-        video = getattr(self.app_state, 'video', None)
+        video = getattr(self.app_state, "video", None)
         if video:
             current_time = video.frame_to_time(frame_number)
         else:
@@ -770,8 +782,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         t0, t1 = self.get_current_xlim()
         time = self.app_state.time
-        
-        
+
         if time is not None:
             vals = np.asarray(time)
             data_t0, data_t1 = float(vals[0]), float(vals[-1])
@@ -790,19 +801,16 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._apply_all_zoom_constraints()
         QTimer.singleShot(0, self._apply_panel_sizes)
 
-
     # --- Time slider ---
 
     def _on_slider_time(self, time_s: float):
         self.update_time_marker_by_time(time_s)
-        center = getattr(self.app_state, 'center_playback', False)
+        center = getattr(self.app_state, "center_playback", False)
         visible = TimeRange(*self.get_current_xlim())
         if center or not visible.contains(time_s):
             half = self.app_state.view_span / 2.0
             master = self._xlink_master or self._feature_plot
             master.vb.setXRange(time_s - half, time_s + half, padding=0)
-
-
 
     # --- Audio playback (space key) ---
 
@@ -817,7 +825,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     # --- Confidence overlay ---
 
     def show_confidence_plot(self, confidence_data, time_coord=None):
-        self.overlay_manager.remove_overlay('confidence')
+        self.overlay_manager.remove_overlay("confidence")
 
         if confidence_data is None or len(confidence_data) == 0:
             return
@@ -825,11 +833,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         if time_coord is None:
             time_coord = self.app_state.time_coord.values
 
-        item = pg.PlotCurveItem(
-            pen=pg.mkPen(color='k', width=2, style=pg.QtCore.Qt.DashLine)
-        )
+        item = pg.PlotCurveItem(pen=pg.mkPen(color="k", width=2, style=pg.QtCore.Qt.DashLine))
         self.overlay_manager.add_scaled_overlay(
-            'confidence',
+            "confidence",
             self.current_plot,
             item,
             time_coord,
@@ -838,7 +844,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         )
 
     def hide_confidence_plot(self):
-        self.overlay_manager.remove_overlay('confidence')
+        self.overlay_manager.remove_overlay("confidence")
 
     # --- Amplitude envelope ---
 
@@ -863,15 +869,19 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
                 thresholds = [(threshold, default_pen)]
 
         vb = self.overlay_manager.add_viewbox_overlay(
-            'amplitude_envelope', host,
-            axis_label='Envelope', axis_color=ENVELOPE_OVERLAY_COLOR,
+            "amplitude_envelope",
+            host,
+            axis_label="Envelope",
+            axis_color=ENVELOPE_OVERLAY_COLOR,
         )
         vb.setZValue(1000)
 
         item = pg.PlotDataItem(
-            time, envelope,
+            time,
+            envelope,
             pen=pg.mkPen(color=ENVELOPE_OVERLAY_COLOR, width=2),
-            downsample=10, downsampleMethod='peak',
+            downsample=10,
+            downsampleMethod="peak",
         )
         vb.addItem(item)
 
@@ -891,7 +901,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         vb.setXRange(t0, t1, padding=0)
 
     def clear_amplitude_envelope(self):
-        self.overlay_manager.remove_overlay('amplitude_envelope')
+        self.overlay_manager.remove_overlay("amplitude_envelope")
 
     def _get_amp_envelope_host(self):
         if self._panel_visible["audiotrace"] and self.audio_trace_plot.isVisible():
@@ -921,7 +931,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         if signal_data is None:
             return
 
-        metric = self.app_state.get_with_default('energy_metric')
+        metric = self.app_state.get_with_default("energy_metric")
         env_time, env_data = compute_energy_envelope(signal_data, fs, metric, self.app_state)
 
         if env_data is None or len(env_data) == 0:
@@ -930,21 +940,24 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         env_time = env_time + buf_t0
 
         item = pg.PlotCurveItem(
-            env_time, env_data,
+            env_time,
+            env_data,
             pen=pg.mkPen(color=ENVELOPE_OVERLAY_COLOR, width=ENVELOPE_OVERLAY_WIDTH),
         )
 
         vb = self.overlay_manager.add_viewbox_overlay(
-            'energy_envelope', host,
+            "energy_envelope",
+            host,
             host_items=[item],
-            axis_label='Envelope', axis_color=ENVELOPE_OVERLAY_COLOR,
+            axis_label="Envelope",
+            axis_color=ENVELOPE_OVERLAY_COLOR,
         )
         host.addItem(item)
 
         self._sync_envelope_axis_to_host(host, vb)
 
         def on_host_y_changed():
-            env_vb = self.overlay_manager.get_viewbox('energy_envelope')
+            env_vb = self.overlay_manager.get_viewbox("energy_envelope")
             if env_vb is not None:
                 self._sync_envelope_axis_to_host(host, env_vb)
 
@@ -958,7 +971,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         )
 
         def on_x_range_changed():
-            if self.overlay_manager.has_overlay('energy_envelope'):
+            if self.overlay_manager.has_overlay("energy_envelope"):
                 self._envelope_td.trigger()
 
         host.vb.sigXRangeChanged.connect(on_x_range_changed)
@@ -996,10 +1009,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             td.stop()
             self._envelope_td = None
 
-        self.overlay_manager.remove_overlay('energy_envelope')
+        self.overlay_manager.remove_overlay("energy_envelope")
 
     def _compute_current_envelope(self):
-        if not self.overlay_manager.has_overlay('energy_envelope'):
+        if not self.overlay_manager.has_overlay("energy_envelope"):
             return None
 
         host = self._get_envelope_host_plot()
@@ -1011,7 +1024,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         if signal_data is None:
             return None
 
-        metric = self.app_state.get_with_default('energy_metric')
+        metric = self.app_state.get_with_default("energy_metric")
         env_time, env_data = compute_energy_envelope(signal_data, fs, metric, self.app_state)
 
         if env_data is None or len(env_data) == 0:
@@ -1026,18 +1039,18 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             return
         env_time, env_data = result
 
-        vb_entry = self.overlay_manager._vb_entries.get('energy_envelope')
+        vb_entry = self.overlay_manager._vb_entries.get("energy_envelope")
         if vb_entry and vb_entry.host_items:
             vb_entry.host_items[0].setData(env_time, env_data)
 
-        env_vb = self.overlay_manager.get_viewbox('energy_envelope')
+        env_vb = self.overlay_manager.get_viewbox("energy_envelope")
         if env_vb is not None:
             host = self._get_envelope_host_plot()
             if host is not None:
                 self._sync_envelope_axis_to_host(host, env_vb)
 
     def _load_envelope_data(self, host, t0, t1):
-        audio_path = getattr(self.app_state, 'audio_path', None)
+        audio_path = getattr(self.app_state, "audio_path", None)
         if not audio_path:
             return None, None, None
         loader = SharedAudioCache.get_loader(audio_path)

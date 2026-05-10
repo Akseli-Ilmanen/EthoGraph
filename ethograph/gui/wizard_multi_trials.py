@@ -6,13 +6,10 @@ import io
 import logging
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
-from natsort import natsorted
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QApplication,
-    QCheckBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -36,7 +33,8 @@ logger = logging.getLogger(__name__)
 
 
 def _build_modality_df(
-    config: ModalityConfig, stream_name: str,
+    config: ModalityConfig,
+    stream_name: str,
 ) -> pd.DataFrame | None:
     pat = config.pattern
     if pat is None:
@@ -100,11 +98,11 @@ class TrialsPage(QWidget):
         auto_group = QGroupBox("① Auto-generated from files")
         auto_layout = QVBoxLayout(auto_group)
         auto_layout.setSpacing(4)
-        
+
         self._auto_status = QLabel("No multi-file modalities detected")
         self._auto_status.setStyleSheet("color: #888; font-style: italic; font-size: 10px;")
         auto_layout.addWidget(self._auto_status)
-        
+
         self._auto_table = QTableWidget()
         self._auto_table.setAlternatingRowColors(True)
         self._auto_table.setStyleSheet(
@@ -123,7 +121,7 @@ class TrialsPage(QWidget):
         import_group = QGroupBox("② Add trial metadata (optional)")
         import_layout = QVBoxLayout(import_group)
         import_layout.setSpacing(6)
-        
+
         hint = QLabel(
             "Import or paste a table with a 'trial' column.\n"
             "Additional columns will be <b>merged</b> with the auto-generated table."
@@ -131,7 +129,7 @@ class TrialsPage(QWidget):
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #a0a0a0; font-size: 10px; padding: 2px;")
         import_layout.addWidget(hint)
-        
+
         btn_row = QHBoxLayout()
         self._import_btn = QPushButton("📁 Import CSV/TSV")
         self._import_btn.clicked.connect(self._import_table)
@@ -141,18 +139,20 @@ class TrialsPage(QWidget):
         btn_row.addWidget(self._paste_btn)
         btn_row.addStretch()
         import_layout.addLayout(btn_row)
-        
+
         self._import_status = QLabel("No metadata imported")
         self._import_status.setStyleSheet("color: #888; font-style: italic; font-size: 10px;")
         import_layout.addWidget(self._import_status)
-        
+
         # Column requirements display
         self._requirements_label = QLabel()
         self._requirements_label.setWordWrap(True)
-        self._requirements_label.setStyleSheet("font-size: 10px; padding: 4px; background: #1a1d21; border: 1px solid #2a2f37; border-radius: 3px;")
+        self._requirements_label.setStyleSheet(
+            "font-size: 10px; padding: 4px; background: #1a1d21; border: 1px solid #2a2f37; border-radius: 3px;"
+        )
         self._requirements_label.hide()  # Hidden until requirements exist
         import_layout.addWidget(self._requirements_label)
-        
+
         self._import_table_widget = QTableWidget()
         self._import_table_widget.setAlternatingRowColors(True)
         self._import_table_widget.setStyleSheet(
@@ -165,7 +165,7 @@ class TrialsPage(QWidget):
         self._import_table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self._import_table_widget.setMaximumHeight(200)
         import_layout.addWidget(self._import_table_widget)
-        
+
         clear_row = QHBoxLayout()
         self._clear_btn = QPushButton("✕ Clear imported data")
         self._clear_btn.clicked.connect(self._clear_imported)
@@ -173,19 +173,19 @@ class TrialsPage(QWidget):
         clear_row.addWidget(self._clear_btn)
         clear_row.addStretch()
         import_layout.addLayout(clear_row)
-        
+
         splitter.addWidget(import_group)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 1)
         layout.addWidget(splitter)
 
         layout.addSpacing(8)
-        
+
         # ═══ Final merged result ═══
         result_label = QLabel("③ <b>Final table</b> (merged result)")
         result_label.setStyleSheet("font-size: 11px;")
         layout.addWidget(result_label)
-        
+
         self._table = QTableWidget()
         self._table.setAlternatingRowColors(True)
         self._table.setStyleSheet(
@@ -220,7 +220,9 @@ class TrialsPage(QWidget):
         self._wizard_state = state
         dfs: list[pd.DataFrame] = []
         for name, stream in [
-            ("video", "video"), ("pose", "pose"), ("audio", "audio"),
+            ("video", "video"),
+            ("pose", "pose"),
+            ("audio", "audio"),
         ]:
             cfg: ModalityConfig = getattr(state, name)
             if not cfg.enabled or cfg.file_mode == "single":
@@ -250,13 +252,13 @@ class TrialsPage(QWidget):
             self._auto_status.setText("No multi-file modalities detected")
             self._auto_status.setStyleSheet("color: #888; font-style: italic;")
             return
-        
+
         cols = list(self._auto_df.columns)
         n_rows = min(len(self._auto_df), 50)
         self._auto_table.setColumnCount(len(cols))
         self._auto_table.setHorizontalHeaderLabels(cols)
         self._auto_table.setRowCount(n_rows)
-        
+
         for r in range(n_rows):
             for c, col in enumerate(cols):
                 val = self._auto_df.iloc[r][col]
@@ -267,7 +269,7 @@ class TrialsPage(QWidget):
                 item = QTableWidgetItem(txt)
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self._auto_table.setItem(r, c, item)
-        
+
         self._auto_status.setText(f"✓ {len(self._auto_df)} trials detected")
         self._auto_status.setStyleSheet("color: #50c8b4; font-weight: bold;")
         self._update_requirements_display()
@@ -282,13 +284,13 @@ class TrialsPage(QWidget):
             self._clear_btn.setEnabled(False)
             self._update_requirements_display()
             return
-        
+
         cols = list(self._imported_df.columns)
         n_rows = min(len(self._imported_df), 50)
         self._import_table_widget.setColumnCount(len(cols))
         self._import_table_widget.setHorizontalHeaderLabels(cols)
         self._import_table_widget.setRowCount(n_rows)
-        
+
         for r in range(n_rows):
             for c, col in enumerate(cols):
                 val = self._imported_df.iloc[r][col]
@@ -296,50 +298,48 @@ class TrialsPage(QWidget):
                 item = QTableWidgetItem(txt)
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self._import_table_widget.setItem(r, c, item)
-        
+
         extra_cols = [c for c in cols if c != "trial"]
         self._import_status.setText(f"✓ {len(extra_cols)} metadata column(s): {', '.join(extra_cols)}")
         self._import_status.setStyleSheet("color: #e8737a; font-weight: bold;")
         self._clear_btn.setEnabled(True)
         self._update_requirements_display()
 
-    def _align_trial_types(
-        self, df1: pd.DataFrame, df2: pd.DataFrame
-    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def _align_trial_types(self, df1: pd.DataFrame, df2: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Ensure both DataFrames have the same type for 'trial' column to avoid merge errors.
-        
+
         Smart type conversion:
         - If both columns contain pure numbers (e.g., "20", "30"), convert to int
         - If either contains letters (e.g., "trial_1", "A1"), convert both to strings
         """
         if "trial" not in df1.columns or "trial" not in df2.columns:
             return df1, df2
-        
+
         def can_convert_to_int(series: pd.Series) -> bool:
             """Check if all values in series can be safely converted to int."""
             try:
-                pd.to_numeric(series, errors='raise').astype(int)
+                pd.to_numeric(series, errors="raise").astype(int)
                 return True
             except (ValueError, TypeError):
                 return False
-        
+
         # Check if both columns can be converted to integers
         can_int_1 = can_convert_to_int(df1["trial"])
         can_int_2 = can_convert_to_int(df2["trial"])
-        
+
         if can_int_1 and can_int_2:
             # Both are pure numbers - convert to int
             df1 = df1.copy()
             df2 = df2.copy()
-            df1["trial"] = pd.to_numeric(df1["trial"], errors='coerce').astype(int)
-            df2["trial"] = pd.to_numeric(df2["trial"], errors='coerce').astype(int)
+            df1["trial"] = pd.to_numeric(df1["trial"], errors="coerce").astype(int)
+            df2["trial"] = pd.to_numeric(df2["trial"], errors="coerce").astype(int)
         else:
             # At least one contains non-numeric values - convert both to string
             df1 = df1.copy()
             df2 = df2.copy()
             df1["trial"] = df1["trial"].astype(str)
             df2["trial"] = df2["trial"].astype(str)
-        
+
         return df1, df2
 
     def _is_fully_aligned(self) -> bool:
@@ -354,10 +354,7 @@ class TrialsPage(QWidget):
             if self._imported_df is not None:
                 # Merge imported metadata
                 if "trial" in self._imported_df.columns:
-                    extra_cols = [
-                        c for c in self._imported_df.columns
-                        if c != "trial" and c not in df.columns
-                    ]
+                    extra_cols = [c for c in self._imported_df.columns if c != "trial" and c not in df.columns]
                     if extra_cols:
                         # Ensure consistent trial column types before merging
                         imported_subset = self._imported_df[["trial"] + extra_cols].copy()
@@ -414,7 +411,8 @@ class TrialsPage(QWidget):
 
     def _import_table(self):
         result = QFileDialog.getOpenFileName(
-            self, "Import trial table",
+            self,
+            "Import trial table",
             "",
             "Table files (*.csv *.tsv *.txt);;All files (*)",
         )
@@ -456,44 +454,43 @@ class TrialsPage(QWidget):
 
     def _get_required_columns(self) -> dict[str, bool]:
         """Compute required columns based on wizard state.
-        
+
         Returns dict: {column_name: is_required}
         - is_required=True: must be present
         - is_required=False: optional but useful
         """
         if self._wizard_state is None:
             return {}
-        
+
         required = {}
-        
+
         # Non-aligned mode requires timing columns
         if not self._is_fully_aligned():
             required["start_time"] = True
             required["stop_time"] = False  # Optional
-  
-        
+
         return required
 
     def _update_requirements_display(self):
         """Update the column requirements display with color coding."""
         required_cols = self._get_required_columns()
-        
+
         if not required_cols:
             self._requirements_label.hide()
             return
-        
+
         self._requirements_label.show()
-        
+
         # Check which columns are present in imported data
         present_cols = set()
         if self._imported_df is not None and not self._imported_df.empty:
             present_cols = set(self._imported_df.columns)
-        
+
         # Build status text
         lines = ["<b>Import table columns:</b>"]
         missing_required = []
         has_required = any(is_req for is_req in required_cols.values())
-        
+
         for col, is_required in sorted(required_cols.items()):
             is_present = col in present_cols
             if is_present:
@@ -507,15 +504,17 @@ class TrialsPage(QWidget):
                 else:
                     color = "#888"  # gray
                     icon = "○"
-            
+
             req_label = "<b>[required]</b>" if is_required else "[optional]"
             lines.append(f"  <span style='color: {color};'>{icon} <code>{col}</code></span> {req_label}")
-        
+
         if missing_required:
-            lines.append(f"<br><span style='color: #e8737a;'><b>⚠ Missing required:</b> {', '.join(missing_required)}</span>")
+            lines.append(
+                f"<br><span style='color: #e8737a;'><b>⚠ Missing required:</b> {', '.join(missing_required)}</span>"
+            )
         elif has_required:
             lines.append("<br><span style='color: #50c8b4;'><b>✓ All required columns present</b></span>")
-        
+
         self._requirements_label.setText("<br>".join(lines))
 
     def collect_state(self, state: WizardState):
@@ -537,10 +536,7 @@ class TrialsPage(QWidget):
         if self._auto_df is not None:
             df = self._auto_df.copy()
             if self._imported_df is not None and "trial" in self._imported_df.columns:
-                extra_cols = [
-                    c for c in self._imported_df.columns
-                    if c != "trial" and c not in df.columns
-                ]
+                extra_cols = [c for c in self._imported_df.columns if c != "trial" and c not in df.columns]
                 if extra_cols:
                     imported_subset = self._imported_df[["trial"] + extra_cols].copy()
                     df, imported_subset = self._align_trial_types(df, imported_subset)
@@ -553,7 +549,7 @@ class TrialsPage(QWidget):
     def validate(self, state: WizardState) -> str | None:
         df = self._get_current_df()
         is_aligned = self._is_fully_aligned()
-        
+
         # Non-aligned mode requires timing columns
         if not is_aligned:
             if df is None or df.empty:

@@ -5,19 +5,19 @@ from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
+import pynapple as nap
 import xarray as xr
 
-import pynapple as nap
-
+from ethograph.io.nwb_alignment import (
+    EmpytAlignment,
+    discover_nwb,
+    make_nwb_alignment,
+)
 from ethograph.io.validation import validate_datatree
-from ethograph.io.nwb_alignment import discover_nwb, make_nwb_alignment, EmpytAlignment
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
 
 
 def _attrs_equal(a: Any, b: Any) -> bool:
@@ -30,14 +30,12 @@ def _attrs_equal(a: Any, b: Any) -> bool:
         return False
 
 
-
 # ---------------------------------------------------------------------------
 # TrialTree
 # ---------------------------------------------------------------------------
 
 
 class TrialTree(xr.DataTree):
-
     def __init__(self, data=None, children=None, name=None):
         if isinstance(data, xr.DataTree):
             super().__init__(dataset=data.ds, children=children, name=name)
@@ -68,11 +66,7 @@ class TrialTree(xr.DataTree):
     def _has_trial_node(self, trial) -> bool:
         trial_str = str(trial)
         sanitized = trial_str.replace("/", "_")
-        return (
-            trial_str in self.children
-            or sanitized in self.children
-            or f"trial_{trial_str}" in self.children
-        )
+        return trial_str in self.children or sanitized in self.children or f"trial_{trial_str}" in self.children
 
     def __getitem__(self, key):
         if isinstance(key, int):
@@ -85,8 +79,6 @@ class TrialTree(xr.DataTree):
         if isinstance(value, xr.Dataset):
             value = xr.DataTree(value)
         super().__setitem__(key, value)
-
-
 
     # ------------------------------------------------------------------
     # Continuous mode support
@@ -109,9 +101,7 @@ class TrialTree(xr.DataTree):
 
         for dim in time_dims:
             if dim in sliced.coords:
-                sliced = sliced.assign_coords(
-                    {dim: sliced.coords[dim].values - start}
-                )
+                sliced = sliced.assign_coords({dim: sliced.coords[dim].values - start})
 
         sliced.attrs = dict(ds.attrs)
         sliced.attrs["trial"] = trial_id
@@ -167,7 +157,9 @@ class TrialTree(xr.DataTree):
             return func(ds)
 
         return self.from_datatree(
-            self.map_over_datasets(_apply), attrs=self.attrs, source=self,
+            self.map_over_datasets(_apply),
+            attrs=self.attrs,
+            source=self,
         )
 
     def update_trial(self, trial, func: Callable[[xr.Dataset], xr.Dataset]) -> None:
@@ -177,13 +169,9 @@ class TrialTree(xr.DataTree):
         first if you need per-trial mutation.
         """
         if self._is_continuous:
-            raise TypeError(
-                "Cannot update trials in a continuous TrialTree. "
-            )
+            raise TypeError("Cannot update trials in a continuous TrialTree. ")
         node_name = self._trial_node_name(trial)
         self[node_name] = xr.DataTree(func(self[node_name].ds))
-
-
 
     # ------------------------------------------------------------------
     # Trial data access
@@ -230,10 +218,10 @@ class TrialTree(xr.DataTree):
         >>> dt = eto.open("session.nc")
         >>> dt.trials
         [1, 2, 3]
-        >>> ds = dt.itrial(0)   # same as dt.trial(1)
+        >>> ds = dt.itrial(0)  # same as dt.trial(1)
         >>> ds.attrs["trial"]
         1
-        >>> ds = dt.itrial(2)   # same as dt.trial(3)
+        >>> ds = dt.itrial(2)  # same as dt.trial(3)
         >>> ds.attrs["trial"]
         3
         """
@@ -244,9 +232,7 @@ class TrialTree(xr.DataTree):
             return self._slice_continuous(trial_ids[trial_idx])
 
         trial_nodes = [
-            k
-            for k in self.children
-            if self.children[k].ds is not None and "trial" in self.children[k].ds.attrs
+            k for k in self.children if self.children[k].ds is not None and "trial" in self.children[k].ds.attrs
         ]
         if trial_idx >= len(trial_nodes):
             raise IndexError(f"Trial index {trial_idx} out of range")
@@ -259,8 +245,6 @@ class TrialTree(xr.DataTree):
         """Return a dict mapping trial ID to Dataset for all trials."""
         return {num: self.trial(num) for num in self.trials}
 
-
-
     def get_common_attrs(self) -> dict[str, Any]:
         """Return attributes that are identical across all trials."""
         trials_dict = self.get_all_trials()
@@ -268,11 +252,7 @@ class TrialTree(xr.DataTree):
             return {}
         common = dict(next(iter(trials_dict.values())).attrs)
         for ds in trials_dict.values():
-            common = {
-                k: v
-                for k, v in common.items()
-                if k in ds.attrs and _attrs_equal(ds.attrs[k], v)
-            }
+            common = {k: v for k, v in common.items() if k in ds.attrs and _attrs_equal(ds.attrs[k], v)}
         return common
 
     # ------------------------------------------------------------------
@@ -288,6 +268,7 @@ class TrialTree(xr.DataTree):
 
         Checks the metadata table first; falls back to ``ds.attrs``.
         """
+
         def values_match(stored: Any, target: Any) -> bool:
             if stored == target:
                 return True
@@ -329,10 +310,9 @@ class TrialTree(xr.DataTree):
 
         Auto-discovers ``.ethograph/alignment.nwb`` next to the file.
         """
-        
+
         tree = xr.open_datatree(path, engine="netcdf4")
-        
-     
+
         tree.__class__ = cls
         tree._source_path = path
         nwb = discover_nwb(path)
@@ -400,11 +380,13 @@ class TrialTree(xr.DataTree):
         Examples
         --------
         >>> import pandas as pd
-        >>> epochs = pd.DataFrame({
-        ...     "trial": [1, 2, 3],
-        ...     "start_time": [0.0, 60.0, 120.0],
-        ...     "stop_time": [60.0, 120.0, 180.0],
-        ... })
+        >>> epochs = pd.DataFrame(
+        ...     {
+        ...         "trial": [1, 2, 3],
+        ...         "start_time": [0.0, 60.0, 120.0],
+        ...         "stop_time": [60.0, 120.0, 180.0],
+        ...     }
+        ... )
         >>> dt = TrialTree.from_continuous(ds, epochs)
         >>> dt.trial(2)  # returns 60-120s slice, time shifted to 0
         """
@@ -414,17 +396,14 @@ class TrialTree(xr.DataTree):
             epoch_dict = {}
             has_trial = "trial" in epochs.metadata.columns
             for i in range(len(epochs)):
-                trial_id = (
-                    epochs.metadata["trial"].iloc[i] if has_trial else i + 1
-                )
+                trial_id = epochs.metadata["trial"].iloc[i] if has_trial else i + 1
                 if hasattr(trial_id, "item"):
                     trial_id = trial_id.item()
                 epoch_dict[trial_id] = (float(epochs.start[i]), float(epochs.end[i]))
-                
-                
+
         elif isinstance(epochs, pd.DataFrame):
             epoch_dict = {}
-            
+
             if "trial" in epochs.columns:
                 trials_col = epochs["trial"].values
             else:
@@ -442,15 +421,20 @@ class TrialTree(xr.DataTree):
 
         tree._continuous_ds = ds
         tree._trial_epochs = epoch_dict
-        
+
         # Ensure nwb_alignment is always set (inherited from __init__, but explicit)
         if not hasattr(tree, "nwb_alignment") or tree.nwb_alignment is None:
             tree.nwb_alignment = EmpytAlignment()
         return tree
 
     @classmethod
-    def from_datatree(cls, dt: xr.DataTree, attrs: dict | None = None,
-                      *, source: "TrialTree | None" = None) -> TrialTree:
+    def from_datatree(
+        cls,
+        dt: xr.DataTree,
+        attrs: dict | None = None,
+        *,
+        source: "TrialTree | None" = None,
+    ) -> TrialTree:
         """Wrap an existing DataTree as a TrialTree.
 
         Parameters
@@ -509,7 +493,12 @@ class TrialTree(xr.DataTree):
     def _ensure_alignment_nwb(self, save_dir: Path) -> None:
         """Copy alignment NWB next to the save location if needed."""
         import shutil
-        from ethograph.io.nwb_alignment import NWBAlignment, _NWB_FILENAME, _SETTINGS_DIR
+
+        from ethograph.io.nwb_alignment import (
+            _NWB_FILENAME,
+            _SETTINGS_DIR,
+            NWBAlignment,
+        )
 
         sio = self.nwb_alignment
         if not isinstance(sio, NWBAlignment):
@@ -531,17 +520,10 @@ class TrialTree(xr.DataTree):
     # ------------------------------------------------------------------
 
     def _validate_tree(self) -> list[str]:
-        ds = self.itrial(0)
-        sio = self.nwb_alignment
         errors = validate_datatree(self)
         if errors:
-            raise ValueError(
-                "TrialTree validation failed:\n" + "\n".join(f"• {e}" for e in errors)
-            )
+            raise ValueError("TrialTree validation failed:\n" + "\n".join(f"• {e}" for e in errors))
         return errors
-
-
-
 
     # ------------------------------------------------------------------
     # Legacy compatibility
@@ -553,7 +535,6 @@ class TrialTree(xr.DataTree):
         if "session" in self.children:
             return self["session"].ds
         return None
-
 
     def get_trial_metadata(self, trial) -> dict:
         """Return condition metadata for a single trial as a dict."""

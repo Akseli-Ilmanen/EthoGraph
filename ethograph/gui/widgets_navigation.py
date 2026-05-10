@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import numpy as np
 from napari import Viewer
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
@@ -28,7 +27,6 @@ from ethograph.gui.notify import notify
 from ethograph.io.time_model import (
     RestrictionWindow,
     TimeRange,
-    build_trial_window,
     find_closest_trial,
     infer_slider_range,
 )
@@ -42,7 +40,11 @@ logger = logging.getLogger(__name__)
 NAVIGATE_MODES = ["Trial", "Label", "Sequence"]
 SLIDER_SCOPES = ["Trial", "Trial Start", "Session"]
 
-_SCOPE_KEY_TO_DISPLAY = {"trial": "Trial", "trial_start": "Trial Start", "session": "Session"}
+_SCOPE_KEY_TO_DISPLAY = {
+    "trial": "Trial",
+    "trial_start": "Trial Start",
+    "session": "Session",
+}
 _SCOPE_DISPLAY_TO_KEY = {v: k for k, v in _SCOPE_KEY_TO_DISPLAY.items()}
 
 
@@ -294,16 +296,14 @@ class NavigationWidget(QWidget):
         playback_layout.addWidget(self.time_jump_spin, 2, 1)
         playback_layout.addWidget(self.center_playback_checkbox, 2, 2)
 
-        self.play_pause_btn = QPushButton("\u25B6")
+        self.play_pause_btn = QPushButton("\u25b6")
         self.play_pause_btn.setToolTip("Play / Pause  (Space)")
         self.play_pause_btn.setFixedWidth(36)
         self.play_pause_btn.clicked.connect(self._on_play_pause_clicked)
 
         self.record_button = RecordButton(viewer, parent=self)
         self.hide_label_text_cb = QCheckBox("Hide label text")
-        self.hide_label_text_cb.setToolTip(
-            "Hide the label name overlay shown on the video canvas during playback"
-        )
+        self.hide_label_text_cb.setToolTip("Hide the label name overlay shown on the video canvas during playback")
         self.hide_label_text_cb.toggled.connect(self._on_hide_label_text_toggled)
 
         play_record_row = QHBoxLayout()
@@ -461,10 +461,11 @@ class NavigationWidget(QWidget):
         rw = getattr(self.app_state, "restrict_window", None)
         if rw is None:
             return
-        master = getattr(self.plot_container, "_xlink_master", None) or getattr(self.plot_container, "_feature_plot", None)
+        master = getattr(self.plot_container, "_xlink_master", None) or getattr(
+            self.plot_container, "_feature_plot", None
+        )
         if master is not None:
             master.vb.setXRange(rw.time_range.start_s, rw.time_range.end_s, padding=0)
-
 
     def _snap_to_closest_trial(self):
         """Switch to the trial closest to the current time marker, then update viewport."""
@@ -513,14 +514,18 @@ class NavigationWidget(QWidget):
             core = alignment.trial_range
             time_range = TimeRange(core.start_s - before, core.end_s + after)
             self.app_state.restrict_window = RestrictionWindow(
-                mode="trial", time_range=time_range, core_range=core,
+                mode="trial",
+                time_range=time_range,
+                core_range=core,
                 trial_id=trial_id,
             )
         elif scope == "trial_start" and alignment and alignment.trial_range:
             core = alignment.trial_range
             time_range = TimeRange(core.start_s - before, core.end_s + after)
             self.app_state.restrict_window = RestrictionWindow(
-                mode="trial_start", time_range=time_range, core_range=core,
+                mode="trial_start",
+                time_range=time_range,
+                core_range=core,
                 trial_id=trial_id,
             )
         elif scope == "session":
@@ -528,7 +533,9 @@ class NavigationWidget(QWidget):
             session = sc.session_range if sc else None
             if session:
                 self.app_state.restrict_window = RestrictionWindow(
-                    mode="session", time_range=session, core_range=session,
+                    mode="session",
+                    time_range=session,
+                    core_range=session,
                     trial_id=trial_id,
                 )
         elif alignment and alignment.trial_range:
@@ -536,7 +543,9 @@ class NavigationWidget(QWidget):
             core = alignment.trial_range
             time_range = TimeRange(core.start_s - before, core.end_s + after)
             self.app_state.restrict_window = RestrictionWindow(
-                mode="trial", time_range=time_range, core_range=core,
+                mode="trial",
+                time_range=time_range,
+                core_range=core,
                 trial_id=trial_id,
             )
 
@@ -771,7 +780,9 @@ class NavigationWidget(QWidget):
         extra_t0 = self.before_spin.value()
         extra_t1 = self.after_spin.value()
 
-        master = getattr(self.plot_container, "_xlink_master", None) or getattr(self.plot_container, "_feature_plot", None)
+        master = getattr(self.plot_container, "_xlink_master", None) or getattr(
+            self.plot_container, "_feature_plot", None
+        )
         if master is not None:
             master.vb.setXRange(onset_s - extra_t0, offset_s + extra_t1, padding=0)
 
@@ -840,7 +851,7 @@ class NavigationWidget(QWidget):
     def _sync_play_icon(self):
         video = getattr(self.app_state, "video", None)
         playing = video.is_playing if video else False
-        self.play_pause_btn.setText("\u23F8" if playing else "\u25B6")
+        self.play_pause_btn.setText("\u23f8" if playing else "\u25b6")
 
     def connect_video_sync(self, sync):
         """Connect playback_stopped signal to reset the play button icon."""
@@ -866,7 +877,10 @@ class NavigationWidget(QWidget):
             notify(f"Invalid playback FPS: {text!r}", severity="warning")
             return
         if fps_playback <= 0:
-            notify(f"Playback FPS must be positive (got {fps_playback})", severity="warning")
+            notify(
+                f"Playback FPS must be positive (got {fps_playback})",
+                severity="warning",
+            )
             return
         self.app_state.fps_playback = fps_playback
         qt_dims = self.viewer.window.qt_viewer.dims
@@ -898,18 +912,18 @@ class NavigationWidget(QWidget):
         self.coupling_button.setText("\U0001f517" if checked else "\U0001f513")
 
     def _on_hide_label_text_toggled(self, checked: bool):
-        labels_widget = getattr(self, '_labels_widget', None)
+        labels_widget = getattr(self, "_labels_widget", None)
         if labels_widget is None:
             return
         labels_widget._label_overlay_hidden = checked
-        overlay = getattr(labels_widget, '_label_overlay', None)
+        overlay = getattr(labels_widget, "_label_overlay", None)
         if overlay is None:
             return
         if checked:
             overlay.hide()
         else:
             labels_widget._label_overlay_last_text = ""
-            if hasattr(labels_widget, '_update_labels_text'):
+            if hasattr(labels_widget, "_update_labels_text"):
                 labels_widget._update_labels_text()
 
     def _step_frame(self, direction: int):
@@ -921,21 +935,17 @@ class NavigationWidget(QWidget):
             new_frame = max(0, min(new_frame, self.app_state.num_frames - 1))
             video.seek_to_frame(new_frame)
 
-
     def _step_window(self, direction: int):
         if not self.app_state.ready:
             return
         self._step_time_no_video(direction)
-        video = self.app_state.video    
-        if video and self.plot_container:                                                                                    
-            new_time = self.plot_container.time_slider.current_time                                                                                         
+        video = self.app_state.video
+        if video and self.plot_container:
+            new_time = self.plot_container.time_slider.current_time
             frame = video.time_to_frame(new_time)
             video.blockSignals(True)
             video.seek_to_frame(frame)
-            video.blockSignals(False)  
-
-
-
+            video.blockSignals(False)
 
     def _sync_trials_combo_color(self):
         idx = self.trials_combo.currentIndex()

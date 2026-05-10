@@ -2,14 +2,13 @@
 
 import logging
 import os
-import time as _time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict
 
 import numpy as np
-import xarray as xr
 import pandas as pd
+import xarray as xr
 from napari.viewer import Viewer
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QColor
@@ -31,23 +30,12 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-
-
 import ethograph as eto
 from ethograph.gui.notify import notify, notify_dialog
-from ethograph.labels.intervals import get_interval_bounds
+from ethograph.io.data_loader import load_dataset
 from ethograph.io.plot_sources import FileSource
 from ethograph.io.time_model import compute_trial_video_bounds
-
-
-
-from .app_constants import (
-    DEFAULT_LAYOUT_MARGIN,
-    DEFAULT_LAYOUT_SPACING,
-    SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
-)
-from ethograph.io.data_loader import load_dataset
-from .make_pretty import clean_display_labels
+from ethograph.labels.intervals import get_interval_bounds
 from ethograph.utils.qt import (
     ElidedDelegate,
     find_combo_index,
@@ -55,6 +43,13 @@ from ethograph.utils.qt import (
     make_searchable,
     set_combo_to_value,
 )
+
+from .app_constants import (
+    DEFAULT_LAYOUT_MARGIN,
+    DEFAULT_LAYOUT_SPACING,
+    SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
+)
+from .make_pretty import clean_display_labels
 from .plots_ephystrace import get_loader as get_ephys_loader
 from .plots_space import SpacePlot
 from .plots_spectrogram import SharedAudioCache
@@ -62,7 +57,7 @@ from .pose_render import (
     PoseDisplayManager,
     strip_common_prefix,
 )
-from .video_manager import VideoManager,  is_url
+from .video_manager import VideoManager, is_url
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +68,7 @@ def _detect_nwb_pose_keys(nwb_path: str | None) -> list[str] | None:
         return None
     try:
         from pynwb import NWBHDF5IO
+
         keys = []
         with NWBHDF5IO(str(nwb_path), "r") as io:
             nwb = io.read()
@@ -88,47 +84,78 @@ def _detect_nwb_pose_keys(nwb_path: str | None) -> list[str] | None:
 @dataclass
 class _PanelDef:
     """Declarative description of a panel toggle checkbox."""
-    name: str                           # internal identifier / checkbox attr prefix
-    label: str                          # displayed checkbox text
-    row: int                            # UI row in panels_groupbox (1, 2, or 3)
-    state_attr: str | None = None       # app_state attribute to sync with visibility
-    container_method: str | None = None # plot_container.method(visible) to call
-    autoscale_plot: str | None = None   # plot_container.X for autoscale on show
-    audio_row: bool = False             # part of the hidden-when-no-audio widget group
-    on_toggle: str | None = None        # self.method(visible) called after standard actions
-    requires: str | None = None         # app_state attr that must be truthy for data to exist
+
+    name: str  # internal identifier / checkbox attr prefix
+    label: str  # displayed checkbox text
+    row: int  # UI row in panels_groupbox (1, 2, or 3)
+    state_attr: str | None = None  # app_state attribute to sync with visibility
+    container_method: str | None = None  # plot_container.method(visible) to call
+    autoscale_plot: str | None = None  # plot_container.X for autoscale on show
+    audio_row: bool = False  # part of the hidden-when-no-audio widget group
+    on_toggle: str | None = None  # self.method(visible) called after standard actions
+    requires: str | None = None  # app_state attr that must be truthy for data to exist
 
 
 _PANEL_DEFS: list[_PanelDef] = [
-    _PanelDef("audiotrace",   "AudioTrace",   row=1, audio_row=True,
-              state_attr="audiotrace_visible",
-              container_method="set_audiotrace_visible",
-              autoscale_plot="audio_trace_plot",
-              on_toggle="_on_audio_panel_toggle"),
-    _PanelDef("spectrogram",  "Spectrogram",  row=1, audio_row=True,
-              state_attr="spectrogram_visible",
-              container_method="set_spectrogram_visible",
-              autoscale_plot="spectrogram_plot",
-              on_toggle="_on_audio_panel_toggle"),
-    _PanelDef("neo_viewer",   "Neo-Viewer",   row=1,
-              container_method="set_neo_visible",
-              on_toggle="_on_neo_panel_toggle",
-              requires="has_neo"),
-    _PanelDef("phy_viewer",   "Phy-Viewer",   row=1,
-              state_attr="ephys_visible",
-              container_method="set_ephys_visible",
-              on_toggle="_on_phy_panel_toggle",
-              requires="has_neurons"),
-    _PanelDef("featureplot",  "FeaturePlot",  row=1,
-              state_attr="featureplot_visible",
-              container_method="set_featureplot_visible",
-              requires="has_features"),
-    _PanelDef("video_viewer", "VideoViewer",  row=1,
-              state_attr="video_viewer_visible",
-              on_toggle="_on_video_viewer_toggle"),
-    _PanelDef("pose_markers", "PoseMarkers",  row=1,
-              state_attr="pose_markers_visible",
-              on_toggle="_on_pose_markers_toggle"),
+    _PanelDef(
+        "audiotrace",
+        "AudioTrace",
+        row=1,
+        audio_row=True,
+        state_attr="audiotrace_visible",
+        container_method="set_audiotrace_visible",
+        autoscale_plot="audio_trace_plot",
+        on_toggle="_on_audio_panel_toggle",
+    ),
+    _PanelDef(
+        "spectrogram",
+        "Spectrogram",
+        row=1,
+        audio_row=True,
+        state_attr="spectrogram_visible",
+        container_method="set_spectrogram_visible",
+        autoscale_plot="spectrogram_plot",
+        on_toggle="_on_audio_panel_toggle",
+    ),
+    _PanelDef(
+        "neo_viewer",
+        "Neo-Viewer",
+        row=1,
+        container_method="set_neo_visible",
+        on_toggle="_on_neo_panel_toggle",
+        requires="has_neo",
+    ),
+    _PanelDef(
+        "phy_viewer",
+        "Phy-Viewer",
+        row=1,
+        state_attr="ephys_visible",
+        container_method="set_ephys_visible",
+        on_toggle="_on_phy_panel_toggle",
+        requires="has_neurons",
+    ),
+    _PanelDef(
+        "featureplot",
+        "FeaturePlot",
+        row=1,
+        state_attr="featureplot_visible",
+        container_method="set_featureplot_visible",
+        requires="has_features",
+    ),
+    _PanelDef(
+        "video_viewer",
+        "VideoViewer",
+        row=1,
+        state_attr="video_viewer_visible",
+        on_toggle="_on_video_viewer_toggle",
+    ),
+    _PanelDef(
+        "pose_markers",
+        "PoseMarkers",
+        row=1,
+        state_attr="pose_markers_visible",
+        on_toggle="_on_pose_markers_toggle",
+    ),
 ]
 
 
@@ -189,7 +216,12 @@ class DataPanel(QWidget):
         self._update_pose_callback = None
         layout = QVBoxLayout()
         layout.setSpacing(DEFAULT_LAYOUT_SPACING)
-        layout.setContentsMargins(DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN)
+        layout.setContentsMargins(
+            DEFAULT_LAYOUT_MARGIN,
+            DEFAULT_LAYOUT_MARGIN,
+            DEFAULT_LAYOUT_MARGIN,
+            DEFAULT_LAYOUT_MARGIN,
+        )
         self.setLayout(layout)
 
         self._create_toggle_buttons(layout)
@@ -263,8 +295,10 @@ class DataPanel(QWidget):
         self.coords_groupbox_layout = QFormLayout()
         self.coords_groupbox_layout.setSpacing(DEFAULT_LAYOUT_SPACING)
         self.coords_groupbox_layout.setContentsMargins(
-            DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN,
-            DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN,
+            DEFAULT_LAYOUT_MARGIN,
+            DEFAULT_LAYOUT_MARGIN,
+            DEFAULT_LAYOUT_MARGIN,
+            DEFAULT_LAYOUT_MARGIN,
         )
         self.coords_groupbox.setLayout(self.coords_groupbox_layout)
         parent_layout.addWidget(self.coords_groupbox)
@@ -329,9 +363,7 @@ class DataPanel(QWidget):
         self.pose_hide_threshold_spin.setSingleStep(0.1)
         self.pose_hide_threshold_spin.setDecimals(1)
         self.pose_hide_threshold_spin.setFixedWidth(60)
-        self.pose_hide_threshold_spin.setToolTip(
-            "Hide pose markers with confidence below this value (0.0-1.0)"
-        )
+        self.pose_hide_threshold_spin.setToolTip("Hide pose markers with confidence below this value (0.0-1.0)")
         self.pose_hide_threshold_spin.setValue(self.app_state.pose_hide_threshold)
         threshold_layout.addWidget(self.pose_hide_threshold_spin)
 
@@ -417,6 +449,7 @@ class DataPanel(QWidget):
 
         if not pose_keys:
             from ethograph.gui.notify import notify
+
             notify("No PoseEstimation containers found in the NWB file.", "warning")
             return
 
@@ -491,7 +524,12 @@ class DataWidget(QWidget):
         self.viewer = napari_viewer
         layout = QFormLayout()
         layout.setSpacing(DEFAULT_LAYOUT_SPACING)
-        layout.setContentsMargins(DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN, DEFAULT_LAYOUT_MARGIN)
+        layout.setContentsMargins(
+            DEFAULT_LAYOUT_MARGIN,
+            DEFAULT_LAYOUT_MARGIN,
+            DEFAULT_LAYOUT_MARGIN,
+            DEFAULT_LAYOUT_MARGIN,
+        )
         self.setLayout(layout)
         self.app_state = app_state
         self.meta_widget = meta_widget
@@ -603,9 +641,15 @@ class DataWidget(QWidget):
         self.pose_mgr.apply_pose_style()
 
     def set_references(
-        self, plot_container, labels_widget, plot_settings_widget,
-        navigation_widget, changepoints_widget=None,
-        ephys_widget=None, layout_mgr=None, trials_widget=None,
+        self,
+        plot_container,
+        labels_widget,
+        plot_settings_widget,
+        navigation_widget,
+        changepoints_widget=None,
+        ephys_widget=None,
+        layout_mgr=None,
+        trials_widget=None,
     ):
         self.plot_container = plot_container
         self.labels_widget = labels_widget
@@ -640,7 +684,7 @@ class DataWidget(QWidget):
     # ------------------------------------------------------------------
 
     def _cleanup_load_state(self):
-        dt = getattr(self.app_state, 'dt', None)
+        dt = getattr(self.app_state, "dt", None)
         if dt is not None:
             dt.close()
             self.app_state.dt = None
@@ -656,12 +700,14 @@ class DataWidget(QWidget):
         notify_dialog(reason, "warning", "Load cancelled", self)
         self._cleanup_load_state()
 
-
-
-
     def on_load_clicked(self):
         if not self.app_state.nc_file_path:
-            notify_dialog("Please select a data file (.nc, .nwb, .npz) or folder", "warning", "Load cancelled", self)
+            notify_dialog(
+                "Please select a data file (.nc, .nwb, .npz) or folder",
+                "warning",
+                "Load cancelled",
+                self,
+            )
             return
 
         nc_file_path = self.io_widget.get_nc_file_path()
@@ -705,6 +751,7 @@ class DataWidget(QWidget):
         video_folder_override = None
         if result.nwb_video_folder and not self.app_state.video_folder:
             from .dialog_video_downsample import offer_downsample
+
             video_folder_override = offer_downsample(str(result.nwb_video_folder), parent=self)
 
         return _LoadContext(
@@ -721,7 +768,6 @@ class DataWidget(QWidget):
         """Phase 2: Detect video/audio/pose/ephys availability."""
         result = ctx.result
         sio = result.nwb_alignment
-
 
         ctx.has_audio = bool(sio.mics) if sio else False
 
@@ -753,6 +799,7 @@ class DataWidget(QWidget):
         store = ctx.result.data_loader
         if store is None:
             from ethograph.io.catalog import XarrayLoader, catalog_from_xarray
+
             cat = catalog_from_xarray(ctx.ds, ctx.dt)
             store = XarrayLoader(ctx.ds, cat)
         ctx.data_loader = store
@@ -768,9 +815,7 @@ class DataWidget(QWidget):
             pose_folder=self.app_state.pose_folder,
         )
         if missing:
-            raise _LoadError(
-                "Missing media files for first trial:\n" + "\n".join(missing)
-            )
+            raise _LoadError("Missing media files for first trial:\n" + "\n".join(missing))
 
     def _apply_to_state(self, ctx: _LoadContext) -> None:
         """Phase 5: Single commit — mutate app_state from accumulated context."""
@@ -792,9 +837,7 @@ class DataWidget(QWidget):
         self.app_state.source_collection = result.source_collection
         self.app_state.nwb_alignment = result.nwb_alignment
 
-
         self.app_state.has_audio = ctx.has_audio
-
 
         if ctx.nwb_local:
             self.app_state.nwb_local = ctx.nwb_local
@@ -813,7 +856,8 @@ class DataWidget(QWidget):
         if self.app_state.ephys_path:
             try:
                 self.io_widget._expand_ephys_with_streams(
-                    self.app_state.ephys_path, ctx.ds,
+                    self.app_state.ephys_path,
+                    ctx.ds,
                 )
             except (OSError, ValueError, KeyError) as e:
                 logger.exception("Ephys stream expansion failed")
@@ -830,7 +874,7 @@ class DataWidget(QWidget):
 
         # Set trials_sel early so _expand_mics_with_channels / get_media
         # can resolve filenames during UI creation.
-        trial = getattr(self.app_state, 'trials_sel', None)
+        trial = getattr(self.app_state, "trials_sel", None)
         try:
             is_nan = np.isnan(trial)
         except (TypeError, ValueError):
@@ -863,7 +907,7 @@ class DataWidget(QWidget):
         self.meta_widget.configure_layout_for_data()
 
         # Re-apply sidebar cap after load-triggered dock/layout rearrangement.
-        if getattr(self, 'layout_mgr', None) is not None:
+        if getattr(self, "layout_mgr", None) is not None:
             QTimer.singleShot(
                 0,
                 lambda: self.layout_mgr.set_sidebar_default_width(self.meta_widget, SIDEBAR_AFTER_LOAD_WIDTH_RATIO),
@@ -908,7 +952,7 @@ class DataWidget(QWidget):
     def _collect_trial_status(self) -> Dict[int, int]:
         trial_status = {}
         for trial in self.app_state.trials:
-            is_verified = self.app_state.get_trial_meta(trial).get('human_verified', 0)
+            is_verified = self.app_state.get_trial_meta(trial).get("human_verified", 0)
             trial_status[trial] = bool(is_verified)
         return trial_status
 
@@ -926,7 +970,6 @@ class DataWidget(QWidget):
     # Create controls (populates main panel groupboxes)
     # ------------------------------------------------------------------
 
-
     def refresh_trials_confidence(self) -> None:
         """Refresh the Trials tab with current metadata."""
         if getattr(self, "trials_widget", None) is None:
@@ -942,7 +985,11 @@ class DataWidget(QWidget):
         self.navigation_widget.set_data_widget(self)
 
         if getattr(self, "trials_widget", None) is not None:
-            mdf = self.app_state.metadata_df if self.app_state.metadata_df is not None else pd.DataFrame({"trial": self.app_state.trials})
+            mdf = (
+                self.app_state.metadata_df
+                if self.app_state.metadata_df is not None
+                else pd.DataFrame({"trial": self.app_state.trials})
+            )
             self.trials_widget.setup(mdf)
             self.refresh_trials_confidence()
 
@@ -954,10 +1001,6 @@ class DataWidget(QWidget):
         self._create_colors_combo()
 
         # Restore camera combos
-        has_nwb_pose = getattr(self.app_state, "nwb_local", None) and (
-            "position" in self.app_state.ds.data_vars
-            or any(k.startswith("position_") for k in self.app_state.ds.data_vars)
-        )
         cameras = self.app_state.nwb_alignment.cameras
         slot_layout = self.slot_layout
 
@@ -981,6 +1024,7 @@ class DataWidget(QWidget):
 
         if len(cameras) > 1:
             from .video_manager import MAX_EXTRA_CAMERAS
+
             cam_names = [str(c) for c in cameras]
             n_extra = min(MAX_EXTRA_CAMERAS, len(cameras) - 1)
             self._extra_camera_combos: list[QComboBox] = []
@@ -990,9 +1034,7 @@ class DataWidget(QWidget):
                 combo.addItems(["None"] + cam_names)
                 combo.setItemDelegate(ElidedDelegate(parent=combo))
                 combo.setCurrentIndex(0)
-                combo.currentTextChanged.connect(
-                    lambda _text, idx=i: self._on_extra_camera_combo_changed(idx)
-                )
+                combo.currentTextChanged.connect(lambda _text, idx=i: self._on_extra_camera_combo_changed(idx))
                 self._extra_camera_combos.append(combo)
                 self.controls.append(combo)
                 slot_layout.addWidget(combo)
@@ -1040,9 +1082,7 @@ class DataWidget(QWidget):
                 getattr(self, defn.on_toggle)(effective)
 
             # Connect signal AFTER initial state is applied.
-            checkbox.stateChanged.connect(
-                lambda state, n=defn.name: self._on_panel_toggled(n, state)
-            )
+            checkbox.stateChanged.connect(lambda state, n=defn.name: self._on_panel_toggled(n, state))
 
             if not available:
                 checkbox.setEnabled(False)
@@ -1140,27 +1180,21 @@ class DataWidget(QWidget):
         row1.addWidget(QLabel("Main:"))
         self.main_labels_combo = QComboBox()
         self.main_labels_combo.setFixedWidth(_COMBO_WIDTH)
-        self.main_labels_combo.currentIndexChanged.connect(
-            lambda _i: self._on_label_slot_changed("main")
-        )
+        self.main_labels_combo.currentIndexChanged.connect(lambda _i: self._on_label_slot_changed("main"))
         row1.addWidget(self.main_labels_combo)
         row1.addSpacing(_GROUP_GAP)
 
         row1.addWidget(QLabel("Top 1:"))
         self.top1_labels_combo = QComboBox()
         self.top1_labels_combo.setFixedWidth(_COMBO_WIDTH)
-        self.top1_labels_combo.currentIndexChanged.connect(
-            lambda _i: self._on_label_slot_changed("top1")
-        )
+        self.top1_labels_combo.currentIndexChanged.connect(lambda _i: self._on_label_slot_changed("top1"))
         row1.addWidget(self.top1_labels_combo)
         row1.addSpacing(_GROUP_GAP)
 
         row1.addWidget(QLabel("Top 2:"))
         self.top2_labels_combo = QComboBox()
         self.top2_labels_combo.setFixedWidth(_COMBO_WIDTH)
-        self.top2_labels_combo.currentIndexChanged.connect(
-            lambda _i: self._on_label_slot_changed("top2")
-        )
+        self.top2_labels_combo.currentIndexChanged.connect(lambda _i: self._on_label_slot_changed("top2"))
         row1.addWidget(self.top2_labels_combo)
 
         row1.addStretch()
@@ -1255,8 +1289,7 @@ class DataWidget(QWidget):
             combo.setCurrentIndex(chosen_index)
         combo.blockSignals(False)
 
-    def refresh_label_slot_dropdowns(self, *, new_branch: int | None = None,
-                                     predictions_added: bool = False):
+    def refresh_label_slot_dropdowns(self, *, new_branch: int | None = None, predictions_added: bool = False):
         """Repopulate the three slot dropdowns from current branches/predictions.
 
         Auto-fill rules:
@@ -1276,10 +1309,7 @@ class DataWidget(QWidget):
             elif state._top2_source is None:
                 state._top2_source = new_branch
         if predictions_added:
-            already_in_slot = (
-                state._top1_source == "predictions"
-                or state._top2_source == "predictions"
-            )
+            already_in_slot = state._top1_source == "predictions" or state._top2_source == "predictions"
             if not already_in_slot:
                 if state._top1_source is None:
                     state._top1_source = "predictions"
@@ -1290,13 +1320,19 @@ class DataWidget(QWidget):
         top_opts = self._label_slot_options(allow_predictions=True, allow_none=True)
 
         self._populate_label_slot_combo(
-            self.main_labels_combo, main_opts, state._main_labels_source,
+            self.main_labels_combo,
+            main_opts,
+            state._main_labels_source,
         )
         self._populate_label_slot_combo(
-            self.top1_labels_combo, top_opts, state._top1_source,
+            self.top1_labels_combo,
+            top_opts,
+            state._top1_source,
         )
         self._populate_label_slot_combo(
-            self.top2_labels_combo, top_opts, state._top2_source,
+            self.top2_labels_combo,
+            top_opts,
+            state._top2_source,
         )
 
     def set_main_labels_branch(self, branch_idx: int):
@@ -1366,7 +1402,7 @@ class DataWidget(QWidget):
             self.labels_widget.refresh_labels_shapes_layer()
 
     def cycle_neural_view(self):
-        if not hasattr(self, 'neural_view_combo') or not self.neural_view_combo.isVisible():
+        if not hasattr(self, "neural_view_combo") or not self.neural_view_combo.isVisible():
             return
         next_index = (self.neural_view_combo.currentIndex() + 1) % self.neural_view_combo.count()
         self.neural_view_combo.setCurrentIndex(next_index)
@@ -1384,7 +1420,7 @@ class DataWidget(QWidget):
     def _populate_neo_stream_combo(self):
         """Populate the Neo stream combo with available streams, greying out
         any stream that matches kilosort params (n_channels, sample_rate)."""
-        source_map = getattr(self.app_state, 'ephys_source_map', {})
+        source_map = getattr(self.app_state, "ephys_source_map", {})
         if not source_map:
             self._neo_stream_label.hide()
             self.neo_stream_combo.hide()
@@ -1392,7 +1428,7 @@ class DataWidget(QWidget):
 
         ks_params = None
         if self.ephys_widget:
-            ks_params = getattr(self.ephys_widget, '_kilosort_params', None)
+            ks_params = getattr(self.ephys_widget, "_kilosort_params", None)
 
         self.neo_stream_combo.blockSignals(True)
         self.neo_stream_combo.clear()
@@ -1406,8 +1442,7 @@ class DataWidget(QWidget):
                 if loader is not None:
                     ks_sr = ks_params.get("sample_rate", 0)
                     ks_nch = ks_params.get("n_channels_dat", 0)
-                    if (loader.n_channels == ks_nch
-                            and abs(loader.rate - ks_sr) < 1.0):
+                    if loader.n_channels == ks_nch and abs(loader.rate - ks_sr) < 1.0:
                         idx = self.neo_stream_combo.count() - 1
                         model = self.neo_stream_combo.model()
                         item = model.item(idx)
@@ -1437,16 +1472,16 @@ class DataWidget(QWidget):
         """Configure the Neo-Viewer panel with the selected stream."""
         if not self.plot_container:
             return
-        neo_cb = getattr(self, 'neo_viewer_checkbox', None)
+        neo_cb = getattr(self, "neo_viewer_checkbox", None)
         if neo_cb is not None and not neo_cb.isChecked():
             return
 
         if stream_name is None:
-            stream_name = self.neo_stream_combo.currentText() if hasattr(self, 'neo_stream_combo') else ""
+            stream_name = self.neo_stream_combo.currentText() if hasattr(self, "neo_stream_combo") else ""
         if not stream_name:
             return
 
-        source_map = getattr(self.app_state, 'ephys_source_map', {})
+        source_map = getattr(self.app_state, "ephys_source_map", {})
         if stream_name not in source_map:
             return
 
@@ -1470,7 +1505,7 @@ class DataWidget(QWidget):
             neo_plot.autoscale()
 
     def cycle_view_mode(self):
-        if not hasattr(self, 'view_mode_combo') or not self.view_mode_combo.isVisible():
+        if not hasattr(self, "view_mode_combo") or not self.view_mode_combo.isVisible():
             return
         next_index = (self.view_mode_combo.currentIndex() + 1) % self.view_mode_combo.count()
         self.view_mode_combo.setCurrentIndex(next_index)
@@ -1489,10 +1524,15 @@ class DataWidget(QWidget):
     def _get_audio_channel_count(self, audio_path):
         try:
             from audioio import AudioLoader
+
             with AudioLoader(audio_path) as loader:
                 if loader.shape is None:
                     return 1
-                return loader.channels if hasattr(loader, 'channels') else (loader.shape[1] if len(loader.shape) > 1 else 1)
+                return (
+                    loader.channels
+                    if hasattr(loader, "channels")
+                    else (loader.shape[1] if len(loader.shape) > 1 else 1)
+                )
         except (ImportError, OSError, ValueError):
             return 1
 
@@ -1500,8 +1540,8 @@ class DataWidget(QWidget):
         self.app_state.audio_source_map.clear()
         expanded_items = []
         audio_folder = self.app_state.audio_folder
-        dt = getattr(self.app_state, 'dt', None)
-        trial_id = getattr(self.app_state, 'trials_sel', None)
+        dt = getattr(self.app_state, "dt", None)
+        trial_id = getattr(self.app_state, "trials_sel", None)
         if trial_id is None and self.app_state.trials:
             trial_id = self.app_state.trials[0]
 
@@ -1533,7 +1573,7 @@ class DataWidget(QWidget):
         return expanded_items
 
     def update_mics_combo_for_trial(self, ds):
-        combo = getattr(self, 'mics_combo', None)
+        combo = getattr(self, "mics_combo", None)
         if combo is None:
             return
         new_items = self.app_state.nwb_alignment.mics
@@ -1555,7 +1595,7 @@ class DataWidget(QWidget):
     def _update_device_sels_for_trial(self, ds):
         cameras = self.app_state.nwb_alignment.cameras
 
-        primary = getattr(self, 'primary_camera_combo', None)
+        primary = getattr(self, "primary_camera_combo", None)
         if primary is not None and cameras:
             prev_index = primary.currentIndex()
             primary.blockSignals(True)
@@ -1570,13 +1610,8 @@ class DataWidget(QWidget):
 
         self._update_extra_camera_combo_items(cameras)
 
-
-
     def _is_autoscale_on(self) -> bool:
-        return (
-            self.plot_settings_widget is not None
-            and self.plot_settings_widget.autoscale_checkbox.isChecked()
-        )
+        return self.plot_settings_widget is not None and self.plot_settings_widget.autoscale_checkbox.isChecked()
 
     def _on_panel_toggled(self, name: str, state: int):
         """Central handler for all panel visibility checkboxes."""
@@ -1592,7 +1627,7 @@ class DataWidget(QWidget):
         if visible and defn.autoscale_plot and self._is_autoscale_on() and self.plot_container:
             plot = getattr(self.plot_container, defn.autoscale_plot)
             plot.vb.enableAutoRange(x=False, y=True)
-            if hasattr(plot, '_apply_y_constraints'):
+            if hasattr(plot, "_apply_y_constraints"):
                 plot._apply_y_constraints()
 
         if defn.on_toggle:
@@ -1609,13 +1644,13 @@ class DataWidget(QWidget):
     def _on_phy_panel_toggle(self, visible: bool):
         if not visible or not self.plot_container:
             return
-        mode = self.neural_view_combo.currentText() if hasattr(self, 'neural_view_combo') else "Multi Trace"
+        mode = self.neural_view_combo.currentText() if hasattr(self, "neural_view_combo") else "Multi Trace"
         self.plot_container.set_neural_panel_mode("raster" if mode == "Raster" else "trace")
         if self._is_autoscale_on():
             self.plot_container.ephys_trace_plot.vb.enableAutoRange(x=False, y=True)
 
     def _on_video_viewer_toggle(self, visible: bool):
-        if hasattr(self, 'layout_mgr') and self.layout_mgr:
+        if hasattr(self, "layout_mgr") and self.layout_mgr:
             self.layout_mgr.set_video_viewer_visible(visible)
 
     def _on_pose_markers_toggle(self, visible: bool):
@@ -1669,7 +1704,7 @@ class DataWidget(QWidget):
         self.update_main_plot(t0=xmin, t1=xmax)
 
     def _update_sort_button_state(self):
-        btn = getattr(self, 'sort_channels_btn', None)
+        btn = getattr(self, "sort_channels_btn", None)
         if btn is None:
             return
         enabled = self.plot_container is not None and self.plot_container.is_heatmap()
@@ -1716,7 +1751,6 @@ class DataWidget(QWidget):
         else:
             self.plot_container.switch_to_lineplot()
 
-
     def _on_envelope_overlay_changed(self):
         if not self.plot_container:
             return
@@ -1727,6 +1761,7 @@ class DataWidget(QWidget):
 
     def _open_energy_params(self):
         from .dialog_function_params import open_function_params_dialog
+
         key = self.data_panel.energy_display_to_key(
             self.data_panel.metric_combo.currentText(),
         )
@@ -1746,10 +1781,7 @@ class DataWidget(QWidget):
 
         from .dialog_busy_progress import BusyProgressDialog
 
-        if (
-            hasattr(self, 'show_envelope_checkbox')
-            and not self.show_envelope_checkbox.isChecked()
-        ):
+        if hasattr(self, "show_envelope_checkbox") and not self.show_envelope_checkbox.isChecked():
             self.show_envelope_checkbox.setChecked(True)
             return
 
@@ -1887,7 +1919,6 @@ class DataWidget(QWidget):
                 self.view_mode_combo.show()
                 self._apply_view_mode_for_feature()
 
-            
             current_plot = self.plot_container.get_current_plot()
             xmin, xmax = current_plot.get_current_xlim()
             self.update_main_plot(t0=xmin, t1=xmax)
@@ -1904,7 +1935,6 @@ class DataWidget(QWidget):
 
             if key == "individuals":
                 self.labels_widget.refresh_labels_shapes_layer()
-
 
     def _on_all_checkbox_changed(self, key: str, state: int):
         if not self.app_state.ready:
@@ -1987,7 +2017,6 @@ class DataWidget(QWidget):
                         set_combo_to_value(combo, vals_str[0])
                         self.app_state.set_key_sel(key, vals_str[0])
 
-
         # Restore colors combo (not in catalog.combos, created separately)
         colors_combo = self.combos.get("colors")
         if colors_combo is not None and self.app_state.key_sel_exists("colors"):
@@ -2015,21 +2044,28 @@ class DataWidget(QWidget):
             self.navigation_widget.trials_combo.setCurrentText(str(self.app_state.trials[0]))
             self.app_state.trials_sel = self.app_state.trials[0]
 
-        space_plot_type = getattr(self.app_state, 'space_plot_type', 'Layers')
+        space_plot_type = getattr(self.app_state, "space_plot_type", "Layers")
         # Migrate old values to simplified combo
-        if space_plot_type in ("Space 2D", "Space 3D", "space_2D", "space_3D", "PCA 2D", "PCA 3D"):
+        if space_plot_type in (
+            "Space 2D",
+            "Space 3D",
+            "space_2D",
+            "space_3D",
+            "PCA 2D",
+            "PCA 3D",
+        ):
             space_plot_type = "Space Plot"
-        if hasattr(self, 'space_view_combo'):
+        if hasattr(self, "space_view_combo"):
             self.space_view_combo.setCurrentText(space_plot_type)
 
         saved_camera = self.app_state.primary_camera
-        if saved_camera and hasattr(self, 'primary_camera_combo'):
+        if saved_camera and hasattr(self, "primary_camera_combo"):
             idx = self.primary_camera_combo.findText(saved_camera)
             if idx >= 0:
                 self.primary_camera_combo.setCurrentIndex(idx)
 
         saved_extra = self.app_state.extra_cameras
-        if saved_extra and hasattr(self, '_extra_camera_combos'):
+        if saved_extra and hasattr(self, "_extra_camera_combos"):
             for i, cam_name in enumerate(saved_extra):
                 if i >= len(self._extra_camera_combos):
                     break
@@ -2067,7 +2103,12 @@ class DataWidget(QWidget):
                 return
             combo.setCurrentIndex(0)
             fallback = get_combo_value(combo)
-            logger.warning("Saved %s_sel '%s' not found; reverting to '%s'", key, saved_value, fallback)
+            logger.warning(
+                "Saved %s_sel '%s' not found; reverting to '%s'",
+                key,
+                saved_value,
+                fallback,
+            )
             self.app_state.set_key_sel(key, fallback)
 
         for key, combo in self.combos.items():
@@ -2085,15 +2126,13 @@ class DataWidget(QWidget):
         if isinstance(mics_combo, QComboBox):
             _normalize_from_combo("mics", mics_combo)
 
-
-
     # ------------------------------------------------------------------
     # Trial change
     # ------------------------------------------------------------------
 
     def _load_trial_with_fallback(self) -> None:
         first_trial = self.app_state.trials[0]
-        current_trial = getattr(self.app_state, 'trials_sel', None)
+        current_trial = getattr(self.app_state, "trials_sel", None)
 
         try:
             is_nan = np.isnan(current_trial)
@@ -2102,7 +2141,11 @@ class DataWidget(QWidget):
 
         if not current_trial or is_nan or current_trial not in self.app_state.trials:
             if current_trial and not is_nan:
-                logger.warning("Saved trial %s not in dataset, using %s", current_trial, first_trial)
+                logger.warning(
+                    "Saved trial %s not in dataset, using %s",
+                    current_trial,
+                    first_trial,
+                )
             self.app_state.trials_sel = first_trial
 
         self.on_trial_changed()
@@ -2114,8 +2157,8 @@ class DataWidget(QWidget):
         if name == "featureplot":
             return bool(self.catalog and self.catalog.features)
         if name == "neo_viewer":
-            neo_plot = getattr(self.plot_container, 'neo_trace_plot', None)
-            return neo_plot is not None and getattr(neo_plot, '_source', None) is not None
+            neo_plot = getattr(self.plot_container, "neo_trace_plot", None)
+            return neo_plot is not None and getattr(neo_plot, "_source", None) is not None
         if name == "phy_viewer":
             return bool(self.app_state.has_neurons)
         if name == "video_viewer":
@@ -2173,8 +2216,7 @@ class DataWidget(QWidget):
             mics = sio.mics
             if not mics:
                 notify(
-                    "You selected an audio folder, although the .nc "
-                    "contains no audio media entries.",
+                    "You selected an audio folder, although the .nc contains no audio media entries.",
                     "warning",
                 )
             else:
@@ -2190,8 +2232,7 @@ class DataWidget(QWidget):
             cameras = sio.cameras
             if not cameras:
                 notify(
-                    "You selected a pose folder, although the .nc "
-                    "contains no pose data.",
+                    "You selected a pose folder, although the .nc contains no pose data.",
                     "warning",
                 )
             else:
@@ -2205,8 +2246,6 @@ class DataWidget(QWidget):
 
         return missing
 
-
-
     def _build_trial_alignment(self, trial_id) -> None:
         self.app_state.trial_alignment = compute_trial_video_bounds(
             self.app_state.nwb_alignment,
@@ -2215,7 +2254,7 @@ class DataWidget(QWidget):
             video_folder=self.app_state.video_folder,
             audio_folder=self.app_state.audio_folder,
             cameras_sel=self.app_state.primary_camera,
-            source_collection=getattr(self.app_state, 'source_collection', None),
+            source_collection=getattr(self.app_state, "source_collection", None),
         )
 
     def _build_restrict_window(self, trial_id) -> None:
@@ -2224,13 +2263,16 @@ class DataWidget(QWidget):
 
     def on_trial_changed(self):
         trials_sel = self.app_state.trials_sel
-        
+
         if trials_sel not in self.app_state.trials:
-            logger.warning("Selected trial '%s' not found in dataset, reverting to first trial '%s'", trials_sel, self.app_state.trials[0])
+            logger.warning(
+                "Selected trial '%s' not found in dataset, reverting to first trial '%s'",
+                trials_sel,
+                self.app_state.trials[0],
+            )
             trials_sel = self.app_state.trials[0]
             self.app_state.trials_sel = trials_sel
             return
-        
 
         if self.app_state.dt is not None:
             self.app_state.ds = self.app_state.dt.trial(trials_sel)
@@ -2240,14 +2282,14 @@ class DataWidget(QWidget):
         # Update data_loader (xarray only: swap the backing dataset)
         store = self.app_state.data_loader
         trial_idx = self.app_state.trials.index(trials_sel)
-        if store is not None and hasattr(store, 'update_ds'):
+        if store is not None and hasattr(store, "update_ds"):
             store.update_ds(self.app_state.ds)
 
         # Sync SourceCollection trial index for time-range queries
-        sc = getattr(self.app_state, 'source_collection', None)
+        sc = getattr(self.app_state, "source_collection", None)
         if sc is not None:
             for src in sc.sources.values():
-                if hasattr(src, 'set_trial'):
+                if hasattr(src, "set_trial"):
                     src.set_trial(trial_idx)
 
         self._update_device_sels_for_trial(self.app_state.ds)
@@ -2255,15 +2297,14 @@ class DataWidget(QWidget):
 
         features_combo = self.combos.get("features")
         fallback_feature = features_combo.itemText(0) if features_combo and features_combo.count() else None
-        feature_sel = getattr(self.app_state, 'features_sel', fallback_feature)
+        feature_sel = getattr(self.app_state, "features_sel", fallback_feature)
 
-        if hasattr(self, 'view_mode_combo'):
+        if hasattr(self, "view_mode_combo"):
             self._update_view_mode_items(feature_sel)
 
-        if hasattr(self, 'view_mode_combo'):
+        if hasattr(self, "view_mode_combo"):
             self._apply_view_mode_for_feature()
-            
-       
+
         self.app_state.label_intervals = self.app_state.get_trial_intervals(trials_sel)
 
         self._build_trial_alignment(trials_sel)
@@ -2277,15 +2318,14 @@ class DataWidget(QWidget):
         self.update_label()
         if self.ephys_widget:
             self.ephys_widget.on_trial_changed()
-            
-        preserve = getattr(self.app_state, '_preserve_x_range_next', False)
+
+        preserve = getattr(self.app_state, "_preserve_x_range_next", False)
         self.app_state._preserve_x_range_next = False
         self.update_main_plot(preserve_x_range=preserve)
         try:
             self.update_space_plot()
         except Exception:
             logger.debug("update_space_plot failed", exc_info=True)
-
 
         self.plot_container.update_time_marker_by_time(0.0)
 
@@ -2309,7 +2349,6 @@ class DataWidget(QWidget):
 
         current_plot.update_plot(**kwargs)
 
-
         if self.show_envelope_checkbox.isChecked():
             self.plot_container.show_envelope_overlay()
 
@@ -2319,9 +2358,7 @@ class DataWidget(QWidget):
         # Labels are hidden when every slot is None.
         state = self.app_state
         any_slot = (
-            state._main_labels_source is not None
-            or state._top1_source is not None
-            or state._top2_source is not None
+            state._main_labels_source is not None or state._top1_source is not None or state._top2_source is not None
         )
         if not any_slot:
             if self.plot_container:
@@ -2361,7 +2398,6 @@ class DataWidget(QWidget):
         if not self.app_state.ready:
             return
         self.video_mgr.update_audio(plot_container=self.plot_container)
-
 
     def update_label(self):
         self.labels_widget.refresh_labels_shapes_layer()
@@ -2403,22 +2439,22 @@ class DataWidget(QWidget):
         self._space_highlight_key = key
 
         color = (255, 102, 0)
-        mappings = getattr(self.labels_widget, '_mappings', {})
+        mappings = getattr(self.labels_widget, "_mappings", {})
         color = mappings.get(key[2], {}).get("color", color)
         self.space_plot.highlight_time_segment(key[0], key[1], color)
 
     def _on_primary_frame_changed(self, frame_number: int):
         self.plot_container.update_time_marker_and_window(frame_number)
 
-        video = getattr(self.app_state, 'video', None)
+        video = getattr(self.app_state, "video", None)
         if video:
             current_time = video.frame_to_time(frame_number)
         else:
             current_time = frame_number / self.app_state.video_fps
 
         xlim = self.plot_container.get_current_xlim()
-        if getattr(self.app_state, 'center_playback', False) or current_time < xlim[0] or current_time > xlim[1]:
-            self.plot_container.set_x_range(mode='center', center_on_frame=frame_number)
+        if getattr(self.app_state, "center_playback", False) or current_time < xlim[0] or current_time > xlim[1]:
+            self.plot_container.set_x_range(mode="center", center_on_frame=frame_number)
 
     def update_pose(self):
         """Refresh primary and extra camera pose layers through PoseDisplayManager."""
@@ -2426,16 +2462,16 @@ class DataWidget(QWidget):
             return
         if not self.app_state.pose_markers_visible:
             return
-        if not hasattr(self.app_state, 'trials_sel') or self.app_state.trials_sel is None:
+        if not hasattr(self.app_state, "trials_sel") or self.app_state.trials_sel is None:
             return
         self.pose_mgr.update_pose(self.get_hidden_keypoints())
-
 
     def closeEvent(self, event):
         SharedAudioCache.clear_cache()
         from .plots_ephystrace import clear_loader_cache
+
         clear_loader_cache()
-        if getattr(self.app_state, 'video', None):
+        if getattr(self.app_state, "video", None):
             self.app_state.video.stop()
         super().closeEvent(event)
 
@@ -2452,7 +2488,6 @@ class DataWidget(QWidget):
         else:
             if self.space_plot:
                 self.space_plot.hide()
-  
 
     def _on_primary_camera_changed(self, camera_name):
         if not self.app_state.ready or not camera_name:
@@ -2484,6 +2519,7 @@ class DataWidget(QWidget):
                 to_add[name] = video_path
 
         from .video_manager import VideoManager
+
         readers = VideoManager.open_readers_parallel(to_add)
 
         for name, video_path in to_add.items():
@@ -2498,7 +2534,7 @@ class DataWidget(QWidget):
                 self.pose_mgr.update_extra_camera_pose(name, self.get_hidden_keypoints())
 
     def _get_desired_extra_cameras(self) -> set[str]:
-        if not hasattr(self, '_extra_camera_combos'):
+        if not hasattr(self, "_extra_camera_combos"):
             return set()
         names = set()
         for combo in self._extra_camera_combos:
@@ -2508,13 +2544,13 @@ class DataWidget(QWidget):
         return names
 
     def _save_extra_cameras(self):
-        if not hasattr(self, '_extra_camera_combos'):
+        if not hasattr(self, "_extra_camera_combos"):
             return
         values = [combo.currentText() for combo in self._extra_camera_combos]
         self.app_state.extra_cameras = [v for v in values if v and v != "None"]
 
     def _update_extra_camera_combo_items(self, cameras: list[str]):
-        if not hasattr(self, '_extra_camera_combos'):
+        if not hasattr(self, "_extra_camera_combos"):
             return
         cam_names = [str(c) for c in cameras]
         for combo in self._extra_camera_combos:
@@ -2527,7 +2563,7 @@ class DataWidget(QWidget):
             combo.blockSignals(False)
 
     def _init_or_update_extra_cameras(self):
-        if not hasattr(self, '_extra_camera_combos'):
+        if not hasattr(self, "_extra_camera_combos"):
             return
         desired = self._get_desired_extra_cameras()
         to_add: dict[str, str] = {}
@@ -2537,6 +2573,7 @@ class DataWidget(QWidget):
                 to_add[camera_name] = video_path
 
         from .video_manager import VideoManager
+
         readers = VideoManager.open_readers_parallel(to_add)
 
         for camera_name, video_path in to_add.items():
@@ -2550,13 +2587,11 @@ class DataWidget(QWidget):
             if self.pose_mgr is not None:
                 self.pose_mgr.update_extra_camera_pose(camera_name, self.get_hidden_keypoints())
 
-
-
     def update_space_plot(self):
         if not self.app_state.ready:
             return
 
-        plot_type = self.app_state.get_with_default('space_plot_type')
+        plot_type = self.app_state.get_with_default("space_plot_type")
         if plot_type != "Space Plot":
             if self.space_plot:
                 self.space_plot.hide()
@@ -2569,9 +2604,10 @@ class DataWidget(QWidget):
             if self.labels_widget:
                 self.labels_widget.highlight_spaceplot.connect(self._highlight_positions_in_space_plot)
 
-        store = getattr(self.app_state, 'data_loader', None)
+        store = getattr(self.app_state, "data_loader", None)
         if store is None and self.app_state.ds is not None:
             from ethograph.io.catalog import XarrayLoader, catalog_from_xarray
+
             cat = catalog_from_xarray(self.app_state.ds, self.app_state.dt)
             store = XarrayLoader(self.app_state.ds, cat)
 
@@ -2593,7 +2629,7 @@ class DataWidget(QWidget):
             if not hits.empty:
                 label_id = int(hits.iloc[0]["labels"])
                 if active_ids is None or label_id in active_ids:
-                    mappings = getattr(self.labels_widget, '_mappings', {})
+                    mappings = getattr(self.labels_widget, "_mappings", {})
                     color = mappings.get(label_id, {}).get("color", color)
 
         self.space_plot.highlight_time_segment(start_time, end_time, color)

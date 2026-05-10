@@ -1,18 +1,14 @@
 from __future__ import annotations
 
 from functools import partial
-from pathlib import Path
 
 import numpy as np
 import xarray as xr
 from scipy.ndimage import gaussian_filter1d
 
-from ethograph.features.movement import get_angle_rgb, extract_video_motion
-
-from ethograph.utils.xr_utils import get_time_coord
+from ethograph.features.movement import get_angle_rgb
 from ethograph.io.trialtree import TrialTree
-
-
+from ethograph.utils.xr_utils import get_time_coord
 
 
 def downsample_trialtree(dt: TrialTree, factor: int) -> TrialTree:
@@ -53,7 +49,7 @@ def downsample_trialtree(dt: TrialTree, factor: int) -> TrialTree:
 
 def _minmax_envelope(values: np.ndarray, n_segments: int, factor: int) -> np.ndarray:
     shape_suffix = values.shape[1:]
-    reshaped = values[:n_segments * factor].reshape(n_segments, factor, *shape_suffix)
+    reshaped = values[: n_segments * factor].reshape(n_segments, factor, *shape_suffix)
     interleaved = np.empty((n_segments * 2, *shape_suffix), dtype=values.dtype)
     interleaved[0::2] = reshaped.min(axis=1)
     interleaved[1::2] = reshaped.max(axis=1)
@@ -66,7 +62,9 @@ def _find_time_dims(ds: xr.Dataset) -> set[str]:
 
 
 def _downsample_along_time_dim(
-    ds: xr.Dataset, time_dim: str, factor: int,
+    ds: xr.Dataset,
+    time_dim: str,
+    factor: int,
 ) -> tuple[dict, dict]:
     """Downsample variables along a single time dimension.
 
@@ -100,9 +98,7 @@ def _downsample_along_time_dim(
 
         other_dims = [d for d in var_data.dims if d != time_dim]
         interleaved = _minmax_envelope(values, n_segments, factor)
-        data_vars[var_name] = xr.DataArray(
-            interleaved, dims=[time_dim] + other_dims, attrs=var_data.attrs
-        )
+        data_vars[var_name] = xr.DataArray(interleaved, dims=[time_dim] + other_dims, attrs=var_data.attrs)
 
     return coord_entry, data_vars
 
@@ -131,8 +127,8 @@ def _downsample_dataset(ds: xr.Dataset, factor: int) -> xr.Dataset:
             all_data_vars[var_name] = var_data
 
     new_attrs = ds.attrs.copy()
-    new_attrs['downsample_factor'] = factor
-    new_attrs['downsample_method'] = 'minmax_envelope'
+    new_attrs["downsample_factor"] = factor
+    new_attrs["downsample_method"] = "minmax_envelope"
     return xr.Dataset(all_data_vars, coords=new_coords, attrs=new_attrs)
 
 
@@ -194,13 +190,15 @@ def add_changepoints_to_ds(ds, target_feature, changepoint_name, changepoint_fun
         output_core_dims=[[time_dim]],
         vectorize=True,
         dask="parallelized",
-        output_dtypes=[np.int8]
+        output_dtypes=[np.int8],
     )
 
-    changepoints.attrs.update({
-        "type": "changepoints",
-        "target_feature": target_feature,
-    })
+    changepoints.attrs.update(
+        {
+            "type": "changepoints",
+            "target_feature": target_feature,
+        }
+    )
 
     ds[f"{target_feature}_{changepoint_name}"] = changepoints
     return ds
@@ -237,11 +235,7 @@ def add_angle_rgb_to_ds(ds: xr.Dataset, smoothing_params: dict) -> xr.Dataset:
     time_dim = get_time_coord(xy_pos).dims[0]
 
     def process_angles(xy):
-        _, angles = get_angle_rgb(
-            xy,
-            smooth_func=gaussian_filter1d,
-            smoothing_params=smoothing_params
-        )
+        _, angles = get_angle_rgb(xy, smooth_func=gaussian_filter1d, smoothing_params=smoothing_params)
         return angles
 
     angles = xr.apply_ufunc(
@@ -256,11 +250,7 @@ def add_angle_rgb_to_ds(ds: xr.Dataset, smoothing_params: dict) -> xr.Dataset:
     ds["angles"] = angles
 
     def process_rgb(xy):
-        rgb, _ = get_angle_rgb(
-            xy,
-            smooth_func=gaussian_filter1d,
-            smoothing_params=smoothing_params
-        )
+        rgb, _ = get_angle_rgb(xy, smooth_func=gaussian_filter1d, smoothing_params=smoothing_params)
         return rgb
 
     angle_rgb = xr.apply_ufunc(
@@ -271,12 +261,9 @@ def add_angle_rgb_to_ds(ds: xr.Dataset, smoothing_params: dict) -> xr.Dataset:
         vectorize=True,
         dask="parallelized",
         output_dtypes=[np.float64],
-        dask_gufunc_kwargs={"output_sizes": {"RGB": 3}}
+        dask_gufunc_kwargs={"output_sizes": {"RGB": 3}},
     )
 
     ds["angle_rgb"] = angle_rgb
 
     return ds
-
-
-

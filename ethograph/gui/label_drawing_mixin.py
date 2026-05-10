@@ -8,25 +8,25 @@ import pyqtgraph as pg
 from ethograph.labels.intervals import EVENT_TYPE_POINT
 
 from .app_constants import (
-    PREDICTION_LABELS_HEIGHT_RATIO,
-    SPECTROGRAM_LABELS_HEIGHT_RATIO,
-    PREDICTION_FALLBACK_Y_TOP,
-    PREDICTION_FALLBACK_Y_HEIGHT,
-    SPECTROGRAM_FALLBACK_Y_HEIGHT,
-    CP_ZOOM_VERY_OUT_THRESHOLD,
-    CP_ZOOM_MEDIUM_THRESHOLD,
-    CP_LINE_WIDTH_THIN,
+    CP_COLOR_OSC_EVENT,
+    CP_COLOR_SPECTROGRAM,
+    CP_COLOR_WAVEFORM,
     CP_LINE_WIDTH_MEDIUM,
     CP_LINE_WIDTH_THICK,
-    CP_COLOR_WAVEFORM,
-    CP_COLOR_SPECTROGRAM,
-    CP_COLOR_OSC_EVENT,
+    CP_LINE_WIDTH_THIN,
     CP_METHOD_COLORS,
     CP_SCATTER_SIZE,
     CP_SCATTER_Y_POSITION_RATIO,
+    CP_ZOOM_MEDIUM_THRESHOLD,
+    CP_ZOOM_VERY_OUT_THRESHOLD,
+    PREDICTION_FALLBACK_Y_HEIGHT,
+    PREDICTION_FALLBACK_Y_TOP,
+    PREDICTION_LABELS_HEIGHT_RATIO,
+    SPECTROGRAM_FALLBACK_Y_HEIGHT,
+    SPECTROGRAM_LABELS_HEIGHT_RATIO,
+    Z_INDEX_CHANGEPOINTS,
     Z_INDEX_LABELS,
     Z_INDEX_PREDICTIONS,
-    Z_INDEX_CHANGEPOINTS,
 )
 
 # Point events render as a vertical line in the label class's color.  Thicker
@@ -58,8 +58,14 @@ class LabelDrawingMixin:
     def _get_all_plots(self) -> list:
         """Return all plot widgets that exist on this container."""
         candidates = []
-        for attr in ("line_plot", "spectrogram_plot", "audio_trace_plot",
-                      "heatmap_plot", "neo_trace_plot", "ephys_trace_plot"):
+        for attr in (
+            "line_plot",
+            "spectrogram_plot",
+            "audio_trace_plot",
+            "heatmap_plot",
+            "neo_trace_plot",
+            "ephys_trace_plot",
+        ):
             plot = getattr(self, attr, None)
             if plot is not None:
                 candidates.append(plot)
@@ -120,7 +126,8 @@ class LabelDrawingMixin:
                 continue
             for slot in slots or []:
                 self._draw_intervals_on_plot(
-                    plot, slot["df"],
+                    plot,
+                    slot["df"],
                     label_ids=slot.get("label_ids"),
                     position=slot["position"],
                 )
@@ -160,10 +167,13 @@ class LabelDrawingMixin:
             return
         color_rgb = tuple(int(c * 255) for c in self.label_mappings[labels]["color"])
         line = pg.InfiniteLine(
-            pos=time_s, angle=90,
-            pen=pg.mkPen(color=(*color_rgb, 230),
-                         width=_POINT_EVENT_LINE_WIDTH,
-                         style=pg.QtCore.Qt.SolidLine),
+            pos=time_s,
+            angle=90,
+            pen=pg.mkPen(
+                color=(*color_rgb, 230),
+                width=_POINT_EVENT_LINE_WIDTH,
+                style=pg.QtCore.Qt.SolidLine,
+            ),
             movable=False,
         )
         line.setZValue(_POINT_EVENT_Z_INDEX)
@@ -177,10 +187,7 @@ class LabelDrawingMixin:
             or plot is getattr(self, "heatmap_plot", None)
             or plot is getattr(self, "ephys_trace_plot", None)
             or plot is getattr(self, "neo_trace_plot", None)
-            or (
-                plot is getattr(self, "line_plot", None)
-                and getattr(self, "audio_overlay_type", None) == "spectrogram"
-            )
+            or (plot is getattr(self, "line_plot", None) and getattr(self, "audio_overlay_type", None) == "spectrogram")
         )
 
     def _is_inverted_y_plot(self, plot) -> bool:
@@ -199,7 +206,7 @@ class LabelDrawingMixin:
             return
         color_rgb = tuple(int(c * 255) for c in self.label_mappings[labels]["color"])
 
-        is_main = (position == "main")
+        is_main = position == "main"
 
         if is_main and not self._is_bottom_strip_plot(plot):
             self._draw_standard_label(plot, start_time, end_time, color_rgb)
@@ -283,8 +290,13 @@ class LabelDrawingMixin:
             color = CP_COLOR_WAVEFORM if plot is getattr(self, "audio_trace_plot", None) else CP_COLOR_SPECTROGRAM
             for onset_t in onsets:
                 line = pg.InfiniteLine(
-                    pos=onset_t, angle=90,
-                    pen=pg.mkPen(color=color, width=line_style["width"], style=line_style["style"]),
+                    pos=onset_t,
+                    angle=90,
+                    pen=pg.mkPen(
+                        color=color,
+                        width=line_style["width"],
+                        style=line_style["style"],
+                    ),
                     movable=False,
                 )
                 line.setZValue(Z_INDEX_CHANGEPOINTS)
@@ -292,8 +304,13 @@ class LabelDrawingMixin:
                 self.audio_cp_items.append((plot, line, "onset"))
             for offset_t in offsets:
                 line = pg.InfiniteLine(
-                    pos=offset_t, angle=90,
-                    pen=pg.mkPen(color=color, width=line_style["width"], style=line_style["style"]),
+                    pos=offset_t,
+                    angle=90,
+                    pen=pg.mkPen(
+                        color=color,
+                        width=line_style["width"],
+                        style=line_style["style"],
+                    ),
                     movable=False,
                 )
                 line.setZValue(Z_INDEX_CHANGEPOINTS)
@@ -345,10 +362,13 @@ class LabelDrawingMixin:
             y_values = np.full_like(times, y_pos)
             color = CP_METHOD_COLORS.get(method_name, CP_METHOD_COLORS["default"])
             scatter = pg.ScatterPlotItem(
-                x=times, y=y_values, size=CP_SCATTER_SIZE,
+                x=times,
+                y=y_values,
+                size=CP_SCATTER_SIZE,
                 pen=pg.mkPen(color=color, width=1),
                 brush=pg.mkBrush(color=color),
-                symbol="o", name=method_name,
+                symbol="o",
+                name=method_name,
             )
             scatter.setZValue(Z_INDEX_CHANGEPOINTS)
             line_plot.plot_item.addItem(scatter)
@@ -373,8 +393,13 @@ class LabelDrawingMixin:
         for plot in all_plots:
             for onset_t in onsets:
                 line = pg.InfiniteLine(
-                    pos=onset_t, angle=90,
-                    pen=pg.mkPen(color=CP_COLOR_OSC_EVENT, width=line_style["width"], style=line_style["style"]),
+                    pos=onset_t,
+                    angle=90,
+                    pen=pg.mkPen(
+                        color=CP_COLOR_OSC_EVENT,
+                        width=line_style["width"],
+                        style=line_style["style"],
+                    ),
                     movable=False,
                 )
                 line.setZValue(Z_INDEX_CHANGEPOINTS)
@@ -382,8 +407,13 @@ class LabelDrawingMixin:
                 self.osc_event_items.append((plot, line, "onset"))
             for offset_t in offsets:
                 line = pg.InfiniteLine(
-                    pos=offset_t, angle=90,
-                    pen=pg.mkPen(color=CP_COLOR_OSC_EVENT, width=line_style["width"], style=line_style["style"]),
+                    pos=offset_t,
+                    angle=90,
+                    pen=pg.mkPen(
+                        color=CP_COLOR_OSC_EVENT,
+                        width=line_style["width"],
+                        style=line_style["style"],
+                    ),
                     movable=False,
                 )
                 line.setZValue(Z_INDEX_CHANGEPOINTS)
@@ -395,7 +425,13 @@ class LabelDrawingMixin:
             return
         line_style = self._get_changepoint_line_style()
         for plot, line, _ in self.osc_event_items:
-            line.setPen(pg.mkPen(color=CP_COLOR_OSC_EVENT, width=line_style["width"], style=line_style["style"]))
+            line.setPen(
+                pg.mkPen(
+                    color=CP_COLOR_OSC_EVENT,
+                    width=line_style["width"],
+                    style=line_style["style"],
+                )
+            )
 
     def clear_oscillatory_events(self):
         for item in self.osc_event_items:

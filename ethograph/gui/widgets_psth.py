@@ -25,11 +25,11 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-import numpy as np
-import pynapple as nap
-from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QPixmap
-from qtpy.QtWidgets import (
+import numpy as np  # noqa: E402
+import pynapple as nap  # noqa: E402
+from qtpy.QtCore import Qt, Signal  # noqa: E402
+from qtpy.QtGui import QPixmap  # noqa: E402
+from qtpy.QtWidgets import (  # noqa: E402
     QApplication,
     QCheckBox,
     QComboBox,
@@ -45,15 +45,15 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ethograph.gui.notify import notify_dialog
-from ethograph.utils.qt import add_combo_separator, color_icon, gray_icon
+from ethograph.gui.notify import notify_dialog  # noqa: E402
+from ethograph.utils.qt import add_combo_separator, color_icon, gray_icon  # noqa: E402
 
-from .plots_psth import PSTHPlot, sort_trials
-
+from .plots_psth import PSTHPlot, sort_trials  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Loading overlay
 # ---------------------------------------------------------------------------
+
 
 class _LoadingOverlay(QLabel):
     """Semi-transparent overlay shown over the plot during computation.
@@ -90,6 +90,7 @@ class _LoadingOverlay(QLabel):
 # Dialog
 # ---------------------------------------------------------------------------
 
+
 class PSTHDialog(QDialog):
     """Peri-Stimulus Time Histogram popup.
 
@@ -109,16 +110,16 @@ class PSTHDialog(QDialog):
         self.resize(1200, 740)
         self.setWindowFlags(self.windowFlags() | Qt.Window)
 
-        self.app_state        = app_state
-        self.ephys_widget     = ephys_widget
-        self.labels_widget    = labels_widget
+        self.app_state = app_state
+        self.ephys_widget = ephys_widget
+        self.labels_widget = labels_widget
         self.navigation_widget = navigation_widget
 
         self._current_cluster_id: int | None = None
         self._perievent: dict[int, np.ndarray] = {}
-        self._current_trials: list[str] = []   # trial IDs in current PSTH
-        self._ref_times_abs_map: dict[str, float] = {}   # trial_id → session-abs ref time
-        self._start_map: dict[str, float] = {}           # trial_id → session-abs start
+        self._current_trials: list[str] = []  # trial IDs in current PSTH
+        self._ref_times_abs_map: dict[str, float] = {}  # trial_id → session-abs ref time
+        self._start_map: dict[str, float] = {}  # trial_id → session-abs start
 
         self._build_ui()
         self._populate_align_combo()
@@ -135,9 +136,7 @@ class PSTHDialog(QDialog):
 
         # ---- title ----
         self._title_label = QLabel("Select a cluster in the TraceView table →")
-        self._title_label.setStyleSheet(
-            "font-size: 14px; font-weight: bold; color: #88ccff; padding: 4px;"
-        )
+        self._title_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #88ccff; padding: 4px;")
         root.addWidget(self._title_label)
 
         # ---- body: sidebar + plot ----
@@ -147,7 +146,7 @@ class PSTHDialog(QDialog):
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.addWidget(self._build_sidebar())
 
-        self._plot = PSTHPlot([])   # populated on first cluster select
+        self._plot = PSTHPlot([])  # populated on first cluster select
         self._plot.trial_selected.connect(self._on_trial_selected)
         self._plot.trial_hovered.connect(self._on_trial_hovered)
         self._plot.hover_info.connect(self._on_hover_info)
@@ -202,15 +201,14 @@ class PSTHDialog(QDialog):
         gl = QVBoxLayout(g)
         self._align_combo = QComboBox()
         self._align_combo.setToolTip(
-            "Choose what each trial is aligned to.\n"
-            "Labels show the first occurrence of that label per trial."
+            "Choose what each trial is aligned to.\nLabels show the first occurrence of that label per trial."
         )
         self._align_combo.currentIndexChanged.connect(self._on_align_changed)
         gl.addWidget(self._align_combo)
 
         # Onset / Offset radio (only relevant for labels)
         boundary_row = QHBoxLayout()
-        self._onset_radio  = QRadioButton("Onset")
+        self._onset_radio = QRadioButton("Onset")
         self._offset_radio = QRadioButton("Offset")
         self._onset_radio.setChecked(True)
         self._onset_radio.toggled.connect(self._recompute)
@@ -233,7 +231,10 @@ class PSTHDialog(QDialog):
         # Window
         g = QGroupBox("Window (s)")
         gl = QVBoxLayout(g)
-        for lbl, attr, default in [("Pre:", "_pre_spin", 0.5), ("Post:", "_post_spin", 1.5)]:
+        for lbl, attr, default in [
+            ("Pre:", "_pre_spin", 0.5),
+            ("Post:", "_post_spin", 1.5),
+        ]:
             row = QHBoxLayout()
             row.addWidget(QLabel(lbl))
             spin = QDoubleSpinBox()
@@ -285,9 +286,7 @@ class PSTHDialog(QDialog):
         # Selected trial info
         self._sel_label = QLabel("Hover or click a row")
         self._sel_label.setWordWrap(True)
-        self._sel_label.setStyleSheet(
-            "color: #7ff; font-size: 12px; font-weight: bold; padding: 4px;"
-        )
+        self._sel_label.setStyleSheet("color: #7ff; font-size: 12px; font-weight: bold; padding: 4px;")
         layout.addWidget(self._sel_label)
 
         # Jump to trial
@@ -348,8 +347,8 @@ class PSTHDialog(QDialog):
                 if not rows.empty:
                     r = rows.iloc[0]
                     grp = str(r["group"]) if "group" in r.index else "?"
-                    ch  = int(r["ch"])    if "ch"    in r.index else "?"
-                    fr  = f"{r['fr']:.1f}" if "fr"  in r.index else "?"
+                    ch = int(r["ch"]) if "ch" in r.index else "?"
+                    fr = f"{r['fr']:.1f}" if "fr" in r.index else "?"
                     label = f"[{grp}] #{cid}  ch={ch}  {fr}Hz"
                 else:
                     label = f"#{cid}"
@@ -386,7 +385,7 @@ class PSTHDialog(QDialog):
         self._align_combo.blockSignals(True)
         self._align_combo.clear()
         self._align_combo.addItem(gray_icon(), "Trial start", "trial_start")
-        self._align_combo.addItem(gray_icon(), "Trial end",   "trial_end")
+        self._align_combo.addItem(gray_icon(), "Trial end", "trial_end")
         add_combo_separator(self._align_combo)
 
         if self.labels_widget:
@@ -404,7 +403,7 @@ class PSTHDialog(QDialog):
         self._cond_key_combo.addItem("None", None)
 
         catalog = getattr(self.navigation_widget, "catalog", None)
-        for condition in (catalog.trial_conditions if catalog else []):
+        for condition in catalog.trial_conditions if catalog else []:
             self._cond_key_combo.addItem(str(condition), condition)
 
         self._cond_key_combo.blockSignals(False)
@@ -471,14 +470,12 @@ class PSTHDialog(QDialog):
                 pass
 
     def _update_title(self):
-        cid   = self._current_cluster_id
+        cid = self._current_cluster_id
         align = self._align_combo.currentText() if self._align_combo.count() else "—"
         if cid is None:
             self._title_label.setText("Select a cluster in the TraceView table →")
         else:
-            self._title_label.setText(
-                f"Raster of Cluster {cid}  ·  aligned to '{align}'"
-            )
+            self._title_label.setText(f"Raster of Cluster {cid}  ·  aligned to '{align}'")
 
     # ------------------------------------------------------------------
     # Trial list (with condition filter)
@@ -497,7 +494,7 @@ class PSTHDialog(QDialog):
             nwb_alignment = getattr(self.app_state.dt, "nwb_alignment", None)
         if nwb_alignment is not None:
             return nwb_alignment.start_time(trial_id)
-        return 0.0   # per-trial files: local == session-absolute
+        return 0.0  # per-trial files: local == session-absolute
 
     def _trial_abs_end(self, trial_id) -> float:
         nwb_alignment = getattr(self.app_state, "nwb_alignment", None)
@@ -509,7 +506,6 @@ class PSTHDialog(QDialog):
                 return stop
         else:
             return None
-
 
     def _get_label_local_t(self, trial_id: str, label_id: int, use_offset: bool) -> float | None:
         df = self.app_state.get_trial_intervals(trial_id)
@@ -540,14 +536,14 @@ class PSTHDialog(QDialog):
             return
 
         align_data = self._align_combo.currentData()
-        pre_s      = self._pre_spin.value()
-        post_s     = self._post_spin.value()
+        pre_s = self._pre_spin.value()
+        post_s = self._post_spin.value()
         use_offset = self._offset_radio.isChecked()
 
         self._loading_overlay.activate()
         try:
             ref_times_abs: list[float] = []
-            valid_display: list[int]   = []
+            valid_display: list[int] = []
 
             # Precompute per-trial start times in one pass (avoids O(N²) _trial_idx scans)
             nwb_alignment = getattr(self.app_state, "nwb_alignment", None)
@@ -555,10 +551,10 @@ class PSTHDialog(QDialog):
                 nwb_alignment = getattr(self.app_state.dt, "nwb_alignment", None)
             if nwb_alignment is not None:
                 start_map = {t: nwb_alignment.start_time(t) for t in trials}
-                end_map   = {t: nwb_alignment.stop_time(t)  for t in trials} if align_data == "trial_end" else {}
+                end_map = {t: nwb_alignment.stop_time(t) for t in trials} if align_data == "trial_end" else {}
             else:
                 start_map = {t: 0.0 for t in trials}
-                end_map   = {}
+                end_map = {}
 
             # Precompute label times if needed (avoids repeated DataTree lookups)
             label_map: dict = {}
@@ -592,9 +588,10 @@ class PSTHDialog(QDialog):
             if not ref_times_abs:
                 label_name = self._align_combo.currentText()
                 notify_dialog(
-                    f"Label '{label_name}' has no occurrences in any trial.\n"
-                    "Falling back to Trial start alignment.",
-                    "warning", "No events found", self,
+                    f"Label '{label_name}' has no occurrences in any trial.\nFalling back to Trial start alignment.",
+                    "warning",
+                    "No events found",
+                    self,
                 )
                 self._align_combo.blockSignals(True)
                 self._align_combo.setCurrentIndex(0)  # "Trial start"
@@ -607,11 +604,9 @@ class PSTHDialog(QDialog):
                     ref_times_abs.append(self._trial_abs_start(trial_id))
                     valid_display.append(i)
 
-            ref_arr  = np.array(ref_times_abs)
-            ref_ts   = nap.Ts(t=ref_arr)
-            peri_nap = nap.compute_perievent(
-                tsgroup[self._current_cluster_id], ref_ts, minmax=(-pre_s, post_s)
-            )
+            ref_arr = np.array(ref_times_abs)
+            ref_ts = nap.Ts(t=ref_arr)
+            peri_nap = nap.compute_perievent(tsgroup[self._current_cluster_id], ref_ts, minmax=(-pre_s, post_s))
 
             self._perievent = {
                 valid_display[k]: (peri_nap[k].t if k in peri_nap else np.array([], dtype=np.float64))
@@ -623,10 +618,7 @@ class PSTHDialog(QDialog):
 
             # Store maps needed for double-click seek
             self._start_map = start_map
-            self._ref_times_abs_map = {
-                trials[valid_display[k]]: ref_times_abs[k]
-                for k in range(len(ref_times_abs))
-            }
+            self._ref_times_abs_map = {trials[valid_display[k]]: ref_times_abs[k] for k in range(len(ref_times_abs))}
 
             self._current_trials = trials
             try:
@@ -636,8 +628,8 @@ class PSTHDialog(QDialog):
                 self._jump_spin.setRange(0, max(0, len(trials) - 1))
 
             trial_ids = [str(t) for t in trials]
-            self._plot._trial_ids  = trial_ids
-            self._plot._n_trials   = len(trial_ids)
+            self._plot._trial_ids = trial_ids
+            self._plot._n_trials = len(trial_ids)
             self._plot._sort_order = list(range(len(trial_ids)))
 
             self._replot()
@@ -649,12 +641,13 @@ class PSTHDialog(QDialog):
             return
         post_s = self._post_spin.value()
         condition_group, condition_labels = self._get_condition_groups()
-        order = sort_trials(
-            self._perievent, self._sort_combo.currentText(), post_s, condition_group
-        )
+        order = sort_trials(self._perievent, self._sort_combo.currentText(), post_s, condition_group)
         self._plot.set_data(
-            self._perievent, order,
-            self._pre_spin.value(), post_s, self._bin_spin.value(),
+            self._perievent,
+            order,
+            self._pre_spin.value(),
+            post_s,
+            self._bin_spin.value(),
             condition_group=condition_group,
             condition_labels=condition_labels,
         )
@@ -684,9 +677,7 @@ class PSTHDialog(QDialog):
             return
         trial_id = self._current_trials[trial_idx]
         sign = "+" if rel_time >= 0 else ""
-        self._sel_label.setText(
-            f"Trial {trial_id}  ·  t = {sign}{rel_time:.3f} s  (double-click to navigate)"
-        )
+        self._sel_label.setText(f"Trial {trial_id}  ·  t = {sign}{rel_time:.3f} s  (double-click to navigate)")
 
     def _on_trial_time_requested(self, trial_idx: int, rel_time: float):
         """Double-click: navigate to trial and seek to the clicked time point."""
@@ -727,9 +718,7 @@ class PSTHDialog(QDialog):
         except (ValueError, TypeError):
             self._jump_spin.setValue(self._plot._selected)
         self._jump_spin.blockSignals(False)
-        self._status.setText(
-            f"Selected {trial_id} — press 'Navigate to trial →' to seek main timeline"
-        )
+        self._status.setText(f"Selected {trial_id} — press 'Navigate to trial →' to seek main timeline")
 
     def _on_jump_clicked(self):
         target = str(self._jump_spin.value())
@@ -754,4 +743,3 @@ class PSTHDialog(QDialog):
     # ------------------------------------------------------------------
     # Public: update after data reload
     # ------------------------------------------------------------------
-

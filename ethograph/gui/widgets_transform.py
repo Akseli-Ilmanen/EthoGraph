@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 
-
 ENERGY_DISPLAY_NAMES = {
     "energy_lowpass": "SOS lowpass envelope",
     "energy_highpass": "SOS highpass envelope",
@@ -15,7 +14,10 @@ ENERGY_DISPLAY_NAMES = {
 
 
 def compute_energy_envelope(
-    data: np.ndarray, rate: float, metric: str, app_state,
+    data: np.ndarray,
+    rate: float,
+    metric: str,
+    app_state,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute energy envelope using registry-driven dispatch.
 

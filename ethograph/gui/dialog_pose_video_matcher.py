@@ -46,10 +46,10 @@ from qtpy.QtWidgets import (
 
 from ethograph.io.validation import POSE_EXTENSIONS, VIDEO_EXTENSIONS
 
-
 # ---------------------------------------------------------------------------
 # Trial-stem utilities
 # ---------------------------------------------------------------------------
+
 
 def get_trial_stem(filename: str, trial_ids: list) -> str:
     """Strip the trial-specific substring from a filename stem.
@@ -104,10 +104,10 @@ def get_unique_stems(
     return sorted(stems)
 
 
-
 # ---------------------------------------------------------------------------
 # Reorderable list widget
 # ---------------------------------------------------------------------------
+
 
 class ReorderableList(QWidget):
     """A QListWidget with Up / Down buttons and keyboard-drag support."""
@@ -172,6 +172,7 @@ class ReorderableList(QWidget):
 # ---------------------------------------------------------------------------
 # Matcher widget
 # ---------------------------------------------------------------------------
+
 
 class PoseVideoMatcherWidget(QWidget):
     """Side-by-side video / pose stem lists for manual camera↔pose pairing.
@@ -243,10 +244,10 @@ class PoseVideoMatcherWidget(QWidget):
         self.mapping_changed.emit(self.get_mapping())
 
 
-
 # ---------------------------------------------------------------------------
 # Convenience dialog
 # ---------------------------------------------------------------------------
+
 
 class PoseVideoMatcherDialog(QDialog):
     """Wraps PoseVideoMatcherWidget in a modal dialog with OK / Cancel.
