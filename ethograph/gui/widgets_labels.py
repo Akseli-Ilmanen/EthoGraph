@@ -1073,7 +1073,8 @@ class LabelsWidget(QWidget):
             df = empty_intervals()
 
         # If editing, delete the old interval first
-        if self.old_labels_pos is not None:
+        was_edit = self.old_labels_pos is not None
+        if was_edit:
             if self.old_labels_pos in df.index:
                 df = delete_interval(df, self.old_labels_pos)
             self.old_labels_pos = None
@@ -1093,9 +1094,11 @@ class LabelsWidget(QWidget):
                           protected_label_ids=protected)
         self.app_state.label_intervals = df
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
-        
-        # Post purge/stich step 
-        self.changepoints_widget.cp_correction_from_labelling()
+
+        # Skip automatic cleanup when editing: the user just made a precise
+        # repositioning via snap; stitch/purge would overwrite the snapped boundary.
+        if not was_edit:
+            self.changepoints_widget.cp_correction_from_labelling()
         df = self.app_state.label_intervals
 
         # Auto-select the newly created interval for immediate playback
@@ -1135,7 +1138,8 @@ class LabelsWidget(QWidget):
         if df is None:
             df = empty_intervals()
 
-        if self.old_labels_pos is not None:
+        was_edit = self.old_labels_pos is not None
+        if was_edit:
             if self.old_labels_pos in df.index:
                 df = delete_interval(df, self.old_labels_pos)
             self.old_labels_pos = None
@@ -1145,8 +1149,8 @@ class LabelsWidget(QWidget):
         self.app_state.label_intervals = df
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
 
-        # Post purge/stitch step
-        self.changepoints_widget.cp_correction_from_labelling()
+        if not was_edit:
+            self.changepoints_widget.cp_correction_from_labelling()
         df = self.app_state.label_intervals
 
         self.current_labels_pos = None  # selecting an existing point comes later
