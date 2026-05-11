@@ -19,25 +19,44 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ethograph.io.pynapple import load_nap_data
 from ethograph.io.nwb_alignment import make_nwb_alignment
+from ethograph.io.pynapple import load_nap_data
 
 logger = logging.getLogger(__name__)
 
 _STREAM_COL_RE = re.compile(r"^(video|pose|audio|ephys)_(.+)$")
 
-_NWB_STRUCTURAL_COLUMNS = frozenset({
-    "trial",
-    "start_time",
-    "stop_time",
-})
+_NWB_STRUCTURAL_COLUMNS = frozenset(
+    {
+        "trial",
+        "start_time",
+        "stop_time",
+    }
+)
 
-_LEGACY_SKIP_EXTENSIONS = frozenset({
-    ".mp4", ".avi", ".mov", ".mkv", ".webm",
-    ".wav", ".flac", ".mp3", ".ogg",
-    ".csv", ".h5", ".hdf5", ".npy", ".slp", ".nwb",
-    ".dat", ".bin", ".raw", ".mda",
-})
+_LEGACY_SKIP_EXTENSIONS = frozenset(
+    {
+        ".mp4",
+        ".avi",
+        ".mov",
+        ".mkv",
+        ".webm",
+        ".wav",
+        ".flac",
+        ".mp3",
+        ".ogg",
+        ".csv",
+        ".h5",
+        ".hdf5",
+        ".npy",
+        ".slp",
+        ".nwb",
+        ".dat",
+        ".bin",
+        ".raw",
+        ".mda",
+    }
+)
 
 
 def validate_metadata_timing(df: pd.DataFrame, path: str | Path | None = None) -> None:
@@ -55,23 +74,16 @@ def validate_metadata_timing(df: pd.DataFrame, path: str | Path | None = None) -
 
     missing = [c for c in ("start_time", "stop_time") if c not in df.columns]
     if missing:
-        raise ValueError(
-            f"Metadata table{label} missing column(s): {', '.join(missing)}"
-        )
+        raise ValueError(f"Metadata table{label} missing column(s): {', '.join(missing)}")
 
     # Check trial column
     if "trial" not in df.columns:
-        raise ValueError(
-            f"Metadata table{label} missing required 'trial' column"
-        )
+        raise ValueError(f"Metadata table{label} missing required 'trial' column")
 
     # Check numeric types
     for col in ("start_time", "stop_time"):
         if not pd.api.types.is_numeric_dtype(df[col]):
-            raise ValueError(
-                f"Column '{col}'{label} must be numeric, "
-                f"got {df[col].dtype}"
-            )
+            raise ValueError(f"Column '{col}'{label} must be numeric, got {df[col].dtype}")
 
     starts = df["start_time"].values
     stops = df["stop_time"].values
@@ -81,37 +93,27 @@ def validate_metadata_timing(df: pd.DataFrame, path: str | Path | None = None) -
     nan_stops = np.isnan(stops)
     if nan_starts.any():
         rows = np.where(nan_starts)[0] + 1
-        raise ValueError(
-            f"NaN in 'start_time'{label} at row(s): {list(rows)}"
-        )
+        raise ValueError(f"NaN in 'start_time'{label} at row(s): {list(rows)}")
     if nan_stops.any():
         rows = np.where(nan_stops)[0] + 1
-        raise ValueError(
-            f"NaN in 'stop_time'{label} at row(s): {list(rows)}"
-        )
+        raise ValueError(f"NaN in 'stop_time'{label} at row(s): {list(rows)}")
 
     # Check start < stop per row
     inverted = starts >= stops
     if inverted.any():
         rows = np.where(inverted)[0] + 1
-        raise ValueError(
-            f"start_time >= stop_time{label} at row(s): {list(rows)}"
-        )
+        raise ValueError(f"start_time >= stop_time{label} at row(s): {list(rows)}")
 
     # Check monotonic starts
     if len(starts) > 1 and not np.all(np.diff(starts) > 0):
-        raise ValueError(
-            f"'start_time' values{label} are not strictly increasing"
-        )
+        raise ValueError(f"'start_time' values{label} are not strictly increasing")
 
     # Check duplicate trial IDs
     trials = df["trial"].values
     uniq, counts = np.unique(trials, return_counts=True)
     dups = uniq[counts > 1]
     if len(dups) > 0:
-        raise ValueError(
-            f"Duplicate trial IDs{label}: {list(dups)}"
-        )
+        raise ValueError(f"Duplicate trial IDs{label}: {list(dups)}")
 
 
 def trials_ep_from_metadata_df(df: pd.DataFrame):
@@ -209,7 +211,9 @@ def metadata_from_intervalset(trials_ep, trial_ids: list[int | str] | None = Non
     if trials_ep is None:
         return empty_metadata_df(trial_ids or [])
 
-    data = pd.DataFrame(trials_ep.metadata).copy() if getattr(trials_ep, "metadata", None) is not None else pd.DataFrame()
+    data = (
+        pd.DataFrame(trials_ep.metadata).copy() if getattr(trials_ep, "metadata", None) is not None else pd.DataFrame()
+    )
     df = _normalise_trial_column(data, trial_ids)
     if df.empty:
         return empty_metadata_df(trial_ids or [])
@@ -275,5 +279,3 @@ def load_metadata_df(
         return metadata_from_intervalset(trials_ep, trial_ids), None
 
     return empty_metadata_df(trial_ids or []), None
-
-

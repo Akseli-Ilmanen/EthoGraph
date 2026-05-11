@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
-import pandas as pd
+
 import xarray as xr
 
-
-
 if TYPE_CHECKING:
-    from ethograph.io.trialtree import TrialTree
-    
+    pass
+
 
 def sel_valid(da, sel_kwargs):
     """Select a slice of a DataArray, silently ignoring dimensions it doesn't have.
@@ -83,17 +80,18 @@ def sel_valid(da, sel_kwargs):
         da = da.isel(**isel_kwargs)
     da = da.squeeze()
 
-    time_dim = next((dim for dim in da.dims if 'time' in dim), None)
+    time_dim = next((dim for dim in da.dims if "time" in dim), None)
 
     if time_dim is None:
         raise ValueError("No dimension containing 'time' found in the DataArray.")
-    
+
     da = da.transpose(time_dim, ...)
 
     data = da.values
-    assert data.ndim in [1, 2] # either (time,) or (time, space)/ (time, RGB), ...
+    assert data.ndim in [1, 2]  # either (time,) or (time, space)/ (time, RGB), ...
 
     return data, filt_kwargs
+
 
 def get_time_coord(da: xr.DataArray) -> xr.DataArray | None:
     """Return the time coordinate of a DataArray, regardless of its name.
@@ -141,10 +139,10 @@ def get_time_coord(da: xr.DataArray) -> xr.DataArray | None:
     <ethograph.utils.io.add_changepoints_to_ds>` to discover which time
     dimension to vectorise over.
     """
-    time_dims = [d for d in da.dims if 'time' in d.lower()]
+    time_dims = [d for d in da.dims if "time" in d.lower()]
     if time_dims:
         return da.coords[time_dims[0]]
-    time_coord = next((c for c in da.coords if 'time' in c.lower()), None)
+    time_coord = next((c for c in da.coords if "time" in c.lower()), None)
     if time_coord is None:
         return None
     return da.coords[time_coord]
@@ -158,8 +156,3 @@ def get_ds_duration(ds: xr.Dataset) -> float | None:
         if time_coord is not None:
             durations.append(float(time_coord.max() - time_coord.min()))
     return max(durations) if durations else None
-
-
-
-
-

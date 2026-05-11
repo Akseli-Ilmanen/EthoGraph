@@ -6,9 +6,9 @@ from typing import Dict, Optional
 
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pandas as pd
+from matplotlib.backends.backend_pdf import PdfPages
 
 
 def plot_label_segments(
@@ -48,8 +48,14 @@ def plot_label_segments(
 
     for _, row in df.iterrows():
         draw_label_rectangle(
-            ax, row["onset_s"], row["offset_s"], int(row["labels"]),
-            label_mappings, is_main, fraction=fraction, alpha=alpha
+            ax,
+            row["onset_s"],
+            row["offset_s"],
+            int(row["labels"]),
+            label_mappings,
+            is_main,
+            fraction=fraction,
+            alpha=alpha,
         )
 
 
@@ -62,7 +68,6 @@ def draw_label_rectangle(
     is_main: bool = True,
     fraction: Optional[float] = None,
     alpha: float = 0.8,
-
 ) -> None:
     """Draw a label rectangle on a matplotlib axis.
 
@@ -154,8 +159,14 @@ def plot_label_segments_multirow(
     y_base = row_index * row_spacing
     for _, row in df.iterrows():
         _draw_rectangle(
-            ax, row["onset_s"], row["offset_s"],
-            y_base, rect_height, int(row["labels"]), label_mappings, alpha,
+            ax,
+            row["onset_s"],
+            row["offset_s"],
+            y_base,
+            rect_height,
+            int(row["labels"]),
+            label_mappings,
+            alpha,
         )
 
 
@@ -238,26 +249,48 @@ def plot_confidence_pdf(
         lines = [
             (0.92, r"$\bf{Confidence\ score\ (per\ frame):}$", 14, "black"),
             (0.78, r"$c_t = 1 - \frac{H(p_t)}{\log K}$", 13, "black"),
-            (0.64,
-             r"where $p_t \in \mathbb{R}^K$ is the softmax output at frame $t$,"
-             r"  $H(p_t) = -\sum_k p_k \log p_k$ is the entropy,"
-             r"  and $K$ is the number of classes.",
-             10, "#333333"),
-            (0.50, r"$c_t = 1.0$ means the model is certain;  $c_t = 0.0$ means the model is maximally uncertain (uniform distribution).", 10, "#333333"),
+            (
+                0.64,
+                r"where $p_t \in \mathbb{R}^K$ is the softmax output at frame $t$,"
+                r"  $H(p_t) = -\sum_k p_k \log p_k$ is the entropy,"
+                r"  and $K$ is the number of classes.",
+                10,
+                "#333333",
+            ),
+            (
+                0.50,
+                r"$c_t = 1.0$ means the model is certain;  $c_t = 0.0$ means the model is maximally uncertain (uniform distribution).",  # noqa: E501
+                10,
+                "#333333",
+            ),
             (0.34, r"$\bf{Thresholds:}$", 12, "black"),
-            (0.22,
-             rf"Frame threshold (orange dashed, $\tau_{{frame}}={confidence_threshold:.2f}$): "
-             r"frames with $c_t < \tau_{frame}$ are plotted as red dots.",
-             10, "darkorange"),
-            (0.10,
-             rf"Segment threshold (red dotted, $\tau_{{seg}}={segment_confidence_threshold:.2f}$): "
-             r"segments whose mean frame confidence $\bar{{c}} < \tau_{{seg}}$ are shaded red. "
-             r"A trial is marked low-confidence (red border) if its overall mean $< \tau_{{frame}}$ or any segment $< \tau_{{seg}}$.",
-             10, "red"),
+            (
+                0.22,
+                rf"Frame threshold (orange dashed, $\tau_{{frame}}={confidence_threshold:.2f}$): "
+                r"frames with $c_t < \tau_{frame}$ are plotted as red dots.",
+                10,
+                "darkorange",
+            ),
+            (
+                0.10,
+                rf"Segment threshold (red dotted, $\tau_{{seg}}={segment_confidence_threshold:.2f}$): "
+                r"segments whose mean frame confidence $\bar{{c}} < \tau_{{seg}}$ are shaded red. "
+                r"A trial is marked low-confidence (red border) if its overall mean $< \tau_{{frame}}$ or any segment $< \tau_{{seg}}$.",  # noqa: E501
+                10,
+                "red",
+            ),
         ]
         for y, txt, size, color in lines:
-            leg_ax.text(0.02, y, txt, transform=leg_ax.transAxes,
-                        fontsize=size, color=color, va="top", wrap=True)
+            leg_ax.text(
+                0.02,
+                y,
+                txt,
+                transform=leg_ax.transAxes,
+                fontsize=size,
+                color=color,
+                va="top",
+                wrap=True,
+            )
 
         pdf.savefig(leg_fig, bbox_inches="tight")
         plt.close(leg_fig)
@@ -295,8 +328,14 @@ def plot_confidence_pdf(
 
             low_mask = confidence < confidence_threshold
             if np.any(low_mask):
-                ax.scatter(time_coord[low_mask], confidence[low_mask],
-                           color="red", s=4, alpha=0.5, zorder=5)
+                ax.scatter(
+                    time_coord[low_mask],
+                    confidence[low_mask],
+                    color="red",
+                    s=4,
+                    alpha=0.5,
+                    zorder=5,
+                )
 
             has_low_segment = False
             for _, row in trial_intervals.iterrows():
@@ -312,9 +351,12 @@ def plot_confidence_pdf(
             low = mean_conf < confidence_threshold or has_low_segment
             highlighted[trial] = low
 
-            ax.set_title(f"trial-{trial}  mean={mean_conf:.2f}", fontsize=9,
-                         color="red" if low else "black",
-                         weight="bold" if low else "normal")
+            ax.set_title(
+                f"trial-{trial}  mean={mean_conf:.2f}",
+                fontsize=9,
+                color="red" if low else "black",
+                weight="bold" if low else "normal",
+            )
             if low:
                 for spine in ax.spines.values():
                     spine.set_edgecolor("red")

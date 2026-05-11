@@ -13,15 +13,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, Sequence, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import numpy as np
 
 if TYPE_CHECKING:
-    import pynapple as nap
     import xarray as xr
-
-    import pandas as pd
 
     from ethograph.io.trialtree import TrialTree
 
@@ -140,9 +137,7 @@ class TimeSeriesRecord:
             i0 = int((t_start - self.starting_time) * self.rate)
             i1 = int((t_stop - self.starting_time) * self.rate)
             return slice(max(i0, 0), min(i1, self.shape[0]))
-        raise ValueError(
-            "Irregular timestamps: use np.searchsorted on the timestamps dataset"
-        )
+        raise ValueError("Irregular timestamps: use np.searchsorted on the timestamps dataset")
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,9 +151,6 @@ class TimeIntervalsRecord:
     n_rows: int
     column_names: tuple[str, ...]
     time_range: tuple[float, float] | None
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -220,11 +212,7 @@ class _CatalogMixin:
 
     @property
     def dims(self) -> dict[str, np.ndarray]:
-        return {
-            n: np.array(s.values)
-            for n, s in self._catalog.combos.items()
-            if n != "features"
-        }
+        return {n: np.array(s.values) for n, s in self._catalog.combos.items() if n != "features"}
 
     @property
     def changepoint_names(self) -> list[str]:
@@ -299,9 +287,7 @@ class XarrayLoader(_CatalogMixin):
 
         dim_labels = None
         if data.ndim == 2:
-            non_time_dim = next(
-                (d for d in var_sel.dims if "time" not in d.lower()), None
-            )
+            non_time_dim = next((d for d in var_sel.dims if "time" not in d.lower()), None)
             if non_time_dim and non_time_dim in var_sel.coords:
                 dim_labels = [str(c) for c in var_sel.coords[non_time_dim].values]
             else:
@@ -319,14 +305,10 @@ class XarrayLoader(_CatalogMixin):
             for cp_name in cp_ds.data_vars:
                 cp_var = cp_ds[cp_name]
                 cp_data, _ = eto.sel_valid(cp_var, selections)
-                if (
-                    cp_var.attrs.get("target_feature") == feature
-                    and not np.isnan(cp_data).all()
-                ):
+                if cp_var.attrs.get("target_feature") == feature and not np.isnan(cp_data).all():
                     cp_dict[cp_name] = cp_data
             if cp_dict:
                 changepoints = cp_dict
-
 
         ylabel = var.attrs.get("ylabel", feature)
         title_parts = [f"Trial: {ds.attrs.get('trial')}"]
@@ -373,8 +355,6 @@ class XarrayLoader(_CatalogMixin):
         return extract_cp_times(self._ds, tc.values)
 
 
-
-
 # ---------------------------------------------------------------------------
 # PynappleLoader
 # ---------------------------------------------------------------------------
@@ -401,9 +381,7 @@ class PynappleLoader(_CatalogMixin):
         self._catalog = catalog
 
         self._feature_objs: dict = {
-            k: v
-            for k, v in data.items()
-            if isinstance(v, (nap.Tsd, nap.TsdFrame, nap.TsdTensor))
+            k: v for k, v in data.items() if isinstance(v, (nap.Tsd, nap.TsdFrame, nap.TsdTensor))
         }
         self._dim_map = _compute_shared_column_dims(self._feature_objs)
 
@@ -496,9 +474,7 @@ class PynappleLoader(_CatalogMixin):
         stacked = np.column_stack(arrays) if len(arrays) > 1 else arrays[0]
         dim_labels = labels if stacked.ndim == 2 else None
 
-        title_parts = [
-            f"{k}={v}" for k, v in selections.items() if k != "individuals"
-        ]
+        title_parts = [f"{k}={v}" for k, v in selections.items() if k != "individuals"]
 
         return PlotData(
             time=time,
@@ -565,9 +541,7 @@ class PynappleLoader(_CatalogMixin):
             data = obj.values
             if data.ndim > 2:
                 data = data.reshape(len(time), -1)
-            dim_labels = (
-                [str(i) for i in range(data.shape[1])] if data.ndim == 2 else None
-            )
+            dim_labels = [str(i) for i in range(data.shape[1])] if data.ndim == 2 else None
         else:
             return None
 
@@ -591,11 +565,7 @@ class PynappleLoader(_CatalogMixin):
                 meta = raw_obj.metadata
                 if "type" not in meta.columns:
                     continue
-                target = (
-                    meta["target_feature"].iloc[0]
-                    if "target_feature" in meta.columns
-                    else None
-                )
+                target = meta["target_feature"].iloc[0] if "target_feature" in meta.columns else None
                 if target != feature:
                     continue
                 cp_units = meta.index[meta["type"] == "changepoints"]
@@ -619,9 +589,7 @@ class PynappleLoader(_CatalogMixin):
             if cp_dict:
                 changepoints = cp_dict
 
-        title_parts = [
-            f"{k}={v}" for k, v in selections.items() if k != "individuals"
-        ]
+        title_parts = [f"{k}={v}" for k, v in selections.items() if k != "individuals"]
         title = ", ".join(title_parts)
 
         return PlotData(
@@ -635,7 +603,10 @@ class PynappleLoader(_CatalogMixin):
         )
 
     def get_cp_times(
-        self, feature: str | None = None, t0: float = 0.0, t1: float = 0.0,
+        self,
+        feature: str | None = None,
+        t0: float = 0.0,
+        t1: float = 0.0,
     ) -> np.ndarray:
         import pynapple as nap
 
@@ -665,9 +636,6 @@ class PynappleLoader(_CatalogMixin):
         if not all_times:
             return np.array([], dtype=np.float64)
         return np.unique(np.concatenate(all_times)).astype(np.float64)
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -881,11 +849,7 @@ def catalog_from_pynapple(
     if source_path is not None:
         pose_names = _discover_pose_keypoints(source_path)
 
-    feature_objs = {
-        k: v
-        for k, v in data.items()
-        if isinstance(v, (nap.Tsd, nap.TsdFrame, nap.TsdTensor))
-    }
+    feature_objs = {k: v for k, v in data.items() if isinstance(v, (nap.Tsd, nap.TsdFrame, nap.TsdTensor))}
     dim_map = _compute_shared_column_dims(feature_objs)
 
     combos: dict[str, ComboSpec] = {}
@@ -915,9 +879,7 @@ def catalog_from_pynapple(
                 if isinstance(obj, nap.TsdFrame):
                     dim_name = dim_map.get(key, f"{key}_columns")
                     if dim_name not in combos:
-                        combos[dim_name] = ComboSpec(
-                            dim_name, tuple(str(c) for c in obj.columns)
-                        )
+                        combos[dim_name] = ComboSpec(dim_name, tuple(str(c) for c in obj.columns))
 
     if keypoint_names:
         combos["keypoints"] = ComboSpec("keypoints", tuple(sorted(keypoint_names)))
@@ -940,5 +902,3 @@ def catalog_from_pynapple(
         changepoints=changepoints,
         trial_conditions=[],
     )
-
-

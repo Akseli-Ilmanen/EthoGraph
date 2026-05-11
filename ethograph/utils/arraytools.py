@@ -4,14 +4,14 @@ import numpy as np
 
 
 def ensure_sequence(*vars, skip_None=True, unwrap=True):
-    """ Ensures that all passed variables are iterable and sequence-like.
+    """Ensures that all passed variables are iterable and sequence-like.
         Allows functions expecting iterable inputs (e.g in single for-loops) to
         handle scalar inputs, as well. "Sequence-like" refers to tuples, lists,
         and ND arrays with at least one dimension (np.ndim(var) > 0). Variables
         of these types are returned unchanged. Scalars (ints/floats/bools) or
         other iterables (dicts/strings/sets) are converted to single-element
         tuples. 0D arrays are expanded to 1D arrays. Nones can be treated as
-        scalar variables or be passed through as None on request. 
+        scalar variables or be passed through as None on request.
 
     Parameters
     ----------
@@ -29,16 +29,22 @@ def ensure_sequence(*vars, skip_None=True, unwrap=True):
     -------
     vars : tuple of arbitrary types (m,)
         Checked and converted input variable or variables.
-    """    
+    """
+
     # Delegate type-checking and sequence enforcement to helpers:
-    skip_var = lambda v: np.ndim(v) > 0 or (skip_None and v is None)
-    make_sequence = lambda v: v[None] if isinstance(v, np.ndarray) else (v,)
+    def skip_var(v):
+        return np.ndim(v) > 0 or (skip_None and v is None)
+
+    def make_sequence(v):
+        return v[None] if isinstance(v, np.ndarray) else (v,)
+
     # Check each input variable and modify it if necessary:
     vars = tuple(v if skip_var(v) else make_sequence(v) for v in vars)
     return vars[0] if unwrap and len(vars) == 1 else vars
 
+
 def equal_sequences(*vars, skip_None=True):
-    """ Ensures that all passed variables are sequence-likes of same length.
+    """Ensures that all passed variables are sequence-likes of same length.
         "Sequence-like" refers to tuples, lists, and ND arrays with at least
         one dimension (np.ndim(var) > 0). Calls ensure_sequence() to convert
         any other variables to single-element tuples or 1D arrays. Nones can
@@ -63,7 +69,7 @@ def equal_sequences(*vars, skip_None=True):
     ------
     ValueError
         Breaks if any sequence size is neither 1 nor the maximum across vars.
-    """  
+    """
     # Enforce tuples, letting lists and arrays >0D pass through:
     vars = ensure_sequence(*vars, skip_None=skip_None, unwrap=False)
 
@@ -73,20 +79,25 @@ def equal_sequences(*vars, skip_None=True):
 
     # Validate compatibility of element counts:
     if not all(n in (0, 1, target) for n in sizes):
-        msg = f'With a maximum sequence length of {target}, variables can '\
-              f'only have length {target} or 1 or be None: {sizes}'
+        msg = (
+            f"With a maximum sequence length of {target}, variables can "
+            f"only have length {target} or 1 or be None: {sizes}"
+        )
         raise ValueError(msg)
 
     # Equalize sequence length across variables:
-    convert_var = lambda v: v.tolist() if isinstance(v, np.ndarray) else v
+    def convert_var(v):
+        return v.tolist() if isinstance(v, np.ndarray) else v
+
     zipped = zip(vars, sizes)
-    return tuple(convert_var(v) * target if l == 1 else v for v, l in zipped)
+    return tuple(convert_var(v) * target if sz == 1 else v for v, sz in zipped)
 
 
 ## CHECKS & VALIDATION ##
 
+
 def is_valid_numpy_index(ind):
-    """ Checks if the given variable is valid for indexing numpy arrays.
+    """Checks if the given variable is valid for indexing numpy arrays.
         Valid array indices can be integers, bools, arrays of ints or bools,
         slice objects, ellipsis, None, or tuples of a combination of those.
 
@@ -100,7 +111,7 @@ def is_valid_numpy_index(ind):
     valid : bool
         Returns True if ind can be used to index numpy arrays, False otherwise.
     """
-    # Force dimension specificity:    
+    # Force dimension specificity:
     if not isinstance(ind, tuple):
         ind = (ind,)
 
@@ -116,14 +127,13 @@ def is_valid_numpy_index(ind):
     return True
 
 
-
 ## ARRAY MANIPULATION (VIEW) ##
 
 
 def reduce_array(array, squeeze=False, unpack=False):
-    """ Wrapper to quickly squeeze and itemize numpy arrays, if possible.
+    """Wrapper to quickly squeeze and itemize numpy arrays, if possible.
         Allows to remove singleton dimensions (squeeze, maintains at least 1D)
-        and to convert single-entry arrays into scalar output (unpack). 
+        and to convert single-entry arrays into scalar output (unpack).
 
     Parameters
     ----------
@@ -131,12 +141,12 @@ def reduce_array(array, squeeze=False, unpack=False):
         Array to be shape-checked and reduced to simpler formats, if possible.
         Must be at least 1D. Array is not copied or modified by this function.
     squeeze : bool, optional
-        If True, calls np.squeeze() on array to remove dimensions of size 1. If 
+        If True, calls np.squeeze() on array to remove dimensions of size 1. If
         array is size 1, retains a single dimension to prevent 0D output. The
         default is False.
     unpack : bool, optional
         If True and output would be an array of size 1, converts the array into
-        a single scalar. Applied after squeezing. The default is False. 
+        a single scalar. Applied after squeezing. The default is False.
 
     Returns
     -------
@@ -157,7 +167,7 @@ def reduce_array(array, squeeze=False, unpack=False):
 
 
 def slice_index(dims, axis=0, start=None, stop=None, step=1, include=False):
-    """ Indices to slice an N-dimensional array along one or multiple axes.
+    """Indices to slice an N-dimensional array along one or multiple axes.
         Shamelessly stolen and adapted from scipy.signal._arraytools.
 
     Parameters
@@ -186,8 +196,7 @@ def slice_index(dims, axis=0, start=None, stop=None, step=1, include=False):
         Indices for slicing along the given target axes.
     """
     # Ensure 1D sequence-likes of equal length:
-    axis, start, stop, step = equal_sequences(axis, start, stop, step,
-                                              skip_None=False)
+    axis, start, stop, step = equal_sequences(axis, start, stop, step, skip_None=False)
 
     # Full slice along each dimension:
     slice_inds = [slice(None)] * dims
@@ -206,9 +215,17 @@ def slice_index(dims, axis=0, start=None, stop=None, step=1, include=False):
     return tuple(slice_inds)
 
 
-def array_slice(array, axis=0, start=None, stop=None, step=1,
-                include=False, squeeze=False, unpack=False):
-    """ Slices an N-dimensional array along one or multiple target axes.
+def array_slice(
+    array,
+    axis=0,
+    start=None,
+    stop=None,
+    step=1,
+    include=False,
+    squeeze=False,
+    unpack=False,
+):
+    """Slices an N-dimensional array along one or multiple target axes.
         Returns a view of the sliced input array, preserving dimensionality.
         Sliced arrays can optionally be squeezed to remove excess singleton
         dimensions. Single-entry arrays can further be converted to scalars.
@@ -250,14 +267,11 @@ def array_slice(array, axis=0, start=None, stop=None, step=1,
     return reduce_array(array[slice_inds], squeeze, unpack)
 
 
-
-
-
 ## ARRAY INSPECTION ##
 
 
 def edge_along_axis(array, axis=0, which=-1, validate=True, reduce=False):
-    """ In a 2D array, finds first or last non-zero entry per column or row.
+    """In a 2D array, finds first or last non-zero entry per column or row.
         Designed for multiple distributions or multi-channel time series data,
         but can handle 1D arrays by a separate processing branch. By default,
         identified non-zero entries are returned as a tuple of 1D arrays that
@@ -266,7 +280,7 @@ def edge_along_axis(array, axis=0, which=-1, validate=True, reduce=False):
 
     Parameters
     ----------
-    array : 2D array (m, n) or 1D array (m,) of arbitrary type 
+    array : 2D array (m, n) or 1D array (m,) of arbitrary type
         Array in which to identify the requested edge indices.
     axis : int, optional
         Array dimension along which to find the requested edge indices. Options
@@ -306,7 +320,7 @@ def edge_along_axis(array, axis=0, which=-1, validate=True, reduce=False):
     """
     # All-zero early exit:
     if not np.any(array):
-        raise ValueError('No non-zero entries found in the given array.') 
+        raise ValueError("No non-zero entries found in the given array.")
 
     # Input interpretation:
     if which == 0:
@@ -329,7 +343,7 @@ def edge_along_axis(array, axis=0, which=-1, validate=True, reduce=False):
         return tuple(i for i in inds[:, None])
     # Shape validation:
     elif array.ndim != 2:
-        raise ValueError('Input array must be 1D or 2D.')
+        raise ValueError("Input array must be 1D or 2D.")
 
     # Draw parallel index gridlines along axis:
     grid_inds = np.arange(array.shape[axis])
@@ -346,7 +360,7 @@ def edge_along_axis(array, axis=0, which=-1, validate=True, reduce=False):
         inds = inds[is_valid]
         if inds.size == 0:
             # Break instead of returning empty index array:
-            raise ValueError('No non-zero entries found in the given array.')
+            raise ValueError("No non-zero entries found in the given array.")
     if reduce:
         # 1D array:
         return inds
@@ -357,5 +371,3 @@ def edge_along_axis(array, axis=0, which=-1, validate=True, reduce=False):
         other_inds = other_inds[is_valid]
     # Return sorted to enable index use (tuple of 1D arrays):
     return (other_inds, inds) if axis else (inds, other_inds)
-
-

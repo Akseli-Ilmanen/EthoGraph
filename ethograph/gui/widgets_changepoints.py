@@ -2,14 +2,12 @@
 
 import logging
 
+import audioio as aio
 import numpy as np
 import ruptures as rpt
 import xarray as xr
-import yaml
-import audioio as aio
-
 from napari.viewer import Viewer
-from qtpy.QtCore import Qt, QLocale, Signal
+from qtpy.QtCore import QLocale, Qt, Signal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -22,7 +20,6 @@ from qtpy.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -30,14 +27,14 @@ from qtpy.QtWidgets import (
 )
 
 import ethograph as eto
-from ethograph.gui.notify import notify
 from ethograph.features.changepoints import (
     correct_changepoints,
     correct_changepoints_automatic,
     extract_cp_times,
-    snap_to_nearest_changepoint_time,
 )
-from .dialog_function_params import open_function_params_dialog, get_registry
+from ethograph.gui.notify import notify
+
+from .dialog_function_params import open_function_params_dialog
 from .make_pretty import styled_link
 
 logger = logging.getLogger(__name__)
@@ -79,7 +76,10 @@ def _run_ruptures_in_process(
             "Binseg": lambda: rpt.Binseg(model=model, min_size=min_size, jump=jump),
             "BottomUp": lambda: rpt.BottomUp(model=model, min_size=min_size, jump=jump),
             "Window": lambda: rpt.Window(
-                width=params.get("width", 100), model=model, min_size=min_size, jump=jump
+                width=params.get("width", 100),
+                model=model,
+                min_size=min_size,
+                jump=jump,
             ),
             "Dynp": lambda: rpt.Dynp(model=model, min_size=min_size, jump=jump),
         }
@@ -108,7 +108,7 @@ def _run_ruptures_in_process(
 
 class ChangepointsWidget(QWidget):
     """Changepoints controls - dataset changepoints and audio changepoint detection."""
-    
+
     request_plot_update = Signal()
 
     def __init__(self, napari_viewer: Viewer, app_state, parent=None):
@@ -165,9 +165,7 @@ class ChangepointsWidget(QWidget):
         self.app_state.show_changepoints = True
         self.request_plot_update.emit()
 
-    def _store_audio_cps_to_ds(
-        self, onsets: np.ndarray, offsets: np.ndarray, target_feature: str, method: str
-    ):
+    def _store_audio_cps_to_ds(self, onsets: np.ndarray, offsets: np.ndarray, target_feature: str, method: str):
         ds = self.app_state.ds
         if ds is None:
             return
@@ -177,7 +175,11 @@ class ChangepointsWidget(QWidget):
             if var in new_ds.data_vars:
                 new_ds = new_ds.drop_vars(var)
 
-        attrs = {"type": "audio_changepoints", "target_feature": target_feature, "method": method}
+        attrs = {
+            "type": "audio_changepoints",
+            "target_feature": target_feature,
+            "method": method,
+        }
         new_ds["audio_cp_onsets"] = xr.DataArray(onsets, dims=["audio_cp"], attrs=attrs)
         new_ds["audio_cp_offsets"] = xr.DataArray(offsets, dims=["audio_cp"], attrs=attrs)
         self._update_trial_dataset(new_ds)
@@ -210,9 +212,7 @@ class ChangepointsWidget(QWidget):
         self.show_cp_checkbox.stateChanged.connect(self._on_show_changepoints_changed)
         row1_layout.addWidget(self.show_cp_checkbox)
 
-        self.changepoint_correction_checkbox = QCheckBox(
-            "Changepoint correction"
-        )
+        self.changepoint_correction_checkbox = QCheckBox("Changepoint correction")
         self.changepoint_correction_checkbox.setChecked(self.app_state.apply_changepoint_correction)
         self.changepoint_correction_checkbox.setToolTip(
             "Snap label boundaries to nearest changepoint when creating labels.\n"
@@ -232,7 +232,12 @@ class ChangepointsWidget(QWidget):
         self.toggle_widget.setLayout(toggle_layout)
 
         toggle_defs = [
-            ("correction_toggle", "CP Correction", True, self._toggle_correction_params),
+            (
+                "correction_toggle",
+                "CP Correction",
+                True,
+                self._toggle_correction_params,
+            ),
             ("cp_toggle", "Kinematic CPs", False, self._toggle_changepoints),
             ("ruptures_toggle", "Ruptures", False, self._toggle_ruptures),
             ("audio_cp_toggle", "Audio CPs", False, self._toggle_audio_cps),
@@ -249,7 +254,11 @@ class ChangepointsWidget(QWidget):
 
     def _show_panel(self, panel_name: str):
         panels = {
-            "correction": (self.correction_params_panel, self.correction_toggle, "CP Correction"),
+            "correction": (
+                self.correction_params_panel,
+                self.correction_toggle,
+                "CP Correction",
+            ),
             "kinematic": (self.changepoints_panel, self.cp_toggle, "Kinematic CPs"),
             "ruptures": (self.ruptures_panel, self.ruptures_toggle, "Ruptures"),
             "audio_cps": (self.audio_cp_panel, self.audio_cp_toggle, "Audio CPs"),
@@ -294,8 +303,7 @@ class ChangepointsWidget(QWidget):
         row_layout.addWidget(QLabel("Method:"))
         self.method_combo = QComboBox()
         self.method_combo.setToolTip(
-            "Troughs: local minima\n"
-            "Turning points: points where gradient is near zero around peaks"
+            "Troughs: local minima\nTurning points: points where gradient is near zero around peaks"
         )
         self.method_combo.addItems(["troughs", "turning_points"])
         row_layout.addWidget(self.method_combo)
@@ -309,16 +317,12 @@ class ChangepointsWidget(QWidget):
         button_layout = QHBoxLayout()
 
         self.compute_ds_cp_button = QPushButton("Detect")
-        self.compute_ds_cp_button.setToolTip(
-            "Detect changepoints for current feature and add to dataset"
-        )
+        self.compute_ds_cp_button.setToolTip("Detect changepoints for current feature and add to dataset")
         self.compute_ds_cp_button.clicked.connect(self._compute_dataset_changepoints)
         button_layout.addWidget(self.compute_ds_cp_button)
 
         self.clear_ds_cp_button = QPushButton("Clear")
-        self.clear_ds_cp_button.setToolTip(
-            "Remove all changepoints for current feature"
-        )
+        self.clear_ds_cp_button.setToolTip("Remove all changepoints for current feature")
         self.clear_ds_cp_button.clicked.connect(self._clear_current_feature_changepoints)
         button_layout.addWidget(self.clear_ds_cp_button)
 
@@ -337,10 +341,14 @@ class ChangepointsWidget(QWidget):
         row_layout = QHBoxLayout()
         row_layout.addWidget(QLabel("Method:"))
         self.audio_cp_method_combo = QComboBox()
-        self.audio_cp_method_combo.addItems([
-            "VocalPy meansquared", "VocalPy ava",
-            "VocalSeg dynamic thresholding", "VocalSeg continuity filtering",
-        ])
+        self.audio_cp_method_combo.addItems(
+            [
+                "VocalPy meansquared",
+                "VocalPy ava",
+                "VocalSeg dynamic thresholding",
+                "VocalSeg continuity filtering",
+            ]
+        )
         self.audio_cp_method_combo.currentTextChanged.connect(self._on_audio_cp_method_changed)
         row_layout.addWidget(self.audio_cp_method_combo)
 
@@ -353,16 +361,12 @@ class ChangepointsWidget(QWidget):
         button_layout = QHBoxLayout()
 
         self.compute_audio_cp_button = QPushButton("Detect")
-        self.compute_audio_cp_button.setToolTip(
-            "Detect onset/offset candidates using selected method"
-        )
+        self.compute_audio_cp_button.setToolTip("Detect onset/offset candidates using selected method")
         self.compute_audio_cp_button.clicked.connect(self._compute_audio_changepoints)
         button_layout.addWidget(self.compute_audio_cp_button)
 
         self.clear_audio_cp_button = QPushButton("Clear")
-        self.clear_audio_cp_button.setToolTip(
-            "Remove all audio changepoints from the plot"
-        )
+        self.clear_audio_cp_button.setToolTip("Remove all audio changepoints from the plot")
         self.clear_audio_cp_button.clicked.connect(self._clear_spectral_changepoints)
         button_layout.addWidget(self.clear_audio_cp_button)
 
@@ -395,9 +399,7 @@ class ChangepointsWidget(QWidget):
             "Window: Sliding window method\n"
             "Dynp: Dynamic programming (optimal but slow)"
         )
-        self.ruptures_method_combo.addItems(
-            ["Pelt", "Binseg", "BottomUp", "Window", "Dynp"]
-        )
+        self.ruptures_method_combo.addItems(["Pelt", "Binseg", "BottomUp", "Window", "Dynp"])
         row_layout.addWidget(self.ruptures_method_combo)
 
         self.ruptures_configure_btn = QPushButton("Configure...")
@@ -409,9 +411,7 @@ class ChangepointsWidget(QWidget):
         button_layout = QHBoxLayout()
 
         self.compute_ruptures_button = QPushButton("Detect")
-        self.compute_ruptures_button.setToolTip(
-            "Detect changepoints for current feature using ruptures library"
-        )
+        self.compute_ruptures_button.setToolTip("Detect changepoints for current feature using ruptures library")
         self.compute_ruptures_button.clicked.connect(self._compute_ruptures_changepoints)
         button_layout.addWidget(self.compute_ruptures_button)
 
@@ -420,10 +420,12 @@ class ChangepointsWidget(QWidget):
 
         button_layout.addStretch()
 
-        ref_label = QLabel(styled_link(
-            "https://centre-borelli.github.io/ruptures-docs",
-            "Ruptures (Truong et al., 2020)",
-        ))
+        ref_label = QLabel(
+            styled_link(
+                "https://centre-borelli.github.io/ruptures-docs",
+                "Ruptures (Truong et al., 2020)",
+            )
+        )
         ref_label.setOpenExternalLinks(True)
         ref_label.setToolTip("Open ruptures documentation")
         button_layout.addWidget(ref_label)
@@ -458,16 +460,20 @@ class ChangepointsWidget(QWidget):
 
     def _on_audio_cp_method_changed(self, method: str):
         if method.startswith("VocalSeg"):
-            self.audio_cp_ref_label.setText(styled_link(
-                "https://github.com/timsainb/vocalization-segmentation",
-                "VocalSeg (Sainburg et al., 2020)",
-            ))
+            self.audio_cp_ref_label.setText(
+                styled_link(
+                    "https://github.com/timsainb/vocalization-segmentation",
+                    "VocalSeg (Sainburg et al., 2020)",
+                )
+            )
             self.audio_cp_ref_label.setToolTip("Open vocalseg GitHub repository")
         else:
-            self.audio_cp_ref_label.setText(styled_link(
-                "https://vocalpy.readthedocs.io/",
-                "VocalPy (Nicholson et al.)",
-            ))
+            self.audio_cp_ref_label.setText(
+                styled_link(
+                    "https://vocalpy.readthedocs.io/",
+                    "VocalPy (Nicholson et al.)",
+                )
+            )
             self.audio_cp_ref_label.setToolTip("Open VocalPy documentation")
 
     # =========================================================================
@@ -576,9 +582,7 @@ class ChangepointsWidget(QWidget):
             if len(indices) > 0:
                 method_name = var_name.split("_")[-1]
                 if method_name in cp_by_method:
-                    cp_by_method[method_name] = np.unique(
-                        np.concatenate([cp_by_method[method_name], indices])
-                    )
+                    cp_by_method[method_name] = np.unique(np.concatenate([cp_by_method[method_name], indices]))
                 else:
                     cp_by_method[method_name] = indices
 
@@ -639,7 +643,10 @@ class ChangepointsWidget(QWidget):
             params["noverlap"] = nperseg // 2
 
         def _run():
-            from ethograph.features.audio_changepoints import get_audio_changepoints
+            from ethograph.features.audio_changepoints import (
+                get_audio_changepoints,
+            )
+
             return get_audio_changepoints(
                 method=method,
                 signal=signal_array,
@@ -663,10 +670,13 @@ class ChangepointsWidget(QWidget):
             self.plot_container.draw_amplitude_envelope(env_time, envelope, threshold)
         elif method == "ava" and self.plot_container:
             self.plot_container.draw_amplitude_envelope(
-                env_time, envelope,
-                (params.get("thresh_lowest", 0.1),
-                 params.get("thresh_min", 0.2),
-                 params.get("thresh_max", 0.3)),
+                env_time,
+                envelope,
+                (
+                    params.get("thresh_lowest", 0.1),
+                    params.get("thresh_min", 0.2),
+                    params.get("thresh_max", 0.3),
+                ),
             )
 
         if len(onsets) == 0 and len(offsets) == 0:
@@ -688,9 +698,10 @@ class ChangepointsWidget(QWidget):
 
     def _compute_dataset_changepoints(self):
         from ethograph.features.changepoints import (
-            find_troughs_binary,
             find_nearest_turning_points_binary,
+            find_troughs_binary,
         )
+
         from .dialog_busy_progress import BusyProgressDialog
 
         method = self.method_combo.currentText()
@@ -766,11 +777,7 @@ class ChangepointsWidget(QWidget):
             return 0
 
         cp_suffixes = ["_peaks", "_troughs", "_turning_points", "_ruptures"]
-        vars_to_remove = [
-            f"{feature}{suffix}"
-            for suffix in cp_suffixes
-            if f"{feature}{suffix}" in ds.data_vars
-        ]
+        vars_to_remove = [f"{feature}{suffix}" for suffix in cp_suffixes if f"{feature}{suffix}" in ds.data_vars]
 
         if not vars_to_remove:
             return 0
@@ -789,8 +796,7 @@ class ChangepointsWidget(QWidget):
         ds_kwargs = self.app_state.get_ds_kwargs()
         if features_sel == "Audio Waveform":
             notify(
-                "Raw audio is too large for ruptures. "
-                "Select a derived feature or use Audio CPs instead.",
+                "Raw audio is too large for ruptures. Select a derived feature or use Audio CPs instead.",
                 "warning",
             )
             return
@@ -802,10 +808,15 @@ class ChangepointsWidget(QWidget):
         params = self._get_ruptures_params()
 
         dialog = BusyProgressDialog(
-            f"Detecting ruptures ({method})...", parent=self, use_process=True,
+            f"Detecting ruptures ({method})...",
+            parent=self,
+            use_process=True,
         )
         result, error = dialog.execute(
-            _run_ruptures_in_process, signal, method, params,
+            _run_ruptures_in_process,
+            signal,
+            method,
+            params,
         )
 
         if dialog.was_cancelled:
@@ -832,7 +843,7 @@ class ChangepointsWidget(QWidget):
                 cp_array[bkp] = 1
 
         time_coord = self.app_state.time_coord
-        
+
         cp_var_name = f"{features_sel}_ruptures"
 
         new_ds = self.app_state.ds.copy()
@@ -864,7 +875,6 @@ class ChangepointsWidget(QWidget):
     # Correction Parameters Panel (unchanged)
     # =========================================================================
 
-
     def _create_correction_params_panel(self):
         self.correction_params_panel = QWidget()
         layout = QVBoxLayout()
@@ -887,31 +897,21 @@ class ChangepointsWidget(QWidget):
         self.max_expansion_spin = QDoubleSpinBox()
         self.max_expansion_spin.setRange(0, 100000)
         self.max_expansion_spin.setDecimals(3)
-        self.max_expansion_spin.setToolTip(
-            "Max expansion of label boundaries at changepoints"
-        )
+        self.max_expansion_spin.setToolTip("Max expansion of label boundaries at changepoints")
         self.max_expansion_spin.setValue(self.app_state.cp_max_expansion_s)
-        self.max_expansion_spin.valueChanged.connect(
-            lambda v: setattr(self.app_state, "cp_max_expansion_s", float(v))
-        )
+        self.max_expansion_spin.valueChanged.connect(lambda v: setattr(self.app_state, "cp_max_expansion_s", float(v)))
 
         self.max_shrink_spin = QDoubleSpinBox()
         self.max_shrink_spin.setRange(0, 100000)
         self.max_shrink_spin.setDecimals(3)
-        self.max_shrink_spin.setToolTip(
-            "Max shrinkage of label boundaries at changepoints"
-        )
+        self.max_shrink_spin.setToolTip("Max shrinkage of label boundaries at changepoints")
         self.max_shrink_spin.setValue(self.app_state.cp_max_shrink_s)
-        self.max_shrink_spin.valueChanged.connect(
-            lambda v: setattr(self.app_state, "cp_max_shrink_s", float(v))
-        )
+        self.max_shrink_spin.valueChanged.connect(lambda v: setattr(self.app_state, "cp_max_shrink_s", float(v)))
 
         self.manual_min_label_length_spin = QDoubleSpinBox()
         self.manual_min_label_length_spin.setRange(0.001, 100000)
         self.manual_min_label_length_spin.setDecimals(3)
-        self.manual_min_label_length_spin.setToolTip(
-            "Minimum label length used by manual changepoint correction."
-        )
+        self.manual_min_label_length_spin.setToolTip("Minimum label length used by manual changepoint correction.")
         self.manual_min_label_length_spin.setValue(self.app_state.cp_min_label_length_s)
         self.manual_min_label_length_spin.valueChanged.connect(
             lambda v: setattr(self.app_state, "cp_min_label_length_s", float(v))
@@ -920,9 +920,7 @@ class ChangepointsWidget(QWidget):
         self.manual_stitch_gap_spin = QDoubleSpinBox()
         self.manual_stitch_gap_spin.setRange(0, 100000)
         self.manual_stitch_gap_spin.setDecimals(3)
-        self.manual_stitch_gap_spin.setToolTip(
-            "Gap threshold used by manual changepoint correction."
-        )
+        self.manual_stitch_gap_spin.setToolTip("Gap threshold used by manual changepoint correction.")
         self.manual_stitch_gap_spin.setValue(self.app_state.cp_stitch_gap_len_s)
         self.manual_stitch_gap_spin.valueChanged.connect(
             lambda v: setattr(self.app_state, "cp_stitch_gap_len_s", float(v))
@@ -934,9 +932,7 @@ class ChangepointsWidget(QWidget):
         self.automatic_min_label_length_spin.setToolTip(
             "Minimum label length used in the automatic cleanup after applying a label."
         )
-        self.automatic_min_label_length_spin.setValue(
-            getattr(self.app_state, "automatic_min_label_length_s", 1e-3)
-        )
+        self.automatic_min_label_length_spin.setValue(getattr(self.app_state, "automatic_min_label_length_s", 1e-3))
         self.automatic_min_label_length_spin.valueChanged.connect(
             lambda value: setattr(self.app_state, "automatic_min_label_length_s", float(value))
         )
@@ -944,12 +940,8 @@ class ChangepointsWidget(QWidget):
         self.automatic_stitch_gap_spin = QDoubleSpinBox()
         self.automatic_stitch_gap_spin.setRange(0, 100000)
         self.automatic_stitch_gap_spin.setDecimals(3)
-        self.automatic_stitch_gap_spin.setToolTip(
-            "Gap threshold used in the automatic cleanup after applying a label."
-        )
-        self.automatic_stitch_gap_spin.setValue(
-            getattr(self.app_state, "automatic_stitch_gap_s", 0.0)
-        )
+        self.automatic_stitch_gap_spin.setToolTip("Gap threshold used in the automatic cleanup after applying a label.")
+        self.automatic_stitch_gap_spin.setValue(getattr(self.app_state, "automatic_stitch_gap_s", 0.0))
         self.automatic_stitch_gap_spin.valueChanged.connect(
             lambda value: setattr(self.app_state, "automatic_stitch_gap_s", float(value))
         )
@@ -980,9 +972,7 @@ class ChangepointsWidget(QWidget):
         manual_grid.addWidget(self.max_expansion_spin, 1, 1)
         manual_grid.addWidget(QLabel("Max shrink (s):"), 1, 2)
         manual_grid.addWidget(self.max_shrink_spin, 1, 3)
-        manual_note = QLabel(
-            "Manual correction is for testing parameters of model correction."
-        )
+        manual_note = QLabel("Manual correction is for testing parameters of model correction.")
         manual_note.setWordWrap(True)
         manual_layout.addWidget(manual_note)
         manual_layout.addLayout(manual_grid)
@@ -1003,8 +993,15 @@ class ChangepointsWidget(QWidget):
         self.cp_step_purge_cb.stateChanged.connect(lambda v: setattr(self.app_state, "cp_step_purge", bool(v)))
         self.cp_step_stitch_cb.stateChanged.connect(lambda v: setattr(self.app_state, "cp_step_stitch", bool(v)))
         self.cp_step_snap_cb.stateChanged.connect(lambda v: setattr(self.app_state, "cp_step_snap", bool(v)))
-        self.cp_step_purge_after_cb.stateChanged.connect(lambda v: setattr(self.app_state, "cp_step_purge_after", bool(v)))
-        for cb in (self.cp_step_purge_cb, self.cp_step_stitch_cb, self.cp_step_snap_cb, self.cp_step_purge_after_cb):
+        self.cp_step_purge_after_cb.stateChanged.connect(
+            lambda v: setattr(self.app_state, "cp_step_purge_after", bool(v))
+        )
+        for cb in (
+            self.cp_step_purge_cb,
+            self.cp_step_stitch_cb,
+            self.cp_step_snap_cb,
+            self.cp_step_purge_after_cb,
+        ):
             steps_layout.addWidget(cb)
         steps_layout.addStretch()
         manual_layout.addLayout(steps_layout)
@@ -1068,12 +1065,8 @@ class ChangepointsWidget(QWidget):
             else:
                 self.per_label_btn.setText("Per-label thresholds...")
 
-
     def is_changepoint_correction_enabled(self) -> bool:
         return self.changepoint_correction_checkbox.isChecked()
-
-
-
 
     def _on_changepoint_correction_changed(self, state):
         enabled = state == Qt.Checked
@@ -1114,7 +1107,7 @@ class ChangepointsWidget(QWidget):
             self.app_state.set_global_meta_attr("changepoint_corrected", snapshot["old_cp_corrected"])
             self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
             self._update_cp_status()
-        
+
         self._correction_snapshot = None
         self.cp_undo_btn.setEnabled(False)
         if self.data_widget:
@@ -1123,9 +1116,9 @@ class ChangepointsWidget(QWidget):
 
     def _extract_cp_times(self, ds, ds_kwargs):
         """Extract changepoint times from either backend."""
-        store = getattr(self.app_state, 'data_loader', None)
-        if store is not None and hasattr(store, 'get_cp_times'):
-            feature = getattr(self.app_state, 'features_sel', None)
+        store = getattr(self.app_state, "data_loader", None)
+        if store is not None and hasattr(store, "get_cp_times"):
+            feature = getattr(self.app_state, "features_sel", None)
             wb = self.app_state.window_bounds
             if wb is not None:
                 return store.get_cp_times(feature, t0=wb.start_s, t1=wb.end_s)
@@ -1171,7 +1164,7 @@ class ChangepointsWidget(QWidget):
             do_snap=self.cp_step_snap_cb.isChecked(),
             do_purge_after=self.cp_step_purge_after_cb.isChecked(),
         )
-        
+
     def _current_feature_has_changepoints(self) -> bool:
         return getattr(self.app_state, "plot_has_changepoints", False)
 
@@ -1192,13 +1185,10 @@ class ChangepointsWidget(QWidget):
         self.app_state.set_trial_intervals(trial, corrected_df)
         self.app_state.label_intervals = corrected_df
 
-        
-
     def _cp_correction(self, mode):
         all_params = self.get_correction_params()
         ds_kwargs = self.app_state.get_ds_kwargs()
         all_params["cp_kwargs"] = ds_kwargs
-
 
         try:
             if mode == "single_trial":
@@ -1207,11 +1197,8 @@ class ChangepointsWidget(QWidget):
                 corrected_df = self._correct_trial_intervals(trial, self.app_state.ds, all_params, ds_kwargs)
                 self.app_state.set_trial_intervals(trial, corrected_df)
                 self.app_state.label_intervals = corrected_df
-                self.app_state.set_trial_meta_attr(trial, 'changepoint_corrected', 1)
+                self.app_state.set_trial_meta_attr(trial, "changepoint_corrected", 1)
                 self._update_cp_status()
-
-            
-            
 
             if mode == "all_trials":
                 if self.app_state.get_global_meta_attr("changepoint_corrected", 0) == 1:
@@ -1223,14 +1210,13 @@ class ChangepointsWidget(QWidget):
                     ds = self.app_state.dt.trial(trial) if self.app_state.dt is not None else self.app_state.ds
                     corrected_df = self._correct_trial_intervals(trial, ds, all_params, ds_kwargs)
                     self.app_state.set_trial_intervals(trial, corrected_df)
-                    self.app_state.set_trial_meta_attr(trial, 'changepoint_corrected', 1)
+                    self.app_state.set_trial_meta_attr(trial, "changepoint_corrected", 1)
                 self.app_state.set_global_meta_attr("changepoint_corrected", 1)
                 self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
                 self._update_cp_status()
 
             if self.data_widget:
                 self.data_widget.update_main_plot()
-            
 
         except (ValueError, IndexError, RuntimeError) as e:
             logger.exception("Changepoint correction failed")
@@ -1250,10 +1236,10 @@ class ChangepointsWidget(QWidget):
             self._manual_correction_group.setEnabled(apply_cp)
         self.cp_correction_all_trials_btn.setToolTip("")
 
-        trial_corrected = self.app_state.get_trial_meta(self.app_state.trials_sel).get('changepoint_corrected', 0)
+        trial_corrected = self.app_state.get_trial_meta(self.app_state.trials_sel).get("changepoint_corrected", 0)
         self.cp_correction_trial_btn.setStyleSheet(corrected_style if trial_corrected else default_style)
 
-        global_corrected = self.app_state.get_global_meta_attr('changepoint_corrected', 0)
+        global_corrected = self.app_state.get_global_meta_attr("changepoint_corrected", 0)
         self.cp_correction_all_trials_btn.setStyleSheet(corrected_style if global_corrected else default_style)
 
     def get_correction_params(self) -> dict:
@@ -1272,8 +1258,6 @@ class ChangepointsWidget(QWidget):
             self.automatic_min_label_length_spin.value(),
             self.automatic_stitch_gap_spin.value(),
         )
-
-
 
     # =========================================================================
     # Changepoint navigation (jump forward/backward between CPs)
@@ -1302,13 +1286,13 @@ class ChangepointsWidget(QWidget):
         self._seek_to_time(target)
 
     def _get_current_time(self) -> float:
-        video = getattr(self.app_state, 'video', None)
+        video = getattr(self.app_state, "video", None)
         if video:
             return video.frame_to_time(self.app_state.current_frame)
 
     def _get_jump_cp_times(self) -> np.ndarray | None:
-        last_panel = getattr(self.plot_container, '_last_clicked_panel', 'feature')
-        if last_panel in ('audio', 'spectrogram'):
+        last_panel = getattr(self.plot_container, "_last_clicked_panel", "feature")
+        if last_panel in ("audio", "spectrogram"):
             result = self._get_audio_cps_from_ds()
             if result is None:
                 return None
@@ -1330,14 +1314,13 @@ class ChangepointsWidget(QWidget):
             return float(candidates[-1]) if len(candidates) > 0 else None
 
     def _seek_to_time(self, time_s: float):
-        video = getattr(self.app_state, 'video', None)
+        video = getattr(self.app_state, "video", None)
         if video:
             new_frame = video.time_to_frame(time_s)
             self.app_state.current_frame = new_frame
             video.blockSignals(True)
             video.seek_to_frame(new_frame)
             video.blockSignals(False)
-
 
         self.plot_container.update_time_marker_by_time(time_s)
 
@@ -1352,9 +1335,13 @@ class ChangepointsWidget(QWidget):
 
 
 class LabelThresholdsDialog(QDialog):
-
-    def __init__(self, motif_mappings: dict, custom_thresholds: dict,
-                 global_min: float, parent=None):
+    def __init__(
+        self,
+        motif_mappings: dict,
+        custom_thresholds: dict,
+        global_min: float,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Per-label min length")
         self.setMinimumWidth(350)

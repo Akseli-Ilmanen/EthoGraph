@@ -4,16 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import xarray as xr
 from movement.io import load_dataset
-from natsort import natsorted
 
-from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
-from ethograph.labels.intervals import INTERVAL_COLUMNS
 from ethograph.io.trialtree import TrialTree
+
 INTERVAL_COLUMNS = {"trial", "onset_s", "offset_s", "labels", "individual"}
 
 
@@ -44,6 +41,7 @@ def build_multi_trial_dt(state: WizardState) -> TrialTree:
     nwb_path = _build_nwb_file(dt, state, trial_table, trial_ids, fps)
     if nwb_path:
         from ethograph.io.nwb_alignment import make_nwb_alignment
+
         state.nwb_alignment = make_nwb_alignment(nwb_path)
 
     return dt
@@ -81,18 +79,19 @@ def _get_file_for_trial(row: pd.Series, modality: str) -> str | None:
 
 
 def _load_pose_into_ds(
-    ds: xr.Dataset, pose_path: str, cfg: ModalityConfig,
+    ds: xr.Dataset,
+    pose_path: str,
+    cfg: ModalityConfig,
 ) -> xr.Dataset:
     pose_ds = load_dataset(
-        pose_path, source_software=cfg.source_software,
+        pose_path,
+        source_software=cfg.source_software,
     )
 
     ds.attrs["source_software"] = cfg.source_software
 
     if "position" in pose_ds:
-        time_coord = pose_ds["position"].coords[
-            next(c for c in pose_ds["position"].coords if "time" in str(c))
-        ]
+        time_coord = pose_ds["position"].coords[next(c for c in pose_ds["position"].coords if "time" in str(c))]
 
         ds.coords["time"] = time_coord
         for var_name in pose_ds.data_vars:

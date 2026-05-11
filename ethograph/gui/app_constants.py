@@ -63,11 +63,11 @@ SPECTROGRAM_FALLBACK_Y_HEIGHT = 1600
 
 # Zoom thresholds for spectrogram overlay refresh (plot_container.py)
 SPECTROGRAM_OVERLAY_ZOOM_OUT_THRESHOLD = 0.5  # Refresh when width < old * 0.5
-SPECTROGRAM_OVERLAY_ZOOM_IN_THRESHOLD = 2.0   # Refresh when width > old * 2.0
+SPECTROGRAM_OVERLAY_ZOOM_IN_THRESHOLD = 2.0  # Refresh when width > old * 2.0
 
 # Changepoint line styles based on zoom level (plot_container.py)
 CP_ZOOM_VERY_OUT_THRESHOLD = 10.0  # seconds visible
-CP_ZOOM_MEDIUM_THRESHOLD = 2.0     # seconds visible
+CP_ZOOM_MEDIUM_THRESHOLD = 2.0  # seconds visible
 CP_LINE_WIDTH_THIN = 0.1
 CP_LINE_WIDTH_MEDIUM = 1.0
 CP_LINE_WIDTH_THICK = 2.0
@@ -128,16 +128,16 @@ Z_INDEX_LABELS_OVERLAY = 1000
 # =============================================================================
 
 # Changepoint colors (plot_container.py)
-CP_COLOR_WAVEFORM = (0, 0, 0, 200)      # Black for waveform plot
+CP_COLOR_WAVEFORM = (0, 0, 0, 200)  # Black for waveform plot
 CP_COLOR_SPECTROGRAM = (255, 255, 255, 200)  # White for spectrogram
-CP_COLOR_OSC_EVENT = (0, 200, 200, 200)      # Cyan/teal for oscillatory events
+CP_COLOR_OSC_EVENT = (0, 200, 200, 200)  # Cyan/teal for oscillatory events
 
 # Dataset changepoint method colors
 CP_METHOD_COLORS = {
-    'troughs': (100, 100, 255, 200),        # Blue
-    'turning_points': (100, 255, 100, 200), # Green
-    'ruptures': (255, 165, 0, 200),         # Orange
-    'default': (200, 200, 200, 200),        # Gray fallback
+    "troughs": (100, 100, 255, 200),  # Blue
+    "turning_points": (100, 255, 100, 200),  # Green
+    "ruptures": (255, 165, 0, 200),  # Orange
+    "default": (200, 200, 200, 200),  # Gray fallback
 }
 
 # Scatter plot settings
@@ -145,7 +145,7 @@ CP_SCATTER_SIZE = 8
 CP_SCATTER_Y_POSITION_RATIO = 0.05  # 5% from bottom of y-range
 
 # Envelope overlay (plot_container.py)
-ENVELOPE_OVERLAY_COLOR = '#ff8800'
+ENVELOPE_OVERLAY_COLOR = "#ff8800"
 ENVELOPE_OVERLAY_WIDTH = 2
 
 # =============================================================================

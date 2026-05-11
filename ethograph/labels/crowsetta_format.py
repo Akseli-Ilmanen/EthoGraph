@@ -14,9 +14,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import crowsetta
 import numpy as np
 import pandas as pd
-import crowsetta
+
 
 @crowsetta.register_format
 class EthographSeq(crowsetta.interface.SeqLike):
@@ -37,7 +38,9 @@ class EthographSeq(crowsetta.interface.SeqLike):
         self.onsets_s = np.asarray(onsets_s, dtype=np.float64)
         self.offsets_s = np.asarray(offsets_s, dtype=np.float64)
         self.labels = np.asarray(labels)
-        self.individuals = np.asarray(individuals) if individuals is not None else np.full(len(self.labels), "ind0", dtype=object)
+        self.individuals = (
+            np.asarray(individuals) if individuals is not None else np.full(len(self.labels), "ind0", dtype=object)
+        )
         self.trials = np.asarray(trials) if trials is not None else np.zeros(len(self.labels), dtype=int)
         self.annot_path = Path(annot_path)
 
@@ -59,8 +62,8 @@ class EthographSeq(crowsetta.interface.SeqLike):
 
     def to_seq(self) -> crowsetta.Sequence:
         segments = [
-            crowsetta.Segment(onset_s=float(o), offset_s=float(f), label=str(l))
-            for o, f, l in zip(self.onsets_s, self.offsets_s, self.labels)
+            crowsetta.Segment(onset_s=float(o), offset_s=float(f), label=str(lbl))
+            for o, f, lbl in zip(self.onsets_s, self.offsets_s, self.labels)
         ]
         return crowsetta.Sequence(
             segments=segments,
@@ -78,13 +81,15 @@ class EthographSeq(crowsetta.interface.SeqLike):
 
     def to_df(self) -> pd.DataFrame:
         """Return as a DataFrame preserving individual and trial columns."""
-        return pd.DataFrame({
-            "onset_s": self.onsets_s,
-            "offset_s": self.offsets_s,
-            "label": self.labels,
-            "individual": self.individuals,
-            "trial": self.trials,
-        })
+        return pd.DataFrame(
+            {
+                "onset_s": self.onsets_s,
+                "offset_s": self.offsets_s,
+                "label": self.labels,
+                "individual": self.individuals,
+                "trial": self.trials,
+            }
+        )
 
     def to_file(self, path: str | Path) -> None:
         """Write to TSV."""
@@ -117,4 +122,3 @@ class EthographSeq(crowsetta.interface.SeqLike):
             individuals=df["individual"].values,
             trials=trials,
         )
-

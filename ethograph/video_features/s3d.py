@@ -27,10 +27,12 @@ class S3D(nn.Module):
             Mixed_5c(),
         )
 
-        self.fc = nn.Sequential(nn.Conv3d(1024, num_class, kernel_size=1, stride=1, bias=True),)
+        self.fc = nn.Sequential(
+            nn.Conv3d(1024, num_class, kernel_size=1, stride=1, bias=True),
+        )
 
         if ckpt_path is not None:
-            ckpt = torch.load(ckpt_path, map_location=torch.device('cpu'), weights_only=True)
+            ckpt = torch.load(ckpt_path, map_location=torch.device("cpu"), weights_only=True)
             self.load_state_dict(ckpt)
 
     def forward(self, x, features=False):
@@ -52,8 +54,14 @@ class S3D(nn.Module):
 class BasicConv3d(nn.Module):
     def __init__(self, in_planes, out_planes, kernel_size, stride, padding=0):
         super(BasicConv3d, self).__init__()
-        self.conv = nn.Conv3d(in_planes, out_planes, kernel_size=kernel_size,
-                              stride=stride, padding=padding, bias=False)
+        self.conv = nn.Conv3d(
+            in_planes,
+            out_planes,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            bias=False,
+        )
         self.bn = nn.BatchNorm3d(out_planes, eps=1e-3, momentum=0.001, affine=True)
         self.relu = nn.ReLU()
 
@@ -67,13 +75,25 @@ class BasicConv3d(nn.Module):
 class SepConv3d(nn.Module):
     def __init__(self, in_planes, out_planes, kernel_size, stride, padding=0):
         super(SepConv3d, self).__init__()
-        self.conv_s = nn.Conv3d(in_planes, out_planes, kernel_size=(1, kernel_size, kernel_size), stride=(
-            1, stride, stride), padding=(0, padding, padding), bias=False)
+        self.conv_s = nn.Conv3d(
+            in_planes,
+            out_planes,
+            kernel_size=(1, kernel_size, kernel_size),
+            stride=(1, stride, stride),
+            padding=(0, padding, padding),
+            bias=False,
+        )
         self.bn_s = nn.BatchNorm3d(out_planes, eps=1e-3, momentum=0.001, affine=True)
         self.relu_s = nn.ReLU()
 
-        self.conv_t = nn.Conv3d(out_planes, out_planes, kernel_size=(kernel_size, 1, 1),
-                                stride=(stride, 1, 1), padding=(padding, 0, 0), bias=False)
+        self.conv_t = nn.Conv3d(
+            out_planes,
+            out_planes,
+            kernel_size=(kernel_size, 1, 1),
+            stride=(stride, 1, 1),
+            padding=(padding, 0, 0),
+            bias=False,
+        )
         self.bn_t = nn.BatchNorm3d(out_planes, eps=1e-3, momentum=0.001, affine=True)
         self.relu_t = nn.ReLU()
 
@@ -349,7 +369,7 @@ class Mixed_5c(nn.Module):
         return out
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     model = S3D(num_class=400)
     model.eval()
     x = torch.rand(1, 3, 200, 224, 224)

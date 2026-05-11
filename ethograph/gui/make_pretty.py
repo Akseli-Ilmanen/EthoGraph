@@ -4,16 +4,6 @@ from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QGuiApplication
 from qtpy.QtWidgets import QDockWidget, QWidget
 
-from .app_constants import (
-    LAYER_DOCK_WIDTH_RATIO,
-    LAYOUT_RELEASE_DELAY_MS,
-    MAX_WIDGET_SIZE,
-    PLOT_CONTAINER_MIN_HEIGHT,
-    SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
-    SIDEBAR_MIN_WIDTH_PX,
-    VERTICAL_SPLIT_RATIO,
-)
-
 # Re-export moved helpers for backwards compatibility
 from ethograph.utils.qt import (  # noqa: F401
     ElidedDelegate,
@@ -22,6 +12,16 @@ from ethograph.utils.qt import (  # noqa: F401
     get_combo_value,
     normalize_child_layouts,
     set_combo_to_value,
+)
+
+from .app_constants import (
+    LAYER_DOCK_WIDTH_RATIO,
+    LAYOUT_RELEASE_DELAY_MS,
+    MAX_WIDGET_SIZE,
+    PLOT_CONTAINER_MIN_HEIGHT,
+    SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
+    SIDEBAR_MIN_WIDTH_PX,
+    VERTICAL_SPLIT_RATIO,
 )
 
 _LINK_COLOR = "#87CEEB"
@@ -40,12 +40,11 @@ def clean_display_labels(labels: list[str]) -> list[str]:
     """Strip a prefix from all labels when every label shares that prefix."""
     for prefix in REDUNDANT_PREFIXES:
         if labels and all(label.startswith(prefix) for label in labels):
-            labels = [label[len(prefix):] for label in labels]
+            labels = [label[len(prefix) :] for label in labels]
     return labels
 
 
 class LayoutManager:
-
     def __init__(self, qt_window: QWidget, plot_container: QWidget):
         self._qt_window = qt_window
         self._plot_container = plot_container
@@ -94,11 +93,7 @@ class LayoutManager:
     def toggle_layer_docks_with_anchor(self, show: bool) -> None:
         """Show/hide layer docks while anchoring the sidebar width."""
         saved_plot_h = self._plot_dock.height() if self._plot_dock else None
-        saved_sidebar_w = (
-            self._sidebar_dock.width()
-            if self._sidebar_dock and self._sidebar_dock.isVisible()
-            else None
-        )
+        saved_sidebar_w = self._sidebar_dock.width() if self._sidebar_dock and self._sidebar_dock.isVisible() else None
 
         if show:
             self.show_layer_docks()
@@ -123,7 +118,8 @@ class LayoutManager:
         if len(self._layer_docks) >= 2:
             for i in range(1, len(self._layer_docks)):
                 self._qt_window.tabifyDockWidget(
-                    self._layer_docks[0], self._layer_docks[i],
+                    self._layer_docks[0],
+                    self._layer_docks[i],
                 )
             self._layer_docks[0].raise_()
 
@@ -160,8 +156,6 @@ class LayoutManager:
         if docks:
             self._qt_window.resizeDocks(docks, sizes, Qt.Horizontal)
 
-
-
     def set_video_viewer_visible(self, visible: bool) -> None:
         central = self._qt_window.centralWidget()
         if central is None:
@@ -178,6 +172,7 @@ class LayoutManager:
         # container) into the freed vertical space, squashing left docks (space
         # plot / layers).  Counteract by explicitly setting the plot dock height.
         if not visible and self._plot_dock is not None:
+
             def _constrain_plot_height():
                 total_h = self._qt_window.height()
                 if total_h <= 0:
@@ -187,13 +182,17 @@ class LayoutManager:
                     int(total_h * VERTICAL_SPLIT_RATIO),
                 )
                 self._qt_window.resizeDocks(
-                    [self._plot_dock], [plot_h], Qt.Vertical,
+                    [self._plot_dock],
+                    [plot_h],
+                    Qt.Vertical,
                 )
 
             QTimer.singleShot(50, _constrain_plot_height)
 
     def set_sidebar_default_width(
-        self, sidebar_widget: QWidget, ratio: float,
+        self,
+        sidebar_widget: QWidget,
+        ratio: float,
     ) -> None:
         sidebar_dock = next(
             (d for d in self._qt_window.findChildren(QDockWidget) if d.widget() is sidebar_widget),
@@ -257,7 +256,8 @@ class LayoutManager:
                 self._space_dock.show()
                 if show_layers and self._layer_docks:
                     self._qt_window.tabifyDockWidget(
-                        self._layer_docks[0], self._space_dock,
+                        self._layer_docks[0],
+                        self._space_dock,
                     )
                     self._space_dock.raise_()
             else:
@@ -275,7 +275,9 @@ class LayoutManager:
                     int(total_w * SIDEBAR_AFTER_LOAD_WIDTH_RATIO),
                 )
                 self._qt_window.resizeDocks(
-                    [self._sidebar_dock], [target_w], Qt.Horizontal,
+                    [self._sidebar_dock],
+                    [target_w],
+                    Qt.Horizontal,
                 )
             if self._plot_dock:
                 total_h = self._qt_window.height()
@@ -284,7 +286,9 @@ class LayoutManager:
                     int(total_h * VERTICAL_SPLIT_RATIO),
                 )
                 self._qt_window.resizeDocks(
-                    [self._plot_dock], [plot_h], Qt.Vertical,
+                    [self._plot_dock],
+                    [plot_h],
+                    Qt.Vertical,
                 )
 
         QTimer.singleShot(50, _apply_sizes)

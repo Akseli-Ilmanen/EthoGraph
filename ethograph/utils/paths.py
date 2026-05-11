@@ -1,14 +1,10 @@
 """Path utilities with zero internal dependencies (stdlib only)."""
 
-import glob
-import json
 import logging
 import os
-from pathlib import Path
 import re
 import subprocess
-
-import ethograph as eto
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -53,15 +49,14 @@ def get_project_root(start: Path | None = None) -> Path:
             if parent.parent.name != "deps":
                 return parent
             continue
-    raise FileNotFoundError(
-        f"Could not find project root starting from {path}"
-    )
+    raise FileNotFoundError(f"Could not find project root starting from {path}")
 
 
-
-def extract_pattern_groups(filenames: list[str | Path], pattern: str, convert_numeric: bool = True) -> list[dict[str, str | int]]:
+def extract_pattern_groups(
+    filenames: list[str | Path], pattern: str, convert_numeric: bool = True
+) -> list[dict[str, str | int]]:
     """Extract named groups from filenames using a regex pattern.
-    
+
     Parameters
     ----------
     filenames
@@ -72,18 +67,18 @@ def extract_pattern_groups(filenames: list[str | Path], pattern: str, convert_nu
     convert_numeric
         If True, automatically convert purely numeric strings to integers
         (e.g., "001" -> 1, "100" -> 100)
-        
+
     Returns
     -------
     List of dicts mapping group names to extracted values (str or int)
-    
+
     Examples
     --------
-    >>> files = ['cam1_trial001.mp4', 'cam2_trial001.mp4']
-    >>> pattern = r'(?P<camera>cam[12])_trial(?P<trial>\\d+)\\.mp4'
+    >>> files = ["cam1_trial001.mp4", "cam2_trial001.mp4"]
+    >>> pattern = r"(?P<camera>cam[12])_trial(?P<trial>\\d+)\\.mp4"
     >>> extract_pattern_groups(files, pattern, convert_numeric=True)
     [{'camera': 'cam1', 'trial': 1}, {'camera': 'cam2', 'trial': 1}]
-    
+
     >>> extract_pattern_groups(files, pattern, convert_numeric=False)
     [{'camera': 'cam1', 'trial': '001'}, {'camera': 'cam2', 'trial': '001'}]
     """
@@ -100,8 +95,6 @@ def extract_pattern_groups(filenames: list[str | Path], pattern: str, convert_nu
     return results
 
 
-
-
 def check_paths_exist(nc_paths):
     missing_paths = [p for p in nc_paths if not os.path.exists(p)]
     if missing_paths:
@@ -109,8 +102,6 @@ def check_paths_exist(nc_paths):
         for p in missing_paths:
             print(f"  {p}")
         exit(1)
- 
-
 
 
 SETTINGS_DIR = ".ethograph"
@@ -213,14 +204,13 @@ def find_nwb_file(data_dir: Path | str | None = None) -> Path | None:
     return None
 
 
-
 def extract_trial_info_from_filename(path):
     """
     Extract session_date, trial_num, and bird from a DLC filename.
     Expected filename format: YYYY-MM-DD_NNN_Bird_...
     """
     filename = os.path.basename(path)
-    parts = filename.split('_')
+    parts = filename.split("_")
     if len(parts) >= 3:
         session_date = parts[0]
         trial_num = int(parts[1])
@@ -230,15 +220,14 @@ def extract_trial_info_from_filename(path):
         raise ValueError(f"Filename format not recognized: {filename}")
 
 
-
-
 def auto_git_commit(label_path: Path) -> None:
     """Auto-commit a label file if it lives inside a git repository."""
     file_dir = str(label_path.parent)
     try:
         root_result = subprocess.run(
             ["git", "-C", file_dir, "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
     except FileNotFoundError:
         raise ValueError("git is not installed or not found on PATH.")
@@ -256,21 +245,38 @@ def auto_git_commit(label_path: Path) -> None:
     try:
         subprocess.run(
             ["git", "-C", str(repo_root), "add", str(rel_path)],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
         )
         commit_result = subprocess.run(
-            ["git", "-C", str(repo_root), "commit", "-m", f"Labels updated: {label_path.name}"],
-            capture_output=True, text=True,
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                "commit",
+                "-m",
+                f"Labels updated: {label_path.name}",
+            ],
+            capture_output=True,
+            text=True,
         )
         if commit_result.returncode != 0:
             msg = commit_result.stderr.strip() or commit_result.stdout.strip()
             if "nothing to commit" in msg:
                 logger.info("git: nothing to commit for %s", label_path.name)
                 return
-            raise subprocess.CalledProcessError(commit_result.returncode, "git commit", output=commit_result.stdout, stderr=commit_result.stderr)
+            raise subprocess.CalledProcessError(
+                commit_result.returncode,
+                "git commit",
+                output=commit_result.stdout,
+                stderr=commit_result.stderr,
+            )
         subprocess.run(
             ["git", "-C", str(repo_root), "push"],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
         )
         logger.info("Auto-committed and pushed %s to git", label_path.name)
     except subprocess.CalledProcessError as e:

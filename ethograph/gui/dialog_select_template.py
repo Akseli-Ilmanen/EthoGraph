@@ -7,9 +7,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from qtpy.QtCore import QSize, QThread, Qt, Signal
-from qtpy.QtGui import QMovie, QPixmap
-from qtpy.QtWidgets import (
+from qtpy.QtCore import QSize, Qt, QThread, Signal  # noqa: E402
+from qtpy.QtGui import QMovie, QPixmap  # noqa: E402
+from qtpy.QtWidgets import (  # noqa: E402
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -19,7 +19,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
 )
 
-from ethograph.datasets import (
+from ethograph.datasets import (  # noqa: E402
     DATASETS,
     DOWNLOAD_BASE,
     dataset_dir,
@@ -27,8 +27,8 @@ from ethograph.datasets import (
     is_dataset_downloaded,
     resolve_dataset_paths,
 )
-from ethograph.gui.notify import notify_dialog
-from ethograph.utils.download import (
+from ethograph.gui.notify import notify_dialog  # noqa: E402
+from ethograph.utils.download import (  # noqa: E402
     build_alignment_nwb,
     download_assets,
     ensure_default_configs,
@@ -125,15 +125,12 @@ class TemplateDialog(QDialog):
             card = self._create_card(key)
             row.addWidget(card)
 
-
     def _create_card(self, key: str) -> QFrame:
         ds = DATASETS[key]
         card = QFrame()
         card.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
         card.setCursor(Qt.PointingHandCursor)
-        card.setStyleSheet(
-            "QFrame:hover { background-color: palette(midlight); }"
-        )
+        card.setStyleSheet("QFrame:hover { background-color: palette(midlight); }")
 
         card_layout = QVBoxLayout()
         card_layout.setContentsMargins(8, 8, 8, 8)
@@ -188,9 +185,7 @@ class TemplateDialog(QDialog):
             movie.start()
         else:
             pixmap = QPixmap(str(image_path))
-            label.setPixmap(
-                pixmap.scaled(220, 160, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            )
+            label.setPixmap(pixmap.scaled(220, 160, Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
     def _on_card_clicked(self, key: str):
         if is_dataset_downloaded(key):
@@ -225,8 +220,10 @@ class TemplateDialog(QDialog):
 
                 audio_sr = get_audio_sr(audio_path)
                 dt = wizard_single_from_audio(
-                    video_path=None, fps=30,
-                    audio_path=audio_path, audio_sr=audio_sr,
+                    video_path=None,
+                    fps=30,
+                    audio_path=audio_path,
+                    audio_sr=audio_sr,
                 )
                 dt.to_netcdf(nc_path)
             except Exception as e:
@@ -243,9 +240,7 @@ class TemplateDialog(QDialog):
 
     def _download_and_select(self, key: str):
         assets = get_gui_assets(key)
-        progress = QProgressDialog(
-            "Downloading example data...", "Cancel", 0, len(assets), self
-        )
+        progress = QProgressDialog("Downloading example data...", "Cancel", 0, len(assets), self)
         progress.setWindowTitle("Downloading")
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)

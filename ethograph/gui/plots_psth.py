@@ -6,31 +6,31 @@ import numpy as np
 import pyqtgraph as pg
 from qtpy.QtCore import Qt, Signal
 
-_BG         = "#ffffff"
-_AXIS_PEN   = pg.mkPen(40, 40, 40, 255)
-_TICK_PEN   = pg.mkPen(30, 30, 30, 210, width=1)     # single-condition raster: near-black
-_SEL_BRUSH  = pg.mkBrush(255, 180, 0, 60)
-_SEL_PEN    = pg.mkPen(200, 120, 0, 200)
-_HOVER_PEN  = pg.mkPen(0, 100, 200, 160, width=1, style=Qt.DashLine)
+_BG = "#ffffff"
+_AXIS_PEN = pg.mkPen(40, 40, 40, 255)
+_TICK_PEN = pg.mkPen(30, 30, 30, 210, width=1)  # single-condition raster: near-black
+_SEL_BRUSH = pg.mkBrush(255, 180, 0, 60)
+_SEL_PEN = pg.mkPen(200, 120, 0, 200)
+_HOVER_PEN = pg.mkPen(0, 100, 200, 160, width=1, style=Qt.DashLine)
 _CURSOR_PEN = pg.mkPen(80, 80, 80, 120, width=1, style=Qt.DotLine)
-_REF_PEN    = pg.mkPen("#CC4400", width=1.5, style=Qt.DashLine)
-_BAR_BRUSH  = pg.mkBrush(50, 50, 50, 190)            # single-condition PSTH: dark gray
-_SEP_PEN    = pg.mkPen(140, 140, 140, 180, width=1, style=Qt.DashLine)
+_REF_PEN = pg.mkPen("#CC4400", width=1.5, style=Qt.DashLine)
+_BAR_BRUSH = pg.mkBrush(50, 50, 50, 190)  # single-condition PSTH: dark gray
+_SEP_PEN = pg.mkPen(140, 140, 140, 180, width=1, style=Qt.DashLine)
 
-_TICK_HALF = 0.4   # half-height of each raster tick in trial-row units
+_TICK_HALF = 0.4  # half-height of each raster tick in trial-row units
 
 # One color per condition group — enough for typical experimental designs
 _CONDITION_PALETTE: list[tuple[int, int, int]] = [
-    (228, 26,  28),   # red
-    (55,  126, 184),  # blue
-    (77,  175, 74),   # green
-    (152, 78,  163),  # purple
-    (255, 127, 0),    # orange
-    (0,   180, 185),  # cyan
-    (240, 60,  100),  # magenta
-    (150, 180, 20),   # lime
-    (160, 100, 0),    # amber
-    (80,  140, 220),  # sky
+    (228, 26, 28),  # red
+    (55, 126, 184),  # blue
+    (77, 175, 74),  # green
+    (152, 78, 163),  # purple
+    (255, 127, 0),  # orange
+    (0, 180, 185),  # cyan
+    (240, 60, 100),  # magenta
+    (150, 180, 20),  # lime
+    (160, 100, 0),  # amber
+    (80, 140, 220),  # sky
 ]
 
 
@@ -77,17 +77,17 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
     trial_time_requested(int, float) : (trial_idx, rel_time_s) on double-click
     """
 
-    trial_hovered        = Signal(int)
-    trial_selected       = Signal(int)
-    hover_info           = Signal(int, float)    # trial_idx, rel_time_s
-    trial_time_requested = Signal(int, float)    # trial_idx, rel_time_s (double-click)
+    trial_hovered = Signal(int)
+    trial_selected = Signal(int)
+    hover_info = Signal(int, float)  # trial_idx, rel_time_s
+    trial_time_requested = Signal(int, float)  # trial_idx, rel_time_s (double-click)
 
     def __init__(self, trial_ids: list[str], parent=None):
         super().__init__(parent)
         self.setBackground(_BG)
-        self._trial_ids  = list(trial_ids)
-        self._n_trials   = len(trial_ids)
-        self._selected   = -1
+        self._trial_ids = list(trial_ids)
+        self._n_trials = len(trial_ids)
+        self._selected = -1
         self._sort_order: list[int] = list(range(self._n_trials))
 
         self._spike_width: float = 1.0
@@ -100,8 +100,11 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
         _style_axis(self.raster.getAxis("left"))
 
         self._highlight = pg.LinearRegionItem(
-            values=[0, 1], orientation="horizontal",
-            brush=_SEL_BRUSH, pen=_SEL_PEN, movable=False,
+            values=[0, 1],
+            orientation="horizontal",
+            brush=_SEL_BRUSH,
+            pen=_SEL_PEN,
+            movable=False,
         )
         self._highlight.setVisible(False)
         self.raster.addItem(self._highlight)
@@ -125,9 +128,9 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
 
         # Dynamic items — cleared and rebuilt on each set_data call
         self._scatter_items: list[pg.ScatterPlotItem] = []
-        self._psth_items:    list[pg.PlotDataItem | pg.BarGraphItem] = []
-        self._sep_items:     list[pg.InfiniteLine] = []
-        self._legend:        pg.LegendItem | None = None
+        self._psth_items: list[pg.PlotDataItem | pg.BarGraphItem] = []
+        self._sep_items: list[pg.InfiniteLine] = []
+        self._legend: pg.LegendItem | None = None
 
         self.raster.scene().sigMouseMoved.connect(self._on_mouse_moved)
         self.raster.scene().sigMouseClicked.connect(self._on_mouse_clicked)
@@ -156,21 +159,26 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
         condition_labels : name for each group (len == n_groups)
         """
         self._sort_order = sort_order
-        self._n_trials   = len(sort_order)
+        self._n_trials = len(sort_order)
         self._highlight.setVisible(False)
-        self._selected   = -1
+        self._selected = -1
         self._axis._trial_ids = [self._trial_ids[i] for i in sort_order]
 
         self._clear_dynamic_items()
 
-        bins    = np.arange(-pre_s, post_s + bin_s, bin_s)
+        bins = np.arange(-pre_s, post_s + bin_s, bin_s)
         centers = (bins[:-1] + bins[1:]) / 2
 
         if condition_group:
             n_groups = max(condition_group.values()) + 1
             self._draw_conditioned(
-                perievent, sort_order, bins, centers, bin_s,
-                condition_group, condition_labels or [str(g) for g in range(n_groups)],
+                perievent,
+                sort_order,
+                bins,
+                centers,
+                bin_s,
+                condition_group,
+                condition_labels or [str(g) for g in range(n_groups)],
                 n_groups,
             )
         else:
@@ -229,24 +237,21 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
         pos = 0
         for row, spikes in spikes_per_row:
             n = len(spikes)
-            xs[pos:pos + n * 3:3] = spikes
-            xs[pos + 1:pos + n * 3:3] = spikes
-            xs[pos + 2:pos + n * 3:3] = np.nan
-            ys[pos:pos + n * 3:3] = row - _TICK_HALF
-            ys[pos + 1:pos + n * 3:3] = row + _TICK_HALF
-            ys[pos + 2:pos + n * 3:3] = np.nan
+            xs[pos : pos + n * 3 : 3] = spikes
+            xs[pos + 1 : pos + n * 3 : 3] = spikes
+            xs[pos + 2 : pos + n * 3 : 3] = np.nan
+            ys[pos : pos + n * 3 : 3] = row - _TICK_HALF
+            ys[pos + 1 : pos + n * 3 : 3] = row + _TICK_HALF
+            ys[pos + 2 : pos + n * 3 : 3] = np.nan
             pos += n * 3
         return xs, ys
 
     def _draw_single(self, perievent, sort_order, bins, centers, bin_s):
         """Single color raster rendered as one PlotCurveItem (one draw call)."""
         rows_spikes = [
-            (display_row, perievent.get(trial_idx, np.array([])))
-            for display_row, trial_idx in enumerate(sort_order)
+            (display_row, perievent.get(trial_idx, np.array([]))) for display_row, trial_idx in enumerate(sort_order)
         ]
-        xs, ys = self._make_tick_arrays(
-            [(r, s) for r, s in rows_spikes if len(s)]
-        )
+        xs, ys = self._make_tick_arrays([(r, s) for r, s in rows_spikes if len(s)])
         if len(xs):
             pen = pg.mkPen(30, 30, 30, 210, width=self._spike_width)
             curve = pg.PlotCurveItem(x=xs, y=ys, pen=pen, connect="finite")
@@ -257,22 +262,32 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
         if all_spikes:
             counts, _ = np.histogram(np.concatenate(all_spikes), bins=bins)
             n_inc = len(all_spikes)
-            rate  = counts / max(n_inc, 1) / (bins[1] - bins[0])
-            bar   = pg.BarGraphItem(
-                x=centers, height=rate, width=(bins[1] - bins[0]) * 0.88,
-                brush=_BAR_BRUSH, pen=pg.mkPen(None),
+            rate = counts / max(n_inc, 1) / (bins[1] - bins[0])
+            bar = pg.BarGraphItem(
+                x=centers,
+                height=rate,
+                width=(bins[1] - bins[0]) * 0.88,
+                brush=_BAR_BRUSH,
+                pen=pg.mkPen(None),
             )
             self.psth.addItem(bar)
             self._psth_items.append(bar)
 
     def _draw_conditioned(
-        self, perievent, sort_order, bins, centers, bin_s,
-        condition_group, condition_labels, n_groups,
+        self,
+        perievent,
+        sort_order,
+        bins,
+        centers,
+        bin_s,
+        condition_group,
+        condition_labels,
+        n_groups,
     ):
         """Multi-color raster: one PlotCurveItem per group (one draw call each)."""
         bin_w = bins[1] - bins[0]
 
-        group_rows:   list[list] = [[] for _ in range(n_groups)]
+        group_rows: list[list] = [[] for _ in range(n_groups)]
         group_spikes: list[list] = [[] for _ in range(n_groups)]
 
         for display_row, trial_idx in enumerate(sort_order):
@@ -288,7 +303,8 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
             if group_rows[g]:
                 xs, ys = self._make_tick_arrays(group_rows[g])
                 curve = pg.PlotCurveItem(
-                    x=xs, y=ys,
+                    x=xs,
+                    y=ys,
                     pen=pg.mkPen(r, gr, b, 210, width=self._spike_width),
                     connect="finite",
                 )
@@ -301,7 +317,9 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
             g = condition_group.get(trial_idx, 0)
             if prev_g is not None and g != prev_g:
                 line = pg.InfiniteLine(
-                    pos=display_row - 0.5, angle=0, pen=_SEP_PEN,
+                    pos=display_row - 0.5,
+                    angle=0,
+                    pen=_SEP_PEN,
                 )
                 self.raster.addItem(line)
                 self._sep_items.append(line)
@@ -315,13 +333,14 @@ class PSTHPlot(pg.GraphicsLayoutWidget):
             r, gr, b = _CONDITION_PALETTE[g % len(_CONDITION_PALETTE)]
             if not group_spikes[g]:
                 continue
-            flat  = np.concatenate(group_spikes[g])
+            flat = np.concatenate(group_spikes[g])
             counts, _ = np.histogram(flat, bins=bins)
             n_inc = len(group_spikes[g])
-            rate  = counts / max(n_inc, 1) / bin_w
+            rate = counts / max(n_inc, 1) / bin_w
 
             curve = pg.PlotDataItem(
-                x=centers, y=rate,
+                x=centers,
+                y=rate,
                 pen=pg.mkPen(r, gr, b, width=2),
                 fillLevel=0,
                 fillBrush=pg.mkBrush(r, gr, b, 55),

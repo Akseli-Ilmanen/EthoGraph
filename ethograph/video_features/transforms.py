@@ -11,15 +11,15 @@ from PIL import Image
 
 
 def crop(vid, i, j, h, w):
-    return vid[..., i:(i + h), j:(j + w)]
+    return vid[..., i : (i + h), j : (j + w)]
 
 
 def center_crop(vid, output_size):
     h, w = vid.shape[-2:]
     th, tw = output_size
 
-    i = int(round((h - th) / 2.))
-    j = int(round((w - tw) / 2.))
+    i = int(round((h - th) / 2.0))
+    j = int(round((w - tw) / 2.0))
     return crop(vid, i, j, th, tw)
 
 
@@ -46,14 +46,14 @@ def normalize(vid, mean, std):
 
 # Class interface
 
+
 class RandomCrop(object):
     def __init__(self, size):
         self.size = size
 
     @staticmethod
     def get_params(vid, output_size):
-        """Get parameters for ``crop`` for a random crop.
-        """
+        """Get parameters for ``crop`` for a random crop."""
         h, w = vid.shape[-2:]
         th, tw = output_size
         if w == tw and h == th:
@@ -83,7 +83,7 @@ class Resize(object):
         # NOTE: for those functions, which generally expect mini-batches, we keep them
         # as non-minibatch so that they are applied as if they were 4d (thus image).
         # this way, we only apply the transformation in the spatial domain
-        interpolation = 'bilinear'
+        interpolation = "bilinear"
         # NOTE: using bilinear interpolation because we don't work on minibatches
         # at this level
         scale = None
@@ -93,8 +93,12 @@ class Resize(object):
         else:
             size = self.size
         return torch.nn.functional.interpolate(
-            vid, size=size, scale_factor=scale, mode=interpolation, align_corners=False,
-            recompute_scale_factor=False
+            vid,
+            size=size,
+            scale_factor=scale,
+            mode=interpolation,
+            align_corners=False,
+            recompute_scale_factor=False,
         )
 
 
@@ -132,33 +136,29 @@ class Pad(object):
 
 
 class TensorCenterCrop(object):
-
     def __init__(self, crop_size: int) -> None:
         self.crop_size = crop_size
 
     def __call__(self, tensor: torch.FloatTensor) -> torch.FloatTensor:
         H, W = tensor.size(-2), tensor.size(-1)
-        from_H = ((H - self.crop_size) // 2)
-        from_W = ((W - self.crop_size) // 2)
+        from_H = (H - self.crop_size) // 2
+        from_W = (W - self.crop_size) // 2
         to_H = from_H + self.crop_size
         to_W = from_W + self.crop_size
         return tensor[..., from_H:to_H, from_W:to_W]
 
 
 class ScaleTo1_1(object):
-
     def __call__(self, tensor: torch.FloatTensor) -> torch.FloatTensor:
         return (2 * tensor / 255) - 1
 
 
 class PermuteAndUnsqueeze(object):
-
     def __call__(self, tensor: torch.FloatTensor) -> torch.FloatTensor:
         return tensor.permute(1, 0, 2, 3).unsqueeze(0)
 
 
 class Clamp(object):
-
     def __init__(self, min_val, max_val) -> None:
         self.min_val = min_val
         self.max_val = max_val
@@ -168,7 +168,6 @@ class Clamp(object):
 
 
 class ToUInt8(object):
-
     def __call__(self, flow_tensor: torch.FloatTensor) -> torch.FloatTensor:
         # preprocessing as in
         # https://github.com/deepmind/kinetics-i3d/issues/61#issuecomment-506727158
@@ -179,13 +178,11 @@ class ToUInt8(object):
 
 
 class ToCFHW_ToFloat(object):
-
     def __call__(self, tensor_fhwc: torch.Tensor) -> torch.Tensor:
         return tensor_fhwc.permute(3, 0, 1, 2).float()
 
 
 class ToFCHW(object):
-
     def __call__(self, tensor_cfhw: torch.Tensor) -> torch.Tensor:
         return tensor_cfhw.permute(1, 0, 2, 3)
 
@@ -215,7 +212,7 @@ def resize(img, size, resize_to_smaller_edge=True, interpolation=Image.BILINEAR)
         PIL Image: Resized image.
     """
     if not (isinstance(size, int) or (isinstance(size, Iterable) and len(size) == 2)):
-        raise TypeError('Got inappropriate size arg: {}'.format(size))
+        raise TypeError("Got inappropriate size arg: {}".format(size))
 
     if isinstance(size, int):
         w, h = img.size
@@ -234,8 +231,12 @@ def resize(img, size, resize_to_smaller_edge=True, interpolation=Image.BILINEAR)
 
 
 class ResizeImproved(object):
-
-    def __init__(self, size: int, resize_to_smaller_edge: bool = True, interpolation=Image.BILINEAR):
+    def __init__(
+        self,
+        size: int,
+        resize_to_smaller_edge: bool = True,
+        interpolation=Image.BILINEAR,
+    ):
         self.size = size
         self.resize_to_smaller_edge = resize_to_smaller_edge
         self.interpolation = interpolation
@@ -245,13 +246,11 @@ class ResizeImproved(object):
 
 
 class ToTensorWithoutScaling(object):
-
     def __call__(self, np_img):
         return torch.from_numpy(np_img).permute(2, 0, 1).float()
 
 
 class ToFloat(object):
-
     def __call__(self, byte_img):
         return byte_img.float()
 
@@ -277,7 +276,7 @@ class PILToTensor:
         return img
 
     def __repr__(self):
-        return self.__class__.__name__ + '()'
+        return self.__class__.__name__ + "()"
 
 
 if __name__ == "__main__":
@@ -288,16 +287,16 @@ if __name__ == "__main__":
     max_side_size = 512
     resize_to_smaller_edge = False
     if max_side_size is not None:
-        transforms = transforms.Compose([
-            transforms.ToPILImage(),
-            ResizeImproved(max_side_size, resize_to_smaller_edge),
-            transforms.PILToTensor(),
-            ToFloat()
-        ])
+        transforms = transforms.Compose(
+            [
+                transforms.ToPILImage(),
+                ResizeImproved(max_side_size, resize_to_smaller_edge),
+                transforms.PILToTensor(),
+                ToFloat(),
+            ]
+        )
     else:
-        transforms = transforms.Compose([
-            ToTensorWithoutScaling()
-        ])
+        transforms = transforms.Compose([ToTensorWithoutScaling()])
     a = np.random.randint(0, 255, (height, width, 3)).astype(np.uint8)
     print(a.shape)
     b = transforms(a)

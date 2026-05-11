@@ -19,7 +19,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from ethograph.labels.converters import LabelConverter, build_mapping_from_labels
+from ethograph.labels.converters import (
+    LabelConverter,
+    build_mapping_from_labels,
+)
 from ethograph.labels.intervals import EVENT_TYPE_POINT, EVENT_TYPE_STATE
 from ethograph.labels.tsv_store import TRIAL_META_DEFAULTS, init_empty_labels
 
@@ -82,15 +85,16 @@ def _cumulative_offsets(media_files: list[str], lengths: dict[str, float]) -> li
         offsets.append(running)
         if f not in lengths:
             raise ValueError(
-                f"BORIS media_info.length missing duration for {f!r}; "
-                "cannot place events in trial-local time"
+                f"BORIS media_info.length missing duration for {f!r}; cannot place events in trial-local time"
             )
         running += float(lengths[f])
     return offsets
 
 
 def _match_event_to_file(
-    t_obs: float, offsets: list[float], durations: list[float],
+    t_obs: float,
+    offsets: list[float],
+    durations: list[float],
 ) -> tuple[int, float] | None:
     for i, (t0, dur) in enumerate(zip(offsets, durations)):
         if t0 <= t_obs <= t0 + dur + 1e-6:
@@ -113,16 +117,16 @@ def build_trial_table(observation: dict) -> pd.DataFrame:
     running = 0.0
     for i, path in enumerate(media_files):
         if path not in lengths:
-            raise ValueError(
-                f"BORIS media_info.length missing duration for {path!r}"
-            )
+            raise ValueError(f"BORIS media_info.length missing duration for {path!r}")
         dur = float(lengths[path])
-        rows.append({
-            "trial": i + 1,
-            "start_time": running,
-            "stop_time": running + dur,
-            "video_cam-1": Path(path).name,
-        })
+        rows.append(
+            {
+                "trial": i + 1,
+                "start_time": running,
+                "stop_time": running + dur,
+                "video_cam-1": Path(path).name,
+            }
+        )
         running += dur
     return pd.DataFrame(rows)
 
@@ -168,48 +172,59 @@ def extract_intervals(
         file_idx, t_local = match
 
         if beh_type.get(behavior) == "Point event":
-            rows.append({
-                "onset_s": t_local,
-                "offset_s": float("nan"),
-                "labels": name_to_id[behavior],
-                "individual": subject,
-                "trial": file_idx + 1,
-                "event_type": EVENT_TYPE_POINT,
-            })
+            rows.append(
+                {
+                    "onset_s": t_local,
+                    "offset_s": float("nan"),
+                    "labels": name_to_id[behavior],
+                    "individual": subject,
+                    "trial": file_idx + 1,
+                    "event_type": EVENT_TYPE_POINT,
+                }
+            )
             continue
 
         key = (subject, behavior)
         if key in open_starts:
             start_file, start_local = open_starts.pop(key)
             end_local = t_local if file_idx == start_file else durations[start_file]
-            rows.append({
-                "onset_s": start_local,
-                "offset_s": end_local,
-                "labels": name_to_id[behavior],
-                "individual": subject,
-                "trial": start_file + 1,
-                "event_type": EVENT_TYPE_STATE,
-            })
+            rows.append(
+                {
+                    "onset_s": start_local,
+                    "offset_s": end_local,
+                    "labels": name_to_id[behavior],
+                    "individual": subject,
+                    "trial": start_file + 1,
+                    "event_type": EVENT_TYPE_STATE,
+                }
+            )
             if file_idx != start_file:
                 logger.warning(
                     "State %r spans file boundary (trial %d -> %d); clipped at trial %d end",
-                    behavior, start_file + 1, file_idx + 1, start_file + 1,
+                    behavior,
+                    start_file + 1,
+                    file_idx + 1,
+                    start_file + 1,
                 )
         else:
             open_starts[key] = (file_idx, t_local)
 
     for (subject, behavior), (start_file, start_local) in open_starts.items():
-        rows.append({
-            "onset_s": start_local,
-            "offset_s": durations[start_file],
-            "labels": name_to_id[behavior],
-            "individual": subject,
-            "trial": start_file + 1,
-            "event_type": EVENT_TYPE_STATE,
-        })
+        rows.append(
+            {
+                "onset_s": start_local,
+                "offset_s": durations[start_file],
+                "labels": name_to_id[behavior],
+                "individual": subject,
+                "trial": start_file + 1,
+                "event_type": EVENT_TYPE_STATE,
+            }
+        )
         logger.warning(
             "Unclosed state %r by subject %r — closed at end of trial %d",
-            behavior, subject, start_file + 1,
+            behavior,
+            subject,
+            start_file + 1,
         )
 
     if not rows:
@@ -302,10 +317,7 @@ class BorisLabelConverter(LabelConverter):
             raise ValueError(f"No MEDIA observations in {self._path}")
         self._observation_key = observation_key or obs_keys[0]
         if self._observation_key not in self._project["observations"]:
-            raise KeyError(
-                f"Observation {self._observation_key!r} not in "
-                f"{[*self._project['observations']]}"
-            )
+            raise KeyError(f"Observation {self._observation_key!r} not in {[*self._project['observations']]}")
         self._label_map = build_mapping_from_labels(unique_behavior_codes(self._project))
 
     @property

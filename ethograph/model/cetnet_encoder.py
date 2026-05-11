@@ -1,6 +1,7 @@
-import pickle
+import copy
 import json
 import os
+import pickle
 from datetime import datetime
 from pathlib import Path
 from typing import Tuple
@@ -12,10 +13,10 @@ import torch.nn.functional as F
 from torch import Tensor, optim
 
 import ethograph as eto
-from ethograph.features.changepoints import correct_changepoints_dense
 from ethograph.model.eval_metrics import func_eval, func_eval_labelwise
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 def convert_label_to_similarity(normed_feature: Tensor, label: Tensor) -> Tuple[Tensor, Tensor]:
     similarity_matrix = normed_feature @ normed_feature.transpose(1, 0)
@@ -38,19 +39,18 @@ class CircleLoss(nn.Module):
         self.soft_plus = nn.Softplus()
 
     def forward(self, sp: Tensor, sn: Tensor) -> Tensor:
-        ap = torch.clamp_min(- sp.detach() + 1 + self.m, min=0.)
-        an = torch.clamp_min(sn.detach() + self.m, min=0.)
+        ap = torch.clamp_min(-sp.detach() + 1 + self.m, min=0.0)
+        an = torch.clamp_min(sn.detach() + self.m, min=0.0)
 
         delta_p = 1 - self.m
         delta_n = self.m
 
-        logit_p = - ap * (sp - delta_p) * self.gamma
+        logit_p = -ap * (sp - delta_p) * self.gamma
         logit_n = an * (sn - delta_n) * self.gamma
 
         loss = self.soft_plus(torch.logsumexp(logit_n, dim=0) + torch.logsumexp(logit_p, dim=0))
 
         return loss
-
 
 
 class AttentionHelper(nn.Module):
@@ -59,14 +59,14 @@ class AttentionHelper(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
 
     def scalar_dot_att(self, proj_query, proj_key, proj_val, padding_mask):
-        '''
+        """
         scalar dot attention.
         :param proj_query: shape of (B, C, L) => (Batch_Size, Feature_Dimension, Length)
         :param proj_key: shape of (B, C, L)
         :param proj_val: shape of (B, C, L)
         :param padding_mask: shape of (B, C, L)
         :return: attention value of shape (B, C, L)
-        '''
+        """
         m, c1, l1 = proj_query.shape
         m, c2, l2 = proj_key.shape
 
@@ -95,19 +95,19 @@ class AttLayer(nn.Module):
         self.bl = bl
         self.stage = stage
         self.att_type = att_type
-        assert self.att_type in ['normal_att', 'block_att', 'sliding_att']
-        assert self.stage in ['encoder', 'decoder']
+        assert self.att_type in ["normal_att", "block_att", "sliding_att"]
+        assert self.stage in ["encoder", "decoder"]
 
         self.att_helper = AttentionHelper()
         self.window_mask = self.construct_window_mask()
 
     def construct_window_mask(self):
-        '''
-            construct window mask of shape (1, l, l + l//2 + l//2), used for sliding window self attention
-        '''
+        """
+        construct window mask of shape (1, l, l + l//2 + l//2), used for sliding window self attention
+        """
         window_mask = torch.zeros((1, self.bl, self.bl + 2 * (self.bl // 2)))
         for i in range(self.bl):
-            window_mask[:, :, i:i + self.bl] = 1
+            window_mask[:, :, i : i + self.bl] = 1
         return window_mask.to(device)
 
     def forward(self, x1, x2, mask):
@@ -119,11 +119,11 @@ class AttLayer(nn.Module):
 
         value = self.value_conv(x1)
 
-        if self.att_type == 'normal_att':
+        if self.att_type == "normal_att":
             return self._normal_self_att(query, key, value, mask)
-        elif self.att_type == 'block_att':
+        elif self.att_type == "block_att":
             return self._block_wise_self_att(query, key, value, mask)
-        elif self.att_type == 'sliding_att':
+        elif self.att_type == "sliding_att":
             return self._sliding_window_self_att(query, key, value, mask)
 
     def _normal_self_att(self, q, k, v, mask):
@@ -143,17 +143,32 @@ class AttLayer(nn.Module):
 
         nb = L // self.bl
         if L % self.bl != 0:
-            q = torch.cat([q, torch.zeros((m_batchsize, c1, self.bl - L % self.bl)).to(device)], dim=-1)
-            k = torch.cat([k, torch.zeros((m_batchsize, c2, self.bl - L % self.bl)).to(device)], dim=-1)
-            v = torch.cat([v, torch.zeros((m_batchsize, c3, self.bl - L % self.bl)).to(device)], dim=-1)
+            q = torch.cat(
+                [q, torch.zeros((m_batchsize, c1, self.bl - L % self.bl)).to(device)],
+                dim=-1,
+            )
+            k = torch.cat(
+                [k, torch.zeros((m_batchsize, c2, self.bl - L % self.bl)).to(device)],
+                dim=-1,
+            )
+            v = torch.cat(
+                [v, torch.zeros((m_batchsize, c3, self.bl - L % self.bl)).to(device)],
+                dim=-1,
+            )
             nb += 1
 
-        padding_mask = torch.cat([torch.ones((m_batchsize, 1, L)).to(device) * mask[:, 0:1, :],
-                                  torch.zeros((m_batchsize, 1, self.bl * nb - L)).to(device)], dim=-1)
+        padding_mask = torch.cat(
+            [
+                torch.ones((m_batchsize, 1, L)).to(device) * mask[:, 0:1, :],
+                torch.zeros((m_batchsize, 1, self.bl * nb - L)).to(device),
+            ],
+            dim=-1,
+        )
 
         q = q.reshape(m_batchsize, c1, nb, self.bl).permute(0, 2, 1, 3).reshape(m_batchsize * nb, c1, self.bl)
-        padding_mask = padding_mask.reshape(m_batchsize, 1, nb, self.bl).permute(0, 2, 1, 3).reshape(m_batchsize * nb,
-                                                                                                     1, self.bl)
+        padding_mask = (
+            padding_mask.reshape(m_batchsize, 1, nb, self.bl).permute(0, 2, 1, 3).reshape(m_batchsize * nb, 1, self.bl)
+        )
         k = k.reshape(m_batchsize, c2, nb, self.bl).permute(0, 2, 1, 3).reshape(m_batchsize * nb, c2, self.bl)
         v = v.reshape(m_batchsize, c3, nb, self.bl).permute(0, 2, 1, 3).reshape(m_batchsize * nb, c3, self.bl)
 
@@ -173,12 +188,26 @@ class AttLayer(nn.Module):
         # padding zeros for the last segment
         nb = L // self.bl
         if L % self.bl != 0:
-            q = torch.cat([q, torch.zeros((m_batchsize, c1, self.bl - L % self.bl)).to(device)], dim=-1)
-            k = torch.cat([k, torch.zeros((m_batchsize, c2, self.bl - L % self.bl)).to(device)], dim=-1)
-            v = torch.cat([v, torch.zeros((m_batchsize, c3, self.bl - L % self.bl)).to(device)], dim=-1)
+            q = torch.cat(
+                [q, torch.zeros((m_batchsize, c1, self.bl - L % self.bl)).to(device)],
+                dim=-1,
+            )
+            k = torch.cat(
+                [k, torch.zeros((m_batchsize, c2, self.bl - L % self.bl)).to(device)],
+                dim=-1,
+            )
+            v = torch.cat(
+                [v, torch.zeros((m_batchsize, c3, self.bl - L % self.bl)).to(device)],
+                dim=-1,
+            )
             nb += 1
-        padding_mask = torch.cat([torch.ones((m_batchsize, 1, L)).to(device) * mask[:, 0:1, :],
-                                  torch.zeros((m_batchsize, 1, self.bl * nb - L)).to(device)], dim=-1)
+        padding_mask = torch.cat(
+            [
+                torch.ones((m_batchsize, 1, L)).to(device) * mask[:, 0:1, :],
+                torch.zeros((m_batchsize, 1, self.bl * nb - L)).to(device),
+            ],
+            dim=-1,
+        )
 
         # sliding window approach, by splitting query_proj and key_proj into shape (c1, l) x (c1, 2l)
         # sliding window for query_proj: reshape
@@ -186,21 +215,45 @@ class AttLayer(nn.Module):
 
         # sliding window approach for key_proj
         # 1. add paddings at the start and end
-        k = torch.cat([torch.zeros(m_batchsize, c2, self.bl // 2).to(device), k,
-                       torch.zeros(m_batchsize, c2, self.bl // 2).to(device)], dim=-1)
-        v = torch.cat([torch.zeros(m_batchsize, c3, self.bl // 2).to(device), v,
-                       torch.zeros(m_batchsize, c3, self.bl // 2).to(device)], dim=-1)
-        padding_mask = torch.cat([torch.zeros(m_batchsize, 1, self.bl // 2).to(device), padding_mask,
-                                  torch.zeros(m_batchsize, 1, self.bl // 2).to(device)], dim=-1)
+        k = torch.cat(
+            [
+                torch.zeros(m_batchsize, c2, self.bl // 2).to(device),
+                k,
+                torch.zeros(m_batchsize, c2, self.bl // 2).to(device),
+            ],
+            dim=-1,
+        )
+        v = torch.cat(
+            [
+                torch.zeros(m_batchsize, c3, self.bl // 2).to(device),
+                v,
+                torch.zeros(m_batchsize, c3, self.bl // 2).to(device),
+            ],
+            dim=-1,
+        )
+        padding_mask = torch.cat(
+            [
+                torch.zeros(m_batchsize, 1, self.bl // 2).to(device),
+                padding_mask,
+                torch.zeros(m_batchsize, 1, self.bl // 2).to(device),
+            ],
+            dim=-1,
+        )
 
         # 2. reshape key_proj of shape (m_batchsize*nb, c1, 2*self.bl)
-        k = torch.cat([k[:, :, i * self.bl:(i + 1) * self.bl + (self.bl // 2) * 2] for i in range(nb)],
-                      dim=0)  # special case when self.bl = 1
-        v = torch.cat([v[:, :, i * self.bl:(i + 1) * self.bl + (self.bl // 2) * 2] for i in range(nb)], dim=0)
+        k = torch.cat(
+            [k[:, :, i * self.bl : (i + 1) * self.bl + (self.bl // 2) * 2] for i in range(nb)],
+            dim=0,
+        )  # special case when self.bl = 1
+        v = torch.cat(
+            [v[:, :, i * self.bl : (i + 1) * self.bl + (self.bl // 2) * 2] for i in range(nb)],
+            dim=0,
+        )
         # 3. construct window mask of shape (1, l, 2l), and use it to generate final mask
         padding_mask = torch.cat(
-            [padding_mask[:, :, i * self.bl:(i + 1) * self.bl + (self.bl // 2) * 2] for i in range(nb)],
-            dim=0)  # of shape (m*nb, 1, 2l)
+            [padding_mask[:, :, i * self.bl : (i + 1) * self.bl + (self.bl // 2) * 2] for i in range(nb)],
+            dim=0,
+        )  # of shape (m*nb, 1, 2l)
         final_mask = self.window_mask.repeat(m_batchsize * nb, 1, 1) * padding_mask
 
         output, attention = self.att_helper.scalar_dot_att(q, k, v, final_mask)
@@ -217,7 +270,8 @@ class MultiHeadAttLayer(nn.Module):
         #         assert v_dim % num_head == 0
         self.conv_out = nn.Conv1d(v_dim * num_head, v_dim, 1)
         self.layers = nn.ModuleList(
-            [copy.deepcopy(AttLayer(q_dim, k_dim, v_dim, r1, r2, r3, bl, stage, att_type)) for i in range(num_head)])
+            [copy.deepcopy(AttLayer(q_dim, k_dim, v_dim, r1, r2, r3, bl, stage, att_type)) for i in range(num_head)]
+        )
         self.dropout = nn.Dropout(p=0.5)
 
     def forward(self, x1, x2, mask):
@@ -231,8 +285,10 @@ class ConvFeedForward(nn.Module):
         super(ConvFeedForward, self).__init__()
         # RF = 1 + 2 * dilation, where dilation = 2**i, i is the layer index, e.g. layer 4 -> 1 + 2 * 2**4 = 33
         self.layer = nn.Sequential(
-            nn.Conv1d(in_channels, out_channels, 3, padding=dilation, dilation=dilation), # kernel size = 3 (hard coded)
-            nn.ReLU()
+            nn.Conv1d(
+                in_channels, out_channels, 3, padding=dilation, dilation=dilation
+            ),  # kernel size = 3 (hard coded)
+            nn.ReLU(),
         )
 
     def forward(self, x):
@@ -246,7 +302,7 @@ class FCFeedForward(nn.Module):
             nn.Conv1d(in_channels, out_channels, 1),  # conv1d equals fc
             nn.ReLU(),
             nn.Dropout(),
-            nn.Conv1d(out_channels, out_channels, 1)
+            nn.Conv1d(out_channels, out_channels, 1),
         )
 
     def forward(self, x):
@@ -258,8 +314,17 @@ class AttModule(nn.Module):
         super(AttModule, self).__init__()
         self.feed_forward = ConvFeedForward(dilation, in_channels, out_channels)
         self.instance_norm = nn.InstanceNorm1d(in_channels, track_running_stats=False)
-        self.att_layer = AttLayer(in_channels, in_channels, out_channels, r1, r1, r2, dilation, att_type=att_type,
-                                  stage=stage)  # dilation
+        self.att_layer = AttLayer(
+            in_channels,
+            in_channels,
+            out_channels,
+            r1,
+            r1,
+            r2,
+            dilation,
+            att_type=att_type,
+            stage=stage,
+        )  # dilation
         self.conv_1x1 = nn.Conv1d(out_channels, out_channels, 1)
         self.dropout = nn.Dropout()
         self.alpha = alpha
@@ -272,25 +337,38 @@ class AttModule(nn.Module):
         return (x + out) * mask[:, 0:1, :]
 
 
-
 class Encoder(nn.Module):
-    def __init__(self, num_layers, r1, r2, num_f_maps, input_dim, num_classes, channel_masking_rate, att_type, alpha):
+    def __init__(
+        self,
+        num_layers,
+        r1,
+        r2,
+        num_f_maps,
+        input_dim,
+        num_classes,
+        channel_masking_rate,
+        att_type,
+        alpha,
+    ):
         super(Encoder, self).__init__()
         self.conv_1x1 = nn.Conv1d(input_dim, num_f_maps, 1)  # fc layer
         self.layers = nn.ModuleList(
-            [AttModule(2 ** i, num_f_maps, num_f_maps, r1, r2, att_type, 'encoder', alpha) for i in  # 2**i
-             range(num_layers)])
+            [
+                AttModule(2**i, num_f_maps, num_f_maps, r1, r2, att_type, "encoder", alpha)
+                for i in range(num_layers)  # 2**i
+            ]
+        )
 
         self.conv_out = nn.Conv1d(num_f_maps, num_classes, 1)
         self.dropout = nn.Dropout2d(p=channel_masking_rate)
         self.channel_masking_rate = channel_masking_rate
 
     def forward(self, x, mask):
-        '''
+        """
         :param x: (N, C, L)
         :param mask:
         :return:
-        '''
+        """
 
         if self.channel_masking_rate > 0:
             x = x.unsqueeze(2)
@@ -305,72 +383,114 @@ class Encoder(nn.Module):
         return out, feature
 
 
-
 class MyTransformer(nn.Module):
-    def __init__(self, num_decoders, num_layers, r1, r2, num_f_maps, input_dim, num_classes, channel_masking_rate):
+    def __init__(
+        self,
+        num_decoders,
+        num_layers,
+        r1,
+        r2,
+        num_f_maps,
+        input_dim,
+        num_classes,
+        channel_masking_rate,
+    ):
         super(MyTransformer, self).__init__()
-        self.encoder = Encoder(num_layers, r1, r2, num_f_maps, input_dim, num_classes, channel_masking_rate,
-                               att_type='sliding_att', alpha=1)
-
+        self.encoder = Encoder(
+            num_layers,
+            r1,
+            r2,
+            num_f_maps,
+            input_dim,
+            num_classes,
+            channel_masking_rate,
+            att_type="sliding_att",
+            alpha=1,
+        )
 
     # We removed decoder, but still pass encoder unsqueezed outputs for compatibility with previous code.
     def forward(self, x, mask):
         encoder_out, feature = self.encoder(x, mask)
-        
+
         return encoder_out.unsqueeze(0), F.normalize(feature, dim=1).unsqueeze(0)
 
 
-
 class Trainer:
-    def __init__(self, num_layers, r1, r2, num_f_maps, input_dim, num_classes, channel_masking_rate, f1_thresholds, boundary_weight_schedule, boundary_radius):
-        self.model = MyTransformer(3, num_layers, r1, r2, num_f_maps, input_dim, num_classes, channel_masking_rate)
-        self.ce = nn.CrossEntropyLoss(ignore_index=-100, reduction='none')
-        print('Model Size: ', sum(p.numel() for p in self.model.parameters()))
-        self.mse = nn.MSELoss(reduction='none')
+    def __init__(
+        self,
+        num_layers,
+        r1,
+        r2,
+        num_f_maps,
+        input_dim,
+        num_classes,
+        channel_masking_rate,
+        f1_thresholds,
+        boundary_weight_schedule,
+        boundary_radius,
+    ):
+        self.model = MyTransformer(
+            3,
+            num_layers,
+            r1,
+            r2,
+            num_f_maps,
+            input_dim,
+            num_classes,
+            channel_masking_rate,
+        )
+        self.ce = nn.CrossEntropyLoss(ignore_index=-100, reduction="none")
+        print("Model Size: ", sum(p.numel() for p in self.model.parameters()))
+        self.mse = nn.MSELoss(reduction="none")
         self.num_classes = num_classes
-        self.num_f_maps =num_f_maps
+        self.num_f_maps = num_f_maps
         self.floss = CircleLoss(m=0.25, gamma=128)
         self.f1_thresholds = f1_thresholds
-        self.boundary_weight = 0.0 # Will be updated by schedule
+        self.boundary_weight = 0.0  # Will be updated by schedule
         self.boundary_weight_schedule = boundary_weight_schedule
         self.boundary_radius = boundary_radius
-        
-
 
     def compute_boundary_mask(self, target, radius=2):
         transitions = (target[:, 1:] != target[:, :-1]).float()
         transitions = F.pad(transitions, (1, 1), value=0)
-        kernel = torch.exp(-torch.abs(torch.arange(-radius, radius+1, device=target.device)) / radius)
+        kernel = torch.exp(-torch.abs(torch.arange(-radius, radius + 1, device=target.device)) / radius)
         kernel = kernel.view(1, 1, -1)
         transitions = transitions.unsqueeze(1)
         boundary_mask = F.conv1d(transitions, kernel, padding=radius).squeeze(1)
-        boundary_mask = boundary_mask[:, :target.shape[1]]
-        
-        boundary_mask = torch.clamp(boundary_mask * self.boundary_weight, max=2.0) # Clamp for Conv padding effect
+        boundary_mask = boundary_mask[:, : target.shape[1]]
+
+        boundary_mask = torch.clamp(boundary_mask * self.boundary_weight, max=2.0)  # Clamp for Conv padding effect
         return boundary_mask
 
-
-    def train(self, save_dir, batch_gen, num_epochs, batch_size, learning_rate, batch_gen_tst=None, all_params=None, loaded_trees=None):
+    def train(
+        self,
+        save_dir,
+        batch_gen,
+        num_epochs,
+        batch_size,
+        learning_rate,
+        batch_gen_tst=None,
+        all_params=None,
+        loaded_trees=None,
+    ):
         self.model.train()
         self.model.to(device)
 
         optimizer = optim.Adam(self.model.parameters(), lr=learning_rate, weight_decay=1e-5)
-        print('LR:{}'.format(learning_rate))
+        print("LR:{}".format(learning_rate))
 
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=3)
         for epoch in range(num_epochs):
             epoch_loss = 0
             epoch_ce_loss = 0
             epoch_mse_loss = 0
             correct = 0
             total = 0
-            
-            
+
             self.boundary_weight = max(
                 (w for t, w in self.boundary_weight_schedule.items() if epoch >= int(t)),
-                default=0.0
+                default=0.0,
             )
-
 
             while batch_gen.has_next():
                 batch_input, batch_target, mask, vids = batch_gen.next_batch(batch_size, False)
@@ -383,42 +503,47 @@ class Trainer:
 
                 boundary_mask = self.compute_boundary_mask(batch_target, self.boundary_radius)
 
-
                 # ps is only 1 element list here -> encoder only
                 for idx, p in enumerate(ps):
-                    ce_loss = self.ce(p.transpose(2, 1).contiguous().view(-1, self.num_classes), batch_target.view(-1))
+                    ce_loss = self.ce(
+                        p.transpose(2, 1).contiguous().view(-1, self.num_classes),
+                        batch_target.view(-1),
+                    )
                     ce_loss = ce_loss.view(batch_target.shape)
-                    
-
 
                     # 1* (no weighting), after epoch 40 1-3* (boundary weighting)
                     weighted_ce = ce_loss * (1.0 + boundary_mask * mask[:, 0, :])
-                    loss += torch.mean(weighted_ce * mask[:, 0, :])                        
+                    loss += torch.mean(weighted_ce * mask[:, 0, :])
                     epoch_ce_loss += torch.mean(ce_loss * mask[:, 0, :]).item()
 
-
-                    mse_loss = torch.mean(torch.clamp(
-                        self.mse(F.log_softmax(p[:, :, 1:], dim=1), 
-                                F.log_softmax(p.detach()[:, :, :-1], dim=1)), 
-                        min=0, max=16) * mask[:, :, 1:])
+                    mse_loss = torch.mean(
+                        torch.clamp(
+                            self.mse(
+                                F.log_softmax(p[:, :, 1:], dim=1),
+                                F.log_softmax(p.detach()[:, :, :-1], dim=1),
+                            ),
+                            min=0,
+                            max=16,
+                        )
+                        * mask[:, :, 1:]
+                    )
                     loss += 0.15 * mse_loss
-                    
-                    epoch_mse_loss += mse_loss.item()       
-     
 
-     
-     
-     
+                    epoch_mse_loss += mse_loss.item()
+
                 if all_params.get("no_circle_loss", True):
                     for f in features:
                         loss += 0.001 * self.floss(
-                            *convert_label_to_similarity(f.transpose(2, 1).contiguous().view(-1, self.num_f_maps),
-                                                        batch_target.view(-1)))
+                            *convert_label_to_similarity(
+                                f.transpose(2, 1).contiguous().view(-1, self.num_f_maps),
+                                batch_target.view(-1),
+                            )
+                        )
 
                     epoch_loss += loss.item()
-                
+
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0) 
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 optimizer.step()
 
                 _, predicted = torch.max(ps.data[0], 1)
@@ -432,22 +557,33 @@ class Trainer:
             # flops, params = profile(self.model, inputs=(batch_input, mask))
             # print("flops:", flops)
             # print("params:", params)
-            print("[epoch %d]: epoch loss = %f,   acc = %f" % (epoch + 1, epoch_loss / len(batch_gen.list_of_examples),
-                                                            float(correct) / total))
-            print("    ce_loss = %f, mse_loss = %f" % (
-                epoch_ce_loss / len(batch_gen.list_of_examples),
-                epoch_mse_loss / len(batch_gen.list_of_examples)
-            ))    
-            
-
+            print(
+                "[epoch %d]: epoch loss = %f,   acc = %f"
+                % (
+                    epoch + 1,
+                    epoch_loss / len(batch_gen.list_of_examples),
+                    float(correct) / total,
+                )
+            )
+            print(
+                "    ce_loss = %f, mse_loss = %f"
+                % (
+                    epoch_ce_loss / len(batch_gen.list_of_examples),
+                    epoch_mse_loss / len(batch_gen.list_of_examples),
+                )
+            )
 
             if (epoch + 1) % all_params.get("log_freq") == 0 and batch_gen_tst is not None or epoch == 0:
-                self.test(batch_gen_tst, epoch+1, all_params, loaded_trees=loaded_trees)
-                torch.save(self.model.state_dict(), save_dir + "/epoch-" + str(epoch + 1) + ".model")
-                torch.save(optimizer.state_dict(), save_dir + "/epoch-" + str(epoch + 1) + ".opt")
+                self.test(batch_gen_tst, epoch + 1, all_params, loaded_trees=loaded_trees)
+                torch.save(
+                    self.model.state_dict(),
+                    save_dir + "/epoch-" + str(epoch + 1) + ".model",
+                )
+                torch.save(
+                    optimizer.state_dict(),
+                    save_dir + "/epoch-" + str(epoch + 1) + ".opt",
+                )
 
-
-       
     def test(self, batch_gen_tst, epoch, all_params, loaded_trees=None):
         self.model.eval()
         self.model.to(device)
@@ -455,9 +591,8 @@ class Trainer:
 
         ground_truth_dict = dict()
         pred_dict = dict()
-        corr_pred_dict = dict()
         video_list = []
-        trial_mapping = json.load(open(os.path.join(all_params["dataset_dir"], 'trial_mapping.json')))
+        trial_mapping = json.load(open(os.path.join(all_params["dataset_dir"], "trial_mapping.json")))
 
         if loaded_trees is None:
             loaded_trees = {hk: eto.open(info["nc_path"]) for hk, info in trial_mapping.items()}
@@ -465,71 +600,90 @@ class Trainer:
         with torch.no_grad():
             while batch_gen_tst.has_next():
                 batch_input, batch_target, mask, vids = batch_gen_tst.next_batch(1, if_warp)
-                batch_input, batch_target, mask = batch_input.to(device), batch_target.to(device), mask.to(device)
+                batch_input, batch_target, mask = (
+                    batch_input.to(device),
+                    batch_target.to(device),
+                    mask.to(device),
+                )
                 p, _ = self.model(batch_input, mask)
                 _, predicted = torch.max(p.data[0], 1)
                 predicted = predicted.squeeze().cpu().numpy()
 
-                vid = vids[0].split('.')[0]
+                vid = vids[0].split(".")[0]
                 ground_truth_dict[vid] = batch_target.squeeze().cpu().numpy()
                 pred_dict[vid] = predicted
                 video_list.append(vid)
 
-                
-
-
         # Evaluate both uncorrected and corrected predictions
         nested_results = {}
-            
-        for pred_type, pred_dict in [("uncorrected", pred_dict), ("corrected", pred_dict)]: # SAME SAME
-            acc, edit, f1s, tp, fp, fn, frame_f1 = func_eval(ground_truth_dict, pred_dict, video_list, self.f1_thresholds)
 
-            
+        for pred_type, pred_dict in [
+            ("uncorrected", pred_dict),
+            ("corrected", pred_dict),
+        ]:  # SAME SAME
+            acc, edit, f1s, tp, fp, fn, frame_f1 = func_eval(
+                ground_truth_dict, pred_dict, video_list, self.f1_thresholds
+            )
+
             result_dict = {
-                'Acc': acc,
-                'Edit': edit,
-                'TP': tp,
-                'FP': fp,
-                'FN': fn,
+                "Acc": acc,
+                "Edit": edit,
+                "TP": tp,
+                "FP": fp,
+                "FN": fn,
                 "Frame_F1": frame_f1,
             }
 
             # Add F1 scores dynamically based on f1_thresholds
             for i, threshold in enumerate(self.f1_thresholds):
-                result_dict[f'F1@{int(threshold*100)}'] = f1s[i] # =.5, =.75, =.95 -> 50, 75, 95
+                result_dict[f"F1@{int(threshold * 100)}"] = f1s[i]  # =.5, =.75, =.95 -> 50, 75, 95
 
-            classResults, _, all_IoUs, start_deltas, end_deltas = func_eval_labelwise(ground_truth_dict, pred_dict, video_list, f1_thresholds=self.f1_thresholds)
+            classResults, _, all_IoUs, start_deltas, end_deltas = func_eval_labelwise(
+                ground_truth_dict,
+                pred_dict,
+                video_list,
+                f1_thresholds=self.f1_thresholds,
+            )
 
             # Add class-wise F1 scores - classResults is a dict with class keys containing f1s arrays
-            result_dict['classwise_results'] = classResults
-            result_dict['all_IoUs'] = all_IoUs
-            result_dict['start_deltas'] = start_deltas
-            result_dict['end_deltas'] = end_deltas
-            
+            result_dict["classwise_results"] = classResults
+            result_dict["all_IoUs"] = all_IoUs
+            result_dict["start_deltas"] = start_deltas
+            result_dict["end_deltas"] = end_deltas
+
             nested_results[pred_type] = result_dict
 
-
-
             result_dir = all_params.get("result_dir")
-            np.save(os.path.join(result_dir, f'test_results_epoch{epoch}.npy'), nested_results)
+            np.save(
+                os.path.join(result_dir, f"test_results_epoch{epoch}.npy"),
+                nested_results,
+            )
 
         # Print results for both corrected and uncorrected predictions
         for pred_type, test_result_dict in nested_results.items():
-            print(f'Epoch {epoch} ----- -Test-{pred_type}:')
+            print(f"Epoch {epoch} ----- -Test-{pred_type}:")
             for k, v in test_result_dict.items():
-                if k not in ['all_IoUs', 'start_deltas', 'end_deltas', 'classwise_results']:
-                    print(f'  {k}: {v}')
-
+                if k not in [
+                    "all_IoUs",
+                    "start_deltas",
+                    "end_deltas",
+                    "classwise_results",
+                ]:
+                    print(f"  {k}: {v}")
 
         self.model.train()
         batch_gen_tst.reset()
-        
-        
-        
 
-        
-
-    def inference(self, model_path, features_path, batch_gen_tst, epoch, trial_mapping, sample_rate, all_params):
+    def inference(
+        self,
+        model_path,
+        features_path,
+        batch_gen_tst,
+        epoch,
+        trial_mapping,
+        sample_rate,
+        all_params,
+    ):
         """Run inference and save per-trial .npy files (DLC2Action-compatible format).
 
         Saves softmax probabilities as (T, n_classes) .npy files per trial,
@@ -547,12 +701,11 @@ class Trainer:
             # {hash_key: [(trial_num, probs), ...]}
             sess_results: dict[str, list] = {}
 
-
             print("Running inference...")
             while batch_gen_tst.has_next():
                 batch_input, batch_target, mask, vids = batch_gen_tst.next_batch(1)
 
-                vid = vids[0].split('.')[0]
+                vid = vids[0].split(".")[0]
                 batch_input = batch_input.to(device)
                 mask = mask.to(device)
 
@@ -560,7 +713,7 @@ class Trainer:
 
                 # Softmax probabilities → (T, n_classes)
                 probs = torch.softmax(predictions[0], dim=1).squeeze(0).cpu().numpy().T
-                hash_key, trial_num = vid.split('_')
+                hash_key, trial_num = vid.split("_")
 
                 sess_results.setdefault(hash_key, []).append((trial_num, probs))
 
@@ -576,7 +729,10 @@ class Trainer:
 
                 pred_dir = labels_dir / f"predictions_cetnet_{timestamp}"
                 os.makedirs(pred_dir, exist_ok=True)
-                for trial_num, probs, in trials:
+                for (
+                    trial_num,
+                    probs,
+                ) in trials:
                     pred_dict = {
                         "predicted": np.argmax(probs, axis=1),
                         "probabilities": probs.astype(np.float32),
@@ -586,4 +742,3 @@ class Trainer:
                         pickle.dump(pred_dict, f)
 
                 print(f"  Saved {len(trials)} trials to {pred_dir}")
-

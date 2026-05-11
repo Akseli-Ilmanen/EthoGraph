@@ -5,9 +5,7 @@ import os
 from pathlib import Path
 
 import numpy as np
-from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
-    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -16,7 +14,6 @@ from qtpy.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -26,19 +23,20 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ethograph.labels.export import correct_offsets_trial
-
-import ethograph as eto
-from ethograph.utils.paths import default_config_dir, find_config, find_mapping_file
-from ethograph.io.validation import EPHYS_FILE_FILTER
 from ethograph.io.metadata_table import metadata_tsv_path
+from ethograph.io.validation import EPHYS_FILE_FILTER
+from ethograph.labels.export import correct_offsets_trial
 from ethograph.labels.tsv_store import labels_tsv_path, load_labels_tsv
+from ethograph.utils.paths import (
+    default_config_dir,
+    find_mapping_file,
+)
+from ethograph.utils.qt import populate_if_exists
 
 from .app_state import AppStateSpec
+from .dialog_select_template import TemplateDialog
 from .notify import notify, notify_dialog
 from .wizard_overview import NCWizardDialog
-from .dialog_select_template import TemplateDialog
-from ethograph.utils.qt import populate_if_exists
 
 logger = logging.getLogger(__name__)
 
@@ -91,35 +89,18 @@ class IOWidget(QWidget):
         self._auto_discover_metadata()
 
     def _wire_app_state_path_signals(self):
-        self.app_state.nc_file_path_changed.connect(
-            lambda value: self.nc_file_path_edit.setText(value or "")
-        )
-        self.app_state.video_folder_changed.connect(
-            lambda value: self.video_folder_edit.setText(value or "")
-        )
-        self.app_state.audio_folder_changed.connect(
-            lambda value: self.audio_folder_edit.setText(value or "")
-        )
-        self.app_state.pose_folder_changed.connect(
-            lambda value: self.pose_folder_edit.setText(value or "")
-        )
-        self.app_state.ephys_path_changed.connect(
-            lambda value: self.ephys_path_edit.setText(value or "")
-        )
-        self.app_state.neurons_path_changed.connect(
-            lambda value: self.neurons_path_edit.setText(value or "")
-        )
-        self.app_state.nwb_file_path_changed.connect(
-            lambda value: self.nwb_file_path_edit.setText(value or "")
-        )
-        self.app_state.metadata_path_changed.connect(
-            lambda value: self.metadata_path_edit.setText(value or "")
-        )
+        self.app_state.nc_file_path_changed.connect(lambda value: self.nc_file_path_edit.setText(value or ""))
+        self.app_state.video_folder_changed.connect(lambda value: self.video_folder_edit.setText(value or ""))
+        self.app_state.audio_folder_changed.connect(lambda value: self.audio_folder_edit.setText(value or ""))
+        self.app_state.pose_folder_changed.connect(lambda value: self.pose_folder_edit.setText(value or ""))
+        self.app_state.ephys_path_changed.connect(lambda value: self.ephys_path_edit.setText(value or ""))
+        self.app_state.neurons_path_changed.connect(lambda value: self.neurons_path_edit.setText(value or ""))
+        self.app_state.nwb_file_path_changed.connect(lambda value: self.nwb_file_path_edit.setText(value or ""))
+        self.app_state.metadata_path_changed.connect(lambda value: self.metadata_path_edit.setText(value or ""))
         self.app_state.ephys_offset_changed.connect(
             lambda value: self.ephys_offset_edit.setText(f"{float(value or 0.0):g}")
         )
         self.app_state.nc_file_path_changed.connect(lambda _: self._auto_discover_metadata())
-
 
     def _wire_path_edit_signals(self):
         self.nc_file_path_edit.editingFinished.connect(
@@ -450,7 +431,11 @@ class IOWidget(QWidget):
         if self.app_state.remote_backup_path:
             self.remote_backup_edit.setText(self.app_state.remote_backup_path)
         self.remote_backup_edit.editingFinished.connect(
-            lambda: setattr(self.app_state, "remote_backup_path", self.remote_backup_edit.text().strip() or None)
+            lambda: setattr(
+                self.app_state,
+                "remote_backup_path",
+                self.remote_backup_edit.text().strip() or None,
+            )
         )
         remote_path_row.addWidget(self.remote_backup_edit)
         remote_browse_btn = QPushButton("Browse folder")
@@ -479,6 +464,7 @@ class IOWidget(QWidget):
                 self.app_state.remote_backup_mode = "overwrite"
             else:
                 self.app_state.remote_backup_mode = "timestamp"
+
         self.remote_save_mode_combo.currentTextChanged.connect(_on_mode_changed)
         remote_options_row.addWidget(self.remote_save_mode_combo)
 
@@ -496,8 +482,10 @@ class IOWidget(QWidget):
         remote_group_layout.addLayout(remote_options_row)
 
         self._remote_backup_controls = [
-            self.remote_backup_edit, remote_browse_btn,
-            self.remote_save_mode_combo, self.remote_depth_combo,
+            self.remote_backup_edit,
+            remote_browse_btn,
+            self.remote_save_mode_combo,
+            self.remote_depth_combo,
         ]
 
         def _on_remote_enabled(checked: bool):
@@ -537,7 +525,7 @@ class IOWidget(QWidget):
         if nc_path:
             parts = Path(nc_path).parent.parts[1:]
             for i, _ in enumerate(parts):
-                subfolder = "/".join(parts[len(parts) - i - 1:])
+                subfolder = "/".join(parts[len(parts) - i - 1 :])
                 combo.addItem(subfolder)
         saved_depth = self.app_state.remote_path_depth
         combo.setCurrentIndex(min(saved_depth, combo.count() - 1))
@@ -553,10 +541,10 @@ class IOWidget(QWidget):
         if self.app_state.trials_sel is None:
             return
         if mode == "single_trial":
-            self.app_state.set_trial_meta_attr(self.app_state.trials_sel, 'human_verified', 1)
+            self.app_state.set_trial_meta_attr(self.app_state.trials_sel, "human_verified", 1)
         elif mode == "all_trials":
             for trial in self.app_state.trials:
-                self.app_state.set_trial_meta_attr(trial, 'human_verified', 1)
+                self.app_state.set_trial_meta_attr(trial, "human_verified", 1)
 
         self._update_human_verified_status()
         self.app_state.changes_saved = False
@@ -577,15 +565,12 @@ class IOWidget(QWidget):
             return
 
         trial_meta = self.app_state.get_trial_meta(self.app_state.trials_sel)
-        if trial_meta.get('human_verified', 0):
+        if trial_meta.get("human_verified", 0):
             self.human_verify_trial_btn.setStyleSheet(verified_style)
         else:
             self.human_verify_trial_btn.setStyleSheet(default_style)
 
-        all_verified = all(
-            self.app_state.get_trial_meta(t).get('human_verified', 0)
-            for t in self.app_state.trials
-        )
+        all_verified = all(self.app_state.get_trial_meta(t).get("human_verified", 0) for t in self.app_state.trials)
         if all_verified and self.app_state.trials:
             self.human_verify_all_trials_btn.setStyleSheet(verified_style)
         else:
@@ -641,10 +626,7 @@ class IOWidget(QWidget):
         trial_corrected = self.app_state.get_trial_meta(self.app_state.trials_sel).get("offsets_corrected", 0)
         self.correct_offsets_trial_btn.setStyleSheet(applied_style if trial_corrected else default_style)
 
-        all_corrected = all(
-            self.app_state.get_trial_meta(t).get("offsets_corrected", 0)
-            for t in self.app_state.trials
-        )
+        all_corrected = all(self.app_state.get_trial_meta(t).get("offsets_corrected", 0) for t in self.app_state.trials)
         self.correct_offsets_all_trials_btn.setStyleSheet(applied_style if all_corrected else default_style)
 
     def _apply_purge_small_labels(self, mode: str):
@@ -663,24 +645,23 @@ class IOWidget(QWidget):
             return out.reset_index(drop=True), before - len(out)
 
         counter = 0
-        
+
         if mode == "single_trial":
             trial = self.app_state.trials_sel
             df, counter = purge(self.app_state.get_trial_intervals(trial))
             self.app_state.set_trial_intervals(trial, df)
             self.app_state.label_intervals = df
             self.app_state.set_trial_meta_attr(trial, "small_labels_purged", 1)
-            
+
         elif mode == "all_trials":
             for trial in self.app_state.trials:
                 df, count = purge(self.app_state.get_trial_intervals(trial))
                 counter += count
                 self.app_state.set_trial_intervals(trial, df)
                 self.app_state.set_trial_meta_attr(trial, "small_labels_purged", 1)
-                
+
             self.app_state.label_intervals = self.app_state.get_trial_intervals(self.app_state.trials_sel)
-        
-            
+
         notify(f"Purged {counter} label(s) shorter than {min_duration:.3f} s.")
 
         self._update_purge_small_labels_status()
@@ -704,10 +685,7 @@ class IOWidget(QWidget):
         trial_purged = self.app_state.get_trial_meta(self.app_state.trials_sel).get("small_labels_purged", 0)
         self.purge_trial_btn.setStyleSheet(applied_style if trial_purged else default_style)
 
-        all_purged = all(
-            self.app_state.get_trial_meta(t).get("small_labels_purged", 0)
-            for t in self.app_state.trials
-        )
+        all_purged = all(self.app_state.get_trial_meta(t).get("small_labels_purged", 0) for t in self.app_state.trials)
         self.purge_all_trials_btn.setStyleSheet(applied_style if all_purged else default_style)
 
     def _create_mapping_row(self, target_layout):
@@ -811,6 +789,7 @@ class IOWidget(QWidget):
         self.labels_format_combo.addItem("pynapple (.nwb)")
         if self.app_state.audio_folder:
             from ethograph.labels.converters import CROWSETTA_SEQ_FORMATS
+
             for fmt in CROWSETTA_SEQ_FORMATS:
                 self.labels_format_combo.addItem(fmt)
         self.labels_format_combo.setToolTip("Label file format to import")
@@ -834,7 +813,11 @@ class IOWidget(QWidget):
         self.labels_output_edit.setReadOnly(True)
         self.labels_output_edit.setPlaceholderText("Converted .tsv output will appear here")
         self._labels_output_label = QLabel("Labels output:")
-        self._labels_group_layout.insertRow(self._labels_row_index + 1, self._labels_output_label, self.labels_output_edit)
+        self._labels_group_layout.insertRow(
+            self._labels_row_index + 1,
+            self._labels_output_label,
+            self.labels_output_edit,
+        )
 
         # Initial state: .tsv selected → output row disabled
         self._set_labels_output_enabled(False)
@@ -939,7 +922,10 @@ class IOWidget(QWidget):
 
         try:
             name_to_id, new_mapping_path, warning = resolve_crowsetta_mapping(
-                file_path, format_name, mapping_path, configs_dir,
+                file_path,
+                format_name,
+                mapping_path,
+                configs_dir,
             )
         except (OSError, ValueError, KeyError) as e:
             logger.exception("Crowsetta mapping resolution failed")
@@ -961,11 +947,19 @@ class IOWidget(QWidget):
 
         try:
             intervals_df = crowsetta_to_intervals(
-                file_path, format_name, name_to_id, individual,
+                file_path,
+                format_name,
+                name_to_id,
+                individual,
             )
         except (OSError, ValueError, KeyError) as e:
             logger.exception("Failed to parse %s file", format_name)
-            notify_dialog(f"Failed to parse {format_name} file:\n{e}", "error", "Import error", self)
+            notify_dialog(
+                f"Failed to parse {format_name} file:\n{e}",
+                "error",
+                "Import error",
+                self,
+            )
             return
 
         if intervals_df.empty:
@@ -989,7 +983,10 @@ class IOWidget(QWidget):
             nc_parent = str(Path(self.app_state.nc_file_path).parent)
 
         result = QFileDialog.getOpenFileName(
-            self, caption=f"Open {fmt} file for labels", dir=nc_parent, filter=ext_filter,
+            self,
+            caption=f"Open {fmt} file for labels",
+            dir=nc_parent,
+            filter=ext_filter,
         )
         file_path = result[0] if result and result[0] else ""
         if not file_path:
@@ -1017,7 +1014,10 @@ class IOWidget(QWidget):
             notify_dialog("No IntervalSets found (excluding 'trials').", "info", "No labels", self)
             return
 
-        from ethograph.labels.converters import build_mapping_from_labels, write_mapping_file
+        from ethograph.labels.converters import (
+            build_mapping_from_labels,
+            write_mapping_file,
+        )
         from ethograph.labels.intervals import _rows_to_df
 
         label_names = sorted(intervalsets.keys())
@@ -1044,12 +1044,14 @@ class IOWidget(QWidget):
             starts = np.asarray(iset.start)
             ends = np.asarray(iset.end)
             for s, e in zip(starts, ends):
-                rows.append({
-                    "onset_s": float(s),
-                    "offset_s": float(e),
-                    "labels": label_id,
-                    "individual": individual,
-                })
+                rows.append(
+                    {
+                        "onset_s": float(s),
+                        "offset_s": float(e),
+                        "labels": label_id,
+                        "individual": individual,
+                    }
+                )
 
         intervals_df = _rows_to_df(rows)
         if intervals_df.empty:
@@ -1060,11 +1062,13 @@ class IOWidget(QWidget):
 
     def _apply_imported_intervals(self, intervals_df):
         """Common post-import: save converted TSV, load into app state, refresh UI."""
-        from ethograph.labels.tsv_store import save_labels_tsv, TRIAL_META_DEFAULTS
+        from ethograph.labels.tsv_store import (
+            save_labels_tsv,
+        )
 
         # Set the complete imported dataframe as the active labels
         self.app_state._all_labels_df = intervals_df
-        
+
         trial = getattr(self.app_state, "trials_sel", None)
         if trial is not None:
             self.app_state.label_intervals = self.app_state.get_trial_intervals(trial)
@@ -1144,7 +1148,10 @@ class IOWidget(QWidget):
         if not epoch_mapping or not isinstance(epoch_mapping, dict):
             return
 
-        from ethograph.labels.intervals import EVENT_TYPE_STATE, save_label_mapping
+        from ethograph.labels.intervals import (
+            EVENT_TYPE_STATE,
+            save_label_mapping,
+        )
 
         data_dir = Path(self.app_state.nc_file_path).parent if self.app_state.nc_file_path else None
         mapping_path = default_config_dir(data_dir) / "mapping_nwb_epochs.txt"
@@ -1162,9 +1169,16 @@ class IOWidget(QWidget):
                 },
             )
             n_labels = len(epoch_mapping) - 1  # exclude background
-            logger.info("NWB auto-created mapping with %d epoch labels: %s", n_labels, mapping_path)
+            logger.info(
+                "NWB auto-created mapping with %d epoch labels: %s",
+                n_labels,
+                mapping_path,
+            )
         else:
-            logger.info("Reusing existing NWB epoch mapping (preserving user edits): %s", mapping_path)
+            logger.info(
+                "Reusing existing NWB epoch mapping (preserving user edits): %s",
+                mapping_path,
+            )
 
         self.mapping_file_path_edit.setText(str(mapping_path))
         if self.labels_widget:
@@ -1174,8 +1188,7 @@ class IOWidget(QWidget):
         """Add crowsetta formats to labels combo if not already present."""
         from ethograph.labels.converters import CROWSETTA_SEQ_FORMATS
 
-        existing = [self.labels_format_combo.itemText(i)
-                     for i in range(self.labels_format_combo.count())]
+        existing = [self.labels_format_combo.itemText(i) for i in range(self.labels_format_combo.count())]
         for fmt in CROWSETTA_SEQ_FORMATS:
             if fmt not in existing:
                 self.labels_format_combo.addItem(fmt)
@@ -1248,8 +1261,6 @@ class IOWidget(QWidget):
 
             self._on_load_clicked()
 
-
-
     def _on_load_clicked(self):
         from .dialog_busy_progress import BusyProgressDialog
 
@@ -1263,10 +1274,18 @@ class IOWidget(QWidget):
         dialog.execute_blocking(self.data_widget.on_load_clicked)
 
     def _clear_all_line_edits(self):
-        for attr in ('nc_file_path_edit', 'nwb_file_path_edit', 'metadata_path_edit',
-                  'video_folder_edit', 'audio_folder_edit', 'pose_folder_edit',
-                  'ephys_path_edit', 'neurons_path_edit', 'label_file_path_edit',
-                  'pred_file_path_edit'):
+        for attr in (
+            "nc_file_path_edit",
+            "nwb_file_path_edit",
+            "metadata_path_edit",
+            "video_folder_edit",
+            "audio_folder_edit",
+            "pose_folder_edit",
+            "ephys_path_edit",
+            "neurons_path_edit",
+            "label_file_path_edit",
+            "pred_file_path_edit",
+        ):
             widget = getattr(self, attr, None)
             if widget:
                 widget.clear()
@@ -1287,9 +1306,7 @@ class IOWidget(QWidget):
         line_edit = QLineEdit()
         line_edit.setObjectName(f"{object_name}_edit")
         if object_name == "nc_file_path":
-            line_edit.setPlaceholderText(
-                "Path to .nc / .nwb / .npz file or pynapple folder"
-            )
+            line_edit.setPlaceholderText("Path to .nc / .nwb / .npz file or pynapple folder")
 
         browse_button = QPushButton("Browse")
         browse_button.setObjectName(f"{object_name}_browse_button")
@@ -1298,9 +1315,7 @@ class IOWidget(QWidget):
         if object_name == "nc_file_path":
             self.import_labels_checkbox = QCheckBox("Import labels")
             self.import_labels_checkbox.setObjectName("import_labels_checkbox")
-            self.import_labels_checkbox.setToolTip(
-                "Load labels from {name}_labels.tsv alongside the .nc file.\n"
-            )
+            self.import_labels_checkbox.setToolTip("Load labels from {name}_labels.tsv alongside the .nc file.\n")
             self.import_labels_checkbox.stateChanged.connect(self._on_import_labels_checked)
             self.import_labels_checkbox.setChecked(bool(self.app_state.import_labels_nc_data))
 
@@ -1349,6 +1364,7 @@ class IOWidget(QWidget):
         self._update_human_verified_status()
         self._update_correct_offsets_status()
         self._update_purge_small_labels_status()
+
     # Device controls (populated after load)
     # ------------------------------------------------------------------
 
@@ -1398,7 +1414,7 @@ class IOWidget(QWidget):
         return combo
 
     def _on_combo_changed(self):
-        if hasattr(self.data_widget, '_on_combo_changed'):
+        if hasattr(self.data_widget, "_on_combo_changed"):
             self.data_widget._on_combo_changed()
 
     def set_controls_enabled(self, enabled):
@@ -1530,12 +1546,14 @@ class IOWidget(QWidget):
         else:
             trial_ids = [1, 2, 3]
 
-        df = pd.DataFrame({
-            "trial": trial_ids,
-            "start_time": [""] * len(trial_ids),
-            "stop_time": [""] * len(trial_ids),
-            "condition": [""] * len(trial_ids),
-        })
+        df = pd.DataFrame(
+            {
+                "trial": trial_ids,
+                "start_time": [""] * len(trial_ids),
+                "stop_time": [""] * len(trial_ids),
+                "condition": [""] * len(trial_ids),
+            }
+        )
 
         path = Path(path)
         if path.suffix.lower() in (".csv",):
@@ -1547,7 +1565,9 @@ class IOWidget(QWidget):
         self.app_state.metadata_path = str(path)
         logger.info("Saved metadata template to %s", path)
 
-        import subprocess, sys
+        import subprocess
+        import sys
+
         try:
             if sys.platform == "win32":
                 os.startfile(str(path))
@@ -1635,6 +1655,7 @@ class IOWidget(QWidget):
     def _maybe_downsample_videos(self, folder: str) -> str:
         """Offer to downsample high-res videos. Returns the folder to use."""
         from .dialog_video_downsample import offer_downsample
+
         return offer_downsample(folder, parent=self)
 
     def on_browse_clicked(self, browse_type="file", media_type=None):
@@ -1706,7 +1727,7 @@ class IOWidget(QWidget):
             elif media_type == "audio":
                 self.audio_folder_edit.setText(folder_path)
                 self.app_state.audio_folder = folder_path
-                if hasattr(self.data_widget, 'clear_audio_checkbox'):
+                if hasattr(self.data_widget, "clear_audio_checkbox"):
                     self.data_widget.clear_audio_checkbox.setChecked(False)
             elif media_type == "pose":
                 self.pose_folder_edit.setText(folder_path)
@@ -1735,7 +1756,9 @@ class IOWidget(QWidget):
 
         def _on_kilosort():
             folder = QFileDialog.getExistingDirectory(
-                dialog, "Select Kilosort output folder", start_dir,
+                dialog,
+                "Select Kilosort output folder",
+                start_dir,
             )
             if folder:
                 chosen_path[0] = folder
@@ -1743,7 +1766,9 @@ class IOWidget(QWidget):
 
         def _on_pynapple():
             path, _ = QFileDialog.getOpenFileName(
-                dialog, "Select Pynapple file", start_dir,
+                dialog,
+                "Select Pynapple file",
+                start_dir,
                 "Pynapple files (*.npz *.nwb);;All files (*)",
             )
             if path:
@@ -1786,7 +1811,9 @@ class IOWidget(QWidget):
         self.import_predictions_btn.clicked.connect(self.labels_widget._import_predictions_from_folder)
         self.pred_confidence_pdf_btn.clicked.connect(self.labels_widget._plot_confidence_pdf)
         self.pred_confidence_threshold_spin.valueChanged.connect(self.labels_widget._on_confidence_threshold_changed)
-        self.pred_segment_confidence_threshold_spin.valueChanged.connect(self.labels_widget._on_confidence_threshold_changed)
+        self.pred_segment_confidence_threshold_spin.valueChanged.connect(
+            self.labels_widget._on_confidence_threshold_changed
+        )
 
     def wire_ephys_signals(self, ephys_widget):
         """Connect neurons UI to EphysWidget methods."""

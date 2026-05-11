@@ -236,13 +236,14 @@ class PlotSettingsWidget(QWidget):
             values[attr] = val
             setattr(self.app_state, attr, val)
 
-        user_set_yrange = (self._parse_float(self.ymin_edit.text()) is not None or
-                           self._parse_float(self.ymax_edit.text()) is not None)
+        user_set_yrange = (
+            self._parse_float(self.ymin_edit.text()) is not None or self._parse_float(self.ymax_edit.text()) is not None
+        )
 
         if not self.plot_container.is_spectrogram() and not self.autoscale_checkbox.isChecked():
             if user_set_yrange:
                 current_plot = self.plot_container.get_current_plot()
-                if hasattr(current_plot, 'vb'):
+                if hasattr(current_plot, "vb"):
                     current_plot.vb.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
             self.plot_container.apply_y_range(values["ymin"], values["ymax"])
 
@@ -251,15 +252,19 @@ class PlotSettingsWidget(QWidget):
 
         new_xmin, new_xmax = self._calculate_new_window_size()
         if new_xmin is not None and new_xmax is not None:
-            self.plot_container.set_x_range(mode='preserve', curr_xlim=(new_xmin, new_xmax))
+            self.plot_container.set_x_range(mode="preserve", curr_xlim=(new_xmin, new_xmax))
 
     def _calculate_new_window_size(self):
         if not self.plot_container:
             return None, None
-        if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
+        if not hasattr(self.app_state, "ds") or self.app_state.ds is None:
             return None, None
-        video = getattr(self.app_state, 'video', None)
-        current_time = video.frame_to_time(self.app_state.current_frame) if video else self.app_state.current_frame / self.app_state.video_fps
+        video = getattr(self.app_state, "video", None)
+        current_time = (
+            video.frame_to_time(self.app_state.current_frame)
+            if video
+            else self.app_state.current_frame / self.app_state.video_fps
+        )
         before = self.app_state.before_s
         after = self.app_state.after_s
         half_window = (before + after) / 2
@@ -301,9 +306,7 @@ class PlotSettingsWidget(QWidget):
         self.space_percentile_spin.setRange(50.0, 100.0)
         self.space_percentile_spin.setSingleStep(0.5)
         self.space_percentile_spin.setDecimals(1)
-        self.space_percentile_spin.setToolTip(
-            "Percentile for per-axis range limits (100 = show all data)"
-        )
+        self.space_percentile_spin.setToolTip("Percentile for per-axis range limits (100 = show all data)")
         self.space_percentile_spin.valueChanged.connect(self._on_space_percentile_changed)
         group_layout.addWidget(self.space_percentile_spin, row, 1)
 
@@ -312,54 +315,40 @@ class PlotSettingsWidget(QWidget):
         group_layout.addWidget(self.space_marker_checkbox, row, 2)
 
         self.space_limit_window_checkbox = QCheckBox("Limit to window")
-        self.space_limit_window_checkbox.setToolTip(
-            "Only draw trajectory for the time range visible in the line plot"
-        )
+        self.space_limit_window_checkbox.setToolTip("Only draw trajectory for the time range visible in the line plot")
         self.space_limit_window_checkbox.toggled.connect(self._on_space_limit_window_toggled)
         group_layout.addWidget(self.space_limit_window_checkbox, row, 3)
 
         row += 1
         self.space_lock_axes_checkbox = QCheckBox("Lock axes (Space)")
-        self.space_lock_axes_checkbox.setToolTip(
-            "Keep the current axis ranges when switching trials"
-        )
+        self.space_lock_axes_checkbox.setToolTip("Keep the current axis ranges when switching trials")
         self.space_lock_axes_checkbox.toggled.connect(self._on_space_lock_axes_toggled)
         group_layout.addWidget(self.space_lock_axes_checkbox, row, 0, 1, 2)
 
         self.space_hide_zeros_checkbox = QCheckBox("Hide zeros")
-        self.space_hide_zeros_checkbox.setToolTip(
-            "Hide points where all dimensions are exactly zero"
-        )
+        self.space_hide_zeros_checkbox.setToolTip("Hide points where all dimensions are exactly zero")
         self.space_hide_zeros_checkbox.toggled.connect(self._on_space_hide_zeros_toggled)
         group_layout.addWidget(self.space_hide_zeros_checkbox, row, 2, 1, 2)
 
         row += 1
         self.space_show_references_checkbox = QCheckBox("Show space.yaml references")
-        self.space_show_references_checkbox.setToolTip(
-            "Draw arena/reference geometry loaded from space.yaml"
-        )
+        self.space_show_references_checkbox.setToolTip("Draw arena/reference geometry loaded from space.yaml")
         self.space_show_references_checkbox.toggled.connect(self._on_space_show_references_toggled)
         group_layout.addWidget(self.space_show_references_checkbox, row, 0, 1, 4)
 
         main_layout.addWidget(self.spaceplot_panel)
 
     def _restore_spaceplot_defaults(self):
-        self.space_percentile_spin.setValue(
-            self.app_state.get_with_default("space_percentile_xyzlim"))
-        self.space_marker_checkbox.setChecked(
-            self.app_state.get_with_default("space_marker_visible"))
+        self.space_percentile_spin.setValue(self.app_state.get_with_default("space_percentile_xyzlim"))
+        self.space_marker_checkbox.setChecked(self.app_state.get_with_default("space_marker_visible"))
 
-        self.space_limit_window_checkbox.setChecked(
-            self.app_state.get_with_default("space_limit_to_window"))
+        self.space_limit_window_checkbox.setChecked(self.app_state.get_with_default("space_limit_to_window"))
 
-        self.space_lock_axes_checkbox.setChecked(
-            self.app_state.get_with_default("space_lock_axes"))
+        self.space_lock_axes_checkbox.setChecked(self.app_state.get_with_default("space_lock_axes"))
 
-        self.space_hide_zeros_checkbox.setChecked(
-            self.app_state.get_with_default("space_hide_zeros"))
+        self.space_hide_zeros_checkbox.setChecked(self.app_state.get_with_default("space_hide_zeros"))
 
-        self.space_show_references_checkbox.setChecked(
-            self.app_state.get_with_default("space_show_references"))
+        self.space_show_references_checkbox.setChecked(self.app_state.get_with_default("space_show_references"))
 
     def _on_space_percentile_changed(self, value: float):
         self.app_state.space_percentile_xyzlim = value
@@ -435,12 +424,12 @@ class PlotSettingsWidget(QWidget):
 
         self.colormap_combo = QComboBox()
         self.colormap_display = {
-            'CET-R4': 'jet',
-            'CET-L8': 'blue-pink-yellow',
-            'CET-L16': 'black-blue-green-white',
-            'CET-CBL2': 'black-blue-yellow-white',
-            'CET-L1': 'black-white',
-            'CET-L3': 'inferno',
+            "CET-R4": "jet",
+            "CET-L8": "blue-pink-yellow",
+            "CET-L16": "black-blue-green-white",
+            "CET-CBL2": "black-blue-yellow-white",
+            "CET-L1": "black-white",
+            "CET-L3": "inferno",
         }
         self.colormaps = list(self.colormap_display.keys())
         self.colormap_combo.addItems(self.colormap_display.values())
@@ -512,8 +501,10 @@ class PlotSettingsWidget(QWidget):
 
         default_vmin = AppStateSpec.get_default("vmin_db")
         default_vmax = AppStateSpec.get_default("vmax_db")
-        if (getattr(self.app_state, "vmin_db", default_vmin) != default_vmin or
-                getattr(self.app_state, "vmax_db", default_vmax) != default_vmax):
+        if (
+            getattr(self.app_state, "vmin_db", default_vmin) != default_vmin
+            or getattr(self.app_state, "vmax_db", default_vmax) != default_vmax
+        ):
             self._needs_auto_levels = False
 
         for attr, edit in [
@@ -531,12 +522,12 @@ class PlotSettingsWidget(QWidget):
         if colormap in self.colormap_display:
             self.colormap_combo.setCurrentText(self.colormap_display[colormap])
 
-        levels_mode = getattr(self.app_state, 'spec_levels_mode', None)
+        levels_mode = getattr(self.app_state, "spec_levels_mode", None)
         if levels_mode is None:
-            levels_mode = self.app_state.get_with_default('spec_levels_mode')
+            levels_mode = self.app_state.get_with_default("spec_levels_mode")
             self.app_state.spec_levels_mode = levels_mode
-        self.levels_mode_combo.setCurrentIndex(0 if levels_mode == 'auto' else 1)
-        if levels_mode == 'remember':
+        self.levels_mode_combo.setCurrentIndex(0 if levels_mode == "auto" else 1)
+        if levels_mode == "remember":
             self._needs_auto_levels = False
 
     def set_plot_container(self, plot_container):
@@ -553,10 +544,10 @@ class PlotSettingsWidget(QWidget):
         self.setEnabled(True)
 
     def _is_auto_levels_mode(self) -> bool:
-        return getattr(self.app_state, 'spec_levels_mode', 'auto') == 'auto'
+        return getattr(self.app_state, "spec_levels_mode", "auto") == "auto"
 
     def _on_plot_changed(self, plot_type: str):
-        if plot_type == 'spectrogram' and self._needs_auto_levels:
+        if plot_type == "spectrogram" and self._needs_auto_levels:
             QTimer.singleShot(500, self._try_initial_auto_levels)
 
     def _try_initial_auto_levels(self):
@@ -565,7 +556,7 @@ class PlotSettingsWidget(QWidget):
         if not self.plot_container or not self.plot_container.is_spectrogram():
             return
         current_plot = self.plot_container.get_current_plot()
-        if not hasattr(current_plot, 'buffer') or current_plot.buffer.Sxx_db is None:
+        if not hasattr(current_plot, "buffer") or current_plot.buffer.Sxx_db is None:
             return
         self._needs_auto_levels = False
         self._auto_levels()
@@ -575,7 +566,7 @@ class PlotSettingsWidget(QWidget):
             self._auto_levels()
 
     def _on_overlay_shown(self):
-        colormap_name = self.app_state.get_with_default('spec_colormap')
+        colormap_name = self.app_state.get_with_default("spec_colormap")
         self.plot_container.apply_overlay_colormap(colormap_name)
         if self._is_auto_levels_mode():
             QTimer.singleShot(200, self._auto_levels)
@@ -597,7 +588,7 @@ class PlotSettingsWidget(QWidget):
         if self.plot_container:
             if self.plot_container.is_spectrogram():
                 current_plot = self.plot_container.get_current_plot()
-                if hasattr(current_plot, 'update_colormap'):
+                if hasattr(current_plot, "update_colormap"):
                     current_plot.update_colormap(colormap_name)
             if self.plot_container.has_spectrogram_overlay():
                 self.plot_container.apply_overlay_colormap(colormap_name)
@@ -607,14 +598,13 @@ class PlotSettingsWidget(QWidget):
             return
 
         spec_plot = self.plot_container.spectrogram_plot
-        is_spec = (self.plot_container.is_spectrogram() or
-                   (hasattr(spec_plot, 'isVisible') and spec_plot.isVisible()))
+        is_spec = self.plot_container.is_spectrogram() or (hasattr(spec_plot, "isVisible") and spec_plot.isVisible())
         has_overlay = self.plot_container.has_spectrogram_overlay()
 
         if not is_spec and not has_overlay:
             return
 
-        if not hasattr(spec_plot, 'buffer') or spec_plot.buffer.Sxx_db is None:
+        if not hasattr(spec_plot, "buffer") or spec_plot.buffer.Sxx_db is None:
             return
 
         Sxx_db = spec_plot.buffer.Sxx_db
@@ -623,7 +613,7 @@ class PlotSettingsWidget(QWidget):
 
         nf = max(1, Sxx_db.shape[0] // 16)
 
-        with np.errstate(all='ignore'):
+        with np.errstate(all="ignore"):
             zmin = np.percentile(Sxx_db[-nf:, :], 95)
             zmax = np.max(Sxx_db)
 
@@ -646,7 +636,7 @@ class PlotSettingsWidget(QWidget):
         self.app_state.vmin_db = zmin
         self.app_state.vmax_db = zmax
 
-        if is_spec and hasattr(spec_plot, 'update_levels'):
+        if is_spec and hasattr(spec_plot, "update_levels"):
             spec_plot.update_levels(zmin, zmax)
 
         if has_overlay:
@@ -663,9 +653,10 @@ class PlotSettingsWidget(QWidget):
         self.app_state.vmax_db = vmax
         if self.plot_container:
             spec_plot = self.plot_container.spectrogram_plot
-            spec_visible = (self.plot_container.is_spectrogram() or
-                            (hasattr(spec_plot, 'isVisible') and spec_plot.isVisible()))
-            if spec_visible and hasattr(spec_plot, 'update_levels'):
+            spec_visible = self.plot_container.is_spectrogram() or (
+                hasattr(spec_plot, "isVisible") and spec_plot.isVisible()
+            )
+            if spec_visible and hasattr(spec_plot, "update_levels"):
                 spec_plot.update_levels(vmin, vmax)
             if self.plot_container.has_spectrogram_overlay():
                 self.plot_container.apply_overlay_levels(vmin, vmax)
@@ -714,24 +705,25 @@ class PlotSettingsWidget(QWidget):
             setattr(self.app_state, attr, val)
 
         spec_plot = self.plot_container.spectrogram_plot
-        spec_visible = (self.plot_container.is_spectrogram() or
-                        (hasattr(spec_plot, 'isVisible') and spec_plot.isVisible()))
+        spec_visible = self.plot_container.is_spectrogram() or (
+            hasattr(spec_plot, "isVisible") and spec_plot.isVisible()
+        )
 
         if spec_visible:
-            if hasattr(spec_plot, 'update_buffer_settings'):
+            if hasattr(spec_plot, "update_buffer_settings"):
                 spec_plot.update_buffer_settings()
 
-            if hasattr(spec_plot, 'update_levels'):
+            if hasattr(spec_plot, "update_levels"):
                 spec_plot.update_levels(values["vmin_db"], values["vmax_db"])
 
             spec_plot.apply_y_range(values["spec_ymin"], values["spec_ymax"])
 
-            if hasattr(spec_plot, 'update_plot_content'):
+            if hasattr(spec_plot, "update_plot_content"):
                 spec_plot.update_plot_content()
 
         if self.plot_container.has_spectrogram_overlay():
             self.plot_container.apply_overlay_levels(values["vmin_db"], values["vmax_db"])
-            if hasattr(spec_plot, 'buffer') and hasattr(spec_plot.buffer, '_clear_buffer'):
+            if hasattr(spec_plot, "buffer") and hasattr(spec_plot.buffer, "_clear_buffer"):
                 spec_plot.buffer._clear_buffer()
             self.plot_container.update_audio_overlay()
 
@@ -779,9 +771,7 @@ class PlotSettingsWidget(QWidget):
         if cmap in HEATMAP_COLORMAPS:
             self.heatmap_colormap_combo.setCurrentText(cmap)
 
-        self.heatmap_percentile_spin.setValue(
-            self.app_state.get_with_default("heatmap_exclusion_percentile")
-        )
+        self.heatmap_percentile_spin.setValue(self.app_state.get_with_default("heatmap_exclusion_percentile"))
 
         norm_key = self.app_state.get_with_default("heatmap_normalization")
         display = _NORM_KEY_TO_DISPLAY.get(norm_key, "Per-channel")

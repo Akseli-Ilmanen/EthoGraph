@@ -19,7 +19,7 @@ import numpy as np
 import xarray as xr
 
 if TYPE_CHECKING:
-    from ethograph.io.trialtree import TrialTree
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +131,10 @@ def compute_trial_video_bounds(
     """
     sio = nwb_alignment
     video_path = sio.resolve_media_path(
-        trial_id, "video", device=cameras_sel, fallback_folder=video_folder,
+        trial_id,
+        "video",
+        device=cameras_sel,
+        fallback_folder=video_folder,
     )
     video_offset = sio.stream_offset_for_trial(trial_id, "video", cameras_sel) if video_path else 0.0
 
@@ -154,9 +157,6 @@ def compute_trial_video_bounds(
     )
 
 
-
-
-
 def _resolve_trial_end(
     video_path: str | None,
     video_offset: float,
@@ -170,6 +170,7 @@ def _resolve_trial_end(
     if video_path:
         try:
             from napari_pyav._reader import FastVideoReader
+
             reader = FastVideoReader(video_path, read_format="rgb24")
             n_frames = reader.shape[0]
             fps = float(reader.stream.guessed_rate)
@@ -306,10 +307,7 @@ class SourceCollection:
         # Fallback: find closest trial
         if not self._trial_intervals:
             return None
-        dists = [
-            min(abs(s - t), abs(e - t))
-            for s, e in self._trial_intervals
-        ]
+        dists = [min(abs(s - t), abs(e - t)) for s, e in self._trial_intervals]
         return int(np.argmin(dists))
 
     # -- Range queries (Neurosift-inspired) ---------------------------------
@@ -349,7 +347,6 @@ class SourceCollection:
             ends = [e for _, e in self._trial_intervals]
             return TimeRange(min(starts), max(ends))
         return self.union_range
-
 
 
 # ---------------------------------------------------------------------------
@@ -508,5 +505,6 @@ def restrict_xarray(
 def restrict_pynapple(obj, time_range: TimeRange):
     """Restrict a pynapple object to a time range."""
     import pynapple as nap
+
     ep = nap.IntervalSet(start=time_range.start_s, end=time_range.end_s)
     return obj.restrict(ep)

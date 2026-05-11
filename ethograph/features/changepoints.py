@@ -1,18 +1,27 @@
 from typing import List, Literal
 
 import numpy as np
-import xarray as xr
 import pandas as pd
+import xarray as xr
 from scipy.signal import find_peaks
 
 from ethograph.features.preprocessing import z_normalize
-from ethograph.labels.intervals import purge_short_intervals, snap_boundaries, stitch_intervals
-from ethograph.labels.ml import find_blocks, fix_endings, purge_small_blocks, stitch_gaps
-
+from ethograph.labels.intervals import (
+    purge_short_intervals,
+    snap_boundaries,
+    stitch_intervals,
+)
+from ethograph.labels.ml import (
+    find_blocks,
+    fix_endings,
+    purge_small_blocks,
+    stitch_gaps,
+)
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _nan_boundary_indices(arr: np.ndarray) -> np.ndarray:
     """Return indices where NaN transitions occur (NaN->valid and valid->NaN)."""
@@ -44,6 +53,7 @@ def _to_binary(indices: np.ndarray, length: int) -> np.ndarray:
 # NaN boundary handling (refactored to use helpers)
 # ---------------------------------------------------------------------------
 
+
 def add_NaN_boundaries(arr, changepoints):
     """Merge NaN-transition boundaries with other changepoints -> binary mask."""
     arr = np.asarray(arr)
@@ -58,6 +68,7 @@ def add_NaN_boundaries(arr, changepoints):
 # Binary detection (dense binary masks for apply_ufunc / dataset storage)
 # ---------------------------------------------------------------------------
 
+
 def find_peaks_binary(x, **kwargs):
     """scipy.signal.find_peaks + NaN boundaries -> binary mask."""
     peaks, _ = find_peaks(np.asarray(x), **kwargs)
@@ -69,8 +80,7 @@ def find_troughs_binary(x, **kwargs):
     troughs, _ = find_peaks(-np.asarray(x), **kwargs)
     return add_NaN_boundaries(x, troughs)
 
-         
-        
+
 def find_nearest_turning_points_binary(x, threshold=1, max_value=None, prominence=0.5, distance=2, **kwargs):
     """Convert a 1D signal into a binary mask marking boundaries of peak regions.
 
@@ -125,6 +135,7 @@ def find_nearest_turning_points_binary(x, threshold=1, max_value=None, prominenc
 # Changepoint time extraction
 # ---------------------------------------------------------------------------
 
+
 def extract_cp_times(ds: xr.Dataset, time: np.ndarray, **cp_kwargs) -> np.ndarray:
     """Extract merged changepoint times from dataset.
 
@@ -135,7 +146,6 @@ def extract_cp_times(ds: xr.Dataset, time: np.ndarray, **cp_kwargs) -> np.ndarra
     cp_ds = filtered.filter_by_attrs(type="changepoints")
     if len(cp_ds.data_vars) == 0:
         return np.array([], dtype=np.float64)
-
 
     # TODO: Do I want merging of changepoints
     try:
@@ -172,9 +182,7 @@ def snap_to_nearest_changepoint_time(
         cp_ds = filtered.filter_by_attrs(type="changepoints")
         cp_ds = cp_ds.filter_by_attrs(target_feature=feature_sel)
         if len(cp_ds.data_vars) > 0:
-            cp_indices = np.concatenate([
-                np.where(cp_ds[var].values)[0] for var in cp_ds.data_vars
-            ])
+            cp_indices = np.concatenate([np.where(cp_ds[var].values)[0] for var in cp_ds.data_vars])
             cp_indices = np.unique(cp_indices)
             valid = cp_indices[cp_indices < len(time)]
             if len(valid) > 0:
@@ -199,7 +207,6 @@ def snap_to_nearest_changepoint_time(
 
     nearest_idx = np.argmin(np.abs(cp_times - t_clicked))
     return float(cp_times[nearest_idx])
-
 
 
 def correct_changepoints(
@@ -256,6 +263,7 @@ def correct_changepoints_automatic(
 # Dense correction (legacy — kept for ML pipeline)
 # ---------------------------------------------------------------------------
 
+
 def correct_changepoints_dense(labels, ds, all_params):
     """Correct dense label arrays using changepoints (legacy ML pipeline).
 
@@ -285,7 +293,6 @@ def correct_changepoints_dense(labels, ds, all_params):
         Corrected integer label array of the same shape as ``labels``.
     """
     cp_kwargs = all_params["cp_kwargs"]
-    
 
     # FIX to work with min_label_length_
     min_label_length = all_params.get("min_label_length_s")
@@ -293,7 +300,7 @@ def correct_changepoints_dense(labels, ds, all_params):
     stitch_gap_len = all_params.get("stitch_gap_len_s")
     max_expansion = all_params["changepoint_params"]["max_expansion_s"]
     max_shrink = all_params["changepoint_params"]["max_shrink_s"]
-    
+
     min_label_length = int(min_label_length * all_params["fps"])
     stitch_gap_len = int(stitch_gap_len * all_params["fps"])
     max_expansion = int(max_expansion * all_params["fps"])
@@ -301,7 +308,6 @@ def correct_changepoints_dense(labels, ds, all_params):
     label_thresholds = {}
     for label, thresh in label_thresholds_s.items():
         label_thresholds[label] = int(thresh * all_params["fps"])
-    
 
     ds = ds.sel(**cp_kwargs)
     ds_merged, _ = merge_changepoints(ds)
@@ -349,9 +355,9 @@ def correct_changepoints_dense(labels, ds, all_params):
                 if corrected_labels[snap_end] != 0 and corrected_labels[snap_end] != label:
                     snap_end = snap_end - 1
 
-            corrected_labels[block_start:block_end+1] = 0
+            corrected_labels[block_start : block_end + 1] = 0
             if snap_start < snap_end:
-                corrected_labels[snap_start:snap_end+1] = label
+                corrected_labels[snap_start : snap_end + 1] = label
 
     corrected_labels = purge_small_blocks(corrected_labels, min_label_length)
     corrected_labels = fix_endings(corrected_labels, changepoints_binary)
@@ -362,6 +368,7 @@ def correct_changepoints_dense(labels, ds, all_params):
 # ---------------------------------------------------------------------------
 # Merge changepoints
 # ---------------------------------------------------------------------------
+
 
 def merge_changepoints(ds):
     """Merge all changepoint variables in a dataset into a single boolean mask.
@@ -396,14 +403,13 @@ def merge_changepoints(ds):
         target_feature.append(cp_ds[var].attrs["target_feature"])
 
     if np.unique(target_feature).size > 1:
-        raise ValueError(f"Not allowed to merge changepoints for different target features: {np.unique(target_feature)}")
+        raise ValueError(
+            f"Not allowed to merge changepoints for different target features: {np.unique(target_feature)}"
+        )
 
     dims = [dim for dim in cp_ds.dims if dim not in ["trials", "time"]]
 
-    ds["changepoints"] = (cp_ds
-                                .to_array()
-                                .any(dim=["variable"] + dims)
-                                .astype(float))
+    ds["changepoints"] = cp_ds.to_array().any(dim=["variable"] + dims).astype(float)
     ds["changepoints"].attrs["type"] = "changepoints"
 
     ds = ds.drop_vars(list(cp_ds.data_vars))
@@ -414,6 +420,7 @@ def merge_changepoints(ds):
 # ---------------------------------------------------------------------------
 # ML feature engineering
 # ---------------------------------------------------------------------------
+
 
 def more_changepoint_features(
     changepoint_binary: np.ndarray,

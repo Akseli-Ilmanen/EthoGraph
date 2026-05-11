@@ -31,7 +31,6 @@ TUTORIALS = [
 
 
 class HelpWidget(QWidget):
-
     def __init__(self, app_state, parent=None):
         super().__init__(parent=parent)
         self.app_state = app_state
@@ -42,11 +41,15 @@ class HelpWidget(QWidget):
         help_layout.addWidget(self.docs_button)
 
         self.shortcuts_button = QPushButton("⌨ Shortcuts")
-        self.shortcuts_button.clicked.connect(lambda: webbrowser.open("https://Akseli-Ilmanen.github.io/ethograph/user_guide/shortcuts.html"))
+        self.shortcuts_button.clicked.connect(
+            lambda: webbrowser.open("https://Akseli-Ilmanen.github.io/ethograph/user_guide/shortcuts.html")
+        )
         help_layout.addWidget(self.shortcuts_button)
 
         self.github_button = QPushButton("🔗 GitHub Issues")
-        self.github_button.clicked.connect(lambda: webbrowser.open("https://github.com/akseli-ilmanen/ethograph/issues"))
+        self.github_button.clicked.connect(
+            lambda: webbrowser.open("https://github.com/akseli-ilmanen/ethograph/issues")
+        )
         help_layout.addWidget(self.github_button)
 
         help_layout2 = QHBoxLayout()
@@ -125,12 +128,11 @@ class HelpWidget(QWidget):
         print("=" * 60)
         self.app_state.print_state()
 
-
         print(SEP)
         print("=" * 60)
         print("  Labels (TSV store)")
         print("=" * 60)
-        all_labels = getattr(self.app_state, '_all_labels_df', None)
+        all_labels = getattr(self.app_state, "_all_labels_df", None)
         if all_labels is None or all_labels.empty:
             print("  No labels loaded.")
         else:
@@ -139,13 +141,12 @@ class HelpWidget(QWidget):
 
         if all_labels is not None and not all_labels.empty:
             print(all_labels.to_string(max_rows=20, index=False))
-            
-            
+
         print(SEP)
         print("=" * 60)
         print("  CURRENT TRIAL  labels + meta")
         print("=" * 60)
-        trial = getattr(self.app_state, 'trials_sel', None)
+        trial = getattr(self.app_state, "trials_sel", None)
         if trial is None:
             print("  No trial selected.")
         else:
@@ -159,13 +160,12 @@ class HelpWidget(QWidget):
                 for k, v in trial_meta.items():
                     print(f"    {k}: {v!r}")
 
-
         print(SEP)
         print("=" * 60)
         print("  DATA LOADER / DATASET")
         print("=" * 60)
-        store = getattr(self.app_state, 'data_loader', None)
-        ds = getattr(self.app_state, 'ds', None)
+        store = getattr(self.app_state, "data_loader", None)
+        ds = getattr(self.app_state, "ds", None)
         if store is None:
             print("  No data_loader.")
         else:
@@ -173,7 +173,7 @@ class HelpWidget(QWidget):
             print(f"  Features: {store.features}")
             print(f"  Dims: {list(store.dims.keys())}")
             print(f"  Changepoint names: {store.changepoint_names}")
-            if hasattr(store, '_ds'):
+            if hasattr(store, "_ds"):
                 store_ds = store._ds
                 if store_ds is not None:
                     cp_vars = list(store_ds.filter_by_attrs(type="changepoints").data_vars)
@@ -186,18 +186,17 @@ class HelpWidget(QWidget):
             for v in cp_vars:
                 da = ds[v]
                 import numpy as np
+
                 n_pos = int(np.sum(da.values > 0))
                 print(f"    {v}: shape={da.shape}, n_positive={n_pos}, target={da.attrs.get('target_feature')}")
         else:
             print("  app_state.ds is None")
 
-
-
         print(SEP)
-        sio = getattr(self.app_state, 'nwb_alignment', None)
+        sio = getattr(self.app_state, "nwb_alignment", None)
         if sio is None:
-            dt = getattr(self.app_state, 'dt', None)
-            sio = getattr(dt, 'nwb_alignment', None) if dt is not None else None
+            dt = getattr(self.app_state, "dt", None)
+            sio = getattr(dt, "nwb_alignment", None) if dt is not None else None
         if sio is None:
             print("  No nwb_alignment available.")
         else:
@@ -205,21 +204,20 @@ class HelpWidget(QWidget):
 
         print(SEP)
         print("=" * 60)
-        print(f"Trial Interval set")
+        print("Trial Interval set")
         print("=" * 60)
-        trials_ep = getattr(self.app_state.nwb_alignment, 'trials_ep', None)
+        trials_ep = getattr(self.app_state.nwb_alignment, "trials_ep", None)
         if trials_ep is None:
             print("  No trials_ep available.")
         else:
             df = trials_ep.as_dataframe()
             print(df.to_string(max_rows=20))
 
-
         print(SEP)
         print("=" * 60)
         print("  SOURCE COLLECTION (time model)")
         print("=" * 60)
-        sc = getattr(self.app_state, 'source_collection', None)
+        sc = getattr(self.app_state, "source_collection", None)
         if sc is None:
             print("  No source_collection.")
         else:
@@ -238,19 +236,17 @@ class HelpWidget(QWidget):
                 print(f"    [{i}] trial={tid}  {sc.trial_range(i)}")
             if sc.n_trials > 10:
                 print(f"    ... ({sc.n_trials - 10} more)")
-        rw = getattr(self.app_state, 'restrict_window', None)
+        rw = getattr(self.app_state, "restrict_window", None)
         print(f"  Navigate mode:   {getattr(self.app_state, 'navigate_mode', '?')}")
         print(f"  Slider scope:    {getattr(self.app_state, 'slider_scope', '?')}")
         print(f"  Restrict window: {rw}")
         print(f"  Window bounds:   {self.app_state.window_bounds}")
 
-
-
         print(SEP)
         print("=" * 60)
         print("  TRIAL/ VIDEO BOUNDS")
         print("=" * 60)
-        alignment = getattr(self.app_state, 'trial_alignment', None)
+        alignment = getattr(self.app_state, "trial_alignment", None)
         if alignment is None:
             print("  No trial alignment available.")
         else:

@@ -149,17 +149,25 @@ filterwarnings = [
 
 [tool.check-manifest]
 ignore = [
-    ".yaml",
+    "*.yaml",
+    "*.yml",
+    "*.md",
+    "*.json",
+    "*.model",
+    "*.txt",
+    "*.ipynb",
     "tox.ini",
-    "tests/",
-    "tests/test_unit/",
-    "tests/test_integration/",
-    "docs/",
-    "docs/source/",
+    "Usersaksel.pypirc",
+    "tests/*",
+    "docs/*",
+    "configs/*",
+    "scripts/*",
+    "examples/*",
+    ".claude/*",
 ]
 
 [tool.ruff]
-line-length = 79
+line-length = 120
 exclude = ["__init__.py", "build", ".eggs"]
 lint.select = [
     "E",

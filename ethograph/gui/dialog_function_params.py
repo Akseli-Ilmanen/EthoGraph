@@ -9,6 +9,7 @@ import sys
 from dataclasses import dataclass
 from typing import Any, Callable
 
+import ruptures as rpt
 from qtpy.QtCore import QRegularExpression, Qt
 from qtpy.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCharFormat
 from qtpy.QtWidgets import (
@@ -23,15 +24,13 @@ from qtpy.QtWidgets import (
     QTextBrowser,
     QVBoxLayout,
 )
-import ruptures as rpt
 
 from ethograph.gui.notify import notify_dialog
-
-
 
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ParamInfo:
@@ -61,6 +60,7 @@ class FunctionSpec:
 # ---------------------------------------------------------------------------
 # Ruptures thin wrappers (so inspect.signature works)
 # ---------------------------------------------------------------------------
+
 
 def _ruptures_pelt(
     data,
@@ -211,6 +211,7 @@ DOC_URLS: dict[str, str] = {
 # Function registry
 # ---------------------------------------------------------------------------
 
+
 def _audio_preamble(*imports: str, data_var: str = "data", rate_var: str = "sr") -> str:
     header = "import vocalpy as voc\n"
     for imp in imports:
@@ -244,12 +245,7 @@ _ENERGY_VOCALPY_PREAMBLE = _audio_preamble(
     "from ethograph.features.energy import {func}",
 )
 
-_RUPTURES_PREAMBLE = (
-    "import numpy as np\n"
-    "import ruptures as rpt\n"
-    "\n"
-    "data = ...  # (N,) 1-D numpy array\n"
-)
+_RUPTURES_PREAMBLE = "import numpy as np\nimport ruptures as rpt\n\ndata = ...  # (N,) 1-D numpy array\n"
 
 _KINEMATIC_PREAMBLE = (
     "from ethograph.features.changepoints import {func}\n"
@@ -270,12 +266,17 @@ _OSCILLATORY_PREAMBLE = (
 
 def _build_registry() -> dict[str, FunctionSpec]:
     import vocalpy as voc
-    from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
     from vocalseg.continuity_filtering import continuity_segmentation
+    from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
 
-    from ethograph.features.changepoints import find_nearest_turning_points_binary, find_troughs_binary
+    from ethograph.features.changepoints import (
+        find_nearest_turning_points_binary,
+        find_troughs_binary,
+    )
     from ethograph.features.energy import (
-        bandpass_envelope, highpass_envelope, lowpass_envelope,
+        bandpass_envelope,
+        highpass_envelope,
+        lowpass_envelope,
     )
     from ethograph.features.oscillatory import detect_oscillatory_events_np
 
@@ -314,7 +315,7 @@ def _build_registry() -> dict[str, FunctionSpec]:
             return_hint="bkps",
             copy_preamble=_RUPTURES_PREAMBLE,
             import_path="rpt.Pelt",
-            copy_template="algo = rpt.Pelt(model={model}, min_size={min_size}, jump={jump}).fit(data)\nbkps = algo.predict(pen={pen})",
+            copy_template="algo = rpt.Pelt(model={model}, min_size={min_size}, jump={jump}).fit(data)\nbkps = algo.predict(pen={pen})",  # noqa: E501
         ),
         "ruptures_binseg": FunctionSpec(
             func=_ruptures_binseg,
@@ -322,7 +323,7 @@ def _build_registry() -> dict[str, FunctionSpec]:
             return_hint="bkps",
             copy_preamble=_RUPTURES_PREAMBLE,
             import_path="rpt.Binseg",
-            copy_template="algo = rpt.Binseg(model={model}, min_size={min_size}, jump={jump}).fit(data)\nbkps = algo.predict(n_bkps={n_bkps})  # or algo.predict(pen=<penalty>)",
+            copy_template="algo = rpt.Binseg(model={model}, min_size={min_size}, jump={jump}).fit(data)\nbkps = algo.predict(n_bkps={n_bkps})  # or algo.predict(pen=<penalty>)",  # noqa: E501
         ),
         "ruptures_bottomup": FunctionSpec(
             func=_ruptures_bottomup,
@@ -330,7 +331,7 @@ def _build_registry() -> dict[str, FunctionSpec]:
             return_hint="bkps",
             copy_preamble=_RUPTURES_PREAMBLE,
             import_path="rpt.BottomUp",
-            copy_template="algo = rpt.BottomUp(model={model}, min_size={min_size}, jump={jump}).fit(data)\nbkps = algo.predict(n_bkps={n_bkps})",
+            copy_template="algo = rpt.BottomUp(model={model}, min_size={min_size}, jump={jump}).fit(data)\nbkps = algo.predict(n_bkps={n_bkps})",  # noqa: E501
         ),
         "ruptures_window": FunctionSpec(
             func=_ruptures_window,
@@ -338,7 +339,7 @@ def _build_registry() -> dict[str, FunctionSpec]:
             return_hint="bkps",
             copy_preamble=_RUPTURES_PREAMBLE,
             import_path="rpt.Window",
-            copy_template="algo = rpt.Window(width={width}, model={model}, min_size={min_size}, jump={jump}).fit(data)\nbkps = algo.predict(n_bkps={n_bkps})",
+            copy_template="algo = rpt.Window(width={width}, model={model}, min_size={min_size}, jump={jump}).fit(data)\nbkps = algo.predict(n_bkps={n_bkps})",  # noqa: E501
         ),
         "ruptures_dynp": FunctionSpec(
             func=_ruptures_dynp,
@@ -346,7 +347,7 @@ def _build_registry() -> dict[str, FunctionSpec]:
             return_hint="bkps",
             copy_preamble=_RUPTURES_PREAMBLE,
             import_path="rpt.Dynp",
-            copy_template="algo = rpt.Dynp(model={model}, min_size={min_size}, jump={jump}).fit(data)\nbkps = algo.predict(n_bkps={n_bkps})",
+            copy_template="algo = rpt.Dynp(model={model}, min_size={min_size}, jump={jump}).fit(data)\nbkps = algo.predict(n_bkps={n_bkps})",  # noqa: E501
         ),
         # --- Energy envelopes ---
         "energy_lowpass": FunctionSpec(
@@ -417,8 +418,8 @@ def get_registry() -> dict[str, FunctionSpec]:
 # Syntax highlighter
 # ---------------------------------------------------------------------------
 
-class PythonParamHighlighter(QSyntaxHighlighter):
 
+class PythonParamHighlighter(QSyntaxHighlighter):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._rules: list[tuple[QRegularExpression, QTextCharFormat]] = []
@@ -480,8 +481,14 @@ class ProtectedLineEditor(QPlainTextEdit):
         mods = event.modifiers()
 
         nav_keys = {
-            Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down,
-            Qt.Key_Home, Qt.Key_End, Qt.Key_PageUp, Qt.Key_PageDown,
+            Qt.Key_Left,
+            Qt.Key_Right,
+            Qt.Key_Up,
+            Qt.Key_Down,
+            Qt.Key_Home,
+            Qt.Key_End,
+            Qt.Key_PageUp,
+            Qt.Key_PageDown,
         }
         if key in nav_keys:
             super().keyPressEvent(event)
@@ -573,11 +580,15 @@ def open_source_file(file_path: str, parent=None) -> None:
     editor_paths = {name: path for name, path in editors}
 
     choice, ok = QInputDialog.getItem(
-        parent, "Open source with...", "Select editor:", items, 0, False,
+        parent,
+        "Open source with...",
+        "Select editor:",
+        items,
+        0,
+        False,
     )
     if not ok:
         return
-
 
     if choice == "Browse...":
         exe_filter = "Executables (*.exe)" if sys.platform == "win32" else "All files (*)"
@@ -638,8 +649,7 @@ def _format_default(value: Any) -> str:
     return str(value)
 
 
-def _build_editor_text(spec: FunctionSpec, param_infos: list[ParamInfo],
-                       current_params: dict) -> str:
+def _build_editor_text(spec: FunctionSpec, param_infos: list[ParamInfo], current_params: dict) -> str:
     lines = [f"{_display_name(spec)}("]
     for auto in spec.auto_params:
         lines.append(f"    <{auto}>,  # set by GUI")
@@ -659,12 +669,13 @@ def _html_escape(text: str) -> str:
 def _rst_inline_to_html(text: str) -> str:
     def _math_repl(m):
         expr = m.group(1)
-        expr = re.sub(r'_\{([^}]+)\}', r'<sub>\1</sub>', expr)
+        expr = re.sub(r"_\{([^}]+)\}", r"<sub>\1</sub>", expr)
         return f'<i><font color="#8250df">{expr}</font></i>'
-    text = re.sub(r':math:`([^`]+)`', _math_repl, text)
-    text = re.sub(r':class:`([^`]+)`', r'<font color="#0550ae">\1</font>', text)
-    text = re.sub(r'``([^`]+)``', r'<font color="#0550ae">\1</font>', text)
-    text = re.sub(r'\[(\d+)\]_', r'[\1]', text)
+
+    text = re.sub(r":math:`([^`]+)`", _math_repl, text)
+    text = re.sub(r":class:`([^`]+)`", r'<font color="#0550ae">\1</font>', text)
+    text = re.sub(r"``([^`]+)``", r'<font color="#0550ae">\1</font>', text)
+    text = re.sub(r"\[(\d+)\]_", r"[\1]", text)
     return text
 
 
@@ -679,11 +690,7 @@ def _build_help_html(spec: FunctionSpec, font_size: int = 16) -> str:
         for pname, p in sig.parameters.items():
             s = pname
             if p.annotation is not p.empty:
-                ann = (
-                    p.annotation.__name__
-                    if isinstance(p.annotation, type)
-                    else str(p.annotation)
-                )
+                ann = p.annotation.__name__ if isinstance(p.annotation, type) else str(p.annotation)
                 s += f": {ann}"
             if p.default is not p.empty:
                 s += f" = {p.default!r}"
@@ -691,11 +698,7 @@ def _build_help_html(spec: FunctionSpec, font_size: int = 16) -> str:
         ret_ann = ""
         if sig.return_annotation is not sig.empty:
             ra = sig.return_annotation
-            ret_ann = (
-                f" -> {ra.__name__}"
-                if isinstance(ra, type)
-                else f" -> {ra}"
-            )
+            ret_ann = f" -> {ra.__name__}" if isinstance(ra, type) else f" -> {ra}"
         if len(param_strs) > 2:
             params_text = ",\n    ".join(param_strs)
             sig_text = f"def {name}(\n    {params_text},\n){ret_ann}:"
@@ -713,22 +716,24 @@ def _build_help_html(spec: FunctionSpec, font_size: int = 16) -> str:
         sig_escaped,
     )
     sig_html = sig_html.replace(
-        "def ", '<b><font color="#cf222e">def</font></b> ', 1,
+        "def ",
+        '<b><font color="#cf222e">def</font></b> ',
+        1,
     )
     sig_html = re.sub(
-        r': ([A-Za-z_][\w|.\[\] ]*?)( =|,|\n|\))',
+        r": ([A-Za-z_][\w|.\[\] ]*?)( =|,|\n|\))",
         r': <b><font color="#0550ae">\1</font></b>\2',
         sig_html,
     )
     sig_html = re.sub(
-        r'(-&gt;) (.+?)(:)$',
+        r"(-&gt;) (.+?)(:)$",
         r'\1 <b><font color="#0550ae">\2</font></b>\3',
         sig_html,
         flags=re.MULTILINE,
     )
     for kw in ("True", "False", "None"):
         sig_html = re.sub(
-            rf'\b{kw}\b',
+            rf"\b{kw}\b",
             f'<b><font color="#cf222e">{kw}</font></b>',
             sig_html,
         )
@@ -755,15 +760,15 @@ def _build_help_html(spec: FunctionSpec, font_size: int = 16) -> str:
 
         # Section headers (Parameters, Returns, Args, etc.)
         doc_escaped = re.sub(
-            r'^(    )(Parameters|Returns|Raises|Yields|Notes|Examples|'
-            r'References|See Also|Example|Args)',
+            r"^(    )(Parameters|Returns|Raises|Yields|Notes|Examples|"
+            r"References|See Also|Example|Args)",
             r'\1<b><font color="#cf222e">\2</font></b>',
             doc_escaped,
             flags=re.MULTILINE,
         )
         # NumPy-style params: "    name : type"
         doc_escaped = re.sub(
-            r'^(    )(\w+)( : ?)(.*)$',
+            r"^(    )(\w+)( : ?)(.*)$",
             r'\1<b><font color="#953800">\2</font></b>'
             r'\3<b><font color="#0550ae">\4</font></b>',
             doc_escaped,
@@ -771,7 +776,7 @@ def _build_help_html(spec: FunctionSpec, font_size: int = 16) -> str:
         )
         # Google-style params: "        name: desc"
         doc_escaped = re.sub(
-            r'^(        )(\w+)(: )',
+            r"^(        )(\w+)(: )",
             r'\1<b><font color="#953800">\2</font></b>\3',
             doc_escaped,
             flags=re.MULTILINE,
@@ -779,35 +784,34 @@ def _build_help_html(spec: FunctionSpec, font_size: int = 16) -> str:
         # RST inline markup
         doc_escaped = _rst_inline_to_html(doc_escaped)
 
-        doc_html = (
-            '\n    <font color="#0a3069">"""'
-            f'{doc_escaped}'
-            '\n    """</font>'
-        )
+        doc_html = f'\n    <font color="#0a3069">"""{doc_escaped}\n    """</font>'
 
     # --- Assemble (avoid <pre>: QTextBrowser ignores tags inside it) ---
-    code_block = f'{sig_html}{doc_html}'
-    lines = code_block.split('\n')
+    code_block = f"{sig_html}{doc_html}"
+    lines = code_block.split("\n")
     html_lines = []
     for line in lines:
-        content = line.lstrip(' ')
+        content = line.lstrip(" ")
         indent = len(line) - len(content)
-        html_lines.append('&nbsp;' * indent + content)
-    code_as_div = '<br>'.join(html_lines)
+        html_lines.append("&nbsp;" * indent + content)
+    code_as_div = "<br>".join(html_lines)
 
     return (
         f'<html><body style="font-family:Consolas,Monaco,monospace; font-size:{font_size}px; '
         f'line-height:1.4; margin:0; background:#fff; color:#000;">'
         f'<div style="background:#f6f8fa; padding:16px; margin:12px; '
         f'border:1px solid #d0d7de;">'
-        f'{code_as_div}</div>'
-        f'</body></html>'
+        f"{code_as_div}</div>"
+        f"</body></html>"
     )
 
 
-def _parse_editor_text(text: str, param_infos: list[ParamInfo],
-                       auto_params: tuple[str, ...],
-                       skip_params: set[str] | None = None) -> dict:
+def _parse_editor_text(
+    text: str,
+    param_infos: list[ParamInfo],
+    auto_params: tuple[str, ...],
+    skip_params: set[str] | None = None,
+) -> dict:
     params = {}
     skip = set(auto_params) | (skip_params or set())
     for line in text.splitlines():
@@ -821,7 +825,7 @@ def _parse_editor_text(text: str, param_infos: list[ParamInfo],
 
         # Strip inline comments
         if "  #" in line:
-            line = line[:line.index("  #")].rstrip().rstrip(",")
+            line = line[: line.index("  #")].rstrip().rstrip(",")
 
         # Could be part of the function call header
         if "(" in line:
@@ -830,7 +834,7 @@ def _parse_editor_text(text: str, param_infos: list[ParamInfo],
                 continue
             # Might be "func_name(\n  param=val" — extract after (
             idx = line.index("(")
-            line = line[idx + 1:].strip().rstrip(",")
+            line = line[idx + 1 :].strip().rstrip(",")
             if not line or "=" not in line:
                 continue
 
@@ -865,7 +869,10 @@ def _validate_and_convert(raw_params: dict, param_infos: list[ParamInfo]) -> tup
                     value = int(value)
                 else:
                     expected = th.__name__
-                    return {}, f"'{name}' expects {expected}, got {type(value).__name__}: {value}"
+                    return (
+                        {},
+                        f"'{name}' expects {expected}, got {type(value).__name__}: {value}",
+                    )
 
         result[name] = value
 
@@ -876,10 +883,9 @@ def _validate_and_convert(raw_params: dict, param_infos: list[ParamInfo]) -> tup
 # Dialog
 # ---------------------------------------------------------------------------
 
-class FunctionParamsDialog(QDialog):
 
-    def __init__(self, registry_key: str, current_params: dict | None = None,
-                 parent=None):
+class FunctionParamsDialog(QDialog):
+    def __init__(self, registry_key: str, current_params: dict | None = None, parent=None):
         super().__init__(parent)
         self._registry_key = registry_key
         self._spec = get_registry()[registry_key]
@@ -914,11 +920,11 @@ class FunctionParamsDialog(QDialog):
         self._editor = ProtectedLineEditor(protected)
         self._editor.setFont(editor_font)
         self._highlighter = PythonParamHighlighter(self._editor.document())
-        self._editor.setStyleSheet(
-            "QPlainTextEdit { font-family: 'Consolas'; font-size: 18pt; }"
-        )
+        self._editor.setStyleSheet("QPlainTextEdit { font-family: 'Consolas'; font-size: 18pt; }")
         editor_text = _build_editor_text(
-            self._spec, self._param_infos, self._current_params,
+            self._spec,
+            self._param_infos,
+            self._current_params,
         )
         self._editor.setPlainText(editor_text)
         splitter.addWidget(self._editor)
@@ -947,6 +953,7 @@ class FunctionParamsDialog(QDialog):
 
         if self._spec.doc_url:
             import webbrowser
+
             docs_btn = QPushButton("Documentation")
             docs_btn.setToolTip(self._spec.doc_url)
             docs_btn.setStyleSheet(
@@ -1014,10 +1021,7 @@ class FunctionParamsDialog(QDialog):
         else:
             # Build minimal call with only non-default values + fixed params
             info_map = {pi.name: pi for pi in self._param_infos}
-            changed = {
-                k: v for k, v in result.items()
-                if k not in info_map or v != info_map[k].default
-            }
+            changed = {k: v for k, v in result.items() if k not in info_map or v != info_map[k].default}
             changed.update(self._spec.fixed_params)
 
             auto_str = ", ".join(self._spec.auto_params)
@@ -1047,6 +1051,7 @@ class FunctionParamsDialog(QDialog):
 # ---------------------------------------------------------------------------
 # Convenience opener
 # ---------------------------------------------------------------------------
+
 
 def open_function_params_dialog(
     registry_key: str,

@@ -39,6 +39,7 @@ INTERVAL_DTYPES = {
 
 # ── Empty DataFrame ──────────────────────────────────────────────────────
 
+
 def empty_intervals() -> pd.DataFrame:
     """Create an empty intervals DataFrame with the correct columns and dtypes.
 
@@ -57,12 +58,11 @@ def empty_intervals() -> pd.DataFrame:
     >>> len(df)
     0
     """
-    return pd.DataFrame(
-        {col: pd.Series(dtype=INTERVAL_DTYPES[col]) for col in INTERVAL_COLUMNS}
-    )
+    return pd.DataFrame({col: pd.Series(dtype=INTERVAL_DTYPES[col]) for col in INTERVAL_COLUMNS})
 
 
 # ── Event-kind helpers (use these to avoid forgetting guards) ───────────
+
 
 def ensure_event_type(df: pd.DataFrame) -> pd.DataFrame:
     """Add an ``event_type`` column defaulting to ``"state"`` if missing.
@@ -122,6 +122,7 @@ def _recombine(transformed_states: pd.DataFrame, points: pd.DataFrame) -> pd.Dat
 
 # ── Mapping loaders ─────────────────────────────────────────────────────
 
+
 def load_mapping(mapping_file: str | Path) -> tuple[dict[str, int], dict[int, str]]:
     """Load a class-name ↔ index mapping file.
 
@@ -159,15 +160,42 @@ def load_mapping(mapping_file: str | Path) -> tuple[dict[str, int], dict[int, st
 
 
 _LABEL_COLORS = [
-    [1, 1, 1], [255, 102, 178], [102, 158, 255], [153, 51, 255],
-    [255, 51, 51], [102, 255, 102], [255, 153, 102], [0, 153, 0],
-    [0, 0, 128], [255, 255, 0], [0, 204, 204], [128, 128, 0],
-    [255, 0, 255], [255, 165, 0], [0, 128, 255], [7, 7, 215],
-    [128, 0, 255], [255, 215, 0], [73, 113, 233], [255, 128, 0],
-    [138, 34, 34], [188, 82, 223], [103, 176, 29], [220, 20, 60],
-    [3, 243, 3], [147, 24, 147], [178, 111, 44], [16, 166, 166],
-    [71, 197, 238], [255, 149, 114], [16, 89, 162], [26, 195, 68],
-    [254, 216, 103], [0, 237, 118], [177, 177, 36], [73, 243, 200],
+    [1, 1, 1],
+    [255, 102, 178],
+    [102, 158, 255],
+    [153, 51, 255],
+    [255, 51, 51],
+    [102, 255, 102],
+    [255, 153, 102],
+    [0, 153, 0],
+    [0, 0, 128],
+    [255, 255, 0],
+    [0, 204, 204],
+    [128, 128, 0],
+    [255, 0, 255],
+    [255, 165, 0],
+    [0, 128, 255],
+    [7, 7, 215],
+    [128, 0, 255],
+    [255, 215, 0],
+    [73, 113, 233],
+    [255, 128, 0],
+    [138, 34, 34],
+    [188, 82, 223],
+    [103, 176, 29],
+    [220, 20, 60],
+    [3, 243, 3],
+    [147, 24, 147],
+    [178, 111, 44],
+    [16, 166, 166],
+    [71, 197, 238],
+    [255, 149, 114],
+    [16, 89, 162],
+    [26, 195, 68],
+    [254, 216, 103],
+    [0, 237, 118],
+    [177, 177, 36],
+    [73, 243, 200],
 ]
 
 _GAP_COLOR = [128 / 255.0, 128 / 255.0, 128 / 255.0]
@@ -218,10 +246,7 @@ def load_label_mapping(mapping_file: str | Path = "mapping.txt") -> Dict[int, Di
             ax.axvspan(row["onset_s"], row["offset_s"], alpha=0.5, color=color)
 
         # Build a legend from the mapping
-        handles = [
-            mpatches.Patch(color=m["color"], label=m["name"])
-            for m in mappings.values()
-        ]
+        handles = [mpatches.Patch(color=m["color"], label=m["name"]) for m in mappings.values()]
         ax.legend(handles=handles)
         plt.show()
     """
@@ -293,6 +318,7 @@ def save_label_mapping(mapping_file: str | Path, mappings: Dict[int, Dict]) -> N
 
 
 # ── Interval operations ─────────────────────────────────────────────────
+
 
 def add_point(
     df: pd.DataFrame,
@@ -396,15 +422,30 @@ def add_interval(
         eps = 1e-3
         if ro < onset_s:
             kept.append(
-                {"onset_s": ro, "offset_s": onset_s - eps, "labels": rid, "individual": individual}
+                {
+                    "onset_s": ro,
+                    "offset_s": onset_s - eps,
+                    "labels": rid,
+                    "individual": individual,
+                }
             )
         if rf > offset_s:
             kept.append(
-                {"onset_s": offset_s + eps, "offset_s": rf, "labels": rid, "individual": individual}
+                {
+                    "onset_s": offset_s + eps,
+                    "offset_s": rf,
+                    "labels": rid,
+                    "individual": individual,
+                }
             )
 
     kept.append(
-        {"onset_s": onset_s, "offset_s": offset_s, "labels": labels, "individual": individual}
+        {
+            "onset_s": onset_s,
+            "offset_s": offset_s,
+            "labels": labels,
+            "individual": individual,
+        }
     )
 
     new_same = _rows_to_df(kept)
@@ -436,10 +477,7 @@ def find_interval_at(
     Returns ``None`` if no non-background interval contains the time.
     """
     mask = (
-        (df["individual"] == individual)
-        & (df["onset_s"] <= time_s)
-        & (df["offset_s"] >= time_s)
-        & (df["labels"] != 0)
+        (df["individual"] == individual) & (df["onset_s"] <= time_s) & (df["offset_s"] >= time_s) & (df["labels"] != 0)
     )
     if "event_type" in df.columns:
         mask = mask & (df["event_type"] == EVENT_TYPE_STATE)
@@ -519,9 +557,7 @@ def purge_short_intervals(
 
     states_df, points_df = split_by_kind(df)
     durations = states_df["offset_s"] - states_df["onset_s"]
-    thresholds = states_df["labels"].map(
-        lambda lid: label_thresholds_s.get(lid, min_duration_s)
-    )
+    thresholds = states_df["labels"].map(lambda lid: label_thresholds_s.get(lid, min_duration_s))
     keep = durations >= thresholds
     return _recombine(states_df[keep], points_df)
 
@@ -639,12 +675,14 @@ def snap_boundaries(
             snap_onset = onset
             snap_offset = offset
 
-        rows.append({
-            "onset_s": snap_onset,
-            "offset_s": snap_offset,
-            "labels": row["labels"],
-            "individual": row["individual"],
-        })
+        rows.append(
+            {
+                "onset_s": snap_onset,
+                "offset_s": snap_offset,
+                "labels": row["labels"],
+                "individual": row["individual"],
+            }
+        )
 
     transformed = _rows_to_df(rows)
     transformed.sort_values(["individual", "onset_s"], inplace=True)
@@ -654,6 +692,7 @@ def snap_boundaries(
 
 
 # ── Private helpers ──────────────────────────────────────────────────────
+
 
 def _snap_onset(boundary, cp_times, max_expansion_s, max_shrink_s):
     nearest_idx = np.argmin(np.abs(cp_times - boundary))

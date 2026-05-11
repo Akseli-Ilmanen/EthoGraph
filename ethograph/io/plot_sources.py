@@ -148,7 +148,6 @@ class XarraySource:
     """
 
     def __init__(self, ds: xr.Dataset, time_coord_name: str):
-        import xarray as xr  # noqa: F811 — runtime import for non-TYPE_CHECKING
 
         self._time_coord_name = time_coord_name
         time_vars = [v for v in ds.data_vars if time_coord_name in ds[v].dims]
@@ -210,7 +209,7 @@ class NWBSource:
         self._ts_path = ts_path
         self._start_time = start_time
         self._name = name or ts_path.split("/")[-1]
-        
+
         # Lazy metadata (no file open yet)
         self._rate: float | None = None
         self._n_samples: int | None = None
@@ -222,28 +221,28 @@ class NWBSource:
         """Lazy open: read metadata from HDF5 header only."""
         if self._opened:
             return
-        
+
         import h5py
-        
+
         with h5py.File(self._nwb_path, "r") as f:
             ts = f[self._ts_path]
-            
+
             # Read metadata
             if "rate" in ts.attrs:
                 self._rate = float(ts.attrs["rate"])
-            
+
             if "starting_time" in ts.attrs:
                 t0 = float(ts.attrs["starting_time"])
             else:
                 t0 = 0.0
-            
+
             # Sample count
             data_key = "data"
             if data_key in ts:
                 self._n_samples = ts[data_key].shape[0]
             else:
                 self._n_samples = 0
-            
+
             # Build time range (absolute session time)
             if "timestamps" in ts:
                 ts_data = ts["timestamps"][:]
@@ -252,13 +251,12 @@ class NWBSource:
                 self._timestamps = np.asarray(ts_data, dtype=np.float64)
             else:
                 if self._rate and self._rate > 0:
-                    dt = 1.0 / self._rate
                     t_start = self._start_time + t0
                     t_end = self._start_time + t0 + self._n_samples / self._rate
                 else:
                     t_start = self._start_time
                     t_end = self._start_time + 1.0
-            
+
             self._time_range = TimeRange(t_start, t_end)
             self._opened = True
 
@@ -283,13 +281,13 @@ class NWBSource:
     def get_data(self, t0: float, t1: float) -> SampleSlice:
         """Fetch timestamps and values from NWB HDF5 for [t0, t1]."""
         import h5py
-        
+
         self._ensure_open()
-        
+
         if self._n_samples == 0 or t1 <= t0:
             empty = np.array([], dtype=np.float64)
             return SampleSlice(empty, empty)
-        
+
         # Index-based slicing
         if self._timestamps is not None:
             # Explicit timestamps: use searchsorted
@@ -300,18 +298,18 @@ class NWBSource:
             dt = 1.0 / self._rate if self._rate and self._rate > 0 else 1.0
             i0 = max(0, int((t0 - self._start_time) / dt))
             i1 = min(self._n_samples, int((t1 - self._start_time) / dt) + 1)
-        
+
         i1 = max(i0, min(i1, self._n_samples))
-        
+
         if i1 <= i0:
             empty = np.array([], dtype=np.float64)
             return SampleSlice(empty, empty)
-        
+
         # Fetch data slice from HDF5
         with h5py.File(self._nwb_path, "r") as f:
             ts = f[self._ts_path]
             data = np.asarray(ts["data"][i0:i1], dtype=np.float64)
-            
+
             if self._timestamps is not None:
                 timestamps = self._timestamps[i0:i1].astype(np.float64)
             else:
@@ -319,7 +317,7 @@ class NWBSource:
                     timestamps = self._start_time + np.arange(i0, i1, dtype=np.float64) / self._rate
                 else:
                     timestamps = np.arange(i0, i1, dtype=np.float64)
-        
+
         return SampleSlice(timestamps, data)
 
 
@@ -339,20 +337,18 @@ class PynappleSource:
 
     def __init__(self, tsd_object, name: str = "pynapple"):
         import pynapple as nap
-        
+
         if not isinstance(tsd_object, (nap.Tsd, nap.TsdFrame, nap.TsdTensor)):
-            raise TypeError(
-                f"Expected nap.Tsd/TsdFrame/TsdTensor, got {type(tsd_object)}"
-            )
-        
+            raise TypeError(f"Expected nap.Tsd/TsdFrame/TsdTensor, got {type(tsd_object)}")
+
         self._tsd = tsd_object
         self._name = name
-        
+
         # Cache metadata (use .t for times, .start/.end for bounds)
         t_start = float(tsd_object.start)
         t_end = float(tsd_object.end)
         self._time_range = TimeRange(t_start, t_end)
-        
+
         # Use pynapple's rate if available, otherwise estimate from data
         if hasattr(tsd_object, "rate") and tsd_object.rate:
             self._sampling_rate = float(tsd_object.rate)
@@ -384,23 +380,22 @@ class PynappleSource:
     def get_data(self, t0: float, t1: float) -> SampleSlice:
         """Fetch timestamps and values via pynapple restrict()."""
         # Restrict to time window
-        restricted = self._tsd.restrict(
-            pynapple_interval(t0, t1)
-        )
-        
+        restricted = self._tsd.restrict(pynapple_interval(t0, t1))
+
         if len(restricted.t) == 0:
             empty = np.array([], dtype=np.float64)
             return SampleSlice(empty, empty)
-        
+
         timestamps = np.asarray(restricted.t, dtype=np.float64)
         values = np.asarray(restricted.d, dtype=np.float64)
-        
+
         return SampleSlice(timestamps, values)
 
 
 def pynapple_interval(t_start: float, t_end: float):
     """Create a pynapple IntervalSet for a time window."""
     import pynapple as nap
+
     return nap.IntervalSet(t_start, t_end)
 
 
@@ -501,7 +496,7 @@ def build_audio_source(app_state) -> FileSource | None:
     """Build a FileSource for audio from the current app_state."""
     from ..gui.plots_spectrogram import SharedAudioCache
 
-    audio_path = getattr(app_state, 'audio_path', None)
+    audio_path = getattr(app_state, "audio_path", None)
     if not audio_path:
         return None
     _, channel_idx = app_state.get_audio_source()

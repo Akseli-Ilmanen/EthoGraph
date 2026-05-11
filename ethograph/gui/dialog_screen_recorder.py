@@ -8,8 +8,8 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
 import imageio.v3 as iio
+import numpy as np
 from PIL import Image
 from qtpy.QtCore import QTimer, Signal
 from qtpy.QtWidgets import (
@@ -179,9 +179,7 @@ class ScreenRecorder:
     def _capture_frame(self) -> None:
         if not self._recording:
             return
-        frame = self._viewer.screenshot(
-            canvas_only=self._canvas_only, flash=False
-        )
+        frame = self._viewer.screenshot(canvas_only=self._canvas_only, flash=False)
         rgb = frame[:, :, :3]
         rgb = _crop_frame(rgb, self._crop_mode)
         rgb = _scale_frame(rgb, self._scale)
@@ -351,9 +349,7 @@ class RecordButton(QWidget):
             filters.append("MP4 (*.mp4)")
         if dlg.save_gif:
             filters.append("GIF (*.gif)")
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save recording as", str(Path.home()), ";;".join(filters)
-        )
+        path, _ = QFileDialog.getSaveFileName(self, "Save recording as", str(Path.home()), ";;".join(filters))
         if not path:
             return
 

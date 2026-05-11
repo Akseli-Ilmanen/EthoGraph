@@ -1,15 +1,12 @@
 """Dialog for creating .nc files from various data sources."""
 
 import logging
-import webbrowser
 from pathlib import Path
 from typing import Optional, get_args
 
 import av
-import numpy as np
 import xarray as xr
 from movement.io import load_bboxes, load_poses
-from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -27,6 +24,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ethograph.gui.notify import notify_dialog
 from ethograph.io.data_loader import (
     wizard_single_from_audio,
     wizard_single_from_ds,
@@ -34,7 +32,6 @@ from ethograph.io.data_loader import (
     wizard_single_from_npy_file,
     wizard_single_from_pose,
 )
-from ethograph.gui.notify import notify_dialog
 from ethograph.io.validation import (
     AUDIO_FILE_FILTER,
     EPHYS_EXTENSIONS_STR,
@@ -55,7 +52,6 @@ def get_video_fps(video_path: str) -> Optional[int]:
             return round(fps)
     except (OSError, ValueError, ZeroDivisionError):
         return None
-
 
 
 AVAILABLE_POSE_SOFTWARES = list(get_args(load_poses.from_file.__annotations__["source_software"]))
@@ -82,7 +78,6 @@ class PoseFileDialog(QDialog):
 
         form_layout = QFormLayout()
 
-
         self.software_combo = QComboBox()
         self.software_combo.addItems(AVAILABLE_SOFTWARES)
         form_layout.addRow("Source software:", self.software_combo)
@@ -98,7 +93,6 @@ class PoseFileDialog(QDialog):
         pose_layout.addWidget(self.pose_edit)
         pose_layout.addWidget(pose_browse)
         form_layout.addRow("Data file:", pose_widget)
-        
 
         video_widget = QWidget()
         video_layout = QHBoxLayout(video_widget)
@@ -115,8 +109,6 @@ class PoseFileDialog(QDialog):
         video_layout.addWidget(video_clear)
         form_layout.addRow("Video file (optional):", video_widget)
 
-
-
         self.fps_spinbox = QSpinBox()
         self.fps_spinbox.setRange(1, 1000)
         self.fps_spinbox.setValue(30)
@@ -129,8 +121,7 @@ class PoseFileDialog(QDialog):
         self.video_offset_spinbox.setValue(0.0)
         self.video_offset_spinbox.setSuffix(" s")
         self.video_offset_spinbox.setToolTip(
-            "Time (seconds) where video starts relative to pose stream. "
-            "Negative means video starts earlier."
+            "Time (seconds) where video starts relative to pose stream. Negative means video starts earlier."
         )
         form_layout.addRow("Video onset in pose:", self.video_offset_spinbox)
 
@@ -267,7 +258,6 @@ class XarrayDatasetDialog(QDialog):
 
         form_layout = QFormLayout()
 
-
         video_widget = QWidget()
         video_layout = QHBoxLayout(video_widget)
         video_layout.setContentsMargins(0, 0, 0, 0)
@@ -289,11 +279,9 @@ class XarrayDatasetDialog(QDialog):
         self.video_offset_spinbox.setValue(0.0)
         self.video_offset_spinbox.setSuffix(" s")
         self.video_offset_spinbox.setToolTip(
-            "Time (seconds) where video starts relative to dataset stream. "
-            "Negative means video starts earlier."
+            "Time (seconds) where video starts relative to dataset stream. Negative means video starts earlier."
         )
         form_layout.addRow("Video onset in dataset:", self.video_offset_spinbox)
-
 
         dataset_widget = QWidget()
         dataset_layout = QHBoxLayout(dataset_widget)
@@ -306,8 +294,6 @@ class XarrayDatasetDialog(QDialog):
         dataset_layout.addWidget(self.dataset_edit)
         dataset_layout.addWidget(dataset_browse)
         form_layout.addRow("Dataset file:", dataset_widget)
-
-
 
         output_widget = QWidget()
         output_layout = QHBoxLayout(output_widget)
@@ -465,8 +451,7 @@ class AudioFileDialog(QDialog):
         self.video_offset_spinbox.setValue(0.0)
         self.video_offset_spinbox.setSuffix(" s")
         self.video_offset_spinbox.setToolTip(
-            "Time (seconds) where video starts relative to audio stream. "
-            "Negative means video starts earlier."
+            "Time (seconds) where video starts relative to audio stream. Negative means video starts earlier."
         )
         form_layout.addRow("Video onset in audio:", self.video_offset_spinbox)
 
@@ -667,8 +652,7 @@ class NpyFileDialog(QDialog):
         self.video_offset_spinbox.setValue(0.0)
         self.video_offset_spinbox.setSuffix(" s")
         self.video_offset_spinbox.setToolTip(
-            "Time (seconds) where video starts relative to npy data stream. "
-            "Negative means video starts earlier."
+            "Time (seconds) where video starts relative to npy data stream. Negative means video starts earlier."
         )
         form_layout.addRow("Video onset in npy:", self.video_offset_spinbox)
 
@@ -861,9 +845,7 @@ class EphysFileDialog(QDialog):
         self.sr_spinbox.setRange(1, 200000)
         self.sr_spinbox.setValue(30000)
         self.sr_spinbox.setSuffix(" Hz")
-        self.sr_spinbox.setToolTip(
-            "Auto-detected from ephys file or kilosort params.py; set manually for raw binary"
-        )
+        self.sr_spinbox.setToolTip("Auto-detected from ephys file or kilosort params.py; set manually for raw binary")
         form_layout.addRow("Ephys sampling rate:", self.sr_spinbox)
 
         # --- N channels ---
@@ -983,7 +965,9 @@ class EphysFileDialog(QDialog):
 
     def _on_ephys_browse(self):
         result = QFileDialog.getOpenFileName(
-            self, caption="Select ephys file", filter=self.EPHYS_FILTER,
+            self,
+            caption="Select ephys file",
+            filter=self.EPHYS_FILTER,
         )
         if not (result and result[0]):
             return
@@ -1014,7 +998,9 @@ class EphysFileDialog(QDialog):
         if start_dir:
             start_dir = str(Path(start_dir).parent)
         folder = QFileDialog.getExistingDirectory(
-            self, "Select kilosort output folder", start_dir,
+            self,
+            "Select kilosort output folder",
+            start_dir,
         )
         if folder:
             self.kilosort_edit.setText(folder)
@@ -1035,7 +1021,8 @@ class EphysFileDialog(QDialog):
 
     def _on_video_browse(self):
         result = QFileDialog.getOpenFileName(
-            self, caption="Select video file",
+            self,
+            caption="Select video file",
             filter=VIDEO_FILE_FILTER,
         )
         if result and result[0]:
@@ -1046,7 +1033,8 @@ class EphysFileDialog(QDialog):
 
     def _on_audio_browse(self):
         result = QFileDialog.getOpenFileName(
-            self, caption="Select audio file",
+            self,
+            caption="Select audio file",
             filter=AUDIO_FILE_FILTER,
         )
         if result and result[0]:
@@ -1056,7 +1044,8 @@ class EphysFileDialog(QDialog):
 
     def _on_output_browse(self):
         result = QFileDialog.getSaveFileName(
-            self, caption="Save session.nc file",
+            self,
+            caption="Save session.nc file",
             filter="NetCDF files (*.nc);;All files (*)",
         )
         if result and result[0]:
@@ -1071,7 +1060,9 @@ class EphysFileDialog(QDialog):
         if not has_ephys and not has_kilosort:
             notify_dialog(
                 "Please select at least one of: ephys file or kilosort folder.",
-                "warning", "Missing Input", self,
+                "warning",
+                "Missing Input",
+                self,
             )
             return
         if not self.output_edit.text():
@@ -1106,7 +1097,11 @@ class EphysFileDialog(QDialog):
 
             dt.to_netcdf(output_path)
             self._populate_io_fields(
-                output_path, video_path, ephys_path, kilosort_folder, audio_path,
+                output_path,
+                video_path,
+                ephys_path,
+                kilosort_folder,
+                audio_path,
             )
             notify_dialog(f"Successfully created:\n{output_path}", "info", "Success", self)
             self.accept()
@@ -1115,15 +1110,16 @@ class EphysFileDialog(QDialog):
             notify_dialog(f"Failed to 🧙Data wizard:\n{e}", "error", "Error", self)
 
     def _populate_io_fields(
-        self, output_path: str, video_path: Optional[str],
-        ephys_path: Optional[str], kilosort_folder: Optional[str],
+        self,
+        output_path: str,
+        video_path: Optional[str],
+        ephys_path: Optional[str],
+        kilosort_folder: Optional[str],
         audio_path: Optional[str],
-    ):  
-        
+    ):
 
         self.app_state.nc_file_path = output_path
-        self.io_widget.nc_file_path_edit.setText(output_path)   
-
+        self.io_widget.nc_file_path_edit.setText(output_path)
 
         if video_path:
             video_folder = str(Path(video_path).parent)
@@ -1132,18 +1128,16 @@ class EphysFileDialog(QDialog):
 
         if ephys_path:
             self.app_state.ephys_path = ephys_path
-            if hasattr(self.io_widget, 'ephys_path_edit'):
+            if hasattr(self.io_widget, "ephys_path_edit"):
                 self.io_widget.ephys_path_edit.setText(ephys_path)
 
         if kilosort_folder:
             self.app_state.neurons_path = kilosort_folder
-            if hasattr(self.io_widget, 'neurons_path_edit'):
+            if hasattr(self.io_widget, "neurons_path_edit"):
                 self.io_widget.neurons_path_edit.setText(kilosort_folder)
 
         if audio_path:
             audio_folder = str(Path(audio_path).parent)
             self.app_state.audio_folder = audio_folder
-            if hasattr(self.io_widget, 'audio_folder_edit'):
+            if hasattr(self.io_widget, "audio_folder_edit"):
                 self.io_widget.audio_folder_edit.setText(audio_folder)
-
-

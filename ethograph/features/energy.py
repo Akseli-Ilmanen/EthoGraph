@@ -1,21 +1,21 @@
 import numpy as np
-from scipy.signal import butter, decimate, sosfiltfilt, stft
+from scipy.ndimage import gaussian_filter1d
+from scipy.signal import butter, decimate, hilbert, sosfiltfilt, stft
 
 try:
     import vocalpy as voc
 except ImportError as e:
     raise ImportError(
-        "vocalpy is required for energy envelope features. "
-        "Install it with: uv pip install \"ethograph[audio]\""
+        'vocalpy is required for energy envelope features. Install it with: uv pip install "ethograph[audio]"'
     ) from e
 
 
 def _sosfilter(data, rate, cutoff, mode, order=4, axis=0):
-    if mode == 'lp' and cutoff > rate / 2:
+    if mode == "lp" and cutoff > rate / 2:
         return data
-    if mode == 'bp' and cutoff[1] > rate / 2:
-        mode, cutoff = 'hp', cutoff[0]
-    sos = butter(order, cutoff, mode, fs=rate, output='sos')
+    if mode == "bp" and cutoff[1] > rate / 2:
+        mode, cutoff = "hp", cutoff[0]
+    sos = butter(order, cutoff, mode, fs=rate, output="sos")
     return sosfiltfilt(sos, data, axis=axis)
 
 
@@ -29,19 +29,22 @@ def _downsample(data, rate, new_rate):
 def _validate_envelope_params(cutoff: float, env_rate: float, margin: float = 0.8) -> None:
     nyquist = env_rate / 2
     if cutoff >= nyquist:
-        raise ValueError(
-            f"Cutoff ({cutoff} Hz) must be below Nyquist ({nyquist} Hz) for env_rate={env_rate} Hz"
-        )
+        raise ValueError(f"Cutoff ({cutoff} Hz) must be below Nyquist ({nyquist} Hz) for env_rate={env_rate} Hz")
     if cutoff > nyquist * margin:
         import warnings
+
         warnings.warn(
             f"Cutoff ({cutoff} Hz) is close to Nyquist ({nyquist} Hz). "
             f"Recommend cutoff < {nyquist * margin:.0f} Hz for env_rate={env_rate} Hz",
             stacklevel=3,
         )
 
+
 def lowpass_envelope(
-    data: np.ndarray, rate: float, cutoff: float = 500.0, env_rate: float = 2000.0,
+    data: np.ndarray,
+    rate: float,
+    cutoff: float = 500.0,
+    env_rate: float = 2000.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute amplitude envelope via lowpass filtering.
 
@@ -67,14 +70,17 @@ def lowpass_envelope(
         Amplitude envelope at ``env_rate``.
     """
     _validate_envelope_params(cutoff, env_rate)
-    filtered = _sosfilter(np.abs(data), rate, cutoff, mode='lp')
+    filtered = _sosfilter(np.abs(data), rate, cutoff, mode="lp")
     envelope, actual_rate = _downsample(filtered, rate, env_rate)
     env_time = np.arange(len(envelope)) / actual_rate
     return env_time, envelope
 
 
 def highpass_envelope(
-    data: np.ndarray, rate: float, cutoff: float = 300.0, env_rate: float = 1000.0,
+    data: np.ndarray,
+    rate: float,
+    cutoff: float = 300.0,
+    env_rate: float = 1000.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute amplitude envelope of highpass-filtered signal.
 
@@ -101,14 +107,14 @@ def highpass_envelope(
         Amplitude envelope at ``env_rate``.
     """
     _validate_envelope_params(cutoff, env_rate)
-    filtered = _sosfilter(data, rate, cutoff, mode='hp')
-    envelope = _sosfilter(np.abs(filtered), rate, cutoff=500.0, mode='lp')
+    filtered = _sosfilter(data, rate, cutoff, mode="hp")
+    envelope = _sosfilter(np.abs(filtered), rate, cutoff=500.0, mode="lp")
     envelope, actual_rate = _downsample(envelope, rate, env_rate)
     env_time = np.arange(len(envelope)) / actual_rate
     return env_time, envelope
 
 
-#TODO: change the order, first downsample, then bandpass? (faster)
+# TODO: change the order, first downsample, then bandpass? (faster)
 def bandpass_envelope(
     data: np.ndarray,
     rate: float,
@@ -144,8 +150,8 @@ def bandpass_envelope(
         Amplitude envelope at ``env_rate``.
     """
     _validate_envelope_params(cutoff, env_rate)
-    filtered = _sosfilter(data, rate, band, mode='bp')
-    envelope = _sosfilter(np.abs(filtered), rate, cutoff=cutoff, mode='lp')
+    filtered = _sosfilter(data, rate, band, mode="bp")
+    envelope = _sosfilter(np.abs(filtered), rate, cutoff=cutoff, mode="lp")
     envelope, actual_rate = _downsample(envelope, rate, env_rate)
     env_time = np.arange(len(envelope)) / actual_rate
     return env_time, envelope
@@ -167,8 +173,7 @@ def ripple_bandpass_envelope(
     data_ds = decimate(data, decim)
     fs_ds = rate / decim
 
-
-    filtered = _sosfilter(data_ds, fs_ds, band, mode='bp')
+    filtered = _sosfilter(data_ds, fs_ds, band, mode="bp")
 
     # -----------------------
     # 3. Hilbert envelope
@@ -286,22 +291,30 @@ def env_ava(
         "use_softmax_amp": use_softmax_amp,
     }
     _VALID_KEYS = {
-        "nperseg", "noverlap", "min_freq", "max_freq",
-        "spect_min_val", "spect_max_val", "use_softmax_amp",
-        "temperature", "smoothing_timescale", "scale", "scale_val",
-        "scale_dtype", "epsilon",
+        "nperseg",
+        "noverlap",
+        "min_freq",
+        "max_freq",
+        "spect_min_val",
+        "spect_max_val",
+        "use_softmax_amp",
+        "temperature",
+        "smoothing_timescale",
+        "scale",
+        "scale_val",
+        "scale_dtype",
+        "epsilon",
     }
     energy_kwargs.update({k: v for k, v in kwargs.items() if k in _VALID_KEYS})
 
     sound = _to_sound(data, rate)
 
-    needs_spect_bounds = (
-        energy_kwargs.get("spect_min_val") is None
-        or energy_kwargs.get("spect_max_val") is None
-    )
+    needs_spect_bounds = energy_kwargs.get("spect_min_val") is None or energy_kwargs.get("spect_max_val") is None
     if needs_spect_bounds:
         spect_min, spect_max = _ava_spect_bounds(
-            data, int(rate), energy_kwargs,
+            data,
+            int(rate),
+            energy_kwargs,
         )
         energy_kwargs.setdefault("spect_min_val", spect_min)
         energy_kwargs.setdefault("spect_max_val", spect_max)
@@ -312,7 +325,9 @@ def env_ava(
 
 
 def _ava_spect_bounds(
-    data_1d: np.ndarray, samplerate: int, kwargs: dict,
+    data_1d: np.ndarray,
+    samplerate: int,
+    kwargs: dict,
 ) -> tuple[float, float]:
     scale = kwargs.get("scale", True)
     data = np.asarray(data_1d, dtype=np.float64)
@@ -383,7 +398,7 @@ def get_lowpass_envelope(audio_path: str, audio_sr: int | None, fps: float):
     n_video_frames = int(len(data) / sr * fps)
 
     video_time = np.arange(n_video_frames) / fps
-    interp_fn = interp1d(env_time, envelope, kind='linear', fill_value='extrapolate')
+    interp_fn = interp1d(env_time, envelope, kind="linear", fill_value="extrapolate")
     envelope = interp_fn(video_time)
 
     return envelope, gen_wav_path

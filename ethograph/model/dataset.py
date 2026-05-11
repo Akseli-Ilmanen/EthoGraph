@@ -2,38 +2,48 @@
 
 import argparse
 import hashlib
+import itertools
 import json
 import os
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-import xarray as xr
 from tqdm import tqdm
 
 import ethograph as eto
-from ethograph.features.changepoints import merge_changepoints, more_changepoint_features
-from ethograph.features.preprocessing import clip_by_percentiles, interpolate_nans, z_normalize
+from ethograph.features.changepoints import (
+    merge_changepoints,
+    more_changepoint_features,
+)
+from ethograph.features.preprocessing import (
+    clip_by_percentiles,
+    interpolate_nans,
+    z_normalize,
+)
 from ethograph.labels.intervals import empty_intervals
 from ethograph.labels.ml import intervals_to_dense
-from ethograph.labels.tsv_store import get_trial_from_tsv, init_empty_labels, labels_tsv_path, load_labels_tsv
+from ethograph.labels.tsv_store import (
+    get_trial_from_tsv,
+    init_empty_labels,
+    labels_tsv_path,
+    load_labels_tsv,
+)
 
-def save_config(all_params, folder='configs', action="train"):
+
+def save_config(all_params, folder="configs", action="train"):
     if not os.path.exists(folder):
-        os.makedirs(folder)   
+        os.makedirs(folder)
 
     ID = all_params["target_individual"]
 
     time = datetime.now().strftime("%Y%m%d_%H%M%S")
-    config_path = os.path.join(folder, f'{ID}_{action}_{time}.json')
+    config_path = os.path.join(folder, f"{ID}_{action}_{time}.json")
     print(f"Config saved: {config_path}")
-    with open(config_path, 'w') as outfile:
+    with open(config_path, "w") as outfile:
         json.dump(all_params, outfile, ensure_ascii=False, indent=2)
-        
-        
+
     return config_path
-
-
 
 
 def get_file_hash(filepath, hash_length=8):
@@ -44,10 +54,10 @@ def get_file_hash(filepath, hash_length=8):
 
 def write_bundle_list(trial_dict, bundle_path):
     bundle_list = [f"{key}_{trial}" for key, val in trial_dict.items() for trial in val["trials"]]
-    
+
     if os.path.exists(bundle_path):
         os.remove(bundle_path)
-    
+
     with open(bundle_path, "w") as f:
         for item in bundle_list:
             f.write(f"{item}.txt\n")
@@ -65,61 +75,50 @@ def extract_features_per_trial(ds, all_params):
         changepoint_feats: 2D array of shape (time, num_changepoint_features)
         features: 2D array of shape (time, num_features)
     """
-    
+
     changepoint_sigmas = all_params["changepoint_feats"]["sigmas"]
     feat_kwargs = all_params["feat_kwargs"]
     cp_kwargs = all_params["cp_kwargs"]
     good_s3d_feats = all_params["good_s3d_feats"]
-    
-    
 
     if all_params["changepoint_feats"]["merge_changepoints"]:
         ds, target_feature = merge_changepoints(ds)
-    
 
     cp_ds = ds.sel(**cp_kwargs).filter_by_attrs(type="changepoints")
 
-    
-    
-
     cp_list = []
     for var in cp_ds.data_vars:
-        
         if not all_params["changepoint_feats"]["merge_changepoints"]:
             target_feature = cp_ds[var].attrs["target_feature"]
-            
+
         targ_feat_vals = ds[target_feature].sel(**cp_kwargs).values
         cp_data = cp_ds[var].squeeze().values
-        
+
         output = more_changepoint_features(cp_data, sigmas=changepoint_sigmas, targ_feat_vals=targ_feat_vals)
         cp_list.append(output)
     cp_feats = np.hstack(cp_list)
 
-    if good_s3d_feats is None: # or all_params["split_5"]["feature_ablation_condition"] == "all_s3d":
+    if good_s3d_feats is None:  # or all_params["split_5"]["feature_ablation_condition"] == "all_s3d":
         s3d = ds.s3d.values
     else:
         s3d = ds.s3d.sel(s3d_dims=good_s3d_feats).values
-    
-    
+
     # s3d = ds.s3d.values
     ds = ds.drop_vars("s3d")
-    ds = ds.drop_vars("angle_rgb") # 
-    
+    ds = ds.drop_vars("angle_rgb")  #
+
     feat_ds = ds.sel(**feat_kwargs).squeeze().filter_by_attrs(type="features")
-    
-    
-    features = feat_ds.to_stacked_array('features', sample_dims=['time']).values # flatten across non-time dimensions
-    shape1 = features.shape
+
+    features = feat_ds.to_stacked_array("features", sample_dims=["time"]).values  # flatten across non-time dimensions
     features = features[:, ~np.all(np.isnan(features), axis=0)]
-    shape2 = features.shape
-    
+
     # if shape1[1] != shape2[1]:
     #     print(f"\nWarning: Dropped {shape1[1]-shape2[1]} all-NaN feature columns.")
 
     return cp_feats, features, s3d
 
 
-# TO DO, figure out smart way to specify individual in feat_kwargs, else. 
+# TO DO, figure out smart way to specify individual in feat_kwargs, else.
 def get_feature_names(ds, all_params):
     changepoint_sigmas = all_params["changepoint_feats"]["sigmas"]
     changepoint_names = []
@@ -132,11 +131,10 @@ def get_feature_names(ds, all_params):
     feat_kwargs = all_params["feat_kwargs"]
     feat_da = ds.sel(**feat_kwargs).squeeze().filter_by_attrs(type="features")
 
-    
     feature_var_names = []
     for var_name in feat_da.data_vars:
         var_data = feat_da[var_name]
-        non_time_dims = [dim for dim in var_data.dims if dim != 'time' and dim != 'trials']
+        non_time_dims = [dim for dim in var_data.dims if dim != "time" and dim != "trials"]
         if len(non_time_dims) == 0:
             feature_var_names.append(var_name)
         elif len(non_time_dims) == 1:
@@ -152,60 +150,57 @@ def get_feature_names(ds, all_params):
     return changepoint_names + feature_var_names
 
 
-def get_data_dict(all_params, nc_paths, trial_dict, features_path=None, gt_path=None, idx_to_class=None):
-    
-
+def get_data_dict(
+    all_params,
+    nc_paths,
+    trial_dict,
+    features_path=None,
+    gt_path=None,
+    idx_to_class=None,
+):
 
     feature_dim = None
-        
-    print(f'Loading Dataset ...')
+
+    print("Loading Dataset ...")
     for hash_key in trial_dict.keys():
-        nc_path = trial_dict[hash_key]['nc_path']
+        nc_path = trial_dict[hash_key]["nc_path"]
         print(f"Processing {nc_path}, hash key: {hash_key}")
         dt = eto.open(nc_path)
-        
+
         tsv_path = labels_tsv_path(nc_path)
         if tsv_path.exists():
             _all_labels = load_labels_tsv(tsv_path)
         else:
             _all_labels = init_empty_labels(dt.trials)
 
-        for trial_num in tqdm(trial_dict[hash_key]['trials']):
-
-
+        for trial_num in tqdm(trial_dict[hash_key]["trials"]):
             ds = dt.trial(trial_num)
 
             individual = all_params["target_individual"]
-            intervals_df = get_trial_from_tsv(_all_labels, trial_num) if all_params["action"] != "inference" else empty_intervals()
+            intervals_df = (
+                get_trial_from_tsv(_all_labels, trial_num) if all_params["action"] != "inference" else empty_intervals()
+            )
             time_coord = ds.time.values
             n_samples = len(time_coord)
             sr = 1.0 / np.median(np.diff(time_coord))
             labels = intervals_to_dense(intervals_df, sr, [individual], n_samples)[:, 0]
 
-
             # B - Batch, T - Time, F - Feature
             try:
-                changepoint_features, features, s3d = extract_features_per_trial(ds, all_params) # (T, F)
+                changepoint_features, features, s3d = extract_features_per_trial(ds, all_params)  # (T, F)
             except Exception as e:
                 print(f"  ERROR in extract_features_per_trial for session {nc_path}, trial {trial_num}: {e}")
                 raise
 
- 
-            features = interpolate_nans(features, axis=0) 
+            features = interpolate_nans(features, axis=0)
             features = clip_by_percentiles(features, percentile_range=(2, 98))
- 
 
-            
-            
-            
             split = all_params["split"]
-            
-            
 
-            condition = all_params.get(f'split_{split}', {}).get('feature_ablation_condition', 'full')
+            condition = all_params.get(f"split_{split}", {}).get("feature_ablation_condition", "full")
             if condition not in ("no_changepoint", "no_kinematic", "no_s3d", "full"):
                 condition = "full"
-            
+
             if condition == "no_changepoint":
                 all_features = np.concatenate([features, s3d], axis=1)
             elif condition == "no_kinematic":
@@ -214,10 +209,8 @@ def get_data_dict(all_params, nc_paths, trial_dict, features_path=None, gt_path=
                 all_features = np.concatenate([changepoint_features, features], axis=1)
             elif condition in ["full", "all_s3d"]:
                 all_features = np.concatenate([changepoint_features, features, s3d], axis=1)
-            
-     
+
             all_features = z_normalize(all_features)
-     
 
             # Capture feature dimension from first trial
             if feature_dim is None:
@@ -227,22 +220,25 @@ def get_data_dict(all_params, nc_paths, trial_dict, features_path=None, gt_path=
                 elif condition == "no_kinematic":
                     print(f"\nN changepoint features: {changepoint_features.shape[1]}, S3D features: {s3d.shape[1]}")
                 elif condition == "no_s3d":
-                    print(f"\nN changepoint features: {changepoint_features.shape[1]}, kinematic features: {features.shape[1]}")
+                    print(
+                        f"\nN changepoint features: {changepoint_features.shape[1]}, kinematic features: {features.shape[1]}"  # noqa: E501
+                    )
                 else:
-                    print(f"\nN changepoint features: {changepoint_features.shape[1]}, kinematic features: {features.shape[1]}, S3D features: {s3d.shape[1]}")
-                    
-                
+                    print(
+                        f"\nN changepoint features: {changepoint_features.shape[1]}, kinematic features: {features.shape[1]}, S3D features: {s3d.shape[1]}"  # noqa: E501
+                    )
 
-
-            features = all_features.T # (F, T)
-            np.save(os.path.join(features_path, f'{hash_key}_{trial_num}.npy'), features)
+            features = all_features.T  # (F, T)
+            np.save(os.path.join(features_path, f"{hash_key}_{trial_num}.npy"), features)
 
             labels_text = [idx_to_class[int(label_num)] for label_num in labels]
-            np.savetxt(os.path.join(gt_path, f'{hash_key}_{trial_num}.txt'), labels_text, fmt='%s')
-
+            np.savetxt(
+                os.path.join(gt_path, f"{hash_key}_{trial_num}.txt"),
+                labels_text,
+                fmt="%s",
+            )
 
     return feature_dim
-
 
 
 def get_trial_dict(all_params, nc_paths) -> dict:
@@ -259,44 +255,36 @@ def get_trial_dict(all_params, nc_paths) -> dict:
 
         valid_trials = []
         for trial in dt.trials:
-
             ds = dt.trial(trial)
 
             individual = all_params["target_individual"]
 
-            if all_params["action"] in ['train', 'eval']:
+            if all_params["action"] in ["train", "eval"]:
                 intervals_df = get_trial_from_tsv(_all_labels, trial)
                 ind_labels = intervals_df[intervals_df["individual"] == individual]
                 if ind_labels.empty:
                     continue
-                    
-            if all_params["action"] == 'inference':
-                stick_pos = ds.position.sel(
-                    keypoints='stickTip', space='x', individuals=individual
-                ).values
+
+            if all_params["action"] == "inference":
+                stick_pos = ds.position.sel(keypoints="stickTip", space="x", individuals=individual).values
                 valid = stick_pos[~np.isnan(stick_pos) & (stick_pos != 0)]
-                
+
                 if valid.size < 200:
                     continue
-            
-            valid_trials.append(int(trial)) # WILL not work if trial nums are not integers
-        
-        trial_dict[hash_key] = {
-            'nc_path': nc_path,
-            'trials': sorted(valid_trials)
-        }
-    
+
+            valid_trials.append(int(trial))  # WILL not work if trial nums are not integers
+
+        trial_dict[hash_key] = {"nc_path": nc_path, "trials": sorted(valid_trials)}
+
     return trial_dict
 
 
-
-    
 def str2bool(v):
     if isinstance(v, bool):
         return v
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+    if v.lower() in ("yes", "true", "t", "y", "1"):
         return True
-    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+    elif v.lower() in ("no", "false", "f", "n", "0"):
         return False
     else:
-        raise argparse.ArgumentTypeError('Boolean value expected.')
+        raise argparse.ArgumentTypeError("Boolean value expected.")

@@ -26,9 +26,8 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.features.preprocessing import interpolate_nans
-from ethograph.io.catalog import DataLoader
 from ethograph.gui.plots_lineplot import MultiColoredLineItem
-
+from ethograph.io.catalog import DataLoader
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +37,7 @@ SEPARATOR = " · "
 # ---------------------------------------------------------------------------
 # Axis item helpers
 # ---------------------------------------------------------------------------
+
 
 def _build_axis_items(store: DataLoader) -> list[str]:
     """Build combo items from store features + their sub-dimensions.
@@ -69,8 +69,13 @@ def _parse_axis_item(item: str) -> tuple[str, str | None]:
     return item, None
 
 
-def _select_axis(store: DataLoader, item: str, ds_kwargs: dict,
-                 t0: float | None = None, t1: float | None = None):
+def _select_axis(
+    store: DataLoader,
+    item: str,
+    ds_kwargs: dict,
+    t0: float | None = None,
+    t1: float | None = None,
+):
     """Fetch 1-D numpy array + time for a single axis item.
 
     Follows the ``select_feature`` / ``plot_ds_variable`` pattern: pass
@@ -105,11 +110,13 @@ def _select_axis(store: DataLoader, item: str, ds_kwargs: dict,
 # Reference geometry: vertices + edges
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ReferenceGeometry:
     """A set of vertices connected by indexed edges."""
+
     name: str
-    vertices: np.ndarray   # (N, 2) or (N, 3)
+    vertices: np.ndarray  # (N, 2) or (N, 3)
     edges: list[tuple[int, int]]
     color: str = "black"
 
@@ -135,12 +142,14 @@ def _parse_references(cfg: dict) -> list[ReferenceGeometry]:
         for entry in cfg["references"]:
             verts = np.array(entry["vertices"], dtype=np.float64)
             edges = [tuple(e) for e in entry["edges"]]
-            refs.append(ReferenceGeometry(
-                name=entry.get("name", "ref"),
-                vertices=verts,
-                edges=edges,
-                color=entry.get("color", "black"),
-            ))
+            refs.append(
+                ReferenceGeometry(
+                    name=entry.get("name", "ref"),
+                    vertices=verts,
+                    edges=edges,
+                    color=entry.get("color", "black"),
+                )
+            )
         return refs
 
     # Old format: arena with xy_polygon + z_bot/z_top → auto-convert
@@ -161,14 +170,14 @@ def _parse_references(cfg: dict) -> list[ReferenceGeometry]:
 
         edges = []
         for i in range(n - 1):
-            edges.append((i, i + 1))          # floor edges
+            edges.append((i, i + 1))  # floor edges
             edges.append((n + i, n + i + 1))  # ceiling edges
-            edges.append((i, n + i))          # verticals
+            edges.append((i, n + i))  # verticals
         # Close floor/ceiling if not already closed
         if not np.allclose(xy[0], xy[-1]):
             edges.append((n - 1, 0))
             edges.append((2 * n - 1, n))
-        edges.append((n - 1, 2 * n - 1))     # last vertical
+        edges.append((n - 1, 2 * n - 1))  # last vertical
 
         refs.append(ReferenceGeometry("arena", verts, edges))
     else:
@@ -185,7 +194,6 @@ def _parse_references(cfg: dict) -> list[ReferenceGeometry]:
 def _color_to_rgba(color_str: str) -> tuple:
     """Convert color name/hex to (r, g, b, a) float tuple for GL."""
     try:
-        from pyqtgraph.functions import colorStr
         qc = pg.mkColor(color_str)
         return (qc.redF(), qc.greenF(), qc.blueF(), 1.0)
     except Exception:
@@ -221,8 +229,11 @@ def _render_reference_3d(gl_widget, ref: ReferenceGeometry):
     color = _color_to_rgba(ref.color)
     wireframe = gl.GLLinePlotItem(
         pos=np.array(pairs, dtype=np.float32),
-        color=color, width=2, antialias=True, mode='lines',
-        glOptions='opaque',
+        color=color,
+        width=2,
+        antialias=True,
+        mode="lines",
+        glOptions="opaque",
     )
     gl_widget.addItem(wireframe)
 
@@ -231,12 +242,13 @@ def _render_reference_3d(gl_widget, ref: ReferenceGeometry):
 # Rendering helpers
 # ---------------------------------------------------------------------------
 
+
 def _render_2d(plot_widget, X, Y, color_data=None):
     """Plot 2D trajectory on a PlotWidget. Returns the line item."""
     if color_data is not None and color_data.ndim == 2 and color_data.shape[1] >= 3:
         line = MultiColoredLineItem(x=X, y=Y, colors=color_data, width=3)
     else:
-        line = pg.PlotCurveItem(x=X, y=Y, pen=pg.mkPen(color='b', width=3))
+        line = pg.PlotCurveItem(x=X, y=Y, pen=pg.mkPen(color="b", width=3))
     line._is_trajectory = True
     plot_widget.addItem(line)
     return line
@@ -262,7 +274,16 @@ def _render_3d(gl_widget, X, Y, Z, color_data=None):
 def _auto_camera_3d(gl_widget, X, Y, Z):
     """Set a reasonable default camera for 3D data."""
     cx, cy, cz = float(np.nanmean(X)), float(np.nanmean(Y)), float(np.nanmean(Z))
-    extent = float(max(np.nanmax(X) - np.nanmin(X), np.nanmax(Y) - np.nanmin(Y), np.nanmax(Z) - np.nanmin(Z))) * 1.5
+    extent = (
+        float(
+            max(
+                np.nanmax(X) - np.nanmin(X),
+                np.nanmax(Y) - np.nanmin(Y),
+                np.nanmax(Z) - np.nanmin(Z),
+            )
+        )
+        * 1.5
+    )
     gl_widget.setCameraPosition(
         pos=pg.Vector(cx, cy, cz),
         distance=max(extent, 1.0),
@@ -274,6 +295,7 @@ def _auto_camera_3d(gl_widget, X, Y, Z):
 # ---------------------------------------------------------------------------
 # SpacePlot widget
 # ---------------------------------------------------------------------------
+
 
 class SpacePlot(QWidget):
     """Dock widget for displaying spatial plots with user-selectable axes."""
@@ -337,8 +359,7 @@ class SpacePlot(QWidget):
         self._plot_holder_layout = QVBoxLayout()
         self._plot_holder_layout.setContentsMargins(0, 0, 0, 0)
         self._plot_holder.setLayout(self._plot_holder_layout)
-        self._plot_holder.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._plot_holder.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         root.addWidget(self._plot_holder, 1)
 
         self.space_widget = None
@@ -385,12 +406,9 @@ class SpacePlot(QWidget):
         self._store = store
         self._populate_combos()
 
-
     def show(self):
         if not self.dock_widget:
-            self.dock_widget = self.viewer.window.add_dock_widget(
-                self, area="left", name="Space Plot"
-            )
+            self.dock_widget = self.viewer.window.add_dock_widget(self, area="left", name="Space Plot")
             main_window = self.viewer.window._qt_window
             desired_width = int(main_window.width() * 0.2)
             self.setMinimumSize(120, 120)
@@ -463,6 +481,7 @@ class SpacePlot(QWidget):
 
     def _set_default_axes(self, items: list[str]):
         """Pick sensible defaults for X/Y/Z combos."""
+
         def find(suffix: str) -> int:
             for i, item in enumerate(items):
                 if item.endswith(f"{SEPARATOR}{suffix}"):
@@ -518,7 +537,7 @@ class SpacePlot(QWidget):
         if SEPARATOR in text:
             dim_name, val = text.split(SEPARATOR, 1)
             return {dim_name: val}
-        dim_name = getattr(self, '_keypoint_dim_name', None)
+        dim_name = getattr(self, "_keypoint_dim_name", None)
         if dim_name:
             return {dim_name: text}
         return {}
@@ -543,8 +562,8 @@ class SpacePlot(QWidget):
         new_text = self.keypoint_combo.currentText()
         # _prev_keypoint is the value *before* this change (set at the end of
         # the previous call, or None on first change).
-        if new_text and new_text != getattr(self, '_current_keypoint', None):
-            self._prev_keypoint = getattr(self, '_current_keypoint', None)
+        if new_text and new_text != getattr(self, "_current_keypoint", None):
+            self._prev_keypoint = getattr(self, "_current_keypoint", None)
             self._current_keypoint = new_text
         if self._store is not None:
             self._save_to_app_state()
@@ -568,7 +587,7 @@ class SpacePlot(QWidget):
 
     def on_xrange_changed(self):
         """Called by DataWidget when the lineplot x-range changes."""
-        if getattr(self.app_state, 'space_limit_to_window', False) and self.isVisible():
+        if getattr(self.app_state, "space_limit_to_window", False) and self.isVisible():
             self._debounce_timer.start()
 
     def _save_to_app_state(self):
@@ -576,8 +595,6 @@ class SpacePlot(QWidget):
         self.app_state.space_y_axis = self.y_combo.currentText() or None
         self.app_state.space_z_axis = self.z_combo.currentText() or None
         self.app_state.space_3d = self.cb_3d.isChecked()
-
-
 
     def _set_3d_visible(self, visible: bool):
         self.z_label.setVisible(visible)
@@ -587,7 +604,7 @@ class SpacePlot(QWidget):
 
     def _get_window_time_range(self) -> tuple[float | None, float | None]:
         """Return (t0, t1) from the lineplot x-range if limit-to-window is on."""
-        if not getattr(self.app_state, 'space_limit_to_window', False):
+        if not getattr(self.app_state, "space_limit_to_window", False):
             return None, None
         if self._plot_container is None:
             return None, None
@@ -636,10 +653,10 @@ class SpacePlot(QWidget):
                 data_z = dz[:n]
 
         # Mask points where all dimensions are exactly zero
-        if getattr(self.app_state, 'space_hide_zeros', False):
+        if getattr(self.app_state, "space_hide_zeros", False):
             zero_mask = (data_x == 0) & (data_y == 0)
             if data_z is not None:
-                zero_mask &= (data_z == 0)
+                zero_mask &= data_z == 0
             data_x = np.where(zero_mask, np.nan, data_x)
             data_y = np.where(zero_mask, np.nan, data_y)
             if data_z is not None:
@@ -648,7 +665,7 @@ class SpacePlot(QWidget):
         color_data = None
 
         use_3d = view_3d and data_z is not None
-        locked = getattr(self.app_state, 'space_lock_axes', False)
+        locked = getattr(self.app_state, "space_lock_axes", False)
 
         # GL cannot render NaN positions — interpolate before 3D rendering
         if use_3d:
@@ -667,8 +684,8 @@ class SpacePlot(QWidget):
         else:
             _render_2d(self.space_widget, data_x, data_y, color_data)
             plot_item = self.space_widget.getPlotItem()
-            plot_item.setLabel('bottom', x_item)
-            plot_item.setLabel('left', y_item)
+            plot_item.setLabel("bottom", x_item)
+            plot_item.setLabel("left", y_item)
 
         if locked and saved_ranges:
             self._restore_ranges(saved_ranges)
@@ -682,15 +699,14 @@ class SpacePlot(QWidget):
         self.is_3d = use_3d
 
         # Place marker at current time
-        current_frame = getattr(self.app_state, 'current_frame', 0)
-        video = getattr(self.app_state, 'video', None)
+        current_frame = getattr(self.app_state, "current_frame", 0)
+        video = getattr(self.app_state, "video", None)
         if video:
             t = video.frame_to_time(current_frame)
         else:
-            fps = getattr(self.app_state, 'video_fps', 30)
+            fps = getattr(self.app_state, "video_fps", 30)
             t = current_frame / fps if fps else 0.0
         self.update_time_marker(t)
-
 
     def _rebuild_plot_widget(self, view_3d: bool):
         """Remove old widget and create the right type inside the holder."""
@@ -701,12 +717,11 @@ class SpacePlot(QWidget):
 
         if view_3d:
             self.space_widget = gl.GLViewWidget()
-            self.space_widget.setBackgroundColor('w')
-            self.space_widget.setSizePolicy(
-                QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.space_widget.setBackgroundColor("w")
+            self.space_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         else:
             self.space_widget = pg.PlotWidget()
-            self.space_widget.setBackground('w')
+            self.space_widget.setBackground("w")
 
         self._plot_holder_layout.addWidget(self.space_widget)
 
@@ -714,9 +729,9 @@ class SpacePlot(QWidget):
         """Load reference geometry from space.yaml or arena.yaml."""
         from ethograph.utils.paths import find_config
 
-        nc_path = getattr(self.app_state, 'nc_file_path', None)
+        nc_path = getattr(self.app_state, "nc_file_path", None)
         if not nc_path:
-            nc_path = getattr(self.app_state, 'nap_path', None)
+            nc_path = getattr(self.app_state, "nap_path", None)
         data_dir = Path(nc_path).parent if nc_path else None
 
         for name in ("space.yaml", "arena.yaml"):
@@ -735,7 +750,7 @@ class SpacePlot(QWidget):
 
     def _draw_references(self):
         """Draw all reference geometry items."""
-        if not getattr(self.app_state, 'space_show_references', True):
+        if not getattr(self.app_state, "space_show_references", True):
             return
         refs = self._load_references()
         if not refs:
@@ -756,7 +771,7 @@ class SpacePlot(QWidget):
 
     def _apply_percentile_limits(self, data_x, data_y, data_z=None):
         """Constrain zoom to per-axis percentile range using vb.setLimits()."""
-        percentile = getattr(self.app_state, 'space_percentile_xyzlim', 100.0)
+        percentile = getattr(self.app_state, "space_percentile_xyzlim", 100.0)
         if percentile >= 100.0 or self.space_widget is None:
             return
 
@@ -794,10 +809,14 @@ class SpacePlot(QWidget):
         else:
             vb = self.space_widget.getPlotItem().vb
             vb.setLimits(
-                xMin=x_lo - x_buf, xMax=x_hi + x_buf,
-                yMin=y_lo - y_buf, yMax=y_hi + y_buf,
-                minXRange=x_range * 0.1, maxXRange=x_range + x_buf,
-                minYRange=y_range * 0.1, maxYRange=y_range + y_buf,
+                xMin=x_lo - x_buf,
+                xMax=x_hi + x_buf,
+                yMin=y_lo - y_buf,
+                yMax=y_hi + y_buf,
+                minXRange=x_range * 0.1,
+                maxXRange=x_range + x_buf,
+                minYRange=y_range * 0.1,
+                maxYRange=y_range + y_buf,
             )
             vb.setRange(xRange=(x_lo, x_hi), yRange=(y_lo, y_hi), padding=0.05)
 
@@ -830,8 +849,7 @@ class SpacePlot(QWidget):
 
     # --- Highlight / time marker -------------------------------------------
 
-    def highlight_time_segment(self, start_time: float, end_time: float,
-                               color=(255, 102, 0)):
+    def highlight_time_segment(self, start_time: float, end_time: float, color=(255, 102, 0)):
         """Highlight a time segment of the trajectory."""
         if not self.space_widget or self._trajectory_pos is None or self._trajectory_times is None:
             return
@@ -855,7 +873,7 @@ class SpacePlot(QWidget):
 
         if is_gl:
             for item in list(self.space_widget.items):
-                if getattr(item, '_is_trajectory', False) or getattr(item, '_is_highlight', False):
+                if getattr(item, "_is_trajectory", False) or getattr(item, "_is_highlight", False):
                     self.space_widget.removeItem(item)
 
             z_arr = Z if Z is not None else np.zeros_like(X)
@@ -864,7 +882,7 @@ class SpacePlot(QWidget):
             bg._is_trajectory = True
             self.space_widget.addItem(bg)
 
-            seg = xyz[i0:i1 + 1]
+            seg = xyz[i0 : i1 + 1]
             if len(seg) > 1:
                 hl = gl.GLLinePlotItem(pos=seg, color=(rf, gf, bf, 1), width=5, antialias=True)
                 hl._is_highlight = True
@@ -872,17 +890,18 @@ class SpacePlot(QWidget):
         else:
             plot_item = self.space_widget.getPlotItem()
             for item in list(plot_item.items):
-                if getattr(item, '_is_trajectory', False) or getattr(item, '_is_highlight', False):
+                if getattr(item, "_is_trajectory", False) or getattr(item, "_is_highlight", False):
                     plot_item.removeItem(item)
 
             bg = pg.PlotCurveItem(x=X, y=Y, pen=pg.mkPen(color=(180, 180, 180, 128), width=2))
             bg._is_trajectory = True
             plot_item.addItem(bg)
 
-            x_seg, y_seg = X[i0:i1 + 1], Y[i0:i1 + 1]
+            x_seg, y_seg = X[i0 : i1 + 1], Y[i0 : i1 + 1]
             if len(x_seg) > 1:
                 hl = pg.PlotCurveItem(
-                    x=x_seg, y=y_seg,
+                    x=x_seg,
+                    y=y_seg,
                     pen=pg.mkPen(color=(r8, g8, b8), width=4),
                 )
                 hl._is_highlight = True
@@ -890,14 +909,14 @@ class SpacePlot(QWidget):
 
     def update_time_marker(self, time_position: float):
         """Show a red circle at the current time position on the trajectory."""
-        if not getattr(self.app_state, 'space_marker_visible', True):
+        if not getattr(self.app_state, "space_marker_visible", True):
             self._remove_time_marker()
             return
         if not self.space_widget or self._trajectory_pos is None or self._trajectory_times is None:
             return
 
         times = self._trajectory_times
-        idx = int(np.searchsorted(times, time_position, side='right') - 1)
+        idx = int(np.searchsorted(times, time_position, side="right") - 1)
         idx = np.clip(idx, 0, len(times) - 1)
 
         X, Y, Z = self._trajectory_pos
@@ -913,8 +932,11 @@ class SpacePlot(QWidget):
                 self._time_marker_item.setData(pos=pos_arr, color=color_arr)
             else:
                 self._time_marker_item = gl.GLScatterPlotItem(
-                    pos=pos_arr, color=color_arr, size=20,
-                    pxMode=True, glOptions='translucent',
+                    pos=pos_arr,
+                    color=color_arr,
+                    size=20,
+                    pxMode=True,
+                    glOptions="translucent",
                 )
                 self.space_widget.addItem(self._time_marker_item)
         else:
@@ -922,11 +944,12 @@ class SpacePlot(QWidget):
                 self._time_marker_item.setData([x], [y])
             else:
                 self._time_marker_item = pg.ScatterPlotItem(
-                    [x], [y],
+                    [x],
+                    [y],
                     pen=pg.mkPen(None),
                     brush=pg.mkBrush(255, 0, 0),
                     size=12,
-                    symbol='o',
+                    symbol="o",
                 )
                 self._time_marker_item.setZValue(1000)
                 plot_item = self.space_widget.getPlotItem()

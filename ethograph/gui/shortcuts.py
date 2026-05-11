@@ -2,7 +2,6 @@
 
 import logging
 
-import numpy as np
 from napari.layers import Image, Labels, Points, Shapes, Surface, Tracks
 from qtpy.QtWidgets import QMenu
 
@@ -10,17 +9,35 @@ logger = logging.getLogger(__name__)
 
 
 def override_napari_shortcuts(viewer):
-    number_keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
-    qwerty_row = ['q', 'w', 'e', 'r', 't', 'z', 'u', 'i', 'o', 'p']
-    home_row = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';']
-    control_row = ['e', 'd', 'f', 'i', 'k', 'c', 'm', 't', 'n', 'p']
-    other = ['y', 'space', 'Up', 'Down', 'v', 'x']
+    number_keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+    qwerty_row = ["q", "w", "e", "r", "t", "z", "u", "i", "o", "p"]
+    home_row = ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"]
+    control_row = ["e", "d", "f", "i", "k", "c", "m", "t", "n", "p"]
+    other = ["y", "space", "Up", "Down", "v", "x"]
 
     combos = [
-        'Ctrl-a', 'Ctrl-s', 'Ctrl-x', 'Ctrl-v', 'Ctrl-l', 'Ctrl-enter', 'Ctrl-d',
-        'Ctrl-e', 'Ctrl-f', 'Ctrl-i', 'Ctrl-k', 'Ctrl-c', 'Ctrl-m', 'Ctrl-t',
-        'Ctrl-Left', 'Ctrl-Right',
-        'Shift-A', 'Shift-S', 'Shift-E', 'Shift-F', 'Shift-C', 'Shift-K',
+        "Ctrl-a",
+        "Ctrl-s",
+        "Ctrl-x",
+        "Ctrl-v",
+        "Ctrl-l",
+        "Ctrl-enter",
+        "Ctrl-d",
+        "Ctrl-e",
+        "Ctrl-f",
+        "Ctrl-i",
+        "Ctrl-k",
+        "Ctrl-c",
+        "Ctrl-m",
+        "Ctrl-t",
+        "Ctrl-Left",
+        "Ctrl-Right",
+        "Shift-A",
+        "Shift-S",
+        "Shift-E",
+        "Shift-F",
+        "Shift-C",
+        "Shift-K",
     ]
 
     all_keys = number_keys + qwerty_row + home_row + control_row + other + combos
@@ -29,7 +46,7 @@ def override_napari_shortcuts(viewer):
     for layer_type in layer_types:
         for key in all_keys:
             try:
-                if hasattr(layer_type, 'bind_key'):
+                if hasattr(layer_type, "bind_key"):
                     layer_type.bind_key(key, None)
             except (KeyError, ValueError, AttributeError) as e:
                 logger.warning("Could not unbind %s from %s: %s", key, layer_type.__name__, e)
@@ -43,22 +60,22 @@ def override_napari_shortcuts(viewer):
     if viewer.layers.selection.active:
         active_layer = viewer.layers.selection.active
         for key in all_keys:
-            if hasattr(active_layer, 'keymap') and key in active_layer.keymap:
+            if hasattr(active_layer, "keymap") and key in active_layer.keymap:
                 del active_layer.keymap[key]
 
-    if hasattr(viewer, 'window') and viewer.window:
+    if hasattr(viewer, "window") and viewer.window:
         window = viewer.window
-        if hasattr(window, 'file_menu'):
+        if hasattr(window, "file_menu"):
             for action in window.file_menu.actions():
-                if 'save' in action.text().lower():
-                    action.setShortcut('')
+                if "save" in action.text().lower():
+                    action.setShortcut("")
 
-        if hasattr(window, '_qt_window'):
+        if hasattr(window, "_qt_window"):
             menubar = window._qt_window.menuBar()
             for menu in menubar.findChildren(QMenu):
                 for action in menu.actions():
-                    if action.shortcut().toString() in ['Ctrl+S', 'Ctrl+A', 'Ctrl+M']:
-                        action.setShortcut('')
+                    if action.shortcut().toString() in ["Ctrl+S", "Ctrl+A", "Ctrl+M"]:
+                        action.setShortcut("")
 
 
 def bind_global_shortcuts(meta_widget):
@@ -132,8 +149,8 @@ def bind_global_shortcuts(meta_widget):
         if data_widget is not None:
             data_widget.toggle_predictions_slot()
 
-    if 'Ctrl-A' in viewer.keymap:
-        del viewer.keymap['Ctrl-A']
+    if "Ctrl-A" in viewer.keymap:
+        del viewer.keymap["Ctrl-A"]
 
     @viewer.bind_key("ctrl+a", overwrite=True)
     def toggle_autoscale(v):
@@ -200,19 +217,19 @@ def bind_global_shortcuts(meta_widget):
             record_btn._stop_recording()
 
     # Label activation grid layout
-    number_keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
-    qwerty_row = ['q', 'w', 'e', 'r', 't', 'z', 'u', 'i', 'o', 'p']
-    home_row = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l']
+    number_keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+    qwerty_row = ["q", "w", "e", "r", "t", "z", "u", "i", "o", "p"]
+    home_row = ["a", "s", "d", "f", "g", "h", "j", "k", "l"]
 
     for i, key in enumerate(number_keys):
-        labels = i + 1 if key != '0' else 10
+        labels = i + 1 if key != "0" else 10
         viewer.bind_key(key, lambda v, mk=labels: labels_widget.activate_label(mk), overwrite=True)
 
     for i, key in enumerate(qwerty_row):
-        viewer.bind_key(key, lambda v, mk=i+11: labels_widget.activate_label(mk), overwrite=True)
+        viewer.bind_key(key, lambda v, mk=i + 11: labels_widget.activate_label(mk), overwrite=True)
 
     for i, key in enumerate(home_row):
-        viewer.bind_key(key, lambda v, mk=i+21: labels_widget.activate_label(mk), overwrite=True)
+        viewer.bind_key(key, lambda v, mk=i + 21: labels_widget.activate_label(mk), overwrite=True)
 
     @viewer.bind_key("ctrl+e", overwrite=True)
     def edit_label(v):
@@ -240,7 +257,7 @@ def bind_global_shortcuts(meta_widget):
 
     @viewer.bind_key("ctrl+c", overwrite=True)
     def cycle_cameras(v):
-        combo = getattr(data_widget, 'primary_camera_combo', None)
+        combo = getattr(data_widget, "primary_camera_combo", None)
         if combo is not None and combo.count() > 1:
             next_index = (combo.currentIndex() + 1) % combo.count()
             combo.setCurrentIndex(next_index)
@@ -271,7 +288,7 @@ def bind_global_shortcuts(meta_widget):
 
     @viewer.bind_key("shift+e", overwrite=True)
     def toggle_ephys(v):
-        cb = getattr(data_widget, 'phy_viewer_checkbox', None)
+        cb = getattr(data_widget, "phy_viewer_checkbox", None)
         if cb and cb.isEnabled():
             cb.setChecked(not cb.isChecked())
 
@@ -296,7 +313,7 @@ def bind_global_shortcuts(meta_widget):
 
     @viewer.bind_key("shift+k", overwrite=True)
     def toggle_space_keypoint(v):
-        sp = getattr(data_widget, 'space_plot', None)
+        sp = getattr(data_widget, "space_plot", None)
         if sp is None or not sp.isVisible():
             return
         sp.toggle_keypoint()

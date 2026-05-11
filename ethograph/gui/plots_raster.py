@@ -16,14 +16,19 @@ from numpy.typing import NDArray
 from qtpy.QtCore import Signal
 from qtpy.QtGui import QColor
 
-from .app_constants import Z_INDEX_TIME_MARKER, RASTER_DEBOUNCE_MS, DEFAULT_BUFFER_MULTIPLIER_EPHYS, BUFFER_COVERAGE_MARGIN
+from .app_constants import (
+    BUFFER_COVERAGE_MARGIN,
+    DEFAULT_BUFFER_MULTIPLIER_EPHYS,
+    RASTER_DEBOUNCE_MS,
+    Z_INDEX_TIME_MARKER,
+)
 from .plots_base import BasePlot, ThrottleDebounce
 
 if TYPE_CHECKING:
     from ethograph.io.plot_sources import PlotSource
 
-_PHY_BG = '#000000'
-_PHY_AXIS = '#AAAAAA'
+_PHY_BG = "#000000"
+_PHY_AXIS = "#AAAAAA"
 _DOT_COLOR = QColor(180, 180, 180, 200)
 _DOT_WIDTH = 3
 _MAX_DOTS_PER_GROUP = 50_000
@@ -42,13 +47,13 @@ class RasterPlot(BasePlot):
         super().__init__(app_state, parent)
 
         self.setBackground(_PHY_BG)
-        for axis_name in ('left', 'bottom'):
+        for axis_name in ("left", "bottom"):
             axis = self.plot_item.getAxis(axis_name)
             axis.setPen(pg.mkPen(_PHY_AXIS))
             axis.setTextPen(pg.mkPen(_PHY_AXIS))
-        self.time_marker.setPen(pg.mkPen('#FF4444', width=2, style=pg.QtCore.Qt.DotLine))
+        self.time_marker.setPen(pg.mkPen("#FF4444", width=2, style=pg.QtCore.Qt.DotLine))
 
-        self.plot_item.getAxis('left').hide()
+        self.plot_item.getAxis("left").hide()
 
         self._hw_to_global_y: dict[int, float] = {}
         self._channel_spacing: float = 1.0
@@ -189,11 +194,12 @@ class RasterPlot(BasePlot):
 
     def _add_scatter(self, x: NDArray, y: NDArray, color):
         scatter = pg.ScatterPlotItem(
-            x=x, y=y,
+            x=x,
+            y=y,
             pen=None,
             brush=pg.mkBrush(color),
             size=_DOT_WIDTH,
-            symbol='o',
+            symbol="o",
             useCache=True,
         )
         scatter.setZValue(Z_INDEX_TIME_MARKER - 1)
@@ -224,22 +230,31 @@ class RasterPlot(BasePlot):
 
         if self._multi_entries is not None:
             for times, channels, color in self._multi_entries:
-                self._draw_visible(times, channels, draw_x0, draw_x1, y_lo, y_hi,
-                                   QColor(*color))
+                self._draw_visible(times, channels, draw_x0, draw_x1, y_lo, y_hi, QColor(*color))
         elif self._spike_times is not None and self._best_channels is not None:
-            self._draw_visible(self._spike_times, self._best_channels,
-                               draw_x0, draw_x1, y_lo, y_hi, _DOT_COLOR)
+            self._draw_visible(
+                self._spike_times,
+                self._best_channels,
+                draw_x0,
+                draw_x1,
+                y_lo,
+                y_hi,
+                _DOT_COLOR,
+            )
 
     def _draw_visible(
         self,
-        times: NDArray, channels: NDArray,
-        x_lo: float, x_hi: float,
-        y_lo: float, y_hi: float,
+        times: NDArray,
+        channels: NDArray,
+        x_lo: float,
+        x_hi: float,
+        y_lo: float,
+        y_hi: float,
         color,
     ):
         # 1. X-cull via searchsorted (O(log n), times is pre-sorted).
-        i0 = int(np.searchsorted(times, x_lo, side='left'))
-        i1 = int(np.searchsorted(times, x_hi, side='right'))
+        i0 = int(np.searchsorted(times, x_lo, side="left"))
+        i1 = int(np.searchsorted(times, x_hi, side="right"))
         if i1 <= i0:
             return
         t_vis = times[i0:i1]

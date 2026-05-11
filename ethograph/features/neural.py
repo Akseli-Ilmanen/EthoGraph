@@ -104,7 +104,10 @@ def firing_rate_by_cluster(
             t_stop = float(spike_times.ravel()[-1])
         time_support = nap.IntervalSet(t_start, t_stop)
         _tsgroup = build_tsgroup(
-            spike_times, spike_clusters, cluster_ids, time_support,
+            spike_times,
+            spike_clusters,
+            cluster_ids,
+            time_support,
         )
 
     counts = _tsgroup.count(bin_size=bin_size)
@@ -147,7 +150,7 @@ def compute_pca(
     U, S, _ = np.linalg.svd(X, full_matrices=False)
     scores = U[:, :n_components] * S[:n_components]
 
-    total_var = (S ** 2).sum()
+    total_var = (S**2).sum()
     explained = (S[:n_components] ** 2) / total_var
 
     pc_labels = [f"PC{i + 1}" for i in range(n_components)]
@@ -203,7 +206,12 @@ def firing_rate_to_xarray(
         ``attrs["bin_size"]``.
     """
     rates, bin_centers, cluster_ids = firing_rate_by_cluster(
-        spike_times, spike_clusters, bin_size, t_start, t_stop, cluster_ids,
+        spike_times,
+        spike_clusters,
+        bin_size,
+        t_start,
+        t_stop,
+        cluster_ids,
         _tsgroup,
     )
 
@@ -216,4 +224,3 @@ def firing_rate_to_xarray(
         },
         attrs={"bin_size": bin_size, "units": "Hz"},
     )
-

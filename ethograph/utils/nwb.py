@@ -16,8 +16,6 @@ from pathlib import Path
 from typing import Any, Iterator, Protocol, runtime_checkable
 
 import numpy as np
-import pandas as pd
-
 
 try:
     import pynwb
@@ -41,6 +39,7 @@ class H5Like(Protocol):
 @runtime_checkable
 class H5Group(Protocol):
     attrs: Any
+
     def get(self, key: str) -> Any: ...
     def keys(self) -> Any: ...
 
@@ -49,6 +48,7 @@ class H5Group(Protocol):
 class H5Dataset(Protocol):
     shape: tuple[int, ...]
     dtype: Any
+
     def __getitem__(self, key: Any) -> Any: ...
 
 
@@ -145,12 +145,10 @@ def resolve_timeseries_timing(iface: Any) -> tuple[float, float]:
         return float(iface.rate), t0
     ts = getattr(iface, "timestamps", None)
     if ts is not None and len(ts) >= 2:
-        ts_arr = np.asarray(ts[:min(len(ts), 10_000)], dtype=np.float64)
+        ts_arr = np.asarray(ts[: min(len(ts), 10_000)], dtype=np.float64)
         diffs = np.diff(ts_arr)
         diffs = diffs[diffs > 0]
         if len(diffs) > 0:
             rate = 1.0 / float(np.median(diffs))
             return rate, float(ts_arr[0])
-    raise ValueError(
-        f"TimeSeries '{getattr(iface, 'name', '?')}' has neither rate nor timestamps."
-    )
+    raise ValueError(f"TimeSeries '{getattr(iface, 'name', '?')}' has neither rate nor timestamps.")

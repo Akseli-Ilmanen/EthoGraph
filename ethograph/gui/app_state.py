@@ -1,14 +1,10 @@
 """Settings that the user can modify and are saved in gui_settings.yaml"""
 
-import gc
 import logging
-import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Any, get_args, get_origin
-import tempfile
 
-import numpy as np
 import pandas as pd
 import xarray as xr
 import yaml
@@ -17,36 +13,31 @@ from qtpy.QtCore import QObject, QTimer, Signal
 
 import ethograph as eto
 from ethograph.gui.notify import notify
-from ethograph.io.time_model import RestrictionWindow, TimeRange, TrialVideoBounds
-
-from ethograph.utils.qt import find_combo_index
-from ethograph.labels.intervals import empty_intervals
-from ethograph.labels.tsv_store import (
-    get_trial_from_tsv,
-    get_trial_meta,
-    labels_tsv_path,
-    load_labels_tsv,
-    save_labels_tsv,
-    set_trial_in_tsv,
-    set_trial_meta_attr,
-)
 from ethograph.io.metadata_table import (
     load_metadata_df,
     load_metadata_tsv,
     trials_ep_from_metadata_df,
     validate_metadata_timing,
 )
-from ethograph.io.data_loader import synthesize_single_trial
+from ethograph.io.time_model import (
+    RestrictionWindow,
+    TimeRange,
+    TrialVideoBounds,
+)
+from ethograph.labels.tsv_store import (
+    get_trial_from_tsv,
+    get_trial_meta,
+    labels_tsv_path,
+    save_labels_tsv,
+    set_trial_in_tsv,
+    set_trial_meta_attr,
+)
 from ethograph.utils.paths import auto_git_commit
+from ethograph.utils.qt import find_combo_index
 
 logger = logging.getLogger(__name__)
 
 SIMPLE_SIGNAL_TYPES = (int, float, str, bool)
-
-
-
-
-
 
 
 def get_signal_type(type_hint):
@@ -92,12 +83,7 @@ def check_type(value, type_hint) -> bool:
     return True
 
 
-
-
 class AppStateSpec:
-    
-    
-
     SCOPE_GLOBAL = "global"
     SCOPE_LOCAL = "local"
 
@@ -125,7 +111,6 @@ class AppStateSpec:
         "pose_markers_visible": (bool, True, True, SCOPE_LOCAL),
         "labels_visible": (bool, True, True, SCOPE_LOCAL),
         "feature_view_mode": (str, "LinePlot", True, SCOPE_LOCAL),
-
         # Data
         "data_loader": (object | None, None, False),
         "source_collection": (object | None, None, False),
@@ -147,7 +132,11 @@ class AppStateSpec:
         "filter_warnings": (bool, True, True),
         "center_playback": (bool, False, True),
         "time_jump_ms": (float, 100.0, True),
-        "time": (xr.DataArray | None, None, False), # for feature variables (e.g. 'time' or 'time_aux')
+        "time": (
+            xr.DataArray | None,
+            None,
+            False,
+        ),  # for feature variables (e.g. 'time' or 'time_aux')
         "label_intervals": (pd.DataFrame | None, None, False),
         "metadata_df": (pd.DataFrame | None, None, False),
         "metadata_path": (str | None, None, True, SCOPE_LOCAL),
@@ -162,35 +151,29 @@ class AppStateSpec:
         "trials": (list[int | str], [], False),
         "downsample_enabled": (bool, False, True),
         "downsample_factor": (int, 100, True),
-        
         # Boolean
         "has_audio": (bool, False, False),
         "has_neo": (bool, False, False),
         "has_neurons": (bool, False, False),
         "files_aligned_to_trials": (bool, True, True, SCOPE_LOCAL),
-        
-
         # Paths
         "nc_file_path": (str | None, None, False),
-        "_labels_file_path": (str | None, None, False),  # Tracks active labels file (canonical or predictions)
+        "_labels_file_path": (
+            str | None,
+            None,
+            False,
+        ),  # Tracks active labels file (canonical or predictions)
         "nwb_file_path": (str | None, None, True, SCOPE_LOCAL),
         "video_folder": (str | None, None, True, SCOPE_LOCAL),
         "audio_folder": (str | None, None, True, SCOPE_LOCAL),
         "pose_folder": (str | None, None, True, SCOPE_LOCAL),
         "ephys_path": (str | None, None, True, SCOPE_LOCAL),
         "neurons_path": (str | None, None, True, SCOPE_LOCAL),
-        
-
         "video_path": (str | None, None, False),
         "audio_path": (str | None, None, False),
-        "pose_path": (str | None, None, False), 
-        
-        
-        
-        
+        "pose_path": (str | None, None, False),
         "nwb_pose_keys": (list[str], [], True, SCOPE_LOCAL),
         "pose_hide_threshold": (float, 0.9, True),
-
         # Plotting
         "ymin": (float | None, None, True),
         "ymax": (float | None, None, True),
@@ -213,7 +196,11 @@ class AppStateSpec:
         "space_marker_visible": (bool, True, True),
         "space_confidence_filter": (bool, False, True),
         "space_confidence_threshold": (float, 0.6, True),
-        "space_limit_to_window": (bool, False, False), # May confuse user, better not keep saved.
+        "space_limit_to_window": (
+            bool,
+            False,
+            False,
+        ),  # May confuse user, better not keep saved.
         "space_lock_axes": (bool, False, False),
         "space_hide_zeros": (bool, False, True),
         "space_show_references": (bool, True, True),
@@ -223,10 +210,8 @@ class AppStateSpec:
         "lock_axes": (bool, False, False),
         "spec_colormap": (str, "CET-R4", True),
         "spec_levels_mode": (str, "auto", True),
-
         # All checkbox states for dimension combos (e.g., {"keypoints": True, "space": False})
         "all_checkbox_states": (dict[str, bool], {}, True),
-
         # Audio processing
         "audio_cp_hop_length_ms": (float, 5.0, True),
         "audio_cp_min_level_db": (float, -70.0, True),
@@ -245,7 +230,6 @@ class AppStateSpec:
         "remote_backup_path": (str | None, None, True),
         "remote_backup_mode": (str, "timestamp", True),
         "remote_path_depth": (int, 0, True),
-
         # Envelope / energy (general, used by both heatmap and overlay)
         "energy_metric": (str, "energy_lowpass", True),
         "env_rate": (float, 2000.0, True),
@@ -260,23 +244,19 @@ class AppStateSpec:
         "ava_max_freq": (float, 110000.0, True),
         "ava_smoothing_timescale": (float, 0.007, True),
         "ava_use_softmax_amp": (bool, True, True),
-
         # Heatmap-specific display
         "heatmap_exclusion_percentile": (float, 98.0, True),
         "heatmap_colormap": (str, "RdBu_r", True),
         "heatmap_normalization": (str, "per_channel", True),
-
         # Firing rate
         "fr_bin_size": (float, 0.01, True),
         "fr_sigma": (float, 2.0, True),
-
         # Changepoint correction
         "cp_min_label_length_s": (float, 0.05, True),
         "cp_stitch_gap_len_s": (float, 0.015, True),
         "cp_max_expansion_s": (float, 0.05, True),
         "cp_max_shrink_s": (float, 0.05, True),
         "cp_label_thresholds": (dict, {}, True),
-
         # Function params cache (dialog_function_params.py)
         "function_params_cache": (dict, {}, True),
     }
@@ -321,13 +301,11 @@ class ObservableAppState(QObject):
         type_hint, _, _, _ = AppStateSpec.get_meta(var)
         locals()[f"{var}_changed"] = Signal(get_signal_type(type_hint))
 
-
     trial_changed = Signal()
     GLOBAL_SETTINGS_FILENAME = "gui_settings.yaml"
     LOCAL_SETTINGS_FILENAME = "local_settings.yaml"
     SETTINGS_DIRNAME = ".ethograph"
     _TIME_REFRESH_KEYS = {"ds", "dt", "video", "video_path", "audio_path"}
-
 
     def __init__(self, yaml_path: str | None = None, auto_save_interval: int = 30000):
         super().__init__()
@@ -349,9 +327,9 @@ class ObservableAppState(QObject):
         self._main_labels_source: int | None = 0
         self._top1_source: int | str | None = None
         self._top2_source: int | str | None = None
-        
-  
+
         from ethograph.io.nwb_alignment import EmpytAlignment
+
         self.nwb_alignment = EmpytAlignment()
 
         self.settings = get_settings()
@@ -377,7 +355,7 @@ class ObservableAppState(QObject):
                 if not callable(value):
                     result[attr] = value
         return result
-    
+
     @property
     def active_label_ids(self) -> set[int] | None:
         """Return label IDs belonging to any branch currently shown in a label slot.
@@ -390,10 +368,7 @@ class ObservableAppState(QObject):
         if not mappings:
             return None
         active = self._active_branches
-        return {
-            lid for lid, data in mappings.items()
-            if isinstance(lid, int) and data.get("branch", 0) in active
-        }
+        return {lid for lid, data in mappings.items() if isinstance(lid, int) and data.get("branch", 0) in active}
 
     @property
     def _active_branches(self) -> set[int]:
@@ -409,12 +384,10 @@ class ObservableAppState(QObject):
     @property
     def trial_bounds(self) -> TimeRange | None:
         """Time range for the current trial, sourced from TrialVideoBounds.trial_range."""
-        alignment = getattr(self, 'trial_alignment', None)
+        alignment = getattr(self, "trial_alignment", None)
         if alignment is not None:
             return alignment.trial_range
         return None
-
-
 
     @property
     def before_s(self) -> float:
@@ -437,7 +410,7 @@ class ObservableAppState(QObject):
         Plots use this for x-axis limits and zoom constraints.
         The padded ``restrict_window.time_range`` is for slider/scroll limits.
         """
-        rw = getattr(self, 'restrict_window', None)
+        rw = getattr(self, "restrict_window", None)
         if rw is not None:
             return rw.core_range
         return self.trial_bounds
@@ -449,7 +422,7 @@ class ObservableAppState(QObject):
         Use for scroll/slider limits where the user should be able to pan
         beyond the core trial range.
         """
-        rw = getattr(self, 'restrict_window', None)
+        rw = getattr(self, "restrict_window", None)
         if rw is not None:
             return rw.time_range
         return self.trial_bounds
@@ -457,12 +430,11 @@ class ObservableAppState(QObject):
     @property
     def time_coord(self) -> xr.DataArray | None:
         """Get the time coordinate for the currently selected features."""
-        ds = getattr(self, 'ds', None)
-        features_sel = getattr(self, 'features_sel', None)
+        ds = getattr(self, "ds", None)
+        features_sel = getattr(self, "features_sel", None)
         if ds is not None and features_sel in ds.data_vars:
             return eto.get_time_coord(ds[features_sel])
         return None
-        
 
     def get_with_default(self, key):
         """Return value from app state, or default from AppStateSpec if None."""
@@ -470,10 +442,6 @@ class ObservableAppState(QObject):
         if value is None:
             value = AppStateSpec.get_default(key)
         return value
-
-    
-
-
 
     def get_ephys_source(self) -> tuple[str | None, str, int]:
         """Get ephys file path, stream_id, and channel index from current ephys_stream_sel.
@@ -483,7 +451,7 @@ class ObservableAppState(QObject):
         """
         import os
 
-        stream_sel = getattr(self, 'ephys_stream_sel', None)
+        stream_sel = getattr(self, "ephys_stream_sel", None)
         if not stream_sel or not self.ephys_source_map:
             return None, "0", 0
 
@@ -499,16 +467,12 @@ class ObservableAppState(QObject):
         if os.path.isabs(filename):
             ephys_path = os.path.normpath(filename)
         else:
-            base_ephys_path = getattr(self, 'ephys_path', None)
+            base_ephys_path = getattr(self, "ephys_path", None)
             if not base_ephys_path:
                 return None, stream_id, channel_idx
-            ephys_path = os.path.normpath(
-                os.path.join(os.path.dirname(base_ephys_path), filename)
-            )
+            ephys_path = os.path.normpath(os.path.join(os.path.dirname(base_ephys_path), filename))
 
         return ephys_path, stream_id, channel_idx
-
-
 
     def get_audio_source(self) -> tuple[str | None, int]:
         """Get audio file path and channel index from current mics_sel.
@@ -516,7 +480,7 @@ class ObservableAppState(QObject):
         Returns (audio_path, channel_idx) tuple. Uses audio_source_map to resolve
         the display name to (mic_file, channel_idx).
         """
-        mics_sel = getattr(self, 'mics_sel', None)
+        mics_sel = getattr(self, "mics_sel", None)
         if not mics_sel or not self.audio_source_map:
             return None, 0
 
@@ -524,17 +488,19 @@ class ObservableAppState(QObject):
         if not mic_file:
             return None, channel_idx
 
-        audio_folder = getattr(self, 'audio_folder', None)
+        audio_folder = getattr(self, "audio_folder", None)
 
         # Try resolve via nwb_alignment (ImageSeries path → fallback folder)
         for mic_dev in self.nwb_alignment.mics:
-            trial = getattr(self, 'trials_sel', None)
+            trial = getattr(self, "trials_sel", None)
             if trial is None:
                 break
             media = self.nwb_alignment.get_media(trial, "audio", mic_dev)
             if media and (media == mic_file or Path(media).name == mic_file):
                 resolved = self.nwb_alignment.resolve_media_path(
-                    trial, "audio", device=mic_dev,
+                    trial,
+                    "audio",
+                    device=mic_dev,
                     fallback_folder=audio_folder,
                 )
                 if resolved:
@@ -543,12 +509,11 @@ class ObservableAppState(QObject):
         # Direct fallback
         if audio_folder:
             import os
+
             path = os.path.normpath(os.path.join(audio_folder, mic_file))
             return path, channel_idx
 
         return None, channel_idx
-
-
 
     def __getattr__(self, name):
         # Check for class attributes/properties first
@@ -556,7 +521,7 @@ class ObservableAppState(QObject):
         if hasattr(cls, name):
             attr = getattr(cls, name)
             # If it's a property, use its getter
-            if hasattr(attr, '__get__'):
+            if hasattr(attr, "__get__"):
                 return attr.__get__(self)
             return attr
         if name in AppStateSpec.VARS:
@@ -564,7 +529,25 @@ class ObservableAppState(QObject):
         raise AttributeError(name)
 
     def __setattr__(self, name, value):
-        if name in ("time", "_values", "settings", "_yaml_path", "_auto_save_timer", "navigation_widget", "lineplot", "audio_source_map", "ephys_source_map", "ephys_stream_sel", "_suspend_local_autoload", "_all_labels_df", "_metadata_df", "_label_mappings", "_main_labels_source", "_top1_source", "_top2_source"):
+        if name in (
+            "time",
+            "_values",
+            "settings",
+            "_yaml_path",
+            "_auto_save_timer",
+            "navigation_widget",
+            "lineplot",
+            "audio_source_map",
+            "ephys_source_map",
+            "ephys_stream_sel",
+            "_suspend_local_autoload",
+            "_all_labels_df",
+            "_metadata_df",
+            "_label_mappings",
+            "_main_labels_source",
+            "_top1_source",
+            "_top2_source",
+        ):
             super().__setattr__(name, value)
             return
 
@@ -594,6 +577,7 @@ class ObservableAppState(QObject):
                 existing = getattr(self, "nwb_alignment", None)
                 if existing is None or getattr(existing, "_path", None) is not None:
                     from ethograph.io.nwb_alignment import make_nwb_alignment
+
                     self.nwb_alignment = make_nwb_alignment(value)
 
             if name == "metadata_path":
@@ -624,7 +608,6 @@ class ObservableAppState(QObject):
             return
 
         super().__setattr__(name, value)
-
 
     def _rebuild_trials_from_ep(self, trials_ep) -> None:
         """Propagate new trial boundaries to source_collection.
@@ -669,7 +652,7 @@ class ObservableAppState(QObject):
             # Check if dim has coords and determine appropriate type
             if dim in self.ds.coords:
                 coord_dtype = self.ds.coords[dim].dtype
-                if coord_dtype.kind in ('i', 'u'):
+                if coord_dtype.kind in ("i", "u"):
                     ds_kwargs[dim] = int(output)
                 else:
                     ds_kwargs[dim] = str(output)
@@ -710,8 +693,6 @@ class ObservableAppState(QObject):
         attr_name = f"{type_key}_sel"
         return getattr(self, attr_name, None)
 
-
-
     def _coerce_to_list_type(self, value, reference_list: list):
         """Coerce value to match the type of items in reference_list."""
         if not reference_list:
@@ -740,8 +721,6 @@ class ObservableAppState(QObject):
         if current_stored_value != currentValue and current_stored_value is not None:
             setattr(self, prev_attr_name, current_stored_value)
 
-
-
         setattr(self, attr_name, currentValue)
 
     def toggle_key_sel(self, type_key, data_widget):
@@ -753,7 +732,7 @@ class ObservableAppState(QObject):
         Special case: type_key="Audio Waveform" toggles the features
         selection to/from Audio Waveform.
         """
-    
+
         attr_name = f"{type_key}_sel"
         prev_attr_name = f"{type_key}_sel_previous"
 
@@ -767,17 +746,12 @@ class ObservableAppState(QObject):
                 self._update_combo_box(type_key, previous_value, data_widget)
         elif data_widget is not None:
             self._cycle_combo_box(type_key, data_widget)
-            
 
     def cycle_key_sel(self, type_key, data_widget):
         """Cycle to the next item in the combo box for a given key."""
         if data_widget is not None:
             self._cycle_combo_box(type_key, data_widget)
 
-
-            
-   
-    
     def _update_combo_box(self, type_key, new_value, data_widget):
         """Update the corresponding combo box in the UI and trigger its change signal."""
         try:
@@ -834,7 +808,7 @@ class ObservableAppState(QObject):
 
     def _to_native(self, value):
         """Convert numpy types to native Python types for YAML serialization."""
-        if hasattr(value, 'item'):
+        if hasattr(value, "item"):
             return value.item()
         return value
 
@@ -861,6 +835,7 @@ class ObservableAppState(QObject):
 
     def _sort_state_dict(self, state_dict: dict) -> dict:
         """Sort state dict by category: paths, bools, _sel, strings, numbers, nested dicts."""
+
         def _category_key(item):
             key, value = item
             is_nested = isinstance(value, dict)
@@ -888,7 +863,15 @@ class ObservableAppState(QObject):
     def print_state(self) -> None:
         """Print all simple-typed app state vars, grouped by category."""
         _PRINTABLE = (str, int, float, bool, list, dict, type(None))
-        _CATEGORY_LABELS = {0: "Paths", 1: "Selections", 2: "Booleans", 3: "Strings", 4: "Numbers", 5: "Lists/Dicts", 6: "None"}
+        _CATEGORY_LABELS = {
+            0: "Paths",
+            1: "Selections",
+            2: "Booleans",
+            3: "Strings",
+            4: "Numbers",
+            5: "Lists/Dicts",
+            6: "None",
+        }
 
         def _category_key(item):
             key, value = item
@@ -925,14 +908,14 @@ class ObservableAppState(QObject):
         for key, value in sorted(state.items(), key=lambda item: (_category_key(item), item[0])):
             cat = _category_key((key, value))
             if cat != current_cat:
-                print(f"\n{'='*50}")
+                print(f"\n{'=' * 50}")
                 print(f"  {_CATEGORY_LABELS[cat]}")
-                print(f"{'='*50}")
+                print(f"{'=' * 50}")
                 current_cat = cat
-            
+
             if isinstance(value, list) and len(value) > 10:
                 value = f"{value[:10]}... (total {len(value)} items)"
-                
+
             print(f"  {key}: {value}")
 
     def load_from_dict(self, state_dict: dict):
@@ -1033,7 +1016,7 @@ class ObservableAppState(QObject):
         except (OSError, yaml.YAMLError) as e:
             logger.error("Error loading state from YAML: %s", e)
             return False
-        
+
     def delete_yaml(self, yaml_path: str | None = None) -> bool:
         try:
             if yaml_path is not None:
@@ -1064,7 +1047,7 @@ class ObservableAppState(QObject):
         except OSError as e:
             logger.error("Error deleting YAML file: %s", e)
             return False
-    
+
     def stop_auto_save(self):
         if self._auto_save_timer.isActive():
             self._auto_save_timer.stop()
@@ -1135,8 +1118,15 @@ class ObservableAppState(QObject):
 
         # Enrich with computed columns (duration, sequence, global timing, trial attrs)
         from ethograph.labels.export import enrich_labels_df
+
         keep_attrs = self.trial_conditions if self.trial_conditions else []
-        enriched = enrich_labels_df(self._all_labels_df, nwb_alignment=self.nwb_alignment, keep_attrs=keep_attrs, dt=self.dt, metadata_df=self.metadata_df)
+        enriched = enrich_labels_df(
+            self._all_labels_df,
+            nwb_alignment=self.nwb_alignment,
+            keep_attrs=keep_attrs,
+            dt=self.dt,
+            metadata_df=self.metadata_df,
+        )
         save_df = enriched if not enriched.empty else self._all_labels_df
 
         # 1. Primary file: use _labels_file_path if set (predictions/custom), otherwise canonical
@@ -1162,7 +1152,7 @@ class ObservableAppState(QObject):
             depth = self.remote_path_depth
             if depth > 0:
                 parent_parts = nc_path.parent.parts[1:]  # strip drive / leading '/'
-                mirror_parts = parent_parts[max(0, len(parent_parts) - depth):]
+                mirror_parts = parent_parts[max(0, len(parent_parts) - depth) :]
                 remote_dir = remote_root.joinpath(*mirror_parts)
             else:
                 remote_dir = remote_root

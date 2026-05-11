@@ -3,6 +3,7 @@
 No Qt, no TrialTree, no GUI dependencies — just path → float.
 Used by the wizard timeline and any future TrialTree-level alignment helpers.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,6 +12,7 @@ from pathlib import Path
 def get_video_duration(path: str) -> float | None:
     try:
         import av
+
         with av.open(path) as container:
             stream = container.streams.video[0]
             if stream.duration and stream.time_base:
@@ -25,11 +27,13 @@ def get_video_duration(path: str) -> float | None:
 def get_audio_duration(path: str) -> float | None:
     try:
         import soundfile as sf
+
         return sf.info(path).duration
     except Exception:
         pass
     try:
         import av
+
         with av.open(path) as container:
             stream = container.streams.audio[0]
             if stream.duration and stream.time_base:
@@ -71,6 +75,7 @@ def get_pose_duration(path: str, fps: float) -> float | None:
 
         elif suffix in (".h5", ".hdf5", ".slp"):
             import h5py
+
             with h5py.File(path, "r") as f:
                 if suffix == ".slp":
                     n_frames = f["instances"].shape[0]
@@ -91,6 +96,7 @@ def get_pose_duration(path: str, fps: float) -> float | None:
 def get_ephys_duration(path: str) -> float | None:
     try:
         from ethograph.gui.plots_ephystrace import GenericEphysLoader
+
         loader = GenericEphysLoader(path)
         return len(loader) / loader.rate
     except Exception:

@@ -3,29 +3,32 @@
 import logging
 from typing import Optional, Tuple
 
-import numpy as np
 import pyqtgraph as pg
-from qtpy.QtCore import QTimer, QRunnable, QThreadPool, QObject, Signal, Qt
+from qtpy.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
 
 logger = logging.getLogger(__name__)
 
 
-from .app_constants import (
-    LOCKED_RANGE_MIN_FACTOR,
-    LOCKED_RANGE_MAX_FACTOR,
+from .app_constants import (  # noqa: E402
     AXIS_LIMIT_PADDING_RATIO,
+    LOCKED_RANGE_MAX_FACTOR,
+    LOCKED_RANGE_MIN_FACTOR,
     Z_INDEX_TIME_MARKER,
 )
+
 
 # -------------------------------
 # Worker helper
 # -------------------------------
 class WorkerSignals(QObject):
     """Signals for worker completion."""
+
     finished = Signal(object)  # emit computation result
+
 
 class Worker(QRunnable):
     """Run a function in a background thread."""
+
     def __init__(self, fn, *args, **kwargs):
         super().__init__()
         self.fn = fn
@@ -56,17 +59,19 @@ class ThrottleDebounce(QObject):
         self._td = ThrottleDebounce(
             throttle_ms=16,
             debounce_ms=40,
-            throttle_cb=self._on_throttle,   # called on main thread
-            debounce_cb=self._on_debounce,   # called on main thread
+            throttle_cb=self._on_throttle,  # called on main thread
+            debounce_cb=self._on_debounce,  # called on main thread
         )
-        self._td.trigger()   # call from any GUI event
+        self._td.trigger()  # call from any GUI event
     """
 
-    def __init__(self,
-                 throttle_ms: int = 16,
-                 debounce_ms: int = 40,
-                 throttle_cb=None,
-                 debounce_cb=None):
+    def __init__(
+        self,
+        throttle_ms: int = 16,
+        debounce_ms: int = 40,
+        throttle_cb=None,
+        debounce_cb=None,
+    ):
         super().__init__()
         self._throttle_cb = throttle_cb
         self._debounce_cb = debounce_cb
@@ -118,8 +123,8 @@ def run_async(compute_fn, render_fn):
             self._busy = True
             t0, t1 = self.get_current_xlim()
             run_async(
-                lambda: self._compute_data(t0, t1),   # background thread
-                lambda data: self._render(data),      # main thread
+                lambda: self._compute_data(t0, t1),  # background thread
+                lambda data: self._render(data),  # main thread
             )
     """
     worker = Worker(compute_fn)
@@ -127,9 +132,6 @@ def run_async(compute_fn, render_fn):
     # automatically a Qt.QueuedConnection → render_fn runs on the main thread.
     worker.signals.finished.connect(render_fn, Qt.QueuedConnection)
     QThreadPool.globalInstance().start(worker)
-        
-        
-
 
 
 class TimeAxisItem(pg.AxisItem):
@@ -145,18 +147,18 @@ class TimeAxisItem(pg.AxisItem):
             total_seconds = abs(v)
             minutes = int(total_seconds // 60)
             seconds = total_seconds % 60
-            sign = '-' if v < 0 else ''
+            sign = "-" if v < 0 else ""
 
             if minutes > 0:
                 if seconds == int(seconds):
-                    strings.append(f'{sign}{minutes}:{int(seconds):02d}')
+                    strings.append(f"{sign}{minutes}:{int(seconds):02d}")
                 else:
-                    strings.append(f'{sign}{minutes}:{seconds:05.2f}')
+                    strings.append(f"{sign}{minutes}:{seconds:05.2f}")
             else:
                 if seconds == int(seconds):
-                    strings.append(f'{sign}{int(seconds)}s')
+                    strings.append(f"{sign}{int(seconds)}s")
                 else:
-                    strings.append(f'{sign}{seconds:.2f}s')
+                    strings.append(f"{sign}{seconds:.2f}s")
         return strings
 
 
@@ -176,18 +178,14 @@ class BasePlot(pg.PlotWidget):
     plot_clicked = Signal(object)
 
     def __init__(self, app_state, parent=None, **kwargs):
-        time_axis = TimeAxisItem(orientation='bottom')
-        super().__init__(parent, background='white', axisItems={'bottom': time_axis}, **kwargs)
+        time_axis = TimeAxisItem(orientation="bottom")
+        super().__init__(parent, background="white", axisItems={"bottom": time_axis}, **kwargs)
         self.app_state = app_state
 
-        self.setLabel('bottom', 'Time') 
+        self.setLabel("bottom", "Time")
 
         # Time marker with enhanced styling
-        self.time_marker = pg.InfiniteLine(
-            angle=90,
-            pen=pg.mkPen('r', width=2),
-            movable=False
-        )
+        self.time_marker = pg.InfiniteLine(angle=90, pen=pg.mkPen("r", width=2), movable=False)
         self.addItem(self.time_marker)
         self.time_marker.setZValue(Z_INDEX_TIME_MARKER)
 
@@ -210,7 +208,13 @@ class BasePlot(pg.PlotWidget):
 
         Subclasses should override this method.
         """
-        logger.debug("update_plot_content called in %s (id=%s) t0=%s, t1=%s", self.__class__.__name__, id(self), t0, t1)
+        logger.debug(
+            "update_plot_content called in %s (id=%s) t0=%s, t1=%s",
+            self.__class__.__name__,
+            id(self),
+            t0,
+            t1,
+        )
         raise NotImplementedError("Subclasses must implement update_plot_content")
 
     def apply_y_range(self, ymin: Optional[float], ymax: Optional[float]):
@@ -220,10 +224,14 @@ class BasePlot(pg.PlotWidget):
         """
         raise NotImplementedError("Subclasses must implement apply_y_range")
 
-    def update_plot(self, t0: Optional[float] = None, t1: Optional[float] = None,
-                    preserve_x_range: bool = False):
+    def update_plot(
+        self,
+        t0: Optional[float] = None,
+        t1: Optional[float] = None,
+        preserve_x_range: bool = False,
+    ):
         """Update plot with current data and time window."""
-        if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
+        if not hasattr(self.app_state, "ds") or self.app_state.ds is None:
             return
 
         if preserve_x_range:
@@ -232,11 +240,11 @@ class BasePlot(pg.PlotWidget):
         self.update_plot_content(t0, t1)
 
         if preserve_x_range:
-            self.set_x_range(mode='preserve', curr_xlim=saved_xlim)
+            self.set_x_range(mode="preserve", curr_xlim=saved_xlim)
         elif t0 is not None and t1 is not None:
-            self.set_x_range(mode='preserve', curr_xlim=(t0, t1))
+            self.set_x_range(mode="preserve", curr_xlim=(t0, t1))
         else:
-            self.set_x_range(mode='default')
+            self.set_x_range(mode="default")
 
         # Only apply axis lock after setting the desired range
         is_new_trial = t0 is None and t1 is None and not preserve_x_range
@@ -249,50 +257,54 @@ class BasePlot(pg.PlotWidget):
 
     def update_time_marker_and_window(self, frame_number: int):
         """Update time marker position and window for video sync."""
-        video = getattr(self.app_state, 'video', None)
+        video = getattr(self.app_state, "video", None)
         if video:
             current_time = video.frame_to_time(frame_number)
         else:
             current_time = frame_number / self.app_state.video_fps
         self.update_time_marker(current_time)
 
-        if hasattr(self.app_state, 'ds') and self.app_state.ds is not None:
-            if getattr(self.app_state, 'center_playback', False):
-                self.set_x_range(mode='center', center_on_frame=frame_number)
+        if hasattr(self.app_state, "ds") and self.app_state.ds is not None:
+            if getattr(self.app_state, "center_playback", False):
+                self.set_x_range(mode="center", center_on_frame=frame_number)
                 t0, t1 = self.get_current_xlim()
                 self.update_plot_content(t0, t1)
             else:
                 t0, t1 = self.get_current_xlim()
                 self.update_plot_content(t0, t1)
 
-
-
-    def set_x_range(self, mode='default', curr_xlim=None, center_on_frame=None):
+    def set_x_range(self, mode="default", curr_xlim=None, center_on_frame=None):
         """Set plot x-range with different behaviors."""
-        if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
+        if not hasattr(self.app_state, "ds") or self.app_state.ds is None:
             return
 
         tr = self.app_state.window_bounds
         bounds = (tr.start_s, tr.end_s) if tr is not None else None
         if bounds is None:
-            if mode == 'preserve' and curr_xlim:
+            if mode == "preserve" and curr_xlim:
                 self.vb.setXRange(curr_xlim[0], curr_xlim[1], padding=0)
             return
         data_tmin, data_tmax = bounds
 
-        if mode == 'center':
-            video = getattr(self.app_state, 'video', None)
+        if mode == "center":
+            video = getattr(self.app_state, "video", None)
             if center_on_frame is not None:
-                current_time = video.frame_to_time(center_on_frame) if video else center_on_frame / self.app_state.video_fps
+                current_time = (
+                    video.frame_to_time(center_on_frame) if video else center_on_frame / self.app_state.video_fps
+                )
             else:
-                current_time = video.frame_to_time(self.app_state.current_frame) if video else self.app_state.current_frame / self.app_state.video_fps
+                current_time = (
+                    video.frame_to_time(self.app_state.current_frame)
+                    if video
+                    else self.app_state.current_frame / self.app_state.video_fps
+                )
 
             xlim = self.get_current_xlim()
             half_window = (xlim[1] - xlim[0]) / 2.0
             t0 = current_time - half_window
             t1 = current_time + half_window
 
-        elif mode == 'preserve' and curr_xlim:
+        elif mode == "preserve" and curr_xlim:
             t0 = curr_xlim[0]
             t1 = curr_xlim[1]
 
@@ -323,7 +335,7 @@ class BasePlot(pg.PlotWidget):
 
             tr = self.app_state.padded_bounds
             bounds = x_bounds_override or ((tr.start_s, tr.end_s) if tr is not None else None)
-            if hasattr(self.app_state, 'ds') and self.app_state.ds is not None and bounds is not None:
+            if hasattr(self.app_state, "ds") and self.app_state.ds is not None and bounds is not None:
                 data_xmin, data_xmax = bounds
                 data_range = data_xmax - data_xmin
                 padding = min(data_range * AXIS_LIMIT_PADDING_RATIO, 5)
@@ -342,7 +354,7 @@ class BasePlot(pg.PlotWidget):
                     minXRange=min_range,
                     maxXRange=max_range,
                     yMin=current_ylim[0],
-                    yMax=current_ylim[1]
+                    yMax=current_ylim[1],
                 )
 
             self.vb.setMouseEnabled(x=True, y=False)
@@ -362,12 +374,17 @@ class BasePlot(pg.PlotWidget):
             another's data.
         """
         self.vb.setLimits(
-            xMin=None, xMax=None, yMin=None, yMax=None,
-            minXRange=None, maxXRange=None,
-            minYRange=None, maxYRange=None
+            xMin=None,
+            xMax=None,
+            yMin=None,
+            yMax=None,
+            minXRange=None,
+            maxXRange=None,
+            minYRange=None,
+            maxYRange=None,
         )
 
-        if hasattr(self.app_state, 'ds') and self.app_state.ds is not None:
+        if hasattr(self.app_state, "ds") and self.app_state.ds is not None:
             tr = self.app_state.padded_bounds
             bounds = x_bounds_override or ((tr.start_s, tr.end_s) if tr is not None else None)
             if bounds is not None:
@@ -404,13 +421,9 @@ class BasePlot(pg.PlotWidget):
 
         pos = self.plot_item.vb.mapSceneToView(event.scenePos())
 
-        click_info = {
-            'x': pos.x(),
-            'button': event.button()
-        }
+        click_info = {"x": pos.x(), "button": event.button()}
         self.plot_clicked.emit(click_info)
 
     def autoscale(self):
         """Reset Y-axis to auto-fit visible data."""
         self.vb.enableAutoRange(x=False, y=True)
-

@@ -28,3 +28,14 @@ Building
 .. autofunction:: add_changepoints_to_ds
 
 .. autofunction:: add_angle_rgb_to_ds
+
+----
+
+Pynapple equivalents
+--------------------
+
+.. currentmodule:: ethograph.io.pynapple
+
+.. autofunction:: add_changepoints_to_nap
+
+.. autofunction:: add_angle_rgb_to_nap

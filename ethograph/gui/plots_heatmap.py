@@ -5,8 +5,9 @@ from typing import Optional
 import numpy as np
 import pyqtgraph as pg
 
-from ethograph.features.preprocessing import z_normalize
 import ethograph as eto
+from ethograph.features.preprocessing import z_normalize
+from ethograph.io.plot_sources import WindowedBuffer, XarraySource
 
 from .app_constants import (
     DEFAULT_BUFFER_MULTIPLIER,
@@ -15,7 +16,7 @@ from .app_constants import (
 )
 from .make_pretty import clean_display_labels
 from .plots_base import BasePlot, ThrottleDebounce
-from ethograph.io.plot_sources import WindowedBuffer, XarraySource
+
 
 class HeatmapPlot(BasePlot):
     """MNE-style stacked heatmap rendering feature data as color-coded rows.
@@ -29,7 +30,7 @@ class HeatmapPlot(BasePlot):
     def __init__(self, app_state, parent=None):
         super().__init__(app_state, parent)
 
-        self.setLabel('left', 'Channel', Fontsize='14pt')
+        self.setLabel("left", "Channel", Fontsize="14pt")
 
         self.image_item = pg.ImageItem(autoDownsample=False)
         self.image_item.setZValue(Z_INDEX_BACKGROUND)
@@ -100,11 +101,11 @@ class HeatmapPlot(BasePlot):
         return np.asarray(self._normalized_buffer[mask])
 
     def _init_colormap(self):
-        colormap_name = self.app_state.get_with_default('heatmap_colormap')
+        colormap_name = self.app_state.get_with_default("heatmap_colormap")
         try:
-            self._cmap = pg.colormap.get(colormap_name, source='matplotlib')
+            self._cmap = pg.colormap.get(colormap_name, source="matplotlib")
         except (KeyError, ValueError, TypeError):
-            self._cmap = pg.colormap.get('RdBu_r', source='matplotlib')
+            self._cmap = pg.colormap.get("RdBu_r", source="matplotlib")
         self.image_item.setColorMap(self._cmap)
 
     def _init_colorbar(self):
@@ -118,7 +119,7 @@ class HeatmapPlot(BasePlot):
 
     def update_colormap(self, name: str):
         try:
-            cmap = pg.colormap.get(name, source='matplotlib')
+            cmap = pg.colormap.get(name, source="matplotlib")
             self._cmap = cmap
             self.image_item.setColorMap(cmap)
             self.colorbar.setColorMap(cmap)
@@ -132,18 +133,16 @@ class HeatmapPlot(BasePlot):
         return str(sorted(selections.items()))
 
     def _context_changed(self) -> bool:
-        feature = getattr(self.app_state, 'features_sel', None)
-        trial = getattr(self.app_state, 'trials_sel', None)
+        feature = getattr(self.app_state, "features_sel", None)
+        trial = getattr(self.app_state, "trials_sel", None)
         sel_hash = self._get_selections_hash()
         return (
-            feature != self._current_feature
-            or trial != self._current_trial
-            or sel_hash != self._current_ds_kwargs_hash
+            feature != self._current_feature or trial != self._current_trial or sel_hash != self._current_ds_kwargs_hash
         )
 
     def _update_context(self):
-        self._current_feature = getattr(self.app_state, 'features_sel', None)
-        self._current_trial = getattr(self.app_state, 'trials_sel', None)
+        self._current_feature = getattr(self.app_state, "features_sel", None)
+        self._current_trial = getattr(self.app_state, "trials_sel", None)
         self._current_ds_kwargs_hash = self._get_selections_hash()
 
     def _clear_buffer(self):
@@ -163,7 +162,7 @@ class HeatmapPlot(BasePlot):
             self._normalized_buffer = None
             self._cached_levels = None
             return
-        norm_mode = self.app_state.get_with_default('heatmap_normalization')
+        norm_mode = self.app_state.get_with_default("heatmap_normalization")
         data = self._buffered_data
         if norm_mode == "none":
             normalized = np.asarray(data, dtype=np.float32)
@@ -198,7 +197,7 @@ class HeatmapPlot(BasePlot):
         """Load audio, compute per-channel envelope using selected metric, and cache."""
         from .plots_spectrogram import SharedAudioCache
 
-        audio_path = getattr(self.app_state, 'audio_path', None)
+        audio_path = getattr(self.app_state, "audio_path", None)
         if not audio_path:
             return None, None
         loader = SharedAudioCache.get_loader(audio_path)
@@ -213,11 +212,7 @@ class HeatmapPlot(BasePlot):
         load_t1 = min(total_duration, t1 + buffer_size / 2)
 
         margin = (t1 - t0) * 0.2
-        if (
-            self._buffered_data is not None
-            and self._buffer_t0 <= t0 - margin
-            and self._buffer_t1 >= t1 + margin
-        ):
+        if self._buffered_data is not None and self._buffer_t0 <= t0 - margin and self._buffer_t1 >= t1 + margin:
             return self._buffered_data, self._buffered_time
 
         start_idx = max(0, int(load_t0 * fs))
@@ -230,7 +225,7 @@ class HeatmapPlot(BasePlot):
             audio_data = audio_data[:, np.newaxis]
 
         n_channels = audio_data.shape[1]
-        metric = self.app_state.get_with_default('energy_metric')
+        metric = self.app_state.get_with_default("energy_metric")
 
         from .widgets_transform import compute_energy_envelope
 
@@ -275,11 +270,7 @@ class HeatmapPlot(BasePlot):
         load_t1 = min(total_duration, t1 + buffer_size / 2)
 
         margin = (t1 - t0) * 0.2
-        if (
-            self._buffered_data is not None
-            and self._buffer_t0 <= t0 - margin
-            and self._buffer_t1 >= t1 + margin
-        ):
+        if self._buffered_data is not None and self._buffer_t0 <= t0 - margin and self._buffer_t1 >= t1 + margin:
             return self._buffered_data, self._buffered_time
 
         start_idx = max(0, int(load_t0 * fs))
@@ -301,10 +292,10 @@ class HeatmapPlot(BasePlot):
 
         usable = n_windows * win_samples
         reshaped = raw[:usable].reshape(n_windows, win_samples, n_channels)
-        env_data = np.sqrt(np.mean(reshaped ** 2, axis=1))  # (n_windows, n_channels)
+        env_data = np.sqrt(np.mean(reshaped**2, axis=1))  # (n_windows, n_channels)
         env_time = np.linspace(load_t0, load_t1, env_data.shape[0])
 
-        if hasattr(loader, 'channel_names'):
+        if hasattr(loader, "channel_names"):
             self._channel_labels = loader.channel_names[:n_channels]
         else:
             self._channel_labels = [f"Ch {i}" for i in range(n_channels)]
@@ -336,17 +327,13 @@ class HeatmapPlot(BasePlot):
             self._update_context()
 
         margin = (t1 - t0) * 0.2
-        if (
-            self._buffered_data is not None
-            and self._buffer_t0 <= t0 - margin
-            and self._buffer_t1 >= t1 + margin
-        ):
+        if self._buffered_data is not None and self._buffer_t0 <= t0 - margin and self._buffer_t1 >= t1 + margin:
             return self._buffered_data, self._buffered_time
 
-        feature_sel = getattr(self.app_state, 'features_sel', None)
+        feature_sel = getattr(self.app_state, "features_sel", None)
         if feature_sel is None:
             return None, None
-        view_mode = getattr(self.app_state, 'feature_view_mode', 'Heatmap')
+        view_mode = getattr(self.app_state, "feature_view_mode", "Heatmap")
 
         if view_mode == "Heatmap (Audio)":
             return self._get_buffered_audio_envelope(t0, t1)
@@ -354,7 +341,7 @@ class HeatmapPlot(BasePlot):
             return self._get_buffered_ephys_envelope(t0, t1)
 
         selections = self.app_state.get_selections()
-        store = getattr(self.app_state, 'data_loader', None)
+        store = getattr(self.app_state, "data_loader", None)
 
         if store is not None:
             # DataLoader path (pynapple or xarray via loader)
@@ -393,11 +380,9 @@ class HeatmapPlot(BasePlot):
                 data = data[:, np.newaxis]
 
             da_full = ds[feature_sel]
-            dims_after_sel = [d for d in da_full.dims if 'time' not in d and d not in selections]
+            dims_after_sel = [d for d in da_full.dims if "time" not in d and d not in selections]
             if dims_after_sel and dims_after_sel[0] in da_full.coords:
-                self._channel_labels = clean_display_labels(
-                    [str(v) for v in da_full.coords[dims_after_sel[0]].values]
-                )
+                self._channel_labels = clean_display_labels([str(v) for v in da_full.coords[dims_after_sel[0]].values])
             elif data.shape[1] > 1:
                 self._channel_labels = [str(i) for i in range(data.shape[1])]
             else:
@@ -417,7 +402,7 @@ class HeatmapPlot(BasePlot):
 
     def _compute_symmetric_levels(self, data: np.ndarray) -> tuple[float, float]:
         """Compute symmetric color range using exclusion percentile from app_state."""
-        percentile = self.app_state.get_with_default('heatmap_exclusion_percentile')
+        percentile = self.app_state.get_with_default("heatmap_exclusion_percentile")
         valid = data[np.isfinite(data)]
         if len(valid) == 0:
             return -1.0, 1.0
@@ -427,7 +412,7 @@ class HeatmapPlot(BasePlot):
         return -vmax, vmax
 
     def update_plot_content(self, t0: Optional[float] = None, t1: Optional[float] = None):
-        if not hasattr(self.app_state, 'features_sel'):
+        if not hasattr(self.app_state, "features_sel"):
             return
 
         if t0 is None or t1 is None:
@@ -446,12 +431,8 @@ class HeatmapPlot(BasePlot):
             if len(time_vals) == 0:
                 return
 
-            norm_mode = self.app_state.get_with_default('heatmap_normalization')
-            if (
-                self._normalized_buffer is None
-                or self._norm_data_id != id(data)
-                or self._cached_norm_mode != norm_mode
-            ):
+            norm_mode = self.app_state.get_with_default("heatmap_normalization")
+            if self._normalized_buffer is None or self._norm_data_id != id(data) or self._cached_norm_mode != norm_mode:
                 self._normalize_buffer()
 
             normalized = self._normalized_buffer
@@ -503,7 +484,7 @@ class HeatmapPlot(BasePlot):
         """Set y-axis tick labels to channel names."""
         if labels is None:
             labels = self._channel_labels
-        left_axis = self.plot_item.getAxis('left')
+        left_axis = self.plot_item.getAxis("left")
         ticks = [(i + 0.5, label) for i, label in enumerate(labels)]
         left_axis.setTicks([ticks])
 
@@ -520,7 +501,7 @@ class HeatmapPlot(BasePlot):
             return
         if not self.isVisible():
             return
-        if not hasattr(self.app_state, 'ds') or self.app_state.ds is None:
+        if not hasattr(self.app_state, "ds") or self.app_state.ds is None:
             return
         t0, t1 = self.get_current_xlim()
         if self._buffer_covers(t0, t1):

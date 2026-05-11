@@ -6,15 +6,15 @@ import logging
 
 import numpy as np
 import pandas as pd
-from qtpy.QtCore import Qt, QRect, Signal
+from qtpy.QtCore import QRect, Qt, Signal
 from qtpy.QtGui import QColor, QPen
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QHBoxLayout,
-    QHeaderView,
     QDialog,
     QDoubleSpinBox,
+    QHBoxLayout,
+    QHeaderView,
     QLabel,
     QPushButton,
     QTableWidget,
@@ -115,7 +115,10 @@ class _NumFilterDialog(QDialog):
     def get_filter(self) -> tuple[str, float] | None:
         if self._cleared:
             return None
-        return (">=" if self._op_combo.currentText() == "≥" else "<=", self._spin.value())
+        return (
+            ">=" if self._op_combo.currentText() == "≥" else "<=",
+            self._spin.value(),
+        )
 
 
 class _FilterHeaderView(QHeaderView):
@@ -240,9 +243,7 @@ class TrialsWidget(QWidget):
         self._status_label = QLabel()
         layout.addWidget(self._status_label)
 
-        self._note_label = QLabel(
-            "Visible rows define which trials are used for trial navigation."
-        )
+        self._note_label = QLabel("Visible rows define which trials are used for trial navigation.")
         self._note_label.setWordWrap(True)
         self._note_label.setStyleSheet("color: #aaa;")
         layout.addWidget(self._note_label)

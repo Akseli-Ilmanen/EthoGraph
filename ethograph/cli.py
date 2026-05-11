@@ -14,14 +14,15 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module=r"numpy\."
 # PyOpenGL info message goes through logging, not warnings
 logging.getLogger("OpenGL.acceleratesupport").setLevel(logging.WARNING)
 
+
 def _ensure_qt_plugins():
     """Set QT_PLUGIN_PATH for conda-forge Qt installs (needed by menuinst shortcuts)."""
     if os.environ.get("QT_PLUGIN_PATH"):
         return
     candidates = [
-        os.path.join(sys.prefix, "Library", "plugins"),        # Windows conda-forge
-        os.path.join(sys.prefix, "lib", "qt5", "plugins"),     # Linux conda-forge
-        os.path.join(sys.prefix, "lib", "qt", "plugins"),      # macOS conda-forge
+        os.path.join(sys.prefix, "Library", "plugins"),  # Windows conda-forge
+        os.path.join(sys.prefix, "lib", "qt5", "plugins"),  # Linux conda-forge
+        os.path.join(sys.prefix, "lib", "qt", "plugins"),  # macOS conda-forge
     ]
     for path in candidates:
         if os.path.isdir(os.path.join(path, "platforms")):
@@ -38,6 +39,7 @@ def launch():
     logging.getLogger("napari").setLevel(logging.WARNING)
     _ensure_qt_plugins()
     import napari
+
     from ethograph.gui.widgets_meta import MetaWidget
 
     viewer = napari.Viewer()
@@ -60,6 +62,7 @@ def main():
         launch()
     elif command == "shortcut":
         from ethograph.shortcuts import install_shortcut
+
         sys.exit(install_shortcut())
     else:
         print(f"Unknown command: {command}")

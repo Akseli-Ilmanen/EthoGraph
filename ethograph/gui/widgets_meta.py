@@ -7,12 +7,15 @@ from qt_niu.collapsible_widget import CollapsibleWidgetContainer
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtWidgets import (
     QMessageBox,
-    QPushButton,
     QSizePolicy,
     QWidget,
 )
 
 from ethograph.utils.paths import default_config_dir
+from ethograph.utils.qt import (
+    apply_compact_widget_style,
+    normalize_child_layouts,
+)
 
 from .app_constants import (
     DEFAULT_LAYOUT_MARGIN,
@@ -24,24 +27,22 @@ from .app_constants import (
 )
 from .app_state import ObservableAppState
 from .make_pretty import LayoutManager
-from ethograph.utils.qt import apply_compact_widget_style, normalize_child_layouts
-from .shortcuts import bind_global_shortcuts
 from .plots_container import UnifiedPanelContainer
+from .shortcuts import bind_global_shortcuts
+from .widget_trials import TrialsWidget
 from .widgets_changepoints import ChangepointsWidget
 from .widgets_data import DataPanel, DataWidget
+from .widgets_ephys import EphysWidget
 from .widgets_help import HelpWidget
 from .widgets_io import IOWidget
 from .widgets_labels import LabelsWidget
 from .widgets_navigation import NavigationWidget
-from .widget_trials import TrialsWidget
 from .widgets_plot_settings import PlotSettingsWidget
-from .widgets_ephys import EphysWidget
 
 logger = logging.getLogger(__name__)
 
 
 class MetaWidget(CollapsibleWidgetContainer):
-
     def __init__(self, napari_viewer: Viewer):
         """Initialize the meta-widget."""
         super().__init__()
@@ -74,8 +75,9 @@ class MetaWidget(CollapsibleWidgetContainer):
         self._set_sidebar_default_width()
 
         # Connect to napari window close event to check for unsaved changes
-        if hasattr(self.viewer, 'window') and hasattr(self.viewer.window, '_qt_window'):
+        if hasattr(self.viewer, "window") and hasattr(self.viewer.window, "_qt_window"):
             self._original_close_event = self.viewer.window._qt_window.closeEvent
+
             def napari_close_event(event):
                 if not self._check_unsaved_changes(event):
                     return
@@ -83,6 +85,7 @@ class MetaWidget(CollapsibleWidgetContainer):
                     self._original_close_event(event)
                 except RuntimeError:
                     event.accept()
+
             self.viewer.window._qt_window.closeEvent = napari_close_event
 
     def _create_widgets(self):
@@ -106,7 +109,7 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         # Try to set margins on the dock widget to leave space for notifications
         try:
-            if hasattr(dock_widget, 'setContentsMargins'):
+            if hasattr(dock_widget, "setContentsMargins"):
                 dock_widget.setContentsMargins(0, 0, 0, DOCK_WIDGET_BOTTOM_MARGIN)
         except (AttributeError, TypeError):
             pass  # Dock widget doesn't support margin setting
@@ -140,7 +143,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         self.labels_widget.set_plot_container(self.plot_container)
         self.labels_widget.set_meta_widget(self)
         self.labels_widget.set_data_widget(self.data_widget)
-        
+
         self.labels_widget.changepoints_widget = self.changepoints_widget
         self.labels_widget.io_widget = self.io_widget
         self.plot_settings_widget.set_plot_container(self.plot_container)
@@ -176,8 +179,11 @@ class MetaWidget(CollapsibleWidgetContainer):
 
         # The one widget to rule them all (loading data, updating plots, managing sync)
         self.data_widget.set_references(
-            self.plot_container, self.labels_widget, self.plot_settings_widget,
-            self.navigation_widget, self.changepoints_widget,
+            self.plot_container,
+            self.labels_widget,
+            self.plot_settings_widget,
+            self.navigation_widget,
+            self.changepoints_widget,
             ephys_widget=self.ephys_widget,
             layout_mgr=self.layout_mgr,
             trials_widget=self.trials_widget,
@@ -262,10 +268,6 @@ class MetaWidget(CollapsibleWidgetContainer):
             widget_title="Navigation",
         )
 
-
-
-
-
         normalize_child_layouts(
             self,
             spacing=DEFAULT_LAYOUT_SPACING,
@@ -290,9 +292,8 @@ class MetaWidget(CollapsibleWidgetContainer):
                 content.installEventFilter(self)
 
     def eventFilter(self, obj, event):
-        from qtpy.QtCore import QEvent
 
-        if hasattr(self, '_watched_events') and event.type() in self._watched_events:
+        if hasattr(self, "_watched_events") and event.type() in self._watched_events:
             self._schedule_layout_refresh()
 
         return False
@@ -315,7 +316,9 @@ class MetaWidget(CollapsibleWidgetContainer):
                 layout.invalidate()
                 layout.activate()
             collapsible._expand_collapse(
-                QPropertyAnimation.Direction.Forward, animate=False, emit=False,
+                QPropertyAnimation.Direction.Forward,
+                animate=False,
+                emit=False,
             )
 
     def refresh_widget_layout(self, widget: QWidget):
@@ -339,36 +342,35 @@ class MetaWidget(CollapsibleWidgetContainer):
         ds_kwargs = self.app_state.get_ds_kwargs()
         self.data_widget.update_label_plot(ds_kwargs)
 
-
         self.data_widget.update_trials_combo()
 
     def update_labels_widget_title(self):
         """Update the Label controls title with verification status emoji."""
-        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 4:
+        if hasattr(self, "collapsible_widgets") and len(self.collapsible_widgets) > 4:
             # Labels widget is at index 4 (0: Help, 1: I/O, 2: Data, 3: Ephys, 4: Labelling)
             labels_collapsible = self.collapsible_widgets[4]
 
             # Get verification status
             verification_emoji = "❌"  # Default to not verified
-            if hasattr(self.app_state, 'trials_sel') and self.app_state.trials_sel is not None:
+            if hasattr(self.app_state, "trials_sel") and self.app_state.trials_sel is not None:
                 trial_meta = self.app_state.get_trial_meta(self.app_state.trials_sel)
-                if trial_meta.get('human_verified', 0):
+                if trial_meta.get("human_verified", 0):
                     verification_emoji = "✅"
 
             # Update the title
             new_title = f"Label controls {verification_emoji}"
 
             # Try to access the title/header of the collapsible widget
-            if hasattr(labels_collapsible, 'setText'):
+            if hasattr(labels_collapsible, "setText"):
                 labels_collapsible.setText(new_title)
-            elif hasattr(labels_collapsible, 'setTitle'):
+            elif hasattr(labels_collapsible, "setTitle"):
                 labels_collapsible.setTitle(new_title)
-            elif hasattr(labels_collapsible, '_title_widget') and hasattr(labels_collapsible._title_widget, 'setText'):
+            elif hasattr(labels_collapsible, "_title_widget") and hasattr(labels_collapsible._title_widget, "setText"):
                 labels_collapsible._title_widget.setText(new_title)
 
     def update_changepoints_widget_title(self):
         """Update the Changepoints title with correction mode indicator."""
-        if hasattr(self, 'collapsible_widgets') and len(self.collapsible_widgets) > 5:
+        if hasattr(self, "collapsible_widgets") and len(self.collapsible_widgets) > 5:
             # Changepoints widget is at index 5 (0: Help, 1: I/O, 2: Data, 3: Ephys, 4: Labelling, 5: Changepoints)
             cp_collapsible = self.collapsible_widgets[5]
 
@@ -377,11 +379,11 @@ class MetaWidget(CollapsibleWidgetContainer):
 
             new_title = f"Changepoints (CPs) {indicator}"
 
-            if hasattr(cp_collapsible, 'setText'):
+            if hasattr(cp_collapsible, "setText"):
                 cp_collapsible.setText(new_title)
-            elif hasattr(cp_collapsible, 'setTitle'):
+            elif hasattr(cp_collapsible, "setTitle"):
                 cp_collapsible.setTitle(new_title)
-            elif hasattr(cp_collapsible, '_title_widget') and hasattr(cp_collapsible._title_widget, 'setText'):
+            elif hasattr(cp_collapsible, "_title_widget") and hasattr(cp_collapsible._title_widget, "setText"):
                 cp_collapsible._title_widget.setText(new_title)
 
     def _check_unsaved_changes(self, event):
@@ -396,7 +398,6 @@ class MetaWidget(CollapsibleWidgetContainer):
             msg_box.setDefaultButton(QMessageBox.Save)
 
             response = msg_box.exec_()
-
 
             if response == QMessageBox.Save:
                 # Attempt to save
@@ -425,7 +426,6 @@ class MetaWidget(CollapsibleWidgetContainer):
                 self.app_state.stop_auto_save()
         super().closeEvent(event)
 
-
     def reapply_shortcuts(self):
         bind_global_shortcuts(self)
 
@@ -438,28 +438,29 @@ class MetaWidget(CollapsibleWidgetContainer):
 
     def _set_sidebar_default_width(self):
         self.setMinimumWidth(SIDEBAR_MIN_WIDTH_PX)
-        if not hasattr(self.viewer, 'window') or not hasattr(self.viewer.window, '_qt_window'):
+        if not hasattr(self.viewer, "window") or not hasattr(self.viewer.window, "_qt_window"):
             return
         QTimer.singleShot(
-            0, lambda: self.layout_mgr.set_sidebar_default_width(self, SIDEBAR_DEFAULT_WIDTH_RATIO),
+            0,
+            lambda: self.layout_mgr.set_sidebar_default_width(self, SIDEBAR_DEFAULT_WIDTH_RATIO),
         )
 
     def _configure_notifications(self):
         """Configure napari notifications to be visible above docked widgets."""
         try:
             # Access napari's notification manager
-            if hasattr(self.viewer.window, '_qt_viewer'):
+            if hasattr(self.viewer.window, "_qt_viewer"):
                 qt_viewer = self.viewer.window._qt_viewer
 
                 # Try to access the notification overlay
-                if hasattr(qt_viewer, '_overlays'):
+                if hasattr(qt_viewer, "_overlays"):
                     for overlay in qt_viewer._overlays.values():
-                        if hasattr(overlay, 'setContentsMargins'):
+                        if hasattr(overlay, "setContentsMargins"):
                             # Add bottom margin to keep notifications above docked widgets
                             overlay.setContentsMargins(0, 0, 0, 60)
 
                         # Try to adjust positioning
-                        if hasattr(overlay, 'resize') and hasattr(overlay, 'parent'):
+                        if hasattr(overlay, "resize") and hasattr(overlay, "parent"):
                             parent = overlay.parent()
                             if parent:
                                 parent_rect = parent.geometry()
@@ -483,7 +484,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         # Neo-Viewer: run loader setup then sync container to checkbox state.
         if self.app_state.ephys_path:
             self.data_widget._configure_neo_panel()
-            neo_cb = getattr(self.data_widget, 'neo_viewer_checkbox', None)
+            neo_cb = getattr(self.data_widget, "neo_viewer_checkbox", None)
             self.plot_container.set_neo_visible(bool(neo_cb and neo_cb.isChecked()))
 
         # Phy-Viewer: run loader setup if panel should be shown.
@@ -495,7 +496,7 @@ class MetaWidget(CollapsibleWidgetContainer):
         if not self.app_state.video_viewer_visible:
             self.layout_mgr.set_video_viewer_visible(False)
 
-        slot1_text = getattr(self.app_state, 'space_plot_type', 'Layers')
+        slot1_text = getattr(self.app_state, "space_plot_type", "Layers")
         show_layers = slot1_text == "Layers"
 
         if show_layers:
@@ -505,10 +506,8 @@ class MetaWidget(CollapsibleWidgetContainer):
             self.layout_mgr.hide_layer_docks()
             self.data_widget.update_space_plot()
 
-
-
     def _on_reset_layout(self):
-        space_type = getattr(self.app_state, 'space_plot_type', 'Layers')
+        space_type = getattr(self.app_state, "space_plot_type", "Layers")
         self.layout_mgr.reset_layout(
             show_layers=space_type == "Layers",
             show_space=space_type == "Space Plot",

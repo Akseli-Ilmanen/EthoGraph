@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import pandas as pd
 from napari.viewer import Viewer
 from qtpy.QtCore import QMimeData, QSize, Qt, Signal
 from qtpy.QtGui import QColor, QDrag
@@ -29,14 +28,13 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-import ethograph as eto
-from ethograph.gui.notify import notify
 from ethograph.features.changepoints import snap_to_nearest_changepoint_time
-from ethograph.labels.intervals import load_label_mapping, save_label_mapping
-from ethograph.labels.plots import plot_confidence_pdf
-from ethograph.labels.predictions import PredictionsStore
-from ethograph.io.metadata_table import save_metadata_tsv, metadata_tsv_path, empty_metadata_df
-from ethograph.labels.tsv_store import labels_tsv_path, save_labels_tsv
+from ethograph.gui.notify import notify
+from ethograph.io.metadata_table import (
+    empty_metadata_df,
+    metadata_tsv_path,
+    save_metadata_tsv,
+)
 from ethograph.labels.intervals import (
     EVENT_TYPE_POINT,
     EVENT_TYPE_STATE,
@@ -47,7 +45,12 @@ from ethograph.labels.intervals import (
     find_interval_at,
     find_point_at,
     get_interval_bounds,
+    load_label_mapping,
+    save_label_mapping,
 )
+from ethograph.labels.plots import plot_confidence_pdf
+from ethograph.labels.predictions import PredictionsStore
+from ethograph.labels.tsv_store import labels_tsv_path, save_labels_tsv
 
 # Glyphs used to indicate the kind of a label in the table.
 #   ━ (horizontal bar) = state event — visually conveys "spans across time"
@@ -58,21 +61,17 @@ _EVENT_TYPE_GLYPH = {
     EVENT_TYPE_STATE: "━",
     EVENT_TYPE_POINT: "●",
 }
-from ethograph.utils.paths import find_mapping_file
-
+from ethograph.utils.paths import find_mapping_file  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-from .app_constants import (
-    LABELS_TABLE_MAX_HEIGHT,
-    LABELS_TABLE_ROW_HEIGHT,
-    LABELS_TABLE_ID_COLUMN_WIDTH,
-    LABELS_TABLE_COLOR_COLUMN_WIDTH,
-    LABELS_WIDGET_SIZE_HINT_HEIGHT,
+from .app_constants import (  # noqa: E402
     DEFAULT_LAYOUT_SPACING,
+    LABELS_TABLE_COLOR_COLUMN_WIDTH,
+    LABELS_TABLE_ID_COLUMN_WIDTH,
+    LABELS_TABLE_ROW_HEIGHT,
+    LABELS_WIDGET_SIZE_HINT_HEIGHT,
 )
-
-
 
 
 class BranchTable(QTableWidget):
@@ -129,7 +128,7 @@ class BranchTable(QTableWidget):
 
 class LabelsWidget(QWidget):
     """Widget for labeling movement labels in time series data."""
-    
+
     highlight_spaceplot = Signal(float, float)
 
     def __init__(self, napari_viewer: Viewer, app_state, parent=None):
@@ -138,8 +137,6 @@ class LabelsWidget(QWidget):
         self.app_state = app_state
 
         self.data_widget = None  # Will be set after creation
-        
-        
 
         self.plot_container = None  # Will be set after creation
         self.meta_widget = None  # Will be set after creation
@@ -169,10 +166,9 @@ class LabelsWidget(QWidget):
         # Edit mode state
         self.old_labels_pos: int | None = None  # Original interval index when editing
         self.old_labels: int | None = None  # Original ID when editing
-        
+
         # Frame tracking for  display
         self.previous_frame: int | None = None
-
 
         # UI components — branch tables
         self.labels_table = None  # kept for backward compat; points to active branch table
@@ -182,8 +178,6 @@ class LabelsWidget(QWidget):
         self._previous_main_branch: int | None = None
 
         self._setup_ui()
-
-
 
         mapping_path = find_mapping_file()
         self._mapping_file_path = str(mapping_path) if mapping_path else None
@@ -203,10 +197,7 @@ class LabelsWidget(QWidget):
         mapping_path = find_mapping_file(data_dir)
         if mapping_path is None:
             return
-        current_path = (
-            Path(self.io_widget.mapping_file_path_edit.text())
-            if self.io_widget else None
-        )
+        current_path = Path(self.io_widget.mapping_file_path_edit.text()) if self.io_widget else None
         if current_path == mapping_path:
             return
         self._reload_mapping(str(mapping_path))
@@ -216,7 +207,6 @@ class LabelsWidget(QWidget):
     def set_data_widget(self, data_widget):
         """Set reference to the data widget for plot updates."""
         self.data_widget = data_widget
-
 
     def _mark_changes_unsaved(self):
         """Mark that changes have been made and are not saved."""
@@ -228,12 +218,14 @@ class LabelsWidget(QWidget):
         plot_container.set_label_mappings(self._mappings)
         self._sync_active_label_ids()
 
-        for plot in [plot_container.line_plot,
-                     plot_container.spectrogram_plot,
-                     plot_container.audio_trace_plot,
-                     plot_container.heatmap_plot,
-                     plot_container.neo_trace_plot,
-                     plot_container.ephys_trace_plot]:
+        for plot in [
+            plot_container.line_plot,
+            plot_container.spectrogram_plot,
+            plot_container.audio_trace_plot,
+            plot_container.heatmap_plot,
+            plot_container.neo_trace_plot,
+            plot_container.ephys_trace_plot,
+        ]:
             if plot is not None:
                 plot.plot_clicked.connect(self._on_plot_clicked)
 
@@ -272,24 +264,28 @@ class LabelsWidget(QWidget):
             if source == "predictions":
                 if predictions_df is None or predictions_df.empty:
                     continue
-                slots.append({
-                    "df": predictions_df,
-                    "label_ids": None,
-                    "position": position,
-                })
+                slots.append(
+                    {
+                        "df": predictions_df,
+                        "label_ids": None,
+                        "position": position,
+                    }
+                )
             elif isinstance(source, int):
                 if intervals_df is None or intervals_df.empty:
                     continue
                 branch_ids = {
-                    lid for lid, data in self._mappings.items()
-                    if isinstance(lid, int) and lid != 0
-                       and data.get("branch", 0) == source
+                    lid
+                    for lid, data in self._mappings.items()
+                    if isinstance(lid, int) and lid != 0 and data.get("branch", 0) == source
                 }
-                slots.append({
-                    "df": intervals_df,
-                    "label_ids": branch_ids,
-                    "position": position,
-                })
+                slots.append(
+                    {
+                        "df": intervals_df,
+                        "label_ids": branch_ids,
+                        "position": position,
+                    }
+                )
         return slots
 
     def sizeHint(self):
@@ -309,9 +305,7 @@ class LabelsWidget(QWidget):
             f"   ·   {_EVENT_TYPE_GLYPH[EVENT_TYPE_POINT]} point event"
             "   (right-click a label to change)"
         )
-        legend.setStyleSheet(
-            "QLabel { color: #aaa; font-size: 11px; padding: 2px 0px; }"
-        )
+        legend.setStyleSheet("QLabel { color: #aaa; font-size: 11px; padding: 2px 0px; }")
         legend.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout.addWidget(legend)
 
@@ -321,7 +315,7 @@ class LabelsWidget(QWidget):
         scroll.setFrameShape(QScrollArea.NoFrame)
         scroll_content = QWidget()
         self._branches_layout = QVBoxLayout(scroll_content)
-        self._branches_layout.setSpacing(2)
+        self._branches_layout.setSpacing(6)
         self._branches_layout.setContentsMargins(0, 0, 0, 0)
         self._branches_layout.addStretch()
         scroll.setWidget(scroll_content)
@@ -370,9 +364,7 @@ class LabelsWidget(QWidget):
         table.itemSelectionChanged.connect(self._on_table_selection_changed)
         table.label_moved.connect(self._on_label_dropped)
         table.setContextMenuPolicy(Qt.CustomContextMenu)
-        table.customContextMenuRequested.connect(
-            lambda pos, t=table: self._on_label_context_menu(t, pos)
-        )
+        table.customContextMenuRequested.connect(lambda pos, t=table: self._on_label_context_menu(t, pos))
         return table
 
     def _add_branch_section(self, branch_idx: int):
@@ -386,7 +378,7 @@ class LabelsWidget(QWidget):
 
         section_widget = QWidget()
         section_layout = QVBoxLayout(section_widget)
-        section_layout.setContentsMargins(0, 0, 0, 0)
+        section_layout.setContentsMargins(0, 4, 0, 0)
         section_layout.setSpacing(1)
 
         header_row = QHBoxLayout()
@@ -399,7 +391,9 @@ class LabelsWidget(QWidget):
             delete_btn = QPushButton("x")
             delete_btn.setFixedSize(20, 20)
             delete_btn.setToolTip("Delete this branch (must be empty)")
-            delete_btn.setStyleSheet("QPushButton { color: #aaa; background: transparent; border: none; font-weight: bold; } QPushButton:hover { color: #f66; }")
+            delete_btn.setStyleSheet(
+                "QPushButton { color: #aaa; background: transparent; border: none; font-weight: bold; } QPushButton:hover { color: #f66; }"  # noqa: E501
+            )
             delete_btn.clicked.connect(lambda _, b=branch_idx: self._delete_branch(b))
             header_row.addWidget(delete_btn)
         header_row.addStretch()
@@ -456,9 +450,7 @@ class LabelsWidget(QWidget):
         if self.app_state._top2_source == branch_idx:
             self.app_state._top2_source = None
         if self.labels_table is section["table"]:
-            self.labels_table = next(
-                (s["table"] for s in self._branch_sections.values()), None
-            )
+            self.labels_table = next((s["table"] for s in self._branch_sections.values()), None)
         if self.data_widget is not None:
             self.data_widget.refresh_label_slot_dropdowns()
 
@@ -531,12 +523,13 @@ class LabelsWidget(QWidget):
             return
         save_label_mapping(path, self._mappings)
         n_point = sum(
-            1 for d in self._mappings.values()
-            if isinstance(d, dict) and d.get("event_type") == EVENT_TYPE_POINT
+            1 for d in self._mappings.values() if isinstance(d, dict) and d.get("event_type") == EVENT_TYPE_POINT
         )
         logger.info(
             "Saved mapping to %s (%d labels, %d point)",
-            path, len(self._mappings), n_point,
+            path,
+            len(self._mappings),
+            n_point,
         )
 
     def _sync_active_label_ids(self):
@@ -544,16 +537,15 @@ class LabelsWidget(QWidget):
         if self.plot_container:
             self.plot_container.set_active_label_ids(self.app_state.active_label_ids)
 
-
-
     def _browse_mapping_file(self):
         """Browse for a mapping.txt file and reload mappings."""
         current = find_mapping_file()
         start_dir = str(current.parent) if current else str(Path.home() / ".ethograph")
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select mapping.txt file",
+            self,
+            "Select mapping.txt file",
             start_dir,
-            "Text files (*.txt);;All Files (*)"
+            "Text files (*.txt);;All Files (*)",
         )
         if file_path:
             self.io_widget.mapping_file_path_edit.setText(file_path)
@@ -565,20 +557,17 @@ class LabelsWidget(QWidget):
             self._mappings = load_label_mapping(Path(mapping_path))
             self._mapping_file_path = mapping_path
             n_point = sum(
-                1 for d in self._mappings.values()
-                if isinstance(d, dict) and d.get("event_type") == EVENT_TYPE_POINT
+                1 for d in self._mappings.values() if isinstance(d, dict) and d.get("event_type") == EVENT_TYPE_POINT
             )
             logger.info(
                 "Loaded mapping from %s (%d labels, %d point)",
-                mapping_path, len(self._mappings), n_point,
+                mapping_path,
+                len(self._mappings),
+                n_point,
             )
             self.app_state._label_mappings = self._mappings
             # Reset slots — Main starts on the first branch present in the file.
-            new_branches = {
-                data.get("branch", 0)
-                for data in self._mappings.values()
-                if isinstance(data, dict)
-            }
+            new_branches = {data.get("branch", 0) for data in self._mappings.values() if isinstance(data, dict)}
             first_branch = min(new_branches) if new_branches else 0
             self.app_state._main_labels_source = first_branch
             self.app_state._top1_source = None
@@ -613,6 +602,7 @@ class LabelsWidget(QWidget):
             labels = dialog.get_labels()
             if labels:
                 from ethograph.utils.paths import default_config_dir
+
                 data_dir = Path(self.app_state.nc_file_path).parent if self.app_state.nc_file_path else None
                 config_dir = default_config_dir(data_dir)
                 mapping_path = config_dir / "mapping_temporary.txt"
@@ -647,7 +637,8 @@ class LabelsWidget(QWidget):
         try:
             store = PredictionsStore(folder)
             labels_df, confidence_levels = store.load_all(
-                self.app_state.dt, individual,
+                self.app_state.dt,
+                individual,
                 confidence_threshold=threshold,
                 segment_confidence_threshold=seg_threshold,
             )
@@ -661,12 +652,7 @@ class LabelsWidget(QWidget):
         save_labels_tsv(tsv_path, labels_df)
 
         cb = getattr(self.io_widget, "create_labels_from_predictions_cb", None)
-        if (
-            cb is not None
-            and cb.isChecked()
-            and self.app_state.nc_file_path
-            and not labels_df.empty
-        ):
+        if cb is not None and cb.isChecked() and self.app_state.nc_file_path and not labels_df.empty:
             session_tsv = labels_tsv_path(self.app_state.nc_file_path)
             if not session_tsv.exists():
                 save_labels_tsv(session_tsv, labels_df)
@@ -693,7 +679,6 @@ class LabelsWidget(QWidget):
         self.app_state.pred_segment_confidence_threshold = self.io_widget.pred_segment_confidence_threshold_spin.value()
 
     def _plot_confidence_pdf(self):
-        import os
         store = getattr(self.app_state, "pred_store", None)
         labels_df = getattr(self.app_state, "pred_labels_df", None)
         if store is None or labels_df is None or labels_df.empty:
@@ -701,47 +686,47 @@ class LabelsWidget(QWidget):
             return
         try:
             # Load all confidence arrays at click time for the PDF (one-off)
-            confidence_map = {
-                trial: store.get_confidence(trial, self.app_state.dt)
-                for trial in self.app_state.trials
-            }
+            confidence_map = {trial: store.get_confidence(trial, self.app_state.dt) for trial in self.app_state.trials}
             pdf_path, highlighted = plot_confidence_pdf(
-                confidence_map, labels_df, self.app_state.dt, self._mappings,
+                confidence_map,
+                labels_df,
+                self.app_state.dt,
+                self._mappings,
                 confidence_threshold=self.app_state.pred_confidence_threshold,
                 segment_confidence_threshold=self.app_state.pred_segment_confidence_threshold,
             )
 
             # Update metadata table with mean model confidence per trial
-            mdf = getattr(self.app_state, 'metadata_df', None)
+            mdf = getattr(self.app_state, "metadata_df", None)
             if mdf is None or mdf.empty:
                 mdf = empty_metadata_df(self.app_state.trials)
             else:
                 mdf = mdf.copy()
-            if 'trial' not in mdf.columns:
-                mdf['trial'] = list(self.app_state.trials)
+            if "trial" not in mdf.columns:
+                mdf["trial"] = list(self.app_state.trials)
 
-            mdf_index = mdf.set_index('trial', drop=False)
+            mdf_index = mdf.set_index("trial", drop=False)
             for trial in self.app_state.trials:
                 arr = confidence_map.get(trial)
                 try:
-                    mean_confidence = float(np.nanmean(arr)) if arr is not None else float('nan')
+                    mean_confidence = float(np.nanmean(arr)) if arr is not None else float("nan")
                 except Exception:
-                    mean_confidence = float('nan')
-                mdf_index.loc[trial, 'model_confidence'] = mean_confidence
-                mdf_index.loc[trial, 'model_confidence_level'] = 'low' if highlighted.get(trial, False) else 'high'
+                    mean_confidence = float("nan")
+                mdf_index.loc[trial, "model_confidence"] = mean_confidence
+                mdf_index.loc[trial, "model_confidence_level"] = "low" if highlighted.get(trial, False) else "high"
 
             mdf_updated = mdf_index.reset_index(drop=True)
             self.app_state.metadata_df = mdf_updated
 
             # Save to metadata TSV (explicit metadata_path or sidecar next to nc)
-            md_path = getattr(self.app_state, 'metadata_path', None)
-            if not md_path and getattr(self.app_state, 'nc_file_path', None):
+            md_path = getattr(self.app_state, "metadata_path", None)
+            if not md_path and getattr(self.app_state, "nc_file_path", None):
                 md_path = metadata_tsv_path(self.app_state.nc_file_path)
             if md_path:
                 try:
                     save_metadata_tsv(md_path, mdf_updated)
                     # ensure app_state knows about the metadata path
-                    if not getattr(self.app_state, 'metadata_path', None):
+                    if not getattr(self.app_state, "metadata_path", None):
                         self.app_state.metadata_path = str(md_path)
                     notify(f"Saved metadata with model confidence to {Path(md_path).name}")
                 except Exception as e:
@@ -756,26 +741,26 @@ class LabelsWidget(QWidget):
     labels_TO_KEY = {}
 
     # Row 1: 1-0 (Labels 1-10)
-    number_keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
+    number_keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
     for i, key in enumerate(number_keys):
-        _id = i + 1 if key != '0' else 10
+        _id = i + 1 if key != "0" else 10
         labels_TO_KEY[_id] = key
 
     # Row 2: Q-P (Labels 11-20)
-    qwerty_row = ['q', 'w', 'e', 'r', 't', 'z', 'u', 'i', 'o', 'p']
+    qwerty_row = ["q", "w", "e", "r", "t", "z", "u", "i", "o", "p"]
     for i, key in enumerate(qwerty_row):
         _id = i + 11
         labels_TO_KEY[_id] = key.upper()  # Display as uppercase for clarity
 
     # Row 3: A-; (Labels 21-30)
-    home_row = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';']
+    home_row = ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"]
     for i, key in enumerate(home_row):
         _id = i + 21
-        labels_TO_KEY[_id] = key.upper() if key != ';' else ';'  # Keep ; as is
+        labels_TO_KEY[_id] = key.upper() if key != ";" else ";"  # Keep ; as is
 
     # Also provide reverse mapping for key to _id
     KEY_TO_labels = {v.lower(): k for k, v in labels_TO_KEY.items()}
-    
+
     def _populate_labels_table(self):
         """Populate per-branch tables with loaded mappings."""
         # Collect branches present in the mappings
@@ -800,7 +785,8 @@ class LabelsWidget(QWidget):
         for branch_idx, section in self._branch_sections.items():
             table = section["table"]
             items = [
-                (lid, data) for lid, data in self._mappings.items()
+                (lid, data)
+                for lid, data in self._mappings.items()
                 if isinstance(lid, int) and lid != 0 and data.get("branch", 0) == branch_idx
             ]
             items.sort(key=lambda kv: kv[0])
@@ -823,9 +809,7 @@ class LabelsWidget(QWidget):
                 name_item = QTableWidgetItem(name_with_shortcut)
                 name_item.setData(Qt.UserRole, _id)
                 kind_label = "Point event" if event_type == EVENT_TYPE_POINT else "State event"
-                name_item.setToolTip(
-                    f"{kind_label} — right-click to change"
-                )
+                name_item.setToolTip(f"{kind_label} — right-click to change")
                 table.setItem(row, col_offset + 1, name_item)
 
                 color_item = QTableWidgetItem()
@@ -837,9 +821,7 @@ class LabelsWidget(QWidget):
 
             # Auto-size table height to fit all rows (no cap)
             row_count = table.rowCount()
-            table.setFixedHeight(
-                LABELS_TABLE_ROW_HEIGHT * row_count + table.horizontalHeader().height() + 4
-            )
+            table.setFixedHeight(LABELS_TABLE_ROW_HEIGHT * row_count + table.horizontalHeader().height() + 4)
 
         # Keep backward-compat labels_table pointing to first branch
         if self._branch_sections:
@@ -859,8 +841,6 @@ class LabelsWidget(QWidget):
             _id = item.data(Qt.UserRole)
             if _id is not None:
                 self.activate_label(_id)
-
-
 
     def activate_label(self, _key):
         """Activate a label by shortcut: select cell, set up for labeling, and scroll to it."""
@@ -891,17 +871,14 @@ class LabelsWidget(QWidget):
                         table.blockSignals(False)
                         return
             table.blockSignals(False)
-        
-            
-            
 
     def _current_individual(self) -> str:
         """Return the currently selected individual name for interval operations."""
-        ind = getattr(self.app_state, 'individuals_sel', None)
+        ind = getattr(self.app_state, "individuals_sel", None)
         if ind is not None and ind not in ("", "None"):
             return str(ind)
-        if self.app_state.ds is not None and 'individuals' in self.app_state.ds.coords:
-            return str(self.app_state.ds.coords['individuals'].values[0])
+        if self.app_state.ds is not None and "individuals" in self.app_state.ds.coords:
+            return str(self.app_state.ds.coords["individuals"].values[0])
         return "default"
 
     def _on_plot_clicked(self, click_info):
@@ -928,7 +905,7 @@ class LabelsWidget(QWidget):
             return
 
         # Without video, any click (not in label mode) jumps the time marker
-        if getattr(self.app_state, 'video', None) is None and not self.ready_for_label_click:
+        if getattr(self.app_state, "video", None) is None and not self.ready_for_label_click:
             if self.plot_container is not None:
                 self.plot_container.update_time_marker_by_time(t_clicked)
             if button == Qt.LeftButton:
@@ -941,7 +918,6 @@ class LabelsWidget(QWidget):
 
         # Handle left-click for labeling/editing (only in label mode)
         elif button == Qt.LeftButton and self.ready_for_label_click:
-
             # Snap to nearest changepoint if available (in time domain)
             if self.changepoints_widget and self.changepoints_widget.is_changepoint_correction_enabled():
                 t_snapped = self._snap_to_changepoint_time(t_clicked)
@@ -964,8 +940,6 @@ class LabelsWidget(QWidget):
         if not lid or lid not in self._mappings:
             return False
         return self._mappings[lid].get("event_type", EVENT_TYPE_STATE) == EVENT_TYPE_POINT
-
-
 
     def _check_labels_click(self, t_clicked: float, individual: str) -> bool:
         """Check if the click is on an existing interval or point, and select it.
@@ -1031,9 +1005,9 @@ class LabelsWidget(QWidget):
 
         Works entirely in the time domain. Also considers audio changepoints.
         """
-        store = getattr(self.app_state, 'data_loader', None)
-        if store is not None and hasattr(store, 'get_cp_times'):
-            feature = getattr(self.app_state, 'features_sel', None)
+        store = getattr(self.app_state, "data_loader", None)
+        if store is not None and hasattr(store, "get_cp_times"):
+            feature = getattr(self.app_state, "features_sel", None)
             wb = self.app_state.window_bounds
             if wb is not None:
                 cp_times = store.get_cp_times(feature, t0=wb.start_s, t1=wb.end_s)
@@ -1083,15 +1057,18 @@ class LabelsWidget(QWidget):
         # Compute label IDs from inactive branches — these must not be overwritten
         active_ids = self.app_state.active_label_ids
         if active_ids is not None:
-            all_ids = {
-                lid for lid, d in self._mappings.items()
-                if isinstance(lid, int) and lid != 0
-            }
+            all_ids = {lid for lid, d in self._mappings.items() if isinstance(lid, int) and lid != 0}
             protected = all_ids - active_ids
         else:
             protected = None
-        df = add_interval(df, onset_s, offset_s, self.selected_labels, individual,
-                          protected_label_ids=protected)
+        df = add_interval(
+            df,
+            onset_s,
+            offset_s,
+            self.selected_labels,
+            individual,
+            protected_label_ids=protected,
+        )
         self.app_state.label_intervals = df
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
 
@@ -1118,8 +1095,6 @@ class LabelsWidget(QWidget):
             self.data_widget.update_main_plot(preserve_x_range=True)
         self._seek_to_frame(onset_s)
         self.refresh_labels_shapes_layer()
-
-        
 
     def _apply_point(self, t_clicked: float):
         """Insert a point event at *t_clicked* for the active label class.
@@ -1171,12 +1146,11 @@ class LabelsWidget(QWidget):
 
     def _seek_to_frame(self, time_s: float):
         """Seek video and update time marker to the specified time in seconds."""
-        if hasattr(self.app_state, 'video') and self.app_state.video:
+        if hasattr(self.app_state, "video") and self.app_state.video:
             video_frame = self.app_state.video.time_to_frame(time_s)
             self.app_state.video.seek_to_frame(video_frame)
         elif self.plot_container:
             self.plot_container.update_time_marker_by_time(time_s)
-
 
     def _delete_label(self):
         if self.current_labels_pos is None:
@@ -1231,8 +1205,10 @@ class LabelsWidget(QWidget):
 
         # Point events have offset_s = NaN; there's nothing to play back.
         if not np.isfinite(offset_s) or offset_s <= onset_s:
-            notify("Playback only works for state events, not point events.",
-                   severity="warning")
+            notify(
+                "Playback only works for state events, not point events.",
+                severity="warning",
+            )
             return
 
         if self.app_state.video:
@@ -1243,20 +1219,17 @@ class LabelsWidget(QWidget):
             self._play_audio_segment(onset_s, offset_s)
 
     def _play_audio_segment(self, onset_s: float, offset_s: float):
-        if self.plot_container and hasattr(self.plot_container, 'audio_player'):
+        if self.plot_container and hasattr(self.plot_container, "audio_player"):
             self.plot_container.audio_player.play_segment(onset_s, offset_s)
-
-
-
 
     def _get_canvas_widget(self):
         """Return the Qt widget that holds the napari OpenGL canvas."""
-        qt_viewer = getattr(self.viewer.window, '_qt_viewer', None)
+        qt_viewer = getattr(self.viewer.window, "_qt_viewer", None)
         if qt_viewer is None:
             return None
         # _qt_viewer.canvas.native is the actual OpenGL widget
-        canvas = getattr(qt_viewer, 'canvas', None)
-        native = getattr(canvas, 'native', None) if canvas else None
+        canvas = getattr(qt_viewer, "canvas", None)
+        native = getattr(canvas, "native", None) if canvas else None
         return native or qt_viewer
 
     def _add_labels_shapes_layer(self):
@@ -1265,7 +1238,7 @@ class LabelsWidget(QWidget):
         Much faster than a napari Shapes layer: setText() is a
         trivial Qt repaint instead of a full OpenGL shapes render pass.
         """
-        if getattr(self, '_label_overlay', None) is not None:
+        if getattr(self, "_label_overlay", None) is not None:
             return
 
         canvas_widget = self._get_canvas_widget()
@@ -1303,17 +1276,17 @@ class LabelsWidget(QWidget):
         canvas_widget.resizeEvent = _on_canvas_resize
 
         def _update_labels_text(event=None):
-            overlay = getattr(self, '_label_overlay', None)
+            overlay = getattr(self, "_label_overlay", None)
             if overlay is None:
                 return
-            if getattr(self, '_label_overlay_hidden', False):
+            if getattr(self, "_label_overlay_hidden", False):
                 overlay.hide()
                 return
-            video = getattr(self.app_state, 'video', None)
+            video = getattr(self.app_state, "video", None)
             video_frame = self.viewer.dims.current_step[0]
             if video:
                 time_s = video.frame_to_time(video_frame)
-            elif hasattr(self.app_state, 'video_fps') and self.app_state.video_fps:
+            elif hasattr(self.app_state, "video_fps") and self.app_state.video_fps:
                 time_s = video_frame / self.app_state.video_fps
             else:
                 return
@@ -1331,7 +1304,7 @@ class LabelsWidget(QWidget):
                     if labels in mappings and labels != 0:
                         text = mappings[labels]["name"]
                         color = mappings[labels]["color"]
-                        if hasattr(color, 'tolist'):
+                        if hasattr(color, "tolist"):
                             color = color.tolist()
                         r, g, b = (int(c * 255) for c in color[:3])
                         css_color = f"rgb({r},{g},{b})"
@@ -1370,7 +1343,7 @@ class LabelsWidget(QWidget):
 
     def _remove_labels_shapes_layer(self):
         """Remove the Qt label overlay."""
-        overlay = getattr(self, '_label_overlay', None)
+        overlay = getattr(self, "_label_overlay", None)
         if overlay is not None:
             overlay.setParent(None)
             overlay.deleteLater()
@@ -1379,11 +1352,11 @@ class LabelsWidget(QWidget):
 
     def refresh_labels_shapes_layer(self):
         """Refresh: ensure overlay exists, then force an update."""
-        if getattr(self, '_label_overlay', None) is None:
+        if getattr(self, "_label_overlay", None) is None:
             self._add_labels_shapes_layer()
             return
         self._label_overlay_last_text = ""
-        if hasattr(self, '_update_labels_text'):
+        if hasattr(self, "_update_labels_text"):
             self._update_labels_text()
 
 

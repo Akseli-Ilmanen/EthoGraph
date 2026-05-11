@@ -20,10 +20,15 @@ import numpy as np
 import pandas as pd
 from movement.io import load_dataset
 from movement.napari.convert import ds_to_napari_layers
-from movement.napari.layer_styles import BoxesStyle, PointsStyle, _sample_colormap
+from movement.napari.layer_styles import (
+    BoxesStyle,
+    PointsStyle,
+    _sample_colormap,
+)
 
 from ethograph.gui.notify import notify
 from ethograph.io.nwb_import import _get_absolute_timestamps
+
 
 @dataclass
 class PoseRenderData:
@@ -34,6 +39,7 @@ class PoseRenderData:
     data_not_nan : bool mask shape (N,) — True for points that should be shown
     file_name    : label used as the napari layer name base
     """
+
     data: np.ndarray
     properties: pd.DataFrame
     data_not_nan: np.ndarray
@@ -55,7 +61,7 @@ def strip_common_prefix(names: list[str]) -> list[str]:
     prefix = os.path.commonprefix(names)
     if not prefix:
         return names
-    return [n[len(prefix):] for n in names]
+    return [n[len(prefix) :] for n in names]
 
 
 def _strip_keypoint_prefix(properties: pd.DataFrame) -> pd.DataFrame:
@@ -66,7 +72,7 @@ def _strip_keypoint_prefix(properties: pd.DataFrame) -> pd.DataFrame:
     if not prefix:
         return properties
     props = properties.copy()
-    props["keypoint"] = props["keypoint"].str[len(prefix):]
+    props["keypoint"] = props["keypoint"].str[len(prefix) :]
     return props
 
 
@@ -82,7 +88,6 @@ def load_pose_from_file(file_path: str, source_software: str, fps: float) -> Pos
         bbox_data=bbox_data,
         frame_path=ds.attrs.get("frame_path"),
     )
-
 
 
 def slice_pose_to_frames(pr: PoseRenderData, start_frame: int, end_frame: int) -> PoseRenderData:
@@ -121,8 +126,6 @@ def slice_pose_to_frames(pr: PoseRenderData, start_frame: int, end_frame: int) -
         bbox_data=bbox_data,
         frame_path=pr.frame_path,
     )
-
-
 
 
 def load_pose_from_nwb_direct(
@@ -180,10 +183,8 @@ def load_pose_from_nwb_direct(
             if len(idx) == 0:
                 continue
             i0, i1 = int(idx[0]), int(idx[-1]) + 1
-            trial_relative_time = ts[i0:i1] - t_start
         else:
             i0, i1 = 0, n_frames
-            trial_relative_time = ts
 
         # Lazy slice from HDF5
         data = np.asarray(series.data[i0:i1], dtype=np.float64)
@@ -206,9 +207,7 @@ def load_pose_from_nwb_direct(
         all_not_nan.append(not_nan)
         kp_col.extend([name_map[kp_name]] * n)
         ind_col.extend([pose_estimation_key] * n)
-        conf_col.extend(
-            confidence.tolist() if confidence is not None else [1.0] * n
-        )
+        conf_col.extend(confidence.tolist() if confidence is not None else [1.0] * n)
 
     if not all_pts:
         return None
@@ -251,7 +250,7 @@ class PoseDisplayManager:
     Keyoint filtering is driven by the keypoints table in the UI:
     - Confidence threshold filters out low-confidence points
     - Hidden keypoints in the table prevent display
-    
+
     Uses a single rendering path for all cameras (primary and extra) via
     direct ``add_points()`` calls with ``shown`` mask. Each camera's keypoints
     are tracked independently; the UI filter shows the union.
@@ -287,7 +286,7 @@ class PoseDisplayManager:
         return cameras[camera_idx] if camera_idx < len(cameras) else str(camera_idx)
 
     def _resolve_camera_fps(self, camera_idx: int) -> float:
-        sio = self.app_state.nwb_alignment # sio = session io (legacy name)
+        sio = self.app_state.nwb_alignment  # sio = session io (legacy name)
         cameras = sio.cameras
         if camera_idx < len(cameras):
             fps = sio.get_stream_rate("video", cameras[camera_idx])
@@ -300,14 +299,15 @@ class PoseDisplayManager:
         return getattr(sio, "nwb", None)
 
     def _load_pose_for_camera(self, camera_idx: int) -> PoseRenderData | None:
-        dt = self.app_state.dt
         trial_id = self.app_state.trials_sel
         sio = self.app_state.nwb_alignment
         cameras = sio.cameras
 
         if camera_idx < len(cameras):
             pose_path = sio.resolve_media_path(
-                trial_id, "pose", device=cameras[camera_idx],
+                trial_id,
+                "pose",
+                device=cameras[camera_idx],
                 fallback_folder=self.app_state.pose_folder,
             )
             if not pose_path:
@@ -321,17 +321,17 @@ class PoseDisplayManager:
             except (OSError, ValueError, KeyError) as e:
                 notify(f"Failed to load pose for camera {camera_idx}: {e}", "warning")
                 return None
-            alignment = getattr(self.app_state, 'trial_alignment', None)
+            alignment = getattr(self.app_state, "trial_alignment", None)
             if alignment and alignment.trial_range:
                 fps = self._resolve_camera_fps(camera_idx)
                 time_offset = sio.stream_offset_for_trial(
-                    trial_id, "video", cameras[camera_idx],
+                    trial_id,
+                    "video",
+                    cameras[camera_idx],
                 )
                 trial_start = -time_offset
                 start_frame = max(0, int(trial_start * fps))
-                end_frame = int(
-                    (trial_start + alignment.trial_range.duration) * fps
-                )
+                end_frame = int((trial_start + alignment.trial_range.duration) * fps)
                 pr = slice_pose_to_frames(pr, start_frame, end_frame)
             return pr
 
@@ -353,7 +353,10 @@ class PoseDisplayManager:
                     t_stop=t_stop,
                 )
             except (OSError, ValueError, KeyError) as e:
-                notify(f"Failed to load NWB pose for {pose_keys[camera_idx]}: {e}", "warning")
+                notify(
+                    f"Failed to load NWB pose for {pose_keys[camera_idx]}: {e}",
+                    "warning",
+                )
                 return None
         return None
 
@@ -403,7 +406,10 @@ class PoseDisplayManager:
         sio = self.app_state.nwb_alignment
         device = camera_name or (sio.cameras[0] if sio.cameras else None)
         video_path = sio.resolve_media_path(
-            trial_id, "video", device=device, fallback_folder=video_folder,
+            trial_id,
+            "video",
+            device=device,
+            fallback_folder=video_folder,
         )
         if not video_path:
             return 1.0, 1.0
@@ -431,7 +437,7 @@ class PoseDisplayManager:
         """
         if self.app_state.video_path:
             return
-        frame_path = getattr(self._data_widget, 'pose_frame_path', None) or pr.frame_path
+        frame_path = getattr(self._data_widget, "pose_frame_path", None) or pr.frame_path
         if not frame_path:
             return
         frame_file = Path(frame_path)
@@ -441,7 +447,9 @@ class PoseDisplayManager:
 
         img = iio.imread(frame_file)
         self._primary_frame_layer = self.viewer.add_image(
-            img, name="frame", rgb=img.ndim == 3,
+            img,
+            name="frame",
+            rgb=img.ndim == 3,
         )
         idx = self.viewer.layers.index(self._primary_frame_layer)
         self.viewer.layers.move(idx, 0)
@@ -457,7 +465,10 @@ class PoseDisplayManager:
         points_data = self._apply_pose_scale(points_data, camera_name)
         style_kwargs = self._build_pose_style_kwargs(pr.properties)
         return viewer_model.add_points(
-            points_data, properties=pr.properties, shown=pr.data_not_nan, **style_kwargs,
+            points_data,
+            properties=pr.properties,
+            shown=pr.data_not_nan,
+            **style_kwargs,
         )
 
     def _display_bbox_direct(self, viewer_model, pr: PoseRenderData, camera_name: str | None = None) -> Any | None:
@@ -481,12 +492,14 @@ class PoseDisplayManager:
         props_filtered = pr.properties[mask].copy().reset_index(drop=True)
         style_kwargs, props_factorized = self._build_bbox_style_kwargs(props_filtered)
         return viewer_model.add_shapes(
-            bbox_filtered, properties=props_factorized, **style_kwargs,
+            bbox_filtered,
+            properties=props_factorized,
+            **style_kwargs,
         )
 
     def update_pose(self, hidden_keypoints: set[str]) -> None:
         """Update pose display for all cameras based on keypoints table selection.
-        
+
         Parameters
         ----------
         hidden_keypoints
@@ -593,7 +606,10 @@ class PoseDisplayManager:
                 if "color" in style.text:
                     style.text["color"].update({"feature": color_prop, "colormap": global_cycle})
                 else:
-                    style.text["color"] = {"feature": color_prop, "colormap": global_cycle}
+                    style.text["color"] = {
+                        "feature": color_prop,
+                        "colormap": global_cycle,
+                    }
             else:
                 style.set_color_by(property=color_prop, properties_df=properties)
         else:
@@ -642,12 +658,12 @@ class PoseDisplayManager:
                 widget._points_layer.text.visible = visible
                 widget._points_layer.text.size = text_size
                 widget._points_layer.size = size
-            if getattr(widget, '_shapes_layer', None) is not None:
+            if getattr(widget, "_shapes_layer", None) is not None:
                 widget._shapes_layer.text.visible = visible
                 widget._shapes_layer.text.size = text_size
 
     def on_rotate_video_pose(self) -> None:
-        self._rotation_count = (getattr(self, '_rotation_count', 0) + 1) % 4
+        self._rotation_count = (getattr(self, "_rotation_count", 0) + 1) % 4
         theta = np.radians(self._rotation_count * 90)
         cos_t, sin_t = np.cos(theta), np.sin(theta)
         rot_2d = np.array([[cos_t, -sin_t], [sin_t, cos_t]])

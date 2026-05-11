@@ -7,14 +7,7 @@ except PackageNotFoundError:
     pass
 
     
-from ethograph.io.trialtree import TrialTree
-from ethograph.io.dataset import (
-    add_angle_rgb_to_ds,
-    add_changepoints_to_ds,
-    downsample_trialtree,
-)
-from ethograph.utils.xr_utils import get_ds_duration, get_time_coord, sel_valid
-from ethograph.utils.paths import get_project_root
+from ethograph.datasets import sample_data
 from ethograph.io.catalog import (
     DataCatalog,
     DataLoader,
@@ -24,18 +17,25 @@ from ethograph.io.catalog import (
     catalog_from_pynapple,
     catalog_from_xarray,
 )
-from ethograph.io.pynapple import load_nap_data
+from ethograph.io.dataset import (
+    add_angle_rgb_to_ds,
+    add_changepoints_to_ds,
+    downsample_trialtree,
+)
 from ethograph.io.nwb_alignment import (
     NWBAlignment,
-    align_media_per_trial,
     align_media_from_streams,
+    align_media_per_trial,
 )
-from ethograph.datasets import sample_data
+from ethograph.io.pynapple import load_nap_data
 from ethograph.io.time_model import (
     SourceCollection,
     TimeRange,
     TimeSource,
 )
+from ethograph.io.trialtree import TrialTree
+from ethograph.utils.paths import get_project_root
+from ethograph.utils.xr_utils import get_ds_duration, get_time_coord, sel_valid
 
 
 def open(path: str) -> TrialTree:

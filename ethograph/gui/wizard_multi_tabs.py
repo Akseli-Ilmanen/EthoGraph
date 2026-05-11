@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, get_args
+from typing import get_args
 
 from movement.io import load_dataset
-from qtpy.QtCore import Qt, Signal
+from qtpy.QtCore import Signal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -66,9 +66,7 @@ class _BaseConfigTab(QWidget):
             return aligned_label
         return "Single file"
 
-    def _add_file_browse(
-        self, form: QFormLayout, label: str, placeholder: str, file_filter: str
-    ) -> QLineEdit:
+    def _add_file_browse(self, form: QFormLayout, label: str, placeholder: str, file_filter: str) -> QLineEdit:
         container = QWidget()
         row = QHBoxLayout(container)
         row.setContentsMargins(0, 0, 0, 0)
@@ -142,9 +140,7 @@ class _BaseConfigTab(QWidget):
             return
         config.offset_constant_across_devices = constant_checkbox.isChecked()
         config.constant_offset = float(constant_spin.value()) if constant_checkbox.isChecked() else 0.0
-        config.device_offsets = {
-            device: float(spin.value()) for device, spin in device_spins.items()
-        }
+        config.device_offsets = {device: float(spin.value()) for device, spin in device_spins.items()}
 
     def _validate_one_file_per_device(self, role: str, label: str) -> str | None:
         stream_panel = getattr(self, "_stream_panel", None)
@@ -152,7 +148,15 @@ class _BaseConfigTab(QWidget):
             return None
 
         pattern = stream_panel.pattern
-        rows = [extract_file_row(f, pattern.segments, pattern.tokenize_mode, regex_pattern=pattern.regex_pattern) for f in pattern.files]
+        rows = [
+            extract_file_row(
+                f,
+                pattern.segments,
+                pattern.tokenize_mode,
+                regex_pattern=pattern.regex_pattern,
+            )
+            for f in pattern.files
+        ]
         seen: set[str] = set()
         for row in rows:
             device = str(row.get(role, "")).strip()
@@ -186,7 +190,7 @@ class VideoConfigTab(_BaseConfigTab):
         form = QFormLayout()
 
         mode_label = QLabel(
-            f"<b>Mode:</b> {self._mode_title('Files aligned to trial period (Trials x Cameras)', 'Continuous recording across session (Cameras)')}"
+            f"<b>Mode:</b> {self._mode_title('Files aligned to trial period (Trials x Cameras)', 'Continuous recording across session (Cameras)')}"  # noqa: E501
         )
         layout.addWidget(mode_label)
 
@@ -204,7 +208,10 @@ class VideoConfigTab(_BaseConfigTab):
         else:
             self._stream_panel = None
             self._file_edit = self._add_file_browse(
-                form, "Video file:", "Select video file...", VIDEO_FILE_FILTER,
+                form,
+                "Video file:",
+                "Select video file...",
+                VIDEO_FILE_FILTER,
             )
 
         self._fps_spin = QSpinBox()
@@ -216,7 +223,7 @@ class VideoConfigTab(_BaseConfigTab):
             self._mark_required(self._fps_spin)
         self._fps_spin.valueChanged.connect(self._on_fps_manually_changed)
         self._fps_spin.valueChanged.connect(lambda _v: self.fps_changed.emit())
-        
+
         # FPS row with spinner + inline note
         fps_container = QWidget()
         fps_row = QHBoxLayout(fps_container)
@@ -238,13 +245,13 @@ class VideoConfigTab(_BaseConfigTab):
         self._const_offset_spin: QDoubleSpinBox | None = None
         self._per_camera_offset_box: QGroupBox | None = None
         self._per_camera_offset_form: QFormLayout | None = None
-        
+
         if self._is_irregular:
             self._const_offset_cb = QCheckBox("Offset is constant across cameras")
             self._const_offset_cb.setChecked(config.offset_constant_across_devices)
             self._const_offset_cb.toggled.connect(self._on_const_offset_toggled)
             form.addRow("", self._const_offset_cb)
-            
+
             self._const_offset_spin = QDoubleSpinBox()
             self._const_offset_spin.setRange(-100000.0, 100000.0)
             self._const_offset_spin.setDecimals(4)
@@ -252,7 +259,7 @@ class VideoConfigTab(_BaseConfigTab):
             self._const_offset_spin.setSuffix(" s")
             self._const_offset_spin.setToolTip("Constant time offset for all cameras (seconds)")
             form.addRow("Constant offset:", self._const_offset_spin)
-            
+
             self._per_camera_offset_box = QGroupBox("Per-camera offsets")
             self._per_camera_offset_form = QFormLayout(self._per_camera_offset_box)
             self._per_camera_offset_box.setVisible(not config.offset_constant_across_devices)
@@ -279,11 +286,11 @@ class VideoConfigTab(_BaseConfigTab):
         """Auto-detect FPS from video files in the selected folder."""
         if not self._stream_panel:
             return
-        
+
         pat = self._stream_panel.pattern
         if not pat or not pat.files:
             return
-        
+
         fps_values = list(self._refresh_detected_video_fps().values())
         if not fps_values:
             return
@@ -316,7 +323,12 @@ class VideoConfigTab(_BaseConfigTab):
             fps = get_video_fps(str(file_path))
             if fps is None:
                 continue
-            row = extract_file_row(file_path, pat.segments, pat.tokenize_mode, regex_pattern=pat.regex_pattern)
+            row = extract_file_row(
+                file_path,
+                pat.segments,
+                pat.tokenize_mode,
+                regex_pattern=pat.regex_pattern,
+            )
             camera = row.get("camera", "camera_1")
             fps_by_camera.setdefault(camera, []).append(int(round(fps)))
 
@@ -342,7 +354,11 @@ class VideoConfigTab(_BaseConfigTab):
             spin.setRange(1, 1000)
             saved_fps = self._config.fps_by_camera.get(camera)
             detected_fps = self._detected_fps_by_camera.get(camera)
-            spin.setValue(saved_fps if saved_fps is not None else (detected_fps if detected_fps is not None else self._fps_spin.value()))
+            spin.setValue(
+                saved_fps
+                if saved_fps is not None
+                else (detected_fps if detected_fps is not None else self._fps_spin.value())
+            )
             spin.setSuffix(" fps")
             spin.valueChanged.connect(lambda _v: self.fps_changed.emit())
             self._per_camera_fps_form.addRow(f"{camera}:", spin)
@@ -380,14 +396,19 @@ class VideoConfigTab(_BaseConfigTab):
     def _refresh_camera_offset_controls(self):
         if not self._stream_panel or not self._stream_panel.pattern:
             return
-        
+
         pat = self._stream_panel.pattern
         cameras: set[str] = set()
         for file_path in pat.files:
-            row = extract_file_row(file_path, pat.segments, pat.tokenize_mode, regex_pattern=pat.regex_pattern)
+            row = extract_file_row(
+                file_path,
+                pat.segments,
+                pat.tokenize_mode,
+                regex_pattern=pat.regex_pattern,
+            )
             camera = row.get("camera", "camera_1")
             cameras.add(camera)
-        
+
         self.set_camera_offset_controls(sorted(cameras))
 
     def get_detected_fps_by_camera(self) -> dict[str, int]:
@@ -455,7 +476,7 @@ class PoseConfigTab(_BaseConfigTab):
         form = QFormLayout()
 
         mode_label = QLabel(
-            f"<b>Mode:</b> {self._mode_title('Files aligned to trial period (Trials x Cameras)', 'Continuous recording across session (Cameras)')}"
+            f"<b>Mode:</b> {self._mode_title('Files aligned to trial period (Trials x Cameras)', 'Continuous recording across session (Cameras)')}"  # noqa: E501
         )
         layout.addWidget(mode_label)
 
@@ -481,7 +502,9 @@ class PoseConfigTab(_BaseConfigTab):
         else:
             self._stream_panel = None
             self._file_edit = self._add_file_browse(
-                form, "Pose file:", "Select pose file...",
+                form,
+                "Pose file:",
+                "Select pose file...",
                 "Pose files (*.h5 *.hdf5 *.csv *.slp *.nwb);;All files (*)",
             )
             layout.addLayout(form)
@@ -490,11 +513,13 @@ class PoseConfigTab(_BaseConfigTab):
 
         # Camera-pose matching table
         layout.addWidget(QLabel("<b>Camera ↔ Pose matching</b>"))
-        layout.addWidget(QLabel(
-            "Map pose file stems to camera names. "
-            "Use 'Add None' for cameras without pose or vice versa."
-        ))
-        from ethograph.gui.dialog_pose_video_matcher import PoseVideoMatcherWidget
+        layout.addWidget(
+            QLabel("Map pose file stems to camera names. Use 'Add None' for cameras without pose or vice versa.")
+        )
+        from ethograph.gui.dialog_pose_video_matcher import (
+            PoseVideoMatcherWidget,
+        )
+
         self._matcher = PoseVideoMatcherWidget()
         layout.addWidget(self._matcher)
 
@@ -536,7 +561,7 @@ class PoseConfigTab(_BaseConfigTab):
             self._const_offset_cb.setChecked(config.offset_constant_across_devices)
             self._const_offset_cb.toggled.connect(self._on_const_offset_toggled)
             form2.addRow("", self._const_offset_cb)
-            
+
             self._const_offset_spin = QDoubleSpinBox()
             self._const_offset_spin.setRange(-100000.0, 100000.0)
             self._const_offset_spin.setDecimals(4)
@@ -544,7 +569,7 @@ class PoseConfigTab(_BaseConfigTab):
             self._const_offset_spin.setSuffix(" s")
             self._const_offset_spin.setToolTip("Constant time offset for all poses (seconds)")
             form2.addRow("Constant offset:", self._const_offset_spin)
-            
+
             self._per_pose_offset_box = QGroupBox("Per-pose offsets")
             self._per_pose_offset_form = QFormLayout(self._per_pose_offset_box)
             self._per_pose_offset_box.setVisible(not config.offset_constant_across_devices)
@@ -631,7 +656,15 @@ class PoseConfigTab(_BaseConfigTab):
             if detected_fps is not None and self._match_with_camera_cb and self._match_with_camera_cb.isChecked():
                 spin.setValue(detected_fps)
             else:
-                spin.setValue(saved_fps if saved_fps is not None else (detected_fps if detected_fps is not None else (self._config.fps if self._config.fps is not None else 30)))
+                spin.setValue(
+                    saved_fps
+                    if saved_fps is not None
+                    else (
+                        detected_fps
+                        if detected_fps is not None
+                        else (self._config.fps if self._config.fps is not None else 30)
+                    )
+                )
             spin.setSuffix(" fps")
             label = f"{pose_name}:"
             if mapped_video:
@@ -654,7 +687,7 @@ class PoseConfigTab(_BaseConfigTab):
         is_matched = bool(self._match_with_camera_cb and self._match_with_camera_cb.isChecked())
         for spin in self._pose_fps_by_camera_spins.values():
             spin.setEnabled(not is_matched)
-    
+
     def set_pose_offset_controls(self, pose_names: list[str]):
         if not self._per_pose_offset_form:
             return
@@ -687,22 +720,24 @@ class PoseConfigTab(_BaseConfigTab):
     def _refresh_pose_offset_controls(self):
         if not self._stream_panel or not self._stream_panel.pattern:
             return
-        
+
         pat = self._stream_panel.pattern
         poses: set[str] = set()
         for file_path in pat.files:
-            row = extract_file_row(file_path, pat.segments, pat.tokenize_mode, regex_pattern=pat.regex_pattern)
+            row = extract_file_row(
+                file_path,
+                pat.segments,
+                pat.tokenize_mode,
+                regex_pattern=pat.regex_pattern,
+            )
             pose = row.get("camera", "pose_1")
             poses.add(pose)
-        
+
         self.set_pose_offset_controls(sorted(poses))
-    
+
     def collect_state(self, config: ModalityConfig):
         config.source_software = self._software_combo.currentText()
-        config.fps_by_camera = {
-            pose_name: spin.value()
-            for pose_name, spin in self._pose_fps_by_camera_spins.items()
-        }
+        config.fps_by_camera = {pose_name: spin.value() for pose_name, spin in self._pose_fps_by_camera_spins.items()}
         if config.fps_by_camera:
             first_key = next(iter(config.fps_by_camera))
             config.fps = config.fps_by_camera[first_key]
@@ -748,7 +783,7 @@ class AudioConfigTab(_BaseConfigTab):
         form = QFormLayout()
 
         mode_label = QLabel(
-            f"<b>Mode:</b> {self._mode_title('Files aligned to trial period (Trials x Mics)', 'Continuous recording across session (Mics)')}"
+            f"<b>Mode:</b> {self._mode_title('Files aligned to trial period (Trials x Mics)', 'Continuous recording across session (Mics)')}"  # noqa: E501
         )
         layout.addWidget(mode_label)
 
@@ -765,7 +800,10 @@ class AudioConfigTab(_BaseConfigTab):
         else:
             self._stream_panel = None
             self._file_edit = self._add_file_browse(
-                form, "Audio file:", "Select audio file...", AUDIO_FILE_FILTER,
+                form,
+                "Audio file:",
+                "Select audio file...",
+                AUDIO_FILE_FILTER,
             )
 
         self._sr_spin = QDoubleSpinBox()
@@ -785,7 +823,7 @@ class AudioConfigTab(_BaseConfigTab):
             self._const_offset_cb.setChecked(config.offset_constant_across_devices)
             self._const_offset_cb.toggled.connect(self._on_const_offset_toggled)
             form.addRow("", self._const_offset_cb)
-            
+
             self._const_offset_spin = QDoubleSpinBox()
             self._const_offset_spin.setRange(-100000.0, 100000.0)
             self._const_offset_spin.setDecimals(4)
@@ -793,7 +831,7 @@ class AudioConfigTab(_BaseConfigTab):
             self._const_offset_spin.setSuffix(" s")
             self._const_offset_spin.setToolTip("Constant time offset for all mics (seconds)")
             form.addRow("Constant offset:", self._const_offset_spin)
-            
+
             self._per_mic_offset_box = QGroupBox("Per-mic offsets")
             self._per_mic_offset_form = QFormLayout(self._per_mic_offset_box)
             self._per_mic_offset_box.setVisible(not config.offset_constant_across_devices)
@@ -840,14 +878,19 @@ class AudioConfigTab(_BaseConfigTab):
     def _refresh_mic_offset_controls(self):
         if not self._stream_panel or not self._stream_panel.pattern:
             return
-        
+
         pat = self._stream_panel.pattern
         mics: set[str] = set()
         for file_path in pat.files:
-            row = extract_file_row(file_path, pat.segments, pat.tokenize_mode, regex_pattern=pat.regex_pattern)
+            row = extract_file_row(
+                file_path,
+                pat.segments,
+                pat.tokenize_mode,
+                regex_pattern=pat.regex_pattern,
+            )
             mic = row.get("mic", "mic_1")
             mics.add(mic)
-        
+
         self.set_mic_offset_controls(sorted(mics))
 
     def collect_state(self, config: ModalityConfig):
@@ -875,7 +918,6 @@ class AudioConfigTab(_BaseConfigTab):
         elif self._file_edit and not self._file_edit.text():
             return "Audio: select an audio file."
         return None
-
 
 
 # ─── Ephys tab ────────────────────────────────────────────────────────────────
@@ -948,7 +990,10 @@ class EphysConfigTab(_BaseConfigTab):
 
     def _browse_ephys(self):
         result = QFileDialog.getOpenFileName(
-            self, "Select ephys file", "", EPHYS_FILE_FILTER,
+            self,
+            "Select ephys file",
+            "",
+            EPHYS_FILE_FILTER,
         )
         if result and result[0]:
             self._ephys_edit.setText(result[0])
@@ -958,6 +1003,7 @@ class EphysConfigTab(_BaseConfigTab):
     def _probe_ephys(self, path: str):
         try:
             from ethograph.gui.plots_ephystrace import GenericEphysLoader
+
             loader = GenericEphysLoader(path)
             self._sr_spin.setValue(int(loader.rate))
             self._nchan_spin.setValue(loader.n_channels)
@@ -1002,9 +1048,7 @@ class ModalityConfigPage(QWidget):
         layout.addSpacing(6)
 
         self._tabs = QTabWidget()
-        self._tabs.setStyleSheet(
-            "QTabBar::tab { min-width: 100px; padding: 6px 16px; }"
-        )
+        self._tabs.setStyleSheet("QTabBar::tab { min-width: 100px; padding: 6px 16px; }")
         layout.addWidget(self._tabs)
 
         self._tab_map: dict[str, _BaseConfigTab] = {}
@@ -1027,23 +1071,15 @@ class ModalityConfigPage(QWidget):
         # Wire video-pose matching list updates
         video_tab = self._tab_map.get("video")
         pose_tab = self._tab_map.get("pose")
-        
+
         if video_tab and pose_tab:
             # When video pattern changes, update camera list in pose matcher
             if isinstance(video_tab, VideoConfigTab) and video_tab._stream_panel:
-                video_tab._stream_panel.changed.connect(
-                    lambda: self._sync_cameras_to_pose()
-                )
-                video_tab._stream_panel.changed.connect(
-                    lambda: self._refresh_per_camera_fps_controls()
-                )
-                video_tab.fps_changed.connect(
-                    lambda: self._refresh_per_camera_fps_controls()
-                )
+                video_tab._stream_panel.changed.connect(lambda: self._sync_cameras_to_pose())
+                video_tab._stream_panel.changed.connect(lambda: self._refresh_per_camera_fps_controls())
+                video_tab.fps_changed.connect(lambda: self._refresh_per_camera_fps_controls())
             if isinstance(pose_tab, PoseConfigTab):
-                pose_tab._matcher.mapping_changed.connect(
-                    lambda _m: self._refresh_per_camera_fps_controls()
-                )
+                pose_tab._matcher.mapping_changed.connect(lambda _m: self._refresh_per_camera_fps_controls())
             # Pose pattern changes are already handled within PoseConfigTab via _on_pose_pattern_changed()
 
         self._refresh_per_camera_fps_controls()

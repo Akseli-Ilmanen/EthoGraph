@@ -12,7 +12,6 @@ from ethograph.datasets import (
     get_gui_assets,
     get_notebook_assets,
     is_dataset_downloaded,
-    resolve_dataset_paths,
 )
 
 logger = logging.getLogger(__name__)
@@ -141,6 +140,7 @@ def ensure_default_configs() -> None:
     import sys
 
     from ethograph.utils.paths import SETTINGS_DIR
+
     global_dir = Path.home() / SETTINGS_DIR
     global_dir.mkdir(parents=True, exist_ok=True)
     mapping = global_dir / "mapping.txt"
@@ -167,6 +167,7 @@ def write_example_configs(dataset_key: str, dest: Path) -> None:
     if not configs:
         return
     from ethograph.utils.paths import SETTINGS_DIR
+
     config_dir = Path(dest) / SETTINGS_DIR
     config_dir.mkdir(parents=True, exist_ok=True)
     for name, content in configs.items():
@@ -221,7 +222,7 @@ def build_alignment_nwb(key: str) -> None:
     media_rows = dataset.get("media")
     if not media_rows:
         return
-    
+
     dest = dataset_dir(key)
     nc_filename = dataset.get("nc_filename")
     if not nc_filename:
@@ -231,20 +232,20 @@ def build_alignment_nwb(key: str) -> None:
         return
 
     import pandas as pd
+
     import ethograph as eto
     from ethograph.io.nwb_alignment import align_media_per_trial
-    from ethograph.utils.stream_durations import get_audio_duration, get_video_duration
+    from ethograph.utils.stream_durations import (
+        get_audio_duration,
+        get_video_duration,
+    )
 
     dt = eto.open(str(nc_path))
     trials = dt.trials
     fps = dt.itrial(0).fps
-    
 
-        
-        
     rows = []
     for trial_id, media in zip(trials, media_rows):
-        
         if "video_cam-1" in media:
             video_path = dest / media["video_cam-1"]
             stop_time = get_video_duration(str(video_path))
@@ -256,8 +257,7 @@ def build_alignment_nwb(key: str) -> None:
             stop_time = get_audio_duration(str(audio_path))
         elif key == "lockbox":
             stop_time = dt.trial(trial_id).time.values[-1]
-        
-        
+
         row = {"trial": trial_id, "start_time": 0, "stop_time": stop_time}
         row.update(media)
         rows.append(row)
@@ -274,6 +274,7 @@ def build_alignment_nwb(key: str) -> None:
         first_audio_file = dest / str(trial_table[audio_cols[0]].iloc[0])
         if first_audio_file.exists():
             from ethograph.utils.audio import get_audio_sr
+
             sr = get_audio_sr(str(first_audio_file))
             if sr is not None:
                 stream_rates["audio"] = float(sr)
@@ -325,6 +326,7 @@ def download_example_dataset(
     ensure_default_configs()
     write_example_configs(key, dest)
     from ethograph.utils.paths import SETTINGS_DIR
+
     mapping_path = Path(dest) / SETTINGS_DIR / "mapping.txt"
     if mapping_path.exists():
         if verbose:
@@ -400,14 +402,17 @@ def setup_birdpark_continuous(
     audio_name = "BP_2021-05-25_08-12-51_655154_0380000.wav"
     fps = 47.68
 
-    epochs = pd.DataFrame({
-        "trial": list(range(1, n_trials + 1)),
-        "start_time": [i * chunk for i in range(n_trials)],
-        "stop_time": [(i + 1) * chunk for i in range(n_trials)],
-    })
+    epochs = pd.DataFrame(
+        {
+            "trial": list(range(1, n_trials + 1)),
+            "start_time": [i * chunk for i in range(n_trials)],
+            "stop_time": [(i + 1) * chunk for i in range(n_trials)],
+        }
+    )
 
     from datetime import datetime
     from uuid import uuid4
+
     from dateutil.tz import tzlocal
 
     nwbfile = pynwb.NWBFile(
@@ -483,7 +488,6 @@ def setup_moll2025_pynapple(
     import shutil
 
     import numpy as np
-    import pandas as pd
     import pynapple as nap
     import pynwb
     from pynwb import NWBHDF5IO
@@ -547,6 +551,7 @@ def setup_moll2025_pynapple(
 
     from datetime import datetime
     from uuid import uuid4
+
     from dateutil.tz import tzlocal
 
     nwbfile = pynwb.NWBFile(
@@ -575,8 +580,7 @@ def setup_moll2025_pynapple(
     nwbfile.create_device(name="cam-1", description="video device cam-1")
     video_files = [media_per_trial[i]["video_cam-1"] for i in range(len(trials_ep))]
     n_frames_per_trial = [
-        int((float(trials_ep.end[i]) - float(trials_ep.start[i])) * fps)
-        for i in range(len(trials_ep))
+        int((float(trials_ep.end[i]) - float(trials_ep.start[i])) * fps) for i in range(len(trials_ep))
     ]
     timestamps_parts = []
     starting_frames = []
@@ -619,6 +623,7 @@ def setup_moll2025_pynapple(
 
 EXAMPLE_DATASETS = DATASETS
 EXAMPLE_CONFIGS = {k: v["configs"] for k, v in DATASETS.items() if "configs" in v}
+
 
 def is_downloaded(key: str, dest: Path) -> bool:  # noqa: ARG001
     """Deprecated — use ``is_dataset_downloaded(key)`` instead."""

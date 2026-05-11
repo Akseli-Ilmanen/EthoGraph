@@ -28,7 +28,6 @@ _DIALOG = {
 _DEFAULT_TITLE = {"error": "Error", "warning": "Warning", "info": "Info"}
 
 
-
 # TODO: make cleaner
 def notify(message: str, severity: str = "info") -> None:
     """Show a napari toast notification and log to console."""

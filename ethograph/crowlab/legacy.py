@@ -1,14 +1,15 @@
 """Custom lab-internal legacy code"""
 
-import pandas as pd
-from ethograph import TrialTree
 from pathlib import Path
+
 import numpy as np
+import pandas as pd
 import xarray as xr
+
+from ethograph import TrialTree
 from ethograph.labels.intervals import empty_intervals
 from ethograph.labels.tsv_store import _empty_all_labels
-import os
-import json
+
 
 def _xr_to_intervals(ds: xr.Dataset) -> pd.DataFrame:
     """Convert an xarray Dataset back to an intervals DataFrame (legacy)."""
@@ -22,7 +23,6 @@ def _xr_to_intervals(ds: xr.Dataset) -> pd.DataFrame:
             "individual": ds["individual"].values.astype(str),
         }
     )
-
 
 
 def trees_to_df(
@@ -83,7 +83,7 @@ def trees_to_df(
     >>> dt = eto.open("experiment.nc")
     >>> df = eto.trees_to_df(dt, keep_attrs=["stimulus"])
     >>> df[["trial", "labels", "onset_s", "offset_s", "duration"]].head()
-       trial  labels  onset_s  offset_s  duration  stimulus 
+       trial  labels  onset_s  offset_s  duration  stimulus
     0      1       2     0.50      1.23      0.73    tone_A
     1      1       1     1.23      2.10      0.87    tone_A
     2      2       3     0.00      0.95      0.95    tone_B
@@ -96,6 +96,7 @@ def trees_to_df(
     ... )
     """
     from ethograph.io.trialtree import TrialTree
+
     xr_to_intervals = _xr_to_intervals
 
     if isinstance(trees, TrialTree):
@@ -109,7 +110,6 @@ def trees_to_df(
             trees = {str(i): t for i, t in enumerate(trees)}
 
     rows = []
-    
 
     for dt in trees.values():
         for trial_id, ds in dt.trial_items():
@@ -126,13 +126,13 @@ def trees_to_df(
 
             for idx, (_, seg) in enumerate(valid.iterrows()):
                 row = {
-                    'session': ds.attrs.get('session', ''), # optional
-                    'trial': trial_id,
-                    'session_trial': f"{ds.attrs.get('session', '')}_{trial_id}",
-                    'individual': seg["individual"],
-                    'labels': int(seg["labels"]),
-                    'onset_s': seg["onset_s"],
-                    'offset_s': seg["offset_s"],
+                    "session": ds.attrs.get("session", ""),  # optional
+                    "trial": trial_id,
+                    "session_trial": f"{ds.attrs.get('session', '')}_{trial_id}",
+                    "individual": seg["individual"],
+                    "labels": int(seg["labels"]),
+                    "onset_s": seg["onset_s"],
+                    "offset_s": seg["offset_s"],
                 }
                 t_start = None
                 t_stop = None
@@ -145,32 +145,33 @@ def trees_to_df(
                 except (AttributeError, KeyError, ValueError):
                     pass
 
-                if t_start is None and 'pulse_onsets' in ds:
+                if t_start is None and "pulse_onsets" in ds:
                     t_start = float(ds.pulse_onsets.values[0]) / 30_000  # Legacy crow lab
 
                 if t_start is not None:
-                    row['trial_onset'] =  t_start
-                    row['onset_global'] = t_start + seg["onset_s"]
-                    row['offset_global'] = t_start + seg["offset_s"]
+                    row["trial_onset"] = t_start
+                    row["onset_global"] = t_start + seg["onset_s"]
+                    row["offset_global"] = t_start + seg["offset_s"]
                 if t_stop is not None:
-                    row['trial_offset'] = t_stop
-                    
-                    
-                
-                row.update({
-                    'duration': seg["offset_s"] - seg["onset_s"],
-                    'sequence_idx': idx, # zero-indexing
-                    'sequence': "-".join(str(s) for s in sequence),
-                })
+                    row["trial_offset"] = t_stop
+
+                row.update(
+                    {
+                        "duration": seg["offset_s"] - seg["onset_s"],
+                        "sequence_idx": idx,  # zero-indexing
+                        "sequence": "-".join(str(s) for s in sequence),
+                    }
+                )
                 row.update(attrs)
                 rows.append(row)
-                
+
     df = pd.DataFrame(rows)
 
     if correct_offsets_enabled:
         df = correct_offsets(df)
 
     return df
+
 
 def correct_offsets(df: pd.DataFrame) -> pd.DataFrame:
     """Insert artificial gaps where consecutive intervals are too close.
@@ -197,21 +198,23 @@ def correct_offsets(df: pd.DataFrame) -> pd.DataFrame:
             row_i = idx[i]
             row_j = idx[j]
             if abs(df.loc[row_i, "offset_s"] - df.loc[row_j, "onset_s"]) < eps:
-                print(f"Corrected gap (size: {abs(df.loc[row_i, 'offset_s'] - df.loc[row_j, 'onset_s'])}), at labels: {df.loc[row_i, 'labels']}, {df.loc[row_j, 'labels']}")
+                print(
+                    f"Corrected gap (size: {abs(df.loc[row_i, 'offset_s'] - df.loc[row_j, 'onset_s'])}), at labels: {df.loc[row_i, 'labels']}, {df.loc[row_j, 'labels']}"  # noqa: E501
+                )
                 df.loc[row_i, "offset_s"] = df.loc[row_j, "onset_s"] - eps
                 df.loc[row_i, "offset_global"] = df.loc[row_j, "onset_global"] - eps
                 df.loc[row_i, "duration"] = df.loc[row_i, "offset_s"] - df.loc[row_i, "onset_s"]
-    
+
     delta = df["onset_s"] - df["offset_s"].shift(1)
     assert delta.min() >= eps
 
     return df
 
 
-
 # ---------------------------------------------------------------------------
 # Migration from label_dt (xr.DataTree) to TSV
 # ---------------------------------------------------------------------------
+
 
 def migrate_label_dt_to_tsv(label_dt) -> pd.DataFrame:
     """Extract all intervals + per-trial metadata from a label DataTree.
@@ -245,8 +248,6 @@ def migrate_label_dt_to_tsv(label_dt) -> pd.DataFrame:
 def init_empty_labels(trials: list) -> pd.DataFrame:
     """Create empty labels DataFrame."""
     return _empty_all_labels()
-
-
 
 
 def convert_session_to_nwb(dt: TrialTree, output_path: str | Path | None = None) -> Path:
@@ -347,13 +348,14 @@ def convert_session_to_nwb(dt: TrialTree, output_path: str | Path | None = None)
 
     output_path = Path(output_path)
     stream_rates = {"video": fps, "pose": fps}
-    
+
     align_media_per_trial(trial_df, stream_rates=stream_rates, output_path=output_path)
     return output_path
 
 
 def migrate_attrs_to_metadata_tsv(
-    dt: TrialTree, output_path: str | Path | None = None,
+    dt: TrialTree,
+    output_path: str | Path | None = None,
 ) -> Path:
     """Extract per-trial condition attrs from ds.attrs and save as metadata TSV.
 

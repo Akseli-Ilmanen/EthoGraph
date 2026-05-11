@@ -1,16 +1,14 @@
 """Video layer lifecycle management — setup, teardown, camera switching, multi-camera display."""
 
-import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import numpy as np
 from napari._qt.qt_viewer import QtViewer
 from napari.components.viewer_model import ViewerModel
+from napari_pyav._reader import FastVideoReader
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtWidgets import QSplitter, QVBoxLayout, QWidget
-
-import numpy as np
-from napari_pyav._reader import FastVideoReader
 
 from .notify import notify
 from .video_sync import NapariVideoSync
@@ -142,7 +140,10 @@ class ExtraCameraWidget(QWidget):
         if data is None or len(data) == 0:
             return
         self._points_layer = self._viewer_model.add_points(
-            data, properties=properties, shown=shown, **style_kwargs,
+            data,
+            properties=properties,
+            shown=shown,
+            **style_kwargs,
         )
 
     def seek_to_time(self, t_seconds: float):
@@ -223,17 +224,19 @@ class VideoManager:
         if not self.app_state.ready:
             return
         camera = self.app_state.primary_camera
-        sio = getattr(self.app_state, 'nwb_alignment', None)
+        sio = getattr(self.app_state, "nwb_alignment", None)
         if camera and sio is not None:
             self.app_state.video_path = sio.resolve_media_path(
-                self.app_state.trials_sel, "video", device=camera,
+                self.app_state.trials_sel,
+                "video",
+                device=camera,
                 fallback_folder=self.app_state.video_folder,
             )
         else:
             self.app_state.video_path = None
         if not self.app_state.video_path:
             return
-        restore_frame = max(0, int(getattr(self.app_state, 'current_frame', 0) or 0))
+        restore_frame = max(0, int(getattr(self.app_state, "current_frame", 0) or 0))
         self._warn_video_format()
         self._cleanup_primary_video()
         self._setup_primary_video(restore_frame)
@@ -246,7 +249,7 @@ class VideoManager:
 
     def _update_audio_path(self) -> None:
         self.app_state.audio_path = None
-        if self.app_state.audio_folder and hasattr(self.app_state, 'mics_sel'):
+        if self.app_state.audio_folder and hasattr(self.app_state, "mics_sel"):
             audio_path, _ = self.app_state.get_audio_source()
             if audio_path:
                 self.app_state.audio_path = audio_path
@@ -266,17 +269,16 @@ class VideoManager:
         if not video_path or is_url(video_path):
             return
         ext = Path(video_path).suffix.lower()
-        if ext in ('.avi', '.mov') and not self._video_format_warned:
+        if ext in (".avi", ".mov") and not self._video_format_warned:
             self._video_format_warned = True
             notify(
                 f"Video format '{ext}' may have inaccurate frame seeking. "
-                
                 f"See https://akseli-ilmanen.github.io/ethograph/user_guide/troubleshooting.html",
                 "warning",
             )
 
     def _cleanup_primary_video(self):
-        sync = getattr(self.app_state, 'video', None)
+        sync = getattr(self.app_state, "video", None)
         if sync is not None:
             try:
                 sync.frame_changed.disconnect(self._on_primary_frame_changed)
@@ -296,7 +298,8 @@ class VideoManager:
 
     def _setup_primary_video(self, restore_frame: int):
         reader = FastVideoReader(
-            self.app_state.video_path, read_format='rgb24',
+            self.app_state.video_path,
+            read_format="rgb24",
         )
         _ = reader.shape
 
@@ -305,7 +308,7 @@ class VideoManager:
             camera = self.app_state.primary_camera
             self.app_state.nwb_alignment.set_stream_rate(detected_fps, "video", camera)
 
-        alignment = getattr(self.app_state, 'trial_alignment', None)
+        alignment = getattr(self.app_state, "trial_alignment", None)
         video_time_offset = alignment.video_offset if alignment else 0.0
 
         # Slice the reader to the trial's time range so napari's slider is
@@ -363,11 +366,11 @@ class VideoManager:
         self._frame_changed_callback = callback
 
     def _on_primary_frame_changed(self, frame_number: int):
-        if hasattr(self, '_frame_changed_callback'):
+        if hasattr(self, "_frame_changed_callback"):
             self._frame_changed_callback(frame_number)
 
     def toggle_pause_resume(self, plot_container):
-        video = getattr(self.app_state, 'video', None)
+        video = getattr(self.app_state, "video", None)
         if video:
             video.toggle_pause_resume()
         else:
@@ -387,7 +390,7 @@ class VideoManager:
             return
 
         if reader is None:
-            reader = FastVideoReader(video_path, read_format='rgb24')
+            reader = FastVideoReader(video_path, read_format="rgb24")
             _ = reader.shape
         fps = float(reader.stream.guessed_rate)
         self._store_camera_fps_in_session(camera_name, fps)
@@ -404,7 +407,7 @@ class VideoManager:
 
     def _update_existing_camera(self, camera_name: str, video_path: str, *, reader=None):
         if reader is None:
-            reader = FastVideoReader(video_path, read_format='rgb24')
+            reader = FastVideoReader(video_path, read_format="rgb24")
             _ = reader.shape
         fps = float(reader.stream.guessed_rate)
         self._store_camera_fps_in_session(camera_name, fps)
@@ -416,13 +419,13 @@ class VideoManager:
 
     def _prepare_extra_video(self, reader, fps: float, camera_name: str):
         """Retrieve per-camera offset and apply trial slicing for an extra camera."""
-        sio = getattr(self.app_state, 'nwb_alignment', None)
+        sio = getattr(self.app_state, "nwb_alignment", None)
         time_offset = 0.0
         if sio is not None:
             trial_id = self.app_state.trials_sel
             time_offset = sio.stream_offset_for_trial(trial_id, "video", camera_name)
 
-        alignment = getattr(self.app_state, 'trial_alignment', None)
+        alignment = getattr(self.app_state, "trial_alignment", None)
         video_data = reader
         if alignment and alignment.trial_range:
             trial_start_in_video = -time_offset
@@ -435,7 +438,7 @@ class VideoManager:
         return video_data, time_offset
 
     def _sync_widget_to_current_time(self, widget: ExtraCameraWidget):
-        video = getattr(self.app_state, 'video', None)
+        video = getattr(self.app_state, "video", None)
         if video is not None:
             frame = self.viewer.dims.current_step[0]
             widget.seek_to_time(video.frame_to_time(frame))
@@ -538,7 +541,7 @@ class VideoManager:
             pass
 
     def _on_extra_frame_sync(self, event=None):
-        if not self._extra_widgets or getattr(self.app_state, 'video', None) is None:
+        if not self._extra_widgets or getattr(self.app_state, "video", None) is None:
             return
         frame = self.viewer.dims.current_step[0]
         t_seconds = self.app_state.video.frame_to_time(frame)
@@ -546,13 +549,13 @@ class VideoManager:
             widget.seek_to_time(t_seconds)
 
     def _store_camera_fps_in_session(self, camera_name: str, fps: float):
-        sio = getattr(self.app_state, 'nwb_alignment', None)
+        sio = getattr(self.app_state, "nwb_alignment", None)
         if sio is None:
             return
         sio.set_stream_rate(fps, "video", camera_name)
 
     def cleanup(self):
-        if getattr(self.app_state, 'video', None):
+        if getattr(self.app_state, "video", None):
             self.app_state.video.stop()
             self.app_state.video = None
         self._cleanup_primary_video()
@@ -573,6 +576,7 @@ class VideoManager:
             ``{camera_name: reader}`` for every path that opened
             successfully.  Failed opens are silently skipped.
         """
+
         def _open(video_path: str) -> FastVideoReader | None:
             try:
                 reader = FastVideoReader(video_path, read_format="rgb24")
@@ -597,6 +601,8 @@ class VideoManager:
         if is_url(camera_name):
             return camera_name
         return self.app_state.nwb_alignment.resolve_media_path(
-            self.app_state.trials_sel, "video", device=camera_name,
+            self.app_state.trials_sel,
+            "video",
+            device=camera_name,
             fallback_folder=video_folder,
         )
