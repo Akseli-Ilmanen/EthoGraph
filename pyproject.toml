@@ -55,7 +55,7 @@ ethograph-gui = "ethograph.gui:napari.yaml"
 [project.optional-dependencies]
 
 
-# GUI: napari-based graphical interface with all plot types
+# GUI: napari-based graphical interface with all plot types (no audio)
 gui = [
     "napari",
     "pyqt5",
@@ -68,13 +68,19 @@ gui = [
     "natsort",
     "tqdm",
     "nwb-video-widgets",
+    "phylib>=2.6.4",
+    "neo",
+]
+
+# Audio: waveform display, spectrogram, vocalisation analysis
+# Linux users must first install the PortAudio system library:
+#   sudo apt install libportaudio2
+audio = [
     "audioio",
     "soundfile",
     "vocalpy",
     # vocalseg must be installed manually: pip install git+https://github.com/timsainb/vocalization-segmentation.git
     "sounddevice",
-    "phylib>=2.6.4",
-    "neo",
 ]
 
 # DANDI: download datasets from the DANDI archive (heavy: ~40 transitive deps)
