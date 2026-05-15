@@ -19,8 +19,8 @@ This file lives outside the repo and is never committed.
 
 1. Fix ruff errors:
    ```powershell
-   ruff check --fix ethograph/
-   ruff format ethograph/
+   ruff check --fix
+   ruff format
    ```
 
 2. Commit — pre-commit hooks run automatically and block the commit if checks fail.

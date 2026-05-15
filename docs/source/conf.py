@@ -4,8 +4,9 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
 import os
+import shutil
 import sys
-
+from pathlib import Path
 
 # Used when building API docs, put the dependencies
 # of any class you are documenting here
@@ -154,10 +155,7 @@ html_baseurl = f"https://{github_user}.github.io/{project}"
 sitemap_url_scheme = "{link}"
 
 
-# -- Copy tutorial notebooks into examples/ at build time --------------------
 
-import shutil
-from pathlib import Path
 
 
 def _remove_if_exists(path: Path) -> None:
