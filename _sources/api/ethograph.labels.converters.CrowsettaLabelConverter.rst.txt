@@ -32,6 +32,3 @@
 
 
       ~CrowsettaLabelConverter.resolve_labels
-
-
-

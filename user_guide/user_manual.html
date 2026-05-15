@@ -521,13 +521,6 @@ the segment you just labelled.</p>
 <p>The I/O section (see image below) offers a lot of flexibility, but may be overly complex for your data. As a first starting point, have a look at the <a class="reference internal" href="../getting_started/wizard.html"><span class="doc">Getting Started Wizard</span></a>.  In many cases, the <strong>Data wizard</strong> can guide you through the steps to organize &amp; temporally align your different data/media streams. For more complex scenarios, you may have to write a custom Python script.</p>
 <a class="reference internal image-reference" href="../_images/io.png"><img alt="Data import workflow" src="../_images/io.png" style="width: 100%;" />
 </a>
-<div class="cell docutils container">
-<div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">## Importing data</span>
-</pre></div>
-</div>
-</div>
-</div>
 </section>
 <section id="feature-dropdowns">
 <h2>Feature dropdowns<a class="headerlink" href="#feature-dropdowns" title="Link to this heading">#</a></h2>
@@ -1308,30 +1301,6 @@ speed with .sel:   KeyError: &quot;&#39;space&#39; is not a valid dimension or c
 </div>
 </div>
 </section>
-<section id="building-a-trialtree">
-<h2>Building a TrialTree<a class="headerlink" href="#building-a-trialtree" title="Link to this heading">#</a></h2>
-<p>A single <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> holds one trial. A <a class="reference internal" href="../api/trialtree.html#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><code class="xref py py-class docutils literal notranslate"><span class="pre">TrialTree</span></code></a> wraps multiple
-trials into one object:</p>
-<div class="cell docutils container">
-<div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Wrap as a TrialTree (here just one trial for demo)</span>
-<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_datasets</span><span class="p">([</span><span class="n">ds</span><span class="p">])</span>
-
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Trials: </span><span class="si">{</span><span class="n">dt</span><span class="o">.</span><span class="n">trials</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Trial at index 0: </span><span class="si">{</span><span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;trial&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Features: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="n">dt</span><span class="o">.</span><span class="n">trials</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span><span class="o">.</span><span class="n">data_vars</span><span class="p">)[:</span><span class="mi">5</span><span class="p">]</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
-</pre></div>
-</div>
-</div>
-<div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Trials: [115]
-Trial at index 0: 115
-Features: [&#39;position&#39;, &#39;confidence&#39;, &#39;velocity&#39;, &#39;speed&#39;, &#39;acceleration&#39;]...
-</pre></div>
-</div>
-</div>
-</div>
-</section>
 <section id="data-requirements-summary">
 <h2>Data requirements summary<a class="headerlink" href="#data-requirements-summary" title="Link to this heading">#</a></h2>
 <div class="pst-scrollable-table-container"><table class="table">
@@ -1476,7 +1445,6 @@ across all three backends.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#importing-data">Importing data</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#feature-dropdowns">Feature dropdowns</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changepoints">Changepoints</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#building-a-trialtree">Building a TrialTree</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#data-requirements-summary">Data requirements summary</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#operations-across-backends">Operations across backends</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#references">References</a></li>
@@ -1519,7 +1487,7 @@ across all three backends.</p>
 
   <p class="copyright">
     
-      © Copyright 2022, Akseli Ilmanen.
+      © Copyright 2026, Akseli Ilmanen.
       <br/>
     
   </p>

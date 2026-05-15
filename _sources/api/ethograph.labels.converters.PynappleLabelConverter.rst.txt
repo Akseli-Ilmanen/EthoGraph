@@ -32,6 +32,3 @@
 
 
       ~PynappleLabelConverter.resolve_labels
-
-
-

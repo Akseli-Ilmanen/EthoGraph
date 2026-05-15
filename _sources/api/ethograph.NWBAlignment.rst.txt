@@ -116,6 +116,3 @@
 
 
       ~NWBAlignment.trial_epoch
-
-
-

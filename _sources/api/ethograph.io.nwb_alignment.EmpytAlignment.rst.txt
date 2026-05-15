@@ -98,6 +98,3 @@ EmpytAlignment
 
 
       ~EmpytAlignment.trial_epoch
-
-
-

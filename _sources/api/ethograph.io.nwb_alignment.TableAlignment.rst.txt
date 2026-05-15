@@ -98,6 +98,3 @@ TableAlignment
 
 
       ~TableAlignment.trial_epoch
-
-
-
