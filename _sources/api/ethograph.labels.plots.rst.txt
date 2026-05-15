@@ -14,11 +14,10 @@
     :toctree:
     :nosignatures:
 
-    
+
     draw_label_rectangle
-    
+
     plot_label_segments
-    
+
     plot_label_segments_multirow
-    
 

@@ -424,12 +424,13 @@
 <p>¹ Marshall, J., Klibaite, U., Gellis, A., Aldarondo, D., Olveczky, B., &amp; Dunn, T. W. (2021). The PAIR-R24M Dataset for Multi-animal 3D Pose Estimation. Proceedings of the Neural Information Processing Systems Track on Datasets and Benchmarks, 1. <a class="reference external" href="https://datasets-benchmarks-proceedings.neurips.cc/paper/2021/hash/1ff8a7b5dc7a7d1f0ed65aaa29c04b1e-Abstract-round1.html">https://datasets-benchmarks-proceedings.neurips.cc/paper/2021/hash/1ff8a7b5dc7a7d1f0ed65aaa29c04b1e-Abstract-round1.html</a></p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">movement.kinematics</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_velocity</span><span class="p">,</span> <span class="n">compute_speed</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">movement.kinematics</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_speed</span><span class="p">,</span> <span class="n">compute_velocity</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">movement.utils.vector</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_norm</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
@@ -440,12 +441,7 @@
 </div>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-
-<span class="k">try</span><span class="p">:</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">try</span><span class="p">:</span>
     <span class="n">_here</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">__vsc_ipynb_file__</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span>
 <span class="k">except</span> <span class="ne">NameError</span><span class="p">:</span>
     <span class="n">_here</span> <span class="o">=</span> <span class="n">Path</span><span class="p">()</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
@@ -472,8 +468,18 @@
     <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
 
     <span class="n">keypoint_names</span> <span class="o">=</span> <span class="p">[</span>
-        <span class="s2">&quot;HeadF&quot;</span><span class="p">,</span> <span class="s2">&quot;HeadB&quot;</span><span class="p">,</span> <span class="s2">&quot;HeadL&quot;</span><span class="p">,</span> <span class="s2">&quot;SpineF&quot;</span><span class="p">,</span> <span class="s2">&quot;SpineM&quot;</span><span class="p">,</span> <span class="s2">&quot;SpineL&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;Offset1&quot;</span><span class="p">,</span> <span class="s2">&quot;Offset2&quot;</span><span class="p">,</span> <span class="s2">&quot;HipL&quot;</span><span class="p">,</span> <span class="s2">&quot;HipR&quot;</span><span class="p">,</span> <span class="s2">&quot;ShoulderL&quot;</span><span class="p">,</span> <span class="s2">&quot;ShoulderR&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;HeadF&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;HeadB&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;HeadL&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SpineF&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SpineM&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SpineL&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Offset1&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Offset2&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;HipL&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;HipR&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;ShoulderL&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;ShoulderR&quot;</span><span class="p">,</span>
     <span class="p">]</span>
     <span class="n">individual_names</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;an1&quot;</span><span class="p">,</span> <span class="s2">&quot;an2&quot;</span><span class="p">]</span>
     <span class="n">position_types</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;aligned&quot;</span><span class="p">,</span> <span class="s2">&quot;absolute&quot;</span><span class="p">]</span>
@@ -550,8 +556,7 @@
         <span class="n">ds_chunk</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span>
 
         <span class="n">ds_chunk</span><span class="p">[</span><span class="s2">&quot;pairwise_distance&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_norm</span><span class="p">(</span>
-            <span class="n">ds_chunk</span><span class="o">.</span><span class="n">center_of_mass</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">individuals</span><span class="o">=</span><span class="s2">&quot;mouse 1&quot;</span><span class="p">)</span>
-            <span class="o">-</span> <span class="n">ds_chunk</span><span class="o">.</span><span class="n">center_of_mass</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">individuals</span><span class="o">=</span><span class="s2">&quot;mouse 2&quot;</span><span class="p">)</span>
+            <span class="n">ds_chunk</span><span class="o">.</span><span class="n">center_of_mass</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">individuals</span><span class="o">=</span><span class="s2">&quot;mouse 1&quot;</span><span class="p">)</span> <span class="o">-</span> <span class="n">ds_chunk</span><span class="o">.</span><span class="n">center_of_mass</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">individuals</span><span class="o">=</span><span class="s2">&quot;mouse 2&quot;</span><span class="p">)</span>
         <span class="p">)</span>
         <span class="n">ds_chunk</span><span class="p">[</span><span class="s2">&quot;nose_nose_distance&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_norm</span><span class="p">(</span>
             <span class="n">ds_chunk</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="s2">&quot;HeadF&quot;</span><span class="p">,</span> <span class="n">individuals</span><span class="o">=</span><span class="s2">&quot;mouse 1&quot;</span><span class="p">,</span> <span class="n">position_type</span><span class="o">=</span><span class="s2">&quot;absolute&quot;</span><span class="p">)</span>
@@ -590,9 +595,7 @@
 </div>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">datasets</span><span class="p">,</span> <span class="n">session_table</span> <span class="o">=</span> <span class="n">split_into_chunks</span><span class="p">(</span>
-    <span class="n">ds_full</span><span class="p">,</span> <span class="n">chunk_size</span><span class="o">=</span><span class="n">CHUNK_SIZE</span><span class="p">,</span> <span class="n">cameras</span><span class="o">=</span><span class="n">CAMERAS</span><span class="p">,</span> <span class="n">fps</span><span class="o">=</span><span class="n">FPS</span>
-<span class="p">)</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">datasets</span><span class="p">,</span> <span class="n">session_table</span> <span class="o">=</span> <span class="n">split_into_chunks</span><span class="p">(</span><span class="n">ds_full</span><span class="p">,</span> <span class="n">chunk_size</span><span class="o">=</span><span class="n">CHUNK_SIZE</span><span class="p">,</span> <span class="n">cameras</span><span class="o">=</span><span class="n">CAMERAS</span><span class="p">,</span> <span class="n">fps</span><span class="o">=</span><span class="n">FPS</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>

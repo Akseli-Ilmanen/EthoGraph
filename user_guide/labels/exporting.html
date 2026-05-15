@@ -443,12 +443,13 @@
 <p>Labels are stored in a <strong>TSV file</strong> alongside the <code class="docutils literal notranslate"><span class="pre">.nc</span></code> data file. The <code class="docutils literal notranslate"><span class="pre">.nc</span></code>
 file is read-only after creation — it holds features, trial structure, media
 references and non-label metadata. Labels live exclusively in the TSV.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">session_20260903</span><span class="o">/</span>
-    <span class="n">data</span><span class="o">.</span><span class="n">nc</span>                    <span class="c1"># features, ephys, trial structure (read-only)</span>
-    <span class="n">data_labels</span><span class="o">.</span><span class="n">tsv</span>            <span class="c1"># labels (single source of truth)</span>
-    <span class="n">labels</span><span class="o">/</span>
-    <span class="n">label_backups</span><span class="o">/</span>
-        <span class="n">data_labels_20240315_192005</span><span class="o">.</span><span class="n">tsv</span>   <span class="c1"># auto-backup on every save</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>session_20260903/
+├── data.nc                          # features, ephys, trial structure (read-only)
+├── data_labels.tsv                  # recommended file location for most-up-to-date labels
+├── labels/
+│   ├── backups/
+│       └── session_labels_20240315_101230.tsv # timestamped backups
+│       └── session_labels_20240314_111420.tsv
 </pre></div>
 </div>
 <p>The TSV uses integer label IDs in the <code class="docutils literal notranslate"><span class="pre">labels</span></code> column. Label names are

@@ -465,39 +465,6 @@ change media paths without re-exporting features.</p>
 </div>
 <p><strong>Column naming convention</strong>: <code class="docutils literal notranslate"><span class="pre">{stream}_{device}</span></code> — e.g. <code class="docutils literal notranslate"><span class="pre">video_cam-1</span></code>,
 <code class="docutils literal notranslate"><span class="pre">audio_mic-1</span></code>, <code class="docutils literal notranslate"><span class="pre">pose_cam-1</span></code>.</p>
-<hr class="docutils" />
-</section>
-<section id="splitting-a-continuous-recording-into-trials">
-<span id="target-from-continuous"></span><h2>Splitting a continuous recording into trials<a class="headerlink" href="#splitting-a-continuous-recording-into-trials" title="Link to this heading">#</a></h2>
-<p>If you have a single session-long <code class="docutils literal notranslate"><span class="pre">xr.Dataset</span></code> but want to parcelate it into a trial structure, use <code class="xref py py-func docutils literal notranslate"><span class="pre">eto.from_continuous()</span></code>:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
-
-<span class="c1"># A continuous 10-minute recording at 30 fps</span>
-<span class="n">n_samples</span> <span class="o">=</span> <span class="mi">18000</span>
-<span class="n">time</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_samples</span><span class="p">)</span> <span class="o">/</span> <span class="mf">30.0</span>
-
-<span class="n">ds</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">({</span>
-    <span class="s2">&quot;speed&quot;</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="n">n_samples</span><span class="p">),</span> <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">],</span>
-                          <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="n">time</span><span class="p">}),</span>
-<span class="p">})</span>
-
-<span class="c1"># Define trial boundaries (seconds)</span>
-<span class="n">epochs</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
-    <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
-    <span class="s2">&quot;start_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">,</span> <span class="mf">300.0</span><span class="p">],</span>
-    <span class="s2">&quot;stop_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">100.0</span><span class="p">,</span> <span class="mf">250.0</span><span class="p">,</span> <span class="mf">500.0</span><span class="p">],</span>
-<span class="p">})</span>
-
-<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_continuous</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">epochs</span><span class="p">)</span>
-<span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
-
-<span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># returns the 120–250 s slice, time shifted to start at 0</span>
-</pre></div>
-</div>
-<p><code class="docutils literal notranslate"><span class="pre">from_continuous</span></code> slices the dataset on demand and shifts time coordinates to 0 for each trial.</p>
 </section>
 <hr class="docutils" />
 <section id="minimal-example">
@@ -769,6 +736,39 @@ NWB</label><div class="sd-tab-content docutils">
 </div>
 <hr class="docutils" />
 </section>
+<section id="splitting-a-continuous-recording-into-trials">
+<span id="target-from-continuous"></span><h2>Splitting a continuous recording into trials<a class="headerlink" href="#splitting-a-continuous-recording-into-trials" title="Link to this heading">#</a></h2>
+<p>If you have a single session-long <code class="docutils literal notranslate"><span class="pre">xr.Dataset</span></code> but want to parcelate it into a trial structure, use <code class="xref py py-func docutils literal notranslate"><span class="pre">eto.from_continuous()</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
+
+<span class="c1"># A continuous 10-minute recording at 30 fps</span>
+<span class="n">n_samples</span> <span class="o">=</span> <span class="mi">18000</span>
+<span class="n">time</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_samples</span><span class="p">)</span> <span class="o">/</span> <span class="mf">30.0</span>
+
+<span class="n">ds</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">({</span>
+    <span class="s2">&quot;speed&quot;</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="n">n_samples</span><span class="p">),</span> <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">],</span>
+                          <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="n">time</span><span class="p">}),</span>
+<span class="p">})</span>
+
+<span class="c1"># Define trial boundaries (seconds)</span>
+<span class="n">epochs</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
+    <span class="s2">&quot;start_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">,</span> <span class="mf">300.0</span><span class="p">],</span>
+    <span class="s2">&quot;stop_time&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">100.0</span><span class="p">,</span> <span class="mf">250.0</span><span class="p">,</span> <span class="mf">500.0</span><span class="p">],</span>
+<span class="p">})</span>
+
+<span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_continuous</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">epochs</span><span class="p">)</span>
+<span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;session.nc&quot;</span><span class="p">)</span>
+
+<span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># returns the 120–250 s slice, time shifted to start at 0</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">from_continuous</span></code> slices the dataset on demand and shifts time coordinates to 0 for each trial.</p>
+<hr class="docutils" />
+</section>
 <section id="session-wide-streams">
 <span id="target-session-wide-streams"></span><h2>Session-wide streams<a class="headerlink" href="#session-wide-streams" title="Link to this heading">#</a></h2>
 <p>For setups where media files don’t map 1:1 to trials — e.g. one continuous
@@ -909,12 +909,12 @@ and channel mapping.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#how-alignment-works">How alignment works</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#splitting-a-continuous-recording-into-trials">Splitting a continuous recording into trials</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#minimal-example">Minimal example</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#multiple-cameras">Multiple cameras</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#per-trial-audio">Per-trial audio</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#trial-timing">Trial timing</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#full-worked-example">Full worked example</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#splitting-a-continuous-recording-into-trials">Splitting a continuous recording into trials</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#session-wide-streams">Session-wide streams</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#session-wide-audio">Session-wide audio</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ephys-with-multiple-trials">Ephys with multiple trials</a></li>

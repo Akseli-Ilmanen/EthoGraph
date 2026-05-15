@@ -416,17 +416,35 @@
                   
   <section class="tex2jax_ignore mathjax_ignore" id="roadmap">
 <h1>Roadmap<a class="headerlink" href="#roadmap" title="Link to this heading">#</a></h1>
-<section id="model-predictions-import">
-<h2>Model predictions import<a class="headerlink" href="#model-predictions-import" title="Link to this heading">#</a></h2>
+<p>Currently this is still more of a collection of notes, than a roadmap.</p>
+<section id="improved-interop-with-segmentation-models">
+<h2>Improved interop. with segmentation models:<a class="headerlink" href="#improved-interop-with-segmentation-models" title="Link to this heading">#</a></h2>
+<p>PPT during Movement community call: <a class="reference external" href="https://neuroinformatics.zulipchat.com/user_uploads/58792/jV4lyzfLheHU4Gj4qCQkKzwy/2026_04-Ethograph-demo.pptx">https://neuroinformatics.zulipchat.com/user_uploads/58792/jV4lyzfLheHU4Gj4qCQkKzwy/2026_04-Ethograph-demo.pptx</a>
+Git discussion on schema for segmentation feature data: <a class="github reference external" href="https://github.com/EthoML/VAME/issues/189#issuecomment-4425518919">EthoML/VAME#189</a></p>
+<section id="import-predictions-from-action-segmentation-models">
+<h3>Import predictions from action segmentation models<a class="headerlink" href="#import-predictions-from-action-segmentation-models" title="Link to this heading">#</a></h3>
 <p>Import predictions from action segmentation models (DLC2Action, ASFormer, MS-TCN) directly in the GUI. Per-trial prediction files (<code class="docutils literal notranslate"><span class="pre">.npy</span></code>/<code class="docutils literal notranslate"><span class="pre">.pickle</span></code>) with shape <code class="docutils literal notranslate"><span class="pre">(T,</span> <span class="pre">n_classes)</span></code> or <code class="docutils literal notranslate"><span class="pre">(T,)</span></code> will be converted to label intervals with confidence overlay (1 - entropy of classwise softmax).</p>
 </section>
+</section>
+<hr class="docutils" />
+<section id="easier-alignment-of-video-and-data-streams-via-nwb-files">
+<h2>Easier alignment of video and data streams via <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> files<a class="headerlink" href="#easier-alignment-of-video-and-data-streams-via-nwb-files" title="Link to this heading">#</a></h2>
+<ul class="simple">
+<li><p><a class="github reference external" href="https://github.com/catalystneuro/nwb-video-widgets/issues/34">catalystneuro/nwb-video-widgets#34</a></p></li>
+<li><p><a class="github reference external" href="https://github.com/NeurodataWithoutBorders/nwb-schema/issues/677">NeurodataWithoutBorders/nwb-schema#677</a></p></li>
+</ul>
+</section>
+<hr class="docutils" />
+<section id="changepoints">
+<h2>Changepoints<a class="headerlink" href="#changepoints" title="Link to this heading">#</a></h2>
 <section id="more-sophisticated-changepoint-detection">
-<h2>More sophisticated changepoint detection<a class="headerlink" href="#more-sophisticated-changepoint-detection" title="Link to this heading">#</a></h2>
+<h3>More sophisticated changepoint detection<a class="headerlink" href="#more-sophisticated-changepoint-detection" title="Link to this heading">#</a></h3>
 <p>Current methods are fast (gradient based, RMS-based, etc.), but could also use ML for detection. Important that it’s easily reproducable, so it represents a reliable feature in feature space. Sometimes the changepoint correction post-model output makes things worse, transformer learns better representation than simple gradient based methods.</p>
 </section>
 <section id="changepoint-features">
-<h2>Changepoint features<a class="headerlink" href="#changepoint-features" title="Link to this heading">#</a></h2>
+<h3>Changepoint features<a class="headerlink" href="#changepoint-features" title="Link to this heading">#</a></h3>
 <p>Using <a class="reference internal" href="../api/ethograph.features.changepoints.more_changepoint_features.html#ethograph.features.changepoints.more_changepoint_features" title="ethograph.features.changepoints.more_changepoint_features"><code class="xref py py-func docutils literal notranslate"><span class="pre">more_changepoint_features()</span></code></a> massively improved fine-grained accuracy for <a class="reference external" href="https://github.com/ChinaYi/ASFormer">ASFormer</a>, would be cool if this could be exported generally to segmentation models (DlC2Action, etc.)</p>
+</section>
 </section>
 <section id="other">
 <h2>Other<a class="headerlink" href="#other" title="Link to this heading">#</a></h2>
@@ -476,9 +494,16 @@
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-predictions-import">Model predictions import</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#more-sophisticated-changepoint-detection">More sophisticated changepoint detection</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changepoint-features">Changepoint features</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#improved-interop-with-segmentation-models">Improved interop. with segmentation models:</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#import-predictions-from-action-segmentation-models">Import predictions from action segmentation models</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#easier-alignment-of-video-and-data-streams-via-nwb-files">Easier alignment of video and data streams via <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> files</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changepoints">Changepoints</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#more-sophisticated-changepoint-detection">More sophisticated changepoint detection</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#changepoint-features">Changepoint features</a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#other">Other</a></li>
 </ul>
   </nav></div>

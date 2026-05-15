@@ -430,15 +430,15 @@
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="o">%</span><span class="k">load_ext</span> autoreload
 <span class="o">%</span><span class="k">autoreload</span> 2
 
-<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">audioio</span><span class="w"> </span><span class="kn">import</span> <span class="n">AudioLoader</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">movement.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_poses</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">movement.kinematics</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_velocity</span><span class="p">,</span> <span class="n">compute_speed</span><span class="p">,</span> <span class="n">compute_acceleration</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">movement.kinematics</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_acceleration</span><span class="p">,</span> <span class="n">compute_speed</span><span class="p">,</span> <span class="n">compute_velocity</span>
 
-<span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.utils.download</span><span class="w"> </span><span class="kn">import</span> <span class="n">download_example_dataset</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.nwb_alignment</span><span class="w"> </span><span class="kn">import</span> <span class="n">align_media_per_trial</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.utils.download</span><span class="w"> </span><span class="kn">import</span> <span class="n">download_example_dataset</span>
 </pre></div>
 </div>
 </div>
@@ -490,12 +490,14 @@ data_folder: d:\Akseli\Code\ethograph\data\philodoptera
     <span class="n">audio_sr</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">rate</span>
 
 <span class="c1"># Single-session dataset: one row in the session table</span>
-<span class="n">session_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
-    <span class="s2">&quot;trial&quot;</span><span class="p">:</span>   <span class="p">[</span><span class="s2">&quot;session&quot;</span><span class="p">],</span>
-    <span class="s2">&quot;video_0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">video_path</span><span class="p">)],</span>
-    <span class="s2">&quot;audio_0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">audio_path</span><span class="p">)],</span>
-    <span class="s2">&quot;pose_0&quot;</span><span class="p">:</span>  <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">poses_csv_path</span><span class="p">)],</span>
-<span class="p">})</span>
+<span class="n">session_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;session&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;video_0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">video_path</span><span class="p">)],</span>
+        <span class="s2">&quot;audio_0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">audio_path</span><span class="p">)],</span>
+        <span class="s2">&quot;pose_0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">poses_csv_path</span><span class="p">)],</span>
+    <span class="p">}</span>
+<span class="p">)</span>
 
 <span class="n">nwb_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;.ethograph&quot;</span> <span class="o">/</span> <span class="s2">&quot;alignment.nwb&quot;</span>
 <span class="n">align_media_per_trial</span><span class="p">(</span>

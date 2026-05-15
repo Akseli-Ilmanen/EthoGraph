@@ -435,11 +435,32 @@ clear description of the problem and steps to reproduce it. Please:</p>
 development tools:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/Akseli-Ilmanen/ethograph
 <span class="nb">cd</span><span class="w"> </span>ethograph
-uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[gui,dandi,dev,docs]&quot;</span>
+uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[gui,audio,dandi,dev,docs]&quot;</span>
 </pre></div>
 </div>
 <p>See <a class="reference internal" href="../getting_started/installation.html"><span class="doc">Installation</span></a> for details on setting up a virtual
 environment and installing uv.</p>
+</section>
+<section id="setting-up-pre-commit-hooks">
+<h2>Setting up pre-commit hooks<a class="headerlink" href="#setting-up-pre-commit-hooks" title="Link to this heading">#</a></h2>
+<p>The project uses <a class="reference external" href="https://pre-commit.com/">pre-commit</a> to run ruff, mypy,
+check-manifest, and codespell automatically before every commit. Install the
+hooks once after cloning:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pre-commit<span class="w"> </span>install
+</pre></div>
+</div>
+<p>After this, every <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">commit</span></code> runs the checks locally — the same checks that
+run in CI. If any check fails, the commit is blocked and the errors are shown
+in the terminal.</p>
+<p>To run the checks manually without committing:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pre-commit<span class="w"> </span>run<span class="w"> </span>--all-files
+</pre></div>
+</div>
+<p>To auto-fix ruff issues:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ruff<span class="w"> </span>check<span class="w"> </span>--fix<span class="w"> </span>ethograph/
+ruff<span class="w"> </span>format<span class="w"> </span>ethograph/
+</pre></div>
+</div>
 </section>
 </section>
 
@@ -492,6 +513,7 @@ environment and installing uv.</p>
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#reporting-issues">Reporting issues</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#development-installation">Development installation</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#setting-up-pre-commit-hooks">Setting up pre-commit hooks</a></li>
 </ul>
   </nav></div>
 

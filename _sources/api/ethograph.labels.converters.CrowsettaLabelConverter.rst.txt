@@ -7,31 +7,31 @@
    :members:
    :show-inheritance:
 
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
 
-   
+
+
+
+
+
+
+
+
+
+
+
+
+
    .. rubric:: Methods
 
    .. autosummary::
 
-   
-   
-   
+
+
+
       ~CrowsettaLabelConverter.extract
-   
-   
+
+
       ~CrowsettaLabelConverter.resolve_labels
-   
-   
-   
+
+
+

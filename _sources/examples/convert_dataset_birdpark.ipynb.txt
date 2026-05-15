@@ -33,16 +33,16 @@
    "metadata": {},
    "outputs": [],
    "source": [
-    "import numpy as np\n",
-    "import xarray as xr\n",
-    "import h5py\n",
-    "import pandas as pd\n",
-    "import requests\n",
     "import zipfile\n",
     "from pathlib import Path\n",
+    "\n",
+    "import h5py\n",
+    "import numpy as np\n",
+    "import pandas as pd\n",
+    "import requests\n",
+    "import xarray as xr\n",
     "from audioio import write_audio\n",
     "\n",
-    "import ethograph as eto\n",
     "from ethograph.io.nwb_alignment import align_media_per_trial"
    ]
   },
@@ -115,18 +115,20 @@
     "# Read H5 file\n",
     "with h5py.File(h5_path, \"r\") as f1:\n",
     "    radioSignals = f1[\"/radioSignals\"][()]  # accelerometer (one row per channel)\n",
-    "    daqSignals = f1[\"/daqSignals\"][()]      # microphone channels\n",
+    "    daqSignals = f1[\"/daqSignals\"][()]  # microphone channels\n",
     "\n",
     "# Create .wav file from microphone channels\n",
     "write_audio(audio_path, daqSignals.T, audio_sr)\n",
     "\n",
     "# ─── Build session table ───\n",
     "# trial=1 matches the ID assigned when loading a plain Dataset as a single-trial TrialTree\n",
-    "session_table = pd.DataFrame({\n",
-    "    \"trial\":   [1],\n",
-    "    \"video_0\": [str(video_path)],\n",
-    "    \"audio_0\": [str(audio_path)],\n",
-    "})\n",
+    "session_table = pd.DataFrame(\n",
+    "    {\n",
+    "        \"trial\": [1],\n",
+    "        \"video_0\": [str(video_path)],\n",
+    "        \"audio_0\": [str(audio_path)],\n",
+    "    }\n",
+    ")\n",
     "\n",
     "nwb_path = data_folder / \"copExpBP08\" / \".ethograph\" / \"alignment.nwb\"\n",
     "align_media_per_trial(\n",
@@ -166,7 +168,7 @@
    "metadata": {},
    "outputs": [],
    "source": [
-    "ds # Inspect"
+    "ds  # Inspect"
    ]
   },
   {

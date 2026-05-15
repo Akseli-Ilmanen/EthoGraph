@@ -16,9 +16,8 @@
 
 
     probe_electrical_series
-    
+
     probe_label_sources
-    
+
     read_trials_table
-    
 

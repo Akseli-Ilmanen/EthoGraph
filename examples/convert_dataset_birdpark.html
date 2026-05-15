@@ -428,16 +428,16 @@
 <p>Left: GUI screenshot, Right: Adapted from Rüttimann et al. (2024)¹ - Fig. 2C</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">zipfile</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
 <span class="kn">import</span><span class="w"> </span><span class="nn">h5py</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">zipfile</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">audioio</span><span class="w"> </span><span class="kn">import</span> <span class="n">write_audio</span>
 
-<span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.io.nwb_alignment</span><span class="w"> </span><span class="kn">import</span> <span class="n">align_media_per_trial</span>
 </pre></div>
 </div>
@@ -492,18 +492,20 @@
 <span class="c1"># Read H5 file</span>
 <span class="k">with</span> <span class="n">h5py</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="n">h5_path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f1</span><span class="p">:</span>
     <span class="n">radioSignals</span> <span class="o">=</span> <span class="n">f1</span><span class="p">[</span><span class="s2">&quot;/radioSignals&quot;</span><span class="p">][()]</span>  <span class="c1"># accelerometer (one row per channel)</span>
-    <span class="n">daqSignals</span> <span class="o">=</span> <span class="n">f1</span><span class="p">[</span><span class="s2">&quot;/daqSignals&quot;</span><span class="p">][()]</span>      <span class="c1"># microphone channels</span>
+    <span class="n">daqSignals</span> <span class="o">=</span> <span class="n">f1</span><span class="p">[</span><span class="s2">&quot;/daqSignals&quot;</span><span class="p">][()]</span>  <span class="c1"># microphone channels</span>
 
 <span class="c1"># Create .wav file from microphone channels</span>
 <span class="n">write_audio</span><span class="p">(</span><span class="n">audio_path</span><span class="p">,</span> <span class="n">daqSignals</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">audio_sr</span><span class="p">)</span>
 
 <span class="c1"># ─── Build session table ───</span>
 <span class="c1"># trial=1 matches the ID assigned when loading a plain Dataset as a single-trial TrialTree</span>
-<span class="n">session_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
-    <span class="s2">&quot;trial&quot;</span><span class="p">:</span>   <span class="p">[</span><span class="mi">1</span><span class="p">],</span>
-    <span class="s2">&quot;video_0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">video_path</span><span class="p">)],</span>
-    <span class="s2">&quot;audio_0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">audio_path</span><span class="p">)],</span>
-<span class="p">})</span>
+<span class="n">session_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+        <span class="s2">&quot;video_0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">video_path</span><span class="p">)],</span>
+        <span class="s2">&quot;audio_0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">audio_path</span><span class="p">)],</span>
+    <span class="p">}</span>
+<span class="p">)</span>
 
 <span class="n">nwb_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;copExpBP08&quot;</span> <span class="o">/</span> <span class="s2">&quot;.ethograph&quot;</span> <span class="o">/</span> <span class="s2">&quot;alignment.nwb&quot;</span>
 <span class="n">align_media_per_trial</span><span class="p">(</span>
@@ -540,7 +542,7 @@
 </div>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">ds</span> <span class="c1"># Inspect</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">ds</span>  <span class="c1"># Inspect</span>
 </pre></div>
 </div>
 </div>

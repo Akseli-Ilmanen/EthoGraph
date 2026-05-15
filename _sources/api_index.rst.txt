@@ -27,7 +27,6 @@ examples, and cross-links to the user guide.
 
 :doc:`Dataset <api/dataset>`
     Xarray-side dataset builders:
-    :func:`~ethograph.io.dataset.dataset_to_basic_trialtree`,
     :func:`~ethograph.io.dataset.downsample_trialtree`,
     :func:`~ethograph.io.dataset.add_changepoints_to_ds`,
     :func:`~ethograph.io.dataset.add_angle_rgb_to_ds`.

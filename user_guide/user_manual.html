@@ -518,13 +518,9 @@ the segment you just labelled.</p>
 </section>
 <section id="importing-data">
 <h2>Importing data<a class="headerlink" href="#importing-data" title="Link to this heading">#</a></h2>
-<a class="reference internal image-reference" href="media/io.png"><img alt="Data import workflow" src="media/io.png" style="width: 100%;" />
+<p>The I/O section (see image below) offers a lot of flexibility, but may be overly complex for your data. As a first starting point, have a look at the <a class="reference internal" href="../getting_started/wizard.html"><span class="doc">Getting Started Wizard</span></a>.  In many cases, the <strong>Data wizard</strong> can guide you through the steps to organize &amp; temporally align your different data/media streams. For more complex scenarios, you may have to write a custom Python script.</p>
+<a class="reference internal image-reference" href="../_images/io.png"><img alt="Data import workflow" src="../_images/io.png" style="width: 100%;" />
 </a>
-<p>As a</p>
-<p>The I/O section (see image above) allows the user to various data formats</p>
-<div class="highlight-none notranslate"><div class="highlight"><pre><span></span>  may be a bit daunting given   {doc}../getting_started/wizard
-</pre></div>
-</div>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">## Importing data</span>
@@ -541,7 +537,7 @@ the segment you just labelled.</p>
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
 
 <span class="n">ds</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">sample_data</span><span class="p">()</span>
-<span class="n">ds</span><span class="p">[[</span><span class="s2">&quot;position&quot;</span><span class="p">,</span> <span class="s2">&quot;velocity&quot;</span><span class="p">,</span> <span class="s2">&quot;speed&quot;</span><span class="p">]]</span> 
+<span class="n">ds</span><span class="p">[[</span><span class="s2">&quot;position&quot;</span><span class="p">,</span> <span class="s2">&quot;velocity&quot;</span><span class="p">,</span> <span class="s2">&quot;speed&quot;</span><span class="p">]]</span>
 </pre></div>
 </div>
 </div>
@@ -1175,9 +1171,10 @@ speed with .sel:   KeyError: &quot;&#39;space&#39; is not a valid dimension or c
 <p class="expanded admonition-title">Hide code cell source</p>
 </summary>
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.patches</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mpatches</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.patches</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mpatches</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_interval</span><span class="p">,</span> <span class="n">empty_intervals</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.plots</span><span class="w"> </span><span class="kn">import</span> <span class="n">plot_label_segments</span>
 
@@ -1229,7 +1226,6 @@ speed with .sel:   KeyError: &quot;&#39;space&#39; is not a valid dimension or c
     <span class="n">ax</span><span class="o">.</span><span class="n">set_xlim</span><span class="p">(</span><span class="mf">3.5</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">)</span>
 
 
-
 <span class="n">plt</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
 </pre></div>
@@ -1251,9 +1247,10 @@ speed with .sel:   KeyError: &quot;&#39;space&#39; is not a valid dimension or c
 <p class="expanded admonition-title">Hide code cell source</p>
 </summary>
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.patches</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mpatches</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.patches</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mpatches</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_interval</span><span class="p">,</span> <span class="n">empty_intervals</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.plots</span><span class="w"> </span><span class="kn">import</span> <span class="n">plot_label_segments</span>
 

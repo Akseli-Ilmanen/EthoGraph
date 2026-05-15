@@ -64,15 +64,11 @@
    "source": [
     "## Importing data\n",
     "\n",
-    "<img src=\"../media/io.png\" width=\"100%\" alt=\"Data import workflow\">\n",
     "\n",
-    "As a \n",
-    "\n",
-    "The I/O section (see image above) allows the user to various data formats\n",
+    "The I/O section (see image below) offers a lot of flexibility, but may be overly complex for your data. As a first starting point, have a look at the {doc}`../getting_started/wizard`.  In many cases, the **Data wizard** can guide you through the steps to organize & temporally align your different data/media streams. For more complex scenarios, you may have to write a custom Python script.\n",
     "\n",
     "\n",
-    "\n",
-    "      may be a bit daunting given   {doc}../getting_started/wizard"
+    "<img src=\"../media/io.png\" width=\"100%\" alt=\"Data import workflow\">\n"
    ]
   },
   {
@@ -725,7 +721,7 @@
     "import ethograph as eto\n",
     "\n",
     "ds = eto.sample_data()\n",
-    "ds[[\"position\", \"velocity\", \"speed\"]] "
+    "ds[[\"position\", \"velocity\", \"speed\"]]"
    ]
   },
   {
@@ -777,7 +773,6 @@
     }
    ],
    "source": [
-    "\n",
     "# Standard xarray .sel — works when all dimensions exist\n",
     "beak_x = ds[\"position\"].sel(keypoints=\"beakTip\", space=\"x\", individuals=\"Crow1\")\n",
     "print(f\"position with .sel: shape {beak_x.shape}\")\n",
@@ -846,9 +841,10 @@
     }
    ],
    "source": [
-    "import numpy as np\n",
-    "import matplotlib.pyplot as plt\n",
     "import matplotlib.patches as mpatches\n",
+    "import matplotlib.pyplot as plt\n",
+    "import numpy as np\n",
+    "\n",
     "from ethograph.labels.intervals import add_interval, empty_intervals\n",
     "from ethograph.labels.plots import plot_label_segments\n",
     "\n",
@@ -900,7 +896,6 @@
     "    ax.set_xlim(3.5, 5.0)\n",
     "\n",
     "\n",
-    "\n",
     "plt.tight_layout()\n",
     "plt.show()"
    ]
@@ -940,9 +935,10 @@
     }
    ],
    "source": [
-    "import matplotlib.pyplot as plt\n",
     "import matplotlib.patches as mpatches\n",
+    "import matplotlib.pyplot as plt\n",
     "import numpy as np\n",
+    "\n",
     "from ethograph.labels.intervals import add_interval, empty_intervals\n",
     "from ethograph.labels.plots import plot_label_segments\n",
     "\n",

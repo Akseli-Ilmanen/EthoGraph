@@ -2,7 +2,7 @@
 # Label mapping (`mapping.txt`)
 
 EthoGraph uses **integer label IDs** , e.g. in the TSV file (`labels`
-column). The `mapping.txt` contains a mapping from these integers to the label names. This is the same format as used in the [action-segmentation literature](https://github.com/nus-cvml/awesome-temporal-action-segmentation) where models predict a per-frame class index and a dataset-level `mapping.txt` lists the corresponding action names. 
+column). The `mapping.txt` contains a mapping from these integers to the label names. This is the same format as used in the [action-segmentation literature](https://github.com/nus-cvml/awesome-temporal-action-segmentation) where models predict a per-frame class index and a dataset-level `mapping.txt` lists the corresponding action names.
 
 One major benefit of this format is that if you rename a behaviour once in `mapping.txt`, it propagates everywhere (old backups, predictions, exports).
 
@@ -126,4 +126,3 @@ changepoint correction) untouched — they have no duration, so concepts like
 enforced by `split_by_kind()` in `ethograph.labels.intervals`.
 
 ---
-
