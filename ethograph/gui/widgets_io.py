@@ -235,7 +235,7 @@ class IOWidget(QWidget):
         # Path widgets
         self.nc_file_path_edit = self._create_path_widget(
             self._load_layout,
-            label="Get sesssion:",
+            label="Get session:",
             object_name="nc_file_path",
             browse_callback=lambda: self.on_browse_clicked("file", "data"),
         )

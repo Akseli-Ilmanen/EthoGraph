@@ -129,7 +129,7 @@ class _ModeSelectionPage(QWidget):
         single_box = QGroupBox("Single trial")
         sb_lay = QVBoxLayout(single_box)
         self._explanation = QLabel(
-            "Allows multiple modalities but only one file per modality (video/audio/pose/ephys). Great for quickly gettign started."  # noqa: E501
+            "Allows multiple modalities but only one file per modality (video/audio/pose/ephys). Great for quickly getting started."  # noqa: E501
         )
         self._rb_pose = QRadioButton("1) From pose file (DLC, SLEAP, ...) or bounding boxes (VIA, ...)")
         self._rb_xarray = QRadioButton("2) From xarray dataset (Movement style)")

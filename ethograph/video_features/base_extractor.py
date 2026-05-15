@@ -71,13 +71,13 @@ class BaseExtractor(object):
         action2ext = {"save_numpy": ".npy", "save_pickle": ".pkl"}
         action2savefn = {"save_numpy": write_numpy, "save_pickle": write_pickle}
 
-        # playing safe: the second check if files already exist and openable before possibly overwritting them
+        # playing safe: the second check if files already exist and openable before possibly overwriting them
         if self.on_extraction in [
             "save_numpy",
             "save_pickle",
         ] and self.is_already_exist(video_path):
             # it is ok to ignore this warning
-            print("WARNING: extraction didnt find feature files on the 1st try but did on the 2nd try.")
+            print("WARNING: extraction didn't find feature files on the 1st try but did on the 2nd try.")
             return
 
         for key, value in feats_dict.items():

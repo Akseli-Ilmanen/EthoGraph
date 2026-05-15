@@ -179,7 +179,7 @@ ignore = [
 
 [tool.ruff]
 line-length = 120
-exclude = ["__init__.py", "build", ".eggs"]
+exclude = ["__init__.py", "build", ".eggs", "scripts"]
 lint.select = [
     "E",
     "F",
@@ -215,4 +215,4 @@ commands =
 [tool.codespell]
 skip = '.git,*.ipynb,docs/build/*,docs/jupyter_execute/*'
 check-hidden = true
-ignore-words-list = "eto,extention"
+ignore-words-list = "eto,ND"

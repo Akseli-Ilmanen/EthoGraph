@@ -172,13 +172,14 @@ def app_state(qtbot, tmp_path):
 def _suppress_dialogs(monkeypatch):
     """Suppress all GUI popups during tests via the SUPPRESS flag.
 
-    Also patches QMessageBox statics as a safety net for any direct callers.
+    Also patches QMessageBox as a safety net for any direct callers.
     """
     import ethograph.gui.notify as _notify_mod
 
     monkeypatch.setattr(_notify_mod, "SUPPRESS", True)
 
-    _noop = lambda *a, **kw: QMessageBox.Ok
+    def _noop(*a, **kw):
+        return QMessageBox.Ok
     monkeypatch.setattr(QMessageBox, "critical", _noop)
     monkeypatch.setattr(QMessageBox, "warning", _noop)
     monkeypatch.setattr(QMessageBox, "information", _noop)

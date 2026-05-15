@@ -14,7 +14,7 @@ from omegaconf.listconfig import ListConfig
 
 
 def make_path(output_root, video_path, output_key, ext):
-    # extract file name and change the extention
+    # extract file name and change the extension
     fname = f"{Path(video_path).stem}_{output_key}{ext}"
     # construct the paths to save the features
     return os.path.join(output_root, fname)
