@@ -2,75 +2,27 @@
 
 Mirrors the AudioTracePlot / AudioTraceBuffer pattern for raw ephys data.
 Rendering uses audian-style min/max envelope downsampling.
-
-Three loading paths:
-  - Known formats (.rhd, .rhs, .oebin, .edf, ...): Neo auto-detects
-    dtype, gain, rate, and channel count from file headers.
-  - NWB files (.nwb): pynwb with lazy HDF5 access (Neo lacks NWBRawIO).
-  - Raw binary (.dat, .bin, .raw): user provides n_channels and
-    sampling_rate; dtype defaults to int16.
-
-All loaders expose the same interface consumed by EphysTraceBuffer:
-    loader[start:stop]  ->  ndarray (samples x channels)
-    len(loader)         ->  total sample count
-    loader.rate         ->  sampling rate (Hz)
 """
 
 from __future__ import annotations
 
 import logging
-import threading
-from pathlib import Path
-from typing import Optional, Protocol, runtime_checkable
+from typing import Any, Optional
 
 import numpy as np
 import pyqtgraph as pg
+from numpy.typing import NDArray
+from qtpy.QtCore import QEvent, Qt, Signal
+
+from ..io.plot_sources import FileSource, PlotSource
+from .app_constants import BUFFER_COVERAGE_MARGIN, DEFAULT_BUFFER_MULTIPLIER_EPHYS, EPHYSTRACE_DEBOUNCE_MS
+from .plots_base import BasePlot, ThrottleDebounce
 
 logger = logging.getLogger(__name__)
 
-import warnings  # noqa: E402
-
-from numpy.typing import NDArray  # noqa: E402
-from phylib.io.traces import get_ephys_reader  # noqa: E402
-from qtpy.QtCore import QEvent, Qt, Signal  # noqa: E402
-
-
-# Neo IntanRawIO bug (present in ≤0.14.4, fixed in master via PR #1558):
-# In "one-file-per-signal" format, digitalin.dat is memmapped as (N_actual//num_ch, num_ch)
-# instead of (N_actual,). _demultiplex_digital_data then receives this 2D array and calls
-# `.flatten()` on the row-slice — doubling the element count and causing a ValueError.
-# Fix: flatten the full 2D memmap to 1D before slicing, which recovers the original packed
-# uint16 stream (C-order flatten = file order = correct sample order).
-def _fixed_intan_demultiplex_digital_data(self, raw_digital_data, channel_ids, i_start, i_stop):
-    n = i_stop - i_start
-    output = np.zeros((n, len(channel_ids)), dtype=np.uint16)
-    if raw_digital_data.ndim > 1:
-        raw_digital_data = raw_digital_data.flatten()
-    for channel_index, channel_id in enumerate(channel_ids):
-        native_order = self.native_channel_order[channel_id]
-        mask = np.uint16(1 << native_order)
-        demultiplex_data = np.bitwise_and(raw_digital_data, mask) > 0
-        output[:, channel_index] = demultiplex_data[i_start:i_stop].astype(np.uint16)
-    return output
-
-
-try:
-    import neo.rawio.intanrawio as _intan_module
-
-    _intan_module.IntanRawIO._demultiplex_digital_data = _fixed_intan_demultiplex_digital_data
-    logger.debug("Applied IntanRawIO._demultiplex_digital_data patch for 2-D digital memmap")
-except Exception as _patch_err:
-    logger.warning("Could not patch IntanRawIO._demultiplex_digital_data: %s", _patch_err)
-
-from ethograph.utils.nwb import resolve_timeseries_timing  # noqa: E402
-
-from ..io.plot_sources import FileSource, PlotSource  # noqa: E402
-from .app_constants import (  # noqa: E402
-    BUFFER_COVERAGE_MARGIN,
-    DEFAULT_BUFFER_MULTIPLIER_EPHYS,
-    EPHYSTRACE_DEBOUNCE_MS,
-)
-from .plots_base import BasePlot, ThrottleDebounce  # noqa: E402
+# ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
 
 
 def _nice_round(value: float) -> float:
@@ -108,7 +60,7 @@ _UNIT_TO_VOLTS: dict[str, float] = {
     "V": 1.0,
     "mV": 1e-3,
     "uV": 1e-6,
-    "\u00b5V": 1e-6,
+    "µV": 1e-6,
 }
 
 
@@ -122,7 +74,7 @@ def _format_voltage_bar(raw_value: float, loader_units: str) -> tuple[float, str
     abs_v = abs(value_in_v)
     if abs_v < 1e-4:
         display_val = value_in_v * 1e6
-        display_unit = "\u00b5V"
+        display_unit = "µV"
     elif abs_v < 0.1:
         display_val = value_in_v * 1e3
         display_unit = "mV"
@@ -134,7 +86,7 @@ def _format_voltage_bar(raw_value: float, loader_units: str) -> tuple[float, str
     if display_val < 0:
         nice_display = -nice_display
 
-    if display_unit == "\u00b5V":
+    if display_unit == "µV":
         bar_in_v = nice_display * 1e-6
     elif display_unit == "mV":
         bar_in_v = nice_display * 1e-3
@@ -146,465 +98,10 @@ def _format_voltage_bar(raw_value: float, loader_units: str) -> tuple[float, str
 
 
 # ---------------------------------------------------------------------------
-# Loader protocol
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class EphysLoader(Protocol):
-    rate: float
-
-    def __len__(self) -> int: ...
-    def __getitem__(self, key) -> NDArray: ...
-
-
-class NWBEphysLoader:
-    """Unified NWB ephys loader for local and remote files.
-
-    Each ElectricalSeries in nwb.acquisition becomes a "stream".
-    Use stream_id (the series name) to select which one to load.
-    """
-
-    def __init__(self, path: str, stream_id: str | None = None):
-        import h5py
-        import pynwb
-
-        self._rf = None
-        self._h5 = h5py.File(path, "r")
-
-        self._io = pynwb.NWBHDF5IO(file=self._h5, load_namespaces=True)
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message=".*manufacturer.*deprecated",
-                category=DeprecationWarning,
-            )
-            self._nwb = self._io.read()
-
-        self._all_series = self._discover_electrical_series(self._nwb)
-        if not self._all_series:
-            raise ValueError(
-                f"No ElectricalSeries found in acquisition. Available keys: {list(self._nwb.acquisition.keys())}"
-            )
-
-        if stream_id is None or stream_id not in self._all_series:
-            stream_id = next(iter(self._all_series))
-        self._select_stream(stream_id)
-
-    @staticmethod
-    def _discover_electrical_series(nwb) -> dict:
-        import pynwb
-
-        return {name: es for name, es in nwb.acquisition.items() if isinstance(es, pynwb.ecephys.ElectricalSeries)}
-
-    def _select_stream(self, stream_id: str):
-        es = self._all_series[stream_id]
-        self._stream_id = stream_id
-        self._data = es.data
-        self._conversion = float(es.conversion) if es.conversion else 1.0
-        self._n_channels = self._data.shape[1] if self._data.ndim > 1 else 1
-        self._channel_names = self._extract_channel_names(es, self._n_channels)
-        self._units = str(es.unit) if hasattr(es, "unit") and es.unit else "V"
-        self.rate, self.starting_time = resolve_timeseries_timing(es)
-
-    @staticmethod
-    def _extract_channel_names(es, n_channels: int) -> list[str]:
-        electrodes = es.electrodes
-        if electrodes is not None and hasattr(electrodes, "table"):
-            table = electrodes.table
-            indices = electrodes.data[:]
-            if "label" in table.colnames:
-                return [str(table["label"][i]) for i in indices]
-            return [f"Ch {i}" for i in indices]
-        return [f"Ch {i}" for i in range(n_channels)]
-
-    @property
-    def streams(self) -> dict[str, dict]:
-        result = {}
-        for name, es in self._all_series.items():
-            n_ch = es.data.shape[1] if es.data.ndim > 1 else 1
-            rate, t0 = resolve_timeseries_timing(es)
-            result[name] = {
-                "name": name,
-                "n_channels": n_ch,
-                "rate": rate,
-                "starting_time": t0,
-                "dtype": str(es.data.dtype),
-            }
-        return result
-
-    def __len__(self) -> int:
-        return self._data.shape[0]
-
-    @property
-    def n_channels(self) -> int:
-        return self._n_channels
-
-    @property
-    def channel_names(self) -> list[str]:
-        return self._channel_names
-
-    @property
-    def units(self) -> str:
-        return self._units
-
-    def __getitem__(self, key) -> NDArray[np.float64]:
-        chunk = self._data[key]
-        if chunk.ndim == 1 and self._n_channels == 1:
-            chunk = chunk[:, np.newaxis]
-        return chunk.astype(np.float64) * self._conversion
-
-    def __del__(self):
-        resources = [self._io, self._h5]
-        if self._rf is not None:
-            resources.append(self._rf)
-        for resource in resources:
-            try:
-                resource.close()
-            except Exception:
-                pass
-
-
-# Raw binary formats loaded via phylib (kilosort .dat files).
-# Not user-selectable via the ephys file browser — only loaded internally via Kilosort folder/phylib.
-_RAW_BINARY_EXTENSIONS = frozenset({".dat", ".bin", ".raw", ".mda"})
-
-
-# ---------------------------------------------------------------------------
-# GenericEphysLoader – auto-detecting unified loader
-# ---------------------------------------------------------------------------
-
-
-class GenericEphysLoader:
-    """Auto-detecting ephys loader.
-
-    For known formats Neo extracts all metadata from file headers.
-    For raw binary the user must provide n_channels and sampling_rate.
-
-    Parameters
-    ----------
-    path
-        Path to ephys file (.rhd, .edf, .dat, etc.).
-    n_channels
-        Required only for raw binary formats.
-    sampling_rate
-        Required only for raw binary formats.
-    dtype
-        Raw binary dtype, ignored for known formats.
-    gain
-        Raw binary gain factor, ignored for known formats.
-    stream_id
-        Which Neo stream to load (e.g. "0" for amplifier, "1" for aux).
-    """
-
-    KNOWN_EXTENSIONS: dict[str, str] = {
-        ".rhd": "IntanRawIO",
-        ".rhs": "IntanRawIO",
-        ".oebin": "OpenEphysBinaryRawIO",
-        ".openephys": "OpenEphysRawIO",
-        ".continuous": "OpenEphysRawIO",
-        ".spikes": "OpenEphysRawIO",
-        ".events": "OpenEphysRawIO",
-        ".ns1": "BlackrockRawIO",
-        ".ns2": "BlackrockRawIO",
-        ".ns3": "BlackrockRawIO",
-        ".ns4": "BlackrockRawIO",
-        ".ns5": "BlackrockRawIO",
-        ".ns6": "BlackrockRawIO",
-        ".nev": "BlackrockRawIO",
-        ".sif": "BlackrockRawIO",
-        ".ccf": "BlackrockRawIO",
-        ".abf": "AxonRawIO",
-        ".axgx": "AxographRawIO",
-        ".axgd": "AxographRawIO",
-        ".edf": "EDFRawIO",
-        ".bdf": "EDFRawIO",
-        ".vhdr": "BrainVisionRawIO",
-        ".smr": "Spike2RawIO",
-        ".smrx": "Spike2RawIO",
-        ".ncs": "NeuralynxRawIO",
-        ".nse": "NeuralynxRawIO",
-        ".ntt": "NeuralynxRawIO",
-        ".nvt": "NeuralynxRawIO",
-        ".nrd": "NeuralynxRawIO",
-        ".trc": "MicromedRawIO",
-        ".plx": "PlexonRawIO",
-        ".pl2": "Plexon2RawIO",
-        ".rec": "SpikeGadgetsRawIO",
-        ".meta": "SpikeGLXRawIO",
-        ".medd": "MedRawIO",
-        ".rdat": "MedRawIO",
-        ".ridx": "MedRawIO",
-        ".edr": "WinEdrRawIO",
-        ".wcp": "WinWcpRawIO",
-        ".xdat": "NeuroNexusRawIO",
-        ".tbk": "TdtRawIO",
-        ".tdx": "TdtRawIO",
-        ".tev": "TdtRawIO",
-        ".tin": "TdtRawIO",
-        ".tnt": "TdtRawIO",
-        ".tsq": "TdtRawIO",
-        ".sev": "TdtRawIO",
-    }
-
-    _DIR_BASED_RAWIO: frozenset[str] = frozenset(
-        {
-            "OpenEphysBinaryRawIO",
-            "OpenEphysRawIO",
-            "SpikeGLXRawIO",
-            "TdtRawIO",
-        }
-    )
-
-    def __init__(
-        self,
-        path: str | Path,
-        n_channels: int | None = None,
-        sampling_rate: float | None = None,
-        dtype: str = "int16",
-        gain: float = 1.0,
-        stream_id: str = "0",
-    ):
-        self.path = Path(path)
-        self._reader = None
-        self._loader = None
-
-        self.rate: float = 0.0
-        self.dtype: str = dtype
-        self.starting_time: float = 0.0
-        self._n_channels: int = 0
-        self._n_samples: int = 0
-
-        ext = self.path.suffix.lower()
-
-        if ext == ".nwb":
-            self._init_nwb(stream_id)
-        elif rawio_name := self.KNOWN_EXTENSIONS.get(ext):
-            self._init_neo(rawio_name, stream_id)
-        elif ext in _RAW_BINARY_EXTENSIONS:
-            if n_channels is None or sampling_rate is None:
-                raise ValueError(f"Raw binary '{ext}' requires n_channels and sampling_rate.")
-            self._phylib_memmap(n_channels, sampling_rate, dtype, gain)
-        else:
-            supported = ", ".join(sorted([".nwb", *self.KNOWN_EXTENSIONS]))
-            raise ValueError(f"Unsupported format '{ext}'. Supported: {supported}, {', '.join(_RAW_BINARY_EXTENSIONS)}")
-
-    # -- backends -----------------------------------------------------------
-
-    def _init_nwb(self, stream_id: str):
-        loader = NWBEphysLoader(str(self.path), stream_id=stream_id)
-        self._loader = loader
-        self._n_channels = loader.n_channels
-        self._n_samples = len(loader)
-        self.rate = loader.rate
-        self.starting_time = loader.starting_time
-
-    def _init_neo(self, rawio_name: str, stream_id: str):
-        import neo.rawio
-
-        rawio_cls = getattr(neo.rawio, rawio_name, None)
-        if rawio_cls is None:
-            raise ValueError(f"Neo rawio class '{rawio_name}' not available in this Neo installation.")
-
-        path_kwarg = "dirname" if rawio_name in self._DIR_BASED_RAWIO else "filename"
-        self._reader = rawio_cls(**{path_kwarg: str(self.path if path_kwarg == "filename" else self.path.parent)})
-        self._reader.parse_header()
-        self._init_neo_stream(stream_id)
-
-    def _init_neo_stream(self, stream_id: str):
-        stream_ids = list(self._reader.header["signal_streams"]["id"])
-        if stream_id not in stream_ids:
-            stream_id = stream_ids[0]
-        self._stream_idx = stream_ids.index(stream_id)
-
-        ch = self._stream_channels
-        self._n_channels = len(ch)
-        self.rate = float(ch["sampling_rate"][0])
-        self.dtype = str(ch["dtype"][0])
-        self._n_samples = self._reader.get_signal_size(
-            block_index=0,
-            seg_index=0,
-            stream_index=self._stream_idx,
-        )
-        # Neo ≤0.14.4 bug: for Intan one-file-per-signal digital streams the memmap is shaped
-        # (N_actual // num_ch, num_ch), so get_signal_size() returns N_actual // num_ch.
-        # Recover the true sample count from the raw memmap's total element count.
-        if getattr(self._reader, "file_format", None) == "one-file-per-signal":
-            stream_name = self._reader.header["signal_streams"]["name"][self._stream_idx]
-            raw = getattr(self._reader, "_raw_data", {}).get(stream_name)
-            if raw is not None and raw.ndim > 1:
-                self._n_samples = raw.size  # shape[0]*shape[1] = N_actual
-        self.starting_time = float(
-            self._reader.get_signal_t_start(
-                block_index=0,
-                seg_index=0,
-                stream_index=self._stream_idx,
-            )
-        )
-
-    def _phylib_memmap(self, n_channels: int, sampling_rate: float, dtype: str, gain: float):
-        memmap = get_ephys_reader(
-            self.path,
-            n_channels=n_channels,
-            sample_rate=sampling_rate,
-            dtype=dtype,
-            gain=gain,
-        )
-        if memmap.ndim == 1:
-            memmap = memmap[:, np.newaxis]
-        self._loader = memmap
-        self._n_channels = memmap.shape[1]
-        self._n_samples = memmap.shape[0]
-        self.rate = sampling_rate
-        self.dtype = str(memmap.dtype) if memmap.dtype != np.dtype("int16") else "int16"
-
-    # -- Neo helpers --------------------------------------------------------
-
-    @property
-    def _stream_channels(self) -> np.ndarray:
-        channels = self._reader.header["signal_channels"]
-        stream_id = self._reader.header["signal_streams"]["id"][self._stream_idx]
-        return channels[channels["stream_id"] == stream_id]
-
-    # -- public interface ---------------------------------------------------
-
-    def __len__(self) -> int:
-        return self._n_samples
-
-    @property
-    def n_channels(self) -> int:
-        return self._n_channels
-
-    @property
-    def channel_names(self) -> list[str]:
-        if self._loader is not None:
-            return self._loader.channel_names
-        return list(self._stream_channels["name"])
-
-    @property
-    def units(self) -> str:
-        if self._loader is not None:
-            return self._loader.units
-        unit_str = str(self._stream_channels["units"][0])
-        return unit_str or "a.u."
-
-    @property
-    def streams(self) -> dict | None:
-        if isinstance(self._loader, NWBEphysLoader):
-            return self._loader.streams
-        if self._reader is None:
-            return None
-        all_channels = self._reader.header["signal_channels"]
-        return {
-            sid: {
-                "name": str(name),
-                "n_channels": int(np.sum(mask := all_channels["stream_id"] == sid)),
-                "rate": float(all_channels[mask]["sampling_rate"][0]),
-                "dtype": str(all_channels[mask]["dtype"][0]),
-            }
-            for sid, name in zip(
-                self._reader.header["signal_streams"]["id"],
-                self._reader.header["signal_streams"]["name"],
-            )
-        }
-
-    def __getitem__(self, key) -> NDArray[np.float64]:
-        if isinstance(key, slice):
-            start, stop, _ = key.indices(self._n_samples)
-        else:
-            start, stop = key, key + 1
-
-        if getattr(self, "_loader", None) is not None:  # ← safe fallback
-            return self._loader[start:stop]
-
-        raw = self._reader.get_analogsignal_chunk(
-            block_index=0,
-            seg_index=0,
-            i_start=start,
-            i_stop=stop,
-            stream_index=self._stream_idx,
-        )
-
-        return self._reader.rescale_signal_raw_to_float(
-            raw,
-            dtype="float64",
-            stream_index=self._stream_idx,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Module-level loader cache (replaces SharedEphysCache)
-# ---------------------------------------------------------------------------
-
-_loader_cache: dict[tuple[str, str], GenericEphysLoader] = {}
-_loader_lock = threading.Lock()
-
-
-def get_loader(
-    path: str | Path,
-    stream_id: str = "0",
-    n_channels: int | None = None,
-    sampling_rate: float | None = None,
-) -> GenericEphysLoader | None:
-    """Get or create a GenericEphysLoader for the given path/stream."""
-    key = (str(path), stream_id)
-    with _loader_lock:
-        if key not in _loader_cache:
-            try:
-                _loader_cache[key] = GenericEphysLoader(
-                    path,
-                    n_channels=n_channels,
-                    sampling_rate=sampling_rate,
-                    stream_id=stream_id,
-                )
-            except (OSError, ValueError, KeyError) as e:
-                logger.error(
-                    "Failed to load ephys file %s: %s: %s",
-                    path,
-                    type(e).__name__,
-                    e,
-                    exc_info=True,
-                )
-                return None
-        return _loader_cache[key]
-
-
-def clear_loader_cache():
-    with _loader_lock:
-        _loader_cache.clear()
-
-
-def get_all_stream_ids(path: str | Path) -> dict[str, str]:
-    """Return ``{stream_id: display_name}`` for every stream in *path*.
-
-    For Neo-supported formats the display name comes from the
-    ``signal_streams`` header (e.g. ``"RHD2000 amplifier channel"``).
-    For raw-binary formats handled by phylib there is no stream concept,
-    so the file stem is used as the display name (e.g. ``"continuous"``
-    for ``continuous.dat``).  Falls back to ``{"0": "0"}`` when the
-    header cannot be inspected.
-    """
-    path = Path(path)
-    ext = path.suffix.lower()
-    if ext in _RAW_BINARY_EXTENSIONS:
-        return {"raw": path.stem}
-    loader = get_loader(path, stream_id="0")
-    if loader is None or loader.streams is None:
-        return {"0": "0"}
-    return {sid: info["name"] for sid, info in loader.streams.items()}
-
-
-# Backward-compat alias
-class SharedEphysCache:
-    get_loader = staticmethod(get_loader)
-    clear_cache = staticmethod(clear_loader_cache)
-
-
-# ---------------------------------------------------------------------------
 # EphysTraceBuffer – min/max envelope downsampling
 # ---------------------------------------------------------------------------
 class EphysTraceBuffer:
-    def __init__(self, loader: EphysLoader | None = None, channel: int = 0):
+    def __init__(self, loader: Any | None = None, channel: int = 0):
         self.loader = loader
         self.channel = channel
         self.ephys_sr: float | None = None
@@ -620,7 +117,7 @@ class EphysTraceBuffer:
         self.autocenter: bool = False
         self._source: FileSource | None = None
 
-    def set_loader(self, loader: EphysLoader, channel: int = 0):
+    def set_loader(self, loader: Any, channel: int = 0):
         self.loader = loader
         self.channel = channel
         self.ephys_sr = loader.rate
@@ -994,7 +491,10 @@ class EphysTracePlot(BasePlot):
         scalar = float(getattr(self.app_state, "ephys_offset", 0.0) or 0.0)
         trial = getattr(self.app_state, "trials_sel", None)
         align = getattr(self.app_state, "nwb_alignment", None)
-        trial_start = float(align.start_time(trial) or 0.0) if (trial is not None and align is not None) else 0.0
+        if trial is not None and align is not None:
+            trial_start = float(align.start_time(trial) or 0.0)
+        else:
+            trial_start = 0.0
         return trial_start + scalar
 
     @property
@@ -1002,7 +502,7 @@ class EphysTracePlot(BasePlot):
         bounds = self.app_state.window_bounds
         return bounds.duration if bounds is not None else None
 
-    def set_loader(self, loader: EphysLoader, channel: int = 0):
+    def set_loader(self, loader: Any, channel: int = 0):
         type(self)._initializing = True
         self.buffer.set_loader(loader, channel)
         self._setup_global_y_space()
@@ -1492,16 +992,16 @@ class EphysTracePlot(BasePlot):
         if t0 is None or t1 is None:
             t0, t1 = self.get_current_xlim()
 
-        if self._multi_spike_data:
-            self._draw_multi_cluster_waveforms(t0, t1)
-            return
-
         if self._spike_times_local is None or len(self._spike_times_local) == 0:
             return
 
-        self._draw_spike_waveforms_multi(t0, t1)
+        if self._multi_spike_data:
+            self._draw_waveforms_multiple(t0, t1)
+            return
 
-    def _draw_spike_waveforms_multi(self, t0: float, t1: float):
+        self._draw_waveforms_single(t0, t1)
+
+    def _draw_waveforms_single(self, t0: float, t1: float):
         """Spike waveforms for single cluster, drawn on neighbouring channels"""
         sr = self.buffer.ephys_sr
         half_w = int(self._spike_snippet_ms * 0.001 * sr)
@@ -1573,7 +1073,7 @@ class EphysTracePlot(BasePlot):
             vb.addItem(item, ignoreBounds=True)
             self._spike_waveform_items.append(item)
 
-    def _draw_multi_cluster_waveforms(self, t0: float, t1: float):
+    def _draw_waveforms_multiple(self, t0: float, t1: float):
         """Draw spike waveforms for multiple clusters, each with its own color and set of channels."""
         sr = self.buffer.ephys_sr
         half_w = int(self._spike_snippet_ms * 0.001 * sr)

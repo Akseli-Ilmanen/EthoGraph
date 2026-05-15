@@ -130,8 +130,11 @@ include = ["ethograph*"]
 exclude = ["tests", "docs*"]
 
 [tool.setuptools.package-data]
-"ethograph.gui" = ["*.yaml", "assets/templates/*"]
+"ethograph.gui" = ["*.yaml", "assets/templates/*", "templates/*.j2"]
 ethograph = ["assets/*"]
+
+[tool.setuptools.exclude-package-data]
+"ethograph.video_features" = ["checkpoint/*.pt"]
 
 [tool.setuptools_scm]
 git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "v*"]
@@ -167,7 +170,10 @@ ignore = [
     "docs/*",
     "configs/*",
     "scripts/*",
+    "scripts/**",
     "examples/*",
+    "examples/**",
+    "ethograph/video_features/checkpoint/*.pt",
     ".claude/*",
 ]
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 
 import numpy as np
@@ -58,10 +57,11 @@ from ethograph.utils.qt import (
     set_combo_to_value,
 )
 
+from ..io.ephys_loader import _NeoWrapper as _RefNeo
+from ..io.ephys_loader import load_ephys
 from ..io.plot_sources import FileSource
+from ..io.validation import EPHYS_EXTENSIONS_RAW
 from .app_constants import CLUSTER_TABLE_MAX_HEIGHT, CLUSTER_TABLE_ROW_HEIGHT
-from .plots_ephystrace import GenericEphysLoader
-from .plots_ephystrace import get_loader as get_ephys_loader
 
 logger = logging.getLogger(__name__)
 
@@ -1015,24 +1015,26 @@ class EphysWidget(QWidget):
         if not ephys_path:
             return None, 0
 
-        if self._kilosort_params and Path(ephys_path).suffix.lower() in {
-            ".dat",
-            ".bin",
-            ".raw",
-        }:
+        if self._kilosort_params and Path(ephys_path).suffix.lower() in EPHYS_EXTENSIONS_RAW:
             n_ch = self._kilosort_params.get("n_channels_dat")
             if n_ch is None and self._channel_map is not None:
                 n_ch = int(self._channel_map.max()) + 1
             if n_ch is None:
                 return None, 0
-            return get_ephys_loader(
-                ephys_path,
-                stream_id,
-                n_channels=n_ch,
-                sampling_rate=self._kilosort_params.get("sample_rate"),
-            ), channel_idx
+            try:
+                return load_ephys(
+                    ephys_path,
+                    stream_id,
+                    n_channels=n_ch,
+                    sampling_rate=self._kilosort_params.get("sample_rate"),
+                ), channel_idx
+            except Exception:
+                return None, 0
 
-        return get_ephys_loader(ephys_path, stream_id), channel_idx
+        try:
+            return load_ephys(ephys_path, stream_id), channel_idx
+        except Exception:
+            return None, 0
 
     def configure_ephys_trace_plot(self):
         loader, channel_idx = self._resolve_phy_loader()
@@ -1041,7 +1043,8 @@ class EphysWidget(QWidget):
             return
 
         self.plot_container.ephys_trace_plot.set_loader(loader, channel_idx)
-        ephys_source = FileSource("ephys", loader, start_time=0.0)
+        start_time = getattr(loader, "starting_time", 0.0)
+        ephys_source = FileSource("ephys", loader, start_time=start_time)
         self.plot_container.ephys_trace_plot.set_source(ephys_source)
         self.plot_container.raster_plot.set_source(ephys_source)
 
@@ -1423,9 +1426,9 @@ class EphysWidget(QWidget):
     def _trial_start_session(self) -> float:
         trial = getattr(self.app_state, "trials_sel", None)
         align = getattr(self.app_state, "nwb_alignment", None)
-        if trial is None or align is None:
-            return 0.0
-        return float(align.start_time(trial) or 0.0)
+        if trial is not None and align is not None:
+            return float(align.start_time(trial) or 0.0)
+        return 0.0
 
     def _trial_ep(self) -> nap.IntervalSet | None:
         window_bounds = self.app_state.window_bounds
@@ -1530,7 +1533,6 @@ class EphysWidget(QWidget):
             return None
 
     def _resolve_dat_path(self, ks_folder: Path) -> Path | None:
-        raw_exts = {".dat", ".bin", ".raw"}
 
         dat_path_str = (self._kilosort_params or {}).get("dat_path")
         if dat_path_str:
@@ -1547,7 +1549,7 @@ class EphysWidget(QWidget):
         for folder in [ks_folder]:
             try:
                 for entry in folder.iterdir():
-                    if entry.is_file() and entry.suffix.lower() in raw_exts:
+                    if entry.is_file() and entry.suffix.lower() in EPHYS_EXTENSIONS_RAW:
                         return entry
             except OSError:
                 pass
@@ -1555,7 +1557,7 @@ class EphysWidget(QWidget):
         ephys_path_str = getattr(self.app_state, "ephys_path", None)
         if ephys_path_str:
             ephys_path = Path(ephys_path_str)
-            if ephys_path.is_file() and ephys_path.suffix.lower() in raw_exts:
+            if ephys_path.is_file() and ephys_path.suffix.lower() in EPHYS_EXTENSIONS_RAW:
                 return ephys_path
 
         return None
@@ -1579,13 +1581,14 @@ class EphysWidget(QWidget):
             notify("Cannot determine n_channels_dat — skipping Phy viewer.", "warning")
             return
 
-        loader = get_ephys_loader(
-            dat_path,
-            stream_id="0",
-            n_channels=n_channels,
-            sampling_rate=sr,
-        )
-        if loader is None:
+        try:
+            loader = load_ephys(
+                dat_path,
+                stream_id="0",
+                n_channels=n_channels,
+                sampling_rate=sr,
+            )
+        except Exception:
             notify(f"Failed to open .dat file: {dat_path}", "warning")
             return
 
@@ -1607,7 +1610,7 @@ class EphysWidget(QWidget):
         if not ephys_path:
             return "Hardware"
         ext = Path(ephys_path).suffix.lower()
-        rawio_name = GenericEphysLoader.KNOWN_EXTENSIONS.get(ext)
+        rawio_name = _RefNeo.KNOWN_EXTENSIONS.get(ext)
         return _RAWIO_TO_DISPLAY.get(rawio_name, "Hardware")
 
     def get_hw_names(self, channel_map: np.ndarray | None) -> dict[int, str] | None:
@@ -1616,13 +1619,16 @@ class EphysWidget(QWidget):
         ephys_path, stream_id, _ = self.app_state.get_ephys_source()
         if not ephys_path:
             return None
-        loader = get_ephys_loader(ephys_path, stream_id)
-        if loader is None or not hasattr(loader, "channel_names"):
+        try:
+            loader = load_ephys(ephys_path, stream_id)
+        except Exception:
+            return None
+        if not hasattr(loader, "channel_names"):
             return None
         channel_names = loader.channel_names
         if channel_names is None:
             return None
-        return {int(ch): channel_names[ch] for ch in channel_map}
+        return {int(ch): channel_names[ch] if ch < len(channel_names) else f"Ch {ch}" for ch in channel_map}
 
     @staticmethod
     def _make_item(text: str, sort_value: float | None = None, user_data=None) -> QStandardItem:
@@ -2497,18 +2503,16 @@ class EphysWidget(QWidget):
             self.data_widget.update_main_plot()
 
     def _get_any_ephys_loader(self):
-        source_map = getattr(self.app_state, "ephys_source_map", {})
-        if not source_map:
+        if self._phy_reader is not None:
+            return self._phy_reader
+
+        ephys_path, stream_id, _ = self.app_state.get_ephys_source()
+        if not ephys_path:
             return None
-        filename, stream_id, _ = next(iter(source_map.values()))
-        if os.path.isabs(filename):
-            ephys_path = os.path.normpath(filename)
-        else:
-            base_ephys_path = getattr(self.app_state, "ephys_path", None)
-            if not base_ephys_path:
-                return None
-            ephys_path = os.path.normpath(os.path.join(os.path.dirname(base_ephys_path), filename))
-        return get_ephys_loader(ephys_path, stream_id)
+        try:
+            return load_ephys(ephys_path, stream_id)
+        except Exception:
+            return None
 
     # ------------------------------------------------------------------
     # Bidirectional cluster_id sync
