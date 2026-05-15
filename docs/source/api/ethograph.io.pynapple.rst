@@ -28,4 +28,3 @@
     load_nap_data
 
     parse_nwb_types
-

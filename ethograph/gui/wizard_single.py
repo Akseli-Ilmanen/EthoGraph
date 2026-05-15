@@ -223,6 +223,11 @@ class PoseFileDialog(QDialog):
         self.app_state.nc_file_path = output_path
         self.io_widget.nc_file_path_edit.setText(output_path)
 
+        nwb_path = Path(output_path).parent / ".ethograph" / "alignment.nwb"
+        if nwb_path.exists():
+            self.app_state.nwb_file_path = str(nwb_path)
+            self.io_widget.nwb_file_path_edit.setText(str(nwb_path))
+
         if video_path:
             video_folder = str(Path(video_path).parent)
             self.app_state.video_folder = video_folder

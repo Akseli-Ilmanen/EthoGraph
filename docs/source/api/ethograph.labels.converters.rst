@@ -34,4 +34,3 @@
     resolve_crowsetta_mapping
 
     write_mapping_file
-

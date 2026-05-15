@@ -180,6 +180,7 @@ def _suppress_dialogs(monkeypatch):
 
     def _noop(*a, **kw):
         return QMessageBox.Ok
+
     monkeypatch.setattr(QMessageBox, "critical", _noop)
     monkeypatch.setattr(QMessageBox, "warning", _noop)
     monkeypatch.setattr(QMessageBox, "information", _noop)

@@ -38,6 +38,3 @@
 
 
       ~PredictionsStore.load_all
-
-
-

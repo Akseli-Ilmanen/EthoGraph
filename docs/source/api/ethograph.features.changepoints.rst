@@ -36,4 +36,3 @@
     more_changepoint_features
 
     snap_to_nearest_changepoint_time
-

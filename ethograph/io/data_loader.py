@@ -399,26 +399,10 @@ def _build_source_collection_xarray(dt: TrialTree, nwb_alignment=None) -> Source
 
 
 def _wizard_ds_to_continuous_dt(ds: xr.Dataset) -> TrialTree:
-    """Wrap a single xr.Dataset as a one-trial continuous TrialTree."""
-
-    duration = eto.get_ds_duration(ds)
-    if duration is not None:
-        epochs = pd.DataFrame(
-            {
-                "trial": [1],
-                "start_time": [0.0],
-                "stop_time": [duration],
-            }
-        )
-    else:
-        epochs = pd.DataFrame(
-            {
-                "trial": [1],
-                "start_time": [0.0],
-            }
-        )
-
-    return TrialTree.from_continuous(ds, epochs)
+    """Wrap a single xr.Dataset as a one-trial TrialTree."""
+    trial_ds = ds.copy()
+    trial_ds.attrs["trial"] = 1
+    return TrialTree.from_datasets([trial_ds], validate=False)
 
 
 def _wizard_single_media_helper(
@@ -528,7 +512,7 @@ def wizard_single_from_pose(
     _wizard_single_media_helper(
         ds, video_path=video_path, pose_path=pose_path, video_offset=video_offset, nwb_dir=nwb_dir
     )
-    return _wizard_ds_to_continuous_dt(ds)
+    return ds
 
 
 def wizard_single_from_ds(
@@ -585,9 +569,8 @@ def wizard_single_from_npy_file(
         ds["video_motion"] = extract_video_motion(video_path, fps=ds.attrs["fps"], time_coord_name="time_video")
 
     nwb_dir = Path(output_nc_path).parent if output_nc_path else None
-    dt = _wizard_ds_to_continuous_dt(ds)
-    _wizard_single_media_helper(dt, video_path=video_path, video_offset=video_offset, nwb_dir=nwb_dir)
-    return dt
+    _wizard_single_media_helper(ds, video_path=video_path, video_offset=video_offset, nwb_dir=nwb_dir)
+    return ds
 
 
 def wizard_single_from_ephys(
@@ -617,16 +600,15 @@ def wizard_single_from_ephys(
         ds["video_motion"] = extract_video_motion(video_path, fps=ds.attrs["fps"], time_coord_name="time_video")
 
     nwb_dir = Path(output_nc_path).parent if output_nc_path else None
-    dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(
-        dt,
+        ds,
         video_path=video_path,
         audio_path=audio_path,
         video_offset=video_offset,
         audio_offset=audio_offset,
         nwb_dir=nwb_dir,
     )
-    return dt
+    return ds
 
 
 def wizard_single_from_video(
@@ -660,9 +642,8 @@ def wizard_single_from_video(
     )
     ds.attrs["fps"] = fps
 
-    dt = _wizard_ds_to_continuous_dt(ds)
-    _wizard_single_media_helper(dt, video_path=video_path)
-    return dt
+    _wizard_single_media_helper(ds, video_path=video_path)
+    return ds
 
 
 def wizard_single_from_audio(
@@ -692,12 +673,11 @@ def wizard_single_from_audio(
         ds["video_motion"] = extract_video_motion(video_path, fps=ds.attrs["fps"], time_coord_name="time_video")
 
     nwb_dir = Path(output_nc_path).parent if output_nc_path else None
-    dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(
-        dt,
+        ds,
         video_path=video_path,
         audio_path=audio_path,
         video_offset=video_offset,
         nwb_dir=nwb_dir,
     )
-    return dt
+    return ds

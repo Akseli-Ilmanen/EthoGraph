@@ -32,6 +32,3 @@
 
 
       ~LabelConverter.resolve_labels
-
-
-

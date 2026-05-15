@@ -50,7 +50,7 @@ autodoc_mock_imports = [
 sys.path.insert(0, os.path.abspath("../.."))
 
 project = "ethograph"
-copyright = "2022, Akseli Ilmanen"
+copyright = "2026, Akseli Ilmanen"
 author = "Akseli Ilmanen"
 release = ""
 

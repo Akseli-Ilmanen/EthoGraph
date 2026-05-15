@@ -17,13 +17,17 @@ This file lives outside the repo and is never committed.
 
 ## Steps before every push
 
-1. Fix ruff errors:
+1. Run the full check suite (same as CI) and let it auto-fix what it can:
    ```powershell
-   ruff check --fix
-   ruff format
+   pre-commit run --all-files
    ```
+   If it reports failures, run it **a second time** — pre-commit fixes files in place on the first pass, and the second run confirms everything is clean.
 
-2. Commit — pre-commit hooks run automatically and block the commit if checks fail.
+2. Commit all changes (including any files pre-commit just fixed):
+   ```powershell
+   git add -A
+   git commit -m "fix: linting"
+   ```
 
 3. Push to main:
    ```powershell
