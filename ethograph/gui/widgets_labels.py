@@ -1031,6 +1031,47 @@ class LabelsWidget(QWidget):
 
         return snapped
 
+    def _post_label_cleanup(
+        self, placed_onset: float, placed_offset: float, individual: str
+    ):
+        """Purge only the slivers ``add_interval`` just created.
+
+        Scoped cleanup: when the new interval cuts through an existing one,
+        ``add_interval`` leaves left/right remnants whose boundary touches the
+        new interval at ``±1e-3`` s.  Those remnants are the only intervals we
+        consider here — the just-placed interval and everything else in the
+        trial are left untouched.
+
+        Runs in both new-label and Ctrl+E edit mode.  To opt out of snapping
+        entirely (and therefore any boundary changes from snap), toggle
+        changepoint correction off with Ctrl+B.
+        """
+        cw = self.changepoints_widget
+        if cw is None:
+            return
+        min_duration_s, _ = cw.get_apply_label_cleanup_params()
+        if min_duration_s <= 0:
+            return
+
+        df = self.app_state.label_intervals
+        if df is None or df.empty:
+            return
+
+        eps = 1e-3
+        durations = df["offset_s"] - df["onset_s"]
+        same_ind = df["individual"] == individual
+        touches_left = np.isclose(df["offset_s"], placed_onset - eps, atol=eps / 10)
+        touches_right = np.isclose(df["onset_s"], placed_offset + eps, atol=eps / 10)
+        sliver = same_ind & (touches_left | touches_right) & (durations < min_duration_s)
+
+        to_drop = df.index[sliver].tolist()
+        if not to_drop:
+            return
+        df = df.drop(index=to_drop).reset_index(drop=True)
+        trial = self.app_state.trials_sel
+        self.app_state.set_trial_intervals(trial, df)
+        self.app_state.label_intervals = df
+
     def _apply_label(self):
         """Apply the selected label to the selected time range using intervals."""
         if self.first_click is None or self.second_click is None:
@@ -1047,7 +1088,8 @@ class LabelsWidget(QWidget):
             df = empty_intervals()
 
         # If editing, delete the old interval first
-        if self.old_labels_pos is not None:
+        was_edit = self.old_labels_pos is not None
+        if was_edit:
             if self.old_labels_pos in df.index:
                 df = delete_interval(df, self.old_labels_pos)
             self.old_labels_pos = None
@@ -1070,9 +1112,7 @@ class LabelsWidget(QWidget):
         )
         self.app_state.label_intervals = df
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
-
-        # Post purge/stich step
-        self.changepoints_widget.cp_correction_from_labelling()
+        self._post_label_cleanup(onset_s, offset_s, individual)
         df = self.app_state.label_intervals
 
         # Auto-select the newly created interval for immediate playback
@@ -1119,9 +1159,7 @@ class LabelsWidget(QWidget):
         df = add_point(df, t_clicked, self.selected_labels, individual)
         self.app_state.label_intervals = df
         self.app_state.set_trial_intervals(self.app_state.trials_sel, df)
-
-        # Post purge/stitch step
-        self.changepoints_widget.cp_correction_from_labelling()
+        # Point events don't cut through other intervals → no slivers to purge.
         df = self.app_state.label_intervals
 
         self.current_labels_pos = None  # selecting an existing point comes later
