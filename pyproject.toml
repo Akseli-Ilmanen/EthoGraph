@@ -153,6 +153,7 @@ filterwarnings = [
     "ignore:Ignoring the following cached namespace:UserWarning",
     "ignore::DeprecationWarning:pynwb",
     "ignore::DeprecationWarning:hdmf",
+    "ignore:numpy.ndarray size changed:RuntimeWarning",
 ]
 
 [tool.check-manifest]

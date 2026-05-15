@@ -1,8 +1,6 @@
 from pathlib import Path
 
-import napari
 import pytest
-from qtpy.QtWidgets import QApplication, QMessageBox
 
 import ethograph as eto
 import ethograph.utils.paths as paths_module
@@ -14,8 +12,6 @@ from ethograph.datasets import (
     is_dataset_downloaded,
     resolve_dataset_paths,
 )
-from ethograph.gui.app_state import ObservableAppState
-from ethograph.gui.widgets_meta import MetaWidget
 from ethograph.io.catalog import catalog_from_xarray
 from ethograph.utils.download import (
     build_alignment_nwb,
@@ -23,6 +19,19 @@ from ethograph.utils.download import (
     ensure_default_configs,
     write_example_configs,
 )
+
+try:
+    import napari
+    from qtpy.QtWidgets import QApplication, QMessageBox
+
+    from ethograph.gui.app_state import ObservableAppState
+    from ethograph.gui.widgets_meta import MetaWidget
+
+    GUI_AVAILABLE = True
+except ImportError:
+    GUI_AVAILABLE = False
+
+requires_gui = pytest.mark.skipif(not GUI_AVAILABLE, reason="napari/Qt not installed")
 
 
 def pytest_addoption(parser):
@@ -106,7 +115,9 @@ def _ensure_dataset(key: str):
 
 
 def pytest_configure(config):
-    """Ensure both required datasets exist before any test runs."""
+    """Download required datasets if not already present (skipped in CI without GUI)."""
+    if not GUI_AVAILABLE:
+        return
     _ensure_dataset("birdpark")
     assert BIRDPARK_NC.exists(), f"BirdPark NC not found after download: {BIRDPARK_NC}"
 
@@ -174,6 +185,8 @@ def _suppress_dialogs(monkeypatch):
 
     Also patches QMessageBox as a safety net for any direct callers.
     """
+    if not GUI_AVAILABLE:
+        return
     import ethograph.gui.notify as _notify_mod
 
     monkeypatch.setattr(_notify_mod, "SUPPRESS", True)
@@ -192,6 +205,7 @@ def _suppress_dialogs(monkeypatch):
 
 
 @pytest.fixture
+@requires_gui
 def gui(request, qtbot, tmp_path, monkeypatch):
     show = request.config.getoption("--show")
 

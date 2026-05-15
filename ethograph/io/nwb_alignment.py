@@ -476,11 +476,13 @@ class NWBAlignment:
             return False
         if len(starts) > 1 and starts.nunique() > 1:
             return True
-        # Single unique start: check if stop_time varies or is > start + 1.001
+        # Single unique start: check if stop_time varies or any duration > 1.001
         if "stop_time" in df.columns:
             stops = df["stop_time"].dropna()
             durations = stops - starts.iloc[0]
             if durations.nunique() > 1:
+                return True
+            if (durations > 1.001).any():
                 return True
         return False
 
