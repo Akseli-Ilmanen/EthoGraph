@@ -95,7 +95,7 @@ click it again and choose **Remove filter** to clear it.
 Filtered-out trials are hidden in the table and removed from the trial
 navigator — the *Previous / Next trial* buttons and the trial slider skip them.
 The set of visible trials is updated live whenever a filter changes. **Note**:
-Operations such as changepoint corrrection across trials, or purging short labels
+Operations such as changepoint correction across trials, or purging short labels
 are applied only to filtered trials.
 
 

@@ -25,7 +25,7 @@ Import predictions from action segmentation models (DLC2Action, ASFormer, MS-TCN
 
 ### More sophisticated changepoint detection
 
-Current methods are fast (gradient based, RMS-based, etc.), but could also use ML for detection. Important that it's easily reproducable, so it represents a reliable feature in feature space. Sometimes the changepoint correction post-model output makes things worse, transformer learns better representation than simple gradient based methods.
+Current methods are fast (gradient based, RMS-based, etc.), but could also use ML for detection. Important that it's easily reproducible, so it represents a reliable feature in feature space. Sometimes the changepoint correction post-model output makes things worse, transformer learns better representation than simple gradient based methods.
 
 ### Changepoint features
 
