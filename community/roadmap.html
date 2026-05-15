@@ -419,8 +419,10 @@
 <p>Currently this is still more of a collection of notes, than a roadmap.</p>
 <section id="improved-interop-with-segmentation-models">
 <h2>Improved interop. with segmentation models:<a class="headerlink" href="#improved-interop-with-segmentation-models" title="Link to this heading">#</a></h2>
-<p>PPT during Movement community call: <a class="reference external" href="https://neuroinformatics.zulipchat.com/user_uploads/58792/jV4lyzfLheHU4Gj4qCQkKzwy/2026_04-Ethograph-demo.pptx">https://neuroinformatics.zulipchat.com/user_uploads/58792/jV4lyzfLheHU4Gj4qCQkKzwy/2026_04-Ethograph-demo.pptx</a>
-Git discussion on schema for segmentation feature data: <a class="github reference external" href="https://github.com/EthoML/VAME/issues/189#issuecomment-4425518919">EthoML/VAME#189</a></p>
+<ul class="simple">
+<li><p>Movement community call (April 2026): <a class="reference external" href="https://neuroinformatics.zulipchat.com/user_uploads/58792/jV4lyzfLheHU4Gj4qCQkKzwy/2026_04-Ethograph-demo.pptx">PPT slides</a></p></li>
+<li><p>Discussion on schema for segmentation feature data: <a class="github reference external" href="https://github.com/EthoML/VAME/issues/189#issuecomment-4425518919">EthoML/VAME#189</a></p></li>
+</ul>
 <section id="import-predictions-from-action-segmentation-models">
 <h3>Import predictions from action segmentation models<a class="headerlink" href="#import-predictions-from-action-segmentation-models" title="Link to this heading">#</a></h3>
 <p>Import predictions from action segmentation models (DLC2Action, ASFormer, MS-TCN) directly in the GUI. Per-trial prediction files (<code class="docutils literal notranslate"><span class="pre">.npy</span></code>/<code class="docutils literal notranslate"><span class="pre">.pickle</span></code>) with shape <code class="docutils literal notranslate"><span class="pre">(T,</span> <span class="pre">n_classes)</span></code> or <code class="docutils literal notranslate"><span class="pre">(T,)</span></code> will be converted to label intervals with confidence overlay (1 - entropy of classwise softmax).</p>

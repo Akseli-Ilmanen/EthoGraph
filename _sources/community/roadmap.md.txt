@@ -5,8 +5,8 @@ Currently this is still more of a collection of notes, than a roadmap.
 
 ## Improved interop. with segmentation models:
 
-PPT during Movement community call: https://neuroinformatics.zulipchat.com/user_uploads/58792/jV4lyzfLheHU4Gj4qCQkKzwy/2026_04-Ethograph-demo.pptx
-Git discussion on schema for segmentation feature data: https://github.com/EthoML/VAME/issues/189#issuecomment-4425518919
+- Movement community call (April 2026): [PPT slides](https://neuroinformatics.zulipchat.com/user_uploads/58792/jV4lyzfLheHU4Gj4qCQkKzwy/2026_04-Ethograph-demo.pptx)
+- Discussion on schema for segmentation feature data: https://github.com/EthoML/VAME/issues/189#issuecomment-4425518919
 
 ### Import predictions from action segmentation models
 Import predictions from action segmentation models (DLC2Action, ASFormer, MS-TCN) directly in the GUI. Per-trial prediction files (`.npy`/`.pickle`) with shape `(T, n_classes)` or `(T,)` will be converted to label intervals with confidence overlay (1 - entropy of classwise softmax).
