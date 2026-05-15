@@ -1031,9 +1031,7 @@ class LabelsWidget(QWidget):
 
         return snapped
 
-    def _post_label_cleanup(
-        self, placed_onset: float, placed_offset: float, individual: str
-    ):
+    def _post_label_cleanup(self, placed_onset: float, placed_offset: float, individual: str):
         """Purge only the slivers ``add_interval`` just created.
 
         Scoped cleanup: when the new interval cuts through an existing one,

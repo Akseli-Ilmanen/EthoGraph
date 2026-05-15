@@ -124,7 +124,7 @@ ethograph/io/
     trialtree.py              # TrialTree (xr.DataTree subclass)
     time_model.py             # TimeRange, RestrictionWindow, TrialAlignment, TimeSource, SourceCollection, restriction builders
     time_sources.py           # Concrete adapters: XarrayTrialSource, PynappleSource
-    dataset.py                # dataset_to_basic_trialtree, downsample_trialtree
+    dataset.py                # downsample_trialtree
     validation.py             # validate_datatree, extract_type_vars (delegates to catalog)
     pynapple.py               # Pynapple/NWB loading: load_nap_data, detect_trials, changepoint helpers
 

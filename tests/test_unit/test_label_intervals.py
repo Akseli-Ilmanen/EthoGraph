@@ -3,8 +3,8 @@
 import numpy as np
 import pandas as pd
 import pytest
-import xarray as xr
 
+from ethograph.features.changepoints import correct_changepoints
 from ethograph.labels.intervals import (
     add_interval,
     delete_interval,
@@ -16,13 +16,11 @@ from ethograph.labels.intervals import (
     stitch_intervals,
 )
 from ethograph.labels.ml import dense_to_intervals, intervals_to_dense
-from ethograph.features.changepoints import correct_changepoints, correct_changepoints_automatic
-import numpy as np
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def sample_dense():
@@ -50,6 +48,7 @@ def sample_intervals():
 # empty_intervals
 # ---------------------------------------------------------------------------
 
+
 class TestEmptyIntervals:
     def test_columns(self):
         df = empty_intervals()
@@ -63,6 +62,7 @@ class TestEmptyIntervals:
 # ---------------------------------------------------------------------------
 # dense_to_intervals
 # ---------------------------------------------------------------------------
+
 
 class TestDenseToIntervals:
     def test_basic(self, sample_dense):
@@ -89,9 +89,7 @@ class TestDenseToIntervals:
         assert df.iloc[0]["offset_s"] == 1.0
 
     def test_multi_individual(self):
-        arr = np.array(
-            [[1, 0], [1, 2], [0, 2], [0, 0]], dtype=np.int8
-        )
+        arr = np.array([[1, 0], [1, 2], [0, 2], [0, 0]], dtype=np.int8)
         time = np.arange(4) * 0.25
         df = dense_to_intervals(arr, ["a", "b"], time_coord=time)
         assert len(df) == 2
@@ -106,6 +104,7 @@ class TestDenseToIntervals:
 # ---------------------------------------------------------------------------
 # intervals_to_dense
 # ---------------------------------------------------------------------------
+
 
 class TestIntervalsToDense:
     def test_basic(self, sample_intervals):
@@ -124,9 +123,7 @@ class TestIntervalsToDense:
         assert np.all(dense == 0)
 
     def test_unknown_individual_ignored(self):
-        df = pd.DataFrame(
-            {"onset_s": [0.0], "offset_s": [0.5], "labels": [1], "individual": ["unknown"]}
-        )
+        df = pd.DataFrame({"onset_s": [0.0], "offset_s": [0.5], "labels": [1], "individual": ["unknown"]})
         dense = intervals_to_dense(df, 10.0, ["bird1"], n_samples=11)
         assert np.all(dense == 0)
 
@@ -134,6 +131,7 @@ class TestIntervalsToDense:
 # ---------------------------------------------------------------------------
 # Round-trip dense -> intervals -> dense
 # ---------------------------------------------------------------------------
+
 
 class TestRoundTrip:
     def test_round_trip(self, sample_dense):
@@ -144,9 +142,7 @@ class TestRoundTrip:
         np.testing.assert_array_equal(arr.flatten(), reconstructed.flatten())
 
     def test_round_trip_multi_individual(self):
-        arr = np.array(
-            [[1, 0], [1, 2], [1, 2], [0, 2], [0, 0]], dtype=np.int8
-        )
+        arr = np.array([[1, 0], [1, 2], [1, 2], [0, 2], [0, 0]], dtype=np.int8)
         time = np.arange(5) * 0.1
         inds = ["a", "b"]
         df = dense_to_intervals(arr, inds, time_coord=time)
@@ -155,10 +151,10 @@ class TestRoundTrip:
         np.testing.assert_array_equal(arr, reconstructed)
 
 
-
 # ---------------------------------------------------------------------------
 # add_interval
 # ---------------------------------------------------------------------------
+
 
 class TestAddInterval:
     def test_add_no_overlap(self):
@@ -207,6 +203,7 @@ class TestAddInterval:
 # delete_interval
 # ---------------------------------------------------------------------------
 
+
 class TestDeleteInterval:
     def test_delete(self):
         df = add_interval(empty_intervals(), 1.0, 2.0, 1, "bird1")
@@ -219,6 +216,7 @@ class TestDeleteInterval:
 # ---------------------------------------------------------------------------
 # find_interval_at
 # ---------------------------------------------------------------------------
+
 
 class TestFindIntervalAt:
     def test_find(self, sample_intervals):
@@ -242,6 +240,7 @@ class TestFindIntervalAt:
 # get_interval_bounds
 # ---------------------------------------------------------------------------
 
+
 class TestGetIntervalBounds:
     def test_bounds(self, sample_intervals):
         onset, offset, lid = get_interval_bounds(sample_intervals, 0)
@@ -253,6 +252,7 @@ class TestGetIntervalBounds:
 # ---------------------------------------------------------------------------
 # purge_short_intervals
 # ---------------------------------------------------------------------------
+
 
 class TestPurgeShortIntervals:
     def test_purge(self):
@@ -273,6 +273,7 @@ class TestPurgeShortIntervals:
 # ---------------------------------------------------------------------------
 # stitch_intervals
 # ---------------------------------------------------------------------------
+
 
 class TestStitchIntervals:
     def test_stitch(self):
@@ -298,6 +299,7 @@ class TestStitchIntervals:
 # ---------------------------------------------------------------------------
 # snap_boundaries
 # ---------------------------------------------------------------------------
+
 
 class TestSnapBoundaries:
     def test_snap_to_nearest_cp(self):
@@ -361,13 +363,14 @@ class TestSnapBoundaries:
 # correct_changepoints (only stich/purge, snapping done in integrationt test)
 # ---------------------------------------------------------------------------
 
-class TestCorrectChangepoints:
 
+class TestCorrectChangepoints:
     def test_per_label_thresholds(self):
         df = add_interval(empty_intervals(), 1.0, 1.08, 1, "bird1")  # 80ms
         df = add_interval(df, 2.0, 2.08, 2, "bird1")  # 80ms
         result = correct_changepoints(
-            df, np.array([1.0, 1.08, 2.0, 2.08]),
+            df,
+            np.array([1.0, 1.08, 2.0, 2.08]),
             min_duration_s=0.05,
             stitch_gap_s=0.1,
             max_expansion_s=0.5,
@@ -376,7 +379,3 @@ class TestCorrectChangepoints:
         )
         assert len(result) == 1
         assert result.iloc[0]["labels"] == 1
-
-
-
-

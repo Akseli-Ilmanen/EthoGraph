@@ -44,13 +44,13 @@ from ethograph.utils.qt import (
     set_combo_to_value,
 )
 
+from ..io.ephys_loader import load_ephys
 from .app_constants import (
     DEFAULT_LAYOUT_MARGIN,
     DEFAULT_LAYOUT_SPACING,
     SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
 )
 from .make_pretty import clean_display_labels
-from .plots_ephystrace import get_loader as get_ephys_loader
 from .plots_space import SpacePlot
 from .plots_spectrogram import SharedAudioCache
 from .pose_render import (
@@ -1438,8 +1438,8 @@ class DataWidget(QWidget):
 
             # Grey out streams matching kilosort params
             if ks_params:
-                loader = get_ephys_loader(filepath, stream_id)
-                if loader is not None:
+                try:
+                    loader = load_ephys(filepath, stream_id)
                     ks_sr = ks_params.get("sample_rate", 0)
                     ks_nch = ks_params.get("n_channels_dat", 0)
                     if loader.n_channels == ks_nch and abs(loader.rate - ks_sr) < 1.0:
@@ -1448,6 +1448,8 @@ class DataWidget(QWidget):
                         item = model.item(idx)
                         if item:
                             item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
+                except Exception:
+                    pass
 
         self.neo_stream_combo.blockSignals(False)
 
@@ -1486,16 +1488,17 @@ class DataWidget(QWidget):
             return
 
         filepath, stream_id, channel_idx = source_map[stream_name]
-        loader = get_ephys_loader(filepath, stream_id)
-        if loader is None:
+        try:
+            loader = load_ephys(filepath, stream_id)
+        except Exception:
             return
 
-        self.app_state.ephys_stream_id = stream_id
+        self.app_state.ephys_stream_sel = stream_name
 
         neo_plot = self.plot_container.neo_trace_plot
         neo_plot.set_loader(loader, channel_idx)
 
-        neo_plot.set_source(FileSource("neo", loader, start_time=0.0))
+        neo_plot.set_source(FileSource("neo", loader, start_time=getattr(loader, "starting_time", 0.0)))
 
         if self.plot_container._panel_visible["neo"]:
             xmin, xmax = self.plot_container.get_current_xlim()

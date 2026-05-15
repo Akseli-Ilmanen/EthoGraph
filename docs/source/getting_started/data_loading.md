@@ -176,7 +176,7 @@ my_project/
     |
     ├── session_labels.tsv             # Session labels
     ├── session_metadata.tsv           # Trial-level metadata
-    │    
+    │
     ├── .ethograph/
     │   ├── alignment.nwb              # inherit/overwrite alignment in session.nwb
     │   └── local_settings.yaml        # Session-specific GUI state

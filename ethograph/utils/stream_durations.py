@@ -95,9 +95,9 @@ def get_pose_duration(path: str, fps: float) -> float | None:
 
 def get_ephys_duration(path: str) -> float | None:
     try:
-        from ethograph.gui.plots_ephystrace import GenericEphysLoader
+        from ethograph.io.ephys_loader import load_ephys
 
-        loader = GenericEphysLoader(path)
+        loader = load_ephys(path)
         return len(loader) / loader.rate
     except Exception:
         pass

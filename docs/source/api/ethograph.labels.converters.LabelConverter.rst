@@ -7,31 +7,31 @@
    :members:
    :show-inheritance:
 
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
 
-   
+
+
+
+
+
+
+
+
+
+
+
+
+
    .. rubric:: Methods
 
    .. autosummary::
 
-   
-   
-   
+
+
+
       ~LabelConverter.extract
-   
-   
+
+
       ~LabelConverter.resolve_labels
-   
-   
-   
+
+
+

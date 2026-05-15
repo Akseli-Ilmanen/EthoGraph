@@ -9,6 +9,7 @@ if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
 import napari
+
 from ethograph.gui.widgets_meta import MetaWidget
 
 

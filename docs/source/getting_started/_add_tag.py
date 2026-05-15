@@ -1,4 +1,5 @@
 """Add hide-input tag to cell-11 metadata."""
+
 import json
 from pathlib import Path
 

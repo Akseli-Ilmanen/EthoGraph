@@ -6,7 +6,6 @@ from qtpy.QtWidgets import QApplication, QMessageBox
 
 import ethograph as eto
 import ethograph.utils.paths as paths_module
-from ethograph.gui.app_state import ObservableAppState
 from ethograph.datasets import (
     DATASETS,
     DOWNLOAD_BASE,
@@ -15,6 +14,7 @@ from ethograph.datasets import (
     is_dataset_downloaded,
     resolve_dataset_paths,
 )
+from ethograph.gui.app_state import ObservableAppState
 from ethograph.gui.widgets_meta import MetaWidget
 from ethograph.io.catalog import catalog_from_xarray
 from ethograph.utils.download import (
@@ -90,6 +90,7 @@ def _load_template_gui(gui, key: str, downsample: bool = False):
 # Dataset download — runs once per session
 # ---------------------------------------------------------------------------
 
+
 def _ensure_dataset(key: str):
     """Download example dataset if not already present."""
     if not is_dataset_downloaded(key):
@@ -116,6 +117,7 @@ def pytest_configure(config):
 # ---------------------------------------------------------------------------
 # Data fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def moll2025_nc_path() -> str:
@@ -165,6 +167,7 @@ def app_state(qtbot, tmp_path):
 # Dialog suppression
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def _suppress_dialogs(monkeypatch):
     """Suppress all GUI popups during tests via the SUPPRESS flag.
@@ -184,6 +187,7 @@ def _suppress_dialogs(monkeypatch):
 # ---------------------------------------------------------------------------
 # GUI fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def gui(request, qtbot, tmp_path, monkeypatch):
@@ -207,7 +211,6 @@ def gui(request, qtbot, tmp_path, monkeypatch):
     if show:
         qtbot.wait(15_000)
     viewer.close()
-
 
 
 @pytest.fixture
@@ -301,6 +304,7 @@ def moll2025_pynapple_gui(gui, qtbot):
         pytest.skip("Moll2025_pynapple not set up")
     if not alignment.exists():
         from ethograph.utils.download import setup_moll2025_pynapple
+
         setup_moll2025_pynapple(npz_dir)
     assert alignment.exists(), f"alignment.nwb not found at {alignment}"
 

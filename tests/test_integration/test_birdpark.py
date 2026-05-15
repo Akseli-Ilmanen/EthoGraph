@@ -7,19 +7,17 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
-import pytest
+import pynwb
 import pyqtgraph as pg
+import pytest
 from qtpy.QtWidgets import QApplication
 
-import pynwb
-
-import ethograph as eto
 from ethograph.io.trialtree import TrialTree
-
 
 # ---------------------------------------------------------------------------
 # Plot content helpers
 # ---------------------------------------------------------------------------
+
 
 def _get_curve_data(plot_items):
     for item in plot_items:
@@ -51,14 +49,20 @@ def _assert_spectrogram_has_data(spec_plot):
 # Widget creation (no data loaded)
 # ===================================================================
 
-class TestMetaWidgetCreation:
 
+class TestMetaWidgetCreation:
     def test_widget_initialization(self, gui):
         _, meta = gui
         for attr in (
-            "app_state", "plot_container", "data_widget", "io_widget",
-            "labels_widget", "navigation_widget", "changepoints_widget",
-            "plot_settings_widget", "ephys_widget",
+            "app_state",
+            "plot_container",
+            "data_widget",
+            "io_widget",
+            "labels_widget",
+            "navigation_widget",
+            "changepoints_widget",
+            "plot_settings_widget",
+            "ephys_widget",
         ):
             assert getattr(meta, attr) is not None
 
@@ -70,8 +74,8 @@ class TestMetaWidgetCreation:
 # Template loading basics
 # ===================================================================
 
-class TestBirdParkLoading:
 
+class TestBirdParkLoading:
     def test_state_after_load(self, birdpark_gui):
         _, meta = birdpark_gui
         state = meta.app_state
@@ -136,8 +140,8 @@ class TestBirdParkLoading:
 # Combo interactions
 # ===================================================================
 
-class TestComboInteractions:
 
+class TestComboInteractions:
     def test_change_feature_selection(self, birdpark_gui):
         _, meta = birdpark_gui
         features_combo = meta.data_widget.combos["features"]
@@ -170,13 +174,12 @@ class TestComboInteractions:
             assert meta.app_state.features_sel == text
 
 
-
 # ===================================================================
 # Trial navigation
 # ===================================================================
 
-class TestTrialNavigation:
 
+class TestTrialNavigation:
     def test_next_trial(self, birdpark_gui):
         _, meta = birdpark_gui
         if len(meta.app_state.trials) < 2:
@@ -217,8 +220,8 @@ class TestTrialNavigation:
 # Labels (basic — no mappings needed)
 # ===================================================================
 
-class TestLabelsWidget:
 
+class TestLabelsWidget:
     def test_changes_saved_initially_true(self, birdpark_gui):
         _, meta = birdpark_gui
         assert meta.app_state.changes_saved is True
@@ -238,8 +241,8 @@ class TestLabelsWidget:
 # Downsampled data
 # ===================================================================
 
-class TestDownsampledData:
 
+class TestDownsampledData:
     DOWNSAMPLE_FACTOR = 100
 
     def test_downsample_by_100(self, birdpark_gui_downsampled):
@@ -279,8 +282,8 @@ class TestDownsampledData:
 # Plot content after load
 # ===================================================================
 
-class TestPlotPopulatedAfterLoad:
 
+class TestPlotPopulatedAfterLoad:
     def test_lineplot_has_data(self, birdpark_gui):
         _, meta = birdpark_gui
         pc = meta.plot_container
@@ -320,8 +323,8 @@ class TestPlotPopulatedAfterLoad:
 # Trial switch updates plot
 # ===================================================================
 
-class TestTrialSwitchUpdatesPlot:
 
+class TestTrialSwitchUpdatesPlot:
     def test_lineplot_data_changes_on_trial_switch(self, moll2025_gui):
         _, meta = moll2025_gui
         if len(meta.app_state.trials) < 2:
@@ -360,8 +363,8 @@ class TestTrialSwitchUpdatesPlot:
 # Feature switch updates plot
 # ===================================================================
 
-class TestFeatureSwitchUpdatesPlot:
 
+class TestFeatureSwitchUpdatesPlot:
     def test_switching_feature_changes_plot_data(self, moll2025_gui):
         _, meta = moll2025_gui
         features_combo = meta.data_widget.combos["features"]
@@ -411,8 +414,8 @@ class TestFeatureSwitchUpdatesPlot:
 # Heatmap mode
 # ===================================================================
 
-class TestHeatmapMode:
 
+class TestHeatmapMode:
     def test_switch_to_heatmap_renders_image(self, birdpark_gui):
         _, meta = birdpark_gui
         pc = meta.plot_container
@@ -454,8 +457,8 @@ class TestHeatmapMode:
 # Pan / zoom — buffer reload
 # ===================================================================
 
-class TestPanZoom:
 
+class TestPanZoom:
     def test_zoom_in_preserves_data(self, birdpark_gui):
         _, meta = birdpark_gui
         lp = meta.plot_container.line_plot
@@ -510,8 +513,8 @@ class TestPanZoom:
 # Time axes alignment
 # ===================================================================
 
-class TestTimeAxesAlignment:
 
+class TestTimeAxesAlignment:
     def test_time_axes_aligned(self, birdpark_gui):
         _, meta = birdpark_gui
         pc = meta.plot_container
@@ -544,8 +547,8 @@ class TestTimeAxesAlignment:
 # Hidden panels
 # ===================================================================
 
-class TestHiddenPanelsNoData:
 
+class TestHiddenPanelsNoData:
     def _toggle_panel(self, meta, name, checked):
         cb = getattr(meta.data_widget, f"{name}_checkbox")
         cb.setChecked(checked)
@@ -657,10 +660,11 @@ class TestHiddenPanelsNoData:
 # Panel container basics
 # ===================================================================
 
-class TestPanelContainerBasics:
 
+class TestPanelContainerBasics:
     def test_container_is_unified(self, birdpark_gui):
         from ethograph.gui.plots_container import UnifiedPanelContainer
+
         _, meta = birdpark_gui
         assert isinstance(meta.plot_container, UnifiedPanelContainer)
 
@@ -702,11 +706,13 @@ _FPS = 47.68
 
 
 def _make_epochs(n_trials: int = 3, chunk: float = 20.0) -> pd.DataFrame:
-    return pd.DataFrame({
-        "trial": list(range(1, n_trials + 1)),
-        "start_time": [i * chunk for i in range(n_trials)],
-        "stop_time": [(i + 1) * chunk for i in range(n_trials)],
-    })
+    return pd.DataFrame(
+        {
+            "trial": list(range(1, n_trials + 1)),
+            "start_time": [i * chunk for i in range(n_trials)],
+            "stop_time": [(i + 1) * chunk for i in range(n_trials)],
+        }
+    )
 
 
 def _make_alignment_nwb(epochs: pd.DataFrame, output_dir: Path) -> Path:
@@ -765,7 +771,6 @@ def _make_alignment_nwb(epochs: pd.DataFrame, output_dir: Path) -> Path:
 
 
 class TestFromContinuous:
-
     def test_continuous_trial_slicing(self, birdpark_gui):
         _, meta = birdpark_gui
         ds = meta.app_state.dt.itrial(0)
@@ -790,6 +795,7 @@ class TestFromContinuous:
         dt = TrialTree.from_continuous(ds, epochs)
         nwb_path = _make_alignment_nwb(epochs, tmp_path)
         from ethograph.io.nwb_alignment import make_nwb_alignment
+
         dt.nwb_alignment = make_nwb_alignment(nwb_path)
         sio = dt.nwb_alignment
         assert sio.cameras == ["cam-1"]
@@ -821,6 +827,7 @@ class TestFromContinuous:
 
     def test_pynapple_epochs(self, birdpark_gui):
         import pynapple as nap
+
         _, meta = birdpark_gui
         ds = meta.app_state.dt.itrial(0)
         ep = nap.IntervalSet(start=[0.01, 20.01, 40.01], end=[19.99, 39.99, 59.99])
@@ -844,6 +851,7 @@ class TestFromContinuous:
         dt = TrialTree.from_continuous(ds, epochs)
         nwb_path = _make_alignment_nwb(epochs, tmp_path)
         from ethograph.io.nwb_alignment import make_nwb_alignment
+
         dt.nwb_alignment = make_nwb_alignment(nwb_path)
         for trial_id in [1, 2, 3]:
             trial_ds = dt.trial(trial_id)

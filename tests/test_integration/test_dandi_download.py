@@ -4,9 +4,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from dandi.download import DownloadExisting, download
-
 
 DANDISET_ID = "001771"
 ASSET_PATH = "sub-Neuropixels1-Rat1/sub-Neuropixels1-Rat1_ses-2026-02-13-1_image.nwb"
@@ -22,11 +20,11 @@ def test_dandi_download_single_session():
 
         downloaded = Path(tmpdir) / EXPECTED_FILENAME
         assert downloaded.exists(), (
-            f"Expected {downloaded} but found: "
-            f"{[p.name for p in Path(tmpdir).rglob('*') if p.is_file()]}"
+            f"Expected {downloaded} but found: {[p.name for p in Path(tmpdir).rglob('*') if p.is_file()]}"
         )
         assert downloaded.stat().st_size > 1_000_000, "File too small, likely incomplete"
 
         import h5py
+
         with h5py.File(downloaded, "r") as f:
             assert "processing" in f, "Not a valid NWB file"

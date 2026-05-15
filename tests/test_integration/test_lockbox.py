@@ -1,11 +1,9 @@
 """Lockbox integration tests: multi-camera, camera combos, trial navigation."""
 
-import pytest
 from qtpy.QtWidgets import QApplication
 
 
 class TestLockbox:
-
     def test_state_after_load(self, lockbox_gui):
         _, meta = lockbox_gui
         s = meta.app_state

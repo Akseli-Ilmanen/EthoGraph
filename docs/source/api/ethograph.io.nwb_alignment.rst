@@ -12,13 +12,13 @@
     :toctree:
     :nosignatures:
 
-    
+
     EmpytAlignment
-    
+
     NWBAlignment
-    
+
     TableAlignment
-    
+
 
 
 
@@ -29,19 +29,18 @@
     :toctree:
     :nosignatures:
 
-    
+
     align_media_from_streams
-    
+
     align_media_per_trial
-    
+
     discover_nwb
-    
+
     edit_nwb
-    
+
     make_nwb_alignment
-    
+
     sync_acquisition_for_streams
-    
+
     update_trials_columns
-    
 

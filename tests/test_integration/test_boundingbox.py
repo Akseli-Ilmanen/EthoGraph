@@ -1,24 +1,19 @@
 """Integration test: movement bounding-box sample data through the wizard pipeline"""
 
 import warnings
-from pathlib import Path
 
-import numpy as np
 import pytest
 import xarray as xr
-
 from movement.napari.convert import ds_to_napari_layers
 from movement.sample_data import fetch_dataset
 
-import ethograph as eto
+from ethograph.gui.pose_render import PoseRenderData, load_pose_from_file
 from ethograph.io.data_loader import wizard_single_from_pose
-from ethograph.gui.pose_render import load_pose_from_file, PoseRenderData
-from ethograph.io.trialtree import TrialTree
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _fetch_crab_dataset():
     """Fetch the VIA single-crab bounding-box sample dataset."""
@@ -39,14 +34,13 @@ def _safe_to_netcdf(obj, path):
         pytest.skip("netCDF4/numpy binary incompatibility in this env")
 
 
-
 # ===================================================================
 # Wizard pipeline: fetch → wizard_single_from_pose → TrialTree
 # ===================================================================
 
+
 class TestWizardBBoxPipeline:
     """Load bbox data through wizard_single_from_pose using source_file from attrs."""
-
 
     def test_wizard_trialtree_netcdf_roundtrip(self, tmp_path):
         ds = _fetch_crab_dataset()
@@ -58,7 +52,7 @@ class TestWizardBBoxPipeline:
         )
         trial_ds = dt.itrial(0)
         assert "position" in trial_ds.data_vars
-        assert "shape" in trial_ds.data_vars        
+        assert "shape" in trial_ds.data_vars
 
         nc_out = tmp_path / "crab_trial.nc"
         _safe_to_netcdf(dt, nc_out)
@@ -68,9 +62,11 @@ class TestWizardBBoxPipeline:
         assert "position" in ds.data_vars
         assert "shape" in ds.data_vars
 
+
 # ===================================================================
 # Bounding-box rendering: ds_to_napari_layers produces bbox_data
 # ===================================================================
+
 
 class TestBBoxRendering:
     """Verify that bounding boxes are produced for napari display."""
@@ -107,4 +103,3 @@ class TestBBoxRendering:
         assert pr.data_not_nan.dtype == bool
         assert len(pr.data_not_nan) == len(pr.data)
         assert len(pr.data_not_nan) == len(pr.bbox_data)
-

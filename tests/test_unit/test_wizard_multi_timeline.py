@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import pytest
 from qtpy.QtWidgets import QApplication
@@ -21,6 +20,7 @@ XX_CSV = DATA_DIR / "xx.csv"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_state(trial_table: pd.DataFrame, files_aligned: bool = False) -> WizardState:
     state = WizardState()
@@ -38,8 +38,8 @@ def _skip_if_not_downloaded(key: str):
 # _normalize_trial_key
 # ---------------------------------------------------------------------------
 
-class TestNormalizeTrialKey:
 
+class TestNormalizeTrialKey:
     def test_integer_passthrough(self):
         assert _normalize_trial_key(3) == 3
 
@@ -62,6 +62,7 @@ class TestNormalizeTrialKey:
 # ---------------------------------------------------------------------------
 # TimelinePage — smoke tests with xx.csv trial table
 # ---------------------------------------------------------------------------
+
 
 class TestTimelinePageXxCsv:
     """Smoke tests: populate_from_state must not crash and must set _total_duration."""
@@ -129,8 +130,8 @@ class TestTimelinePageXxCsv:
 # NaN resilience — regression for the ValueError crash
 # ---------------------------------------------------------------------------
 
-class TestTimelinePageNaN:
 
+class TestTimelinePageNaN:
     @pytest.fixture
     def page(self, qtbot):
         w = TimelinePage()
@@ -141,22 +142,26 @@ class TestTimelinePageNaN:
 
     def test_nan_stop_time_does_not_crash(self, page):
         """NaN stop_time must not raise ValueError from pyqtgraph setXRange."""
-        df = pd.DataFrame({
-            "start_time": [0.0, 5.0, float("nan")],
-            "stop_time": [float("nan"), 10.0, float("nan")],
-            "trial": [1, 2, 3],
-        })
+        df = pd.DataFrame(
+            {
+                "start_time": [0.0, 5.0, float("nan")],
+                "stop_time": [float("nan"), 10.0, float("nan")],
+                "trial": [1, 2, 3],
+            }
+        )
         state = _make_state(df, files_aligned=False)
         page.populate_from_state(state)
         QApplication.processEvents()
 
     def test_nan_stop_time_duration_from_finite_rows(self, page):
         """When some stop_times are NaN, _total_duration uses the largest finite value."""
-        df = pd.DataFrame({
-            "start_time": [0.0, 5.0],
-            "stop_time": [float("nan"), 10.0],
-            "trial": [1, 2],
-        })
+        df = pd.DataFrame(
+            {
+                "start_time": [0.0, 5.0],
+                "stop_time": [float("nan"), 10.0],
+                "trial": [1, 2],
+            }
+        )
         state = _make_state(df, files_aligned=False)
         page.populate_from_state(state)
         QApplication.processEvents()
@@ -165,11 +170,13 @@ class TestTimelinePageNaN:
 
     def test_all_nan_stop_times_keeps_default_duration(self, page):
         """All-NaN stop_times: _total_duration stays at 1.0 (constructor default)."""
-        df = pd.DataFrame({
-            "start_time": [0.0, 5.0],
-            "stop_time": [float("nan"), float("nan")],
-            "trial": [1, 2],
-        })
+        df = pd.DataFrame(
+            {
+                "start_time": [0.0, 5.0],
+                "stop_time": [float("nan"), float("nan")],
+                "trial": [1, 2],
+            }
+        )
         state = _make_state(df, files_aligned=False)
         page.populate_from_state(state)
         QApplication.processEvents()
@@ -192,6 +199,7 @@ class TestTimelinePageNaN:
 # With real moll2025 video files
 # ---------------------------------------------------------------------------
 
+
 class TestTimelinePageMoll2025:
     """Integration smoke tests using actual Moll2025 template files."""
 
@@ -211,8 +219,6 @@ class TestTimelinePageMoll2025:
             pytest.skip("no .mp4 files in moll2025 dataset")
 
         trial_table = pd.read_csv(XX_CSV)
-
-        from ethograph.gui.wizard_media_files import FilePattern
 
         state = WizardState()
         state.trial_table = trial_table

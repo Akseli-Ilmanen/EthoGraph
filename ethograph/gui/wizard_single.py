@@ -205,6 +205,7 @@ class PoseFileDialog(QDialog):
                 pose_path=pose_path,
                 source_software=software,
                 video_offset=video_offset,
+                output_nc_path=output_path,
             )
             dt.to_netcdf(output_path)
 
@@ -365,7 +366,9 @@ class XarrayDatasetDialog(QDialog):
 
         try:
             ds = xr.open_dataset(dataset_path, engine="netcdf4")
-            dt = wizard_single_from_ds(video_path=video_path, ds=ds, video_offset=video_offset)
+            dt = wizard_single_from_ds(
+                video_path=video_path, ds=ds, video_offset=video_offset, output_nc_path=output_path
+            )
             dt.to_netcdf(output_path)
 
             self._populate_io_fields(output_path, video_path)
@@ -562,6 +565,7 @@ class AudioFileDialog(QDialog):
                 individuals=individuals,
                 video_motion=video_motion,
                 video_offset=video_offset,
+                output_nc_path=output_path,
             )
             dt.to_netcdf(output_path)
 
@@ -758,6 +762,7 @@ class NpyFileDialog(QDialog):
                 individuals=individuals,
                 video_motion=video_motion,
                 video_offset=video_offset,
+                output_nc_path=output_path,
             )
             dt.to_netcdf(output_path)
 
@@ -977,10 +982,10 @@ class EphysFileDialog(QDialog):
 
     def _probe_ephys_file(self, path: str):
         """Probe the ephys file to auto-detect SR and channels."""
-        from ethograph.gui.plots_ephystrace import GenericEphysLoader
-
         try:
-            loader = GenericEphysLoader(path)
+            from ethograph.io.ephys_loader import load_ephys
+
+            loader = load_ephys(path)
         except ValueError:
             return
 
@@ -1093,6 +1098,7 @@ class EphysFileDialog(QDialog):
                 video_motion=video_motion,
                 video_offset=video_offset,
                 audio_offset=audio_offset,
+                output_nc_path=output_path,
             )
 
             dt.to_netcdf(output_path)

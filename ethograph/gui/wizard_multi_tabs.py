@@ -1002,9 +1002,9 @@ class EphysConfigTab(_BaseConfigTab):
 
     def _probe_ephys(self, path: str):
         try:
-            from ethograph.gui.plots_ephystrace import GenericEphysLoader
+            from ethograph.io.ephys_loader import load_ephys
 
-            loader = GenericEphysLoader(path)
+            loader = load_ephys(path)
             self._sr_spin.setValue(int(loader.rate))
             self._nchan_spin.setValue(loader.n_channels)
             self._clear_required(self._sr_spin)

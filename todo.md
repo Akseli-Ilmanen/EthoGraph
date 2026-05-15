@@ -6,7 +6,7 @@ Add to docs
 
 
 Plot settings
-- space, spectrogram, heatmap, 
+- space, spectrogram, heatmap,
 
 Make tutorials
 - wizard multi trials

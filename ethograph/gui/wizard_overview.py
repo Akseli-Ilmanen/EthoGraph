@@ -133,7 +133,7 @@ class _ModeSelectionPage(QWidget):
         )
         self._rb_pose = QRadioButton("1) From pose file (DLC, SLEAP, ...) or bounding boxes (VIA, ...)")
         self._rb_xarray = QRadioButton("2) From xarray dataset (Movement style)")
-        self._rb_audio = QRadioButton("3) From audio file")
+        self._rb_audio = QRadioButton("3) Generate from audio file")
         self._rb_npy = QRadioButton("4) From npy file")
         self._rb_ephys = QRadioButton("5) From ephys file and/or kilosort folder")
         self._single_radios = [

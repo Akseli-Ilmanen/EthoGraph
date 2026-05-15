@@ -9,11 +9,12 @@ references and non-label metadata. Labels live exclusively in the TSV.
 
 ```
 session_20260903/
-    data.nc                    # features, ephys, trial structure (read-only)
-    data_labels.tsv            # labels (single source of truth)
-    labels/
-    label_backups/
-        data_labels_20240315_192005.tsv   # auto-backup on every save
+├── data.nc                          # features, ephys, trial structure (read-only)
+├── data_labels.tsv                  # recommended file location for most-up-to-date labels
+├── labels/
+│   ├── backups/
+│       └── session_labels_20240315_101230.tsv # timestamped backups
+│       └── session_labels_20240314_111420.tsv
 ```
 
 The TSV uses integer label IDs in the `labels` column. Label names are

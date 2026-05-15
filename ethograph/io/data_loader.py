@@ -428,8 +428,18 @@ def _wizard_single_media_helper(
     audio_path=None,
     video_offset: float | None = None,
     audio_offset: float | None = None,
+    nwb_dir: Path | None = None,
 ):
-    """Create a minimal NWB alignment file for a single-trial wizard."""
+    """Create a minimal NWB alignment file for a single-trial wizard.
+
+    Parameters
+    ----------
+    nwb_dir:
+        Directory in which to write ``.ethograph/alignment.nwb``.
+        Should be the directory of the output ``.nc`` file so that
+        ``discover_nwb`` finds the sidecar on next load.
+        Falls back to the media-file parent when not supplied.
+    """
     from ethograph.io.nwb_alignment import align_media_per_trial
 
     row: dict = {"trial": 1, "start_time": 0.0}
@@ -449,7 +459,7 @@ def _wizard_single_media_helper(
 
     trial_table = pd.DataFrame([row])
 
-    if isinstance(dt.itrial(0), xr.Dataset):
+    if isinstance(dt, xr.DataTree):
         fps = dt.itrial(0).attrs.get("fps")
     elif isinstance(dt, xr.Dataset):
         fps = dt.attrs.get("fps")
@@ -457,21 +467,26 @@ def _wizard_single_media_helper(
         fps = None
 
     stream_rates: dict[str, float] = {}
-    if video_path:
-        stream_rates["video"] = float(fps)
-    if pose_path:
-        stream_rates["pose"] = float(fps)
+    if fps is not None:
+        if video_path:
+            stream_rates["video"] = float(fps)
+        if pose_path:
+            stream_rates["pose"] = float(fps)
     if audio_path:
         stream_rates["audio"] = _detect_audio_rate(audio_path)
 
     ref_path = video_path or pose_path or audio_path
-    if ref_path:
-        output_dir = Path(ref_path).parent
-    else:
-        output_dir = Path.cwd()
+    media_root = Path(ref_path).parent if ref_path else None
+    output_dir = nwb_dir if nwb_dir is not None else (media_root or Path.cwd())
 
     nwb_path = output_dir / ".ethograph" / "alignment.nwb"
-    align_media_per_trial(trial_table, stream_rates=stream_rates, output_path=nwb_path)
+    align_media_per_trial(
+        trial_table,
+        stream_rates=stream_rates,
+        output_path=nwb_path,
+        media_root=media_root,
+        pose_fps=fps,
+    )
 
     return dt
 
@@ -482,6 +497,7 @@ def wizard_single_from_pose(
     pose_path,
     source_software,
     video_offset: float | None = None,
+    output_nc_path: str | Path | None = None,
 ):
     """Create a minimal TrialTree from pose or bounding-box data."""
     try:
@@ -508,13 +524,21 @@ def wizard_single_from_pose(
     if len(ds.individuals) > 1:
         compute_pairwise_distances(ds.position, dim="individuals", pairs="all")
 
-    dt = _wizard_ds_to_continuous_dt(ds)
-    _wizard_single_media_helper(dt, video_path=video_path, pose_path=pose_path, video_offset=video_offset)
-    return dt
+    nwb_dir = Path(output_nc_path).parent if output_nc_path else None
+    _wizard_single_media_helper(
+        ds, video_path=video_path, pose_path=pose_path, video_offset=video_offset, nwb_dir=nwb_dir
+    )
+    return _wizard_ds_to_continuous_dt(ds)
 
 
-def wizard_single_from_ds(video_path, ds: xr.Dataset, video_offset: float | None = None):
-    _wizard_single_media_helper(ds, video_path=video_path, video_offset=video_offset)
+def wizard_single_from_ds(
+    video_path,
+    ds: xr.Dataset,
+    video_offset: float | None = None,
+    output_nc_path: str | Path | None = None,
+):
+    nwb_dir = Path(output_nc_path).parent if output_nc_path else None
+    _wizard_single_media_helper(ds, video_path=video_path, video_offset=video_offset, nwb_dir=nwb_dir)
     return ds
 
 
@@ -526,6 +550,7 @@ def wizard_single_from_npy_file(
     individuals=None,
     video_motion: bool = False,
     video_offset: float | None = None,
+    output_nc_path: str | Path | None = None,
 ):
     if individuals is None:
         individuals = [
@@ -559,8 +584,9 @@ def wizard_single_from_npy_file(
 
         ds["video_motion"] = extract_video_motion(video_path, fps=ds.attrs["fps"], time_coord_name="time_video")
 
+    nwb_dir = Path(output_nc_path).parent if output_nc_path else None
     dt = _wizard_ds_to_continuous_dt(ds)
-    _wizard_single_media_helper(dt, video_path=video_path, video_offset=video_offset)
+    _wizard_single_media_helper(dt, video_path=video_path, video_offset=video_offset, nwb_dir=nwb_dir)
     return dt
 
 
@@ -572,6 +598,7 @@ def wizard_single_from_ephys(
     video_motion: bool = False,
     video_offset: float | None = None,
     audio_offset: float | None = None,
+    output_nc_path: str | Path | None = None,
 ):
     if individuals is None:
         individuals = [
@@ -589,6 +616,7 @@ def wizard_single_from_ephys(
 
         ds["video_motion"] = extract_video_motion(video_path, fps=ds.attrs["fps"], time_coord_name="time_video")
 
+    nwb_dir = Path(output_nc_path).parent if output_nc_path else None
     dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(
         dt,
@@ -596,6 +624,7 @@ def wizard_single_from_ephys(
         audio_path=audio_path,
         video_offset=video_offset,
         audio_offset=audio_offset,
+        nwb_dir=nwb_dir,
     )
     return dt
 
@@ -644,6 +673,7 @@ def wizard_single_from_audio(
     video_motion: bool = False,
     audio_sr: int = 44100,
     video_offset: float | None = None,
+    output_nc_path: str | Path | None = None,
 ):
     if individuals is None:
         individuals = [
@@ -661,11 +691,13 @@ def wizard_single_from_audio(
 
         ds["video_motion"] = extract_video_motion(video_path, fps=ds.attrs["fps"], time_coord_name="time_video")
 
+    nwb_dir = Path(output_nc_path).parent if output_nc_path else None
     dt = _wizard_ds_to_continuous_dt(ds)
     _wizard_single_media_helper(
         dt,
         video_path=video_path,
         audio_path=audio_path,
         video_offset=video_offset,
+        nwb_dir=nwb_dir,
     )
     return dt

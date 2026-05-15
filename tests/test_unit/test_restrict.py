@@ -18,7 +18,6 @@ from ethograph.utils.sequences import (
     match_sequences,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -34,13 +33,15 @@ def trial_alignment():
 
 @pytest.fixture
 def sample_labels_df():
-    return pd.DataFrame({
-        "trial": [1, 1, 1, 2, 2, 2, 3, 3],
-        "onset_s": [0.5, 1.5, 3.0, 0.2, 1.0, 2.0, 0.1, 1.0],
-        "offset_s": [1.0, 2.5, 4.0, 0.8, 1.5, 3.0, 0.5, 2.0],
-        "labels": [1, 2, 3, 1, 2, 3, 2, 3],
-        "individual": ["ind1"] * 8,
-    })
+    return pd.DataFrame(
+        {
+            "trial": [1, 1, 1, 2, 2, 2, 3, 3],
+            "onset_s": [0.5, 1.5, 3.0, 0.2, 1.0, 2.0, 0.1, 1.0],
+            "offset_s": [1.0, 2.5, 4.0, 0.8, 1.5, 3.0, 0.5, 2.0],
+            "labels": [1, 2, 3, 1, 2, 3, 2, 3],
+            "individual": ["ind1"] * 8,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -68,12 +69,14 @@ def test_build_trial_window_with_extra(trial_alignment):
 # ---------------------------------------------------------------------------
 
 
-
 def test_build_label_window_with_context(sample_labels_df):
     trial_bounds = TimeRange(0.0, 10.0)
     rw = build_label_window(
-        sample_labels_df, label_idx=0, trial_bounds=trial_bounds,
-        extra_t0=0.3, extra_t1=0.5,
+        sample_labels_df,
+        label_idx=0,
+        trial_bounds=trial_bounds,
+        extra_t0=0.3,
+        extra_t1=0.5,
     )
     assert rw.time_range.start_s == pytest.approx(0.2)
     assert rw.time_range.end_s == pytest.approx(1.5)
@@ -107,6 +110,7 @@ def test_build_sequence_window():
 
 def test_restrict_xarray():
     import xarray as xr
+
     ds = xr.Dataset({"x": ("time", np.arange(100.0))}, coords={"time": np.linspace(0, 10, 100)})
     tr = TimeRange(2.0, 5.0)
     restricted = restrict_xarray(ds, tr)
@@ -127,6 +131,7 @@ def test_source_collection_union_intersection():
             self.name = name
             self.time_range = TimeRange(start, end)
             self.sampling_rate = 100.0
+
         def get_data(self, t0, t1):
             return np.array([]), np.array([])
 
@@ -163,6 +168,7 @@ def test_source_collection_infer_stops():
             self.name = name
             self.time_range = TimeRange(start, end)
             self.sampling_rate = None
+
         def get_data(self, t0, t1):
             return np.array([]), np.array([])
 

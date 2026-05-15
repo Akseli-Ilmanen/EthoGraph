@@ -33,42 +33,7 @@ Two functions create alignment files:
 
 ---
 
-(target-from-continuous)=
-## Splitting a continuous recording into trials
 
-If you have a single session-long `xr.Dataset` but want to parcelate it into a trial structure, use {func}`eto.from_continuous() <ethograph.from_continuous>`:
-
-```python
-import numpy as np
-import pandas as pd
-import xarray as xr
-import ethograph as eto
-
-# A continuous 10-minute recording at 30 fps
-n_samples = 18000
-time = np.arange(n_samples) / 30.0
-
-ds = xr.Dataset({
-    "speed": xr.DataArray(np.random.randn(n_samples), dims=["time"],
-                          coords={"time": time}),
-})
-
-# Define trial boundaries (seconds)
-epochs = pd.DataFrame({
-    "trial": [1, 2, 3],
-    "start_time": [0.0, 120.0, 300.0],
-    "stop_time": [100.0, 250.0, 500.0],
-})
-
-dt = eto.from_continuous(ds, epochs)
-dt.save("session.nc")
-
-dt.trial(2)  # returns the 120–250 s slice, time shifted to start at 0
-```
-
-`from_continuous` slices the dataset on demand and shifts time coordinates to 0 for each trial.
-
----
 
 ## Minimal example
 
@@ -351,7 +316,46 @@ with pynwb.NWBHDF5IO("session.nwb", "w") as io:
 
 ::::
 
+
 ---
+
+(target-from-continuous)=
+## Splitting a continuous recording into trials
+
+If you have a single session-long `xr.Dataset` but want to parcelate it into a trial structure, use {func}`eto.from_continuous() <ethograph.from_continuous>`:
+
+```python
+import numpy as np
+import pandas as pd
+import xarray as xr
+import ethograph as eto
+
+# A continuous 10-minute recording at 30 fps
+n_samples = 18000
+time = np.arange(n_samples) / 30.0
+
+ds = xr.Dataset({
+    "speed": xr.DataArray(np.random.randn(n_samples), dims=["time"],
+                          coords={"time": time}),
+})
+
+# Define trial boundaries (seconds)
+epochs = pd.DataFrame({
+    "trial": [1, 2, 3],
+    "start_time": [0.0, 120.0, 300.0],
+    "stop_time": [100.0, 250.0, 500.0],
+})
+
+dt = eto.from_continuous(ds, epochs)
+dt.save("session.nc")
+
+dt.trial(2)  # returns the 120–250 s slice, time shifted to start at 0
+```
+
+`from_continuous` slices the dataset on demand and shifts time coordinates to 0 for each trial.
+
+---
+
 
 (target-session-wide-streams)=
 ## Session-wide streams

@@ -2,7 +2,6 @@
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from ethograph.io.nwb_alignment import (
     EmpytAlignment,
@@ -13,14 +12,12 @@ from ethograph.io.time_model import (
     infer_slider_range,
 )
 
-
 # ---------------------------------------------------------------------------
 # trials_ep must exist when alignment has start/stop times
 # ---------------------------------------------------------------------------
 
 
 class TestTrialsEp:
-
     def _make_table_alignment(self, n_trials: int = 5, with_trial_col: bool = True) -> TableAlignment:
         rng = np.random.default_rng(42)
         gaps = rng.uniform(2.0, 5.0, n_trials)
@@ -71,14 +68,15 @@ class TestTrialsEp:
 
 
 class TestBuildTrialsEpCascade:
-
     def test_session_end_fallback_for_last_trial(self):
         """Last trial with no stop_time should use session_end."""
-        df = pd.DataFrame({
-            "trial": [1, 2, 3],
-            "start_time": [0.0, 10.0, 20.0],
-            "stop_time": [5.0, 15.0, np.nan],
-        })
+        df = pd.DataFrame(
+            {
+                "trial": [1, 2, 3],
+                "start_time": [0.0, 10.0, 20.0],
+                "stop_time": [5.0, 15.0, np.nan],
+            }
+        )
         ep = _build_trials_ep(df, session_end=30.0)
         assert ep is not None
         assert len(ep) == 3
@@ -86,21 +84,25 @@ class TestBuildTrialsEpCascade:
 
     def test_no_session_end_drops_last_trial(self):
         """Without session_end, last trial with no stop should be dropped."""
-        df = pd.DataFrame({
-            "trial": [1, 2, 3],
-            "start_time": [0.0, 10.0, 20.0],
-            "stop_time": [5.0, 15.0, np.nan],
-        })
+        df = pd.DataFrame(
+            {
+                "trial": [1, 2, 3],
+                "start_time": [0.0, 10.0, 20.0],
+                "stop_time": [5.0, 15.0, np.nan],
+            }
+        )
         ep = _build_trials_ep(df, session_end=None)
         assert ep is not None
         assert len(ep) == 2
 
     def test_all_stops_present_ignores_session_end(self):
-        df = pd.DataFrame({
-            "trial": [1, 2],
-            "start_time": [0.0, 10.0],
-            "stop_time": [5.0, 15.0],
-        })
+        df = pd.DataFrame(
+            {
+                "trial": [1, 2],
+                "start_time": [0.0, 10.0],
+                "stop_time": [5.0, 15.0],
+            }
+        )
         ep = _build_trials_ep(df, session_end=100.0)
         assert ep is not None
         assert len(ep) == 2
@@ -113,14 +115,15 @@ class TestBuildTrialsEpCascade:
 
 
 class TestInferSliderRange:
-
     def test_trial_with_stop(self):
         """Trial with start+stop → scope = 'trial'."""
-        df = pd.DataFrame({
-            "trial": [1, 2],
-            "start_time": [0.0, 10.0],
-            "stop_time": [5.0, 15.0],
-        })
+        df = pd.DataFrame(
+            {
+                "trial": [1, 2],
+                "start_time": [0.0, 10.0],
+                "stop_time": [5.0, 15.0],
+            }
+        )
         alignment = TableAlignment(df)
         scope, tr = infer_slider_range(alignment, 1)
         assert scope == "trial"
@@ -129,10 +132,12 @@ class TestInferSliderRange:
 
     def test_start_only_extends_to_next(self):
         """Trial with start only → scope = 'trial_start', extends to next start."""
-        df = pd.DataFrame({
-            "trial": [1, 2, 3],
-            "start_time": [0.0, 10.0, 20.0],
-        })
+        df = pd.DataFrame(
+            {
+                "trial": [1, 2, 3],
+                "start_time": [0.0, 10.0, 20.0],
+            }
+        )
         alignment = TableAlignment(df)
         scope, tr = infer_slider_range(alignment, 1)
         assert scope == "trial_start"
@@ -143,10 +148,12 @@ class TestInferSliderRange:
         """Last trial with no stop → uses session extent."""
         from ethograph.io.time_model import SourceCollection
 
-        df = pd.DataFrame({
-            "trial": [1, 2],
-            "start_time": [0.0, 10.0],
-        })
+        df = pd.DataFrame(
+            {
+                "trial": [1, 2],
+                "start_time": [0.0, 10.0],
+            }
+        )
         alignment = TableAlignment(df)
         sc = SourceCollection()
         sc.set_trials([1, 2], [0.0, 10.0], [5.0, 25.0])

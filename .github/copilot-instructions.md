@@ -58,18 +58,18 @@ def load_pose_from_file(...):
 ## Error Handling: Fail Fast
 
 Distinguish BUGS from RUNTIME CONDITIONS:
-- BUG (wrong type, missing key, None where value expected) → Let it crash. 
+- BUG (wrong type, missing key, None where value expected) → Let it crash.
   The developer needs the traceback.
-- RUNTIME CONDITION (file not found, invalid user input, device disconnected) 
+- RUNTIME CONDITION (file not found, invalid user input, device disconnected)
   → Handle gracefully.
 
 Rules:
-- Never wrap code in try/except that returns None or defaults when the 
+- Never wrap code in try/except that returns None or defaults when the
   operation MUST succeed for correctness
 - Never add `if x is not None` guards against your own code's output
-- Catch broad exceptions ONLY at the outermost GUI boundary (to show 
+- Catch broad exceptions ONLY at the outermost GUI boundary (to show
   error dialogs, not to silently degrade)
-- This codebase has defined data flow contracts — trust them, don't 
+- This codebase has defined data flow contracts — trust them, don't
   defensively re-check upstream outputs
 
 ## Output
@@ -92,5 +92,3 @@ Claude Code has permission to read make any necessary changes to files in this r
 It has also permissions to read (but not edit!) the folders:
 C:\Users\Admin\Documents\Akseli\Code\ethograph
 C:\Users\Admin\anaconda3\envs\ethograph-gui
-
-

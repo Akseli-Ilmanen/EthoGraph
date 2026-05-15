@@ -1,7 +1,5 @@
 # ethograph
 
-This GUI is still in development. 
+This GUI is still in development.
 
 [Documentation](https://akseli-ilmanen.github.io/ethograph/)
-
-

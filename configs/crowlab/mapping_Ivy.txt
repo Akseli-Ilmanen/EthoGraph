@@ -1,7 +1,7 @@
-0 background 
-1 pullOutStick 
-2 diagonalToBox 
-3 toss 
+0 background
+1 pullOutStick
+2 diagonalToBox
+3 toss
 4 nod
 5 reachLeftCorner
 6 right

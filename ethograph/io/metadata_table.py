@@ -34,30 +34,6 @@ _NWB_STRUCTURAL_COLUMNS = frozenset(
     }
 )
 
-_LEGACY_SKIP_EXTENSIONS = frozenset(
-    {
-        ".mp4",
-        ".avi",
-        ".mov",
-        ".mkv",
-        ".webm",
-        ".wav",
-        ".flac",
-        ".mp3",
-        ".ogg",
-        ".csv",
-        ".h5",
-        ".hdf5",
-        ".npy",
-        ".slp",
-        ".nwb",
-        ".dat",
-        ".bin",
-        ".raw",
-        ".mda",
-    }
-)
-
 
 def validate_metadata_timing(df: pd.DataFrame, path: str | Path | None = None) -> None:
     """Validate a metadata DataFrame for use as trial timing source.

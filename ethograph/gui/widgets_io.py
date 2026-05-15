@@ -1374,7 +1374,7 @@ class IOWidget(QWidget):
 
     def _expand_ephys_with_streams(self, ephys_path, ds):
         """Discover Neo streams from the ephys file for the Neo-Viewer."""
-        from .plots_ephystrace import GenericEphysLoader
+        from ..io.ephys_loader import load_ephys
 
         self.app_state.ephys_source_map.clear()
         feature_names = []
@@ -1385,8 +1385,8 @@ class IOWidget(QWidget):
         filepath = os.path.normpath(str(ephys_path))
 
         try:
-            loader = GenericEphysLoader(filepath, stream_id="0")
-            streams = loader.streams
+            loader = load_ephys(filepath, stream_id="0")
+            streams = loader.stream_info
 
             if streams and len(streams) > 1:
                 for sid, info in streams.items():

@@ -9,10 +9,10 @@ from qtpy.QtWidgets import QApplication
 from ethograph.datasets import dataset_dir
 from ethograph.labels.intervals import find_interval_at
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _navigate_to_trial(meta, trial_id):
     meta.navigation_widget.scope_combo.setCurrentText("Trial")
@@ -20,13 +20,13 @@ def _navigate_to_trial(meta, trial_id):
     meta.navigation_widget.trials_combo.setCurrentText(str(trial_id))
     QApplication.processEvents()
     assert meta.app_state.trials_sel == trial_id, (
-        f"Expected trial {trial_id}, got {meta.app_state.trials_sel}. "
-        f"Available: {meta.app_state.trials}"
+        f"Expected trial {trial_id}, got {meta.app_state.trials_sel}. Available: {meta.app_state.trials}"
     )
 
 
 def _delete_all_labels(meta):
     from ethograph.labels.intervals import empty_intervals
+
     meta.app_state.label_intervals = empty_intervals()
     QApplication.processEvents()
 
@@ -47,8 +47,8 @@ T_SNAPPED_OFFSET = 1.375
 # Template loading
 # ===================================================================
 
-class TestMollComboInteractions:
 
+class TestMollComboInteractions:
     def test_all_checkbox_sets_sel_to_none(self, moll2025_gui):
         _, meta = moll2025_gui
         if not meta.data_widget.all_checkboxes:
@@ -76,7 +76,6 @@ class TestMollComboInteractions:
 
 
 class TestMollActivateAndClickLabel:
-
     def test_activate_label(self, moll2025_gui):
         _, meta = moll2025_gui
         meta.labels_widget.activate_label(1)
@@ -111,7 +110,6 @@ class TestMollActivateAndClickLabel:
 
 
 class TestMoll2025Loading:
-
     def test_state_after_load(self, moll2025_gui):
         _, meta = moll2025_gui
         s = meta.app_state
@@ -185,7 +183,8 @@ class TestMoll2025Loading:
             lw._on_plot_clicked({"x": t_end, "button": Qt.LeftButton})
             QApplication.processEvents()
 
-        from ethograph.labels.tsv_store import save_labels_tsv, load_labels_tsv
+        from ethograph.labels.tsv_store import load_labels_tsv, save_labels_tsv
+
         tsv_out = tmp_path / "test_labels.tsv"
         df = meta.app_state._all_labels_df
         assert df is not None
@@ -200,8 +199,8 @@ class TestMoll2025Loading:
 # Pynapple .npz loading
 # ===================================================================
 
-class TestMoll2025Pynapple:
 
+class TestMoll2025Pynapple:
     @pytest.fixture(autouse=True)
     def _check_npz(self):
         dest = dataset_dir("moll2025")
@@ -225,6 +224,7 @@ class TestMoll2025Pynapple:
     def test_npz_type_vars_structure(self):
         from ethograph.io.catalog import catalog_from_pynapple
         from ethograph.io.pynapple import load_nap_data
+
         data, _trials_ep = load_nap_data(str(self._speed_npz))
         cat = catalog_from_pynapple(data)
         tv = cat.to_type_vars_dict()
@@ -236,8 +236,8 @@ class TestMoll2025Pynapple:
 # Labelling without changepoints
 # ===================================================================
 
-class TestMollLabellingWithoutChangepoints:
 
+class TestMollLabellingWithoutChangepoints:
     def test_label_at_exact_click_times(self, moll2025_gui):
         _, meta = moll2025_gui
         _navigate_to_trial(meta, TRIAL)
@@ -275,14 +275,15 @@ class TestMollLabellingWithoutChangepoints:
 # Labelling with changepoints
 # ===================================================================
 
-class TestMollLabellingWithChangepoints:
 
+class TestMollLabellingWithChangepoints:
     def test_label_snaps_to_changepoints(self, moll2025_gui):
         _, meta = moll2025_gui
         _navigate_to_trial(meta, TRIAL)
         _delete_all_labels(meta)
 
         from ethograph.utils.qt import set_combo_to_value
+
         set_combo_to_value(meta.data_widget.combos["features"], "speed")
         QApplication.processEvents()
 
@@ -324,14 +325,14 @@ class TestMollLabellingWithChangepoints:
 # Space plot
 # ===================================================================
 
-class TestMollSpacePlot:
 
+class TestMollSpacePlot:
     def test_space_2d_has_data(self, moll2025_gui):
         _, meta = moll2025_gui
         _navigate_to_trial(meta, TRIAL)
 
         meta.app_state.space_plot_type = "Space Plot"
-        if hasattr(meta.data_widget, 'space_view_combo'):
+        if hasattr(meta.data_widget, "space_view_combo"):
             meta.data_widget.space_view_combo.setCurrentText("Space Plot")
             QApplication.processEvents()
 
@@ -356,15 +357,15 @@ class TestMollSpacePlot:
 
         # Verify actual plot items are rendered on the 2D widget
         import pyqtgraph as pg
+
         plot_item = sp.space_widget.getPlotItem()
         trajectory_items = [
-            item for item in plot_item.items
-            if isinstance(item, (pg.PlotCurveItem, pg.PlotDataItem))
-            or hasattr(item, '_is_trajectory')
+            item
+            for item in plot_item.items
+            if isinstance(item, (pg.PlotCurveItem, pg.PlotDataItem)) or hasattr(item, "_is_trajectory")
         ]
         assert len(trajectory_items) > 0, (
-            f"No trajectory items rendered on 2D space plot. "
-            f"Items: {[type(i).__name__ for i in plot_item.items]}"
+            f"No trajectory items rendered on 2D space plot. Items: {[type(i).__name__ for i in plot_item.items]}"
         )
 
     def test_space_3d_has_data(self, moll2025_gui):
@@ -373,7 +374,7 @@ class TestMollSpacePlot:
 
         meta.app_state.space_plot_type = "Space Plot"
         meta.app_state.space_show_references = True
-        if hasattr(meta.data_widget, 'space_view_combo'):
+        if hasattr(meta.data_widget, "space_view_combo"):
             meta.data_widget.space_view_combo.setCurrentText("Space Plot")
             QApplication.processEvents()
 
@@ -404,6 +405,7 @@ class TestMollSpacePlot:
         # Verify the GL widget and its container have Expanding policy
         # so the layout doesn't collapse the plot to zero pixels.
         from qtpy.QtWidgets import QSizePolicy
+
         w = sp.space_widget
         assert w.sizePolicy().horizontalPolicy() == QSizePolicy.Expanding, (
             f"GLViewWidget horizontal policy is {w.sizePolicy().horizontalPolicy()}, "
@@ -416,27 +418,24 @@ class TestMollSpacePlot:
 
         # Verify actual GL items are rendered on the 3D widget
         import pyqtgraph.opengl as gl
+
         gl_items = [
-            item for item in sp.space_widget.items
-            if isinstance(item, (gl.GLLinePlotItem, gl.GLScatterPlotItem))
+            item for item in sp.space_widget.items if isinstance(item, (gl.GLLinePlotItem, gl.GLScatterPlotItem))
         ]
         assert len(gl_items) > 0, (
-            f"No GL items rendered on 3D space plot. "
-            f"Items: {[type(i).__name__ for i in sp.space_widget.items]}"
+            f"No GL items rendered on 3D space plot. Items: {[type(i).__name__ for i in sp.space_widget.items]}"
         )
         # Verify the trajectory line has valid (non-empty) position data
         trajectory_lines = [
-            item for item in gl_items
-            if isinstance(item, gl.GLLinePlotItem)
-            and getattr(item, '_is_trajectory', False)
+            item for item in gl_items if isinstance(item, gl.GLLinePlotItem) and getattr(item, "_is_trajectory", False)
         ]
         assert len(trajectory_lines) > 0, "No trajectory GLLinePlotItem found"
 
         # Verify space.yaml reference geometry is rendered (wireframe)
         non_trajectory = [
-            item for item in sp.space_widget.items
-            if isinstance(item, gl.GLLinePlotItem)
-            and not getattr(item, '_is_trajectory', False)
+            item
+            for item in sp.space_widget.items
+            if isinstance(item, gl.GLLinePlotItem) and not getattr(item, "_is_trajectory", False)
         ]
         refs = sp._load_references()
         if refs:
@@ -450,13 +449,14 @@ class TestMollSpacePlot:
 # Lineplot
 # ===================================================================
 
-class TestMollLinePlot:
 
+class TestMollLinePlot:
     def test_lineplot_has_data_on_trial(self, moll2025_gui):
         _, meta = moll2025_gui
         _navigate_to_trial(meta, TRIAL)
 
         from ethograph.utils.qt import set_combo_to_value
+
         set_combo_to_value(meta.data_widget.combos["features"], "speed")
         QApplication.processEvents()
         meta.data_widget.update_main_plot()
@@ -466,6 +466,7 @@ class TestMollLinePlot:
         assert len(lp.plot_items) > 0, "LinePlot has no plot items"
 
         import pyqtgraph as pg
+
         found = False
         for item in lp.plot_items:
             if isinstance(item, (pg.PlotDataItem, pg.PlotCurveItem)):
@@ -474,23 +475,20 @@ class TestMollLinePlot:
                 assert y is not None and len(y) > 0, "Curve has no y data"
                 found = True
                 break
-            elif hasattr(item, 'x') and hasattr(item, 'y'):
+            elif hasattr(item, "x") and hasattr(item, "y"):
                 assert len(item.x) > 0, "Line has no x data"
                 assert len(item.y) > 0, "Line has no y data"
                 found = True
                 break
-        assert found, (
-            f"No recognizable plot item found. Types: "
-            f"{[type(i).__name__ for i in lp.plot_items]}"
-        )
+        assert found, f"No recognizable plot item found. Types: {[type(i).__name__ for i in lp.plot_items]}"
 
 
 # ===================================================================
 # Pynapple-loaded Moll2025 — same tests on different backend
 # ===================================================================
 
-class TestMollPynappleLoading:
 
+class TestMollPynappleLoading:
     def test_state_after_load(self, moll2025_pynapple_gui):
         _, meta = moll2025_pynapple_gui
         s = meta.app_state
@@ -516,11 +514,11 @@ class TestMollPynappleLoading:
 
 
 class TestMollPynappleLinePlot:
-
     def test_lineplot_has_data(self, moll2025_pynapple_gui):
         _, meta = moll2025_pynapple_gui
 
         from ethograph.utils.qt import set_combo_to_value
+
         set_combo_to_value(meta.data_widget.combos["features"], "beakTip_speed")
         QApplication.processEvents()
         meta.data_widget.update_main_plot()
@@ -530,6 +528,7 @@ class TestMollPynappleLinePlot:
         assert len(lp.plot_items) > 0, "LinePlot has no plot items"
 
         import pyqtgraph as pg
+
         for item in lp.plot_items:
             if isinstance(item, (pg.PlotDataItem, pg.PlotCurveItem)):
                 x, y = item.getData()
@@ -551,7 +550,6 @@ class TestMollPynappleLinePlot:
 
 
 class TestMollPynappleSpacePlot:
-
     def test_space_2d_has_data(self, moll2025_pynapple_gui):
         _, meta = moll2025_pynapple_gui
 
@@ -580,17 +578,17 @@ class TestMollPynappleSpacePlot:
 
         # Verify actual plot items are rendered
         import pyqtgraph as pg
+
         plot_item = sp.space_widget.getPlotItem()
         trajectory_items = [
-            item for item in plot_item.items
-            if isinstance(item, (pg.PlotCurveItem, pg.PlotDataItem))
-            or hasattr(item, '_is_trajectory')
+            item
+            for item in plot_item.items
+            if isinstance(item, (pg.PlotCurveItem, pg.PlotDataItem)) or hasattr(item, "_is_trajectory")
         ]
         assert len(trajectory_items) > 0, "No trajectory items rendered on 2D space plot"
 
 
 class TestMollPynappleLabellingWithoutChangepoints:
-
     def test_label_at_exact_click_times(self, moll2025_pynapple_gui):
         _, meta = moll2025_pynapple_gui
 

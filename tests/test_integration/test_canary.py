@@ -1,11 +1,7 @@
 """Canary integration tests: audio-only dataset."""
 
-import pytest
-from qtpy.QtWidgets import QApplication
-
 
 class TestCanary:
-
     def test_state_after_load(self, canary_gui):
         _, meta = canary_gui
         s = meta.app_state

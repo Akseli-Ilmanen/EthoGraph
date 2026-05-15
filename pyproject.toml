@@ -95,7 +95,6 @@ dev = [
     "pytest-cov",
     "coverage",
     "tox",
-    "mypy",
     "pre-commit",
     "ruff",
     "setuptools-scm",

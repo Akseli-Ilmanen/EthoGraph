@@ -24,15 +24,14 @@
     :toctree:
     :nosignatures:
 
-    
+
     build_mapping_from_labels
-    
+
     crowsetta_to_intervals
-    
+
     extract_crowsetta_labels
-    
+
     resolve_crowsetta_mapping
-    
+
     write_mapping_file
-    
 

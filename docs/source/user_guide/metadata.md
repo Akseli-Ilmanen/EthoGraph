@@ -17,13 +17,13 @@ One row per trial. The only required column is **`trial`**, which must match
 the trial identifiers in your dataset.
 
 ```
-trial   food_pellet_side   rewarded   
-1       left               yes      
-2       right              yes       
-3       left               no       
-4       right              yes      
-5       left               yes       
-6       right              no       
+trial   food_pellet_side   rewarded
+1       left               yes
+2       right              yes
+3       left               no
+4       right              yes
+5       left               yes
+6       right              no
 ```
 
 - Column names are arbitrary — add as many as you need.
@@ -96,7 +96,7 @@ Filtered-out trials are hidden in the table and removed from the trial
 navigator — the *Previous / Next trial* buttons and the trial slider skip them.
 The set of visible trials is updated live whenever a filter changes. **Note**:
 Operations such as changepoint corrrection across trials, or purging short labels
-are applied only to filtered trials. 
+are applied only to filtered trials.
 
 
 ---

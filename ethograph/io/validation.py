@@ -33,6 +33,8 @@ AUDIO_EXTENSIONS = {
 
 POSE_EXTENSIONS = {".h5", ".hdf5", ".csv", ".slp", ".nwb"}
 
+EPHYS_EXTENSIONS_RAW = {".dat", ".bin", ".raw"}
+
 EPHYS_EXTENSIONS = {
     ".abf",
     ".axgd",
@@ -259,7 +261,7 @@ def _possible_trial_conditions(ds: xr.Dataset, dt: "TrialTree") -> list[str]:
         | AUDIO_EXTENSIONS
         | POSE_EXTENSIONS
         | EPHYS_EXTENSIONS
-        | {".dat", ".bin", ".raw", ".mda"}
+        | EPHYS_EXTENSIONS_RAW
         | {".csv", ".h5", ".hdf5", ".npy"}
     )
 

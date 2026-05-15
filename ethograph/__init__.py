@@ -6,7 +6,7 @@ except PackageNotFoundError:
     # package is not installed
     pass
 
-    
+
 from ethograph.datasets import sample_data
 from ethograph.io.catalog import (
     DataCatalog,

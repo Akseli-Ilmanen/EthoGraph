@@ -6,11 +6,12 @@ import pytest
 
 from ethograph.io.catalog import (
     PynappleLoader as PynappleStore,
+)
+from ethograph.io.catalog import (
     _compute_shared_column_dims,
     catalog_from_pynapple,
 )
 from ethograph.io.pynapple import detect_trials
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -24,8 +25,10 @@ def simple_nap_data():
     t = np.linspace(0, 25, 2500)
     speed = nap.Tsd(t=t, d=np.random.randn(len(t)), time_support=trials)
     velocity = nap.TsdFrame(
-        t=t, d=np.random.randn(len(t), 3),
-        columns=["x", "y", "z"], time_support=trials,
+        t=t,
+        d=np.random.randn(len(t), 3),
+        columns=["x", "y", "z"],
+        time_support=trials,
     )
     return {"speed": speed, "velocity": velocity, "trials": trials}
 
@@ -55,7 +58,6 @@ def test_detect_trials_found(simple_nap_data):
 def test_detect_trials_not_found():
     data = {"speed": nap.Tsd(t=np.arange(10), d=np.zeros(10))}
     assert detect_trials(data) is None
-
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +125,6 @@ def test_catalog_shared_columns(multi_tsdframe_data):
     assert list(cat.combo_values("columns")) == ["x", "y", "z"]
 
 
-
 def test_catalog_detects_changepoints():
     cp_times = np.array([10.0, 25.0, 50.0, 75.0])
     group = nap.TsGroup({0: nap.Ts(t=cp_times)})
@@ -136,7 +137,6 @@ def test_catalog_detects_changepoints():
 def test_catalog_skips_intervalset(simple_nap_data):
     cat = catalog_from_pynapple(simple_nap_data)
     assert "trials" not in cat.features
-
 
 
 # ---------------------------------------------------------------------------

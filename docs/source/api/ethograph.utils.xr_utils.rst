@@ -14,9 +14,8 @@
     :toctree:
     :nosignatures:
 
-    
+
     get_time_coord
-    
+
     sel_valid
-    
 

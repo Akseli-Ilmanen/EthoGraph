@@ -253,13 +253,14 @@ class HeatmapPlot(BasePlot):
 
     def _get_buffered_ephys_envelope(self, t0: float, t1: float):
         """Load ephys data, compute per-channel envelope, and cache."""
-        from .plots_ephystrace import get_loader as get_ephys_loader
+        from ..io.ephys_loader import load_ephys
 
         ephys_path, stream_id, _ = self.app_state.get_ephys_source()
         if not ephys_path:
             return None, None
-        loader = get_ephys_loader(ephys_path, stream_id)
-        if loader is None:
+        try:
+            loader = load_ephys(ephys_path, stream_id)
+        except Exception:
             return None, None
         fs = loader.rate
         total_duration = len(loader) / fs
