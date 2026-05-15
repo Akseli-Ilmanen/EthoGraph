@@ -533,9 +533,30 @@ terminal prompt.</p>
 </div>
 <section id="with-the-gui-recommended">
 <h3>With the GUI (recommended)<a class="headerlink" href="#with-the-gui-recommended" title="Link to this heading">#</a></h3>
-<p>The GUI bundles napari, PyQtGraph, audio support, and neural analysis tools:</p>
+<p>The GUI bundles napari, PyQtGraph, and neural analysis tools:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui]&quot;</span>
 </pre></div>
+</div>
+<section id="adding-audio-support">
+<h4>Adding audio support<a class="headerlink" href="#adding-audio-support" title="Link to this heading">#</a></h4>
+<p>Audio support (waveform display, spectrogram, vocalisation analysis) is an optional extra.</p>
+<div class="sd-tab-set docutils">
+<input checked="checked" id="sd-tab-item-7" name="sd-tab-set-3" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-7">
+macOS / Windows</label><div class="sd-tab-content docutils">
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio]&quot;</span>
+</pre></div>
+</div>
+</div>
+<input id="sd-tab-item-8" name="sd-tab-set-3" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-8">
+Linux</label><div class="sd-tab-content docutils">
+<p>First install the PortAudio system library, then install the audio extra:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>libportaudio2<span class="w">   </span><span class="c1"># Debian / Ubuntu</span>
+uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio]&quot;</span>
+</pre></div>
+</div>
+</div>
 </div>
 <p>If you are using a <strong>conda environment</strong>, optionally create a desktop shortcut:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ethograph<span class="w"> </span>shortcut
@@ -549,6 +570,7 @@ terminal prompt.</p>
 </div>
 <p>Or use the desktop/Start Menu shortcut created above.</p>
 </div>
+</section>
 </section>
 <section id="core-only-library">
 <h3>Core only (library)<a class="headerlink" href="#core-only-library" title="Link to this heading">#</a></h3>
@@ -580,22 +602,30 @@ You can combine them as needed:</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">gui</span></code></p></td>
-<td><p>Full graphical interface</p></td>
+<td><p>Full graphical interface (napari, PyQtGraph, neural tools)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dandi</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">audio</span></code></p></td>
+<td><p>Waveform, spectrogram, vocalisation analysis (<code class="docutils literal notranslate"><span class="pre">sounddevice</span></code> etc.)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dandi</span></code></p></td>
 <td><p>DANDI archive download client (heavy, opt-in)</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dev</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dev</span></code></p></td>
 <td><p>Testing and linting tools</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">docs</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">docs</span></code></p></td>
 <td><p>Documentation build dependencies</p></td>
 </tr>
 </tbody>
 </table>
 </div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Linux users adding <code class="docutils literal notranslate"><span class="pre">audio</span></code> must first install the PortAudio system library:
+<code class="docutils literal notranslate"><span class="pre">sudo</span> <span class="pre">apt</span> <span class="pre">install</span> <span class="pre">libportaudio2</span></code></p>
+</div>
 <p>Combine extras with commas:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui,dandi, dev, docs]&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio,dandi,dev,docs]&quot;</span>
 </pre></div>
 </div>
 </section>
@@ -607,6 +637,8 @@ You can combine them as needed:</p>
 <section id="update-the-package">
 <h2>Update the package<a class="headerlink" href="#update-the-package" title="Link to this heading">#</a></h2>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;ethograph[gui]&quot;</span>
+<span class="c1"># With audio:</span>
+uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio]&quot;</span>
 </pre></div>
 </div>
 <div class="admonition hint">
@@ -681,7 +713,10 @@ uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </s
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-uv">Install uv</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#create-a-virtual-environment">Create a virtual environment</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-the-package">Install the package</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#with-the-gui-recommended">With the GUI (recommended)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#with-the-gui-recommended">With the GUI (recommended)</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#adding-audio-support">Adding audio support</a></li>
+</ul>
+</li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#core-only-library">Core only (library)</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#dandi-archive-downloads">DANDI archive downloads</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-dependency-groups">Optional dependency groups</a></li>

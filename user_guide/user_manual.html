@@ -465,15 +465,11 @@
 <td><p><a class="reference external" href="https://github.com/MouseLand/Kilosort">Kilosort</a> folder, <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> file, <a class="reference external" href="https://pynapple.org/generated/pynapple.TsGroup.html#pynapple.TsGroup" title="(in pynapple v0.11.1)"><code class="xref py py-class docutils literal notranslate"><span class="pre">pynapple.TsGroup</span></code></a></p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>Features</strong></p></td>
-<td><p>Lineplot / heatmap</p></td>
-<td><p>Kinematics, firing rates, latent variables, model outputs, …</p></td>
+<td><p>Line plots / heatmaps</p></td>
+<td><p>Kinematics, firing rates, latent variables, model outputs, etc.</p></td>
 </tr>
 </tbody>
 </table>
-</div>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p><code class="docutils literal notranslate"><span class="pre">.avi</span></code> and <code class="docutils literal notranslate"><span class="pre">.mov</span></code> files have inaccurate frame seeking (off by 1–2 frames). For best results, transcode to <code class="docutils literal notranslate"><span class="pre">.mp4</span></code> with H.264. See <a class="reference internal" href="troubleshooting.html"><span class="doc">Troubleshooting</span></a>.</p>
 </div>
 <hr class="docutils" />
 <p>Feature data can be loaded via three backends:</p>
@@ -511,6 +507,31 @@ mark the onset, click again to mark the offset, then press <strong>V</strong> to
 the segment you just labelled.</p>
 <a class="reference internal image-reference" href="../_images/label_basic.gif"><img alt="Labelling workflow — select class, click onset, click offset, press V to review" src="../_images/label_basic.gif" style="width: 100%;" />
 </a>
+<p>The <a class="reference internal" href="labels/index.html"><span class="doc">labels</span></a> documentation includes more info on how to:</p>
+<ul class="simple">
+<li><p>label in the GUI</p></li>
+<li><p>define new label categories (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</p></li>
+<li><p>deal with labels overlapping in time (label branches)</p></li>
+<li><p>import labels from other formats (Pynapple, NWB, BORIS, audacity, Raven, …)</p></li>
+<li><p>export labels</p></li>
+</ul>
+</section>
+<section id="importing-data">
+<h2>Importing data<a class="headerlink" href="#importing-data" title="Link to this heading">#</a></h2>
+<a class="reference internal image-reference" href="media/io.png"><img alt="Data import workflow" src="media/io.png" style="width: 100%;" />
+</a>
+<p>As a</p>
+<p>The I/O section (see image above) allows the user to various data formats</p>
+<div class="highlight-none notranslate"><div class="highlight"><pre><span></span>  may be a bit daunting given   {doc}../getting_started/wizard
+</pre></div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">## Importing data</span>
+</pre></div>
+</div>
+</div>
+</div>
 </section>
 <section id="feature-dropdowns">
 <h2>Feature dropdowns<a class="headerlink" href="#feature-dropdowns" title="Link to this heading">#</a></h2>
@@ -1455,6 +1476,7 @@ across all three backends.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#labelling">Labelling</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#importing-data">Importing data</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#feature-dropdowns">Feature dropdowns</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changepoints">Changepoints</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#building-a-trialtree">Building a TrialTree</a></li>

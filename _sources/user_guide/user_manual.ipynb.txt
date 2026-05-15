@@ -3,12 +3,101 @@
   {
    "cell_type": "markdown",
    "metadata": {},
-   "source": "# User Manual\n\n`ethograph` visualizes behavioural recordings across modalities:\n\n| Data | Shown as | File formats / loaders |\n|------|----------|------------------------|\n| **Video** | Napari viewer | `.mp4` (recommended), `.avi`, `.mov` (via [pyav](https://pyav.org/docs/stable/)) |\n| **Pose/ BoundingBox** | Overlay on video | `.h5`, `.csv` (DLC, SLEAP, LightningPose, ... via [movement](https://movement.neuroinformatics.dev)) |\n| **Audio** | Waveform + spectrogram | `.wav`, `.mp3` (via [audioio](https://github.com/bendalab/audioio)) |\n| **Electrophysiology** | Multi-channel trace | `.dat`, `.bin`, `.raw` via [phylib](https://github.com/cortex-lab/phylib) and [supported extensions](https://akseli-ilmanen.github.io/ethograph/getting_started/loading_ephys.html#supported-formats) via [Neo](https://neo.readthedocs.io) |\n| **Spike-sorted units** | Raster / PSTH | [Kilosort](https://github.com/MouseLand/Kilosort) folder, `.nwb` file, {class}`pynapple.TsGroup`|\n| **Features** | Lineplot / heatmap | Kinematics, firing rates, latent variables, model outputs, ... |\n\n```{note}\n`.avi` and `.mov` files have inaccurate frame seeking (off by 1–2 frames). For best results, transcode to `.mp4` with H.264. See {doc}`troubleshooting`.\n```\n\n---\n\n\nFeature data can be loaded via three backends:\n\n| Backend | Object | File format |\n|---------|--------|-------------|\n| **xarray** | {class}`xarray.Dataset` / {class}`~ethograph.io.trialtree.TrialTree` | `.nc` |\n| **Pynapple** | {class}`~pynapple.Tsd` / {class}`~pynapple.TsdFrame` | `.npz` or folder |\n| **NWB** | `.nwb` (loaded via {mod}`pynapple`) | `.nwb` |\n\nUnlike a plain numpy array, all three formats carry explicit timestamps with each value.\nThis allows `ethograph` to automatically align data of different sampling rates and\nmodalities (video, audio & electrophysiology).\n"
+   "source": [
+    "# User Manual\n",
+    "\n",
+    "`ethograph` visualizes behavioural recordings across modalities:\n",
+    "\n",
+    "| Data | Shown as | File formats / loaders |\n",
+    "|------|----------|------------------------|\n",
+    "| **Video** | Napari viewer | `.mp4` (recommended), `.avi`, `.mov` (via [pyav](https://pyav.org/docs/stable/)) |\n",
+    "| **Pose/ BoundingBox** | Overlay on video | `.h5`, `.csv` (DLC, SLEAP, LightningPose, ... via [movement](https://movement.neuroinformatics.dev)) |\n",
+    "| **Audio** | Waveform + spectrogram | `.wav`, `.mp3` (via [audioio](https://github.com/bendalab/audioio)) |\n",
+    "| **Electrophysiology** | Multi-channel trace | `.dat`, `.bin`, `.raw` via [phylib](https://github.com/cortex-lab/phylib) and [supported extensions](https://akseli-ilmanen.github.io/ethograph/getting_started/loading_ephys.html#supported-formats) via [Neo](https://neo.readthedocs.io) |\n",
+    "| **Spike-sorted units** | Raster / PSTH | [Kilosort](https://github.com/MouseLand/Kilosort) folder, `.nwb` file, {class}`pynapple.TsGroup`|\n",
+    "| **Features** | Line plots / heatmaps | Kinematics, firing rates, latent variables, model outputs, etc. |\n",
+    "\n",
+    "---\n",
+    "\n",
+    "\n",
+    "Feature data can be loaded via three backends:\n",
+    "\n",
+    "| Backend | Object | File format |\n",
+    "|---------|--------|-------------|\n",
+    "| **xarray** | {class}`xarray.Dataset` / {class}`~ethograph.io.trialtree.TrialTree` | `.nc` |\n",
+    "| **Pynapple** | {class}`~pynapple.Tsd` / {class}`~pynapple.TsdFrame` | `.npz` or folder |\n",
+    "| **NWB** | `.nwb` (loaded via {mod}`pynapple`) | `.nwb` |\n",
+    "\n",
+    "Unlike a plain numpy array, all three formats carry explicit timestamps with each value.\n",
+    "This allows `ethograph` to automatically align data of different sampling rates and\n",
+    "modalities (video, audio & electrophysiology).\n"
+   ]
   },
   {
    "cell_type": "markdown",
-   "source": "## Labelling\n\nEthograph is a labelling GUI for marking the onset and offset of behavioural\nevents. Press a number key to select a label class, click on the timeseries plot to\nmark the onset, click again to mark the offset, then press **V** to play back\nthe segment you just labelled.\n\n```{image} /_static/videos/label_basic.gif\n:alt: Labelling workflow — select class, click onset, click offset, press V to review\n:width: 100%\n```",
-   "metadata": {}
+   "metadata": {},
+   "source": [
+    "## Labelling\n",
+    "\n",
+    "Ethograph is a labelling GUI for marking the onset and offset of behavioural\n",
+    "events. Press a number key to select a label class, click on the timeseries plot to\n",
+    "mark the onset, click again to mark the offset, then press **V** to play back\n",
+    "the segment you just labelled.\n",
+    "\n",
+    "```{image} /_static/videos/label_basic.gif\n",
+    ":alt: Labelling workflow — select class, click onset, click offset, press V to review\n",
+    ":width: 100%\n",
+    "```\n",
+    "\n",
+    "The {doc}`labels <labels/index>` documentation includes more info on how to:\n",
+    "\n",
+    "- label in the GUI\n",
+    "- define new label categories (`mapping.txt`)\n",
+    "- deal with labels overlapping in time (label branches)\n",
+    "- import labels from other formats (Pynapple, NWB, BORIS, audacity, Raven, ...)\n",
+    "- export labels \n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Importing data\n",
+    "\n",
+    "<img src=\"../media/io.png\" width=\"100%\" alt=\"Data import workflow\">\n",
+    "\n",
+    "As a \n",
+    "\n",
+    "The I/O section (see image above) allows the user to various data formats\n",
+    "\n",
+    "\n",
+    "\n",
+    "      may be a bit daunting given   {doc}../getting_started/wizard"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "## Importing data\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
   },
   {
    "cell_type": "markdown",
@@ -819,7 +908,11 @@
   {
    "cell_type": "markdown",
    "metadata": {},
-   "source": "## Changepoints\n\nBesides looking at the `z-velocity`, one can also identify good candidates for segmentation boundaries by looking at where there are minima or turning points in the `beakTip` speed curve. We call these kinematic {doc}`changepoints <changepoints/index>`.\n"
+   "source": [
+    "## Changepoints\n",
+    "\n",
+    "Besides looking at the `z-velocity`, one can also identify good candidates for segmentation boundaries by looking at where there are minima or turning points in the `beakTip` speed curve. We call these kinematic {doc}`changepoints <changepoints/index>`.\n"
+   ]
   },
   {
    "cell_type": "markdown",

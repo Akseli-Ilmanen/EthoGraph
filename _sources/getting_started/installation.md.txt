@@ -106,11 +106,33 @@ terminal prompt.
 
 ### With the GUI (recommended)
 
-The GUI bundles napari, PyQtGraph, audio support, and neural analysis tools:
+The GUI bundles napari, PyQtGraph, and neural analysis tools:
 
 ```bash
 uv pip install "ethograph[gui]"
 ```
+
+#### Adding audio support
+
+Audio support (waveform display, spectrogram, vocalisation analysis) is an optional extra.
+
+::::{tab-set}
+
+:::{tab-item} macOS / Windows
+```bash
+uv pip install "ethograph[gui,audio]"
+```
+:::
+
+:::{tab-item} Linux
+First install the PortAudio system library, then install the audio extra:
+```bash
+sudo apt install libportaudio2   # Debian / Ubuntu
+uv pip install "ethograph[gui,audio]"
+```
+:::
+
+::::
 
 If you are using a **conda environment**, optionally create a desktop shortcut:
 
@@ -154,17 +176,23 @@ uv pip install "ethograph[dandi]"
 ethograph uses optional extras to keep the base install lightweight.
 You can combine them as needed:
 
-| Extra      | What it adds                                          |
-|------------|-------------------------------------------------------|
-| `gui`      | Full graphical interface  |
-| `dandi`    | DANDI archive download client (heavy, opt-in)         |
-| `dev`      | Testing and linting tools                             |
-| `docs`     | Documentation build dependencies                     |
+| Extra      | What it adds                                                        |
+|------------|---------------------------------------------------------------------|
+| `gui`      | Full graphical interface (napari, PyQtGraph, neural tools)          |
+| `audio`    | Waveform, spectrogram, vocalisation analysis (`sounddevice` etc.)   |
+| `dandi`    | DANDI archive download client (heavy, opt-in)                       |
+| `dev`      | Testing and linting tools                                           |
+| `docs`     | Documentation build dependencies                                    |
+
+```{note}
+Linux users adding `audio` must first install the PortAudio system library:
+`sudo apt install libportaudio2`
+```
 
 Combine extras with commas:
 
 ```bash
-uv pip install "ethograph[gui,dandi, dev, docs]"
+uv pip install "ethograph[gui,audio,dandi,dev,docs]"
 ```
 
 
@@ -177,6 +205,8 @@ To install latest development version in editable mode see {doc}`../community/co
 
 ```bash
 uv pip install -U "ethograph[gui]"
+# With audio:
+uv pip install -U "ethograph[gui,audio]"
 ```
 
 ```{hint}
