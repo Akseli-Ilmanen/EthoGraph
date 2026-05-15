@@ -2,7 +2,6 @@
 
 import logging
 
-import audioio as aio
 import numpy as np
 import ruptures as rpt
 import xarray as xr
@@ -619,6 +618,8 @@ class ChangepointsWidget(QWidget):
         if not audio_path:
             notify("No audio data loaded. Audio CPs require an audio file.", "warning")
             return
+        import audioio as aio
+
         data, sample_rate = aio.load_audio(audio_path)
         sample_rate = float(sample_rate)
         if data.ndim > 1:

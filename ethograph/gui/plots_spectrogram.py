@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 import numpy as np  # noqa: E402
 import pyqtgraph as pg  # noqa: E402
-from audioio import AudioLoader  # noqa: E402
 from qtpy.QtCore import Signal  # noqa: E402
 from scipy.signal import spectrogram  # noqa: E402
 
@@ -44,6 +43,8 @@ class SharedAudioCache:
         with cls._lock:
             if audio_path not in cls._instances:
                 try:
+                    from audioio import AudioLoader
+
                     cls._instances[audio_path] = AudioLoader(audio_path, buffersize=buffer_size)
                 except (OSError, IOError, ValueError) as e:
                     logger.error("Failed to load audio file %s: %s", audio_path, e)

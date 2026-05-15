@@ -37,6 +37,13 @@ from ethograph.utils.download import (  # noqa: E402
 
 _ASSETS_DIR = Path(__file__).parent / "assets" / "templates"
 
+try:
+    import audioio as _audioio  # noqa: F401
+
+    _AUDIO_AVAILABLE = True
+except ImportError:
+    _AUDIO_AVAILABLE = False
+
 # Backward-compat re-exports used by test code
 _DOWNLOAD_BASE = DOWNLOAD_BASE
 TEMPLATES = list(DATASETS.values())
@@ -127,10 +134,16 @@ class TemplateDialog(QDialog):
 
     def _create_card(self, key: str) -> QFrame:
         ds = DATASETS[key]
+        audio_locked = ds.get("has_audio", False) and not _AUDIO_AVAILABLE
+
         card = QFrame()
         card.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
-        card.setCursor(Qt.PointingHandCursor)
-        card.setStyleSheet("QFrame:hover { background-color: palette(midlight); }")
+        if audio_locked:
+            card.setCursor(Qt.ArrowCursor)
+            card.setStyleSheet("QFrame { background-color: palette(mid); color: gray; }")
+        else:
+            card.setCursor(Qt.PointingHandCursor)
+            card.setStyleSheet("QFrame:hover { background-color: palette(midlight); }")
 
         card_layout = QVBoxLayout()
         card_layout.setContentsMargins(8, 8, 8, 8)
@@ -140,6 +153,8 @@ class TemplateDialog(QDialog):
         image_label.setFixedSize(220, 160)
         image_label.setAlignment(Qt.AlignCenter)
         self._load_image_into_label(image_label, ds.get("image", ""))
+        if audio_locked:
+            image_label.setEnabled(False)
         card_layout.addWidget(image_label, alignment=Qt.AlignCenter)
 
         text_label = QLabel(ds["name"])
@@ -159,7 +174,11 @@ class TemplateDialog(QDialog):
 
         status = QLabel()
         status.setAlignment(Qt.AlignCenter)
-        if is_dataset_downloaded(key):
+        if audio_locked:
+            status.setText('Requires audio — uv pip install "ethograph[gui,audio]"')
+            status.setStyleSheet("color: #c07000; font-style: italic;")
+            status.setWordWrap(True)
+        elif is_dataset_downloaded(key):
             status.setText("Downloaded")
             status.setStyleSheet("color: green; font-weight: bold;")
         else:
@@ -167,7 +186,8 @@ class TemplateDialog(QDialog):
             status.setStyleSheet("color: gray;")
         card_layout.addWidget(status)
 
-        card.mousePressEvent = lambda event, k=key: self._on_card_clicked(k)
+        if not audio_locked:
+            card.mousePressEvent = lambda event, k=key: self._on_card_clicked(k)
         return card
 
     def _load_image_into_label(self, label: QLabel, image_name: str) -> None:

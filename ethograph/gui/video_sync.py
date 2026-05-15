@@ -1,9 +1,8 @@
 """Video synchronization for napari integration with audio playback support."""
 
-from typing import Optional
+from typing import Any, Optional
 
 import napari
-from audioio import AudioLoader, PlayAudio
 from qtpy.QtCore import QObject, QTimer, Signal
 
 from ethograph.gui.notify import notify
@@ -41,7 +40,7 @@ class NapariVideoSync(QObject):
 
         self.qt_viewer = getattr(viewer.window, "_qt_viewer", None)
         self.video_layer = video_layer
-        self._audio_player: Optional[PlayAudio] = None
+        self._audio_player: Any = None
         self._segment_end_actual_frame: Optional[int] = None
         self._seg_frame_count: int = 0
         self._seg_last_frame: Optional[int] = None
@@ -160,6 +159,11 @@ class NapariVideoSync(QObject):
         self.seek_to_frame(start_frame)
 
         audio_path = self.app_state.audio_path or self.audio_source
+        if audio_path:
+            try:
+                from audioio import AudioLoader, PlayAudio
+            except ImportError:
+                audio_path = None
         if audio_path:
             with AudioLoader(audio_path) as data:
                 audio_sr = data.rate

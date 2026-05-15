@@ -68,7 +68,7 @@ recalculated.
 | `duration` | float | `offset_s - onset_s` in seconds |
 | `sequence_idx` | int | Zero-based position of this segment in the trial's label sequence |
 | `sequence` | str | Dash-joined label IDs for the trial (e.g. `"1-3-2-1"`) |
-| *(trial attrs)* | str/int/float | Trial-level attributes from each trial's {attr}`xarray.Dataset.attrs` in the {class}`~ethograph.io.trialtree.TrialTree` (e.g. `stimulus`, `num_pellets`, `condition`). Carried over automatically for trial conditions. |
+| *(trial metadata columns)* | str/int/float | Trial-level metadata columns exported from the labels metadata table and carried over automatically for matching trials (for example `stimulus`, `num_pellets`, `condition`). |
 
 ### Timing columns (computed, requires alignment)
 
