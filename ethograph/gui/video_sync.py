@@ -56,7 +56,7 @@ class NapariVideoSync(QObject):
         self.total_frames = 0
         self.total_duration = 0.0
 
-        self.audio_sr = get_audio_sr(audio_source)
+        self.audio_sr = get_audio_sr(audio_source) if audio_source else None
 
         for layer in self.viewer.layers:
             if layer.name == "video" and hasattr(layer, "data"):
