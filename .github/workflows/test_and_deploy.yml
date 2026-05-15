@@ -44,8 +44,7 @@ jobs:
 
   build_sdist_wheels:
     name: Build source distribution
-    # TODO: restore needs: [test] once the test suite runs cleanly in CI without napari/Qt.
-    # Currently GUI tests require napari which is not installed in the CI test environment.
+    # TODO: restore needs: [test] once I refactored all tests.
     needs: [linting, manifest]
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
@@ -58,6 +57,10 @@ jobs:
     needs: [build_sdist_wheels]
     runs-on: ubuntu-latest
     steps:
-    - uses: neuroinformatics-unit/actions/upload_pypi@v2
+    - uses: actions/download-artifact@v4
       with:
-        secret-pypi-key: ${{ secrets.TWINE_API_KEY }}
+        name: artifact
+        path: dist
+    - uses: pypa/gh-action-pypi-publish@v1.13.0
+      with:
+        password: ${{ secrets.TWINE_API_KEY }}
