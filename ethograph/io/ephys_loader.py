@@ -209,8 +209,11 @@ class _NeoWrapper:
         self._reader = rawio_cls(**{key: val})
         self._reader.parse_header()
 
-        # Select stream
-        stream_ids = list(self._reader.header["signal_streams"]["id"])
+        # Select stream — compare as plain Python strings to avoid numpy scalar
+        # type mismatches (e.g. np.str_ vs str) that silently fall back to stream 0.
+        stream_ids_raw = list(self._reader.header["signal_streams"]["id"])
+        stream_ids = [str(s) for s in stream_ids_raw]
+        stream_id = str(stream_id)
         if stream_id not in stream_ids:
             stream_id = stream_ids[0]
         self._stream_idx = stream_ids.index(stream_id)

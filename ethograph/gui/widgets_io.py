@@ -1391,7 +1391,7 @@ class IOWidget(QWidget):
             if streams and len(streams) > 1:
                 for sid, info in streams.items():
                     display_name = info["name"]
-                    self.app_state.ephys_source_map[display_name] = (filepath, sid, 0)
+                    self.app_state.ephys_source_map[display_name] = (filepath, str(sid), 0)
                     feature_names.append(display_name)
             else:
                 display_name = "Ephys Waveform"

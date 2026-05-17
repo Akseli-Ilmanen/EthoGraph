@@ -1489,7 +1489,7 @@ class DataWidget(QWidget):
 
         filepath, stream_id, channel_idx = source_map[stream_name]
         try:
-            loader = load_ephys(filepath, stream_id)
+            loader = load_ephys(filepath, str(stream_id))
         except Exception:
             return
 
