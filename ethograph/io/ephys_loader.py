@@ -221,11 +221,63 @@ class _NeoWrapper:
         # Extract metadata
         ch = self._stream_channels
         self._n_channels = len(ch)
-        self.rate = float(ch["sampling_rate"][0])
+        self.rate_physical = float(ch["sampling_rate"][0])
         self.starting_time = float(self._reader.get_signal_t_start(0, 0, self._stream_idx))
         self._n_samples = self._reader.get_signal_size(0, 0, self._stream_idx)
+        self.rate_index = self._resolve_index_rate(self._stream_idx, self.rate_physical)
+        # Use index rate for all seconds->sample mapping in GUI paths.
+        self.rate = self.rate_index
         self.units = str(ch["units"][0]) or "V"
         self.channel_names = list(ch["name"])
+
+    def _resolve_index_rate(self, stream_idx: int, fallback_rate: float) -> float:
+        """Return the sample-clock rate used for index-based slicing.
+
+        Generic rule:
+        1) If multiple streams share the same signal size, prefer the highest
+           physical rate among that size-group as the common index clock.
+        2) Otherwise, estimate index clock from size/duration.
+        3) Fall back to per-stream physical rate.
+        """
+        signal_channels = self._reader.header["signal_channels"]
+        stream_ids = self._reader.header["signal_streams"]["id"]
+
+        group_rates: list[float] = []
+        try:
+            selected_n = int(self._reader.get_signal_size(0, 0, stream_idx))
+        except Exception:
+            selected_n = -1
+
+        for idx, sid in enumerate(stream_ids):
+            try:
+                n_i = int(self._reader.get_signal_size(0, 0, idx))
+            except Exception:
+                continue
+            if selected_n <= 0 or n_i != selected_n:
+                continue
+            mask = signal_channels["stream_id"] == sid
+            if int(np.sum(mask)) == 0:
+                continue
+            rate_i = float(signal_channels[mask]["sampling_rate"][0])
+            if np.isfinite(rate_i) and rate_i > 0:
+                group_rates.append(rate_i)
+
+        if group_rates:
+            return float(max(group_rates))
+
+        t0 = float(self._reader.get_signal_t_start(0, 0, stream_idx))
+        n_samples = int(self._reader.get_signal_size(0, 0, stream_idx))
+        try:
+            t1 = float(self._reader.get_signal_t_stop(0, 0, stream_idx))
+        except Exception:
+            t1 = float("nan")
+
+        duration = t1 - t0
+        if np.isfinite(duration) and duration > 0 and n_samples > 0:
+            idx_rate = n_samples / duration
+            if np.isfinite(idx_rate) and idx_rate > 0:
+                return float(idx_rate)
+        return float(fallback_rate)
 
     @property
     def _stream_channels(self):
@@ -243,23 +295,28 @@ class _NeoWrapper:
             start, stop = key, key + 1
 
         raw = self._reader.get_analogsignal_chunk(0, 0, start, stop, self._stream_idx)
+
         return self._reader.rescale_signal_raw_to_float(raw, dtype="float64", stream_index=self._stream_idx)
 
     @property
     def stream_info(self) -> dict:
         """Metadata for all streams."""
         all_ch = self._reader.header["signal_channels"]
-        return {
-            sid: {
+        stream_ids = self._reader.header["signal_streams"]["id"]
+        stream_names = self._reader.header["signal_streams"]["name"]
+        info: dict[str, dict] = {}
+        for idx, (sid, name) in enumerate(zip(stream_ids, stream_names)):
+            mask = all_ch["stream_id"] == sid
+            rate_physical = float(all_ch[mask]["sampling_rate"][0])
+            rate_index = self._resolve_index_rate(idx, rate_physical)
+            info[str(sid)] = {
                 "name": str(name),
-                "n_channels": int(np.sum(mask := all_ch["stream_id"] == sid)),
-                "rate": float(all_ch[mask]["sampling_rate"][0]),
+                "n_channels": int(np.sum(mask)),
+                "rate": rate_index,
+                "rate_index": rate_index,
+                "rate_physical": rate_physical,
             }
-            for sid, name in zip(
-                self._reader.header["signal_streams"]["id"],
-                self._reader.header["signal_streams"]["name"],
-            )
-        }
+        return info
 
 
 class _RawBinaryWrapper:

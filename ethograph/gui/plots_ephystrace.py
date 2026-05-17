@@ -104,7 +104,6 @@ class EphysTraceBuffer:
     def __init__(self, loader: Any | None = None, channel: int = 0):
         self.loader = loader
         self.channel = channel
-        self.ephys_sr: float | None = None
         self._starting_time: float = 0.0
         self._preproc_flags: dict = {}
         self._cache: NDArray | None = None
@@ -116,14 +115,18 @@ class EphysTraceBuffer:
         self.display_gain: float = 0.0
         self.autocenter: bool = False
         self._source: FileSource | None = None
+        self.use_pyramid: bool = True
 
     def set_loader(self, loader: Any, channel: int = 0):
         self.loader = loader
         self.channel = channel
-        self.ephys_sr = loader.rate
         self._starting_time = float(getattr(loader, "starting_time", 0.0))
         self._source = FileSource("ephys", loader, start_time=self._starting_time)
         self._invalidate_cache()
+
+    @property
+    def sample_rate(self) -> float | None:
+        return self.loader.rate if self.loader is not None else None
 
     @property
     def source(self) -> FileSource | None:
@@ -160,7 +163,7 @@ class EphysTraceBuffer:
             return
 
         if view_start is None or view_stop is None:
-            default_window = int(10.0 * self.ephys_sr) if self.ephys_sr else seg_stop - seg_start
+            default_window = int(10.0 * self.sample_rate) if self.sample_rate else seg_stop - seg_start
             view_start = seg_start
             view_stop = min(seg_stop, seg_start + default_window)
 
@@ -184,19 +187,20 @@ class EphysTraceBuffer:
 
         # Precompute multi-resolution pyramid
         self._pyramid = {1: data}
-        from .app_constants import PYRAMID_LEVELS
+        if self.use_pyramid:
+            from .app_constants import PYRAMID_LEVELS
 
-        for level in PYRAMID_LEVELS:
-            n = data.shape[0] // level
-            if n == 0:
-                continue
-            reshaped = data[: n * level].reshape(n, level, data.shape[1])
-            minv = reshaped.min(axis=1)
-            maxv = reshaped.max(axis=1)
-            out = np.empty((2 * n, data.shape[1]), dtype=np.float32)
-            out[0::2] = minv
-            out[1::2] = maxv
-            self._pyramid[level] = out
+            for level in PYRAMID_LEVELS:
+                n = data.shape[0] // level
+                if n == 0:
+                    continue
+                reshaped = data[: n * level].reshape(n, level, data.shape[1])
+                minv = reshaped.min(axis=1)
+                maxv = reshaped.max(axis=1)
+                out = np.empty((2 * n, data.shape[1]), dtype=np.float32)
+                out[0::2] = minv
+                out[1::2] = maxv
+                self._pyramid[level] = out
 
         if self._cache_mean is None:
             self._cache_mean = data.mean(axis=0)
@@ -206,10 +210,10 @@ class EphysTraceBuffer:
             self._cache_std = np.full_like(per_ch_std, median_std)
 
     def ensure_cache(self, t0_s: float, t1_s: float, scroll_direction: str = "right"):
-        if self.loader is None or self.ephys_sr is None:
+        if self.loader is None or self.sample_rate is None:
             return
-        start = max(0, int((t0_s - self._starting_time) * self.ephys_sr))
-        stop = min(len(self.loader), int((t1_s - self._starting_time) * self.ephys_sr) + 1)
+        start = max(0, int((t0_s - self._starting_time) * self.sample_rate))
+        stop = min(len(self.loader), int((t1_s - self._starting_time) * self.sample_rate) + 1)
         if not self._covers_range(start, stop):
             self._build_cache(start, stop, scroll_direction)
 
@@ -240,8 +244,8 @@ class EphysTraceBuffer:
         if total_ch < 1:
             return None
 
-        start = max(0, int((t0 - self._starting_time) * self.ephys_sr))
-        stop = min(len(self.loader), int((t1 - self._starting_time) * self.ephys_sr) + 1)
+        start = max(0, int((t0 - self._starting_time) * self.sample_rate))
+        stop = min(len(self.loader), int((t1 - self._starting_time) * self.sample_rate) + 1)
         if stop <= start:
             return None
 
@@ -279,7 +283,7 @@ class EphysTraceBuffer:
         level = 1
         from .app_constants import PYRAMID_LEVELS
 
-        if step > 1 and hasattr(self, "_pyramid"):
+        if step > 1 and self.use_pyramid and hasattr(self, "_pyramid"):
             for ln in PYRAMID_LEVELS:
                 if step >= ln and ln in self._pyramid:
                     level = ln
@@ -309,7 +313,7 @@ class EphysTraceBuffer:
                     aligned_start + 2 * n_display * half_level,
                     half_level,
                 )
-                / self.ephys_sr
+                / self.sample_rate
             )
             if len(times) > display.shape[0]:
                 times = times[: display.shape[0]]
@@ -329,11 +333,11 @@ class EphysTraceBuffer:
             half_step = step / 2
             times = (
                 self._starting_time
-                + np.arange(aligned_start, aligned_start + 2 * n_segments * half_step, half_step) / self.ephys_sr
+                + np.arange(aligned_start, aligned_start + 2 * n_segments * half_step, half_step) / self.sample_rate
             )
         else:
             display = data_all.copy()
-            times = self._starting_time + np.arange(start, start + len(display)) / self.ephys_sr
+            times = self._starting_time + np.arange(start, start + len(display)) / self.sample_rate
 
         if self.autocenter:
             display = (display - display.mean(axis=0)) / ch_std_arr
@@ -440,6 +444,11 @@ class EphysTracePlot(BasePlot):
         self._last_visible_hw: set[int] = set()
 
         self._source: PlotSource | None = None
+        # Per-instance scalar offset (seconds) added on top of trial_start when
+        # converting trial-relative time → file sample index.  Phy-Viewer sets
+        # this to app_state.ephys_offset; Neo-Viewer leaves it at 0.0 so the
+        # user-specified Phy alignment never bleeds into the RHD loader.
+        self._file_scalar_offset: float = 0.0
 
         # Calibration scale bars
         self._scale_v_line: pg.PlotDataItem | None = None
@@ -750,7 +759,7 @@ class EphysTracePlot(BasePlot):
     def _update_scale_bars(self, t0: float, t1: float):
         self._clear_scale_bars()
 
-        if self.buffer.ephys_sr is None:
+        if self.buffer.sample_rate is None:
             return
 
         time_window = t1 - t0
@@ -986,7 +995,7 @@ class EphysTracePlot(BasePlot):
                 pass
         self._spike_waveform_items.clear()
 
-        if self.buffer.ephys_sr is None or self.buffer._cache is None:
+        if self.buffer.sample_rate is None or self.buffer._cache is None:
             return
 
         if t0 is None or t1 is None:
@@ -1003,7 +1012,7 @@ class EphysTracePlot(BasePlot):
 
     def _draw_waveforms_single(self, t0: float, t1: float):
         """Spike waveforms for single cluster, drawn on neighbouring channels"""
-        sr = self.buffer.ephys_sr
+        sr = self.buffer.sample_rate
         half_w = int(self._spike_snippet_ms * 0.001 * sr)
         cache_start = self.buffer._cache_start
         cache_n = self.buffer._cache.shape[0]
@@ -1075,7 +1084,7 @@ class EphysTracePlot(BasePlot):
 
     def _draw_waveforms_multiple(self, t0: float, t1: float):
         """Draw spike waveforms for multiple clusters, each with its own color and set of channels."""
-        sr = self.buffer.ephys_sr
+        sr = self.buffer.sample_rate
         half_w = int(self._spike_snippet_ms * 0.001 * sr)
         cache_start = self.buffer._cache_start
         cache_n = self.buffer._cache.shape[0]
@@ -1280,7 +1289,7 @@ class EphysTracePlot(BasePlot):
     def _on_view_range_changed(self):
         if not self.isVisible():
             return
-        if not hasattr(self.app_state, "ds") or self.app_state.ds is None:
+        if self.buffer.loader is None:
             return
         self._td.trigger()
 

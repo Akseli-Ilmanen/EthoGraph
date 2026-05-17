@@ -1474,9 +1474,6 @@ class DataWidget(QWidget):
         """Configure the Neo-Viewer panel with the selected stream."""
         if not self.plot_container:
             return
-        neo_cb = getattr(self, "neo_viewer_checkbox", None)
-        if neo_cb is not None and not neo_cb.isChecked():
-            return
 
         if stream_name is None:
             stream_name = self.neo_stream_combo.currentText() if hasattr(self, "neo_stream_combo") else ""
@@ -1487,18 +1484,25 @@ class DataWidget(QWidget):
         if stream_name not in source_map:
             return
 
+        # Track the selected stream regardless of panel visibility so that
+        # configure_ephys_trace_plot() always knows which stream is active.
+        self.app_state.ephys_stream_sel = stream_name
+
+        neo_cb = getattr(self, "neo_viewer_checkbox", None)
+        if neo_cb is not None and not neo_cb.isChecked():
+            return
+
         filepath, stream_id, channel_idx = source_map[stream_name]
         try:
             loader = load_ephys(filepath, str(stream_id))
         except Exception:
             return
 
-        self.app_state.ephys_stream_sel = stream_name
+        neo_starting_time = float(getattr(loader, "starting_time", 0.0) or 0.0)
 
         neo_plot = self.plot_container.neo_trace_plot
         neo_plot.set_loader(loader, channel_idx)
-
-        neo_plot.set_source(FileSource("neo", loader, start_time=getattr(loader, "starting_time", 0.0)))
+        neo_plot.set_source(FileSource("neo", loader, start_time=neo_starting_time))
 
         if self.plot_container._panel_visible["neo"]:
             xmin, xmax = self.plot_container.get_current_xlim()

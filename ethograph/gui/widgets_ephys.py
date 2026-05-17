@@ -753,7 +753,7 @@ class EphysWidget(QWidget):
         self._fr_cache_key: tuple | None = None
         self._kilosort_params: dict | None = None
         self._phy_reader = None
-        self._phy_sr: float | None = None
+        self._phy_loader = None
         self._phy_n_channels: int | None = None
 
         main_layout = QVBoxLayout()
@@ -885,6 +885,15 @@ class EphysWidget(QWidget):
         ch_row.addStretch()
         group_layout.addLayout(ch_row)
 
+        self.pyramid_cb = QCheckBox("Pyramid downsampling")
+        self.pyramid_cb.setChecked(True)
+        self.pyramid_cb.setToolTip(
+            "Use precomputed min/max pyramid for efficient rendering of long recordings. "
+            "Disable to use direct strided loading (slower but useful for diagnosing rendering issues)."
+        )
+        self.pyramid_cb.toggled.connect(self._on_pyramid_toggled)
+        group_layout.addWidget(self.pyramid_cb)
+
         self._probe_row = QWidget()
         probe_row_layout = QHBoxLayout()
         probe_row_layout.setContentsMargins(0, 0, 0, 0)
@@ -1000,13 +1009,10 @@ class EphysWidget(QWidget):
     # ------------------------------------------------------------------
 
     def _resolve_phy_loader(self) -> tuple:
-        """Return (loader, channel_idx) for the Phy-Viewer panel, or (None, 0).
+        """Resolve the Phy-Viewer loader from the current Neo source (no Kilosort).
 
-        Resolution order:
-        1. Kilosort .dat reader (_phy_reader) — most specific, set on kilosort load.
-        2. Trial alignment — authoritative when session table has ephys media.
-        3. Generic loader with kilosort params — when _phy_reader wasn't set but params exist.
-        4. Generic loader — any other Neo-supported ephys file.
+        Called once at Kilosort load time to populate _phy_loader, and on every
+        trial change when no Kilosort is loaded.
         """
         if self._phy_reader is not None:
             return self._phy_reader, 0
@@ -1037,7 +1043,12 @@ class EphysWidget(QWidget):
             return None, 0
 
     def configure_ephys_trace_plot(self):
-        loader, channel_idx = self._resolve_phy_loader()
+        # When Kilosort is loaded, _phy_loader is captured once at load time
+        # so switching the Neo stream combo cannot affect the Phy-Viewer rate.
+        if self._phy_loader is not None:
+            loader, channel_idx = self._phy_loader, 0
+        else:
+            loader, channel_idx = self._resolve_phy_loader()
 
         if loader is None:
             return
@@ -1110,6 +1121,18 @@ class EphysWidget(QWidget):
     def _on_auto_gain_toggled(self, checked: bool):
         if checked:
             self._apply_auto_gain()
+
+    def _on_pyramid_toggled(self, checked: bool):
+        if self.plot_container:
+            for plot in (
+                getattr(self.plot_container, "ephys_trace_plot", None),
+                getattr(self.plot_container, "neo_trace_plot", None),
+            ):
+                if plot is not None:
+                    plot.buffer.use_pyramid = checked
+                    plot.buffer._invalidate_cache()
+                    xmin, xmax = self.plot_container.get_current_xlim()
+                    plot.update_plot_content(xmin, xmax)
 
     def _apply_auto_gain(self):
         if not self.plot_container or not self.plot_container.is_ephystrace():
@@ -1311,7 +1334,13 @@ class EphysWidget(QWidget):
             self._probe_row.show()
 
         self._register_dat_fallback(folder)
-        if self._phy_reader is not None and self.plot_container:
+        # Capture the Phy loader once now — before the user can change the Neo
+        # stream combo — so configure_ephys_trace_plot() always uses the neural stream.
+        if self._phy_reader is not None:
+            self._phy_loader = self._phy_reader
+        else:
+            self._phy_loader, _ = self._resolve_phy_loader()
+        if self._phy_loader is not None and self.plot_container:
             self.plot_container.set_ephys_visible(self.app_state.ephys_visible)
             self.configure_ephys_trace_plot()
 
@@ -1364,6 +1393,7 @@ class EphysWidget(QWidget):
         self._kilosort_sr = None
         self._kilosort_params = None
         self._phy_reader = None
+        self._phy_loader = None
 
         cluster_df = self._build_cluster_df_from_tsgroup(tsgroup)
         self._cluster_df = cluster_df
@@ -1467,7 +1497,7 @@ class EphysWidget(QWidget):
 
         if self._neurons_source == "kilosort":
             ephys_plot = self.plot_container.ephys_trace_plot
-            sr = ephys_plot.buffer.ephys_sr
+            sr = self._kilosort_sr
             if sr is None or sr <= 0:
                 return
 
@@ -1593,7 +1623,6 @@ class EphysWidget(QWidget):
             return
 
         self._phy_reader = loader
-        self._phy_sr = sr
         self._phy_n_channels = n_channels
 
         if not self.app_state.ephys_source_map:
@@ -1925,7 +1954,7 @@ class EphysWidget(QWidget):
         sr = None
         if has_ephys_trace:
             ephys_plot = self.plot_container.ephys_trace_plot
-            sr = ephys_plot.buffer.ephys_sr
+            sr = self._kilosort_sr
             if sr is None or sr <= 0:
                 has_ephys_trace = False
 
@@ -2138,7 +2167,7 @@ class EphysWidget(QWidget):
         # Draw waveforms on ephys trace (Kilosort only)
         if self._neurons_source == "kilosort" and self.plot_container.is_ephystrace():
             ephys_plot = self.plot_container.ephys_trace_plot
-            sr = ephys_plot.buffer.ephys_sr
+            sr = self._kilosort_sr
             if sr is not None and sr > 0:
                 samples_abs = np.round(times_global * sr).astype(np.int64)
                 channels = self._best_channels_for_cluster(cluster_id, channel)
