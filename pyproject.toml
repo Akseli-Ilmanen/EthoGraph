@@ -58,7 +58,7 @@ ethograph-gui = "ethograph.gui:napari.yaml"
 # GUI: napari-based graphical interface with all plot types (no audio)
 gui = [
     "napari",
-    "pyqt5",
+    "pyqt6",
     "qtpy",
     "pyqtgraph",
     "napari-pyav",
