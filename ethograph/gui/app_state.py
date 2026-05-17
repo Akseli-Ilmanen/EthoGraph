@@ -315,7 +315,9 @@ class ObservableAppState(QObject):
             self._values[var] = default
 
         self.audio_source_map: dict[str, tuple[str, int]] = {}
-        self.ephys_source_map: dict[str, tuple[str, str, int]] = {} # filepath, neo_stream_id, channel_idx, e.g.("/data/session.rhd", "1", 0)).
+        self.ephys_source_map: dict[
+            str, tuple[str, str, int]
+        ] = {}  # filepath, neo_stream_id, channel_idx, e.g.("/data/session.rhd", "1", 0)).
         self.ephys_stream_sel: str | None = None
         self._suspend_local_autoload = False
         self._all_labels_df: pd.DataFrame | None = None
