@@ -716,9 +716,17 @@ class SpacePlot(QWidget):
             self.space_widget.deleteLater()
 
         if view_3d:
-            self.space_widget = gl.GLViewWidget()
-            self.space_widget.setBackgroundColor("w")
-            self.space_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            try:
+                self.space_widget = gl.GLViewWidget()
+                self.space_widget.setBackgroundColor("w")
+                self.space_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            except Exception:
+                logger.warning("OpenGL unavailable, falling back to 2D view")
+                self.cb_3d.blockSignals(True)
+                self.cb_3d.setChecked(False)
+                self.cb_3d.blockSignals(False)
+                self.space_widget = pg.PlotWidget()
+                self.space_widget.setBackground("w")
         else:
             self.space_widget = pg.PlotWidget()
             self.space_widget.setBackground("w")

@@ -21,7 +21,8 @@ def _ensure_qt_plugins():
         return
     candidates = [
         os.path.join(sys.prefix, "Library", "plugins"),  # Windows conda-forge
-        os.path.join(sys.prefix, "lib", "qt5", "plugins"),  # Linux conda-forge
+        os.path.join(sys.prefix, "lib", "qt6", "plugins"),  # Linux conda-forge Qt6
+        os.path.join(sys.prefix, "lib", "qt5", "plugins"),  # Linux conda-forge Qt5 (fallback)
         os.path.join(sys.prefix, "lib", "qt", "plugins"),  # macOS conda-forge
     ]
     for path in candidates:
