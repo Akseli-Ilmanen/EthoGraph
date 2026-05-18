@@ -141,24 +141,35 @@ class TimeAxisItem(pg.AxisItem):
         super().__init__(*args, **kwargs)
 
     def tickStrings(self, values, scale, spacing):
-        """Convert seconds to min:sec format."""
+        """Convert seconds to a human-readable format that adapts to zoom level."""
         strings = []
         for v in values:
-            total_seconds = abs(v)
-            minutes = int(total_seconds // 60)
-            seconds = total_seconds % 60
             sign = "-" if v < 0 else ""
-
-            if minutes > 0:
-                if seconds == int(seconds):
-                    strings.append(f"{sign}{minutes}:{int(seconds):02d}")
-                else:
+            a = abs(v)
+            if spacing >= 60:
+                minutes = int(a // 60)
+                seconds = a % 60
+                strings.append(f"{sign}{minutes}:{int(seconds):02d}")
+            elif spacing >= 1:
+                minutes = int(a // 60)
+                seconds = a % 60
+                if minutes > 0:
                     strings.append(f"{sign}{minutes}:{seconds:05.2f}")
-            else:
-                if seconds == int(seconds):
+                elif seconds == int(seconds):
                     strings.append(f"{sign}{int(seconds)}s")
                 else:
                     strings.append(f"{sign}{seconds:.2f}s")
+            elif spacing >= 0.001:
+                ms = a * 1000
+                if spacing >= 0.1:
+                    strings.append(f"{sign}{ms:.0f}ms")
+                elif spacing >= 0.01:
+                    strings.append(f"{sign}{ms:.1f}ms")
+                else:
+                    strings.append(f"{sign}{ms:.2f}ms")
+            else:
+                us = a * 1_000_000
+                strings.append(f"{sign}{us:.1f}µs")
         return strings
 
 
