@@ -1,0 +1,31 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "ef04926b",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0227392\n",
+    "\n",
+    "use marmosets as example"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "4f2aaaeb",
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "language_info": {
+   "name": "python"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
