@@ -93,7 +93,6 @@ align_media_per_trial(
 #     ds.attrs["trial"] = trial
 #     ds_list.append(ds)
 {% endif %}
-ds_list = []
 dt = eto.from_datasets(ds_list)
 {% if output_path %}
 dt.save("{{ output_path }}")

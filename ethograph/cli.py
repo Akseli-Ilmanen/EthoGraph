@@ -31,6 +31,26 @@ def _ensure_qt_plugins():
             return
 
 
+def _fix_wayland_opengl():
+    """Force XCB/GLX on Linux+Wayland to avoid OpenGL crashes with napari.
+
+    Wayland's EGL/native-OpenGL path segfaults with vispy on both Nvidia and
+    AMD hardware across PyQt6 and PySide6.  XCB (X11 via XWayland) is the
+    recommended workaround per napari's own troubleshooting guide.  We only
+    apply this when Wayland is actually active and the user has not already
+    set a preference via the environment.
+    """
+    if sys.platform != "linux":
+        return
+    wayland_active = bool(os.environ.get("WAYLAND_DISPLAY")) or (
+        os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
+    )
+    if not wayland_active:
+        return
+    os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+    os.environ.setdefault("PYOPENGL_PLATFORM", "glx")
+
+
 def launch():
     """Launch the ethograph GUI."""
     logging.basicConfig(
@@ -38,6 +58,7 @@ def launch():
         format="%(name)s - %(levelname)s - %(message)s",
     )
     logging.getLogger("napari").setLevel(logging.WARNING)
+    _fix_wayland_opengl()
     _ensure_qt_plugins()
     import napari
 
