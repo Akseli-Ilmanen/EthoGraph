@@ -29,7 +29,7 @@ Current methods are fast (gradient based, RMS-based, etc.), but could also use M
 
 ### Changepoint features
 
-Using {func}`~ethograph.features.changepoints.more_changepoint_features` massively improved fine-grained accuracy for [ASFormer](https://github.com/ChinaYi/ASFormer), would be cool if this could be exported generally to segmentation models (DlC2Action, etc.)
+Using {func}`~ethograph.features.changepoints.more_changepoint_features` massively improved fine-grained accuracy for [ASFormer](https://github.com/ChinaYi/ASFormer), would be cool if this could be exported generally to segmentation models (DLC2Action, etc.)
 
 
 ## Other
