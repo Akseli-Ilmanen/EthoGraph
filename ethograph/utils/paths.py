@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 SETTINGS_DIR = ".ethograph"
 
+
 def get_project_root(start: Path | None = None) -> Path:
     """Find the repository root by walking up from *start* until ``pyproject.toml`` is found.
 
@@ -103,9 +104,6 @@ def check_paths_exist(nc_paths):
         for p in missing_paths:
             print(f"  {p}")
         exit(1)
-
-
-
 
 
 def find_config(name: str, data_dir: Path | str | None = None) -> Path | None:

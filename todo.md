@@ -12,4 +12,3 @@ is local, maybe allow user to speicfy a root dir, where everything will be saved
 remove C:\Users\aksel\.ethograph\alignment_wizard no thelpful?
 
 generally need a better system where folders can be specified
-
