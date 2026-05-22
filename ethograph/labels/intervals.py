@@ -269,11 +269,9 @@ def load_label_mapping(
             if parts[0].startswith("("):
                 nums = parts[0].strip("()").split(",")
                 label_id = (int(nums[0]), int(nums[1]))
-                order = int(parts[-1])
                 label_mappings[label_id] = {
                     "name": parts[1],
                     "color": _GAP_COLOR,
-                    "order": order,
                     "branch": 0,
                     "event_type": EVENT_TYPE_STATE,
                 }
@@ -286,14 +284,13 @@ def load_label_mapping(
                 label_mappings[label_id] = {
                     "name": parts[1],
                     "color": np.array(_LABEL_COLORS[label_id % len(_LABEL_COLORS)]) / 255.0,
-                    "order": label_id,
                     "branch": branch,
                     "event_type": event_type,
                 }
-        if order is not None:
-            for rank, label_id in enumerate(order):
-                label_mappings[label_id]["order"] = rank
-                
+
+    if order is not None:
+        label_mappings = {k: label_mappings[k] for k in order if k in label_mappings}
+
     return label_mappings
 
 
