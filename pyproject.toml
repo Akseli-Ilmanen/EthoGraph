@@ -28,6 +28,7 @@ dependencies = [
     "xarray",
     "netcdf4",
     "scipy",
+    "scikit-learn",
     "matplotlib",
     "pynapple",
     "pyyaml",

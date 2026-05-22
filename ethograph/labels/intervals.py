@@ -201,17 +201,24 @@ _LABEL_COLORS = [
 _GAP_COLOR = [128 / 255.0, 128 / 255.0, 128 / 255.0]
 
 
-def load_label_mapping(mapping_file: str | Path = "mapping.txt") -> Dict[int, Dict]:
+def load_label_mapping(
+    mapping_file: str | Path = "mapping.txt",
+    order: list[int] | None = None,
+) -> Dict[int, Dict]:
     """Load a label mapping with colors for visualization.
 
     Parameters
     ----------
     mapping_file : str or Path
-        Path to the mapping file.  Each line is
+        Path to the mapping file. Each line is
         ``<id> <name> [<branch>] [<event_type>]`` where *branch* is an
         optional integer (default 0) grouping labels into branches for
         independent labeling, and *event_type* is ``"state"`` (default) or
-        ``"point"``.  Missing trailing columns inherit their defaults.
+        ``"point"``.
+    order : list[int] or None
+        Label IDs in the desired display sequence. If provided, overrides
+        the default order (which follows label ID). Any ID not listed
+        retains its default position.
 
     Returns
     -------
@@ -229,10 +236,12 @@ def load_label_mapping(mapping_file: str | Path = "mapping.txt") -> Dict[int, Di
     >>> mappings = load_label_mapping("mapping.txt")
     >>> mappings[1]["name"]
     'walk'
-    >>> mappings[1]["color"].shape
-    (3,)
 
-    Use the RGB colors to draw labelled rectangles on a plot::
+    Reorder labels for display without changing the file::
+
+        mappings = load_label_mapping("mapping.txt", order=[0, 3, 1, 2])
+
+    Draw labelled intervals on a plot::
 
         import matplotlib.pyplot as plt
         import matplotlib.patches as mpatches
@@ -240,12 +249,9 @@ def load_label_mapping(mapping_file: str | Path = "mapping.txt") -> Dict[int, Di
         mappings = load_label_mapping("mapping.txt")
         fig, ax = plt.subplots()
         ax.plot(time, signal)
-
         for _, row in intervals_df.iterrows():
-            color = mappings[int(row["labels"])]["color"]  # (3,) RGB in [0, 1]
+            color = mappings[int(row["labels"])]["color"]
             ax.axvspan(row["onset_s"], row["offset_s"], alpha=0.5, color=color)
-
-        # Build a legend from the mapping
         handles = [mpatches.Patch(color=m["color"], label=m["name"]) for m in mappings.values()]
         ax.legend(handles=handles)
         plt.show()
@@ -284,7 +290,10 @@ def load_label_mapping(mapping_file: str | Path = "mapping.txt") -> Dict[int, Di
                     "branch": branch,
                     "event_type": event_type,
                 }
-
+        if order is not None:
+            for rank, label_id in enumerate(order):
+                label_mappings[label_id]["order"] = rank
+                
     return label_mappings
 
 
