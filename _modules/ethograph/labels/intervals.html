@@ -616,17 +616,24 @@
 
 <div class="viewcode-block" id="load_label_mapping">
 <a class="viewcode-back" href="../../../api/labels.html#ethograph.labels.intervals.load_label_mapping">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">load_label_mapping</span><span class="p">(</span><span class="n">mapping_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">=</span> <span class="s2">&quot;mapping.txt&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Dict</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_label_mapping</span><span class="p">(</span>
+    <span class="n">mapping_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">=</span> <span class="s2">&quot;mapping.txt&quot;</span><span class="p">,</span>
+    <span class="n">order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Load a label mapping with colors for visualization.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    mapping_file : str or Path</span>
-<span class="sd">        Path to the mapping file.  Each line is</span>
+<span class="sd">        Path to the mapping file. Each line is</span>
 <span class="sd">        ``&lt;id&gt; &lt;name&gt; [&lt;branch&gt;] [&lt;event_type&gt;]`` where *branch* is an</span>
 <span class="sd">        optional integer (default 0) grouping labels into branches for</span>
 <span class="sd">        independent labeling, and *event_type* is ``&quot;state&quot;`` (default) or</span>
-<span class="sd">        ``&quot;point&quot;``.  Missing trailing columns inherit their defaults.</span>
+<span class="sd">        ``&quot;point&quot;``.</span>
+<span class="sd">    order : list[int] or None</span>
+<span class="sd">        Label IDs in the desired display sequence. If provided, overrides</span>
+<span class="sd">        the default order (which follows label ID). Any ID not listed</span>
+<span class="sd">        retains its default position.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -644,10 +651,12 @@
 <span class="sd">    &gt;&gt;&gt; mappings = load_label_mapping(&quot;mapping.txt&quot;)</span>
 <span class="sd">    &gt;&gt;&gt; mappings[1][&quot;name&quot;]</span>
 <span class="sd">    &#39;walk&#39;</span>
-<span class="sd">    &gt;&gt;&gt; mappings[1][&quot;color&quot;].shape</span>
-<span class="sd">    (3,)</span>
 
-<span class="sd">    Use the RGB colors to draw labelled rectangles on a plot::</span>
+<span class="sd">    Reorder labels for display without changing the file::</span>
+
+<span class="sd">        mappings = load_label_mapping(&quot;mapping.txt&quot;, order=[0, 3, 1, 2])</span>
+
+<span class="sd">    Draw labelled intervals on a plot::</span>
 
 <span class="sd">        import matplotlib.pyplot as plt</span>
 <span class="sd">        import matplotlib.patches as mpatches</span>
@@ -655,12 +664,9 @@
 <span class="sd">        mappings = load_label_mapping(&quot;mapping.txt&quot;)</span>
 <span class="sd">        fig, ax = plt.subplots()</span>
 <span class="sd">        ax.plot(time, signal)</span>
-
 <span class="sd">        for _, row in intervals_df.iterrows():</span>
-<span class="sd">            color = mappings[int(row[&quot;labels&quot;])][&quot;color&quot;]  # (3,) RGB in [0, 1]</span>
+<span class="sd">            color = mappings[int(row[&quot;labels&quot;])][&quot;color&quot;]</span>
 <span class="sd">            ax.axvspan(row[&quot;onset_s&quot;], row[&quot;offset_s&quot;], alpha=0.5, color=color)</span>
-
-<span class="sd">        # Build a legend from the mapping</span>
 <span class="sd">        handles = [mpatches.Patch(color=m[&quot;color&quot;], label=m[&quot;name&quot;]) for m in mappings.values()]</span>
 <span class="sd">        ax.legend(handles=handles)</span>
 <span class="sd">        plt.show()</span>
@@ -699,7 +705,10 @@
                     <span class="s2">&quot;branch&quot;</span><span class="p">:</span> <span class="n">branch</span><span class="p">,</span>
                     <span class="s2">&quot;event_type&quot;</span><span class="p">:</span> <span class="n">event_type</span><span class="p">,</span>
                 <span class="p">}</span>
-
+        <span class="k">if</span> <span class="n">order</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">rank</span><span class="p">,</span> <span class="n">label_id</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">order</span><span class="p">):</span>
+                <span class="n">label_mappings</span><span class="p">[</span><span class="n">label_id</span><span class="p">][</span><span class="s2">&quot;order&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">rank</span>
+                
     <span class="k">return</span> <span class="n">label_mappings</span></div>
 
 
