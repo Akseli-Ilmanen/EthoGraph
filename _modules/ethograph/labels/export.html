@@ -580,7 +580,24 @@
 
         <span class="n">enriched_rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
 
-    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">enriched_rows</span><span class="p">,</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">enriched_rows</span><span class="p">,</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+
+        <span class="c1"># Crow lab only</span>
+        <span class="k">if</span> <span class="s2">&quot;pulse_onsets&quot;</span> <span class="ow">in</span> <span class="n">dt</span><span class="o">.</span><span class="n">itrial</span><span class="p">(</span><span class="mi">0</span><span class="p">):</span>
+            <span class="n">trial_pulse_dict</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="n">trial</span><span class="p">:</span> <span class="n">dt</span><span class="o">.</span><span class="n">trial</span><span class="p">(</span><span class="n">trial</span><span class="p">)</span><span class="o">.</span><span class="n">pulse_onsets</span><span class="o">.</span><span class="n">values</span>
+                <span class="k">for</span> <span class="n">trial</span> <span class="ow">in</span> <span class="n">dt</span><span class="o">.</span><span class="n">trials</span>
+            <span class="p">}</span>
+
+            <span class="n">first_in_trial</span> <span class="o">=</span> <span class="o">~</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">duplicated</span><span class="p">()</span>
+            <span class="n">df</span><span class="p">[</span><span class="s2">&quot;pulse_onsets&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+            <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">first_in_trial</span><span class="p">,</span> <span class="s2">&quot;pulse_onsets&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">first_in_trial</span><span class="p">,</span> <span class="s2">&quot;trial&quot;</span><span class="p">]</span>
+                <span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="s2">&quot;–&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">trial_pulse_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="p">[]))))</span>
+            <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">df</span><span class="o">.</span><span class="n">sort_values</span><span class="p">([</span><span class="s2">&quot;trial&quot;</span><span class="p">,</span> <span class="s2">&quot;onset_s&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
 
 </pre></div>
 
