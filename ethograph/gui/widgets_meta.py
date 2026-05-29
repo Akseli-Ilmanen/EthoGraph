@@ -3,7 +3,7 @@
 import logging
 
 from napari.viewer import Viewer
-from qt_niu.collapsible_widget import CollapsibleWidgetContainer
+from .grid_section_container import GridSectionContainer
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtWidgets import (
     QMessageBox,
@@ -42,7 +42,7 @@ from .widgets_plot_settings import PlotSettingsWidget
 logger = logging.getLogger(__name__)
 
 
-class MetaWidget(CollapsibleWidgetContainer):
+class MetaWidget(GridSectionContainer):
     def __init__(self, napari_viewer: Viewer):
         """Initialize the meta-widget."""
         super().__init__()
@@ -226,11 +226,11 @@ class MetaWidget(CollapsibleWidgetContainer):
             widget_title="Data",
         )
 
-        # Index 3: Phy extension
+        # Index 3: Phy TraceView
         self.add_widget(
             self.ephys_widget,
             collapsible=True,
-            widget_title="Phy extension",
+            widget_title="Phy TraceView",
         )
 
         # Index 4: Labelling
@@ -323,6 +323,7 @@ class MetaWidget(CollapsibleWidgetContainer):
 
     def refresh_widget_layout(self, widget: QWidget):
         self._schedule_layout_refresh()
+        self.notify_content_resized()
 
     def _cycle_channel(self, direction: int):
         if not self.app_state.ready:

@@ -100,6 +100,8 @@ class NavigationWidget(QWidget):
         # ── Navigate (unified prev/next + mode) ──────────────────────
         navigate_group = QGroupBox("Navigate")
         navigate_layout = QVBoxLayout()
+        navigate_layout.setSpacing(2)
+        navigate_layout.setContentsMargins(2, 2, 2, 2)
         navigate_group.setLayout(navigate_layout)
 
         filter_hint = QLabel("Only navigates trials visible in the Trials tab")
@@ -234,6 +236,8 @@ class NavigationWidget(QWidget):
         # ── Playback ─────────────────────────────────────────────────
         playback_group = QGroupBox("Playback")
         playback_layout = QGridLayout()
+        playback_layout.setSpacing(2)
+        playback_layout.setContentsMargins(2, 2, 2, 2)
         playback_group.setLayout(playback_layout)
 
         self.fps_label = QLabel("Playback FPS:")

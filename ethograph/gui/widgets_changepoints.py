@@ -205,7 +205,7 @@ class ChangepointsWidget(QWidget):
         row1_layout = QHBoxLayout()
         row1_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.show_cp_checkbox = QCheckBox("Show changepoints")
+        self.show_cp_checkbox = QCheckBox("Show changepoints (CPs)")
         self.show_cp_checkbox.setToolTip("Display changepoints on plot")
         self.show_cp_checkbox.setChecked(True)
         self.show_cp_checkbox.stateChanged.connect(self._on_show_changepoints_changed)

@@ -145,6 +145,8 @@ class PlotSettingsWidget(QWidget):
 
         group_box = QGroupBox("Axes Controls")
         group_layout = QGridLayout()
+        group_layout.setSpacing(2)
+        group_layout.setContentsMargins(2, 2, 2, 2)
         group_box.setLayout(group_layout)
         layout.addWidget(group_box)
 
@@ -297,6 +299,8 @@ class PlotSettingsWidget(QWidget):
 
         group_box = QGroupBox("Space Plot Controls")
         group_layout = QGridLayout()
+        group_layout.setSpacing(2)
+        group_layout.setContentsMargins(2, 2, 2, 2)
         group_box.setLayout(group_layout)
         layout.addWidget(group_box)
 
@@ -410,8 +414,8 @@ class PlotSettingsWidget(QWidget):
 
         group_box = QGroupBox("Spectrogram Controls")
         group_layout = QGridLayout()
-        group_layout.setVerticalSpacing(6)
-        group_layout.setContentsMargins(6, 10, 6, 6)
+        group_layout.setSpacing(2)
+        group_layout.setContentsMargins(2, 2, 2, 2)
         group_box.setLayout(group_layout)
         layout.addWidget(group_box)
 
@@ -740,6 +744,8 @@ class PlotSettingsWidget(QWidget):
 
         hm_group = QGroupBox("Heatmap Display")
         hm_layout = QGridLayout()
+        hm_layout.setSpacing(2)
+        hm_layout.setContentsMargins(2, 2, 2, 2)
         hm_group.setLayout(hm_layout)
         layout.addWidget(hm_group)
 

@@ -780,7 +780,7 @@ class EphysWidget(QWidget):
         toggle_widget.setLayout(toggle_layout)
 
         toggle_defs = [
-            ("traceview_toggle", "TraceView", self._toggle_traceview),
+            ("traceview_toggle", "Phy TraceView", self._toggle_traceview),
             ("firing_rate_toggle", "Firing rates", self._toggle_firing_rate),
         ]
         for attr, label, callback in toggle_defs:
@@ -848,6 +848,8 @@ class EphysWidget(QWidget):
 
         group = QGroupBox("Ephys trace controls")
         group_layout = QVBoxLayout()
+        group_layout.setSpacing(2)
+        group_layout.setContentsMargins(2, 2, 2, 2)
         group.setLayout(group_layout)
         layout.addWidget(group)
 
@@ -2244,8 +2246,8 @@ class EphysWidget(QWidget):
 
         group = QGroupBox("Firing rates")
         group_layout = QVBoxLayout()
-        group_layout.setSpacing(6)
-        group_layout.setContentsMargins(8, 12, 8, 8)
+        group_layout.setSpacing(2)
+        group_layout.setContentsMargins(2, 2, 2, 2)
         group.setLayout(group_layout)
         layout.addWidget(group)
 
@@ -2291,8 +2293,8 @@ class EphysWidget(QWidget):
 
         pca_group = QGroupBox("PCA")
         pca_layout = QVBoxLayout()
-        pca_layout.setSpacing(6)
-        pca_layout.setContentsMargins(8, 12, 8, 8)
+        pca_layout.setSpacing(2)
+        pca_layout.setContentsMargins(2, 2, 2, 2)
         pca_group.setLayout(pca_layout)
         layout.addWidget(pca_group)
 
