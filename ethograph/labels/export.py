@@ -168,4 +168,21 @@ def enrich_labels_df(
 
         enriched_rows.append(group)
 
-    return pd.concat(enriched_rows, ignore_index=True)
+        df = pd.concat(enriched_rows, ignore_index=True)
+
+
+        # Crow lab only
+        if "pulse_onsets" in dt.itrial(0):
+            trial_pulse_dict = {
+                trial: dt.trial(trial).pulse_onsets.values
+                for trial in dt.trials
+            }
+
+            first_in_trial = ~df["trial"].duplicated()
+            df["pulse_onsets"] = ""
+            df.loc[first_in_trial, "pulse_onsets"] = (
+                df.loc[first_in_trial, "trial"]
+                .map(lambda t: "–".join(map(str, trial_pulse_dict.get(t, []))))
+            )
+
+    return df.sort_values(["trial", "onset_s"]).reset_index(drop=True)
