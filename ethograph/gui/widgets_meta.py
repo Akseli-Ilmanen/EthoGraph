@@ -3,7 +3,6 @@
 import logging
 
 from napari.viewer import Viewer
-from .grid_section_container import GridSectionContainer
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtWidgets import (
     QMessageBox,
@@ -26,6 +25,7 @@ from .app_constants import (
     SIDEBAR_MIN_WIDTH_PX,
 )
 from .app_state import ObservableAppState
+from .grid_section_container import GridSectionContainer
 from .make_pretty import LayoutManager
 from .plots_container import UnifiedPanelContainer
 from .shortcuts import bind_global_shortcuts
