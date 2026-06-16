@@ -81,8 +81,8 @@ same time dimension as their target feature. They require:
 
 ```python
 ds["speed_troughs"] = xr.DataArray(
-    cp_binary,                           # shape: (time, keypoints, individuals), values 0 or 1
-    dims=["time", "keypoints", "individuals"],
+    cp_binary,                           # shape: (time, keypoint, individual), values 0 or 1
+    dims=["time", "keypoint", "individual"],
     attrs={
         "type": "changepoints",
         "target_feature": "speed",

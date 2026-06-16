@@ -234,18 +234,18 @@ for trial_id in range(1, 11):
         data_vars={
             "position": xr.DataArray(
                 np.random.randn(n_time, 2, 4, 2),
-                dims=["time", "space", "keypoints", "individuals"],
+                dims=["time", "space", "keypoint", "individual"],
             ),
             "speed": xr.DataArray(
                 np.abs(np.random.randn(n_time, 4, 2)),
-                dims=["time", "keypoints", "individuals"],
+                dims=["time", "keypoint", "individual"],
             ),
         },
         coords={
             "time": time_s,
             "space": ["x", "y"],
-            "keypoints": ["nose", "left_ear", "right_ear", "tail"],
-            "individuals": ["mouse1", "mouse2"],
+            "keypoint": ["nose", "left_ear", "right_ear", "tail"],
+            "individual": ["mouse1", "mouse2"],
         },
     )
     ds.attrs["trial"] = trial_id

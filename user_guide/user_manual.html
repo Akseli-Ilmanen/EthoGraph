@@ -27,8 +27,8 @@
   </noscript>
   
   <!-- Loaded before other Sphinx assets -->
-  <link href="../_static/styles/theme.css?digest=0790524f97105ba85085" rel="stylesheet" />
-<link href="../_static/styles/pydata-sphinx-theme.css?digest=0790524f97105ba85085" rel="stylesheet" />
+  <link href="../_static/styles/theme.css?digest=a95f357e85573c9b56d5" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=a95f357e85573c9b56d5" rel="stylesheet" />
 
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
@@ -36,10 +36,10 @@
     <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=c557aaec" />
   
   <!-- So that users can add custom icons -->
-  <script defer src="../_static/scripts/fontawesome.js?digest=0790524f97105ba85085"></script>
+  <script defer src="../_static/scripts/fontawesome.js?digest=a95f357e85573c9b56d5"></script>
   <!-- Pre-loaded scripts that we'll load fully later -->
-  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=0790524f97105ba85085" />
-<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=0790524f97105ba85085" />
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5" />
 
     <script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=9bcbadda"></script>
@@ -1124,13 +1124,13 @@ Notice the dimensions:
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">position</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">(time,</span> <span class="pre">space,</span> <span class="pre">keypoints,</span> <span class="pre">individuals)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">(time,</span> <span class="pre">space,</span> <span class="pre">keypoint,</span> <span class="pre">individual)</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">velocity</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">(time,</span> <span class="pre">space,</span> <span class="pre">keypoints,</span> <span class="pre">individuals)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">(time,</span> <span class="pre">space,</span> <span class="pre">keypoint,</span> <span class="pre">individual)</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">speed</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">(time,</span> <span class="pre">keypoints,</span> <span class="pre">individuals)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">(time,</span> <span class="pre">keypoint,</span> <span class="pre">individual)</span></code></p></td>
 </tr>
 </tbody>
 </table>
@@ -1142,20 +1142,14 @@ a specific keypoint, spatial axis, and individual:</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Standard xarray .sel — works when all dimensions exist</span>
-<span class="n">beak_x</span> <span class="o">=</span> <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;position&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="s2">&quot;beakTip&quot;</span><span class="p">,</span> <span class="n">space</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">individuals</span><span class="o">=</span><span class="s2">&quot;Crow1&quot;</span><span class="p">)</span>
+<span class="n">beak_x</span> <span class="o">=</span> <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;position&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoint</span><span class="o">=</span><span class="s2">&quot;beakTip&quot;</span><span class="p">,</span> <span class="n">space</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">individual</span><span class="o">=</span><span class="s2">&quot;Crow1&quot;</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;position with .sel: shape </span><span class="si">{</span><span class="n">beak_x</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
 <span class="c1"># But speed has no &#39;space&#39; dimension — .sel raises an error:</span>
 <span class="k">try</span><span class="p">:</span>
-    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="s2">&quot;beakTip&quot;</span><span class="p">,</span> <span class="n">space</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">individuals</span><span class="o">=</span><span class="s2">&quot;Crow1&quot;</span><span class="p">)</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoint</span><span class="o">=</span><span class="s2">&quot;beakTip&quot;</span><span class="p">,</span> <span class="n">space</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">individual</span><span class="o">=</span><span class="s2">&quot;Crow1&quot;</span><span class="p">)</span>
 <span class="k">except</span> <span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;speed with .sel:   </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</pre></div>
-</div>
-</div>
-<div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>position with .sel: shape (1169,)
-speed with .sel:   KeyError: &quot;&#39;space&#39; is not a valid dimension or coordinate for Dataset with dimensions FrozenMappingWarningOnValuesAccess({&#39;time&#39;: 1169, &#39;keypoints&#39;: 3, &#39;individuals&#39;: 1})&quot;
 </pre></div>
 </div>
 </div>
@@ -1163,12 +1157,12 @@ speed with .sel:   KeyError: &quot;&#39;space&#39; is not a valid dimension or c
 <br>
 <hr class="docutils" />
 <br>
-<p>In the GUI, you can switch between features using the <strong>Feature</strong> dropdown and <strong>select</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.sel.html#xarray.DataArray.sel" title="(in xarray v2026.4.0)"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sel()</span></code></a>) a unique combination of feature dimensions. In the video below, the user switches from the feature <code class="docutils literal notranslate"><span class="pre">speed</span></code> to <code class="docutils literal notranslate"><span class="pre">velocity</span></code>, with the selection dimensions <code class="docutils literal notranslate"><span class="pre">individuals=crow1</span></code>, <code class="docutils literal notranslate"><span class="pre">keypoints=beakTip</span></code> and <code class="docutils literal notranslate"><span class="pre">space=[&quot;x&quot;,</span> <span class="pre">&quot;y&quot;,</span> <span class="pre">&quot;z&quot;]</span></code> (All checkbox ticked). Thanks to <a class="reference internal" href="../api/ethograph.sel_valid.html#ethograph.sel_valid" title="ethograph.sel_valid"><code class="xref py py-func docutils literal notranslate"><span class="pre">sel_valid()</span></code></a>, any invalid dimensions are ignored (e.g. it’s not problematic that speed does not have a <code class="docutils literal notranslate"><span class="pre">space</span></code> dimension).</p>
+<p>In the GUI, you can switch between features using the <strong>Feature</strong> dropdown and <strong>select</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.sel.html#xarray.DataArray.sel" title="(in xarray v2026.4.0)"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sel()</span></code></a>) a unique combination of feature dimensions. In the video below, the user switches from the feature <code class="docutils literal notranslate"><span class="pre">speed</span></code> to <code class="docutils literal notranslate"><span class="pre">velocity</span></code>, with the selection dimensions <code class="docutils literal notranslate"><span class="pre">individual=crow1</span></code>, <code class="docutils literal notranslate"><span class="pre">keypoint=beakTip</span></code> and <code class="docutils literal notranslate"><span class="pre">space=[&quot;x&quot;,</span> <span class="pre">&quot;y&quot;,</span> <span class="pre">&quot;z&quot;]</span></code> (All checkbox ticked). Thanks to <a class="reference internal" href="../api/ethograph.sel_valid.html#ethograph.sel_valid" title="ethograph.sel_valid"><code class="xref py py-func docutils literal notranslate"><span class="pre">sel_valid()</span></code></a>, any invalid dimensions are ignored (e.g. it’s not problematic that speed does not have a <code class="docutils literal notranslate"><span class="pre">space</span></code> dimension).</p>
 <video controls loop muted autoplay width="100%">
   <source src="../_static/videos/dropdown.mp4" type="video/mp4">
 </video><br>
 <br>
-<p>At the end of the video and in the plot below, one can see that particularly <code class="docutils literal notranslate"><span class="pre">velocity</span></code> for <code class="docutils literal notranslate"><span class="pre">keypoints=beakTip</span></code> and <code class="docutils literal notranslate"><span class="pre">space=z</span></code> (green line) defines segmentation boundaries of the crows downward movement, inserting the stick tool into the dispenser.</p>
+<p>At the end of the video and in the plot below, one can see that particularly <code class="docutils literal notranslate"><span class="pre">velocity</span></code> for <code class="docutils literal notranslate"><span class="pre">keypoint=beakTip</span></code> and <code class="docutils literal notranslate"><span class="pre">space=z</span></code> (green line) defines segmentation boundaries of the crows downward movement, inserting the stick tool into the dispenser.</p>
 <div class="cell tag_hide-input docutils container">
 <details class="admonition hide above-input">
 <summary aria-label="Toggle hidden content">
@@ -1183,7 +1177,7 @@ speed with .sel:   KeyError: &quot;&#39;space&#39; is not a valid dimension or c
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_interval</span><span class="p">,</span> <span class="n">empty_intervals</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.plots</span><span class="w"> </span><span class="kn">import</span> <span class="n">plot_label_segments</span>
 
-<span class="n">sel</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;keypoints&quot;</span><span class="p">:</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">,</span> <span class="s2">&quot;individuals&quot;</span><span class="p">:</span> <span class="s2">&quot;Crow1&quot;</span><span class="p">}</span>
+<span class="n">sel</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;keypoint&quot;</span><span class="p">:</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">,</span> <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="s2">&quot;Crow1&quot;</span><span class="p">}</span>
 
 <span class="c1"># 3 labelled intervals (real onsets from the Moll2025 dataset)</span>
 <span class="n">label_color</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">204</span><span class="p">,</span> <span class="mi">204</span><span class="p">])</span> <span class="o">/</span> <span class="mf">255.0</span>  <span class="c1"># _LABEL_COLORS[10]</span>
@@ -1237,9 +1231,6 @@ speed with .sel:   KeyError: &quot;&#39;space&#39; is not a valid dimension or c
 </div>
 </div>
 </details>
-<div class="cell_output docutils container">
-<img alt="../_images/0d02ea19a84cb648bb59366b42fe7e01a704e13b8271b6e07ca9ab62d14c48d5.png" src="../_images/0d02ea19a84cb648bb59366b42fe7e01a704e13b8271b6e07ca9ab62d14c48d5.png" />
-</div>
 </div>
 </section>
 <section id="changepoints">
@@ -1259,7 +1250,7 @@ speed with .sel:   KeyError: &quot;&#39;space&#39; is not a valid dimension or c
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.intervals</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_interval</span><span class="p">,</span> <span class="n">empty_intervals</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ethograph.labels.plots</span><span class="w"> </span><span class="kn">import</span> <span class="n">plot_label_segments</span>
 
-<span class="n">sel</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;keypoints&quot;</span><span class="p">:</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">,</span> <span class="s2">&quot;individuals&quot;</span><span class="p">:</span> <span class="s2">&quot;Crow1&quot;</span><span class="p">}</span>
+<span class="n">sel</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;keypoint&quot;</span><span class="p">:</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">,</span> <span class="s2">&quot;individual&quot;</span><span class="p">:</span> <span class="s2">&quot;Crow1&quot;</span><span class="p">}</span>
 
 <span class="c1"># 3 labelled intervals (real onsets from the Moll2025 dataset)</span>
 <span class="n">label_color</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">204</span><span class="p">,</span> <span class="mi">204</span><span class="p">])</span> <span class="o">/</span> <span class="mf">255.0</span>  <span class="c1"># _LABEL_COLORS[10]</span>
@@ -1276,9 +1267,9 @@ speed with .sel:   KeyError: &quot;&#39;space&#39; is not a valid dimension or c
 <span class="n">spd</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">sel_valid</span><span class="p">(</span><span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">],</span> <span class="n">sel</span><span class="p">)</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">time</span><span class="p">,</span> <span class="n">spd</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;#000305&quot;</span><span class="p">)</span>
 
-<span class="n">troughs</span> <span class="o">=</span> <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed_troughs&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="s2">&quot;beakTip&quot;</span><span class="p">,</span> <span class="n">individuals</span><span class="o">=</span><span class="s2">&quot;Crow1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">values</span>
+<span class="n">troughs</span> <span class="o">=</span> <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed_troughs&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoint</span><span class="o">=</span><span class="s2">&quot;beakTip&quot;</span><span class="p">,</span> <span class="n">individual</span><span class="o">=</span><span class="s2">&quot;Crow1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">values</span>
 <span class="n">trough_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">troughs</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
-<span class="n">turning_points</span> <span class="o">=</span> <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed_turning_points&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="s2">&quot;beakTip&quot;</span><span class="p">,</span> <span class="n">individuals</span><span class="o">=</span><span class="s2">&quot;Crow1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">values</span>
+<span class="n">turning_points</span> <span class="o">=</span> <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed_turning_points&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoint</span><span class="o">=</span><span class="s2">&quot;beakTip&quot;</span><span class="p">,</span> <span class="n">individual</span><span class="o">=</span><span class="s2">&quot;Crow1&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">values</span>
 <span class="n">turning_points_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">turning_points</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
 <span class="n">changepoints_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">trough_idx</span><span class="p">,</span> <span class="n">turning_points_idx</span><span class="p">]))</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">time</span><span class="p">[</span><span class="n">changepoints_idx</span><span class="p">],</span> <span class="n">spd</span><span class="p">[</span><span class="n">changepoints_idx</span><span class="p">],</span> <span class="n">s</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s2">&quot;r&quot;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;changepoints&quot;</span><span class="p">)</span>
@@ -1308,9 +1299,6 @@ speed with .sel:   KeyError: &quot;&#39;space&#39; is not a valid dimension or c
 </div>
 </div>
 </details>
-<div class="cell_output docutils container">
-<img alt="../_images/9f723a89e4e5fee33a34231fe41128207e8de486f8fbebe4ecaa06bf25973d89.png" src="../_images/9f723a89e4e5fee33a34231fe41128207e8de486f8fbebe4ecaa06bf25973d89.png" />
-</div>
 </div>
 </section>
 <section id="data-requirements-summary">
@@ -1340,7 +1328,7 @@ speed with .sel:   KeyError: &quot;&#39;space&#39; is not a valid dimension or c
 <td><p><code class="xref py py-class docutils literal notranslate"><span class="pre">TimeSeries</span></code> in processing</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>Individuals</strong></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">coords[&quot;individuals&quot;]</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">coords[&quot;individual&quot;]</span></code></p></td>
 <td><p>Separate objects</p></td>
 <td><p>One subject per file</p></td>
 </tr>
@@ -1487,8 +1475,8 @@ across all three backends.</p>
   </div>
   
   <!-- Scripts loaded after <body> so the DOM is not blocked -->
-  <script defer src="../_static/scripts/bootstrap.js?digest=0790524f97105ba85085"></script>
-<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=0790524f97105ba85085"></script>
+  <script defer src="../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5"></script>
 
   <footer class="bd-footer">
 <div class="bd-footer__inner bd-page-width">
@@ -1522,7 +1510,7 @@ across all three backends.</p>
         <div class="footer-item">
 <p class="theme-version">
   <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
-  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.18.0.
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.19.0.
 </p></div>
       
     </div>

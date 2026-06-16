@@ -37,7 +37,7 @@ ds = xr.Dataset(
             coords={"time": np.arange(9000) / 30.0},
         ),
     },
-    coords={"individuals": ["mouse1"]},
+    coords={"individual": ["mouse1"]},
 )
 ds.attrs["trial"] = 1
 ds.attrs["fps"] = 30.0
@@ -141,7 +141,7 @@ in the GUI's **Feature** dropdown:
 ```python
 ds["speed"] = xr.DataArray(
     speed_values,
-    dims=["time", "keypoints", "individuals"],
+    dims=["time", "keypoint", "individual"],
 )
 ```
 
@@ -191,13 +191,13 @@ different individuals.
 ds = xr.Dataset(
     data_vars={
         "speed": xr.DataArray(
-            speed_array,                # shape: (time, individuals)
-            dims=["time", "individuals"],
+            speed_array,                # shape: (time, individual)
+            dims=["time", "individual"],
         ),
     },
     coords={
         "time": time_values,
-        "individuals": ["mouse1", "mouse2", "mouse3"],
+        "individual": ["mouse1", "mouse2", "mouse3"],
     },
 )
 ```
@@ -286,8 +286,8 @@ ds["emg"] = xr.DataArray(
 ```
 
 Dimensions **do not need to match across features**. For example, `position`
-may have `(time, keypoints, space, individuals)` while `speed` only has
-`(time, keypoints, individuals)`. The GUI creates combo boxes for the union of
+may have `(time, keypoint, space, individual)` while `speed` only has
+`(time, keypoint, individual)`. The GUI creates combo boxes for the union of
 all discovered dimensions. When a feature doesn't have a selected dimension,
 that selection is silently ignored via
 {func}`~ethograph.utils.xr_utils.sel_valid`:
@@ -295,10 +295,10 @@ that selection is silently ignored via
 ```python
 import ethograph as eto
 
-# "keypoints" and "individuals" are applied; "space" is silently dropped
+# "keypoint" and "individual" are applied; "space" is silently dropped
 data, used_kwargs = eto.sel_valid(
     ds["speed"],
-    {"keypoints": "nose", "space": "x", "individuals": "mouse1"},
+    {"keypoint": "nose", "space": "x", "individual": "mouse1"},
 )
 ```
 :::
@@ -332,8 +332,8 @@ The variable should have an `RGB` dimension of size 3:
 
 ```python
 ds["angle_rgb"] = xr.DataArray(
-    rgb_values,                          # shape: (time, keypoints, individuals, 3)
-    dims=["time", "keypoints", "individuals", "RGB"],
+    rgb_values,                          # shape: (time, keypoint, individual, 3)
+    dims=["time", "keypoint", "individual", "RGB"],
 )
 ```
 

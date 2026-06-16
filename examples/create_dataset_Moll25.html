@@ -27,8 +27,8 @@
   </noscript>
   
   <!-- Loaded before other Sphinx assets -->
-  <link href="../_static/styles/theme.css?digest=0790524f97105ba85085" rel="stylesheet" />
-<link href="../_static/styles/pydata-sphinx-theme.css?digest=0790524f97105ba85085" rel="stylesheet" />
+  <link href="../_static/styles/theme.css?digest=a95f357e85573c9b56d5" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=a95f357e85573c9b56d5" rel="stylesheet" />
 
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
@@ -36,10 +36,10 @@
     <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=c557aaec" />
   
   <!-- So that users can add custom icons -->
-  <script defer src="../_static/scripts/fontawesome.js?digest=0790524f97105ba85085"></script>
+  <script defer src="../_static/scripts/fontawesome.js?digest=a95f357e85573c9b56d5"></script>
   <!-- Pre-loaded scripts that we'll load fully later -->
-  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=0790524f97105ba85085" />
-<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=0790524f97105ba85085" />
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5" />
 
     <script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=9bcbadda"></script>
@@ -730,7 +730,7 @@ data_folder: d:\Akseli\Code\ethograph\data\Moll2025
     <span class="n">dlc_3d_path</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;pose_3d&quot;</span><span class="p">]</span>
 
     <span class="n">ds</span> <span class="o">=</span> <span class="n">load_poses</span><span class="o">.</span><span class="n">from_dlc_file</span><span class="p">(</span><span class="n">dlc_3d_path</span><span class="p">,</span> <span class="n">fps</span><span class="o">=</span><span class="n">fps</span><span class="p">)</span>
-    <span class="n">ds</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">assign_coords</span><span class="p">(</span><span class="n">individuals</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;Crow1&quot;</span><span class="p">])</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">assign_coords</span><span class="p">(</span><span class="n">individual</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;Crow1&quot;</span><span class="p">])</span>
     <span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;trial&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">trial</span>
 
     <span class="c1"># 3D calibration</span>
@@ -739,18 +739,18 @@ data_folder: d:\Akseli\Code\ethograph\data\Moll2025
 
     <span class="c1"># Kinematics</span>
     <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;position&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">gaussian_smoothing</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">,</span> <span class="o">**</span><span class="n">smoothing_params</span><span class="p">)</span>
-    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;velocity&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_velocity</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;stickTip&quot;</span><span class="p">,</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">]))</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="nb">min</span><span class="o">=-</span><span class="mi">150</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="mi">150</span><span class="p">)</span>
-    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_norm</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">velocity</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;stickTip&quot;</span><span class="p">,</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">]))</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;velocity&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_velocity</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoint</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;stickTip&quot;</span><span class="p">,</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">]))</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="nb">min</span><span class="o">=-</span><span class="mi">150</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="mi">150</span><span class="p">)</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;speed&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_norm</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">velocity</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoint</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;stickTip&quot;</span><span class="p">,</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">]))</span>
     <span class="n">smooth_2x</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">smoothing_params</span><span class="p">,</span> <span class="s2">&quot;sigma&quot;</span><span class="p">:</span> <span class="n">smoothing_params</span><span class="p">[</span><span class="s2">&quot;sigma&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">2</span><span class="p">}</span>
     <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;acceleration&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_acceleration</span><span class="p">(</span>
-        <span class="n">gaussian_smoothing</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">,</span> <span class="o">**</span><span class="n">smooth_2x</span><span class="p">)</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;stickTip&quot;</span><span class="p">,</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">])</span>
+        <span class="n">gaussian_smoothing</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">,</span> <span class="o">**</span><span class="n">smooth_2x</span><span class="p">)</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoint</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;stickTip&quot;</span><span class="p">,</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">])</span>
     <span class="p">)</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="nb">min</span><span class="o">=-</span><span class="mi">1500</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="mi">1500</span><span class="p">)</span>
 
     <span class="c1"># Distance features</span>
-    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;pellet_beakTip_dist&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_pairwise_distances</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">,</span> <span class="s2">&quot;keypoints&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;pellet&quot;</span><span class="p">:</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">})</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;pellet_beakTip_dist&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_pairwise_distances</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">,</span> <span class="s2">&quot;keypoint&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;pellet&quot;</span><span class="p">:</span> <span class="s2">&quot;beakTip&quot;</span><span class="p">})</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span>
         <span class="mi">0</span><span class="p">,</span> <span class="n">clip_distance</span>
     <span class="p">)</span>
-    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;pellet_stickTip_dist&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_pairwise_distances</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">,</span> <span class="s2">&quot;keypoints&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;pellet&quot;</span><span class="p">:</span> <span class="s2">&quot;stickTip&quot;</span><span class="p">})</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span>
+    <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;pellet_stickTip_dist&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_pairwise_distances</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">position</span><span class="p">,</span> <span class="s2">&quot;keypoint&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;pellet&quot;</span><span class="p">:</span> <span class="s2">&quot;stickTip&quot;</span><span class="p">})</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span>
         <span class="mi">0</span><span class="p">,</span> <span class="n">clip_distance</span>
     <span class="p">)</span>
     <span class="n">ds</span><span class="p">[</span><span class="s2">&quot;disp_beakTip_dist&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_distance_to_constant</span><span class="p">(</span>
@@ -761,7 +761,7 @@ data_folder: d:\Akseli\Code\ethograph\data\Moll2025
     <span class="p">)</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">clip_distance</span><span class="p">)</span>
 
     <span class="c1"># Keep subset of keypoints</span>
-    <span class="n">ds</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoints</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;beakTip&quot;</span><span class="p">,</span> <span class="s2">&quot;stickTip&quot;</span><span class="p">,</span> <span class="s2">&quot;pellet&quot;</span><span class="p">])</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">keypoint</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;beakTip&quot;</span><span class="p">,</span> <span class="s2">&quot;stickTip&quot;</span><span class="p">,</span> <span class="s2">&quot;pellet&quot;</span><span class="p">])</span>
 
     <span class="c1"># Video features (S3D)</span>
     <span class="n">s3d_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">dlc_3d_path</span><span class="p">)</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;_DLC_3D.csv&quot;</span><span class="p">,</span> <span class="s2">&quot;-cam-1_s3d.npy&quot;</span><span class="p">))</span>
@@ -803,11 +803,6 @@ data_folder: d:\Akseli\Code\ethograph\data\Moll2025
 <span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_datasets</span><span class="p">(</span><span class="n">ds_list</span><span class="p">)</span>
 <span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;Trial_data.nc&quot;</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saved to </span><span class="si">{</span><span class="n">data_folder</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="s1">&#39;Trial_data.nc&#39;</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</pre></div>
-</div>
-</div>
-<div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Saved to d:\Akseli\Code\ethograph\data\Moll2025\Trial_data.nc
 </pre></div>
 </div>
 </div>
@@ -892,8 +887,8 @@ data_folder: d:\Akseli\Code\ethograph\data\Moll2025
   </div>
   
   <!-- Scripts loaded after <body> so the DOM is not blocked -->
-  <script defer src="../_static/scripts/bootstrap.js?digest=0790524f97105ba85085"></script>
-<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=0790524f97105ba85085"></script>
+  <script defer src="../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5"></script>
 
   <footer class="bd-footer">
 <div class="bd-footer__inner bd-page-width">
@@ -927,7 +922,7 @@ data_folder: d:\Akseli\Code\ethograph\data\Moll2025
         <div class="footer-item">
 <p class="theme-version">
   <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
-  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.18.0.
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.19.0.
 </p></div>
       
     </div>
