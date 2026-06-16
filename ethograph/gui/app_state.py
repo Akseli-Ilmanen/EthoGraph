@@ -210,7 +210,7 @@ class AppStateSpec:
         "lock_axes": (bool, False, False),
         "spec_colormap": (str, "CET-R4", True),
         "spec_levels_mode": (str, "auto", True),
-        # All checkbox states for dimension combos (e.g., {"keypoints": True, "space": False})
+        # All checkbox states for dimension combos (e.g., {"keypoint": True, "space": False})
         "all_checkbox_states": (dict[str, bool], {}, True),
         # Audio processing
         "audio_cp_hop_length_ms": (float, 5.0, True),

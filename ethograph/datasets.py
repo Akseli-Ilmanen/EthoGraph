@@ -272,19 +272,19 @@ def sample_data() -> "xr.Dataset":
 
     Downloads the Moll2025 crow tool-use dataset (~14 MB) on first call,
     then returns ``itrial(0)`` — an :class:`xarray.Dataset` with position,
-    velocity, speed, and acceleration for 14 keypoints.
+    velocity, speed, and acceleration for 14 keypoint.
 
     Returns
     -------
     xarray.Dataset
-        Single-trial dataset with dimensions ``(time, space, keypoints, individuals)``.
+        Single-trial dataset with dimensions ``(time, space, keypoint, individual)``.
 
     Examples
     --------
     >>> import ethograph as eto
     >>> ds = eto.sample_data()
     >>> ds["speed"]
-    <xarray.DataArray 'speed' (time: ..., keypoints: 14, individuals: 1)>
+    <xarray.DataArray 'speed' (time: ..., keypoint: 14, individual: 1)>
     """
     from ethograph.utils.download import download_assets
 

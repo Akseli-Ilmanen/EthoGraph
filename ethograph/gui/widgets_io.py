@@ -942,8 +942,9 @@ class IOWidget(QWidget):
 
         individual = "ind0"
         ds = getattr(self.app_state, "ds", None)
-        if ds is not None and "individuals" in ds.coords:
-            individual = str(ds.coords["individuals"].values[0])
+        _ind_dim = next((n for n in ("individuals", "individual") if ds is not None and n in ds.coords), None)
+        if _ind_dim is not None:
+            individual = str(ds.coords[_ind_dim].values[0])
 
         try:
             intervals_df = crowsetta_to_intervals(
@@ -1033,8 +1034,9 @@ class IOWidget(QWidget):
 
         individual = "ind0"
         ds = getattr(self.app_state, "ds", None)
-        if ds is not None and "individuals" in ds.coords:
-            individual = str(ds.coords["individuals"].values[0])
+        _ind_dim = next((n for n in ("individuals", "individual") if ds is not None and n in ds.coords), None)
+        if _ind_dim is not None:
+            individual = str(ds.coords[_ind_dim].values[0])
 
         rows: list[dict] = []
         for name, iset in intervalsets.items():

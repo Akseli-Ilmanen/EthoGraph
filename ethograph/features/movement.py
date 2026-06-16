@@ -128,7 +128,7 @@ def compute_distance_to_constant(
     Parameters
     ----------
     data : xarray.Dataset
-        Dataset containing position data with dims: time, individuals, keypoints, space.
+        Dataset containing position data with dims: time, individual, keypoint, space.
         Space dimension must contain either ``['x', 'y']`` or ``['x', 'y', 'z']``.
     reference_point : array-like
         Constant reference point [x, y] for 2D or [x, y, z] for 3D
@@ -152,9 +152,9 @@ def compute_distance_to_constant(
         If space coordinates and reference_point dimensions don't match
     """
     if keypoint:
-        data = data.sel(keypoints=keypoint)
+        data = data.sel(keypoint=keypoint)
     if individual:
-        data = data.sel(individuals=individual)
+        data = data.sel(individual=individual)
 
     if isinstance(reference_point, (list, tuple)):
         reference_point = np.array(reference_point)

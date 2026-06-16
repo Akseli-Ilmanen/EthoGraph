@@ -43,7 +43,7 @@ def _build_axis_items(store: DataLoader) -> list[str]:
     """Build combo items from store features + their sub-dimensions.
 
     Each item is either ``"feature"`` (1-D) or ``"feature · column"`` (2-D+).
-    Multi-dimensional features (e.g. position with space×keypoints×individuals)
+    Multi-dimensional features (e.g. position with space×keypoint×individual)
     expand only the *first* non-time dimension into separate axis items.
     The remaining dimensions are controlled by the main GUI selections.
     """

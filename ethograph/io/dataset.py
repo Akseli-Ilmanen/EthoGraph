@@ -177,7 +177,7 @@ def add_changepoints_to_ds(ds, target_feature, changepoint_name, changepoint_fun
     ...     prominence=0.3,
     ... )
     >>> ds["speed_troughs"]
-    <xarray.DataArray 'speed_troughs' (time: 9000, keypoints: 7)>
+    <xarray.DataArray 'speed_troughs' (time: 9000, keypoint: 7)>
     """
     feature_data = ds[target_feature]
     func = partial(changepoint_func, **func_kwargs)

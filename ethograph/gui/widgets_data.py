@@ -1039,8 +1039,8 @@ class DataWidget(QWidget):
                 self.controls.append(combo)
                 slot_layout.addWidget(combo)
 
-        if "keypoints" in self.app_state.ds.coords:
-            keypoint_names = strip_common_prefix([str(k) for k in self.app_state.ds.coords["keypoints"].values])
+        if "keypoint" in self.app_state.ds.coords:
+            keypoint_names = strip_common_prefix([str(k) for k in self.app_state.ds.coords["keypoint"].values])
             self.populate_keypoints(keypoint_names)
 
         slot_layout.addStretch()
@@ -1930,7 +1930,7 @@ class DataWidget(QWidget):
             xmin, xmax = current_plot.get_current_xlim()
             self.update_main_plot(t0=xmin, t1=xmax)
 
-            if key in ["individuals", "keypoints"]:
+            if key in ["individual", "keypoint"]:
                 if self.space_plot and self.space_plot.isVisible():
                     self.space_plot.refresh()
 

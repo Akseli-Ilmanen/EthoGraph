@@ -502,11 +502,11 @@ def wizard_single_from_pose(
     ds["speed"] = compute_speed(ds.position)
     ds["acceleration"] = compute_acceleration(ds.position)
 
-    if "keypoints" in ds.coords and len(ds.keypoints) > 1:
-        compute_pairwise_distances(ds.position, dim="keypoints", pairs="all")
+    if "keypoint" in ds.coords and len(ds.keypoint) > 1:
+        compute_pairwise_distances(ds.position, dim="keypoint", pairs="all")
 
-    if len(ds.individuals) > 1:
-        compute_pairwise_distances(ds.position, dim="individuals", pairs="all")
+    if len(ds.individual) > 1:
+        compute_pairwise_distances(ds.position, dim="individual", pairs="all")
 
     nwb_dir = Path(output_nc_path).parent if output_nc_path else None
     _wizard_single_media_helper(

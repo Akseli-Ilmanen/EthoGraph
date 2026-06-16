@@ -12,7 +12,7 @@ def sel_valid(da, sel_kwargs):
     """Select a slice of a DataArray, silently ignoring dimensions it doesn't have.
 
     Useful when the GUI holds a single ``sel_kwargs`` dict (e.g.
-    ``{"keypoints": "nose", "space": "x"}``) but different features have
+    ``{"keypoint": "nose", "space": "x"}``) but different features have
     different subsets of those dimensions.  Dimensions with labelled
     coordinates are selected with ``.sel()``; dimensions without coordinates
     fall back to ``.isel()``.  The result is squeezed and transposed so time

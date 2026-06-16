@@ -251,7 +251,7 @@ _KINEMATIC_PREAMBLE = (
     "from ethograph.features.changepoints import {func}\n"
     "\n"
     "# Select a 1-D feature from your xarray dataset\n"
-    'speed = ds["speed"].sel(keypoints="snout", individuals="mouse1").values\n'
+    'speed = ds["speed"].sel(keypoint="snout", individual="mouse1").values\n'
 )
 
 _OSCILLATORY_PREAMBLE = (

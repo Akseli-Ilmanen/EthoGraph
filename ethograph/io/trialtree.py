@@ -193,7 +193,7 @@ class TrialTree(xr.DataTree):
         >>> ds.attrs["trial"]
         1
         >>> ds["speed"]  # access a feature variable
-        <xarray.DataArray 'speed' (time: 9000, keypoints: 4)>
+        <xarray.DataArray 'speed' (time: 9000, keypoint: 4)>
         """
         if self._is_continuous:
             if trial not in self._trial_epochs:

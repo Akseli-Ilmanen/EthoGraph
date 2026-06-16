@@ -266,7 +266,7 @@ def get_trial_dict(all_params, nc_paths) -> dict:
                     continue
 
             if all_params["action"] == "inference":
-                stick_pos = ds.position.sel(keypoints="stickTip", space="x", individuals=individual).values
+                stick_pos = ds.position.sel(keypoint="stickTip", space="x", individual=individual).values
                 valid = stick_pos[~np.isnan(stick_pos) & (stick_pos != 0)]
 
                 if valid.size < 200:

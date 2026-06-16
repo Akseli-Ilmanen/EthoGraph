@@ -110,7 +110,7 @@ def find_temporal_dims(ds: xr.Dataset) -> set[str]:
     Returns the set of dimension names that appear alongside at least one
     time-like dimension (any dim whose name contains ``"time"``) in the
     same data variable.  Used to discover extra selection dimensions such
-    as ``space``, ``keypoints``, or ``individuals``.
+    as ``space``, ``keypoint``, or ``individual``.
 
     Parameters
     ----------
@@ -223,8 +223,9 @@ def validate_dataset(
 
     errors.extend(validate_required_attrs(ds))
 
-    if "individuals" not in ds.coords or len(ds.coords["individuals"]) == 0:
-        errors.append("Xarray dataset ('ds') must have 'individuals' coordinate")
+    _ind_coord = next((n for n in ("individuals", "individual") if n in ds.coords), None)
+    if _ind_coord is None or len(ds.coords[_ind_coord]) == 0:
+        errors.append("Xarray dataset ('ds') must have 'individuals' or 'individual' coordinate")
 
     for feat_name in catalog.features:
         try:

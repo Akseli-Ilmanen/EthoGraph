@@ -877,8 +877,10 @@ class LabelsWidget(QWidget):
         ind = getattr(self.app_state, "individuals_sel", None)
         if ind is not None and ind not in ("", "None"):
             return str(ind)
-        if self.app_state.ds is not None and "individuals" in self.app_state.ds.coords:
-            return str(self.app_state.ds.coords["individuals"].values[0])
+        _ds = self.app_state.ds
+        _ind_dim = next((n for n in ("individuals", "individual") if _ds is not None and n in _ds.coords), None)
+        if _ind_dim is not None:
+            return str(_ds.coords[_ind_dim].values[0])
         return "default"
 
     def _on_plot_clicked(self, click_info):

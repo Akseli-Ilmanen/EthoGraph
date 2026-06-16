@@ -282,7 +282,11 @@ class XarrayLoader(_CatalogMixin):
             var = ds[feature]
 
         time = eto.get_time_coord(var).values
-        data, filt_kwargs = eto.sel_valid(var, selections)
+        # Translate "individuals" → "individual" for movement v0.17+ datasets
+        _sel = dict(selections)
+        if "individuals" in _sel and "individual" in var.dims and "individuals" not in var.dims:
+            _sel["individual"] = _sel.pop("individuals")
+        data, filt_kwargs = eto.sel_valid(var, _sel)
         var_sel = var.sel(**filt_kwargs)
 
         dim_labels = None
@@ -394,7 +398,7 @@ class PynappleLoader(_CatalogMixin):
 
         if feature == "pose_estimation":
             result: dict[str, list[str]] = {}
-            kp_spec = self._catalog.combos.get("keypoints") if self._catalog else None
+            kp_spec = self._catalog.combos.get("keypoint") if self._catalog else None
             if kp_spec and kp_spec.values:
                 # Spatial columns first — _build_axis_items expands the first
                 # dim into axis items (pose_estimation · x, etc.)
@@ -402,7 +406,7 @@ class PynappleLoader(_CatalogMixin):
                 if isinstance(first_kp, nap.TsdFrame):
                     result["space"] = [str(c) for c in first_kp.columns]
                 # Keypoints second — picked up by _populate_keypoint_combo
-                result["keypoints"] = list(kp_spec.values)
+                result["keypoint"] = list(kp_spec.values)
             return result
 
         if feature not in self._feature_objs:
@@ -427,10 +431,10 @@ class PynappleLoader(_CatalogMixin):
         t0: float,
         t1: float,
     ) -> PlotData | None:
-        """Stack all keypoints into one (T, N) array, optionally slicing by space/column."""
+        """Stack all keypoint into one (T, N) array, optionally slicing by space/column."""
         import pynapple as nap
 
-        kp_spec = self._catalog.combos.get("keypoints") if self._catalog else None
+        kp_spec = self._catalog.combos.get("keypoint") if self._catalog else None
         if not kp_spec or not kp_spec.values:
             return None
 
@@ -496,7 +500,7 @@ class PynappleLoader(_CatalogMixin):
 
         actual_key = feature
         if feature == "pose_estimation":
-            kp = selections.get("keypoints")
+            kp = selections.get("keypoint")
             if kp and kp in self._feature_objs:
                 actual_key = kp
             else:
@@ -704,8 +708,10 @@ def _auto_catalog_xarray(ds: xr.Dataset) -> DataCatalog:
 
     combos: dict[str, ComboSpec] = {}
 
-    if "individuals" in ds.coords:
-        vals = tuple(ds.coords["individuals"].values.astype(str))
+    # Support both wizard format ("individuals") and movement v0.17+ format ("individual")
+    _ind_dim = next((n for n in ("individuals", "individual") if n in ds.coords), None)
+    if _ind_dim is not None:
+        vals = tuple(ds.coords[_ind_dim].values.astype(str))
         combos["individuals"] = ComboSpec("individuals", vals)
 
     features_list = _feature_vars(ds)
@@ -716,6 +722,9 @@ def _auto_catalog_xarray(ds: xr.Dataset) -> DataCatalog:
 
     for name in find_temporal_dims(ds):
         if name in combos or name.upper() in _HIDDEN_DIMS:
+            continue
+        # "individual" already normalized to "individuals" combo above
+        if name == "individual" and _ind_dim == "individual":
             continue
         if name in ds.coords:
             coord = ds.coords[name]
@@ -748,8 +757,10 @@ def catalog_from_xarray(ds: xr.Dataset, dt: TrialTree, nwb_alignment=None) -> Da
 
     combos: dict[str, ComboSpec] = {}
 
-    if "individuals" in ds.coords:
-        vals = tuple(ds.coords["individuals"].values.astype(str))
+    # Support both wizard format ("individuals") and movement v0.17+ format ("individual")
+    _ind_dim = next((n for n in ("individuals", "individual") if n in ds.coords), None)
+    if _ind_dim is not None:
+        vals = tuple(ds.coords[_ind_dim].values.astype(str))
         combos["individuals"] = ComboSpec("individuals", vals)
 
     features_list = _feature_vars(ds)
@@ -761,6 +772,9 @@ def catalog_from_xarray(ds: xr.Dataset, dt: TrialTree, nwb_alignment=None) -> Da
     extra_dims = find_temporal_dims(ds)
     for name in extra_dims:
         if name in combos or name.upper() in _HIDDEN_DIMS:
+            continue
+        # "individual" already normalized to "individuals" combo above
+        if name == "individual" and _ind_dim == "individual":
             continue
         if name in ds.coords:
             coord = ds.coords[name]
@@ -820,13 +834,13 @@ def _discover_pose_keypoints(source_path: str | Path) -> set[str]:
     elif p.is_file():
         nwb_files.extend(p.parent.glob("*.nwb"))
 
-    keypoints: set[str] = set()
+    keypoint_names: set[str] = set()
     for nwb in nwb_files:
         try:
-            keypoints.update(_find_pose_series_names(nwb))
+            keypoint_names.update(_find_pose_series_names(nwb))
         except Exception:
             continue
-    return keypoints
+    return keypoint_names
 
 
 def catalog_from_pynapple(
@@ -841,7 +855,7 @@ def catalog_from_pynapple(
     source_path
         Path to the original data source (``.nwb``, ``.npz``, or folder).
         When provided, NWB files are scanned for ``PoseEstimationSeries``
-        to create a ``keypoints`` combo from matching pynapple keys.
+        to create a ``keypoint`` combo from matching pynapple keys.
     """
     import pynapple as nap
 
@@ -882,7 +896,7 @@ def catalog_from_pynapple(
                         combos[dim_name] = ComboSpec(dim_name, tuple(str(c) for c in obj.columns))
 
     if keypoint_names:
-        combos["keypoints"] = ComboSpec("keypoints", tuple(sorted(keypoint_names)))
+        combos["keypoint"] = ComboSpec("keypoint", tuple(sorted(keypoint_names)))
         features.insert(0, "pose_estimation")
         # Detect column combo for keypoint TsdFrames
         first_kp = feature_objs.get(keypoint_names[0])

@@ -351,8 +351,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         ind = getattr(self.app_state, "individuals_sel", None)
         if ind is None or ind in ("", "None"):
             ds = self.app_state.ds
-            if ds is not None and "individuals" in ds.coords:
-                ind = str(ds.coords["individuals"].values[0])
+            _ind_dim = next((n for n in ("individuals", "individual") if ds is not None and n in ds.coords), None)
+            if _ind_dim is not None:
+                ind = str(ds.coords[_ind_dim].values[0])
             else:
                 ind = "default"
 

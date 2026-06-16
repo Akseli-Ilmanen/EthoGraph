@@ -249,11 +249,11 @@ def bind_global_shortcuts(meta_widget):
 
     @viewer.bind_key("ctrl+i", overwrite=True)
     def toggle_individuals(v):
-        app_state.toggle_key_sel("individuals", data_widget)
+        app_state.toggle_key_sel("individual", data_widget)
 
     @viewer.bind_key("ctrl+k", overwrite=True)
     def toggle_keypoints(v):
-        app_state.toggle_key_sel("keypoints", data_widget)
+        app_state.toggle_key_sel("keypoint", data_widget)
 
     @viewer.bind_key("ctrl+c", overwrite=True)
     def cycle_cameras(v):

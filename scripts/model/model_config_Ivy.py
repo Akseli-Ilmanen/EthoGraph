@@ -54,12 +54,12 @@ if __name__ == "__main__":
     target_individual = "Ivy"  # predict labels for this individual
 
     cp_kwargs = {
-        "individuals": target_individual,
-        "keypoints": "beakTip",
+        "individual": target_individual,
+        "keypoint": "beakTip",
     }
     feat_kwargs = {
-        "keypoints": ["beakTip", "stickTip"],
-        "individuals": target_individual,
+        "keypoint": ["beakTip", "stickTip"],
+        "individual": target_individual,
     }
 
     mapping_file = os.path.join(eto.get_project_root(), "configs", "crowlab", "mapping_Ivy.txt")  # CHANGE FOR Ivy/poppy
