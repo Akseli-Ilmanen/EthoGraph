@@ -108,7 +108,6 @@ class BorisImportDialog(QDialog):
         self._summary.setStyleSheet("color: #888; padding-top: 6px;")
         layout.addWidget(self._summary)
 
-
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         cancel_btn = QPushButton("Cancel")

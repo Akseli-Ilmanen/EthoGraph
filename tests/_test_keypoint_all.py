@@ -1,5 +1,5 @@
 import ethograph as eto
-from ethograph.io.catalog import catalog_from_xarray, XarrayLoader
+from ethograph.io.catalog import XarrayLoader, catalog_from_xarray
 
 candidates = [
     "data/margot_data/test.nc",
@@ -47,7 +47,12 @@ for f in candidates:
             sel_all[dn] = str(ds.coords[dn].values[0])
     print("selections (All keypoint):", sel_all)
     pdat = loader.select(feat, dict(sel_all))
-    print("  -> data.shape", None if pdat is None else pdat.data.shape, "dim_labels", None if pdat is None else pdat.dim_labels)
+    print(
+        "  -> data.shape",
+        None if pdat is None else pdat.data.shape,
+        "dim_labels",
+        None if pdat is None else pdat.dim_labels,
+    )
 
     # Simulate single keypoint
     sel_single = dict(sel_all)
