@@ -1622,7 +1622,7 @@ class DataWidget(QWidget):
 
     def _on_panel_toggled(self, name: str, state: int):
         """Central handler for all panel visibility checkboxes."""
-        visible = state == Qt.Checked
+        visible = Qt.CheckState(state) == Qt.Checked
         defn = next(d for d in _PANEL_DEFS if d.name == name)
 
         if defn.state_attr:
@@ -1951,7 +1951,7 @@ class DataWidget(QWidget):
         if combo is None:
             return
 
-        is_checked = state == Qt.Checked
+        is_checked = Qt.CheckState(state) == Qt.Checked
 
         if is_checked:
             for other_key, other_checkbox in self.all_checkboxes.items():
@@ -1982,7 +1982,7 @@ class DataWidget(QWidget):
     def _on_channel_all_changed(self, state: int):
         if not self.app_state.ready:
             return
-        is_checked = state == Qt.Checked
+        is_checked = Qt.CheckState(state) == Qt.Checked
         for key, checkbox in self.all_checkboxes.items():
             if checkbox.isChecked() != is_checked:
                 checkbox.setChecked(is_checked)

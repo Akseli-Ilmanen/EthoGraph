@@ -108,18 +108,6 @@ class BorisImportDialog(QDialog):
         self._summary.setStyleSheet("color: #888; padding-top: 6px;")
         layout.addWidget(self._summary)
 
-        doris_note = QLabel(
-            "<i>Note: <a href='https://github.com/olivierfriard/DORIS'>DORIS</a> is a "
-            "separate object-tracking tool from the same author — it produces "
-            "trajectories, not behavior events. Import DORIS output via the "
-            "pose wizard, not here.</i>"
-        )
-        doris_note.setOpenExternalLinks(True)
-        doris_note.setWordWrap(True)
-        doris_note.setStyleSheet("color: #888; padding-top: 4px; font-size: 11px;")
-        layout.addWidget(doris_note)
-
-        layout.addStretch()
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()

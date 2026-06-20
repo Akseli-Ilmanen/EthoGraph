@@ -537,7 +537,7 @@ class ChangepointsWidget(QWidget):
     # =========================================================================
 
     def _on_show_changepoints_changed(self, state):
-        show = state == Qt.Checked
+        show = Qt.CheckState(state) == Qt.Checked
         self.app_state.show_changepoints = show
 
         if not show:
@@ -1070,7 +1070,7 @@ class ChangepointsWidget(QWidget):
         return self.changepoint_correction_checkbox.isChecked()
 
     def _on_changepoint_correction_changed(self, state):
-        enabled = state == Qt.Checked
+        enabled = Qt.CheckState(state) == Qt.Checked
         self.app_state.apply_changepoint_correction = enabled
         if hasattr(self, "_automatic_correction_group"):
             self._automatic_correction_group.setEnabled(enabled)
