@@ -54,10 +54,10 @@ def get_video_fps(video_path: str) -> Optional[int]:
         return None
 
 
-AVAILABLE_POSE_SOFTWARES = list(get_args(load_poses.from_file.__annotations__["source_software"]))
-AVAILABLE_BBOX_SOFTWARES = list(get_args(load_bboxes.from_file.__annotations__["source_software"]))
+# Hard coded!
+AVAILABLE_POSE_SOFTWARES = ["DeepLabCut", "SLEAP", "LightningPose", "Anipose", "NWB"]
+AVAILABLE_BBOX_SOFTWARES = ["VIA-tracks"]
 AVAILABLE_SOFTWARES = AVAILABLE_POSE_SOFTWARES + AVAILABLE_BBOX_SOFTWARES
-
 MOVEMENT_DOCS_URL = "https://movement.neuroinformatics.dev/latest/user_guide/movement_dataset.html"
 examples_URL = "https://github.com/Akseli-Ilmanen/EthoGraph/tree/main/examples"
 
