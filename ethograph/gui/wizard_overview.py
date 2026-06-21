@@ -171,8 +171,10 @@ class _ModeSelectionPage(QWidget):
         ext_box = QGroupBox("External event-coding software")
         ext_lay = QVBoxLayout(ext_box)
         self._rb_boris = QRadioButton(
-            "Import from BORIS project (.boris) — events + media -> alignment.nwb + labels.tsv"
+            "Import from BORIS project (.boris) — events + media -> alignment.nwb + labels.tsv  (coming soon)"
         )
+        self._rb_boris.setEnabled(False)
+        self._rb_boris.setToolTip("BORIS import is not available yet.")
         self._top_group.addButton(self._rb_boris)
         ext_lay.addWidget(self._rb_boris)
         layout.addWidget(ext_box)

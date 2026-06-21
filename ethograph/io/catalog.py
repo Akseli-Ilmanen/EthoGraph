@@ -286,6 +286,15 @@ class XarrayLoader(_CatalogMixin):
         _sel = dict(selections)
         if "individuals" in _sel and "individual" in var.dims and "individuals" not in var.dims:
             _sel["individual"] = _sel.pop("individuals")
+        # feature_dims() stringifies coord labels for the combo UI, so a numeric
+        # coordinate (e.g. component=0, unit=43) arrives here as "0"/"43". Coerce
+        # back to the coordinate's dtype so .sel() matches the real index.
+        for dim, val in list(_sel.items()):
+            if isinstance(val, str) and dim in var.coords and var.coords[dim].dtype.kind in "iuf":
+                try:
+                    _sel[dim] = var.coords[dim].dtype.type(val)
+                except (ValueError, TypeError):
+                    pass
         data, filt_kwargs = eto.sel_valid(var, _sel)
         var_sel = var.sel(**filt_kwargs)
 

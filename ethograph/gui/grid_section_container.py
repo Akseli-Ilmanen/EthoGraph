@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from qtpy.QtCore import QObject, QSize, Qt, Signal
 from qtpy.QtWidgets import (
+    QFrame,
     QGridLayout,
     QPushButton,
     QSizePolicy,
@@ -127,13 +128,33 @@ class GridSectionContainer(QWidget):
         outer.setAlignment(Qt.AlignTop)
 
         # ── 3×3 grid of buttons ──────────────────────────────────────────────
+        # Wrapped in its own panel with a distinct background so the navigation
+        # grid reads as a separate "tab bar" from the section content below it.
         self._grid_widget = QWidget()
+        self._grid_widget.setObjectName("sectionGridPanel")
+        self._grid_widget.setStyleSheet(
+            "#sectionGridPanel {"
+            " background: rgba(255,255,255,8);"
+            " border: 1px solid rgba(255,255,255,30);"
+            " border-radius: 4px;"
+            "}"
+        )
         self._grid_layout = QGridLayout(self._grid_widget)
-        self._grid_layout.setContentsMargins(2, 2, 2, 2)
+        self._grid_layout.setContentsMargins(4, 4, 4, 4)
         self._grid_layout.setSpacing(2)
         for col in range(_GRID_COLS):
             self._grid_layout.setColumnStretch(col, 1)
         outer.addWidget(self._grid_widget)
+        outer.addSpacing(10)
+
+        # ── Separator between the grid tab bar and the content below ─────────
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Plain)
+        separator.setFixedHeight(1)
+        separator.setStyleSheet("background: rgba(255,255,255,45); border: none;")
+        outer.addWidget(separator)
+        outer.addSpacing(10)
 
         # ── Content area: shows the active section ───────────────────────────
         # _AdaptiveStack reports only the current page's sizeHint so the outer
