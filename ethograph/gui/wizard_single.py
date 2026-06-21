@@ -2,11 +2,10 @@
 
 import logging
 from pathlib import Path
-from typing import Optional, get_args
+from typing import Optional
 
 import av
 import xarray as xr
-from movement.io import load_bboxes, load_poses
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
