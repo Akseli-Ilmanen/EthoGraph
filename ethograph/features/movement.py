@@ -311,8 +311,6 @@ def get_angle_rgb(xy_pos, smooth_func=None, smoothing_params=None, input_type="p
 
     curr_angles, _ = calculate_movement_angles(xy_pos, input_type)
 
-    # Save-guard
-    curr_angles = np.clip(curr_angles, -180, 180)
 
     assert np.all((curr_angles[~np.isnan(curr_angles)] >= -180) & (curr_angles[~np.isnan(curr_angles)] <= 180)), (
         f"Angles out of expected range [-180, 180]: min={np.nanmin(curr_angles):.2f}, max={np.nanmax(curr_angles):.2f}"
