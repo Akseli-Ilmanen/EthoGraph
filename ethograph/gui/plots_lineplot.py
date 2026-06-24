@@ -3,6 +3,7 @@
 import logging
 from typing import Optional
 
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pyqtgraph as pg
@@ -301,7 +302,7 @@ def plot_singledim(
 
     # Add changepoints as scatter plots, each with its own color and label
     if changepoints_dict is not None and show_changepoints:
-        cmap = plt.get_cmap("tab10")
+        cmap = matplotlib.colormaps.get_cmap("tab10")
 
         colors = [tuple(int(c * 255) for c in cmap.colors[i][:3]) for i in range(len(cmap.colors))]
 

@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import xarray as xr
-from matplotlib import cm as mpl_cm
+import matplotlib
 from scipy import interpolate
 from scipy.integrate import cumulative_trapezoid
 from scipy.spatial.distance import cdist
@@ -306,7 +306,7 @@ def get_angle_rgb(xy_pos, smooth_func=None, smoothing_params=None, input_type="p
     if smooth_func is not None:
         xy_pos = smooth_func(xy_pos, **smoothing_params)
 
-    cmap = mpl_cm.get_cmap("hsv", 256)
+    cmap = matplotlib.colormaps["hsv"]
     cm = cmap(np.linspace(0, 1, 256))[:, :3]  # Get RGB, exclude alpha
 
     curr_angles, _ = calculate_movement_angles(xy_pos, input_type)
