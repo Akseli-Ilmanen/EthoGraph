@@ -311,20 +311,21 @@ def get_angle_rgb(xy_pos, smooth_func=None, smoothing_params=None, input_type="p
 
     curr_angles, _ = calculate_movement_angles(xy_pos, input_type)
 
-    # Replace NaN with 0 and clip to [-180, 180]
-    curr_angles = np.nan_to_num(curr_angles, 0)
-    curr_angles = np.clip(curr_angles, -180, 180)
 
-    # Map angles to colormap indices
+    assert np.all((curr_angles[~np.isnan(curr_angles)] >= -180) & 
+                (curr_angles[~np.isnan(curr_angles)] <= 180)), \
+        f"Angles out of expected range [-180, 180]: min={np.nanmin(curr_angles):.2f}, max={np.nanmax(curr_angles):.2f}"
+
     col_lines = np.linspace(0, len(cm) - 1, 360)
 
-    # Shift angles from [-180, 180] to [0, 359] for indexing
-    angles = np.ceil(curr_angles + 180).astype(int) - 1
-    angles = np.clip(angles, 0, 359)
+    angles = np.floor(curr_angles + 180)  # NaN + 180 = NaN, stays float
+    valid = ~np.isnan(angles)
 
-    # Get RGB values from colormap
-    cmap_indices = np.round(col_lines[angles]).astype(int)
-    rgb_matrix = cm[cmap_indices]
+    cmap_indices = np.full(len(angles), np.nan)
+    cmap_indices[valid] = np.round(col_lines[angles[valid].astype(int)]).astype(int)
+
+    rgb_matrix = np.full((len(angles), 3), np.nan)
+    rgb_matrix[valid] = cm[cmap_indices[valid].astype(int)]
 
     return rgb_matrix, angles
 
