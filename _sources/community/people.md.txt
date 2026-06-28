@@ -25,6 +25,7 @@ development — thank you.
 - **[Niko Sirmpilatze](https://github.com/niksirbi)**[^movement]
 - **[Mikkel Roald-Arbøl](https://roald-arboel.com/)**
 - **[David Nicholson](https://github.com/NickleDave)**[^vocalpy]
+- **[Vedant Vakharia](https://github.com/vedantvakharia)**
 
 [^audian]: Author of [audian](https://github.com/bendalab/audian)
 [^phy]: Author of [phy](https://github.com/cortex-lab/phy)
