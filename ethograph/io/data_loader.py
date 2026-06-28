@@ -10,7 +10,7 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 import xarray as xr
-from movement.io import load
+from movement.io import load_dataset
 from movement.kinematics import (
     compute_acceleration,
     compute_pairwise_distances,
@@ -303,7 +303,7 @@ def _load_trialtree(
 # ---------------------------------------------------------------------------
 
 
-def load_dataset(
+def load_features_dataset(
     file_path: str,
     progress_callback: Callable[[str], None] | None = None,
     metadata_path: str | None = None,
@@ -485,7 +485,7 @@ def wizard_single_from_pose(
 ):
     """Create a minimal TrialTree from pose or bounding-box data."""
     try:
-        ds = load.load_dataset(
+        ds = load_dataset(
             pose_path,
             fps=fps,
             source_software=source_software,

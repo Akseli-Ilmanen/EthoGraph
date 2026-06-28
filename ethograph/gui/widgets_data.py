@@ -32,7 +32,7 @@ from qtpy.QtWidgets import (
 
 import ethograph as eto
 from ethograph.gui.notify import notify, notify_dialog
-from ethograph.io.data_loader import load_dataset
+from ethograph.io.data_loader import load_features_dataset
 from ethograph.io.plot_sources import FileSource
 from ethograph.io.time_model import compute_trial_video_bounds
 from ethograph.labels.intervals import get_interval_bounds
@@ -739,14 +739,14 @@ class DataWidget(QWidget):
     def _phase_load_data(self, nc_file_path: str) -> _LoadContext:
         """Phase 1: Load dataset from disk.  May show downsample dialog."""
         try:
-            result = load_dataset(
+            result = load_features_dataset(
                 nc_file_path,
                 progress_callback=getattr(self.app_state, "_progress_callback", None),
                 metadata_path=self.app_state.metadata_path,
             )
         except (OSError, ValueError, KeyError) as e:
-            logger.exception("load_dataset failed")
-            raise _LoadError(f"Failed to load dataset: {type(e).__name__}: {e}") from e
+            logger.exception("load_features_dataset failed")
+            raise _LoadError(f"Failed to load feature dataset: {type(e).__name__}: {e}") from e
 
         video_folder_override = None
         if result.nwb_video_folder and not self.app_state.video_folder:
