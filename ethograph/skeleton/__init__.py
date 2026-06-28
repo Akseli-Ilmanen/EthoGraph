@@ -10,15 +10,15 @@ import napari
 import numpy as np
 import xarray as xr
 
-from movement.napari.skeleton.config import (
+from ethograph.skeleton.config import (
     config_to_arrays,
     load_yaml_config,
     save_yaml_config,
     validate_config,
 )
-from movement.napari.skeleton.renderers import PrecomputedRenderer
-from movement.napari.skeleton.state import SkeletonState
-from movement.napari.skeleton.templates import TEMPLATES
+from ethograph.skeleton.renderers import PrecomputedRenderer
+from ethograph.skeleton.state import SkeletonState
+from ethograph.skeleton.templates import TEMPLATES
 
 __all__ = [
     "add_skeleton_layer",

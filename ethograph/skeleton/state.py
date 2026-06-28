@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import xarray as xr
 
-from movement.napari.skeleton.config import (
+from ethograph.skeleton.config import (
     config_to_arrays,
     hex_to_rgba,
     rgba_to_hex,

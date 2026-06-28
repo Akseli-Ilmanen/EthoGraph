@@ -3,7 +3,7 @@
 import numpy as np
 import xarray as xr
 
-from movement.napari.skeleton.renderers.base import BaseRenderer
+from ethograph.skeleton.renderers.base import BaseRenderer
 
 
 class PrecomputedRenderer(BaseRenderer):

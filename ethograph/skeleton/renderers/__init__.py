@@ -1,7 +1,7 @@
 """Skeleton renderers for Movement napari plugin."""
 
-from movement.napari.skeleton.renderers.base import BaseRenderer
-from movement.napari.skeleton.renderers.precomputed import (
+from ethograph.skeleton.renderers.base import BaseRenderer
+from ethograph.skeleton.renderers.precomputed import (
     PrecomputedRenderer,
 )
 

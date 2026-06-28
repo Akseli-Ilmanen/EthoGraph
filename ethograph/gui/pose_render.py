@@ -19,8 +19,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from movement.io import load_dataset
-from movement.napari.convert import ds_to_napari_layers
-from movement.napari.layer_styles import (
+from ethograph.convert import ds_to_napari_layers
+from ethograph.layer_styles import (
     BoxesStyle,
     PointsStyle,
     _sample_colormap,
