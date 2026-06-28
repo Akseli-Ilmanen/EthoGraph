@@ -13,6 +13,7 @@ import xarray as xr
 from ethograph.skeleton.config import (
     config_to_arrays,
     load_yaml_config,
+    nwb_skeleton_to_config,
     save_yaml_config,
     validate_config,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "add_skeleton_layer",
     "load_skeleton_config",
     "save_skeleton_config",
+    "nwb_skeleton_to_config",
     "TEMPLATES",
     "SkeletonState",
     "PrecomputedRenderer",
@@ -216,10 +218,12 @@ def add_skeleton_layer(
         skeleton_state, renderer.edge_indices
     )
 
-    # Set up layer properties
+    # Set up layer properties. ``vector_style="line"`` keeps segments as plain
+    # lines (uniform width) — the napari default can render arrow/triangle heads.
     vector_kwargs = {
         "edge_color": vector_colors,
         "edge_width": 2.0,
+        "vector_style": "line",
         "name": name,
         "opacity": 0.8,
     }

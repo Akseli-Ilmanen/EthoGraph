@@ -99,6 +99,8 @@ class ExtraCameraWidget(QWidget):
         self._video_layer = None
         self._points_layer = None
         self._shapes_layer = None
+        self._skeleton_layer = None
+        self._glyph_layer = None
 
     @property
     def fps(self) -> float:
@@ -146,6 +148,30 @@ class ExtraCameraWidget(QWidget):
             **style_kwargs,
         )
 
+    def set_skeleton(self, layer):
+        self.clear_skeleton()
+        self._skeleton_layer = layer
+
+    def clear_skeleton(self):
+        if self._skeleton_layer is not None:
+            try:
+                self._viewer_model.layers.remove(self._skeleton_layer)
+            except ValueError:
+                pass
+            self._skeleton_layer = None
+
+    def set_glyphs(self, layer):
+        self.clear_glyphs()
+        self._glyph_layer = layer
+
+    def clear_glyphs(self):
+        if self._glyph_layer is not None:
+            try:
+                self._viewer_model.layers.remove(self._glyph_layer)
+            except ValueError:
+                pass
+            self._glyph_layer = None
+
     def seek_to_time(self, t_seconds: float):
         if self._fps <= 0 or self._video_layer is None:
             return
@@ -180,6 +206,8 @@ class ExtraCameraWidget(QWidget):
                 pass
             self._points_layer = None
         self.clear_bbox()
+        self.clear_skeleton()
+        self.clear_glyphs()
 
     def clear(self):
         self.clear_pose()

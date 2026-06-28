@@ -93,6 +93,70 @@ def connections_to_edge_indices(
     return edges
 
 
+def _turbo_hex_palette(n: int) -> list[str]:
+    """Return *n* visually distinct hex colors sampled from the turbo colormap."""
+    from matplotlib import colormaps
+
+    cmap = colormaps["turbo"]
+    denom = max(n - 1, 1)
+    return [rgba_to_hex(cmap(i / denom)) for i in range(n)]
+
+
+def nwb_skeleton_to_config(
+    nodes: list[str | None],
+    edges: np.ndarray,
+    *,
+    colors: list[str] | None = None,
+    width: float = 2.0,
+) -> dict[str, Any]:
+    """Convert an ndx-pose ``Skeleton`` (nodes + edges) to a skeleton config dict.
+
+    This is the NWB *config layer*: it produces the same ``{"keypoints", ...,
+    "connections": [{"start", "end", "color", "width", "segment"}]}`` dict that
+    the rest of the skeleton module already consumes — so the renderer,
+    ``SkeletonState``, and ``validate_config`` are reused unchanged.
+
+    Parameters
+    ----------
+    nodes
+        Keypoint names indexed by ``edges``. Entries may be ``None`` to mark a
+        node absent from the target dataset; edges touching it are dropped.
+    edges
+        Array of node-index pairs, shape ``(n_edges, 2)``.
+    colors
+        Optional per-edge hex colors. Defaults to a turbo palette.
+    width
+        Line width applied to every edge.
+
+    Returns
+    -------
+    dict
+        Skeleton configuration dictionary.
+    """
+    edges = np.asarray(edges).astype(int).reshape(-1, 2)
+    palette = colors if colors is not None else _turbo_hex_palette(len(edges))
+
+    connections: list[dict[str, Any]] = []
+    for edge_idx, (a, b) in enumerate(edges):
+        start, end = nodes[a], nodes[b]
+        if start is None or end is None:
+            continue
+        connections.append(
+            {
+                "start": start,
+                "end": end,
+                "color": palette[edge_idx],
+                "width": width,
+                "segment": "",
+            }
+        )
+
+    return {
+        "keypoints": [n for n in nodes if n is not None],
+        "connections": connections,
+    }
+
+
 def load_yaml_config(path: str | Path) -> dict[str, Any]:
     """Load skeleton configuration from YAML file.
 

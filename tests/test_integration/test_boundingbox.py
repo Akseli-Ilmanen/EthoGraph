@@ -4,7 +4,7 @@ import warnings
 
 import pytest
 import xarray as xr
-from ethograph.convert import ds_to_napari_layers
+from movement.napari import ds_to_napari_layers
 from movement.sample_data import fetch_dataset
 
 from ethograph.gui.pose_render import PoseRenderData, load_pose_from_file

@@ -11,9 +11,10 @@ import pandas as pd
 import xarray as xr
 from napari.viewer import Viewer
 from qtpy.QtCore import Qt, QTimer
-from qtpy.QtGui import QColor
+from qtpy.QtGui import QColor, QIcon, QPixmap
 from qtpy.QtWidgets import (
     QCheckBox,
+    QColorDialog,
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
@@ -60,6 +61,13 @@ from .pose_render import (
 from .video_manager import VideoManager, is_url
 
 logger = logging.getLogger(__name__)
+
+
+def _color_swatch_icon(color_hex: str) -> QIcon:
+    """Return a small filled-square icon for a color-picker button."""
+    pix = QPixmap(20, 20)
+    pix.fill(QColor(color_hex))
+    return QIcon(pix)
 
 
 def _detect_nwb_pose_keys(nwb_path: str | None) -> list[str] | None:
@@ -355,19 +363,28 @@ class DataPanel(QWidget):
         pose_layout.setContentsMargins(4, 4, 4, 4)
         self.pose_groupbox.setLayout(pose_layout)
 
+        # Confidence filter (applies to both points and skeleton edges)
         threshold_layout = QHBoxLayout()
-        threshold_layout.addWidget(QLabel("Confidence >="))
+        threshold_layout.addWidget(QLabel("Confidence ≥"))
         self.pose_hide_threshold_spin = QDoubleSpinBox()
         self.pose_hide_threshold_spin.setObjectName("pose_hide_threshold_spin")
         self.pose_hide_threshold_spin.setRange(0.0, 1.0)
         self.pose_hide_threshold_spin.setSingleStep(0.1)
         self.pose_hide_threshold_spin.setDecimals(1)
         self.pose_hide_threshold_spin.setFixedWidth(60)
-        self.pose_hide_threshold_spin.setToolTip("Hide pose markers with confidence below this value (0.0-1.0)")
+        self.pose_hide_threshold_spin.setToolTip(
+            "Hide pose markers below this confidence (0.0-1.0). A skeleton edge "
+            "is also hidden on any frame where one of its two keypoints is hidden."
+        )
         self.pose_hide_threshold_spin.setValue(self.app_state.pose_hide_threshold)
         threshold_layout.addWidget(self.pose_hide_threshold_spin)
+        threshold_layout.addStretch()
+        pose_layout.addLayout(threshold_layout)
 
-        threshold_layout.addWidget(QLabel("Size:"))
+        # Points (markers) row
+        points_row = QHBoxLayout()
+        points_row.addWidget(QLabel("<b>Points:</b>"))
+        points_row.addWidget(QLabel("Size"))
         self.pose_point_size_spin = QDoubleSpinBox()
         self.pose_point_size_spin.setObjectName("pose_point_size_spin")
         self.pose_point_size_spin.setRange(1.0, 50.0)
@@ -375,18 +392,14 @@ class DataPanel(QWidget):
         self.pose_point_size_spin.setDecimals(0)
         self.pose_point_size_spin.setFixedWidth(55)
         self.pose_point_size_spin.setValue(10.0)
-        threshold_layout.addWidget(self.pose_point_size_spin)
+        points_row.addWidget(self.pose_point_size_spin)
 
-        threshold_layout.addStretch()
-        pose_layout.addLayout(threshold_layout)
-
-        row2 = QHBoxLayout()
         self.pose_show_text_checkbox = QCheckBox("Show text")
         self.pose_show_text_checkbox.setChecked(False)
         self.pose_show_text_checkbox.setToolTip("Show keypoint/individual labels on pose markers")
-        row2.addWidget(self.pose_show_text_checkbox)
+        points_row.addWidget(self.pose_show_text_checkbox)
 
-        row2.addWidget(QLabel("Text size:"))
+        points_row.addWidget(QLabel("Text size"))
         self.pose_text_size_spin = QDoubleSpinBox()
         self.pose_text_size_spin.setObjectName("pose_text_size_spin")
         self.pose_text_size_spin.setRange(4.0, 72.0)
@@ -394,22 +407,56 @@ class DataPanel(QWidget):
         self.pose_text_size_spin.setDecimals(0)
         self.pose_text_size_spin.setFixedWidth(55)
         self.pose_text_size_spin.setValue(12.0)
-        row2.addWidget(self.pose_text_size_spin)
+        points_row.addWidget(self.pose_text_size_spin)
+        points_row.addStretch()
+        pose_layout.addLayout(points_row)
 
-        self.rotate_btn = QPushButton("Rotate video/pose by 90°")
-        self.rotate_btn.setToolTip("Rotate all video and pose layers by 90° clockwise")
-        row2.addWidget(self.rotate_btn)
-        row2.addStretch()
-        pose_layout.addLayout(row2)
+        # Skeleton (edges) row
+        skeleton_row = QHBoxLayout()
+        skeleton_row.addWidget(QLabel("<b>Skeleton:</b>"))
+        self.pose_show_skeleton_checkbox = QCheckBox("Show")
+        self.pose_show_skeleton_checkbox.setChecked(self.app_state.pose_show_skeleton)
+        self.pose_show_skeleton_checkbox.setToolTip(
+            "Draw skeleton edges (from the NWB ndx-pose Skeleton or the skeleton editor)"
+        )
+        skeleton_row.addWidget(self.pose_show_skeleton_checkbox)
 
-        # Select All / Deselect All
+        skeleton_row.addWidget(QLabel("Line width"))
+        self.pose_skeleton_width_spin = QDoubleSpinBox()
+        self.pose_skeleton_width_spin.setObjectName("pose_skeleton_width_spin")
+        self.pose_skeleton_width_spin.setRange(0.5, 20.0)
+        self.pose_skeleton_width_spin.setSingleStep(0.5)
+        self.pose_skeleton_width_spin.setDecimals(1)
+        self.pose_skeleton_width_spin.setFixedWidth(55)
+        self.pose_skeleton_width_spin.setValue(2.0)
+        skeleton_row.addWidget(self.pose_skeleton_width_spin)
+
+        skeleton_row.addWidget(QLabel("Base colour"))
+        self.pose_skeleton_color_btn = QPushButton()
+        self.pose_skeleton_color_btn.setObjectName("pose_skeleton_color_btn")
+        self.pose_skeleton_color_btn.setFixedWidth(40)
+        self.pose_skeleton_color_btn.setToolTip(
+            "Uniform colour for skeleton edges (per-segment colours from the "
+            "skeleton editor take precedence)."
+        )
+        self.pose_skeleton_color_btn.setIcon(
+            _color_swatch_icon(self.app_state.skeleton_base_color or "#00CC66")
+        )
+        skeleton_row.addWidget(self.pose_skeleton_color_btn)
+        skeleton_row.addStretch()
+        pose_layout.addLayout(skeleton_row)
+
+        # Actions row
         btn_row = QHBoxLayout()
         select_all_btn = QPushButton("Select All")
         deselect_all_btn = QPushButton("Deselect All")
         select_all_btn.clicked.connect(lambda: self._set_all_keypoints_checked(True))
         deselect_all_btn.clicked.connect(lambda: self._set_all_keypoints_checked(False))
+        self.rotate_btn = QPushButton("Rotate video/pose by 90°")
+        self.rotate_btn.setToolTip("Rotate all video and pose layers by 90° clockwise")
         btn_row.addWidget(select_all_btn)
         btn_row.addWidget(deselect_all_btn)
+        btn_row.addWidget(self.rotate_btn)
         btn_row.addStretch()
         pose_layout.addLayout(btn_row)
 
@@ -421,6 +468,13 @@ class DataPanel(QWidget):
         )
         self.pose_match_btn.clicked.connect(self._on_pose_match_clicked)
         pose_layout.addWidget(self.pose_match_btn)
+
+        self.create_skeleton_btn = QPushButton("Create / edit skeleton…")
+        self.create_skeleton_btn.setToolTip(
+            "Open an editor to draw skeleton connections on real pose data:\n"
+            "drag between keypoints to connect, then assign color categories."
+        )
+        pose_layout.addWidget(self.create_skeleton_btn)
 
         # Keypoints table (inline, scrollable)
         self.keypoints_table = QTableWidget(0, 2)
@@ -578,6 +632,10 @@ class DataWidget(QWidget):
         self.pose_show_text_checkbox = panel.pose_show_text_checkbox
         self.pose_point_size_spin = panel.pose_point_size_spin
         self.pose_text_size_spin = panel.pose_text_size_spin
+        self.pose_show_skeleton_checkbox = panel.pose_show_skeleton_checkbox
+        self.pose_skeleton_width_spin = panel.pose_skeleton_width_spin
+        self.pose_skeleton_color_btn = panel.pose_skeleton_color_btn
+        self.create_skeleton_btn = panel.create_skeleton_btn
         self.keypoints_table = panel.keypoints_table
 
         self.pose_mgr = PoseDisplayManager(self.viewer, self.app_state, self.video_mgr, self)
@@ -588,6 +646,10 @@ class DataWidget(QWidget):
         panel.pose_point_size_spin.valueChanged.connect(self._on_pose_point_size_changed)
         panel.pose_text_size_spin.valueChanged.connect(self._on_pose_text_size_changed)
         panel.rotate_btn.clicked.connect(self.pose_mgr.on_rotate_video_pose)
+        panel.pose_show_skeleton_checkbox.stateChanged.connect(self._on_pose_show_skeleton_toggled)
+        panel.pose_skeleton_width_spin.valueChanged.connect(self._on_pose_skeleton_width_changed)
+        panel.pose_skeleton_color_btn.clicked.connect(self._on_skeleton_color_clicked)
+        panel.create_skeleton_btn.clicked.connect(self._on_create_skeleton_clicked)
         panel._update_pose_callback = self.update_pose
 
         panel.energy_configure_btn.clicked.connect(self._open_energy_params)
@@ -639,6 +701,40 @@ class DataWidget(QWidget):
 
     def _on_pose_text_size_changed(self, value: float):
         self.pose_mgr.apply_pose_style()
+
+    def _on_pose_show_skeleton_toggled(self, state: int):
+        self.app_state.pose_show_skeleton = self.pose_show_skeleton_checkbox.isChecked()
+        self.update_pose()
+
+    def _on_pose_skeleton_width_changed(self, value: float):
+        self.pose_mgr.apply_skeleton_style()
+
+    def _on_skeleton_color_clicked(self):
+        current = self.app_state.skeleton_base_color or "#00CC66"
+        color = QColorDialog.getColor(QColor(current), self, "Skeleton base colour")
+        if not color.isValid():
+            return
+        self.app_state.skeleton_base_color = color.name().upper()
+        self.pose_skeleton_color_btn.setIcon(_color_swatch_icon(self.app_state.skeleton_base_color))
+        self.pose_mgr.refresh_skeleton()
+
+    def _on_create_skeleton_clicked(self):
+        from .dialog_skeleton_editor import SkeletonEditorDialog
+
+        data = self.pose_mgr.primary_pose_for_editor()
+        if data is None:
+            notify("No pose data available for the current camera/trial.", "warning")
+            return
+        keypoints, positions = data
+        if positions.shape[0] == 0:
+            notify("Pose data has no frames to edit.", "warning")
+            return
+        existing = getattr(self.app_state, "skeleton_config_override", None)
+        dialog = SkeletonEditorDialog(keypoints, positions, existing_config=existing, parent=self)
+        if dialog.exec_():
+            self.app_state.skeleton_config_override = dialog.get_config()
+            self.pose_show_skeleton_checkbox.setChecked(True)
+            self.update_pose()
 
     def set_references(
         self,

@@ -257,6 +257,18 @@ Two loading paths for pose data:
 
 The NWB wizard stores `nwb_pose_keys` (e.g. `["LeftCamera", "RightCamera"]`) in the project config. At render time, `PoseDisplayManager._load_pose_for_camera()` maps camera index → pose key → direct NWB loading.
 
+### Skeleton Visualization: `ethograph/skeleton/` + pose_render
+
+Skeleton rendering reuses the `ethograph/skeleton/` module (ported from movement PR #763): `PrecomputedRenderer` consumes a movement poses `xr.Dataset` and emits a napari Vectors layer; `SkeletonState`/`config.py` manage connections, colors, widths. Only the **config layer** is ethograph-specific:
+- `nwb_skeleton_to_config(nodes, edges)` (in `skeleton/config.py`) converts an ndx-pose `Skeleton` (nodes + edge index-pairs) into the standard config dict — so the renderer/state/validation are reused unchanged. This is the default source: `_read_skeleton_config()` reads `container.skeleton` during NWB pose loading and stores it on `PoseRenderData.skeleton_config`.
+- `pose_render_to_movement_ds()` un-flattens napari points back into the `(time, space, keypoints, individuals)` poses dataset the renderer needs.
+- `PoseDisplayManager._display_skeleton_direct()` builds that dataset and calls `add_skeleton_layer()`. Gated by the "Show skeleton" checkbox. Colour precedence: an active `app_state.skeleton_config_override` (user-drawn, per-segment colours) wins; otherwise the NWB-derived config is recoloured uniformly with `app_state.skeleton_base_color`.
+- **Confidence filtering of edges is automatic**: the skeleton is built from the same confidence/keypoint-filtered `PoseRenderData`, so a low-confidence (or hidden) endpoint becomes NaN and the renderer drops any edge touching it on that frame — no skeleton-specific filter code needed.
+
+**Skeleton editor** (`dialog_skeleton_editor.py`): `SkeletonEditorDialog` lets the user draw a skeleton on real pose data — a frame slider scrubs frames, the pyqtgraph canvas shows keypoint XY, drag between keypoints creates an edge, and color categories are assigned to selected edges (click or rubber-band). `get_config()` returns a config dict stored in `skeleton_config_override`. Launched from the Pose tab's "Create / edit skeleton…" button; data via `PoseDisplayManager.primary_pose_for_editor()`.
+
+**Anchored shapes** (`ethograph/skeleton/shapes.py`): shapes (square/triangle/circle templates with named control points) that deform to follow the pose. The user binds ≥2 control points to keypoints (`ShapeAnchorDialog`, a visual template picker); each frame a transform is fit from the template's anchor points to the live keypoint positions — **2 anchors → similarity** (angle-preserving, so e.g. a triangle's base stays perpendicular to its median), **3+ → affine** (deformable). `fit_transform()` + `shape_outline_for_frame()` precompute per-frame outlines; `PoseDisplayManager._display_shapes_direct()` renders them as a napari Shapes layer (frame index as first vertex coord → per-frame visibility, same pattern as bboxes). Shapes live under a `"shapes"` key in the skeleton config and render alongside edges when "Show skeleton" is on.
+
 ### Plot System
 
 All plots inherit `BasePlot` (pyqtgraph `PlotWidget`): time marker, x-axis range management, click handling, axes locking.

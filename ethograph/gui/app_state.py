@@ -174,6 +174,9 @@ class AppStateSpec:
         "pose_path": (str | None, None, False),
         "nwb_pose_keys": (list[str], [], True, SCOPE_LOCAL),
         "pose_hide_threshold": (float, 0.9, True),
+        "pose_show_skeleton": (bool, False, True),
+        "skeleton_base_color": (str | None, "#00CC66", True),
+        "skeleton_config_override": (dict | None, None, True),
         # Plotting
         "ymin": (float | None, None, True),
         "ymax": (float | None, None, True),

@@ -19,8 +19,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from movement.io import load_dataset
-from ethograph.convert import ds_to_napari_layers
-from ethograph.layer_styles import (
+from movement.napari.convert import ds_to_napari_layers
+from movement.napari.layer_styles import (
     BoxesStyle,
     PointsStyle,
     _sample_colormap,
@@ -28,7 +28,9 @@ from ethograph.layer_styles import (
 
 from ethograph.gui.notify import notify
 from ethograph.io.nwb_import import _get_absolute_timestamps
-
+from ethograph.skeleton import add_skeleton_layer, nwb_skeleton_to_config
+from ethograph.skeleton.shapes import SHAPE_TEMPLATES, shape_outline_for_frame
+import xarray as xr
 
 @dataclass
 class PoseRenderData:
@@ -46,6 +48,7 @@ class PoseRenderData:
     file_name: str
     bbox_data: np.ndarray | None = None
     frame_path: str | None = None
+    skeleton_config: dict | None = None
 
     @property
     def keypoints(self) -> list[str]:
@@ -108,6 +111,7 @@ def slice_pose_to_frames(pr: PoseRenderData, start_frame: int, end_frame: int) -
             data_not_nan=np.empty(0, dtype=bool),
             file_name=pr.file_name,
             frame_path=pr.frame_path,
+            skeleton_config=pr.skeleton_config,
         )
 
     data = pr.data[mask].copy()
@@ -125,6 +129,7 @@ def slice_pose_to_frames(pr: PoseRenderData, start_frame: int, end_frame: int) -
         file_name=pr.file_name,
         bbox_data=bbox_data,
         frame_path=pr.frame_path,
+        skeleton_config=pr.skeleton_config,
     )
 
 
@@ -223,6 +228,130 @@ def load_pose_from_nwb_direct(
         ),
         data_not_nan=np.concatenate(all_not_nan),
         file_name=f"NWB_pose_{pose_estimation_key}",
+        skeleton_config=_read_skeleton_config(container, set(stripped)),
+    )
+
+
+def _read_skeleton_config(container: Any, keypoints: set[str]) -> dict | None:
+    """Read an ndx-pose ``Skeleton`` and return a skeleton config dict.
+
+    The skeleton's ``nodes``/``edges`` (node-index pairs) are converted to the
+    config format consumed by ``ethograph.skeleton`` via ``nwb_skeleton_to_config``
+    — this is the NWB *config layer*; the renderer is reused unchanged. Node
+    names are reconciled with the rendered keypoint names (which may have had a
+    common prefix stripped). Returns ``None`` if no skeleton is attached.
+    """
+    skel = getattr(container, "skeleton", None)
+    if skel is None:
+        return None
+
+    nodes = [
+        n.decode() if isinstance(n, bytes) else str(n)
+        for n in np.asarray(skel.nodes[:]).ravel()
+    ]
+    edges = np.asarray(skel.edges[:]).astype(int).reshape(-1, 2)
+
+    name_map = _match_skeleton_nodes(nodes, keypoints)
+    mapped = [name_map.get(n) for n in nodes]
+    config = nwb_skeleton_to_config(mapped, edges)
+    return config if config["connections"] else None
+
+
+def _match_skeleton_nodes(nodes: list[str], keypoints: set[str]) -> dict[str, str]:
+    """Map skeleton node names to rendered keypoint names.
+
+    Tries an exact match first, then a common-prefix-stripped match so that
+    skeletons authored against raw series names still line up with the
+    prefix-stripped keypoints used by the points layer.
+    """
+    mapping = {n: n for n in nodes if n in keypoints}
+    if len(mapping) == len(nodes):
+        return mapping
+    stripped = dict(zip(nodes, strip_common_prefix(nodes)))
+    for n in nodes:
+        if n not in mapping and stripped[n] in keypoints:
+            mapping[n] = stripped[n]
+    return mapping
+
+
+def _resolve_skeleton_colors(config: dict | None, base_color: str | None) -> dict | None:
+    """Apply the base colour to edges that have no assigned category.
+
+    Edges with a non-empty ``segment`` (assigned a category in the editor) keep
+    their colour; unassigned edges — including every edge of an NWB-derived
+    skeleton — take ``base_color``. Returns ``config`` unchanged when there is
+    nothing to recolour.
+    """
+    if config is None or not base_color:
+        return config
+    connections = [
+        ({**c, "color": base_color} if not c.get("segment") else c)
+        for c in config["connections"]
+    ]
+    return {**config, "connections": connections}
+
+
+def pose_render_to_movement_ds(
+    pr: PoseRenderData, scale: tuple[float, float] = (1.0, 1.0)
+) -> xr.Dataset:
+    """Rebuild a movement-format poses ``xr.Dataset`` from a ``PoseRenderData``.
+
+    The skeleton renderer (``PrecomputedRenderer``) consumes a movement poses
+    dataset, so this adapter un-flattens the napari points back into a
+    ``(time, space, keypoints, individuals)`` ``position`` array. Points masked
+    out by ``data_not_nan`` become NaN (and are skipped by the renderer).
+    ``scale`` rescales (y, x) to display coordinates so the skeleton lines up
+    with downsampled video.
+    """
+    sy, sx = scale
+    coords = pr.data[:, -3:]
+    frames = coords[:, 0].astype(int)
+    ys = coords[:, 1] * sy
+    xs = coords[:, 2] * sx
+
+    kp = pr.properties["keypoint"].to_numpy()
+    if "individual" in pr.properties.columns:
+        ind = pr.properties["individual"].to_numpy()
+    else:
+        ind = np.array(["ind_0"] * len(kp))
+    conf = (
+        pr.properties["confidence"].to_numpy()
+        if "confidence" in pr.properties.columns
+        else np.ones(len(kp))
+    )
+
+    keypoints = list(dict.fromkeys(kp))
+    individuals = list(dict.fromkeys(ind))
+    kp_idx = {n: i for i, n in enumerate(keypoints)}
+    ind_idx = {n: i for i, n in enumerate(individuals)}
+    n_t = int(frames.max()) + 1 if len(frames) else 0
+
+    position = np.full((n_t, 2, len(keypoints), len(individuals)), np.nan)
+    confidence = np.full((n_t, len(keypoints), len(individuals)), np.nan)
+    for row, valid in enumerate(pr.data_not_nan):
+        if not valid:
+            continue
+        t, k, i = frames[row], kp_idx[kp[row]], ind_idx[ind[row]]
+        position[t, 0, k, i] = xs[row]
+        position[t, 1, k, i] = ys[row]
+        confidence[t, k, i] = conf[row]
+
+    return xr.Dataset(
+        data_vars={
+            "position": xr.DataArray(
+                position, dims=["time", "space", "keypoints", "individuals"]
+            ),
+            "confidence": xr.DataArray(
+                confidence, dims=["time", "keypoints", "individuals"]
+            ),
+        },
+        coords={
+            "time": np.arange(n_t),
+            "space": ["x", "y"],
+            "keypoints": keypoints,
+            "individuals": individuals,
+        },
+        attrs={"ds_type": "poses"},
     )
 
 
@@ -232,7 +361,7 @@ def apply_confidence_filter(pr: PoseRenderData, threshold: float) -> PoseRenderD
         return pr
     mask = pr.data_not_nan.copy()
     mask[pr.properties["confidence"].values < threshold] = False
-    return PoseRenderData(pr.data, pr.properties, mask, pr.file_name, pr.bbox_data, pr.frame_path)
+    return PoseRenderData(pr.data, pr.properties, mask, pr.file_name, pr.bbox_data, pr.frame_path, pr.skeleton_config)
 
 
 def apply_keypoint_filter(pr: PoseRenderData, hidden: set[str]) -> PoseRenderData:
@@ -241,7 +370,7 @@ def apply_keypoint_filter(pr: PoseRenderData, hidden: set[str]) -> PoseRenderDat
         return pr
     mask = pr.data_not_nan.copy()
     mask[pr.properties["keypoint"].isin(hidden).values] = False
-    return PoseRenderData(pr.data, pr.properties, mask, pr.file_name, pr.bbox_data, pr.frame_path)
+    return PoseRenderData(pr.data, pr.properties, mask, pr.file_name, pr.bbox_data, pr.frame_path, pr.skeleton_config)
 
 
 class PoseDisplayManager:
@@ -263,8 +392,12 @@ class PoseDisplayManager:
         self._data_widget = data_widget
         self._primary_points_layer = None
         self._primary_shapes_layer = None
+        self._primary_skeleton_layer = None
+        self._primary_shape_layer = None
         self._primary_frame_layer = None
         self._primary_file_name: str = ""
+        self._primary_pr: PoseRenderData | None = None
+        self._extra_pr: dict[str, PoseRenderData] = {}
         self._camera_keypoints: dict[str, list[str]] = {}
 
     @property
@@ -497,6 +630,135 @@ class PoseDisplayManager:
             **style_kwargs,
         )
 
+    def _skeleton_enabled(self) -> bool:
+        checkbox = getattr(self._data_widget, "pose_show_skeleton_checkbox", None)
+        if checkbox is not None:
+            return checkbox.isChecked()
+        return bool(getattr(self.app_state, "pose_show_skeleton", False))
+
+    def _display_skeleton_direct(
+        self, viewer_model, pr: PoseRenderData, camera_name: str | None = None
+    ) -> Any | None:
+        """Add a skeleton Vectors layer via the shared skeleton renderer.
+
+        Rebuilds a movement poses dataset from ``pr`` and delegates to
+        ``ethograph.skeleton.add_skeleton_layer`` with the NWB-derived config.
+        The Vectors carry their own frame index, so napari's time slider drives
+        per-frame visibility just like the points layer.
+        """
+        override = getattr(self.app_state, "skeleton_config_override", None)
+        config = override if override is not None else pr.skeleton_config
+        config = _resolve_skeleton_colors(config, getattr(self.app_state, "skeleton_base_color", None))
+        if not self._skeleton_enabled() or config is None:
+            return None
+        ds = pose_render_to_movement_ds(pr, self._pose_scale(camera_name))
+        try:
+            return add_skeleton_layer(
+                viewer_model,
+                ds,
+                connections=config,
+                name=f"skeleton: {pr.file_name}",
+                edge_width=self._skeleton_width(),
+            )
+        except ValueError:
+            return None
+
+    def _shapes_config(self, pr: PoseRenderData) -> list[dict]:
+        override = getattr(self.app_state, "skeleton_config_override", None)
+        config = override if override is not None else pr.skeleton_config
+        if not config:
+            return []
+        return config.get("shapes", []) or []
+
+    def _display_shapes_direct(
+        self, viewer_model, pr: PoseRenderData, camera_name: str | None = None
+    ) -> Any | None:
+        """Add a napari Shapes layer of anchored shapes that follow the pose.
+
+        Each shape's outline is fit per frame from its anchor keypoints (see
+        ``ethograph.skeleton.shapes``); the frame index is the first vertex
+        coordinate so napari's time slider drives per-frame visibility.
+        """
+        shapes = self._shapes_config(pr)
+        if not self._skeleton_enabled() or not shapes:
+            return None
+        positions, kp_index = self._positions_and_index(pr, self._pose_scale(camera_name))
+        n_frames = positions.shape[0]
+
+        polygons: list[np.ndarray] = []
+        edge_colors: list[str] = []
+        for shape in shapes:
+            template = SHAPE_TEMPLATES.get(shape.get("type", ""))
+            anchors = shape.get("anchors", [])
+            if template is None or len(anchors) < 2:
+                continue
+            if any(a["keypoint"] not in kp_index for a in anchors):
+                continue
+            anchor_names = [a["point"] for a in anchors]
+            anchor_kp = [kp_index[a["keypoint"]] for a in anchors]
+            scale = tuple(shape.get("scale", (1.0, 1.0)))
+            color = shape.get("color", "#FFCC00")
+            for frame in range(n_frames):
+                outline = shape_outline_for_frame(
+                    template, anchor_names, positions[frame, anchor_kp], scale
+                )
+                if outline is None:
+                    continue
+                # outline is (K, 2) in (x, y); napari shape vertex is [frame, y, x]
+                verts = np.column_stack(
+                    [np.full(len(outline), frame), outline[:, 1], outline[:, 0]]
+                )
+                polygons.append(verts)
+                edge_colors.append(color)
+
+        if not polygons:
+            return None
+        return viewer_model.add_shapes(
+            polygons,
+            shape_type="polygon",
+            edge_color=edge_colors,
+            face_color="transparent",
+            edge_width=self._skeleton_width(),
+            name=f"shapes: {pr.file_name}",
+            opacity=0.9,
+        )
+
+    def _positions_and_index(
+        self, pr: PoseRenderData, scale: tuple[float, float]
+    ) -> tuple[np.ndarray, dict[str, int]]:
+        """Return ``(positions (n_frames, n_keypoints, 2), name->index)``."""
+        ds = pose_render_to_movement_ds(pr, scale)
+        positions = (
+            ds.position.isel(individuals=0).transpose("time", "keypoints", "space").values
+        )
+        kp_index = {n: i for i, n in enumerate(ds.coords["keypoints"].values)}
+        return positions, kp_index
+
+    def primary_pose_for_editor(self) -> tuple[list[str], np.ndarray] | None:
+        """Return ``(keypoints, positions)`` for the primary camera's pose.
+
+        ``positions`` has shape ``(n_frames, n_keypoints, 2)`` in image-space
+        ``(x, y)`` — the input format the skeleton editor dialog expects.
+        """
+        combo = getattr(self._data_widget, "primary_camera_combo", None)
+        name = combo.currentText() if combo is not None else None
+        if name is None:
+            return None
+        pr = self._load_pose_for_camera(self._camera_index(name))
+        if pr is None:
+            return None
+        ds = pose_render_to_movement_ds(pr)
+        positions = (
+            ds.position.isel(individuals=0)
+            .transpose("time", "keypoints", "space")
+            .values
+        )
+        return list(ds.coords["keypoints"].values), positions
+
+    def _skeleton_width(self) -> float:
+        spin = getattr(self._data_widget, "pose_skeleton_width_spin", None)
+        return spin.value() if spin is not None else 2.0
+
     def update_pose(self, hidden_keypoints: set[str]) -> None:
         """Update pose display for all cameras based on keypoints table selection.
 
@@ -523,8 +785,11 @@ class PoseDisplayManager:
         self._register_keypoints(camera_name, pr.keypoints)
         self._primary_file_name = pr.file_name
         self._display_frame_background(pr)
+        self._primary_pr = pr
         self._primary_points_layer = self._display_pose_direct(self.viewer, pr, camera_name)
         self._primary_shapes_layer = self._display_bbox_direct(self.viewer, pr, camera_name)
+        self._primary_skeleton_layer = self._display_skeleton_direct(self.viewer, pr, camera_name)
+        self._primary_shape_layer = self._display_shapes_direct(self.viewer, pr, camera_name)
         self.apply_pose_style()
 
     def _display_pose_on_extra(
@@ -545,8 +810,11 @@ class PoseDisplayManager:
         points_data = pr.data[:, 1:] if pr.data.shape[1] > 3 else pr.data
         points_data = self._apply_pose_scale(points_data, camera_name)
         style_kwargs = self._build_pose_style_kwargs(pr.properties)
+        self._extra_pr[camera_name] = pr
         widget.set_pose(points_data, pr.properties, pr.data_not_nan, style_kwargs)
         widget._shapes_layer = self._display_bbox_direct(widget._viewer_model, pr, camera_name)
+        widget.set_skeleton(self._display_skeleton_direct(widget._viewer_model, pr, camera_name))
+        widget.set_glyphs(self._display_shapes_direct(widget._viewer_model, pr, camera_name))
         self.apply_pose_style()
 
     def update_extra_camera_pose(self, camera_name: str, hidden_keypoints: set[str]) -> None:
@@ -568,6 +836,18 @@ class PoseDisplayManager:
             except ValueError:
                 pass
             self._primary_shapes_layer = None
+        if self._primary_skeleton_layer is not None:
+            try:
+                self.viewer.layers.remove(self._primary_skeleton_layer)
+            except ValueError:
+                pass
+            self._primary_skeleton_layer = None
+        if self._primary_shape_layer is not None:
+            try:
+                self.viewer.layers.remove(self._primary_shape_layer)
+            except ValueError:
+                pass
+            self._primary_shape_layer = None
         if self._primary_frame_layer is not None:
             try:
                 self.viewer.layers.remove(self._primary_frame_layer)
@@ -661,6 +941,54 @@ class PoseDisplayManager:
             if getattr(widget, "_shapes_layer", None) is not None:
                 widget._shapes_layer.text.visible = visible
                 widget._shapes_layer.text.size = text_size
+
+    def apply_skeleton_style(self) -> None:
+        """Update skeleton edge width on existing layers in place.
+
+        Width is uniform, so it can be set without rebuilding — avoiding a full
+        ``update_pose()`` reload (and the layer re-add it causes).
+        """
+        width = self._skeleton_width()
+        layers = [self._primary_skeleton_layer]
+        layers += [getattr(w, "_skeleton_layer", None) for w in self.video_mgr.extra_widgets.values()]
+        for layer in layers:
+            if layer is not None:
+                layer.edge_width = width
+
+    def refresh_skeleton(self) -> None:
+        """Rebuild only the skeleton layers (per-edge colours may have changed).
+
+        Reuses the last-rendered ``PoseRenderData`` so points/bbox layers are
+        left untouched — base-colour changes apply without reloading the pose.
+        """
+        combo = getattr(self._data_widget, "primary_camera_combo", None)
+        primary_name = combo.currentText() if combo is not None else None
+        if self._primary_pr is not None and primary_name is not None:
+            if self._primary_skeleton_layer is not None:
+                try:
+                    self.viewer.layers.remove(self._primary_skeleton_layer)
+                except ValueError:
+                    pass
+            self._primary_skeleton_layer = self._display_skeleton_direct(
+                self.viewer, self._primary_pr, primary_name
+            )
+            if self._primary_shape_layer is not None:
+                try:
+                    self.viewer.layers.remove(self._primary_shape_layer)
+                except ValueError:
+                    pass
+            self._primary_shape_layer = self._display_shapes_direct(
+                self.viewer, self._primary_pr, primary_name
+            )
+        for camera_name, widget in self.video_mgr.extra_widgets.items():
+            pr = self._extra_pr.get(camera_name)
+            if pr is not None:
+                widget.set_skeleton(
+                    self._display_skeleton_direct(widget._viewer_model, pr, camera_name)
+                )
+                widget.set_glyphs(
+                    self._display_shapes_direct(widget._viewer_model, pr, camera_name)
+                )
 
     def on_rotate_video_pose(self) -> None:
         self._rotation_count = (getattr(self, "_rotation_count", 0) + 1) % 4
