@@ -583,7 +583,7 @@ NWB</label><div class="sd-tab-content docutils">
 <ul class="simple">
 <li><p><strong>Trials</strong>: <code class="docutils literal notranslate"><span class="pre">nwb.trials</span></code> table (<code class="docutils literal notranslate"><span class="pre">start_time</span></code>, <code class="docutils literal notranslate"><span class="pre">stop_time</span></code>, plus custom columns).</p></li>
 <li><p><strong>Behavioural data</strong>: <code class="xref py py-class docutils literal notranslate"><span class="pre">TimeSeries</span></code> in <code class="docutils literal notranslate"><span class="pre">nwb.processing</span></code> modules.</p></li>
-<li><p><strong>Electrophysiology</strong>: <a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.ecephys.html#pynwb.ecephys.ElectricalSeries" title="(in PyNWB v3.1.2)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ElectricalSeries</span></code></a> in <code class="docutils literal notranslate"><span class="pre">nwb.acquisition</span></code>.</p></li>
+<li><p><strong>Electrophysiology</strong>: <a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.ecephys.html#pynwb.ecephys.ElectricalSeries" title="(in PyNWB v4.0.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ElectricalSeries</span></code></a> in <code class="docutils literal notranslate"><span class="pre">nwb.acquisition</span></code>.</p></li>
 <li><p><strong>Pose estimation</strong>: <code class="docutils literal notranslate"><span class="pre">PoseEstimation</span></code> containers (ndx-pose extension).</p></li>
 </ul>
 <p>If <code class="docutils literal notranslate"><span class="pre">nwb.trials</span></code> is absent, the entire recording is treated as a single trial.</p>
@@ -678,8 +678,8 @@ not available for pynapple backends.</p>
 <label class="sd-tab-label" for="sd-tab-item-11">
 NWB</label><div class="sd-tab-content docutils">
 <p>NWB files represent a single subject per file —
-<a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.file.html#pynwb.file.NWBFile.subject" title="(in PyNWB v3.1.2)"><code class="xref py py-attr docutils literal notranslate"><span class="pre">subject</span></code></a> is a singular
-<a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.file.html#pynwb.file.Subject" title="(in PyNWB v3.1.2)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Subject</span></code></a> object
+<a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.file.html#pynwb.file.NWBFile.subject" title="(in PyNWB v4.0.0)"><code class="xref py py-attr docutils literal notranslate"><span class="pre">subject</span></code></a> is a singular
+<a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.file.html#pynwb.file.Subject" title="(in PyNWB v4.0.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Subject</span></code></a> object
 (<a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.file.html">PyNWB docs</a>).
 Multi-subject experiments use separate <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> files per subject. Individual
 selection is not available when loading a single NWB file.</p>
