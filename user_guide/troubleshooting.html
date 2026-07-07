@@ -498,7 +498,7 @@ Get-ChildItem<span class="w"> </span>*.avi<span class="w"> </span><span class="p
 <section id="installation-fails-with-resolution-too-deep">
 <h3>Installation fails with “resolution-too-deep”<a class="headerlink" href="#installation-fails-with-resolution-too-deep" title="Link to this heading">#</a></h3>
 <p>This happens when using plain <code class="docutils literal notranslate"><span class="pre">pip</span></code> to install ethograph with extras like
-<code class="docutils literal notranslate"><span class="pre">[gui]</span></code> or <code class="docutils literal notranslate"><span class="pre">[all]</span></code>. The dependency tree (napari + movement + pynwb) is too
+<code class="docutils literal notranslate"><span class="pre">[gui]</span></code> or <code class="docutils literal notranslate"><span class="pre">[all]</span></code>. The dependency tree (pygfx + movement + pynwb) is too
 complex for pip’s resolver.</p>
 <p><strong>Fix:</strong> Use <code class="docutils literal notranslate"><span class="pre">uv</span></code> instead of <code class="docutils literal notranslate"><span class="pre">pip</span></code>:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[all]&quot;</span>

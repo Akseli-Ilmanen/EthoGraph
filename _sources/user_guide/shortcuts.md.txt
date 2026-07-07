@@ -72,6 +72,12 @@
 | `Shift+E` | Toggle ephys panel |
 | `Shift+F` | Toggle feature plot panel |
 
+## Layout
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+0` | Show / hide the control sidebar |
+
 ## Changepoint Navigation
 
 | Shortcut | Action |

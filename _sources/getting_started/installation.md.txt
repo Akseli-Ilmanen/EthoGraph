@@ -106,7 +106,7 @@ terminal prompt.
 
 ### With the GUI (recommended)
 
-The GUI bundles napari, PyQtGraph, and neural analysis tools:
+The GUI bundles PyQtGraph, pygfx (via pynaviz), and neural analysis tools:
 
 ```bash
 uv pip install "ethograph[gui]"
@@ -178,7 +178,7 @@ You can combine them as needed:
 
 | Extra      | What it adds                                                        |
 |------------|---------------------------------------------------------------------|
-| `gui`      | Full graphical interface (napari, PyQtGraph, neural tools)          |
+| `gui`      | Full graphical interface (PyQtGraph, pygfx/pynaviz, neural tools)   |
 | `audio`    | Waveform, spectrogram, vocalisation analysis (`sounddevice` etc.)   |
 | `dandi`    | DANDI archive download client (heavy, opt-in)                       |
 | `dev`      | Testing and linting tools                                           |
