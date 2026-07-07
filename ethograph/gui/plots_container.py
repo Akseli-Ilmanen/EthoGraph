@@ -208,16 +208,15 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     spectrogram_overlay_shown = Signal()
     time_marker_updated = Signal(float)
 
-    def __init__(self, napari_viewer, app_state, parent=None):
+    def __init__(self, app_state, parent=None):
         super().__init__(parent)
-        self.viewer = napari_viewer
         self.app_state = app_state
         self._data_widget = None  # set by widgets_meta after construction
 
         # --- Plots ---
         self.audio_trace_plot = AudioTracePlot(app_state)
         self.spectrogram_plot = SpectrogramPlot(app_state)
-        self.line_plot = LinePlot(napari_viewer, app_state)
+        self.line_plot = LinePlot(app_state)
         self.heatmap_plot = HeatmapPlot(app_state)
         self.neo_trace_plot = EphysTracePlot(app_state)  # Neo-Viewer panel
         self.ephys_trace_plot = EphysTracePlot(app_state)  # Phy-Viewer panel
@@ -333,6 +332,85 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # Track user-adjusted sizes so they survive panel toggles
         self._user_sizes: dict[str, int] = {}
         self._splitter.splitterMoved.connect(self._on_splitter_moved)
+
+        # Extra line-plot panels (pynaviz-style, added via View menu)
+        self.extra_line_plots: list[LinePlot] = []
+
+    # ------------------------------------------------------------------
+    # Extra line-plot panels
+    # ------------------------------------------------------------------
+
+    def _available_features(self) -> list[str]:
+        data_widget = self._data_widget
+        catalog = getattr(data_widget, "catalog", None) if data_widget else None
+        if catalog is not None and getattr(catalog, "features", None):
+            return list(catalog.features)
+        ds = getattr(self.app_state, "ds", None)
+        if ds is not None:
+            return list(ds.data_vars)
+        return []
+
+    def add_extra_lineplot(self, feature: str | None = None):
+        """Add an additional synced line-plot panel with its own feature combo."""
+        features = self._available_features()
+        if not features:
+            return None
+        from qtpy.QtWidgets import QComboBox, QPushButton
+
+        plot = LinePlot(self.app_state)
+        plot.feature_override = feature if feature in features else features[0]
+
+        combo = QComboBox(plot)
+        combo.addItems(features)
+        combo.setCurrentText(plot.feature_override)
+        combo.move(45, 6)
+        combo.adjustSize()
+        combo.raise_()
+        plot._feature_combo = combo
+
+        close_btn = QPushButton("✕", plot)
+        close_btn.setFixedSize(18, 18)
+        close_btn.move(20, 6)
+        close_btn.setToolTip("Remove this line plot")
+        close_btn.raise_()
+
+        def _on_feature_changed(name):
+            plot.feature_override = name
+            plot.update_plot_content()
+            self.labels_redraw_needed.emit()
+
+        combo.currentTextChanged.connect(_on_feature_changed)
+        close_btn.clicked.connect(lambda: self.remove_extra_lineplot(plot))
+
+        self.extra_line_plots.append(plot)
+        self._splitter.addWidget(plot)
+        plot.show()
+        if self._xlink_master is not None and self._xlink_master is not plot:
+            plot.plotItem.setXLink(self._xlink_master.plotItem)
+        plot.vb.sigRangeChanged.connect(self._on_plot_zoom)
+        plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "feature"))
+        if self.app_state.ready:
+            plot.update_plot()
+        self.labels_redraw_needed.emit()
+        return plot
+
+    def remove_extra_lineplot(self, plot) -> None:
+        if plot not in self.extra_line_plots:
+            return
+        self.extra_line_plots.remove(plot)
+        plot.hide()
+        plot.setParent(None)
+        plot.deleteLater()
+
+    def extra_lineplot_features(self) -> list[str]:
+        return [p.feature_override for p in self.extra_line_plots if p.feature_override]
+
+    def refresh_extra_lineplots(self, **kwargs) -> None:
+        for plot in self.extra_line_plots:
+            plot.update_plot(**kwargs)
+
+    def _get_all_plots(self) -> list:
+        return super()._get_all_plots() + list(self.extra_line_plots)
 
     def sizeHint(self):
         return QSize(self.width(), PLOT_CONTAINER_SIZE_HINT_HEIGHT)
@@ -453,6 +531,11 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         # Keep hidden swap-candidates linked too
         for plot in (self.line_plot, self.heatmap_plot, self.neo_trace_plot):
+            if plot is not master:
+                plot.plotItem.setXLink(master.plotItem)
+
+        # Extra line-plot panels follow the master as well
+        for plot in self.extra_line_plots:
             if plot is not master:
                 plot.plotItem.setXLink(master.plotItem)
 

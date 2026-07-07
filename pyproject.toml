@@ -50,18 +50,19 @@ ethograph = "ethograph.cli:main"
 [project.gui-scripts]
 ethograph-gui = "ethograph.cli:launch"
 
-[project.entry-points."napari.manifest"]
-ethograph-gui = "ethograph.gui:napari.yaml"
-
 [project.optional-dependencies]
 
 
-# GUI: napari-based graphical interface with all plot types (no audio)
+# GUI: standalone pygfx/pyqtgraph graphical interface with all plot types (no audio)
 gui = [
-    "napari[all]", # don't specify pyqt5 or pyqt6 https://napari.org/stable/plugins/building_a_plugin/best_practices.html
+    "PyQt6",
     "qtpy",
     "pyqtgraph",
-    "napari-pyav",
+    "pygfx>=0.15.3",
+    "pynaviz>=0.1",
+    "rendercanvas",
+    "wgpu",
+    "av>=12",
     "movement>=0.14",
     "ruptures",
     "jinja2",
@@ -142,14 +143,14 @@ git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--mat
 
 [tool.pytest.ini_options]
 addopts = "--cov=ethograph -m 'not slow'"
+testpaths = ["tests"]
+norecursedirs = ["pynaviz", "docs", "build", ".git"]
 markers = [
     "slow: marks tests that require network access or take >30s (deselect with '-m \"not slow\"')",
 ]
 filterwarnings = [
     "error",
     "ignore::pydantic.warnings.PydanticDeprecatedSince20",
-    "ignore::DeprecationWarning:napari",
-    "ignore::DeprecationWarning:vispy",
     "ignore:Ignoring the following cached namespace:UserWarning",
     "ignore::DeprecationWarning:pynwb",
     "ignore::DeprecationWarning:hdmf",

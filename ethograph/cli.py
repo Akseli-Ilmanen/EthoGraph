@@ -56,16 +56,26 @@ def launch():
         level=logging.INFO,
         format="%(name)s - %(levelname)s - %(message)s",
     )
-    logging.getLogger("napari").setLevel(logging.WARNING)
     _fix_wayland_opengl()
     _ensure_qt_plugins()
-    import napari
 
+    from qtpy.QtWidgets import QApplication
+
+    from ethograph.gui import theme
+    from ethograph.gui.main_window import EthographMainWindow
     from ethograph.gui.widgets_meta import MetaWidget
 
-    viewer = napari.Viewer()
-    viewer.window.add_dock_widget(MetaWidget(viewer), name="ethograph GUI")
-    napari.run()
+    app = QApplication.instance() or QApplication(sys.argv)
+    theme.apply_theme(app)
+
+    shell = EthographMainWindow()
+    meta_widget = MetaWidget(shell)
+    shell.attach_meta_widget(meta_widget)
+    shell.show()
+    shell.raise_()
+    shell.activateWindow()
+
+    app.exec()
 
 
 def main():

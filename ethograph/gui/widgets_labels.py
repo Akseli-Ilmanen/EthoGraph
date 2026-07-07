@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from napari.viewer import Viewer
 from qtpy.QtCore import QMimeData, QSize, Qt, Signal
 from qtpy.QtGui import QColor, QDrag
 from qtpy.QtWidgets import (
@@ -131,9 +130,9 @@ class LabelsWidget(QWidget):
 
     highlight_spaceplot = Signal(float, float)
 
-    def __init__(self, napari_viewer: Viewer, app_state, parent=None):
+    def __init__(self, shell, app_state, parent=None):
         super().__init__(parent=parent)
-        self.viewer = napari_viewer
+        self.shell = shell
         self.app_state = app_state
 
         self.data_widget = None  # Will be set after creation
@@ -1257,20 +1256,14 @@ class LabelsWidget(QWidget):
             self.plot_container.audio_player.play_segment(onset_s, offset_s)
 
     def _get_canvas_widget(self):
-        """Return the Qt widget that holds the napari OpenGL canvas."""
-        qt_viewer = getattr(self.viewer.window, "_qt_viewer", None)
-        if qt_viewer is None:
-            return None
-        # _qt_viewer.canvas.native is the actual OpenGL widget
-        canvas = getattr(qt_viewer, "canvas", None)
-        native = getattr(canvas, "native", None) if canvas else None
-        return native or qt_viewer
+        """Return the primary video canvas widget (host for the label overlay)."""
+        return self.shell.canvas_widget()
 
     def _add_labels_shapes_layer(self):
-        """Add a Qt QLabel overlay on the napari canvas.
+        """Add a Qt QLabel overlay on the video canvas.
 
-        Much faster than a napari Shapes layer: setText() is a
-        trivial Qt repaint instead of a full OpenGL shapes render pass.
+        setText() is a trivial Qt repaint — the overlay follows the current
+        video frame via the VideoSync ``frame_changed`` signal.
         """
         if getattr(self, "_label_overlay", None) is not None:
             return
@@ -1309,7 +1302,7 @@ class LabelsWidget(QWidget):
 
         canvas_widget.resizeEvent = _on_canvas_resize
 
-        def _update_labels_text(event=None):
+        def _update_labels_text(video_frame=None):
             overlay = getattr(self, "_label_overlay", None)
             if overlay is None:
                 return
@@ -1317,7 +1310,8 @@ class LabelsWidget(QWidget):
                 overlay.hide()
                 return
             video = getattr(self.app_state, "video", None)
-            video_frame = self.viewer.dims.current_step[0]
+            if video_frame is None:
+                video_frame = int(getattr(self.app_state, "current_frame", 0) or 0)
             if video:
                 time_s = video.frame_to_time(video_frame)
             elif hasattr(self.app_state, "video_fps") and self.app_state.video_fps:
@@ -1358,7 +1352,7 @@ class LabelsWidget(QWidget):
             overlay.show()
             overlay.raise_()
 
-        self.viewer.dims.events.current_step.connect(_update_labels_text)
+        self.app_state.current_frame_changed.connect(_update_labels_text)
         self._update_labels_text = _update_labels_text
         _update_labels_text()
 

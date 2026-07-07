@@ -300,9 +300,9 @@ def _auto_camera_3d(gl_widget, X, Y, Z):
 class SpacePlot(QWidget):
     """Dock widget for displaying spatial plots with user-selectable axes."""
 
-    def __init__(self, viewer, app_state):
+    def __init__(self, shell, app_state):
         super().__init__()
-        self.viewer = viewer
+        self.shell = shell
         self.app_state = app_state
         self.dock_widget = None
 
@@ -408,9 +408,8 @@ class SpacePlot(QWidget):
 
     def show(self):
         if not self.dock_widget:
-            self.dock_widget = self.viewer.window.add_dock_widget(self, area="left", name="Space Plot")
-            main_window = self.viewer.window._qt_window
-            desired_width = int(main_window.width() * 0.2)
+            self.dock_widget = self.shell.add_dock_widget(self, area="left", name="Space Plot")
+            desired_width = int(self.shell.width() * 0.2)
             self.setMinimumSize(120, 120)
             self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
             self.dock_widget.resize(desired_width, self.dock_widget.height())

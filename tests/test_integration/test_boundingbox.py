@@ -4,9 +4,9 @@ import warnings
 
 import pytest
 import xarray as xr
-from movement.napari import ds_to_napari_layers
 from movement.sample_data import fetch_dataset
 
+from ethograph.gui.pose_convert import poses_ds_to_points
 from ethograph.gui.pose_render import PoseRenderData, load_pose_from_file
 from ethograph.io.data_loader import wizard_single_from_pose
 
@@ -64,16 +64,16 @@ class TestWizardBBoxPipeline:
 
 
 # ===================================================================
-# Bounding-box rendering: ds_to_napari_layers produces bbox_data
+# Bounding-box rendering: poses_ds_to_points produces bbox_data
 # ===================================================================
 
 
 class TestBBoxRendering:
-    """Verify that bounding boxes are produced for napari display."""
+    """Verify that bounding boxes are produced for overlay display."""
 
-    def test_ds_to_napari_layers_returns_bbox_data(self):
+    def test_poses_ds_to_points_returns_bbox_data(self):
         ds = _fetch_crab_dataset()
-        data, bbox_data, properties = ds_to_napari_layers(ds)
+        data, bbox_data, properties = poses_ds_to_points(ds)
 
         assert data is not None
         assert bbox_data is not None

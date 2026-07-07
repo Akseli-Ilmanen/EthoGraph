@@ -8,7 +8,6 @@ from typing import Any, get_args, get_origin
 import pandas as pd
 import xarray as xr
 import yaml
-from napari.settings import get_settings
 from qtpy.QtCore import QObject, QTimer, Signal
 
 import ethograph as eto
@@ -337,7 +336,6 @@ class ObservableAppState(QObject):
 
         self.nwb_alignment = EmpytAlignment()
 
-        self.settings = get_settings()
         self._yaml_path = yaml_path or "gui_settings.yaml"
         self._auto_save_timer = QTimer()
         self._auto_save_timer.timeout.connect(self.save_to_yaml)

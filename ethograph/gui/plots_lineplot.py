@@ -22,9 +22,11 @@ from .plots_base import BasePlot, ThrottleDebounce  # noqa: E402
 class LinePlot(BasePlot):
     """Line plot with lazy loading and shared sync/marker functionality."""
 
-    def __init__(self, napari_viewer, app_state, parent=None):
+    def __init__(self, app_state, parent=None):
         super().__init__(app_state, parent)
-        self.viewer = napari_viewer
+        # When set, this panel plots the given feature instead of the global
+        # app_state.features_sel selection (used by extra line-plot panels).
+        self.feature_override: str | None = None
 
         self.setLabel("left", "Value")
 
@@ -48,8 +50,13 @@ class LinePlot(BasePlot):
         selections = self.app_state.get_selections()
         return str(sorted(selections.items()))
 
+    def _effective_feature(self):
+        if self.feature_override is not None:
+            return self.feature_override
+        return getattr(self.app_state, "features_sel", None)
+
     def _context_changed(self) -> bool:
-        feature = getattr(self.app_state, "features_sel", None)
+        feature = self._effective_feature()
         trial = getattr(self.app_state, "trials_sel", None)
         sel_hash = self._get_selections_hash()
 
@@ -58,7 +65,7 @@ class LinePlot(BasePlot):
         )
 
     def _update_context(self):
-        self._current_feature = getattr(self.app_state, "features_sel", None)
+        self._current_feature = self._effective_feature()
         self._current_trial = getattr(self.app_state, "trials_sel", None)
         self._current_ds_kwargs_hash = self._get_selections_hash()
 
@@ -116,10 +123,10 @@ class LinePlot(BasePlot):
     def _update_plot(self, t0: float, t1: float):
         clear_plot_items(self.plot_item, self.plot_items)
 
-        if not hasattr(self.app_state, "features_sel"):
+        if not hasattr(self.app_state, "features_sel") and self.feature_override is None:
             return
 
-        feature_sel = self.app_state.features_sel
+        feature_sel = self._effective_feature()
         selections = self.app_state.get_selections()
         color_var = None
         if hasattr(self.app_state, "colors_sel") and self.app_state.colors_sel != "None":
@@ -159,10 +166,10 @@ class LinePlot(BasePlot):
 
     def _apply_y_constraints(self):
         """Apply y-axis constraints based on current feature data."""
-        if not hasattr(self.app_state, "features_sel"):
+        if not hasattr(self.app_state, "features_sel") and self.feature_override is None:
             return
 
-        feature_sel = self.app_state.features_sel
+        feature_sel = self._effective_feature()
         selections = self.app_state.get_selections()
 
         try:

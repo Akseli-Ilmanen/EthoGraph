@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from napari import Viewer
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -82,9 +81,9 @@ class _DataAlignmentDialog(QDialog):
 class NavigationWidget(QWidget):
     """Unified navigation: trial/label/sequence modes, filtering, playback."""
 
-    def __init__(self, viewer: Viewer, app_state, parent=None):
+    def __init__(self, shell, app_state, parent=None):
         super().__init__(parent=parent)
-        self.viewer = viewer
+        self.shell = shell
         self.app_state = app_state
         self.catalog = None
         self.plot_container = None
@@ -305,7 +304,7 @@ class NavigationWidget(QWidget):
         self.play_pause_btn.setFixedWidth(36)
         self.play_pause_btn.clicked.connect(self._on_play_pause_clicked)
 
-        self.record_button = RecordButton(viewer, parent=self)
+        self.record_button = RecordButton(shell, parent=self)
         self.hide_label_text_cb = QCheckBox("Hide label text")
         self.hide_label_text_cb.setToolTip("Hide the label name overlay shown on the video canvas during playback")
         self.hide_label_text_cb.toggled.connect(self._on_hide_label_text_toggled)
@@ -887,10 +886,6 @@ class NavigationWidget(QWidget):
             )
             return
         self.app_state.fps_playback = fps_playback
-        qt_dims = self.viewer.window.qt_viewer.dims
-        if qt_dims.slider_widgets:
-            slider_widget = qt_dims.slider_widgets[0]
-            slider_widget._update_play_settings(fps=fps_playback, loop_mode="once", frame_range=None)
         if self.app_state.av_speed_coupled:
             recording_fps = self._get_recording_fps()
             if recording_fps:

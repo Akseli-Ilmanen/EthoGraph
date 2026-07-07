@@ -9,7 +9,6 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 import xarray as xr
-from napari.viewer import Viewer
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QColor, QIcon, QPixmap
 from qtpy.QtWidgets import (
@@ -568,14 +567,14 @@ class DataWidget(QWidget):
 
     def __init__(
         self,
-        napari_viewer: Viewer,
+        shell,
         app_state,
         meta_widget,
         io_widget,
         parent=None,
     ):
         super().__init__(parent=parent)
-        self.viewer = napari_viewer
+        self.shell = shell
         layout = QFormLayout()
         layout.setSpacing(DEFAULT_LAYOUT_SPACING)
         layout.setContentsMargins(
@@ -604,7 +603,7 @@ class DataWidget(QWidget):
         self.source_software = None
         self.file_path = None
 
-        self.video_mgr = VideoManager(napari_viewer, app_state)
+        self.video_mgr = VideoManager(shell.video_area, app_state)
         self.video_mgr.set_frame_changed_callback(self._on_primary_frame_changed)
         self.pose_mgr: PoseDisplayManager | None = None  # created after set_data_panel
         self.app_state.audio_video_sync = None
@@ -638,7 +637,7 @@ class DataWidget(QWidget):
         self.create_skeleton_btn = panel.create_skeleton_btn
         self.keypoints_table = panel.keypoints_table
 
-        self.pose_mgr = PoseDisplayManager(self.viewer, self.app_state, self.video_mgr, self)
+        self.pose_mgr = PoseDisplayManager(self.shell.video_area, self.app_state, self.video_mgr, self)
         self.app_state.keypoints_changed.connect(self.populate_keypoints)
 
         panel.pose_hide_threshold_spin.valueChanged.connect(self._on_pose_hide_threshold_changed)
@@ -2451,6 +2450,7 @@ class DataWidget(QWidget):
         self.plot_container.clear_amplitude_envelope()
 
         current_plot.update_plot(**kwargs)
+        self.plot_container.refresh_extra_lineplots(**kwargs)
 
         if self.show_envelope_checkbox.isChecked():
             self.plot_container.show_envelope_overlay()
@@ -2701,7 +2701,7 @@ class DataWidget(QWidget):
             return
 
         if not self.space_plot:
-            self.space_plot = SpacePlot(self.viewer, self.app_state)
+            self.space_plot = SpacePlot(self.shell, self.app_state)
             self.space_plot.set_plot_container(self.plot_container)
             self.plot_container.time_marker_updated.connect(self._on_xrange_for_space_plot)
             if self.labels_widget:

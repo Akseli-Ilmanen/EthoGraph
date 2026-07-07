@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 import numpy as np
-from napari.viewer import Viewer
+
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QDoubleValidator
 from qtpy.QtWidgets import (
@@ -45,10 +45,10 @@ _NORM_KEY_TO_DISPLAY = {v: k for k, v in _NORM_DISPLAY_TO_KEY.items()}
 class PlotSettingsWidget(QWidget):
     """Combined plot settings with toggle-button tabs: LinePlot | SpacePlot | Spectrogram | HeatMap."""
 
-    def __init__(self, napari_viewer: Viewer, app_state, parent=None):
+    def __init__(self, shell, app_state, parent=None):
         super().__init__(parent=parent)
         self.app_state = app_state
-        self.viewer = napari_viewer
+        self.shell = shell
         self.plot_container = None
         self.meta_widget = None
         self._needs_auto_levels = True

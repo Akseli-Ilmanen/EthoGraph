@@ -14,9 +14,11 @@ ethograph
 =========
 
 EthoGraph is a graphical user interface for visualizing and segmenting
-multimodal timeseries behavioural data. It is built upon
-`napari <https://napari.org>`_,
-`PyQtGraph <https://www.pyqtgraph.org/>`_, and
+multimodal timeseries behavioural data. It is built on top of
+`pynapple <https://pynapple.org/index.html>`_,
+`PyQtGraph <https://www.pyqtgraph.org/>`_ (2D timeseries plots),
+`pygfx <https://pygfx.org/>`_ (GPU video and pose/skeleton overlays, via
+`pynaviz <https://github.com/pynapple-org/pynaviz>`_), and
 `Movement <https://movement.neuroinformatics.dev/>`_.
 
 Note this GUI is still in development. I welcome people testing it and providing feedback!

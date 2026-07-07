@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pynapple as nap
 import pyqtgraph as pg
-from napari.viewer import Viewer
+
 from qtpy.QtCore import (
     QItemSelectionModel,
     QRect,
@@ -725,10 +725,10 @@ class EphysWidget(QWidget):
 
     cluster_selected = Signal(int)  # emitted when a single cluster row is selected
 
-    def __init__(self, napari_viewer: Viewer, app_state, parent=None):
+    def __init__(self, shell, app_state, parent=None):
         super().__init__(parent=parent)
         self.app_state = app_state
-        self.viewer = napari_viewer
+        self.shell = shell
         self.plot_container = None
         self.meta_widget = None
         self.data_widget = None

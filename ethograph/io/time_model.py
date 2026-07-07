@@ -169,13 +169,11 @@ def _resolve_trial_end(
     # 1. Video length
     if video_path:
         try:
-            from napari_pyav._reader import FastVideoReader
+            from ethograph.gui.video_manager import probe_video
 
-            reader = FastVideoReader(video_path, read_format="rgb24")
-            n_frames = reader.shape[0]
-            fps = float(reader.stream.guessed_rate)
-            if n_frames > 0 and fps > 0:
-                return video_offset + n_frames / fps
+            probe = probe_video(video_path)
+            if probe.nframes > 0 and probe.fps > 0:
+                return video_offset + probe.nframes / probe.fps
         except Exception:
             pass
 

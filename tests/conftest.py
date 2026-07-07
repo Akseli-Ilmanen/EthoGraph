@@ -21,21 +21,21 @@ from ethograph.utils.download import (
 )
 
 try:
-    import napari
     from qtpy.QtWidgets import QApplication, QMessageBox
 
     from ethograph.gui.app_state import ObservableAppState
+    from ethograph.gui.main_window import EthographMainWindow
     from ethograph.gui.widgets_meta import MetaWidget
 
     GUI_AVAILABLE = True
 except ImportError:
     GUI_AVAILABLE = False
 
-requires_gui = pytest.mark.skipif(not GUI_AVAILABLE, reason="napari/Qt not installed")
+requires_gui = pytest.mark.skipif(not GUI_AVAILABLE, reason="Qt/pygfx not installed")
 
 
 def pytest_addoption(parser):
-    parser.addoption("--show", action="store_true", default=False, help="Show napari viewer for 15s after each test")
+    parser.addoption("--show", action="store_true", default=False, help="Show the GUI window for 15s after each test")
 
 
 BIRDPARK_DIR = dataset_dir("birdpark")
@@ -205,8 +205,9 @@ def _suppress_dialogs(monkeypatch):
 
 
 @pytest.fixture
-@requires_gui
 def gui(request, qtbot, tmp_path, monkeypatch):
+    if not GUI_AVAILABLE:
+        pytest.skip("Qt/pygfx not installed")
     show = request.config.getoption("--show")
 
     test_config_dir = tmp_path / ".ethograph"
@@ -217,16 +218,18 @@ def gui(request, qtbot, tmp_path, monkeypatch):
         lambda data_dir=None: test_config_dir,
     )
 
-    viewer = napari.Viewer(show=show)
-    qtbot.addWidget(viewer.window._qt_window)
-
-    meta = MetaWidget(viewer)
+    shell = EthographMainWindow()
+    qtbot.addWidget(shell)
+    meta = MetaWidget(shell)
+    shell.attach_meta_widget(meta)
     meta._check_unsaved_changes = lambda event: True
+    if show:
+        shell.show()
 
-    yield viewer, meta
+    yield shell, meta
     if show:
         qtbot.wait(15_000)
-    viewer.close()
+    shell.close()
 
 
 @pytest.fixture

@@ -1,17 +1,23 @@
-"""Video layer lifecycle management — setup, teardown, camera switching, multi-camera display."""
+"""Video lifecycle management over pygfx camera views.
+
+``VideoArea`` is the central widget of the main window: a horizontal splitter
+holding the primary :class:`CameraView` and a vertical stack of extra camera
+views. ``VideoManager`` keeps its old public surface (update_video,
+add_camera, extra_widgets, …) but creates pygfx views instead of napari
+layers.
+"""
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
-from napari._qt.qt_viewer import QtViewer
-from napari.components.viewer_model import ViewerModel
-from napari_pyav._reader import FastVideoReader
-from qtpy.QtCore import Qt, QTimer
+import av
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
 from .notify import notify
-from .video_sync import NapariVideoSync
+from .pygfx_video import CameraView
+from .video_sync import VideoSync
 
 MAX_EXTRA_CAMERAS = 4
 
@@ -20,67 +26,32 @@ def is_url(path: str) -> bool:
     return path.startswith("http://") or path.startswith("https://")
 
 
-class TrialVideoSlice:
-    """Wraps a FastVideoReader to expose only frames within a trial's time range.
+@dataclass
+class VideoProbe:
+    """Cheap av-based metadata probe (replaces pre-opened FastVideoReaders)."""
 
-    Napari sees ``shape[0]`` as ``end_frame - start_frame`` and the dims
-    slider stays within the trial.  All frame indices are remapped so that
-    index 0 corresponds to ``start_frame`` in the underlying reader.
-    """
-
-    def __init__(self, reader: FastVideoReader, start_frame: int, end_frame: int):
-        self._reader = reader
-        self._start = max(0, start_frame)
-        self._end = min(end_frame, reader.nframes)
-        self._n = max(0, self._end - self._start)
-
-    @property
-    def shape(self):
-        base = self._reader.shape
-        return (self._n, *base[1:])
-
-    @property
-    def ndim(self):
-        return self._reader.ndim
-
-    @property
-    def dtype(self):
-        return self._reader.dtype
-
-    @property
-    def size(self):
-        return int(np.prod(self.shape))
-
-    @property
-    def stream(self):
-        return self._reader.stream
-
-    def __getitem__(self, index):
-        if isinstance(index, (int, np.integer)):
-            clamped = max(0, min(int(index), self._n - 1))
-            return self._reader.read_frame(clamped + self._start)
-        if isinstance(index, tuple) and len(np.r_[index]) == 1:
-            clamped = max(0, min(int(np.r_[index][0]), self._n - 1))
-            return self._reader.read_frame(clamped + self._start)[None]
-        if isinstance(index, slice):
-            frames = [self._reader.read_frame(i + self._start) for i in range(*index.indices(self._n))]
-            return np.array(frames)
-        raise NotImplementedError(f"Slicing of {type(index)}: {index} not implemented")
-
-    def close(self):
-        self._reader.close()
-
-    @property
-    def start_frame(self) -> int:
-        return self._start
+    path: str
+    fps: float
+    nframes: int
 
 
-class ExtraCameraWidget(QWidget):
-    """Self-contained camera view with pose overlay via a napari canvas.
+def probe_video(video_path: str) -> VideoProbe:
+    with av.open(video_path) as container:
+        stream = container.streams.video[0]
+        rate = stream.average_rate or stream.guessed_rate
+        if rate is None:
+            raise ValueError(f"Cannot determine frame rate of {video_path}")
+        fps = float(rate)
+        nframes = stream.frames
+        if not nframes and stream.duration and stream.time_base:
+            nframes = int(float(stream.duration * stream.time_base) * fps)
+        if not nframes and container.duration:
+            nframes = int(container.duration / av.time_base * fps)
+    return VideoProbe(path=str(video_path), fps=fps, nframes=int(nframes))
 
-    Owns its own FPS — the mediator (VideoManager) broadcasts time in seconds
-    and each widget converts to frames internally.
-    """
+
+class VideoArea(QWidget):
+    """Primary camera view + vertical stack of extra camera views."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -88,165 +59,72 @@ class ExtraCameraWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
 
-        self._viewer_model = ViewerModel()
-        self._qt_viewer = QtViewer(self._viewer_model)
-        layout.addWidget(self._qt_viewer)
-
-        self._hide_dims_slider()
-
-        self._fps: float = 0.0
-        self._time_offset: float = 0.0
-        self._video_layer = None
-        self._points_layer = None
-        self._shapes_layer = None
-        self._skeleton_layer = None
-        self._glyph_layer = None
+        self._splitter = QSplitter(Qt.Horizontal)
+        self.primary = CameraView()
+        self._extra_splitter = QSplitter(Qt.Vertical)
+        self._extra_splitter.hide()
+        self._splitter.addWidget(self.primary)
+        self._splitter.addWidget(self._extra_splitter)
+        layout.addWidget(self._splitter)
+        self._extras: dict[str, CameraView] = {}
 
     @property
-    def fps(self) -> float:
-        return self._fps
+    def extras(self) -> dict[str, CameraView]:
+        return self._extras
 
-    def _hide_dims_slider(self):
-        from napari._qt.widgets.qt_dims import QtDims
+    def add_extra(self, name: str) -> CameraView:
+        if name in self._extras:
+            return self._extras[name]
+        view = CameraView()
+        self._extras[name] = view
+        self._extra_splitter.addWidget(view)
+        self._extra_splitter.show()
+        self._equalize()
+        return view
 
-        for widget in self._qt_viewer.findChildren(QtDims):
-            widget.setVisible(False)
-
-    def set_video(self, video_data, fps: float = 0.0, time_offset: float = 0.0):
-        self._fps = fps
-        self._time_offset = time_offset
-        if self._video_layer is not None:
-            old_data = getattr(self._video_layer, "data", None)
-            try:
-                self._viewer_model.layers.remove(self._video_layer)
-            except ValueError:
-                pass
-            self._video_layer = None
-            if hasattr(old_data, "close"):
-                try:
-                    old_data.close()
-                except Exception:
-                    pass
-
-        if video_data is not None:
-            try:
-                self._video_layer = self._viewer_model.add_image(video_data, name="video", rgb=True)
-            except StopIteration:
-                notify("Video file could not be loaded (frame read failed).", "warning")
-                return
-            self._hide_dims_slider()
-            self.seek_to_frame(0)
-
-    def set_pose(self, data, properties, shown, style_kwargs):
-        self.clear_pose()
-        if data is None or len(data) == 0:
+    def remove_extra(self, name: str) -> None:
+        view = self._extras.pop(name, None)
+        if view is None:
             return
-        self._points_layer = self._viewer_model.add_points(
-            data,
-            properties=properties,
-            shown=shown,
-            **style_kwargs,
-        )
+        view.clear()
+        view.setParent(None)
+        view.deleteLater()
+        if not self._extras:
+            self._extra_splitter.hide()
+        self._equalize()
 
-    def set_skeleton(self, layer):
-        self.clear_skeleton()
-        self._skeleton_layer = layer
-
-    def clear_skeleton(self):
-        if self._skeleton_layer is not None:
-            try:
-                self._viewer_model.layers.remove(self._skeleton_layer)
-            except ValueError:
-                pass
-            self._skeleton_layer = None
-
-    def set_glyphs(self, layer):
-        self.clear_glyphs()
-        self._glyph_layer = layer
-
-    def clear_glyphs(self):
-        if self._glyph_layer is not None:
-            try:
-                self._viewer_model.layers.remove(self._glyph_layer)
-            except ValueError:
-                pass
-            self._glyph_layer = None
-
-    def seek_to_time(self, t_seconds: float):
-        if self._fps <= 0 or self._video_layer is None:
-            return
-        frame = int((t_seconds - self._time_offset) * self._fps)
-        n_frames = self._video_layer.data.shape[0]
-        frame = max(0, min(frame, n_frames - 1))
-        self._viewer_model.dims.set_point(0, frame)
-
-    def seek_to_frame(self, frame: int):
-        n_frames = 0
-        if self._video_layer is not None:
-            shape = self._video_layer.data.shape
-            n_frames = shape[0] if len(shape) >= 3 else 0
-        if n_frames == 0:
-            return
-        frame = max(0, min(frame, n_frames - 1))
-        self._viewer_model.dims.set_point(0, frame)
-
-    def clear_bbox(self):
-        if self._shapes_layer is not None:
-            try:
-                self._viewer_model.layers.remove(self._shapes_layer)
-            except ValueError:
-                pass
-            self._shapes_layer = None
-
-    def clear_pose(self):
-        if self._points_layer is not None:
-            try:
-                self._viewer_model.layers.remove(self._points_layer)
-            except ValueError:
-                pass
-            self._points_layer = None
-        self.clear_bbox()
-        self.clear_skeleton()
-        self.clear_glyphs()
-
-    def clear(self):
-        self.clear_pose()
-        if self._video_layer is not None:
-            old_data = getattr(self._video_layer, "data", None)
-            try:
-                self._viewer_model.layers.remove(self._video_layer)
-            except ValueError:
-                pass
-            self._video_layer = None
-            if hasattr(old_data, "close"):
-                try:
-                    old_data.close()
-                except Exception:
-                    pass
+    def _equalize(self) -> None:
+        n = self._extra_splitter.count()
+        if n > 0:
+            h = max(1, self._extra_splitter.height())
+            self._extra_splitter.setSizes([h // n] * n)
+        total = max(1, self._splitter.width())
+        if self._extras:
+            self._splitter.setSizes([int(total * 0.6), int(total * 0.4)])
+        else:
+            self._splitter.setSizes([total, 0])
 
 
 class VideoManager:
-    """Manages primary and extra video layers, audio path resolution, and frame sync.
+    """Manages primary and extra camera views, audio path resolution, sync."""
 
-    Acts as a mediator: broadcasts time in seconds to extra cameras, each of
-    which converts to frames internally using its own FPS.
-
-    Supports up to MAX_EXTRA_CAMERAS additional camera views displayed in a
-    vertical stack alongside the primary napari viewer.
-    """
-
-    def __init__(self, viewer, app_state):
-        self.viewer = viewer
+    def __init__(self, video_area: VideoArea, app_state):
+        self.video_area = video_area
         self.app_state = app_state
-        self._extra_widgets: dict[str, ExtraCameraWidget] = {}
-        self._central_splitter: QSplitter | None = None
-        self._extra_splitter: QSplitter | None = None
-        self._original_central = None
         self._video_format_warned = False
+        self._audio_row_widgets: list = []
 
     @property
-    def extra_widgets(self) -> dict[str, ExtraCameraWidget]:
-        return self._extra_widgets
+    def primary_view(self) -> CameraView:
+        return self.video_area.primary
+
+    @property
+    def extra_widgets(self) -> dict[str, CameraView]:
+        return self.video_area.extras
+
+    # ------------------------------------------------------------------
+    # Primary video
+    # ------------------------------------------------------------------
 
     def update_video(self, plot_container):
         if not self.app_state.ready:
@@ -268,6 +146,79 @@ class VideoManager:
         self._warn_video_format()
         self._cleanup_primary_video()
         self._setup_primary_video(restore_frame)
+
+    def _cleanup_primary_video(self):
+        sync = getattr(self.app_state, "video", None)
+        if sync is not None:
+            try:
+                sync.frame_changed.disconnect(self._on_primary_frame_changed)
+            except (RuntimeError, TypeError):
+                pass
+            sync.cleanup()
+            self.app_state.video = None
+        self.primary_view.clear()
+
+    def _trial_clip(self, fps: float, time_offset: float, nframes: int) -> tuple[int, int, float]:
+        """Compute (start_frame, end_frame, effective_offset) for the trial."""
+        alignment = getattr(self.app_state, "trial_alignment", None)
+        if alignment and alignment.trial_range:
+            trial_start_in_video = -time_offset
+            start_frame = max(0, int(trial_start_in_video * fps))
+            end_frame = int((trial_start_in_video + alignment.trial_range.duration) * fps)
+            end_frame = min(end_frame, nframes)
+            if start_frame > 0 or end_frame < nframes:
+                return start_frame, end_frame, 0.0
+        return 0, nframes, time_offset
+
+    def _setup_primary_video(self, restore_frame: int):
+        try:
+            probe = probe_video(self.app_state.video_path)
+        except (OSError, ValueError, av.AVError) as e:
+            notify(f"Video file could not be loaded: {e}", "warning")
+            return
+
+        if probe.fps and self.app_state.dt is not None:
+            camera = self.app_state.primary_camera
+            self.app_state.nwb_alignment.set_stream_rate(probe.fps, "video", camera)
+
+        alignment = getattr(self.app_state, "trial_alignment", None)
+        video_time_offset = alignment.video_offset if alignment else 0.0
+        fps = self.app_state.video_fps
+        start_frame, end_frame, effective_offset = self._trial_clip(
+            fps, video_time_offset, probe.nframes
+        )
+
+        view = self.primary_view
+        try:
+            view.set_video(
+                self.app_state.video_path,
+                fps=fps,
+                time_offset=effective_offset,
+                start_frame=start_frame,
+                end_frame=end_frame,
+            )
+        except (OSError, ValueError) as e:
+            notify(f"Video file could not be loaded: {e}", "warning")
+            return
+
+        sync = VideoSync(
+            app_state=self.app_state,
+            view=view,
+            video_source=self.app_state.video_path,
+            audio_source=self.app_state.audio_path,
+        )
+        self.app_state.video = sync
+        self.app_state.num_frames = sync.total_frames
+
+        sync.frame_changed.connect(self._on_primary_frame_changed)
+        sync.frame_changed.connect(self._sync_extra_cameras)
+        restore_frame = min(restore_frame, max(0, sync.total_frames - 1))
+        sync.seek_to_frame(restore_frame)
+        self.app_state.current_frame = restore_frame
+
+    # ------------------------------------------------------------------
+    # Audio
+    # ------------------------------------------------------------------
 
     def update_audio(self, plot_container):
         if not self.app_state.ready:
@@ -305,90 +256,9 @@ class VideoManager:
                 "warning",
             )
 
-    def _cleanup_primary_video(self):
-        sync = getattr(self.app_state, "video", None)
-        if sync is not None:
-            try:
-                sync.frame_changed.disconnect(self._on_primary_frame_changed)
-                sync.cleanup()
-            except (RuntimeError, TypeError):
-                pass
-            self.app_state.video = None
-        for layer in list(self.viewer.layers):
-            if layer.name in ["video", "Video Stream", "video_new"]:
-                old_data = getattr(layer, "data", None)
-                self.viewer.layers.remove(layer)
-                if hasattr(old_data, "close"):
-                    try:
-                        old_data.close()
-                    except Exception:
-                        pass
-
-    def _setup_primary_video(self, restore_frame: int):
-        reader = FastVideoReader(
-            self.app_state.video_path,
-            read_format="rgb24",
-        )
-        _ = reader.shape
-
-        detected_fps = float(reader.stream.guessed_rate) if reader.stream.guessed_rate else None
-        if detected_fps is not None and self.app_state.dt is not None:
-            camera = self.app_state.primary_camera
-            self.app_state.nwb_alignment.set_stream_rate(detected_fps, "video", camera)
-
-        alignment = getattr(self.app_state, "trial_alignment", None)
-        video_time_offset = alignment.video_offset if alignment else 0.0
-
-        # Slice the reader to the trial's time range so napari's slider is
-        # bounded to trial frames.  This prevents StopIteration crashes when
-        # codecs over-report nframes (common with AVI/MOV) and also enforces
-        # the trial stop_time for session-wide videos with a non-zero offset.
-        video_data = reader
-        if alignment and alignment.trial_range:
-            fps = self.app_state.video_fps
-            trial_start_in_video = -video_time_offset
-            start_frame = max(0, int(trial_start_in_video * fps))
-            end_frame = int((trial_start_in_video + alignment.trial_range.duration) * fps)
-            if start_frame > 0 or end_frame < reader.nframes:
-                video_data = TrialVideoSlice(reader, start_frame, end_frame)
-                video_time_offset = 0.0
-
-        n_frames = int(video_data.shape[0]) if len(video_data.shape) >= 1 else 0
-        if n_frames > 0:
-            restore_frame = min(restore_frame, n_frames - 1)
-        else:
-            restore_frame = 0
-
-        try:
-            video_layer = self.viewer.add_image(video_data, name="video", rgb=True)
-        except StopIteration:
-            notify("Video file could not be loaded (frame read failed).", "warning")
-            return
-        video_index = self.viewer.layers.index(video_layer)
-        self.viewer.layers.move(video_index, 0)
-
-        try:
-            sync = NapariVideoSync(
-                viewer=self.viewer,
-                app_state=self.app_state,
-                video_source=self.app_state.video_path,
-                audio_source=self.app_state.audio_path,
-                video_layer=video_layer,
-                time_offset=video_time_offset,
-            )
-            self.app_state.video = sync
-            self.app_state.num_frames = sync.total_frames
-        except (OSError, ValueError) as e:
-            notify(f"Failed to initialize video sync: {e}", "warning")
-            return
-
-        sync.frame_changed.connect(self._on_primary_frame_changed)
-        sync.seek_to_frame(restore_frame)
-        self.app_state.current_frame = restore_frame
-
-        qt_dims = getattr(self.viewer.window, "_qt_viewer", self.viewer.window.qt_viewer).dims
-        if qt_dims.slider_widgets:
-            qt_dims.slider_widgets[0].play_button.hide()
+    # ------------------------------------------------------------------
+    # Frame sync
+    # ------------------------------------------------------------------
 
     def set_frame_changed_callback(self, callback):
         self._frame_changed_callback = callback
@@ -396,6 +266,14 @@ class VideoManager:
     def _on_primary_frame_changed(self, frame_number: int):
         if hasattr(self, "_frame_changed_callback"):
             self._frame_changed_callback(frame_number)
+
+    def _sync_extra_cameras(self, frame_number: int):
+        video = getattr(self.app_state, "video", None)
+        if video is None or not self.extra_widgets:
+            return
+        t_seconds = video.frame_to_time(frame_number)
+        for view in self.extra_widgets.values():
+            view.seek_to_time(t_seconds)
 
     def toggle_pause_resume(self, plot_container):
         video = getattr(self.app_state, "video", None)
@@ -408,173 +286,75 @@ class VideoManager:
     # Extra cameras
     # ------------------------------------------------------------------
 
-    def add_camera(self, camera_name: str, video_path: str, layout_mgr, meta_widget, *, reader=None):
-        if camera_name in self._extra_widgets:
+    def add_camera(self, camera_name: str, video_path: str, layout_mgr=None, meta_widget=None, *, reader=None):
+        if camera_name in self.extra_widgets:
             self._update_existing_camera(camera_name, video_path, reader=reader)
             return
 
-        if len(self._extra_widgets) >= MAX_EXTRA_CAMERAS:
+        if len(self.extra_widgets) >= MAX_EXTRA_CAMERAS:
             notify(f"Maximum {MAX_EXTRA_CAMERAS} extra cameras supported.", "warning")
             return
 
-        if reader is None:
-            reader = FastVideoReader(video_path, read_format="rgb24")
-            _ = reader.shape
-        fps = float(reader.stream.guessed_rate)
-        self._store_camera_fps_in_session(camera_name, fps)
+        probe = reader if isinstance(reader, VideoProbe) else None
+        if probe is None:
+            try:
+                probe = probe_video(video_path)
+            except (OSError, ValueError, av.AVError) as e:
+                notify(f"Could not open camera '{camera_name}': {e}", "warning")
+                return
+        self._store_camera_fps_in_session(camera_name, probe.fps)
 
-        video_data, time_offset = self._prepare_extra_video(reader, fps, camera_name)
-
-        widget = ExtraCameraWidget()
-        widget.set_video(video_data, fps=fps, time_offset=time_offset)
-        self._extra_widgets[camera_name] = widget
-        self._rebuild_camera_layout(layout_mgr, meta_widget)
-
-        self._connect_extra_sync()
-        self._sync_widget_to_current_time(widget)
+        view = self.video_area.add_extra(camera_name)
+        self._load_extra_video(view, camera_name, video_path, probe)
+        self._sync_widget_to_current_time(view)
 
     def _update_existing_camera(self, camera_name: str, video_path: str, *, reader=None):
-        if reader is None:
-            reader = FastVideoReader(video_path, read_format="rgb24")
-            _ = reader.shape
-        fps = float(reader.stream.guessed_rate)
-        self._store_camera_fps_in_session(camera_name, fps)
-        video_data, time_offset = self._prepare_extra_video(reader, fps, camera_name)
-        widget = self._extra_widgets[camera_name]
-        widget.set_video(video_data, fps=fps, time_offset=time_offset)
-        widget.show()
-        self._sync_widget_to_current_time(widget)
+        probe = reader if isinstance(reader, VideoProbe) else None
+        if probe is None:
+            try:
+                probe = probe_video(video_path)
+            except (OSError, ValueError, av.AVError) as e:
+                notify(f"Could not open camera '{camera_name}': {e}", "warning")
+                return
+        self._store_camera_fps_in_session(camera_name, probe.fps)
+        view = self.extra_widgets[camera_name]
+        self._load_extra_video(view, camera_name, video_path, probe)
+        view.show()
+        self._sync_widget_to_current_time(view)
 
-    def _prepare_extra_video(self, reader, fps: float, camera_name: str):
-        """Retrieve per-camera offset and apply trial slicing for an extra camera."""
+    def _load_extra_video(self, view: CameraView, camera_name: str, video_path: str, probe: VideoProbe):
         sio = getattr(self.app_state, "nwb_alignment", None)
         time_offset = 0.0
         if sio is not None:
             trial_id = self.app_state.trials_sel
             time_offset = sio.stream_offset_for_trial(trial_id, "video", camera_name)
+        start_frame, end_frame, effective_offset = self._trial_clip(
+            probe.fps, time_offset, probe.nframes
+        )
+        try:
+            view.set_video(
+                video_path,
+                fps=probe.fps,
+                time_offset=effective_offset,
+                start_frame=start_frame,
+                end_frame=end_frame,
+            )
+        except (OSError, ValueError) as e:
+            notify(f"Camera '{camera_name}' failed to load: {e}", "warning")
 
-        alignment = getattr(self.app_state, "trial_alignment", None)
-        video_data = reader
-        if alignment and alignment.trial_range:
-            trial_start_in_video = -time_offset
-            start_frame = max(0, int(trial_start_in_video * fps))
-            end_frame = int((trial_start_in_video + alignment.trial_range.duration) * fps)
-            if start_frame > 0 or end_frame < reader.nframes:
-                video_data = TrialVideoSlice(reader, start_frame, end_frame)
-                time_offset = 0.0
-
-        return video_data, time_offset
-
-    def _sync_widget_to_current_time(self, widget: ExtraCameraWidget):
+    def _sync_widget_to_current_time(self, view: CameraView):
         video = getattr(self.app_state, "video", None)
         if video is not None:
-            frame = self.viewer.dims.current_step[0]
-            widget.seek_to_time(video.frame_to_time(frame))
+            view.seek_to_time(video.frame_to_time(video.current_frame))
         else:
-            widget.seek_to_frame(0)
+            view.seek_video_frame(0)
 
     def remove_camera(self, camera_name: str):
-        widget = self._extra_widgets.pop(camera_name, None)
-        if widget is None:
-            return
-
-        self._disconnect_extra_sync()
-        widget.clear()
-        widget.setParent(None)
-
-        if not self._extra_widgets:
-            self._teardown_camera_layout()
-        elif self._extra_splitter is not None:
-            self._equalize_extra_stack()
-
-        if self._extra_widgets:
-            self._connect_extra_sync()
+        self.video_area.remove_extra(camera_name)
 
     def remove_all_cameras(self):
-        self._disconnect_extra_sync()
-        for widget in self._extra_widgets.values():
-            widget.clear()
-            widget.setParent(None)
-        self._extra_widgets.clear()
-        self._teardown_camera_layout()
-
-    def _rebuild_camera_layout(self, layout_mgr, meta_widget):
-        qt_window = self.viewer.window._qt_window
-
-        if self._central_splitter is None:
-            saved = layout_mgr.save_dock_widths()
-            central = qt_window.centralWidget()
-            self._original_central = central
-
-            self._central_splitter = QSplitter(Qt.Horizontal)
-            self._extra_splitter = QSplitter(Qt.Vertical)
-
-            central.setParent(None)
-            self._central_splitter.addWidget(central)
-            self._central_splitter.addWidget(self._extra_splitter)
-            qt_window.setCentralWidget(self._central_splitter)
-            central.show()
-            meta_widget.reapply_shortcuts()
-
-            def _settle():
-                self._equalize_camera_split()
-                layout_mgr.restore_dock_widths(saved)
-
-            QTimer.singleShot(50, _settle)
-        else:
-            while self._extra_splitter.count():
-                w = self._extra_splitter.widget(0)
-                w.setParent(None)
-
-        for widget in self._extra_widgets.values():
-            self._extra_splitter.addWidget(widget)
-            widget.show()
-
-        QTimer.singleShot(50, self._equalize_extra_stack)
-
-    def _teardown_camera_layout(self):
-        if self._central_splitter is None or self._original_central is None:
-            return
-        qt_window = self.viewer.window._qt_window
-        self._original_central.setParent(None)
-        qt_window.setCentralWidget(self._original_central)
-        self._central_splitter = None
-        self._extra_splitter = None
-        self._original_central = None
-
-    def _equalize_camera_split(self):
-        if self._central_splitter is None:
-            return
-        total = self._central_splitter.width()
-        self._central_splitter.setSizes([int(total * 0.6), int(total * 0.4)])
-        self._equalize_extra_stack()
-
-    def _equalize_extra_stack(self):
-        if self._extra_splitter is None:
-            return
-        n = self._extra_splitter.count()
-        if n > 0:
-            h = self._extra_splitter.height()
-            self._extra_splitter.setSizes([h // n] * n)
-
-    def _connect_extra_sync(self):
-        self._disconnect_extra_sync()
-        if self._extra_widgets:
-            self.viewer.dims.events.current_step.connect(self._on_extra_frame_sync)
-
-    def _disconnect_extra_sync(self):
-        try:
-            self.viewer.dims.events.current_step.disconnect(self._on_extra_frame_sync)
-        except (RuntimeError, TypeError):
-            pass
-
-    def _on_extra_frame_sync(self, event=None):
-        if not self._extra_widgets or getattr(self.app_state, "video", None) is None:
-            return
-        frame = self.viewer.dims.current_step[0]
-        t_seconds = self.app_state.video.frame_to_time(frame)
-        for widget in self._extra_widgets.values():
-            widget.seek_to_time(t_seconds)
+        for name in list(self.extra_widgets.keys()):
+            self.video_area.remove_extra(name)
 
     def _store_camera_fps_in_session(self, camera_name: str, fps: float):
         sio = getattr(self.app_state, "nwb_alignment", None)
@@ -590,39 +370,29 @@ class VideoManager:
         self.remove_all_cameras()
 
     @staticmethod
-    def open_readers_parallel(paths: dict[str, str]) -> dict[str, FastVideoReader]:
-        """Open FastVideoReaders for *paths* concurrently.
+    def open_readers_parallel(paths: dict[str, str]) -> dict[str, VideoProbe]:
+        """Probe video metadata for *paths* concurrently.
 
-        Parameters
-        ----------
-        paths
-            ``{camera_name: video_path}`` mapping.
-
-        Returns
-        -------
-        dict
-            ``{camera_name: reader}`` for every path that opened
-            successfully.  Failed opens are silently skipped.
+        Returns ``{camera_name: VideoProbe}`` for every path that probed
+        successfully. Failed probes are silently skipped.
         """
 
-        def _open(video_path: str) -> FastVideoReader | None:
+        def _probe(video_path: str) -> VideoProbe | None:
             try:
-                reader = FastVideoReader(video_path, read_format="rgb24")
-                _ = reader.shape
-                return reader
+                return probe_video(video_path)
             except Exception:
                 return None
 
         if not paths:
             return {}
 
-        results: dict[str, FastVideoReader] = {}
+        results: dict[str, VideoProbe] = {}
         with ThreadPoolExecutor(max_workers=len(paths)) as pool:
-            futures = {name: pool.submit(_open, path) for name, path in paths.items()}
+            futures = {name: pool.submit(_probe, path) for name, path in paths.items()}
             for name, future in futures.items():
-                reader = future.result()
-                if reader is not None:
-                    results[name] = reader
+                probe = future.result()
+                if probe is not None:
+                    results[name] = probe
         return results
 
     def _resolve_video_path(self, camera_name: str, video_folder: str | None) -> str | None:
