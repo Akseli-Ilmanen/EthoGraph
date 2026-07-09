@@ -46,6 +46,9 @@ _DOCK_AREAS = {
     "bottom": Qt.BottomDockWidgetArea,
 }
 
+# Bump when the dock structure changes so stale saved layouts are ignored.
+_LAYOUT_VERSION = 2
+
 
 def _session_layout_path() -> Path:
     return default_config_dir() / "window_layout.json"
@@ -61,13 +64,13 @@ class EthographMainWindow(QMainWindow):
         self.resize(1400, 900)
         self.setDockNestingEnabled(True)
 
-        # Corner ownership (matches the old napari arrangement):
-        # sidebar spans full height on the right, plots extend left.
-        self.setCorner(Qt.BottomRightCorner, Qt.RightDockWidgetArea)
-        self.setCorner(Qt.BottomLeftCorner, Qt.BottomDockWidgetArea)
+        self._apply_corner_ownership()
 
+        # Video lives in a top dock (added in attach_meta_widget); the plot
+        # container becomes the central widget. Do NOT set video_area as the
+        # central widget here — setCentralWidget() deletes the previous central
+        # widget, which would destroy the CameraView C++ object.
         self.video_area = VideoArea()
-        self.setCentralWidget(self.video_area)
 
         set_toast_host(self)
 
@@ -94,14 +97,46 @@ class EthographMainWindow(QMainWindow):
         self._sidebar_dock = self.add_dock_widget(scroll, area="right", name="ethograph GUI")
         self._sidebar_dock.setObjectName("SidebarDock")
 
-        self._plot_dock = self.add_dock_widget(
-            meta_widget.plot_container, area="bottom", name="Plots"
+        # Plots are the central (expanding) widget; the video sits in a compact
+        # top dock so it no longer dominates the window (pynaviz-style stack).
+        self.setCentralWidget(meta_widget.plot_container)
+        self._video_dock = self.add_dock_widget(self.video_area, area="top", name="Video")
+        self._video_dock.setObjectName("VideoDock")
+        QTimer.singleShot(
+            0, lambda: self.resizeDocks([self._video_dock], [300], Qt.Vertical)
         )
-        self._plot_dock.setObjectName("PlotsDock")
+
+        # Left sidebar: draggable Media / Feature sources — full-height, narrow.
+        left = getattr(meta_widget, "left_sidebar", None)
+        if left is not None:
+            self._left_sidebar_dock = self.add_dock_widget(left, area="left", name="Sources")
+            self._left_sidebar_dock.setObjectName("LeftSidebarDock")
+            left.setMaximumWidth(220)
+            QTimer.singleShot(0, lambda: self.resizeDocks(
+                [self._left_sidebar_dock], [150], Qt.Horizontal
+            ))
+
+        # Build the reorganised top menu bar now that the sidebar sections exist.
+        from .top_bar import build_menu_bar
+
+        build_menu_bar(self)
+
+        # Clicking the video shows the pose + playback context in the sidebar.
+        if hasattr(self.video_area, "clicked") and hasattr(meta_widget, "focus_video_context"):
+            self.video_area.clicked.connect(meta_widget.focus_video_context)
 
         self._sidebar_toggle.setChecked(True)
         # Restore the previous session's window layout once widgets exist.
         QTimer.singleShot(0, self._restore_session_layout)
+
+    def _apply_corner_ownership(self):
+        """Left (Sources) and right (control) sidebars span the full window
+        height; the video/plots docks sit between them. Re-applied after any
+        state restore, which can otherwise reset corner ownership."""
+        self.setCorner(Qt.TopLeftCorner, Qt.LeftDockWidgetArea)
+        self.setCorner(Qt.BottomLeftCorner, Qt.LeftDockWidgetArea)
+        self.setCorner(Qt.TopRightCorner, Qt.RightDockWidgetArea)
+        self.setCorner(Qt.BottomRightCorner, Qt.RightDockWidgetArea)
 
     def add_dock_widget(self, widget: QWidget, area: str = "right", name: str = "") -> QDockWidget:
         dock = QDockWidget(name, self)
@@ -111,26 +146,23 @@ class EthographMainWindow(QMainWindow):
         return dock
 
     def _create_menus(self):
-        menu_bar = self.menuBar()
+        """Create window-level shortcut actions.
 
-        file_menu = menu_bar.addMenu("&File")
-        file_menu.addAction("&Save layout…", self._save_layout_dialog)
-        file_menu.addAction("&Load layout…", self._load_layout_dialog)
-        file_menu.addSeparator()
-        file_menu.addAction("&Exit", self.close)
-
-        view_menu = menu_bar.addMenu("&View")
-        self._sidebar_toggle = QAction("Show &sidebar", self, checkable=True, checked=True)
+        The visible menu bar (File / Layout / Changepoints / Neural / Help) is
+        built by :func:`ethograph.gui.top_bar.build_menu_bar` once the sidebar
+        sections exist.  Here we only register the standalone actions whose
+        keyboard shortcuts must work regardless of the menu bar.
+        """
+        self._sidebar_toggle = QAction("Show sidebar", self, checkable=True, checked=True)
         self._sidebar_toggle.setShortcut(QKeySequence("Ctrl+0"))
         self._sidebar_toggle.toggled.connect(self._set_sidebar_visible)
-        view_menu.addAction(self._sidebar_toggle)
+        self.addAction(self._sidebar_toggle)
 
-        self._video_toggle = QAction("Show &video", self, checkable=True, checked=True)
+        self._video_toggle = QAction("Show video", self, checkable=True, checked=True)
         self._video_toggle.toggled.connect(self.set_video_viewer_visible)
-        view_menu.addAction(self._video_toggle)
+        self.addAction(self._video_toggle)
 
-        view_menu.addSeparator()
-        view_menu.addAction("Add &line plot", self.add_lineplot_dock)
+        self._zen_action: QAction | None = None
 
     # ------------------------------------------------------------------
     # Sidebar / video visibility
@@ -144,11 +176,28 @@ class EthographMainWindow(QMainWindow):
         self._sidebar_toggle.setChecked(not self._sidebar_toggle.isChecked())
 
     def set_video_viewer_visible(self, visible: bool):
-        central = self.centralWidget()
-        if central is None:
-            return
-        # Zero the height rather than hide() so dock geometry stays sane.
-        central.setMaximumHeight(16777215 if visible else 0)
+        # Video now lives in its own top dock.
+        dock = getattr(self, "_video_dock", None)
+        if dock is not None:
+            dock.setVisible(visible)
+
+    def set_zen_mode(self, on: bool):
+        """Hide the left/right sidebars (zen mode). Sidebar updates are skipped.
+
+        Toggled from the Layout menu or ``Ctrl+Z``.  While on, the control
+        sidebar (and future left layout sidebar) are hidden and
+        ``app_state.zen_mode`` is set so widgets can skip expensive refreshes.
+        """
+        self._zen_mode = on
+        if self._sidebar_dock is not None:
+            self._sidebar_dock.setVisible(not on)
+        left = getattr(self, "_left_sidebar_dock", None)
+        if left is not None:
+            left.setVisible(not on)
+        if self.meta_widget is not None:
+            app_state = getattr(self.meta_widget, "app_state", None)
+            if app_state is not None and hasattr(app_state, "zen_mode"):
+                app_state.zen_mode = on
 
     # ------------------------------------------------------------------
     # napari-Viewer-replacement services
@@ -207,9 +256,9 @@ class EthographMainWindow(QMainWindow):
         if self.meta_widget is not None:
             extra_features = self.meta_widget.plot_container.extra_lineplot_features()
         return {
-            "version": 1,
+            "version": _LAYOUT_VERSION,
             "geometry_b64": base64.b64encode(bytes(self.saveGeometry())).decode("ascii"),
-            "state_b64": base64.b64encode(bytes(self.saveState(version=1))).decode("ascii"),
+            "state_b64": base64.b64encode(bytes(self.saveState(version=_LAYOUT_VERSION))).decode("ascii"),
             "extra_lineplots": extra_features,
             "sidebar_visible": bool(self._sidebar_dock and self._sidebar_dock.isVisible()),
         }
@@ -234,6 +283,12 @@ class EthographMainWindow(QMainWindow):
             logger.warning("Could not read layout %s: %s", path, e)
             return
 
+        # Ignore layouts saved by an incompatible (older) window structure — they
+        # would clobber the new video-top-dock / full-height-sidebar arrangement.
+        if payload.get("version") != _LAYOUT_VERSION:
+            logger.info("Ignoring stale window layout (version mismatch).")
+            return
+
         for feature in payload.get("extra_lineplots", []):
             self.add_lineplot_dock(feature=feature)
 
@@ -241,10 +296,12 @@ class EthographMainWindow(QMainWindow):
             self.restoreGeometry(QByteArray.fromBase64(payload["geometry_b64"].encode("ascii")))
             self.restoreState(
                 QByteArray.fromBase64(payload["state_b64"].encode("ascii")),
-                payload.get("version", 1),
+                _LAYOUT_VERSION,
             )
         except (KeyError, Exception) as e:
             logger.warning("Could not restore layout state: %s", e)
+        # restoreState can reset corner ownership — re-assert full-height sidebars.
+        self._apply_corner_ownership()
         self._sidebar_toggle.setChecked(payload.get("sidebar_visible", True))
         if verbose:
             notify(f"Layout loaded from {path}")

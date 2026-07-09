@@ -14,7 +14,7 @@ import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 import yaml
-from qtpy.QtCore import QTimer
+from qtpy.QtCore import QEvent, QTimer, Signal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -300,6 +300,10 @@ def _auto_camera_3d(gl_widget, X, Y, Z):
 class SpacePlot(QWidget):
     """Dock widget for displaying spatial plots with user-selectable axes."""
 
+    #: Emitted on any mouse press in the plot → switches the sidebar to the
+    #: Space context (parity with the pyqtgraph plots' ``plot_clicked``).
+    clicked = Signal()
+
     def __init__(self, shell, app_state):
         super().__init__()
         self.shell = shell
@@ -335,8 +339,6 @@ class SpacePlot(QWidget):
         self.z_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         toolbar.addWidget(self.z_combo)
 
-        root.addLayout(toolbar)
-
         # Row 2: 3D checkbox + keypoint filter
         row2 = QHBoxLayout()
         row2.setContentsMargins(0, 0, 0, 0)
@@ -351,7 +353,15 @@ class SpacePlot(QWidget):
         self.keypoint_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         row2.addWidget(self.keypoint_combo)
 
-        root.addLayout(row2)
+        # The axis (X/Y/Z) + 3D controls live in the sidebar's Space context, not
+        # on the plot; they are re-parented there when the space plot is created
+        # (see DataWidget.update_space_plot).
+        self.controls_widget = QWidget()
+        controls_v = QVBoxLayout(self.controls_widget)
+        controls_v.setContentsMargins(0, 0, 0, 0)
+        controls_v.setSpacing(4)
+        controls_v.addLayout(toolbar)
+        controls_v.addLayout(row2)
 
         # Plot area — stable container that stays in the layout; the actual
         # PlotWidget / GLViewWidget is swapped inside it.
@@ -731,6 +741,20 @@ class SpacePlot(QWidget):
             self.space_widget.setBackground("w")
 
         self._plot_holder_layout.addWidget(self.space_widget)
+        self._install_click_filter()
+
+    def _install_click_filter(self):
+        """Emit ``clicked`` on any mouse press inside the plot (2D or 3D)."""
+        self.installEventFilter(self)
+        if self.space_widget is not None:
+            self.space_widget.installEventFilter(self)
+            for child in self.space_widget.findChildren(QWidget):
+                child.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.MouseButtonPress:
+            self.clicked.emit()
+        return False
 
     def _load_references(self) -> list[ReferenceGeometry]:
         """Load reference geometry from space.yaml or arena.yaml."""

@@ -6,6 +6,7 @@ from qtpy.QtCore import QTimer
 from qtpy.QtWidgets import (
     QMessageBox,
     QSizePolicy,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -24,7 +25,9 @@ from .app_constants import (
 )
 from .app_state import ObservableAppState
 from .grid_section_container import GridSectionContainer
+from .left_sidebar import LeftSidebar, PlotTypePicker, allowed_plot_types
 from .make_pretty import LayoutManager
+from .notify import notify
 from .plots_container import UnifiedPanelContainer
 from .shortcuts import bind_global_shortcuts
 from .widget_trials import TrialsWidget
@@ -68,7 +71,7 @@ class MetaWidget(GridSectionContainer):
         # Initialize all widgets with app_state
         self._create_widgets()
 
-        self.collapsible_widgets[1].expand()  # Expand I/O by default
+        self.collapsible_widgets[0].expand()  # Expand Data by default
 
         self._connect_collapsible_layout_refresh()
 
@@ -85,6 +88,10 @@ class MetaWidget(GridSectionContainer):
 
         self.plot_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.plot_container.setMinimumHeight(PLOT_CONTAINER_MIN_HEIGHT)
+
+        # Left sidebar: drag Media/Feature sources onto the plot area to add panels.
+        self.left_sidebar = LeftSidebar(self.app_state)
+        self.plot_container._on_source_drop = self._on_source_dropped
 
         self.layout_mgr = LayoutManager(self.shell, self.plot_container)
 
@@ -173,16 +180,43 @@ class MetaWidget(GridSectionContainer):
         ]:
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
-        # Add widgets to the collapsible container (index order matters for titles)
-        self.add_widget(self.help_widget, collapsible=True, widget_title="Help and Tutorials")
-        self.add_widget(self.io_widget, collapsible=True, widget_title="I/O")
-        self.add_widget(self.data_panel, collapsible=True, widget_title="Data")
-        self.add_widget(self.ephys_widget, collapsible=True, widget_title="Phy TraceView")
-        self.add_widget(self.labels_widget, collapsible=True, widget_title="Labelling")
-        self.add_widget(self.changepoints_widget, collapsible=True, widget_title="Changepoints (CPs)")
-        self.add_widget(self.plot_settings_widget, collapsible=True, widget_title="Plot settings")
-        self.add_widget(self.trials_widget, collapsible=True, widget_title="Trials")
-        self.add_widget(self.navigation_widget, collapsible=True, widget_title="Navigation")
+        # ── Right sidebar: exactly three sections — Data | Labels | Navigation.
+        # The "Data" section is context-sensitive: it borrows the setting groups
+        # from DataPanel / PlotSettingsWidget / NavigationWidget and shows only
+        # the ones relevant to the plot the user last clicked (see _on_plot_focus).
+        self.context_panel = self._build_context_panel()
+        self._add_feature_view_switch()
+
+        # The label-branch overlay selectors (Main / top1 / top2) belong with the
+        # Labels section, retitled "Label overlay".
+        overlay_gb = getattr(self.data_panel, "overlays_groupbox", None)
+        if overlay_gb is not None:
+            overlay_gb.setTitle("Label overlay")
+            if self.labels_widget.layout() is not None:
+                self.labels_widget.layout().addWidget(overlay_gb)
+
+        self.add_widget(self.context_panel, collapsible=True, widget_title="Data")
+        self.add_widget(self.labels_widget, collapsible=True, widget_title="Labels")
+        self.add_widget(self._build_nav_tab(), collapsible=True, widget_title="Navigation")
+
+        # Everything else moved to the top-bar pop-ups. Park those widgets in a
+        # hidden holder so they stay alive and can be borrowed by SectionPopup.
+        # data_panel / plot_settings are now shells (their groups live in the
+        # context panel) but kept alive here so their attributes stay valid.
+        self._detached_holder = QWidget(self)
+        self._detached_holder.setVisible(False)
+        holder_layout = QVBoxLayout(self._detached_holder)
+        holder_layout.setContentsMargins(0, 0, 0, 0)
+        for w in (
+            self.help_widget,
+            self.io_widget,
+            self.ephys_widget,
+            self.changepoints_widget,
+            self.data_panel,
+            self.plot_settings_widget,
+        ):
+            holder_layout.addWidget(w)
+            w.setVisible(False)
 
         normalize_child_layouts(
             self,
@@ -190,8 +224,262 @@ class MetaWidget(GridSectionContainer):
             margin=DEFAULT_LAYOUT_MARGIN,
         )
 
-        self.update_changepoints_widget_title()
+        self._overlays_relocated = False
+        self._wire_plot_focus()
         self.update_labels_widget_title()
+
+    def _relocate_overlay_checkboxes(self):
+        """Move the Confidence checkbox to the predictions importer and the
+        Envelope checkbox to the spectrogram (audio) settings — reparenting
+        preserves their existing overlay signal connections.
+
+        The checkboxes are built lazily during data load, so this runs once
+        after the first dataset is configured.
+        """
+        if getattr(self, "_overlays_relocated", False):
+            return
+        conf_cb = getattr(self.data_widget, "show_confidence_checkbox", None)
+        pred_row = getattr(self.io_widget, "_pred_controls_row", None)
+        if conf_cb is not None and pred_row is not None:
+            pred_row.insertWidget(0, conf_cb)
+
+        # Envelope belongs with the audio-trace energy controls, not spectrogram.
+        env_cb = getattr(self.data_widget, "show_envelope_checkbox", None)
+        energy_group = getattr(self.data_panel, "energy_group", None)
+        if env_cb is not None and energy_group is not None and energy_group.layout() is not None:
+            energy_group.layout().addWidget(env_cb, 2, 0, 1, 3)
+            env_cb.show()
+
+        if conf_cb is not None or env_cb is not None:
+            self._overlays_relocated = True
+
+    def _build_context_panel(self):
+        """Borrow the per-plot setting groups into one context-sensitive panel."""
+        from .right_context import RightContextPanel
+
+        dp = self.data_panel
+        ps = self.plot_settings_widget
+        nav = self.navigation_widget
+        sections = {
+            "coords": getattr(dp, "coords_groupbox", None),
+            "slot": getattr(dp, "slot_groupbox", None),
+            "pose": getattr(dp, "pose_groupbox", None),
+            "energy": getattr(dp, "energy_group", None),
+            "lineplot": getattr(ps, "lineplot_panel", None),
+            "spaceplot": getattr(ps, "spaceplot_panel", None),
+            "spectrogram": getattr(ps, "spectrogram_panel", None),
+            "heatmap": getattr(ps, "heatmap_panel", None),
+            "shared": getattr(ps, "shared_widget", None),
+            "playback": getattr(nav, "playback_group", None),
+        }
+        panel = RightContextPanel(sections)
+        panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        return panel
+
+    def _add_feature_view_switch(self):
+        """Add a lineplot⇄heatmap toggle to the Xarray-coords group (shown for
+        both the lineplot and heatmap contexts)."""
+        from qtpy.QtWidgets import QCheckBox
+
+        coords_layout = getattr(self.data_panel, "coords_groupbox_layout", None)
+        if coords_layout is None:
+            return
+        self.feature_view_checkbox = QCheckBox("Show feature as heatmap")
+        self.feature_view_checkbox.setToolTip("Switch the feature panel between line plot and heatmap.")
+        self.feature_view_checkbox.toggled.connect(self._on_feature_view_toggled)
+        coords_layout.insertRow(0, self.feature_view_checkbox)
+
+    def _on_feature_view_toggled(self, checked: bool):
+        if not self.app_state.ready:
+            return
+        mode = "heatmap" if checked else "lineplot"
+        self.plot_container.set_feature_view(mode)
+        self.context_panel.set_context(mode, has_pose=self._pose_available())
+        self.refresh_widget_layout(self.context_panel)
+
+    def _build_nav_tab(self) -> QWidget:
+        """Navigation section = trials table (on top) + navigation controls."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        layout.addWidget(self.trials_widget, stretch=1)
+        layout.addWidget(self.navigation_widget)
+        tab.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        return tab
+
+    def _wire_plot_focus(self):
+        """Connect each plot's click signal to the context-sensitive sidebar."""
+        pc = self.plot_container
+        # Extra line plots (added by drag-drop) route their clicks through here
+        # too, so they behave exactly like the built-in line plot.
+        pc._focus_callback = self._on_plot_focus
+        plot_types = [
+            ("audio_trace_plot", "audiotrace"),
+            ("spectrogram_plot", "spectrogram"),
+            ("line_plot", "feature"),
+            ("heatmap_plot", "heatmap"),
+            ("space_plot", "space"),
+        ]
+        for attr, panel_type in plot_types:
+            plot = getattr(pc, attr, None)
+            if plot is not None and hasattr(plot, "plot_clicked"):
+                plot.plot_clicked.connect(
+                    lambda _=None, t=panel_type: self._on_plot_focus(t)
+                )
+
+    def _on_source_dropped(self, kind: str, name: str):
+        """Left-sidebar source dropped on the plot area → pick type & create panel."""
+        if not self.app_state.ready:
+            notify("Load a dataset before adding panels.", "warning")
+            return
+        options = allowed_plot_types(kind, name, self.app_state)
+        if not options:
+            return
+        # Only one possible plot type (e.g. video) → no need to ask.
+        if len(options) == 1:
+            self._create_panel_for_source(kind, name, options[0])
+            return
+        picker = PlotTypePicker(options, parent=self.shell)
+        if picker.exec_() and picker.choice:
+            self._create_panel_for_source(kind, name, picker.choice)
+
+    def _create_panel_for_source(self, kind: str, name: str, plot_type: str):
+        pc = self.plot_container
+        if kind == "feature":
+            if plot_type == "Lineplot":
+                pc.add_extra_lineplot(feature=name)
+            elif plot_type == "Heatmap":
+                pc.set_featureplot_visible(True)
+                pc.set_feature_view("heatmap")
+                notify(f"Heatmap: {name}")
+            elif plot_type.startswith("Space"):
+                self.app_state.space_plot_type = "Space Plot"
+                if hasattr(self.data_widget, "update_space_plot"):
+                    self.data_widget.update_space_plot()
+                notify(f"{plot_type}: {name}")
+        elif kind == "audio":
+            if plot_type == "Spectrogram Trace":
+                pc.set_spectrogram_visible(True)
+            else:
+                pc.set_audiotrace_visible(True)
+        elif kind == "video":
+            self._add_camera_view(name)
+
+    def _add_camera_view(self, name: str):
+        """Dropping a video source shows that camera — even when no video is open.
+
+        If no video is currently open, the dropped camera becomes the primary
+        view (which sets up playback/sync). Otherwise it is added as an extra
+        follower view.
+        """
+        dw = self.data_widget
+        vm = getattr(dw, "video_mgr", None)
+        if vm is None:
+            notify("No video is available for this session.", "warning")
+            return
+
+        name = str(name)
+        primary_open = (
+            getattr(self.app_state, "video", None) is not None or vm.primary_view.has_video
+        )
+
+        if not primary_open:
+            # Nothing playing yet → open this camera as the primary video.
+            self.app_state.primary_camera = name
+            combo = getattr(dw, "primary_camera_combo", None)
+            if combo is not None:
+                idx = combo.findText(name)
+                if idx >= 0:
+                    combo.blockSignals(True)
+                    combo.setCurrentIndex(idx)
+                    combo.blockSignals(False)
+            self.shell.set_video_viewer_visible(True)
+            vm.update_video(plot_container=self.plot_container)
+            if getattr(self.app_state, "video", None) is None and not vm.primary_view.has_video:
+                notify(f"No video file found for camera '{name}'.", "warning")
+            else:
+                notify(f"Opened video: {name}")
+            return
+
+        if name in vm.extra_widgets:
+            notify(f"Camera '{name}' is already shown.", "info")
+            return
+        if name == str(getattr(self.app_state, "primary_camera", "") or ""):
+            notify(f"Camera '{name}' is already the primary view.", "info")
+            return
+        video_path = vm._resolve_video_path(name, self.app_state.video_folder)
+        if not video_path:
+            notify(f"No video file found for camera '{name}'.", "warning")
+            return
+        vm.add_camera(
+            camera_name=name,
+            video_path=video_path,
+            layout_mgr=getattr(dw, "layout_mgr", None),
+            meta_widget=self,
+        )
+        pose_mgr = getattr(dw, "pose_mgr", None)
+        if pose_mgr is not None and hasattr(dw, "get_hidden_keypoints"):
+            try:
+                pose_mgr.update_extra_camera_pose(name, dw.get_hidden_keypoints())
+            except Exception:  # noqa: BLE001 - pose is best-effort
+                pass
+        notify(f"Added camera view: {name}")
+
+    def _on_plot_focus(self, panel_type: str):
+        """Show only the clicked plot's settings, unless zen / Labels / Nav active.
+
+        Refreshes only when the plot *type* changes (RightContextPanel.set_context
+        is a no-op for the same type).
+        """
+        if getattr(self.app_state, "zen_mode", False):
+            return
+        # Skip when the user is on the Labels (1) or Navigation (2) section.
+        if getattr(self, "_active", None) in (1, 2):
+            return
+        # "feature" resolves to whichever plot the feature slot is showing.
+        if panel_type == "feature":
+            panel_type = getattr(self.plot_container, "_feature_type", "lineplot")
+        if panel_type in ("lineplot", "heatmap") and hasattr(self, "feature_view_checkbox"):
+            self.feature_view_checkbox.blockSignals(True)
+            self.feature_view_checkbox.setChecked(panel_type == "heatmap")
+            self.feature_view_checkbox.blockSignals(False)
+        has_pose = bool(getattr(self.app_state, "has_pose", False)) or self._pose_available()
+        if self.collapsible_widgets:
+            self.collapsible_widgets[0].expand()
+        if self.context_panel.set_context(panel_type, has_pose=has_pose):
+            self.refresh_widget_layout(self.context_panel)
+
+    def _pose_available(self) -> bool:
+        sio = getattr(self.app_state, "nwb_alignment", None)
+        if sio is not None and getattr(sio, "pose_keys", None):
+            return True
+        ds = getattr(self.app_state, "ds", None)
+        if ds is not None:
+            return any("position" in str(v) for v in getattr(ds, "data_vars", {}))
+        return False
+
+    def focus_video_context(self):
+        """Called when the video viewer is clicked → show pose + playback."""
+        if getattr(self.app_state, "zen_mode", False):
+            return
+        if getattr(self, "_active", None) in (1, 2):
+            return
+        if self.collapsible_widgets:
+            self.collapsible_widgets[0].expand()
+        if self.context_panel.set_context("video", has_pose=self._pose_available()):
+            self.refresh_widget_layout(self.context_panel)
+
+    def _set_default_context(self):
+        """Pick an initial context after load so the Data section isn't empty."""
+        if getattr(self.app_state, "video", None) is not None:
+            self.context_panel.set_context("video", has_pose=self._pose_available())
+        else:
+            sio = getattr(self.app_state, "nwb_alignment", None)
+            if sio is not None and getattr(sio, "mics", None):
+                self.context_panel.set_context("audio")
+            else:
+                self.context_panel.set_context("lineplot")
 
     def _connect_collapsible_layout_refresh(self):
         from qtpy.QtCore import QEvent
@@ -257,8 +545,9 @@ class MetaWidget(GridSectionContainer):
         self.data_widget.update_trials_combo()
 
     def update_labels_widget_title(self):
-        if hasattr(self, "collapsible_widgets") and len(self.collapsible_widgets) > 4:
-            labels_collapsible = self.collapsible_widgets[4]
+        # Labels is the second sidebar section (index 1).
+        if hasattr(self, "collapsible_widgets") and len(self.collapsible_widgets) > 1:
+            labels_collapsible = self.collapsible_widgets[1]
             verification_emoji = "❌"
             if hasattr(self.app_state, "trials_sel") and self.app_state.trials_sel is not None:
                 trial_meta = self.app_state.get_trial_meta(self.app_state.trials_sel)
@@ -338,6 +627,9 @@ class MetaWidget(GridSectionContainer):
     def configure_layout_for_data(self):
         """Configure panel visibility and layout after a dataset load."""
         self.plot_container.configure_panels()
+        self.left_sidebar.refresh()
+        self._relocate_overlay_checkboxes()
+        self._set_default_context()
 
         if self.app_state.ephys_path:
             self.data_widget._configure_neo_panel()

@@ -741,6 +741,8 @@ class IOWidget(QWidget):
         # Row 2: show checkbox + threshold + PDF button
         controls_row = QHBoxLayout()
         controls_row.setContentsMargins(0, 0, 0, 0)
+        # Exposed so MetaWidget can move the "Confidence" overlay checkbox here.
+        self._pred_controls_row = controls_row
 
         controls_row.addWidget(QLabel("Frame thr:"))
         self.pred_confidence_threshold_spin = QDoubleSpinBox()

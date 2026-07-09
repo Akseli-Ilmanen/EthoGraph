@@ -128,6 +128,21 @@ class PlotSettingsWidget(QWidget):
     def _toggle_heatmap(self):
         self._show_panel("heatmap" if self.heatmap_toggle.isChecked() else "lineplot")
 
+    # Map a clicked-plot type (from ``plot_container._last_clicked_panel``) to the
+    # settings panel that should be shown for it.
+    _PANEL_FOR_PLOT = {
+        "audio": "spectrogram",
+        "feature": "lineplot",
+        "space": "spaceplot",
+        "heatmap": "heatmap",
+    }
+
+    def show_panel_for(self, panel_type: str) -> None:
+        """Switch to the settings panel appropriate for the clicked plot."""
+        name = self._PANEL_FOR_PLOT.get(panel_type)
+        if name:
+            self._show_panel(name)
+
     def _refresh_layout(self):
         if self.meta_widget:
             self.meta_widget.refresh_widget_layout(self)
@@ -179,6 +194,11 @@ class PlotSettingsWidget(QWidget):
 
         self.apply_button.clicked.connect(self._on_axes_edited)
         self.reset_button.clicked.connect(self._reset_axes_to_defaults)
+
+        # Live-apply: values apply on editingFinished, so the explicit Apply /
+        # Reset buttons are redundant and hidden (kept alive for wiring).
+        self.apply_button.setVisible(False)
+        self.reset_button.setVisible(False)
 
         main_layout.addWidget(self.lineplot_panel)
 
@@ -378,6 +398,7 @@ class PlotSettingsWidget(QWidget):
 
     def _create_shared_controls(self, main_layout):
         shared_widget = QWidget()
+        self.shared_widget = shared_widget  # exposed for the context-sensitive sidebar
         shared_layout = QHBoxLayout()
         shared_layout.setSpacing(6)
         shared_layout.setContentsMargins(0, 0, 0, 0)

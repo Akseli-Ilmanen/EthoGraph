@@ -234,6 +234,7 @@ class NavigationWidget(QWidget):
 
         # ── Playback ─────────────────────────────────────────────────
         playback_group = QGroupBox("Playback")
+        self.playback_group = playback_group  # exposed for the video context sidebar
         playback_layout = QGridLayout()
         playback_layout.setSpacing(2)
         playback_layout.setContentsMargins(2, 2, 2, 2)

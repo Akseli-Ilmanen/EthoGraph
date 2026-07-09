@@ -210,6 +210,7 @@ class AppStateSpec:
         "primary_camera_previous": (str | None, None, False),
         "extra_cameras": (list[str], [], True),
         "lock_axes": (bool, False, False),
+        "zen_mode": (bool, False, False),
         "spec_colormap": (str, "CET-R4", True),
         "spec_levels_mode": (str, "auto", True),
         # All checkbox states for dimension combos (e.g., {"keypoint": True, "space": False})

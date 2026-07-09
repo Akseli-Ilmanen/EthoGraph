@@ -12,14 +12,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import av
-from qtpy.QtCore import Qt
+from qtpy.QtCore import QEvent, Qt, Signal
 from qtpy.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
 from .notify import notify
 from .pygfx_video import CameraView
 from .video_sync import VideoSync
-
-MAX_EXTRA_CAMERAS = 4
 
 
 def is_url(path: str) -> bool:
@@ -53,6 +51,9 @@ def probe_video(video_path: str) -> VideoProbe:
 class VideoArea(QWidget):
     """Primary camera view + vertical stack of extra camera views."""
 
+    #: Emitted on any mouse press inside the video area (→ video context sidebar).
+    clicked = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = QVBoxLayout()
@@ -68,6 +69,21 @@ class VideoArea(QWidget):
         layout.addWidget(self._splitter)
         self._extras: dict[str, CameraView] = {}
 
+        self.setMouseTracking(True)
+        self._install_click_filter(self)
+        self._install_click_filter(self.primary)
+
+    def _install_click_filter(self, widget: QWidget) -> None:
+        """Install the click event filter on *widget* and its descendants."""
+        widget.installEventFilter(self)
+        for child in widget.findChildren(QWidget):
+            child.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.MouseButtonPress:
+            self.clicked.emit()
+        return False
+
     @property
     def extras(self) -> dict[str, CameraView]:
         return self._extras
@@ -79,6 +95,7 @@ class VideoArea(QWidget):
         self._extras[name] = view
         self._extra_splitter.addWidget(view)
         self._extra_splitter.show()
+        self._install_click_filter(view)
         self._equalize()
         return view
 
@@ -289,10 +306,6 @@ class VideoManager:
     def add_camera(self, camera_name: str, video_path: str, layout_mgr=None, meta_widget=None, *, reader=None):
         if camera_name in self.extra_widgets:
             self._update_existing_camera(camera_name, video_path, reader=reader)
-            return
-
-        if len(self.extra_widgets) >= MAX_EXTRA_CAMERAS:
-            notify(f"Maximum {MAX_EXTRA_CAMERAS} extra cameras supported.", "warning")
             return
 
         probe = reader if isinstance(reader, VideoProbe) else None

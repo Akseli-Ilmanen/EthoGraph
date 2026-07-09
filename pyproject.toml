@@ -94,6 +94,7 @@ dandi = [
 dev = [
     "pytest",
     "pytest-cov",
+    "pytest-qt",
     "coverage",
     "tox",
     "pre-commit",

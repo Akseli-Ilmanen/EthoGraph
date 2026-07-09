@@ -522,6 +522,7 @@ class DataPanel(QWidget):
 
     def _create_audio_section(self, parent_layout):
         group = QGroupBox("Energy envelope")
+        self.energy_group = group  # exposed for the context-sensitive sidebar
         grid = QGridLayout()
         group.setLayout(grid)
 
@@ -1118,10 +1119,8 @@ class DataWidget(QWidget):
         slot_layout.addWidget(self.primary_camera_combo)
 
         if len(cameras) > 1:
-            from .video_manager import MAX_EXTRA_CAMERAS
-
             cam_names = [str(c) for c in cameras]
-            n_extra = min(MAX_EXTRA_CAMERAS, len(cameras) - 1)
+            n_extra = len(cameras) - 1  # no cap — one slot per non-primary camera
             self._extra_camera_combos: list[QComboBox] = []
             for i in range(n_extra):
                 combo = QComboBox()
@@ -1868,7 +1867,8 @@ class DataWidget(QWidget):
             self.data_panel.metric_combo.currentText(),
         )
         if key:
-            result = open_function_params_dialog(key, self.app_state, parent=self.data_panel)
+            # Parent to the shell, not data_panel (which is now a hidden shell).
+            result = open_function_params_dialog(key, self.app_state, parent=self.shell)
             if result is not None:
                 self._on_energy_apply()
 
@@ -1888,7 +1888,7 @@ class DataWidget(QWidget):
             return
 
         self.plot_container.hide_envelope_overlay()
-        dialog = BusyProgressDialog("Computing energy envelope...", parent=self.data_panel)
+        dialog = BusyProgressDialog("Computing energy envelope...", parent=self.shell)
         dialog.execute_blocking(self.plot_container.show_envelope_overlay)
 
     def _set_controls_enabled(self, enabled: bool):
@@ -2706,6 +2706,14 @@ class DataWidget(QWidget):
             self.plot_container.time_marker_updated.connect(self._on_xrange_for_space_plot)
             if self.labels_widget:
                 self.labels_widget.highlight_spaceplot.connect(self._highlight_positions_in_space_plot)
+            # Move the X/Y/Z + 3D controls into the sidebar's Space context.
+            ps = getattr(self, "plot_settings_widget", None)
+            controls = getattr(self.space_plot, "controls_widget", None)
+            if ps is not None and getattr(ps, "spaceplot_panel", None) is not None and controls is not None:
+                ps.spaceplot_panel.layout().insertWidget(0, controls)
+            # Clicking the space plot switches the sidebar to the Space context.
+            if self.meta_widget is not None and hasattr(self.meta_widget, "_on_plot_focus"):
+                self.space_plot.clicked.connect(lambda: self.meta_widget._on_plot_focus("space"))
 
         store = getattr(self.app_state, "data_loader", None)
         if store is None and self.app_state.ds is not None:
@@ -2717,6 +2725,10 @@ class DataWidget(QWidget):
         self.space_plot.set_store(store)
         self.space_plot.refresh()
         self.space_plot.show()
+
+        # Surface the Space context (X/Y/Z + space controls) in the sidebar.
+        if self.meta_widget is not None and hasattr(self.meta_widget, "_on_plot_focus"):
+            self.meta_widget._on_plot_focus("space")
 
     def _highlight_positions_in_space_plot(self, start_time: float, end_time: float):
         if not self.space_plot or not self.space_plot.dock_widget or not self.space_plot.dock_widget.isVisible():

@@ -75,6 +75,10 @@ def launch():
     shell.raise_()
     shell.activateWindow()
 
+    from ethograph.gui.cover_page import maybe_show_cover_page
+
+    maybe_show_cover_page(shell)
+
     app.exec()
 
 

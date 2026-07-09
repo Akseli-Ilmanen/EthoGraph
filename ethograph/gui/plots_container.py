@@ -15,10 +15,11 @@ from typing import Any, Dict
 
 import numpy as np
 import pyqtgraph as pg
-from qtpy.QtCore import QSize, Qt, QTimer, Signal
+from qtpy.QtCore import QEvent, QSize, Qt, QTimer, Signal
 from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSlider,
     QSplitter,
     QVBoxLayout,
@@ -196,6 +197,40 @@ class CurrentLabelIndicator(QLabel):
         self.move(max(0, x), self._MARGIN)
 
 
+class _PanelCloseButton(QPushButton):
+    """A small ✕ button pinned to the top-right corner of a plot panel.
+
+    Clicking it hides the panel (native-feeling per-panel close). It follows
+    the panel on resize via an event filter.
+    """
+
+    def __init__(self, panel: QWidget, on_close):
+        super().__init__("✕", panel)
+        self.setFixedSize(18, 18)
+        self.setToolTip("Remove this panel")
+        self.setStyleSheet(
+            "QPushButton { color:#ddd; background:rgba(40,40,40,160);"
+            " border:1px solid rgba(255,255,255,50); border-radius:3px; }"
+            "QPushButton:hover { color:#fff; background:rgba(200,60,60,200); }"
+        )
+        self.clicked.connect(on_close)
+        panel.installEventFilter(self)
+        self._reposition()
+        self.show()
+        self.raise_()
+
+    def eventFilter(self, obj, event):
+        if event.type() in (QEvent.Resize, QEvent.Show):
+            self._reposition()
+        return False
+
+    def _reposition(self):
+        p = self.parentWidget()
+        if p is not None:
+            self.move(max(0, p.width() - self.width() - 6), 6)
+            self.raise_()
+
+
 class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     """Unified container with dynamic panel visibility.
 
@@ -208,10 +243,22 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     spectrogram_overlay_shown = Signal()
     time_marker_updated = Signal(float)
 
+    #: MIME type used by the left-sidebar drag-and-drop panel creator.
+    SOURCE_MIME = "application/x-ethograph-source"
+
     def __init__(self, app_state, parent=None):
         super().__init__(parent)
         self.app_state = app_state
         self._data_widget = None  # set by widgets_meta after construction
+
+        # Drag-and-drop panel creation: the left sidebar drags a Media/Feature
+        # source onto this container; ``_on_source_drop(kind, name)`` (set by
+        # MetaWidget) opens the plot-type picker and creates a panel.
+        self._on_source_drop = None
+        # Set by MetaWidget; called with a plot type when any plot is clicked so
+        # the right sidebar shows that plot's controls (extras use this too).
+        self._focus_callback = None
+        self.setAcceptDrops(True)
 
         # --- Plots ---
         self.audio_trace_plot = AudioTracePlot(app_state)
@@ -336,6 +383,42 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # Extra line-plot panels (pynaviz-style, added via View menu)
         self.extra_line_plots: list[LinePlot] = []
 
+        self._install_panel_close_buttons()
+
+    def _install_panel_close_buttons(self):
+        """Give every fixed panel a ✕ button that hides it (like extra plots)."""
+        closers = [
+            (self.audio_trace_plot, lambda: self.set_audiotrace_visible(False)),
+            (self.spectrogram_plot, lambda: self.set_spectrogram_visible(False)),
+            (self.line_plot, lambda: self.set_featureplot_visible(False)),
+            (self.heatmap_plot, lambda: self.set_featureplot_visible(False)),
+            (self.neo_trace_plot, lambda: self.set_neo_visible(False)),
+            (self.ephys_trace_plot, lambda: self.set_ephys_visible(False)),
+            (self.raster_plot, lambda: self.set_raster_visible(False)),
+        ]
+        self._panel_close_buttons = [_PanelCloseButton(panel, fn) for panel, fn in closers]
+
+    # ------------------------------------------------------------------
+    # Drag-and-drop panel creation (left sidebar → plot area)
+    # ------------------------------------------------------------------
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasFormat(self.SOURCE_MIME):
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasFormat(self.SOURCE_MIME):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        if not event.mimeData().hasFormat(self.SOURCE_MIME):
+            return
+        payload = bytes(event.mimeData().data(self.SOURCE_MIME)).decode("utf-8")
+        kind, _, name = payload.partition("|")
+        if callable(self._on_source_drop):
+            self._on_source_drop(kind, name)
+        event.acceptProposedAction()
+
     # ------------------------------------------------------------------
     # Extra line-plot panels
     # ------------------------------------------------------------------
@@ -351,36 +434,21 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         return []
 
     def add_extra_lineplot(self, feature: str | None = None):
-        """Add an additional synced line-plot panel with its own feature combo."""
+        """Add an additional synced line plot — behaves exactly like the main
+        line plot (clicking it shows the same lineplot controls in the sidebar);
+        it just has a fixed feature and a ✕ to remove it."""
         features = self._available_features()
         if not features:
             return None
-        from qtpy.QtWidgets import QComboBox, QPushButton
 
         plot = LinePlot(self.app_state)
         plot.feature_override = feature if feature in features else features[0]
 
-        combo = QComboBox(plot)
-        combo.addItems(features)
-        combo.setCurrentText(plot.feature_override)
-        combo.move(45, 6)
-        combo.adjustSize()
-        combo.raise_()
-        plot._feature_combo = combo
-
-        close_btn = QPushButton("✕", plot)
-        close_btn.setFixedSize(18, 18)
-        close_btn.move(20, 6)
-        close_btn.setToolTip("Remove this line plot")
-        close_btn.raise_()
-
-        def _on_feature_changed(name):
-            plot.feature_override = name
-            plot.update_plot_content()
-            self.labels_redraw_needed.emit()
-
-        combo.currentTextChanged.connect(_on_feature_changed)
-        close_btn.clicked.connect(lambda: self.remove_extra_lineplot(plot))
+        # Same ✕ close button as the fixed panels (no per-plot feature dropdown).
+        close_btn = _PanelCloseButton(plot, lambda: self.remove_extra_lineplot(plot))
+        if not hasattr(self, "_extra_close_buttons"):
+            self._extra_close_buttons: dict = {}
+        self._extra_close_buttons[plot] = close_btn
 
         self.extra_line_plots.append(plot)
         self._splitter.addWidget(plot)
@@ -388,11 +456,17 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         if self._xlink_master is not None and self._xlink_master is not plot:
             plot.plotItem.setXLink(self._xlink_master.plotItem)
         plot.vb.sigRangeChanged.connect(self._on_plot_zoom)
-        plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "feature"))
+        plot.plot_clicked.connect(lambda _=None: self._emit_feature_focus())
         if self.app_state.ready:
             plot.update_plot()
         self.labels_redraw_needed.emit()
         return plot
+
+    def _emit_feature_focus(self):
+        """A feature (line) plot was clicked → update sidebar to lineplot context."""
+        self._last_clicked_panel = "feature"
+        if callable(self._focus_callback):
+            self._focus_callback("feature")
 
     def remove_extra_lineplot(self, plot) -> None:
         if plot not in self.extra_line_plots:
