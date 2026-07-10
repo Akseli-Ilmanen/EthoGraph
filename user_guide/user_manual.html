@@ -495,7 +495,7 @@
 </thead>
 <tbody>
 <tr class="row-even"><td><p><strong>xarray</strong></p></td>
-<td><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> / <a class="reference internal" href="../api/trialtree.html#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><code class="xref py py-class docutils literal notranslate"><span class="pre">TrialTree</span></code></a></p></td>
+<td><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> / <a class="reference internal" href="../api/trialtree.html#ethograph.io.trialtree.TrialTree" title="ethograph.io.trialtree.TrialTree"><code class="xref py py-class docutils literal notranslate"><span class="pre">TrialTree</span></code></a></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">.nc</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>Pynapple</strong></p></td>
@@ -537,7 +537,7 @@ the segment you just labelled.</p>
 </section>
 <section id="feature-dropdowns">
 <h2>Feature dropdowns<a class="headerlink" href="#feature-dropdowns" title="Link to this heading">#</a></h2>
-<p>To showcase some <code class="docutils literal notranslate"><span class="pre">ethograph</span></code> functionalities, we will use pose data from a carrion crow performing a tool-use task (Moll et al., 2025¹). The <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> is from one behavioural trial, and shows position, velocity, speed, and acceleration for 3 keypoints tracked in 3D.</p>
+<p>To showcase some <code class="docutils literal notranslate"><span class="pre">ethograph</span></code> functionalities, we will use pose data from a carrion crow performing a tool-use task (Moll et al., 2025¹). The <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> is from one behavioural trial, and shows position, velocity, speed, and acceleration for 3 keypoints tracked in 3D.</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">ethograph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eto</span>
@@ -1138,7 +1138,7 @@ Notice the dimensions:
 </div>
 <br>
 <br>
-<p>With <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.4.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.DataArray</span></code></a>, you can use <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.sel.html#xarray.DataArray.sel" title="(in xarray v2026.4.0)"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sel()</span></code></a> to pick
+<p>With <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.DataArray</span></code></a>, you can use <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.sel.html#xarray.DataArray.sel" title="(in xarray v2026.7.0)"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sel()</span></code></a> to pick
 a specific keypoint, spatial axis, and individual:</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
@@ -1158,7 +1158,7 @@ a specific keypoint, spatial axis, and individual:</p>
 <br>
 <hr class="docutils" />
 <br>
-<p>In the GUI, you can switch between features using the <strong>Feature</strong> dropdown and <strong>select</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.sel.html#xarray.DataArray.sel" title="(in xarray v2026.4.0)"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sel()</span></code></a>) a unique combination of feature dimensions. In the video below, the user switches from the feature <code class="docutils literal notranslate"><span class="pre">speed</span></code> to <code class="docutils literal notranslate"><span class="pre">velocity</span></code>, with the selection dimensions <code class="docutils literal notranslate"><span class="pre">individual=crow1</span></code>, <code class="docutils literal notranslate"><span class="pre">keypoint=beakTip</span></code> and <code class="docutils literal notranslate"><span class="pre">space=[&quot;x&quot;,</span> <span class="pre">&quot;y&quot;,</span> <span class="pre">&quot;z&quot;]</span></code> (All checkbox ticked). Thanks to <a class="reference internal" href="../api/ethograph.sel_valid.html#ethograph.sel_valid" title="ethograph.sel_valid"><code class="xref py py-func docutils literal notranslate"><span class="pre">sel_valid()</span></code></a>, any invalid dimensions are ignored (e.g. it’s not problematic that speed does not have a <code class="docutils literal notranslate"><span class="pre">space</span></code> dimension).</p>
+<p>In the GUI, you can switch between features using the <strong>Feature</strong> dropdown and <strong>select</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.sel.html#xarray.DataArray.sel" title="(in xarray v2026.7.0)"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sel()</span></code></a>) a unique combination of feature dimensions. In the video below, the user switches from the feature <code class="docutils literal notranslate"><span class="pre">speed</span></code> to <code class="docutils literal notranslate"><span class="pre">velocity</span></code>, with the selection dimensions <code class="docutils literal notranslate"><span class="pre">individual=crow1</span></code>, <code class="docutils literal notranslate"><span class="pre">keypoint=beakTip</span></code> and <code class="docutils literal notranslate"><span class="pre">space=[&quot;x&quot;,</span> <span class="pre">&quot;y&quot;,</span> <span class="pre">&quot;z&quot;]</span></code> (All checkbox ticked). Thanks to <a class="reference internal" href="../api/ethograph.sel_valid.html#ethograph.sel_valid" title="ethograph.sel_valid"><code class="xref py py-func docutils literal notranslate"><span class="pre">sel_valid()</span></code></a>, any invalid dimensions are ignored (e.g. it’s not problematic that speed does not have a <code class="docutils literal notranslate"><span class="pre">space</span></code> dimension).</p>
 <video controls loop muted autoplay width="100%">
   <source src="../_static/videos/dropdown.mp4" type="video/mp4">
 </video><br>
@@ -1361,7 +1361,7 @@ across all three backends.</p>
 <td><p><a class="reference internal" href="../api/ethograph.load_nap_data.html#ethograph.load_nap_data" title="ethograph.load_nap_data"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_nap_data()</span></code></a></p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>Restrict</strong></p></td>
-<td><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.sel.html#xarray.Dataset.sel" title="(in xarray v2026.4.0)"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sel()</span></code></a></p></td>
+<td><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.sel.html#xarray.Dataset.sel" title="(in xarray v2026.7.0)"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sel()</span></code></a></p></td>
 <td><p><a class="reference external" href="https://pynapple.org/generated/pynapple.Tsd.restrict.html#pynapple.Tsd.restrict" title="(in pynapple v0.11.3)"><code class="xref py py-meth docutils literal notranslate"><span class="pre">restrict()</span></code></a></p></td>
 <td><p>Via <code class="xref py py-mod docutils literal notranslate"><span class="pre">pynapple</span></code></p></td>
 </tr>
