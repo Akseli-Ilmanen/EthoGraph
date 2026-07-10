@@ -71,13 +71,17 @@ def launch():
     shell = EthographMainWindow()
     meta_widget = MetaWidget(shell)
     shell.attach_meta_widget(meta_widget)
+
+    # Start dialog first; the main window only appears after the user picks
+    # something to load (or skips). Closing the dialog exits without a GUI.
+    from ethograph.gui.cover_page import show_cover_page
+
+    if not show_cover_page(shell):
+        return
+
     shell.show()
     shell.raise_()
     shell.activateWindow()
-
-    from ethograph.gui.cover_page import maybe_show_cover_page
-
-    maybe_show_cover_page(shell)
 
     app.exec()
 

@@ -9,8 +9,9 @@ Presents three entry points (matching the design in the project brief):
    normal loader can consume loose media, and loads.
 3. **Data wizard** — reuse :meth:`IOWidget._on_create_nc_clicked`.
 
-The page is modal and disappears once a dataset is loaded
-(``app_state.ready``).
+The page runs *before* the main window is shown: it accepts once a dataset
+is loaded (``app_state.ready``) or the user explicitly skips; closing the
+dialog (X / Esc) means the GUI never opens.
 """
 
 from __future__ import annotations
@@ -205,12 +206,16 @@ class CoverPage(QDialog):
     """Modal start page shown until a dataset is loaded."""
 
     def __init__(self, shell, io_widget, parent=None):
-        super().__init__(parent or shell)
+        # No Qt parent by default: the main window is still hidden at startup,
+        # and a dialog parented to a hidden window gets no Windows taskbar
+        # entry (it can vanish behind other windows with no way back).
+        super().__init__(parent)
         self.shell = shell
         self.io_widget = io_widget
         self.app_state = io_widget.app_state
         self.setWindowTitle("ethograph — get started")
         self.setModal(True)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMinimizeButtonHint)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(24, 24, 24, 24)
@@ -235,7 +240,7 @@ class CoverPage(QDialog):
         skip_row = QHBoxLayout()
         skip_row.addStretch()
         skip_btn = QPushButton("Skip / open empty")
-        skip_btn.clicked.connect(self.reject)
+        skip_btn.clicked.connect(self._on_skip)
         skip_row.addWidget(skip_btn)
         outer.addLayout(skip_row)
 
@@ -301,6 +306,10 @@ class CoverPage(QDialog):
     # ------------------------------------------------------------------
     # Option handlers
     # ------------------------------------------------------------------
+
+    def _on_skip(self):
+        """Open the GUI without loading anything (explicit user choice)."""
+        self.accept()
 
     def _on_template(self):
         self.io_widget._on_select_template_clicked()
@@ -433,17 +442,23 @@ class CoverPage(QDialog):
             self.accept()
 
 
-def maybe_show_cover_page(shell) -> None:
-    """Show the cover page at startup unless a dataset is already loaded."""
+def show_cover_page(shell) -> bool:
+    """Run the start dialog before the (still hidden) main window is shown.
+
+    Returns True if the GUI should open: a dataset was loaded, the user
+    explicitly skipped, or a dataset is already loaded. Returns False when the
+    user closed the dialog, meaning the app should exit without showing the
+    main window.
+    """
     meta = getattr(shell, "meta_widget", None)
     io_widget = getattr(meta, "io_widget", None)
     if io_widget is None:
-        return
+        return True
     app_state = io_widget.app_state
     if getattr(app_state, "ready", False) or getattr(app_state, "dt", None) is not None:
-        return
+        return True
     page = CoverPage(shell, io_widget)
     shell._cover_page = page
-    # Size to most of the window.
+    # Size to most of the (pending) window geometry.
     page.resize(int(shell.width() * 0.9), int(shell.height() * 0.9))
-    page.exec_()
+    return page.exec_() == QDialog.Accepted
