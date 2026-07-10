@@ -20,12 +20,9 @@ from qtpy.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QPushButton,
     QSizePolicy,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -50,6 +47,7 @@ from .app_constants import (
     DEFAULT_LAYOUT_SPACING,
     SIDEBAR_AFTER_LOAD_WIDTH_RATIO,
 )
+from .dialog_keypoint_filter import KeypointFilterDialog
 from .make_pretty import clean_display_labels
 from .plots_space import SpacePlot
 from .plots_spectrogram import SharedAudioCache
@@ -380,6 +378,23 @@ class DataPanel(QWidget):
         threshold_layout.addStretch()
         pose_layout.addLayout(threshold_layout)
 
+        # Keypoints row: master visibility toggle + per-keypoint filter popup
+        keypoints_row = QHBoxLayout()
+        self.pose_show_keypoints_checkbox = QCheckBox("Show keypoints")
+        self.pose_show_keypoints_checkbox.setChecked(True)
+        self.pose_show_keypoints_checkbox.setToolTip(
+            "Show/hide keypoint markers (skeleton edges are unaffected)"
+        )
+        keypoints_row.addWidget(self.pose_show_keypoints_checkbox)
+        self.filter_keypoints_btn = QPushButton("Filter individual keypoints…")
+        self.filter_keypoints_btn.setToolTip(
+            "Open a popup to show/hide individual keypoints. Hidden keypoints "
+            "also drop any skeleton edge touching them."
+        )
+        keypoints_row.addWidget(self.filter_keypoints_btn)
+        keypoints_row.addStretch()
+        pose_layout.addLayout(keypoints_row)
+
         # Points (markers) row
         points_row = QHBoxLayout()
         points_row.addWidget(QLabel("<b>Points:</b>"))
@@ -447,14 +462,8 @@ class DataPanel(QWidget):
 
         # Actions row
         btn_row = QHBoxLayout()
-        select_all_btn = QPushButton("Select All")
-        deselect_all_btn = QPushButton("Deselect All")
-        select_all_btn.clicked.connect(lambda: self._set_all_keypoints_checked(True))
-        deselect_all_btn.clicked.connect(lambda: self._set_all_keypoints_checked(False))
         self.rotate_btn = QPushButton("Rotate video/pose by 90°")
         self.rotate_btn.setToolTip("Rotate all video and pose layers by 90° clockwise")
-        btn_row.addWidget(select_all_btn)
-        btn_row.addWidget(deselect_all_btn)
         btn_row.addWidget(self.rotate_btn)
         btn_row.addStretch()
         pose_layout.addLayout(btn_row)
@@ -474,14 +483,7 @@ class DataPanel(QWidget):
             "drag between keypoints to connect, then assign color categories."
         )
         pose_layout.addWidget(self.create_skeleton_btn)
-
-        # Keypoints table (inline, scrollable)
-        self.keypoints_table = QTableWidget(0, 2)
-        self.keypoints_table.setHorizontalHeaderLabels(["Show", "Keypoint"])
-        self.keypoints_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.keypoints_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.keypoints_table.verticalHeader().setVisible(False)
-        pose_layout.addWidget(self.keypoints_table, stretch=1)
+        pose_layout.addStretch()
 
         self.pose_groupbox.hide()
         parent_layout.addWidget(self.pose_groupbox, stretch=1)
@@ -551,17 +553,6 @@ class DataPanel(QWidget):
                 return key
         return "energy_lowpass"
 
-    def _set_all_keypoints_checked(self, checked: bool):
-        state = Qt.Checked if checked else Qt.Unchecked
-        self.keypoints_table.blockSignals(True)
-        for row in range(self.keypoints_table.rowCount()):
-            item = self.keypoints_table.item(row, 0)
-            if item:
-                item.setCheckState(state)
-        self.keypoints_table.blockSignals(False)
-        if self._update_pose_callback:
-            self._update_pose_callback()
-
 
 class DataWidget(QWidget):
     """Orchestrator widget — loads data, manages selections, updates plots."""
@@ -600,6 +591,8 @@ class DataWidget(QWidget):
         self.combos = {}
         self.all_checkboxes = {}
         self.controls = []
+        self._keypoint_names: list[str] = []
+        self._hidden_keypoints: set[str] = set()
 
         self.source_software = None
         self.file_path = None
@@ -636,12 +629,15 @@ class DataWidget(QWidget):
         self.pose_skeleton_width_spin = panel.pose_skeleton_width_spin
         self.pose_skeleton_color_btn = panel.pose_skeleton_color_btn
         self.create_skeleton_btn = panel.create_skeleton_btn
-        self.keypoints_table = panel.keypoints_table
+        self.pose_show_keypoints_checkbox = panel.pose_show_keypoints_checkbox
+        self.filter_keypoints_btn = panel.filter_keypoints_btn
 
         self.pose_mgr = PoseDisplayManager(self.shell.video_area, self.app_state, self.video_mgr, self)
         self.app_state.keypoints_changed.connect(self.populate_keypoints)
 
         panel.pose_hide_threshold_spin.valueChanged.connect(self._on_pose_hide_threshold_changed)
+        panel.pose_show_keypoints_checkbox.stateChanged.connect(self._on_pose_show_keypoints_toggled)
+        panel.filter_keypoints_btn.clicked.connect(self._on_filter_keypoints_clicked)
         panel.pose_show_text_checkbox.stateChanged.connect(self._on_pose_text_toggled)
         panel.pose_point_size_spin.valueChanged.connect(self._on_pose_point_size_changed)
         panel.pose_text_size_spin.valueChanged.connect(self._on_pose_text_size_changed)
@@ -655,38 +651,27 @@ class DataWidget(QWidget):
         panel.energy_configure_btn.clicked.connect(self._open_energy_params)
 
     def populate_keypoints(self, keypoint_names: list[str]) -> None:
-        try:
-            self.keypoints_table.cellChanged.disconnect(self._on_keypoint_toggled)
-        except (TypeError, RuntimeError):
-            pass
-        self.keypoints_table.blockSignals(True)
-        self.keypoints_table.setRowCount(len(keypoint_names))
-        for row, name in enumerate(keypoint_names):
-            checkbox_item = QTableWidgetItem()
-            checkbox_item.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-            checkbox_item.setCheckState(Qt.Checked)
-            self.keypoints_table.setItem(row, 0, checkbox_item)
-
-            name_item = QTableWidgetItem(str(name))
-            name_item.setFlags(Qt.ItemIsEnabled)
-            self.keypoints_table.setItem(row, 1, name_item)
-        self.keypoints_table.blockSignals(False)
-        self.keypoints_table.cellChanged.connect(self._on_keypoint_toggled)
+        self._keypoint_names = [str(n) for n in keypoint_names]
+        self._hidden_keypoints &= set(self._keypoint_names)
         self.pose_groupbox.show()
 
     def get_hidden_keypoints(self) -> set[str]:
-        hidden: set[str] = set()
-        for row in range(self.keypoints_table.rowCount()):
-            checkbox_item = self.keypoints_table.item(row, 0)
-            name_item = self.keypoints_table.item(row, 1)
-            if checkbox_item and name_item:
-                if checkbox_item.checkState() != Qt.Checked:
-                    hidden.add(name_item.text())
-        return hidden
+        return set(self._hidden_keypoints)
 
-    def _on_keypoint_toggled(self, row: int, column: int):
-        if column != 0:
+    def _on_pose_show_keypoints_toggled(self, state: int):
+        self.pose_mgr.apply_pose_style()
+
+    def _on_filter_keypoints_clicked(self):
+        names = self._keypoint_names or (self.pose_mgr.all_keypoints if self.pose_mgr else [])
+        if not names:
+            notify("No pose keypoints loaded yet.", "warning")
             return
+        dialog = KeypointFilterDialog(names, self._hidden_keypoints, parent=self)
+        dialog.hidden_changed.connect(self._on_hidden_keypoints_changed)
+        dialog.exec_()
+
+    def _on_hidden_keypoints_changed(self, hidden: set):
+        self._hidden_keypoints = set(hidden)
         self.update_pose()
 
     def _on_pose_hide_threshold_changed(self, value: float):
@@ -1138,7 +1123,9 @@ class DataWidget(QWidget):
             self.populate_keypoints(keypoint_names)
 
         slot_layout.addStretch()
-        self.slot_groupbox.show()
+        # The Space/Cameras group is no longer shown (cameras via drag-drop, no
+        # napari layers/space-plot toggle). Kept hidden for backwards-compat refs.
+        self.slot_groupbox.hide()
 
         self._setup_panel_checkboxes()
 
@@ -1246,10 +1233,12 @@ class DataWidget(QWidget):
         self.neural_view_combo.hide()
         self.panels_row5_layout.addStretch()
 
-        # slot_groupbox row 2: video viewer + pose markers
-        self.slot_row2_layout.addWidget(self.video_viewer_checkbox)
-        self.slot_row2_layout.addWidget(self.pose_markers_checkbox)
-        self.slot_row2_layout.addStretch()
+        # PoseMarkers checkbox lives in the Pose controls section now; VideoViewer
+        # and the old "Space/Cameras" group are removed (napari-era artefacts).
+        self.video_viewer_checkbox.hide()
+        pose_layout = self.pose_groupbox.layout()
+        if pose_layout is not None and self.pose_markers_checkbox.parent() is not self.pose_groupbox:
+            pose_layout.insertWidget(0, self.pose_markers_checkbox)
 
         if self.app_state.has_neo and self.ephys_widget:
             self._populate_neo_stream_combo()
@@ -1758,7 +1747,7 @@ class DataWidget(QWidget):
         if visible:
             self.update_pose()
         elif self.pose_mgr is not None:
-            self.pose_mgr._remove_pose_layers()
+            self.pose_mgr.clear_pose_display()
 
     def _on_ephys_toggled(self, state):
         self._on_panel_toggled("phy_viewer", state)
@@ -2004,39 +1993,93 @@ class DataWidget(QWidget):
 
         return combo
 
+    def sync_sidebar_from_active_plot(self):
+        """Repopulate EVERY data-panel selection control (feature, dim combos,
+        colours, and 'All' checkboxes) from the active plot's own state, so the
+        sidebar always shows the settings of the plot the user last clicked."""
+        if not self.app_state.ready:
+            return
+        plot = getattr(self.plot_container, "active_feature_plot", None)
+        if plot is None or not hasattr(plot, "_effective_feature"):
+            return
+        feature = plot._effective_feature()
+        selections = plot._effective_selections()
+        color = plot._effective_color() or "None"
+
+        def _set(ckey, value):
+            combo = self.combos.get(ckey)
+            if combo is None or value is None:
+                return
+            idx = find_combo_index(combo, str(value))
+            if idx >= 0:
+                combo.blockSignals(True)
+                combo.setCurrentIndex(idx)
+                combo.blockSignals(False)
+
+        _set("features", feature)
+        for ckey in list(self.combos.keys()):
+            if ckey in ("features", "colors"):
+                continue
+            if ckey in selections:
+                _set(ckey, selections[ckey])
+        _set("colors", color)
+
+        # 'All' checkboxes: a dimension absent from this plot's selections means
+        # "show all values" for it → the box is checked and its combo disabled.
+        all_checkboxes = getattr(self, "all_checkboxes", {})
+        for akey, checkbox in all_checkboxes.items():
+            is_all = akey not in selections
+            checkbox.blockSignals(True)
+            checkbox.setChecked(is_all)
+            checkbox.blockSignals(False)
+            combo = self.combos.get(akey)
+            if combo is not None:
+                combo.setEnabled(not is_all)
+
+    # Backwards-compatible alias.
+    sync_combos_to_active_plot = sync_sidebar_from_active_plot
+
+    def apply_panel_control(self, key: str, value):
+        """Generic entry point for EVERY data-panel selection control (feature
+        dropdown, dimension combos, colours, and 'All' checkboxes).
+
+        The control only ever affects the *active* plot: it writes to that plot's
+        own ``panel_state`` and re-renders just it. The value is also mirrored to
+        global ``app_state`` so the shared consumers (space plot, label overlays,
+        changepoints, feature view-mode) follow the active plot — safe because
+        every plot has already forked its own state.
+        """
+        active = getattr(self.plot_container, "active_feature_plot", None)
+        if active is not None and hasattr(active, "set_panel_control"):
+            active.set_panel_control(key, value)
+            active.update_plot()
+
+        self.app_state.set_key_sel(key, value)
+
+        if key == "features" and active is self.plot_container.get_current_plot():
+            self._update_view_mode_items(value)
+            self.view_mode_combo.show()
+            self._apply_view_mode_for_feature()
+        if key in ["individual", "keypoint"] and self.space_plot and self.space_plot.isVisible():
+            self.space_plot.refresh()
+        if key == "cluster_id" and self.ephys_widget:
+            try:
+                self.ephys_widget.select_cluster_in_table(int(value))
+            except (ValueError, TypeError):
+                pass
+        if key == "individuals":
+            self.labels_widget.refresh_labels_shapes_layer()
+        self.update_label_plot(self.app_state.get_ds_kwargs())
+
     def _on_combo_changed(self):
         if not self.app_state.ready:
             return
-
         combo = self.sender()
         name = combo.objectName()
         key = name[:-6] if name.endswith("_combo") else None
-
-        if key:
-            selected_value = get_combo_value(combo)
-            self.app_state.set_key_sel(key, selected_value)
-
-            if key == "features":
-                self._update_view_mode_items(selected_value)
-                self.view_mode_combo.show()
-                self._apply_view_mode_for_feature()
-
-            current_plot = self.plot_container.get_current_plot()
-            xmin, xmax = current_plot.get_current_xlim()
-            self.update_main_plot(t0=xmin, t1=xmax)
-
-            if key in ["individual", "keypoint"]:
-                if self.space_plot and self.space_plot.isVisible():
-                    self.space_plot.refresh()
-
-            if key == "cluster_id" and self.ephys_widget:
-                try:
-                    self.ephys_widget.select_cluster_in_table(int(selected_value))
-                except (ValueError, TypeError):
-                    pass
-
-            if key == "individuals":
-                self.labels_widget.refresh_labels_shapes_layer()
+        if not key:
+            return
+        self.apply_panel_control(key, get_combo_value(combo))
 
     def _on_all_checkbox_changed(self, key: str, state: int):
         if not self.app_state.ready:
@@ -2048,6 +2091,7 @@ class DataWidget(QWidget):
 
         is_checked = Qt.CheckState(state) == Qt.Checked
 
+        # "All" checkboxes are mutually exclusive: turning one on resets the others.
         if is_checked:
             for other_key, other_checkbox in self.all_checkboxes.items():
                 if other_key != key and other_checkbox.isChecked():
@@ -2057,22 +2101,14 @@ class DataWidget(QWidget):
                     other_combo = self.combos.get(other_key)
                     if other_combo:
                         other_combo.setEnabled(True)
-                        self.app_state.set_key_sel(other_key, get_combo_value(other_combo))
+                        self.apply_panel_control(other_key, get_combo_value(other_combo))
                     self._update_all_checkbox_state(other_key, False)
 
         combo.setEnabled(not is_checked)
         self._update_all_checkbox_state(key, is_checked)
 
-        if is_checked:
-            self.app_state.set_key_sel(key, None)
-        else:
-            self.app_state.set_key_sel(key, get_combo_value(combo))
-
-        current_plot = self.plot_container.get_current_plot()
-        xmin, xmax = current_plot.get_current_xlim()
-        self.update_main_plot(t0=xmin, t1=xmax)
-        if self.space_plot and self.space_plot.isVisible():
-            self.space_plot.refresh()
+        # None ⇒ "show all values for this dimension" (routed to the active plot).
+        self.apply_panel_control(key, None if is_checked else get_combo_value(combo))
 
     def _on_channel_all_changed(self, state: int):
         if not self.app_state.ready:
@@ -2711,9 +2747,11 @@ class DataWidget(QWidget):
             controls = getattr(self.space_plot, "controls_widget", None)
             if ps is not None and getattr(ps, "spaceplot_panel", None) is not None and controls is not None:
                 ps.spaceplot_panel.layout().insertWidget(0, controls)
-            # Clicking the space plot switches the sidebar to the Space context.
-            if self.meta_widget is not None and hasattr(self.meta_widget, "_on_plot_focus"):
-                self.space_plot.clicked.connect(lambda: self.meta_widget._on_plot_focus("space"))
+            # Register the space plot with the active-panel manager (green edge +
+            # Space context on click), like every other panel type.
+            mgr = getattr(self.meta_widget, "active_panels", None)
+            if mgr is not None:
+                mgr.register(self.space_plot, "space", clicked_signal=self.space_plot.clicked)
 
         store = getattr(self.app_state, "data_loader", None)
         if store is None and self.app_state.ds is not None:

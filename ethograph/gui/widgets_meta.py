@@ -309,24 +309,58 @@ class MetaWidget(GridSectionContainer):
         return tab
 
     def _wire_plot_focus(self):
-        """Connect each plot's click signal to the context-sensitive sidebar."""
+        """Register every panel (plots + video + space) with the ActivePanelManager
+        so clicking any of them highlights it (green edge) and shows its controls."""
+        from .active_panel import ActivePanelManager, PanelKind
+
         pc = self.plot_container
-        # Extra line plots (added by drag-drop) route their clicks through here
-        # too, so they behave exactly like the built-in line plot.
-        pc._focus_callback = self._on_plot_focus
-        plot_types = [
-            ("audio_trace_plot", "audiotrace"),
-            ("spectrogram_plot", "spectrogram"),
-            ("line_plot", "feature"),
-            ("heatmap_plot", "heatmap"),
-            ("space_plot", "space"),
+        self.active_panels = ActivePanelManager(self)
+        self.active_panels.active_changed.connect(self._on_active_panel)
+        pc.active_panels = self.active_panels  # so add_extra_lineplot can register
+
+        fixed = [
+            (pc.audio_trace_plot, PanelKind.AUDIOTRACE, None),
+            (pc.spectrogram_plot, PanelKind.SPECTROGRAM, None),
+            (pc.line_plot, PanelKind.LINEPLOT, pc.line_plot),
+            (pc.heatmap_plot, PanelKind.HEATMAP, pc.heatmap_plot),
+            (pc.neo_trace_plot, PanelKind.NEO, None),
+            (pc.ephys_trace_plot, PanelKind.EPHYS, None),
+            (pc.raster_plot, PanelKind.RASTER, None),
         ]
-        for attr, panel_type in plot_types:
-            plot = getattr(pc, attr, None)
-            if plot is not None and hasattr(plot, "plot_clicked"):
-                plot.plot_clicked.connect(
-                    lambda _=None, t=panel_type: self._on_plot_focus(t)
+        for widget, kind, plot in fixed:
+            if widget is not None and hasattr(widget, "plot_clicked"):
+                self.active_panels.register(widget, kind, clicked_signal=widget.plot_clicked, plot=plot)
+
+        # Video: primary camera view + any extra cameras added later.
+        video_area = getattr(self.shell, "video_area", None)
+        if video_area is not None:
+            primary = getattr(video_area, "primary", None)
+            if primary is not None and hasattr(primary, "clicked"):
+                self.active_panels.register(primary, PanelKind.VIDEO, clicked_signal=primary.clicked)
+            if hasattr(video_area, "camera_added"):
+                video_area.camera_added.connect(
+                    lambda view: self.active_panels.register(
+                        view, PanelKind.VIDEO, clicked_signal=view.clicked
+                    )
                 )
+
+    _CONTEXT_KINDS = frozenset({"audiotrace", "spectrogram", "lineplot", "heatmap", "space"})
+
+    def _on_active_panel(self, reg):
+        """A panel was clicked → track it, and show its controls in the sidebar.
+
+        The green edge is drawn by the manager for every panel; here we only swap
+        the sidebar context for panels that have one (ephys/neo/raster keep the
+        current sidebar — their controls live in the top-bar Neural menu)."""
+        from .active_panel import PanelKind
+
+        kind = reg.kind
+        if kind in PanelKind.FEATURE and reg.plot is not None:
+            self.plot_container.active_feature_plot = reg.plot
+        if kind == PanelKind.VIDEO:
+            self.focus_video_context()
+        elif kind in self._CONTEXT_KINDS:
+            self._on_plot_focus(kind)
 
     def _on_source_dropped(self, kind: str, name: str):
         """Left-sidebar source dropped on the plot area → pick type & create panel."""
@@ -380,9 +414,15 @@ class MetaWidget(GridSectionContainer):
             return
 
         name = str(name)
-        primary_open = (
-            getattr(self.app_state, "video", None) is not None or vm.primary_view.has_video
-        )
+        # Base this on whether a video is actually loaded in the primary view —
+        # app_state.video (the sync object) can linger from a previous session.
+        primary_open = vm.primary_view.has_video
+
+        if name == str(getattr(self.app_state, "primary_camera", "") or "") and primary_open:
+            # It is the primary, but the video dock may be hidden → just show it.
+            self.shell.set_video_viewer_visible(True)
+            notify(f"Camera '{name}' is the primary video.")
+            return
 
         if not primary_open:
             # Nothing playing yet → open this camera as the primary video.
@@ -404,9 +444,6 @@ class MetaWidget(GridSectionContainer):
 
         if name in vm.extra_widgets:
             notify(f"Camera '{name}' is already shown.", "info")
-            return
-        if name == str(getattr(self.app_state, "primary_camera", "") or ""):
-            notify(f"Camera '{name}' is already the primary view.", "info")
             return
         video_path = vm._resolve_video_path(name, self.app_state.video_folder)
         if not video_path:
@@ -440,10 +477,21 @@ class MetaWidget(GridSectionContainer):
         # "feature" resolves to whichever plot the feature slot is showing.
         if panel_type == "feature":
             panel_type = getattr(self.plot_container, "_feature_type", "lineplot")
-        if panel_type in ("lineplot", "heatmap") and hasattr(self, "feature_view_checkbox"):
-            self.feature_view_checkbox.blockSignals(True)
-            self.feature_view_checkbox.setChecked(panel_type == "heatmap")
-            self.feature_view_checkbox.blockSignals(False)
+        if panel_type in ("lineplot", "heatmap"):
+            if hasattr(self, "feature_view_checkbox"):
+                pc = self.plot_container
+                # The line⇄heatmap swap only applies to the built-in feature slot;
+                # extra line plots are line-only (disable the toggle for them).
+                is_feature_slot = pc.active_feature_plot in (pc.line_plot, pc.heatmap_plot)
+                self.feature_view_checkbox.blockSignals(True)
+                self.feature_view_checkbox.setChecked(panel_type == "heatmap")
+                self.feature_view_checkbox.setEnabled(is_feature_slot)
+                self.feature_view_checkbox.blockSignals(False)
+            # Show the clicked plot's own feature/dim/colour/All selections + axes.
+            if hasattr(self.data_widget, "sync_sidebar_from_active_plot"):
+                self.data_widget.sync_sidebar_from_active_plot()
+            if hasattr(self.plot_settings_widget, "sync_axes_to_active_plot"):
+                self.plot_settings_widget.sync_axes_to_active_plot()
         has_pose = bool(getattr(self.app_state, "has_pose", False)) or self._pose_available()
         if self.collapsible_widgets:
             self.collapsible_widgets[0].expand()
@@ -641,12 +689,8 @@ class MetaWidget(GridSectionContainer):
 
         self.layout_mgr.register_docks()
 
-        if not self.app_state.video_viewer_visible:
-            self.layout_mgr.set_video_viewer_visible(False)
-
-        space_type = getattr(self.app_state, "space_plot_type", "Layers")
-        if space_type == "Space Plot":
-            self.data_widget.update_space_plot()
+        # The space plot no longer appears by default (that was a napari-era
+        # artefact). It is created only when the user drags a Feature → Space.
 
     def _on_reset_layout(self):
         space_type = getattr(self.app_state, "space_plot_type", "Layers")

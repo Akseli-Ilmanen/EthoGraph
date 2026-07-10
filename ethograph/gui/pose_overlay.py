@@ -39,6 +39,7 @@ class OverlayStyle:
     text_prop: str = "keypoint"  # which property drives labels
     color_map: dict = field(default_factory=dict)  # value -> rgba tuple
     point_size: float = 10.0
+    points_visible: bool = True
     text_size: float = 12.0
     text_visible: bool = False
     edge_width: float = 2.0
@@ -164,6 +165,7 @@ class PoseOverlay:
             gfx.PointsMaterial(size=style.point_size, color_mode="vertex"),
         )
         self._points.local.z = _Z_POINTS
+        self._points.visible = style.points_visible
         self._scene.add(self._points)
 
         # Text labels: one per track
@@ -306,7 +308,7 @@ class PoseOverlay:
             buf.update_full()
 
         for t, text in enumerate(self._texts):
-            visible = bool(shown[t]) and self._style.text_visible
+            visible = bool(shown[t]) and self._style.text_visible and self._style.points_visible
             text.visible = visible
             if visible:
                 text.local.position = (float(world[t, 0]) + 3, float(world[t, 1]) + 3, _Z_TEXT)
@@ -363,6 +365,12 @@ class PoseOverlay:
         self._style.point_size = size
         if self._points is not None:
             self._points.material.size = size
+
+    def set_points_visible(self, visible: bool) -> None:
+        self._style.points_visible = visible
+        if self._points is not None:
+            self._points.visible = visible
+        self.set_frame(self._frame)
 
     def set_text_visible(self, visible: bool) -> None:
         self._style.text_visible = visible

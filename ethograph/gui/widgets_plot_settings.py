@@ -240,6 +240,28 @@ class PlotSettingsWidget(QWidget):
         if checked:
             self.autoscale_checkbox.setChecked(False)
 
+    def sync_axes_to_active_plot(self):
+        """Populate the Y min/max/percentile fields from the active plot's own
+        per-panel state (every line plot is independent)."""
+        plot = getattr(self.plot_container, "active_feature_plot", None) if self.plot_container else None
+        ps = getattr(plot, "panel_state", {}) if plot is not None else {}
+        ymin, ymax = ps.get("ymin"), ps.get("ymax")
+        pct = ps.get("percentile")
+        if pct is None:
+            pct = self.app_state.get_with_default("percentile_ylim")
+
+        def _fmt(v):
+            return "" if v is None else str(v)
+
+        for edit, val in (
+            (self.ymin_edit, ymin),
+            (self.ymax_edit, ymax),
+            (self.percentile_ylim_edit, pct),
+        ):
+            edit.blockSignals(True)
+            edit.setText(_fmt(val))
+            edit.blockSignals(False)
+
     def _on_axes_edited(self):
         if not self.plot_container:
             return
@@ -250,27 +272,32 @@ class PlotSettingsWidget(QWidget):
             "percentile_ylim": self.percentile_ylim_edit,
         }
 
-        values = {}
-        for attr, edit in edits.items():
-            val = self._parse_float(edit.text())
-            if val is None:
-                val = self.app_state.get_with_default(attr)
-            values[attr] = val
-            setattr(self.app_state, attr, val)
+        ymin = self._parse_float(self.ymin_edit.text())
+        ymax = self._parse_float(self.ymax_edit.text())
+        pct = self._parse_float(self.percentile_ylim_edit.text())
+        if pct is None:
+            pct = self.app_state.get_with_default("percentile_ylim")
+        user_set_yrange = ymin is not None or ymax is not None
 
-        user_set_yrange = (
-            self._parse_float(self.ymin_edit.text()) is not None or self._parse_float(self.ymax_edit.text()) is not None
-        )
-
-        if not self.plot_container.is_spectrogram() and not self.autoscale_checkbox.isChecked():
-            if user_set_yrange:
-                current_plot = self.plot_container.get_current_plot()
-                if hasattr(current_plot, "vb"):
-                    current_plot.vb.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
-            self.plot_container.apply_y_range(values["ymin"], values["ymax"])
-
-        if not user_set_yrange and not self.autoscale_checkbox.isChecked() and "percentile_ylim" in values:
-            self.plot_container._apply_all_zoom_constraints()
+        if self.plot_container.is_spectrogram():
+            # Spectrogram y-limits are global (there is only one spectrogram).
+            for attr, val in (("ymin", ymin), ("ymax", ymax), ("percentile_ylim", pct)):
+                setattr(self.app_state, attr, val)
+        else:
+            # Every line plot has its own y-viewbox: store axes on the active plot
+            # and apply only to it (no canonical vs. extra split).
+            active = getattr(self.plot_container, "active_feature_plot", None)
+            if active is not None and hasattr(active, "panel_state"):
+                active.panel_state["ymin"] = ymin
+                active.panel_state["ymax"] = ymax
+                active.panel_state["percentile"] = pct
+                if not self.autoscale_checkbox.isChecked():
+                    if user_set_yrange:
+                        if hasattr(active, "vb"):
+                            active.vb.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
+                        active.apply_y_range(ymin, ymax)
+                    elif hasattr(active, "_apply_y_constraints"):
+                        active._apply_y_constraints()
 
         new_xmin, new_xmax = self._calculate_new_window_size()
         if new_xmin is not None and new_xmax is not None:

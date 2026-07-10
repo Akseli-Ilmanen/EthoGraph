@@ -27,6 +27,11 @@ class LinePlot(BasePlot):
         # When set, this panel plots the given feature instead of the global
         # app_state.features_sel selection (used by extra line-plot panels).
         self.feature_override: str | None = None
+        # Per-panel control state so each line plot is independent (its own
+        # feature, dim selections, colour). Keys present here OVERRIDE the global
+        # app_state; absent keys fall back to global. The right sidebar reads and
+        # writes the *active* plot's panel_state (see MetaWidget._on_plot_focus).
+        self.panel_state: dict = {}
 
         self.setLabel("left", "Value")
 
@@ -47,13 +52,45 @@ class LinePlot(BasePlot):
         self.vb.sigRangeChanged.connect(self._on_view_range_changed)
 
     def _get_selections_hash(self) -> str:
-        selections = self.app_state.get_selections()
-        return str(sorted(selections.items()))
+        selections = self._effective_selections()
+        color = self._effective_color()
+        return str(sorted(selections.items())) + f"|color={color}"
 
     def _effective_feature(self):
+        if "feature" in self.panel_state:
+            return self.panel_state["feature"]
         if self.feature_override is not None:
             return self.feature_override
         return getattr(self.app_state, "features_sel", None)
+
+    def _effective_selections(self) -> dict:
+        """Per-panel dim selections, falling back to the global selections."""
+        if "selections" in self.panel_state:
+            return dict(self.panel_state["selections"])
+        return self.app_state.get_selections()
+
+    def _effective_color(self):
+        """Per-panel colour variable, falling back to the global colors_sel."""
+        if "color" in self.panel_state:
+            c = self.panel_state["color"]
+        else:
+            c = getattr(self.app_state, "colors_sel", None)
+        return c if c and c != "None" else None
+
+    def set_panel_control(self, key: str, value) -> None:
+        """Record a sidebar control change into this panel's own state (forks it
+        from the global selections so this plot becomes independent)."""
+        if key == "features":
+            self.panel_state["feature"] = value
+        elif key == "colors":
+            self.panel_state["color"] = value
+        else:
+            sels = dict(self.panel_state.get("selections") or self.app_state.get_selections())
+            if value in (None, "", "None"):
+                sels.pop(key, None)
+            else:
+                sels[key] = value
+            self.panel_state["selections"] = sels
 
     def _context_changed(self) -> bool:
         feature = self._effective_feature()
@@ -120,17 +157,31 @@ class LinePlot(BasePlot):
 
         self._update_plot(t0, t1)
 
+    def _ensure_panel_state(self):
+        """On first render, capture the current global selections into this
+        panel's own state so *every* line plot is independent (no canonical one).
+        Subsequent edits only mutate this plot's panel_state."""
+        if self.panel_state:
+            return
+        if getattr(self.app_state, "features_sel", None) is None and self.feature_override is None:
+            return
+        self.panel_state = {
+            "feature": self._effective_feature(),
+            "selections": self.app_state.get_selections(),
+            "color": getattr(self.app_state, "colors_sel", None),
+        }
+
     def _update_plot(self, t0: float, t1: float):
         clear_plot_items(self.plot_item, self.plot_items)
 
         if not hasattr(self.app_state, "features_sel") and self.feature_override is None:
             return
 
+        self._ensure_panel_state()
+
         feature_sel = self._effective_feature()
-        selections = self.app_state.get_selections()
-        color_var = None
-        if hasattr(self.app_state, "colors_sel") and self.app_state.colors_sel != "None":
-            color_var = self.app_state.colors_sel
+        selections = self._effective_selections()
+        color_var = self._effective_color()
         show_cp = getattr(self.app_state, "show_changepoints", False)
 
         store = self._store
@@ -170,7 +221,7 @@ class LinePlot(BasePlot):
             return
 
         feature_sel = self._effective_feature()
-        selections = self.app_state.get_selections()
+        selections = self._effective_selections()
 
         try:
             store = self._store
@@ -185,7 +236,9 @@ class LinePlot(BasePlot):
             else:
                 data, _ = eto.sel_valid(self.app_state.ds[feature_sel], selections)
 
-            percentile_ylim = self.app_state.get_with_default("percentile_ylim")
+            percentile_ylim = self.panel_state.get("percentile")
+            if percentile_ylim is None:
+                percentile_ylim = self.app_state.get_with_default("percentile_ylim")
             y_min = np.nanpercentile(data, 100 - percentile_ylim)
             y_max = np.nanpercentile(data, percentile_ylim)
             y_range = y_max - y_min

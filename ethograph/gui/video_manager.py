@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import av
-from qtpy.QtCore import QEvent, Qt, Signal
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
 from .notify import notify
@@ -53,6 +53,8 @@ class VideoArea(QWidget):
 
     #: Emitted on any mouse press inside the video area (→ video context sidebar).
     clicked = Signal()
+    #: Emitted with a CameraView when an extra camera is added (for active-panel).
+    camera_added = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -60,29 +62,14 @@ class VideoArea(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
 
+        # One splitter; every camera is an EQUAL panel (pynaviz-style — there is
+        # no large "primary" and small "secondary"). `primary` is just the first
+        # panel, kept as an attribute for VideoManager compatibility.
         self._splitter = QSplitter(Qt.Horizontal)
         self.primary = CameraView()
-        self._extra_splitter = QSplitter(Qt.Vertical)
-        self._extra_splitter.hide()
         self._splitter.addWidget(self.primary)
-        self._splitter.addWidget(self._extra_splitter)
         layout.addWidget(self._splitter)
         self._extras: dict[str, CameraView] = {}
-
-        self.setMouseTracking(True)
-        self._install_click_filter(self)
-        self._install_click_filter(self.primary)
-
-    def _install_click_filter(self, widget: QWidget) -> None:
-        """Install the click event filter on *widget* and its descendants."""
-        widget.installEventFilter(self)
-        for child in widget.findChildren(QWidget):
-            child.installEventFilter(self)
-
-    def eventFilter(self, obj, event):
-        if event.type() == QEvent.MouseButtonPress:
-            self.clicked.emit()
-        return False
 
     @property
     def extras(self) -> dict[str, CameraView]:
@@ -93,9 +80,8 @@ class VideoArea(QWidget):
             return self._extras[name]
         view = CameraView()
         self._extras[name] = view
-        self._extra_splitter.addWidget(view)
-        self._extra_splitter.show()
-        self._install_click_filter(view)
+        self._splitter.addWidget(view)
+        self.camera_added.emit(view)
         self._equalize()
         return view
 
@@ -106,20 +92,14 @@ class VideoArea(QWidget):
         view.clear()
         view.setParent(None)
         view.deleteLater()
-        if not self._extras:
-            self._extra_splitter.hide()
         self._equalize()
 
     def _equalize(self) -> None:
-        n = self._extra_splitter.count()
+        """Give every camera panel an equal share of the width."""
+        n = self._splitter.count()
         if n > 0:
-            h = max(1, self._extra_splitter.height())
-            self._extra_splitter.setSizes([h // n] * n)
-        total = max(1, self._splitter.width())
-        if self._extras:
-            self._splitter.setSizes([int(total * 0.6), int(total * 0.4)])
-        else:
-            self._splitter.setSizes([total, 0])
+            total = max(1, self._splitter.width())
+            self._splitter.setSizes([total // n] * n)
 
 
 class VideoManager:

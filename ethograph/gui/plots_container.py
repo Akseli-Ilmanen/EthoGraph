@@ -255,9 +255,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # source onto this container; ``_on_source_drop(kind, name)`` (set by
         # MetaWidget) opens the plot-type picker and creates a panel.
         self._on_source_drop = None
-        # Set by MetaWidget; called with a plot type when any plot is clicked so
-        # the right sidebar shows that plot's controls (extras use this too).
-        self._focus_callback = None
         self.setAcceptDrops(True)
 
         # --- Plots ---
@@ -272,6 +269,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # Feature panel: line_plot or heatmap_plot
         self._feature_plot = self.line_plot
         self._feature_type = "lineplot"
+
+        # The feature plot the right sidebar currently controls (last clicked).
+        self.active_feature_plot = self.line_plot
 
         # current_plot semantics: always the feature (bottom) panel
         self.current_plot = self._feature_plot
@@ -356,8 +356,11 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.ephys_trace_plot.y_space_changed.connect(self._on_ephys_y_space_changed)
         self.ephys_trace_plot.seek_time_requested.connect(self._on_seek_time_requested)
 
-        # Track which panel was last clicked (for changepoint navigation)
+        # Track which panel was last clicked (for changepoint navigation).
+        # The green-edge highlight + sidebar context is handled by the
+        # ActivePanelManager (set as self.active_panels by MetaWidget).
         self._last_clicked_panel = "feature"
+        self.active_panels = None
         self.audio_trace_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "audio"))
         self.spectrogram_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "audio"))
         self.line_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "feature"))
@@ -456,21 +459,27 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         if self._xlink_master is not None and self._xlink_master is not plot:
             plot.plotItem.setXLink(self._xlink_master.plotItem)
         plot.vb.sigRangeChanged.connect(self._on_plot_zoom)
-        plot.plot_clicked.connect(lambda _=None: self._emit_feature_focus())
+        plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "feature"))
+        # Register with the active-panel manager so it highlights + shows controls.
+        if self.active_panels is not None:
+            self.active_panels.register(plot, "lineplot", clicked_signal=plot.plot_clicked, plot=plot)
         if self.app_state.ready:
             plot.update_plot()
         self.labels_redraw_needed.emit()
         return plot
 
-    def _emit_feature_focus(self):
-        """A feature (line) plot was clicked → update sidebar to lineplot context."""
-        self._last_clicked_panel = "feature"
-        if callable(self._focus_callback):
-            self._focus_callback("feature")
+    @property
+    def line_plots(self) -> list:
+        """All line plots as equals — the built-in one is not special."""
+        return [self.line_plot, *self.extra_line_plots]
 
     def remove_extra_lineplot(self, plot) -> None:
         if plot not in self.extra_line_plots:
             return
+        if self.active_panels is not None:
+            self.active_panels.unregister(plot)
+        if self.active_feature_plot is plot:
+            self.active_feature_plot = self.line_plot
         self.extra_line_plots.remove(plot)
         plot.hide()
         plot.setParent(None)

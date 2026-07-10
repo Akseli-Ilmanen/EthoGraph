@@ -30,7 +30,9 @@ from qtpy.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 # plot type -> ordered list of section keys to show
 _CONTEXT_MAP: dict[str, list[str]] = {
-    "video": ["slot", "pose", "playback"],
+    # The old napari-era "Space/Cameras" group (slot) is gone — cameras are
+    # opened by drag-drop and there is no layers/space-plot toggle.
+    "video": ["pose", "playback"],
     # Audio trace: envelope controls + shared axes. Spectrogram: only its panel.
     "audiotrace": ["energy", "shared"],
     "audio": ["energy", "shared"],  # alias used for the default context

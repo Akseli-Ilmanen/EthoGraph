@@ -21,7 +21,7 @@ from typing import Optional
 
 import numpy as np
 import pygfx as gfx
-from qtpy.QtCore import Signal
+from qtpy.QtCore import QEvent, Signal
 from qtpy.QtWidgets import QVBoxLayout, QWidget
 
 from pynaviz.audiovideo import PlotVideo
@@ -72,11 +72,13 @@ class CameraView(QWidget):
     """One camera: pygfx video canvas + pose overlay + Qt label overlays."""
 
     time_changed = Signal(float)  # video-native time, from user interaction
+    clicked = Signal()  # any mouse press in this camera view (for active-panel)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
+        # 2px margin so the active-panel green edge is visible around the video.
+        layout.setContentsMargins(2, 2, 2, 2)
         layout.setSpacing(0)
         self.setLayout(layout)
 
@@ -139,6 +141,7 @@ class CameraView(QWidget):
         self.clear()
         self._plot = PlotVideo(video=video_path, parent=self)
         self.layout().addWidget(self._plot.canvas)
+        self._fit_image_to_canvas(self._plot)
         self._fps = float(fps)
         total = self._plot.data.shape[0]
         self._start_frame = max(0, int(start_frame))
@@ -156,12 +159,47 @@ class CameraView(QWidget):
                 self._overlay.set_frame(frame_index - self._start_frame)
 
         self._plot._update_extra_objects = _update_extra
+        # Clicks on the pygfx canvas go through the wgpu renderer, NOT Qt — so a
+        # Qt event filter never sees them. Hook the renderer's pointer event to
+        # emit `clicked` (used by the active-panel manager for the green edge).
+        self._plot.renderer.add_event_handler(self._on_pointer_down, "pointer_down")
+        self._install_click_filter(self._plot.canvas)
 
     def set_static_image(self, img: np.ndarray) -> None:
         """Show a still frame (pose-only mode, no video)."""
         self.clear()
         self._static = _StaticImagePlot(img, parent=self)
         self.layout().addWidget(self._static.canvas)
+        self._static.renderer.add_event_handler(self._on_pointer_down, "pointer_down")
+        self._install_click_filter(self._static.canvas)
+
+    @staticmethod
+    def _fit_image_to_canvas(plot) -> None:
+        """Frame the exact video rectangle so it fills the canvas (up to the
+        aspect-ratio letterbox). pygfx's ``show_object`` fits the bounding SPHERE
+        (half-diagonal), which always leaves black padding; ``show_rect`` frames
+        the image rectangle itself."""
+        try:
+            w, h = int(plot.texture.size[0]), int(plot.texture.size[1])
+            plot.camera.show_rect(0, w, 0, h)
+            plot.controller.renderer_request_draw()
+        except Exception:  # noqa: BLE001 - framing is best-effort
+            pass
+
+    def _on_pointer_down(self, event=None) -> None:
+        self.clicked.emit()
+
+    def _install_click_filter(self, canvas) -> None:
+        """Also catch Qt clicks (e.g. on the 2px margin around the canvas)."""
+        try:
+            canvas.installEventFilter(self)
+        except (RuntimeError, AttributeError):
+            pass
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.MouseButtonPress:
+            self.clicked.emit()
+        return False
 
     # ------------------------------------------------------------------
     # Overlay

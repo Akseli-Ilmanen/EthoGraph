@@ -581,6 +581,10 @@ class PoseDisplayManager:
             return None
         return config
 
+    def _points_visible(self) -> bool:
+        checkbox = getattr(self._data_widget, "pose_show_keypoints_checkbox", None)
+        return checkbox.isChecked() if checkbox is not None else True
+
     def _build_overlay_style(self, properties: pd.DataFrame) -> OverlayStyle:
         color_prop = "individual"
         if len(properties["individual"].unique()) == 1 and "keypoint" in properties.columns:
@@ -602,6 +606,7 @@ class PoseDisplayManager:
             text_prop=text_prop,
             color_map=color_map,
             point_size=self._data_widget.pose_point_size_spin.value(),
+            points_visible=self._points_visible(),
             text_size=self._data_widget.pose_text_size_spin.value(),
             text_visible=self._data_widget.pose_show_text_checkbox.isChecked(),
             edge_width=self._skeleton_width(),
@@ -706,17 +711,26 @@ class PoseDisplayManager:
     def _all_views(self) -> list:
         return [self.video_area.primary, *self.video_mgr.extra_widgets.values()]
 
+    def clear_pose_display(self) -> None:
+        """Remove pose overlays from all camera views."""
+        for view in self._all_views():
+            view.clear_overlay()
+        self._primary_pr = None
+        self._extra_pr.clear()
+
     def apply_pose_style(self) -> None:
-        visible = self._data_widget.pose_show_text_checkbox.isChecked()
+        text_visible = self._data_widget.pose_show_text_checkbox.isChecked()
         size = self._data_widget.pose_point_size_spin.value()
         text_size = self._data_widget.pose_text_size_spin.value()
+        points_visible = self._points_visible()
         for view in self._all_views():
             overlay = view.overlay
             if overlay is None:
                 continue
             overlay.set_point_size(size)
+            overlay.set_points_visible(points_visible)
             overlay.set_text_size(text_size)
-            overlay.set_text_visible(visible)
+            overlay.set_text_visible(text_visible)
             view.request_draw()
 
     def apply_skeleton_style(self) -> None:
