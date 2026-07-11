@@ -169,6 +169,14 @@ def _normalise_trial_column(df: pd.DataFrame, trial_ids: list[int | str] | None)
         if trial_ids is None:
             trial_ids = list(range(1, len(result) + 1))
         result.insert(0, "trial", list(trial_ids)[: len(result)])
+    else:
+        # Older alignment NWBs / TSVs may store integral trial IDs as floats
+        # (e.g. 1.0); app_state.trials requires int or str.
+        col = result["trial"]
+        if pd.api.types.is_float_dtype(col):
+            non_nan = col.dropna()
+            if not non_nan.empty and (non_nan == non_nan.astype("int64")).all():
+                result["trial"] = col.astype("Int64")
     return result
 
 

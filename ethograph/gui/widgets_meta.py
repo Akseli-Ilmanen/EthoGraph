@@ -4,6 +4,7 @@ import logging
 
 from qtpy.QtCore import QTimer
 from qtpy.QtWidgets import (
+    QComboBox,
     QMessageBox,
     QSizePolicy,
     QVBoxLayout,
@@ -25,11 +26,11 @@ from .app_constants import (
 )
 from .app_state import ObservableAppState
 from .grid_section_container import GridSectionContainer
-from .left_sidebar import LeftSidebar, PlotTypePicker, allowed_plot_types
 from .make_pretty import LayoutManager
 from .notify import notify
 from .plots_container import UnifiedPanelContainer
 from .shortcuts import bind_global_shortcuts
+from .source_popup import PlotTypePicker, SourcePopup, allowed_plot_types
 from .widget_trials import TrialsWidget
 from .widgets_changepoints import ChangepointsWidget
 from .widgets_data import DataPanel, DataWidget
@@ -90,8 +91,11 @@ class MetaWidget(GridSectionContainer):
         self.plot_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.plot_container.setMinimumHeight(PLOT_CONTAINER_MIN_HEIGHT)
 
-        # Left sidebar: drag Media/Feature sources onto the plot area to add panels.
-        self.left_sidebar = LeftSidebar(self.app_state)
+        # Add-panel popup: drag Media/Feature sources onto the plot area (or
+        # press Enter) to add panels. Opened via the bottom bar's "➕ Add
+        # panel" button or Ctrl+N.
+        self.source_popup = SourcePopup(self.app_state)
+        self.source_popup.on_activate = self._on_source_dropped
         self.plot_container._on_source_drop = self._on_source_dropped
 
         self.layout_mgr = LayoutManager(self.shell, self.plot_container)
@@ -282,25 +286,52 @@ class MetaWidget(GridSectionContainer):
         return panel
 
     def _add_feature_view_switch(self):
-        """Add a lineplot⇄heatmap toggle to the Xarray-coords group (shown for
-        both the lineplot and heatmap contexts)."""
-        from qtpy.QtWidgets import QCheckBox
+        """Add a per-panel "Feature plot type" combo (Lineplot/Heatmap) to the
+        Xarray-coords group (shown for both the lineplot and heatmap contexts).
 
+        The combo reflects the *active* feature panel's type and converts it
+        in place: the panel's own settings (feature, dim selections, color)
+        are carried over to the target type."""
         coords_layout = getattr(self.data_panel, "coords_groupbox_layout", None)
         if coords_layout is None:
             return
-        self.feature_view_checkbox = QCheckBox("Show feature as heatmap")
-        self.feature_view_checkbox.setToolTip("Switch the feature panel between line plot and heatmap.")
-        self.feature_view_checkbox.toggled.connect(self._on_feature_view_toggled)
-        coords_layout.insertRow(0, self.feature_view_checkbox)
+        self.feature_view_combo = QComboBox()
+        self.feature_view_combo.addItems(["Lineplot", "Heatmap"])
+        self.feature_view_combo.setToolTip("How the active feature panel is rendered: line plot or heatmap.")
+        self.feature_view_combo.currentTextChanged.connect(self._on_feature_view_changed)
+        coords_layout.insertRow(0, "Feature plot type:", self.feature_view_combo)
 
-    def _on_feature_view_toggled(self, checked: bool):
+    def _on_feature_view_changed(self, text: str):
         if not self.app_state.ready:
             return
-        mode = "heatmap" if checked else "lineplot"
-        self.plot_container.set_feature_view(mode)
-        self.context_panel.set_context(mode, has_pose=self._pose_available())
-        self.refresh_widget_layout(self.context_panel)
+        pc = self.plot_container
+        active = pc.active_feature_plot
+        heatmap_active = active is pc.heatmap_plot and pc.is_heatmap()
+
+        if text == "Heatmap":
+            if heatmap_active:
+                return
+            # Convert the active line plot: its settings move to the heatmap
+            # and the line-plot instance is removed.
+            if active in pc.line_plots:
+                pc.heatmap_plot.apply_panel_settings(active.panel_settings())
+                pc.remove_lineplot(active)
+            pc.set_feature_view("heatmap")
+            pc.heatmap_plot.update_plot()
+            self._activate_panel(pc.heatmap_plot, "heatmap")
+        else:
+            if active in pc.line_plots:
+                return
+            # Convert the heatmap: a new line plot takes over its settings.
+            settings = pc.heatmap_plot.panel_settings() if heatmap_active else None
+            plot = pc.add_lineplot(feature=(settings or {}).get("feature"))
+            pc.set_feature_view("lineplot")
+            if plot is None:
+                return
+            if settings is not None:
+                plot.apply_panel_settings(settings)
+            plot.update_plot()
+            self._activate_panel(plot, "lineplot")
 
     def _build_nav_tab(self) -> QWidget:
         """Navigation section = trials table (on top) + navigation controls."""
@@ -361,13 +392,34 @@ class MetaWidget(GridSectionContainer):
         kind = reg.kind
         if kind in PanelKind.FEATURE and reg.plot is not None:
             self.plot_container.active_feature_plot = reg.plot
+            # The dotted prediction-confidence curve is hosted on the current
+            # plot — re-render so it follows (or hides on) the new active plot.
+            if self.app_state.ready:
+                self.data_widget._update_confidence_overlay()
         if kind == PanelKind.VIDEO:
             self.focus_video_context()
         elif kind in self._CONTEXT_KINDS:
             self._on_plot_focus(kind)
 
+    def show_source_popup(self, anchor: QWidget | None = None):
+        """Open the add-panel popup (bottom-bar ➕ button or Ctrl+N).
+
+        With *anchor* (the ➕ button) the popup opens upward from it; without,
+        it opens at the plot area's top-left corner.
+        """
+        if not self.app_state.ready:
+            notify("Load a dataset before adding panels.", "warning")
+            return
+        self.source_popup.refresh(catalog=self.data_widget.catalog)
+        if anchor is not None:
+            pos = anchor.mapToGlobal(anchor.rect().topLeft())
+            self.source_popup.popup_at(pos, open_upward=True)
+        else:
+            pos = self.plot_container.mapToGlobal(self.plot_container.rect().topLeft())
+            self.source_popup.popup_at(pos)
+
     def _on_source_dropped(self, kind: str, name: str):
-        """Left-sidebar source dropped on the plot area → pick type & create panel."""
+        """Popup source dropped on the plot area (or Enter) → pick type & create panel."""
         if not self.app_state.ready:
             notify("Load a dataset before adding panels.", "warning")
             return
@@ -502,10 +554,10 @@ class MetaWidget(GridSectionContainer):
         if panel_type == "feature":
             panel_type = getattr(self.plot_container, "_feature_type", "lineplot")
         if panel_type in ("lineplot", "heatmap"):
-            if hasattr(self, "feature_view_checkbox"):
-                self.feature_view_checkbox.blockSignals(True)
-                self.feature_view_checkbox.setChecked(panel_type == "heatmap")
-                self.feature_view_checkbox.blockSignals(False)
+            if hasattr(self, "feature_view_combo"):
+                self.feature_view_combo.blockSignals(True)
+                self.feature_view_combo.setCurrentText("Heatmap" if panel_type == "heatmap" else "Lineplot")
+                self.feature_view_combo.blockSignals(False)
             # Show the clicked plot's own feature/dim/colour/All selections + axes.
             if hasattr(self.data_widget, "sync_sidebar_from_active_plot"):
                 self.data_widget.sync_sidebar_from_active_plot()
@@ -694,7 +746,7 @@ class MetaWidget(GridSectionContainer):
     def configure_layout_for_data(self):
         """Configure panel visibility and layout after a dataset load."""
         self.plot_container.configure_panels()
-        self.left_sidebar.refresh(catalog=self.data_widget.catalog)
+        self.source_popup.refresh(catalog=self.data_widget.catalog)
         self._relocate_overlay_checkboxes()
         self._set_default_context()
 

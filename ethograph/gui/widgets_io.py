@@ -58,17 +58,11 @@ class IOWidget(QWidget):
         self.combos = {}
         self.controls = []
 
-        self._create_toggle_buttons(main_layout)
         self._create_load_panel(main_layout)
         self._create_controls_panel(main_layout)
         self._create_export_panel(main_layout)
         self._wire_app_state_path_signals()
         self._wire_path_edit_signals()
-
-        # Initial state: load tab active, others greyed out
-        self.controls_toggle.setEnabled(False)
-        self.export_toggle.setEnabled(False)
-        self._show_panel("load")
 
         # Restore UI text fields from app state
         if self.app_state.nc_file_path:
@@ -145,62 +139,23 @@ class IOWidget(QWidget):
         if getattr(self.app_state, "ephys_offset", 0.0) != value:
             self.app_state.ephys_offset = value
 
-    # ------------------------------------------------------------------
-    # Toggle buttons
-    # ------------------------------------------------------------------
+    def restore_subpanel(self, widget):
+        """Return a sub-panel borrowed by a top-bar popup to its home slot.
 
-    def _create_toggle_buttons(self, main_layout):
-        toggle_widget = QWidget()
-        toggle_layout = QHBoxLayout()
-        toggle_layout.setSpacing(2)
-        toggle_layout.setContentsMargins(0, 0, 0, 0)
-        toggle_widget.setLayout(toggle_layout)
-
-        self.load_toggle = QPushButton("Load data")
-        self.load_toggle.setCheckable(True)
-        self.load_toggle.clicked.connect(self._toggle_load)
-        toggle_layout.addWidget(self.load_toggle)
-
-        self.controls_toggle = QPushButton("Import labels")
-        self.controls_toggle.setCheckable(True)
-        self.controls_toggle.clicked.connect(self._toggle_controls)
-        toggle_layout.addWidget(self.controls_toggle)
-
-        self.export_toggle = QPushButton("Export labels")
-        self.export_toggle.setCheckable(True)
-        self.export_toggle.clicked.connect(self._toggle_export)
-        toggle_layout.addWidget(self.export_toggle)
-
-        main_layout.addWidget(toggle_widget)
-
-    def _show_panel(self, panel_name):
-        panels = {
-            "load": (self.load_panel, self.load_toggle),
-            "controls": (self.controls_panel, self.controls_toggle),
-            "export": (self.export_panel, self.export_toggle),
-        }
-        for name, (panel, toggle) in panels.items():
-            if name == panel_name:
-                panel.show()
-                toggle.setChecked(True)
-            else:
-                panel.hide()
-                toggle.setChecked(False)
-
-    def _toggle_load(self):
-        if self.load_toggle.isChecked():
-            self._show_panel("load")
+        The File menu pops up ``labels_group`` / ``pred_group`` /
+        ``export_panel`` individually; this re-inserts the borrowed widget
+        when the popup closes.
+        """
+        if widget is self.labels_group:
+            self._controls_layout.insertRow(0, self.labels_group)
+        elif widget is self.pred_group:
+            self._controls_layout.insertRow(1, self.pred_group)
+        elif widget is self.export_panel:
+            # Main layout order: load, controls, export.
+            self.layout().insertWidget(2, self.export_panel)
+            self.export_panel.setVisible(False)
         else:
-            if self.controls_toggle.isEnabled():
-                self._show_panel("controls")
-            else:
-                self.load_toggle.setChecked(True)
-
-    def _toggle_controls(self):
-        self._show_panel("controls" if self.controls_toggle.isChecked() else "load")
-
-    def _toggle_export(self):
-        self._show_panel("export" if self.export_toggle.isChecked() else "controls")
+            raise ValueError(f"not an IO sub-panel: {widget!r}")
 
     # ------------------------------------------------------------------
     # Load panel
@@ -226,11 +181,15 @@ class IOWidget(QWidget):
         self.template_button.setObjectName("template_button")
         self.template_button.clicked.connect(self._on_select_template_clicked)
 
-        button_row = QHBoxLayout()
+        # Wrapped in a QWidget so the cover page can hide this row while it
+        # hosts the load panel (the cover page has its own wizard/template buttons).
+        self.load_buttons_row = QWidget()
+        button_row = QHBoxLayout(self.load_buttons_row)
+        button_row.setContentsMargins(0, 0, 0, 0)
         button_row.addWidget(self.reset_button)
         button_row.addWidget(self.create_nc_button)
         button_row.addWidget(self.template_button)
-        self._load_layout.addRow(button_row)
+        self._load_layout.addRow(self.load_buttons_row)
 
         # Path widgets
         self.nc_file_path_edit = self._create_path_widget(
@@ -322,17 +281,17 @@ class IOWidget(QWidget):
         self._controls_layout.setContentsMargins(0, 0, 0, 0)
         self.controls_panel.setLayout(self._controls_layout)
 
-        labels_group = QGroupBox("Labels")
+        self.labels_group = QGroupBox("Labels")
         self._labels_group_layout = QFormLayout()
         self._labels_group_layout.setSpacing(2)
         self._labels_group_layout.setContentsMargins(4, 4, 4, 4)
-        labels_group.setLayout(self._labels_group_layout)
+        self.labels_group.setLayout(self._labels_group_layout)
 
         self._create_mapping_row(self._labels_group_layout)
         # Labels row inserted here dynamically by create_device_controls()
         self._labels_row_index = self._labels_group_layout.rowCount()
 
-        self._controls_layout.addRow(labels_group)
+        self._controls_layout.addRow(self.labels_group)
         self._create_predictions_row(self._controls_layout)
 
         main_layout.addWidget(self.controls_panel)
@@ -710,11 +669,11 @@ class IOWidget(QWidget):
         target_layout.addRow("", self.temp_labels_button)
 
     def _create_predictions_row(self, target_layout):
-        pred_group = QGroupBox("Predictions")
+        self.pred_group = QGroupBox("Predictions")
         pred_group_layout = QVBoxLayout()
         pred_group_layout.setContentsMargins(4, 4, 4, 4)
         pred_group_layout.setSpacing(2)
-        pred_group.setLayout(pred_group_layout)
+        self.pred_group.setLayout(pred_group_layout)
 
         # Row 1: folder path + browse
         folder_row = QHBoxLayout()
@@ -774,7 +733,7 @@ class IOWidget(QWidget):
         controls_row.addWidget(self.pred_confidence_pdf_btn)
 
         pred_group_layout.addLayout(controls_row)
-        target_layout.addRow(pred_group)
+        target_layout.addRow(self.pred_group)
 
     def _create_labels_row_at_index(self):
         """Create two labels rows: input (browse) and output (auto-generated TSV)."""
@@ -1104,12 +1063,9 @@ class IOWidget(QWidget):
     # ------------------------------------------------------------------
 
     def on_load_complete(self):
-        """Disable load panel, enable and switch to controls panel."""
+        """Disable the load panel (a dataset is active) and prep import panels."""
         for child in self.load_panel.findChildren(QWidget):
             child.setEnabled(False)
-        self.controls_toggle.setEnabled(True)
-        self.export_toggle.setEnabled(True)
-        self._show_panel("controls")
 
         self._ensure_crowsetta_formats()
 

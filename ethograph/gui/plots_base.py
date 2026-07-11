@@ -215,11 +215,18 @@ class PanelStateMixin:
         return c if c and c != "None" else None
 
     def set_panel_control(self, key: str, value) -> None:
-        """Record a sidebar control change into this panel's own state."""
+        """Record a sidebar control change into this panel's own state.
+
+        ``value is None`` for a dimension key means "All": the dim is removed
+        from this panel's selections. The 'All' checkbox state is therefore
+        stored per panel as the absence of that dim.
+        """
         if key == "features":
             self.panel_state["feature"] = value
         elif key == "colors":
             self.panel_state["color"] = value
+        elif key == "show_predictions":
+            self.panel_state["show_predictions"] = bool(value)
         else:
             sels = dict(self.panel_state.get("selections") or self.app_state.get_selections())
             if value in (None, "", "None"):
@@ -227,6 +234,41 @@ class PanelStateMixin:
             else:
                 sels[key] = value
             self.panel_state["selections"] = sels
+
+    def show_predictions_enabled(self) -> bool:
+        """Whether this panel shows the dotted prediction-confidence curve."""
+        return bool(self.panel_state.get("show_predictions", True))
+
+    def panel_settings(self) -> dict:
+        """This panel's coords-section settings in serializable form (used by
+        layout persistence and panel-type conversion)."""
+        settings: dict = {}
+        feature = self._effective_feature()
+        if feature:
+            settings["feature"] = str(feature)
+        if "selections" in self.panel_state:
+            settings["selections"] = {
+                str(k): (v.item() if hasattr(v, "item") else v)
+                for k, v in self.panel_state["selections"].items()
+            }
+        color = self.panel_state.get("color")
+        if color and color != "None":
+            settings["color"] = str(color)
+        if not self.panel_state.get("show_predictions", True):
+            settings["show_predictions"] = False
+        return settings
+
+    def apply_panel_settings(self, settings: dict) -> None:
+        """Restore settings captured by :meth:`panel_settings` into this
+        panel's own state. A dim absent from ``selections`` means "All"."""
+        if settings.get("feature"):
+            self.panel_state["feature"] = settings["feature"]
+        if isinstance(settings.get("selections"), dict):
+            self.panel_state["selections"] = dict(settings["selections"])
+        if settings.get("color"):
+            self.panel_state["color"] = settings["color"]
+        if "show_predictions" in settings:
+            self.panel_state["show_predictions"] = bool(settings["show_predictions"])
 
     def _ensure_panel_state(self):
         """Fork any still-missing state keys from the current globals on first

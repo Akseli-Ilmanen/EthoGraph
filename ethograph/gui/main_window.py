@@ -7,7 +7,8 @@ Layout
 - **Bottom dock** — the synced plots (``UnifiedPanelContainer``).
 - **Right dock** — the control sidebar (``MetaWidget``), collapsible via the
   toolbar button or ``Ctrl+0``.
-- Extra line-plot panels are added by dragging a feature from the left sidebar.
+- Panels are added via the add-panel popup (bottom bar ➕ button or Ctrl+N):
+  drag a source onto the plot area, or press Enter for default placement.
 
 Layout persistence (no JSON files): the outer window state (geometry, docks,
 sidebar) lives in ``app_state.window_state`` → ``gui_settings.yaml``; the
@@ -111,15 +112,11 @@ class EthographMainWindow(QMainWindow):
         )
         self.bottom_bar = bottom_bar
 
-        # Left sidebar: draggable Media / Feature sources — full-height, narrow.
-        left = getattr(meta_widget, "left_sidebar", None)
-        if left is not None:
-            self._left_sidebar_dock = self.add_dock_widget(left, area="left", name="Sources")
-            self._left_sidebar_dock.setObjectName("LeftSidebarDock")
-            left.setMaximumWidth(220)
-            QTimer.singleShot(0, lambda: self.resizeDocks(
-                [self._left_sidebar_dock], [150], Qt.Horizontal
-            ))
+        # Add-panel popup: opened from the bottom bar's ➕ button (or Ctrl+N),
+        # anchored above the button.
+        bottom_bar.add_panel_btn.clicked.connect(
+            lambda: meta_widget.show_source_popup(bottom_bar.add_panel_btn)
+        )
 
         # Wire bottom bar to data_widget and video sync
         data_widget = getattr(meta_widget, "data_widget", None)
@@ -146,9 +143,9 @@ class EthographMainWindow(QMainWindow):
         QTimer.singleShot(0, self._restore_window_state)
 
     def _apply_corner_ownership(self):
-        """Left (Sources) and right (control) sidebars span the full window
-        height; the video/plots docks sit between them. Re-applied after any
-        state restore, which can otherwise reset corner ownership."""
+        """The right control sidebar spans the full window height; the
+        video/plots docks sit beside it. Re-applied after any state restore,
+        which can otherwise reset corner ownership."""
         self.setCorner(Qt.TopLeftCorner, Qt.LeftDockWidgetArea)
         self.setCorner(Qt.BottomLeftCorner, Qt.LeftDockWidgetArea)
         self.setCorner(Qt.TopRightCorner, Qt.RightDockWidgetArea)
@@ -164,7 +161,7 @@ class EthographMainWindow(QMainWindow):
     def _create_menus(self):
         """Create window-level shortcut actions.
 
-        The visible menu bar (File / Layout / Changepoints / Neural / Help) is
+        The visible menu bar (File / Changepoints / Neural / Help) is
         built by :func:`ethograph.gui.top_bar.build_menu_bar` once the sidebar
         sections exist.  Here we only register the standalone actions whose
         keyboard shortcuts must work regardless of the menu bar.
@@ -178,7 +175,7 @@ class EthographMainWindow(QMainWindow):
         self._video_toggle.toggled.connect(self.set_video_viewer_visible)
         self.addAction(self._video_toggle)
 
-        self._zen_action: QAction | None = None
+        self._zen_mode = False
 
     # ------------------------------------------------------------------
     # Sidebar / video visibility
@@ -198,18 +195,15 @@ class EthographMainWindow(QMainWindow):
             dock.setVisible(visible)
 
     def set_zen_mode(self, on: bool):
-        """Hide the left/right sidebars (zen mode). Sidebar updates are skipped.
+        """Hide the right sidebar (zen mode). Sidebar updates are skipped.
 
-        Toggled from the Layout menu or ``Ctrl+Z``.  While on, the control
-        sidebar (and future left layout sidebar) are hidden and
-        ``app_state.zen_mode`` is set so widgets can skip expensive refreshes.
+        Toggled via ``Ctrl+Z``.  While on, the right control sidebar is
+        hidden and ``app_state.zen_mode`` is set so widgets can skip
+        expensive refreshes.
         """
         self._zen_mode = on
         if self._sidebar_dock is not None:
             self._sidebar_dock.setVisible(not on)
-        left = getattr(self, "_left_sidebar_dock", None)
-        if left is not None:
-            left.setVisible(not on)
         if self.meta_widget is not None:
             app_state = getattr(self.meta_widget, "app_state", None)
             if app_state is not None and hasattr(app_state, "zen_mode"):

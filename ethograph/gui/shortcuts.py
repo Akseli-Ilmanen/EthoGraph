@@ -51,6 +51,12 @@ def bind_global_shortcuts(meta_widget):
     # --- Playback / navigation ---
     bind("Ctrl+S", app_state.save_labels)
 
+    def toggle_zen_mode():
+        """Zen mode: hide the right sidebar for a distraction-free view."""
+        shell.set_zen_mode(not shell._zen_mode)
+
+    bind("Ctrl+Z", toggle_zen_mode)
+
     def toggle_pause_resume():
         data_widget.toggle_pause_resume()
         navigation_widget._sync_play_icon()

@@ -583,9 +583,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             self._lineplot_docks[plot].setObjectName(f"panel_lineplot_{i}")
 
     def layout_state(self) -> dict:
-        """Serializable panel layout: the open panels (type + per-panel params
-        such as ``feature``) plus the dock-host state blob that encodes the
-        free 2D arrangement (positions, sizes, tabs, floating)."""
+        """Serializable panel layout: the open panels (type + full per-panel
+        settings: feature, dim selections — a dim absent means "All" — and
+        color) plus the dock-host state blob that encodes the free 2D
+        arrangement (positions, sizes, tabs, floating)."""
         self._canonicalize_lineplot_dock_names()
         panels = []
         for name, _ in _PANEL_ORDER:
@@ -593,16 +594,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
                 continue
             entry: dict = {"type": name}
             if name == "heatmap":
-                feature = self.heatmap_plot._effective_feature()
-                if feature:
-                    entry["feature"] = str(feature)
+                entry.update(self.heatmap_plot.panel_settings())
             panels.append(entry)
         for plot in self.line_plots:
-            entry = {"type": "lineplot"}
-            feature = plot._effective_feature()
-            if feature:
-                entry["feature"] = str(feature)
-            panels.append(entry)
+            panels.append({"type": "lineplot", **plot.panel_settings()})
         return {
             "panels": panels,
             "dock_state_b64": base64.b64encode(bytes(self._dock_host.saveState())).decode("ascii"),
@@ -631,9 +626,13 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             self.remove_lineplot(plot)
         for e in entries:
             if e.get("type") == "lineplot":
-                self.add_lineplot(feature=e.get("feature"))
-            elif e.get("type") == "heatmap" and e.get("feature"):
-                self.heatmap_plot.set_panel_control("features", e["feature"])
+                plot = self.add_lineplot(feature=e.get("feature"))
+                if plot is not None:
+                    plot.apply_panel_settings(e)
+                    if self.app_state.ready:
+                        plot.update_plot()
+            elif e.get("type") == "heatmap":
+                self.heatmap_plot.apply_panel_settings(e)
         self._canonicalize_lineplot_dock_names()
 
         # Showing an audio panel requires re-wiring its source.

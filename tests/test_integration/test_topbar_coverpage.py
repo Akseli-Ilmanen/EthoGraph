@@ -90,7 +90,7 @@ def test_every_panel_has_close_and_move_buttons(gui):
 def test_top_bar_has_expected_menus(gui):
     shell, meta = gui
     titles = [a.text().replace("&", "") for a in shell.menuBar().actions()]
-    assert titles == ["File", "Layout", "Changepoints", "Neural", "Help"]
+    assert titles == ["File", "Changepoints", "Neural", "Help"]
 
 
 
@@ -120,6 +120,38 @@ def test_changepoints_popup_borrows_and_returns_detached_widget(gui):
     assert cp.parent() is not holder  # borrowed into the dialog
     dlg.close()
     assert cp.parent() is holder  # returned to the holder
+
+
+def test_io_subpanel_popups_are_separate(gui):
+    """Import labels / Import predictions / Export labels each pop up alone.
+
+    The popup hosts only its own sub-panel — none of the other sections —
+    and the widget returns home on close.
+    """
+    shell, meta = gui
+    io = meta.io_widget
+    builder = shell._top_bar
+
+    builder._popup_section("import_labels", "Import labels", io.labels_group)
+    dlg = builder._open_popups["import_labels"]
+    assert dlg.isAncestorOf(io.labels_group)
+    assert not dlg.isAncestorOf(io.pred_group)  # predictions stay separate
+    dlg.close()
+    assert io.isAncestorOf(io.labels_group)
+
+    builder._popup_section("import_predictions", "Import predictions", io.pred_group)
+    dlg = builder._open_popups["import_predictions"]
+    assert dlg.isAncestorOf(io.pred_group)
+    assert not dlg.isAncestorOf(io.labels_group)
+    dlg.close()
+    assert io.isAncestorOf(io.pred_group)
+
+    builder._popup_section("export_labels", "Export labels", io.export_panel)
+    dlg = builder._open_popups["export_labels"]
+    assert dlg.isAncestorOf(io.export_panel)
+    dlg.close()
+    assert io.isAncestorOf(io.export_panel)
+    assert io.export_panel.isHidden()  # only shown while borrowed by its popup
 
 
 def test_overlay_checkboxes_relocated(birdpark_gui):
@@ -382,6 +414,23 @@ def test_added_lineplot_behaves_like_any_lineplot(birdpark_gui):
     meta.context_panel.set_context("audiotrace")
     meta.active_panels.set_active(meta.active_panels.registration_for(plot))
     assert meta.context_panel.current_context() in ("lineplot", "heatmap")
+
+
+def test_cover_page_borrows_and_returns_load_panel(gui, qtbot):
+    """The IO load panel (path fields + Load) is hosted on the cover page
+    while it is shown, and handed back to the IO tab when it closes."""
+    from ethograph.gui.cover_page import CoverPage
+
+    shell, meta = gui
+    io = meta.io_widget
+    page = CoverPage(shell, io)
+    page.show()
+    qtbot.waitExposed(page)
+    assert page._load_host.isAncestorOf(io.load_panel)  # borrowed
+    assert io.load_buttons_row.isHidden()  # no duplicate wizard/template buttons
+    page.close()
+    assert io.isAncestorOf(io.load_panel)  # returned
+    assert not io.load_buttons_row.isHidden()
 
 
 def test_cover_page_classify_files():

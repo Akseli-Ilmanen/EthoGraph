@@ -746,6 +746,7 @@ class DataWidget(QWidget):
                 nc_file_path,
                 progress_callback=getattr(self.app_state, "_progress_callback", None),
                 metadata_path=self.app_state.metadata_path,
+                alignment_path=getattr(self.app_state, "nwb_file_path", None),
             )
         except (OSError, ValueError, KeyError) as e:
             logger.exception("load_features_dataset failed")
@@ -1003,6 +1004,7 @@ class DataWidget(QWidget):
             self._create_combo_widget(combo_name, list(combo_spec.values))
 
         self._create_colors_combo()
+        self._create_show_predictions_row()
 
         # Restore camera combos
         cameras = self.app_state.nwb_alignment.cameras
@@ -1178,7 +1180,7 @@ class DataWidget(QWidget):
         row2 = self.overlays_row2_layout
 
         self.show_confidence_checkbox = QCheckBox("Confidence")
-        self.show_confidence_checkbox.setChecked(False)
+        self.show_confidence_checkbox.setChecked(True)
         self.show_confidence_checkbox.stateChanged.connect(self._update_confidence_overlay)
         row2.addWidget(self.show_confidence_checkbox)
 
@@ -1208,6 +1210,10 @@ class DataWidget(QWidget):
         if not self.app_state.ready or self.plot_container is None:
             return
         if not self.show_confidence_checkbox.isChecked():
+            self.plot_container.hide_confidence_plot()
+            return
+        host = self.plot_container.get_current_plot()
+        if hasattr(host, "show_predictions_enabled") and not host.show_predictions_enabled():
             self.plot_container.hide_confidence_plot()
             return
         trial = self.app_state.trials_sel
@@ -1768,6 +1774,26 @@ class DataWidget(QWidget):
         self.controls.append(combo)
         self.controls.append(rgb_checkbox)
 
+    def _create_show_predictions_row(self):
+        """Per-plot toggle for the dotted prediction-confidence curve."""
+        checkbox = QCheckBox("Show predictions")
+        checkbox.setObjectName("show_predictions_checkbox")
+        checkbox.setToolTip("Show the dotted prediction-confidence curve on this plot")
+        checkbox.setChecked(True)
+        checkbox.stateChanged.connect(self._on_show_predictions_changed)
+        self.show_predictions_checkbox = checkbox
+        self.coords_groupbox_layout.addRow("Predictions:", checkbox)
+        self.controls.append(checkbox)
+
+    def _on_show_predictions_changed(self, _state):
+        if not self.app_state.ready:
+            return
+        checked = self.show_predictions_checkbox.isChecked()
+        active = getattr(self.plot_container, "active_feature_plot", None)
+        if active is not None and hasattr(active, "set_panel_control"):
+            active.set_panel_control("show_predictions", checked)
+        self._update_confidence_overlay()
+
     def _populate_colors_combo(self, combo: QComboBox, features: list[str], rgb_filter: bool):
         prev = get_combo_value(combo) if combo.count() > 0 else "None"
         combo.blockSignals(True)
@@ -1891,6 +1917,12 @@ class DataWidget(QWidget):
             combo = self.combos.get(akey)
             if combo is not None:
                 combo.setEnabled(not is_all)
+
+        pred_cb = getattr(self, "show_predictions_checkbox", None)
+        if pred_cb is not None and hasattr(plot, "show_predictions_enabled"):
+            pred_cb.blockSignals(True)
+            pred_cb.setChecked(plot.show_predictions_enabled())
+            pred_cb.blockSignals(False)
 
     # Backwards-compatible alias.
     sync_combos_to_active_plot = sync_sidebar_from_active_plot

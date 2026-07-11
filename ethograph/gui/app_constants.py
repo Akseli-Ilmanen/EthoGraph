@@ -33,8 +33,8 @@ LABEL_OVERLAY_PLOT_TYPES = {
     "audio": "Audio trace",
     "spectrogram": "Spectrogram",
     "heatmap": "Heatmap",
-    "ephys": "Ephys trace",
-    "neo": "Neo trace",
+    "ephys": "Ephys trace (phy)",
+    "neo": "Ephys trace (neo)",
 }
 
 DEFAULT_LABEL_OVERLAY_MODES = {

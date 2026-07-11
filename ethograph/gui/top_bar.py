@@ -3,11 +3,11 @@
 Reorganises actions that previously lived on the right sidebar into a
 conventional application menu bar:
 
-    File | Layout | Changepoints | Neural | Help
+    File | Changepoints | Neural | Help
 
 Menu items come in three flavours:
 
-* **Executable** — run a command immediately (e.g. *Save layout*).
+* **Executable** — run a command immediately (e.g. *Save labels*).
 * **Boolean** — a checkable action kept in sync with a sidebar checkbox
   (e.g. *Show changepoints*).
 * **Pop-up** — open a dialog that *hosts an existing sidebar section*.  The
@@ -58,20 +58,31 @@ class SectionPopup(QDialog):
         self._on_restore = on_restore
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(8, 8, 8, 8)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setAlignment(Qt.AlignTop)
-        scroll.setWidget(widget)  # reparents widget -> removes it from its home
+        scroll.setFrameShape(QScrollArea.NoFrame)
+
+        # Host the borrowed widget in a padded wrapper so its controls don't
+        # sit flush against the dialog edges. The wrapper reparents the widget
+        # (removes it from its home); closeEvent pulls it back out.
+        host = QWidget()
+        host_layout = QVBoxLayout(host)
+        host_layout.setContentsMargins(14, 14, 14, 14)
+        host_layout.setSpacing(8)
+        host_layout.addWidget(widget)
+        host_layout.addStretch()
+        scroll.setWidget(host)
         widget.setVisible(True)
         layout.addWidget(scroll)
 
         # Size to the widget's content (capped) rather than a fixed tall box, so
         # short panels (e.g. the I/O importer) don't float in empty space.
         hint = widget.sizeHint()
-        width = min(max(hint.width() + 36, 420), 900)
-        height = min(max(hint.height() + 36, 200), 760)
+        width = min(max(hint.width() + 72, 460), 940)
+        height = min(max(hint.height() + 72, 220), 780)
         self.resize(width, height)
 
     def closeEvent(self, event):
@@ -103,7 +114,6 @@ class TopBarBuilder:
         menu_bar = self.shell.menuBar()
         menu_bar.clear()
         self._build_file_menu(menu_bar)
-        self._build_layout_menu(menu_bar)
         self._build_changepoints_menu(menu_bar)
         self._build_neural_menu(menu_bar)
         self._build_help_menu(menu_bar)
@@ -132,8 +142,16 @@ class TopBarBuilder:
         """Build the callable that returns *widget* to its home on close.
 
         A widget currently living in the sidebar stack is re-inserted at its
-        original index; a detached widget is parked back in the hidden holder.
+        original index; an I/O sub-panel goes back to its slot inside the
+        I/O widget; a detached widget is parked back in the hidden holder.
         """
+        io = getattr(self.meta, "io_widget", None)
+        if io is not None and widget in (
+            getattr(io, "labels_group", None),
+            getattr(io, "pred_group", None),
+            getattr(io, "export_panel", None),
+        ):
+            return io.restore_subpanel
         stack = _sidebar_stack(self.meta)
         idx = stack.indexOf(widget) if stack is not None else -1
         if idx >= 0:
@@ -156,13 +174,27 @@ class TopBarBuilder:
         menu = menu_bar.addMenu("&File")
         io = getattr(self.meta, "io_widget", None)
 
-        menu.addAction("Load data…", lambda: self._popup_section("io", "Load data", io))
-        menu.addSeparator()
-        menu.addAction("Import labels…", lambda: self._popup_section("io", "Import labels", io))
-        menu.addAction("Export labels…", lambda: self._popup_section("io", "Export labels", io))
+        # Each I/O sub-panel pops up on its own (no unrelated sections):
+        # labels import (mapping.txt + tsv/crowsetta) is separate from
+        # predictions import and from label export. Data loading itself
+        # happens only on the cover page.
+        menu.addAction(
+            "Import labels…",
+            lambda: self._popup_section(
+                "import_labels", "Import labels", getattr(io, "labels_group", None)
+            ),
+        )
         menu.addAction(
             "Import predictions…",
-            lambda: self._popup_section("io", "Import predictions", io),
+            lambda: self._popup_section(
+                "import_predictions", "Import predictions", getattr(io, "pred_group", None)
+            ),
+        )
+        menu.addAction(
+            "Export labels…",
+            lambda: self._popup_section(
+                "export_labels", "Export labels", getattr(io, "export_panel", None)
+            ),
         )
         menu.addSeparator()
         save_labels = self._first_method(io, "_save_labels")
@@ -171,42 +203,6 @@ class TopBarBuilder:
             act.setShortcut(QKeySequence("Ctrl+S"))
         menu.addSeparator()
         menu.addAction("Exit", self.shell.close)
-
-    # ------------------------------------------------------------------
-    # Layout menu
-    # ------------------------------------------------------------------
-
-    def _build_layout_menu(self, menu_bar):
-        # Layout persistence is automatic (local_settings.yaml / gui_settings.yaml)
-        # — no save/load actions.
-        menu = menu_bar.addMenu("&Layout")
-        menu.addAction("Reset layout (last clicked plot)", self._on_reset_last_plot)
-        menu.addAction("Reset layout (all plots)", self._on_reset_all_plots)
-        menu.addSeparator()
-        zen = QAction("Zen mode (hide sidebars)", self.shell, checkable=True)
-        zen.setShortcut(QKeySequence("Ctrl+Z"))
-        zen.toggled.connect(self._on_zen_toggled)
-        self.shell._zen_action = zen
-        menu.addAction(zen)
-
-    def _on_reset_all_plots(self):
-        reset = self._first_method(self.meta, "_on_reset_layout")
-        if reset is not None:
-            reset()
-
-    def _on_reset_last_plot(self):
-        container = getattr(self.meta, "plot_container", None)
-        last = getattr(container, "last_clicked_plot", None) or getattr(
-            self.app_state, "active_plot", None
-        )
-        reset = self._first_method(last, "reset_view", "autoRange")
-        if reset is not None:
-            reset()
-        else:
-            self._on_reset_all_plots()
-
-    def _on_zen_toggled(self, on: bool):
-        self.shell.set_zen_mode(on)
 
     # ------------------------------------------------------------------
     # Changepoints menu

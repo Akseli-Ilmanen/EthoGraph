@@ -5,8 +5,9 @@ Presents three entry points (matching the design in the project brief):
 1. **Template datasets** — reuse :meth:`IOWidget._on_select_template_clicked`.
 2. **Drag & drop files** — drop single, already-aligned media/feature/label
    files; ethograph classifies them by extension, optionally asks which video
-   belongs to which camera, builds a throwaway ``alignment.tmp.nwb`` so the
-   normal loader can consume loose media, and loads.
+   belongs to which camera, builds a throwaway alignment NWB in the system
+   temp dir (unique name per drop; stale ones are cleaned up best-effort) so
+   the normal loader can consume loose media, and loads.
 3. **Data wizard** — reuse :meth:`IOWidget._on_create_nc_clicked`.
 
 The page runs *before* the main window is shown: it accepts once a dataset
@@ -19,9 +20,11 @@ from __future__ import annotations
 import logging
 import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
+    QApplication,
     QDialog,
     QDialogButtonBox,
     QFrame,
@@ -47,6 +50,15 @@ logger = logging.getLogger(__name__)
 
 FEATURE_EXTENSIONS = {".nc", ".nwb", ".npz"}
 LABEL_EXTENSIONS = {".tsv"}
+
+# One accent colour per entry point — repeated on the card border, the number
+# badge and (for drag & drop) the drop zone, so the three options read as
+# three distinct paths.
+_ACCENTS = {
+    "template": "#4fc3f7",
+    "drop": "#81c784",
+    "custom": "#ffb74d",
+}
 
 
 def classify_files(paths: list[str]) -> dict[str, list[str]]:
@@ -172,13 +184,13 @@ class _CamMatchDialog(QDialog):
 class _DropList(QListWidget):
     """A QListWidget that accepts file drops and records the paths."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, accent: str = "rgba(255,255,255,60)"):
         super().__init__(parent)
         self.setAcceptDrops(True)
         self.paths: list[str] = []
         self.setStyleSheet(
-            "QListWidget { border: 2px dashed rgba(255,255,255,60); border-radius: 8px;"
-            " min-height: 180px; }"
+            f"QListWidget {{ border: 2px dashed {accent}; border-radius: 8px;"
+            " min-height: 160px; }"
         )
 
     def dragEnterEvent(self, event):
@@ -221,20 +233,16 @@ class CoverPage(QDialog):
         outer.setContentsMargins(24, 24, 24, 24)
         outer.setSpacing(16)
 
-        intro = QLabel(
-            "You have 3 options:  1) Test the GUI with template datasets,  "
-            "2) Drag & drop single aligned media files,  "
-            "3) Use the ethograph custom loader — the wizard can help."
-        )
+        intro = QLabel("Three ways to get data into ethograph — pick one:")
         intro.setWordWrap(True)
-        intro.setStyleSheet("font-size: 12pt;")
+        intro.setStyleSheet("font-size: 13pt; font-weight: 600;")
         outer.addWidget(intro)
 
         body = QHBoxLayout()
-        body.setSpacing(24)
-        body.addLayout(self._build_left_column(), 1)
-        body.addWidget(self._vline())
-        body.addLayout(self._build_right_column(), 1)
+        body.setSpacing(16)
+        body.addWidget(self._build_template_card(), 1)
+        body.addWidget(self._build_drop_card(), 1)
+        body.addWidget(self._build_custom_card(), 2)
         outer.addLayout(body)
 
         skip_row = QHBoxLayout()
@@ -249,24 +257,57 @@ class CoverPage(QDialog):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _vline() -> QFrame:
-        line = QFrame()
-        line.setFrameShape(QFrame.VLine)
-        line.setStyleSheet("color: rgba(255,255,255,40);")
-        return line
+    def _make_card(num: int, title: str, subtitle: str, accent: str) -> tuple[QFrame, QVBoxLayout]:
+        """A numbered, accent-coloured card holding one entry point."""
+        card = QFrame()
+        card.setObjectName("coverCard")
+        card.setStyleSheet(
+            f"QFrame#coverCard {{ border: 1px solid rgba(255,255,255,35);"
+            f" border-top: 3px solid {accent}; border-radius: 10px;"
+            f" background-color: rgba(255,255,255,10); }}"
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
 
-    def _build_left_column(self) -> QVBoxLayout:
-        col = QVBoxLayout()
-        col.setSpacing(10)
+        header = QLabel(
+            f'<span style="color:{accent}; font-size:16pt; font-weight:700;">{num}</span>'
+            f'&nbsp;&nbsp;<span style="font-size:12pt; font-weight:600;">{title}</span>'
+        )
+        layout.addWidget(header)
 
-        template_btn = QPushButton("🐦  Template datasets")
+        sub = QLabel(subtitle)
+        sub.setWordWrap(True)
+        sub.setStyleSheet("color: rgba(255,255,255,150);")
+        layout.addWidget(sub)
+        return card, layout
+
+    def _build_template_card(self) -> QFrame:
+        card, layout = self._make_card(
+            1,
+            "Template datasets",
+            "Fastest way to try the GUI: download a ready-made example dataset.",
+            _ACCENTS["template"],
+        )
+        # BMP text glyph (not a colour emoji) — renders as a stable black
+        # symbol on Windows / macOS / Linux system fonts.
+        template_btn = QPushButton("🐦‍⬛  Browse templates…")
         template_btn.setMinimumHeight(48)
         template_btn.clicked.connect(self._on_template)
-        col.addWidget(template_btn)
+        layout.addWidget(template_btn)
+        layout.addStretch()
+        return card
 
-        col.addWidget(QLabel("<b>Drag && drop files*</b>"))
-        self._drop = _DropList()
-        col.addWidget(self._drop, 1)
+    def _build_drop_card(self) -> QFrame:
+        card, layout = self._make_card(
+            2,
+            "Drag &amp; drop",
+            "Quick exploration: drop single, already-aligned media / feature / "
+            "label files (single trial assumed).",
+            _ACCENTS["drop"],
+        )
+        self._drop = _DropList(accent=_ACCENTS["drop"])
+        layout.addWidget(self._drop, 1)
 
         row = QHBoxLayout()
         clear_btn = QPushButton("Clear")
@@ -276,32 +317,65 @@ class CoverPage(QDialog):
         load_btn.clicked.connect(self._on_load_dropped)
         row.addWidget(clear_btn)
         row.addWidget(load_btn, 1)
-        col.addLayout(row)
+        layout.addLayout(row)
+        return card
 
-        note = QLabel("*Files have to be aligned (single trial assumed).")
-        note.setStyleSheet("color: rgba(255,255,255,120); font-size: 8pt;")
-        col.addWidget(note)
-        return col
-
-    def _build_right_column(self) -> QVBoxLayout:
-        col = QVBoxLayout()
-        col.setSpacing(10)
-
+    def _build_custom_card(self) -> QFrame:
+        card, layout = self._make_card(
+            3,
+            "Custom set-up",
+            "Your own multi-trial data: point the loader at a session file "
+            "(.nc / .nwb / .npz / pynapple folder) plus media folders. "
+            "Run the wizard first if your data is not yet aligned.",
+            _ACCENTS["custom"],
+        )
         wizard_btn = QPushButton("🧙  Data wizard — prepare my data")
         wizard_btn.setMinimumHeight(48)
         wizard_btn.clicked.connect(self._on_wizard)
-        col.addWidget(wizard_btn)
+        layout.addWidget(wizard_btn)
 
-        desc = QLabel(
-            "The custom loader lets you point at a session file (.nc / .nwb / "
-            ".npz / pynapple folder) plus media folders, metadata and alignment.\n\n"
-            "Use the wizard if your data is not yet aligned into a single session."
-        )
-        desc.setWordWrap(True)
-        desc.setStyleSheet("color: rgba(255,255,255,150);")
-        col.addWidget(desc)
-        col.addStretch()
-        return col
+        # Host for the IOWidget load panel (session/media path fields + Load
+        # button). Borrowed on show, returned to the IO tab on hide.
+        self._load_panel_borrowed = False
+        self._load_host = QWidget()
+        self._load_host_layout = QVBoxLayout(self._load_host)
+        self._load_host_layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._load_host)
+        layout.addStretch()
+        return card
+
+    # ------------------------------------------------------------------
+    # Load panel borrow / return (pattern shared with top-bar popups)
+    # ------------------------------------------------------------------
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._borrow_load_panel()
+
+    def hideEvent(self, event):
+        self._return_load_panel()
+        super().hideEvent(event)
+
+    def _borrow_load_panel(self):
+        """Reparent the IOWidget load panel into the right column."""
+        if self._load_panel_borrowed:
+            return
+        self._load_panel_borrowed = True
+        io = self.io_widget
+        io.load_buttons_row.hide()
+        self._load_host_layout.addWidget(io.load_panel)
+        io.load_panel.show()
+
+    def _return_load_panel(self):
+        """Give the load panel back to the IO tab (it must outlive this dialog)."""
+        if not self._load_panel_borrowed:
+            return
+        self._load_panel_borrowed = False
+        io = self.io_widget
+        self._load_host_layout.removeWidget(io.load_panel)
+        io.load_buttons_row.show()
+        # Re-insert at the top of the IO widget (original position).
+        io.layout().insertWidget(0, io.load_panel)
 
     # ------------------------------------------------------------------
     # Option handlers
@@ -422,9 +496,16 @@ class CoverPage(QDialog):
 
         out_dir = Path(tempfile.gettempdir()) / "ethograph_tmp_alignment"
         out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / "alignment.tmp.nwb"
-        if out_path.exists():
-            out_path.unlink()
+        # Best-effort cleanup of alignments from earlier drops. A file that is
+        # still open (Windows locks open HDF5 files, e.g. the currently loaded
+        # session) is simply left behind; writing to a fresh unique name below
+        # means we never need to delete an in-use file.
+        for stale in out_dir.glob("alignment*.nwb"):
+            try:
+                stale.unlink()
+            except OSError:
+                pass
+        out_path = out_dir / f"alignment-{uuid4().hex[:8]}.tmp.nwb"
         align_media_from_streams(trials, streams, out_path)
         return out_path
 
@@ -459,6 +540,8 @@ def show_cover_page(shell) -> bool:
         return True
     page = CoverPage(shell, io_widget)
     shell._cover_page = page
-    # Size to most of the (pending) window geometry.
-    page.resize(int(shell.width() * 0.9), int(shell.height() * 0.9))
+    # Size from the screen (the shell is still hidden, its geometry pending);
+    # wide enough that the custom-loader path fields are readable.
+    screen = QApplication.primaryScreen().availableGeometry()
+    page.resize(int(screen.width() * 0.85), int(screen.height() * 0.75))
     return page.exec_() == QDialog.Accepted

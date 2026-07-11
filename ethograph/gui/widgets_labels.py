@@ -696,6 +696,7 @@ class LabelsWidget(QWidget):
 
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
+            self.data_widget._update_confidence_overlay()
             if self.data_widget.plot_container:
                 self.data_widget.plot_container.labels_redraw_needed.emit()
         self.refresh_labels_shapes_layer()
