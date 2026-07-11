@@ -6,6 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from qtpy.QtCore import Qt
+from qtpy.QtGui import QMouseEvent
 from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -21,6 +22,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _TIMEBAR_RESOLUTION = 1000
+
+
+class _InteractiveSlider(QSlider):
+    """QSlider that tracks mouse interaction."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.is_dragging = False
+
+    def mousePressEvent(self, event: QMouseEvent):
+        self.is_dragging = True
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        self.is_dragging = False
+        super().mouseReleaseEvent(event)
 
 
 class BottomPlaybackBar(QWidget):
@@ -44,21 +61,22 @@ class BottomPlaybackBar(QWidget):
         layout.addWidget(self.play_pause_btn)
 
         # Time slider
-        self.time_slider = QSlider(Qt.Horizontal)
+        self.time_slider = _InteractiveSlider(Qt.Horizontal)
         self.time_slider.setRange(0, _TIMEBAR_RESOLUTION)
         self.time_slider.setMinimumHeight(20)
-        self.time_slider.sliderMoved.connect(self._on_slider_moved)
+        self.time_slider.setTracking(True)
+        self.time_slider.valueChanged.connect(self._on_slider_value_changed)
         layout.addWidget(self.time_slider, stretch=1)
 
-        # FPS display
+        # FPS display/edit
         fps_label = QLabel("FPS:")
         fps_label.setFixedWidth(40)
         layout.addWidget(fps_label)
 
         self.fps_display = QLineEdit()
-        self.fps_display.setReadOnly(True)
         self.fps_display.setFixedWidth(50)
         self.fps_display.setText(str(app_state.get_with_default("fps_playback")))
+        self.fps_display.editingFinished.connect(self._on_fps_changed)
         layout.addWidget(self.fps_display)
 
         # Trial info: "Trial X / Y"
@@ -85,6 +103,8 @@ class BottomPlaybackBar(QWidget):
             app_state.fps_playback_changed.connect(self._update_fps_display)
         if hasattr(app_state, "trials_sel_changed"):
             app_state.trials_sel_changed.connect(self._update_trial_label)
+        if hasattr(app_state, "ready_changed"):
+            app_state.ready_changed.connect(self._update_trial_label)
 
         self._update_trial_label()
         self._sync_play_icon()
@@ -101,13 +121,17 @@ class BottomPlaybackBar(QWidget):
         is_playing = video.is_playing if video else False
         self.play_pause_btn.setText("⏸" if is_playing else "▶")
 
-    def _on_slider_moved(self):
-        """User dragged the slider — seek to that time."""
+    def _on_slider_value_changed(self):
+        """Handle slider value changes — only seek if user is dragging."""
+        if not self.time_slider.is_dragging:
+            return
         if self.app_state.video is None or self.app_state.num_frames <= 0:
             return
         slider_pos = self.time_slider.value()
-        frame = int(slider_pos / _TIMEBAR_RESOLUTION * self.app_state.num_frames)
-        frame = max(0, min(frame, self.app_state.num_frames - 1))
+        if self.app_state.num_frames <= 1:
+            frame = 0
+        else:
+            frame = int(slider_pos / _TIMEBAR_RESOLUTION * (self.app_state.num_frames - 1))
         self.app_state.video.seek_to_frame(frame)
 
     def _update_slider_from_frame(self):
@@ -115,7 +139,10 @@ class BottomPlaybackBar(QWidget):
         if self.app_state.num_frames <= 0:
             return
         frame = self.app_state.current_frame
-        slider_pos = int(frame / self.app_state.num_frames * _TIMEBAR_RESOLUTION)
+        if self.app_state.num_frames <= 1:
+            slider_pos = 0
+        else:
+            slider_pos = int(frame / (self.app_state.num_frames - 1) * _TIMEBAR_RESOLUTION)
         self.time_slider.blockSignals(True)
         self.time_slider.setValue(slider_pos)
         self.time_slider.blockSignals(False)
@@ -123,7 +150,23 @@ class BottomPlaybackBar(QWidget):
     def _update_fps_display(self):
         """Update FPS display."""
         fps = self.app_state.fps_playback
+        self.fps_display.blockSignals(True)
         self.fps_display.setText(f"{fps:.1f}")
+        self.fps_display.blockSignals(False)
+
+    def _on_fps_changed(self):
+        """Handle FPS field edit."""
+        text = self.fps_display.text().strip()
+        if not text:
+            return
+        try:
+            fps = float(text)
+            if fps > 0:
+                self.app_state.fps_playback = fps
+            else:
+                self.fps_display.setText(f"{self.app_state.fps_playback:.1f}")
+        except ValueError:
+            self.fps_display.setText(f"{self.app_state.fps_playback:.1f}")
 
     def _update_trial_label(self):
         """Update trial counter label."""
