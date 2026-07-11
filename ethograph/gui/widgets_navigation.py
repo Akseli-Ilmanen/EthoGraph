@@ -233,11 +233,12 @@ class NavigationWidget(QWidget):
         navigate_layout.addLayout(jump_row)
 
         # ── Playback ─────────────────────────────────────────────────
-        playback_group = QGroupBox("Playback")
+        playback_group = QGroupBox()
+        playback_group.setFlat(True)
         self.playback_group = playback_group  # exposed for the video context sidebar
         playback_layout = QGridLayout()
-        playback_layout.setSpacing(2)
-        playback_layout.setContentsMargins(2, 2, 2, 2)
+        playback_layout.setSpacing(0)
+        playback_layout.setContentsMargins(0, 0, 0, 0)
         playback_group.setLayout(playback_layout)
 
         self.fps_label = QLabel("Playback FPS:")

@@ -324,9 +324,7 @@ class XarrayLoader(_CatalogMixin):
                 changepoints = cp_dict
 
         ylabel = var.attrs.get("ylabel", feature)
-        title_parts = [f"Trial: {ds.attrs.get('trial')}"]
-        title_parts.extend(f"{k}={v}" for k, v in filt_kwargs.items())
-        title = ", ".join(title_parts)
+        title = feature
 
         return PlotData(
             time=time,
@@ -487,13 +485,11 @@ class PynappleLoader(_CatalogMixin):
         stacked = np.column_stack(arrays) if len(arrays) > 1 else arrays[0]
         dim_labels = labels if stacked.ndim == 2 else None
 
-        title_parts = [f"{k}={v}" for k, v in selections.items() if k != "individuals"]
-
         return PlotData(
             time=time,
             data=stacked,
             dim_labels=dim_labels,
-            title=", ".join(title_parts),
+            title="pose_estimation",
             ylabel="pose_estimation",
         )
 
@@ -602,14 +598,11 @@ class PynappleLoader(_CatalogMixin):
             if cp_dict:
                 changepoints = cp_dict
 
-        title_parts = [f"{k}={v}" for k, v in selections.items() if k != "individuals"]
-        title = ", ".join(title_parts)
-
         return PlotData(
             time=time,
             data=data,
             dim_labels=dim_labels,
-            title=title,
+            title=feature,
             ylabel=feature,
             color_data=color_data,
             changepoints=changepoints,

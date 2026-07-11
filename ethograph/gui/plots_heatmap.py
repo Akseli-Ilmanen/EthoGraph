@@ -424,6 +424,12 @@ class HeatmapPlot(BasePlot):
     def _render_heatmap(self, t0: float, t1: float):
         self._rendering = True
         try:
+            view_mode = getattr(self.app_state, "feature_view_mode", "Heatmap")
+            if view_mode == "Heatmap":
+                self.setTitle(getattr(self.app_state, "features_sel", None))
+            else:
+                self.setTitle(None)
+
             result = self._get_buffered_data(t0, t1)
             if result[0] is None:
                 return
