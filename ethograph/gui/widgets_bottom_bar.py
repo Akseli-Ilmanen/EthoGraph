@@ -79,9 +79,10 @@ class BottomPlaybackBar(QWidget):
         self.fps_display.editingFinished.connect(self._on_fps_changed)
         layout.addWidget(self.fps_display)
 
-        # Trial info: "Trial X / Y"
+        # Trial info: "Trial <id> (i/n)"
         self.trial_label = QLabel("Trial - / -")
-        self.trial_label.setFixedWidth(100)
+        self.trial_label.setMinimumWidth(100)
+        self.trial_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.trial_label)
 
         # Prev trial button
@@ -169,15 +170,15 @@ class BottomPlaybackBar(QWidget):
             self.fps_display.setText(f"{self.app_state.fps_playback:.1f}")
 
     def _update_trial_label(self):
-        """Update trial counter label."""
+        """Update trial label with the actual trial ID plus positional counter."""
         trials = getattr(self.app_state, "trials", None)
         trials_sel = getattr(self.app_state, "trials_sel", None)
         if trials and trials_sel is not None:
             try:
                 idx = trials.index(trials_sel)
-                self.trial_label.setText(f"Trial {idx + 1} / {len(trials)}")
+                self.trial_label.setText(f"Trial {trials_sel} ({idx + 1}/{len(trials)})")
             except (ValueError, IndexError):
-                self.trial_label.setText("Trial - / -")
+                self.trial_label.setText(f"Trial {trials_sel}")
         else:
             self.trial_label.setText("Trial - / -")
 
