@@ -7,11 +7,13 @@ Layout
 - **Bottom dock** — the synced plots (``UnifiedPanelContainer``).
 - **Right dock** — the control sidebar (``MetaWidget``), collapsible via the
   toolbar button or ``Ctrl+0``.
-- Extra line-plot panels can be added from the View menu (pynaviz-style).
+- Extra line-plot panels are added by dragging a feature from the left sidebar.
 
-Layout persistence: geometry, dock state and extra line-plot features are
-saved to JSON (``File → Save layout``), and auto-restored from the session
-file on next launch.
+Layout persistence: geometry, dock state, plot-panel state (which panels are
+open, feature view, splitter sizes) and extra line-plot features are saved to
+JSON (``Layout → Save layout``), and auto-restored from the session file on
+next launch. A ``template_layout.json`` uploaded to a dataset's GitHub release
+is applied automatically after that template loads.
 """
 
 from __future__ import annotations
@@ -106,6 +108,16 @@ class EthographMainWindow(QMainWindow):
             0, lambda: self.resizeDocks([self._video_dock], [300], Qt.Vertical)
         )
 
+        # Bottom playback bar
+        from .widgets_bottom_bar import BottomPlaybackBar
+        bottom_bar = BottomPlaybackBar(meta_widget.app_state)
+        self._bottom_bar_dock = self.add_dock_widget(bottom_bar, area="bottom", name="Playback")
+        self._bottom_bar_dock.setObjectName("BottomBarDock")
+        self._bottom_bar_dock.setFeatures(
+            self._bottom_bar_dock.DockWidgetFeature.DockWidgetMovable
+        )
+        self.bottom_bar = bottom_bar
+
         # Left sidebar: draggable Media / Feature sources — full-height, narrow.
         left = getattr(meta_widget, "left_sidebar", None)
         if left is not None:
@@ -115,6 +127,17 @@ class EthographMainWindow(QMainWindow):
             QTimer.singleShot(0, lambda: self.resizeDocks(
                 [self._left_sidebar_dock], [150], Qt.Horizontal
             ))
+
+        # Wire bottom bar to data_widget and video sync
+        data_widget = getattr(meta_widget, "data_widget", None)
+        if data_widget is not None and hasattr(self, "bottom_bar"):
+            self.bottom_bar.set_data_widget(data_widget)
+            # Connect video sync when it becomes available
+            def _wire_video_sync():
+                if data_widget.video_mgr and hasattr(data_widget.video_mgr, "video_sync"):
+                    self.bottom_bar.connect_video_sync(data_widget.video_mgr.video_sync)
+
+            QTimer.singleShot(100, _wire_video_sync)
 
         # Build the reorganised top menu bar now that the sidebar sections exist.
         from .top_bar import build_menu_bar
@@ -235,31 +258,18 @@ class EthographMainWindow(QMainWindow):
         self._shortcuts = []
 
     # ------------------------------------------------------------------
-    # Extra line plots (pynaviz-style multi-panel)
-    # ------------------------------------------------------------------
-
-    def add_lineplot_dock(self, feature: str | None = None):
-        if self.meta_widget is None:
-            return None
-        container = self.meta_widget.plot_container
-        panel = container.add_extra_lineplot(feature=feature)
-        if panel is None:
-            notify("Load a dataset before adding line plots.", "warning")
-        return panel
-
-    # ------------------------------------------------------------------
     # Layout persistence
     # ------------------------------------------------------------------
 
     def _layout_dict(self) -> dict:
-        extra_features = []
+        plot_panels = None
         if self.meta_widget is not None:
-            extra_features = self.meta_widget.plot_container.extra_lineplot_features()
+            plot_panels = self.meta_widget.plot_container.layout_state()
         return {
             "version": _LAYOUT_VERSION,
             "geometry_b64": base64.b64encode(bytes(self.saveGeometry())).decode("ascii"),
             "state_b64": base64.b64encode(bytes(self.saveState(version=_LAYOUT_VERSION))).decode("ascii"),
-            "extra_lineplots": extra_features,
+            "plot_panels": plot_panels,
             "sidebar_visible": bool(self._sidebar_dock and self._sidebar_dock.isVisible()),
         }
 
@@ -272,7 +282,13 @@ class EthographMainWindow(QMainWindow):
         if verbose:
             notify(f"Layout saved to {path}")
 
-    def restore_layout(self, file_name: str | Path, verbose: bool = True):
+    def restore_layout(self, file_name: str | Path, verbose: bool = True, panels: bool = True):
+        """Restore a saved layout.
+
+        ``panels=False`` restores only window geometry/dock state — used for
+        the startup session restore, where no dataset is loaded yet (panel
+        state comes from the data load or a template layout instead).
+        """
         path = Path(file_name)
         if not path.is_file():
             return
@@ -289,8 +305,10 @@ class EthographMainWindow(QMainWindow):
             logger.info("Ignoring stale window layout (version mismatch).")
             return
 
-        for feature in payload.get("extra_lineplots", []):
-            self.add_lineplot_dock(feature=feature)
+        plot_panels = payload.get("plot_panels")
+        if panels and plot_panels and self.meta_widget is not None:
+            # Recreates open panels + extra line plots (needs a loaded dataset).
+            self.meta_widget.plot_container.apply_layout_state(plot_panels)
 
         try:
             self.restoreGeometry(QByteArray.fromBase64(payload["geometry_b64"].encode("ascii")))
@@ -307,11 +325,17 @@ class EthographMainWindow(QMainWindow):
             notify(f"Layout loaded from {path}")
 
     def _restore_session_layout(self):
-        self.restore_layout(_session_layout_path(), verbose=False)
+        self.restore_layout(_session_layout_path(), verbose=False, panels=False)
 
     def _save_layout_dialog(self):
+        # Default next to the loaded dataset as template_layout.json — upload
+        # that file to a dataset's GitHub release to ship a template layout.
+        default = Path.cwd() / "ethograph_layout.json"
+        nc_path = getattr(getattr(self.meta_widget, "app_state", None), "nc_file_path", None)
+        if nc_path:
+            default = Path(nc_path).parent / "template_layout.json"
         file_name, _ = QFileDialog.getSaveFileName(
-            self, "Save Layout", str(Path.cwd() / "ethograph_layout.json"), "Layout Files (*.json)"
+            self, "Save Layout", str(default), "Layout Files (*.json)"
         )
         if file_name:
             self.save_layout(file_name)
