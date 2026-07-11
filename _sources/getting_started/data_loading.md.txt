@@ -120,7 +120,6 @@ See {doc}`../api/trialtree` for full TrialTree usage.
 ```
 ~/.ethograph/                          # Global user defaults
     ├── mapping.txt                    # Default integer label_id → name mapping
-    ├── space.yaml                     # Extra config for space plot
     └── gui_settings.yaml              # Across-session GUI state
 
 my_project/
@@ -166,7 +165,6 @@ my_project/
 ```
 ~/.ethograph/                          # Global user defaults
     ├── mapping.txt                    # Default integer label_id → name mapping
-    ├── space.yaml                     # Extra config for space plot
     └── gui_settings.yaml              # Across-session GUI state
 
 my_project/
@@ -202,7 +200,6 @@ Pose estimation and other behavioural time series are stored inside the `.nwb` f
 ```
 ~/.ethograph/                          # Global user defaults
     ├── mapping.txt                    # Default integer label_id → name mapping
-    ├── space.yaml                     # Extra config for space plot
     └── gui_settings.yaml              # Across-session GUI state
 
 my_project/
