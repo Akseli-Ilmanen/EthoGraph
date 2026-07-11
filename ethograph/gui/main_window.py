@@ -9,34 +9,29 @@ Layout
   toolbar button or ``Ctrl+0``.
 - Extra line-plot panels are added by dragging a feature from the left sidebar.
 
-Layout persistence: geometry, dock state, plot-panel state (which panels are
-open, feature view, splitter sizes) and extra line-plot features are saved to
-JSON (``Layout → Save layout``), and auto-restored from the session file on
-next launch. A ``template_layout.json`` uploaded to a dataset's GitHub release
-is applied automatically after that template loads.
+Layout persistence (no JSON files): the outer window state (geometry, docks,
+sidebar) lives in ``app_state.window_state`` → ``gui_settings.yaml``; the
+plot-panel layout lives in ``app_state.panel_layout`` → the dataset's
+``.ethograph/local_settings.yaml``. Both are auto-saved (30 s timer + close)
+and restored automatically — there are no save/load layout actions.
 """
 
 from __future__ import annotations
 
 import base64
-import json
 import logging
-from pathlib import Path
 
 import numpy as np
 from qtpy.QtCore import QByteArray, Qt, QTimer
 from qtpy.QtGui import QAction, QKeySequence, QShortcut
 from qtpy.QtWidgets import (
     QDockWidget,
-    QFileDialog,
     QMainWindow,
     QScrollArea,
     QWidget,
 )
 
-from ethograph.utils.paths import default_config_dir
-
-from .notify import notify, set_toast_host
+from .notify import set_toast_host
 from .video_manager import VideoArea
 
 logger = logging.getLogger(__name__)
@@ -50,10 +45,6 @@ _DOCK_AREAS = {
 
 # Bump when the dock structure changes so stale saved layouts are ignored.
 _LAYOUT_VERSION = 2
-
-
-def _session_layout_path() -> Path:
-    return default_config_dir() / "window_layout.json"
 
 
 class EthographMainWindow(QMainWindow):
@@ -152,7 +143,7 @@ class EthographMainWindow(QMainWindow):
 
         self._sidebar_toggle.setChecked(True)
         # Restore the previous session's window layout once widgets exist.
-        QTimer.singleShot(0, self._restore_session_layout)
+        QTimer.singleShot(0, self._restore_window_state)
 
     def _apply_corner_ownership(self):
         """Left (Sources) and right (control) sidebars span the full window
@@ -260,58 +251,29 @@ class EthographMainWindow(QMainWindow):
         self._shortcuts = []
 
     # ------------------------------------------------------------------
-    # Layout persistence
+    # Window-state persistence (via app_state → gui_settings.yaml; no JSON)
     # ------------------------------------------------------------------
 
-    def _layout_dict(self) -> dict:
-        plot_panels = None
-        if self.meta_widget is not None:
-            plot_panels = self.meta_widget.plot_container.layout_state()
+    def capture_window_state(self) -> dict:
+        """Outer window only (geometry + docks + sidebar). The PANEL layout is
+        per-dataset state: app_state.panel_layout → .ethograph/local_settings.yaml."""
         return {
             "version": _LAYOUT_VERSION,
             "geometry_b64": base64.b64encode(bytes(self.saveGeometry())).decode("ascii"),
             "state_b64": base64.b64encode(bytes(self.saveState(version=_LAYOUT_VERSION))).decode("ascii"),
-            "plot_panels": plot_panels,
             "sidebar_visible": bool(self._sidebar_dock and self._sidebar_dock.isVisible()),
         }
 
-    def save_layout(self, file_name: str | Path | None = None, verbose: bool = True):
-        path = Path(file_name) if file_name else _session_layout_path()
-        path = path.with_suffix(".json")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(self._layout_dict(), f, indent=2)
-        if verbose:
-            notify(f"Layout saved to {path}")
-
-    def restore_layout(self, file_name: str | Path, verbose: bool = True, panels: bool = True):
-        """Restore a saved layout.
-
-        ``panels=False`` restores only window geometry/dock state — used for
-        the startup session restore, where no dataset is loaded yet (panel
-        state comes from the data load or a template layout instead).
-        """
-        path = Path(file_name)
-        if not path.is_file():
+    def _restore_window_state(self):
+        """Restore the outer window layout saved in gui_settings.yaml."""
+        payload = getattr(getattr(self.meta_widget, "app_state", None), "window_state", None)
+        if not payload:
             return
-        try:
-            with open(path, encoding="utf-8") as f:
-                payload = json.load(f)
-        except (OSError, json.JSONDecodeError) as e:
-            logger.warning("Could not read layout %s: %s", path, e)
-            return
-
-        # Ignore layouts saved by an incompatible (older) window structure — they
+        # Ignore state saved by an incompatible (older) window structure — it
         # would clobber the new video-top-dock / full-height-sidebar arrangement.
         if payload.get("version") != _LAYOUT_VERSION:
             logger.info("Ignoring stale window layout (version mismatch).")
             return
-
-        plot_panels = payload.get("plot_panels")
-        if panels and plot_panels and self.meta_widget is not None:
-            # Recreates open panels + extra line plots (needs a loaded dataset).
-            self.meta_widget.plot_container.apply_layout_state(plot_panels)
-
         try:
             self.restoreGeometry(QByteArray.fromBase64(payload["geometry_b64"].encode("ascii")))
             self.restoreState(
@@ -319,33 +281,10 @@ class EthographMainWindow(QMainWindow):
                 _LAYOUT_VERSION,
             )
         except (KeyError, Exception) as e:
-            logger.warning("Could not restore layout state: %s", e)
+            logger.warning("Could not restore window state: %s", e)
         # restoreState can reset corner ownership — re-assert full-height sidebars.
         self._apply_corner_ownership()
         self._sidebar_toggle.setChecked(payload.get("sidebar_visible", True))
-        if verbose:
-            notify(f"Layout loaded from {path}")
-
-    def _restore_session_layout(self):
-        self.restore_layout(_session_layout_path(), verbose=False, panels=False)
-
-    def _save_layout_dialog(self):
-        # Default next to the loaded dataset as template_layout.json — upload
-        # that file to a dataset's GitHub release to ship a template layout.
-        default = Path.cwd() / "ethograph_layout.json"
-        nc_path = getattr(getattr(self.meta_widget, "app_state", None), "nc_file_path", None)
-        if nc_path:
-            default = Path(nc_path).parent / "template_layout.json"
-        file_name, _ = QFileDialog.getSaveFileName(
-            self, "Save Layout", str(default), "Layout Files (*.json)"
-        )
-        if file_name:
-            self.save_layout(file_name)
-
-    def _load_layout_dialog(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Load Layout", "", "Layout Files (*.json)")
-        if file_name:
-            self.restore_layout(file_name)
 
     # ------------------------------------------------------------------
     # Close handling
@@ -355,7 +294,9 @@ class EthographMainWindow(QMainWindow):
         if self.meta_widget is not None:
             if not self.meta_widget._check_unsaved_changes(event):
                 return
-            self.save_layout(_session_layout_path(), verbose=False)
+            # Final layout snapshot: window state → gui_settings.yaml,
+            # panel layout → the dataset's local_settings.yaml.
+            self.meta_widget.app_state.save_to_yaml()
             if hasattr(self.meta_widget.app_state, "stop_auto_save"):
                 self.meta_widget.app_state.stop_auto_save()
             data_widget = getattr(self.meta_widget, "data_widget", None)

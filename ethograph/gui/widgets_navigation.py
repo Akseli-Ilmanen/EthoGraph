@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from qtpy.QtCore import Qt
@@ -33,8 +32,6 @@ from ethograph.utils.sequences import get_label_instances, match_sequences
 
 from .app_constants import AUDIO_SPEED_MAX, AUDIO_SPEED_MIN, AUDIO_SPEED_STEP
 from .dialog_screen_recorder import RecordButton
-
-logger = logging.getLogger(__name__)
 
 NAVIGATE_MODES = ["Trial", "Label", "Sequence"]
 SLIDER_SCOPES = ["Trial", "Trial Start", "Session"]
@@ -827,18 +824,41 @@ class NavigationWidget(QWidget):
         sio = getattr(self.app_state, "nwb_alignment", None)
         trials = getattr(self.app_state, "trials", None)
         if sio is None or not trials:
+            notify("Cannot jump: no trial timing info", severity="warning")
             return
         global_t = self.jump_time_spin.value()
         try:
-            trial_id, _rel_t = find_closest_trial(sio, trials, global_t)
+            trial_id, rel_t = find_closest_trial(sio, trials, global_t)
         except ValueError:
-            logger.warning("Cannot jump: no trial timing info")
+            notify("Cannot jump: no trial timing info", severity="warning")
             return
-        self.app_state.trials_sel = trial_id
-        self.trials_combo.blockSignals(True)
-        self.trials_combo.setCurrentText(str(trial_id))
-        self.trials_combo.blockSignals(False)
-        self.app_state.trial_changed.emit()
+        if trial_id != getattr(self.app_state, "trials_sel", None):
+            self.app_state.trials_sel = trial_id
+            self.trials_combo.blockSignals(True)
+            self.trials_combo.setCurrentText(str(trial_id))
+            self.trials_combo.blockSignals(False)
+            self.app_state.trial_changed.emit()
+            self._update_counter()
+
+        target_t = global_t if self.app_state.slider_scope == "session" else max(0.0, rel_t)
+        self._seek_to_time(target_t)
+
+    def _seek_to_time(self, time_s: float):
+        """Move the time marker (and video) to *time_s*, scrolling it into view."""
+        if self.plot_container is None:
+            return
+        self.plot_container.update_time_marker_by_time(time_s)
+        visible = TimeRange(*self.plot_container.get_current_xlim())
+        if not visible.contains(time_s):
+            master = getattr(self.plot_container, "_xlink_master", None) or getattr(
+                self.plot_container, "_feature_plot", None
+            )
+            if master is not None:
+                half = self.app_state.view_span / 2.0
+                master.vb.setXRange(time_s - half, time_s + half, padding=0)
+        video = getattr(self.app_state, "video", None)
+        if video is not None:
+            video.seek_to_frame(video.time_to_frame(time_s))
 
     def setup_trial_conditions(self, catalog):
         """No-op — trial condition filtering moved to TrialsWidget."""

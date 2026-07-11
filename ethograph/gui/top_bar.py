@@ -177,12 +177,9 @@ class TopBarBuilder:
     # ------------------------------------------------------------------
 
     def _build_layout_menu(self, menu_bar):
+        # Layout persistence is automatic (local_settings.yaml / gui_settings.yaml)
+        # — no save/load actions.
         menu = menu_bar.addMenu("&Layout")
-        menu.addAction("Layout templates…", self._on_layout_templates)
-        menu.addSeparator()
-        menu.addAction("Save layout…", self.shell._save_layout_dialog)
-        menu.addAction("Load layout…", self.shell._load_layout_dialog)
-        menu.addSeparator()
         menu.addAction("Reset layout (last clicked plot)", self._on_reset_last_plot)
         menu.addAction("Reset layout (all plots)", self._on_reset_all_plots)
         menu.addSeparator()
@@ -191,25 +188,6 @@ class TopBarBuilder:
         zen.toggled.connect(self._on_zen_toggled)
         self.shell._zen_action = zen
         menu.addAction(zen)
-
-    def _on_layout_templates(self):
-        from qtpy.QtWidgets import QInputDialog
-
-        from ethograph.utils.paths import default_config_dir
-
-        template_dir = default_config_dir()
-        files = sorted(template_dir.glob("*layout*.json"))
-        if not files:
-            from .notify import notify
-
-            notify("No layout templates found. Use 'Save layout' to create one.", "warning")
-            return
-        names = [f.name for f in files]
-        choice, ok = QInputDialog.getItem(
-            self.shell, "Layout templates", "Apply layout:", names, 0, False
-        )
-        if ok and choice:
-            self.shell.restore_layout(template_dir / choice)
 
     def _on_reset_all_plots(self):
         reset = self._first_method(self.meta, "_on_reset_layout")

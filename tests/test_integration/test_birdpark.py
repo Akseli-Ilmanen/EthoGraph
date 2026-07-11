@@ -288,11 +288,11 @@ class TestPlotPopulatedAfterLoad:
         _, meta = birdpark_gui
         pc = meta.plot_container
         assert pc._feature_type == "lineplot"
-        _assert_lineplot_has_data(pc.line_plot)
+        _assert_lineplot_has_data(pc.line_plots[0])
 
     def test_lineplot_x_within_reasonable_range(self, birdpark_gui):
         _, meta = birdpark_gui
-        lp = meta.plot_container.line_plot
+        lp = meta.plot_container.line_plots[0]
         x, _ = _get_curve_data(lp.plot_items)
         xlim = lp.get_current_xlim()
         assert x[0] <= xlim[1], "Curve starts after visible range"
@@ -300,7 +300,7 @@ class TestPlotPopulatedAfterLoad:
 
     def test_lineplot_y_is_finite(self, birdpark_gui):
         _, meta = birdpark_gui
-        lp = meta.plot_container.line_plot
+        lp = meta.plot_container.line_plots[0]
         _, y = _get_curve_data(lp.plot_items)
         assert np.all(np.isfinite(y)), "LinePlot y contains inf/nan"
 
@@ -329,7 +329,7 @@ class TestTrialSwitchUpdatesPlot:
         _, meta = moll2025_gui
         if len(meta.app_state.trials) < 2:
             pytest.skip("Need 2+ trials")
-        lp = meta.plot_container.line_plot
+        lp = meta.plot_container.line_plots[0]
         x1, y1 = _get_curve_data(lp.plot_items)
         x1, y1 = x1.copy(), y1.copy()
         meta.navigation_widget.next_trial()
@@ -341,7 +341,7 @@ class TestTrialSwitchUpdatesPlot:
 
     def test_lineplot_has_data_every_trial(self, moll2025_gui):
         _, meta = moll2025_gui
-        lp = meta.plot_container.line_plot
+        lp = meta.plot_container.line_plots[0]
         for trial in meta.app_state.trials:
             meta.navigation_widget.trials_combo.setCurrentText(str(trial))
             QApplication.processEvents()
@@ -370,7 +370,7 @@ class TestFeatureSwitchUpdatesPlot:
         features_combo = meta.data_widget.combos["features"]
         if features_combo.count() < 2:
             pytest.skip("Need 2+ features")
-        lp = meta.plot_container.line_plot
+        lp = meta.plot_container.line_plots[0]
         features_combo.setCurrentIndex(0)
         QApplication.processEvents()
         if features_combo.currentText() in ("Spectrogram", "Waveform"):
@@ -398,7 +398,7 @@ class TestFeatureSwitchUpdatesPlot:
     def test_every_feature_renders_data(self, birdpark_gui):
         _, meta = birdpark_gui
         features_combo = meta.data_widget.combos["features"]
-        lp = meta.plot_container.line_plot
+        lp = meta.plot_container.line_plots[0]
         for i in range(features_combo.count()):
             text = features_combo.itemText(i)
             if text in ("Spectrogram", "Waveform"):
@@ -440,7 +440,7 @@ class TestHeatmapMode:
         meta.data_widget.update_main_plot()
         QApplication.processEvents()
         assert pc._feature_type == "lineplot"
-        _assert_lineplot_has_data(pc.line_plot)
+        _assert_lineplot_has_data(pc.line_plots[0])
 
     def test_switch_to_heatmap_and_back_via_container(self, birdpark_gui):
         _, meta = birdpark_gui
@@ -461,7 +461,7 @@ class TestHeatmapMode:
 class TestPanZoom:
     def test_zoom_in_preserves_data(self, birdpark_gui):
         _, meta = birdpark_gui
-        lp = meta.plot_container.line_plot
+        lp = meta.plot_container.line_plots[0]
         xlim = lp.get_current_xlim()
         mid = (xlim[0] + xlim[1]) / 2
         quarter = (xlim[1] - xlim[0]) / 4
@@ -473,7 +473,7 @@ class TestPanZoom:
 
     def test_zoom_out_preserves_data(self, birdpark_gui):
         _, meta = birdpark_gui
-        lp = meta.plot_container.line_plot
+        lp = meta.plot_container.line_plots[0]
         xlim = lp.get_current_xlim()
         span = xlim[1] - xlim[0]
         mid = (xlim[0] + xlim[1]) / 2
@@ -483,7 +483,7 @@ class TestPanZoom:
 
     def test_pan_right_preserves_data(self, birdpark_gui):
         _, meta = birdpark_gui
-        lp = meta.plot_container.line_plot
+        lp = meta.plot_container.line_plots[0]
         xlim = lp.get_current_xlim()
         span = xlim[1] - xlim[0]
         shift = span * 0.3
@@ -493,7 +493,7 @@ class TestPanZoom:
 
     def test_pan_triggers_buffer_update(self, birdpark_gui):
         _, meta = birdpark_gui
-        lp = meta.plot_container.line_plot
+        lp = meta.plot_container.line_plots[0]
         xlim = lp.get_current_xlim()
         trial_dur = xlim[1] - xlim[0]
         if trial_dur < 0.5:
@@ -550,8 +550,17 @@ class TestTimeAxesAlignment:
 
 class TestHiddenPanelsNoData:
     def _toggle_panel(self, meta, name, checked):
-        cb = getattr(meta.data_widget, f"{name}_checkbox")
-        cb.setChecked(checked)
+        # Panels are layout instances now: hiding mimics the panel's ✕ button,
+        # showing mimics drag-and-drop from the left sidebar (which re-wires
+        # the audio source via update_audio_panels).
+        pc = meta.plot_container
+        setter = {
+            "audiotrace": pc.set_audiotrace_visible,
+            "spectrogram": pc.set_spectrogram_visible,
+        }[name]
+        setter(checked)
+        if checked:
+            pc.update_audio_panels()
         QApplication.processEvents()
 
     def test_audiotrace_hidden_clears_source(self, no_video_gui):
@@ -638,11 +647,13 @@ class TestHiddenPanelsNoData:
         assert pc.ephys_trace_plot.buffer.loader is None
         assert pc.ephys_trace_plot._source is None
 
-    def test_featureplot_hidden_no_update_on_xrange(self, birdpark_gui):
+    def test_all_lineplots_removable(self, birdpark_gui):
         _, meta = birdpark_gui
         pc = meta.plot_container
-        self._toggle_panel(meta, "featureplot", False)
-        pc.line_plot._on_view_range_changed()
+        for plot in list(pc.line_plots):
+            pc.remove_lineplot(plot)
+        QApplication.processEvents()
+        assert pc.line_plots == []
 
     def test_update_audio_panels_skips_hidden(self, no_video_gui):
         _, meta = no_video_gui

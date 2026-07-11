@@ -6,6 +6,7 @@ the DataLoader so xarray, pynapple, and NWB sources all work.
 """
 
 import logging
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -33,77 +34,43 @@ logger = logging.getLogger(__name__)
 
 SEPARATOR = " · "
 
+#: Dim name that gets priority as the default axis dimension.
+SPACE_DIM_NAME = "space"
+
+#: Default color-combo entry — trajectory colored by label highlight.
+LABELS_COLOR_MODE = "Labels"
+
 
 # ---------------------------------------------------------------------------
-# Axis item helpers
+# Axis selection helper
 # ---------------------------------------------------------------------------
-
-
-def _build_axis_items(store: DataLoader) -> list[str]:
-    """Build combo items from store features + their sub-dimensions.
-
-    Each item is either ``"feature"`` (1-D) or ``"feature · column"`` (2-D+).
-    Multi-dimensional features (e.g. position with space×keypoint×individual)
-    expand only the *first* non-time dimension into separate axis items.
-    The remaining dimensions are controlled by the main GUI selections.
-    """
-    items: list[str] = []
-
-    for feat in store.features:
-        feat_dims = store.feature_dims(feat)
-        if feat_dims:
-            first_dim_values = next(iter(feat_dims.values()))
-            for val in first_dim_values:
-                items.append(f"{feat}{SEPARATOR}{val}")
-        else:
-            items.append(feat)
-
-    return items
-
-
-def _parse_axis_item(item: str) -> tuple[str, str | None]:
-    """Parse ``"feature · column"`` → ``(feature, column)``."""
-    if SEPARATOR in item:
-        feat, col = item.split(SEPARATOR, 1)
-        return feat, col
-    return item, None
 
 
 def _select_axis(
     store: DataLoader,
-    item: str,
-    ds_kwargs: dict,
+    feature: str,
+    selections: dict[str, str],
     t0: float | None = None,
     t1: float | None = None,
+    color_variable: str | None = None,
 ):
-    """Fetch 1-D numpy array + time for a single axis item.
+    """Fetch 1-D numpy array + time (+ optional color data) for a single axis.
 
-    Follows the ``select_feature`` / ``plot_ds_variable`` pattern: pass
-    ``ds_kwargs`` straight through to ``store.select``, which uses
+    ``selections`` pins the axis dimension to one value (e.g. ``space="x"``)
+    plus the values of every extra dim combo; ``store.select`` uses
     ``sel_valid`` internally and ignores dimensions the feature doesn't have.
-    The only axis-specific logic is overriding the right dimension key with
-    the column encoded in the combo item (e.g. "position · x" → space="x").
 
-    Returns ``(time, data)`` or ``(None, None)`` on failure.
+    Returns ``(time, data, color_data)`` or ``(None, None, None)`` on failure.
     """
-    feat, col = _parse_axis_item(item)
-
-    kw = dict(ds_kwargs)
-    if col is not None:
-        for dim_name, dim_vals in store.feature_dims(feat).items():
-            if col in dim_vals:
-                kw[dim_name] = col
-                break
-
-    pd = store.select(feat, kw, t0=t0, t1=t1)
+    pd = store.select(feature, selections, t0=t0, t1=t1, color_variable=color_variable)
     if pd is None:
-        return None, None
+        return None, None, None
 
     data = pd.data
     if data.ndim == 2:
         data = data[:, 0]
 
-    return pd.time, data.astype(np.float64)
+    return pd.time, data.astype(np.float64), pd.color_data
 
 
 # ---------------------------------------------------------------------------
@@ -121,73 +88,75 @@ class ReferenceGeometry:
     color: str = "black"
 
 
-def load_space_config(config_path: Path) -> Optional[dict]:
-    """Load space config from YAML. Returns None if file is absent."""
-    if not config_path.exists():
+def load_geometry_yaml(path: Path) -> Optional[dict]:
+    """Load a geometry YAML file. Returns None if the file is absent."""
+    if not path.exists():
         return None
-    with open(config_path) as f:
+    with open(path) as f:
         return yaml.safe_load(f)
 
 
-def _parse_references(cfg: dict) -> list[ReferenceGeometry]:
-    """Parse reference geometry from space.yaml config.
+#: User library of reference geometries. Drop a ``*.yaml`` file here (each with
+#: a ``references:`` list, possibly several named geometries) to make its
+#: geometries selectable in the Space controls / persist-able as a default via
+#: ``space_library_geometry`` in gui_settings.yaml or local_settings.yaml.
+GEOMETRY_LIBRARY_DIR = Path.home() / ".ethograph" / "geometries"
 
-    Supports new format (``references`` list with vertices + edges)
-    and old format (``arena.xy_polygon`` + ``z_bot``/``z_top``).
+#: Default geometries shipped with the package — contribute new ones via PR.
+BUNDLED_GEOMETRIES_DIR = Path(__file__).resolve().parents[1] / "geometries"
+
+
+def ensure_geometry_library() -> Path:
+    """Create the geometry library on first run, seeded with the package's
+    default geometries (``ethograph/geometries/*.yaml``). An existing library
+    (even an emptied one) is untouched, so user deletions stick."""
+    if not GEOMETRY_LIBRARY_DIR.exists():
+        GEOMETRY_LIBRARY_DIR.mkdir(parents=True)
+        if BUNDLED_GEOMETRIES_DIR.is_dir():
+            for src in sorted(BUNDLED_GEOMETRIES_DIR.glob("*.y*ml")):
+                shutil.copyfile(src, GEOMETRY_LIBRARY_DIR / src.name)
+    return GEOMETRY_LIBRARY_DIR
+
+
+def load_library_geometries(lib_dir: Path | None = None) -> dict[str, "ReferenceGeometry"]:
+    """Parse every YAML file in the geometry library, keyed by geometry name.
+
+    On a name collision the geometry from the alphabetically later file wins.
+    Unparseable files are skipped with a log message (user-supplied input).
     """
+    lib_dir = GEOMETRY_LIBRARY_DIR if lib_dir is None else Path(lib_dir)
+    geometries: dict[str, ReferenceGeometry] = {}
+    if not lib_dir.is_dir():
+        return geometries
+    for path in sorted(lib_dir.glob("*.y*ml")):
+        cfg = load_geometry_yaml(path)
+        if not cfg:
+            continue
+        try:
+            refs = _parse_references(cfg)
+        except Exception:
+            logger.exception("Failed to parse geometry library file %s", path)
+            continue
+        for ref in refs:
+            geometries[ref.name] = ref
+    return geometries
+
+
+def _parse_references(cfg: dict) -> list[ReferenceGeometry]:
+    """Parse a geometry config's ``references`` list (name/vertices/edges/color)
+    into :class:`ReferenceGeometry` objects."""
     refs: list[ReferenceGeometry] = []
-
-    # New format: list of {name, vertices, edges, color}
-    if "references" in cfg:
-        for entry in cfg["references"]:
-            verts = np.array(entry["vertices"], dtype=np.float64)
-            edges = [tuple(e) for e in entry["edges"]]
-            refs.append(
-                ReferenceGeometry(
-                    name=entry.get("name", "ref"),
-                    vertices=verts,
-                    edges=edges,
-                    color=entry.get("color", "black"),
-                )
+    for entry in cfg.get("references", []):
+        verts = np.array(entry["vertices"], dtype=np.float64)
+        edges = [tuple(e) for e in entry["edges"]]
+        refs.append(
+            ReferenceGeometry(
+                name=entry.get("name", "ref"),
+                vertices=verts,
+                edges=edges,
+                color=entry.get("color", "black"),
             )
-        return refs
-
-    # Old format: arena with xy_polygon + z_bot/z_top → auto-convert
-    arena = cfg.get("arena", cfg)
-    if "xy_polygon" not in arena:
-        return refs
-
-    xy = np.array(arena["xy_polygon"], dtype=np.float64)
-    z_bot = arena.get("z_bot")
-    z_top = arena.get("z_top")
-
-    if z_bot is not None and z_top is not None:
-        # Build 3D box wireframe from 2D polygon floor + ceiling
-        n = len(xy)
-        floor = np.column_stack([xy, np.full(n, z_bot)])
-        ceil = np.column_stack([xy, np.full(n, z_top)])
-        verts = np.vstack([floor, ceil])
-
-        edges = []
-        for i in range(n - 1):
-            edges.append((i, i + 1))  # floor edges
-            edges.append((n + i, n + i + 1))  # ceiling edges
-            edges.append((i, n + i))  # verticals
-        # Close floor/ceiling if not already closed
-        if not np.allclose(xy[0], xy[-1]):
-            edges.append((n - 1, 0))
-            edges.append((2 * n - 1, n))
-        edges.append((n - 1, 2 * n - 1))  # last vertical
-
-        refs.append(ReferenceGeometry("arena", verts, edges))
-    else:
-        # 2D polygon only
-        n = len(xy)
-        edges = [(i, i + 1) for i in range(n - 1)]
-        if not np.allclose(xy[0], xy[-1]):
-            edges.append((n - 1, 0))
-        refs.append(ReferenceGeometry("arena", xy, edges))
-
+        )
     return refs
 
 
@@ -318,7 +287,30 @@ class SpacePlot(QWidget):
         root.setSpacing(4)
         self.setLayout(root)
 
-        # Row 1: axis combos
+        # Row 1: 3D checkbox + feature combo
+        row1 = QHBoxLayout()
+        row1.setContentsMargins(0, 0, 0, 0)
+        row1.setSpacing(6)
+
+        self.cb_3d = QCheckBox("3D")
+        row1.addWidget(self.cb_3d)
+
+        row1.addWidget(QLabel("Feature"))
+        self.feature_combo = QComboBox()
+        self.feature_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        row1.addWidget(self.feature_combo)
+
+        # Row 2: axis-dimension combo
+        row2 = QHBoxLayout()
+        row2.setContentsMargins(0, 0, 0, 0)
+        row2.setSpacing(6)
+
+        row2.addWidget(QLabel("Space dim:"))
+        self.space_dim_combo = QComboBox()
+        self.space_dim_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        row2.addWidget(self.space_dim_combo)
+
+        # Row 3: axis combos — values along the selected space dim
         toolbar = QHBoxLayout()
         toolbar.setContentsMargins(0, 0, 0, 0)
         toolbar.setSpacing(6)
@@ -339,29 +331,37 @@ class SpacePlot(QWidget):
         self.z_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         toolbar.addWidget(self.z_combo)
 
-        # Row 2: 3D checkbox + keypoint filter
-        row2 = QHBoxLayout()
-        row2.setContentsMargins(0, 0, 0, 0)
-        row2.setSpacing(6)
+        # Dynamic rows: one combo per remaining (non-space) dimension of the
+        # selected feature — catalog-driven, replaces the hardcoded keypoint combo.
+        self._dim_rows = QVBoxLayout()
+        self._dim_rows.setContentsMargins(0, 0, 0, 0)
+        self._dim_rows.setSpacing(4)
+        self._dim_combos: dict[str, QComboBox] = {}
+        self._prev_dim_values: dict[str, str | None] = {}  # for toggle-back with shift+k
+        self._current_dim_values: dict[str, str | None] = {}
 
-        self.cb_3d = QCheckBox("3D")
-        row2.addWidget(self.cb_3d)
+        # Last row: color combo
+        color_row = QHBoxLayout()
+        color_row.setContentsMargins(0, 0, 0, 0)
+        color_row.setSpacing(6)
 
-        self.keypoint_label = QLabel("Keypoint")
-        row2.addWidget(self.keypoint_label)
-        self.keypoint_combo = QComboBox()
-        self.keypoint_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        row2.addWidget(self.keypoint_combo)
+        color_row.addWidget(QLabel("Color"))
+        self.color_combo = QComboBox()
+        self.color_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        color_row.addWidget(self.color_combo)
 
-        # The axis (X/Y/Z) + 3D controls live in the sidebar's Space context, not
-        # on the plot; they are re-parented there when the space plot is created
+        # These controls live in the sidebar's Space context, not on the plot;
+        # they are re-parented there when the space plot is created
         # (see DataWidget.update_space_plot).
         self.controls_widget = QWidget()
         controls_v = QVBoxLayout(self.controls_widget)
         controls_v.setContentsMargins(0, 0, 0, 0)
         controls_v.setSpacing(4)
-        controls_v.addLayout(toolbar)
+        controls_v.addLayout(row1)
         controls_v.addLayout(row2)
+        controls_v.addLayout(toolbar)
+        controls_v.addLayout(self._dim_rows)
+        controls_v.addLayout(color_row)
 
         # Plot area — stable container that stays in the layout; the actual
         # PlotWidget / GLViewWidget is swapped inside it.
@@ -385,20 +385,22 @@ class SpacePlot(QWidget):
         self._trajectory_times: np.ndarray | None = None
         self._time_marker_item = None
         self._locked_ranges: dict | None = None  # saved axis ranges when lock is on
-        self._prev_keypoint: str | None = None  # for toggle-back with shift+k
 
         # Connect combo/checkbox signals
+        self.feature_combo.currentIndexChanged.connect(self._on_feature_changed)
+        self.space_dim_combo.currentIndexChanged.connect(self._on_space_dim_changed)
         self.x_combo.currentIndexChanged.connect(self._on_axis_changed)
         self.y_combo.currentIndexChanged.connect(self._on_axis_changed)
         self.z_combo.currentIndexChanged.connect(self._on_axis_changed)
+        self.color_combo.currentIndexChanged.connect(self._on_axis_changed)
         self.cb_3d.toggled.connect(self._on_3d_toggled)
-        self.keypoint_combo.currentIndexChanged.connect(self._on_keypoint_changed)
 
         # Listen for settings changes via app_state
         app_state.space_percentile_xyzlim_changed.connect(self._on_settings_changed)
         app_state.space_limit_to_window_changed.connect(self._on_settings_changed)
         app_state.space_hide_zeros_changed.connect(self._on_settings_changed)
         app_state.space_show_references_changed.connect(self._on_settings_changed)
+        app_state.space_library_geometry_changed.connect(self._on_settings_changed)
 
         self._set_3d_visible(False)
         super().hide()
@@ -436,146 +438,247 @@ class SpacePlot(QWidget):
         """Re-render with current axis selections."""
         self._update_plot()
 
+    def configure(self, feature: str | None = None, view_3d: bool | None = None):
+        """Programmatically set feature and/or 2D/3D mode, then re-render once.
+
+        Used when a panel is created via drag-drop ("Space (2D)" / "Space (3D)"
+        in the plot-type picker).
+        """
+        if feature is not None:
+            idx = self.feature_combo.findText(feature)
+            if idx >= 0 and idx != self.feature_combo.currentIndex():
+                self.feature_combo.blockSignals(True)
+                self.feature_combo.setCurrentIndex(idx)
+                self.feature_combo.blockSignals(False)
+                self._populate_space_dim_combo()
+                self._populate_axis_combos()
+                self._rebuild_dim_combos()
+        if view_3d is not None:
+            self.cb_3d.blockSignals(True)
+            self.cb_3d.setChecked(view_3d)
+            self.cb_3d.blockSignals(False)
+            self._set_3d_visible(view_3d)
+        if self._store is not None:
+            self._save_to_app_state()
+            self._update_plot()
+
     # --- Combo population --------------------------------------------------
 
     def _populate_combos(self):
-        """Fill axis combos from the current store, preserving current selections."""
-        prev_x = self.x_combo.currentText()
-        prev_y = self.y_combo.currentText()
-        prev_z = self.z_combo.currentText()
-        prev_kp = self.keypoint_combo.currentText()
-
-        all_combos = (self.x_combo, self.y_combo, self.z_combo, self.keypoint_combo)
-        for combo in all_combos:
-            combo.blockSignals(True)
-            combo.clear()
+        """Fill all combos from the current store: feature → space dim →
+        axis values → extra dim combos → color."""
+        self.feature_combo.blockSignals(True)
+        self.feature_combo.clear()
 
         if self._store is None:
-            for combo in all_combos:
-                combo.blockSignals(False)
+            self.feature_combo.blockSignals(False)
+            self._clear_dim_combos()
             return
 
-        items = _build_axis_items(self._store)
-        for combo in (self.x_combo, self.y_combo, self.z_combo):
-            combo.addItems(items)
+        self.feature_combo.addItems(self._store.features)
+        saved = getattr(self.app_state, "space_feature", None)
+        idx = self.feature_combo.findText(saved) if saved else -1
+        if idx >= 0:
+            self.feature_combo.setCurrentIndex(idx)
+        else:
+            default = self._default_feature()
+            if default:
+                self.feature_combo.setCurrentIndex(self.feature_combo.findText(default))
+        self.feature_combo.blockSignals(False)
 
-        # Restore previous axis selections; fall back to smart defaults.
-        def _restore_or_default(combo, prev, default_fn):
-            idx = combo.findText(prev) if prev else -1
+        self._populate_space_dim_combo()
+        self._populate_axis_combos()
+        self._rebuild_dim_combos()
+        self._populate_color_combo()
+
+    def _default_feature(self) -> str | None:
+        """Prefer a feature with a dim named "space"; else the first feature
+        with any multi-valued dim; else the first feature."""
+        feats = self._store.features
+        if not feats:
+            return None
+        for feat in feats:
+            if any(d.lower() == SPACE_DIM_NAME for d in self._store.feature_dims(feat)):
+                return feat
+        for feat in feats:
+            if any(len(v) >= 2 for v in self._store.feature_dims(feat).values()):
+                return feat
+        return feats[0]
+
+    def _feature_dims(self) -> dict[str, list[str]]:
+        feat = self.feature_combo.currentText()
+        if self._store is None or not feat:
+            return {}
+        return self._store.feature_dims(feat)
+
+    def _populate_space_dim_combo(self):
+        """Fill the space-dim combo with the selected feature's dims.
+
+        A dim literally named "space" gets priority as default (movement
+        datasets); otherwise the first dim (e.g. "pca").
+        """
+        combo = self.space_dim_combo
+        prev = combo.currentText()
+        combo.blockSignals(True)
+        combo.clear()
+        dims = list(self._feature_dims())
+        combo.addItems(dims)
+
+        saved = getattr(self.app_state, "space_dim", None)
+        space_named = next((d for d in dims if d.lower() == SPACE_DIM_NAME), None)
+        for candidate in (prev, saved, space_named):
+            idx = combo.findText(candidate) if candidate else -1
             if idx >= 0:
                 combo.setCurrentIndex(idx)
+                break
+        combo.blockSignals(False)
+
+    def _populate_axis_combos(self):
+        """Fill X/Y/Z combos with the space dim's values.
+
+        Defaults: values named x/y/z if present, else the first three values
+        (the user can always pick any other value manually).
+        """
+        vals = self._feature_dims().get(self.space_dim_combo.currentText(), [])
+        lower = [v.lower() for v in vals]
+
+        saved = (
+            getattr(self.app_state, "space_x_axis", None),
+            getattr(self.app_state, "space_y_axis", None),
+            getattr(self.app_state, "space_z_axis", None),
+        )
+        axis_combos = (self.x_combo, self.y_combo, self.z_combo)
+        prev = tuple(c.currentText() for c in axis_combos)
+
+        for i, (combo, name) in enumerate(zip(axis_combos, ("x", "y", "z"))):
+            if name in lower:
+                default = vals[lower.index(name)]
+            elif vals:
+                default = vals[min(i, len(vals) - 1)]
             else:
-                default_fn()
-
-        if prev_x or prev_y:
-            _restore_or_default(self.x_combo, prev_x, lambda: None)
-            _restore_or_default(self.y_combo, prev_y, lambda: None)
-            _restore_or_default(self.z_combo, prev_z, lambda: None)
-            if not any(c.currentText() for c in (self.x_combo, self.y_combo)):
-                self._set_default_axes(items)
-        else:
-            self._set_default_axes(items)
-
-        # Populate keypoint combo from non-first (non-axis-expanded) dimensions
-        self._populate_keypoint_combo()
-
-        # Restore previous keypoint selection if still available.
-        if prev_kp:
-            idx = self.keypoint_combo.findText(prev_kp)
-            if idx >= 0:
-                self.keypoint_combo.setCurrentIndex(idx)
-
-        for combo in all_combos:
+                default = None
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItems(vals)
+            for candidate in (prev[i], saved[i], default):
+                idx = combo.findText(candidate) if candidate else -1
+                if idx >= 0:
+                    combo.setCurrentIndex(idx)
+                    break
             combo.blockSignals(False)
 
-    def _set_default_axes(self, items: list[str]):
-        """Pick sensible defaults for X/Y/Z combos."""
+    def _clear_dim_combos(self):
+        while self._dim_rows.count():
+            item = self._dim_rows.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        self._dim_combos = {}
+        self._current_dim_values = {}
 
-        def find(suffix: str) -> int:
-            for i, item in enumerate(items):
-                if item.endswith(f"{SEPARATOR}{suffix}"):
-                    return i
-            return -1
+    def _rebuild_dim_combos(self):
+        """One combo per non-space dimension of the selected feature
+        (keypoints, individuals, …) — whatever the catalog exposes."""
+        self._clear_dim_combos()
+        space_dim = self.space_dim_combo.currentText()
+        global_sels = self.app_state.get_selections() if hasattr(self.app_state, "get_selections") else {}
 
-        ix = find("x")
-        iy = find("y")
-        iz = find("z")
+        for dim, vals in self._feature_dims().items():
+            if dim == space_dim or not vals:
+                continue
+            row = QWidget()
+            layout = QHBoxLayout(row)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(6)
+            layout.addWidget(QLabel(dim.capitalize()))
 
-        if ix >= 0 and iy >= 0:
-            self.x_combo.setCurrentIndex(ix)
-            self.y_combo.setCurrentIndex(iy)
-            if iz >= 0:
-                self.z_combo.setCurrentIndex(iz)
-        else:
-            # Fallback: first two items
-            if len(items) >= 2:
-                self.x_combo.setCurrentIndex(0)
-                self.y_combo.setCurrentIndex(1)
-            if len(items) >= 3:
-                self.z_combo.setCurrentIndex(2)
+            combo = QComboBox()
+            combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            combo.addItems(vals)
+            preset = global_sels.get(dim)
+            if preset is not None:
+                idx = combo.findText(str(preset))
+                if idx >= 0:
+                    combo.setCurrentIndex(idx)
+            combo.currentIndexChanged.connect(lambda _i, d=dim: self._on_dim_changed(d))
+            layout.addWidget(combo)
 
-    _KEYPOINT_DIM_NAMES = {"keypoint", "keypoints"}
+            self._dim_rows.addWidget(row)
+            self._dim_combos[dim] = combo
+            self._current_dim_values[dim] = combo.currentText()
 
-    def _populate_keypoint_combo(self):
-        """Populate keypoint combo from keypoint dimensions of store features."""
-        if self._store is None:
-            return
+    def _populate_color_combo(self):
+        """Color combo: "Labels" (default label-highlight mode) + all features."""
+        combo = self.color_combo
+        prev = combo.currentText()
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem(LABELS_COLOR_MODE)
+        if self._store is not None:
+            combo.addItems(self._store.features)
+        saved = getattr(self.app_state, "space_color", None)
+        for candidate in (prev, saved):
+            idx = combo.findText(candidate) if candidate else -1
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+                break
+        combo.blockSignals(False)
 
-        keypoint_vals: list[str] = []
-        self._keypoint_dim_name = None
-        for feat in self._store.features:
-            for dim_name, dim_vals in self._store.feature_dims(feat).items():
-                if dim_name.lower() not in self._KEYPOINT_DIM_NAMES or not dim_vals:
-                    continue
-                self._keypoint_dim_name = dim_name
-                for v in dim_vals:
-                    if v not in keypoint_vals:
-                        keypoint_vals.append(v)
+    def _get_dim_selections(self) -> dict[str, str]:
+        """Selection dict from the extra dim combos (non-space dims)."""
+        return {dim: c.currentText() for dim, c in self._dim_combos.items() if c.currentText()}
 
-        has_keypoints = bool(keypoint_vals)
-        self.keypoint_combo.setVisible(has_keypoints)
-        self.keypoint_label.setVisible(has_keypoints)
-        if has_keypoints:
-            self.keypoint_combo.addItems(keypoint_vals)
-
-    def _get_keypoint_selection(self) -> dict[str, str]:
-        """Return selection dict override from the keypoint combo."""
-        text = self.keypoint_combo.currentText()
-        if not text:
-            return {}
-        if SEPARATOR in text:
-            dim_name, val = text.split(SEPARATOR, 1)
-            return {dim_name: val}
-        dim_name = getattr(self, "_keypoint_dim_name", None)
-        if dim_name:
-            return {dim_name: text}
-        return {}
+    def color_variable(self) -> str | None:
+        """Feature used for trajectory coloring, or None in the default
+        label-highlight ("Labels") mode."""
+        text = self.color_combo.currentText()
+        return text if text and text != LABELS_COLOR_MODE else None
 
     def toggle_keypoint(self):
-        """Toggle between current and previous keypoint selection (shift+k)."""
-        combo = self.keypoint_combo
-        if not combo.isVisible() or combo.count() < 2:
+        """Toggle the keypoint-like dim combo (else the first extra dim combo)
+        between its current and previous value (shift+k)."""
+        dim = next((d for d in self._dim_combos if d.lower() in ("keypoint", "keypoints")), None)
+        if dim is None:
+            dim = next(iter(self._dim_combos), None)
+        combo = self._dim_combos.get(dim)
+        if combo is None or combo.count() < 2:
             return
         current = combo.currentText()
-        if self._prev_keypoint and self._prev_keypoint != current:
-            idx = combo.findText(self._prev_keypoint)
+        prev = self._prev_dim_values.get(dim)
+        if prev and prev != current:
+            idx = combo.findText(prev)
             if idx >= 0:
                 combo.setCurrentIndex(idx)
                 return
         # No valid previous — cycle to next
         combo.setCurrentIndex((combo.currentIndex() + 1) % combo.count())
 
-    # --- Axis change handlers ----------------------------------------------
+    # --- Change handlers -----------------------------------------------------
 
-    def _on_keypoint_changed(self, *_args):
-        new_text = self.keypoint_combo.currentText()
-        # _prev_keypoint is the value *before* this change (set at the end of
-        # the previous call, or None on first change).
-        if new_text and new_text != getattr(self, "_current_keypoint", None):
-            self._prev_keypoint = getattr(self, "_current_keypoint", None)
-            self._current_keypoint = new_text
+    def _on_feature_changed(self, *_args):
+        self._populate_space_dim_combo()
+        self._populate_axis_combos()
+        self._rebuild_dim_combos()
         if self._store is not None:
             self._save_to_app_state()
+            self._update_plot()
+
+    def _on_space_dim_changed(self, *_args):
+        self._populate_axis_combos()
+        self._rebuild_dim_combos()
+        if self._store is not None:
+            self._save_to_app_state()
+            self._update_plot()
+
+    def _on_dim_changed(self, dim: str):
+        combo = self._dim_combos.get(dim)
+        if combo is not None:
+            new_text = combo.currentText()
+            current = self._current_dim_values.get(dim)
+            if new_text and new_text != current:
+                self._prev_dim_values[dim] = current
+                self._current_dim_values[dim] = new_text
+        if self._store is not None:
             self._update_plot()
 
     def _on_axis_changed(self, *_args):
@@ -600,10 +703,13 @@ class SpacePlot(QWidget):
             self._debounce_timer.start()
 
     def _save_to_app_state(self):
+        self.app_state.space_feature = self.feature_combo.currentText() or None
+        self.app_state.space_dim = self.space_dim_combo.currentText() or None
         self.app_state.space_x_axis = self.x_combo.currentText() or None
         self.app_state.space_y_axis = self.y_combo.currentText() or None
         self.app_state.space_z_axis = self.z_combo.currentText() or None
         self.app_state.space_3d = self.cb_3d.isChecked()
+        self.app_state.space_color = self.color_combo.currentText() or None
 
     def _set_3d_visible(self, visible: bool):
         self.z_label.setVisible(visible)
@@ -628,16 +734,18 @@ class SpacePlot(QWidget):
         if store is None:
             return
 
-        x_item = self.x_combo.currentText()
-        y_item = self.y_combo.currentText()
-        if not x_item or not y_item:
+        feature = self.feature_combo.currentText()
+        space_dim = self.space_dim_combo.currentText()
+        x_val = self.x_combo.currentText()
+        y_val = self.y_combo.currentText()
+        if not feature or not space_dim or not x_val or not y_val:
             return
 
         view_3d = self.cb_3d.isChecked()
-        z_item = self.z_combo.currentText() if view_3d else None
+        z_val = self.z_combo.currentText() if view_3d else None
+        color_var = self.color_variable()
 
-        ds_kwargs = dict(self.app_state.get_ds_kwargs())
-        ds_kwargs.update(self._get_keypoint_selection())
+        selections = self._get_dim_selections()
         t0, t1 = self._get_window_time_range()
         if t0 is None or t1 is None:
             wb = self.app_state.window_bounds
@@ -646,18 +754,22 @@ class SpacePlot(QWidget):
         if t0 is None or t1 is None:
             return
 
-        time_x, data_x = _select_axis(store, x_item, ds_kwargs, t0=t0, t1=t1)
-        time_y, data_y = _select_axis(store, y_item, ds_kwargs, t0=t0, t1=t1)
+        time_x, data_x, color_data = _select_axis(
+            store, feature, {**selections, space_dim: x_val}, t0=t0, t1=t1, color_variable=color_var
+        )
+        time_y, data_y, _ = _select_axis(store, feature, {**selections, space_dim: y_val}, t0=t0, t1=t1)
         if time_x is None or time_y is None:
             return
 
         n = min(len(data_x), len(data_y))
         data_x, data_y = data_x[:n], data_y[:n]
         times = time_x[:n]
+        if color_data is not None:
+            color_data = color_data[:n]
 
         data_z = None
-        if view_3d and z_item:
-            _, dz = _select_axis(store, z_item, ds_kwargs, t0=t0, t1=t1)
+        if view_3d and z_val:
+            _, dz, _ = _select_axis(store, feature, {**selections, space_dim: z_val}, t0=t0, t1=t1)
             if dz is not None:
                 data_z = dz[:n]
 
@@ -670,8 +782,6 @@ class SpacePlot(QWidget):
             data_y = np.where(zero_mask, np.nan, data_y)
             if data_z is not None:
                 data_z = np.where(zero_mask, np.nan, data_z)
-
-        color_data = None
 
         use_3d = view_3d and data_z is not None
         locked = getattr(self.app_state, "space_lock_axes", False)
@@ -693,8 +803,8 @@ class SpacePlot(QWidget):
         else:
             _render_2d(self.space_widget, data_x, data_y, color_data)
             plot_item = self.space_widget.getPlotItem()
-            plot_item.setLabel("bottom", x_item)
-            plot_item.setLabel("left", y_item)
+            plot_item.setLabel("bottom", f"{feature}{SEPARATOR}{x_val}")
+            plot_item.setLabel("left", f"{feature}{SEPARATOR}{y_val}")
 
         if locked and saved_ranges:
             self._restore_ranges(saved_ranges)
@@ -757,27 +867,20 @@ class SpacePlot(QWidget):
         return False
 
     def _load_references(self) -> list[ReferenceGeometry]:
-        """Load reference geometry from space.yaml or arena.yaml."""
-        from ethograph.utils.paths import find_config
+        """Reference geometry to overlay, resolved from the geometry library.
 
-        nc_path = getattr(self.app_state, "nc_file_path", None)
-        if not nc_path:
-            nc_path = getattr(self.app_state, "nap_path", None)
-        data_dir = Path(nc_path).parent if nc_path else None
-
-        for name in ("space.yaml", "arena.yaml"):
-            cfg_path = find_config(name, data_dir)
-            if cfg_path is None:
-                continue
-            cfg = load_space_config(cfg_path)
-            if cfg is None:
-                continue
-            refs = _parse_references(cfg)
-            if refs:
-                return refs
-
-        logger.debug("No reference geometry found (searched space.yaml, arena.yaml)")
-        return []
+        The geometry named by ``app_state.space_library_geometry`` (chosen in
+        the Space controls, or set as a default in gui_settings.yaml /
+        local_settings.yaml) is looked up in ``~/.ethograph/geometries/``.
+        """
+        selected = getattr(self.app_state, "space_library_geometry", None)
+        if not selected:
+            return []
+        geom = load_library_geometries().get(selected)
+        if geom is None:
+            logger.warning("Geometry %r not found in %s", selected, GEOMETRY_LIBRARY_DIR)
+            return []
+        return [geom]
 
     def _draw_references(self):
         """Draw all reference geometry items."""
@@ -881,7 +984,13 @@ class SpacePlot(QWidget):
     # --- Highlight / time marker -------------------------------------------
 
     def highlight_time_segment(self, start_time: float, end_time: float, color=(255, 102, 0)):
-        """Highlight a time segment of the trajectory."""
+        """Highlight a time segment of the trajectory.
+
+        Only applies in the default "Labels" color mode — when the trajectory
+        is colored by another feature, the label highlight must not repaint it.
+        """
+        if self.color_variable() is not None:
+            return
         if not self.space_widget or self._trajectory_pos is None or self._trajectory_times is None:
             return
 

@@ -64,6 +64,7 @@ class MetaWidget(GridSectionContainer):
         logger.info("Settings file: %s", global_settings)
 
         self.app_state = ObservableAppState(yaml_path=str(global_settings))
+        self.app_state._layout_snapshot_provider = self._snapshot_layouts
 
         # Try to load previous settings
         self.app_state.load_from_yaml()
@@ -109,6 +110,9 @@ class MetaWidget(GridSectionContainer):
         self.data_panel = DataPanel(self.app_state)
         self.data_widget = DataWidget(self.shell, self.app_state, self, self.io_widget)
         self.data_widget.set_data_panel(self.data_panel)
+        # The container needs the data widget's catalog for the canonical
+        # feature list (add_lineplot / heatmap drops).
+        self.plot_container._data_widget = self.data_widget
 
         # Now set the data_widget reference in io_widget
         self.io_widget.data_widget = self.data_widget
@@ -192,6 +196,7 @@ class MetaWidget(GridSectionContainer):
         overlay_gb = getattr(self.data_panel, "overlays_groupbox", None)
         if overlay_gb is not None:
             overlay_gb.setTitle("Label overlay")
+            self.labels_widget.attach_overlay_groupbox(overlay_gb)
             if self.labels_widget.layout() is not None:
                 self.labels_widget.layout().addWidget(overlay_gb)
 
@@ -316,12 +321,11 @@ class MetaWidget(GridSectionContainer):
         pc = self.plot_container
         self.active_panels = ActivePanelManager(self)
         self.active_panels.active_changed.connect(self._on_active_panel)
-        pc.active_panels = self.active_panels  # so add_extra_lineplot can register
+        pc.active_panels = self.active_panels  # line plots register in add_lineplot
 
         fixed = [
             (pc.audio_trace_plot, PanelKind.AUDIOTRACE, None),
             (pc.spectrogram_plot, PanelKind.SPECTROGRAM, None),
-            (pc.line_plot, PanelKind.LINEPLOT, pc.line_plot),
             (pc.heatmap_plot, PanelKind.HEATMAP, pc.heatmap_plot),
             (pc.neo_trace_plot, PanelKind.NEO, None),
             (pc.ephys_trace_plot, PanelKind.EPHYS, None),
@@ -378,25 +382,45 @@ class MetaWidget(GridSectionContainer):
         if picker.exec_() and picker.choice:
             self._create_panel_for_source(kind, name, picker.choice)
 
+    def _activate_panel(self, widget, kind: str):
+        """Make a just-created panel the active one (green edge + sidebar
+        controls showing its feature/selections)."""
+        mgr = self.active_panels
+        reg = mgr.registration_for(widget) if mgr is not None else None
+        if reg is not None:
+            mgr.set_active(reg)
+        # set_active no-ops when already active — sync the sidebar regardless.
+        self._on_plot_focus(kind)
+
     def _create_panel_for_source(self, kind: str, name: str, plot_type: str):
         pc = self.plot_container
         if kind == "feature":
             if plot_type == "Lineplot":
-                pc.add_extra_lineplot(feature=name)
+                plot = pc.add_lineplot(feature=name)
+                if plot is not None:
+                    self._activate_panel(plot, "lineplot")
             elif plot_type == "Heatmap":
-                pc.set_featureplot_visible(True)
+                pc.heatmap_plot.set_panel_control("features", name)
                 pc.set_feature_view("heatmap")
+                pc.heatmap_plot.update_plot()
+                self._activate_panel(pc.heatmap_plot, "heatmap")
                 notify(f"Heatmap: {name}")
             elif plot_type.startswith("Space"):
                 self.app_state.space_plot_type = "Space Plot"
                 if hasattr(self.data_widget, "update_space_plot"):
                     self.data_widget.update_space_plot()
+                sp = getattr(self.data_widget, "space_plot", None)
+                if sp is not None:
+                    sp.configure(feature=name, view_3d=plot_type == "Space (3D)")
                 notify(f"{plot_type}: {name}")
         elif kind == "audio":
             if plot_type == "Spectrogram Trace":
                 pc.set_spectrogram_visible(True)
             else:
                 pc.set_audiotrace_visible(True)
+            # Hiding an audio panel clears its source (set_source(None)), so a
+            # re-shown panel must be re-wired to the audio source and redrawn.
+            pc.update_audio_panels()
         elif kind == "video":
             self._add_camera_view(name)
 
@@ -479,13 +503,8 @@ class MetaWidget(GridSectionContainer):
             panel_type = getattr(self.plot_container, "_feature_type", "lineplot")
         if panel_type in ("lineplot", "heatmap"):
             if hasattr(self, "feature_view_checkbox"):
-                pc = self.plot_container
-                # The line⇄heatmap swap only applies to the built-in feature slot;
-                # extra line plots are line-only (disable the toggle for them).
-                is_feature_slot = pc.active_feature_plot in (pc.line_plot, pc.heatmap_plot)
                 self.feature_view_checkbox.blockSignals(True)
                 self.feature_view_checkbox.setChecked(panel_type == "heatmap")
-                self.feature_view_checkbox.setEnabled(is_feature_slot)
                 self.feature_view_checkbox.blockSignals(False)
             # Show the clicked plot's own feature/dim/colour/All selections + axes.
             if hasattr(self.data_widget, "sync_sidebar_from_active_plot"):
@@ -675,22 +694,42 @@ class MetaWidget(GridSectionContainer):
     def configure_layout_for_data(self):
         """Configure panel visibility and layout after a dataset load."""
         self.plot_container.configure_panels()
-        self.left_sidebar.refresh()
+        self.left_sidebar.refresh(catalog=self.data_widget.catalog)
         self._relocate_overlay_checkboxes()
         self._set_default_context()
 
         if self.app_state.ephys_path:
             self.data_widget._configure_neo_panel()
-            neo_cb = getattr(self.data_widget, "neo_viewer_checkbox", None)
-            self.plot_container.set_neo_visible(bool(neo_cb and neo_cb.isChecked()))
+            self.plot_container.set_neo_visible(True)
 
-        if self.app_state.has_neurons and self.app_state.ephys_visible:
+        if self.app_state.has_neurons:
             self.data_widget._configure_ephys_trace_plot()
 
         self.layout_mgr.register_docks()
 
         # The space plot no longer appears by default (that was a napari-era
         # artefact). It is created only when the user drags a Feature → Space.
+
+        self.apply_saved_panel_layout()
+
+    def _snapshot_layouts(self):
+        """Refresh the layout snapshots before every auto-save (registered as
+        app_state._layout_snapshot_provider): panel layout → the dataset's
+        local_settings.yaml, window state → gui_settings.yaml."""
+        if self.app_state.ready:
+            self.app_state.panel_layout = self.plot_container.layout_state()
+        self.app_state.window_state = self.shell.capture_window_state()
+
+    def apply_saved_panel_layout(self):
+        """Apply the dataset's saved panel layout after a load.
+
+        ``app_state.panel_layout`` is auto-loaded with the dataset's
+        local_settings.yaml — including one shipped as a template release
+        asset. Absent → data-availability defaults stand.
+        """
+        layout = getattr(self.app_state, "panel_layout", None)
+        if layout:
+            self.plot_container.apply_layout_state(layout)
 
     def _on_reset_layout(self):
         space_type = getattr(self.app_state, "space_plot_type", "Layers")

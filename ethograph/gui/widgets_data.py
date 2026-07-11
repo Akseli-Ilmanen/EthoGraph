@@ -86,84 +86,6 @@ def _detect_nwb_pose_keys(nwb_path: str | None) -> list[str] | None:
         return None
 
 
-@dataclass
-class _PanelDef:
-    """Declarative description of a panel toggle checkbox."""
-
-    name: str  # internal identifier / checkbox attr prefix
-    label: str  # displayed checkbox text
-    row: int  # UI row in panels_groupbox (1, 2, or 3)
-    state_attr: str | None = None  # app_state attribute to sync with visibility
-    container_method: str | None = None  # plot_container.method(visible) to call
-    autoscale_plot: str | None = None  # plot_container.X for autoscale on show
-    audio_row: bool = False  # part of the hidden-when-no-audio widget group
-    on_toggle: str | None = None  # self.method(visible) called after standard actions
-    requires: str | None = None  # app_state attr that must be truthy for data to exist
-
-
-_PANEL_DEFS: list[_PanelDef] = [
-    _PanelDef(
-        "audiotrace",
-        "AudioTrace",
-        row=1,
-        audio_row=True,
-        state_attr="audiotrace_visible",
-        container_method="set_audiotrace_visible",
-        autoscale_plot="audio_trace_plot",
-        on_toggle="_on_audio_panel_toggle",
-    ),
-    _PanelDef(
-        "spectrogram",
-        "Spectrogram",
-        row=1,
-        audio_row=True,
-        state_attr="spectrogram_visible",
-        container_method="set_spectrogram_visible",
-        autoscale_plot="spectrogram_plot",
-        on_toggle="_on_audio_panel_toggle",
-    ),
-    _PanelDef(
-        "neo_viewer",
-        "Neo-Viewer",
-        row=1,
-        container_method="set_neo_visible",
-        on_toggle="_on_neo_panel_toggle",
-        requires="has_neo",
-    ),
-    _PanelDef(
-        "phy_viewer",
-        "Phy-Viewer",
-        row=1,
-        state_attr="ephys_visible",
-        container_method="set_ephys_visible",
-        on_toggle="_on_phy_panel_toggle",
-        requires="has_neurons",
-    ),
-    _PanelDef(
-        "featureplot",
-        "FeaturePlot",
-        row=1,
-        state_attr="featureplot_visible",
-        container_method="set_featureplot_visible",
-        requires="has_features",
-    ),
-    _PanelDef(
-        "video_viewer",
-        "VideoViewer",
-        row=1,
-        state_attr="video_viewer_visible",
-        on_toggle="_on_video_viewer_toggle",
-    ),
-    _PanelDef(
-        "pose_markers",
-        "PoseMarkers",
-        row=1,
-        state_attr="pose_markers_visible",
-        on_toggle="_on_pose_markers_toggle",
-    ),
-]
-
-
 class _LoadError(Exception):
     """Raised during any loading phase to abort with a user-visible message."""
 
@@ -973,9 +895,10 @@ class DataWidget(QWidget):
         if not self.app_state.trials and ctx.trials:
             self.app_state.trials = ctx.trials
 
-        self._restore_or_set_defaults()
         self._set_controls_enabled(True)
         self.app_state.ready = True
+
+        self._restore_or_set_defaults()
 
         self.io_widget.on_load_complete()
         self.labels_widget.refresh_mapping_for_data_dir(Path(ctx.nc_file_path).parent)
@@ -1127,53 +1050,31 @@ class DataWidget(QWidget):
         # napari layers/space-plot toggle). Kept hidden for backwards-compat refs.
         self.slot_groupbox.hide()
 
-        self._setup_panel_checkboxes()
+        self._setup_panel_controls()
 
-    def _is_panel_available(self, defn: _PanelDef) -> bool:
-        if defn.requires is None:
-            return True
-        if defn.requires == "has_features":
-            return bool(self.catalog and self.catalog.features)
-        return bool(getattr(self.app_state, defn.requires, False))
+    def _setup_panel_controls(self):
+        """Apply initial panel visibility from data availability and build the
+        per-stream controls (mic / view-mode / neo / neural combos).
 
-    def _setup_panel_checkboxes(self):
+        Panels are layout instances: shown when their data exists, removed via
+        a panel's ✕ button, re-added by drag-and-drop from the left sidebar.
+        There is no per-plot-type on/off toggle state.
+        """
         self._audio_row_widgets = []
+        pc = self.plot_container
 
-        for defn in _PANEL_DEFS:
-            available = self._is_panel_available(defn)
-            saved = getattr(self.app_state, defn.state_attr) if defn.state_attr else True
-
-            checkbox = QCheckBox(defn.label)
-            checkbox.setObjectName(f"{defn.name}_checkbox")
-            setattr(self, f"{defn.name}_checkbox", checkbox)
-
-            # Set checkbox to saved state WITHOUT firing signals (avoids
-            # triggering plot updates before data is loaded).
-            # When data is NOT available the checkbox is forced unchecked —
-            # signals are blocked so the saved preference is preserved.
-            checkbox.blockSignals(True)
-            checkbox.setChecked(available and saved)
-            checkbox.blockSignals(False)
-
-            # Apply the effective visibility to the container directly.
-            effective = available and saved
-            if defn.container_method and self.plot_container:
-                getattr(self.plot_container, defn.container_method)(effective)
-            if defn.on_toggle:
-                getattr(self, defn.on_toggle)(effective)
-
-            # Connect signal AFTER initial state is applied.
-            checkbox.stateChanged.connect(lambda state, n=defn.name: self._on_panel_toggled(n, state))
-
-            if not available:
-                checkbox.setEnabled(False)
-            if defn.audio_row:
-                self._audio_row_widgets.append(checkbox)
-
-        # Row 1: audio panel checkboxes
-        self.panels_row1_layout.addWidget(self.audiotrace_checkbox)
-        self.panels_row1_layout.addWidget(self.spectrogram_checkbox)
-        self.panels_row1_layout.addStretch()
+        has_audio = bool(self.app_state.has_audio or self.app_state.audio_path)
+        pc.set_audiotrace_visible(has_audio)
+        pc.set_spectrogram_visible(has_audio)
+        if self.catalog and self.catalog.features and not pc.line_plots:
+            pc.add_lineplot()
+        pc.set_neo_visible(bool(self.app_state.has_neo))
+        if has_audio:
+            pc.update_audio_panels()
+        if self.app_state.has_neo:
+            self._configure_neo_panel()
+        if self.app_state.has_neurons:
+            self.show_neural_panel()
 
         # Row 2: mic selector
         if self.app_state.has_audio:
@@ -1192,8 +1093,7 @@ class DataWidget(QWidget):
             if expanded:
                 self.app_state.set_key_sel("mics", expanded[0])
 
-        # Row 3: feature panel checkbox + view controls
-        self.panels_row3_layout.addWidget(self.featureplot_checkbox)
+        # Row 3: feature view controls
         self.panels_row3_layout.addWidget(QLabel("View:"))
         self.view_mode_combo = QComboBox()
         self.view_mode_combo.setObjectName("view_mode_combo")
@@ -1208,8 +1108,7 @@ class DataWidget(QWidget):
         self.panels_row3_layout.addWidget(self.sort_channels_btn)
         self.panels_row3_layout.addStretch()
 
-        # Row 4: Neo-Viewer checkbox + Neo stream combo
-        self.panels_row4_layout.addWidget(self.neo_viewer_checkbox)
+        # Row 4: Neo stream combo
         self._neo_stream_label = QLabel("Preview stream:")
         self.neo_stream_combo = QComboBox()
         self.neo_stream_combo.setObjectName("neo_stream_combo")
@@ -1220,8 +1119,7 @@ class DataWidget(QWidget):
         self.neo_stream_combo.hide()
         self.panels_row4_layout.addStretch()
 
-        # Row 5: Phy-Viewer checkbox + neural view combo
-        self.panels_row5_layout.addWidget(self.phy_viewer_checkbox)
+        # Row 5: neural view combo
         self._neural_view_label = QLabel("View:")
         self.neural_view_combo = QComboBox()
         self.neural_view_combo.setObjectName("neural_view_combo")
@@ -1233,12 +1131,6 @@ class DataWidget(QWidget):
         self.neural_view_combo.hide()
         self.panels_row5_layout.addStretch()
 
-        # PoseMarkers checkbox lives in the Pose controls section now; VideoViewer
-        # and the old "Space/Cameras" group are removed (napari-era artefacts).
-        self.video_viewer_checkbox.hide()
-        pose_layout = self.pose_groupbox.layout()
-        if pose_layout is not None and self.pose_markers_checkbox.parent() is not self.pose_groupbox:
-            pose_layout.insertWidget(0, self.pose_markers_checkbox)
 
         if self.app_state.has_neo and self.ephys_widget:
             self._populate_neo_stream_combo()
@@ -1260,7 +1152,7 @@ class DataWidget(QWidget):
         _GROUP_GAP = 6
         _COMBO_WIDTH = 72
 
-        row1.addWidget(QLabel("Main:"))
+        row1.addWidget(QLabel("Full:"))
         self.main_labels_combo = QComboBox()
         self.main_labels_combo.setFixedWidth(_COMBO_WIDTH)
         self.main_labels_combo.currentIndexChanged.connect(lambda _i: self._on_label_slot_changed("main"))
@@ -1571,10 +1463,6 @@ class DataWidget(QWidget):
         # configure_ephys_trace_plot() always knows which stream is active.
         self.app_state.ephys_stream_sel = stream_name
 
-        neo_cb = getattr(self, "neo_viewer_checkbox", None)
-        if neo_cb is not None and not neo_cb.isChecked():
-            return
-
         filepath, stream_id, channel_idx = source_map[stream_name]
         try:
             loader = load_ephys(filepath, str(stream_id))
@@ -1703,54 +1591,22 @@ class DataWidget(QWidget):
     def _is_autoscale_on(self) -> bool:
         return self.plot_settings_widget is not None and self.plot_settings_widget.autoscale_checkbox.isChecked()
 
-    def _on_panel_toggled(self, name: str, state: int):
-        """Central handler for all panel visibility checkboxes."""
-        visible = Qt.CheckState(state) == Qt.Checked
-        defn = next(d for d in _PANEL_DEFS if d.name == name)
-
-        if defn.state_attr:
-            setattr(self.app_state, defn.state_attr, visible)
-
-        if defn.container_method and self.plot_container:
-            getattr(self.plot_container, defn.container_method)(visible)
-
-        if visible and defn.autoscale_plot and self._is_autoscale_on() and self.plot_container:
-            plot = getattr(self.plot_container, defn.autoscale_plot)
-            plot.vb.enableAutoRange(x=False, y=True)
-            if hasattr(plot, "_apply_y_constraints"):
-                plot._apply_y_constraints()
-
-        if defn.on_toggle:
-            getattr(self, defn.on_toggle)(visible)
-
-    def _on_audio_panel_toggle(self, visible: bool):
-        if visible and self.plot_container:
-            self.plot_container.update_audio_panels()
-
-    def _on_neo_panel_toggle(self, visible: bool):
-        if visible and self.plot_container:
-            self._configure_neo_panel()
-
-    def _on_phy_panel_toggle(self, visible: bool):
-        if not visible or not self.plot_container:
+    def show_neural_panel(self):
+        """Show the neural panel (trace or raster, per the neural view combo)."""
+        if not self.plot_container:
             return
         mode = self.neural_view_combo.currentText() if hasattr(self, "neural_view_combo") else "Multi Trace"
         self.plot_container.set_neural_panel_mode("raster" if mode == "Raster" else "trace")
         if self._is_autoscale_on():
             self.plot_container.ephys_trace_plot.vb.enableAutoRange(x=False, y=True)
 
-    def _on_video_viewer_toggle(self, visible: bool):
-        if hasattr(self, "layout_mgr") and self.layout_mgr:
-            self.layout_mgr.set_video_viewer_visible(visible)
-
-    def _on_pose_markers_toggle(self, visible: bool):
+    def _on_pose_markers_toggled(self, state: int):
+        visible = Qt.CheckState(state) == Qt.Checked
+        self.app_state.pose_markers_visible = visible
         if visible:
             self.update_pose()
         elif self.pose_mgr is not None:
             self.pose_mgr.clear_pose_display()
-
-    def _on_ephys_toggled(self, state):
-        self._on_panel_toggled("phy_viewer", state)
 
     def _update_view_mode_items(self, feature_sel: str):
         """Update view_mode_combo items based on available data.
@@ -1833,13 +1689,6 @@ class DataWidget(QWidget):
     def _hide_ephys_channel_controls(self):
         if self.ephys_widget:
             self.ephys_widget.hide_ephys_channel_controls()
-
-    def _apply_view_mode_for_feature(self):
-        mode = self.view_mode_combo.currentText()
-        if mode.startswith("Heatmap"):
-            self.plot_container.switch_to_heatmap()
-        else:
-            self.plot_container.switch_to_lineplot()
 
     def _on_envelope_overlay_changed(self):
         if not self.plot_container:
@@ -2011,6 +1860,13 @@ class DataWidget(QWidget):
             if combo is None or value is None:
                 return
             idx = find_combo_index(combo, str(value))
+            if idx < 0 and ckey == "features":
+                # The combo must always be able to display the active plot's
+                # feature — a dropdown showing another plot's value is leakage.
+                combo.blockSignals(True)
+                combo.addItem(str(value), str(value))
+                combo.blockSignals(False)
+                idx = combo.count() - 1
             if idx >= 0:
                 combo.blockSignals(True)
                 combo.setCurrentIndex(idx)
@@ -2045,23 +1901,26 @@ class DataWidget(QWidget):
 
         The control only ever affects the *active* plot: it writes to that plot's
         own ``panel_state`` and re-renders just it. The value is also mirrored to
-        global ``app_state`` so the shared consumers (space plot, label overlays,
+        global ``app_state`` so the shared consumers (label overlays,
         changepoints, feature view-mode) follow the active plot — safe because
-        every plot has already forked its own state.
+        every plot has already forked its own state. The space plot renders
+        purely from its own catalog-driven combos and does not follow this.
         """
         active = getattr(self.plot_container, "active_feature_plot", None)
         if active is not None and hasattr(active, "set_panel_control"):
             active.set_panel_control(key, value)
             active.update_plot()
+            if key == "features" and value:
+                self.plot_container.set_panel_title(active, str(value))
 
         self.app_state.set_key_sel(key, value)
 
+        # A panel never changes type behind the user's back: changing the
+        # feature must NOT auto-switch the lineplot/heatmap view (that hid
+        # other open panels). Only the explicit View combo switches views.
         if key == "features" and active is self.plot_container.get_current_plot():
             self._update_view_mode_items(value)
             self.view_mode_combo.show()
-            self._apply_view_mode_for_feature()
-        if key in ["individual", "keypoint"] and self.space_plot and self.space_plot.isVisible():
-            self.space_plot.refresh()
         if key == "cluster_id" and self.ephys_widget:
             try:
                 self.ephys_widget.select_cluster_in_table(int(value))
@@ -2288,38 +2147,22 @@ class DataWidget(QWidget):
 
         self.on_trial_changed()
 
-    def _panel_has_data(self, name: str) -> bool:
-        """Check whether a panel would actually display data for the current trial."""
-        if name in ("audiotrace", "spectrogram"):
-            return bool(self.app_state.audio_path)
-        if name == "featureplot":
-            return bool(self.catalog and self.catalog.features)
-        if name == "neo_viewer":
-            neo_plot = getattr(self.plot_container, "neo_trace_plot", None)
-            return neo_plot is not None and getattr(neo_plot, "_source", None) is not None
-        if name == "phy_viewer":
-            return bool(self.app_state.has_neurons)
-        if name == "video_viewer":
-            return bool(self.app_state.video_path)
-        if name == "pose_markers":
-            return bool(self.app_state.video_path)
-        return True
-
     def _disable_empty_panels(self):
-        """Uncheck and hide plot panels that have no data after first trial load."""
-        for defn in _PANEL_DEFS:
-            checkbox = getattr(self, f"{defn.name}_checkbox", None)
-            if checkbox is None or not checkbox.isChecked():
-                continue
-            if self._panel_has_data(defn.name):
-                continue
-            checkbox.blockSignals(True)
-            checkbox.setChecked(False)
-            checkbox.blockSignals(False)
-            if defn.container_method and self.plot_container:
-                getattr(self.plot_container, defn.container_method)(False)
-            if defn.on_toggle:
-                getattr(self, defn.on_toggle)(False)
+        """Hide plot panels that have no data after the first trial load."""
+        pc = self.plot_container
+        if pc is None:
+            return
+        if not self.app_state.audio_path:
+            pc.set_audiotrace_visible(False)
+            pc.set_spectrogram_visible(False)
+        if not (self.catalog and self.catalog.features):
+            for plot in list(pc.line_plots):
+                pc.remove_lineplot(plot)
+            pc.set_heatmap_visible(False)
+        if getattr(pc.neo_trace_plot, "_source", None) is None:
+            pc.set_neo_visible(False)
+        if not self.app_state.has_neurons:
+            pc.set_ephys_visible(False)
 
     def _validate_media_files(
         self,
@@ -2440,9 +2283,6 @@ class DataWidget(QWidget):
         if hasattr(self, "view_mode_combo"):
             self._update_view_mode_items(feature_sel)
 
-        if hasattr(self, "view_mode_combo"):
-            self._apply_view_mode_for_feature()
-
         self.app_state.label_intervals = self.app_state.get_trial_intervals(trials_sel)
 
         self._build_trial_alignment(trials_sel)
@@ -2481,12 +2321,10 @@ class DataWidget(QWidget):
             return
 
         ds_kwargs = self.app_state.get_ds_kwargs()
-        current_plot = self.plot_container.get_current_plot()
 
         self.plot_container.clear_amplitude_envelope()
 
-        current_plot.update_plot(**kwargs)
-        self.plot_container.refresh_extra_lineplots(**kwargs)
+        self.plot_container.update_feature_plots(**kwargs)
 
         if self.show_envelope_checkbox.isChecked():
             self.plot_container.show_envelope_overlay()

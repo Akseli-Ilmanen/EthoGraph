@@ -15,10 +15,10 @@ from .app_constants import (
     Z_INDEX_BACKGROUND,
 )
 from .make_pretty import clean_display_labels
-from .plots_base import BasePlot, ThrottleDebounce
+from .plots_base import BasePlot, PanelStateMixin, ThrottleDebounce
 
 
-class HeatmapPlot(BasePlot):
+class HeatmapPlot(PanelStateMixin, BasePlot):
     """MNE-style stacked heatmap rendering feature data as color-coded rows.
 
     Uses a global y-coordinate space where each channel has a fixed position
@@ -129,11 +129,11 @@ class HeatmapPlot(BasePlot):
     # --- Context tracking (same pattern as LinePlot) ---
 
     def _get_selections_hash(self) -> str:
-        selections = self.app_state.get_selections()
+        selections = self._effective_selections()
         return str(sorted(selections.items()))
 
     def _context_changed(self) -> bool:
-        feature = getattr(self.app_state, "features_sel", None)
+        feature = self._effective_feature()
         trial = getattr(self.app_state, "trials_sel", None)
         sel_hash = self._get_selections_hash()
         return (
@@ -141,7 +141,7 @@ class HeatmapPlot(BasePlot):
         )
 
     def _update_context(self):
-        self._current_feature = getattr(self.app_state, "features_sel", None)
+        self._current_feature = self._effective_feature()
         self._current_trial = getattr(self.app_state, "trials_sel", None)
         self._current_ds_kwargs_hash = self._get_selections_hash()
 
@@ -331,7 +331,7 @@ class HeatmapPlot(BasePlot):
         if self._buffered_data is not None and self._buffer_t0 <= t0 - margin and self._buffer_t1 >= t1 + margin:
             return self._buffered_data, self._buffered_time
 
-        feature_sel = getattr(self.app_state, "features_sel", None)
+        feature_sel = self._effective_feature()
         if feature_sel is None:
             return None, None
         view_mode = getattr(self.app_state, "feature_view_mode", "Heatmap")
@@ -341,7 +341,7 @@ class HeatmapPlot(BasePlot):
         if view_mode == "Heatmap (Ephys)":
             return self._get_buffered_ephys_envelope(t0, t1)
 
-        selections = self.app_state.get_selections()
+        selections = self._effective_selections()
         store = getattr(self.app_state, "data_loader", None)
 
         if store is not None:
@@ -413,7 +413,8 @@ class HeatmapPlot(BasePlot):
         return -vmax, vmax
 
     def update_plot_content(self, t0: Optional[float] = None, t1: Optional[float] = None):
-        if not hasattr(self.app_state, "features_sel"):
+        self._ensure_panel_state()
+        if self._effective_feature() is None:
             return
 
         if t0 is None or t1 is None:
@@ -426,7 +427,7 @@ class HeatmapPlot(BasePlot):
         try:
             view_mode = getattr(self.app_state, "feature_view_mode", "Heatmap")
             if view_mode == "Heatmap":
-                self.setTitle(getattr(self.app_state, "features_sel", None))
+                self.setTitle(self._effective_feature())
             else:
                 self.setTitle(None)
 

@@ -22,6 +22,30 @@ LABELS_OVERLAY_BOX_MARGIN = 5
 LABELS_OVERLAY_TEXT_SIZE = 18
 LABELS_OVERLAY_FALLBACK_SIZE = (100, 100)
 
+# Per-plot-type label rendering modes (label_drawing_mixin.py, widgets_labels.py)
+LABEL_OVERLAY_MODE_FULL = "full"
+LABEL_OVERLAY_MODE_BOTTOM = "bottom"
+LABEL_OVERLAY_MODE_NONE = "none"
+
+# type key -> display name shown in the "Show labels per plot type" dialog
+LABEL_OVERLAY_PLOT_TYPES = {
+    "lineplot": "Line plot",
+    "audio": "Audio trace",
+    "spectrogram": "Spectrogram",
+    "heatmap": "Heatmap",
+    "ephys": "Ephys trace",
+    "neo": "Neo trace",
+}
+
+DEFAULT_LABEL_OVERLAY_MODES = {
+    "lineplot": LABEL_OVERLAY_MODE_FULL,
+    "audio": LABEL_OVERLAY_MODE_FULL,
+    "spectrogram": LABEL_OVERLAY_MODE_BOTTOM,
+    "heatmap": LABEL_OVERLAY_MODE_BOTTOM,
+    "ephys": LABEL_OVERLAY_MODE_NONE,
+    "neo": LABEL_OVERLAY_MODE_NONE,
+}
+
 # Qt maximum size sentinel (QWIDGETSIZE_MAX) used to un-cap widget dimensions.
 MAX_WIDGET_SIZE = 16777215
 

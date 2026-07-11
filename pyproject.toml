@@ -133,7 +133,7 @@ exclude = ["tests", "docs*"]
 
 [tool.setuptools.package-data]
 "ethograph.gui" = ["*.yaml", "assets/templates/*", "templates/*.j2"]
-ethograph = ["assets/*"]
+ethograph = ["assets/*", "geometries/*"]
 
 [tool.setuptools.exclude-package-data]
 "ethograph.video_features" = ["checkpoint/*.pt"]

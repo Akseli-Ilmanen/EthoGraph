@@ -74,6 +74,15 @@ class DataCatalog:
         spec = self.combos.get(name)
         return spec.values if spec else ()
 
+    def feature_choices(self) -> list[str]:
+        """The canonical GUI feature list — the SINGLE source used by the
+        features combo, the left sidebar, and panel creation, so a feature
+        offered anywhere is displayable everywhere."""
+        spec = self.combos.get("features")
+        if spec is not None and spec.values:
+            return [str(v) for v in spec.values]
+        return [str(f) for f in self.features]
+
     def to_type_vars_dict(self) -> dict:
         """Backwards-compatible dict for existing GUI combo creation."""
         tvd: dict[str, Any] = {}

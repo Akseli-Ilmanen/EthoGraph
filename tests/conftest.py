@@ -78,6 +78,8 @@ def _apply_template(meta, key: str, downsample: bool = False) -> None:
         meta.app_state.pose_folder = resolved["pose_folder"]
     if resolved.get("import_labels"):
         io.import_labels_checkbox.setChecked(True)
+    if resolved.get("library_geometry"):
+        meta.app_state.space_library_geometry = resolved["library_geometry"]
 
     io.downsample_checkbox.setChecked(downsample)
     if downsample:
@@ -118,6 +120,11 @@ def pytest_configure(config):
     """Download required datasets if not already present (skipped in CI without GUI)."""
     if not GUI_AVAILABLE:
         return
+
+    from ethograph.gui.plots_space import ensure_geometry_library
+
+    ensure_geometry_library()
+
     _ensure_dataset("birdpark")
     assert BIRDPARK_NC.exists(), f"BirdPark NC not found after download: {BIRDPARK_NC}"
 
@@ -223,6 +230,13 @@ def gui(request, qtbot, tmp_path, monkeypatch):
     meta = MetaWidget(shell)
     shell.attach_meta_widget(meta)
     meta._check_unsaved_changes = lambda event: True
+    # Hermetic layout state: never write panel layouts into the shared example
+    # dataset dirs, and never apply one a previous run left behind.
+    meta.app_state._layout_snapshot_provider = None
+    _real_apply = meta.apply_saved_panel_layout
+    meta.apply_saved_panel_layout = lambda: (
+        setattr(meta.app_state, "panel_layout", None) or _real_apply()
+    )
     if show:
         shell.show()
 

@@ -1257,11 +1257,13 @@ class IOWidget(QWidget):
                 self.app_state.pose_folder = t["pose_folder"]
             if t.get("import_labels"):
                 self.import_labels_checkbox.setChecked(True)
-            if t.get("dataset_key") == "birdpark":
+            if t.get("downsample"):
                 self.downsample_checkbox.setChecked(True)
-                self.downsample_spin.setValue(100)
+                self.downsample_spin.setValue(int(t["downsample"]))
             if t.get("labels_file"):
                 self._canary_labels_path = t["labels_file"]
+            if t.get("library_geometry"):
+                self.app_state.space_library_geometry = t["library_geometry"]
 
             self._on_load_clicked()
 

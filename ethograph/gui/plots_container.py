@@ -1,27 +1,33 @@
 """Unified flexible panel container for all layout scenarios.
 
-Replaces both PlotContainer (video mode) and MultiPanelContainer (no-video mode)
-with a single container that dynamically shows/hides panels based on loaded data.
+Every panel is a QDockWidget inside a nested QMainWindow (pynaviz-style), so
+panels can be arranged freely: side by side, stacked, tabbed, or floated.
+The default arrangement is a vertical stack in ``_PANEL_ORDER`` with line
+plots at the bottom; drag a panel's title bar to rearrange.
 
-Panel stack (top to bottom, each optional except Feature Plot):
-  - AudioTrace  (only if audio; toggleable)
-  - Spectrogram (only if audio; toggleable)
-  - EphysTrace  (only if ephys folder)
-  - Raster      (only if Kilosort spike data; toggleable)
-  - Feature Plot (always present; switches between LinePlot / HeatmapPlot)
+Panels (every one optional):
+  - AudioTrace / Spectrogram (only if audio)
+  - EphysTrace / Raster (only if neural data)
+  - Heatmap     (singleton, like the other fixed panels)
+  - Line plots  (any number; ALL equal — created via :meth:`add_lineplot`,
+    removed via each panel's ✕ / :meth:`remove_lineplot`)
 """
 
+import base64
 from typing import Any, Dict
 
 import numpy as np
 import pyqtgraph as pg
-from qtpy.QtCore import QEvent, QSize, Qt, QTimer, Signal
+from qtpy.QtCore import QByteArray, QSize, Qt, QTimer, Signal
+from qtpy.QtGui import QCursor
 from qtpy.QtWidgets import (
+    QDockWidget,
     QHBoxLayout,
     QLabel,
+    QMainWindow,
+    QMenu,
     QPushButton,
     QSlider,
-    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -130,7 +136,9 @@ _PANEL_RATIOS = {
     (False, False): {"feature": 1.0},
 }
 
-# Ordered list of (panel_name, app_state_guard_attr | None)
+# Ordered list of (panel_name, app_state_guard_attr | None) for the fixed
+# singleton panels. Line plots are not listed: they are dynamic instances
+# appended after the fixed panels.
 # guard_attr: app_state boolean that must be True for the panel to appear; None = always allowed
 _PANEL_ORDER = [
     ("audiotrace", "has_audio"),
@@ -138,16 +146,17 @@ _PANEL_ORDER = [
     ("neo", None),
     ("ephys", "has_neurons"),
     ("raster", "has_neurons"),
-    ("feature", None),
+    ("heatmap", None),
 ]
 
-# Maps panel name -> widget attribute name on the container (except "feature" which is dynamic)
+# Maps fixed panel name -> widget attribute name on the container
 _PANEL_PLOT_ATTR = {
     "audiotrace": "audio_trace_plot",
     "spectrogram": "spectrogram_plot",
     "neo": "neo_trace_plot",
     "ephys": "ephys_trace_plot",
     "raster": "raster_plot",
+    "heatmap": "heatmap_plot",
 }
 
 
@@ -197,38 +206,48 @@ class CurrentLabelIndicator(QLabel):
         self.move(max(0, x), self._MARGIN)
 
 
-class _PanelCloseButton(QPushButton):
-    """A small ✕ button pinned to the top-right corner of a plot panel.
+class _PanelDockTitleBar(QWidget):
+    """Slim dock title bar: drag handle + panel name + move (⠿) + close (✕)."""
 
-    Clicking it hides the panel (native-feeling per-panel close). It follows
-    the panel on resize via an event filter.
-    """
+    _BTN_STYLE = (
+        "QPushButton {{ color:#ddd; background:rgba(40,40,40,160); border:none;"
+        " border-radius:3px; font-size:9px; }}"
+        "QPushButton:hover {{ color:#fff; background:{hover}; }}"
+    )
 
-    def __init__(self, panel: QWidget, on_close):
-        super().__init__("✕", panel)
-        self.setFixedSize(18, 18)
-        self.setToolTip("Remove this panel")
-        self.setStyleSheet(
-            "QPushButton { color:#ddd; background:rgba(40,40,40,160);"
-            " border:1px solid rgba(255,255,255,50); border-radius:3px; }"
-            "QPushButton:hover { color:#fff; background:rgba(200,60,60,200); }"
-        )
-        self.clicked.connect(on_close)
-        panel.installEventFilter(self)
-        self._reposition()
-        self.show()
-        self.raise_()
+    def __init__(self, dock: QDockWidget, title: str, on_close, on_move):
+        super().__init__(dock)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(6, 1, 4, 1)
+        layout.setSpacing(4)
 
-    def eventFilter(self, obj, event):
-        if event.type() in (QEvent.Resize, QEvent.Show):
-            self._reposition()
-        return False
+        self._label = QLabel(title)
+        self._label.setStyleSheet("color: rgba(255,255,255,130); font-size: 8pt;")
+        layout.addWidget(self._label)
+        layout.addStretch()
 
-    def _reposition(self):
-        p = self.parentWidget()
-        if p is not None:
-            self.move(max(0, p.width() - self.width() - 6), 6)
-            self.raise_()
+        move_btn = QPushButton("⠿")
+        move_btn.setObjectName("panel_move_btn")
+        move_btn.setFixedSize(14, 14)
+        move_btn.setToolTip("Move this panel next to another panel…")
+        move_btn.setStyleSheet(self._BTN_STYLE.format(hover="rgba(80,120,200,200)"))
+        move_btn.clicked.connect(on_move)
+        layout.addWidget(move_btn)
+
+        close_btn = QPushButton("✕")
+        close_btn.setObjectName("panel_close_btn")
+        close_btn.setFixedSize(14, 14)
+        close_btn.setToolTip("Remove this panel")
+        close_btn.setStyleSheet(self._BTN_STYLE.format(hover="rgba(200,60,60,200)"))
+        close_btn.clicked.connect(on_close)
+        layout.addWidget(close_btn)
+        self.setFixedHeight(17)
+
+    def title(self) -> str:
+        return self._label.text()
+
+    def set_title(self, text: str):
+        self._label.setText(str(text))
 
 
 class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
@@ -242,6 +261,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     labels_redraw_needed = Signal()
     spectrogram_overlay_shown = Signal()
     time_marker_updated = Signal(float)
+    #: Emitted with the plot widget whenever a line-plot panel is created.
+    panel_added = Signal(object)
 
     #: MIME type used by the left-sidebar drag-and-drop panel creator.
     SOURCE_MIME = "application/x-ethograph-source"
@@ -258,33 +279,28 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.setAcceptDrops(True)
 
         # --- Plots ---
+        # Fixed singleton panels; line plots are dynamic instances (all equal).
         self.audio_trace_plot = AudioTracePlot(app_state)
         self.spectrogram_plot = SpectrogramPlot(app_state)
-        self.line_plot = LinePlot(app_state)
         self.heatmap_plot = HeatmapPlot(app_state)
         self.neo_trace_plot = EphysTracePlot(app_state)  # Neo-Viewer panel
         self.ephys_trace_plot = EphysTracePlot(app_state)  # Phy-Viewer panel
         self.raster_plot = RasterPlot(app_state)
 
-        # Feature panel: line_plot or heatmap_plot
-        self._feature_plot = self.line_plot
-        self._feature_type = "lineplot"
+        #: All line-plot panels, equal peers (create: add_lineplot, remove: ✕).
+        self.line_plots: list[LinePlot] = []
 
         # The feature plot the right sidebar currently controls (last clicked).
-        self.active_feature_plot = self.line_plot
+        self.active_feature_plot = None
 
-        # current_plot semantics: always the feature (bottom) panel
-        self.current_plot = self._feature_plot
-        self.current_plot_type = self._feature_type
-
-        # --- Panel visibility state ---
+        # --- Panel visibility state (fixed panels; line plots exist or don't) ---
         self._panel_visible: dict[str, bool] = {
             "audiotrace": False,
             "spectrogram": False,
             "neo": False,
             "ephys": False,
             "raster": False,
-            "feature": True,
+            "heatmap": False,
         }
 
         # --- Mixin state ---
@@ -295,7 +311,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.dataset_cp_items: list = []
 
         self.overlay_manager = OverlayManager()
-        self.line_plot.vb.sigYRangeChanged.connect(lambda: self.overlay_manager.rescale_for_plot(self.line_plot))
         self.audio_trace_plot.vb.sigYRangeChanged.connect(
             lambda: self.overlay_manager.rescale_for_plot(self.audio_trace_plot)
         )
@@ -318,9 +333,15 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         main_layout.setSpacing(0)
         self.setLayout(main_layout)
 
-        self._splitter = QSplitter(Qt.Vertical)
-        self._splitter.setChildrenCollapsible(False)
-        main_layout.addWidget(self._splitter)
+        # Dock host: a nested QMainWindow whose docks are the panels
+        # (pynaviz-style free arrangement: side-by-side, tabs, floating).
+        self._dock_host = QMainWindow()
+        self._dock_host.setWindowFlags(Qt.Widget)
+        self._dock_host.setDockNestingEnabled(True)
+        self._dock_host.setDockOptions(
+            QMainWindow.AnimatedDocks | QMainWindow.AllowNestedDocks | QMainWindow.AllowTabbedDocks
+        )
+        main_layout.addWidget(self._dock_host)
 
         # Audio playback (no-video mode)
         self.audio_player = AudioPlayer(
@@ -363,43 +384,88 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.active_panels = None
         self.audio_trace_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "audio"))
         self.spectrogram_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "audio"))
-        self.line_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "feature"))
         self.heatmap_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "feature"))
         self.neo_trace_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "neo"))
         self.ephys_trace_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "ephys"))
         self.raster_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "raster"))
 
-        # Add all panels to the splitter once, hidden. We never reparent them.
-        # setVisible() is used to toggle; QSplitter collapses hidden children to zero.
-        # Both line_plot and heatmap_plot live at the "feature" slot; only one is visible.
+        # Create a dock per fixed panel, hidden, in the default vertical stack.
+        # Line plots get their docks dynamically in add_lineplot().
+        self._lineplot_docks: dict = {}
+        self._lineplot_dock_counter = 0
+        self._create_panel_docks()
+
+    def _create_panel_docks(self):
+        """One QDockWidget per fixed panel; ✕ hides it (line-plot ✕ removes)."""
+        closers = {
+            "audiotrace": lambda: self.set_audiotrace_visible(False),
+            "spectrogram": lambda: self.set_spectrogram_visible(False),
+            "heatmap": lambda: self.set_heatmap_visible(False),
+            "neo": lambda: self.set_neo_visible(False),
+            "ephys": lambda: self.set_ephys_visible(False),
+            "raster": lambda: self.set_raster_visible(False),
+        }
+        self._panel_docks: dict[str, QDockWidget] = {}
+        prev = None
         for name, _ in _PANEL_ORDER:
-            w = self._get_panel_widget(name)
-            self._splitter.addWidget(w)
-            w.setVisible(name == "feature")
-        self._splitter.addWidget(self.heatmap_plot)
-        self.heatmap_plot.hide()
+            dock = self._make_dock(name, self._get_panel_widget(name), closers[name])
+            dock.setObjectName(f"panel_{name}")
+            self._panel_docks[name] = dock
+            if prev is None:
+                self._dock_host.addDockWidget(Qt.LeftDockWidgetArea, dock)
+            else:
+                self._dock_host.splitDockWidget(prev, dock, Qt.Vertical)
+            dock.hide()
+            prev = dock
 
-        # Track user-adjusted sizes so they survive panel toggles
-        self._user_sizes: dict[str, int] = {}
-        self._splitter.splitterMoved.connect(self._on_splitter_moved)
+    def _make_dock(self, title: str, widget: QWidget, on_close) -> QDockWidget:
+        dock = QDockWidget(title, self._dock_host)
+        dock.setWidget(widget)
+        dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
+        dock.setTitleBarWidget(
+            _PanelDockTitleBar(dock, title, on_close, on_move=lambda: self._show_move_menu(dock))
+        )
+        return dock
 
-        # Extra line-plot panels (pynaviz-style, added via View menu)
-        self.extra_line_plots: list[LinePlot] = []
+    def _open_docks(self) -> list[QDockWidget]:
+        docks = [self._panel_docks[n] for n, _ in _PANEL_ORDER if not self._panel_docks[n].isHidden()]
+        docks += [self._lineplot_docks[p] for p in self.line_plots if not self._lineplot_docks[p].isHidden()]
+        return docks
 
-        self._install_panel_close_buttons()
+    def _show_move_menu(self, dock: QDockWidget):
+        """Click-driven panel placement: pick a target panel and a side."""
+        targets = [d for d in self._open_docks() if d is not dock]
+        if not targets:
+            return
+        menu = QMenu(self)
 
-    def _install_panel_close_buttons(self):
-        """Give every fixed panel a ✕ button that hides it (like extra plots)."""
-        closers = [
-            (self.audio_trace_plot, lambda: self.set_audiotrace_visible(False)),
-            (self.spectrogram_plot, lambda: self.set_spectrogram_visible(False)),
-            (self.line_plot, lambda: self.set_featureplot_visible(False)),
-            (self.heatmap_plot, lambda: self.set_featureplot_visible(False)),
-            (self.neo_trace_plot, lambda: self.set_neo_visible(False)),
-            (self.ephys_trace_plot, lambda: self.set_ephys_visible(False)),
-            (self.raster_plot, lambda: self.set_raster_visible(False)),
-        ]
-        self._panel_close_buttons = [_PanelCloseButton(panel, fn) for panel, fn in closers]
+        def _place(target: QDockWidget, orient=None, tab=False):
+            dock.setFloating(False)
+            if tab:
+                self._dock_host.tabifyDockWidget(target, dock)
+            else:
+                self._dock_host.splitDockWidget(target, dock, orient)
+            dock.show()
+            dock.raise_()
+
+        for target in targets:
+            sub = menu.addMenu(target.titleBarWidget().title())
+            sub.addAction("Below", lambda _=False, t=target: _place(t, Qt.Vertical))
+            sub.addAction("Right of", lambda _=False, t=target: _place(t, Qt.Horizontal))
+            sub.addAction("Tab with", lambda _=False, t=target: _place(t, tab=True))
+        menu.exec_(QCursor.pos())
+
+    def _dock_of(self, plot) -> QDockWidget | None:
+        for name, dock in self._panel_docks.items():
+            if self._get_panel_widget(name) is plot:
+                return dock
+        return self._lineplot_docks.get(plot)
+
+    def set_panel_title(self, plot, title: str) -> None:
+        """Update a panel dock's title (e.g. when its feature changes)."""
+        dock = self._dock_of(plot)
+        if dock is not None:
+            dock.titleBarWidget().set_title(title)
 
     # ------------------------------------------------------------------
     # Drag-and-drop panel creation (left sidebar → plot area)
@@ -423,77 +489,173 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         event.acceptProposedAction()
 
     # ------------------------------------------------------------------
-    # Extra line-plot panels
+    # Line-plot panels (all equal — no built-in/extra distinction)
     # ------------------------------------------------------------------
 
     def _available_features(self) -> list[str]:
         data_widget = self._data_widget
         catalog = getattr(data_widget, "catalog", None) if data_widget else None
-        if catalog is not None and getattr(catalog, "features", None):
-            return list(catalog.features)
+        if catalog is not None:
+            choices = catalog.feature_choices()
+            if choices:
+                return choices
         ds = getattr(self.app_state, "ds", None)
         if ds is not None:
             return list(ds.data_vars)
         return []
 
-    def add_extra_lineplot(self, feature: str | None = None):
-        """Add an additional synced line plot — behaves exactly like the main
-        line plot (clicking it shows the same lineplot controls in the sidebar);
-        it just has a fixed feature and a ✕ to remove it."""
+    def add_lineplot(self, feature: str | None = None):
+        """Create a line-plot panel. Every line plot goes through here — they
+        are all equal peers with their own ✕ (which removes the instance),
+        per-panel state, and the same sidebar controls when clicked."""
         features = self._available_features()
         if not features:
             return None
 
         plot = LinePlot(self.app_state)
-        plot.feature_override = feature if feature in features else features[0]
+        if feature in features:
+            plot.set_panel_control("features", feature)
 
-        # Same ✕ close button as the fixed panels (no per-plot feature dropdown).
-        close_btn = _PanelCloseButton(plot, lambda: self.remove_extra_lineplot(plot))
-        if not hasattr(self, "_extra_close_buttons"):
-            self._extra_close_buttons: dict = {}
-        self._extra_close_buttons[plot] = close_btn
+        self._lineplot_dock_counter += 1
+        dock = self._make_dock(feature or "lineplot", plot, lambda: self.remove_lineplot(plot))
+        dock.setObjectName(f"panel_lineplot_{self._lineplot_dock_counter}")
+        anchor = self._last_open_dock()
+        self._lineplot_docks[plot] = dock
+        if anchor is None:
+            self._dock_host.addDockWidget(Qt.LeftDockWidgetArea, dock)
+        else:
+            self._dock_host.splitDockWidget(anchor, dock, Qt.Vertical)
+        dock.show()
 
-        self.extra_line_plots.append(plot)
-        self._splitter.addWidget(plot)
-        plot.show()
-        if self._xlink_master is not None and self._xlink_master is not plot:
-            plot.plotItem.setXLink(self._xlink_master.plotItem)
+        self.line_plots.append(plot)
         plot.vb.sigRangeChanged.connect(self._on_plot_zoom)
+        plot.vb.sigYRangeChanged.connect(lambda *_, p=plot: self.overlay_manager.rescale_for_plot(p))
         plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "feature"))
         # Register with the active-panel manager so it highlights + shows controls.
         if self.active_panels is not None:
             self.active_panels.register(plot, "lineplot", clicked_signal=plot.plot_clicked, plot=plot)
+        if self.active_feature_plot is None:
+            self.active_feature_plot = plot
+        self._update_panel_visibility()
         if self.app_state.ready:
             plot.update_plot()
-        self.labels_redraw_needed.emit()
+        self.panel_added.emit(plot)
         return plot
 
-    @property
-    def line_plots(self) -> list:
-        """All line plots as equals — the built-in one is not special."""
-        return [self.line_plot, *self.extra_line_plots]
+    def _last_open_dock(self) -> QDockWidget | None:
+        """The bottom anchor for a new line-plot dock (default vertical stack)."""
+        for plot in reversed(self.line_plots):
+            dock = self._lineplot_docks[plot]
+            if not dock.isHidden() and not dock.isFloating():
+                return dock
+        for name, _ in reversed(_PANEL_ORDER):
+            dock = self._panel_docks[name]
+            if not dock.isHidden() and not dock.isFloating():
+                return dock
+        return None
 
-    def remove_extra_lineplot(self, plot) -> None:
-        if plot not in self.extra_line_plots:
+    def remove_lineplot(self, plot) -> None:
+        """Remove any line-plot panel (they are all removable)."""
+        if plot not in self.line_plots:
             return
         if self.active_panels is not None:
             self.active_panels.unregister(plot)
+        self.line_plots.remove(plot)
+        dock = self._lineplot_docks.pop(plot, None)
         if self.active_feature_plot is plot:
-            self.active_feature_plot = self.line_plot
-        self.extra_line_plots.remove(plot)
-        plot.hide()
-        plot.setParent(None)
-        plot.deleteLater()
+            self.active_feature_plot = self.line_plots[0] if self.line_plots else None
+        if dock is not None:
+            self._dock_host.removeDockWidget(dock)
+            dock.deleteLater()
+        else:
+            plot.setParent(None)
+            plot.deleteLater()
+        self._update_panel_visibility()
 
-    def extra_lineplot_features(self) -> list[str]:
-        return [p.feature_override for p in self.extra_line_plots if p.feature_override]
+    # ------------------------------------------------------------------
+    # Panel layout persistence (app_state.panel_layout → local_settings.yaml)
+    # ------------------------------------------------------------------
 
-    def refresh_extra_lineplots(self, **kwargs) -> None:
-        for plot in self.extra_line_plots:
+    def _canonicalize_lineplot_dock_names(self):
+        """Name line-plot docks by list position so QMainWindow.saveState /
+        restoreState blobs match across sessions."""
+        for i, plot in enumerate(self.line_plots):
+            self._lineplot_docks[plot].setObjectName(f"panel_lineplot_{i}")
+
+    def layout_state(self) -> dict:
+        """Serializable panel layout: the open panels (type + per-panel params
+        such as ``feature``) plus the dock-host state blob that encodes the
+        free 2D arrangement (positions, sizes, tabs, floating)."""
+        self._canonicalize_lineplot_dock_names()
+        panels = []
+        for name, _ in _PANEL_ORDER:
+            if not self._panel_visible[name]:
+                continue
+            entry: dict = {"type": name}
+            if name == "heatmap":
+                feature = self.heatmap_plot._effective_feature()
+                if feature:
+                    entry["feature"] = str(feature)
+            panels.append(entry)
+        for plot in self.line_plots:
+            entry = {"type": "lineplot"}
+            feature = plot._effective_feature()
+            if feature:
+                entry["feature"] = str(feature)
+            panels.append(entry)
+        return {
+            "panels": panels,
+            "dock_state_b64": base64.b64encode(bytes(self._dock_host.saveState())).decode("ascii"),
+        }
+
+    def apply_layout_state(self, state: dict) -> None:
+        """Recreate the panel layout captured by :meth:`layout_state`."""
+        entries = state.get("panels")
+        if not isinstance(entries, list):
+            return
+
+        types = {e.get("type") for e in entries}
+
+        self.set_audiotrace_visible("audiotrace" in types)
+        self.set_spectrogram_visible("spectrogram" in types)
+        self.set_neo_visible("neo" in types)
+        self.set_heatmap_visible("heatmap" in types)
+        if "raster" in types:
+            self.set_neural_panel_mode("raster")
+        elif "ephys" in types:
+            self.set_neural_panel_mode("trace")
+        else:
+            self.set_ephys_visible(False)
+
+        for plot in list(self.line_plots):
+            self.remove_lineplot(plot)
+        for e in entries:
+            if e.get("type") == "lineplot":
+                self.add_lineplot(feature=e.get("feature"))
+            elif e.get("type") == "heatmap" and e.get("feature"):
+                self.heatmap_plot.set_panel_control("features", e["feature"])
+        self._canonicalize_lineplot_dock_names()
+
+        # Showing an audio panel requires re-wiring its source.
+        if "audiotrace" in types or "spectrogram" in types:
+            self.update_audio_panels()
+
+        blob = state.get("dock_state_b64")
+        if blob:
+            # Deferred so it runs after the _apply_panel_sizes singleShot that
+            # update_audio_panels / visibility changes schedule.
+            data = QByteArray(base64.b64decode(blob))
+            QTimer.singleShot(0, lambda: self._dock_host.restoreState(data))
+
+    def update_feature_plots(self, **kwargs) -> None:
+        """Re-render every feature panel: all line plots + heatmap if shown."""
+        if self._panel_visible["heatmap"]:
+            self.heatmap_plot.update_plot(**kwargs)
+        for plot in self.line_plots:
             plot.update_plot(**kwargs)
 
     def _get_all_plots(self) -> list:
-        return super()._get_all_plots() + list(self.extra_line_plots)
+        return super()._get_all_plots() + list(self.line_plots)
 
     def sizeHint(self):
         return QSize(self.width(), PLOT_CONTAINER_SIZE_HINT_HEIGHT)
@@ -503,32 +665,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._label_indicator._reposition()
 
     def _update_label_indicator(self, time_s: float):
-        df = self.app_state.label_intervals
-        mappings = self.label_mappings
-        if df is None or df.empty or not mappings:
-            self._label_indicator.hide()
-            return
-
-        ind = getattr(self.app_state, "individuals_sel", None)
-        if ind is None or ind in ("", "None"):
-            ds = self.app_state.ds
-            _ind_dim = next((n for n in ("individuals", "individual") if ds is not None and n in ds.coords), None)
-            if _ind_dim is not None:
-                ind = str(ds.coords[_ind_dim].values[0])
-            else:
-                ind = "default"
-
-        active_ids = self.app_state.active_label_ids
-        idx = find_interval_at(df, time_s, ind, label_ids=active_ids)
-        if idx is not None:
-            _, _, label_id = get_interval_bounds(df, idx)
-            if label_id in mappings and label_id != 0:
-                entry = mappings[label_id]
-                color = entry["color"]
-                color_list = color.tolist() if hasattr(color, "tolist") else list(color)
-                self._label_indicator.update_label(entry["name"], color_list)
-                return
-
+        # Label indicator (text badge) is only shown on video, not on plots
         self._label_indicator.hide()
 
     def _on_plot_zoom(self):
@@ -541,28 +678,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def configure_panels(self):
         """Called after data load to set up which panels are available."""
-
-        # Clear saved user sizes so defaults apply for the new dataset
-        self._user_sizes.clear()
         self._update_panel_visibility()
 
     def _get_panel_widget(self, name: str):
-        if name == "feature":
-            return self._feature_plot
         return getattr(self, _PANEL_PLOT_ATTR[name])
-
-    def _on_splitter_moved(self, pos: int, index: int):
-        """Save user-adjusted sizes keyed by panel name."""
-        sizes = self._splitter.sizes()
-        for name, _ in _PANEL_ORDER:
-            widget = self._get_panel_widget(name)
-            idx = self._splitter.indexOf(widget)
-            if idx >= 0 and widget.isVisible():
-                self._user_sizes[name] = sizes[idx]
-        # heatmap_plot at last slot
-        hm_idx = self._splitter.indexOf(self.heatmap_plot)
-        if hm_idx >= 0 and self.heatmap_plot.isVisible():
-            self._user_sizes["feature"] = sizes[hm_idx]
 
     def _visible_panel_names(self) -> list[str]:
         result = []
@@ -573,57 +692,53 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
                 result.append(name)
         return result
 
+    def _visible_panel_widgets(self) -> list:
+        """All open panels in visual order: fixed panels + line plots."""
+        return [self._get_panel_widget(n) for n in self._visible_panel_names()] + list(self.line_plots)
+
     def _update_panel_visibility(self):
-        """Show/hide panels in-place; never reparents widgets."""
+        """Show/hide fixed panel docks in-place; never reparents widgets."""
         visible_names = self._visible_panel_names()
         visible_set = set(visible_names)
 
         for name, guard in _PANEL_ORDER:
-            widget = self._get_panel_widget(name)
-            should_show = name in visible_set
-            widget.setVisible(should_show)
+            self._panel_docks[name].setVisible(name in visible_set)
 
         self._setup_xlinks_from_visible(visible_names)
 
-        # Hide x-axis ticks on all panels except the bottom-most visible one
-        for i, name in enumerate(visible_names):
-            widget = self._get_panel_widget(name)
-            is_last = i == len(visible_names) - 1
-            widget.plotItem.getAxis("bottom").setStyle(showValues=is_last)
-            if not is_last:
-                widget.plotItem.setLabel("bottom", "")
+        # Every panel keeps its own x-axis ticks: with free 2D arrangement
+        # there is no single "bottom" panel to delegate them to.
+        for widget in self._visible_panel_widgets():
+            widget.plotItem.getAxis("bottom").setStyle(showValues=True)
 
         self._apply_all_zoom_constraints()
         QTimer.singleShot(0, self._apply_panel_sizes)
         self.labels_redraw_needed.emit()
 
     def _setup_xlinks_from_visible(self, visible_names: list[str] | None = None):
-        """Link all panels to the first visible panel's x-axis."""
-        if visible_names is None:
-            visible_names = self._visible_panel_names()
-        if not visible_names:
+        """Link all panels to the first open panel's x-axis."""
+        widgets = self._visible_panel_widgets()
+        if not widgets:
+            self._xlink_master = None
             return
 
-        master = self._get_panel_widget(visible_names[0])
+        master = widgets[0]
         self._xlink_master = master
+        for widget in widgets[1:]:
+            widget.plotItem.setXLink(master.plotItem)
 
-        for i, name in enumerate(visible_names):
-            widget = self._get_panel_widget(name)
-            if i > 0:
-                widget.plotItem.setXLink(master.plotItem)
-
-        # Keep hidden swap-candidates linked too
-        for plot in (self.line_plot, self.heatmap_plot, self.neo_trace_plot):
-            if plot is not master:
-                plot.plotItem.setXLink(master.plotItem)
-
-        # Extra line-plot panels follow the master as well
-        for plot in self.extra_line_plots:
+        # Keep hidden singletons linked too so they are in sync when shown.
+        for plot in (self.heatmap_plot, self.neo_trace_plot):
             if plot is not master:
                 plot.plotItem.setXLink(master.plotItem)
 
     def _apply_panel_sizes(self):
-        total = self._splitter.height()
+        """Default vertical sizing from `_PANEL_RATIOS` via resizeDocks.
+
+        Only a best-effort hint: the dock system preserves whatever
+        arrangement/sizes the user drags afterwards.
+        """
+        total = self._dock_host.height()
         if total <= 0:
             return
 
@@ -634,49 +749,41 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         visible_names = self._visible_panel_names()
 
-        # Build raw sizes: prefer user-saved sizes, fall back to ratio defaults.
-        raw = []
+        # The "feature" ratio is shared equally by the feature group:
+        # heatmap (if shown) + every line plot.
+        n_feature = len(self.line_plots) + (1 if "heatmap" in visible_names else 0)
+        feature_share = ratios.get("feature", 0.3) * total if n_feature else 0.0
+
+        raw = {}
         for name in visible_names:
-            if name in self._user_sizes:
-                raw.append(self._user_sizes[name])
-            else:
-                raw.append(ratios.get(name, 0.2) * total)
+            if name == "heatmap":
+                continue
+            raw[name] = ratios.get(name, 0.2) * total
 
-        # When neo and phy panels coexist, enforce a 1:5 size ratio between them
-        # only if neither has a user-saved size yet.
-        phy_names = {"ephys", "raster"}
-        if "neo" in visible_names and any(n in phy_names for n in visible_names):
-            if "neo" not in self._user_sizes and not any(
-                n in self._user_sizes for n in phy_names if n in visible_names
-            ):
-                neo_i = visible_names.index("neo")
-                phy_indices = [i for i, n in enumerate(visible_names) if n in phy_names]
-                neo_phy_total = raw[neo_i] + sum(raw[j] for j in phy_indices)
-                raw[neo_i] = neo_phy_total / 6
-                phy_raw_total = sum(raw[j] for j in phy_indices)
-                for j in phy_indices:
-                    raw[j] = raw[j] / phy_raw_total * (neo_phy_total * 5 / 6)
+        # When neo and phy panels coexist, enforce a 1:5 size ratio between them.
+        phy_present = [n for n in ("ephys", "raster") if n in raw]
+        if "neo" in raw and phy_present:
+            neo_phy_total = raw["neo"] + sum(raw[n] for n in phy_present)
+            raw["neo"] = neo_phy_total / 6
+            phy_raw_total = sum(raw[n] for n in phy_present)
+            for n in phy_present:
+                raw[n] = raw[n] / phy_raw_total * (neo_phy_total * 5 / 6)
 
-        if not raw:
+        total_alloc = sum(raw.values()) + feature_share
+        if total_alloc <= 0:
             return
+        scale = total / total_alloc
+        member_size = max(1, int(feature_share / n_feature * scale)) if n_feature else 0
 
-        # Scale to fill total height
-        scale = total / sum(raw)
-        sizes = [int(r * scale) for r in raw]
-
-        # Build full sizes list for all splitter children (hidden = 0).
-        # Map from panel name → computed size for visible panels.
-        size_map = dict(zip(visible_names, sizes))
-        all_sizes = []
-        for name, _ in _PANEL_ORDER:
-            all_sizes.append(size_map.get(name, 0))
-        # heatmap_plot is last splitter child; gets the feature size when it's active
-        all_sizes.append(size_map.get("feature", 0) if self.heatmap_plot.isVisible() else 0)
-        # When heatmap is active, line_plot slot should be 0
-        if self.heatmap_plot.isVisible():
-            feature_idx = next(i for i, (n, _) in enumerate(_PANEL_ORDER) if n == "feature")
-            all_sizes[feature_idx] = 0
-        self._splitter.setSizes(all_sizes)
+        docks, sizes = [], []
+        for name in visible_names:
+            docks.append(self._panel_docks[name])
+            sizes.append(member_size if name == "heatmap" else max(1, int(raw[name] * scale)))
+        for plot in self.line_plots:
+            docks.append(self._lineplot_docks[plot])
+            sizes.append(member_size)
+        if docks:
+            self._dock_host.resizeDocks(docks, sizes, Qt.Vertical)
 
     # ------------------------------------------------------------------
     # Panel visibility toggles
@@ -698,47 +805,25 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         if not visible:
             self.spectrogram_plot.set_source(None)
 
+    def set_heatmap_visible(self, visible: bool):
+        self._set_panel_visible("heatmap", visible)
+
     def set_feature_view(self, mode: str):
-        """Switch the feature (bottom) panel.
+        """Switch how the selected feature is shown: "lineplot" or "heatmap".
 
-        Args:
-            mode: "lineplot" or "heatmap"
+        The heatmap is a singleton panel like any other; line plots are
+        instances. Heatmap mode shows the heatmap panel; lineplot mode hides
+        it (creating a line plot if none exists).
         """
-        if mode == "heatmap" and self._feature_type != "heatmap":
-            self._swap_feature_panel(self.heatmap_plot, "heatmap")
-        elif mode == "lineplot" and self._feature_type != "lineplot":
-            self._swap_feature_panel(self.line_plot, "lineplot")
-
-    def _swap_feature_panel(self, new_plot, new_type):
-        prev_xlim = self._feature_plot.get_current_xlim()
-        prev_marker = self._feature_plot.time_marker.value()
-
-        old_idx = self._splitter.indexOf(self._feature_plot)
-        new_idx = self._splitter.indexOf(new_plot)
-        sizes = list(self._splitter.sizes())
-
-        # Transfer the old feature's height to the new one
-        if old_idx >= 0 and new_idx >= 0:
-            sizes[new_idx] = sizes[old_idx]
-            sizes[old_idx] = 0
-
-        self._feature_plot.hide()
-        new_plot.show()
-
-        if self._xlink_master and new_plot is not self._xlink_master:
-            new_plot.plotItem.setXLink(self._xlink_master.plotItem)
-
-        self._feature_plot = new_plot
-        self._feature_type = new_type
-        self.current_plot = new_plot
-        self.current_plot_type = new_type
-
-        self._splitter.setSizes(sizes)
-        new_plot.set_x_range(mode="preserve", curr_xlim=prev_xlim)
-        new_plot.update_time_marker(prev_marker)
-        new_plot._apply_zoom_constraints(x_bounds_override=self._trial_bounds_tuple())
-
-        self.plot_changed.emit(new_type)
+        if mode not in ("lineplot", "heatmap") or mode == self._feature_type:
+            return
+        if mode == "heatmap":
+            self.set_heatmap_visible(True)
+        else:
+            self.set_heatmap_visible(False)
+            if not self.line_plots:
+                self.add_lineplot()
+        self.plot_changed.emit(mode)
         self.labels_redraw_needed.emit()
 
     # ------------------------------------------------------------------
@@ -779,9 +864,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             v["raster"] = show_raster
             self._update_panel_visibility()
 
-    def set_featureplot_visible(self, visible: bool):
-        self._set_panel_visible("feature", visible)
-
     # ------------------------------------------------------------------
     # Bidirectional y-axis sync: ephys <-> raster
     # ------------------------------------------------------------------
@@ -819,15 +901,40 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     # ------------------------------------------------------------------
 
     def get_current_plot(self):
-        return self._feature_plot
+        """The feature plot the user is working with: the active (last
+        clicked) line plot or heatmap, else the first line plot, else the
+        heatmap (which always exists as a widget)."""
+        active = self.active_feature_plot
+        if active is self.heatmap_plot and self._panel_visible["heatmap"]:
+            return active
+        if active in self.line_plots:
+            return active
+        if self.line_plots:
+            return self.line_plots[0]
+        return self.heatmap_plot
+
+    @property
+    def _feature_plot(self):
+        return self.get_current_plot()
+
+    @property
+    def _feature_type(self) -> str:
+        return "heatmap" if self._panel_visible["heatmap"] else "lineplot"
+
+    @property
+    def current_plot(self):
+        return self.get_current_plot()
+
+    @property
+    def current_plot_type(self) -> str:
+        return self._feature_type
 
     def get_current_xlim(self):
-        # Use the x-axis master if available, otherwise feature plot
-        master = self._xlink_master or self._feature_plot
+        master = self._xlink_master or self.get_current_plot()
         return master.get_current_xlim()
 
     def set_x_range(self, mode="default", curr_xlim=None, center_on_frame=None):
-        master = self._xlink_master or self._feature_plot
+        master = self._xlink_master or self.get_current_plot()
         return master.set_x_range(
             mode=mode,
             curr_xlim=curr_xlim,
@@ -836,19 +943,21 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     @property
     def vb(self):
-        return self._feature_plot.vb
+        return self.get_current_plot().vb
 
     def get_hovered_plot(self):
         for plot in self._visible_plots():
             if plot.underMouse():
                 return plot
-        return self._feature_plot
+        return self.get_current_plot()
 
     def _visible_plots(self):
-        for i in range(self._splitter.count()):
-            w = self._splitter.widget(i)
-            if w and w.isVisible():
-                yield w
+        for name, _ in _PANEL_ORDER:
+            if not self._panel_docks[name].isHidden():
+                yield self._get_panel_widget(name)
+        for plot in self.line_plots:
+            if not self._lineplot_docks[plot].isHidden():
+                yield plot
 
     def update_time_marker_by_time(self, time_s: float):
         for plot in self._visible_plots():
@@ -878,7 +987,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.time_marker_updated.emit(current_time)
 
     def apply_y_range(self, ymin, ymax):
-        return self._feature_plot.apply_y_range(ymin, ymax)
+        return self.get_current_plot().apply_y_range(ymin, ymax)
 
     def toggle_axes_lock(self):
         bounds = self._trial_bounds_tuple()
@@ -894,17 +1003,13 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         tr = self.app_state.padded_bounds
         return (tr.start_s, tr.end_s) if tr is not None else None
 
-    # --- Bottom panel switching ---
+    # --- Feature view switching ---
 
     def switch_to_lineplot(self):
-        if self._feature_type == "lineplot":
-            return
-        self._swap_feature_panel(self.line_plot, "lineplot")
+        self.set_feature_view("lineplot")
 
     def switch_to_heatmap(self):
-        if self._feature_type == "heatmap":
-            return
-        self._swap_feature_panel(self.heatmap_plot, "heatmap")
+        self.set_feature_view("heatmap")
 
     # --- Type checking ---
 
@@ -1075,8 +1180,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             return self.audio_trace_plot
         if self._panel_visible["ephys"] and self.ephys_trace_plot.isVisible():
             return self.ephys_trace_plot
-        if self._feature_type == "lineplot":
-            return self.line_plot
+        plot = self.get_current_plot()
+        if plot in self.line_plots:
+            return plot
         return None
 
     # --- Envelope sibling trace ---

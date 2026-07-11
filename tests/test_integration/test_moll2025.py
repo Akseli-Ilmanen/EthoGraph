@@ -431,7 +431,7 @@ class TestMollSpacePlot:
         ]
         assert len(trajectory_lines) > 0, "No trajectory GLLinePlotItem found"
 
-        # Verify space.yaml reference geometry is rendered (wireframe)
+        # Verify moll2025.yaml reference geometry is rendered (wireframe)
         non_trajectory = [
             item
             for item in sp.space_widget.items
@@ -440,7 +440,7 @@ class TestMollSpacePlot:
         refs = sp._load_references()
         if refs:
             assert len(non_trajectory) > 0, (
-                f"space.yaml has {len(refs)} references but none rendered. "
+                f"library geometry has {len(refs)} references but none rendered. "
                 f"GL items: {[type(i).__name__ for i in sp.space_widget.items]}"
             )
 
@@ -462,7 +462,7 @@ class TestMollLinePlot:
         meta.data_widget.update_main_plot()
         QApplication.processEvents()
 
-        lp = meta.plot_container.line_plot
+        lp = meta.plot_container.line_plots[0]
         assert len(lp.plot_items) > 0, "LinePlot has no plot items"
 
         import pyqtgraph as pg
@@ -524,7 +524,7 @@ class TestMollPynappleLinePlot:
         meta.data_widget.update_main_plot()
         QApplication.processEvents()
 
-        lp = meta.plot_container.line_plot
+        lp = meta.plot_container.line_plots[0]
         assert len(lp.plot_items) > 0, "LinePlot has no plot items"
 
         import pyqtgraph as pg
@@ -539,7 +539,7 @@ class TestMollPynappleLinePlot:
     def test_cycle_all_features(self, moll2025_pynapple_gui):
         _, meta = moll2025_pynapple_gui
         features_combo = meta.data_widget.combos["features"]
-        lp = meta.plot_container.line_plot
+        lp = meta.plot_container.line_plots[0]
         for i in range(features_combo.count()):
             text = features_combo.itemText(i)
             if text in ("Spectrogram", "Waveform"):

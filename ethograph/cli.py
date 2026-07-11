@@ -63,7 +63,10 @@ def launch():
 
     from ethograph.gui import theme
     from ethograph.gui.main_window import EthographMainWindow
+    from ethograph.gui.plots_space import ensure_geometry_library
     from ethograph.gui.widgets_meta import MetaWidget
+
+    ensure_geometry_library()
 
     app = QApplication.instance() or QApplication(sys.argv)
     theme.apply_theme(app)
@@ -82,6 +85,14 @@ def launch():
     shell.show()
     shell.raise_()
     shell.activateWindow()
+
+    # A dataset loaded through the cover page was loaded while the main window
+    # was still hidden, so every isVisible()-guarded viewport update (audio
+    # trace / spectrogram range handlers) was skipped. Redo them once shown.
+    if getattr(meta_widget.app_state, "ready", False):
+        from qtpy.QtCore import QTimer
+
+        QTimer.singleShot(0, meta_widget.plot_container.update_audio_panels)
 
     app.exec()
 

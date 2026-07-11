@@ -1343,7 +1343,7 @@ class EphysWidget(QWidget):
         else:
             self._phy_loader, _ = self._resolve_phy_loader()
         if self._phy_loader is not None and self.plot_container:
-            self.plot_container.set_ephys_visible(self.app_state.ephys_visible)
+            self.plot_container.set_ephys_visible(True)
             self.configure_ephys_trace_plot()
 
         if self._tsgroup is not None:
@@ -1353,10 +1353,7 @@ class EphysWidget(QWidget):
         self.app_state.has_neurons = True
 
         if self.data_widget:
-            phy_cb = getattr(self.data_widget, "phy_viewer_checkbox", None)
-            if phy_cb:
-                phy_cb.show()
-                phy_cb.setChecked(True)
+            self.data_widget.show_neural_panel()
             if hasattr(self.data_widget, "_populate_neo_stream_combo"):
                 self.data_widget._populate_neo_stream_combo()
 
@@ -1408,10 +1405,7 @@ class EphysWidget(QWidget):
         self.app_state.has_neurons = True
 
         if self.data_widget:
-            phy_cb = getattr(self.data_widget, "phy_viewer_checkbox", None)
-            if phy_cb:
-                phy_cb.show()
-                phy_cb.setChecked(True)
+            self.data_widget.show_neural_panel()
 
         # Check for IntervalSets in the loaded data
         self._check_pynapple_intervalsets(data, path.name)
@@ -2429,10 +2423,7 @@ class EphysWidget(QWidget):
             features_combo = self.data_widget.combos.get("features")
             if features_combo is not None:
                 set_combo_to_value(features_combo, "firing_rate")
-                self.app_state.set_key_sel("features", get_combo_value(features_combo))
-                self.data_widget._update_view_mode_items(get_combo_value(features_combo))
-                self.data_widget.view_mode_combo.show()
-                self.data_widget._apply_view_mode_for_feature()
+                self.data_widget.apply_panel_control("features", get_combo_value(features_combo))
             self.data_widget.update_main_plot()
 
     def _register_neuron_features(self):

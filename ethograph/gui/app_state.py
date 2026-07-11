@@ -11,6 +11,7 @@ import yaml
 from qtpy.QtCore import QObject, QTimer, Signal
 
 import ethograph as eto
+from ethograph.gui.app_constants import DEFAULT_LABEL_OVERLAY_MODES
 from ethograph.gui.notify import notify
 from ethograph.io.metadata_table import (
     load_metadata_df,
@@ -101,15 +102,17 @@ class AppStateSpec:
         "after_s_label": (float, 1.0, True),
         "before_s_sequence": (float, 1.0, True),
         "after_s_sequence": (float, 1.0, True),
-        "audiotrace_visible": (bool, True, True, SCOPE_LOCAL),
-        "spectrogram_visible": (bool, True, True, SCOPE_LOCAL),
-        "neo_visible": (bool, True, True, SCOPE_LOCAL),
-        "ephys_visible": (bool, True, True, SCOPE_LOCAL),
-        "featureplot_visible": (bool, True, True, SCOPE_LOCAL),
-        "video_viewer_visible": (bool, True, True, SCOPE_LOCAL),
         "pose_markers_visible": (bool, True, True, SCOPE_LOCAL),
         "labels_visible": (bool, True, True, SCOPE_LOCAL),
+        # Per-plot-type label rendering: "full" | "bottom" | "none"
+        "label_overlay_modes": (dict[str, str], dict(DEFAULT_LABEL_OVERLAY_MODES), True),
         "feature_view_mode": (str, "LinePlot", True, SCOPE_LOCAL),
+        # Panel layout (UnifiedPanelContainer.layout_state()): per-dataset,
+        # auto-saved to .ethograph/local_settings.yaml like other local vars.
+        "panel_layout": (dict | None, None, True, SCOPE_LOCAL),
+        # Outer window state (geometry/docks/sidebar, base64 blobs): app-wide,
+        # auto-saved to gui_settings.yaml. No JSON layout files exist.
+        "window_state": (dict | None, None, True),
         # Data
         "data_loader": (object | None, None, False),
         "source_collection": (object | None, None, False),
@@ -190,6 +193,9 @@ class AppStateSpec:
         "buffer_multiplier": (float, 5.0, True),
         "percentile_ylim": (float, 99.5, True),
         "space_plot_type": (str, "Layers", True, SCOPE_LOCAL),
+        "space_feature": (str | None, None, True),
+        "space_dim": (str | None, None, True),
+        "space_color": (str | None, None, True),
         "space_x_axis": (str | None, None, True),
         "space_y_axis": (str | None, None, True),
         "space_z_axis": (str | None, None, True),
@@ -206,6 +212,7 @@ class AppStateSpec:
         "space_lock_axes": (bool, False, False),
         "space_hide_zeros": (bool, False, True),
         "space_show_references": (bool, True, True),
+        "space_library_geometry": (str | None, None, True, SCOPE_LOCAL),
         "primary_camera": (str | None, None, True),
         "primary_camera_previous": (str | None, None, False),
         "extra_cameras": (list[str], [], True),
@@ -545,6 +552,7 @@ class ObservableAppState(QObject):
             "ephys_source_map",
             "ephys_stream_sel",
             "_suspend_local_autoload",
+            "_layout_snapshot_provider",
             "_all_labels_df",
             "_metadata_df",
             "_label_mappings",
@@ -975,6 +983,12 @@ class ObservableAppState(QObject):
                 state_dict = self._sort_state_dict(self.get_saveable_state_dict())
                 self._yaml_write(path, state_dict)
                 return True
+
+            # Refresh panel/window layout snapshots (set by MetaWidget) so the
+            # periodic auto-save always persists the live arrangement.
+            provider = getattr(self, "_layout_snapshot_provider", None)
+            if provider is not None:
+                provider()
 
             global_path = self._global_settings_path()
             global_state = self._sort_state_dict(self.get_saveable_state_dict(scope=AppStateSpec.SCOPE_GLOBAL))

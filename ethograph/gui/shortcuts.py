@@ -156,19 +156,6 @@ def bind_global_shortcuts(meta_widget):
     bind("Ctrl+H", data_widget.cycle_neural_view)
     bind("Ctrl+G", data_widget.cycle_view_mode)
 
-    def _toggle_checkbox(getter):
-        def run():
-            cb = getter()
-            if cb is not None and cb.isEnabled():
-                cb.setChecked(not cb.isChecked())
-
-        return run
-
-    bind("Shift+A", _toggle_checkbox(lambda: data_widget.audiotrace_checkbox), guarded=True)
-    bind("Shift+S", _toggle_checkbox(lambda: data_widget.spectrogram_checkbox), guarded=True)
-    bind("Shift+E", _toggle_checkbox(lambda: getattr(data_widget, "phy_viewer_checkbox", None)), guarded=True)
-    bind("Shift+F", _toggle_checkbox(lambda: data_widget.featureplot_checkbox), guarded=True)
-    bind("Shift+C", _toggle_checkbox(lambda: data_widget.video_viewer_checkbox), guarded=True)
     bind("Ctrl+Right", lambda: changepoints_widget.jump_changepoint(+1))
     bind("Ctrl+Left", lambda: changepoints_widget.jump_changepoint(-1))
 

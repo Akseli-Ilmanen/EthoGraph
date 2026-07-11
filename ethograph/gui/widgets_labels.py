@@ -10,9 +10,11 @@ from qtpy.QtCore import QMimeData, QSize, Qt, Signal
 from qtpy.QtGui import QColor, QDrag
 from qtpy.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
+    QFormLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -65,7 +67,12 @@ from ethograph.utils.paths import find_mapping_file  # noqa: E402
 logger = logging.getLogger(__name__)
 
 from .app_constants import (  # noqa: E402
+    DEFAULT_LABEL_OVERLAY_MODES,
     DEFAULT_LAYOUT_SPACING,
+    LABEL_OVERLAY_MODE_BOTTOM,
+    LABEL_OVERLAY_MODE_FULL,
+    LABEL_OVERLAY_MODE_NONE,
+    LABEL_OVERLAY_PLOT_TYPES,
     LABELS_TABLE_COLOR_COLUMN_WIDTH,
     LABELS_TABLE_ID_COLUMN_WIDTH,
     LABELS_TABLE_ROW_HEIGHT,
@@ -233,6 +240,24 @@ class LabelsWidget(QWidget):
     def set_meta_widget(self, meta_widget):
         """Set reference to the meta widget for layout refresh."""
         self.meta_widget = meta_widget
+
+    def attach_overlay_groupbox(self, groupbox):
+        """Add per-plot-type label controls to the "Label overlay" groupbox."""
+        self.labels_per_plot_btn = QPushButton("Show labels per plot type")
+        self.labels_per_plot_btn.setToolTip(
+            "Choose how label rectangles render on each plot type: full plot, bottom strip, or not at all"
+        )
+        self.labels_per_plot_btn.clicked.connect(self._show_labels_per_plot_dialog)
+        groupbox.layout().addWidget(self.labels_per_plot_btn)
+
+    def _show_labels_per_plot_dialog(self):
+        modes = dict(DEFAULT_LABEL_OVERLAY_MODES)
+        modes.update(self.app_state.label_overlay_modes or {})
+        dialog = LabelsPerPlotDialog(modes, self)
+        if dialog.exec_():
+            self.app_state.label_overlay_modes = dialog.get_modes()
+            if self.plot_container is not None:
+                self.plot_container.labels_redraw_needed.emit()
 
     def plot_all_labels(self, intervals_df, predictions_df=None):
         """Plot all labels for current trial based on interval data.
@@ -1401,6 +1426,45 @@ class LabelsWidget(QWidget):
         self._label_overlay_last_text = ""
         if hasattr(self, "_update_labels_text"):
             self._update_labels_text()
+
+
+class LabelsPerPlotDialog(QDialog):
+    """Dialog controlling how label rectangles render on each plot type."""
+
+    _MODE_OPTIONS = [
+        ("Full", LABEL_OVERLAY_MODE_FULL),
+        ("Bottom", LABEL_OVERLAY_MODE_BOTTOM),
+        ("None", LABEL_OVERLAY_MODE_NONE),
+    ]
+
+    def __init__(self, current_modes: dict[str, str], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Show label overlays per plot type")
+        self._combos: dict[str, QComboBox] = {}
+
+        layout = QVBoxLayout(self)
+        info = QLabel("Applies to every plot instance of the type.")
+        info.setStyleSheet("QLabel { color: #aaa; }")
+        layout.addWidget(info)
+
+        form = QFormLayout()
+        for type_key, display_name in LABEL_OVERLAY_PLOT_TYPES.items():
+            combo = QComboBox()
+            for option_label, mode in self._MODE_OPTIONS:
+                combo.addItem(option_label, mode)
+            idx = combo.findData(current_modes.get(type_key, DEFAULT_LABEL_OVERLAY_MODES[type_key]))
+            combo.setCurrentIndex(max(idx, 0))
+            form.addRow(f"{display_name}:", combo)
+            self._combos[type_key] = combo
+        layout.addLayout(form)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def get_modes(self) -> dict[str, str]:
+        return {type_key: combo.currentData() for type_key, combo in self._combos.items()}
 
 
 class TemporaryLabelsDialog(QDialog):

@@ -68,15 +68,23 @@ def test_sidebars_span_full_height(gui):
     assert shell.corner(Qt.BottomRightCorner) == Qt.RightDockWidgetArea
 
 
-def test_every_panel_has_a_close_button(gui):
+def test_every_panel_has_close_and_move_buttons(gui):
+    from qtpy.QtWidgets import QPushButton
+
     shell, meta = gui
     pc = meta.plot_container
-    # Every fixed panel gets its own ✕ close button.
-    assert len(pc._panel_close_buttons) == 7
+    # Every fixed panel is a dock with a slim title bar holding move + ✕
+    # buttons (line plots get theirs per-instance in add_lineplot).
+    assert len(pc._panel_docks) == 6
+    meta.app_state.has_audio = True  # guard for the audiotrace panel
     pc.set_audiotrace_visible(True)
-    btn = next(b for b in pc._panel_close_buttons if b.parentWidget() is pc.audio_trace_plot)
-    btn.click()
-    assert not pc.audio_trace_plot.isVisible()
+    dock = pc._panel_docks["audiotrace"]
+    assert not dock.isHidden()
+    assert dock.titleBarWidget().findChild(QPushButton, "panel_move_btn") is not None
+    close_btn = dock.titleBarWidget().findChild(QPushButton, "panel_close_btn")
+    close_btn.click()
+    assert dock.isHidden()
+    assert pc._panel_visible["audiotrace"] is False
 
 
 def test_top_bar_has_expected_menus(gui):
@@ -243,46 +251,47 @@ def test_left_sidebar_lists_sources_after_load(birdpark_gui):
     assert len(texts) > 2
 
 
-def test_drop_feature_creates_extra_lineplot(birdpark_gui):
+def test_drop_feature_creates_lineplot(birdpark_gui):
     shell, meta = birdpark_gui
     feats = meta.plot_container._available_features()
     assert feats, "expected at least one feature in birdpark"
-    n_before = len(meta.plot_container.extra_line_plots)
+    n_before = len(meta.plot_container.line_plots)
     meta._create_panel_for_source("feature", feats[0], "Lineplot")
-    assert len(meta.plot_container.extra_line_plots) == n_before + 1
+    assert len(meta.plot_container.line_plots) == n_before + 1
 
 
 def test_clicking_feature_plot_sets_active_and_context(birdpark_gui):
     shell, meta = birdpark_gui
     pc = meta.plot_container
-    p = pc.add_extra_lineplot(feature=pc._available_features()[0])
+    p = pc.add_lineplot(feature=pc._available_features()[0])
     reg = meta.active_panels.registration_for(p)
-    assert reg is not None  # extra plots auto-register with the manager
+    assert reg is not None  # every line plot auto-registers with the manager
     meta.active_panels.set_active(reg)
     assert pc.active_feature_plot is p
     assert meta.context_panel.current_context() in ("lineplot", "heatmap")
 
 
-def test_extra_lineplot_has_independent_state(birdpark_gui):
+def test_lineplots_have_independent_state(birdpark_gui):
     shell, meta = birdpark_gui
     pc = meta.plot_container
     feats = pc._available_features()
-    p = pc.add_extra_lineplot(feature=feats[0])
-    main_before = pc.line_plot._effective_feature()
-    # Editing the extra's own state must not change the main plot.
+    first = pc.line_plots[0]
+    p = pc.add_lineplot(feature=feats[0])
+    first_before = first._effective_feature()
+    # Editing one plot's own state must not change any other line plot.
     pc.active_feature_plot = p
     target = feats[1] if len(feats) > 1 else feats[0]
     p.set_panel_control("features", target)
     p.set_panel_control("keypoint", "beakTip")
     assert p._effective_feature() == target
     assert p._effective_selections().get("keypoint") == "beakTip"
-    assert pc.line_plot._effective_feature() == main_before  # main untouched
+    assert first._effective_feature() == first_before  # peer untouched
 
 
-def test_extra_lineplot_axes_are_independent(birdpark_gui):
+def test_lineplot_axes_are_independent(birdpark_gui):
     shell, meta = birdpark_gui
     pc = meta.plot_container
-    p = pc.add_extra_lineplot(feature=pc._available_features()[0])
+    p = pc.add_lineplot(feature=pc._available_features()[0])
     pc.active_feature_plot = p
     ps = meta.plot_settings_widget
     ps.ymin_edit.setText("1.0")
@@ -298,15 +307,16 @@ def test_active_panel_gets_green_edge(birdpark_gui):
     shell, meta = birdpark_gui
     mgr = meta.active_panels
     pc = meta.plot_container
-    p = pc.add_extra_lineplot(feature=pc._available_features()[0])
+    p = pc.add_lineplot(feature=pc._available_features()[0])
     p_reg = mgr.registration_for(p)
     mgr.set_active(p_reg)
     assert mgr.active is p_reg
     assert "2ecc71" in p.styleSheet().lower()
     # Activating another panel moves the green edge.
-    mgr.set_active(mgr.registration_for(pc.line_plot))
+    first = pc.line_plots[0]
+    mgr.set_active(mgr.registration_for(first))
     assert "2ecc71" not in p.styleSheet().lower()
-    assert "2ecc71" in pc.line_plot.styleSheet().lower()
+    assert "2ecc71" in first.styleSheet().lower()
 
 
 def test_video_click_activates_green_edge_and_pose_playback(birdpark_gui):
@@ -341,7 +351,7 @@ def test_all_panel_types_registered(birdpark_gui):
     mgr = meta.active_panels
     pc = meta.plot_container
     # Video, audio trace, spectrogram, line, heatmap all register.
-    for w in (pc.audio_trace_plot, pc.spectrogram_plot, pc.line_plot, pc.heatmap_plot):
+    for w in (pc.audio_trace_plot, pc.spectrogram_plot, pc.line_plots[0], pc.heatmap_plot):
         assert mgr.registration_for(w) is not None
     assert mgr.registration_for(shell.video_area.primary) is not None
 
@@ -351,8 +361,8 @@ def test_panel_control_only_affects_active_plot(birdpark_gui):
     dw = meta.data_widget
     pc = meta.plot_container
     feats = pc._available_features()
-    p1 = pc.add_extra_lineplot(feature=feats[0])
-    p2 = pc.add_extra_lineplot(feature=feats[0])
+    p1 = pc.add_lineplot(feature=feats[0])
+    p2 = pc.add_lineplot(feature=feats[0])
     # Any data-panel control routes only to the active plot (generic path).
     pc.active_feature_plot = p1
     dw.apply_panel_control("keypoint", "beakTip")
@@ -360,13 +370,13 @@ def test_panel_control_only_affects_active_plot(birdpark_gui):
     assert p2._effective_selections().get("keypoint") != "beakTip"
 
 
-def test_extra_lineplot_behaves_like_main_lineplot(birdpark_gui):
+def test_added_lineplot_behaves_like_any_lineplot(birdpark_gui):
     shell, meta = birdpark_gui
     pc = meta.plot_container
     feats = pc._available_features()
-    plot = pc.add_extra_lineplot(feature=feats[0])
+    plot = pc.add_lineplot(feature=feats[0])
     assert plot is not None
-    # No per-plot feature dropdown (simplified — same as the main line plot).
+    # No per-plot feature dropdown (all line plots share the sidebar controls).
     assert not hasattr(plot, "_feature_combo")
     # Clicking it switches the sidebar to the lineplot context.
     meta.context_panel.set_context("audiotrace")

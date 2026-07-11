@@ -164,8 +164,13 @@ class LeftSidebar(QWidget):
         item.setData(_ROLE_NAME, name)
         self._list.addItem(item)
 
-    def refresh(self):
-        """Repopulate from the current session (cameras, mics, features)."""
+    def refresh(self, catalog=None):
+        """Repopulate from the current session (cameras, mics, features).
+
+        *catalog* is the loaded DataCatalog: its ``feature_choices()`` is the
+        canonical feature list (same one the features combo displays), so
+        every draggable feature is representable in the sidebar controls.
+        """
         self._list.clear()
         sio = getattr(self.app_state, "nwb_alignment", None)
         cameras = list(getattr(sio, "cameras", []) or []) if sio else []
@@ -178,12 +183,10 @@ class LeftSidebar(QWidget):
             self._add_source(f"Audio ({mic})", "audio", str(mic))
 
         self._add_header("Features")
-        ds = getattr(self.app_state, "ds", None)
-        features: list[str] = []
-        catalog = getattr(self.app_state, "catalog", None)
-        if catalog is not None and getattr(catalog, "features", None):
-            features = list(catalog.features)
-        elif ds is not None:
-            features = list(ds.data_vars)
+        features: list[str] = catalog.feature_choices() if catalog is not None else []
+        if not features:
+            ds = getattr(self.app_state, "ds", None)
+            if ds is not None:
+                features = list(ds.data_vars)
         for feat in features:
             self._add_source(feat, "feature", str(feat))

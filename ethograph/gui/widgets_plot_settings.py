@@ -382,10 +382,22 @@ class PlotSettingsWidget(QWidget):
         group_layout.addWidget(self.space_hide_zeros_checkbox, row, 2, 1, 2)
 
         row += 1
-        self.space_show_references_checkbox = QCheckBox("Show space.yaml references")
-        self.space_show_references_checkbox.setToolTip("Draw arena/reference geometry loaded from space.yaml")
+        self.space_show_references_checkbox = QCheckBox("Show reference geometry")
+        self.space_show_references_checkbox.setToolTip("Draw the selected library reference geometry")
         self.space_show_references_checkbox.toggled.connect(self._on_space_show_references_toggled)
         group_layout.addWidget(self.space_show_references_checkbox, row, 0, 1, 4)
+
+        row += 1
+        group_layout.addWidget(QLabel("Library geometry:"), row, 0)
+        self.space_library_combo = QComboBox()
+        self.space_library_combo.setToolTip(
+            "Reference geometry drawn behind the trajectory, loaded from the "
+            "geometry library (~/.ethograph/geometries/*.yaml)"
+        )
+        self.space_library_combo.currentTextChanged.connect(self._on_space_library_changed)
+        # Re-sync when set externally (e.g. a template's library_geometry default)
+        self.app_state.space_library_geometry_changed.connect(lambda *_: self._populate_space_library_combo())
+        group_layout.addWidget(self.space_library_combo, row, 1, 1, 3)
 
         main_layout.addWidget(self.spaceplot_panel)
 
@@ -400,6 +412,24 @@ class PlotSettingsWidget(QWidget):
         self.space_hide_zeros_checkbox.setChecked(self.app_state.get_with_default("space_hide_zeros"))
 
         self.space_show_references_checkbox.setChecked(self.app_state.get_with_default("space_show_references"))
+
+        self._populate_space_library_combo()
+
+    def _populate_space_library_combo(self):
+        """Re-scan the global geometry library and restore the saved selection."""
+        from ethograph.gui.plots_space import load_library_geometries
+
+        combo = self.space_library_combo
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("None")
+        combo.addItems(sorted(load_library_geometries()))
+        saved = self.app_state.get_with_default("space_library_geometry")
+        if saved:
+            idx = combo.findText(saved)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+        combo.blockSignals(False)
 
     def _on_space_percentile_changed(self, value: float):
         self.app_state.space_percentile_xyzlim = value
@@ -418,6 +448,9 @@ class PlotSettingsWidget(QWidget):
 
     def _on_space_show_references_toggled(self, checked: bool):
         self.app_state.space_show_references = checked
+
+    def _on_space_library_changed(self, text: str):
+        self.app_state.space_library_geometry = text if text and text != "None" else None
 
     # ------------------------------------------------------------------
     # Shared controls (apply to all plot types)

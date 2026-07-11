@@ -173,6 +173,72 @@ class TimeAxisItem(pg.AxisItem):
         return strings
 
 
+class PanelStateMixin:
+    """Per-panel selection state shared by every feature plot (line plots AND
+    the heatmap), so each panel is an independent instance.
+
+    ``panel_state`` keys ("feature", "selections", "color") OVERRIDE the global
+    app_state; missing keys fall back to it. The right sidebar reads and writes
+    the *active* plot's state only (``DataWidget.apply_panel_control`` /
+    ``sync_sidebar_from_active_plot``) — no feature plot may read
+    ``app_state.features_sel`` / ``get_selections()`` directly for rendering.
+    """
+
+    #: Initial feature for a panel created with an explicit feature (drag-drop).
+    feature_override: str | None = None
+
+    @property
+    def panel_state(self) -> dict:
+        try:
+            return self._panel_state
+        except AttributeError:
+            self._panel_state = {}
+            return self._panel_state
+
+    def _effective_feature(self):
+        if "feature" in self.panel_state:
+            return self.panel_state["feature"]
+        if self.feature_override is not None:
+            return self.feature_override
+        return getattr(self.app_state, "features_sel", None)
+
+    def _effective_selections(self) -> dict:
+        if "selections" in self.panel_state:
+            return dict(self.panel_state["selections"])
+        return self.app_state.get_selections()
+
+    def _effective_color(self):
+        if "color" in self.panel_state:
+            c = self.panel_state["color"]
+        else:
+            c = getattr(self.app_state, "colors_sel", None)
+        return c if c and c != "None" else None
+
+    def set_panel_control(self, key: str, value) -> None:
+        """Record a sidebar control change into this panel's own state."""
+        if key == "features":
+            self.panel_state["feature"] = value
+        elif key == "colors":
+            self.panel_state["color"] = value
+        else:
+            sels = dict(self.panel_state.get("selections") or self.app_state.get_selections())
+            if value in (None, "", "None"):
+                sels.pop(key, None)
+            else:
+                sels[key] = value
+            self.panel_state["selections"] = sels
+
+    def _ensure_panel_state(self):
+        """Fork any still-missing state keys from the current globals on first
+        render, so later global changes can never leak into this panel."""
+        if self._effective_feature() is None:
+            return
+        ps = self.panel_state
+        ps.setdefault("feature", self._effective_feature())
+        ps.setdefault("selections", self.app_state.get_selections())
+        ps.setdefault("color", getattr(self.app_state, "colors_sel", None))
+
+
 class BasePlot(pg.PlotWidget):
     """Base class for plot widgets with shared sync and marker functionality.
 
