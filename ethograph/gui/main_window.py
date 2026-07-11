@@ -108,13 +108,15 @@ class EthographMainWindow(QMainWindow):
             0, lambda: self.resizeDocks([self._video_dock], [300], Qt.Vertical)
         )
 
-        # Bottom playback bar
+        # Bottom playback bar — no dock title bar (an empty widget removes the
+        # "Playback" text and the line it occupies).
         from .widgets_bottom_bar import BottomPlaybackBar
         bottom_bar = BottomPlaybackBar(meta_widget.app_state)
         self._bottom_bar_dock = self.add_dock_widget(bottom_bar, area="bottom", name="Playback")
         self._bottom_bar_dock.setObjectName("BottomBarDock")
+        self._bottom_bar_dock.setTitleBarWidget(QWidget())
         self._bottom_bar_dock.setFeatures(
-            self._bottom_bar_dock.DockWidgetFeature.DockWidgetMovable
+            QDockWidget.DockWidgetFeature.NoDockWidgetFeatures
         )
         self.bottom_bar = bottom_bar
 

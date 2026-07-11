@@ -97,13 +97,11 @@ class BottomPlaybackBar(QWidget):
         self.next_btn.clicked.connect(self._on_next_trial)
         layout.addWidget(self.next_btn)
 
-        # Wire app_state signals
-        if hasattr(app_state, "current_frame_changed"):
-            app_state.current_frame_changed.connect(self._update_slider_from_frame)
-        if hasattr(app_state, "fps_playback_changed"):
-            app_state.fps_playback_changed.connect(self._update_fps_display)
-        if hasattr(app_state, "trials_sel_changed"):
-            app_state.trials_sel_changed.connect(self._update_trial_label)
+        # Wire app_state signals. trials_sel is a dynamic *_sel attribute with
+        # no auto-generated signal — trial changes are announced via trial_changed.
+        app_state.current_frame_changed.connect(self._update_slider_from_frame)
+        app_state.fps_playback_changed.connect(self._update_fps_display)
+        app_state.trial_changed.connect(self._update_trial_label)
         if hasattr(app_state, "ready_changed"):
             app_state.ready_changed.connect(self._update_trial_label)
 

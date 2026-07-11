@@ -218,15 +218,17 @@ class LabelsWidget(QWidget):
         self._sync_active_label_ids()
 
         for plot in [
-            plot_container.line_plot,
             plot_container.spectrogram_plot,
             plot_container.audio_trace_plot,
             plot_container.heatmap_plot,
             plot_container.neo_trace_plot,
             plot_container.ephys_trace_plot,
+            *plot_container.line_plots,
         ]:
             if plot is not None:
                 plot.plot_clicked.connect(self._on_plot_clicked)
+        # Line plots created later (drag-drop) get the same click handling.
+        plot_container.panel_added.connect(lambda p: p.plot_clicked.connect(self._on_plot_clicked))
 
     def set_meta_widget(self, meta_widget):
         """Set reference to the meta widget for layout refresh."""
@@ -898,6 +900,9 @@ class LabelsWidget(QWidget):
         individual = self._current_individual()
 
         try:
+            # Left-click outside label-drawing mode selects the segment under the
+            # cursor, so pressing "V" plays it back. Right-click stays minimal
+            # (seek only) so it's fast.
             if button == Qt.LeftButton and not self.ready_for_label_click:
                 self._check_labels_click(t_clicked, individual)
 
@@ -912,13 +917,11 @@ class LabelsWidget(QWidget):
             if button == Qt.LeftButton:
                 return
 
-        # Handle right-click - seek video to clicked position
-        if button == Qt.RightButton and self.app_state.video:
-            frame = self.app_state.video.time_to_frame(t_clicked)
-            self.app_state.video.seek_to_frame(frame)
-
-        # Handle left-click for labeling/editing (only in label mode)
-        elif button == Qt.LeftButton and self.ready_for_label_click:
+        # When a label is armed (label-drawing mode), a click places the onset
+        # then the offset (point events: a single click). Either mouse button
+        # works. Otherwise right-click seeks the video; the red cursor follows
+        # automatically via the video's frame_changed signal.
+        if self.ready_for_label_click:
             # Snap to nearest changepoint if available (in time domain)
             if self.changepoints_widget and self.changepoints_widget.is_changepoint_correction_enabled():
                 t_snapped = self._snap_to_changepoint_time(t_clicked)
@@ -934,6 +937,10 @@ class LabelsWidget(QWidget):
             else:
                 self.second_click = t_snapped
                 self._apply_label()
+
+        elif button == Qt.RightButton and self.app_state.video:
+            frame = self.app_state.video.time_to_frame(t_clicked)
+            self.app_state.video.seek_to_frame(frame)
 
     def _active_label_is_point(self) -> bool:
         """True iff the currently selected label class is declared as a point."""
@@ -1256,7 +1263,13 @@ class LabelsWidget(QWidget):
             self.plot_container.audio_player.play_segment(onset_s, offset_s)
 
     def _get_canvas_widget(self):
-        """Return the primary video canvas widget (host for the label overlay)."""
+        """Return the stable primary CameraView (host for the label overlay).
+
+        The wgpu render canvas is recreated on every video load, which would
+        destroy an overlay parented to it — the CameraView itself persists."""
+        video_area = getattr(self.shell, "video_area", None)
+        if video_area is not None:
+            return video_area.primary
         return self.shell.canvas_widget()
 
     def _add_labels_shapes_layer(self):
@@ -1288,12 +1301,14 @@ class LabelsWidget(QWidget):
             if parent is None:
                 return
             pw = parent.width()
+            ph = parent.height()
             ow = self._label_overlay.sizeHint().width()
-            self._label_overlay.move((pw - ow) // 2, 8)
+            oh = self._label_overlay.sizeHint().height()
+            self._label_overlay.move(pw - ow - 8, ph - oh - 8)
 
         self._reposition_overlay = _reposition_overlay
 
-        # Track canvas resizes to keep the overlay centred
+        # Track canvas resizes to reposition overlay
         orig_resize = canvas_widget.resizeEvent
 
         def _on_canvas_resize(event):
