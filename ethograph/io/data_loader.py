@@ -28,6 +28,7 @@ from ethograph.io.catalog import (
     catalog_from_xarray,
 )
 from ethograph.io.metadata_table import (
+    TABULAR_METADATA_EXTS,
     empty_metadata_df,
     load_metadata_df,
     load_metadata_tsv,
@@ -95,10 +96,16 @@ def _resolve_trials_ep(data: dict, trials_ep, *, metadata_path: str | Path | Non
         path = Path(metadata_path)
         if not path.exists():
             raise ValueError(f"Metadata file not found: {path}")
-        df = load_metadata_tsv(path)
-        if "start_time" in df.columns and "stop_time" in df.columns:
-            validate_metadata_timing(df, path)
-            return trials_ep_from_metadata_df(df)
+        suffix = path.suffix.lower()
+        if suffix in TABULAR_METADATA_EXTS:
+            df = load_metadata_tsv(path)
+            if "start_time" in df.columns and "stop_time" in df.columns:
+                validate_metadata_timing(df, path)
+                return trials_ep_from_metadata_df(df)
+        elif suffix == ".nwb":
+            alignment = make_nwb_alignment(path)
+            if alignment.trials_ep is not None and len(alignment.trials_ep) > 0:
+                return alignment.trials_ep
 
     if trials_ep is not None and len(trials_ep) > 0:
         return trials_ep
@@ -134,8 +141,12 @@ def _is_pynapple_path_folder(file_path: str) -> bool:
     )
 
 
-def _resolve_alignment(source_path: str | Path):
+def _resolve_alignment(source_path: str | Path, alignment_path: str | Path | None = None):
     """Resolve alignment source with priority order.
+
+    An explicit ``alignment_path`` (user-specified alignment NWB, e.g. the
+    throwaway alignment built for drag-and-dropped media) wins over all
+    discovery below.
 
     For source ``.nwb`` files: use the source NWB directly. Trials and
     ImageSeries (media paths, stream rates) are read from the source.
@@ -146,6 +157,9 @@ def _resolve_alignment(source_path: str | Path):
     1. Sidecar ``.ethograph/alignment.nwb``.
     2. Sidecar metadata TSV with ``start_time`` and ``stop_time``.
     """
+    if alignment_path and Path(alignment_path).exists():
+        return make_nwb_alignment(alignment_path)
+
     source = Path(source_path)
 
     def _tsv_timing_alignment(path: Path):
@@ -191,6 +205,7 @@ def _resolve_alignment(source_path: str | Path):
 def _load_pynapple_dataset(
     file_path: str,
     metadata_path: str | None = None,
+    alignment_path: str | None = None,
 ) -> LoadResult:
     """Load a pynapple .npz file or folder."""
     from ethograph.io.pynapple import load_nap_data
@@ -203,7 +218,15 @@ def _load_pynapple_dataset(
 
     parent = Path(file_path).parent if not Path(file_path).is_dir() else Path(file_path)
     sidecar = parent / ".ethograph" / "alignment.nwb"
-    nwb_path = str(sidecar) if sidecar.exists() else None
+    if alignment_path and Path(alignment_path).exists():
+        nwb_path = alignment_path
+    elif sidecar.exists():
+        nwb_path = str(sidecar)
+    elif Path(file_path).suffix.lower() == ".nwb":
+        # .nwb sources are read directly — no sidecar needed.
+        nwb_path = file_path
+    else:
+        nwb_path = None
 
     trial_ids = list(range(1, len(trials_ep) + 1)) if trials_ep is not None else [1]
 
@@ -246,6 +269,7 @@ def _load_pynapple_dataset(
 def _load_trialtree(
     file_path: str,
     metadata_path: str | None = None,
+    alignment_path: str | None = None,
 ) -> LoadResult:
     """Load a TrialTree or xarray.Dataset from a .nc file."""
     dt = eto.open(file_path)
@@ -257,7 +281,7 @@ def _load_trialtree(
         dt = _wizard_ds_to_continuous_dt(ds)
         dt._source_path = file_path
 
-    sio = _resolve_alignment(file_path)
+    sio = _resolve_alignment(file_path, alignment_path=alignment_path)
     resolved_metadata_df, resolved_metadata_path = load_metadata_df(
         source_path=file_path,
         metadata_path=metadata_path,
@@ -307,6 +331,7 @@ def load_features_dataset(
     file_path: str,
     progress_callback: Callable[[str], None] | None = None,
     metadata_path: str | None = None,
+    alignment_path: str | None = None,
 ) -> LoadResult:
     """Load dataset from file path.
 
@@ -318,14 +343,17 @@ def load_features_dataset(
         Optional path to a TSV/CSV/Excel file with ``trial``, ``start_time``,
         ``stop_time`` columns.  When provided, trial boundaries are read from
         this file instead of the data source.
+    alignment_path
+        Optional explicit alignment NWB. Overrides sidecar discovery — used
+        for the user-specified alignment field and drag-and-dropped media.
 
     Returns a :class:`LoadResult` with dt, labels, catalog, and metadata.
     """
     if _is_pynapple_path_folder(file_path):
-        return _load_pynapple_dataset(file_path, metadata_path=metadata_path)
+        return _load_pynapple_dataset(file_path, metadata_path=metadata_path, alignment_path=alignment_path)
 
     if file_path.endswith(".nc"):
-        return _load_trialtree(file_path, metadata_path=metadata_path)
+        return _load_trialtree(file_path, metadata_path=metadata_path, alignment_path=alignment_path)
 
     raise ValueError(
         f"Unsupported file type: {Path(file_path).suffix!r}. "

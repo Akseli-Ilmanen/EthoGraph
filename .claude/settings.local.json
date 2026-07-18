@@ -45,7 +45,8 @@
       "Bash(powershell -Command \"conda activate ethograph2; python -c \"\"import movement; print\\(movement.__file__\\)\"\" 2>&1\")",
       "Bash(cd:*)",
       "Bash(powershell -Command \"conda activate ethograph2; uv pip install nbsphinx-link 2>&1\")",
-      "Bash(powershell -Command \"conda activate ethograph2; python -c \"\"import xarray; print\\(xarray.DataTree.__module__, xarray.DataTree.__name__\\)\"\" 2>&1\")"
+      "Bash(powershell -Command \"conda activate ethograph2; python -c \"\"import xarray; print\\(xarray.DataTree.__module__, xarray.DataTree.__name__\\)\"\" 2>&1\")",
+      "Skill(run)"
     ],
     "deny": [
       "Bash(rm:*)",

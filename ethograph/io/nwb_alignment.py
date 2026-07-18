@@ -802,6 +802,20 @@ def _filename_from_url_or_path(path: str) -> str:
     return Path(path).name
 
 
+def _coerce_trial_id(value):
+    """Coerce a trial ID to a plain Python int or str.
+
+    ``DataFrame.iterrows()`` upcasts rows to the columns' common dtype, so an
+    int trial column becomes float64 when timing columns are present — coerce
+    integral floats back to int before writing to NWB.
+    """
+    if hasattr(value, "item"):
+        value = value.item()
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
 def _build_trials_ep(df: pd.DataFrame, session_end: float | None = None):
     """Build a pynapple IntervalSet from a trials DataFrame with start/stop times.
 
@@ -1139,7 +1153,7 @@ def align_media_per_trial(
             "stop_time": float(row["stop_time"]),
         }
         if "trial" in table.columns:
-            trial_row["trial"] = row["trial"]
+            trial_row["trial"] = _coerce_trial_id(row["trial"])
         for col in media_cols:
             trial_row[col] = str(row[col]) if pd.notna(row[col]) else ""
         nwbfile.add_trial(**trial_row)
@@ -1237,7 +1251,7 @@ def align_media_from_streams(
     nwbfile.add_trial_column(name="trial", description="Trial number")
     for _, row in trials.iterrows():
         nwbfile.add_trial(
-            trial=row["trial"],
+            trial=_coerce_trial_id(row["trial"]),
             start_time=float(row["start_time"]),
             stop_time=float(row["stop_time"]),
         )

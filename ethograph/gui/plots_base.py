@@ -173,6 +173,114 @@ class TimeAxisItem(pg.AxisItem):
         return strings
 
 
+class PanelStateMixin:
+    """Per-panel selection state shared by every feature plot (line plots AND
+    the heatmap), so each panel is an independent instance.
+
+    ``panel_state`` keys ("feature", "selections", "color") OVERRIDE the global
+    app_state; missing keys fall back to it. The right sidebar reads and writes
+    the *active* plot's state only (``DataWidget.apply_panel_control`` /
+    ``sync_sidebar_from_active_plot``) — no feature plot may read
+    ``app_state.features_sel`` / ``get_selections()`` directly for rendering.
+    """
+
+    #: Initial feature for a panel created with an explicit feature (drag-drop).
+    feature_override: str | None = None
+
+    @property
+    def panel_state(self) -> dict:
+        try:
+            return self._panel_state
+        except AttributeError:
+            self._panel_state = {}
+            return self._panel_state
+
+    def _effective_feature(self):
+        if "feature" in self.panel_state:
+            return self.panel_state["feature"]
+        if self.feature_override is not None:
+            return self.feature_override
+        return getattr(self.app_state, "features_sel", None)
+
+    def _effective_selections(self) -> dict:
+        if "selections" in self.panel_state:
+            return dict(self.panel_state["selections"])
+        return self.app_state.get_selections()
+
+    def _effective_color(self):
+        if "color" in self.panel_state:
+            c = self.panel_state["color"]
+        else:
+            c = getattr(self.app_state, "colors_sel", None)
+        return c if c and c != "None" else None
+
+    def set_panel_control(self, key: str, value) -> None:
+        """Record a sidebar control change into this panel's own state.
+
+        ``value is None`` for a dimension key means "All": the dim is removed
+        from this panel's selections. The 'All' checkbox state is therefore
+        stored per panel as the absence of that dim.
+        """
+        if key == "features":
+            self.panel_state["feature"] = value
+        elif key == "colors":
+            self.panel_state["color"] = value
+        elif key == "show_predictions":
+            self.panel_state["show_predictions"] = bool(value)
+        else:
+            sels = dict(self.panel_state.get("selections") or self.app_state.get_selections())
+            if value in (None, "", "None"):
+                sels.pop(key, None)
+            else:
+                sels[key] = value
+            self.panel_state["selections"] = sels
+
+    def show_predictions_enabled(self) -> bool:
+        """Whether this panel shows the dotted prediction-confidence curve."""
+        return bool(self.panel_state.get("show_predictions", True))
+
+    def panel_settings(self) -> dict:
+        """This panel's coords-section settings in serializable form (used by
+        layout persistence and panel-type conversion)."""
+        settings: dict = {}
+        feature = self._effective_feature()
+        if feature:
+            settings["feature"] = str(feature)
+        if "selections" in self.panel_state:
+            settings["selections"] = {
+                str(k): (v.item() if hasattr(v, "item") else v)
+                for k, v in self.panel_state["selections"].items()
+            }
+        color = self.panel_state.get("color")
+        if color and color != "None":
+            settings["color"] = str(color)
+        if not self.panel_state.get("show_predictions", True):
+            settings["show_predictions"] = False
+        return settings
+
+    def apply_panel_settings(self, settings: dict) -> None:
+        """Restore settings captured by :meth:`panel_settings` into this
+        panel's own state. A dim absent from ``selections`` means "All"."""
+        if settings.get("feature"):
+            self.panel_state["feature"] = settings["feature"]
+        if isinstance(settings.get("selections"), dict):
+            self.panel_state["selections"] = dict(settings["selections"])
+        if settings.get("color"):
+            self.panel_state["color"] = settings["color"]
+        if "show_predictions" in settings:
+            self.panel_state["show_predictions"] = bool(settings["show_predictions"])
+
+    def _ensure_panel_state(self):
+        """Fork any still-missing state keys from the current globals on first
+        render, so later global changes can never leak into this panel."""
+        if self._effective_feature() is None:
+            return
+        ps = self.panel_state
+        ps.setdefault("feature", self._effective_feature())
+        ps.setdefault("selections", self.app_state.get_selections())
+        ps.setdefault("color", getattr(self.app_state, "colors_sel", None))
+
+
 class BasePlot(pg.PlotWidget):
     """Base class for plot widgets with shared sync and marker functionality.
 
@@ -327,7 +435,9 @@ class BasePlot(pg.PlotWidget):
         else:  # mode == 'default'
             view_span = self.app_state.view_span
             t0 = data_tmin
-            t1 = min(t0 + view_span, data_tmax)
+            # view_span (before_s + after_s) is 0 in trial mode → show the
+            # whole window instead of collapsing to a zero-width range.
+            t1 = min(t0 + view_span, data_tmax) if view_span > 0 else data_tmax
 
         self.vb.setXRange(t0, t1, padding=0)
 
@@ -353,8 +463,11 @@ class BasePlot(pg.PlotWidget):
 
                 if preserve_default_range:
                     view_span = self.app_state.view_span
-                    min_range = view_span * LOCKED_RANGE_MIN_FACTOR
-                    max_range = view_span * LOCKED_RANGE_MAX_FACTOR
+                    # view_span is 0 in trial mode → the default view is the
+                    # whole window, so lock relative to its full range.
+                    default_span = view_span if view_span > 0 else data_range
+                    min_range = default_span * LOCKED_RANGE_MIN_FACTOR
+                    max_range = default_span * LOCKED_RANGE_MAX_FACTOR
                 else:
                     min_range = x_range
                     max_range = x_range

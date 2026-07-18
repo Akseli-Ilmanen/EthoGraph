@@ -27,6 +27,8 @@ DATASETS: dict[str, dict] = {
         "nc_filename": "Trial_data.nc",
         "has_audio": False,
         "import_labels": True,
+        # Reference geometry from the bundled library (ethograph/geometries/)
+        "library_geometry": "setup",
         "media": [
             {
                 "video_cam-1": "2024-12-17_115_Crow1-cam-1.mp4",
@@ -80,36 +82,6 @@ DATASETS: dict[str, dict] = {
                 "14 reachRightCorner\n"
                 "15 nodding\n"
             ),
-            "space.yaml": (
-                "# Reference geometry for Moll2025 setup.\n"
-                "# Points are 3D [x, y, z] in metres. Edges connect points by index.\n"
-                "\n"
-                "references:\n"
-                "  - name: setup\n"
-                "    vertices:\n"
-                "      - [-7.00,  0.00, 0.65]   # 0: floor front-left\n"
-                "      - [-7.00,  9.80, 0.65]   # 1: floor back-left\n"
-                "      - [ 6.80,  9.80, 0.65]   # 2: floor back-right\n"
-                "      - [ 6.80,  0.00, 0.65]   # 3: floor front-right\n"
-                "      - [-7.00,  0.00, 2.75]   # 4: ceiling front-left\n"
-                "      - [-7.00,  9.80, 2.75]   # 5: ceiling back-left\n"
-                "      - [ 6.80,  9.80, 2.75]   # 6: ceiling back-right\n"
-                "      - [ 6.80,  0.00, 2.75]   # 7: ceiling front-right\n"
-                "    edges:\n"
-                "      - [0, 1]\n"
-                "      - [1, 2]\n"
-                "      - [2, 3]\n"
-                "      - [3, 0]\n"
-                "      - [4, 5]\n"
-                "      - [5, 6]\n"
-                "      - [6, 7]\n"
-                "      - [7, 4]\n"
-                "      - [0, 4]\n"
-                "      - [1, 5]\n"
-                "      - [2, 6]\n"
-                "      - [3, 7]\n"
-                "    color: black\n"
-            ),
         },
     },
     "birdpark": {
@@ -127,6 +99,7 @@ DATASETS: dict[str, dict] = {
         ],
         "release_tag": "birdpark",
         "size_mb": 76,
+        "downsample": 100,
     },
     "philodoptera": {
         "name": "Philodoptera — Motor control of sound production in crickets",
@@ -148,7 +121,7 @@ DATASETS: dict[str, dict] = {
     "lockbox": {
         "name": "Reiske et al., 2025 — Mouse Lockbox",
         "image": "lockbox2.gif",
-        "paper_url": "https://arxiv.org/abs/2505.15408",
+        "paper_url": "https://doi.org/10.1007/s11263-026-02908-x ",
         "folder": "Lockbox",
         "nc_filename": "lockbox.nc",
         "has_audio": False,
@@ -320,6 +293,8 @@ def resolve_dataset_paths(key: str) -> dict:
         "audio_folder": str(dest) if ds.get("has_audio") else "",
         "pose_folder": str(dest),
         "import_labels": ds.get("import_labels", False),
+        "downsample": ds.get("downsample"),
+        "library_geometry": ds.get("library_geometry"),
     }
     if ds.get("labels_file"):
         result["labels_file"] = str(dest / ds["labels_file"])

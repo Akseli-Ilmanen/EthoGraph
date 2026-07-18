@@ -5,7 +5,7 @@ import logging
 import numpy as np
 import ruptures as rpt
 import xarray as xr
-from napari.viewer import Viewer
+
 from qtpy.QtCore import QLocale, Qt, Signal
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -110,10 +110,10 @@ class ChangepointsWidget(QWidget):
 
     request_plot_update = Signal()
 
-    def __init__(self, napari_viewer: Viewer, app_state, parent=None):
+    def __init__(self, shell, app_state, parent=None):
         super().__init__(parent=parent)
         self.app_state = app_state
-        self.viewer = napari_viewer
+        self.shell = shell
         self.plot_container = None
         self.meta_widget = None
         self.setAttribute(Qt.WA_AlwaysShowToolTips)

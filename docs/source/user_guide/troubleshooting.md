@@ -47,7 +47,7 @@ Get-ChildItem *.avi | ForEach-Object { ffmpeg -y -i $_.FullName -c:v libx264 -pi
 ### Installation fails with "resolution-too-deep"
 
 This happens when using plain `pip` to install ethograph with extras like
-`[gui]` or `[all]`. The dependency tree (napari + movement + pynwb) is too
+`[gui]` or `[all]`. The dependency tree (pygfx + movement + pynwb) is too
 complex for pip's resolver.
 
 **Fix:** Use `uv` instead of `pip`:

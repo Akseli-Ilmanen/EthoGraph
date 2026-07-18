@@ -9,6 +9,9 @@ from ethograph.labels.intervals import EVENT_TYPE_POINT
 
 from .app_constants import (
     CP_COLOR_OSC_EVENT,
+    DEFAULT_LABEL_OVERLAY_MODES,
+    LABEL_OVERLAY_MODE_FULL,
+    LABEL_OVERLAY_MODE_NONE,
     CP_COLOR_SPECTROGRAM,
     CP_COLOR_WAVEFORM,
     CP_LINE_WIDTH_MEDIUM,
@@ -40,14 +43,23 @@ class LabelDrawingMixin:
     """Mixin that provides label and changepoint drawing on plot widgets.
 
     Requires the host class to have:
+      - app_state (for label_overlay_modes)
       - label_mappings: Dict[int, Dict[str, Any]]
-      - audio_overlay_type: str | None
       - audio_cp_items: list
       - osc_event_items: list
       - dataset_cp_items: list
-      - spectrogram_plot, line_plot, audio_trace_plot, heatmap_plot, ephys_trace_plot
+      - spectrogram_plots, audio_trace_plots (instance lists),
+        heatmap_plot, ephys_trace_plot, neo_trace_plot
       - current_plot (property or attribute)
     """
+
+    # Fixed-panel attribute -> plot-type key in label_overlay_modes.
+    # Audio panels are instance lists; any other plot is a line-plot instance.
+    _PLOT_TYPE_ATTRS = {
+        "heatmap_plot": "heatmap",
+        "ephys_trace_plot": "ephys",
+        "neo_trace_plot": "neo",
+    }
 
     def set_label_mappings(self, mappings: Dict[int, Dict[str, Any]]):
         self.label_mappings = mappings
@@ -57,11 +69,9 @@ class LabelDrawingMixin:
 
     def _get_all_plots(self) -> list:
         """Return all plot widgets that exist on this container."""
-        candidates = []
+        candidates = list(getattr(self, "spectrogram_plots", ()) or ())
+        candidates += list(getattr(self, "audio_trace_plots", ()) or ())
         for attr in (
-            "line_plot",
-            "spectrogram_plot",
-            "audio_trace_plot",
             "heatmap_plot",
             "neo_trace_plot",
             "ephys_trace_plot",
@@ -71,43 +81,24 @@ class LabelDrawingMixin:
                 candidates.append(plot)
         return candidates
 
-    def _get_label_eligible_plots(self) -> list:
-        """Return plots that should have label rectangles drawn.
+    def _plot_type_key(self, plot) -> str:
+        if plot in (getattr(self, "spectrogram_plots", ()) or ()):
+            return "spectrogram"
+        if plot in (getattr(self, "audio_trace_plots", ()) or ()):
+            return "audio"
+        for attr, type_key in self._PLOT_TYPE_ATTRS.items():
+            if plot is getattr(self, attr, None):
+                return type_key
+        return "lineplot"
 
-        Priority rules (multiple visible plots):
-          1. LinePlot and AudioTracePlot always get labels.
-          2. If neither is visible, fallback hierarchy: Spectrogram > EphysTrace > Heatmap.
-          3. Single visible plot always gets labels regardless of type.
-        """
-        visible = list(self._visible_plots()) if hasattr(self, "_visible_plots") else self._get_all_plots()
-
-        if len(visible) <= 1:
-            return visible
-
-        preferred = {
-            getattr(self, "line_plot", None),
-            getattr(self, "audio_trace_plot", None),
-        }
-        preferred.discard(None)
-
-        eligible = [p for p in visible if p in preferred]
-        if eligible:
-            return eligible
-
-        fallback_order = [
-            getattr(self, "spectrogram_plot", None),
-            getattr(self, "ephys_trace_plot", None),
-            getattr(self, "neo_trace_plot", None),
-            getattr(self, "heatmap_plot", None),
-        ]
-        for plot in fallback_order:
-            if plot is not None and plot in visible:
-                return [plot]
-
-        return visible
+    def _label_overlay_mode(self, plot) -> str:
+        """Rendering mode ("full" | "bottom" | "none") for this plot's type."""
+        type_key = self._plot_type_key(plot)
+        modes = getattr(self.app_state, "label_overlay_modes", None) or {}
+        return modes.get(type_key, DEFAULT_LABEL_OVERLAY_MODES[type_key])
 
     def draw_all_labels(self, slots):
-        """Render label slots on every eligible plot.
+        """Render label slots on every plot whose type's overlay mode isn't "none".
 
         slots: list of dicts ``{"df", "label_ids", "position"}``.
           - ``df``: DataFrame with onset_s, offset_s, labels (and optional event_type).
@@ -118,11 +109,10 @@ class LabelDrawingMixin:
         if not self.label_mappings:
             return
 
-        eligible = set(self._get_label_eligible_plots())
-
         for plot in self._get_all_plots():
             self._clear_labels_on_plot(plot)
-            if plot not in eligible:
+            mode = self._label_overlay_mode(plot)
+            if mode == LABEL_OVERLAY_MODE_NONE:
                 continue
             for slot in slots or []:
                 self._draw_intervals_on_plot(
@@ -130,6 +120,7 @@ class LabelDrawingMixin:
                     slot["df"],
                     label_ids=slot.get("label_ids"),
                     position=slot["position"],
+                    mode=mode,
                 )
 
     def _clear_labels_on_plot(self, plot):
@@ -143,7 +134,7 @@ class LabelDrawingMixin:
                 pass
         plot.label_items.clear()
 
-    def _draw_intervals_on_plot(self, plot, intervals_df, label_ids=None, position="main"):
+    def _draw_intervals_on_plot(self, plot, intervals_df, label_ids=None, position="main", mode=LABEL_OVERLAY_MODE_FULL):
         if not hasattr(plot, "label_items"):
             plot.label_items = []
         if intervals_df is None or intervals_df.empty:
@@ -159,7 +150,7 @@ class LabelDrawingMixin:
             if is_point:
                 self._draw_single_point(plot, row["onset_s"], labels)
             else:
-                self._draw_single_label(plot, row["onset_s"], row["offset_s"], labels, position)
+                self._draw_single_label(plot, row["onset_s"], row["offset_s"], labels, position, mode)
 
     def _draw_single_point(self, plot, time_s, labels):
         """Draw a point event as a thick vertical line in the label's color."""
@@ -180,27 +171,17 @@ class LabelDrawingMixin:
         plot.plot_item.addItem(line)
         plot.label_items.append(line)
 
-    def _is_bottom_strip_plot(self, plot) -> bool:
-        """Whether this plot should use bottom-strip style labels."""
-        return (
-            plot is getattr(self, "spectrogram_plot", None)
-            or plot is getattr(self, "heatmap_plot", None)
-            or plot is getattr(self, "ephys_trace_plot", None)
-            or plot is getattr(self, "neo_trace_plot", None)
-            or (plot is getattr(self, "line_plot", None) and getattr(self, "audio_overlay_type", None) == "spectrogram")
-        )
-
     def _is_inverted_y_plot(self, plot) -> bool:
         return plot is getattr(self, "heatmap_plot", None)
 
-    def _draw_single_label(self, plot, start_time, end_time, labels, position="main"):
+    def _draw_single_label(self, plot, start_time, end_time, labels, position="main", mode=LABEL_OVERLAY_MODE_FULL):
         """Draw a single label rectangle.
 
-        position: ``"main"`` -> standard full-plot rectangle (or bottom strip on
-        spectrogram-style plots, or top strip on inverted-Y heatmap).
-        ``"top1"``/``"top2"`` -> stacked thin top strips, drawn over the main
-        rectangles. Top2 sits directly under Top1 so two prediction-like
-        sources can co-exist visibly.
+        position: ``"main"`` -> standard full-plot rectangle, or — when the
+        plot type's overlay mode is ``"bottom"`` — a bottom strip (top strip
+        on the inverted-Y heatmap). ``"top1"``/``"top2"`` -> stacked thin top
+        strips, drawn over the main rectangles. Top2 sits directly under Top1
+        so two prediction-like sources can co-exist visibly.
         """
         if labels not in self.label_mappings:
             return
@@ -208,7 +189,7 @@ class LabelDrawingMixin:
 
         is_main = position == "main"
 
-        if is_main and not self._is_bottom_strip_plot(plot):
+        if is_main and mode == LABEL_OVERLAY_MODE_FULL:
             self._draw_standard_label(plot, start_time, end_time, color_rgb)
             return
 
@@ -217,7 +198,7 @@ class LabelDrawingMixin:
         degenerate = y_hi <= y_lo
 
         if is_main:
-            # Main on a bottom-strip plot: bottom strip (or top strip when y is inverted)
+            # Main in "bottom" mode: bottom strip (or top strip when y is inverted)
             height = SPECTROGRAM_FALLBACK_Y_HEIGHT if degenerate else (y_hi - y_lo) * SPECTROGRAM_LABELS_HEIGHT_RATIO
             if inverted_y:
                 y_top = PREDICTION_FALLBACK_Y_TOP if degenerate else y_hi
@@ -279,15 +260,11 @@ class LabelDrawingMixin:
 
     def draw_audio_changepoints(self, onsets: np.ndarray, offsets: np.ndarray):
         self.clear_audio_changepoints()
-        plots_to_draw = [
-            getattr(self, "spectrogram_plot", None),
-            getattr(self, "audio_trace_plot", None),
-        ]
+        audio_traces = list(getattr(self, "audio_trace_plots", ()) or ())
+        plots_to_draw = list(getattr(self, "spectrogram_plots", ()) or ()) + audio_traces
         line_style = self._get_changepoint_line_style()
         for plot in plots_to_draw:
-            if plot is None:
-                continue
-            color = CP_COLOR_WAVEFORM if plot is getattr(self, "audio_trace_plot", None) else CP_COLOR_SPECTROGRAM
+            color = CP_COLOR_WAVEFORM if plot in audio_traces else CP_COLOR_SPECTROGRAM
             for onset_t in onsets:
                 line = pg.InfiniteLine(
                     pos=onset_t,
@@ -334,9 +311,10 @@ class LabelDrawingMixin:
         if not self.audio_cp_items:
             return
         line_style = self._get_changepoint_line_style()
+        audio_traces = getattr(self, "audio_trace_plots", ()) or ()
         for item in self.audio_cp_items:
             plot, line, _ = item
-            color = CP_COLOR_WAVEFORM if plot is getattr(self, "audio_trace_plot", None) else CP_COLOR_SPECTROGRAM
+            color = CP_COLOR_WAVEFORM if plot in audio_traces else CP_COLOR_SPECTROGRAM
             line.setPen(pg.mkPen(color=color, width=line_style["width"], style=line_style["style"]))
 
     def clear_audio_changepoints(self):
@@ -350,9 +328,10 @@ class LabelDrawingMixin:
 
     def draw_dataset_changepoints(self, time_array: np.ndarray, cp_by_method: dict):
         self.clear_dataset_changepoints()
-        line_plot = getattr(self, "line_plot", None)
-        if line_plot is None or not self.is_lineplot():
+        line_plots = getattr(self, "line_plots", None)
+        if not line_plots or not self.is_lineplot():
             return
+        line_plot = self.get_current_plot()
         y_range = line_plot.plot_item.getViewBox().viewRange()[1]
         y_pos = y_range[0] + (y_range[1] - y_range[0]) * CP_SCATTER_Y_POSITION_RATIO
         for method_name, indices in cp_by_method.items():

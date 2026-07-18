@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 _STREAM_COL_RE = re.compile(r"^(video|pose|audio|ephys)_(.+)$")
 
+TABULAR_METADATA_EXTS = frozenset({".tsv", ".csv", ".xlsx", ".xls"})
+
 _NWB_STRUCTURAL_COLUMNS = frozenset(
     {
         "trial",
@@ -169,6 +171,14 @@ def _normalise_trial_column(df: pd.DataFrame, trial_ids: list[int | str] | None)
         if trial_ids is None:
             trial_ids = list(range(1, len(result) + 1))
         result.insert(0, "trial", list(trial_ids)[: len(result)])
+    else:
+        # Older alignment NWBs / TSVs may store integral trial IDs as floats
+        # (e.g. 1.0); app_state.trials requires int or str.
+        col = result["trial"]
+        if pd.api.types.is_float_dtype(col):
+            non_nan = col.dropna()
+            if not non_nan.empty and (non_nan == non_nan.astype("int64")).all():
+                result["trial"] = col.astype("Int64")
     return result
 
 
@@ -216,11 +226,9 @@ def load_metadata_df(
     5. Metadata stored on a pynapple IntervalSet.
     6. Empty table with one row per trial.
     """
-    _TABULAR_EXTS = {".tsv", ".csv", ".xlsx", ".xls"}
-
     if metadata_path is not None:
         path = Path(metadata_path)
-        if path.suffix.lower() in _TABULAR_EXTS and path.exists():
+        if path.suffix.lower() in TABULAR_METADATA_EXTS and path.exists():
             return _normalise_trial_column(load_metadata_tsv(path), trial_ids), str(path)
         if path.suffix.lower() == ".nwb" and path.exists():
             alignment = make_nwb_alignment(path)
@@ -231,7 +239,7 @@ def load_metadata_df(
 
     if source_path is not None:
         source = Path(source_path)
-        if source.suffix.lower() in _TABULAR_EXTS and source.exists():
+        if source.suffix.lower() in TABULAR_METADATA_EXTS and source.exists():
             return _normalise_trial_column(load_metadata_tsv(source), trial_ids), str(source)
         if source.suffix.lower() == ".nwb" and source.exists():
             alignment = make_nwb_alignment(source)

@@ -265,6 +265,16 @@ class TrialsWidget(QWidget):
         self._building = False
         self._apply_filters()
 
+        # Only show the trials table when there is real metadata to filter on
+        # (i.e. columns beyond the bare 'trial' number).
+        self.setVisible(self._has_metadata())
+
+    def _has_metadata(self) -> bool:
+        df = getattr(self, "_metadata_df", None)
+        if df is None or df.empty:
+            return False
+        return any(str(c) != "trial" for c in df.columns)
+
     def _refresh_table(self) -> None:
         """Rebuild the table from _metadata_df."""
         df = self._metadata_df

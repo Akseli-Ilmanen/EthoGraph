@@ -7,6 +7,8 @@ configs/crowlab/model/
 *.mkv
 *.mov
 !docs/source/_static/videos/*.mp4
+docs/build_preview/
+# pynaviz/
 *.wav
 *.nc
 *.nwb

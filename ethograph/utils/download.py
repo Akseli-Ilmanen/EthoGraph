@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 from typing import Callable
+from urllib.error import URLError
 from urllib.request import urlopen
 
 from ethograph.datasets import (
@@ -17,6 +18,12 @@ from ethograph.datasets import (
 logger = logging.getLogger(__name__)
 
 _RELEASE_BASE = "https://github.com/Akseli-Ilmanen/EthoGraph/releases/download"
+
+#: Optional per-template local-settings asset. If a ``local_settings.yaml``
+#: exists among a template's GitHub release assets, it is downloaded into the
+#: dataset's ``.ethograph/`` folder — shipping the author's panel layout (and
+#: any other per-dataset settings) through the normal settings system.
+TEMPLATE_LOCAL_SETTINGS_FILENAME = "local_settings.yaml"
 
 # Default mapping written to ~/.ethograph/mapping.txt if it doesn't exist.
 DEFAULT_MAPPING = (
@@ -214,6 +221,31 @@ def download_assets(
             local_path.write_bytes(resp.read())
         if on_progress:
             on_progress(i + 1, name)
+
+
+def download_template_local_settings(key: str) -> Path | None:
+    """Fetch the optional ``local_settings.yaml`` release asset for *key* into
+    the dataset's ``.ethograph/`` folder.
+
+    Never overwrites an existing local file (the user's own settings win).
+    Returns the local path, or ``None`` when the release has no such asset.
+    Template authors ship a layout by uploading their dataset's
+    ``.ethograph/local_settings.yaml`` to the GitHub release.
+    """
+    from ethograph.utils.paths import SETTINGS_DIR
+
+    local_path = dataset_dir(key) / SETTINGS_DIR / TEMPLATE_LOCAL_SETTINGS_FILENAME
+    if local_path.exists():
+        return local_path
+    url = f"{_RELEASE_BASE}/{DATASETS[key]['release_tag']}/{TEMPLATE_LOCAL_SETTINGS_FILENAME}"
+    try:
+        with urlopen(url) as resp:  # noqa: S310
+            data = resp.read()
+    except (URLError, OSError):
+        return None
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_bytes(data)
+    return local_path
 
 
 def build_alignment_nwb(key: str) -> None:
@@ -469,7 +501,7 @@ def setup_moll2025_pynapple(
     """Create a Moll2025 Pynapple variant with alignment NWB linking to original media.
 
     Copies pynapple ``.npz`` files and labels TSV, writes configs
-    (``mapping.txt``, ``space.yaml``), and creates
+    (``mapping.txt``), and creates
     ``.ethograph/alignment.nwb`` whose trials table references the video
     and pose files in the original ``Moll2025`` folder.
 

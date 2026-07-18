@@ -21,21 +21,21 @@ from ethograph.utils.download import (
 )
 
 try:
-    import napari
     from qtpy.QtWidgets import QApplication, QMessageBox
 
     from ethograph.gui.app_state import ObservableAppState
+    from ethograph.gui.main_window import EthographMainWindow
     from ethograph.gui.widgets_meta import MetaWidget
 
     GUI_AVAILABLE = True
 except ImportError:
     GUI_AVAILABLE = False
 
-requires_gui = pytest.mark.skipif(not GUI_AVAILABLE, reason="napari/Qt not installed")
+requires_gui = pytest.mark.skipif(not GUI_AVAILABLE, reason="Qt/pygfx not installed")
 
 
 def pytest_addoption(parser):
-    parser.addoption("--show", action="store_true", default=False, help="Show napari viewer for 15s after each test")
+    parser.addoption("--show", action="store_true", default=False, help="Show the GUI window for 15s after each test")
 
 
 BIRDPARK_DIR = dataset_dir("birdpark")
@@ -78,6 +78,8 @@ def _apply_template(meta, key: str, downsample: bool = False) -> None:
         meta.app_state.pose_folder = resolved["pose_folder"]
     if resolved.get("import_labels"):
         io.import_labels_checkbox.setChecked(True)
+    if resolved.get("library_geometry"):
+        meta.app_state.space_library_geometry = resolved["library_geometry"]
 
     io.downsample_checkbox.setChecked(downsample)
     if downsample:
@@ -118,6 +120,11 @@ def pytest_configure(config):
     """Download required datasets if not already present (skipped in CI without GUI)."""
     if not GUI_AVAILABLE:
         return
+
+    from ethograph.gui.plots_space import ensure_geometry_library
+
+    ensure_geometry_library()
+
     _ensure_dataset("birdpark")
     assert BIRDPARK_NC.exists(), f"BirdPark NC not found after download: {BIRDPARK_NC}"
 
@@ -205,8 +212,9 @@ def _suppress_dialogs(monkeypatch):
 
 
 @pytest.fixture
-@requires_gui
 def gui(request, qtbot, tmp_path, monkeypatch):
+    if not GUI_AVAILABLE:
+        pytest.skip("Qt/pygfx not installed")
     show = request.config.getoption("--show")
 
     test_config_dir = tmp_path / ".ethograph"
@@ -217,16 +225,25 @@ def gui(request, qtbot, tmp_path, monkeypatch):
         lambda data_dir=None: test_config_dir,
     )
 
-    viewer = napari.Viewer(show=show)
-    qtbot.addWidget(viewer.window._qt_window)
-
-    meta = MetaWidget(viewer)
+    shell = EthographMainWindow()
+    qtbot.addWidget(shell)
+    meta = MetaWidget(shell)
+    shell.attach_meta_widget(meta)
     meta._check_unsaved_changes = lambda event: True
+    # Hermetic layout state: never write panel layouts into the shared example
+    # dataset dirs, and never apply one a previous run left behind.
+    meta.app_state._layout_snapshot_provider = None
+    _real_apply = meta.apply_saved_panel_layout
+    meta.apply_saved_panel_layout = lambda: (
+        setattr(meta.app_state, "panel_layout", None) or _real_apply()
+    )
+    if show:
+        shell.show()
 
-    yield viewer, meta
+    yield shell, meta
     if show:
         qtbot.wait(15_000)
-    viewer.close()
+    shell.close()
 
 
 @pytest.fixture

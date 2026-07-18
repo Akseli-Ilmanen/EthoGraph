@@ -56,16 +56,45 @@ def launch():
         level=logging.INFO,
         format="%(name)s - %(levelname)s - %(message)s",
     )
-    logging.getLogger("napari").setLevel(logging.WARNING)
     _fix_wayland_opengl()
     _ensure_qt_plugins()
-    import napari
 
+    from qtpy.QtWidgets import QApplication
+
+    from ethograph.gui import theme
+    from ethograph.gui.main_window import EthographMainWindow
+    from ethograph.gui.plots_space import ensure_geometry_library
     from ethograph.gui.widgets_meta import MetaWidget
 
-    viewer = napari.Viewer()
-    viewer.window.add_dock_widget(MetaWidget(viewer), name="ethograph GUI")
-    napari.run()
+    ensure_geometry_library()
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    theme.apply_theme(app)
+
+    shell = EthographMainWindow()
+    meta_widget = MetaWidget(shell)
+    shell.attach_meta_widget(meta_widget)
+
+    # Start dialog first; the main window only appears after the user picks
+    # something to load (or skips). Closing the dialog exits without a GUI.
+    from ethograph.gui.cover_page import show_cover_page
+
+    if not show_cover_page(shell):
+        return
+
+    shell.show()
+    shell.raise_()
+    shell.activateWindow()
+
+    # A dataset loaded through the cover page was loaded while the main window
+    # was still hidden, so every isVisible()-guarded viewport update (audio
+    # trace / spectrogram range handlers) was skipped. Redo them once shown.
+    if getattr(meta_widget.app_state, "ready", False):
+        from qtpy.QtCore import QTimer
+
+        QTimer.singleShot(0, meta_widget.plot_container.update_audio_panels)
+
+    app.exec()
 
 
 def main():

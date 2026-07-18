@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 import numpy as np
-from napari.viewer import Viewer
+
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QDoubleValidator
 from qtpy.QtWidgets import (
@@ -45,10 +45,10 @@ _NORM_KEY_TO_DISPLAY = {v: k for k, v in _NORM_DISPLAY_TO_KEY.items()}
 class PlotSettingsWidget(QWidget):
     """Combined plot settings with toggle-button tabs: LinePlot | SpacePlot | Spectrogram | HeatMap."""
 
-    def __init__(self, napari_viewer: Viewer, app_state, parent=None):
+    def __init__(self, shell, app_state, parent=None):
         super().__init__(parent=parent)
         self.app_state = app_state
-        self.viewer = napari_viewer
+        self.shell = shell
         self.plot_container = None
         self.meta_widget = None
         self._needs_auto_levels = True
@@ -65,6 +65,7 @@ class PlotSettingsWidget(QWidget):
         self._create_spaceplot_panel(main_layout)
         self._create_spectrogram_panel(main_layout)
         self._create_heatmap_panel(main_layout)
+        self._create_audio_channel_group(main_layout)
         self._create_shared_controls(main_layout)
 
         self._restore_lineplot_defaults()
@@ -128,6 +129,21 @@ class PlotSettingsWidget(QWidget):
     def _toggle_heatmap(self):
         self._show_panel("heatmap" if self.heatmap_toggle.isChecked() else "lineplot")
 
+    # Map a clicked-plot type (from ``plot_container._last_clicked_panel``) to the
+    # settings panel that should be shown for it.
+    _PANEL_FOR_PLOT = {
+        "audio": "spectrogram",
+        "feature": "lineplot",
+        "space": "spaceplot",
+        "heatmap": "heatmap",
+    }
+
+    def show_panel_for(self, panel_type: str) -> None:
+        """Switch to the settings panel appropriate for the clicked plot."""
+        name = self._PANEL_FOR_PLOT.get(panel_type)
+        if name:
+            self._show_panel(name)
+
     def _refresh_layout(self):
         if self.meta_widget:
             self.meta_widget.refresh_widget_layout(self)
@@ -180,6 +196,11 @@ class PlotSettingsWidget(QWidget):
         self.apply_button.clicked.connect(self._on_axes_edited)
         self.reset_button.clicked.connect(self._reset_axes_to_defaults)
 
+        # Live-apply: values apply on editingFinished, so the explicit Apply /
+        # Reset buttons are redundant and hidden (kept alive for wiring).
+        self.apply_button.setVisible(False)
+        self.reset_button.setVisible(False)
+
         main_layout.addWidget(self.lineplot_panel)
 
     def _restore_lineplot_defaults(self):
@@ -220,6 +241,28 @@ class PlotSettingsWidget(QWidget):
         if checked:
             self.autoscale_checkbox.setChecked(False)
 
+    def sync_axes_to_active_plot(self):
+        """Populate the Y min/max/percentile fields from the active plot's own
+        per-panel state (every line plot is independent)."""
+        plot = getattr(self.plot_container, "active_feature_plot", None) if self.plot_container else None
+        ps = getattr(plot, "panel_state", {}) if plot is not None else {}
+        ymin, ymax = ps.get("ymin"), ps.get("ymax")
+        pct = ps.get("percentile")
+        if pct is None:
+            pct = self.app_state.get_with_default("percentile_ylim")
+
+        def _fmt(v):
+            return "" if v is None else str(v)
+
+        for edit, val in (
+            (self.ymin_edit, ymin),
+            (self.ymax_edit, ymax),
+            (self.percentile_ylim_edit, pct),
+        ):
+            edit.blockSignals(True)
+            edit.setText(_fmt(val))
+            edit.blockSignals(False)
+
     def _on_axes_edited(self):
         if not self.plot_container:
             return
@@ -230,27 +273,32 @@ class PlotSettingsWidget(QWidget):
             "percentile_ylim": self.percentile_ylim_edit,
         }
 
-        values = {}
-        for attr, edit in edits.items():
-            val = self._parse_float(edit.text())
-            if val is None:
-                val = self.app_state.get_with_default(attr)
-            values[attr] = val
-            setattr(self.app_state, attr, val)
+        ymin = self._parse_float(self.ymin_edit.text())
+        ymax = self._parse_float(self.ymax_edit.text())
+        pct = self._parse_float(self.percentile_ylim_edit.text())
+        if pct is None:
+            pct = self.app_state.get_with_default("percentile_ylim")
+        user_set_yrange = ymin is not None or ymax is not None
 
-        user_set_yrange = (
-            self._parse_float(self.ymin_edit.text()) is not None or self._parse_float(self.ymax_edit.text()) is not None
-        )
-
-        if not self.plot_container.is_spectrogram() and not self.autoscale_checkbox.isChecked():
-            if user_set_yrange:
-                current_plot = self.plot_container.get_current_plot()
-                if hasattr(current_plot, "vb"):
-                    current_plot.vb.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
-            self.plot_container.apply_y_range(values["ymin"], values["ymax"])
-
-        if not user_set_yrange and not self.autoscale_checkbox.isChecked() and "percentile_ylim" in values:
-            self.plot_container._apply_all_zoom_constraints()
+        if self.plot_container.is_spectrogram():
+            # Spectrogram y-limits are global (there is only one spectrogram).
+            for attr, val in (("ymin", ymin), ("ymax", ymax), ("percentile_ylim", pct)):
+                setattr(self.app_state, attr, val)
+        else:
+            # Every line plot has its own y-viewbox: store axes on the active plot
+            # and apply only to it (no canonical vs. extra split).
+            active = getattr(self.plot_container, "active_feature_plot", None)
+            if active is not None and hasattr(active, "panel_state"):
+                active.panel_state["ymin"] = ymin
+                active.panel_state["ymax"] = ymax
+                active.panel_state["percentile"] = pct
+                if not self.autoscale_checkbox.isChecked():
+                    if user_set_yrange:
+                        if hasattr(active, "vb"):
+                            active.vb.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
+                        active.apply_y_range(ymin, ymax)
+                    elif hasattr(active, "_apply_y_constraints"):
+                        active._apply_y_constraints()
 
         new_xmin, new_xmax = self._calculate_new_window_size()
         if new_xmin is not None and new_xmax is not None:
@@ -335,10 +383,22 @@ class PlotSettingsWidget(QWidget):
         group_layout.addWidget(self.space_hide_zeros_checkbox, row, 2, 1, 2)
 
         row += 1
-        self.space_show_references_checkbox = QCheckBox("Show space.yaml references")
-        self.space_show_references_checkbox.setToolTip("Draw arena/reference geometry loaded from space.yaml")
+        self.space_show_references_checkbox = QCheckBox("Show reference geometry")
+        self.space_show_references_checkbox.setToolTip("Draw the selected library reference geometry")
         self.space_show_references_checkbox.toggled.connect(self._on_space_show_references_toggled)
         group_layout.addWidget(self.space_show_references_checkbox, row, 0, 1, 4)
+
+        row += 1
+        group_layout.addWidget(QLabel("Library geometry:"), row, 0)
+        self.space_library_combo = QComboBox()
+        self.space_library_combo.setToolTip(
+            "Reference geometry drawn behind the trajectory, loaded from the "
+            "geometry library (~/.ethograph/geometries/*.yaml)"
+        )
+        self.space_library_combo.currentTextChanged.connect(self._on_space_library_changed)
+        # Re-sync when set externally (e.g. a template's library_geometry default)
+        self.app_state.space_library_geometry_changed.connect(lambda *_: self._populate_space_library_combo())
+        group_layout.addWidget(self.space_library_combo, row, 1, 1, 3)
 
         main_layout.addWidget(self.spaceplot_panel)
 
@@ -353,6 +413,24 @@ class PlotSettingsWidget(QWidget):
         self.space_hide_zeros_checkbox.setChecked(self.app_state.get_with_default("space_hide_zeros"))
 
         self.space_show_references_checkbox.setChecked(self.app_state.get_with_default("space_show_references"))
+
+        self._populate_space_library_combo()
+
+    def _populate_space_library_combo(self):
+        """Re-scan the global geometry library and restore the saved selection."""
+        from ethograph.gui.plots_space import load_library_geometries
+
+        combo = self.space_library_combo
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("None")
+        combo.addItems(sorted(load_library_geometries()))
+        saved = self.app_state.get_with_default("space_library_geometry")
+        if saved:
+            idx = combo.findText(saved)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+        combo.blockSignals(False)
 
     def _on_space_percentile_changed(self, value: float):
         self.app_state.space_percentile_xyzlim = value
@@ -372,12 +450,86 @@ class PlotSettingsWidget(QWidget):
     def _on_space_show_references_toggled(self, checked: bool):
         self.app_state.space_show_references = checked
 
+    def _on_space_library_changed(self, text: str):
+        self.app_state.space_library_geometry = text if text and text != "None" else None
+
     # ------------------------------------------------------------------
     # Shared controls (apply to all plot types)
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Audio channel group (context sidebar for audio trace / spectrogram)
+    # ------------------------------------------------------------------
+
+    def _create_audio_channel_group(self, main_layout):
+        """Per-panel channel selector shown in the audiotrace / spectrogram
+        sidebar contexts. Edits the *active* audio panel's pinned channel."""
+        self._active_audio_plot = None
+        self.audio_channel_group = QGroupBox("Audio source")
+        layout = QHBoxLayout()
+        layout.setSpacing(2)
+        layout.setContentsMargins(2, 2, 2, 2)
+        self.audio_channel_group.setLayout(layout)
+        layout.addWidget(QLabel("Channel:"))
+        self.audio_channel_combo = QComboBox()
+        self.audio_channel_combo.setObjectName("audio_channel_combo")
+        self.audio_channel_combo.currentIndexChanged.connect(self._on_audio_channel_changed)
+        layout.addWidget(self.audio_channel_combo, 1)
+        main_layout.addWidget(self.audio_channel_group)
+
+    def set_active_audio_plot(self, plot):
+        """Point the Channel combo at *plot* (audio trace or spectrogram
+        panel) and mirror its pinned mic/channel."""
+        self._active_audio_plot = plot
+        self._sync_audio_channel_combo()
+
+    def _channel_keys_for_plot(self, plot) -> list[str]:
+        """All ``audio_source_map`` keys for the file the panel is showing
+        (its pinned key, or the global mic selection when unpinned)."""
+        state = self.app_state
+        key = plot.mic_name or getattr(state, "mics_sel", None)
+        groups = getattr(state, "audio_mic_channels", None) or {}
+        for keys in groups.values():
+            if key in keys:
+                return list(keys)
+        source_map = getattr(state, "audio_source_map", None) or {}
+        if key in source_map:
+            return [key]
+        return []
+
+    def _sync_audio_channel_combo(self):
+        combo = self.audio_channel_combo
+        plot = self._active_audio_plot
+        keys = self._channel_keys_for_plot(plot) if plot is not None else []
+        source_map = getattr(self.app_state, "audio_source_map", None) or {}
+        combo.blockSignals(True)
+        combo.clear()
+        for key in keys:
+            _, ch = source_map.get(key, (key, 0))
+            combo.addItem(f"Channel {ch + 1}", key)
+        current = plot.mic_name if plot is not None else None
+        if current is None:
+            current = getattr(self.app_state, "mics_sel", None)
+        if current in keys:
+            combo.setCurrentIndex(keys.index(current))
+        combo.blockSignals(False)
+        combo.setEnabled(len(keys) > 1)
+
+    def _on_audio_channel_changed(self, index):
+        plot = self._active_audio_plot
+        pc = self.plot_container
+        if plot is None or pc is None or index < 0:
+            return
+        if plot not in pc.audio_trace_plots and plot not in pc.spectrogram_plots:
+            return
+        key = self.audio_channel_combo.itemData(index)
+        if not key or key == plot.mic_name:
+            return
+        pc.set_audio_panel_mic(plot, key)
+
     def _create_shared_controls(self, main_layout):
         shared_widget = QWidget()
+        self.shared_widget = shared_widget  # exposed for the context-sensitive sidebar
         shared_layout = QHBoxLayout()
         shared_layout.setSpacing(6)
         shared_layout.setContentsMargins(0, 0, 0, 0)
@@ -538,8 +690,9 @@ class PlotSettingsWidget(QWidget):
         self.plot_container = plot_container
         plot_container.plot_changed.connect(self._on_plot_changed)
         plot_container.spectrogram_overlay_shown.connect(self._on_overlay_shown)
-        if plot_container.spectrogram_plot:
-            plot_container.spectrogram_plot.bufferUpdated.connect(self._on_buffer_updated)
+        # Relays bufferUpdated from every spectrogram instance (they are
+        # dynamic panels — duplicates allowed).
+        plot_container.spectrogram_buffer_updated.connect(self._on_buffer_updated)
 
     def set_meta_widget(self, meta_widget):
         self.meta_widget = meta_widget
@@ -590,10 +743,8 @@ class PlotSettingsWidget(QWidget):
         colormap_name = display_to_internal.get(display_name, display_name)
         self.app_state.spec_colormap = colormap_name
         if self.plot_container:
-            if self.plot_container.is_spectrogram():
-                current_plot = self.plot_container.get_current_plot()
-                if hasattr(current_plot, "update_colormap"):
-                    current_plot.update_colormap(colormap_name)
+            for spec_plot in self.plot_container.spectrogram_plots:
+                spec_plot.update_colormap(colormap_name)
             if self.plot_container.has_spectrogram_overlay():
                 self.plot_container.apply_overlay_colormap(colormap_name)
 
@@ -601,14 +752,18 @@ class PlotSettingsWidget(QWidget):
         if not self.plot_container:
             return
 
-        spec_plot = self.plot_container.spectrogram_plot
-        is_spec = self.plot_container.is_spectrogram() or (hasattr(spec_plot, "isVisible") and spec_plot.isVisible())
+        # Levels are computed from the first spectrogram instance holding
+        # data and applied to every instance.
+        spec_plot = next(
+            (p for p in self.plot_container.spectrogram_plots if p.isVisible() and p.buffer.Sxx_db is not None),
+            None,
+        )
         has_overlay = self.plot_container.has_spectrogram_overlay()
 
-        if not is_spec and not has_overlay:
+        if spec_plot is None and not has_overlay:
             return
 
-        if not hasattr(spec_plot, "buffer") or spec_plot.buffer.Sxx_db is None:
+        if spec_plot is None or spec_plot.buffer.Sxx_db is None:
             return
 
         Sxx_db = spec_plot.buffer.Sxx_db
@@ -640,8 +795,8 @@ class PlotSettingsWidget(QWidget):
         self.app_state.vmin_db = zmin
         self.app_state.vmax_db = zmax
 
-        if is_spec and hasattr(spec_plot, "update_levels"):
-            spec_plot.update_levels(zmin, zmax)
+        for plot in self.plot_container.spectrogram_plots:
+            plot.update_levels(zmin, zmax)
 
         if has_overlay:
             self.plot_container.apply_overlay_levels(zmin, zmax)
@@ -656,11 +811,7 @@ class PlotSettingsWidget(QWidget):
         self.app_state.vmin_db = vmin
         self.app_state.vmax_db = vmax
         if self.plot_container:
-            spec_plot = self.plot_container.spectrogram_plot
-            spec_visible = self.plot_container.is_spectrogram() or (
-                hasattr(spec_plot, "isVisible") and spec_plot.isVisible()
-            )
-            if spec_visible and hasattr(spec_plot, "update_levels"):
+            for spec_plot in self.plot_container.spectrogram_plots:
                 spec_plot.update_levels(vmin, vmax)
             if self.plot_container.has_spectrogram_overlay():
                 self.plot_container.apply_overlay_levels(vmin, vmax)
@@ -708,26 +859,15 @@ class PlotSettingsWidget(QWidget):
             values[attr] = val
             setattr(self.app_state, attr, val)
 
-        spec_plot = self.plot_container.spectrogram_plot
-        spec_visible = self.plot_container.is_spectrogram() or (
-            hasattr(spec_plot, "isVisible") and spec_plot.isVisible()
-        )
-
-        if spec_visible:
-            if hasattr(spec_plot, "update_buffer_settings"):
-                spec_plot.update_buffer_settings()
-
-            if hasattr(spec_plot, "update_levels"):
-                spec_plot.update_levels(values["vmin_db"], values["vmax_db"])
-
+        for spec_plot in self.plot_container.spectrogram_plots:
+            spec_plot.update_buffer_settings()
+            spec_plot.update_levels(values["vmin_db"], values["vmax_db"])
             spec_plot.apply_y_range(values["spec_ymin"], values["spec_ymax"])
-
-            if hasattr(spec_plot, "update_plot_content"):
-                spec_plot.update_plot_content()
+            spec_plot.update_plot_content()
 
         if self.plot_container.has_spectrogram_overlay():
             self.plot_container.apply_overlay_levels(values["vmin_db"], values["vmax_db"])
-            if hasattr(spec_plot, "buffer") and hasattr(spec_plot.buffer, "_clear_buffer"):
+            for spec_plot in self.plot_container.spectrogram_plots:
                 spec_plot.buffer._clear_buffer()
             self.plot_container.update_audio_overlay()
 

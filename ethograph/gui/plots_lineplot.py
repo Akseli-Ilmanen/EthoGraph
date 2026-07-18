@@ -16,16 +16,14 @@ from ethograph.io.plot_sources import WindowedBuffer, XarraySource  # noqa: E402
 
 from .app_constants import DEFAULT_BUFFER_MULTIPLIER, LINEPLOT_DEBOUNCE_MS  # noqa: E402
 from .make_pretty import clean_display_labels  # noqa: E402
-from .plots_base import BasePlot, ThrottleDebounce  # noqa: E402
+from .plots_base import BasePlot, PanelStateMixin, ThrottleDebounce  # noqa: E402
 
 
-class LinePlot(BasePlot):
+class LinePlot(PanelStateMixin, BasePlot):
     """Line plot with lazy loading and shared sync/marker functionality."""
 
-    def __init__(self, napari_viewer, app_state, parent=None):
+    def __init__(self, app_state, parent=None):
         super().__init__(app_state, parent)
-        self.viewer = napari_viewer
-
         self.setLabel("left", "Value")
 
         self.plot_items = []
@@ -45,11 +43,12 @@ class LinePlot(BasePlot):
         self.vb.sigRangeChanged.connect(self._on_view_range_changed)
 
     def _get_selections_hash(self) -> str:
-        selections = self.app_state.get_selections()
-        return str(sorted(selections.items()))
+        selections = self._effective_selections()
+        color = self._effective_color()
+        return str(sorted(selections.items())) + f"|color={color}"
 
     def _context_changed(self) -> bool:
-        feature = getattr(self.app_state, "features_sel", None)
+        feature = self._effective_feature()
         trial = getattr(self.app_state, "trials_sel", None)
         sel_hash = self._get_selections_hash()
 
@@ -58,7 +57,7 @@ class LinePlot(BasePlot):
         )
 
     def _update_context(self):
-        self._current_feature = getattr(self.app_state, "features_sel", None)
+        self._current_feature = self._effective_feature()
         self._current_trial = getattr(self.app_state, "trials_sel", None)
         self._current_ds_kwargs_hash = self._get_selections_hash()
 
@@ -105,9 +104,6 @@ class LinePlot(BasePlot):
     def update_plot_content(self, t0: Optional[float] = None, t1: Optional[float] = None):
         clear_plot_items(self.plot_item, self.plot_items)
 
-        if not hasattr(self.app_state, "features_sel"):
-            return
-
         if t0 is None or t1 is None:
             t0, t1 = self.get_current_xlim()
 
@@ -116,14 +112,13 @@ class LinePlot(BasePlot):
     def _update_plot(self, t0: float, t1: float):
         clear_plot_items(self.plot_item, self.plot_items)
 
-        if not hasattr(self.app_state, "features_sel"):
+        self._ensure_panel_state()
+        if self._effective_feature() is None:
             return
 
-        feature_sel = self.app_state.features_sel
-        selections = self.app_state.get_selections()
-        color_var = None
-        if hasattr(self.app_state, "colors_sel") and self.app_state.colors_sel != "None":
-            color_var = self.app_state.colors_sel
+        feature_sel = self._effective_feature()
+        selections = self._effective_selections()
+        color_var = self._effective_color()
         show_cp = getattr(self.app_state, "show_changepoints", False)
 
         store = self._store
@@ -151,6 +146,9 @@ class LinePlot(BasePlot):
 
         for item in self.plot_items:
             if hasattr(item, "setDownsampling"):
+                # Safe against NaN gaps because curves are created with
+                # forward-filled data + a `connect` mask (_nan_safe_curve_args);
+                # raw NaNs would blank every bin containing one when zoomed out.
                 item.setDownsampling(auto=True, method="peak")
 
     def apply_y_range(self, ymin: Optional[float], ymax: Optional[float]):
@@ -159,11 +157,11 @@ class LinePlot(BasePlot):
 
     def _apply_y_constraints(self):
         """Apply y-axis constraints based on current feature data."""
-        if not hasattr(self.app_state, "features_sel"):
+        if self._effective_feature() is None:
             return
 
-        feature_sel = self.app_state.features_sel
-        selections = self.app_state.get_selections()
+        feature_sel = self._effective_feature()
+        selections = self._effective_selections()
 
         try:
             store = self._store
@@ -178,7 +176,9 @@ class LinePlot(BasePlot):
             else:
                 data, _ = eto.sel_valid(self.app_state.ds[feature_sel], selections)
 
-            percentile_ylim = self.app_state.get_with_default("percentile_ylim")
+            percentile_ylim = self.panel_state.get("percentile")
+            if percentile_ylim is None:
+                percentile_ylim = self.app_state.get_with_default("percentile_ylim")
             y_min = np.nanpercentile(data, 100 - percentile_ylim)
             y_max = np.nanpercentile(data, percentile_ylim)
             y_range = y_max - y_min
@@ -235,6 +235,29 @@ class MultiColoredLineItem(pg.GraphicsObject):
         return pg.QtCore.QRectF(self.picture.boundingRect())
 
 
+def _nan_safe_curve_args(y):
+    """Prepare curve data so pyqtgraph's 'peak' downsampling survives NaN gaps.
+
+    Peak (and mean) downsampling propagate NaN — one NaN blanks its whole bin,
+    so NaN-gapped curves vanish when zoomed out. Forward-filling keeps min/max
+    within real data values, while the returned `connect` mask makes pyqtgraph
+    skip the gap segments; its downsampling bins the mask too, so gaps stay
+    gaps at any zoom. Returns ``(y, None)`` when no filling is needed.
+    """
+    y = np.asarray(y, dtype=float)
+    finite = np.isfinite(y)
+    if finite.all() or not finite.any():
+        return y, None
+    idx = np.where(finite, np.arange(len(y)), 0)
+    np.maximum.accumulate(idx, out=idx)
+    filled = y[idx]
+    first = np.argmax(finite)
+    filled[:first] = y[first]
+    connect = finite.copy()
+    connect[:-1] &= finite[1:]
+    return filled, connect
+
+
 def plot_multidim(plot_item, time, data, coord_labels=None, existing_curves=None):
     """
     Plot multi-dimensional data (e.g., pos, vel) over time using PyQtGraph.
@@ -269,7 +292,9 @@ def plot_multidim(plot_item, time, data, coord_labels=None, existing_curves=None
         label = coord_labels[i] if coord_labels is not None else f"dim {i}"
         color = colors[i % len(colors)]
 
-        curve = plot_item.plot(time, data[:, i], pen=pg.mkPen(color=color, width=2), name=label)
+        y, connect = _nan_safe_curve_args(data[:, i])
+        opts = {"connect": connect} if connect is not None else {}
+        curve = plot_item.plot(time, y, pen=pg.mkPen(color=color, width=2), name=label, **opts)
         existing_curves.append(curve)
 
     return existing_curves
@@ -292,10 +317,13 @@ def plot_singledim(
         plot_item.addItem(multi_line)
         existing_items.append(multi_line)
     else:
+        y, connect = _nan_safe_curve_args(data)
+        opts = {"connect": connect} if connect is not None else {}
         curve = plot_item.plot(
             time,
-            data,
+            y,
             pen=pg.mkPen(color="k", width=2),
+            **opts,
         )
         existing_items.append(curve)
 

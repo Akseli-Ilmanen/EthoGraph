@@ -1,76 +1,61 @@
-"""Video synchronization for napari integration with audio playback support."""
+"""Video playback + time synchronization over the pygfx camera view.
+
+``VideoSync`` keeps the exact public API the rest of the GUI relies on
+(``seek_to_frame``, ``play_segment``, ``frame_to_time`` …) but drives a
+:class:`~ethograph.gui.pygfx_video.CameraView` instead of napari dims.
+
+Playback is a QTimer stepping trial frames: the render rate is capped at
+30 fps and frames are skipped to honour ``fps_playback`` (this is the old
+"skip frames" behaviour, now the only path — there is no napari dims.play).
+"""
 
 from typing import Any, Optional
 
-import napari
 from qtpy.QtCore import QObject, QTimer, Signal
 
-from ethograph.gui.notify import notify
 from ethograph.utils.audio import get_audio_sr
 
-try:
-    from napari._qt._qapp_model.qactions._view import _get_current_play_status
-except ImportError:
-    _get_current_play_status = None
+MAX_RENDER_FPS = 30.0
 
 
-class NapariVideoSync(QObject):
-    """Video player integrated with napari's built-in video controls."""
+class VideoSync(QObject):
+    """Video player synchronized with the plots and audio playback."""
 
     frame_changed = Signal(int)
     playback_stopped = Signal()
 
     def __init__(
         self,
-        viewer: napari.Viewer,
         app_state,
+        view,
         video_source: str,
         audio_source: Optional[str] = None,
-        video_layer=None,
-        frame_offset: int = 0,
-        time_offset: float = 0.0,
     ):
         super().__init__()
-        self.viewer = viewer
         self.app_state = app_state
+        self.view = view
         self.video_source = video_source
         self.audio_source = audio_source
-        self._frame_offset = frame_offset
-        self._time_offset = time_offset
+        self._time_offset = view.time_offset
 
-        self.qt_viewer = getattr(viewer.window, "_qt_viewer", None)
-        self.video_layer = video_layer
         self._audio_player: Any = None
-        self._segment_end_actual_frame: Optional[int] = None
-        self._seg_frame_count: int = 0
-        self._seg_last_frame: Optional[int] = None
-        self._stall_count: int = 0
+        self._segment_end_frame: Optional[int] = None
+        self._current_frame: int = 0
 
-        self._skip_timer = QTimer()
-        self._skip_timer.timeout.connect(self._skip_advance)
+        self._play_timer = QTimer()
+        self._play_timer.timeout.connect(self._advance)
+        self._step: float = 1.0
+        self._frame_accum: float = 0.0
 
-        self._watchdog = QTimer()
-        self._watchdog.setInterval(250)
-        self._watchdog.timeout.connect(self._check_playback_alive)
-
-        self.total_frames = 0
-        self.total_duration = 0.0
-
+        self.total_frames = view.n_frames
+        self.total_duration = self.total_frames / self.fps if self.fps else 0.0
         self.audio_sr = get_audio_sr(audio_source) if audio_source else None
 
-        for layer in self.viewer.layers:
-            if layer.name == "video" and hasattr(layer, "data"):
-                self.video_layer = layer
-                break
+        view.time_changed.connect(self._on_view_time_changed)
 
-        if not self.video_layer:
-            notify("Video layer not found. Load video first.", "error")
-            return
-
-        self.total_frames = self.video_layer.data.shape[0]
-        self.total_duration = self.total_frames / self.fps
-
-        self.viewer.dims.events.current_step.connect(self._on_napari_step_change)
+    # ------------------------------------------------------------------
+    # Time mapping
+    # ------------------------------------------------------------------
 
     def frame_to_time(self, frame: int) -> float:
         return frame / self.fps + self._time_offset
@@ -92,71 +77,93 @@ class NapariVideoSync(QObject):
 
     @property
     def is_playing(self) -> bool:
-        if self._skip_timer.isActive():
-            return True
-        if _get_current_play_status and self.qt_viewer:
-            return _get_current_play_status(self.qt_viewer)
-        return False
+        return self._play_timer.isActive()
 
-    def _on_napari_step_change(self, event=None):
-        if self.viewer.dims.current_step:
-            actual_frame = self.viewer.dims.current_step[0]
-            trial_frame = actual_frame - self._frame_offset
-            self.app_state.current_frame = trial_frame
+    @property
+    def current_frame(self) -> int:
+        return self._current_frame
 
-            if self._segment_end_actual_frame is not None:
-                self._seg_frame_count += 1
-
-            self.frame_changed.emit(trial_frame)
-
-            if self._segment_end_actual_frame is not None and actual_frame >= self._segment_end_actual_frame:
-                self._stop_segment_playback()
+    # ------------------------------------------------------------------
+    # Seeking
+    # ------------------------------------------------------------------
 
     def seek_to_frame(self, frame: int):
-        if self.video_layer:
-            actual_frame = frame + self._frame_offset
-            actual_frame = max(0, min(actual_frame, self.total_frames - 1))
-            self.viewer.dims.current_step = (actual_frame,) + self.viewer.dims.current_step[1:]
+        frame = max(0, min(int(frame), self.total_frames - 1)) if self.total_frames else 0
+        self.view.seek_trial_frame(frame)
+        self._apply_frame(frame)
+
+    def _apply_frame(self, frame: int):
+        """Update state + notify listeners (plots, extra cameras)."""
+        self._current_frame = frame
+        self.app_state.current_frame = frame
+        self.frame_changed.emit(frame)
+        if self._segment_end_frame is not None and frame >= self._segment_end_frame:
+            self._segment_end_frame = None
+            self.stop()
+
+    def _on_view_time_changed(self, video_time: float):
+        """User interacted with the video canvas (scroll/keys)."""
+        if self.fps <= 0:
+            return
+        frame = int(round(video_time * self.fps)) - self.view.start_frame
+        frame = max(0, min(frame, self.total_frames - 1)) if self.total_frames else 0
+        self._apply_frame(frame)
+
+    # ------------------------------------------------------------------
+    # Playback
+    # ------------------------------------------------------------------
 
     def start(self):
-        if not self.is_playing:
-            self._segment_end_actual_frame = None
-            self._seg_last_frame = None
-            if self.skip_frames:
-                self._start_skip_playback()
-            else:
-                self.qt_viewer.dims.play(fps=self.fps_playback)
-            self._watchdog.start()
+        if self.is_playing:
+            return
+        self._segment_end_frame = None
+        self._start_timer()
 
     def stop(self):
-        self._watchdog.stop()
-        self._segment_end_actual_frame = None
-        if self._skip_timer.isActive():
-            self._skip_timer.stop()
-        if _get_current_play_status and self.qt_viewer:
-            if _get_current_play_status(self.qt_viewer):
-                self.qt_viewer.dims.stop()
+        self._play_timer.stop()
+        self._segment_end_frame = None
         self._stop_audio()
         self.playback_stopped.emit()
 
     def toggle_pause_resume(self):
         self.stop() if self.is_playing else self.start()
 
-    def play_segment(self, start_frame: int, end_frame: int):
+    def _start_timer(self):
+        render_fps = min(self.fps_playback, MAX_RENDER_FPS)
+        if render_fps <= 0:
+            return
+        self._step = self.fps_playback / render_fps
+        self._frame_accum = float(self._current_frame)
+        self._play_timer.start(int(1000 / render_fps))
 
+    def _advance(self):
+        self._frame_accum += self._step
+        next_frame = int(round(self._frame_accum))
+        max_frame = self.total_frames - 1
+        if self._segment_end_frame is not None:
+            max_frame = min(max_frame, self._segment_end_frame)
+        if next_frame >= max_frame:
+            next_frame = max_frame
+            self.view.seek_trial_frame(next_frame)
+            self._apply_frame(next_frame)
+            if self._segment_end_frame is None:
+                self.stop()
+            return
+        self.view.seek_trial_frame(next_frame)
+        self._apply_frame(next_frame)
+
+    def play_segment(self, start_frame: int, end_frame: int):
         self.stop()
-        self._stop_audio()
 
         start_frame = max(0, min(int(start_frame), self.total_frames - 1))
         end_frame = max(0, min(int(end_frame), self.total_frames - 1))
         if end_frame <= start_frame:
             end_frame = min(start_frame + 1, self.total_frames - 1)
 
-        self._segment_end_actual_frame = end_frame + self._frame_offset
-        self._seg_frame_count = 0
-        self._seg_last_frame = None
-
-        self.seek_to_frame(start_frame)
+        self._segment_end_frame = end_frame
+        self.view.seek_trial_frame(start_frame, synchronous=True)
+        self._apply_frame(start_frame)
+        self._segment_end_frame = end_frame  # _apply_frame may have cleared it
 
         audio_path = self.app_state.audio_path or self.audio_source
         if audio_path:
@@ -184,55 +191,7 @@ class NapariVideoSync(QObject):
             self._audio_player = PlayAudio()
             self._audio_player.play(data=segment, rate=float(rate), blocking=False)
 
-        if self.skip_frames:
-            self._start_skip_playback()
-        else:
-            self.qt_viewer.dims.play(axis=0, fps=self.fps_playback)
-        self._watchdog.start()
-
-    def _check_playback_alive(self):
-        current = self.viewer.dims.current_step[0]
-        skip_active = self._skip_timer.isActive()
-
-        if self._seg_last_frame is not None and current == self._seg_last_frame:
-            self._stall_count += 1
-
-            if self._stall_count >= 1 and not skip_active:
-                next_frame = current + 1
-                if self._segment_end_actual_frame is not None and next_frame >= self._segment_end_actual_frame:
-                    self._stop_segment_playback()
-                    return
-                if next_frame < self.total_frames:
-                    self.viewer.dims.current_step = (next_frame,) + self.viewer.dims.current_step[1:]
-                self.qt_viewer.dims.play(axis=0, fps=self.fps_playback)
-                self._stall_count = 0
-        else:
-            self._stall_count = 0
-        self._seg_last_frame = current
-
-    def _stop_segment_playback(self):
-        if self._segment_end_actual_frame is not None:
-            self._segment_end_actual_frame = None
-            self.stop()
-            self._stop_audio()
-
-    def _start_skip_playback(self):
-        max_render_fps = 30.0
-        render_fps = min(self.fps_playback, max_render_fps)
-        self._skip_step = max(1, round(self.fps_playback / render_fps))
-        interval_ms = int(1000 / render_fps)
-        self._skip_timer.start(interval_ms)
-
-    def _skip_advance(self):
-        current_frame = self.viewer.dims.current_step[0]
-        max_frame = self.total_frames - 1
-        if self._segment_end_actual_frame is not None:
-            max_frame = min(max_frame, self._segment_end_actual_frame)
-
-        next_frame = current_frame + self._skip_step
-        next_frame = min(next_frame, max_frame)
-        self.viewer.dims.current_step = (next_frame,) + self.viewer.dims.current_step[1:]
-        # dims.events.current_step fires synchronously → _on_napari_step_change handles segment stop
+        self._start_timer()
 
     def _stop_audio(self):
         if self._audio_player:
@@ -241,10 +200,11 @@ class NapariVideoSync(QObject):
             self._audio_player = None
 
     def cleanup(self):
-        self.viewer.dims.events.current_step.disconnect(self._on_napari_step_change)
-        self._skip_timer.stop()
-        self._skip_timer.deleteLater()
-        self._watchdog.stop()
-        self._watchdog.deleteLater()
+        try:
+            self.view.time_changed.disconnect(self._on_view_time_changed)
+        except (RuntimeError, TypeError):
+            pass
+        self._play_timer.stop()
         self._stop_audio()
-        self.stop()
+        self._segment_end_frame = None
+        self.playback_stopped.emit()

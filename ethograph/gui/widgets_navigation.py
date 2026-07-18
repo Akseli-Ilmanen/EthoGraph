@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
-from napari import Viewer
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -34,8 +32,6 @@ from ethograph.utils.sequences import get_label_instances, match_sequences
 
 from .app_constants import AUDIO_SPEED_MAX, AUDIO_SPEED_MIN, AUDIO_SPEED_STEP
 from .dialog_screen_recorder import RecordButton
-
-logger = logging.getLogger(__name__)
 
 NAVIGATE_MODES = ["Trial", "Label", "Sequence"]
 SLIDER_SCOPES = ["Trial", "Trial Start", "Session"]
@@ -82,9 +78,9 @@ class _DataAlignmentDialog(QDialog):
 class NavigationWidget(QWidget):
     """Unified navigation: trial/label/sequence modes, filtering, playback."""
 
-    def __init__(self, viewer: Viewer, app_state, parent=None):
+    def __init__(self, shell, app_state, parent=None):
         super().__init__(parent=parent)
-        self.viewer = viewer
+        self.shell = shell
         self.app_state = app_state
         self.catalog = None
         self.plot_container = None
@@ -234,10 +230,12 @@ class NavigationWidget(QWidget):
         navigate_layout.addLayout(jump_row)
 
         # ── Playback ─────────────────────────────────────────────────
-        playback_group = QGroupBox("Playback")
+        playback_group = QGroupBox()
+        playback_group.setFlat(True)
+        self.playback_group = playback_group  # exposed for the video context sidebar
         playback_layout = QGridLayout()
-        playback_layout.setSpacing(2)
-        playback_layout.setContentsMargins(2, 2, 2, 2)
+        playback_layout.setSpacing(0)
+        playback_layout.setContentsMargins(0, 0, 0, 0)
         playback_group.setLayout(playback_layout)
 
         self.fps_label = QLabel("Playback FPS:")
@@ -305,7 +303,7 @@ class NavigationWidget(QWidget):
         self.play_pause_btn.setFixedWidth(36)
         self.play_pause_btn.clicked.connect(self._on_play_pause_clicked)
 
-        self.record_button = RecordButton(viewer, parent=self)
+        self.record_button = RecordButton(shell, parent=self)
         self.hide_label_text_cb = QCheckBox("Hide label text")
         self.hide_label_text_cb.setToolTip("Hide the label name overlay shown on the video canvas during playback")
         self.hide_label_text_cb.toggled.connect(self._on_hide_label_text_toggled)
@@ -826,18 +824,41 @@ class NavigationWidget(QWidget):
         sio = getattr(self.app_state, "nwb_alignment", None)
         trials = getattr(self.app_state, "trials", None)
         if sio is None or not trials:
+            notify("Cannot jump: no trial timing info", severity="warning")
             return
         global_t = self.jump_time_spin.value()
         try:
-            trial_id, _rel_t = find_closest_trial(sio, trials, global_t)
+            trial_id, rel_t = find_closest_trial(sio, trials, global_t)
         except ValueError:
-            logger.warning("Cannot jump: no trial timing info")
+            notify("Cannot jump: no trial timing info", severity="warning")
             return
-        self.app_state.trials_sel = trial_id
-        self.trials_combo.blockSignals(True)
-        self.trials_combo.setCurrentText(str(trial_id))
-        self.trials_combo.blockSignals(False)
-        self.app_state.trial_changed.emit()
+        if trial_id != getattr(self.app_state, "trials_sel", None):
+            self.app_state.trials_sel = trial_id
+            self.trials_combo.blockSignals(True)
+            self.trials_combo.setCurrentText(str(trial_id))
+            self.trials_combo.blockSignals(False)
+            self.app_state.trial_changed.emit()
+            self._update_counter()
+
+        target_t = global_t if self.app_state.slider_scope == "session" else max(0.0, rel_t)
+        self._seek_to_time(target_t)
+
+    def _seek_to_time(self, time_s: float):
+        """Move the time marker (and video) to *time_s*, scrolling it into view."""
+        if self.plot_container is None:
+            return
+        self.plot_container.update_time_marker_by_time(time_s)
+        visible = TimeRange(*self.plot_container.get_current_xlim())
+        if not visible.contains(time_s):
+            master = getattr(self.plot_container, "_xlink_master", None) or getattr(
+                self.plot_container, "_feature_plot", None
+            )
+            if master is not None:
+                half = self.app_state.view_span / 2.0
+                master.vb.setXRange(time_s - half, time_s + half, padding=0)
+        video = getattr(self.app_state, "video", None)
+        if video is not None:
+            video.seek_to_frame(video.time_to_frame(time_s))
 
     def setup_trial_conditions(self, catalog):
         """No-op — trial condition filtering moved to TrialsWidget."""
@@ -887,10 +908,6 @@ class NavigationWidget(QWidget):
             )
             return
         self.app_state.fps_playback = fps_playback
-        qt_dims = self.viewer.window.qt_viewer.dims
-        if qt_dims.slider_widgets:
-            slider_widget = qt_dims.slider_widgets[0]
-            slider_widget._update_play_settings(fps=fps_playback, loop_mode="once", frame_range=None)
         if self.app_state.av_speed_coupled:
             recording_fps = self._get_recording_fps()
             if recording_fps:

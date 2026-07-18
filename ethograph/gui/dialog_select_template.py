@@ -31,6 +31,7 @@ from ethograph.gui.notify import notify_dialog  # noqa: E402
 from ethograph.utils.download import (  # noqa: E402
     build_alignment_nwb,
     download_assets,
+    download_template_local_settings,
     ensure_default_configs,
     write_example_configs,
 )
@@ -224,6 +225,10 @@ class TemplateDialog(QDialog):
             build_alignment_nwb(key)
         except Exception:
             logger.warning("Failed to build alignment NWB", exc_info=True)
+        # Optional template settings (incl. panel layout) from the release:
+        # lands in the dataset's .ethograph/local_settings.yaml, which the
+        # normal settings autoload applies when the dataset opens.
+        download_template_local_settings(key)
         self.selected_template = resolve_dataset_paths(key)
         self.accept()
 
@@ -251,6 +256,7 @@ class TemplateDialog(QDialog):
                 notify_dialog(f"Failed to generate .nc from audio:\n{e}", "error", "Error", self)
                 return
 
+        download_template_local_settings(key)
         resolved = resolve_dataset_paths(key)
         resolved["nc_file_path"] = nc_path
         resolved["audio_folder"] = str(dest)

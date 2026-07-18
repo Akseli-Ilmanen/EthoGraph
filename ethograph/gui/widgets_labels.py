@@ -6,14 +6,15 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from napari.viewer import Viewer
 from qtpy.QtCore import QMimeData, QSize, Qt, Signal
 from qtpy.QtGui import QColor, QDrag
 from qtpy.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
+    QFormLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -66,7 +67,12 @@ from ethograph.utils.paths import find_mapping_file  # noqa: E402
 logger = logging.getLogger(__name__)
 
 from .app_constants import (  # noqa: E402
+    DEFAULT_LABEL_OVERLAY_MODES,
     DEFAULT_LAYOUT_SPACING,
+    LABEL_OVERLAY_MODE_BOTTOM,
+    LABEL_OVERLAY_MODE_FULL,
+    LABEL_OVERLAY_MODE_NONE,
+    LABEL_OVERLAY_PLOT_TYPES,
     LABELS_TABLE_COLOR_COLUMN_WIDTH,
     LABELS_TABLE_ID_COLUMN_WIDTH,
     LABELS_TABLE_ROW_HEIGHT,
@@ -131,9 +137,9 @@ class LabelsWidget(QWidget):
 
     highlight_spaceplot = Signal(float, float)
 
-    def __init__(self, napari_viewer: Viewer, app_state, parent=None):
+    def __init__(self, shell, app_state, parent=None):
         super().__init__(parent=parent)
-        self.viewer = napari_viewer
+        self.shell = shell
         self.app_state = app_state
 
         self.data_widget = None  # Will be set after creation
@@ -219,19 +225,39 @@ class LabelsWidget(QWidget):
         self._sync_active_label_ids()
 
         for plot in [
-            plot_container.line_plot,
-            plot_container.spectrogram_plot,
-            plot_container.audio_trace_plot,
+            *plot_container.spectrogram_plots,
+            *plot_container.audio_trace_plots,
             plot_container.heatmap_plot,
             plot_container.neo_trace_plot,
             plot_container.ephys_trace_plot,
+            *plot_container.line_plots,
         ]:
             if plot is not None:
                 plot.plot_clicked.connect(self._on_plot_clicked)
+        # Panels created later (line plots, audio panels) get the same click handling.
+        plot_container.panel_added.connect(lambda p: p.plot_clicked.connect(self._on_plot_clicked))
 
     def set_meta_widget(self, meta_widget):
         """Set reference to the meta widget for layout refresh."""
         self.meta_widget = meta_widget
+
+    def attach_overlay_groupbox(self, groupbox):
+        """Add per-plot-type label controls to the "Label overlay" groupbox."""
+        self.labels_per_plot_btn = QPushButton("Show labels per plot type")
+        self.labels_per_plot_btn.setToolTip(
+            "Choose how label rectangles render on each plot type: full plot, bottom strip, or not at all"
+        )
+        self.labels_per_plot_btn.clicked.connect(self._show_labels_per_plot_dialog)
+        groupbox.layout().addWidget(self.labels_per_plot_btn)
+
+    def _show_labels_per_plot_dialog(self):
+        modes = dict(DEFAULT_LABEL_OVERLAY_MODES)
+        modes.update(self.app_state.label_overlay_modes or {})
+        dialog = LabelsPerPlotDialog(modes, self)
+        if dialog.exec_():
+            self.app_state.label_overlay_modes = dialog.get_modes()
+            if self.plot_container is not None:
+                self.plot_container.labels_redraw_needed.emit()
 
     def plot_all_labels(self, intervals_df, predictions_df=None):
         """Plot all labels for current trial based on interval data.
@@ -670,6 +696,7 @@ class LabelsWidget(QWidget):
 
         if self.data_widget:
             self.data_widget.update_main_plot(preserve_x_range=True)
+            self.data_widget._update_confidence_overlay()
             if self.data_widget.plot_container:
                 self.data_widget.plot_container.labels_redraw_needed.emit()
         self.refresh_labels_shapes_layer()
@@ -899,6 +926,9 @@ class LabelsWidget(QWidget):
         individual = self._current_individual()
 
         try:
+            # Left-click outside label-drawing mode selects the segment under the
+            # cursor, so pressing "V" plays it back. Right-click stays minimal
+            # (seek only) so it's fast.
             if button == Qt.LeftButton and not self.ready_for_label_click:
                 self._check_labels_click(t_clicked, individual)
 
@@ -913,13 +943,11 @@ class LabelsWidget(QWidget):
             if button == Qt.LeftButton:
                 return
 
-        # Handle right-click - seek video to clicked position
-        if button == Qt.RightButton and self.app_state.video:
-            frame = self.app_state.video.time_to_frame(t_clicked)
-            self.app_state.video.seek_to_frame(frame)
-
-        # Handle left-click for labeling/editing (only in label mode)
-        elif button == Qt.LeftButton and self.ready_for_label_click:
+        # When a label is armed (label-drawing mode), a click places the onset
+        # then the offset (point events: a single click). Either mouse button
+        # works. Otherwise right-click seeks the video; the red cursor follows
+        # automatically via the video's frame_changed signal.
+        if self.ready_for_label_click:
             # Snap to nearest changepoint if available (in time domain)
             if self.changepoints_widget and self.changepoints_widget.is_changepoint_correction_enabled():
                 t_snapped = self._snap_to_changepoint_time(t_clicked)
@@ -935,6 +963,10 @@ class LabelsWidget(QWidget):
             else:
                 self.second_click = t_snapped
                 self._apply_label()
+
+        elif button == Qt.RightButton and self.app_state.video:
+            frame = self.app_state.video.time_to_frame(t_clicked)
+            self.app_state.video.seek_to_frame(frame)
 
     def _active_label_is_point(self) -> bool:
         """True iff the currently selected label class is declared as a point."""
@@ -1257,20 +1289,20 @@ class LabelsWidget(QWidget):
             self.plot_container.audio_player.play_segment(onset_s, offset_s)
 
     def _get_canvas_widget(self):
-        """Return the Qt widget that holds the napari OpenGL canvas."""
-        qt_viewer = getattr(self.viewer.window, "_qt_viewer", None)
-        if qt_viewer is None:
-            return None
-        # _qt_viewer.canvas.native is the actual OpenGL widget
-        canvas = getattr(qt_viewer, "canvas", None)
-        native = getattr(canvas, "native", None) if canvas else None
-        return native or qt_viewer
+        """Return the stable primary CameraView (host for the label overlay).
+
+        The wgpu render canvas is recreated on every video load, which would
+        destroy an overlay parented to it — the CameraView itself persists."""
+        video_area = getattr(self.shell, "video_area", None)
+        if video_area is not None:
+            return video_area.primary
+        return self.shell.canvas_widget()
 
     def _add_labels_shapes_layer(self):
-        """Add a Qt QLabel overlay on the napari canvas.
+        """Add a Qt QLabel overlay on the video canvas.
 
-        Much faster than a napari Shapes layer: setText() is a
-        trivial Qt repaint instead of a full OpenGL shapes render pass.
+        setText() is a trivial Qt repaint — the overlay follows the current
+        video frame via the VideoSync ``frame_changed`` signal.
         """
         if getattr(self, "_label_overlay", None) is not None:
             return
@@ -1295,12 +1327,14 @@ class LabelsWidget(QWidget):
             if parent is None:
                 return
             pw = parent.width()
+            ph = parent.height()
             ow = self._label_overlay.sizeHint().width()
-            self._label_overlay.move((pw - ow) // 2, 8)
+            oh = self._label_overlay.sizeHint().height()
+            self._label_overlay.move(pw - ow - 8, ph - oh - 8)
 
         self._reposition_overlay = _reposition_overlay
 
-        # Track canvas resizes to keep the overlay centred
+        # Track canvas resizes to reposition overlay
         orig_resize = canvas_widget.resizeEvent
 
         def _on_canvas_resize(event):
@@ -1309,7 +1343,7 @@ class LabelsWidget(QWidget):
 
         canvas_widget.resizeEvent = _on_canvas_resize
 
-        def _update_labels_text(event=None):
+        def _update_labels_text(video_frame=None):
             overlay = getattr(self, "_label_overlay", None)
             if overlay is None:
                 return
@@ -1317,7 +1351,8 @@ class LabelsWidget(QWidget):
                 overlay.hide()
                 return
             video = getattr(self.app_state, "video", None)
-            video_frame = self.viewer.dims.current_step[0]
+            if video_frame is None:
+                video_frame = int(getattr(self.app_state, "current_frame", 0) or 0)
             if video:
                 time_s = video.frame_to_time(video_frame)
             elif hasattr(self.app_state, "video_fps") and self.app_state.video_fps:
@@ -1358,7 +1393,7 @@ class LabelsWidget(QWidget):
             overlay.show()
             overlay.raise_()
 
-        self.viewer.dims.events.current_step.connect(_update_labels_text)
+        self.app_state.current_frame_changed.connect(_update_labels_text)
         self._update_labels_text = _update_labels_text
         _update_labels_text()
 
@@ -1392,6 +1427,45 @@ class LabelsWidget(QWidget):
         self._label_overlay_last_text = ""
         if hasattr(self, "_update_labels_text"):
             self._update_labels_text()
+
+
+class LabelsPerPlotDialog(QDialog):
+    """Dialog controlling how label rectangles render on each plot type."""
+
+    _MODE_OPTIONS = [
+        ("Full", LABEL_OVERLAY_MODE_FULL),
+        ("Bottom", LABEL_OVERLAY_MODE_BOTTOM),
+        ("None", LABEL_OVERLAY_MODE_NONE),
+    ]
+
+    def __init__(self, current_modes: dict[str, str], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Show label overlays per plot type")
+        self._combos: dict[str, QComboBox] = {}
+
+        layout = QVBoxLayout(self)
+        info = QLabel("Applies to every plot instance of the type.")
+        info.setStyleSheet("QLabel { color: #aaa; }")
+        layout.addWidget(info)
+
+        form = QFormLayout()
+        for type_key, display_name in LABEL_OVERLAY_PLOT_TYPES.items():
+            combo = QComboBox()
+            for option_label, mode in self._MODE_OPTIONS:
+                combo.addItem(option_label, mode)
+            idx = combo.findData(current_modes.get(type_key, DEFAULT_LABEL_OVERLAY_MODES[type_key]))
+            combo.setCurrentIndex(max(idx, 0))
+            form.addRow(f"{display_name}:", combo)
+            self._combos[type_key] = combo
+        layout.addLayout(form)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def get_modes(self) -> dict[str, str]:
+        return {type_key: combo.currentData() for type_key, combo in self._combos.items()}
 
 
 class TemporaryLabelsDialog(QDialog):
