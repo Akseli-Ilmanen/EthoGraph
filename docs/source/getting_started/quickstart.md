@@ -23,7 +23,7 @@ The following datasets are available as templates. Full conversion scripts are i
 
 **Tool-using mice** — Behaviour recognition for mice solving mechanical puzzle lockboxes. Six trials with multi-camera video and pose.
 
-> Reiske, P., Boon, M. N., Andresen, N., Traverso, S., Hohlbaum, K., Lewejohann, L., Thöne-Reineke, C., Hellwich, O., & Sprekeler, H. (2025). Mouse Lockbox Dataset: Behavior Recognition for Mice Solving Lockboxes (arXiv:2505.15408). arXiv. https://doi.org/10.48550/arXiv.2505.15408
+> Patrik Reiske, Marcus N. Boon, Niek Andresen, Sole Traverso, Marieatou Daniels, Katharina Hohlbaum, Lars Lewejohann, Christa Thöne-Reineke, Olaf Hellwich, and Henning Sprekeler. Mouse Lockbox Dataset: Behavior Recognition for Mice Solving Lockboxes. International Journal of Computer Vision, vol. 134, p. 318, 2026. DOI: https://doi.org/10.1007/s11263-026-02908-x
 
 **Social rats** — Multi-animal 3D pose dataset of dyadic interactions in laboratory rats recorded with 6 synchronized cameras
 

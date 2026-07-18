@@ -53,6 +53,14 @@ class BottomPlaybackBar(QWidget):
         layout.setSpacing(8)
         layout.setContentsMargins(8, 4, 8, 4)
 
+        # Add-panel button — opens the SourcePopup (wired in main_window).
+        self.add_panel_btn = QPushButton("➕ Add panel")
+        self.add_panel_btn.setFixedWidth(90)
+        self.add_panel_btn.setToolTip(
+            "Add a panel: drag a source onto the plot area, or press Enter  (Ctrl+N)"
+        )
+        layout.addWidget(self.add_panel_btn)
+
         # Play/pause button
         self.play_pause_btn = QPushButton("▶")
         self.play_pause_btn.setFixedWidth(36)

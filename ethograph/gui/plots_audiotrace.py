@@ -37,6 +37,10 @@ class AudioTracePlot(BasePlot):
     def __init__(self, app_state, parent=None):
         super().__init__(app_state, parent)
 
+        #: Pinned mic/channel (an ``audio_source_map`` key); None follows the
+        #: global Mic combo.
+        self.mic_name: str | None = None
+
         self.setLabel("left", "Amplitude")
 
         self.trace_item = pg.PlotDataItem(
@@ -104,14 +108,14 @@ class AudioTracePlot(BasePlot):
     def _resolve_source(self) -> PlotSource | None:
         if self._buffer.source is not None:
             return self._buffer.source
-        audio_path, _ = self.app_state.get_audio_source()
+        audio_path, _ = self.app_state.get_audio_source(self.mic_name)
         if not audio_path:
             return None
         self._set_source_from_path(audio_path)
         return self._buffer.source
 
     def _set_source_from_path(self, audio_path: str):
-        _, channel_idx = self.app_state.get_audio_source()
+        _, channel_idx = self.app_state.get_audio_source(self.mic_name)
         loader = SharedAudioCache.get_loader(audio_path)
         if loader is None:
             self._buffer.set_source(None)

@@ -492,14 +492,19 @@ class WindowedBuffer:
         self._identity = None
 
 
-def build_audio_source(app_state) -> FileSource | None:
-    """Build a FileSource for audio from the current app_state."""
+def build_audio_source(app_state, mic_name: str | None = None) -> FileSource | None:
+    """Build a FileSource for audio from the current app_state.
+
+    *mic_name* pins the source to one mic/channel (an ``audio_source_map``
+    key); ``None`` follows the global mic selection.
+    """
     from ..gui.plots_spectrogram import SharedAudioCache
 
-    audio_path = getattr(app_state, "audio_path", None)
+    audio_path, channel_idx = app_state.get_audio_source(mic_name)
+    if not audio_path:
+        audio_path = getattr(app_state, "audio_path", None)
     if not audio_path:
         return None
-    _, channel_idx = app_state.get_audio_source()
     loader = SharedAudioCache.get_loader(audio_path)
     if loader is None:
         return None

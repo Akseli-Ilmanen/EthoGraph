@@ -33,10 +33,11 @@ _CONTEXT_MAP: dict[str, list[str]] = {
     # The old napari-era "Space/Cameras" group (slot) is gone — cameras are
     # opened by drag-drop and there is no layers/space-plot toggle.
     "video": ["pose", "playback"],
-    # Audio trace: envelope controls + shared axes. Spectrogram: only its panel.
-    "audiotrace": ["energy", "shared"],
-    "audio": ["energy", "shared"],  # alias used for the default context
-    "spectrogram": ["spectrogram"],
+    # Audio trace: channel + envelope controls + shared axes. Spectrogram:
+    # channel + its panel.
+    "audiotrace": ["audiochannel", "energy", "shared"],
+    "audio": ["audiochannel", "energy", "shared"],  # alias used for the default context
+    "spectrogram": ["audiochannel", "spectrogram"],
     "feature": ["coords", "lineplot", "shared"],
     "lineplot": ["coords", "lineplot", "shared"],
     "heatmap": ["coords", "heatmap", "shared"],

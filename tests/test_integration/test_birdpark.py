@@ -105,7 +105,7 @@ class TestBirdParkLoading:
     def test_audio_panels_visible(self, birdpark_gui):
         _, meta = birdpark_gui
         pc = meta.plot_container
-        assert pc._panel_visible["audiotrace"] or pc._panel_visible["spectrogram"]
+        assert pc.audio_trace_plots or pc.spectrogram_plots
 
     def test_spectrogram_panel_exists(self, birdpark_gui):
         _, meta = birdpark_gui
@@ -307,14 +307,14 @@ class TestPlotPopulatedAfterLoad:
     def test_audio_trace_has_data_if_visible(self, birdpark_gui):
         _, meta = birdpark_gui
         pc = meta.plot_container
-        if not pc._panel_visible.get("audiotrace"):
+        if not pc.audio_trace_plots:
             pytest.skip("Audio panel not visible for this dataset")
         _assert_audio_has_data(pc.audio_trace_plot)
 
     def test_spectrogram_has_data_if_visible(self, birdpark_gui):
         _, meta = birdpark_gui
         pc = meta.plot_container
-        if not pc._panel_visible.get("spectrogram"):
+        if not pc.spectrogram_plots:
             pytest.skip("Spectrogram panel not visible for this dataset")
         _assert_spectrogram_has_data(pc.spectrogram_plot)
 
@@ -520,11 +520,11 @@ class TestTimeAxesAlignment:
         pc = meta.plot_container
         feature_xlim = pc._feature_plot.get_current_xlim()
         assert feature_xlim[0] < feature_xlim[1]
-        if pc._panel_visible["audiotrace"]:
+        if pc.audio_trace_plots:
             audio_xlim = pc.audio_trace_plot.get_current_xlim()
             assert abs(audio_xlim[0] - feature_xlim[0]) < 0.5
             assert abs(audio_xlim[1] - feature_xlim[1]) < 0.5
-        if pc._panel_visible["spectrogram"]:
+        if pc.spectrogram_plots:
             spec_xlim = pc.spectrogram_plot.get_current_xlim()
             assert abs(spec_xlim[0] - feature_xlim[0]) < 0.5
             assert abs(spec_xlim[1] - feature_xlim[1]) < 0.5
@@ -536,9 +536,9 @@ class TestTimeAxesAlignment:
         for plot in [pc._feature_plot, pc.audio_trace_plot, pc.spectrogram_plot]:
             if plot is not None:
                 plot.update_time_marker(t)
-        if pc._panel_visible["audiotrace"]:
+        if pc.audio_trace_plots:
             assert pc.audio_trace_plot.time_marker.value() == pytest.approx(t)
-        if pc._panel_visible["spectrogram"]:
+        if pc.spectrogram_plots:
             assert pc.spectrogram_plot.time_marker.value() == pytest.approx(t)
         assert pc._feature_plot.time_marker.value() == pytest.approx(t)
 
@@ -550,9 +550,9 @@ class TestTimeAxesAlignment:
 
 class TestHiddenPanelsNoData:
     def _toggle_panel(self, meta, name, checked):
-        # Panels are layout instances now: hiding mimics the panel's ✕ button,
-        # showing mimics drag-and-drop from the left sidebar (which re-wires
-        # the audio source via update_audio_panels).
+        # Panels are layout instances: "off" removes every instance (each
+        # panel's ✕), "on" recreates one (add-panel popup drop) and re-wires
+        # the audio source via update_audio_panels.
         pc = meta.plot_container
         setter = {
             "audiotrace": pc.set_audiotrace_visible,
@@ -563,54 +563,60 @@ class TestHiddenPanelsNoData:
             pc.update_audio_panels()
         QApplication.processEvents()
 
-    def test_audiotrace_hidden_clears_source(self, no_video_gui):
+    def test_audiotrace_hidden_removes_instances(self, no_video_gui):
         _, meta = no_video_gui
         pc = meta.plot_container
-        assert pc._panel_visible["audiotrace"]
+        assert pc.audio_trace_plots
         assert pc.audio_trace_plot.source is not None
         self._toggle_panel(meta, "audiotrace", False)
-        assert not pc._panel_visible["audiotrace"]
-        assert pc.audio_trace_plot.source is None
+        assert pc.audio_trace_plots == []
+        assert pc.audio_trace_plot is None
 
     def test_audiotrace_show_restores_source(self, no_video_gui):
         _, meta = no_video_gui
         pc = meta.plot_container
         self._toggle_panel(meta, "audiotrace", False)
-        assert pc.audio_trace_plot.source is None
+        assert pc.audio_trace_plot is None
         self._toggle_panel(meta, "audiotrace", True)
         assert pc.audio_trace_plot.source is not None
 
-    def test_audiotrace_hidden_no_update_on_xrange(self, no_video_gui):
+    def test_spectrogram_hidden_removes_instances(self, no_video_gui):
         _, meta = no_video_gui
         pc = meta.plot_container
-        self._toggle_panel(meta, "audiotrace", False)
-        assert pc.audio_trace_plot.source is None
-        pc.audio_trace_plot._on_view_range_changed()
-        assert pc.audio_trace_plot.source is None
-
-    def test_spectrogram_hidden_clears_source(self, no_video_gui):
-        _, meta = no_video_gui
-        pc = meta.plot_container
-        assert pc._panel_visible["spectrogram"]
+        assert pc.spectrogram_plots
         assert pc.spectrogram_plot.source is not None
         self._toggle_panel(meta, "spectrogram", False)
-        assert not pc._panel_visible["spectrogram"]
-        assert pc.spectrogram_plot.source is None
+        assert pc.spectrogram_plots == []
+        assert pc.spectrogram_plot is None
 
     def test_spectrogram_show_restores_source(self, no_video_gui):
         _, meta = no_video_gui
         pc = meta.plot_container
         self._toggle_panel(meta, "spectrogram", False)
-        assert pc.spectrogram_plot.source is None
+        assert pc.spectrogram_plot is None
         self._toggle_panel(meta, "spectrogram", True)
         assert pc.spectrogram_plot.source is not None
 
-    def test_spectrogram_hidden_no_update_on_xrange(self, no_video_gui):
+    def test_duplicate_audio_panels_allowed(self, no_video_gui):
+        # Duplicates are never prevented — every add creates a new instance,
+        # even for the same mic/channel.
         _, meta = no_video_gui
         pc = meta.plot_container
-        self._toggle_panel(meta, "spectrogram", False)
-        pc.spectrogram_plot._on_view_range_changed()
-        assert pc.spectrogram_plot.source is None
+        n_spec = len(pc.spectrogram_plots)
+        n_audio = len(pc.audio_trace_plots)
+        pc.add_audio_panel("spectrogram")
+        pc.add_audio_panel("spectrogram")
+        pc.add_audio_panel("audiotrace")
+        QApplication.processEvents()
+        assert len(pc.spectrogram_plots) == n_spec + 2
+        assert len(pc.audio_trace_plots) == n_audio + 1
+        for plot in pc.spectrogram_plots + pc.audio_trace_plots:
+            assert plot.source is not None
+        for plot in pc.spectrogram_plots[n_spec:] + pc.audio_trace_plots[n_audio:]:
+            pc.remove_audio_panel(plot)
+        QApplication.processEvents()
+        assert len(pc.spectrogram_plots) == n_spec
+        assert len(pc.audio_trace_plots) == n_audio
 
     def test_neo_hidden_clears_loader(self, birdpark_gui):
         _, meta = birdpark_gui
@@ -655,16 +661,14 @@ class TestHiddenPanelsNoData:
         QApplication.processEvents()
         assert pc.line_plots == []
 
-    def test_update_audio_panels_skips_hidden(self, no_video_gui):
+    def test_update_audio_panels_does_not_recreate(self, no_video_gui):
         _, meta = no_video_gui
         pc = meta.plot_container
         self._toggle_panel(meta, "audiotrace", False)
         self._toggle_panel(meta, "spectrogram", False)
-        assert pc.audio_trace_plot.source is None
-        assert pc.spectrogram_plot.source is None
         pc.update_audio_panels()
-        assert pc.audio_trace_plot.source is None
-        assert pc.spectrogram_plot.source is None
+        assert pc.audio_trace_plots == []
+        assert pc.spectrogram_plots == []
 
 
 # ===================================================================

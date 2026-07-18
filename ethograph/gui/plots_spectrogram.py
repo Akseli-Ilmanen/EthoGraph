@@ -66,6 +66,10 @@ class SpectrogramPlot(BasePlot):
     def __init__(self, app_state, parent=None):
         super().__init__(app_state, parent)
 
+        #: Pinned mic/channel (an ``audio_source_map`` key); None follows the
+        #: global Mic combo.
+        self.mic_name: str | None = None
+
         self.setLabel("left", "Frequency", units="Hz")
 
         self.spec_item = pg.ImageItem()

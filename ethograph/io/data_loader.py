@@ -28,6 +28,7 @@ from ethograph.io.catalog import (
     catalog_from_xarray,
 )
 from ethograph.io.metadata_table import (
+    TABULAR_METADATA_EXTS,
     empty_metadata_df,
     load_metadata_df,
     load_metadata_tsv,
@@ -95,10 +96,16 @@ def _resolve_trials_ep(data: dict, trials_ep, *, metadata_path: str | Path | Non
         path = Path(metadata_path)
         if not path.exists():
             raise ValueError(f"Metadata file not found: {path}")
-        df = load_metadata_tsv(path)
-        if "start_time" in df.columns and "stop_time" in df.columns:
-            validate_metadata_timing(df, path)
-            return trials_ep_from_metadata_df(df)
+        suffix = path.suffix.lower()
+        if suffix in TABULAR_METADATA_EXTS:
+            df = load_metadata_tsv(path)
+            if "start_time" in df.columns and "stop_time" in df.columns:
+                validate_metadata_timing(df, path)
+                return trials_ep_from_metadata_df(df)
+        elif suffix == ".nwb":
+            alignment = make_nwb_alignment(path)
+            if alignment.trials_ep is not None and len(alignment.trials_ep) > 0:
+                return alignment.trials_ep
 
     if trials_ep is not None and len(trials_ep) > 0:
         return trials_ep

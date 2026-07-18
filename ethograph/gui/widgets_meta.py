@@ -2,7 +2,7 @@
 
 import logging
 
-from qtpy.QtCore import QTimer
+from qtpy.QtCore import Qt, QTimer
 from qtpy.QtWidgets import (
     QComboBox,
     QMessageBox,
@@ -94,7 +94,9 @@ class MetaWidget(GridSectionContainer):
         # Add-panel popup: drag Media/Feature sources onto the plot area (or
         # press Enter) to add panels. Opened via the bottom bar's "➕ Add
         # panel" button or Ctrl+N.
-        self.source_popup = SourcePopup(self.app_state)
+        # Parented to the shell so the top-level popup window is destroyed
+        # with it (a parentless popup outlives QApplication → crash at exit).
+        self.source_popup = SourcePopup(self.app_state, parent=self.shell)
         self.source_popup.on_activate = self._on_source_dropped
         self.plot_container._on_source_drop = self._on_source_dropped
 
@@ -274,6 +276,7 @@ class MetaWidget(GridSectionContainer):
             "slot": getattr(dp, "slot_groupbox", None),
             "pose": getattr(dp, "pose_groupbox", None),
             "energy": getattr(dp, "energy_group", None),
+            "audiochannel": getattr(ps, "audio_channel_group", None),
             "lineplot": getattr(ps, "lineplot_panel", None),
             "spaceplot": getattr(ps, "spaceplot_panel", None),
             "spectrogram": getattr(ps, "spectrogram_panel", None),
@@ -354,9 +357,8 @@ class MetaWidget(GridSectionContainer):
         self.active_panels.active_changed.connect(self._on_active_panel)
         pc.active_panels = self.active_panels  # line plots register in add_lineplot
 
+        # Audio panels register per-instance in add_audio_panel (like line plots).
         fixed = [
-            (pc.audio_trace_plot, PanelKind.AUDIOTRACE, None),
-            (pc.spectrogram_plot, PanelKind.SPECTROGRAM, None),
             (pc.heatmap_plot, PanelKind.HEATMAP, pc.heatmap_plot),
             (pc.neo_trace_plot, PanelKind.NEO, None),
             (pc.ephys_trace_plot, PanelKind.EPHYS, None),
@@ -378,6 +380,8 @@ class MetaWidget(GridSectionContainer):
                         view, PanelKind.VIDEO, clicked_signal=view.clicked
                     )
                 )
+            if hasattr(video_area, "camera_view_removed"):
+                video_area.camera_view_removed.connect(self.active_panels.unregister)
 
     _CONTEXT_KINDS = frozenset({"audiotrace", "spectrogram", "lineplot", "heatmap", "space"})
 
@@ -396,6 +400,10 @@ class MetaWidget(GridSectionContainer):
             # plot — re-render so it follows (or hides on) the new active plot.
             if self.app_state.ready:
                 self.data_widget._update_confidence_overlay()
+        if kind == PanelKind.SPACE:
+            self.data_widget.set_active_space_plot(reg.widget)
+        if kind in (PanelKind.AUDIOTRACE, PanelKind.SPECTROGRAM):
+            self.plot_settings_widget.set_active_audio_plot(reg.widget)
         if kind == PanelKind.VIDEO:
             self.focus_video_context()
         elif kind in self._CONTEXT_KINDS:
@@ -455,33 +463,75 @@ class MetaWidget(GridSectionContainer):
                 pc.heatmap_plot.set_panel_control("features", name)
                 pc.set_feature_view("heatmap")
                 pc.heatmap_plot.update_plot()
+                pc.schedule_labels_redraw()
                 self._activate_panel(pc.heatmap_plot, "heatmap")
                 notify(f"Heatmap: {name}")
             elif plot_type.startswith("Space"):
+                # Every drop creates a new instance — space plots never
+                # replace each other.
                 self.app_state.space_plot_type = "Space Plot"
-                if hasattr(self.data_widget, "update_space_plot"):
-                    self.data_widget.update_space_plot()
-                sp = getattr(self.data_widget, "space_plot", None)
-                if sp is not None:
-                    sp.configure(feature=name, view_3d=plot_type == "Space (3D)")
+                self.data_widget.add_space_plot(feature=name, view_3d=plot_type == "Space (3D)")
                 notify(f"{plot_type}: {name}")
         elif kind == "audio":
-            if plot_type == "Spectrogram Trace":
-                pc.set_spectrogram_visible(True)
+            # The popup only lists mics that exist in the alignment.
+            self.app_state.has_audio = True
+            # audio_path may be unset if no audio panel existed at load —
+            # re-resolve it before wiring the new panel's source.
+            self.data_widget.update_audio()
+            panel_type = "spectrogram" if plot_type == "Spectrogram Trace" else "audiotrace"
+            keys = self._audio_channel_keys(name)
+            if len(keys) > 1:
+                source_map = getattr(self.app_state, "audio_source_map", None) or {}
+                labels = [f"Channel {source_map.get(k, (k, 0))[1] + 1}" for k in keys]
+                picker = PlotTypePicker(labels, parent=self.shell, title="Channel")
+                if not (picker.exec_() and picker.choice):
+                    return
+                mic_key = keys[labels.index(picker.choice)]
+            elif keys:
+                mic_key = keys[0]
             else:
-                pc.set_audiotrace_visible(True)
-            # Hiding an audio panel clears its source (set_source(None)), so a
-            # re-shown panel must be re-wired to the audio source and redrawn.
-            pc.update_audio_panels()
+                mic_key = self._mic_key_for_source(name)
+            # Every drop creates a NEW panel instance — duplicates are fine
+            # (e.g. the same mic on two channels side by side); the user
+            # removes extras via ✕.
+            plot = pc.add_audio_panel(panel_type, mic_name=mic_key)
+            if plot is not None:
+                self._activate_panel(plot, panel_type)
         elif kind == "video":
             self._add_camera_view(name)
 
+    def _audio_channel_keys(self, name: str) -> list[str]:
+        """Ordered ``audio_source_map`` keys (one per channel) for a popup
+        audio source *name* (a mic device label, or already a map key)."""
+        groups = getattr(self.app_state, "audio_mic_channels", None) or {}
+        if name in groups:
+            return list(groups[name])
+        source_map = getattr(self.app_state, "audio_source_map", None) or {}
+        if name in source_map:
+            for keys in groups.values():
+                if name in keys:
+                    return list(keys)
+            return [name]
+        return []
+
+    def _mic_key_for_source(self, name: str) -> str | None:
+        """Map a popup audio-source name to an ``audio_source_map`` key so the
+        new panel is pinned to that mic/channel. None → follow the Mic combo."""
+        source_map = getattr(self.app_state, "audio_source_map", None) or {}
+        if name in source_map:
+            return name
+        for key in source_map:
+            if name in key:
+                return key
+        return None
+
     def _add_camera_view(self, name: str):
-        """Dropping a video source shows that camera — even when no video is open.
+        """Dropping a video source adds a view of that camera — always.
 
         If no video is currently open, the dropped camera becomes the primary
-        view (which sets up playback/sync). Otherwise it is added as an extra
-        follower view.
+        view (which sets up playback/sync). Otherwise a NEW extra follower
+        view is created — duplicates of an already-shown camera (including
+        the primary) are fine; the user removes extras themselves.
         """
         dw = self.data_widget
         vm = getattr(dw, "video_mgr", None)
@@ -493,12 +543,6 @@ class MetaWidget(GridSectionContainer):
         # Base this on whether a video is actually loaded in the primary view —
         # app_state.video (the sync object) can linger from a previous session.
         primary_open = vm.primary_view.has_video
-
-        if name == str(getattr(self.app_state, "primary_camera", "") or "") and primary_open:
-            # It is the primary, but the video dock may be hidden → just show it.
-            self.shell.set_video_viewer_visible(True)
-            notify(f"Camera '{name}' is the primary video.")
-            return
 
         if not primary_open:
             # Nothing playing yet → open this camera as the primary video.
@@ -518,18 +562,17 @@ class MetaWidget(GridSectionContainer):
                 notify(f"Opened video: {name}")
             return
 
-        if name in vm.extra_widgets:
-            notify(f"Camera '{name}' is already shown.", "info")
-            return
         video_path = vm._resolve_video_path(name, self.app_state.video_folder)
         if not video_path:
             notify(f"No video file found for camera '{name}'.", "warning")
             return
+        self.shell.set_video_viewer_visible(True)
         vm.add_camera(
             camera_name=name,
             video_path=video_path,
             layout_mgr=getattr(dw, "layout_mgr", None),
             meta_widget=self,
+            duplicate=True,
         )
         pose_mgr = getattr(dw, "pose_mgr", None)
         if pose_mgr is not None and hasattr(dw, "get_hidden_keypoints"):
@@ -769,7 +812,9 @@ class MetaWidget(GridSectionContainer):
         app_state._layout_snapshot_provider): panel layout → the dataset's
         local_settings.yaml, window state → gui_settings.yaml."""
         if self.app_state.ready:
-            self.app_state.panel_layout = self.plot_container.layout_state()
+            layout = self.plot_container.layout_state()
+            layout["space_plots"] = self.data_widget.space_layout_state()
+            self.app_state.panel_layout = layout
         self.app_state.window_state = self.shell.capture_window_state()
 
     def apply_saved_panel_layout(self):
@@ -782,6 +827,52 @@ class MetaWidget(GridSectionContainer):
         layout = getattr(self.app_state, "panel_layout", None)
         if layout:
             self.plot_container.apply_layout_state(layout)
+            self.data_widget.apply_space_layout_state(layout.get("space_plots"))
+            # Dock sizes don't stick while the shell is hidden (cover-page
+            # loads) — re-apply them once shown. Placement (area/floating) was
+            # already done per dock in apply_space_layout_state.
+            if self.data_widget.space_plots:
+                entries = layout.get("space_plots") or []
+
+                def _finalize_space_docks():
+                    # Deferred GUI-boundary callback: a failure here must not
+                    # escape into the event loop mid-session.
+                    try:
+                        for sp in self.data_widget.space_plots:
+                            if sp.dock_widget is not None:
+                                sp.dock_widget.setVisible(True)
+                        self._reapply_space_dock_sizes(entries)
+                    except Exception:
+                        logger.exception("Could not finalize the space dock layout")
+
+                self.shell.run_when_shown(_finalize_space_docks)
+
+    def _reapply_space_dock_sizes(self, entries: list):
+        """Pin each docked space plot back to its saved size with a deferred
+        resizeDocks (after the pending layout events) — dock sizes are not
+        honored while the placement happens on a hidden shell."""
+        pairs = [
+            (sp.dock_widget, e.get("dock_size"))
+            for sp, e in zip(self.data_widget.space_plots, entries)
+            if sp.dock_widget is not None and e.get("dock_size")
+        ]
+
+        def _resize():
+            try:
+                live = [
+                    (d, s)
+                    for d, s in pairs
+                    if not d.isFloating() and self.shell.dockWidgetArea(d) != Qt.NoDockWidgetArea
+                ]
+            except RuntimeError:
+                return  # a dock's C++ object was deleted before the timer fired
+            if not live:
+                return
+            self.shell.resizeDocks([d for d, _ in live], [s[0] for _, s in live], Qt.Horizontal)
+            self.shell.resizeDocks([d for d, _ in live], [s[1] for _, s in live], Qt.Vertical)
+
+        if pairs:
+            QTimer.singleShot(0, _resize)
 
     def _on_reset_layout(self):
         space_type = getattr(self.app_state, "space_plot_type", "Layers")

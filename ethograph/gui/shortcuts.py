@@ -80,6 +80,7 @@ def bind_global_shortcuts(meta_widget):
         btn.setCurrentIndex(next_index)
 
     bind("Ctrl+P", toggle_sync)
+    bind("Ctrl+N", meta_widget.show_source_popup)
     bind("Ctrl+Y", data_widget.toggle_predictions_slot)
 
     def toggle_autoscale():

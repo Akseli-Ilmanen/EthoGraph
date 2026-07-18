@@ -48,15 +48,14 @@ class LabelDrawingMixin:
       - audio_cp_items: list
       - osc_event_items: list
       - dataset_cp_items: list
-      - spectrogram_plot, audio_trace_plot, heatmap_plot, ephys_trace_plot, neo_trace_plot
+      - spectrogram_plots, audio_trace_plots (instance lists),
+        heatmap_plot, ephys_trace_plot, neo_trace_plot
       - current_plot (property or attribute)
     """
 
     # Fixed-panel attribute -> plot-type key in label_overlay_modes.
-    # Any plot not matching a fixed panel is a line-plot instance.
+    # Audio panels are instance lists; any other plot is a line-plot instance.
     _PLOT_TYPE_ATTRS = {
-        "spectrogram_plot": "spectrogram",
-        "audio_trace_plot": "audio",
         "heatmap_plot": "heatmap",
         "ephys_trace_plot": "ephys",
         "neo_trace_plot": "neo",
@@ -70,10 +69,9 @@ class LabelDrawingMixin:
 
     def _get_all_plots(self) -> list:
         """Return all plot widgets that exist on this container."""
-        candidates = []
+        candidates = list(getattr(self, "spectrogram_plots", ()) or ())
+        candidates += list(getattr(self, "audio_trace_plots", ()) or ())
         for attr in (
-            "spectrogram_plot",
-            "audio_trace_plot",
             "heatmap_plot",
             "neo_trace_plot",
             "ephys_trace_plot",
@@ -84,6 +82,10 @@ class LabelDrawingMixin:
         return candidates
 
     def _plot_type_key(self, plot) -> str:
+        if plot in (getattr(self, "spectrogram_plots", ()) or ()):
+            return "spectrogram"
+        if plot in (getattr(self, "audio_trace_plots", ()) or ()):
+            return "audio"
         for attr, type_key in self._PLOT_TYPE_ATTRS.items():
             if plot is getattr(self, attr, None):
                 return type_key
@@ -258,15 +260,11 @@ class LabelDrawingMixin:
 
     def draw_audio_changepoints(self, onsets: np.ndarray, offsets: np.ndarray):
         self.clear_audio_changepoints()
-        plots_to_draw = [
-            getattr(self, "spectrogram_plot", None),
-            getattr(self, "audio_trace_plot", None),
-        ]
+        audio_traces = list(getattr(self, "audio_trace_plots", ()) or ())
+        plots_to_draw = list(getattr(self, "spectrogram_plots", ()) or ()) + audio_traces
         line_style = self._get_changepoint_line_style()
         for plot in plots_to_draw:
-            if plot is None:
-                continue
-            color = CP_COLOR_WAVEFORM if plot is getattr(self, "audio_trace_plot", None) else CP_COLOR_SPECTROGRAM
+            color = CP_COLOR_WAVEFORM if plot in audio_traces else CP_COLOR_SPECTROGRAM
             for onset_t in onsets:
                 line = pg.InfiniteLine(
                     pos=onset_t,
@@ -313,9 +311,10 @@ class LabelDrawingMixin:
         if not self.audio_cp_items:
             return
         line_style = self._get_changepoint_line_style()
+        audio_traces = getattr(self, "audio_trace_plots", ()) or ()
         for item in self.audio_cp_items:
             plot, line, _ = item
-            color = CP_COLOR_WAVEFORM if plot is getattr(self, "audio_trace_plot", None) else CP_COLOR_SPECTROGRAM
+            color = CP_COLOR_WAVEFORM if plot in audio_traces else CP_COLOR_SPECTROGRAM
             line.setPen(pg.mkPen(color=color, width=line_style["width"], style=line_style["style"]))
 
     def clear_audio_changepoints(self):

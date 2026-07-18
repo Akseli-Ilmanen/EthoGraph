@@ -435,7 +435,9 @@ class BasePlot(pg.PlotWidget):
         else:  # mode == 'default'
             view_span = self.app_state.view_span
             t0 = data_tmin
-            t1 = min(t0 + view_span, data_tmax)
+            # view_span (before_s + after_s) is 0 in trial mode → show the
+            # whole window instead of collapsing to a zero-width range.
+            t1 = min(t0 + view_span, data_tmax) if view_span > 0 else data_tmax
 
         self.vb.setXRange(t0, t1, padding=0)
 
@@ -461,8 +463,11 @@ class BasePlot(pg.PlotWidget):
 
                 if preserve_default_range:
                     view_span = self.app_state.view_span
-                    min_range = view_span * LOCKED_RANGE_MIN_FACTOR
-                    max_range = view_span * LOCKED_RANGE_MAX_FACTOR
+                    # view_span is 0 in trial mode → the default view is the
+                    # whole window, so lock relative to its full range.
+                    default_span = view_span if view_span > 0 else data_range
+                    min_range = default_span * LOCKED_RANGE_MIN_FACTOR
+                    max_range = default_span * LOCKED_RANGE_MAX_FACTOR
                 else:
                     min_range = x_range
                     max_range = x_range

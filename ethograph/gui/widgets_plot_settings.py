@@ -65,6 +65,7 @@ class PlotSettingsWidget(QWidget):
         self._create_spaceplot_panel(main_layout)
         self._create_spectrogram_panel(main_layout)
         self._create_heatmap_panel(main_layout)
+        self._create_audio_channel_group(main_layout)
         self._create_shared_controls(main_layout)
 
         self._restore_lineplot_defaults()
@@ -456,6 +457,76 @@ class PlotSettingsWidget(QWidget):
     # Shared controls (apply to all plot types)
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Audio channel group (context sidebar for audio trace / spectrogram)
+    # ------------------------------------------------------------------
+
+    def _create_audio_channel_group(self, main_layout):
+        """Per-panel channel selector shown in the audiotrace / spectrogram
+        sidebar contexts. Edits the *active* audio panel's pinned channel."""
+        self._active_audio_plot = None
+        self.audio_channel_group = QGroupBox("Audio source")
+        layout = QHBoxLayout()
+        layout.setSpacing(2)
+        layout.setContentsMargins(2, 2, 2, 2)
+        self.audio_channel_group.setLayout(layout)
+        layout.addWidget(QLabel("Channel:"))
+        self.audio_channel_combo = QComboBox()
+        self.audio_channel_combo.setObjectName("audio_channel_combo")
+        self.audio_channel_combo.currentIndexChanged.connect(self._on_audio_channel_changed)
+        layout.addWidget(self.audio_channel_combo, 1)
+        main_layout.addWidget(self.audio_channel_group)
+
+    def set_active_audio_plot(self, plot):
+        """Point the Channel combo at *plot* (audio trace or spectrogram
+        panel) and mirror its pinned mic/channel."""
+        self._active_audio_plot = plot
+        self._sync_audio_channel_combo()
+
+    def _channel_keys_for_plot(self, plot) -> list[str]:
+        """All ``audio_source_map`` keys for the file the panel is showing
+        (its pinned key, or the global mic selection when unpinned)."""
+        state = self.app_state
+        key = plot.mic_name or getattr(state, "mics_sel", None)
+        groups = getattr(state, "audio_mic_channels", None) or {}
+        for keys in groups.values():
+            if key in keys:
+                return list(keys)
+        source_map = getattr(state, "audio_source_map", None) or {}
+        if key in source_map:
+            return [key]
+        return []
+
+    def _sync_audio_channel_combo(self):
+        combo = self.audio_channel_combo
+        plot = self._active_audio_plot
+        keys = self._channel_keys_for_plot(plot) if plot is not None else []
+        source_map = getattr(self.app_state, "audio_source_map", None) or {}
+        combo.blockSignals(True)
+        combo.clear()
+        for key in keys:
+            _, ch = source_map.get(key, (key, 0))
+            combo.addItem(f"Channel {ch + 1}", key)
+        current = plot.mic_name if plot is not None else None
+        if current is None:
+            current = getattr(self.app_state, "mics_sel", None)
+        if current in keys:
+            combo.setCurrentIndex(keys.index(current))
+        combo.blockSignals(False)
+        combo.setEnabled(len(keys) > 1)
+
+    def _on_audio_channel_changed(self, index):
+        plot = self._active_audio_plot
+        pc = self.plot_container
+        if plot is None or pc is None or index < 0:
+            return
+        if plot not in pc.audio_trace_plots and plot not in pc.spectrogram_plots:
+            return
+        key = self.audio_channel_combo.itemData(index)
+        if not key or key == plot.mic_name:
+            return
+        pc.set_audio_panel_mic(plot, key)
+
     def _create_shared_controls(self, main_layout):
         shared_widget = QWidget()
         self.shared_widget = shared_widget  # exposed for the context-sensitive sidebar
@@ -619,8 +690,9 @@ class PlotSettingsWidget(QWidget):
         self.plot_container = plot_container
         plot_container.plot_changed.connect(self._on_plot_changed)
         plot_container.spectrogram_overlay_shown.connect(self._on_overlay_shown)
-        if plot_container.spectrogram_plot:
-            plot_container.spectrogram_plot.bufferUpdated.connect(self._on_buffer_updated)
+        # Relays bufferUpdated from every spectrogram instance (they are
+        # dynamic panels — duplicates allowed).
+        plot_container.spectrogram_buffer_updated.connect(self._on_buffer_updated)
 
     def set_meta_widget(self, meta_widget):
         self.meta_widget = meta_widget
@@ -671,10 +743,8 @@ class PlotSettingsWidget(QWidget):
         colormap_name = display_to_internal.get(display_name, display_name)
         self.app_state.spec_colormap = colormap_name
         if self.plot_container:
-            if self.plot_container.is_spectrogram():
-                current_plot = self.plot_container.get_current_plot()
-                if hasattr(current_plot, "update_colormap"):
-                    current_plot.update_colormap(colormap_name)
+            for spec_plot in self.plot_container.spectrogram_plots:
+                spec_plot.update_colormap(colormap_name)
             if self.plot_container.has_spectrogram_overlay():
                 self.plot_container.apply_overlay_colormap(colormap_name)
 
@@ -682,14 +752,18 @@ class PlotSettingsWidget(QWidget):
         if not self.plot_container:
             return
 
-        spec_plot = self.plot_container.spectrogram_plot
-        is_spec = self.plot_container.is_spectrogram() or (hasattr(spec_plot, "isVisible") and spec_plot.isVisible())
+        # Levels are computed from the first spectrogram instance holding
+        # data and applied to every instance.
+        spec_plot = next(
+            (p for p in self.plot_container.spectrogram_plots if p.isVisible() and p.buffer.Sxx_db is not None),
+            None,
+        )
         has_overlay = self.plot_container.has_spectrogram_overlay()
 
-        if not is_spec and not has_overlay:
+        if spec_plot is None and not has_overlay:
             return
 
-        if not hasattr(spec_plot, "buffer") or spec_plot.buffer.Sxx_db is None:
+        if spec_plot is None or spec_plot.buffer.Sxx_db is None:
             return
 
         Sxx_db = spec_plot.buffer.Sxx_db
@@ -721,8 +795,8 @@ class PlotSettingsWidget(QWidget):
         self.app_state.vmin_db = zmin
         self.app_state.vmax_db = zmax
 
-        if is_spec and hasattr(spec_plot, "update_levels"):
-            spec_plot.update_levels(zmin, zmax)
+        for plot in self.plot_container.spectrogram_plots:
+            plot.update_levels(zmin, zmax)
 
         if has_overlay:
             self.plot_container.apply_overlay_levels(zmin, zmax)
@@ -737,11 +811,7 @@ class PlotSettingsWidget(QWidget):
         self.app_state.vmin_db = vmin
         self.app_state.vmax_db = vmax
         if self.plot_container:
-            spec_plot = self.plot_container.spectrogram_plot
-            spec_visible = self.plot_container.is_spectrogram() or (
-                hasattr(spec_plot, "isVisible") and spec_plot.isVisible()
-            )
-            if spec_visible and hasattr(spec_plot, "update_levels"):
+            for spec_plot in self.plot_container.spectrogram_plots:
                 spec_plot.update_levels(vmin, vmax)
             if self.plot_container.has_spectrogram_overlay():
                 self.plot_container.apply_overlay_levels(vmin, vmax)
@@ -789,26 +859,15 @@ class PlotSettingsWidget(QWidget):
             values[attr] = val
             setattr(self.app_state, attr, val)
 
-        spec_plot = self.plot_container.spectrogram_plot
-        spec_visible = self.plot_container.is_spectrogram() or (
-            hasattr(spec_plot, "isVisible") and spec_plot.isVisible()
-        )
-
-        if spec_visible:
-            if hasattr(spec_plot, "update_buffer_settings"):
-                spec_plot.update_buffer_settings()
-
-            if hasattr(spec_plot, "update_levels"):
-                spec_plot.update_levels(values["vmin_db"], values["vmax_db"])
-
+        for spec_plot in self.plot_container.spectrogram_plots:
+            spec_plot.update_buffer_settings()
+            spec_plot.update_levels(values["vmin_db"], values["vmax_db"])
             spec_plot.apply_y_range(values["spec_ymin"], values["spec_ymax"])
-
-            if hasattr(spec_plot, "update_plot_content"):
-                spec_plot.update_plot_content()
+            spec_plot.update_plot_content()
 
         if self.plot_container.has_spectrogram_overlay():
             self.plot_container.apply_overlay_levels(values["vmin_db"], values["vmax_db"])
-            if hasattr(spec_plot, "buffer") and hasattr(spec_plot.buffer, "_clear_buffer"):
+            for spec_plot in self.plot_container.spectrogram_plots:
                 spec_plot.buffer._clear_buffer()
             self.plot_container.update_audio_overlay()
 

@@ -76,11 +76,12 @@ def allowed_plot_types(kind: str, name: str, app_state) -> list[str]:
 
 
 class PlotTypePicker(QDialog):
-    """Tiny modal list to choose a plot type; ↑/↓ to move, Enter to accept."""
+    """Tiny modal list to choose one option (plot type, channel, …);
+    ↑/↓ to move, Enter to accept."""
 
-    def __init__(self, options: list[str], parent=None):
+    def __init__(self, options: list[str], parent=None, title: str = "Plot type"):
         super().__init__(parent)
-        self.setWindowTitle("Plot type")
+        self.setWindowTitle(title)
         self.setModal(True)
         self.choice: str | None = None
 
@@ -205,8 +206,16 @@ class SourcePopup(QWidget):
         self._add_header("Media")
         for cam in cameras:
             self._add_source(f"Video ({cam})", "video", str(cam))
-        for mic in mics:
-            self._add_source(f"Audio ({mic})", "audio", str(mic))
+        # One entry per mic/audio file (all its channels). The channel is
+        # picked when the panel is created and can be changed later via the
+        # sidebar's Channel combo.
+        audio_names = [str(m) for m in mics]
+        if not audio_names:
+            audio_names = list(getattr(self.app_state, "audio_mic_channels", None) or {})
+        if not audio_names:
+            audio_names = list(getattr(self.app_state, "audio_source_map", None) or {})
+        for name in audio_names:
+            self._add_source(f"Audio ({name})", "audio", name)
 
         self._add_header("Features")
         features: list[str] = catalog.feature_choices() if catalog is not None else []

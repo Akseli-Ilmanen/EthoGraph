@@ -121,7 +121,7 @@ DATASETS: dict[str, dict] = {
     "lockbox": {
         "name": "Reiske et al., 2025 — Mouse Lockbox",
         "image": "lockbox2.gif",
-        "paper_url": "https://arxiv.org/abs/2505.15408",
+        "paper_url": "https://doi.org/10.1007/s11263-026-02908-x ",
         "folder": "Lockbox",
         "nc_filename": "lockbox.nc",
         "has_audio": False,

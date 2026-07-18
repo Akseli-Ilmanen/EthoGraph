@@ -666,8 +666,8 @@ class PoseDisplayManager:
         if primary_name is not None:
             self._display_pose_on_primary(self._camera_index(primary_name), hidden_keypoints)
 
-        for camera_name, view in self.video_mgr.extra_widgets.items():
-            self._display_pose_on_extra(camera_name, hidden_keypoints, view)
+        for key, view in self.video_mgr.extra_widgets.items():
+            self._display_pose_on_extra(getattr(view, "camera_name", key), hidden_keypoints, view)
 
     def _display_pose_on_primary(self, camera_idx: int, hidden_keypoints: set[str]) -> None:
         """Render pose on the primary camera view (driven by keypoints table selection)."""
@@ -703,10 +703,9 @@ class PoseDisplayManager:
         self._display_pose_on_view(view, pr, camera_name)
 
     def update_extra_camera_pose(self, camera_name: str, hidden_keypoints: set[str]) -> None:
-        view = self.video_mgr.extra_widgets.get(camera_name)
-        if view is None:
-            return
-        self._display_pose_on_extra(camera_name, hidden_keypoints, view)
+        for key, view in self.video_mgr.extra_widgets.items():
+            if getattr(view, "camera_name", key) == camera_name:
+                self._display_pose_on_extra(camera_name, hidden_keypoints, view)
 
     def _all_views(self) -> list:
         return [self.video_area.primary, *self.video_mgr.extra_widgets.values()]
@@ -754,7 +753,8 @@ class PoseDisplayManager:
         primary_name = combo.currentText() if combo is not None else None
         if self._primary_pr is not None and primary_name is not None:
             self._display_pose_on_view(self.video_area.primary, self._primary_pr, primary_name)
-        for camera_name, view in self.video_mgr.extra_widgets.items():
+        for key, view in self.video_mgr.extra_widgets.items():
+            camera_name = getattr(view, "camera_name", key)
             pr = self._extra_pr.get(camera_name)
             if pr is not None:
                 self._display_pose_on_view(view, pr, camera_name)

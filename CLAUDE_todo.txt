@@ -1,3 +1,1 @@
-1) each plot instance seprata settings
-2) IO page gets controls, 
-3) birdpark, figure outw hy downsampling isnt working & aligment.
+1) space plot placement, layout saving

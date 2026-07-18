@@ -74,17 +74,18 @@ def test_every_panel_has_close_and_move_buttons(gui):
     shell, meta = gui
     pc = meta.plot_container
     # Every fixed panel is a dock with a slim title bar holding move + ✕
-    # buttons (line plots get theirs per-instance in add_lineplot).
-    assert len(pc._panel_docks) == 6
-    meta.app_state.has_audio = True  # guard for the audiotrace panel
-    pc.set_audiotrace_visible(True)
-    dock = pc._panel_docks["audiotrace"]
+    # buttons (line plots and audio panels get theirs per-instance in
+    # add_lineplot / add_audio_panel).
+    assert len(pc._panel_docks) == 4
+    meta.app_state.has_audio = True
+    plot = pc.add_audio_panel("audiotrace")
+    dock = pc._audio_docks[plot]
     assert not dock.isHidden()
     assert dock.titleBarWidget().findChild(QPushButton, "panel_move_btn") is not None
     close_btn = dock.titleBarWidget().findChild(QPushButton, "panel_close_btn")
     close_btn.click()
-    assert dock.isHidden()
-    assert pc._panel_visible["audiotrace"] is False
+    assert plot not in pc.audio_trace_plots
+    assert plot not in pc._audio_docks
 
 
 def test_top_bar_has_expected_menus(gui):
@@ -257,12 +258,12 @@ def test_zen_mode_toggle(gui, qtbot):
 
 
 # ---------------------------------------------------------------------------
-# Left sidebar (drag-drop panel creation)
+# Add-panel popup (drag-drop / Enter panel creation)
 # ---------------------------------------------------------------------------
 
 
 def test_allowed_plot_types_gating():
-    from ethograph.gui.left_sidebar import allowed_plot_types
+    from ethograph.gui.source_popup import allowed_plot_types
 
     class _State:
         ds = None  # feature_ncols falls back to 1
@@ -273,14 +274,59 @@ def test_allowed_plot_types_gating():
     assert feat == ["Lineplot"]  # N==1 -> no heatmap/space
 
 
-def test_left_sidebar_lists_sources_after_load(birdpark_gui):
-    shell, meta = birdpark_gui
-    meta.left_sidebar.refresh()
-    lst = meta.left_sidebar._list
+def test_add_panel_button_wired(gui):
+    """The bottom bar's ➕ button opens the popup (guarded before a load)."""
+    shell, meta = gui
+    btn = shell.bottom_bar.add_panel_btn
+    assert not meta.app_state.ready
+    btn.click()  # no dataset yet → warning notify, popup stays hidden
+    assert not meta.source_popup.isVisible()
+
+
+def test_source_popup_lists_filters_and_navigates(qtbot):
+    from qtpy.QtCore import QEvent, Qt
+    from qtpy.QtGui import QKeyEvent
+
+    from ethograph.gui.source_popup import SourcePopup
+
+    class _Catalog:
+        @staticmethod
+        def feature_choices():
+            return ["speed", "position", "beak_angle"]
+
+    class _State:
+        nwb_alignment = None
+        ds = None
+
+    popup = SourcePopup(_State())
+    qtbot.addWidget(popup)
+    popup.refresh(catalog=_Catalog())
+    lst = popup._list
     texts = [lst.item(i).text().strip() for i in range(lst.count())]
     assert "Media" in texts and "Features" in texts
     # At least one draggable data item exists below the headers.
     assert len(texts) > 2
+
+    # Filtering hides non-matching entries (and empty group headers).
+    rows = popup._visible_data_rows()
+    assert rows, "expected at least one source entry"
+    target = lst.item(rows[0]).text().strip()
+    popup._filter.setText(target)
+    visible = [lst.item(i).text().strip() for i in popup._visible_data_rows()]
+    assert target in visible
+    popup._filter.setText("zzz-no-such-feature")
+    assert popup._visible_data_rows() == []
+    popup._filter.clear()
+    assert popup._visible_data_rows() == rows
+
+    # ↑/↓ typed in the filter box move the list selection (wrapping).
+    popup._select_first_visible()
+    down = QKeyEvent(QEvent.KeyPress, Qt.Key_Down, Qt.NoModifier)
+    popup.eventFilter(popup._filter, down)
+    assert lst.currentRow() == rows[1 % len(rows)]
+    up = QKeyEvent(QEvent.KeyPress, Qt.Key_Up, Qt.NoModifier)
+    popup.eventFilter(popup._filter, up)
+    assert lst.currentRow() == rows[0]
 
 
 def test_drop_feature_creates_lineplot(birdpark_gui):
@@ -363,6 +409,40 @@ def test_video_click_activates_green_edge_and_pose_playback(birdpark_gui):
     assert meta.context_panel.current_context() == "video"  # pose + playback
 
 
+def test_extra_camera_views_are_individual_docks(gui, qtbot):
+    """Each extra camera view is its own closable shell dock — closing one
+    view's ✕ removes only that view, never its siblings (even duplicates of
+    the same camera)."""
+    from qtpy.QtWidgets import QDockWidget
+
+    shell, meta = gui
+    area = shell.video_area
+
+    v1 = area.add_extra("cam")
+    v2 = area.add_extra("cam")  # duplicate view of the same camera
+    v3 = area.add_extra("other")
+    assert len(area.extras) == 3
+
+    docks = [v.dock_widget for v in (v1, v2, v3)]
+    assert all(isinstance(d, QDockWidget) for d in docks)
+    assert len({d.objectName() for d in docks}) == 3  # unique per instance
+
+    mgr = meta.active_panels
+    assert mgr.registration_for(v2) is not None
+
+    # Close ONE duplicate — the other view of the same camera must survive.
+    v2.dock_widget.close()
+    qtbot.waitUntil(lambda: len(area.extras) == 2, timeout=2000)
+    assert v1 in area.extras.values()
+    assert v3 in area.extras.values()
+    assert mgr.registration_for(v2) is None
+    assert mgr.registration_for(v1) is not None
+
+    # Programmatic removal by camera name still removes every view of it.
+    meta.data_widget.video_mgr.remove_camera("cam")
+    assert list(area.extras.values()) == [v3]
+
+
 def test_space_plot_registers_and_activates(moll2025_gui):
     shell, meta = moll2025_gui
     meta.app_state.space_plot_type = "Space Plot"
@@ -433,6 +513,32 @@ def test_cover_page_borrows_and_returns_load_panel(gui, qtbot):
     assert not io.load_buttons_row.isHidden()
 
 
+def test_cover_page_custom_load_accepts_page(gui, qtbot, monkeypatch):
+    """Custom set-up path: clicking the borrowed load panel's Load button
+    closes (accepts) the cover page once the dataset is loaded — otherwise the
+    modal dialog stays open forever and the main window never appears."""
+    from qtpy.QtWidgets import QDialog
+
+    from ethograph.gui.cover_page import CoverPage
+
+    shell, meta = gui
+    io = meta.io_widget
+    page = CoverPage(shell, io)
+    page.show()
+    qtbot.waitExposed(page)
+
+    monkeypatch.setattr(
+        io.data_widget,
+        "on_load_clicked",
+        lambda: setattr(meta.app_state, "ready", True),
+    )
+    io.load_button.click()
+
+    assert page.result() == QDialog.Accepted
+    assert not page.isVisible()
+    assert io.isAncestorOf(io.load_panel)  # panel handed back on close
+
+
 def test_cover_page_classify_files():
     from ethograph.gui.cover_page import classify_files
 
@@ -473,6 +579,58 @@ def test_cover_page_builds_single_trial_alignment(gui, birdpark_data_dir):
     align = NWBAlignment(nwb_path)  # must be a readable alignment NWB
     rate = align.get_stream_rate("video", "cam-1")
     assert rate and rate > 0  # real fps, not a hardcoded fallback
+
+
+def test_cover_page_session_plus_media_builds_alignment(gui, birdpark_data_dir):
+    """Dropping a session .nc together with media synthesises a tmp alignment
+    (nwb_file_path override) so the media is loadable — the session file's
+    folder has no .ethograph sidecar describing the dropped files."""
+    from ethograph.gui.cover_page import CoverPage, classify_files
+    from ethograph.io.nwb_alignment import NWBAlignment
+
+    shell, meta = gui
+    data_dir = Path(birdpark_data_dir)
+    videos = sorted(p for p in data_dir.iterdir() if p.suffix.lower() in VIDEO_EXTENSIONS)
+    session = next(iter(sorted(data_dir.glob("*.nc"))), None)
+    if not videos or session is None:
+        pytest.skip("birdpark is missing a video or .nc session file")
+
+    page = CoverPage(shell, meta.io_widget)
+    buckets = classify_files([str(session), str(videos[0])])
+    page._populate_io_from_buckets(buckets)
+
+    app_state = meta.app_state
+    assert app_state.nc_file_path == str(session)
+    assert app_state.nwb_file_path and app_state.nwb_file_path.endswith(".tmp.nwb")
+    align = NWBAlignment(app_state.nwb_file_path)
+    assert align.cameras == ["cam-1"]
+    assert app_state.video_folder == str(videos[0].parent)
+
+
+def test_cover_page_audio_only_alignment(gui, birdpark_data_dir):
+    """Audio-only drops build an alignment too (duration from the audio file)."""
+    from ethograph.gui.cover_page import CoverPage
+    from ethograph.io.nwb_alignment import NWBAlignment
+
+    shell, meta = gui
+    data_dir = Path(birdpark_data_dir)
+    audio_only = AUDIO_EXTENSIONS - VIDEO_EXTENSIONS
+    audios = sorted(p for p in data_dir.iterdir() if p.suffix.lower() in audio_only)
+    if not audios:
+        pytest.skip("birdpark has no audio-only files")
+
+    page = CoverPage(shell, meta.io_widget)
+    nwb_path = page._build_tmp_alignment([], [str(audios[0])])
+
+    align = NWBAlignment(nwb_path)
+    assert align.mics == ["mic-1"]
+    assert align.cameras == []
+    assert align.stop_time(1) and align.stop_time(1) > 0
+    # Stream-based alignments have no trials-table filename columns —
+    # the GUI must resolve audio via the ImageSeries external_file.
+    assert align.get_media(1, "audio", "mic-1") is None
+    resolved = align.resolve_media_path(1, "audio", device="mic-1")
+    assert resolved and Path(resolved).name == audios[0].name
 
 
 # ---------------------------------------------------------------------------

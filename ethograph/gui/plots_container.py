@@ -6,7 +6,9 @@ The default arrangement is a vertical stack in ``_PANEL_ORDER`` with line
 plots at the bottom; drag a panel's title bar to rearrange.
 
 Panels (every one optional):
-  - AudioTrace / Spectrogram (only if audio)
+  - AudioTrace / Spectrogram (any number; instances created via
+    :meth:`add_audio_panel`, removed via each panel's ✕ — duplicates are
+    allowed, each instance may pin its own mic/channel)
   - EphysTrace / Raster (only if neural data)
   - Heatmap     (singleton, like the other fixed panels)
   - Line plots  (any number; ALL equal — created via :meth:`add_lineplot`,
@@ -137,12 +139,10 @@ _PANEL_RATIOS = {
 }
 
 # Ordered list of (panel_name, app_state_guard_attr | None) for the fixed
-# singleton panels. Line plots are not listed: they are dynamic instances
-# appended after the fixed panels.
+# singleton panels. Line plots and audio panels (audiotrace/spectrogram) are
+# not listed: they are dynamic instances.
 # guard_attr: app_state boolean that must be True for the panel to appear; None = always allowed
 _PANEL_ORDER = [
-    ("audiotrace", "has_audio"),
-    ("spectrogram", "has_audio"),
     ("neo", None),
     ("ephys", "has_neurons"),
     ("raster", "has_neurons"),
@@ -151,8 +151,6 @@ _PANEL_ORDER = [
 
 # Maps fixed panel name -> widget attribute name on the container
 _PANEL_PLOT_ATTR = {
-    "audiotrace": "audio_trace_plot",
-    "spectrogram": "spectrogram_plot",
     "neo": "neo_trace_plot",
     "ephys": "ephys_trace_plot",
     "raster": "raster_plot",
@@ -261,10 +259,13 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     labels_redraw_needed = Signal()
     spectrogram_overlay_shown = Signal()
     time_marker_updated = Signal(float)
-    #: Emitted with the plot widget whenever a line-plot panel is created.
+    #: Emitted with the plot widget whenever a dynamic panel (line plot or
+    #: audio panel) is created.
     panel_added = Signal(object)
+    #: Relays bufferUpdated from every spectrogram instance (auto-levels).
+    spectrogram_buffer_updated = Signal()
 
-    #: MIME type used by the left-sidebar drag-and-drop panel creator.
+    #: MIME type used by the add-panel popup's drag-and-drop panel creator.
     SOURCE_MIME = "application/x-ethograph-source"
 
     def __init__(self, app_state, parent=None):
@@ -272,16 +273,19 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.app_state = app_state
         self._data_widget = None  # set by widgets_meta after construction
 
-        # Drag-and-drop panel creation: the left sidebar drags a Media/Feature
-        # source onto this container; ``_on_source_drop(kind, name)`` (set by
-        # MetaWidget) opens the plot-type picker and creates a panel.
+        # Drag-and-drop panel creation: the add-panel popup drags a
+        # Media/Feature source onto this container; ``_on_source_drop(kind,
+        # name)`` (set by MetaWidget) opens the plot-type picker and creates
+        # a panel.
         self._on_source_drop = None
         self.setAcceptDrops(True)
 
+        # Coalesces deferred label redraws (see schedule_labels_redraw).
+        self._labels_redraw_scheduled = False
+
         # --- Plots ---
-        # Fixed singleton panels; line plots are dynamic instances (all equal).
-        self.audio_trace_plot = AudioTracePlot(app_state)
-        self.spectrogram_plot = SpectrogramPlot(app_state)
+        # Fixed singleton panels; line plots and audio panels are dynamic
+        # instances (all equal, duplicates allowed).
         self.heatmap_plot = HeatmapPlot(app_state)
         self.neo_trace_plot = EphysTracePlot(app_state)  # Neo-Viewer panel
         self.ephys_trace_plot = EphysTracePlot(app_state)  # Phy-Viewer panel
@@ -289,14 +293,16 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         #: All line-plot panels, equal peers (create: add_lineplot, remove: ✕).
         self.line_plots: list[LinePlot] = []
+        #: Audio panels, equal peers (create: add_audio_panel, remove: ✕).
+        #: Each instance may pin its own mic/channel via ``plot.mic_name``.
+        self.audio_trace_plots: list[AudioTracePlot] = []
+        self.spectrogram_plots: list[SpectrogramPlot] = []
 
         # The feature plot the right sidebar currently controls (last clicked).
         self.active_feature_plot = None
 
-        # --- Panel visibility state (fixed panels; line plots exist or don't) ---
+        # --- Panel visibility state (fixed panels; dynamic panels exist or don't) ---
         self._panel_visible: dict[str, bool] = {
-            "audiotrace": False,
-            "spectrogram": False,
             "neo": False,
             "ephys": False,
             "raster": False,
@@ -311,9 +317,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.dataset_cp_items: list = []
 
         self.overlay_manager = OverlayManager()
-        self.audio_trace_plot.vb.sigYRangeChanged.connect(
-            lambda: self.overlay_manager.rescale_for_plot(self.audio_trace_plot)
-        )
         self.neo_trace_plot.vb.sigYRangeChanged.connect(
             lambda: self.overlay_manager.rescale_for_plot(self.neo_trace_plot)
         )
@@ -361,8 +364,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         # Connect zoom events for changepoint line style updates
         for plot in (
-            self.spectrogram_plot,
-            self.audio_trace_plot,
             self.heatmap_plot,
             self.neo_trace_plot,
             self.ephys_trace_plot,
@@ -382,24 +383,23 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # ActivePanelManager (set as self.active_panels by MetaWidget).
         self._last_clicked_panel = "feature"
         self.active_panels = None
-        self.audio_trace_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "audio"))
-        self.spectrogram_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "audio"))
         self.heatmap_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "feature"))
         self.neo_trace_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "neo"))
         self.ephys_trace_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "ephys"))
         self.raster_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "raster"))
 
         # Create a dock per fixed panel, hidden, in the default vertical stack.
-        # Line plots get their docks dynamically in add_lineplot().
+        # Line plots and audio panels get their docks dynamically in
+        # add_lineplot() / add_audio_panel().
         self._lineplot_docks: dict = {}
         self._lineplot_dock_counter = 0
+        self._audio_docks: dict = {}
+        self._audio_dock_counter = 0
         self._create_panel_docks()
 
     def _create_panel_docks(self):
         """One QDockWidget per fixed panel; ✕ hides it (line-plot ✕ removes)."""
         closers = {
-            "audiotrace": lambda: self.set_audiotrace_visible(False),
-            "spectrogram": lambda: self.set_spectrogram_visible(False),
             "heatmap": lambda: self.set_heatmap_visible(False),
             "neo": lambda: self.set_neo_visible(False),
             "ephys": lambda: self.set_ephys_visible(False),
@@ -427,8 +427,12 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         )
         return dock
 
+    def _audio_plots(self) -> list:
+        return list(self.audio_trace_plots) + list(self.spectrogram_plots)
+
     def _open_docks(self) -> list[QDockWidget]:
-        docks = [self._panel_docks[n] for n, _ in _PANEL_ORDER if not self._panel_docks[n].isHidden()]
+        docks = [self._audio_docks[p] for p in self._audio_plots() if not self._audio_docks[p].isHidden()]
+        docks += [self._panel_docks[n] for n, _ in _PANEL_ORDER if not self._panel_docks[n].isHidden()]
         docks += [self._lineplot_docks[p] for p in self.line_plots if not self._lineplot_docks[p].isHidden()]
         return docks
 
@@ -459,7 +463,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         for name, dock in self._panel_docks.items():
             if self._get_panel_widget(name) is plot:
                 return dock
-        return self._lineplot_docks.get(plot)
+        return self._lineplot_docks.get(plot) or self._audio_docks.get(plot)
 
     def set_panel_title(self, plot, title: str) -> None:
         """Update a panel dock's title (e.g. when its feature changes)."""
@@ -468,7 +472,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             dock.titleBarWidget().set_title(title)
 
     # ------------------------------------------------------------------
-    # Drag-and-drop panel creation (left sidebar → plot area)
+    # Drag-and-drop panel creation (add-panel popup → plot area)
     # ------------------------------------------------------------------
 
     def dragEnterEvent(self, event):
@@ -552,6 +556,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             dock = self._panel_docks[name]
             if not dock.isHidden() and not dock.isFloating():
                 return dock
+        for plot in reversed(self._audio_plots()):
+            dock = self._audio_docks[plot]
+            if not dock.isHidden() and not dock.isFloating():
+                return dock
         return None
 
     def remove_lineplot(self, plot) -> None:
@@ -560,6 +568,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             return
         if self.active_panels is not None:
             self.active_panels.unregister(plot)
+        plot._td.stop()
         self.line_plots.remove(plot)
         dock = self._lineplot_docks.pop(plot, None)
         if self.active_feature_plot is plot:
@@ -573,14 +582,132 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._update_panel_visibility()
 
     # ------------------------------------------------------------------
+    # Audio panels (audiotrace / spectrogram — instances, duplicates allowed)
+    # ------------------------------------------------------------------
+
+    @property
+    def audio_trace_plot(self) -> AudioTracePlot | None:
+        """First audio-trace instance (backwards-compat accessor)."""
+        return self.audio_trace_plots[0] if self.audio_trace_plots else None
+
+    @property
+    def spectrogram_plot(self) -> SpectrogramPlot | None:
+        """First spectrogram instance (backwards-compat accessor)."""
+        return self.spectrogram_plots[0] if self.spectrogram_plots else None
+
+    def add_audio_panel(self, panel_type: str, mic_name: str | None = None):
+        """Create an audio panel instance: ``"audiotrace"`` or ``"spectrogram"``.
+
+        Duplicates are allowed — every call creates a new panel; the user
+        removes extras via each panel's ✕. *mic_name* pins the panel to one
+        mic/channel (an ``audio_source_map`` key); ``None`` follows the
+        global Mic combo.
+        """
+        if panel_type == "spectrogram":
+            plot = SpectrogramPlot(self.app_state)
+            plots = self.spectrogram_plots
+            plot.bufferUpdated.connect(self.spectrogram_buffer_updated)
+        else:
+            panel_type = "audiotrace"
+            plot = AudioTracePlot(self.app_state)
+            plots = self.audio_trace_plots
+            plot.vb.sigYRangeChanged.connect(lambda *_, p=plot: self.overlay_manager.rescale_for_plot(p))
+        plot.mic_name = mic_name
+
+        self._audio_dock_counter += 1
+        title = f"{panel_type} — {mic_name}" if mic_name else panel_type
+        dock = self._make_dock(title, plot, lambda: self.remove_audio_panel(plot))
+        dock.setObjectName(f"panel_{panel_type}_{self._audio_dock_counter}")
+        self._audio_docks[plot] = dock
+
+        # Keep audio panels grouped at the top of the default vertical stack:
+        # anchor below the last open audio dock, else become the first dock.
+        anchor = None
+        for other in reversed(self._audio_plots()):
+            other_dock = self._audio_docks[other]
+            if not other_dock.isHidden() and not other_dock.isFloating():
+                anchor = other_dock
+                break
+        if anchor is None:
+            self._dock_host.addDockWidget(Qt.LeftDockWidgetArea, dock)
+        else:
+            self._dock_host.splitDockWidget(anchor, dock, Qt.Vertical)
+        dock.show()
+
+        plots.append(plot)
+        plot.vb.sigRangeChanged.connect(self._on_plot_zoom)
+        plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "audio"))
+        if self.active_panels is not None:
+            self.active_panels.register(plot, panel_type, clicked_signal=plot.plot_clicked)
+
+        self._update_panel_visibility()
+
+        source = build_audio_source(self.app_state, plot.mic_name)
+        plot.set_source(source)
+        if self.app_state.ready and source is not None:
+            t0, t1 = self.get_current_xlim()
+            plot.update_plot(t0=t0, t1=t1)
+        self.panel_added.emit(plot)
+        self.schedule_labels_redraw()
+        return plot
+
+    def set_audio_panel_mic(self, plot, mic_name: str | None) -> None:
+        """Re-pin an audio panel to another mic/channel and refresh it."""
+        if plot in self.spectrogram_plots:
+            panel_type = "spectrogram"
+        elif plot in self.audio_trace_plots:
+            panel_type = "audiotrace"
+        else:
+            return
+        plot.mic_name = mic_name
+        plot.set_source(build_audio_source(self.app_state, mic_name))
+        dock = self._audio_docks.get(plot)
+        if dock is not None:
+            title = f"{panel_type} — {mic_name}" if mic_name else panel_type
+            dock.setWindowTitle(title)
+            bar = dock.titleBarWidget()
+            if bar is not None:
+                bar.set_title(title)
+        t0, t1 = self.get_current_xlim()
+        plot.update_plot(t0=t0, t1=t1)
+        self.schedule_labels_redraw()
+
+    def remove_audio_panel(self, plot) -> None:
+        """Remove any audio panel instance (they are all removable)."""
+        for plots in (self.audio_trace_plots, self.spectrogram_plots):
+            if plot in plots:
+                plots.remove(plot)
+                break
+        else:
+            return
+        if self.active_panels is not None:
+            self.active_panels.unregister(plot)
+        # The throttle/debounce QTimers are not parented to the widget — stop
+        # them so no callback fires into the deleted plot.
+        plot._td.stop()
+        plot.set_source(None)
+        dock = self._audio_docks.pop(plot, None)
+        if dock is not None:
+            self._dock_host.removeDockWidget(dock)
+            dock.deleteLater()
+        else:
+            plot.setParent(None)
+            plot.deleteLater()
+        self._update_panel_visibility()
+
+    # ------------------------------------------------------------------
     # Panel layout persistence (app_state.panel_layout → local_settings.yaml)
     # ------------------------------------------------------------------
 
     def _canonicalize_lineplot_dock_names(self):
-        """Name line-plot docks by list position so QMainWindow.saveState /
+        """Name dynamic-panel docks by list position so QMainWindow.saveState /
         restoreState blobs match across sessions."""
         for i, plot in enumerate(self.line_plots):
             self._lineplot_docks[plot].setObjectName(f"panel_lineplot_{i}")
+        for i, plot in enumerate(self.audio_trace_plots):
+            self._audio_docks[plot].setObjectName(f"panel_audiotrace_{i}")
+        for i, plot in enumerate(self.spectrogram_plots):
+            self._audio_docks[plot].setObjectName(f"panel_spectrogram_{i}")
 
     def layout_state(self) -> dict:
         """Serializable panel layout: the open panels (type + full per-panel
@@ -589,6 +716,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         arrangement (positions, sizes, tabs, floating)."""
         self._canonicalize_lineplot_dock_names()
         panels = []
+        for plot in self.audio_trace_plots:
+            panels.append({"type": "audiotrace", "mic": plot.mic_name})
+        for plot in self.spectrogram_plots:
+            panels.append({"type": "spectrogram", "mic": plot.mic_name})
         for name, _ in _PANEL_ORDER:
             if not self._panel_visible[name]:
                 continue
@@ -611,8 +742,11 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         types = {e.get("type") for e in entries}
 
-        self.set_audiotrace_visible("audiotrace" in types)
-        self.set_spectrogram_visible("spectrogram" in types)
+        for plot in self._audio_plots():
+            self.remove_audio_panel(plot)
+        for e in entries:
+            if e.get("type") in ("audiotrace", "spectrogram"):
+                self.add_audio_panel(e["type"], mic_name=e.get("mic"))
         self.set_neo_visible("neo" in types)
         self.set_heatmap_visible("heatmap" in types)
         if "raster" in types:
@@ -692,8 +826,12 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         return result
 
     def _visible_panel_widgets(self) -> list:
-        """All open panels in visual order: fixed panels + line plots."""
-        return [self._get_panel_widget(n) for n in self._visible_panel_names()] + list(self.line_plots)
+        """All open panels in visual order: audio + fixed panels + line plots."""
+        return (
+            self._audio_plots()
+            + [self._get_panel_widget(n) for n in self._visible_panel_names()]
+            + list(self.line_plots)
+        )
 
     def _update_panel_visibility(self):
         """Show/hide fixed panel docks in-place; never reparents widgets."""
@@ -712,6 +850,25 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         self._apply_all_zoom_constraints()
         QTimer.singleShot(0, self._apply_panel_sizes)
+        self.schedule_labels_redraw()
+
+    def schedule_labels_redraw(self) -> None:
+        """Redraw labels once the pending panel-content renders are done.
+
+        General rule: any path that creates or shows a panel must end with a
+        label redraw that runs AFTER the panel's content render (update_plot /
+        set_source), because "bottom"-strip overlay modes position rectangles
+        from the plot's y viewRange — drawing before the content sets the real
+        range leaves the labels invisible. Deferring to the next event-loop
+        tick (coalesced) guarantees that ordering for every creation path.
+        """
+        if self._labels_redraw_scheduled:
+            return
+        self._labels_redraw_scheduled = True
+        QTimer.singleShot(0, self._emit_labels_redraw)
+
+    def _emit_labels_redraw(self) -> None:
+        self._labels_redraw_scheduled = False
         self.labels_redraw_needed.emit()
 
     def _setup_xlinks_from_visible(self, visible_names: list[str] | None = None):
@@ -742,7 +899,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             return
 
         v = self._panel_visible
-        has_audio_panel = self.app_state.has_audio and (v["audiotrace"] or v["spectrogram"])
+        has_audio_panel = self.app_state.has_audio and bool(self._audio_plots())
         has_neural_panel = v["neo"] or (self.app_state.has_neurons and (v["ephys"] or v["raster"]))
         ratios = _PANEL_RATIOS.get((has_audio_panel, has_neural_panel), {"feature": 1.0})
 
@@ -752,6 +909,11 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # heatmap (if shown) + every line plot.
         n_feature = len(self.line_plots) + (1 if "heatmap" in visible_names else 0)
         feature_share = ratios.get("feature", 0.3) * total if n_feature else 0.0
+
+        # Every audio instance gets its panel type's ratio share.
+        audio_raw = [
+            (self._audio_docks[plot], ratios.get("audiotrace", 0.2) * total) for plot in self.audio_trace_plots
+        ] + [(self._audio_docks[plot], ratios.get("spectrogram", 0.2) * total) for plot in self.spectrogram_plots]
 
         raw = {}
         for name in visible_names:
@@ -768,13 +930,16 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             for n in phy_present:
                 raw[n] = raw[n] / phy_raw_total * (neo_phy_total * 5 / 6)
 
-        total_alloc = sum(raw.values()) + feature_share
+        total_alloc = sum(raw.values()) + feature_share + sum(size for _, size in audio_raw)
         if total_alloc <= 0:
             return
         scale = total / total_alloc
         member_size = max(1, int(feature_share / n_feature * scale)) if n_feature else 0
 
         docks, sizes = [], []
+        for dock, size in audio_raw:
+            docks.append(dock)
+            sizes.append(max(1, int(size * scale)))
         for name in visible_names:
             docks.append(self._panel_docks[name])
             sizes.append(member_size if name == "heatmap" else max(1, int(raw[name] * scale)))
@@ -795,14 +960,24 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._update_panel_visibility()
 
     def set_audiotrace_visible(self, visible: bool):
-        self._set_panel_visible("audiotrace", visible)
-        if not visible:
-            self.audio_trace_plot.set_source(None)
+        """Backwards-compat shim: True ensures at least one audio-trace
+        instance exists; False removes every instance."""
+        if visible:
+            if not self.audio_trace_plots:
+                self.add_audio_panel("audiotrace")
+        else:
+            for plot in list(self.audio_trace_plots):
+                self.remove_audio_panel(plot)
 
     def set_spectrogram_visible(self, visible: bool):
-        self._set_panel_visible("spectrogram", visible)
-        if not visible:
-            self.spectrogram_plot.set_source(None)
+        """Backwards-compat shim: True ensures at least one spectrogram
+        instance exists; False removes every instance."""
+        if visible:
+            if not self.spectrogram_plots:
+                self.add_audio_panel("spectrogram")
+        else:
+            for plot in list(self.spectrogram_plots):
+                self.remove_audio_panel(plot)
 
     def set_heatmap_visible(self, visible: bool):
         self._set_panel_visible("heatmap", visible)
@@ -823,7 +998,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             if not self.line_plots:
                 self.add_lineplot()
         self.plot_changed.emit(mode)
-        self.labels_redraw_needed.emit()
+        self.schedule_labels_redraw()
 
     # ------------------------------------------------------------------
     # Ephys panel show/hide
@@ -951,6 +1126,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         return self.get_current_plot()
 
     def _visible_plots(self):
+        for plot in self._audio_plots():
+            if not self._audio_docks[plot].isHidden():
+                yield plot
         for name, _ in _PANEL_ORDER:
             if not self._panel_docks[name].isHidden():
                 yield self._get_panel_widget(name)
@@ -1044,12 +1222,14 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     # --- Audio panel updates ---
 
     def update_audio_panels(self):
-        """Refresh audio-driven panels (waveform + spectrogram) after mic change."""
-        source = build_audio_source(self.app_state)
-        if self._panel_visible["spectrogram"]:
-            self.spectrogram_plot.set_source(source)
-        if self._panel_visible["audiotrace"]:
-            self.audio_trace_plot.set_source(source)
+        """Refresh audio-driven panels (waveform + spectrogram) after mic change.
+
+        Panels pinned to a mic/channel (``plot.mic_name``) keep their own
+        source; unpinned panels follow the global Mic combo.
+        """
+        audio_plots = self._audio_plots()
+        for plot in audio_plots:
+            plot.set_source(build_audio_source(self.app_state, plot.mic_name))
 
         t0, t1 = self.get_current_xlim()
         time = self.app_state.time
@@ -1064,13 +1244,12 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
                 master = self._xlink_master or self._feature_plot
                 master.vb.setXRange(t0, t1, padding=0)
 
-        if self._panel_visible["audiotrace"]:
-            self.audio_trace_plot.update_plot(t0=t0, t1=t1)
-        if self._panel_visible["spectrogram"]:
-            self.spectrogram_plot.update_plot(t0=t0, t1=t1)
+        for plot in audio_plots:
+            plot.update_plot(t0=t0, t1=t1)
 
         self._apply_all_zoom_constraints()
         QTimer.singleShot(0, self._apply_panel_sizes)
+        self.schedule_labels_redraw()
 
     # --- Time slider ---
 
@@ -1175,8 +1354,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.overlay_manager.remove_overlay("amplitude_envelope")
 
     def _get_amp_envelope_host(self):
-        if self._panel_visible["audiotrace"] and self.audio_trace_plot.isVisible():
-            return self.audio_trace_plot
+        host = self._get_envelope_host_plot()
+        if host is not None:
+            return host
         if self._panel_visible["ephys"] and self.ephys_trace_plot.isVisible():
             return self.ephys_trace_plot
         plot = self.get_current_plot()
@@ -1187,8 +1367,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     # --- Envelope sibling trace ---
 
     def _get_envelope_host_plot(self):
-        if self._panel_visible["audiotrace"] and self.audio_trace_plot.isVisible():
-            return self.audio_trace_plot
+        for plot in self.audio_trace_plots:
+            if plot.isVisible():
+                return plot
         return None
 
     def show_envelope_overlay(self):
@@ -1344,6 +1525,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def clear_audio_cache(self):
         SharedAudioCache.clear_cache()
-        if hasattr(self.spectrogram_plot, "buffer"):
-            self.spectrogram_plot.buffer._clear_buffer()
-        self.audio_trace_plot.set_source(None)
+        for plot in self.spectrogram_plots:
+            plot.buffer._clear_buffer()
+        for plot in self.audio_trace_plots:
+            plot.set_source(None)

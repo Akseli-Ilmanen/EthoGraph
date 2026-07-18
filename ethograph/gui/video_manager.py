@@ -1,10 +1,10 @@
 """Video lifecycle management over pygfx camera views.
 
-``VideoArea`` is the central widget of the main window: a horizontal splitter
-holding the primary :class:`CameraView` and a vertical stack of extra camera
-views. ``VideoManager`` keeps its old public surface (update_video,
-add_camera, extra_widgets, …) but creates pygfx views instead of napari
-layers.
+``VideoArea`` hosts the primary :class:`CameraView` (inside the "Video"
+dock); every extra camera view is its own closable shell dock, so single
+views can be removed individually. ``VideoManager`` keeps its old public
+surface (update_video, add_camera, extra_widgets, …) but creates pygfx views
+instead of napari layers.
 """
 
 from concurrent.futures import ThreadPoolExecutor
@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import av
-from qtpy.QtCore import Qt, Signal
+from qtpy.QtCore import QEvent, Qt, QTimer, Signal
 from qtpy.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
 from .notify import notify
@@ -49,12 +49,20 @@ def probe_video(video_path: str) -> VideoProbe:
 
 
 class VideoArea(QWidget):
-    """Primary camera view + vertical stack of extra camera views."""
+    """Primary camera view; extra camera views live in their own shell docks.
+
+    The primary view is hosted here (inside the "Video" dock). Every extra
+    camera view is its own closable :class:`QDockWidget` in the shell's top
+    dock area (like space plots) — the user removes any single view via its
+    dock's ✕. Without a shell (tests), extras fall back into the local
+    splitter."""
 
     #: Emitted on any mouse press inside the video area (→ video context sidebar).
     clicked = Signal()
     #: Emitted with a CameraView when an extra camera is added (for active-panel).
     camera_added = Signal(object)
+    #: Emitted with a CameraView after its view was removed (dock ✕ or programmatic).
+    camera_view_removed = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -62,9 +70,13 @@ class VideoArea(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
 
-        # One splitter; every camera is an EQUAL panel (pynaviz-style — there is
-        # no large "primary" and small "secondary"). `primary` is just the first
-        # panel, kept as an attribute for VideoManager compatibility.
+        #: The shell main window (set by EthographMainWindow); hosts the
+        #: per-camera docks.
+        self.shell = None
+        #: Set during VideoManager.cleanup() so shutdown-driven removals
+        #: don't fire camera_view_removed handlers (combo resets, saves).
+        self._suppress_removed_signal = False
+
         self._splitter = QSplitter(Qt.Horizontal)
         self.primary = CameraView()
         self._splitter.addWidget(self.primary)
@@ -76,23 +88,62 @@ class VideoArea(QWidget):
         return self._extras
 
     def add_extra(self, name: str) -> CameraView:
-        if name in self._extras:
-            return self._extras[name]
+        """Add a new view for camera *name*. Duplicates are allowed — each
+        call creates a new view (its own dock); the dict key is made unique,
+        and the real camera name is kept on ``view.camera_name``."""
+        key = name
+        n = 2
+        while key in self._extras:
+            key = f"{name} ({n})"
+            n += 1
         view = CameraView()
-        self._extras[name] = view
-        self._splitter.addWidget(view)
+        view.camera_name = name
+        self._extras[key] = view
+        shell = self.shell
+        if shell is not None and hasattr(shell, "add_dock_widget"):
+            view.setMinimumSize(120, 120)
+            dock = shell.add_dock_widget(view, area="top", name=key)
+            dock.setObjectName(f"CameraViewDock {key}")
+            dock._camera_key = key
+            view.dock_widget = dock
+            dock.installEventFilter(self)
+            desired_width = max(200, int(shell.width() * 0.2))
+            QTimer.singleShot(
+                0, lambda: shell.resizeDocks([dock], [desired_width], Qt.Horizontal)
+            )
+        else:
+            self._splitter.addWidget(view)
+            self._equalize()
         self.camera_added.emit(view)
-        self._equalize()
         return view
+
+    def eventFilter(self, obj, event):
+        key = getattr(obj, "_camera_key", None)
+        if key is not None and event.type() == QEvent.Close:
+            # The dock's ✕ was clicked. Defer the teardown — removing the
+            # dock while it handles its own close event is unsafe.
+            QTimer.singleShot(0, lambda: self.remove_extra(key))
+        return False
 
     def remove_extra(self, name: str) -> None:
         view = self._extras.pop(name, None)
         if view is None:
             return
         view.clear()
-        view.setParent(None)
-        view.deleteLater()
-        self._equalize()
+        dock = getattr(view, "dock_widget", None)
+        if dock is not None and self.shell is not None:
+            dock.removeEventFilter(self)
+            # hide + deleteLater, NOT shell.removeDockWidget(): removing a
+            # dock holding a GL canvas makes the next shell.show() crash
+            # natively on Windows (same fix as remove_space_plot).
+            dock.hide()
+            dock.deleteLater()
+        else:
+            view.setParent(None)
+            view.deleteLater()
+            self._equalize()
+        if not self._suppress_removed_signal:
+            self.camera_view_removed.emit(view)
 
     def _equalize(self) -> None:
         """Give every camera panel an equal share of the width."""
@@ -283,8 +334,31 @@ class VideoManager:
     # Extra cameras
     # ------------------------------------------------------------------
 
-    def add_camera(self, camera_name: str, video_path: str, layout_mgr=None, meta_widget=None, *, reader=None):
-        if camera_name in self.extra_widgets:
+    def views_for_camera(self, camera_name: str) -> list[CameraView]:
+        """Every extra view showing *camera_name* (duplicates included)."""
+        return [
+            view
+            for key, view in self.extra_widgets.items()
+            if getattr(view, "camera_name", key) == camera_name
+        ]
+
+    def add_camera(
+        self,
+        camera_name: str,
+        video_path: str,
+        layout_mgr=None,
+        meta_widget=None,
+        *,
+        reader=None,
+        duplicate: bool = False,
+    ):
+        """Show *camera_name* as an extra view.
+
+        Without *duplicate*, an existing view of that camera is reloaded
+        (trial change / combo re-apply). With *duplicate*, a NEW view is
+        always created — the same camera can be shown any number of times.
+        """
+        if not duplicate and self.views_for_camera(camera_name):
             self._update_existing_camera(camera_name, video_path, reader=reader)
             return
 
@@ -310,10 +384,10 @@ class VideoManager:
                 notify(f"Could not open camera '{camera_name}': {e}", "warning")
                 return
         self._store_camera_fps_in_session(camera_name, probe.fps)
-        view = self.extra_widgets[camera_name]
-        self._load_extra_video(view, camera_name, video_path, probe)
-        view.show()
-        self._sync_widget_to_current_time(view)
+        for view in self.views_for_camera(camera_name):
+            self._load_extra_video(view, camera_name, video_path, probe)
+            view.show()
+            self._sync_widget_to_current_time(view)
 
     def _load_extra_video(self, view: CameraView, camera_name: str, video_path: str, probe: VideoProbe):
         sio = getattr(self.app_state, "nwb_alignment", None)
@@ -343,7 +417,10 @@ class VideoManager:
             view.seek_video_frame(0)
 
     def remove_camera(self, camera_name: str):
-        self.video_area.remove_extra(camera_name)
+        """Remove every view of *camera_name* (duplicates included)."""
+        for key, view in list(self.video_area.extras.items()):
+            if getattr(view, "camera_name", key) == camera_name:
+                self.video_area.remove_extra(key)
 
     def remove_all_cameras(self):
         for name in list(self.extra_widgets.keys()):
@@ -360,7 +437,11 @@ class VideoManager:
             self.app_state.video.stop()
             self.app_state.video = None
         self._cleanup_primary_video()
-        self.remove_all_cameras()
+        self.video_area._suppress_removed_signal = True
+        try:
+            self.remove_all_cameras()
+        finally:
+            self.video_area._suppress_removed_signal = False
 
     @staticmethod
     def open_readers_parallel(paths: dict[str, str]) -> dict[str, VideoProbe]:

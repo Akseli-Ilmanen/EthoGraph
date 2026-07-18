@@ -65,6 +65,8 @@ class EthographMainWindow(QMainWindow):
         # central widget here — setCentralWidget() deletes the previous central
         # widget, which would destroy the CameraView C++ object.
         self.video_area = VideoArea()
+        # Extra camera views are created as per-view docks on this shell.
+        self.video_area.shell = self
 
         set_toast_host(self)
 
@@ -73,6 +75,7 @@ class EthographMainWindow(QMainWindow):
         self._plot_dock: QDockWidget | None = None
         self._shortcuts: list[QShortcut] = []
         self._extra_lineplot_count = 0
+        self._on_show_callbacks: list = []
 
         self._create_menus()
 
@@ -257,6 +260,22 @@ class EthographMainWindow(QMainWindow):
             "state_b64": base64.b64encode(bytes(self.saveState(version=_LAYOUT_VERSION))).decode("ascii"),
             "sidebar_visible": bool(self._sidebar_dock and self._sidebar_dock.isVisible()),
         }
+
+    def run_when_shown(self, callback) -> None:
+        """Run *callback* now if the window is visible, else once on its next
+        show. Dock sizes are not honored on a hidden QMainWindow, and
+        cover-page dataset loads happen before ``show()``."""
+        if self.isVisible():
+            callback()
+        else:
+            self._on_show_callbacks.append(callback)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self._on_show_callbacks:
+            callbacks, self._on_show_callbacks = self._on_show_callbacks, []
+            for callback in callbacks:
+                QTimer.singleShot(0, callback)
 
     def _restore_window_state(self):
         """Restore the outer window layout saved in gui_settings.yaml."""

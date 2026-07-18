@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, get_args, get_origin
 
+import numpy as np
 import pandas as pd
 import xarray as xr
 import yaml
@@ -325,6 +326,8 @@ class ObservableAppState(QObject):
             self._values[var] = default
 
         self.audio_source_map: dict[str, tuple[str, int]] = {}
+        # mic device label -> ordered audio_source_map keys (one per channel)
+        self.audio_mic_channels: dict[str, list[str]] = {}
         self.ephys_source_map: dict[
             str, tuple[str, str, int]
         ] = {}  # filepath, neo_stream_id, channel_idx, e.g.("/data/session.rhd", "1", 0)).
@@ -485,13 +488,15 @@ class ObservableAppState(QObject):
 
         return ephys_path, stream_id, channel_idx
 
-    def get_audio_source(self) -> tuple[str | None, int]:
-        """Get audio file path and channel index from current mics_sel.
+    def get_audio_source(self, mic_name: str | None = None) -> tuple[str | None, int]:
+        """Get audio file path and channel index for a mic selection.
 
-        Returns (audio_path, channel_idx) tuple. Uses audio_source_map to resolve
-        the display name to (mic_file, channel_idx).
+        *mic_name* overrides the global ``mics_sel`` (used by audio panels
+        pinned to one mic/channel). Returns (audio_path, channel_idx) tuple.
+        Uses audio_source_map to resolve the display name to
+        (mic_file, channel_idx).
         """
-        mics_sel = getattr(self, "mics_sel", None)
+        mics_sel = mic_name or getattr(self, "mics_sel", None)
         if not mics_sel or not self.audio_source_map:
             return None, 0
 
@@ -515,6 +520,17 @@ class ObservableAppState(QObject):
                     fallback_folder=audio_folder,
                 )
                 if resolved:
+                    return resolved, channel_idx
+            if not media:
+                # Stream-based alignments (drag & drop) have no trials-table
+                # filename columns — match the ImageSeries file directly.
+                resolved = self.nwb_alignment.resolve_media_path(
+                    trial,
+                    "audio",
+                    device=mic_dev,
+                    fallback_folder=audio_folder,
+                )
+                if resolved and (mic_file == str(mic_dev) or Path(resolved).name == mic_file):
                     return resolved, channel_idx
 
         # Direct fallback
@@ -549,6 +565,7 @@ class ObservableAppState(QObject):
             "navigation_widget",
             "lineplot",
             "audio_source_map",
+            "audio_mic_channels",
             "ephys_source_map",
             "ephys_stream_sel",
             "_suspend_local_autoload",
@@ -816,10 +833,16 @@ class ObservableAppState(QObject):
     def _yaml_write(self, path: Path, state_dict: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
-            yaml.dump(state_dict, f, default_flow_style=False, sort_keys=False)
+            yaml.dump(self._to_native(state_dict), f, default_flow_style=False, sort_keys=False)
 
     def _to_native(self, value):
-        """Convert numpy types to native Python types for YAML serialization."""
+        """Recursively convert numpy types to native Python types for YAML serialization."""
+        if isinstance(value, dict):
+            return {key: self._to_native(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [self._to_native(item) for item in value]
+        if isinstance(value, np.ndarray):
+            return value.tolist()
         if hasattr(value, "item"):
             return value.item()
         return value
@@ -984,25 +1007,41 @@ class ObservableAppState(QObject):
                 self._yaml_write(path, state_dict)
                 return True
 
-            # Refresh panel/window layout snapshots (set by MetaWidget) so the
-            # periodic auto-save always persists the live arrangement.
-            provider = getattr(self, "_layout_snapshot_provider", None)
-            if provider is not None:
-                provider()
+        except (OSError, yaml.YAMLError):
+            logger.exception("Error saving state to %s", yaml_path)
+            return False
 
+        # Refresh panel/window layout snapshots (set by MetaWidget) so the
+        # periodic auto-save always persists the live arrangement. A snapshot
+        # failure must not block saving the rest of the state (this runs in
+        # the auto-save QTimer slot, where an uncaught exception would
+        # silently kill every save).
+        provider = getattr(self, "_layout_snapshot_provider", None)
+        if provider is not None:
+            try:
+                provider()
+            except Exception:
+                logger.exception("Layout snapshot failed; saving state without a layout refresh")
+
+        ok = True
+        try:
             global_path = self._global_settings_path()
             global_state = self._sort_state_dict(self.get_saveable_state_dict(scope=AppStateSpec.SCOPE_GLOBAL))
             self._yaml_write(global_path, global_state)
+        except (OSError, yaml.YAMLError):
+            logger.exception("Error saving global state to %s", self._global_settings_path())
+            ok = False
 
+        try:
             local_path = self._local_settings_path()
             if local_path is not None:
                 local_state = self._sort_state_dict(self.get_saveable_state_dict(scope=AppStateSpec.SCOPE_LOCAL))
                 self._yaml_write(local_path, local_state)
+        except (OSError, yaml.YAMLError):
+            logger.exception("Error saving local state to %s", self._local_settings_path())
+            ok = False
 
-            return True
-        except (OSError, yaml.YAMLError) as e:
-            logger.error("Error saving state to YAML: %s", e)
-            return False
+        return ok
 
     def load_from_yaml(self, yaml_path: str | None = None) -> bool:
         try:

@@ -11,8 +11,8 @@ Presents three entry points (matching the design in the project brief):
 3. **Data wizard** — reuse :meth:`IOWidget._on_create_nc_clicked`.
 
 The page runs *before* the main window is shown: it accepts once a dataset
-is loaded (``app_state.ready``) or the user explicitly skips; closing the
-dialog (X / Esc) means the GUI never opens.
+is loaded (``app_state.ready``); closing the dialog (X / Esc) means the GUI
+never opens.
 """
 
 from __future__ import annotations
@@ -100,8 +100,8 @@ def classify_files(paths: list[str]) -> dict[str, list[str]]:
     return buckets
 
 
-def _audio_sample_rate(path: str) -> float:
-    """Read a real audio sample rate (never hardcode a fallback).
+def _audio_info(path: str) -> tuple[float, float]:
+    """Read a real audio (sample_rate, duration_s) — never hardcode a fallback.
 
     Tries soundfile (wav/flac/ogg), then PyAV (mp4/mov/mkv containers), then the
     stdlib ``wave`` module.  Raises if no audio stream / rate can be read.
@@ -109,7 +109,8 @@ def _audio_sample_rate(path: str) -> float:
     try:
         import soundfile as sf
 
-        return float(sf.info(path).samplerate)
+        info = sf.info(path)
+        return float(info.samplerate), float(info.frames) / float(info.samplerate)
     except Exception:  # noqa: BLE001 - fall through to PyAV / wave
         pass
     try:
@@ -118,13 +119,15 @@ def _audio_sample_rate(path: str) -> float:
         with av.open(path) as container:
             for stream in container.streams:
                 if stream.type == "audio" and stream.rate:
-                    return float(stream.rate)
+                    duration = float(container.duration) / av.time_base if container.duration else 0.0
+                    return float(stream.rate), duration
     except Exception:  # noqa: BLE001 - fall through to wave
         pass
     import wave
 
     with wave.open(path, "rb") as w:
-        return float(w.getframerate())
+        rate = float(w.getframerate())
+        return rate, w.getnframes() / rate
 
 
 class _CamMatchDialog(QDialog):
@@ -245,13 +248,6 @@ class CoverPage(QDialog):
         body.addWidget(self._build_custom_card(), 2)
         outer.addLayout(body)
 
-        skip_row = QHBoxLayout()
-        skip_row.addStretch()
-        skip_btn = QPushButton("Skip / open empty")
-        skip_btn.clicked.connect(self._on_skip)
-        skip_row.addWidget(skip_btn)
-        outer.addLayout(skip_row)
-
     # ------------------------------------------------------------------
     # Layout builders
     # ------------------------------------------------------------------
@@ -365,6 +361,10 @@ class CoverPage(QDialog):
         io.load_buttons_row.hide()
         self._load_host_layout.addWidget(io.load_panel)
         io.load_panel.show()
+        # The panel's Load button runs IOWidget._on_load_clicked (connected at
+        # IOWidget init, so it fires first and blocks until the load finishes);
+        # this closes the cover page afterwards so the main window can show.
+        io.load_button.clicked.connect(self._close_if_loaded)
 
     def _return_load_panel(self):
         """Give the load panel back to the IO tab (it must outlive this dialog)."""
@@ -372,6 +372,7 @@ class CoverPage(QDialog):
             return
         self._load_panel_borrowed = False
         io = self.io_widget
+        io.load_button.clicked.disconnect(self._close_if_loaded)
         self._load_host_layout.removeWidget(io.load_panel)
         io.load_buttons_row.show()
         # Re-insert at the top of the IO widget (original position).
@@ -380,10 +381,6 @@ class CoverPage(QDialog):
     # ------------------------------------------------------------------
     # Option handlers
     # ------------------------------------------------------------------
-
-    def _on_skip(self):
-        """Open the GUI without loading anything (explicit user choice)."""
-        self.accept()
 
     def _on_template(self):
         self.io_widget._on_select_template_clicked()
@@ -434,15 +431,27 @@ class CoverPage(QDialog):
             cam_map.append((v, poses[i] if i < len(poses) else None))
 
         session_files = buckets["session"]
+        has_media = bool(cam_map or buckets["audio"])
         if session_files:
-            # A real session/feature file was provided — use it directly and let
-            # the standard loader resolve media from the folders below.
+            # A real session/feature file was provided — use it directly. Media
+            # dropped alongside it still needs a synthesised alignment (the
+            # session file's folder usually has no .ethograph sidecar); the
+            # loader picks it up via nwb_file_path.
             app_state.nc_file_path = session_files[0]
+            if has_media:
+                nwb_path = self._build_tmp_alignment(cam_map, buckets["audio"])
+                app_state.nwb_file_path = str(nwb_path)
         else:
             # Pure media: synthesise a single-trial alignment.tmp.nwb.
             nwb_path = self._build_tmp_alignment(cam_map, buckets["audio"])
             app_state.nwb_file_path = str(nwb_path)
             app_state.nc_file_path = str(nwb_path)
+
+        # Drag & drop never takes a metadata table — setting nc_file_path above
+        # reloads local settings, which can restore a stale metadata_path (e.g.
+        # a previous drop's tmp alignment NWB). Clear it so the drop's own
+        # trial timing wins; sidecar TSV discovery via source_path still works.
+        app_state.metadata_path = None
 
         if videos:
             app_state.video_folder = str(Path(videos[0]).parent)
@@ -462,8 +471,8 @@ class CoverPage(QDialog):
         from ethograph.gui.video_manager import probe_video
         from ethograph.io.nwb_alignment import align_media_from_streams
 
-        if not cam_map:
-            raise RuntimeError("No video files to build an alignment from.")
+        if not cam_map and not audio_files:
+            raise RuntimeError("No media files to build an alignment from.")
 
         streams: list[dict] = []
         stop_time = 0.0
@@ -480,17 +489,19 @@ class CoverPage(QDialog):
                 streams.append({"name": f"pose_cam-{i + 1}", "files": [pose], "rate": fps})
 
         for j, audio in enumerate(audio_files):
+            rate, duration = _audio_info(audio)
+            stop_time = max(stop_time, duration)
             streams.append(
                 {
                     "name": f"audio_mic-{j + 1}",
                     "files": [audio],
-                    "rate": _audio_sample_rate(audio),
+                    "rate": rate,
                     "starting_time": 0.0,
                 }
             )
 
         if stop_time <= 0.0:
-            raise RuntimeError("Could not determine session duration from the video.")
+            raise RuntimeError("Could not determine session duration from the dropped media.")
 
         trials = pd.DataFrame({"trial": [1], "start_time": [0.0], "stop_time": [stop_time]})
 
@@ -526,10 +537,9 @@ class CoverPage(QDialog):
 def show_cover_page(shell) -> bool:
     """Run the start dialog before the (still hidden) main window is shown.
 
-    Returns True if the GUI should open: a dataset was loaded, the user
-    explicitly skipped, or a dataset is already loaded. Returns False when the
-    user closed the dialog, meaning the app should exit without showing the
-    main window.
+    Returns True if the GUI should open: a dataset was loaded (or is already
+    loaded). Returns False when the user closed the dialog, meaning the app
+    should exit without showing the main window.
     """
     meta = getattr(shell, "meta_widget", None)
     io_widget = getattr(meta, "io_widget", None)

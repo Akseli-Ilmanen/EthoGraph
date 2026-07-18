@@ -146,6 +146,9 @@ class LinePlot(PanelStateMixin, BasePlot):
 
         for item in self.plot_items:
             if hasattr(item, "setDownsampling"):
+                # Safe against NaN gaps because curves are created with
+                # forward-filled data + a `connect` mask (_nan_safe_curve_args);
+                # raw NaNs would blank every bin containing one when zoomed out.
                 item.setDownsampling(auto=True, method="peak")
 
     def apply_y_range(self, ymin: Optional[float], ymax: Optional[float]):
@@ -232,6 +235,29 @@ class MultiColoredLineItem(pg.GraphicsObject):
         return pg.QtCore.QRectF(self.picture.boundingRect())
 
 
+def _nan_safe_curve_args(y):
+    """Prepare curve data so pyqtgraph's 'peak' downsampling survives NaN gaps.
+
+    Peak (and mean) downsampling propagate NaN — one NaN blanks its whole bin,
+    so NaN-gapped curves vanish when zoomed out. Forward-filling keeps min/max
+    within real data values, while the returned `connect` mask makes pyqtgraph
+    skip the gap segments; its downsampling bins the mask too, so gaps stay
+    gaps at any zoom. Returns ``(y, None)`` when no filling is needed.
+    """
+    y = np.asarray(y, dtype=float)
+    finite = np.isfinite(y)
+    if finite.all() or not finite.any():
+        return y, None
+    idx = np.where(finite, np.arange(len(y)), 0)
+    np.maximum.accumulate(idx, out=idx)
+    filled = y[idx]
+    first = np.argmax(finite)
+    filled[:first] = y[first]
+    connect = finite.copy()
+    connect[:-1] &= finite[1:]
+    return filled, connect
+
+
 def plot_multidim(plot_item, time, data, coord_labels=None, existing_curves=None):
     """
     Plot multi-dimensional data (e.g., pos, vel) over time using PyQtGraph.
@@ -266,7 +292,9 @@ def plot_multidim(plot_item, time, data, coord_labels=None, existing_curves=None
         label = coord_labels[i] if coord_labels is not None else f"dim {i}"
         color = colors[i % len(colors)]
 
-        curve = plot_item.plot(time, data[:, i], pen=pg.mkPen(color=color, width=2), name=label)
+        y, connect = _nan_safe_curve_args(data[:, i])
+        opts = {"connect": connect} if connect is not None else {}
+        curve = plot_item.plot(time, y, pen=pg.mkPen(color=color, width=2), name=label, **opts)
         existing_curves.append(curve)
 
     return existing_curves
@@ -289,10 +317,13 @@ def plot_singledim(
         plot_item.addItem(multi_line)
         existing_items.append(multi_line)
     else:
+        y, connect = _nan_safe_curve_args(data)
+        opts = {"connect": connect} if connect is not None else {}
         curve = plot_item.plot(
             time,
-            data,
+            y,
             pen=pg.mkPen(color="k", width=2),
+            **opts,
         )
         existing_items.append(curve)
 

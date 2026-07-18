@@ -15,7 +15,7 @@ import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 import yaml
-from qtpy.QtCore import QEvent, QTimer, Signal
+from qtpy.QtCore import QEvent, Qt, QTimer, Signal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -267,17 +267,30 @@ def _auto_camera_3d(gl_widget, X, Y, Z):
 
 
 class SpacePlot(QWidget):
-    """Dock widget for displaying spatial plots with user-selectable axes."""
+    """Dock widget for displaying spatial plots with user-selectable axes.
+
+    Space plots are instances like line plots: any number can be open at
+    once (same or different features / 2D/3D), each in its own shell dock.
+    Closing the dock emits :pyattr:`closed` so the owner can drop the
+    instance (``DataWidget.remove_space_plot``).
+    """
 
     #: Emitted on any mouse press in the plot → switches the sidebar to the
     #: Space context (parity with the pyqtgraph plots' ``plot_clicked``).
     clicked = Signal()
+
+    #: Emitted with ``self`` when the user closes this panel's dock.
+    closed = Signal(object)
+
+    #: Monotonic counter so every instance's dock gets a unique objectName.
+    _dock_seq = 0
 
     def __init__(self, shell, app_state):
         super().__init__()
         self.shell = shell
         self.app_state = app_state
         self.dock_widget = None
+        self._apply_default_width = True
 
         self._store: DataLoader | None = None
 
@@ -420,14 +433,39 @@ class SpacePlot(QWidget):
 
     def show(self):
         if not self.dock_widget:
-            self.dock_widget = self.shell.add_dock_widget(self, area="left", name="Space Plot")
-            desired_width = int(self.shell.width() * 0.2)
+            SpacePlot._dock_seq += 1
+            name = "Space Plot" if SpacePlot._dock_seq == 1 else f"Space Plot {SpacePlot._dock_seq}"
+            # Dock in the top area — the same row (and height) as the video —
+            # instead of the left edge, where the dock title collided with the
+            # top bar and had to be dragged into place manually.
+            self.dock_widget = self.shell.add_dock_widget(self, area="top", name=name)
             self.setMinimumSize(120, 120)
             self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-            self.dock_widget.resize(desired_width, self.dock_widget.height())
+            # Skipped while restoring a saved layout — this deferred resize
+            # would fire after the layout apply and stomp the saved width.
+            if getattr(self, "_apply_default_width", True):
+                QTimer.singleShot(0, self._apply_default_dock_width)
+            self.dock_widget.installEventFilter(self)
         else:
             self.dock_widget.setVisible(True)
         super().show()
+
+    def _apply_default_dock_width(self):
+        """Deferred default sizing for a NEW dock. By firing time the panel
+        may have been removed (e.g. an auto-created plot replaced by the
+        saved layout) — resizing a dock outside the layout warns, and the
+        wrapped QDockWidget may already be deleted."""
+        dock = self.dock_widget
+        try:
+            # _apply_default_width may have been cleared after scheduling —
+            # a saved layout adopted this instance and now owns its size.
+            if not self._apply_default_width:
+                return
+            if dock is None or dock.isFloating() or self.shell.dockWidgetArea(dock) == Qt.NoDockWidgetArea:
+                return
+            self.shell.resizeDocks([dock], [int(self.shell.width() * 0.2)], Qt.Horizontal)
+        except RuntimeError:
+            pass  # dock's C++ object deleted before the timer fired
 
     def hide(self):
         if self.dock_widget:
@@ -711,6 +749,70 @@ class SpacePlot(QWidget):
         self.app_state.space_3d = self.cb_3d.isChecked()
         self.app_state.space_color = self.color_combo.currentText() or None
 
+    # --- Per-instance settings (layout persistence) --------------------------
+
+    def space_settings(self) -> dict:
+        """This instance's full combo state in serializable form."""
+        settings = {
+            "feature": self.feature_combo.currentText() or None,
+            "view_3d": self.cb_3d.isChecked(),
+            "space_dim": self.space_dim_combo.currentText() or None,
+            "x": self.x_combo.currentText() or None,
+            "y": self.y_combo.currentText() or None,
+            "z": self.z_combo.currentText() or None,
+            "dims": {d: c.currentText() for d, c in self._dim_combos.items() if c.currentText()},
+            "color": self.color_combo.currentText() or None,
+        }
+        # Explicit dock placement (area / floating / geometry / size). The
+        # docks are re-placed individually on restore — a QMainWindow
+        # restoreState blob is NOT used: re-applying one reparents every dock,
+        # including the native pygfx/GL canvases, which crashes on Windows.
+        dock = self.dock_widget
+        if dock is not None:
+            area = self.shell.dockWidgetArea(dock)
+            settings["dock_area"] = int(getattr(area, "value", area))
+            if dock.isFloating():
+                settings["dock_floating"] = True
+                geo = dock.geometry()
+                settings["dock_geometry"] = [geo.x(), geo.y(), geo.width(), geo.height()]
+            else:
+                settings["dock_size"] = [dock.width(), dock.height()]
+        return settings
+
+    def apply_space_settings(self, settings: dict) -> None:
+        """Restore combo state captured by :meth:`space_settings`, then render."""
+
+        def _set(combo, value):
+            idx = combo.findText(value) if value else -1
+            if idx >= 0:
+                combo.blockSignals(True)
+                combo.setCurrentIndex(idx)
+                combo.blockSignals(False)
+
+        _set(self.feature_combo, settings.get("feature"))
+        self._populate_space_dim_combo()
+        _set(self.space_dim_combo, settings.get("space_dim"))
+        self._populate_axis_combos()
+        self._rebuild_dim_combos()
+        _set(self.x_combo, settings.get("x"))
+        _set(self.y_combo, settings.get("y"))
+        _set(self.z_combo, settings.get("z"))
+        for dim, val in (settings.get("dims") or {}).items():
+            combo = self._dim_combos.get(dim)
+            if combo is not None:
+                _set(combo, val)
+                self._current_dim_values[dim] = combo.currentText()
+        _set(self.color_combo, settings.get("color"))
+        view_3d = settings.get("view_3d")
+        if view_3d is not None:
+            self.cb_3d.blockSignals(True)
+            self.cb_3d.setChecked(bool(view_3d))
+            self.cb_3d.blockSignals(False)
+            self._set_3d_visible(bool(view_3d))
+        if self._store is not None:
+            self._save_to_app_state()
+            self._update_plot()
+
     def _set_3d_visible(self, visible: bool):
         self.z_label.setVisible(visible)
         self.z_combo.setVisible(visible)
@@ -862,6 +964,10 @@ class SpacePlot(QWidget):
                 child.installEventFilter(self)
 
     def eventFilter(self, obj, event):
+        if obj is self.dock_widget:
+            if event.type() == QEvent.Close:
+                self.closed.emit(self)
+            return False
         if event.type() == QEvent.MouseButtonPress:
             self.clicked.emit()
         return False

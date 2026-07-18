@@ -508,7 +508,10 @@ class DataWidget(QWidget):
         self.audio_player = None
         self.video_path = None
         self.audio_path = None
-        self.space_plot = None
+        self.space_plots: list[SpacePlot] = []
+        self.active_space_plot: SpacePlot | None = None
+        self._space_signals_connected = False
+        self._space_plot_autocreated = False
 
         self.combos = {}
         self.all_checkboxes = {}
@@ -521,6 +524,7 @@ class DataWidget(QWidget):
 
         self.video_mgr = VideoManager(shell.video_area, app_state)
         self.video_mgr.set_frame_changed_callback(self._on_primary_frame_changed)
+        shell.video_area.camera_view_removed.connect(self._on_camera_view_removed)
         self.pose_mgr: PoseDisplayManager | None = None  # created after set_data_panel
         self.app_state.audio_video_sync = None
         self.catalog = None  # DataCatalog set after load
@@ -921,6 +925,7 @@ class DataWidget(QWidget):
         self.update_trials_combo()
         self._load_trial_with_fallback()
         self._disable_empty_panels()
+        self._apply_video_dock_default()
 
         if self.navigation_widget:
             self.navigation_widget.set_mappings(self.labels_widget._mappings)
@@ -1059,7 +1064,7 @@ class DataWidget(QWidget):
         per-stream controls (mic / view-mode / neo / neural combos).
 
         Panels are layout instances: shown when their data exists, removed via
-        a panel's ✕ button, re-added by drag-and-drop from the left sidebar.
+        a panel's ✕ button, re-added via the add-panel popup (➕ / Ctrl+N).
         There is no per-plot-type on/off toggle state.
         """
         self._audio_row_widgets = []
@@ -1522,6 +1527,7 @@ class DataWidget(QWidget):
 
     def _expand_mics_with_channels(self, mic_labels):
         self.app_state.audio_source_map.clear()
+        self.app_state.audio_mic_channels.clear()
         expanded_items = []
         audio_folder = self.app_state.audio_folder
         dt = getattr(self.app_state, "dt", None)
@@ -1533,26 +1539,40 @@ class DataWidget(QWidget):
             for mic in mic_labels:
                 display_name = str(mic)
                 self.app_state.audio_source_map[display_name] = (str(mic), 0)
+                self.app_state.audio_mic_channels[str(mic)] = [display_name]
                 expanded_items.append(display_name)
             return expanded_items
 
         for mic_label in mic_labels:
             mic_file = self.app_state.nwb_alignment.get_media(trial_id, "audio", str(mic_label))
-            if not mic_file:
-                continue
-            try:
+            if mic_file:
                 audio_path = os.path.join(audio_folder, mic_file)
+            else:
+                # Stream-based alignments (e.g. drag & drop tmp alignment) keep
+                # file references only in ImageSeries — no trials-table columns.
+                audio_path = self.app_state.nwb_alignment.resolve_media_path(
+                    trial_id, "audio", device=str(mic_label), fallback_folder=audio_folder
+                )
+                if not audio_path:
+                    continue
+                mic_file = Path(audio_path).name
+            try:
                 n_channels = self._get_audio_channel_count(audio_path)
                 if n_channels > 1:
+                    channel_keys = []
                     for ch in range(n_channels):
                         display_name = f"{mic_file} (Ch {ch + 1})"
                         self.app_state.audio_source_map[display_name] = (mic_file, ch)
+                        channel_keys.append(display_name)
                         expanded_items.append(display_name)
+                    self.app_state.audio_mic_channels[str(mic_label)] = channel_keys
                 else:
                     self.app_state.audio_source_map[mic_file] = (mic_file, 0)
+                    self.app_state.audio_mic_channels[str(mic_label)] = [mic_file]
                     expanded_items.append(mic_file)
             except (OSError, ValueError):
                 self.app_state.audio_source_map[mic_file] = (mic_file, 0)
+                self.app_state.audio_mic_channels[str(mic_label)] = [mic_file]
                 expanded_items.append(mic_file)
         return expanded_items
 
@@ -2179,6 +2199,18 @@ class DataWidget(QWidget):
 
         self.on_trial_changed()
 
+    def _apply_video_dock_default(self):
+        """Show the video dock only when a video actually loaded (data-availability
+        default after a dataset load — mirrors the audio/feature panel defaults)."""
+        shell = getattr(self.meta_widget, "shell", None)
+        if shell is None:
+            return
+        has_video = bool(getattr(self.app_state, "video", None)) or self.video_mgr.primary_view.has_video
+        toggle = getattr(shell, "_video_toggle", None)
+        if toggle is not None:
+            toggle.setChecked(has_video)
+        shell.set_video_viewer_visible(has_video)
+
     def _disable_empty_panels(self):
         """Hide plot panels that have no data after the first trial load."""
         pc = self.plot_container
@@ -2415,15 +2447,18 @@ class DataWidget(QWidget):
         self.video_mgr.toggle_pause_resume(self.plot_container)
 
     def _on_time_marker_updated(self, time_s: float):
-        if not self.space_plot or not self.space_plot.isVisible():
+        visible = [sp for sp in self.space_plots if sp.isVisible()]
+        if not visible:
             return
-        self.space_plot.update_time_marker(time_s)
+        for sp in visible:
+            sp.update_time_marker(time_s)
         self._highlight_label_at_time(time_s)
 
     def _on_xrange_for_space_plot(self, _time_s: float):
-        """Debounced re-render of space plot when lineplot x-range changes."""
-        if self.space_plot and self.space_plot.isVisible():
-            self.space_plot.on_xrange_changed()
+        """Debounced re-render of space plots when lineplot x-range changes."""
+        for sp in self.space_plots:
+            if sp.isVisible():
+                sp.on_xrange_changed()
 
     _space_highlight_key: tuple | None = None
 
@@ -2450,7 +2485,9 @@ class DataWidget(QWidget):
         color = (255, 102, 0)
         mappings = getattr(self.labels_widget, "_mappings", {})
         color = mappings.get(key[2], {}).get("color", color)
-        self.space_plot.highlight_time_segment(key[0], key[1], color)
+        for sp in self.space_plots:
+            if sp.isVisible():
+                sp.highlight_time_segment(key[0], key[1], color)
 
     def _on_primary_frame_changed(self, frame_number: int):
         self.plot_container.update_time_marker_and_window(frame_number)
@@ -2493,10 +2530,13 @@ class DataWidget(QWidget):
         self.layout_mgr.toggle_layer_docks_with_anchor(show_layers)
 
         if text == "Space Plot":
-            self.update_space_plot()
+            if self.space_plots:
+                self.update_space_plot()
+            else:
+                self.add_space_plot()
         else:
-            if self.space_plot:
-                self.space_plot.hide()
+            for sp in self.space_plots:
+                sp.hide()
 
     def _on_primary_camera_changed(self, camera_name):
         if not self.app_state.ready or not camera_name:
@@ -2514,7 +2554,11 @@ class DataWidget(QWidget):
 
     def _apply_extra_cameras(self):
         desired = self._get_desired_extra_cameras()
-        current = set(self.video_mgr.extra_widgets.keys())
+        # Compare by camera name (dict keys are unique per view instance —
+        # duplicates of the same camera are allowed).
+        current = {
+            getattr(view, "camera_name", key) for key, view in self.video_mgr.extra_widgets.items()
+        }
 
         for name in current - desired:
             self.video_mgr.remove_camera(name)
@@ -2541,6 +2585,28 @@ class DataWidget(QWidget):
             )
             if self.pose_mgr is not None:
                 self.pose_mgr.update_extra_camera_pose(name, self.get_hidden_keypoints())
+
+    def _on_camera_view_removed(self, view):
+        """A camera view was removed (its dock's ✕, or programmatically).
+
+        When it was the LAST view of that camera, drop its pose layers and
+        clear any extra-camera combo still naming it — otherwise the next
+        combo re-apply would resurrect the view."""
+        name = getattr(view, "camera_name", None)
+        if not name or self.video_mgr.views_for_camera(name):
+            return
+        if self.pose_mgr is not None:
+            self.pose_mgr.on_camera_removed(name)
+        combos = getattr(self, "_extra_camera_combos", [])
+        changed = False
+        for combo in combos:
+            if combo.currentText() == name:
+                combo.blockSignals(True)
+                combo.setCurrentIndex(0)
+                combo.blockSignals(False)
+                changed = True
+        if changed:
+            self._save_extra_cameras()
 
     def _get_desired_extra_cameras(self) -> set[str]:
         if not hasattr(self, "_extra_camera_combos"):
@@ -2596,50 +2662,184 @@ class DataWidget(QWidget):
             if self.pose_mgr is not None:
                 self.pose_mgr.update_extra_camera_pose(camera_name, self.get_hidden_keypoints())
 
-    def update_space_plot(self):
-        if not self.app_state.ready:
-            return
+    @property
+    def space_plot(self) -> SpacePlot | None:
+        """The active space-plot instance (backwards-compat accessor for
+        shortcuts / settings code that acts on "the" space plot)."""
+        if self.active_space_plot is not None and self.active_space_plot in self.space_plots:
+            return self.active_space_plot
+        return self.space_plots[-1] if self.space_plots else None
 
-        plot_type = self.app_state.get_with_default("space_plot_type")
-        if plot_type != "Space Plot":
-            if self.space_plot:
-                self.space_plot.hide()
-            return
-
-        if not self.space_plot:
-            self.space_plot = SpacePlot(self.shell, self.app_state)
-            self.space_plot.set_plot_container(self.plot_container)
-            self.plot_container.time_marker_updated.connect(self._on_xrange_for_space_plot)
-            if self.labels_widget:
-                self.labels_widget.highlight_spaceplot.connect(self._highlight_positions_in_space_plot)
-            # Move the X/Y/Z + 3D controls into the sidebar's Space context.
-            ps = getattr(self, "plot_settings_widget", None)
-            controls = getattr(self.space_plot, "controls_widget", None)
-            if ps is not None and getattr(ps, "spaceplot_panel", None) is not None and controls is not None:
-                ps.spaceplot_panel.layout().insertWidget(0, controls)
-            # Register the space plot with the active-panel manager (green edge +
-            # Space context on click), like every other panel type.
-            mgr = getattr(self.meta_widget, "active_panels", None)
-            if mgr is not None:
-                mgr.register(self.space_plot, "space", clicked_signal=self.space_plot.clicked)
-
+    def _space_store(self):
         store = getattr(self.app_state, "data_loader", None)
         if store is None and self.app_state.ds is not None:
             from ethograph.io.catalog import XarrayLoader, catalog_from_xarray
 
             cat = catalog_from_xarray(self.app_state.ds, self.app_state.dt)
             store = XarrayLoader(self.app_state.ds, cat)
+        return store
 
-        self.space_plot.set_store(store)
-        self.space_plot.refresh()
-        self.space_plot.show()
+    def add_space_plot(
+        self,
+        feature: str | None = None,
+        view_3d: bool | None = None,
+        focus: bool = True,
+        default_width: bool = True,
+    ) -> SpacePlot:
+        """Create a new space-plot panel. Space plots are instances like line
+        plots: any number can be open at once, each in its own dock.
 
-        # Surface the Space context (X/Y/Z + space controls) in the sidebar.
-        if self.meta_widget is not None and hasattr(self.meta_widget, "_on_plot_focus"):
+        ``default_width=False`` skips the deferred 20%-of-window dock resize —
+        used when a saved layout is about to dictate the dock geometry."""
+        sp = SpacePlot(self.shell, self.app_state)
+        sp._apply_default_width = default_width
+        sp.set_plot_container(self.plot_container)
+        sp.closed.connect(self.remove_space_plot)
+        self.space_plots.append(sp)
+
+        if not self._space_signals_connected:
+            self._space_signals_connected = True
+            self.plot_container.time_marker_updated.connect(self._on_xrange_for_space_plot)
+            if self.labels_widget:
+                self.labels_widget.highlight_spaceplot.connect(self._highlight_positions_in_space_plot)
+
+        # Each instance's X/Y/Z + 3D controls live in the sidebar's Space
+        # context; only the active instance's controls are shown.
+        ps = getattr(self, "plot_settings_widget", None)
+        if ps is not None and getattr(ps, "spaceplot_panel", None) is not None:
+            ps.spaceplot_panel.layout().insertWidget(0, sp.controls_widget)
+        # Register with the active-panel manager (green edge + Space context
+        # on click), like every other panel type.
+        mgr = getattr(self.meta_widget, "active_panels", None)
+        if mgr is not None:
+            mgr.register(sp, "space", clicked_signal=sp.clicked)
+
+        sp.set_store(self._space_store())
+        sp.show()
+        if feature is not None or view_3d is not None:
+            sp.configure(feature=feature, view_3d=view_3d)
+        else:
+            sp.refresh()
+
+        self.set_active_space_plot(sp)
+        if focus and self.meta_widget is not None and hasattr(self.meta_widget, "_on_plot_focus"):
             self.meta_widget._on_plot_focus("space")
+        return sp
+
+    def _canonicalize_space_dock_names(self):
+        """Name space docks by list position so the shell's saveState /
+        restoreDockWidget can match them across sessions."""
+        for i, sp in enumerate(self.space_plots):
+            if sp.dock_widget is not None:
+                sp.dock_widget.setObjectName(f"SpacePlotDock_{i}")
+
+    def space_layout_state(self) -> list[dict]:
+        """Serializable state of all open space plots (stored in
+        ``app_state.panel_layout["space_plots"]``)."""
+        self._canonicalize_space_dock_names()
+        return [sp.space_settings() for sp in self.space_plots]
+
+    def apply_space_layout_state(self, entries) -> None:
+        """Recreate the space plots captured by :meth:`space_layout_state`.
+
+        Dock positions come from the shell's restored window state:
+        canonical objectNames let ``restoreDockWidget`` place each dock
+        where it was when the state was saved."""
+        if not isinstance(entries, list):
+            return
+        # Reuse existing instances (the load may have auto-created one via
+        # update_space_plot): destroying and recreating live GL views
+        # (space_3d) mid-load can crash natively on Windows.
+        while len(self.space_plots) > len(entries):
+            self.remove_space_plot(self.space_plots[-1])
+        while len(self.space_plots) < len(entries):
+            self.add_space_plot(focus=False, default_width=False)
+        for sp, e in zip(self.space_plots, entries):
+            sp._apply_default_width = False  # saved layout owns the size now
+            sp.apply_space_settings(e)
+            self._place_space_dock(sp, e)
+        self._canonicalize_space_dock_names()
+        if entries:
+            self._space_plot_autocreated = True
+
+    def _place_space_dock(self, sp: SpacePlot, entry: dict) -> None:
+        """Re-place one space dock from its saved entry. Each dock is moved
+        individually (addDockWidget / setFloating) — never via a QMainWindow
+        restoreState blob, which reparents every dock including the native
+        pygfx/GL canvases and crashes on Windows. Sizes are re-applied after
+        the shell is shown (MetaWidget), since they don't stick while hidden."""
+        dock = sp.dock_widget
+        area_val = entry.get("dock_area")
+        if dock is None or not area_val:
+            # Legacy entry (pre dock_area): best-effort Qt placeholder restore.
+            if dock is not None:
+                self.shell.restoreDockWidget(dock)
+            return
+        self.shell.addDockWidget(Qt.DockWidgetArea(area_val), dock)
+        if entry.get("dock_floating"):
+            dock.setFloating(True)
+            geo = entry.get("dock_geometry")
+            if geo and len(geo) == 4:
+                dock.setGeometry(*geo)
+
+    def remove_space_plot(self, sp: SpacePlot):
+        """Drop a space-plot instance (its dock was closed)."""
+        if sp not in self.space_plots:
+            return
+        self.space_plots.remove(sp)
+        mgr = getattr(self.meta_widget, "active_panels", None)
+        if mgr is not None:
+            mgr.unregister(sp)
+        controls = sp.controls_widget
+        if controls is not None:
+            controls.setParent(None)
+        dock = sp.dock_widget
+        if dock is not None:
+            # hide + deleteLater, NOT shell.removeDockWidget(): removing a
+            # dock whose widget holds a GL view leaves Qt in a state where the
+            # next shell.show() crashes natively (access violation) on Windows.
+            dock.hide()
+            dock.deleteLater()
+        sp.deleteLater()
+        if self.active_space_plot is sp:
+            self.set_active_space_plot(self.space_plots[-1] if self.space_plots else None)
+
+    def set_active_space_plot(self, sp: SpacePlot | None):
+        """Track the active instance and show only its controls in the
+        sidebar's Space context."""
+        self.active_space_plot = sp
+        for other in self.space_plots:
+            other.controls_widget.setVisible(other is sp)
+
+    def update_space_plot(self):
+        """Refresh every open space-plot panel; lazily create the first one
+        when the saved view type asks for it."""
+        if not self.app_state.ready:
+            return
+
+        plot_type = self.app_state.get_with_default("space_plot_type")
+        if plot_type != "Space Plot":
+            for sp in self.space_plots:
+                sp.hide()
+            return
+
+        if not self.space_plots:
+            if not self._space_plot_autocreated:
+                self._space_plot_autocreated = True
+                self.add_space_plot()
+            return
+
+        store = self._space_store()
+        for sp in self.space_plots:
+            sp.set_store(store)
+            sp.refresh()
+            sp.show()
 
     def _highlight_positions_in_space_plot(self, start_time: float, end_time: float):
-        if not self.space_plot or not self.space_plot.dock_widget or not self.space_plot.dock_widget.isVisible():
+        visible = [
+            sp for sp in self.space_plots if sp.dock_widget is not None and sp.dock_widget.isVisible()
+        ]
+        if not visible:
             return
 
         color = (255, 102, 0)
@@ -2655,4 +2855,5 @@ class DataWidget(QWidget):
                     mappings = getattr(self.labels_widget, "_mappings", {})
                     color = mappings.get(label_id, {}).get("color", color)
 
-        self.space_plot.highlight_time_segment(start_time, end_time, color)
+        for sp in visible:
+            sp.highlight_time_segment(start_time, end_time, color)

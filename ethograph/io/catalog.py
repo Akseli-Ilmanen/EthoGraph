@@ -76,7 +76,7 @@ class DataCatalog:
 
     def feature_choices(self) -> list[str]:
         """The canonical GUI feature list — the SINGLE source used by the
-        features combo, the left sidebar, and panel creation, so a feature
+        features combo, the add-panel popup, and panel creation, so a feature
         offered anywhere is displayable everywhere."""
         spec = self.combos.get("features")
         if spec is not None and spec.values:
