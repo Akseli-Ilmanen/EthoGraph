@@ -3,7 +3,7 @@
 The ``gui`` fixture disables ``app_state._layout_snapshot_provider`` for
 hermeticity, so the auto-save → snapshot → local_settings.yaml path is
 otherwise untested. These tests re-enable it against a loaded dataset and
-drive the exact code path the 30s auto-save timer and the close-save use.
+drive the exact code path the periodic auto-save timer and the close-save use.
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ def test_panel_layout_persisted_by_autosave(moll2025_gui, tmp_path, monkeypatch)
     layout = local_state.get("panel_layout")
     assert layout, "panel_layout missing from local_settings.yaml"
     assert layout.get("dock_state_b64")
+    assert layout.get("shell_dock_state_b64"), "shell dock arrangement is per-dataset"
     panel_types = {p["type"] for p in layout["panels"]}
     assert "lineplot" in panel_types or "heatmap" in panel_types
 
@@ -41,16 +42,43 @@ def test_panel_layout_persisted_by_autosave(moll2025_gui, tmp_path, monkeypatch)
     assert global_state.get("window_state"), "window_state missing from gui_settings.yaml"
 
 
-def test_space_dock_position_restored(moll2025_gui, qtbot):
-    """A space dock moved by the user must come back in the same dock area
-    after the layout is re-applied (regression: restoreDockWidget on a
-    late-created dock left it squished top-right and hidden). Placement is
-    explicit per dock — a full QMainWindow restoreState blob reparents the
-    native pygfx/GL canvases and crashes on Windows."""
+def test_dataset_dock_state_applies_on_show(qtbot):
+    """The per-dataset shell blob (panel_layout['shell_dock_state_b64']) must
+    place docks on a machine with NO window_state of its own — the template /
+    shared-local-settings scenario. Applying while hidden defers to show."""
     from qtpy.QtCore import Qt
+    from qtpy.QtWidgets import QLabel
 
+    from ethograph.gui.main_window import EthographMainWindow
+
+    win = EthographMainWindow()
+    qtbot.addWidget(win)
+    dock = win.add_dock_widget(
+        QLabel("space"), area="top", name="Space Plot", object_name="SpacePlotDock_0"
+    )
+    win.addDockWidget(Qt.BottomDockWidgetArea, dock)
+    blob = win.capture_dock_state_b64()
+    win.close()
+
+    win2 = EthographMainWindow()  # fresh machine: no window_state anywhere
+    qtbot.addWidget(win2)
+    dock2 = win2.add_dock_widget(
+        QLabel("space"), area="top", name="Space Plot", object_name="SpacePlotDock_0"
+    )
+    win2.apply_dock_state_b64(blob)  # dataset load happens while hidden
+    assert win2.dockWidgetArea(dock2) == Qt.TopDockWidgetArea  # deferred
+    win2.show()
+    qtbot.wait(50)
+
+    assert win2.dockWidgetArea(dock2) == Qt.BottomDockWidgetArea
+    assert not dock2.isHidden()
+    win2.hide()
+
+
+def test_space_dock_gets_canonical_objectname(moll2025_gui, qtbot):
+    """Space docks must carry their canonical objectName from creation —
+    that's what ties them to the window-state blob across sessions."""
     viewer, meta = moll2025_gui
-    shell = meta.shell
     dw = meta.data_widget
 
     for existing in list(dw.space_plots):  # dataset load may auto-create one
@@ -58,32 +86,36 @@ def test_space_dock_position_restored(moll2025_gui, qtbot):
 
     sp = dw.add_space_plot(focus=False)
     qtbot.wait(50)
-    shell.addDockWidget(Qt.BottomDockWidgetArea, sp.dock_widget)
-    qtbot.wait(10)
+    assert sp.dock_widget.objectName() == "SpacePlotDock_0"
 
     meta._snapshot_layouts()
-    layout = meta.app_state.panel_layout
-    assert len(layout["space_plots"]) == 1
-    entry = layout["space_plots"][0]
-    assert entry.get("dock_area") == int(Qt.BottomDockWidgetArea.value)
-    assert entry.get("dock_size")
+    entry = meta.app_state.panel_layout["space_plots"][0]
+    assert "dock_area" not in entry  # placement is the shell blob's job now
 
     dw.remove_space_plot(sp)
-    assert not dw.space_plots
 
-    # Call the class method directly: the gui fixture wraps the instance
-    # attribute with a panel_layout-nulling guard for hermeticity.
-    type(meta).apply_saved_panel_layout(meta)
-    # The dock-state restore is deferred to the shell's first show (mirrors
-    # the cover-page flow, where loads happen before shell.show()).
-    shell.show()
-    qtbot.wait(100)
 
-    assert len(dw.space_plots) == 1
-    dock = dw.space_plots[0].dock_widget
-    assert shell.dockWidgetArea(dock) == Qt.BottomDockWidgetArea
-    assert not dock.isHidden()
-    shell.hide()
+def test_loaded_layout_allows_single_all_dim(moll2025_gui, qtbot):
+    """sel_valid output must stay (time,) or (time, dim), so a loaded panel
+    layout may leave at most ONE multi-value dim unselected ("All"). A layout
+    violating this (template, hand-edited settings) keeps the first missing
+    dim as "All" and pins the rest to their first value."""
+    viewer, meta = moll2025_gui
+    pc = meta.plot_container
+
+    plot = pc.add_lineplot(feature="position")
+    try:
+        plot.apply_panel_settings({"feature": "position", "selections": {}})
+        sels = plot.panel_state["selections"]
+        dims = meta.app_state.data_loader.feature_dims("position")
+        multi = [d for d, v in dims.items() if len(v) > 1]
+        assert len(multi) >= 2, "test needs a feature with ≥2 multi-value dims"
+        missing = [d for d in multi if d not in sels]
+        assert missing == [multi[0]], f"exactly the first dim may stay 'All': {sels}"
+        for d in multi[1:]:
+            assert sels[d] == dims[d][0]
+    finally:
+        pc.remove_lineplot(plot)
 
 
 def test_save_survives_snapshot_failure(moll2025_gui, tmp_path, monkeypatch):

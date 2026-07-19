@@ -62,7 +62,7 @@ DATASETS: dict[str, dict] = {
             "beakTip_position.npz",
             "trials.npz",
         ],
-        # Configs written to dest/.ethograph/
+        # Configs written to dest/.ethograph/ (existing files are kept)
         "configs": {
             "mapping.txt": (
                 "0 background\n"
@@ -81,6 +81,63 @@ DATASETS: dict[str, dict] = {
                 "13 eat\n"
                 "14 reachRightCorner\n"
                 "15 nodding\n"
+            ),
+            "local_settings.yaml": (
+                "colors_sel: None\n"
+                "features_sel: speed\n"
+                "features_sel_previous: confidence\n"
+                "individuals_sel: Crow1\n"
+                "keypoint_sel: beakTip\n"
+                "keypoints_sel: beakTip\n"
+                "keypoints_sel_previous: beakTip\n"
+                "s3d_dims_sel: '0'\n"
+                "s3d_dims_sel_previous: '0'\n"
+                "space_sel_previous: x\n"
+                "trials_sel: 41\n"
+                "files_aligned_to_trials: true\n"
+                "labels_visible: true\n"
+                "pose_markers_visible: true\n"
+                "feature_view_mode: LinePlot\n"
+                "space_library_geometry: setup\n"
+                "space_plot_type: Space Plot\n"
+                "ephys_offset: 0.0\n"
+                "panel_layout:\n"
+                "  panels:\n"
+                "  - type: lineplot\n"
+                "    feature: speed\n"
+                "    selections:\n"
+                "      individuals: Crow1\n"
+                "      keypoint: beakTip\n"
+                "      keypoints: beakTip\n"
+                "  - type: lineplot\n"
+                "    feature: velocity\n"
+                "    selections:\n"
+                "      individuals: Crow1\n"
+                "      s3d_dims: '0'\n"
+                "      keypoints: beakTip\n"
+                "  dock_state_b64: AAAA/wAAAAD9AAAAAQAAAAAAAAVIAAACNvwCAAAABvsAAAASAHAAYQBuAGUAbABfAG4AZQBvAAAAAAD/////AAAAWQD////7AAAAFgBwAGEAbgBlAGwAXwBlAHAAaAB5AHMAAAAAAP////8AAABZAP////sAAAAYAHAAYQBuAGUAbABfAHIAYQBzAHQAZQByAAAAAAD/////AAAAWQD////7AAAAGgBwAGEAbgBlAGwAXwBoAGUAYQB0AG0AYQBwAAAAAAD/////AAAAWQD////7AAAAIABwAGEAbgBlAGwAXwBsAGkAbgBlAHAAbABvAHQAXwAwAQAAAAAAAAEbAAAAWQD////7AAAAIABwAGEAbgBlAGwAXwBsAGkAbgBlAHAAbABvAHQAXwAxAQAAASEAAAEVAAAAWQD///8AAAAAAAACNgAAAAQAAAAEAAAACAAAAAj8AAAAAA==\n"  # noqa: E501
+                "  space_plots:\n"
+                "  - feature: position\n"
+                "    view_3d: true\n"
+                "    space_dim: space\n"
+                "    x: x\n"
+                "    y: y\n"
+                "    z: z\n"
+                "    dims:\n"
+                "      keypoints: stickTip\n"
+                "      individuals: Crow1\n"
+                "    color: Labels\n"
+                "  - feature: position\n"
+                "    view_3d: true\n"
+                "    space_dim: space\n"
+                "    x: x\n"
+                "    y: y\n"
+                "    z: z\n"
+                "    dims:\n"
+                "      keypoints: beakTip\n"
+                "      individuals: Crow1\n"
+                "    color: Labels\n"
+                "  shell_dock_state_b64: AAAA/wAAAAL9AAAAAwAAAAEAAAIwAAAD2fwCAAAAAfsAAAAWAFMAaQBkAGUAYgBhAHIARABvAGMAawEAAAAVAAAD2QAAAFgA////AAAAAgAABUgAAAFw/AEAAAAD+wAAABIAVgBpAGQAZQBvAEQAbwBjAGsBAAAAAAAAAf4AAAB4AP////sAAAAeAFMAcABhAGMAZQBQAGwAbwB0AEQAbwBjAGsAXwAwAQAAAgQAAAGDAAAAeAD////7AAAAHgBTAHAAYQBjAGUAUABsAG8AdABEAG8AYwBrAF8AMQEAAAONAAABuwAAAHgA////AAAAAwAABUgAAAAn/AEAAAAB+wAAABoAQgBvAHQAdABvAG0AQgBhAHIARABvAGMAawEAAAAAAAAFSAAAAgsA////AAAFSAAAAjYAAAABAAAAAgAAAAEAAAAC/AAAAAA=\n"  # noqa: E501
             ),
         },
     },
@@ -127,25 +184,25 @@ DATASETS: dict[str, dict] = {
         "has_audio": False,
         "media": [
             {
-                "video_front-view": "2021-02-15_07-32-44_segment1_mouse324_ball_front-view.mp4",
-                "video_side-view": "2021-02-15_07-32-44_segment1_mouse324_ball_side-view.mp4",
-                "video_top-down-view": "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view.mp4",
+                "video_front-view": "2021-02-15_07-32-44_segment1_mouse324_ball_front-view.avi",
+                "video_side-view": "2021-02-15_07-32-44_segment1_mouse324_ball_side-view.avi",
+                "video_top-down-view": "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view.avi",
                 "pose_front-view": "2021-02-15_07-32-44_segment1_mouse324_ball_front-view-tracks_individual_0.csv",
                 "pose_side-view": "2021-02-15_07-32-44_segment1_mouse324_ball_side-view-tracks_individual_0.csv",
                 "pose_top-down-view": "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view-tracks_individual_0.csv",  # noqa: E501
             },
             {
-                "video_front-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view.mp4",
-                "video_side-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view.mp4",
-                "video_top-down-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view.mp4",
+                "video_front-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view.avi",
+                "video_side-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view.avi",
+                "video_top-down-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view.avi",
                 "pose_front-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view-tracks_individual_0.csv",  # noqa: E501
                 "pose_side-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view-tracks_individual_0.csv",  # noqa: E501
                 "pose_top-down-view": "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view-tracks_individual_0.csv",  # noqa: E501
             },
             {
-                "video_front-view": "2021-05-31_07-34-21_segment3_mouse291_stick_front-view.mp4",
-                "video_side-view": "2021-05-31_07-34-21_segment3_mouse291_stick_side-view.mp4",
-                "video_top-down-view": "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view.mp4",
+                "video_front-view": "2021-05-31_07-34-21_segment3_mouse291_stick_front-view.avi",
+                "video_side-view": "2021-05-31_07-34-21_segment3_mouse291_stick_side-view.avi",
+                "video_top-down-view": "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view.avi",
                 "pose_front-view": "2021-05-31_07-34-21_segment3_mouse291_stick_front-view-tracks_individual_0.csv",
                 "pose_side-view": "2021-05-31_07-34-21_segment3_mouse291_stick_side-view-tracks_individual_0.csv",
                 "pose_top-down-view": "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view-tracks_individual_0.csv",  # noqa: E501
@@ -153,28 +210,41 @@ DATASETS: dict[str, dict] = {
         ],
         "release_tag": "lockbox",
         "size_mb": 70,
-        "extra_gui_assets": ["_downsample_info.json"],
         "assets_notebook": [
             "lockbox.nc",
-            "2021-02-15_07-32-44_segment1_mouse324_ball_front-view.mp4",
+            "2021-02-15_07-32-44_segment1_mouse324_ball_front-view.avi",
             "2021-02-15_07-32-44_segment1_mouse324_ball_front-view-tracks_individual_0.csv",
-            "2021-02-15_07-32-44_segment1_mouse324_ball_side-view.mp4",
+            "2021-02-15_07-32-44_segment1_mouse324_ball_side-view.avi",
             "2021-02-15_07-32-44_segment1_mouse324_ball_side-view-tracks_individual_0.csv",
-            "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view.mp4",
+            "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view.avi",
             "2021-02-15_07-32-44_segment1_mouse324_ball_top-down-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view.mp4",
+            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view.avi",
             "2021-05-31_07-34-21_segment2_mouse291_sliding-door_front-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view.mp4",
+            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view.avi",
             "2021-05-31_07-34-21_segment2_mouse291_sliding-door_side-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view.mp4",
+            "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view.avi",
             "2021-05-31_07-34-21_segment2_mouse291_sliding-door_top-down-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment3_mouse291_stick_front-view.mp4",
+            "2021-05-31_07-34-21_segment3_mouse291_stick_front-view.avi",
             "2021-05-31_07-34-21_segment3_mouse291_stick_front-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment3_mouse291_stick_side-view.mp4",
+            "2021-05-31_07-34-21_segment3_mouse291_stick_side-view.avi",
             "2021-05-31_07-34-21_segment3_mouse291_stick_side-view-tracks_individual_0.csv",
-            "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view.mp4",
+            "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view.avi",
             "2021-05-31_07-34-21_segment3_mouse291_stick_top-down-view-tracks_individual_0.csv",
         ],
+        # Configs written to dest/.ethograph/ (existing files are kept). Loading
+        # all three camera views by default: front-view as the primary video,
+        # side-view and top-down-view as extra follower panels.
+        "configs": {
+            "local_settings.yaml": (
+                "primary_camera: front-view\n"
+                "extra_cameras:\n"
+                "- side-view\n"
+                "- top-down-view\n"
+                "files_aligned_to_trials: true\n"
+                "pose_markers_visible: true\n"
+                "labels_visible: true\n"
+            ),
+        },
     },
     "canary": {
         "name": "Giraudon et al. 2021 - Canary song",

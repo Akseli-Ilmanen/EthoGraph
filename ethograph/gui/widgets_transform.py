@@ -53,3 +53,31 @@ def compute_energy_envelope(
     params = {k: v for k, v in cached.items() if k in valid_keys}
 
     return func(data, rate, **params)
+
+
+def compute_energy_envelope_multichannel(
+    data: np.ndarray,
+    rate: float,
+    metric: str,
+    app_state,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute the energy envelope for every channel of a signal.
+
+    Accepts ``(T,)`` or ``(T, C)`` input and returns ``(env_time, envelopes)``
+    with ``envelopes`` shaped ``(T_env, C)``.
+    """
+    data = np.asarray(data)
+    if data.ndim == 1:
+        data = data[:, np.newaxis]
+
+    env_time = None
+    envelopes: list[np.ndarray] = []
+    for ch in range(data.shape[1]):
+        channel = np.ascontiguousarray(data[:, ch], dtype=np.float64)
+        t, env = compute_energy_envelope(channel, rate, metric, app_state)
+        if env_time is None:
+            env_time = t
+        envelopes.append(np.asarray(env))
+
+    n = min(len(env_time), *(len(e) for e in envelopes))
+    return env_time[:n], np.column_stack([e[:n] for e in envelopes])

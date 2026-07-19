@@ -125,28 +125,17 @@ class _ModeSelectionPage(QWidget):
 
         self._top_group = QButtonGroup(self)
 
-        # --- Single file section ---
+        # --- Single file section (now handled by drag & drop) ---
         single_box = QGroupBox("Single trial")
         sb_lay = QVBoxLayout(single_box)
-        self._explanation = QLabel(
-            "Allows multiple modalities but only one file per modality (video/audio/pose/ephys). Great for quickly getting started."  # noqa: E501
+        single_note = QLabel(
+            "One file per modality (video / audio / pose / ephys / numpy)? "
+            "Just <b>drag &amp; drop</b> your files onto the start page — ethograph "
+            "sorts them by type and only asks a follow-up question when a value "
+            "can't be read from the file (e.g. a numpy sample rate). No wizard needed."
         )
-        self._rb_pose = QRadioButton("1) From pose file (DLC, SLEAP, ...) or bounding boxes (VIA, ...)")
-        self._rb_xarray = QRadioButton("2) From xarray dataset (Movement style)")
-        self._rb_audio = QRadioButton("3) Generate from audio file")
-        self._rb_npy = QRadioButton("4) From npy file")
-        self._rb_ephys = QRadioButton("5) From ephys file and/or kilosort folder")
-        self._single_radios = [
-            self._rb_pose,
-            self._rb_xarray,
-            self._rb_audio,
-            self._rb_npy,
-            self._rb_ephys,
-        ]
-        for rb in self._single_radios:
-            sb_lay.addWidget(rb)
-            self._top_group.addButton(rb)
-        self._rb_pose.setChecked(True)
+        single_note.setWordWrap(True)
+        sb_lay.addWidget(single_note)
         layout.addWidget(single_box)
 
         # --- Multi file section ---
@@ -155,6 +144,7 @@ class _ModeSelectionPage(QWidget):
         self._rb_multi = QRadioButton(
             "Configure multi-trial dataset from multiple files within/across modalities with custom meta data."
         )
+        self._rb_multi.setChecked(True)
         self._top_group.addButton(self._rb_multi)
         mb_lay.addWidget(self._rb_multi)
         layout.addWidget(multi_box)
@@ -199,21 +189,11 @@ class _ModeSelectionPage(QWidget):
         layout.addStretch()
 
     def get_mode(self) -> str:
-        if self._rb_multi.isChecked():
-            return "multi"
         if self._rb_nwb_dandi.isChecked():
             return "nwb"
         if self._rb_boris.isChecked():
             return "boris"
-        return "single"
-
-    def get_single_type(self) -> str:
-        for rb, name in zip(
-            self._single_radios,
-            ["pose", "xarray", "audio", "npy", "ephys"],
-        ):
-            if rb.isChecked():
-                return name
+        return "multi"
 
 
 # ─── Page 1: modality selection ──────────────────────────────────────────────
@@ -432,11 +412,7 @@ class NCWizardDialog(QDialog):
     def _handle_mode_selection(self):
         mode = self._page_mode.get_mode()
 
-        if mode == "single":
-            single_type = self._page_mode.get_single_type()
-            self._open_single_dialog(single_type)
-
-        elif mode == "nwb":
+        if mode == "nwb":
             self._open_nwb_dialog()
 
         elif mode == "boris":
@@ -445,27 +421,6 @@ class NCWizardDialog(QDialog):
         elif mode == "multi":
             self._stack.setCurrentIndex(1)
             self._update_nav()
-
-    def _open_single_dialog(self, single_type: str):
-        from ethograph.gui.wizard_single import (
-            AudioFileDialog,
-            EphysFileDialog,
-            NpyFileDialog,
-            PoseFileDialog,
-            XarrayDatasetDialog,
-        )
-
-        dialog_map = {
-            "pose": PoseFileDialog,
-            "xarray": XarrayDatasetDialog,
-            "audio": AudioFileDialog,
-            "npy": NpyFileDialog,
-            "ephys": EphysFileDialog,
-        }
-        dialog_cls = dialog_map[single_type]
-        dialog = dialog_cls(self.app_state, self.io_widget, self)
-        if dialog.exec_():
-            self.accept()
 
     def _open_nwb_dialog(self):
         from ethograph.gui.wizard_nwb import NWBImportDialog

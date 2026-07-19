@@ -1360,6 +1360,45 @@ def edit_nwb(path):
         raise
 
 
+def _video_name_to_device(name: str) -> str:
+    """Strip a leading ``video_`` / ``video-`` prefix so an ImageSeries name maps
+    to the same device string that :meth:`NWBAlignment.cameras` reports."""
+    for prefix in ("video_", "video-"):
+        if name.startswith(prefix):
+            return name[len(prefix) :]
+    return name
+
+
+def pose_video_links_from_nwb(nwb) -> dict[str, str]:
+    """Native ndx-pose pose↔video links from an open NWBFile:
+    ``{pose_container_name: source_video_name}``.
+
+    Reads ``PoseEstimation.source_video`` (ndx-pose >= 0.2.1), the NWB-native way
+    to bind a pose estimation to its source video ``ImageSeries``. Containers with
+    no ``source_video`` link are omitted (they fall back to manual matching).
+    """
+    links: dict[str, str] = {}
+    for mod in nwb.processing.values():
+        for name, di in mod.data_interfaces.items():
+            if not hasattr(di, "pose_estimation_series"):
+                continue
+            source_video = getattr(di, "source_video", None)
+            if source_video is not None:
+                links[name] = source_video.name
+    return links
+
+
+def pose_keys_for_cameras(links: dict[str, str], cameras: list[str]) -> list[str | None]:
+    """Order pose container names to match ``cameras`` via native source_video links.
+
+    A pose container is assigned to camera ``c`` when its ``source_video`` name
+    resolves to ``c`` (after stripping a ``video_`` / ``video-`` prefix). Returns a
+    camera-aligned list with ``None`` for any camera that has no linked pose.
+    """
+    by_device = {_video_name_to_device(video_name): pose for pose, video_name in links.items()}
+    return [by_device.get(str(c)) for c in cameras]
+
+
 def update_trials_columns(
     nwb_path: Path,
     trial_column: str,

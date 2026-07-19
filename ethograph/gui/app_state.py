@@ -1,6 +1,7 @@
 """Settings that the user can modify and are saved in gui_settings.yaml"""
 
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, get_args, get_origin
@@ -175,6 +176,7 @@ class AppStateSpec:
         "video_path": (str | None, None, False),
         "audio_path": (str | None, None, False),
         "pose_path": (str | None, None, False),
+        "source_software": (str | None, None, True, SCOPE_LOCAL),
         "nwb_pose_keys": (list[str], [], True, SCOPE_LOCAL),
         "pose_hide_threshold": (float, 0.9, True),
         "pose_show_skeleton": (bool, False, True),
@@ -318,7 +320,7 @@ class ObservableAppState(QObject):
     SETTINGS_DIRNAME = ".ethograph"
     _TIME_REFRESH_KEYS = {"ds", "dt", "video", "video_path", "audio_path"}
 
-    def __init__(self, yaml_path: str | None = None, auto_save_interval: int = 30000):
+    def __init__(self, yaml_path: str | None = None, auto_save_interval: int = 10000):
         super().__init__()
         object.__setattr__(self, "_values", {})
         for var in AppStateSpec.VARS:
@@ -831,9 +833,13 @@ class ObservableAppState(QObject):
             return yaml.safe_load(f) or {}
 
     def _yaml_write(self, path: Path, state_dict: dict) -> None:
+        # Atomic replace: a crash mid-write must never truncate the settings
+        # file the next launch will load.
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
             yaml.dump(self._to_native(state_dict), f, default_flow_style=False, sort_keys=False)
+        os.replace(tmp, path)
 
     def _to_native(self, value):
         """Recursively convert numpy types to native Python types for YAML serialization."""

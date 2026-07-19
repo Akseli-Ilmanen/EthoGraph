@@ -264,11 +264,30 @@ class PanelStateMixin:
         if settings.get("feature"):
             self.panel_state["feature"] = settings["feature"]
         if isinstance(settings.get("selections"), dict):
-            self.panel_state["selections"] = dict(settings["selections"])
+            self.panel_state["selections"] = self._sanitize_selections(
+                settings["selections"]
+            )
         if settings.get("color"):
             self.panel_state["color"] = settings["color"]
         if "show_predictions" in settings:
             self.panel_state["show_predictions"] = bool(settings["show_predictions"])
+
+    def _sanitize_selections(self, selections: dict) -> dict:
+        """Enforce at most ONE "All" (absent) dim per panel: sel_valid output
+        must stay (time,) or (time, dim). A loaded layout (template,
+        hand-edited settings) violating this keeps the FIRST missing
+        multi-value dim as "All"; every later missing dim is pinned to its
+        first value. Single-value dims squeeze away and may stay absent."""
+        sels = dict(selections)
+        loader = getattr(self.app_state, "data_loader", None)
+        feature = self._effective_feature()
+        if loader is None or not feature:
+            return sels
+        dims = loader.feature_dims(feature)
+        missing_multi = [d for d, vals in dims.items() if d not in sels and len(vals) > 1]
+        for d in missing_multi[1:]:
+            sels[d] = dims[d][0]
+        return sels
 
     def _ensure_panel_state(self):
         """Fork any still-missing state keys from the current globals on first

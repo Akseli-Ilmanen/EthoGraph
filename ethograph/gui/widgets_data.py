@@ -29,6 +29,7 @@ from qtpy.QtWidgets import (
 
 import ethograph as eto
 from ethograph.gui.notify import notify, notify_dialog
+from ethograph.io.catalog import ComboSpec
 from ethograph.io.data_loader import load_features_dataset
 from ethograph.io.plot_sources import FileSource
 from ethograph.io.time_model import compute_trial_video_bounds
@@ -56,6 +57,7 @@ from .pose_render import (
     strip_common_prefix,
 )
 from .video_manager import VideoManager, is_url
+from .widgets_transform import ENERGY_DISPLAY_NAMES, compute_energy_envelope_multichannel
 
 logger = logging.getLogger(__name__)
 
@@ -129,13 +131,7 @@ class DataPanel(QWidget):
     Organised into three tabs: Main, Pose, Audio.
     """
 
-    ENERGY_DISPLAY_NAMES = {
-        "energy_lowpass": "SOS lowpass envelope",
-        "energy_highpass": "SOS highpass envelope",
-        "energy_band": "SOS bandpass envelope",
-        "energy_meansquared": "Vocalpy meansquared (amplitude)",
-        "energy_ava": "Vocalpy AVA (spectral power)",
-    }
+    ENERGY_DISPLAY_NAMES = ENERGY_DISPLAY_NAMES
 
     def __init__(self, app_state, parent=None):
         super().__init__(parent=parent)
@@ -744,7 +740,7 @@ class DataWidget(QWidget):
     # ------------------------------------------------------------------
 
     def _phase_load_data(self, nc_file_path: str) -> _LoadContext:
-        """Phase 1: Load dataset from disk.  May show downsample dialog."""
+        """Phase 1: Load dataset from disk."""
         try:
             result = load_features_dataset(
                 nc_file_path,
@@ -758,9 +754,7 @@ class DataWidget(QWidget):
 
         video_folder_override = None
         if result.nwb_video_folder and not self.app_state.video_folder:
-            from .dialog_video_downsample import offer_downsample
-
-            video_folder_override = offer_downsample(str(result.nwb_video_folder), parent=self)
+            video_folder_override = str(result.nwb_video_folder)
 
         return _LoadContext(
             result=result,
@@ -1071,13 +1065,20 @@ class DataWidget(QWidget):
         pc = self.plot_container
 
         has_audio = bool(self.app_state.has_audio or self.app_state.audio_path)
-        pc.set_audiotrace_visible(has_audio)
-        pc.set_spectrogram_visible(has_audio)
+
+        # Expand mics → channels first so the default audio panels can pin to the
+        # first channel of each mic (needs audio_source_map / audio_mic_channels).
+        mic_names = self.catalog.mics if (self.app_state.has_audio and self.catalog) else []
+        expanded = self._expand_mics_with_channels(mic_names) if self.app_state.has_audio else []
+
+        if has_audio:
+            self._create_default_audio_panels(mic_names)
+        else:
+            pc.set_audiotrace_visible(False)
+            pc.set_spectrogram_visible(False)
         if self.catalog and self.catalog.features and not pc.line_plots:
             pc.add_lineplot()
         pc.set_neo_visible(bool(self.app_state.has_neo))
-        if has_audio:
-            pc.update_audio_panels()
         if self.app_state.has_neo:
             self._configure_neo_panel()
         if self.app_state.has_neurons:
@@ -1085,8 +1086,6 @@ class DataWidget(QWidget):
 
         # Row 2: mic selector
         if self.app_state.has_audio:
-            mic_names = self.catalog.mics if self.catalog else []
-            expanded = self._expand_mics_with_channels(mic_names)
             self.mics_combo = QComboBox()
             self.mics_combo.setObjectName("mics_combo")
             self.mics_combo.addItems(expanded)
@@ -1499,6 +1498,26 @@ class DataWidget(QWidget):
         next_index = (self.view_mode_combo.currentIndex() + 1) % self.view_mode_combo.count()
         self.view_mode_combo.setCurrentIndex(next_index)
 
+    def _create_default_audio_panels(self, mic_names: list) -> None:
+        """Data-availability default for audio: an audio trace + spectrogram per mic.
+
+        One mic → a single global-following pair (unpinned), unchanged behaviour.
+        Multiple mics (e.g. several audio files dropped) → one pair per mic, each
+        pinned to that mic's first channel, so every audio file is visualised at
+        once. Saved layouts override this (``apply_layout_state`` rebuilds panels).
+        """
+        pc = self.plot_container
+        if len(mic_names) > 1:
+            for mic in mic_names:
+                channels = self.app_state.audio_mic_channels.get(str(mic))
+                key = channels[0] if channels else None
+                pc.add_audio_panel("audiotrace", mic_name=key)
+                pc.add_audio_panel("spectrogram", mic_name=key)
+        else:
+            pc.set_audiotrace_visible(True)
+            pc.set_spectrogram_visible(True)
+        pc.update_audio_panels()
+
     def _on_mics_changed(self, mic_name):
         if not self.app_state.ready or not mic_name:
             return
@@ -1747,13 +1766,126 @@ class DataWidget(QWidget):
 
         from .dialog_busy_progress import BusyProgressDialog
 
-        if hasattr(self, "show_envelope_checkbox") and not self.show_envelope_checkbox.isChecked():
-            self.show_envelope_checkbox.setChecked(True)
-            return
-
         self.plot_container.hide_envelope_overlay()
-        dialog = BusyProgressDialog("Computing energy envelope...", parent=self.shell)
-        dialog.execute_blocking(self.plot_container.show_envelope_overlay)
+        dialog = BusyProgressDialog("Computing energy envelope (all channels)...", parent=self.shell)
+        feature_name, error = dialog.execute_blocking(self._compute_envelope_feature)
+
+        if hasattr(self, "show_envelope_checkbox") and not self.show_envelope_checkbox.isChecked():
+            self.show_envelope_checkbox.setChecked(True)  # triggers overlay redraw
+        else:
+            self.plot_container.show_envelope_overlay()
+
+        if error is None and feature_name:
+            notify(
+                f'Envelope saved as feature "{feature_name}" — '
+                "add it via ➕ Add panel (heatmap shows all channels).",
+                "info",
+            )
+
+    def _current_mic_device(self) -> str | None:
+        """Mic device label for the current channel-expanded mic selection."""
+        mic_channels = self.app_state.audio_mic_channels
+        mics_sel = getattr(self.app_state, "mics_sel", None)
+        for device, keys in mic_channels.items():
+            if mics_sel in keys:
+                return device
+        return next(iter(mic_channels), None)
+
+    def _resolve_trial_audio_path(self, trial_id, mic_label: str) -> str | None:
+        align = self.app_state.nwb_alignment
+        if align is None:
+            return getattr(self.app_state, "audio_path", None)
+        audio_folder = self.app_state.audio_folder
+        mic_file = align.get_media(trial_id, "audio", str(mic_label))
+        if mic_file and audio_folder:
+            path = os.path.join(audio_folder, mic_file)
+            if os.path.exists(path):
+                return path
+        return align.resolve_media_path(trial_id, "audio", device=str(mic_label), fallback_folder=audio_folder)
+
+    def _compute_envelope_feature(self) -> str | None:
+        """Compute the energy envelope for ALL channels of the current mic and
+        store it as a per-trial feature named after the metric, so it can be
+        added via ➕ Add panel (e.g. as a heatmap across channels)."""
+        app_state = self.app_state
+        dt = getattr(app_state, "dt", None)
+        store = app_state.data_loader
+        if dt is None or store is None or not hasattr(store, "update_ds") or getattr(dt, "_is_continuous", False):
+            notify("Saving the envelope as a feature requires an xarray (.nc) dataset.", "warning")
+            return None
+
+        mic_label = self._current_mic_device()
+        if mic_label is None:
+            return None
+
+        metric = app_state.get_with_default("energy_metric")
+        feature_name = ENERGY_DISPLAY_NAMES.get(metric, metric)
+        # Per-metric dim names: envelope metrics have different output rates,
+        # so sharing one time dim across features would make xarray raise an
+        # AlignmentError on conflicting sizes.
+        time_dim = f"time_{metric}"
+        channel_dim = f"{metric}_channel"
+
+        env_by_path: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        computed = 0
+        for trial_id in app_state.trials:
+            audio_path = self._resolve_trial_audio_path(trial_id, mic_label)
+            if not audio_path:
+                continue
+            if audio_path not in env_by_path:
+                loader = SharedAudioCache.get_loader(audio_path)
+                if loader is None:
+                    continue
+                raw = np.asarray(loader[0 : len(loader)], dtype=np.float64)
+                env_by_path[audio_path] = compute_energy_envelope_multichannel(
+                    raw, loader.rate, metric, app_state
+                )
+            env_time, envelopes = env_by_path[audio_path]
+            da = xr.DataArray(
+                envelopes,
+                dims=(time_dim, channel_dim),
+                coords={
+                    time_dim: env_time,
+                    channel_dim: [f"ch{i + 1}" for i in range(envelopes.shape[1])],
+                },
+                attrs={"ylabel": feature_name, "mic": str(mic_label)},
+            )
+
+            def _assign(ds: xr.Dataset, da: xr.DataArray = da) -> xr.Dataset:
+                ds = ds.drop_vars([feature_name, time_dim, channel_dim], errors="ignore")
+                return ds.assign({feature_name: da})
+
+            dt.update_trial(trial_id, _assign)
+            computed += 1
+
+        if not computed:
+            notify(f"No audio found for mic {mic_label} — envelope feature not created.", "warning")
+            return None
+
+        trials_sel = app_state.trials_sel
+        if trials_sel is not None:
+            app_state.ds = dt.trial(trials_sel)
+            store.update_ds(app_state.ds)
+
+        self._register_feature(feature_name)
+        return feature_name
+
+    def _register_feature(self, feature_name: str) -> None:
+        """Add a computed feature to the catalog + features combo so the
+        add-panel popup and sidebar offer it everywhere."""
+        cat = self.catalog or getattr(self.app_state.data_loader, "catalog", None)
+        if cat is not None:
+            if feature_name not in cat.features:
+                cat.features.append(feature_name)
+            choices = cat.feature_choices()
+            if feature_name not in choices:
+                choices.append(feature_name)
+            cat.combos["features"] = ComboSpec("features", tuple(choices))
+        combo = self.combos.get("features")
+        if combo is not None and find_combo_index(combo, feature_name) < 0:
+            combo.blockSignals(True)
+            combo.addItem(feature_name, feature_name)
+            combo.blockSignals(False)
 
     def _set_controls_enabled(self, enabled: bool):
         for control in self.controls:
@@ -2696,6 +2828,11 @@ class DataWidget(QWidget):
         sp.set_plot_container(self.plot_container)
         sp.closed.connect(self.remove_space_plot)
         self.space_plots.append(sp)
+        # Canonical objectName BEFORE the dock exists: dock creation tries
+        # shell.restoreDockWidget() with it, so a saved window state places
+        # the dock exactly like any other late-created dock.
+        self._canonicalize_space_dock_names()
+        sp.dock_object_name = f"SpacePlotDock_{len(self.space_plots) - 1}"
 
         if not self._space_signals_connected:
             self._space_signals_connected = True
@@ -2740,11 +2877,6 @@ class DataWidget(QWidget):
         return [sp.space_settings() for sp in self.space_plots]
 
     def apply_space_layout_state(self, entries) -> None:
-        """Recreate the space plots captured by :meth:`space_layout_state`.
-
-        Dock positions come from the shell's restored window state:
-        canonical objectNames let ``restoreDockWidget`` place each dock
-        where it was when the state was saved."""
         if not isinstance(entries, list):
             return
         # Reuse existing instances (the load may have auto-created one via
@@ -2757,30 +2889,8 @@ class DataWidget(QWidget):
         for sp, e in zip(self.space_plots, entries):
             sp._apply_default_width = False  # saved layout owns the size now
             sp.apply_space_settings(e)
-            self._place_space_dock(sp, e)
-        self._canonicalize_space_dock_names()
         if entries:
             self._space_plot_autocreated = True
-
-    def _place_space_dock(self, sp: SpacePlot, entry: dict) -> None:
-        """Re-place one space dock from its saved entry. Each dock is moved
-        individually (addDockWidget / setFloating) — never via a QMainWindow
-        restoreState blob, which reparents every dock including the native
-        pygfx/GL canvases and crashes on Windows. Sizes are re-applied after
-        the shell is shown (MetaWidget), since they don't stick while hidden."""
-        dock = sp.dock_widget
-        area_val = entry.get("dock_area")
-        if dock is None or not area_val:
-            # Legacy entry (pre dock_area): best-effort Qt placeholder restore.
-            if dock is not None:
-                self.shell.restoreDockWidget(dock)
-            return
-        self.shell.addDockWidget(Qt.DockWidgetArea(area_val), dock)
-        if entry.get("dock_floating"):
-            dock.setFloating(True)
-            geo = entry.get("dock_geometry")
-            if geo and len(geo) == 4:
-                dock.setGeometry(*geo)
 
     def remove_space_plot(self, sp: SpacePlot):
         """Drop a space-plot instance (its dock was closed)."""

@@ -290,6 +290,7 @@ class SpacePlot(QWidget):
         self.shell = shell
         self.app_state = app_state
         self.dock_widget = None
+        self.dock_object_name: str | None = None
         self._apply_default_width = True
 
         self._store: DataLoader | None = None
@@ -438,12 +439,16 @@ class SpacePlot(QWidget):
             # Dock in the top area — the same row (and height) as the video —
             # instead of the left edge, where the dock title collided with the
             # top bar and had to be dragged into place manually.
-            self.dock_widget = self.shell.add_dock_widget(self, area="top", name=name)
+            self.dock_widget = self.shell.add_dock_widget(
+                self, area="top", name=name, object_name=self.dock_object_name
+            )
             self.setMinimumSize(120, 120)
             self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-            # Skipped while restoring a saved layout — this deferred resize
-            # would fire after the layout apply and stomp the saved width.
-            if getattr(self, "_apply_default_width", True):
+            # Skipped when the saved window state placed the dock — this
+            # deferred resize would stomp the restored width.
+            if not self.dock_widget.restored_from_state and getattr(
+                self, "_apply_default_width", True
+            ):
                 QTimer.singleShot(0, self._apply_default_dock_width)
             self.dock_widget.installEventFilter(self)
         else:
@@ -752,8 +757,10 @@ class SpacePlot(QWidget):
     # --- Per-instance settings (layout persistence) --------------------------
 
     def space_settings(self) -> dict:
-        """This instance's full combo state in serializable form."""
-        settings = {
+        """This instance's full combo state in serializable form. Dock
+        placement is not stored here — it lives in the shell's window-state
+        blob like every other dock."""
+        return {
             "feature": self.feature_combo.currentText() or None,
             "view_3d": self.cb_3d.isChecked(),
             "space_dim": self.space_dim_combo.currentText() or None,
@@ -763,21 +770,6 @@ class SpacePlot(QWidget):
             "dims": {d: c.currentText() for d, c in self._dim_combos.items() if c.currentText()},
             "color": self.color_combo.currentText() or None,
         }
-        # Explicit dock placement (area / floating / geometry / size). The
-        # docks are re-placed individually on restore — a QMainWindow
-        # restoreState blob is NOT used: re-applying one reparents every dock,
-        # including the native pygfx/GL canvases, which crashes on Windows.
-        dock = self.dock_widget
-        if dock is not None:
-            area = self.shell.dockWidgetArea(dock)
-            settings["dock_area"] = int(getattr(area, "value", area))
-            if dock.isFloating():
-                settings["dock_floating"] = True
-                geo = dock.geometry()
-                settings["dock_geometry"] = [geo.x(), geo.y(), geo.width(), geo.height()]
-            else:
-                settings["dock_size"] = [dock.width(), dock.height()]
-        return settings
 
     def apply_space_settings(self, settings: dict) -> None:
         """Restore combo state captured by :meth:`space_settings`, then render."""

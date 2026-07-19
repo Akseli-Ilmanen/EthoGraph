@@ -46,6 +46,22 @@ _CONTEXT_MAP: dict[str, list[str]] = {
     "space": ["spaceplot", "shared"],
 }
 
+# plot type -> friendly caption shown (in the active-panel green) at the bottom
+# of the sidebar, so it's clear which clicked plot the controls belong to.
+_CONTEXT_TITLE: dict[str, str] = {
+    "video": "Video playback settings",
+    "audiotrace": "Audiotrace settings",
+    "audio": "Audiotrace settings",
+    "spectrogram": "Spectrogram settings",
+    "feature": "Lineplot settings",
+    "lineplot": "Lineplot settings",
+    "heatmap": "Heatmap settings",
+    "space": "Space plot settings",
+}
+
+#: The active-panel green edge colour (see ``ActivePanelManager._EDGE_ON``).
+_ACTIVE_GREEN = "#2ecc71"
+
 
 class RightContextPanel(QWidget):
     """Hosts all setting sections and shows only the clicked plot's subset."""
@@ -58,6 +74,17 @@ class RightContextPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)
         layout.setSpacing(4)
+
+        # Top caption naming the active plot type, coloured to match the
+        # panel's green selection edge so the link is obvious to the user.
+        self._title = QLabel("")
+        self._title.setWordWrap(True)
+        self._title.setStyleSheet(
+            f"color: {_ACTIVE_GREEN}; font-weight: bold; font-size: 14px; "
+            "padding: 4px 2px;"
+        )
+        self._title.setVisible(False)
+        layout.addWidget(self._title)
 
         self._placeholder = QLabel("Click a plot or the video to show its settings.")
         self._placeholder.setWordWrap(True)
@@ -85,6 +112,9 @@ class RightContextPanel(QWidget):
         self._placeholder.setVisible(not want)
         for name, widget in self._sections.items():
             widget.setVisible(name in want)
+        title = _CONTEXT_TITLE.get(plot_type, "")
+        self._title.setText(title)
+        self._title.setVisible(bool(title and want))
         return True
 
     def current_context(self) -> str | None:

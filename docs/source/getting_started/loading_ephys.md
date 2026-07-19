@@ -9,38 +9,17 @@ Ephys is a **session-wide stream** — the raw recording file is selected in the
 
 ---
 
-## Steps
+## Load it — drag & drop
 
 ```{tip}
 {doc}`Install EthoGraph <../getting_started/installation>` if you haven't already, then launch via shortcut or:
 `conda activate ethograph && ethograph launch`
-
-In the **I/O widget**, click **Create with own data** — the wizard opens.
 ```
 
-1. Under **Single trial**, select: **5) Generate from ephys file and/or kilosort folder**
-2. Click **Next** — the dialog opens
-3. Set **Ephys file** and/or **Kilosort folder**
-4. Optionally set **Video file** or **Audio file**
-5. Set **Output path** for the generated `session.nc`
-6. Click **Generate .nc file**
-7. The I/O widget auto-populates -> click **Load**
+1. On the start page, drag your **ephys file** and/or **Kilosort folder** (and optionally a **video** and/or **audio** file) onto the **Drag & drop** zone.
+2. Click **Load**.
 
----
-
-## Dialog fields
-
-| Field | Notes |
-|-------|-------|
-| **Ephys file** | See {ref}`supported formats <target-ephys-formats>` below |
-| **Kilosort folder** | Auto-detected if `kilosort4/` or `kilosort/` exists next to ephys file |
-| **Ephys sampling rate** | Auto-detected from file or `params.py`; set manually for raw binary |
-| **N channels** | Auto-detected for known formats; set manually for raw binary |
-| **Video file** | Optional |
-| **Video onset in ephys** | Time offset (s) where video starts relative to ephys recording |
-| **Audio file** | Optional |
-| **Audio onset in ephys** | Time offset (s) where audio starts relative to ephys recording |
-| **Output path** | Where to save the generated `session.nc` |
+EthoGraph recognises a Kilosort folder by the `spike_times.npy` inside it, and reads the sample rate and channel count from the file header or `params.py` automatically — no output path and no questions for known formats. Raw binary (`.dat` / `.bin` / `.raw`) has no header; drop it together with its Kilosort folder so the metadata comes from `params.py` (see below).
 
 ---
 

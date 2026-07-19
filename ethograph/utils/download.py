@@ -169,7 +169,11 @@ def ensure_default_configs() -> None:
 
 
 def write_example_configs(dataset_key: str, dest: Path) -> None:
-    """Write bundled config files into ``dest/.ethograph/``."""
+    """Write bundled config files into ``dest/.ethograph/``.
+
+    Existing files are kept — they hold user state (edited mappings, the
+    auto-saved layout in local_settings.yaml) that re-selecting a template
+    must not reset."""
     configs = DATASETS.get(dataset_key, {}).get("configs")
     if not configs:
         return
@@ -178,7 +182,9 @@ def write_example_configs(dataset_key: str, dest: Path) -> None:
     config_dir = Path(dest) / SETTINGS_DIR
     config_dir.mkdir(parents=True, exist_ok=True)
     for name, content in configs.items():
-        (config_dir / name).write_text(content, encoding="utf-8")
+        path = config_dir / name
+        if not path.exists():
+            path.write_text(content, encoding="utf-8")
 
 
 def download_assets(

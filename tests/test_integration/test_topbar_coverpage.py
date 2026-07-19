@@ -205,7 +205,7 @@ def test_plot_click_shows_only_relevant_sections(birdpark_gui):
     assert ps.spectrogram_panel.isVisibleTo(ctx)
     assert not dp.energy_group.isVisibleTo(ctx)
 
-    # Feature (lineplot) → xarray coords, NOT spectrogram.
+    # Feature (lineplot) → xarray coords (feature dims), NOT spectrogram.
     meta._on_plot_focus("feature")
     assert ctx.current_context() in ("lineplot", "heatmap")
     assert dp.coords_groupbox.isVisibleTo(ctx)

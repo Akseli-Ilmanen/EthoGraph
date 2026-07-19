@@ -7,39 +7,23 @@ Expected shape: `(n_samples, n_variables)` or `(n_variables, n_samples)`. The lo
 
 ---
 
-## Steps
+## Load it — drag & drop
 
 ```{tip}
 {doc}`Install EthoGraph <../getting_started/installation>` if you haven't already, then launch via shortcut or:
 `conda activate ethograph && ethograph launch`
-In the **I/O widget**, click **Create with own data** — the wizard opens.
 ```
 
-1. Under **Single trial**, select: **4) Generate from npy file**
-2. Click **Next** — the dialog opens
-3. Set **Npy file** (`.npy`)
-4. Set **Data sampling rate** (Hz)
-5. Optionally set **Video file** — frame rate is auto-detected
-6. Set **Output path** for the generated `session.nc`
-7. Click **Generate .nc file**
-8. The I/O widget auto-populates -> click **Load**
+1. On the start page, drag your **`.npy` file** (and optionally a **video**) onto the **Drag & drop** zone.
+2. Click **Load**.
 
----
-
-## Dialog fields
-
-| Field | Notes |
-|-------|-------|
-| **Npy file** | 2D array — shape `(n_samples, n_vars)` or `(n_vars, n_samples)` |
-| **Data sampling rate** | Hz |
-| **Video file** | Optional |
-| **Output path** | |
+One follow-up popup asks for the **data sampling rate** (Hz) — a numpy array has no time axis, so this cannot be inferred. A `session.nc` is written next to your `.npy` and loaded. Frame rate, if a video is dropped, is read automatically.
 
 ---
 
 ## Adding named variables
 
-The dialog creates generic variable names (`var_0`, `var_1`, ...). To give columns meaningful names, create the dataset via a short script instead:
+Drag & drop creates generic variable names (`var_0`, `var_1`, ...). To give columns meaningful names, create the dataset via a short script instead:
 
 ```python
 import numpy as np
@@ -61,6 +45,8 @@ ds = xr.Dataset({
 
 ds.to_netcdf("session.nc")
 ```
+
+Then drop the resulting `session.nc` onto the start page.
 
 ---
 

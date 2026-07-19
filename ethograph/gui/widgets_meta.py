@@ -175,8 +175,6 @@ class MetaWidget(GridSectionContainer):
             trials_widget=self.trials_widget,
         )
 
-        self.plot_settings_widget.reset_layout_button.clicked.connect(self._on_reset_layout)
-
         for widget in [
             self.help_widget,
             self.io_widget,
@@ -814,6 +812,9 @@ class MetaWidget(GridSectionContainer):
         if self.app_state.ready:
             layout = self.plot_container.layout_state()
             layout["space_plots"] = self.data_widget.space_layout_state()
+            # Shell dock arrangement (space plots, cameras) is per-dataset
+            # state and travels with the dataset's local_settings.yaml.
+            layout["shell_dock_state_b64"] = self.shell.capture_dock_state_b64()
             self.app_state.panel_layout = layout
         self.app_state.window_state = self.shell.capture_window_state()
 
@@ -828,51 +829,9 @@ class MetaWidget(GridSectionContainer):
         if layout:
             self.plot_container.apply_layout_state(layout)
             self.data_widget.apply_space_layout_state(layout.get("space_plots"))
-            # Dock sizes don't stick while the shell is hidden (cover-page
-            # loads) — re-apply them once shown. Placement (area/floating) was
-            # already done per dock in apply_space_layout_state.
-            if self.data_widget.space_plots:
-                entries = layout.get("space_plots") or []
-
-                def _finalize_space_docks():
-                    # Deferred GUI-boundary callback: a failure here must not
-                    # escape into the event loop mid-session.
-                    try:
-                        for sp in self.data_widget.space_plots:
-                            if sp.dock_widget is not None:
-                                sp.dock_widget.setVisible(True)
-                        self._reapply_space_dock_sizes(entries)
-                    except Exception:
-                        logger.exception("Could not finalize the space dock layout")
-
-                self.shell.run_when_shown(_finalize_space_docks)
-
-    def _reapply_space_dock_sizes(self, entries: list):
-        """Pin each docked space plot back to its saved size with a deferred
-        resizeDocks (after the pending layout events) — dock sizes are not
-        honored while the placement happens on a hidden shell."""
-        pairs = [
-            (sp.dock_widget, e.get("dock_size"))
-            for sp, e in zip(self.data_widget.space_plots, entries)
-            if sp.dock_widget is not None and e.get("dock_size")
-        ]
-
-        def _resize():
-            try:
-                live = [
-                    (d, s)
-                    for d, s in pairs
-                    if not d.isFloating() and self.shell.dockWidgetArea(d) != Qt.NoDockWidgetArea
-                ]
-            except RuntimeError:
-                return  # a dock's C++ object was deleted before the timer fired
-            if not live:
-                return
-            self.shell.resizeDocks([d for d, _ in live], [s[0] for _, s in live], Qt.Horizontal)
-            self.shell.resizeDocks([d for d, _ in live], [s[1] for _, s in live], Qt.Vertical)
-
-        if pairs:
-            QTimer.singleShot(0, _resize)
+            blob = layout.get("shell_dock_state_b64")
+            if blob:
+                self.shell.apply_dock_state_b64(blob)
 
     def _on_reset_layout(self):
         space_type = getattr(self.app_state, "space_plot_type", "Layers")

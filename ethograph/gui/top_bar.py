@@ -29,6 +29,7 @@ from qtpy.QtGui import QAction, QKeySequence
 from qtpy.QtWidgets import (
     QDialog,
     QScrollArea,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -117,6 +118,24 @@ class TopBarBuilder:
         self._build_changepoints_menu(menu_bar)
         self._build_neural_menu(menu_bar)
         self._build_help_menu(menu_bar)
+        self._add_sidebar_toggle_button(menu_bar)
+
+    def _add_sidebar_toggle_button(self, menu_bar):
+        """Checkable button at the far right of the menu bar toggling the
+        right control sidebar — a discoverable alternative to Ctrl+Z."""
+        btn = QToolButton(menu_bar)
+        btn.setText("◨ Sidebar")
+        btn.setToolTip("Show/hide the right sidebar (Ctrl+Z)")
+        btn.setCheckable(True)
+        btn.setAutoRaise(True)
+        sidebar_action = getattr(self.shell, "_sidebar_toggle", None)
+        visible = (sidebar_action is None or sidebar_action.isChecked()) and not getattr(
+            self.shell, "_zen_mode", False
+        )
+        btn.setChecked(visible)
+        btn.toggled.connect(lambda vis: self.shell.set_zen_mode(not vis))
+        menu_bar.setCornerWidget(btn, Qt.TopRightCorner)
+        self.shell._sidebar_corner_btn = btn
 
     # ------------------------------------------------------------------
     # Pop-up helper

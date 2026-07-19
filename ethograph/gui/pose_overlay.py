@@ -67,12 +67,11 @@ class PoseOverlayData:
     track_table : DataFrame with columns individual, keypoint (one row per track)
     """
 
-    def __init__(self, pr, scale: tuple[float, float] = (1.0, 1.0)):
-        sy, sx = scale
+    def __init__(self, pr):
         coords = pr.data[:, -3:]  # (frame, y, x)
         frames = coords[:, 0].astype(int)
-        ys = coords[:, 1] * sy
-        xs = coords[:, 2] * sx
+        ys = coords[:, 1]
+        xs = coords[:, 2]
 
         track_idx, self.track_table = _tracks_from_properties(pr.properties)
         self.n_tracks = len(self.track_table)
@@ -103,8 +102,8 @@ class PoseOverlayData:
             self.bbox_corners = np.full((self.n_frames, n_boxes, 4, 2), np.nan, dtype=np.float32)
             self.bbox_shown = np.zeros((self.n_frames, n_boxes), dtype=bool)
             f, t = bframes[bvalid], btracks[bvalid]
-            self.bbox_corners[f, t, :, 0] = bb[bvalid][:, :, 2] * sx  # x
-            self.bbox_corners[f, t, :, 1] = bb[bvalid][:, :, 1] * sy  # y
+            self.bbox_corners[f, t, :, 0] = bb[bvalid][:, :, 2]  # x
+            self.bbox_corners[f, t, :, 1] = bb[bvalid][:, :, 1]  # y
             self.bbox_shown[f, t] = True
 
     def keypoint_track_index(self, individual: str | None = None) -> dict[str, int]:

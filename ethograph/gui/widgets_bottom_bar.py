@@ -87,21 +87,39 @@ class BottomPlaybackBar(QWidget):
         self.fps_display.editingFinished.connect(self._on_fps_changed)
         layout.addWidget(self.fps_display)
 
-        # Trial info: "Trial <id> (i/n)"
+        # Trial navigation cluster: ◀ Trial <id> (i/n) ▶
+        nav_style = """
+            QPushButton {
+                background-color: transparent;
+                border: 1px solid #4a4a4a;
+                border-radius: 4px;
+                color: #dddddd;
+                font-size: 13px;
+                padding: 0px;
+            }
+            QPushButton:hover { background-color: #3d3d3d; border-color: #5a5a5a; }
+            QPushButton:pressed { background-color: #505050; }
+            QPushButton:disabled { color: #555555; border-color: #383838; }
+        """
+
+        self.prev_btn = QPushButton("◀")
+        self.prev_btn.setFixedSize(28, 24)
+        self.prev_btn.setStyleSheet(nav_style)
+        self.prev_btn.setToolTip("Previous trial")
+        self.prev_btn.setFocusPolicy(Qt.NoFocus)
+        self.prev_btn.clicked.connect(self._on_prev_trial)
+        layout.addWidget(self.prev_btn)
+
         self.trial_label = QLabel("Trial - / -")
         self.trial_label.setMinimumWidth(100)
         self.trial_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.trial_label)
 
-        # Prev trial button
-        self.prev_btn = QPushButton("◀ Prev")
-        self.prev_btn.setFixedWidth(60)
-        self.prev_btn.clicked.connect(self._on_prev_trial)
-        layout.addWidget(self.prev_btn)
-
-        # Next trial button
-        self.next_btn = QPushButton("Next ▶")
-        self.next_btn.setFixedWidth(60)
+        self.next_btn = QPushButton("▶")
+        self.next_btn.setFixedSize(28, 24)
+        self.next_btn.setStyleSheet(nav_style)
+        self.next_btn.setToolTip("Next trial")
+        self.next_btn.setFocusPolicy(Qt.NoFocus)
         self.next_btn.clicked.connect(self._on_next_trial)
         layout.addWidget(self.next_btn)
 
@@ -183,10 +201,16 @@ class BottomPlaybackBar(QWidget):
             try:
                 idx = trials.index(trials_sel)
                 self.trial_label.setText(f"Trial {trials_sel} ({idx + 1}/{len(trials)})")
+                self.prev_btn.setEnabled(idx > 0)
+                self.next_btn.setEnabled(idx < len(trials) - 1)
             except (ValueError, IndexError):
                 self.trial_label.setText(f"Trial {trials_sel}")
+                self.prev_btn.setEnabled(True)
+                self.next_btn.setEnabled(True)
         else:
             self.trial_label.setText("Trial - / -")
+            self.prev_btn.setEnabled(False)
+            self.next_btn.setEnabled(False)
 
     def _on_prev_trial(self):
         """Navigate to previous trial."""

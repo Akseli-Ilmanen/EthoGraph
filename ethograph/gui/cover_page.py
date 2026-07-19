@@ -18,6 +18,7 @@ never opens.
 from __future__ import annotations
 
 import logging
+import shutil
 import tempfile
 from pathlib import Path
 from uuid import uuid4
@@ -25,6 +26,8 @@ from uuid import uuid4
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QApplication,
+    QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFrame,
@@ -32,6 +35,7 @@ from qtpy.QtWidgets import (
     QLabel,
     QListWidget,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -49,7 +53,13 @@ from .notify import notify, notify_dialog
 logger = logging.getLogger(__name__)
 
 FEATURE_EXTENSIONS = {".nc", ".nwb", ".npz"}
+NPY_EXTENSIONS = {".npy"}
 LABEL_EXTENSIONS = {".tsv"}
+# Pose extensions whose source software cannot be inferred from the suffix alone
+# (a ``.slp`` is always SLEAP; a ``.h5``/``.csv`` could be several tools).
+AMBIGUOUS_POSE_EXTENSIONS = {".h5", ".hdf5", ".csv"}
+# Ordered list of pose/bbox source softwares offered in the follow-up prompt.
+POSE_SOFTWARES = ["DeepLabCut", "SLEAP", "LightningPose", "Anipose", "VIA-tracks"]
 
 # One accent colour per entry point — repeated on the card border, the number
 # badge and (for drag & drop) the drop zone, so the three options read as
@@ -65,8 +75,9 @@ def classify_files(paths: list[str]) -> dict[str, list[str]]:
     """Bucket dropped file paths by ethograph data type (by extension).
 
     A ``.nwb`` can be pose, ephys or a feature/session file; it is treated as a
-    *session* (feature) file here since that is the loadable unit.  A folder is
-    returned under the ``session`` bucket (pynapple folder).
+    *session* (feature) file here since that is the loadable unit.  A folder is a
+    Kilosort output when it holds ``spike_times.npy`` (``neurons`` bucket),
+    otherwise a pynapple ``session`` folder.
     """
     buckets: dict[str, list[str]] = {
         "session": [],
@@ -74,17 +85,24 @@ def classify_files(paths: list[str]) -> dict[str, list[str]]:
         "pose": [],
         "audio": [],
         "ephys": [],
+        "neurons": [],
+        "npy": [],
         "labels": [],
         "unknown": [],
     }
     for p in paths:
         path = Path(p)
         if path.is_dir():
-            buckets["session"].append(p)
+            if (path / "spike_times.npy").exists():
+                buckets["neurons"].append(p)
+            else:
+                buckets["session"].append(p)
             continue
         ext = path.suffix.lower()
         if ext in FEATURE_EXTENSIONS:
             buckets["session"].append(p)
+        elif ext in NPY_EXTENSIONS:
+            buckets["npy"].append(p)
         elif ext in VIDEO_EXTENSIONS:
             buckets["video"].append(p)
         elif ext in POSE_EXTENSIONS:
@@ -133,8 +151,9 @@ def _audio_info(path: str) -> tuple[float, float]:
 class _CamMatchDialog(QDialog):
     """Single-trial video↔camera / pose↔camera assignment.
 
-    Shown when more than one video (or pose) file is dropped: the user orders
-    the videos as cam1, cam2, … and the pose files are paired by row.
+    Shown only when pose files need pairing with videos (poses dropped and
+    more than one video or pose): the user orders the videos as cam1, cam2, …
+    and the pose files are paired by row.
     """
 
     def __init__(self, videos: list[str], poses: list[str], parent=None):
@@ -184,6 +203,61 @@ class _CamMatchDialog(QDialog):
         return [self._poses[self._pose_list.item(i).text()] for i in range(self._pose_list.count())]
 
 
+class _DropDetailsDialog(QDialog):
+    """Follow-up prompt for the few dropped inputs that cannot be inferred.
+
+    Everything detectable (video fps, audio rate, ephys params) is read on drop
+    and never surfaced. Only genuinely unknowable values appear here: a numpy
+    file's sample rate, and a pose file's source software when its extension is
+    ambiguous. The dialog shows only the rows that are actually needed.
+    """
+
+    def __init__(self, need_npy_sr: bool, npy_name: str | None, need_pose_software: bool, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("A few more details")
+        self.setMinimumWidth(440)
+        layout = QVBoxLayout(self)
+
+        self._sr_spin = None
+        self._software_combo = None
+
+        if need_npy_sr:
+            layout.addWidget(
+                QLabel(
+                    f"<b>{npy_name}</b><br>Sampling rate of the numpy data "
+                    "(samples per second) — this cannot be read from the file."
+                )
+            )
+            row = QHBoxLayout()
+            row.addWidget(QLabel("Data sampling rate:"))
+            self._sr_spin = QSpinBox()
+            self._sr_spin.setRange(1, 1000000)
+            self._sr_spin.setValue(30)
+            self._sr_spin.setSuffix(" Hz")
+            row.addWidget(self._sr_spin, 1)
+            layout.addLayout(row)
+
+        if need_pose_software:
+            layout.addWidget(QLabel("Which software produced the pose / tracking file?"))
+            row = QHBoxLayout()
+            row.addWidget(QLabel("Source software:"))
+            self._software_combo = QComboBox()
+            self._software_combo.addItems(POSE_SOFTWARES)
+            row.addWidget(self._software_combo, 1)
+            layout.addLayout(row)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def data_sr(self) -> int | None:
+        return self._sr_spin.value() if self._sr_spin is not None else None
+
+    def source_software(self) -> str | None:
+        return self._software_combo.currentText() if self._software_combo is not None else None
+
+
 class _DropList(QListWidget):
     """A QListWidget that accepts file drops and records the paths."""
 
@@ -228,6 +302,7 @@ class CoverPage(QDialog):
         self.shell = shell
         self.io_widget = io_widget
         self.app_state = io_widget.app_state
+        self._drop_tmp_dir: Path | None = None
         self.setWindowTitle("ethograph — get started")
         self.setModal(True)
         self.setWindowFlags(self.windowFlags() | Qt.WindowMinimizeButtonHint)
@@ -248,9 +323,66 @@ class CoverPage(QDialog):
         body.addWidget(self._build_custom_card(), 2)
         outer.addLayout(body)
 
+        outer.addWidget(self._build_supported_types_strip())
+
     # ------------------------------------------------------------------
     # Layout builders
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_supported_types_strip() -> QFrame:
+        """A one-line reference of what can be dragged & dropped (with examples)."""
+
+        def _fmt(exts) -> str:
+            return " ".join(f"<code>{e}</code>" for e in sorted(exts))
+
+        pose_estimation = (
+            "<b>DeepLabCut</b> (<code>.csv</code>, <code>.h5</code>)"
+            "  ·  <b>SLEAP</b> (<code>.slp</code>, <code>.h5</code>)"
+            "  ·  <b>LightningPose</b> (<code>.csv</code>)"
+            "  ·  <b>Anipose</b> (<code>.csv</code>)"
+            "  ·  <b>VIA-tracks</b> (<code>.csv</code>)"
+        )
+
+        ephys_docs = "https://akseli-ilmanen.github.io/ethograph/getting_started/loading_ephys.html"
+        ephys = (
+            "all Neo-supported formats, raw data (<code>.dat</code>, <code>.bin</code>, …) "
+            "and Kilosort folders — "
+            f"<a href='{ephys_docs}'>see docs</a>"
+        )
+
+        rows = [
+            ("🎞 Video", _fmt(VIDEO_EXTENSIONS)),
+            ("🔊 Audio", _fmt(AUDIO_EXTENSIONS)),
+            ("📈 Pose estimation", pose_estimation),
+            ("⚡ Ephys", ephys),
+            ("🧠 Neurons", "Kilosort folder  ·  pynapple <code>.npz</code> / <code>.nwb</code>"),
+            ("📊 Features", _fmt(NPY_EXTENSIONS) + "  ·  session <code>.nc</code> / <code>.nwb</code> / <code>.npz</code>"),
+            ("🏷 Labels", _fmt(LABEL_EXTENSIONS)),
+        ]
+        items = "".join(f"<li><b>{name}</b>&nbsp;&nbsp;{exts}</li>" for name, exts in rows)
+        cells = f"<ul style='margin:0; -qt-list-indent:1;'>{items}</ul>"
+
+        frame = QFrame()
+        frame.setObjectName("typesStrip")
+        frame.setStyleSheet(
+            "QFrame#typesStrip { border-top: 1px solid rgba(255,255,255,25);"
+            " padding-top: 8px; }"
+            " QFrame#typesStrip code { color: #81c784; }"
+        )
+        lay = QVBoxLayout(frame)
+        lay.setContentsMargins(4, 6, 4, 0)
+        lay.setSpacing(2)
+        heading = QLabel("Supported files — drag any of these onto the drop zone:")
+        heading.setStyleSheet("color: rgba(255,255,255,150); font-size: 10pt;")
+        lay.addWidget(heading)
+        body = QLabel(cells)
+        body.setTextFormat(Qt.RichText)
+        body.setOpenExternalLinks(True)
+        body.setWordWrap(True)
+        body.setStyleSheet("font-size: 10pt;")
+        lay.addWidget(body)
+        return frame
 
     @staticmethod
     def _make_card(num: int, title: str, subtitle: str, accent: str) -> tuple[QFrame, QVBoxLayout]:
@@ -304,6 +436,14 @@ class CoverPage(QDialog):
         )
         self._drop = _DropList(accent=_ACCENTS["drop"])
         layout.addWidget(self._drop, 1)
+
+        self._video_motion_cb = QCheckBox("Compute video motion — pixel change  (video only)")
+        self._video_motion_cb.setToolTip(
+            "Adds a motion-energy feature with a (time, camera) shape, so you can "
+            "pick a camera in the Feature controls or view all cameras as a heatmap.\n"
+            "Does nothing if no video is dropped."
+        )
+        layout.addWidget(self._video_motion_cb)
 
         row = QHBoxLayout()
         clear_btn = QPushButton("Clear")
@@ -401,7 +541,10 @@ class CoverPage(QDialog):
             return
         buckets = classify_files(paths)
         try:
-            self._populate_io_from_buckets(buckets)
+            details = self._collect_drop_details(buckets)
+            if details is None:
+                return  # user cancelled the follow-up prompt
+            self._populate_io_from_buckets(buckets, details)
         except Exception as e:  # noqa: BLE001 - outermost GUI boundary
             logger.exception("Failed to prepare dropped files")
             notify_dialog(f"Could not prepare dropped files:\n{e}", "critical")
@@ -413,15 +556,43 @@ class CoverPage(QDialog):
     # Drag & drop → IO fields
     # ------------------------------------------------------------------
 
-    def _populate_io_from_buckets(self, buckets: dict[str, list[str]]):
+    def _collect_drop_details(self, buckets: dict[str, list[str]]) -> dict | None:
+        """Ask once for the dropped values that cannot be inferred.
+
+        Returns a dict of resolved details, or ``None`` if the user cancelled.
+        Skips the prompt entirely when nothing needs asking.
+        """
+        need_npy_sr = bool(buckets["npy"])
+        ambiguous_pose = any(Path(p).suffix.lower() in AMBIGUOUS_POSE_EXTENSIONS for p in buckets["pose"])
+        if not need_npy_sr and not ambiguous_pose:
+            return {"data_sr": None, "source_software": None}
+
+        npy_name = Path(buckets["npy"][0]).name if need_npy_sr else None
+        dlg = _DropDetailsDialog(need_npy_sr, npy_name, ambiguous_pose, parent=self)
+        if not dlg.exec_():
+            return None
+        return {"data_sr": dlg.data_sr(), "source_software": dlg.source_software()}
+
+    def _populate_io_from_buckets(self, buckets: dict[str, list[str]], details: dict):
         io = self.io_widget
         app_state = self.app_state
 
         videos = buckets["video"]
         poses = buckets["pose"]
 
+        if buckets["npy"]:
+            self._populate_io_from_npy(buckets, details)
+            return
+
+        no_media = not (buckets["session"] or videos or poses or buckets["audio"])
+        if no_media and (buckets["ephys"] or buckets["neurons"]):
+            self._populate_io_from_ephys(buckets)
+            return
+
         cam_map: list[tuple[str, str | None]] = []  # (video, pose|None)
-        if len(videos) > 1 or len(poses) > 1:
+        # The camera-order dialog only matters when pose files must be paired
+        # with videos; videos alone get arbitrary cam-1, cam-2, … names.
+        if poses and (len(videos) > 1 or len(poses) > 1):
             dlg = _CamMatchDialog(videos, poses, parent=self)
             if not dlg.exec_():
                 raise RuntimeError("Camera assignment cancelled.")
@@ -432,6 +603,10 @@ class CoverPage(QDialog):
 
         session_files = buckets["session"]
         has_media = bool(cam_map or buckets["audio"])
+        if has_media:
+            # Fresh per-drop temp dir so throwaway files never share a
+            # .ethograph/local_settings.yaml with a previous drop.
+            self._drop_tmp_dir = self._prepare_drop_dir()
         if session_files:
             # A real session/feature file was provided — use it directly. Media
             # dropped alongside it still needs a synthesised alignment (the
@@ -445,7 +620,13 @@ class CoverPage(QDialog):
             # Pure media: synthesise a single-trial alignment.tmp.nwb.
             nwb_path = self._build_tmp_alignment(cam_map, buckets["audio"])
             app_state.nwb_file_path = str(nwb_path)
-            app_state.nc_file_path = str(nwb_path)
+            if cam_map and self._video_motion_cb.isChecked():
+                # Video motion requested → the session is an xarray .nc holding a
+                # (time, camera) motion feature; media still comes from the tmp
+                # alignment above. Feature/camera dropdown + heatmap come for free.
+                app_state.nc_file_path = str(self._compute_video_motion_nc(cam_map))
+            else:
+                app_state.nc_file_path = str(nwb_path)
 
         # Drag & drop never takes a metadata table — setting nc_file_path above
         # reloads local settings, which can restore a stale metadata_path (e.g.
@@ -453,16 +634,143 @@ class CoverPage(QDialog):
         # trial timing wins; sidecar TSV discovery via source_path still works.
         app_state.metadata_path = None
 
+        # A drop defines a fresh single-trial session, so it is authoritative:
+        # clear every media folder first, then set only the ones actually dropped.
+        # Otherwise a stale pose/audio folder from a previous drop survives (these
+        # are persisted SCOPE_LOCAL fields) and _validate_media_files warns that
+        # the new alignment has no pose/audio media.
+        app_state.video_folder = None
+        app_state.audio_folder = None
+        app_state.pose_folder = None
+
         if videos:
             app_state.video_folder = str(Path(videos[0]).parent)
+            if len(cam_map) > 1:
+                # Several videos dropped = one trial filmed by multiple cameras in
+                # parallel, so show every camera as its own view (not just cam-1).
+                # Devices match the `video_cam-{i+1}` streams synthesised above.
+                app_state.primary_camera = "cam-1"
+                app_state.extra_cameras = [f"cam-{i + 1}" for i in range(1, len(cam_map))]
         if poses:
             app_state.pose_folder = str(Path(poses[0]).parent)
+            app_state.source_software = details.get("source_software")
         if buckets["audio"]:
             app_state.audio_folder = str(Path(buckets["audio"][0]).parent)
         if buckets["ephys"]:
             app_state.ephys_path = buckets["ephys"][0]
+        if buckets["neurons"]:
+            app_state.neurons_path = buckets["neurons"][0]
         if buckets["labels"] and hasattr(io, "import_labels_checkbox"):
             io.import_labels_checkbox.setChecked(True)
+
+    def _populate_io_from_npy(self, buckets: dict[str, list[str]], details: dict):
+        """Convert a dropped .npy into a .nc (the one case that must persist data).
+
+        A numpy array carries no time axis, so its sample rate is asked for via a
+        follow-up prompt; an optional dropped video supplies fps and alignment.
+        Other buckets are ignored here — npy is a standalone feature source.
+        """
+        from ethograph.gui.video_manager import probe_video
+        from ethograph.io.data_loader import wizard_single_from_npy_file
+
+        npy_path = buckets["npy"][0]
+        video_path = buckets["video"][0] if buckets["video"] else None
+        fps = probe_video(video_path).fps if video_path else None
+
+        output_path = str(Path(npy_path).with_suffix(".nc"))
+        dt = wizard_single_from_npy_file(
+            video_path=video_path,
+            fps=fps,
+            npy_path=npy_path,
+            data_sr=details["data_sr"],
+            output_nc_path=output_path,
+        )
+        dt.to_netcdf(output_path)
+
+        app_state = self.app_state
+        app_state.nc_file_path = output_path
+        app_state.metadata_path = None
+        if video_path:
+            app_state.video_folder = str(Path(video_path).parent)
+
+    def _populate_io_from_ephys(self, buckets: dict[str, list[str]]):
+        """Build a bare session .nc for an ephys- and/or kilosort-only drop.
+
+        Ephys traces and neurons load from their own paths; this only writes a
+        minimal session (with a single-trial alignment) so the loader has an
+        anchor, mirroring the old ephys wizard dialog.
+        """
+        from ethograph.io.data_loader import wizard_single_from_ephys
+
+        ephys_path = buckets["ephys"][0] if buckets["ephys"] else None
+        neurons_path = buckets["neurons"][0] if buckets["neurons"] else None
+        anchor = ephys_path or neurons_path
+        output_path = str(Path(anchor).with_suffix(".nc")) if ephys_path else str(Path(anchor) / "session.nc")
+
+        dt = wizard_single_from_ephys(output_nc_path=output_path)
+        dt.to_netcdf(output_path)
+
+        app_state = self.app_state
+        app_state.nc_file_path = output_path
+        app_state.metadata_path = None
+        if ephys_path:
+            app_state.ephys_path = ephys_path
+        if neurons_path:
+            app_state.neurons_path = neurons_path
+
+    def _compute_video_motion_nc(self, cam_map) -> Path:
+        """Compute per-camera motion energy behind a busy dialog and return the .nc."""
+        from ethograph.gui.dialog_busy_progress import BusyProgressDialog
+
+        dlg = BusyProgressDialog("Computing video motion…", parent=self)
+        nc_path, error = dlg.execute(self._build_video_motion_nc, cam_map, self._drop_tmp_dir)
+        if error or nc_path is None:
+            raise RuntimeError(f"Could not compute video motion: {error}")
+        return nc_path
+
+    @staticmethod
+    def _build_video_motion_nc(cam_map, out_dir: Path) -> Path:
+        """Write a ``(time, camera)`` video-motion feature to a throwaway .nc.
+
+        One motion-energy trace per dropped video, stacked on a ``camera`` dim
+        (values ``cam-1``, ``cam-2``, … matching the alignment's video streams),
+        so the catalog offers a camera dropdown and a heatmap view for free.
+        """
+        import numpy as np
+        import xarray as xr
+
+        from ethograph.features.movement import extract_video_motion
+        from ethograph.gui.video_manager import probe_video
+
+        motions: list[np.ndarray] = []
+        cam_names: list[str] = []
+        fps_used: float | None = None
+        for i, (video, _pose) in enumerate(cam_map):
+            fps = probe_video(video).fps
+            if not fps:
+                raise RuntimeError(f"Could not read frame rate from {Path(video).name}.")
+            da = extract_video_motion(video, fps=fps, verbose=False)
+            motions.append(np.asarray(da.values, dtype=float))
+            cam_names.append(f"cam-{i + 1}")
+            fps_used = fps
+
+        max_len = max(len(m) for m in motions)
+        arr = np.full((max_len, len(motions)), np.nan)
+        for j, m in enumerate(motions):
+            arr[: len(m), j] = m
+        time = np.arange(max_len) / fps_used
+
+        ds = xr.Dataset(
+            {"video_motion": (["time", "camera"], arr)},
+            # ``individuals`` is required by TrialTree validation even though
+            # motion energy is not per-individual.
+            coords={"time": time, "camera": cam_names, "individuals": ["individual 1"]},
+        )
+        ds.attrs["fps"] = fps_used
+
+        out_path = out_dir / f"video_motion-{uuid4().hex[:8]}.nc"
+        ds.to_netcdf(out_path)
+        return out_path
 
     def _build_tmp_alignment(self, cam_map, audio_files) -> Path:
         """Create a single-trial alignment.tmp.nwb from loose media files."""
@@ -484,6 +792,13 @@ class CoverPage(QDialog):
             duration = probe.nframes / fps if probe.nframes else 0.0
             stop_time = max(stop_time, duration)
             streams.append({"name": f"video_cam-{i + 1}", "files": [video], "rate": fps})
+            logger.info(
+                "Drop alignment cam-%d: assumed fps=%s (from %s)%s",
+                i + 1,
+                fps,
+                Path(video).name,
+                f"; pose {Path(pose).name} uses this fps" if pose else "",
+            )
             if pose:
                 # Pose shares the matching video's frame rate (per spec).
                 streams.append({"name": f"pose_cam-{i + 1}", "files": [pose], "rate": fps})
@@ -505,20 +820,33 @@ class CoverPage(QDialog):
 
         trials = pd.DataFrame({"trial": [1], "start_time": [0.0], "stop_time": [stop_time]})
 
-        out_dir = Path(tempfile.gettempdir()) / "ethograph_tmp_alignment"
-        out_dir.mkdir(parents=True, exist_ok=True)
-        # Best-effort cleanup of alignments from earlier drops. A file that is
-        # still open (Windows locks open HDF5 files, e.g. the currently loaded
-        # session) is simply left behind; writing to a fresh unique name below
-        # means we never need to delete an in-use file.
-        for stale in out_dir.glob("alignment*.nwb"):
-            try:
-                stale.unlink()
-            except OSError:
-                pass
-        out_path = out_dir / f"alignment-{uuid4().hex[:8]}.tmp.nwb"
+        out_path = self._drop_tmp_dir / f"alignment-{uuid4().hex[:8]}.tmp.nwb"
         align_media_from_streams(trials, streams, out_path)
         return out_path
+
+    @staticmethod
+    def _prepare_drop_dir() -> Path:
+        """Return a fresh, empty per-drop temp dir for throwaway alignment/.nc.
+
+        Each drop gets its OWN subdirectory so its ``.ethograph/local_settings.yaml``
+        starts empty — a shared directory would leak a previous drop's panel layout
+        (e.g. one saved with no video panel) into the next drop, so dropped media
+        would silently fail to appear. Older drop dirs are removed best-effort;
+        a dir whose files are still open (Windows locks HDF5) is simply left.
+        """
+        base = Path(tempfile.gettempdir()) / "ethograph_tmp_alignment"
+        base.mkdir(parents=True, exist_ok=True)
+        for stale in base.iterdir():
+            try:
+                if stale.is_dir():
+                    shutil.rmtree(stale, ignore_errors=True)
+                else:
+                    stale.unlink()
+            except OSError:
+                pass
+        drop_dir = base / uuid4().hex[:8]
+        drop_dir.mkdir(parents=True, exist_ok=True)
+        return drop_dir
 
     # ------------------------------------------------------------------
     # Loaded-state helpers

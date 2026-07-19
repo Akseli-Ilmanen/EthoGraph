@@ -13,12 +13,14 @@ if not hasattr(np, "product"):
 try:
     import audioio as aio
     import vocalpy as voc
-    from vocalseg.continuity_filtering import continuity_segmentation
-    from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
+
+    from ethograph._vendor.vocalseg.continuity_filtering import continuity_segmentation
+    from ethograph._vendor.vocalseg.dynamic_thresholding import (
+        dynamic_threshold_segmentation,
+    )
 except ImportError as e:
     raise ImportError(
-        "audioio, vocalpy, and vocalization-segmentation are required for "
-        "audio changepoint detection. "
+        "audioio and vocalpy are required for audio changepoint detection. "
         'Install them with: uv pip install "ethograph[audio]"'
     ) from e
 

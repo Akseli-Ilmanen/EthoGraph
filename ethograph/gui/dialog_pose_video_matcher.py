@@ -13,16 +13,9 @@ one representative stem per camera appears in the list.
 
 Integration
 -----------
-Open as a dialog from widgets_io.py next to the pose-folder selector::
-
-    dialog = PoseVideoMatcherDialog(
-        video_folder=app_state.video_folder,
-        pose_folder=app_state.pose_folder,
-        trial_ids=app_state.trials,
-        parent=self,
-    )
-    if dialog.exec_():
-        app_state.camera_pose_stem_map = dict(dialog.get_mapping())
+Used as the fallback when an NWB has no native ``PoseEstimation.source_video``
+links: ``DataWidget._on_pose_match_clicked`` opens it and stores the confirmed
+pose order in ``app_state.nwb_pose_keys``.
 """
 
 from __future__ import annotations

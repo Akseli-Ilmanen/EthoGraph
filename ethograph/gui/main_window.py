@@ -10,11 +10,14 @@ Layout
 - Panels are added via the add-panel popup (bottom bar ➕ button or Ctrl+N):
   drag a source onto the plot area, or press Enter for default placement.
 
-Layout persistence (no JSON files): the outer window state (geometry, docks,
-sidebar) lives in ``app_state.window_state`` → ``gui_settings.yaml``; the
-plot-panel layout lives in ``app_state.panel_layout`` → the dataset's
-``.ethograph/local_settings.yaml``. Both are auto-saved (30 s timer + close)
-and restored automatically — there are no save/load layout actions.
+Layout persistence (no JSON files): ALL layout — the plot-panel layout and
+the shell dock arrangement (``shell_dock_state_b64``: space-plot / camera
+dock positions) — lives in ``app_state.panel_layout`` → the dataset's
+``.ethograph/local_settings.yaml``, so it travels with the dataset.
+``app_state.window_state`` → ``gui_settings.yaml`` holds only machine-local
+window prefs: geometry (this screen) + sidebar visibility. Both are
+auto-saved (10 s timer + close) and restored automatically — there are no
+save/load layout actions.
 """
 
 from __future__ import annotations
@@ -75,7 +78,8 @@ class EthographMainWindow(QMainWindow):
         self._plot_dock: QDockWidget | None = None
         self._shortcuts: list[QShortcut] = []
         self._extra_lineplot_count = 0
-        self._on_show_callbacks: list = []
+        self._window_state_restored = False
+        self._pending_dock_state_b64: str | None = None
 
         self._create_menus()
 
@@ -142,8 +146,10 @@ class EthographMainWindow(QMainWindow):
             self.video_area.clicked.connect(meta_widget.focus_video_context)
 
         self._sidebar_toggle.setChecked(True)
-        # Restore the previous session's window layout once widgets exist.
-        QTimer.singleShot(0, self._restore_window_state)
+        # Geometry now; the dock arrangement comes from the dataset's
+        # panel_layout via apply_dock_state_b64 (applied at show — see there
+        # for why it must not run while hidden).
+        QTimer.singleShot(0, self._restore_window_geometry)
 
     def _apply_corner_ownership(self):
         """The right control sidebar spans the full window height; the
@@ -154,11 +160,27 @@ class EthographMainWindow(QMainWindow):
         self.setCorner(Qt.TopRightCorner, Qt.RightDockWidgetArea)
         self.setCorner(Qt.BottomRightCorner, Qt.RightDockWidgetArea)
 
-    def add_dock_widget(self, widget: QWidget, area: str = "right", name: str = "") -> QDockWidget:
+    def add_dock_widget(
+        self, widget: QWidget, area: str = "right", name: str = "", object_name: str | None = None
+    ) -> QDockWidget:
         dock = QDockWidget(name, self)
         dock.setWidget(widget)
-        dock.setObjectName(name or widget.__class__.__name__)
-        self.addDockWidget(_DOCK_AREAS.get(area, Qt.RightDockWidgetArea), dock)
+        dock.setObjectName(object_name or name or widget.__class__.__name__)
+        # Standard Qt handling for docks created after restoreState(): try the
+        # saved placeholder first, fall back to the default area. This must
+        # happen INSTEAD of addDockWidget — restoreDockWidget silently fails
+        # on a dock that is already in the layout.
+        dock.restored_from_state = bool(object_name) and self.restoreDockWidget(dock)
+        if dock.restored_from_state:
+            # Creation means the panel is open: a placeholder saved closed or
+            # unplaced (e.g. by an earlier layout bug) must not resurrect the
+            # dock hidden or outside every dock area.
+            if not dock.isFloating() and self.dockWidgetArea(dock) == Qt.NoDockWidgetArea:
+                dock.restored_from_state = False
+            elif dock.isHidden():
+                dock.show()
+        if not dock.restored_from_state:
+            self.addDockWidget(_DOCK_AREAS.get(area, Qt.RightDockWidgetArea), dock)
         return dock
 
     def _create_menus(self):
@@ -187,6 +209,15 @@ class EthographMainWindow(QMainWindow):
     def _set_sidebar_visible(self, visible: bool):
         if self._sidebar_dock is not None:
             self._sidebar_dock.setVisible(visible)
+        self._sync_sidebar_button(visible)
+
+    def _sync_sidebar_button(self, visible: bool):
+        """Mirror sidebar visibility onto the menu-bar corner button."""
+        btn = getattr(self, "_sidebar_corner_btn", None)
+        if btn is not None and btn.isChecked() != visible:
+            btn.blockSignals(True)
+            btn.setChecked(visible)
+            btn.blockSignals(False)
 
     def toggle_sidebar(self):
         self._sidebar_toggle.setChecked(not self._sidebar_toggle.isChecked())
@@ -207,6 +238,7 @@ class EthographMainWindow(QMainWindow):
         self._zen_mode = on
         if self._sidebar_dock is not None:
             self._sidebar_dock.setVisible(not on)
+        self._sync_sidebar_button(not on)
         if self.meta_widget is not None:
             app_state = getattr(self.meta_widget, "app_state", None)
             if app_state is not None and hasattr(app_state, "zen_mode"):
@@ -252,52 +284,90 @@ class EthographMainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def capture_window_state(self) -> dict:
-        """Outer window only (geometry + docks + sidebar). The PANEL layout is
-        per-dataset state: app_state.panel_layout → .ethograph/local_settings.yaml."""
+        """Machine-specific window prefs only: geometry (where the window sits
+        on THIS screen) and sidebar visibility. ALL layout — panels, shell
+        dock arrangement — is per-dataset state in app_state.panel_layout →
+        .ethograph/local_settings.yaml."""
         return {
             "version": _LAYOUT_VERSION,
             "geometry_b64": base64.b64encode(bytes(self.saveGeometry())).decode("ascii"),
-            "state_b64": base64.b64encode(bytes(self.saveState(version=_LAYOUT_VERSION))).decode("ascii"),
             "sidebar_visible": bool(self._sidebar_dock and self._sidebar_dock.isVisible()),
         }
 
-    def run_when_shown(self, callback) -> None:
-        """Run *callback* now if the window is visible, else once on its next
-        show. Dock sizes are not honored on a hidden QMainWindow, and
-        cover-page dataset loads happen before ``show()``."""
-        if self.isVisible():
-            callback()
-        else:
-            self._on_show_callbacks.append(callback)
+    def capture_dock_state_b64(self) -> str:
+        """The shell's dock arrangement as a portable base64 saveState blob.
+        Stored per dataset (panel_layout → local_settings.yaml), so space-plot
+        / camera dock positions travel with the dataset across machines."""
+        return base64.b64encode(bytes(self.saveState(version=_LAYOUT_VERSION))).decode("ascii")
 
-    def showEvent(self, event):
-        super().showEvent(event)
-        if self._on_show_callbacks:
-            callbacks, self._on_show_callbacks = self._on_show_callbacks, []
-            for callback in callbacks:
-                QTimer.singleShot(0, callback)
-
-    def _restore_window_state(self):
-        """Restore the outer window layout saved in gui_settings.yaml."""
+    def _saved_window_state(self) -> dict | None:
         payload = getattr(getattr(self.meta_widget, "app_state", None), "window_state", None)
         if not payload:
-            return
+            return None
         # Ignore state saved by an incompatible (older) window structure — it
         # would clobber the new video-top-dock / full-height-sidebar arrangement.
         if payload.get("version") != _LAYOUT_VERSION:
             logger.info("Ignoring stale window layout (version mismatch).")
+            return None
+        return payload
+
+    def _restore_window_geometry(self):
+        """Restore the outer window geometry at startup (size/position only —
+        no dock layout involved, so it is safe on the hidden window)."""
+        payload = self._saved_window_state()
+        if not payload:
             return
         try:
             self.restoreGeometry(QByteArray.fromBase64(payload["geometry_b64"].encode("ascii")))
-            self.restoreState(
-                QByteArray.fromBase64(payload["state_b64"].encode("ascii")),
-                _LAYOUT_VERSION,
-            )
         except (KeyError, Exception) as e:
-            logger.warning("Could not restore window state: %s", e)
+            logger.warning("Could not restore window geometry: %s", e)
+
+    def _restore_window_prefs(self):
+        """Restore the machine-local window prefs (sidebar visibility;
+        geometry was already restored at startup)."""
+        payload = self._saved_window_state()
+        if not payload:
+            return
+        self._sidebar_toggle.setChecked(payload.get("sidebar_visible", True))
+
+    def apply_dock_state_b64(self, blob: str) -> None:
+        """Apply a dataset's dock-arrangement blob (panel_layout →
+        local_settings.yaml). Deferred to the next show when hidden:
+        restoreState on a hidden window leaves a pending state that Qt
+        applies at the first show, evicting — or crashing on — every dock
+        created in between (GL docks like space plots and extra camera views
+        ended up squished at the top-left corner). Applying while visible is
+        synchronous and matches docks by objectName as real widgets."""
+        if not self.isVisible():
+            self._pending_dock_state_b64 = blob
+            return
+        self._apply_dock_state(blob)
+
+    def _apply_dock_state(self, blob: str | None) -> None:
+        if not blob:
+            return
+        visible_before = [d for d in self.findChildren(QDockWidget) if not d.isHidden()]
+        try:
+            self.restoreState(QByteArray.fromBase64(blob.encode("ascii")), _LAYOUT_VERSION)
+        except Exception as e:
+            logger.warning("Could not restore dock state: %s", e)
+        # The blob dictates placement, the session dictates existence: a dock
+        # the load created open must not come back hidden (restoreState
+        # sporadically restores one as hidden).
+        for dock in visible_before:
+            if dock.isHidden():
+                dock.show()
         # restoreState can reset corner ownership — re-assert full-height sidebars.
         self._apply_corner_ownership()
-        self._sidebar_toggle.setChecked(payload.get("sidebar_visible", True))
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._window_state_restored:
+            self._window_state_restored = True
+            self._restore_window_prefs()
+        if self._pending_dock_state_b64:
+            blob, self._pending_dock_state_b64 = self._pending_dock_state_b64, None
+            self._apply_dock_state(blob)
 
     # ------------------------------------------------------------------
     # Close handling

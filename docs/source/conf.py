@@ -42,7 +42,7 @@ autodoc_mock_imports = [
     "torchvision",
     "tqdm",
     "vocalpy",
-    "vocalseg",
+    "librosa",
     "wgpu",
     "xarray",
     "yaml",

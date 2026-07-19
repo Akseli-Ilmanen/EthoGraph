@@ -14,6 +14,7 @@ frame on each camera view — no napari layers.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,8 +28,11 @@ from movement.io import load_dataset
 from ethograph.gui.notify import notify
 from ethograph.gui.pose_convert import poses_ds_to_points, sample_colormap
 from ethograph.gui.pose_overlay import OverlayStyle, PoseOverlayData
+from ethograph.io.nwb_alignment import pose_keys_for_cameras, pose_video_links_from_nwb
 from ethograph.io.nwb_import import _get_absolute_timestamps
 from ethograph.skeleton import nwb_skeleton_to_config
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -290,22 +294,17 @@ def _resolve_skeleton_colors(config: dict | None, base_color: str | None) -> dic
     return {**config, "connections": connections}
 
 
-def pose_render_to_movement_ds(
-    pr: PoseRenderData, scale: tuple[float, float] = (1.0, 1.0)
-) -> xr.Dataset:
+def pose_render_to_movement_ds(pr: PoseRenderData) -> xr.Dataset:
     """Rebuild a movement-format poses ``xr.Dataset`` from a ``PoseRenderData``.
 
     The skeleton editor consumes a movement poses dataset, so this adapter
     un-flattens the points back into a ``(time, space, keypoints, individuals)``
     ``position`` array. Points masked out by ``data_not_nan`` become NaN.
-    ``scale`` rescales (y, x) to display coordinates so the skeleton lines up
-    with downsampled video.
     """
-    sy, sx = scale
     coords = pr.data[:, -3:]
     frames = coords[:, 0].astype(int)
-    ys = coords[:, 1] * sy
-    xs = coords[:, 2] * sx
+    ys = coords[:, 1]
+    xs = coords[:, 2]
 
     kp = pr.properties["keypoint"].to_numpy()
     if "individual" in pr.properties.columns:
@@ -440,9 +439,12 @@ class PoseDisplayManager:
             if not pose_path:
                 return None
             try:
+                source_software = self.app_state.source_software or getattr(
+                    self.app_state.ds, "source_software", None
+                )
                 pr = load_pose_from_file(
                     pose_path,
-                    getattr(self.app_state.ds, "source_software", None),
+                    source_software,
                     self._resolve_camera_fps(camera_idx),
                 )
             except (OSError, ValueError, KeyError) as e:
@@ -462,11 +464,21 @@ class PoseDisplayManager:
                 pr = slice_pose_to_frames(pr, start_frame, end_frame)
             return pr
 
+        nwb_file = self._get_nwb_file()
+
+        # Pose→camera pairing priority:
+        #   1. manual / saved mapping (app_state.nwb_pose_keys),
+        #   2. native ndx-pose PoseEstimation.source_video links,
+        #   3. device-name fallback (pose_cam-N ↔ video_cam-N).
         pose_keys = list(getattr(self.app_state, "nwb_pose_keys", None) or [])
+        if not pose_keys and nwb_file is not None and sio:
+            links = pose_video_links_from_nwb(nwb_file)
+            if links:
+                pose_keys = pose_keys_for_cameras(links, sio.cameras)
         if not pose_keys and sio:
             pose_keys = sio.pose_keys
-        if pose_keys and camera_idx < len(pose_keys):
-            nwb_file = self._get_nwb_file()
+
+        if pose_keys and camera_idx < len(pose_keys) and pose_keys[camera_idx]:
             if nwb_file is None:
                 return None
             try:
@@ -515,33 +527,6 @@ class PoseDisplayManager:
         self._camera_keypoints.pop(camera_name, None)
         self._extra_pr.pop(camera_name, None)
         self._sync_global_keypoints()
-
-    # ------------------------------------------------------------------
-    # Downsample-aware coordinate scaling
-    # ------------------------------------------------------------------
-
-    def _pose_scale(self, camera_name: str | None = None) -> tuple[float, float]:
-        """Return (scale_y, scale_x) for mapping original-res pose coords to display."""
-        from .dialog_video_downsample import get_downsample_scale
-
-        video_folder = self.app_state.video_folder
-        if not video_folder:
-            return 1.0, 1.0
-        dt = self.app_state.dt
-        trial_id = self.app_state.trials_sel
-        if dt is None or trial_id is None:
-            return 1.0, 1.0
-        sio = self.app_state.nwb_alignment
-        device = camera_name or (sio.cameras[0] if sio.cameras else None)
-        video_path = sio.resolve_media_path(
-            trial_id,
-            "video",
-            device=device,
-            fallback_folder=video_folder,
-        )
-        if not video_path:
-            return 1.0, 1.0
-        return get_downsample_scale(video_folder, Path(video_path).name)
 
     # ------------------------------------------------------------------
     # Unified display — same overlay path for primary and extra cameras
@@ -616,8 +601,19 @@ class PoseDisplayManager:
         overlay = view.ensure_overlay()
         if overlay is None:
             return
-        sy, sx = self._pose_scale(camera_name)
-        data = PoseOverlayData(pr, scale=(sy, sx))
+        data = PoseOverlayData(pr)
+        if data.n_frames and np.any(data.shown):
+            shown_pos = data.positions[data.shown]
+            logger.info(
+                "Pose overlay diag: camera=%s img_height=%.0f "
+                "display-px x=[%.0f..%.0f] y=[%.0f..%.0f]",
+                camera_name,
+                view.image_height(),
+                np.nanmin(shown_pos[:, 0]),
+                np.nanmax(shown_pos[:, 0]),
+                np.nanmin(shown_pos[:, 1]),
+                np.nanmax(shown_pos[:, 1]),
+            )
         style = self._build_overlay_style(pr.properties)
         overlay.set_data(
             data,

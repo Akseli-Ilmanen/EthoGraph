@@ -80,8 +80,10 @@ audio = [
     "audioio",
     "soundfile",
     "vocalpy",
-    # vocalseg must be installed manually: pip install git+https://github.com/timsainb/vocalization-segmentation.git
     "sounddevice",
+    # deps for the vendored vocalseg segmentation (ethograph/_vendor/vocalseg)
+    "librosa",
+    "tqdm",
 ]
 
 # DANDI: download datasets from the DANDI archive (heavy: ~40 transitive deps)
@@ -134,6 +136,7 @@ exclude = ["tests", "docs*"]
 [tool.setuptools.package-data]
 "ethograph.gui" = ["*.yaml", "assets/templates/*", "templates/*.j2"]
 ethograph = ["assets/*", "geometries/*"]
+"ethograph._vendor.vocalseg" = ["LICENSE"]
 
 [tool.setuptools.exclude-package-data]
 "ethograph.video_features" = ["checkpoint/*.pt"]

@@ -1089,7 +1089,7 @@ class IOWidget(QWidget):
         video_folder = getattr(self.app_state, "nwb_video_folder", None)
         if not video_folder:
             return
-        video_folder = self._maybe_downsample_videos(str(video_folder))
+        video_folder = str(video_folder)
         self.video_folder_edit.setText(video_folder)
         self.app_state.video_folder = video_folder
         logger.info("NWB auto-set video folder: %s", video_folder)
@@ -1202,9 +1202,8 @@ class IOWidget(QWidget):
                 self.nc_file_path_edit.setText(t["nc_file_path"])
                 self.app_state.nc_file_path = t["nc_file_path"]
             if t["video_folder"]:
-                video_folder = self._maybe_downsample_videos(t["video_folder"])
-                self.video_folder_edit.setText(video_folder)
-                self.app_state.video_folder = video_folder
+                self.video_folder_edit.setText(t["video_folder"])
+                self.app_state.video_folder = t["video_folder"]
             if t["audio_folder"]:
                 self.audio_folder_edit.setText(t["audio_folder"])
                 self.app_state.audio_folder = t["audio_folder"]
@@ -1614,12 +1613,6 @@ class IOWidget(QWidget):
             self.app_state.nc_file_path = path
             self._try_auto_populate_alignment(path)
 
-    def _maybe_downsample_videos(self, folder: str) -> str:
-        """Offer to downsample high-res videos. Returns the folder to use."""
-        from .dialog_video_downsample import offer_downsample
-
-        return offer_downsample(folder, parent=self)
-
     def on_browse_clicked(self, browse_type="file", media_type=None):
         if browse_type == "file":
             if media_type == "data":
@@ -1682,8 +1675,6 @@ class IOWidget(QWidget):
             folder_path = QFileDialog.getExistingDirectory(None, caption=caption)
 
             if media_type == "video":
-                if folder_path:
-                    folder_path = self._maybe_downsample_videos(folder_path)
                 self.video_folder_edit.setText(folder_path)
                 self.app_state.video_folder = folder_path
             elif media_type == "audio":

@@ -228,11 +228,11 @@ def _audio_preamble(*imports: str, data_var: str = "data", rate_var: str = "sr")
 _AUDIO_PREAMBLE = _audio_preamble()
 
 _VOCALSEG_PREAMBLE = _audio_preamble(
-    "from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation",
+    "from ethograph._vendor.vocalseg.dynamic_thresholding import dynamic_threshold_segmentation",
 )
 
 _VOCALSEG_CONTINUITY_PREAMBLE = _audio_preamble(
-    "from vocalseg.continuity_filtering import continuity_segmentation",
+    "from ethograph._vendor.vocalseg.continuity_filtering import continuity_segmentation",
 )
 
 # TODO: rewrite with example for ephys data (e.g. for high-pass)
@@ -266,8 +266,10 @@ _OSCILLATORY_PREAMBLE = (
 
 def _build_registry() -> dict[str, FunctionSpec]:
     import vocalpy as voc
-    from vocalseg.continuity_filtering import continuity_segmentation
-    from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
+    from ethograph._vendor.vocalseg.continuity_filtering import continuity_segmentation
+    from ethograph._vendor.vocalseg.dynamic_thresholding import (
+        dynamic_threshold_segmentation,
+    )
 
     from ethograph.features.changepoints import (
         find_nearest_turning_points_binary,
