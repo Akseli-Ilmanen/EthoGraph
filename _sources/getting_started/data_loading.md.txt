@@ -12,19 +12,20 @@ EthoGraph supports three loading paths depending on your data format:
 
 ---
 
-## Create a session from your own data
+## Create a session from your own data — drag & drop
 
-Click **Create with own data** in the I/O widget. A dialog guides you through creating a session from several supported sources. After generation the I/O fields are auto-populated so you can click **Load** immediately.
+For a **single recording** (one file per modality), just **drag & drop** your files onto the start page. EthoGraph sorts them by type, builds the alignment for you, and loads — no wizard, no scripting. A follow-up popup appears **only** when a value can't be read from the files (e.g. a numpy sample rate, or an ambiguous pose format). Then click **Load**.
 
-The dialog handles **single-file** workflows. For multiple trials, multiple cameras, or multiple microphone files, use the **Multiple trials** tab in the wizard, or write a short Python script.
+| Drop this | Examples | Follow-up asked? | Guide |
+|-----------|----------|------------------|-------|
+| Pose / boxes | `.h5` `.csv` `.slp` | Source software, only if ambiguous (`.h5`/`.csv`) | {doc}`loading_pose` |
+| Audio | `.wav` `.mp3` `.mp4` `.flac` | None | {doc}`loading_audio` |
+| Numpy array | `.npy` | Data sampling rate | {doc}`loading_numpy` |
+| Ephys / neurons | `.rhd` `.abf` … · Kilosort folder | None for known formats | {doc}`loading_ephys` |
+| Video | `.mp4` `.avi` `.mov` … | Camera order, only if several dropped | — |
+| Session file | `.nc` `.nwb` `.npz` · pynapple folder | None | below |
 
-| Format | When to use | Guide |
-|--------|-------------|-------|
-| Pose file | DLC, SLEAP, LightningPose `.h5`/`.csv` | {doc}`loading_pose` |
-| Audio file | Vocal / acoustic data | {doc}`loading_audio` |
-| Numpy file | Pre-computed feature array | {doc}`loading_numpy` |
-| Ephys recording | Raw electrophysiology +/- Kilosort | {doc}`loading_ephys` |
-| Custom script | Multi-trial, multi-cam, multi-mic | {doc}`multi_trial` |
+For **multiple trials, multiple cameras, or multiple microphone files**, use the **Multiple trials** wizard (**Create with own data** in the I/O widget) or write a short Python script — see {doc}`multi_trial`.
 
 ---
 

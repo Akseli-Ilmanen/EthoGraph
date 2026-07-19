@@ -25,25 +25,6 @@ I/O support for new data formats is actively being expanded. If your format is n
 
 A lot of buttons, spinners, dropdowns, etc. have a little description tooltip when you hover over them.
 
-### Video seek warnings with `.avi` / `.mov` files
-
-If you see warnings like `Seek problem with frame 206! pts: 208; target: 206`, your video container format has unreliable keyframe indexing. Frame display may be off by 1-2 frames when scrubbing or seeking.
-
-**Quick fix:** Ignore inaccurate frame-seeking, and suppress warning in `Navigation controls` using `Filter warnings` checkbox.
-
-**Proper fix:** Transcode to MP4 with H.264 for frame-accurate seeking:
-
-```bash
-# Linux / macOS / Git Bash
-for f in *.avi; do ffmpeg -y -i "$f" -c:v libx264 -pix_fmt yuv420p -preset superfast -crf 23 "${f%.avi}.mp4"; done
-
-# Windows CMD
-for %f in (*.avi) do ffmpeg -y -i "%f" -c:v libx264 -pix_fmt yuv420p -preset superfast -crf 23 "%~nf.mp4"
-
-# Windows PowerShell
-Get-ChildItem *.avi | ForEach-Object { ffmpeg -y -i $_.FullName -c:v libx264 -pix_fmt yuv420p -preset superfast -crf 23 "$($_.DirectoryName)\$($_.BaseName).mp4" }
-```
-
 ### Installation fails with "resolution-too-deep"
 
 This happens when using plain `pip` to install ethograph with extras like

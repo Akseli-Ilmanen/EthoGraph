@@ -1821,6 +1821,45 @@
 
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_video_name_to_device</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Strip a leading ``video_`` / ``video-`` prefix so an ImageSeries name maps</span>
+<span class="sd">    to the same device string that :meth:`NWBAlignment.cameras` reports.&quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">prefix</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;video_&quot;</span><span class="p">,</span> <span class="s2">&quot;video-&quot;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">prefix</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">name</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">prefix</span><span class="p">)</span> <span class="p">:]</span>
+    <span class="k">return</span> <span class="n">name</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">pose_video_links_from_nwb</span><span class="p">(</span><span class="n">nwb</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Native ndx-pose pose↔video links from an open NWBFile:</span>
+<span class="sd">    ``{pose_container_name: source_video_name}``.</span>
+
+<span class="sd">    Reads ``PoseEstimation.source_video`` (ndx-pose &gt;= 0.2.1), the NWB-native way</span>
+<span class="sd">    to bind a pose estimation to its source video ``ImageSeries``. Containers with</span>
+<span class="sd">    no ``source_video`` link are omitted (they fall back to manual matching).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">links</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">mod</span> <span class="ow">in</span> <span class="n">nwb</span><span class="o">.</span><span class="n">processing</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">di</span> <span class="ow">in</span> <span class="n">mod</span><span class="o">.</span><span class="n">data_interfaces</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">di</span><span class="p">,</span> <span class="s2">&quot;pose_estimation_series&quot;</span><span class="p">):</span>
+                <span class="k">continue</span>
+            <span class="n">source_video</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">di</span><span class="p">,</span> <span class="s2">&quot;source_video&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">source_video</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">links</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">source_video</span><span class="o">.</span><span class="n">name</span>
+    <span class="k">return</span> <span class="n">links</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">pose_keys_for_cameras</span><span class="p">(</span><span class="n">links</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="n">cameras</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Order pose container names to match ``cameras`` via native source_video links.</span>
+
+<span class="sd">    A pose container is assigned to camera ``c`` when its ``source_video`` name</span>
+<span class="sd">    resolves to ``c`` (after stripping a ``video_`` / ``video-`` prefix). Returns a</span>
+<span class="sd">    camera-aligned list with ``None`` for any camera that has no linked pose.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">by_device</span> <span class="o">=</span> <span class="p">{</span><span class="n">_video_name_to_device</span><span class="p">(</span><span class="n">video_name</span><span class="p">):</span> <span class="n">pose</span> <span class="k">for</span> <span class="n">pose</span><span class="p">,</span> <span class="n">video_name</span> <span class="ow">in</span> <span class="n">links</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">by_device</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">c</span><span class="p">))</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">cameras</span><span class="p">]</span>
+
+
 <div class="viewcode-block" id="update_trials_columns">
 <a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.update_trials_columns">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">update_trials_columns</span><span class="p">(</span>

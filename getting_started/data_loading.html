@@ -460,41 +460,52 @@
 </table>
 </div>
 <hr class="docutils" />
-<section id="create-a-session-from-your-own-data">
-<h2>Create a session from your own data<a class="headerlink" href="#create-a-session-from-your-own-data" title="Link to this heading">#</a></h2>
-<p>Click <strong>Create with own data</strong> in the I/O widget. A dialog guides you through creating a session from several supported sources. After generation the I/O fields are auto-populated so you can click <strong>Load</strong> immediately.</p>
-<p>The dialog handles <strong>single-file</strong> workflows. For multiple trials, multiple cameras, or multiple microphone files, use the <strong>Multiple trials</strong> tab in the wizard, or write a short Python script.</p>
+<section id="create-a-session-from-your-own-data-drag-drop">
+<h2>Create a session from your own data — drag &amp; drop<a class="headerlink" href="#create-a-session-from-your-own-data-drag-drop" title="Link to this heading">#</a></h2>
+<p>For a <strong>single recording</strong> (one file per modality), just <strong>drag &amp; drop</strong> your files onto the start page. EthoGraph sorts them by type, builds the alignment for you, and loads — no wizard, no scripting. A follow-up popup appears <strong>only</strong> when a value can’t be read from the files (e.g. a numpy sample rate, or an ambiguous pose format). Then click <strong>Load</strong>.</p>
 <div class="pst-scrollable-table-container"><table class="table">
 <thead>
-<tr class="row-odd"><th class="head"><p>Format</p></th>
-<th class="head"><p>When to use</p></th>
+<tr class="row-odd"><th class="head"><p>Drop this</p></th>
+<th class="head"><p>Examples</p></th>
+<th class="head"><p>Follow-up asked?</p></th>
 <th class="head"><p>Guide</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p>Pose file</p></td>
-<td><p>DLC, SLEAP, LightningPose <code class="docutils literal notranslate"><span class="pre">.h5</span></code>/<code class="docutils literal notranslate"><span class="pre">.csv</span></code></p></td>
+<tr class="row-even"><td><p>Pose / boxes</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.h5</span></code> <code class="docutils literal notranslate"><span class="pre">.csv</span></code> <code class="docutils literal notranslate"><span class="pre">.slp</span></code></p></td>
+<td><p>Source software, only if ambiguous (<code class="docutils literal notranslate"><span class="pre">.h5</span></code>/<code class="docutils literal notranslate"><span class="pre">.csv</span></code>)</p></td>
 <td><p><a class="reference internal" href="loading_pose.html"><span class="doc">From a pose file</span></a></p></td>
 </tr>
-<tr class="row-odd"><td><p>Audio file</p></td>
-<td><p>Vocal / acoustic data</p></td>
+<tr class="row-odd"><td><p>Audio</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.wav</span></code> <code class="docutils literal notranslate"><span class="pre">.mp3</span></code> <code class="docutils literal notranslate"><span class="pre">.mp4</span></code> <code class="docutils literal notranslate"><span class="pre">.flac</span></code></p></td>
+<td><p>None</p></td>
 <td><p><a class="reference internal" href="loading_audio.html"><span class="doc">From an audio file</span></a></p></td>
 </tr>
-<tr class="row-even"><td><p>Numpy file</p></td>
-<td><p>Pre-computed feature array</p></td>
+<tr class="row-even"><td><p>Numpy array</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.npy</span></code></p></td>
+<td><p>Data sampling rate</p></td>
 <td><p><a class="reference internal" href="loading_numpy.html"><span class="doc">From a numpy file</span></a></p></td>
 </tr>
-<tr class="row-odd"><td><p>Ephys recording</p></td>
-<td><p>Raw electrophysiology +/- Kilosort</p></td>
+<tr class="row-odd"><td><p>Ephys / neurons</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.rhd</span></code> <code class="docutils literal notranslate"><span class="pre">.abf</span></code> … · Kilosort folder</p></td>
+<td><p>None for known formats</p></td>
 <td><p><a class="reference internal" href="loading_ephys.html"><span class="doc">From an ephys recording</span></a></p></td>
 </tr>
-<tr class="row-even"><td><p>Custom script</p></td>
-<td><p>Multi-trial, multi-cam, multi-mic</p></td>
-<td><p><a class="reference internal" href="multi_trial.html"><span class="doc">Multi-trial setup</span></a></p></td>
+<tr class="row-even"><td><p>Video</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.mp4</span></code> <code class="docutils literal notranslate"><span class="pre">.avi</span></code> <code class="docutils literal notranslate"><span class="pre">.mov</span></code> …</p></td>
+<td><p>Camera order, only if several dropped</p></td>
+<td><p>—</p></td>
+</tr>
+<tr class="row-odd"><td><p>Session file</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.nc</span></code> <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> <code class="docutils literal notranslate"><span class="pre">.npz</span></code> · pynapple folder</p></td>
+<td><p>None</p></td>
+<td><p>below</p></td>
 </tr>
 </tbody>
 </table>
 </div>
+<p>For <strong>multiple trials, multiple cameras, or multiple microphone files</strong>, use the <strong>Multiple trials</strong> wizard (<strong>Create with own data</strong> in the I/O widget) or write a short Python script — see <a class="reference internal" href="multi_trial.html"><span class="doc">Multi-trial setup</span></a>.</p>
 <hr class="docutils" />
 </section>
 <hr class="docutils" />
@@ -742,7 +753,7 @@ my_project/
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#create-a-session-from-your-own-data">Create a session from your own data</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#create-a-session-from-your-own-data-drag-drop">Create a session from your own data — drag &amp; drop</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#load-a-pre-made-session">Load a pre-made session</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#xarray-dataset-vs-trialtree">xarray: Dataset vs TrialTree</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#folder-structure">Folder structure</a></li>

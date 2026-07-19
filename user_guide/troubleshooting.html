@@ -480,22 +480,6 @@
 <h3>What does this button do?<a class="headerlink" href="#what-does-this-button-do" title="Link to this heading">#</a></h3>
 <p>A lot of buttons, spinners, dropdowns, etc. have a little description tooltip when you hover over them.</p>
 </section>
-<section id="video-seek-warnings-with-avi-mov-files">
-<h3>Video seek warnings with <code class="docutils literal notranslate"><span class="pre">.avi</span></code> / <code class="docutils literal notranslate"><span class="pre">.mov</span></code> files<a class="headerlink" href="#video-seek-warnings-with-avi-mov-files" title="Link to this heading">#</a></h3>
-<p>If you see warnings like <code class="docutils literal notranslate"><span class="pre">Seek</span> <span class="pre">problem</span> <span class="pre">with</span> <span class="pre">frame</span> <span class="pre">206!</span> <span class="pre">pts:</span> <span class="pre">208;</span> <span class="pre">target:</span> <span class="pre">206</span></code>, your video container format has unreliable keyframe indexing. Frame display may be off by 1-2 frames when scrubbing or seeking.</p>
-<p><strong>Quick fix:</strong> Ignore inaccurate frame-seeking, and suppress warning in <code class="docutils literal notranslate"><span class="pre">Navigation</span> <span class="pre">controls</span></code> using <code class="docutils literal notranslate"><span class="pre">Filter</span> <span class="pre">warnings</span></code> checkbox.</p>
-<p><strong>Proper fix:</strong> Transcode to MP4 with H.264 for frame-accurate seeking:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Linux / macOS / Git Bash</span>
-<span class="k">for</span><span class="w"> </span>f<span class="w"> </span><span class="k">in</span><span class="w"> </span>*.avi<span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span>ffmpeg<span class="w"> </span>-y<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$f</span><span class="s2">&quot;</span><span class="w"> </span>-c:v<span class="w"> </span>libx264<span class="w"> </span>-pix_fmt<span class="w"> </span>yuv420p<span class="w"> </span>-preset<span class="w"> </span>superfast<span class="w"> </span>-crf<span class="w"> </span><span class="m">23</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">f</span><span class="p">%.avi</span><span class="si">}</span><span class="s2">.mp4&quot;</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
-
-<span class="c1"># Windows CMD</span>
-<span class="k">for</span><span class="w"> </span>%f<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="o">(</span>*.avi<span class="o">)</span><span class="w"> </span><span class="k">do</span><span class="w"> </span>ffmpeg<span class="w"> </span>-y<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;%f&quot;</span><span class="w"> </span>-c:v<span class="w"> </span>libx264<span class="w"> </span>-pix_fmt<span class="w"> </span>yuv420p<span class="w"> </span>-preset<span class="w"> </span>superfast<span class="w"> </span>-crf<span class="w"> </span><span class="m">23</span><span class="w"> </span><span class="s2">&quot;%~nf.mp4&quot;</span>
-
-<span class="c1"># Windows PowerShell</span>
-Get-ChildItem<span class="w"> </span>*.avi<span class="w"> </span><span class="p">|</span><span class="w"> </span>ForEach-Object<span class="w"> </span><span class="o">{</span><span class="w"> </span>ffmpeg<span class="w"> </span>-y<span class="w"> </span>-i<span class="w"> </span><span class="nv">$_</span>.FullName<span class="w"> </span>-c:v<span class="w"> </span>libx264<span class="w"> </span>-pix_fmt<span class="w"> </span>yuv420p<span class="w"> </span>-preset<span class="w"> </span>superfast<span class="w"> </span>-crf<span class="w"> </span><span class="m">23</span><span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span><span class="nv">$_</span>.DirectoryName<span class="k">)</span><span class="s2">\$(</span><span class="nv">$_</span><span class="s2">.BaseName).mp4&quot;</span><span class="w"> </span><span class="o">}</span>
-</pre></div>
-</div>
-</section>
 <section id="installation-fails-with-resolution-too-deep">
 <h3>Installation fails with “resolution-too-deep”<a class="headerlink" href="#installation-fails-with-resolution-too-deep" title="Link to this heading">#</a></h3>
 <p>This happens when using plain <code class="docutils literal notranslate"><span class="pre">pip</span></code> to install ethograph with extras like
@@ -578,7 +562,6 @@ complex for pip’s resolver.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#faq">FAQ</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#my-dataset-format-is-not-supported">My dataset format is not supported</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#what-does-this-button-do">What does this button do?</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#video-seek-warnings-with-avi-mov-files">Video seek warnings with <code class="docutils literal notranslate"><span class="pre">.avi</span></code> / <code class="docutils literal notranslate"><span class="pre">.mov</span></code> files</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-fails-with-resolution-too-deep">Installation fails with “resolution-too-deep”</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#opening-tsv-label-files-in-excel">Opening <code class="docutils literal notranslate"><span class="pre">.tsv</span></code> label files in Excel</a></li>
 </ul>

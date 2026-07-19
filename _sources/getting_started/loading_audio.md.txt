@@ -3,43 +3,28 @@
 
 Use this path for acoustic or vocal data, with or without video.
 
-Supported formats: `.wav`, `.mp3`, `.mp4`, `.flac`. If your `.mp4` video contains audio, point both fields at the same file.
+Supported formats: `.wav`, `.mp3`, `.mp4`, `.flac`. If your `.mp4` video contains audio, drop the same file — it is used as both.
 
-The **data wizard** handles single recordings. For multiple separate microphone files or multiple trials, see {doc}`multi_trial`.
+Single recordings load by **drag & drop**. For multiple separate microphone files or multiple trials, see {doc}`multi_trial`.
 
 ---
 
-## Steps
+## Load it — drag & drop
 
 ```{tip}
 {doc}`Install EthoGraph <../getting_started/installation>` if you haven't already, then launch via shortcut or:
 `conda activate ethograph && ethograph launch`
-
-In the **I/O widget**, click **Create with own data** — the wizard opens.
 ```
 
-1. Under **Single trial**, select: **3) Generate from audio file**
-2. Click **Next** — the dialog opens
-3. Set **Audio file** (`.wav`, `.mp3`, `.mp4`, `.flac`)
-4. Optionally set **Video file** — frame rate is auto-detected; audio sample rate is read-only (auto-detected)
-5. Set **Output path** for the generated `session.nc`
-6. Click **Generate .nc file**
-7. The I/O widget auto-populates -> click **Load**
+1. On the start page, drag your **audio file** (and optionally a **video**) onto the **Drag & drop** zone.
+2. Click **Load**.
+
+No questions are asked — the sample rate and video frame rate are read from the files automatically.
 
 ---
 
 ## Multichannel audio
 
-If all microphones are stored in a **single multichannel `.wav`** file, load it directly — EthoGraph separates channels automatically.
+If all microphones are stored in a **single multichannel `.wav`** file, drop it directly — EthoGraph separates channels automatically.
 
 For **multiple separate `.wav` files** (one per mic), use the multi-trial wizard: see {ref}`Multi-trial setup — session-wide audio <target-loading-script>`.
-
----
-
-## Dialog fields
-
-| Field | Notes |
-|-------|-------|
-| **Audio file** | `.wav`, `.mp3`, `.mp4`, `.flac` |
-| **Video file** | Optional |
-| **Output path** | |

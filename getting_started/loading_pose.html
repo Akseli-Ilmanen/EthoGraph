@@ -443,25 +443,25 @@
   <section class="tex2jax_ignore mathjax_ignore" id="from-a-pose-file">
 <span id="target-loading-pose"></span><h1>From a pose file<a class="headerlink" href="#from-a-pose-file" title="Link to this heading">#</a></h1>
 <p>Use this path if you have pose estimation output from DeepLabCut, SLEAP, LightningPose, or any other tracker that produces <code class="docutils literal notranslate"><span class="pre">.h5</span></code> or <code class="docutils literal notranslate"><span class="pre">.csv</span></code> files — with or without a matching video.</p>
-<p>The <strong>data wizard</strong> handles single recordings (one trial) without any scripting. For multiple trials or multiple cameras, see <a class="reference internal" href="multi_trial.html"><span class="doc">Multi-trial setup</span></a>.</p>
+<p>Single recordings (one trial) load by <strong>drag &amp; drop</strong> — no scripting, no wizard. For multiple trials or multiple cameras, see <a class="reference internal" href="multi_trial.html"><span class="doc">Multi-trial setup</span></a>.</p>
 <hr class="docutils" />
-<section id="steps">
-<h2>Steps<a class="headerlink" href="#steps" title="Link to this heading">#</a></h2>
+<section id="load-it-drag-drop">
+<h2>Load it — drag &amp; drop<a class="headerlink" href="#load-it-drag-drop" title="Link to this heading">#</a></h2>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
 <p><a class="reference internal" href="installation.html"><span class="doc">Install EthoGraph</span></a> if you haven’t already, then launch via shortcut or:
 <code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">activate</span> <span class="pre">ethograph</span> <span class="pre">&amp;&amp;</span> <span class="pre">ethograph</span> <span class="pre">launch</span></code></p>
-<p>In the <strong>I/O widget</strong>, click <strong>Create with own data</strong> — the wizard opens.</p>
 </div>
 <ol class="arabic simple">
-<li><p>Under <strong>Single trial</strong>, select: <strong>1) Generate from pose file (DeepLabCut, SLEAP, …)</strong></p></li>
-<li><p>Click <strong>Next</strong> — the dialog opens</p></li>
-<li><p>Set <strong>Source software</strong> (DeepLabCut, SLEAP, LightningPose, …) and <strong>Pose file</strong> (<code class="docutils literal notranslate"><span class="pre">.h5</span></code> or <code class="docutils literal notranslate"><span class="pre">.csv</span></code>)</p></li>
-<li><p>Optionally set <strong>Video file</strong> — frame rate is auto-detected from the video</p></li>
-<li><p>Set <strong>Output path</strong> for the generated <code class="docutils literal notranslate"><span class="pre">session.nc</span></code></p></li>
-<li><p>Click <strong>Generate .nc file</strong></p></li>
-<li><p>The I/O widget auto-populates -&gt; click <strong>Load</strong></p></li>
+<li><p>On the start page, drag your <strong>pose file</strong> (and optionally a <strong>video</strong>) onto the <strong>Drag &amp; drop</strong> zone.</p></li>
+<li><p>Click <strong>Load</strong>.</p></li>
 </ol>
+<p>That’s it. A follow-up popup appears <strong>only</strong> when something can’t be read from the files:</p>
+<ul class="simple">
+<li><p><strong>Source software</strong> — asked when the extension is ambiguous (<code class="docutils literal notranslate"><span class="pre">.h5</span></code> / <code class="docutils literal notranslate"><span class="pre">.csv</span></code> could be several trackers). A <code class="docutils literal notranslate"><span class="pre">.slp</span></code> is always SLEAP, so no question is needed.</p></li>
+<li><p>Frame rate is read from the video automatically; no prompt.</p></li>
+</ul>
+<p>Drop several videos and pose files together (multi-camera) and EthoGraph asks you to order them so each pose file is paired with its camera.</p>
 </section>
 <hr class="docutils" />
 <section id="what-the-loader-computes">
@@ -471,35 +471,6 @@
 <li><p>Velocity, acceleration, speed</p></li>
 </ul>
 <p>These appear in the Feature dropdown and are useful for identifying movement onset/offset. See <a class="reference internal" href="../user_guide/changepoints/kinematic.html#target-kinematic-changepoints"><span class="std std-ref">Kinematic changepoints</span></a>.</p>
-</section>
-<hr class="docutils" />
-<section id="dialog-fields">
-<h2>Dialog fields<a class="headerlink" href="#dialog-fields" title="Link to this heading">#</a></h2>
-<div class="pst-scrollable-table-container"><table class="table">
-<thead>
-<tr class="row-odd"><th class="head"><p>Field</p></th>
-<th class="head"><p>Notes</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><strong>Source software</strong></p></td>
-<td><p>DeepLabCut, SLEAP, LightningPose, …</p></td>
-</tr>
-<tr class="row-odd"><td><p><strong>Pose file</strong></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">.h5</span></code> or <code class="docutils literal notranslate"><span class="pre">.csv</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><strong>Video file</strong></p></td>
-<td><p>Optional</p></td>
-</tr>
-<tr class="row-odd"><td><p><strong>Frame rate</strong></p></td>
-<td><p></p></td>
-</tr>
-<tr class="row-even"><td><p><strong>Output path</strong></p></td>
-<td><p></p></td>
-</tr>
-</tbody>
-</table>
-</div>
 </section>
 </section>
 
@@ -550,9 +521,8 @@
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#steps">Steps</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#load-it-drag-drop">Load it — drag &amp; drop</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#what-the-loader-computes">What the loader computes</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#dialog-fields">Dialog fields</a></li>
 </ul>
   </nav></div>
 

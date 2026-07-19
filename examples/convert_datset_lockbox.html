@@ -492,78 +492,35 @@
 </div>
 </div>
 </section>
-<section id="build-nwb-alignment">
-<h2>Build NWB alignment<a class="headerlink" href="#build-nwb-alignment" title="Link to this heading">#</a></h2>
+<section id="build-feature-datasets">
+<h2>Build feature datasets<a class="headerlink" href="#build-feature-datasets" title="Link to this heading">#</a></h2>
+<p>Convert each trial’s DeepLabCut <code class="docutils literal notranslate"><span class="pre">.h5</span></code> tracks to CSV (so the GUI and the alignment cell below can reference them), compute kinematic features, and save the merged <code class="docutils literal notranslate"><span class="pre">lockbox.nc</span></code>.</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">fps</span> <span class="o">=</span> <span class="mi">30</span>
 <span class="n">cameras</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;front-view&quot;</span><span class="p">,</span> <span class="s2">&quot;side-view&quot;</span><span class="p">,</span> <span class="s2">&quot;top-down-view&quot;</span><span class="p">]</span>
 
 <span class="n">trials</span> <span class="o">=</span> <span class="p">[</span>
-    <span class="s2">&quot;2021-02-15_07-32-44_segment1&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;2021-03-05_08-36-42_segment1&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;2021-05-24_07-36-05_segment1&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;2021-05-25_08-19-50_segment2&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;2021-05-31_07-34-21_segment2&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;2021-05-31_07-34-21_segment3&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;2021-02-15_07-32-44_segment1_mouse324&quot;</span><span class="p">,</span>
+    <span class="c1"># &quot;2021-03-05_08-36-42_segment1_mouse324&quot;,</span>
+    <span class="c1"># &quot;2021-05-24_07-36-05_segment1_mouse291&quot;,</span>
+    <span class="c1"># &quot;2021-05-25_08-19-50_segment2_mouse291&quot;,</span>
+    <span class="s2">&quot;2021-05-31_07-34-21_segment2_mouse291&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;2021-05-31_07-34-21_segment3_mouse291&quot;</span><span class="p">,</span>
 <span class="p">]</span>
 
-<span class="c1"># Discover files for each trial and camera</span>
-<span class="n">video_by_trial</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
-<span class="n">pose_by_trial</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="n">ds_list</span> <span class="o">=</span> <span class="p">[]</span>
 
 <span class="k">for</span> <span class="n">trial</span> <span class="ow">in</span> <span class="n">trials</span><span class="p">:</span>
-    <span class="k">for</span> <span class="n">cam</span> <span class="ow">in</span> <span class="n">cameras</span><span class="p">:</span>
-        <span class="c1"># Video: e.g. 2021-02-15_07-32-44_segment1_front-view.avi</span>
-        <span class="n">video_file</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">cam</span><span class="si">}</span><span class="s2">.avi&quot;</span>
-        <span class="k">if</span> <span class="n">video_file</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
-            <span class="n">video_by_trial</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">trial</span><span class="p">,</span> <span class="p">{})[</span><span class="n">cam</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">video_file</span><span class="p">)</span>
-
-        <span class="c1"># Pose: convert .h5 → .csv first (done during feature extraction below),</span>
-        <span class="c1"># stored as *_individual_0.csv</span>
-        <span class="n">pose_csv</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">cam</span><span class="si">}</span><span class="s2">_individual_0.csv&quot;</span>
-        <span class="k">if</span> <span class="n">pose_csv</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
-            <span class="n">pose_by_trial</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">trial</span><span class="p">,</span> <span class="p">{})[</span><span class="n">cam</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">pose_csv</span><span class="p">)</span>
-
-<span class="c1"># Build session table</span>
-<span class="n">session_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="n">trials</span><span class="p">})</span>
-<span class="k">for</span> <span class="n">cam</span> <span class="ow">in</span> <span class="n">cameras</span><span class="p">:</span>
-    <span class="n">session_table</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;video_</span><span class="si">{</span><span class="n">cam</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">video_by_trial</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">cam</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">trials</span><span class="p">]</span>
-    <span class="n">session_table</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;pose_</span><span class="si">{</span><span class="n">cam</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">pose_by_trial</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">cam</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">trials</span><span class="p">]</span>
-<span class="n">session_table</span> <span class="o">=</span> <span class="n">session_table</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="p">(</span><span class="n">session_table</span> <span class="o">!=</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">()]</span>
-
-<span class="n">nwb_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;.ethograph&quot;</span> <span class="o">/</span> <span class="s2">&quot;alignment.nwb&quot;</span>
-<span class="n">align_media_per_trial</span><span class="p">(</span>
-    <span class="n">trial_table</span><span class="o">=</span><span class="n">session_table</span><span class="p">,</span>
-    <span class="n">stream_rates</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;video&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">),</span> <span class="s2">&quot;pose&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">)},</span>
-    <span class="n">output_path</span><span class="o">=</span><span class="n">nwb_path</span><span class="p">,</span>
-    <span class="n">pose_fps</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">),</span>
-<span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</div>
-</section>
-<section id="build-feature-datasets">
-<h2>Build feature datasets<a class="headerlink" href="#build-feature-datasets" title="Link to this heading">#</a></h2>
-<div class="cell docutils container">
-<div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">ds_list</span> <span class="o">=</span> <span class="p">[]</span>
-
-<span class="k">for</span> <span class="n">trial</span> <span class="ow">in</span> <span class="n">trials</span><span class="p">:</span>
-    <span class="n">files</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">data_folder</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="s2">*&quot;</span><span class="p">))</span>
     <span class="n">trial_datasets</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
 
-    <span class="k">for</span> <span class="n">file</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">file</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">data_folder</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="s2">*-tracks.h5&quot;</span><span class="p">)):</span>
         <span class="n">name</span> <span class="o">=</span> <span class="n">file</span><span class="o">.</span><span class="n">name</span>
-
-        <span class="k">if</span> <span class="n">file</span><span class="o">.</span><span class="n">suffix</span> <span class="o">!=</span> <span class="s2">&quot;.h5&quot;</span><span class="p">:</span>
-            <span class="k">continue</span>
 
         <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_hdf</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
         <span class="n">ds</span> <span class="o">=</span> <span class="n">load_poses</span><span class="o">.</span><span class="n">from_dlc_style_df</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">fps</span><span class="o">=</span><span class="n">fps</span><span class="p">)</span>
 
-        <span class="c1"># Save CSV for future use</span>
+        <span class="c1"># Save CSV so the GUI and the alignment cell below can reference the tracks.</span>
         <span class="n">csv_path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">file</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;.csv&quot;</span><span class="p">)</span>
         <span class="n">save_poses</span><span class="o">.</span><span class="n">to_dlc_file</span><span class="p">(</span><span class="n">ds</span><span class="p">,</span> <span class="n">csv_path</span><span class="p">)</span>
 
@@ -598,6 +555,46 @@
 <span class="n">dt</span> <span class="o">=</span> <span class="n">eto</span><span class="o">.</span><span class="n">from_datasets</span><span class="p">(</span><span class="n">ds_list</span><span class="p">)</span>
 <span class="n">dt</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;lockbox.nc&quot;</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saved to </span><span class="si">{</span><span class="n">data_folder</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="s1">&#39;lockbox.nc&#39;</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="build-nwb-alignment">
+<h2>Build NWB alignment<a class="headerlink" href="#build-nwb-alignment" title="Link to this heading">#</a></h2>
+<p>Discover the videos and the pose CSVs written above for each trial/camera and write the per-trial <code class="docutils literal notranslate"><span class="pre">alignment.nwb</span></code>. Trial durations are inferred from the media (no <code class="docutils literal notranslate"><span class="pre">start_time</span></code>/<code class="docutils literal notranslate"><span class="pre">stop_time</span></code> needed).</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Filenames carry a &quot;_&lt;object&gt;_&quot; infix (ball / sliding-door / stick / lever)</span>
+<span class="c1"># between the trial id and the camera, so discover media by glob, not exact name.</span>
+<span class="n">video_by_trial</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="n">pose_by_trial</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+
+<span class="k">for</span> <span class="n">trial</span> <span class="ow">in</span> <span class="n">trials</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">cam</span> <span class="ow">in</span> <span class="n">cameras</span><span class="p">:</span>
+        <span class="n">videos</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">data_folder</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="s2">_*</span><span class="si">{</span><span class="n">cam</span><span class="si">}</span><span class="s2">.avi&quot;</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">videos</span><span class="p">:</span>
+            <span class="n">video_by_trial</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">trial</span><span class="p">,</span> <span class="p">{})[</span><span class="n">cam</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">videos</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+        <span class="c1"># CSV tracks written by the feature cell above (movement appends _individual_&lt;id&gt;).</span>
+        <span class="n">poses</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">data_folder</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">trial</span><span class="si">}</span><span class="s2">_*</span><span class="si">{</span><span class="n">cam</span><span class="si">}</span><span class="s2">-tracks*.csv&quot;</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">poses</span><span class="p">:</span>
+            <span class="n">pose_by_trial</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">trial</span><span class="p">,</span> <span class="p">{})[</span><span class="n">cam</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">poses</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+<span class="n">session_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">&quot;trial&quot;</span><span class="p">:</span> <span class="n">trials</span><span class="p">})</span>
+<span class="k">for</span> <span class="n">cam</span> <span class="ow">in</span> <span class="n">cameras</span><span class="p">:</span>
+    <span class="n">session_table</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;video_</span><span class="si">{</span><span class="n">cam</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">video_by_trial</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">cam</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">trials</span><span class="p">]</span>
+    <span class="n">session_table</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;pose_</span><span class="si">{</span><span class="n">cam</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">pose_by_trial</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">cam</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">trials</span><span class="p">]</span>
+<span class="n">session_table</span> <span class="o">=</span> <span class="n">session_table</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="p">(</span><span class="n">session_table</span> <span class="o">!=</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">()]</span>
+
+<span class="n">nwb_path</span> <span class="o">=</span> <span class="n">data_folder</span> <span class="o">/</span> <span class="s2">&quot;.ethograph&quot;</span> <span class="o">/</span> <span class="s2">&quot;alignment.nwb&quot;</span>
+<span class="n">align_media_per_trial</span><span class="p">(</span>
+    <span class="n">trial_table</span><span class="o">=</span><span class="n">session_table</span><span class="p">,</span>
+    <span class="n">stream_rates</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;video&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">),</span> <span class="s2">&quot;pose&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">)},</span>
+    <span class="n">output_path</span><span class="o">=</span><span class="n">nwb_path</span><span class="p">,</span>
+    <span class="n">pose_fps</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">fps</span><span class="p">),</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saved alignment to </span><span class="si">{</span><span class="n">nwb_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -653,8 +650,8 @@
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#download-data">Download data</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#build-nwb-alignment">Build NWB alignment</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#build-feature-datasets">Build feature datasets</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#build-nwb-alignment">Build NWB alignment</a></li>
 </ul>
   </nav></div>
 
