@@ -10,7 +10,7 @@
     "\n",
     "| Data | Shown as | File formats / loaders |\n",
     "|------|----------|------------------------|\n",
-    "| **Video** | pygfx viewer (via pynaviz) | `.mp4`, `.avi`, `.mov`, `.mkv` (via [pyav](https://pyav.org/docs/stable/)) |\n",
+    "| **Video** | pygfx viewer (via [pynaviz](https://pynapple-org.github.io/pynaviz)) | `.mp4`, `.avi`, `.mov`, `.mkv` (via [pyav](https://pyav.org/docs/stable/)) |\n",
     "| **Pose/ BoundingBox** | Overlay on video | `.h5`, `.csv`, `.slp` (DLC, SLEAP, LightningPose, ... via [movement](https://movement.neuroinformatics.dev)) |\n",
     "| **Audio** | Waveform + spectrogram | `.wav`, `.mp3` (via [audioio](https://github.com/bendalab/audioio)) |\n",
     "| **Electrophysiology** | Multi-channel trace | `.dat`, `.bin`, `.raw` via [phylib](https://github.com/cortex-lab/phylib) and [supported extensions](https://akseli-ilmanen.github.io/ethograph/getting_started/loading_ephys.html#supported-formats) via [Neo](https://neo.readthedocs.io) |\n",
