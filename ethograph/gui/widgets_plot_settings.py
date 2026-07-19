@@ -920,25 +920,24 @@ class PlotSettingsWidget(QWidget):
     def _on_heatmap_colormap_changed(self, colormap_name: str):
         self.app_state.heatmap_colormap = colormap_name
         if self.plot_container:
-            heatmap = self.plot_container.heatmap_plot
-            heatmap.update_colormap(colormap_name)
-            if self.plot_container.is_heatmap():
+            for heatmap in self.plot_container.heatmap_plots:
+                heatmap.update_colormap(colormap_name)
                 heatmap._clear_buffer()
                 heatmap.update_plot_content()
 
     def _on_heatmap_percentile_changed(self, value: float):
         self.app_state.heatmap_exclusion_percentile = value
-        if self.plot_container and self.plot_container.is_heatmap():
-            heatmap = self.plot_container.heatmap_plot
-            heatmap._clear_buffer()
-            heatmap.update_plot_content()
+        if self.plot_container:
+            for heatmap in self.plot_container.heatmap_plots:
+                heatmap._clear_buffer()
+                heatmap.update_plot_content()
 
     def _on_heatmap_normalization_changed(self, display_name: str):
         self.app_state.heatmap_normalization = _NORM_DISPLAY_TO_KEY.get(display_name, "per_channel")
-        if self.plot_container and self.plot_container.is_heatmap():
-            heatmap = self.plot_container.heatmap_plot
-            heatmap._clear_buffer()
-            heatmap.update_plot_content()
+        if self.plot_container:
+            for heatmap in self.plot_container.heatmap_plots:
+                heatmap._clear_buffer()
+                heatmap.update_plot_content()
 
     # ------------------------------------------------------------------
     # Shared helpers

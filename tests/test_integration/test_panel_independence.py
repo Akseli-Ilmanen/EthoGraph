@@ -45,6 +45,28 @@ def test_heatmap_drop_uses_dropped_feature(moll2025_gui):
     assert lp._effective_feature() == feat_a
 
 
+def test_panel_drop_always_creates_new_instance(moll2025_gui):
+    """The general rule for ➕ Add panel: what already exists never matters —
+    every drop creates another instance (here: two heatmaps side by side)."""
+    _, meta = moll2025_gui
+    pc = meta.plot_container
+    feats = pc._available_features()
+    feat_a, feat_b = str(feats[0]), str(feats[1])
+
+    n0 = len(pc.heatmap_plots)
+    meta._create_panel_for_source("feature", feat_a, "Heatmap")
+    meta._create_panel_for_source("feature", feat_a, "Heatmap")  # exact duplicate
+    meta._create_panel_for_source("feature", feat_b, "Heatmap")
+    QApplication.processEvents()
+
+    assert len(pc.heatmap_plots) == n0 + 3
+    assert [hm._effective_feature() for hm in pc.heatmap_plots[n0:]] == [feat_a, feat_a, feat_b]
+    # Each instance is independently removable via the generic path (✕).
+    for hm in pc.heatmap_plots[n0:]:
+        pc.remove_panel(hm)
+    assert len(pc.heatmap_plots) == n0
+
+
 def test_lineplot_drop_uses_dropped_feature(moll2025_gui):
     _, meta = moll2025_gui
     pc = meta.plot_container

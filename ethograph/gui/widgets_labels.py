@@ -227,14 +227,14 @@ class LabelsWidget(QWidget):
         for plot in [
             *plot_container.spectrogram_plots,
             *plot_container.audio_trace_plots,
-            plot_container.heatmap_plot,
+            *plot_container.heatmap_plots,
             plot_container.neo_trace_plot,
             plot_container.ephys_trace_plot,
             *plot_container.line_plots,
         ]:
             if plot is not None:
                 plot.plot_clicked.connect(self._on_plot_clicked)
-        # Panels created later (line plots, audio panels) get the same click handling.
+        # Panels created later (any dynamic panel) get the same click handling.
         plot_container.panel_added.connect(lambda p: p.plot_clicked.connect(self._on_plot_clicked))
 
     def set_meta_widget(self, meta_widget):

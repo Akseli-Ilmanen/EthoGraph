@@ -509,7 +509,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         for name, dock in self._panel_docks.items():
             if self._get_panel_widget(name) is plot:
                 return dock
-        return self._lineplot_docks.get(plot) or self._audio_docks.get(plot)
+        return self._dyn_docks.get(plot)
 
     def set_panel_title(self, plot, title: str) -> None:
         """Update a panel dock's title (e.g. when its feature changes)."""
@@ -539,7 +539,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         event.acceptProposedAction()
 
     # ------------------------------------------------------------------
-    # Line-plot panels (all equal — no built-in/extra distinction)
+    # Generic dynamic-panel creation/removal (all types, all equal)
     # ------------------------------------------------------------------
 
     def _available_features(self) -> list[str]:
@@ -554,71 +554,93 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             return list(ds.data_vars)
         return []
 
-    def add_lineplot(self, feature: str | None = None):
-        """Create a line-plot panel. Every line plot goes through here — they
-        are all equal peers with their own ✕ (which removes the instance),
-        per-panel state, and the same sidebar controls when clicked."""
-        features = self._available_features()
-        if not features:
+    def add_panel(self, panel_type: str, *, feature: str | None = None, mic_name: str | None = None):
+        """Create a NEW panel instance of any dynamic type ("lineplot",
+        "heatmap", "audiotrace", "spectrogram").
+
+        General rule: what already exists never matters — every call creates
+        another instance (duplicates included); the user removes extras via
+        each panel's ✕. Feature panels take *feature*; audio panels take
+        *mic_name* (an ``audio_source_map`` key; ``None`` follows the global
+        Mic combo).
+        """
+        spec = _DYNAMIC_PANEL_SPECS[panel_type]
+        group = spec["group"]
+        if panel_type == "lineplot" and not self._available_features():
             return None
 
-        plot = LinePlot(self.app_state)
-        if feature in features:
-            plot.set_panel_control("features", feature)
+        plot = spec["cls"](self.app_state)
+        plot.panel_type = panel_type
+        plot.panel_group = group
 
-        self._lineplot_dock_counter += 1
-        dock = self._make_dock(feature or "lineplot", plot, lambda: self.remove_lineplot(plot))
-        dock.setObjectName(f"panel_lineplot_{self._lineplot_dock_counter}")
-        anchor = self._last_open_dock()
-        self._lineplot_docks[plot] = dock
+        if group == "feature":
+            if feature in self._available_features():
+                plot.set_panel_control("features", feature)
+            title = feature or panel_type
+        else:
+            plot.mic_name = mic_name
+            title = f"{panel_type} — {mic_name}" if mic_name else panel_type
+
+        self._dyn_counter += 1
+        dock = self._make_dock(title, plot, lambda: self.remove_panel(plot))
+        dock.setObjectName(f"panel_{panel_type}_{self._dyn_counter}")
+        self._dyn_docks[plot] = dock
+        anchor = self._anchor_dock_for_group(group)
         if anchor is None:
             self._dock_host.addDockWidget(Qt.LeftDockWidgetArea, dock)
         else:
             self._dock_host.splitDockWidget(anchor, dock, Qt.Vertical)
         dock.show()
+        self._dyn_panels.append(plot)
 
-        self.line_plots.append(plot)
         plot.vb.sigRangeChanged.connect(self._on_plot_zoom)
-        plot.vb.sigYRangeChanged.connect(lambda *_, p=plot: self.overlay_manager.rescale_for_plot(p))
-        plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "feature"))
+        if spec["overlay_rescale"]:
+            plot.vb.sigYRangeChanged.connect(lambda *_, p=plot: self.overlay_manager.rescale_for_plot(p))
+        if panel_type == "spectrogram":
+            plot.bufferUpdated.connect(self.spectrogram_buffer_updated)
+        clicked_key = "feature" if group == "feature" else "audio"
+        plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", clicked_key))
         # Register with the active-panel manager so it highlights + shows controls.
         if self.active_panels is not None:
-            self.active_panels.register(plot, "lineplot", clicked_signal=plot.plot_clicked, plot=plot)
-        if self.active_feature_plot is None:
+            self.active_panels.register(
+                plot,
+                panel_type,
+                clicked_signal=plot.plot_clicked,
+                plot=plot if group == "feature" else None,
+            )
+        if group == "feature" and self.active_feature_plot is None:
             self.active_feature_plot = plot
+
         self._update_panel_visibility()
-        if self.app_state.ready:
+
+        if group == "audio":
+            source = build_audio_source(self.app_state, plot.mic_name)
+            plot.set_source(source)
+            if self.app_state.ready and source is not None:
+                t0, t1 = self.get_current_xlim()
+                plot.update_plot(t0=t0, t1=t1)
+        elif self.app_state.ready:
             plot.update_plot()
         self.panel_added.emit(plot)
+        self.schedule_labels_redraw()
         return plot
 
-    def _last_open_dock(self) -> QDockWidget | None:
-        """The bottom anchor for a new line-plot dock (default vertical stack)."""
-        for plot in reversed(self.line_plots):
-            dock = self._lineplot_docks[plot]
-            if not dock.isHidden() and not dock.isFloating():
-                return dock
-        for name, _ in reversed(_PANEL_ORDER):
-            dock = self._panel_docks[name]
-            if not dock.isHidden() and not dock.isFloating():
-                return dock
-        for plot in reversed(self._audio_plots()):
-            dock = self._audio_docks[plot]
-            if not dock.isHidden() and not dock.isFloating():
-                return dock
-        return None
-
-    def remove_lineplot(self, plot) -> None:
-        """Remove any line-plot panel (they are all removable)."""
-        if plot not in self.line_plots:
+    def remove_panel(self, plot) -> None:
+        """Remove any dynamic panel instance (they are all removable)."""
+        if plot not in self._dyn_panels:
             return
         if self.active_panels is not None:
             self.active_panels.unregister(plot)
+        # The throttle/debounce QTimers are not parented to the widget — stop
+        # them so no callback fires into the deleted plot.
         plot._td.stop()
-        self.line_plots.remove(plot)
-        dock = self._lineplot_docks.pop(plot, None)
+        if plot.panel_group == "audio":
+            plot.set_source(None)
+        self._dyn_panels.remove(plot)
+        dock = self._dyn_docks.pop(plot, None)
         if self.active_feature_plot is plot:
-            self.active_feature_plot = self.line_plots[0] if self.line_plots else None
+            feature_panels = self._panels_of_group("feature")
+            self.active_feature_plot = feature_panels[0] if feature_panels else None
         if dock is not None:
             self._dock_host.removeDockWidget(dock)
             dock.deleteLater()
@@ -627,87 +649,80 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             plot.deleteLater()
         self._update_panel_visibility()
 
-    # ------------------------------------------------------------------
-    # Audio panels (audiotrace / spectrogram — instances, duplicates allowed)
-    # ------------------------------------------------------------------
+    def _anchor_dock_for_group(self, group: str) -> QDockWidget | None:
+        """Audio panels stay grouped at the top of the default vertical stack
+        (anchor = last open audio dock, else first position); feature panels
+        go to the bottom (below the last open dock)."""
+        if group == "audio":
+            for plot in reversed(self._audio_plots()):
+                dock = self._dyn_docks[plot]
+                if not dock.isHidden() and not dock.isFloating():
+                    return dock
+            return None
+        return self._last_open_dock()
+
+    def _last_open_dock(self) -> QDockWidget | None:
+        """The bottom anchor for a new feature dock (default vertical stack)."""
+        for docks in (
+            [self._dyn_docks[p] for p in self._panels_of_group("feature")],
+            [self._panel_docks[n] for n, _ in _PANEL_ORDER],
+            [self._dyn_docks[p] for p in self._audio_plots()],
+        ):
+            for dock in reversed(docks):
+                if not dock.isHidden() and not dock.isFloating():
+                    return dock
+        return None
+
+    # --- Backwards-compat wrappers (all delegate to the generic path) ---
+
+    def add_lineplot(self, feature: str | None = None):
+        return self.add_panel("lineplot", feature=feature)
+
+    def add_heatmap(self, feature: str | None = None):
+        return self.add_panel("heatmap", feature=feature)
+
+    def add_audio_panel(self, panel_type: str, mic_name: str | None = None):
+        return self.add_panel(panel_type, mic_name=mic_name)
+
+    def remove_lineplot(self, plot) -> None:
+        self.remove_panel(plot)
+
+    def remove_heatmap(self, plot) -> None:
+        self.remove_panel(plot)
+
+    def remove_audio_panel(self, plot) -> None:
+        self.remove_panel(plot)
 
     @property
     def audio_trace_plot(self) -> AudioTracePlot | None:
         """First audio-trace instance (backwards-compat accessor)."""
-        return self.audio_trace_plots[0] if self.audio_trace_plots else None
+        plots = self.audio_trace_plots
+        return plots[0] if plots else None
 
     @property
     def spectrogram_plot(self) -> SpectrogramPlot | None:
         """First spectrogram instance (backwards-compat accessor)."""
-        return self.spectrogram_plots[0] if self.spectrogram_plots else None
+        plots = self.spectrogram_plots
+        return plots[0] if plots else None
 
-    def add_audio_panel(self, panel_type: str, mic_name: str | None = None):
-        """Create an audio panel instance: ``"audiotrace"`` or ``"spectrogram"``.
-
-        Duplicates are allowed — every call creates a new panel; the user
-        removes extras via each panel's ✕. *mic_name* pins the panel to one
-        mic/channel (an ``audio_source_map`` key); ``None`` follows the
-        global Mic combo.
-        """
-        if panel_type == "spectrogram":
-            plot = SpectrogramPlot(self.app_state)
-            plots = self.spectrogram_plots
-            plot.bufferUpdated.connect(self.spectrogram_buffer_updated)
-        else:
-            panel_type = "audiotrace"
-            plot = AudioTracePlot(self.app_state)
-            plots = self.audio_trace_plots
-            plot.vb.sigYRangeChanged.connect(lambda *_, p=plot: self.overlay_manager.rescale_for_plot(p))
-        plot.mic_name = mic_name
-
-        self._audio_dock_counter += 1
-        title = f"{panel_type} — {mic_name}" if mic_name else panel_type
-        dock = self._make_dock(title, plot, lambda: self.remove_audio_panel(plot))
-        dock.setObjectName(f"panel_{panel_type}_{self._audio_dock_counter}")
-        self._audio_docks[plot] = dock
-
-        # Keep audio panels grouped at the top of the default vertical stack:
-        # anchor below the last open audio dock, else become the first dock.
-        anchor = None
-        for other in reversed(self._audio_plots()):
-            other_dock = self._audio_docks[other]
-            if not other_dock.isHidden() and not other_dock.isFloating():
-                anchor = other_dock
-                break
-        if anchor is None:
-            self._dock_host.addDockWidget(Qt.LeftDockWidgetArea, dock)
-        else:
-            self._dock_host.splitDockWidget(anchor, dock, Qt.Vertical)
-        dock.show()
-
-        plots.append(plot)
-        plot.vb.sigRangeChanged.connect(self._on_plot_zoom)
-        plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "audio"))
-        if self.active_panels is not None:
-            self.active_panels.register(plot, panel_type, clicked_signal=plot.plot_clicked)
-
-        self._update_panel_visibility()
-
-        source = build_audio_source(self.app_state, plot.mic_name)
-        plot.set_source(source)
-        if self.app_state.ready and source is not None:
-            t0, t1 = self.get_current_xlim()
-            plot.update_plot(t0=t0, t1=t1)
-        self.panel_added.emit(plot)
-        self.schedule_labels_redraw()
-        return plot
+    @property
+    def heatmap_plot(self) -> HeatmapPlot | None:
+        """Backwards-compat accessor: the active heatmap instance if the
+        active feature plot is a heatmap, else the first one, else None."""
+        active = self.active_feature_plot
+        if getattr(active, "panel_type", None) == "heatmap":
+            return active
+        plots = self.heatmap_plots
+        return plots[0] if plots else None
 
     def set_audio_panel_mic(self, plot, mic_name: str | None) -> None:
         """Re-pin an audio panel to another mic/channel and refresh it."""
-        if plot in self.spectrogram_plots:
-            panel_type = "spectrogram"
-        elif plot in self.audio_trace_plots:
-            panel_type = "audiotrace"
-        else:
+        if getattr(plot, "panel_group", None) != "audio":
             return
+        panel_type = plot.panel_type
         plot.mic_name = mic_name
         plot.set_source(build_audio_source(self.app_state, mic_name))
-        dock = self._audio_docks.get(plot)
+        dock = self._dyn_docks.get(plot)
         if dock is not None:
             title = f"{panel_type} — {mic_name}" if mic_name else panel_type
             dock.setWindowTitle(title)
@@ -718,63 +733,33 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         plot.update_plot(t0=t0, t1=t1)
         self.schedule_labels_redraw()
 
-    def remove_audio_panel(self, plot) -> None:
-        """Remove any audio panel instance (they are all removable)."""
-        for plots in (self.audio_trace_plots, self.spectrogram_plots):
-            if plot in plots:
-                plots.remove(plot)
-                break
-        else:
-            return
-        if self.active_panels is not None:
-            self.active_panels.unregister(plot)
-        # The throttle/debounce QTimers are not parented to the widget — stop
-        # them so no callback fires into the deleted plot.
-        plot._td.stop()
-        plot.set_source(None)
-        dock = self._audio_docks.pop(plot, None)
-        if dock is not None:
-            self._dock_host.removeDockWidget(dock)
-            dock.deleteLater()
-        else:
-            plot.setParent(None)
-            plot.deleteLater()
-        self._update_panel_visibility()
-
     # ------------------------------------------------------------------
     # Panel layout persistence (app_state.panel_layout → local_settings.yaml)
     # ------------------------------------------------------------------
 
-    def _canonicalize_lineplot_dock_names(self):
-        """Name dynamic-panel docks by list position so QMainWindow.saveState /
-        restoreState blobs match across sessions."""
-        for i, plot in enumerate(self.line_plots):
-            self._lineplot_docks[plot].setObjectName(f"panel_lineplot_{i}")
-        for i, plot in enumerate(self.audio_trace_plots):
-            self._audio_docks[plot].setObjectName(f"panel_audiotrace_{i}")
-        for i, plot in enumerate(self.spectrogram_plots):
-            self._audio_docks[plot].setObjectName(f"panel_spectrogram_{i}")
+    def _canonicalize_dock_names(self):
+        """Name dynamic-panel docks by per-type list position so
+        QMainWindow.saveState / restoreState blobs match across sessions."""
+        counters: dict[str, int] = {}
+        for plot in self._dyn_panels:
+            i = counters.get(plot.panel_type, 0)
+            counters[plot.panel_type] = i + 1
+            self._dyn_docks[plot].setObjectName(f"panel_{plot.panel_type}_{i}")
 
     def layout_state(self) -> dict:
         """Serializable panel layout: the open panels (type + full per-panel
         settings: feature, dim selections — a dim absent means "All" — and
         color) plus the dock-host state blob that encodes the free 2D
         arrangement (positions, sizes, tabs, floating)."""
-        self._canonicalize_lineplot_dock_names()
+        self._canonicalize_dock_names()
         panels = []
-        for plot in self.audio_trace_plots:
-            panels.append({"type": "audiotrace", "mic": plot.mic_name})
-        for plot in self.spectrogram_plots:
-            panels.append({"type": "spectrogram", "mic": plot.mic_name})
+        for plot in self._audio_plots():
+            panels.append({"type": plot.panel_type, "mic": plot.mic_name})
         for name, _ in _PANEL_ORDER:
-            if not self._panel_visible[name]:
-                continue
-            entry: dict = {"type": name}
-            if name == "heatmap":
-                entry.update(self.heatmap_plot.panel_settings())
-            panels.append(entry)
-        for plot in self.line_plots:
-            panels.append({"type": "lineplot", **plot.panel_settings()})
+            if self._panel_visible[name]:
+                panels.append({"type": name})
+        for plot in self._panels_of_group("feature"):
+            panels.append({"type": plot.panel_type, **plot.panel_settings()})
         return {
             "panels": panels,
             "dock_state_b64": base64.b64encode(bytes(self._dock_host.saveState())).decode("ascii"),
@@ -788,13 +773,12 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         types = {e.get("type") for e in entries}
 
-        for plot in self._audio_plots():
-            self.remove_audio_panel(plot)
+        for plot in list(self._dyn_panels):
+            self.remove_panel(plot)
         for e in entries:
             if e.get("type") in ("audiotrace", "spectrogram"):
-                self.add_audio_panel(e["type"], mic_name=e.get("mic"))
+                self.add_panel(e["type"], mic_name=e.get("mic"))
         self.set_neo_visible("neo" in types)
-        self.set_heatmap_visible("heatmap" in types)
         if "raster" in types:
             self.set_neural_panel_mode("raster")
         elif "ephys" in types:
@@ -802,18 +786,14 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         else:
             self.set_ephys_visible(False)
 
-        for plot in list(self.line_plots):
-            self.remove_lineplot(plot)
         for e in entries:
-            if e.get("type") == "lineplot":
-                plot = self.add_lineplot(feature=e.get("feature"))
+            if e.get("type") in ("lineplot", "heatmap"):
+                plot = self.add_panel(e["type"], feature=e.get("feature"))
                 if plot is not None:
                     plot.apply_panel_settings(e)
                     if self.app_state.ready:
                         plot.update_plot()
-            elif e.get("type") == "heatmap":
-                self.heatmap_plot.apply_panel_settings(e)
-        self._canonicalize_lineplot_dock_names()
+        self._canonicalize_dock_names()
 
         # Showing an audio panel requires re-wiring its source.
         if "audiotrace" in types or "spectrogram" in types:
@@ -827,10 +807,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             QTimer.singleShot(0, lambda: self._dock_host.restoreState(data))
 
     def update_feature_plots(self, **kwargs) -> None:
-        """Re-render every feature panel: all line plots + heatmap if shown."""
-        if self._panel_visible["heatmap"]:
-            self.heatmap_plot.update_plot(**kwargs)
-        for plot in self.line_plots:
+        """Re-render every feature panel: all line plots and heatmaps."""
+        for plot in self._panels_of_group("feature"):
             plot.update_plot(**kwargs)
 
     def _get_all_plots(self) -> list:
@@ -872,11 +850,11 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         return result
 
     def _visible_panel_widgets(self) -> list:
-        """All open panels in visual order: audio + fixed panels + line plots."""
+        """All open panels in visual order: audio + fixed panels + feature panels."""
         return (
             self._audio_plots()
             + [self._get_panel_widget(n) for n in self._visible_panel_names()]
-            + list(self.line_plots)
+            + self._panels_of_group("feature")
         )
 
     def _update_panel_visibility(self):
@@ -930,9 +908,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             widget.plotItem.setXLink(master.plotItem)
 
         # Keep hidden singletons linked too so they are in sync when shown.
-        for plot in (self.heatmap_plot, self.neo_trace_plot):
-            if plot is not master:
-                plot.plotItem.setXLink(master.plotItem)
+        if self.neo_trace_plot is not master:
+            self.neo_trace_plot.plotItem.setXLink(master.plotItem)
 
     def _apply_panel_sizes(self):
         """Default vertical sizing from `_PANEL_RATIOS` via resizeDocks.
@@ -952,19 +929,18 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         visible_names = self._visible_panel_names()
 
         # The "feature" ratio is shared equally by the feature group:
-        # heatmap (if shown) + every line plot.
-        n_feature = len(self.line_plots) + (1 if "heatmap" in visible_names else 0)
+        # every line plot and heatmap instance.
+        feature_panels = self._panels_of_group("feature")
+        n_feature = len(feature_panels)
         feature_share = ratios.get("feature", 0.3) * total if n_feature else 0.0
 
         # Every audio instance gets its panel type's ratio share.
         audio_raw = [
-            (self._audio_docks[plot], ratios.get("audiotrace", 0.2) * total) for plot in self.audio_trace_plots
-        ] + [(self._audio_docks[plot], ratios.get("spectrogram", 0.2) * total) for plot in self.spectrogram_plots]
+            (self._dyn_docks[plot], ratios.get(plot.panel_type, 0.2) * total) for plot in self._audio_plots()
+        ]
 
         raw = {}
         for name in visible_names:
-            if name == "heatmap":
-                continue
             raw[name] = ratios.get(name, 0.2) * total
 
         # When neo and phy panels coexist, enforce a 1:5 size ratio between them.
@@ -988,9 +964,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             sizes.append(max(1, int(size * scale)))
         for name in visible_names:
             docks.append(self._panel_docks[name])
-            sizes.append(member_size if name == "heatmap" else max(1, int(raw[name] * scale)))
-        for plot in self.line_plots:
-            docks.append(self._lineplot_docks[plot])
+            sizes.append(max(1, int(raw[name] * scale)))
+        for plot in feature_panels:
+            docks.append(self._dyn_docks[plot])
             sizes.append(member_size)
         if docks:
             self._dock_host.resizeDocks(docks, sizes, Qt.Vertical)
@@ -1005,44 +981,40 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._panel_visible[name] = visible
         self._update_panel_visibility()
 
-    def set_audiotrace_visible(self, visible: bool):
-        """Backwards-compat shim: True ensures at least one audio-trace
-        instance exists; False removes every instance."""
-        if visible:
-            if not self.audio_trace_plots:
-                self.add_audio_panel("audiotrace")
+    def _set_type_present(self, panel_type: str, present: bool) -> None:
+        """Backwards-compat shim for dynamic panel types: True ensures at
+        least one instance exists; False removes every instance."""
+        if present:
+            if not self.panels_of_type(panel_type):
+                self.add_panel(panel_type)
         else:
-            for plot in list(self.audio_trace_plots):
-                self.remove_audio_panel(plot)
+            for plot in self.panels_of_type(panel_type):
+                self.remove_panel(plot)
+
+    def set_audiotrace_visible(self, visible: bool):
+        self._set_type_present("audiotrace", visible)
 
     def set_spectrogram_visible(self, visible: bool):
-        """Backwards-compat shim: True ensures at least one spectrogram
-        instance exists; False removes every instance."""
-        if visible:
-            if not self.spectrogram_plots:
-                self.add_audio_panel("spectrogram")
-        else:
-            for plot in list(self.spectrogram_plots):
-                self.remove_audio_panel(plot)
+        self._set_type_present("spectrogram", visible)
 
     def set_heatmap_visible(self, visible: bool):
-        self._set_panel_visible("heatmap", visible)
+        self._set_type_present("heatmap", visible)
 
     def set_feature_view(self, mode: str):
-        """Switch how the selected feature is shown: "lineplot" or "heatmap".
-
-        The heatmap is a singleton panel like any other; line plots are
-        instances. Heatmap mode shows the heatmap panel; lineplot mode hides
-        it (creating a line plot if none exists).
-        """
-        if mode not in ("lineplot", "heatmap") or mode == self._feature_type:
+        """Make *mode* ("lineplot" or "heatmap") the current feature view:
+        an instance of that type becomes the active feature plot, created if
+        none exists. Other panels are untouched — instances are only ever
+        removed via their ✕."""
+        if mode not in ("lineplot", "heatmap"):
             return
-        if mode == "heatmap":
-            self.set_heatmap_visible(True)
+        if getattr(self.active_feature_plot, "panel_type", None) == mode:
+            plot = self.active_feature_plot
         else:
-            self.set_heatmap_visible(False)
-            if not self.line_plots:
-                self.add_lineplot()
+            plots = self.panels_of_type(mode)
+            plot = plots[0] if plots else self.add_panel(mode)
+        if plot is None:
+            return
+        self.active_feature_plot = plot
         self.plot_changed.emit(mode)
         self.schedule_labels_redraw()
 
@@ -1122,16 +1094,15 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def get_current_plot(self):
         """The feature plot the user is working with: the active (last
-        clicked) line plot or heatmap, else the first line plot, else the
-        heatmap (which always exists as a widget)."""
+        clicked) feature panel, else the first open feature panel, else a
+        hidden stand-in line plot (so callers never get None)."""
         active = self.active_feature_plot
-        if active is self.heatmap_plot and self._panel_visible["heatmap"]:
+        if active is not None and active in self._dyn_panels:
             return active
-        if active in self.line_plots:
-            return active
-        if self.line_plots:
-            return self.line_plots[0]
-        return self.heatmap_plot
+        feature_panels = self._panels_of_group("feature")
+        if feature_panels:
+            return feature_panels[0]
+        return self._fallback_plot
 
     @property
     def _feature_plot(self):
@@ -1139,7 +1110,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     @property
     def _feature_type(self) -> str:
-        return "heatmap" if self._panel_visible["heatmap"] else "lineplot"
+        return "heatmap" if getattr(self.get_current_plot(), "panel_type", None) == "heatmap" else "lineplot"
 
     @property
     def current_plot(self):
@@ -1173,13 +1144,13 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def _visible_plots(self):
         for plot in self._audio_plots():
-            if not self._audio_docks[plot].isHidden():
+            if not self._dyn_docks[plot].isHidden():
                 yield plot
         for name, _ in _PANEL_ORDER:
             if not self._panel_docks[name].isHidden():
                 yield self._get_panel_widget(name)
-        for plot in self.line_plots:
-            if not self._lineplot_docks[plot].isHidden():
+        for plot in self._panels_of_group("feature"):
+            if not self._dyn_docks[plot].isHidden():
                 yield plot
 
     def update_time_marker_by_time(self, time_s: float):

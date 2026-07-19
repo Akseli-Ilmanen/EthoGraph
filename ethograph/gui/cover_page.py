@@ -358,7 +358,6 @@ class CoverPage(QDialog):
             ("⚡ Ephys", ephys),
             ("🧠 Neurons", "Kilosort folder  ·  pynapple <code>.npz</code> / <code>.nwb</code>"),
             ("📊 Features", _fmt(NPY_EXTENSIONS) + "  ·  session <code>.nc</code> / <code>.nwb</code> / <code>.npz</code>"),
-            ("🏷 Labels", _fmt(LABEL_EXTENSIONS)),
         ]
         items = "".join(f"<li><b>{name}</b>&nbsp;&nbsp;{exts}</li>" for name, exts in rows)
         cells = f"<ul style='margin:0; -qt-list-indent:1;'>{items}</ul>"

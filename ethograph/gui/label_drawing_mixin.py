@@ -48,15 +48,14 @@ class LabelDrawingMixin:
       - audio_cp_items: list
       - osc_event_items: list
       - dataset_cp_items: list
-      - spectrogram_plots, audio_trace_plots (instance lists),
-        heatmap_plot, ephys_trace_plot, neo_trace_plot
+      - spectrogram_plots, audio_trace_plots, heatmap_plots (instance lists),
+        ephys_trace_plot, neo_trace_plot
       - current_plot (property or attribute)
     """
 
     # Fixed-panel attribute -> plot-type key in label_overlay_modes.
-    # Audio panels are instance lists; any other plot is a line-plot instance.
+    # Dynamic panels are instance lists; any other plot is a line-plot instance.
     _PLOT_TYPE_ATTRS = {
-        "heatmap_plot": "heatmap",
         "ephys_trace_plot": "ephys",
         "neo_trace_plot": "neo",
     }
@@ -71,8 +70,8 @@ class LabelDrawingMixin:
         """Return all plot widgets that exist on this container."""
         candidates = list(getattr(self, "spectrogram_plots", ()) or ())
         candidates += list(getattr(self, "audio_trace_plots", ()) or ())
+        candidates += list(getattr(self, "heatmap_plots", ()) or ())
         for attr in (
-            "heatmap_plot",
             "neo_trace_plot",
             "ephys_trace_plot",
         ):
@@ -86,6 +85,8 @@ class LabelDrawingMixin:
             return "spectrogram"
         if plot in (getattr(self, "audio_trace_plots", ()) or ()):
             return "audio"
+        if plot in (getattr(self, "heatmap_plots", ()) or ()):
+            return "heatmap"
         for attr, type_key in self._PLOT_TYPE_ATTRS.items():
             if plot is getattr(self, attr, None):
                 return type_key
@@ -172,7 +173,7 @@ class LabelDrawingMixin:
         plot.label_items.append(line)
 
     def _is_inverted_y_plot(self, plot) -> bool:
-        return plot is getattr(self, "heatmap_plot", None)
+        return plot in (getattr(self, "heatmap_plots", ()) or ())
 
     def _draw_single_label(self, plot, start_time, end_time, labels, position="main", mode=LABEL_OVERLAY_MODE_FULL):
         """Draw a single label rectangle.

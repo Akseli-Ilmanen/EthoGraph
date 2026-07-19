@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import Qt
-from qtpy.QtGui import QMouseEvent
+from qtpy.QtCore import QRectF, QSize, Qt
+from qtpy.QtGui import QColor, QIcon, QMouseEvent, QPainter, QPainterPath, QPen, QPixmap
 from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -22,6 +22,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _TIMEBAR_RESOLUTION = 1000
+
+
+def _playback_icon(kind: str, color: str = "#e6e6e6") -> QIcon:
+    """Render a crisp antialiased play/pause icon (font glyphs look bad on Windows)."""
+    s = 64  # oversampled; QIcon scales down smoothly
+    pm = QPixmap(s, s)
+    pm.fill(Qt.transparent)
+    painter = QPainter(pm)
+    painter.setRenderHint(QPainter.Antialiasing)
+    c = QColor(color)
+    # Stroke with a round-join pen to give the shapes softly rounded corners.
+    painter.setPen(QPen(c, s * 0.09, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+    painter.setBrush(c)
+    if kind == "play":
+        path = QPainterPath()
+        path.moveTo(s * 0.34, s * 0.24)
+        path.lineTo(s * 0.78, s * 0.50)
+        path.lineTo(s * 0.34, s * 0.76)
+        path.closeSubpath()
+        painter.drawPath(path)
+    else:
+        bar_w = s * 0.13
+        painter.drawRoundedRect(QRectF(s * 0.30, s * 0.26, bar_w, s * 0.48), 2, 2)
+        painter.drawRoundedRect(QRectF(s * 0.57, s * 0.26, bar_w, s * 0.48), 2, 2)
+    painter.end()
+    return QIcon(pm)
 
 
 class _InteractiveSlider(QSlider):
@@ -62,7 +88,11 @@ class BottomPlaybackBar(QWidget):
         layout.addWidget(self.add_panel_btn)
 
         # Play/pause button
-        self.play_pause_btn = QPushButton("▶")
+        self._play_icon = _playback_icon("play")
+        self._pause_icon = _playback_icon("pause")
+        self.play_pause_btn = QPushButton()
+        self.play_pause_btn.setIcon(self._play_icon)
+        self.play_pause_btn.setIconSize(QSize(16, 16))
         self.play_pause_btn.setFixedWidth(36)
         self.play_pause_btn.setToolTip("Play / Pause  (Space)")
         self.play_pause_btn.clicked.connect(self._on_play_pause_clicked)
@@ -144,7 +174,7 @@ class BottomPlaybackBar(QWidget):
         """Update button icon based on playback state."""
         video = getattr(self.app_state, "video", None)
         is_playing = video.is_playing if video else False
-        self.play_pause_btn.setText("⏸" if is_playing else "▶")
+        self.play_pause_btn.setIcon(self._pause_icon if is_playing else self._play_icon)
 
     def _on_slider_value_changed(self):
         """Handle slider value changes — only seek if user is dragging."""

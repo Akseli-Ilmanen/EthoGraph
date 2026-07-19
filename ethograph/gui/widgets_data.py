@@ -1188,7 +1188,7 @@ class DataWidget(QWidget):
         self.show_confidence_checkbox.stateChanged.connect(self._update_confidence_overlay)
         row2.addWidget(self.show_confidence_checkbox)
 
-        self.show_envelope_checkbox = QCheckBox("Envelope")
+        self.show_envelope_checkbox = QCheckBox("Show Envelope")
         self.show_envelope_checkbox.setChecked(False)
         self.show_envelope_checkbox.stateChanged.connect(self._on_envelope_overlay_changed)
         self.show_envelope_checkbox.hide()
@@ -1684,8 +1684,8 @@ class DataWidget(QWidget):
 
         if mode.startswith("Heatmap"):
             self.plot_container.switch_to_heatmap()
-            self.plot_container.heatmap_plot._clear_buffer()
-            self.plot_container.heatmap_plot._channel_range = None
+            for heatmap in self.plot_container.heatmap_plots:
+                heatmap._clear_buffer()
         else:
             self.plot_container.switch_to_lineplot()
 
@@ -1718,6 +1718,9 @@ class DataWidget(QWidget):
         onset_s, offset_s, _ = get_interval_bounds(df, idx)
 
         heatmap = self.plot_container.heatmap_plot
+        if heatmap is None:
+            notify("Open a heatmap panel first", "warning")
+            return
         data = heatmap.get_normalized_data_for_range(onset_s, offset_s)
         if data is None or data.size == 0:
             notify("No heatmap data available for the selected interval", "warning")

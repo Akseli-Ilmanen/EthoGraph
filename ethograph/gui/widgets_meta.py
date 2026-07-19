@@ -307,32 +307,24 @@ class MetaWidget(GridSectionContainer):
             return
         pc = self.plot_container
         active = pc.active_feature_plot
-        heatmap_active = active is pc.heatmap_plot and pc.is_heatmap()
+        target = "heatmap" if text == "Heatmap" else "lineplot"
+        if getattr(active, "panel_type", None) == target:
+            return
 
-        if text == "Heatmap":
-            if heatmap_active:
-                return
-            # Convert the active line plot: its settings move to the heatmap
-            # and the line-plot instance is removed.
-            if active in pc.line_plots:
-                pc.heatmap_plot.apply_panel_settings(active.panel_settings())
-                pc.remove_lineplot(active)
-            pc.set_feature_view("heatmap")
-            pc.heatmap_plot.update_plot()
-            self._activate_panel(pc.heatmap_plot, "heatmap")
-        else:
-            if active in pc.line_plots:
-                return
-            # Convert the heatmap: a new line plot takes over its settings.
-            settings = pc.heatmap_plot.panel_settings() if heatmap_active else None
-            plot = pc.add_lineplot(feature=(settings or {}).get("feature"))
-            pc.set_feature_view("lineplot")
-            if plot is None:
-                return
-            if settings is not None:
-                plot.apply_panel_settings(settings)
-            plot.update_plot()
-            self._activate_panel(plot, "lineplot")
+        # Convert the active feature panel in place: a new instance of the
+        # target type takes over its settings, the old instance is removed.
+        convertible = getattr(active, "panel_group", None) == "feature"
+        settings = active.panel_settings() if convertible else None
+        plot = pc.add_panel(target, feature=(settings or {}).get("feature"))
+        if plot is None:
+            return
+        if settings is not None:
+            plot.apply_panel_settings(settings)
+        if convertible:
+            pc.remove_panel(active)
+        pc.active_feature_plot = plot
+        plot.update_plot()
+        self._activate_panel(plot, target)
 
     def _build_nav_tab(self) -> QWidget:
         """Navigation section = trials table (on top) + navigation controls."""
@@ -353,11 +345,11 @@ class MetaWidget(GridSectionContainer):
         pc = self.plot_container
         self.active_panels = ActivePanelManager(self)
         self.active_panels.active_changed.connect(self._on_active_panel)
-        pc.active_panels = self.active_panels  # line plots register in add_lineplot
+        pc.active_panels = self.active_panels  # dynamic panels register in add_panel
 
-        # Audio panels register per-instance in add_audio_panel (like line plots).
+        # Only the fixed singletons register here; every dynamic panel
+        # (lineplot/heatmap/audiotrace/spectrogram) registers per instance.
         fixed = [
-            (pc.heatmap_plot, PanelKind.HEATMAP, pc.heatmap_plot),
             (pc.neo_trace_plot, PanelKind.NEO, None),
             (pc.ephys_trace_plot, PanelKind.EPHYS, None),
             (pc.raster_plot, PanelKind.RASTER, None),
@@ -458,12 +450,10 @@ class MetaWidget(GridSectionContainer):
                 if plot is not None:
                     self._activate_panel(plot, "lineplot")
             elif plot_type == "Heatmap":
-                pc.heatmap_plot.set_panel_control("features", name)
-                pc.set_feature_view("heatmap")
-                pc.heatmap_plot.update_plot()
-                pc.schedule_labels_redraw()
-                self._activate_panel(pc.heatmap_plot, "heatmap")
-                notify(f"Heatmap: {name}")
+                plot = pc.add_panel("heatmap", feature=name)
+                if plot is not None:
+                    self._activate_panel(plot, "heatmap")
+                    notify(f"Heatmap: {name}")
             elif plot_type.startswith("Space"):
                 # Every drop creates a new instance — space plots never
                 # replace each other.

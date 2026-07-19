@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from qtpy.QtCore import Qt
+from qtpy.QtCore import QSize, Qt
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -32,6 +32,7 @@ from ethograph.utils.sequences import get_label_instances, match_sequences
 
 from .app_constants import AUDIO_SPEED_MAX, AUDIO_SPEED_MIN, AUDIO_SPEED_STEP
 from .dialog_screen_recorder import RecordButton
+from .widgets_bottom_bar import _playback_icon
 
 NAVIGATE_MODES = ["Trial", "Label", "Sequence"]
 SLIDER_SCOPES = ["Trial", "Trial Start", "Session"]
@@ -298,7 +299,11 @@ class NavigationWidget(QWidget):
         playback_layout.addWidget(self.time_jump_spin, 2, 1)
         playback_layout.addWidget(self.center_playback_checkbox, 2, 2)
 
-        self.play_pause_btn = QPushButton("\u25b6")
+        self._play_icon = _playback_icon("play")
+        self._pause_icon = _playback_icon("pause")
+        self.play_pause_btn = QPushButton()
+        self.play_pause_btn.setIcon(self._play_icon)
+        self.play_pause_btn.setIconSize(QSize(16, 16))
         self.play_pause_btn.setToolTip("Play / Pause  (Space)")
         self.play_pause_btn.setFixedWidth(36)
         self.play_pause_btn.clicked.connect(self._on_play_pause_clicked)
@@ -876,7 +881,7 @@ class NavigationWidget(QWidget):
     def _sync_play_icon(self):
         video = getattr(self.app_state, "video", None)
         playing = video.is_playing if video else False
-        self.play_pause_btn.setText("\u23f8" if playing else "\u25b6")
+        self.play_pause_btn.setIcon(self._pause_icon if playing else self._play_icon)
 
     def connect_video_sync(self, sync):
         """Connect playback_stopped signal to reset the play button icon."""

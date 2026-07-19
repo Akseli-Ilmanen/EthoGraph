@@ -74,18 +74,17 @@ def test_every_panel_has_close_and_move_buttons(gui):
     shell, meta = gui
     pc = meta.plot_container
     # Every fixed panel is a dock with a slim title bar holding move + ✕
-    # buttons (line plots and audio panels get theirs per-instance in
-    # add_lineplot / add_audio_panel).
-    assert len(pc._panel_docks) == 4
+    # buttons (dynamic panels get theirs per-instance in add_panel).
+    assert len(pc._panel_docks) == 3
     meta.app_state.has_audio = True
     plot = pc.add_audio_panel("audiotrace")
-    dock = pc._audio_docks[plot]
+    dock = pc._dyn_docks[plot]
     assert not dock.isHidden()
     assert dock.titleBarWidget().findChild(QPushButton, "panel_move_btn") is not None
     close_btn = dock.titleBarWidget().findChild(QPushButton, "panel_close_btn")
     close_btn.click()
     assert plot not in pc.audio_trace_plots
-    assert plot not in pc._audio_docks
+    assert plot not in pc._dyn_docks
 
 
 def test_top_bar_has_expected_menus(gui):
@@ -462,10 +461,16 @@ def test_all_panel_types_registered(birdpark_gui):
     shell, meta = birdpark_gui
     mgr = meta.active_panels
     pc = meta.plot_container
-    # Video, audio trace, spectrogram, line, heatmap all register.
-    for w in (pc.audio_trace_plot, pc.spectrogram_plot, pc.line_plots[0], pc.heatmap_plot):
+    # Video, audio trace, spectrogram, line plots all register.
+    for w in (pc.audio_trace_plot, pc.spectrogram_plot, pc.line_plots[0]):
         assert mgr.registration_for(w) is not None
     assert mgr.registration_for(shell.video_area.primary) is not None
+    # Heatmaps are dynamic instances like every other panel: they register
+    # on creation and unregister on removal.
+    hm = pc.add_panel("heatmap")
+    assert mgr.registration_for(hm) is not None
+    pc.remove_panel(hm)
+    assert mgr.registration_for(hm) is None
 
 
 def test_panel_control_only_affects_active_plot(birdpark_gui):
@@ -571,6 +576,7 @@ def test_cover_page_builds_single_trial_alignment(gui, birdpark_data_dir):
         pytest.skip("birdpark has no video files to build an alignment from")
 
     page = CoverPage(shell, meta.io_widget)
+    page._drop_tmp_dir = page._prepare_drop_dir()
     cam_map = [(str(videos[0]), None)]
     audio_files = [str(audios[0])] if audios else []
     nwb_path = page._build_tmp_alignment(cam_map, audio_files)
@@ -597,7 +603,7 @@ def test_cover_page_session_plus_media_builds_alignment(gui, birdpark_data_dir):
 
     page = CoverPage(shell, meta.io_widget)
     buckets = classify_files([str(session), str(videos[0])])
-    page._populate_io_from_buckets(buckets)
+    page._populate_io_from_buckets(buckets, {"data_sr": None, "source_software": None})
 
     app_state = meta.app_state
     assert app_state.nc_file_path == str(session)
@@ -620,6 +626,7 @@ def test_cover_page_audio_only_alignment(gui, birdpark_data_dir):
         pytest.skip("birdpark has no audio-only files")
 
     page = CoverPage(shell, meta.io_widget)
+    page._drop_tmp_dir = page._prepare_drop_dir()
     nwb_path = page._build_tmp_alignment([], [str(audios[0])])
 
     align = NWBAlignment(nwb_path)
