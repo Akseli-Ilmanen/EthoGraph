@@ -114,6 +114,11 @@ class BottomPlaybackBar(QWidget):
         self.fps_display = QLineEdit()
         self.fps_display.setFixedWidth(50)
         self.fps_display.setText(str(app_state.get_with_default("fps_playback")))
+        self.fps_display.setToolTip(
+            "Playback FPS for video.\n"
+            "Audio playback speed is coupled to this setting.\n"
+            "Set to recording FPS for normal audio playback."
+        )
         self.fps_display.editingFinished.connect(self._on_fps_changed)
         layout.addWidget(self.fps_display)
 
@@ -155,7 +160,8 @@ class BottomPlaybackBar(QWidget):
 
         # Wire app_state signals. trials_sel is a dynamic *_sel attribute with
         # no auto-generated signal — trial changes are announced via trial_changed.
-        app_state.current_frame_changed.connect(self._update_slider_from_frame)
+        # The slider position itself follows time_marker_updated (see
+        # set_data_widget), not current_frame — one time-based mapping both ways.
         app_state.fps_playback_changed.connect(self._update_fps_display)
         app_state.trial_changed.connect(self._update_trial_label)
         if hasattr(app_state, "ready_changed"):
@@ -173,31 +179,81 @@ class BottomPlaybackBar(QWidget):
     def _sync_play_icon(self):
         """Update button icon based on playback state."""
         video = getattr(self.app_state, "video", None)
-        is_playing = video.is_playing if video else False
+        if video is not None:
+            is_playing = video.is_playing
+        else:
+            audio_player = self._audio_player()
+            is_playing = audio_player.playing if audio_player else False
         self.play_pause_btn.setIcon(self._pause_icon if is_playing else self._play_icon)
 
+    def _audio_player(self):
+        """No-video playback controller (marker-driven), if available."""
+        data_widget = getattr(self, "_data_widget", None)
+        plot_container = getattr(data_widget, "plot_container", None)
+        return getattr(plot_container, "audio_player", None)
+
     def _on_slider_value_changed(self):
-        """Handle slider value changes — only seek if user is dragging."""
+        """Handle slider value changes — only seek if user is dragging.
+
+        The slider is time-based: its position maps onto ``padded_bounds``
+        and seeks the time marker directly, video or not. A loaded video is
+        seeked to the matching frame as a side effect.
+        """
         if not self.time_slider.is_dragging:
             return
-        if self.app_state.video is None or self.app_state.num_frames <= 0:
+        tr = self.app_state.padded_bounds
+        if tr is None or tr.duration <= 0:
             return
-        slider_pos = self.time_slider.value()
-        if self.app_state.num_frames <= 1:
-            frame = 0
-        else:
-            frame = int(slider_pos / _TIMEBAR_RESOLUTION * (self.app_state.num_frames - 1))
-        self.app_state.video.seek_to_frame(frame)
+        time_s = tr.start_s + self.time_slider.value() / _TIMEBAR_RESOLUTION * tr.duration
+        fixed = self.app_state.get_with_default("xlim_mode") == "fixed"
+        video = self.app_state.video
+        if fixed:
+            # Slide BEFORE seeking: the frame_changed handler then finds the
+            # marker inside the new window and skips its center-scroll,
+            # avoiding a second conflicting setXRange per slider tick.
+            self._slide_fixed_window(time_s, move_marker=video is None)
+        if video is not None and self.app_state.num_frames > 0:
+            video.seek_to_frame(video.time_to_frame(time_s))
+        elif not fixed:
+            self._seek_marker(time_s)
 
-    def _update_slider_from_frame(self):
-        """Update slider position based on current frame."""
-        if self.app_state.num_frames <= 0:
+    def _seek_marker(self, time_s: float):
+        """Move the time marker (no video): update it and keep it in view."""
+        data_widget = getattr(self, "_data_widget", None)
+        plot_container = getattr(data_widget, "plot_container", None)
+        if plot_container is not None:
+            plot_container._on_slider_time(time_s)
+
+    def _slide_fixed_window(self, t0: float, move_marker: bool = False):
+        """Fixed x-limits mode: the slider moves the window's start (t0)."""
+        data_widget = getattr(self, "_data_widget", None)
+        plot_container = getattr(data_widget, "plot_container", None)
+        if plot_container is None:
             return
-        frame = self.app_state.current_frame
-        if self.app_state.num_frames <= 1:
-            slider_pos = 0
-        else:
-            slider_pos = int(frame / (self.app_state.num_frames - 1) * _TIMEBAR_RESOLUTION)
+        span = self.app_state.view_span
+        tr = self.app_state.padded_bounds
+        if tr is not None:
+            t0 = max(tr.start_s, min(t0, tr.end_s - span))
+        master = getattr(plot_container, "_xlink_master", None) or getattr(
+            plot_container, "_feature_plot", None
+        )
+        if master is not None:
+            master.vb.setXRange(t0, t0 + span, padding=0)
+        if move_marker:
+            plot_container.update_time_marker_by_time(t0)
+
+    def _update_slider_from_time(self, time_s: float):
+        """Follow the time marker: every marker move (playback, seek, click)
+        emits ``time_marker_updated``; map that time onto the slider."""
+        if self.time_slider.is_dragging:
+            return
+        tr = self.app_state.padded_bounds
+        if tr is None or tr.duration <= 0:
+            return
+        frac = (time_s - tr.start_s) / tr.duration
+        self._set_slider_silently(int(max(0.0, min(1.0, frac)) * _TIMEBAR_RESOLUTION))
+
+    def _set_slider_silently(self, slider_pos: int):
         self.time_slider.blockSignals(True)
         self.time_slider.setValue(slider_pos)
         self.time_slider.blockSignals(False)
@@ -273,6 +329,10 @@ class BottomPlaybackBar(QWidget):
     def set_data_widget(self, data_widget):
         """Reference to DataWidget for toggling playback."""
         self._data_widget = data_widget
+        plot_container = getattr(data_widget, "plot_container", None)
+        if plot_container is not None:
+            plot_container.time_marker_updated.connect(self._update_slider_from_time)
+            plot_container.audio_player.on_state_changed = self._sync_play_icon
 
     def connect_video_sync(self, sync):
         """Connect to video sync to monitor playback state."""

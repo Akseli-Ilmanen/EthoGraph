@@ -61,7 +61,7 @@ class TestLockbox:
 
     def test_trial_navigation(self, lockbox_gui):
         _, meta = lockbox_gui
-        meta.navigation_widget.scope_combo.setCurrentText("Trial")
+        meta.navigation_widget.scope_combo.setCurrentText("Trial start → Trial end")
         QApplication.processEvents()
         trials = meta.app_state.trials
         meta.navigation_widget.trials_combo.setCurrentText(str(trials[0]))

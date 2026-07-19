@@ -44,6 +44,13 @@ _CONTEXT_MAP: dict[str, list[str]] = {
     # Space: its own X/Y/Z + 3D + space controls (now inside spaceplot_panel);
     # the lineplot "coords" group is intentionally excluded.
     "space": ["spaceplot", "shared"],
+    # Phy-like ephys trace: the full Kilosort trace controls (channel/gain/
+    # pyramid/probe select + cluster table), borrowed from EphysWidget. No
+    # shared axes group — autoscale/lock-axes don't apply to the trace view.
+    "ephys": ["phy"],
+    # Neo trace (generic per-modality stream): channels are chosen at drop time
+    # via the source popup; the sidebar exposes per-panel gain + channel spacing.
+    "neo": ["neocontrols"],
 }
 
 # plot type -> friendly caption shown (in the active-panel green) at the bottom
@@ -57,6 +64,8 @@ _CONTEXT_TITLE: dict[str, str] = {
     "lineplot": "Lineplot settings",
     "heatmap": "Heatmap settings",
     "space": "Space plot settings",
+    "ephys": "Phy viewer settings",
+    "neo": "Neo viewer settings",
 }
 
 #: The active-panel green edge colour (see ``ActivePanelManager._EDGE_ON``).

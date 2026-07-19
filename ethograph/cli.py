@@ -59,7 +59,13 @@ def launch():
     _fix_wayland_opengl()
     _ensure_qt_plugins()
 
+    from qtpy.QtCore import QLocale
     from qtpy.QtWidgets import QApplication
+
+    # Before any widget exists: children inherit the locale of the widget tree
+    # they are inserted into, so the OS locale (possibly comma-decimal) must
+    # never leak into the shell. Dot decimals everywhere.
+    QLocale.setDefault(QLocale.c())
 
     from ethograph.gui import theme
     from ethograph.gui.main_window import EthographMainWindow

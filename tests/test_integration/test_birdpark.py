@@ -184,7 +184,7 @@ class TestTrialNavigation:
         _, meta = birdpark_gui
         if len(meta.app_state.trials) < 2:
             pytest.skip("Need at least 2 trials")
-        meta.navigation_widget.scope_combo.setCurrentText("Trial")
+        meta.navigation_widget.scope_combo.setCurrentText("Trial start → Trial end")
         QApplication.processEvents()
         trials = meta.app_state.trials
         meta.navigation_widget.trials_combo.setCurrentText(str(trials[0]))
@@ -196,7 +196,7 @@ class TestTrialNavigation:
 
     def test_prev_trial_at_start_stays(self, birdpark_gui):
         _, meta = birdpark_gui
-        meta.navigation_widget.scope_combo.setCurrentText("Trial")
+        meta.navigation_widget.scope_combo.setCurrentText("Trial start → Trial end")
         QApplication.processEvents()
         first_trial = meta.app_state.trials[0]
         meta.navigation_widget.trials_combo.setCurrentText(str(first_trial))
@@ -618,26 +618,28 @@ class TestHiddenPanelsNoData:
         assert len(pc.spectrogram_plots) == n_spec
         assert len(pc.audio_trace_plots) == n_audio
 
-    def test_neo_hidden_clears_loader(self, birdpark_gui):
+    def test_neo_panel_removed_clears_source(self, birdpark_gui):
         _, meta = birdpark_gui
         pc = meta.plot_container
+        plot = pc.add_panel("neo", stream_name="fake-stream", channels=None)
+        assert plot in pc.neo_trace_plots
         fake_loader = MagicMock()
         fake_loader.rate = 30000.0
         fake_loader.n_channels = 4
         fake_loader.__len__ = lambda self: 1000
-        pc.neo_trace_plot.buffer.loader = fake_loader
-        pc._panel_visible["neo"] = True
-        pc.set_neo_visible(False)
-        assert not pc._panel_visible["neo"]
-        assert pc.neo_trace_plot.buffer.loader is None
-        assert pc.neo_trace_plot._source is None
+        plot.buffer.loader = fake_loader
+        plot.set_source(MagicMock())
+        pc.remove_panel(plot)
+        assert plot not in pc.neo_trace_plots
+        assert plot._source is None
 
-    def test_neo_hidden_no_update_on_xrange(self, birdpark_gui):
+    def test_neo_panel_no_update_on_xrange(self, birdpark_gui):
         _, meta = birdpark_gui
         pc = meta.plot_container
-        pc._panel_visible["neo"] = False
-        pc.neo_trace_plot.hide()
-        pc.neo_trace_plot._on_view_range_changed()
+        plot = pc.add_panel("neo", stream_name="fake-stream")
+        plot.hide()
+        plot._on_view_range_changed()
+        pc.remove_panel(plot)
 
     def test_ephys_hidden_clears_loader(self, birdpark_gui):
         _, meta = birdpark_gui

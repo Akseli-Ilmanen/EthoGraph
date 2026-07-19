@@ -1,1 +1,2 @@
-1) space plot placement, layout saving
+Update docs
+- Make clearer, why there is two ephys-loaders (neo vs phy). Neo for wide-compatibility, phy viewer otpimized for dynamic zooming in multi-channel trace and visualization of spiek waveforms.

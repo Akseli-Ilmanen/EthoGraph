@@ -141,187 +141,103 @@ ethograph/utils/
 
 ### Two Data-Source Layers
 
-The codebase has two distinct source protocols:
+Two distinct source protocols:
 
-**Rendering layer** (`io/plot_sources`) — what plots use to load and cache viewport data:
-- **`PlotSource`** (Protocol) — `name`, `time_range`, `sampling_rate`, `identity`, `get_data(t0, t1)`
-- `FileSource` — wraps any loader with `rate`/`__len__`/`__getitem__` (audioio, ephys, memmap)
-- `XarraySource` — wraps `xr.Dataset`, returns time-sliced datasets from `get_data()`
-- `PynappleSource` — lazy access to pynapple Tsd/TsdFrame objects via `restrict()`
-- `WindowedBuffer` — viewport-aware cache. Loads wider than viewport, reloads on pan past buffer. Works with all PlotSource implementations.
+**Rendering layer** (`io/plot_sources`) — plots load/cache viewport data through the `PlotSource` protocol (`name`, `time_range`, `sampling_rate`, `identity`, `get_data(t0, t1)`):
+- `FileSource` — wraps a loader with `rate`/`__len__`/`__getitem__` (audioio, ephys, memmap)
+- `XarraySource` — wraps `xr.Dataset`, time-sliced datasets from `get_data()`
+- `PynappleSource` — lazy pynapple Tsd/TsdFrame access via `restrict()` (no xarray intermediate)
+- `WindowedBuffer` — viewport-aware cache; loads wider than viewport, reloads on pan past buffer. Works with all sources.
 
-**Navigation layer** (`io/time_model.py` + `io/time_sources.py`) — session-level time metadata:
-- **`TimeSource`** (Protocol) — `name`, `time_range`, `sampling_rate`, `get_data(t0, t1)`
-- `SourceCollection` — registry that computes `union_range`, `intersection_range`, `find_trial(t)`
-- Concrete adapters: `XarrayTrialSource`, `PynappleSource`
+**Navigation layer** (`io/time_model.py` + `io/time_sources.py`) — session-level time metadata via the `TimeSource` protocol; `SourceCollection` is the registry. It uses only `time_range` metadata — it never calls `get_data()`.
 
-`SourceCollection` only uses `time_range` metadata — it never calls `get_data()`.
-
-**Which plots use what:**
-| Plot | Source | Buffer |
-|------|--------|--------|
-| AudioTracePlot | `FileSource` | `WindowedBuffer` |
-| SpectrogramPlot | `PlotSource` (FileSource) | `SpectrogramBuffer` (caches FFT output) |
-| EphysTracePlot | `FileSource` (via buffer) | `EphysTraceBuffer` (custom: multi-resolution pyramid) |
-| LinePlot | `XarraySource` | `WindowedBuffer` |
-| HeatmapPlot (features) | `XarraySource` | `WindowedBuffer` |
-| HeatmapPlot (envelope) | Direct loader access | Inline cache |
+**Which buffer each plot uses:** AudioTrace/LinePlot/HeatmapPlot(features) → `WindowedBuffer`; Spectrogram → `SpectrogramBuffer` (caches FFT); EphysTrace → `EphysTraceBuffer` (multi-resolution pyramid); Heatmap(envelope) → inline cache.
 
 ### TrialTree: `trialtree.py`
 
-`TrialTree` inherits from `xr.DataTree`. Each trial is a child node with `attrs["trial"]`.
+`TrialTree` inherits `xr.DataTree`; each trial is a child node with `attrs["trial"]`. Key API: `dt.trial(id)`, `dt.itrial(idx)`, `dt.trials`, `dt.trial_items()`, `dt.map_trials(fn)`, `dt.update_trial(id, fn)`, `dt.get_label_dt()`.
 
-Key: `dt.trial(id)`, `dt.itrial(idx)`, `dt.trials`, `dt.trial_items()`, `dt.map_trials(fn)`, `dt.update_trial(id, fn)`, `dt.get_label_dt()`
-
-Media & Session: Session metadata (trial timing, media file paths, FPS, stream offsets) accessed via `app_state.nwb_alignment` (NWBAlignment). For NWB sources, the source NWB file is used directly — no separate alignment.nwb is needed. For non-NWB sources (.nc, .npz), a sidecar `.ethograph/alignment.nwb` provides this metadata.
+Session metadata (trial timing, media paths, FPS, offsets) is accessed via `app_state.nwb_alignment` (NWBAlignment): NWB sources read directly; non-NWB (.nc/.npz) use a `.ethograph/alignment.nwb` sidecar.
 
 ### State Management: `app_state.py`
 
-**AppStateSpec** — type-checked spec with ~40 variables.
-**ObservableAppState** — Qt signals auto-generated per variable (e.g., `current_frame_changed`). Dynamic `*_sel` attributes for xarray selections. Auto-saves to YAML.
-
-Key signals: `trial_changed`, `restrict_window_changed`, `labels_modified`, `verification_changed`
+**AppStateSpec** — type-checked spec (~40 variables). **ObservableAppState** — Qt signals auto-generated per variable (e.g. `current_frame_changed`), dynamic `*_sel` attributes for xarray selections, auto-saves to YAML. Key signals: `trial_changed`, `restrict_window_changed`, `labels_modified`, `verification_changed`.
 
 ### Time Model + Navigation: `time_model.py`
 
-Core types in `ethograph/io/time_model.py` (canonical home, re-exported from `gui/plots_timeseriessource.py` for backwards compat):
+Canonical home for the core types (re-exported from `gui/plots_timeseriessource.py` for compat):
+- **`TimeRange`** — immutable interval (`union`, `intersect`, `contains`, `overlaps`).
+- **`TimeSource`** (Protocol) + adapters `XarrayTrialSource`, `PynappleSource` (in `time_sources.py`).
+- **`SourceCollection`** — registry of TimeSources; provides `union_range`, `intersection_range`, `session_range`, `sources_at(t)`, trial bookmarks (`trial_range`, `find_trial`, `trial_offset`). Built in `data_loader.py`, stored as `app_state.source_collection`.
+- **`RestrictionWindow`** — display window with mode `"session"|"trial"|"label"|"sequence"`.
+- Restriction builders: `build_trial_window()`, `build_label_window()`, `build_sequence_window()`, `find_closest_trial()`.
 
-**`TimeRange`** — immutable time interval with `union()`, `intersect()`, `contains()`, `overlaps()`.
+`app_state.window_bounds` = current window's time_range (falls back to `trial_bounds`); all plots use it for x-limits. `app_state.session_time_range` = full session extent.
 
-**`TimeSource`** (Protocol) — one time-aligned data source: `name`, `time_range`, `sampling_rate`, `get_data(t0, t1) → (timestamps, values)`. Concrete adapters in `time_sources.py`: `XarrayTrialSource`, `PynappleSource`.
-
-**`SourceCollection`** — Neurosift-inspired registry of `TimeSource` objects. Provides `union_range` (full navigable extent), `intersection_range` (overlap of all sources), `session_range` (min trial start to max trial end), `sources_at(t)`, trial bookmarks (`trial_range`, `find_trial`, `trial_offset`). Built during dataset loading in `data_loader.py`, stored as `app_state.source_collection`.
-
-**`RestrictionWindow`** — display window with mode: `"session"`, `"trial"`, `"label"`, or `"sequence"`.
-
-`app_state.window_bounds` returns the current `RestrictionWindow.time_range` (or falls back to `trial_bounds`). `app_state.session_time_range` returns the full session extent from `SourceCollection`. All plots use `window_bounds` for x-axis limits.
-
-**Navigation modes** (UI label: "Time slider:"):
-- Session mode: slider covers entire session (inter-trial gaps navigable)
-- Trial mode: standard trial navigation
-- Label mode: navigate between instances of a specific label class across trials
-- Sequence mode: navigate between trials matching a label sequence pattern (e.g. "1-2-3-5")
-
-**Restriction builders** (in `time_model.py`): `build_trial_window()`, `build_label_window()`, `build_sequence_window()`, `find_closest_trial()`.
-
-**Sequence matching** (`ethograph/utils/sequences.py`): `match_sequences()`, `get_label_instances()`, `get_unique_sequences()`.
+**Navigation modes** ("Time slider:"): Session (whole session, gaps navigable), Trial, Label (instances of one class across trials), Sequence (trials matching a label pattern, e.g. "1-2-3-5"). Sequence matching in `utils/sequences.py`.
 
 ### Unified Data Catalog + Loader: `catalog.py`
 
-Replaces the old `type_vars_dict` pattern with two explicit abstractions:
+**`DataCatalog`** — declares features, dimensions (combos), streams. Built by `catalog_from_xarray()` / `catalog_from_pynapple()`. Features are auto-detected (all `data_vars` with a time dim, or all pynapple `Tsd`/`TsdFrame`/`TsdTensor`) — no `attrs["type"]` needed. The GUI builds combos from `catalog.combos`; the "Colors" combo lists all features, filtered to names containing "rgb" via a default-on checkbox.
 
-**`DataCatalog`** — declares what's available: features, dimensions (combos), streams. Built by `catalog_from_xarray()` or `catalog_from_pynapple()`. Features are auto-detected: all `data_vars` with a time dimension (xarray) or all `Tsd`/`TsdFrame`/`TsdTensor` objects (pynapple) — no `attrs["type"]` annotation needed. The GUI creates combo boxes from `catalog.combos`. Colors are handled separately: the GUI always creates a "Colors" combo populated with all features, with an "rgb suffix" checkbox (default on) that filters to features containing "rgb" in their name.
+**`DataLoader`** (Protocol) — backend-agnostic: `select(feature, selections, t0, t1) → PlotData`. Callers always pass `t0, t1` (absolute for pynapple, trial-relative for xarray). Follows `sel_valid`: selections may be overspecified; loaders ignore dims the feature lacks.
 
-**`DataLoader`** (Protocol) — backend-agnostic data access. `select(feature, selections, t0, t1) → PlotData`. Callers always pass `t0, t1` (absolute session times for pynapple, trial-relative for xarray). Follows the `sel_valid` principle: combo selections can be overspecified, loaders ignore dimensions that don't exist on the target feature.
+**`PlotData`** — source-agnostic dataclass: `time`, `data` `(T,)`/`(T,D)`, `dim_labels`, `title`, `ylabel`, `color_data`, `changepoints`. Consumed by `render_plot_data()` in `plots_lineplot.py`.
 
-**`PlotData`** — source-agnostic dataclass: `time`, `data` (numpy `(T,)` or `(T,D)`), `dim_labels`, `title`, `ylabel`, `color_data`, `changepoints`. Consumed by `render_plot_data()` in `plots_lineplot.py`.
-
-**Concrete loaders:**
-- `XarrayLoader` — wraps `xr.Dataset`, delegates to `sel_valid()`. Updated on trial change via `update_ds()`. t0/t1 are optional (viewport slicing within the already-per-trial dataset).
-- `PynappleLoader` — stateless: no trial state. Callers pass absolute session times as `t0, t1` to `select()`. The loader `restrict()`-s to that range, subtracts `t0` so returned time starts near 0. Trial management lives in `SourceCollection` / the GUI, not the loader.
-
-NWB files are loaded via pynapple (which handles NWB → in-memory conversion). No dedicated NWB loader exists — pynapple's native NWB support is sufficient. The only direct NWB access is `_find_pose_series_names()` / `_discover_pose_keypoints()` in `catalog.py`, which scan NWB files with h5py to identify `PoseEstimationSeries` leaf names for the keypoints combo.
-
-**Shared column dimensions:** `_compute_shared_column_dims()` (in `catalog.py`) groups TsdFrame objects by their column values. Objects with identical columns (e.g. position & velocity both with x/y/z) share one dimension name → one combo in the GUI.
+**Loaders:** `XarrayLoader` wraps `xr.Dataset`, delegates to `sel_valid()`, updated per trial via `update_ds()`. `PynappleLoader` is stateless — `restrict()`s to `t0,t1` and returns time in absolute session coordinates (same as the plot x-axis; never re-based to the requested window, so any viewport position renders correctly). NWB is loaded via pynapple; no dedicated NWB loader. The only direct NWB access is `_find_pose_series_names()`/`_discover_pose_keypoints()` (h5py scan for `PoseEstimationSeries` leaf names). `_compute_shared_column_dims()` groups TsdFrames with identical columns into one shared dim/combo.
 
 ### Alignment System: `nwb_alignment.py`
 
-**Rule: `.nwb` sources are read directly; `.ethograph/alignment.nwb` sidecars only exist for non-NWB sources.** Since NWB files are local and writable, edits go into the source NWB (via `edit_nwb` in `nwb_alignment.py`). No bootstrap copies, no two-file divergence. Wizards still produce `.ethograph/alignment.nwb` for `.nc` / `.npz` / pynapple-folder projects that have no NWB to write into.
+**Rule: `.nwb` sources are read/edited directly (`edit_nwb`); `.ethograph/alignment.nwb` sidecars exist only for non-NWB sources.** Wizards produce sidecars for `.nc`/`.npz`/pynapple-folder projects.
 
-**`NWBAlignment`** reads any NWB file for session metadata. Constructed from a file path (`NWBAlignment(path)`). Key methods:
-- `get_stream_rate(stream, device)` — read `.rate` from any ImageSeries
-- `resolve_media_path(trial, stream, device, fallback_folder)` — try ImageSeries path → NWB-relative → fallback folder + filename.
-- `stream_offset_for_trial(trial, stream, device)` — trial-relative offset derived from ImageSeries timing
+**`NWBAlignment(path)`** reads any NWB for session metadata: `get_stream_rate(stream, device)`, `resolve_media_path(...)` (ImageSeries path → NWB-relative → fallback folder + filename), `stream_offset_for_trial(...)`.
 
-**Priority order** (`_resolve_alignment` in `data_loader.py`): An explicit `alignment_path` (from `app_state.nwb_file_path` — the IO alignment field, or a cover-page drag-drop tmp alignment) overrides everything. Then, for `.nwb` sources: source NWB trials → sidecar metadata TSV (timing only). For non-NWB sources: sidecar `.ethograph/alignment.nwb` → sidecar metadata TSV. Cover-page drops that include a session file *and* media synthesise a tmp alignment for the media and pass it via `nwb_file_path`; audio-only drops work too (duration read from the audio file).
+**Resolution priority** (`_resolve_alignment` in `data_loader.py`): explicit `alignment_path` (from `app_state.nwb_file_path` or a drag-drop tmp alignment) wins; then NWB sources use source NWB trials → sidecar TSV; non-NWB use sidecar `.ethograph/alignment.nwb` → sidecar TSV.
 
-**Single-trial loading = drag & drop (`cover_page.py`).** The per-modality single-trial wizard dialogs were removed; `wizard_single.py` now holds only `get_video_fps` (delegates to `probe_video`). `classify_files()` buckets dropped paths by extension (a folder with `spike_times.npy` → `neurons`, else `session`); `.npy` → `npy`. `_collect_drop_details()` shows ONE follow-up popup (`_DropDetailsDialog`) that surfaces only unresolvable values — npy sample rate, and pose `source_software` when the extension is ambiguous (`.h5`/`.csv`; `.slp` is inferred). Everything else (fps, audio rate, ephys params) is auto-detected. npy drops generate a `.nc` via `wizard_single_from_npy_file`; ephys/kilosort-only drops build a bare session via `wizard_single_from_ephys`; pose `source_software` is stored on `app_state.source_software` (preferred over the `ds` attr in `pose_render`). The `NCWizardDialog` (`wizard_overview.py`) now only offers Multiple trials / DANDI / BORIS. Each media drop first gets a FRESH, isolated temp subdir via `CoverPage._prepare_drop_dir()` — `%TEMP%/ethograph_tmp_alignment/{uuid}/` — and both the throwaway alignment (`_build_tmp_alignment`) and the video-motion `.nc` (`_build_video_motion_nc`) are written there. This is mandatory: throwaway `.nc` files share `local_settings` by parent dir (`_local_settings_path`), so a shared dir would leak a previous drop's stale `panel_layout`/`shell_dock_state` into the next drop and silently hide dropped media (e.g. no video panels). `_prepare_drop_dir` also wipes all prior drop subdirs/files (best-effort; locked HDF5 left behind). A drop also resets `video_folder`/`audio_folder`/`pose_folder` to `None` before repopulating only the dropped modalities, so a stale folder never triggers spurious "you selected an audio/pose folder" warnings.
+**Single-trial loading = drag & drop (`cover_page.py`).** `classify_files()` buckets dropped paths by extension. `_collect_drop_details()` shows ONE popup surfacing only unresolvable values (npy sample rate; pose `source_software` for ambiguous `.h5`/`.csv`); everything else is auto-detected. Each drop gets a FRESH temp subdir via `_prepare_drop_dir()` (`%TEMP%/ethograph_tmp_alignment/{uuid}/`) holding both the tmp alignment and any video-motion `.nc` — mandatory, because throwaway `.nc` files share `local_settings` by parent dir, so a shared dir would leak a prior drop's stale layout. A drop resets `video_folder`/`audio_folder`/`pose_folder` to `None` before repopulating only the dropped modalities.
 
-**Path fallback**: ImageSeries stores original paths. If files move, `resolve_media_path` extracts the filename and joins with a user-specified fallback folder (`video_folder`, `audio_folder`, etc.).
-
-**`align_media_per_trial`** (`utils/nwb.py`) creates ImageSeries for ALL streams via `sync_acquisition_for_streams(nwbfile, stream_rates)`. Takes `stream_rates: dict[str, float]` — no hardcoded FPS values.
-
-**`align_media_from_streams`** (`io/nwb_alignment.py`) — flexible alignment creation accepting per-trial or session-wide files. Used by the NWB wizard to create alignment.nwb.
+`align_media_per_trial` (`utils/nwb.py`) and `align_media_from_streams` (`nwb_alignment.py`) create ImageSeries for all streams from `stream_rates: dict[str, float]` — no hardcoded FPS.
 
 ### Data Loading: `data_loader.py`
 
-The GUI supports loading `.nc` (NetCDF), `.npz`, and pynapple folders. NWB files are loaded through pynapple. Dispatch in `data_loader.py`:
-- `.npz`/folder (including NWB via pynapple) → `load_nap_data()` + `catalog_from_pynapple()` + `PynappleLoader`.
-- `.nc` → `eto.open()` + `catalog_from_xarray()` + `XarrayLoader`.
-
-`load_dataset()` returns a `LoadResult` dataclass with `dt`, `all_labels_df`, `catalog`, `data_loader`, `source_collection`, and metadata.
+Dispatch: `.npz`/folder (incl. NWB via pynapple) → `load_nap_data()` + `catalog_from_pynapple()` + `PynappleLoader`; `.nc` → `eto.open()` + `catalog_from_xarray()` + `XarrayLoader`. `load_dataset()` returns a `LoadResult` (`dt`, `all_labels_df`, `catalog`, `data_loader`, `source_collection`, metadata).
 
 ### Pose Rendering: `pose_render.py`
 
-Two loading paths for pose data:
-- **File-based** (DLC, SLEAP, etc.): `load_pose_from_file()` via `movement.io.load_dataset` + `ds_to_napari_layers`
-- **NWB-based**: `load_pose_from_nwb_direct()` reads `PoseEstimationSeries.data` and `.confidence` directly via lazy HDF5 slicing — no xarray/movement intermediate
-
-`PoseRenderData` is the unified result type. `apply_confidence_filter()` and `apply_keypoint_filter()` work on the `data_not_nan` mask. `PoseDisplayManager` orchestrates display via `shown` mask — filtering never recreates layers.
-
-The NWB wizard stores `nwb_pose_keys` (e.g. `["LeftCamera", "RightCamera"]`) in the project config. At render time, `PoseDisplayManager._load_pose_for_camera()` maps camera index → pose key → direct NWB loading.
+Two loading paths, unified into `PoseRenderData`: file-based (`load_pose_from_file()` via movement) and NWB-based (`load_pose_from_nwb_direct()`, lazy HDF5 slicing of `PoseEstimationSeries.data`/`.confidence`). `apply_confidence_filter()`/`apply_keypoint_filter()` act on the `data_not_nan` mask; `PoseDisplayManager` displays via a `shown` mask — filtering never recreates layers. NWB pose keys (`nwb_pose_keys`) map camera index → pose key in `_load_pose_for_camera()`.
 
 ### Skeleton Visualization: `ethograph/skeleton/` + pose_render
 
-Skeleton rendering reuses the `ethograph/skeleton/` module (ported from movement PR #763): `PrecomputedRenderer` consumes a movement poses `xr.Dataset` and emits a napari Vectors layer; `SkeletonState`/`config.py` manage connections, colors, widths. Only the **config layer** is ethograph-specific:
-- `nwb_skeleton_to_config(nodes, edges)` (in `skeleton/config.py`) converts an ndx-pose `Skeleton` (nodes + edge index-pairs) into the standard config dict — so the renderer/state/validation are reused unchanged. This is the default source: `_read_skeleton_config()` reads `container.skeleton` during NWB pose loading and stores it on `PoseRenderData.skeleton_config`.
-- `pose_render_to_movement_ds()` un-flattens napari points back into the `(time, space, keypoints, individuals)` poses dataset the renderer needs.
-- `PoseDisplayManager._display_skeleton_direct()` builds that dataset and calls `add_skeleton_layer()`. Gated by the "Show skeleton" checkbox. Colour precedence: an active `app_state.skeleton_config_override` (user-drawn, per-segment colours) wins; otherwise the NWB-derived config is recoloured uniformly with `app_state.skeleton_base_color`.
-- **Confidence filtering of edges is automatic**: the skeleton is built from the same confidence/keypoint-filtered `PoseRenderData`, so a low-confidence (or hidden) endpoint becomes NaN and the renderer drops any edge touching it on that frame — no skeleton-specific filter code needed.
+Reuses `ethograph/skeleton/`: `PrecomputedRenderer` turns a movement poses `xr.Dataset` into a napari Vectors layer; `SkeletonState`/`config.py` manage connections/colors/widths. Only the config layer is ethograph-specific: `nwb_skeleton_to_config(nodes, edges)` converts an ndx-pose `Skeleton` to the standard config dict (default source, read by `_read_skeleton_config()` → `PoseRenderData.skeleton_config`). `PoseDisplayManager._display_skeleton_direct()` renders it, gated by "Show skeleton". Colour precedence: `skeleton_config_override` (user-drawn) > NWB config recoloured with `skeleton_base_color`. Edge confidence filtering is automatic — a NaN endpoint drops any edge touching it.
 
-**Skeleton editor** (`dialog_skeleton_editor.py`): `SkeletonEditorDialog` lets the user draw a skeleton on real pose data — a frame slider scrubs frames, the pyqtgraph canvas shows keypoint XY, drag between keypoints creates an edge, and color categories are assigned to selected edges (click or rubber-band). `get_config()` returns a config dict stored in `skeleton_config_override`. Launched from the Pose tab's "Create / edit skeleton…" button; data via `PoseDisplayManager.primary_pose_for_editor()`.
+**Skeleton editor** (`dialog_skeleton_editor.py`): draw a skeleton on real pose data (frame slider + pyqtgraph canvas, drag between keypoints = edge, color categories per edge); `get_config()` → `skeleton_config_override`.
 
-**Anchored shapes** (`ethograph/skeleton/shapes.py`): shapes (square/triangle/circle templates with named control points) that deform to follow the pose. The user binds ≥2 control points to keypoints (`ShapeAnchorDialog`, a visual template picker); each frame a transform is fit from the template's anchor points to the live keypoint positions — **2 anchors → similarity** (angle-preserving, so e.g. a triangle's base stays perpendicular to its median), **3+ → affine** (deformable). `fit_transform()` + `shape_outline_for_frame()` precompute per-frame outlines; `PoseDisplayManager._display_shapes_direct()` renders them as a napari Shapes layer (frame index as first vertex coord → per-frame visibility, same pattern as bboxes). Shapes live under a `"shapes"` key in the skeleton config and render alongside edges when "Show skeleton" is on.
+**Anchored shapes** (`skeleton/shapes.py`): square/triangle/circle templates that deform to follow the pose. Bind ≥2 control points to keypoints (`ShapeAnchorDialog`); per frame a transform is fit — 2 anchors → similarity (angle-preserving), 3+ → affine. Rendered as a napari Shapes layer via `_display_shapes_direct()` (frame index as first vertex coord = per-frame visibility). Shapes live under a `"shapes"` key in the skeleton config.
 
 ### Plot System
 
-All plots inherit `BasePlot` (pyqtgraph `PlotWidget`): time marker, x-axis range management, click handling, axes locking.
-
-`UnifiedPanelContainer` holds all panels in a `QSplitter`, links x-axes, manages panel visibility.
+All plots inherit `BasePlot` (pyqtgraph `PlotWidget`): time marker, x-range management, click handling, axes locking. `UnifiedPanelContainer` holds all panels, links x-axes, manages visibility.
 
 ### Panels Are Layout Instances — No Per-Plot-Type Toggles
 
 Panels are instances created via the layout, never on/off toggles:
-- The user opens the add-panel popup (`SourcePopup` in `source_popup.py`, opened via the bottom bar's "➕ Add panel" button or Ctrl+N) and either drags a Media/Feature source onto the plot area or presses Enter to create the panel at its default spot; every panel has a ✕ button that removes it. The popup has a filter box (↑/↓ navigate while typing); there is no permanent left "Sources" sidebar. Templates define layouts in the same instance terms.
-- **Video motion (pixel-change) is a drop-time `(time, camera)` feature.** The cover page's drag & drop card has a "Compute video motion — pixel change (video only)" checkbox below the drop zone. When checked and videos are dropped (pure media, no session file), `CoverPage._build_video_motion_nc()` runs `extract_video_motion()` per camera behind a `BusyProgressDialog`, stacks the traces on a `camera` dim (values `cam-1`, `cam-2`, … matching the alignment's video streams; shorter cams NaN-padded; requires an `individuals` coord for TrialTree validation), and writes a throwaway `.nc`. That `.nc` becomes `nc_file_path` (xarray → catalog auto-detects `video_motion` as a feature with a `camera` combo, so lineplot-per-camera AND heatmap-all-cameras work for free); media/pose still come from the tmp alignment via `nwb_file_path`. This replaced the deleted single-trial wizard's "Load video motion features" checkbox.
-- Initial visibility after a dataset load derives purely from data availability (`DataWidget._setup_panel_controls`): audio → audio trace + spectrogram, features → feature plot, neo/neurons → neural panels. For audio, `_create_default_audio_panels()` makes one trace+spectrogram pair per mic when several exist (each pinned to the mic's first channel, e.g. multiple dropped audio files), or a single global-following pair for one mic.
-- There is NO saved per-panel yes/no state, no panel checkboxes, and no Shift+A/S/E/F/C toggle shortcuts. Never add code that assumes a boolean visibility toggle per plot type (checkbox or app_state flag).
-- **Duplicates are never prevented.** Dropping a source that is already shown (same mic, same camera, same feature) always creates another panel/view instance; the user removes extras via ✕. Never add "already shown → just reveal it" dedup logic to any panel-creation path.
-- **Audio panels are instances (duplicates allowed).** `plot_container.audio_trace_plots` / `spectrogram_plots` are the collections; every audio panel is created via `add_audio_panel("audiotrace"|"spectrogram", mic_name=None)` and removed via `remove_audio_panel(plot)` (its ✕). `audio_trace_plot` / `spectrogram_plot` are backwards-compat properties returning the first instance or None. Each instance may pin its own mic/channel: `plot.mic_name` is an `audio_source_map` key passed through `app_state.get_audio_source(mic_name)` / `build_audio_source(app_state, mic_name)`; `None` follows the global Mic combo. The add-panel popup lists ONE entry per mic/audio file (`Audio (Mic1)`), never per channel; on drop, after the plot-type picker a channel picker (`PlotTypePicker(title="Channel")`) appears for multichannel files and the panel is pinned to that file+channel. The sidebar's audiotrace/spectrogram contexts show a "Channel:" combo (`PlotSettingsWidget.audio_channel_group`, section `"audiochannel"`) that re-pins the *active* audio panel via `plot_container.set_audio_panel_mic(plot, key)` (rebuilds source, retitles dock, redraws). `app_state.audio_mic_channels` maps mic label → ordered `audio_source_map` keys (one per channel), built in `DataWidget._expand_mics_with_channels`. `update_audio_panels()` re-wires every instance (pinned keep their mic); `set_audiotrace_visible`/`set_spectrogram_visible` are compat shims (True = ensure one instance, False = remove all). Spectrogram settings (levels/colormap/nfft) apply to all instances; `plot_container.spectrogram_buffer_updated` relays every instance's `bufferUpdated`. When removing a plot instance, stop its `ThrottleDebounce` (`plot._td.stop()`) — the timers are not parented to the widget.
-- **Extra camera views are instances (duplicates allowed), each in its OWN closable shell dock.** `VideoArea._extras` is keyed by a unique instance key (`"cam"`, `"cam (2)"`, …) with the real camera name on `view.camera_name`; always read the camera name via `getattr(view, "camera_name", key)`. Each extra view gets its own `QDockWidget` in the shell's top area (objectName `CameraViewDock {key}`, kept on `view.dock_widget`) — like space plots — so any single view is removable via its dock's ✕; only the primary view lives inside the "Video" dock. Closing a dock defers `remove_extra(key)`, which emits `camera_view_removed(view)` → MetaWidget unregisters it from active panels, and `DataWidget._on_camera_view_removed` (only when the LAST view of that camera closed) drops its pose layers and resets any extra-camera combo naming it (else the next combo re-apply would resurrect the view); `VideoManager.cleanup()` suppresses the signal during shutdown. `VideoManager.add_camera(..., duplicate=True)` (popup drop) always creates a new view; without `duplicate`, all existing views of that camera are reloaded (trial change / combo re-apply). `remove_camera(name)` removes every view of that camera. Dropping the primary camera again adds an extra follower view of it.
-- **All line plots are equal instances.** `plot_container.line_plots` is the only collection; every line plot is created via `add_lineplot(feature=None)` and removed via `remove_lineplot(plot)` (its ✕). There is no `line_plot` attribute, no built-in/extra distinction, and no `set_featureplot_visible`. The heatmap is a fixed singleton panel; `set_feature_view("heatmap"|"lineplot")` shows/hides it. `get_current_plot()` = active (last-clicked) feature plot, else first line plot, else heatmap.
-- **One canonical feature list.** `catalog.feature_choices()` (= `combos["features"].values`) is the single source for the features combo, the add-panel popup, and panel creation (`_available_features`) — never list features from raw `ds.data_vars` in GUI code (it contains label bookkeeping vars like `onset_s`). A feature offered anywhere must be displayable everywhere; `sync_sidebar_from_active_plot` additionally appends a missing feature to the combo so the dropdown can never show another plot's value. The container's `_data_widget` must stay wired in MetaWidget (it supplies the catalog).
-- **Feature plots render ONLY from their own `panel_state`** (`PanelStateMixin` in `plots_base.py`, used by LinePlot AND HeatmapPlot): `_effective_feature()/_effective_selections()/_effective_color()`, forked from globals on first render via `_ensure_panel_state()`. Never make a feature plot read `app_state.features_sel` / `get_selections()` directly for rendering — that recreates cross-panel coupling. The sidebar edits the active plot via `set_panel_control()`; the global `*_sel` mirror exists only for shared consumers (labels, changepoints). Changing a feature must never auto-switch lineplot⇄heatmap (`_apply_view_mode_for_feature` was deleted for hiding other panels); only the explicit "Feature plot type:" combo (Lineplot/Heatmap, top of the Xarray-coords group, `MetaWidget._on_feature_view_changed`) converts the *active* panel — its `panel_settings()` (feature, dim selections, color) carry over to the target type, and a converted line-plot instance is removed. An "All" checkbox is stored per panel as the *absence* of that dim from `panel_state["selections"]`. Dropped panels are auto-activated (`MetaWidget._activate_panel`) so the sidebar shows their state.
-- **Space plots are instances like line plots.** `DataWidget.space_plots` is the collection; every space plot is created via `add_space_plot(feature=None, view_3d=None)` (each popup drop creates a NEW dock — never reconfigures an existing one) and removed by closing its shell dock (`SpacePlot.closed` → `remove_space_plot`). `DataWidget.space_plot` is a property returning the *active* instance (backwards compat for shortcuts/settings). Each instance's X/Y/Z + dim controls live in the sidebar's Space context; only the active instance's controls are shown (`set_active_space_plot`, driven by `ActivePanelManager` clicks). Time-marker / x-range / label-highlight updates broadcast to all visible instances. New space docks go in the shell's **top** dock area (same row/height as the video dock), never "left" (whose title bar collided with the top bar). Space plots persist per dataset: `panel_layout["space_plots"]` holds each instance's `space_settings()` (feature, view_3d, space dim, x/y/z, extra dims, color); `apply_space_layout_state()` recreates them after load, and dock positions are restored via canonical objectNames (`SpacePlotDock_{i}`): the shell dock arrangement lives ONLY per dataset (`panel_layout["shell_dock_state_b64"]` → local_settings.yaml, travels with templates); `window_state` → gui_settings.yaml holds only machine-local prefs (window geometry + sidebar visibility), never layout. The dataset blob is applied via `shell.apply_dock_state_b64()` — deferred to show when hidden, because any restoreState must run on the VISIBLE window: restoring while hidden leaves a pending state that Qt applies at show, evicting/squishing every dock created in between (GL docks: space plots, extra camera views). Docks created after the restore are placed at creation via `shell.restoreDockWidget()` in `add_dock_widget(object_name=...)`.
-- **Space plot controls are catalog-driven** (`plots_space.py`): Feature combo + "Space dim:" combo (default: a dim named `space` if the feature has one, else the first dim — e.g. `pca`) + X/Y/Z combos holding that dim's values (defaults: values named x/y/z, else the first three) + one auto-generated combo per remaining dim from `feature_dims()` (no hardcoded keypoint dim) + Color combo ("Labels" = label-highlight default; any feature = per-point coloring like the lineplot, which disables label highlight). The space plot renders purely from its own combos — it does not read global `*_sel`.
-- **Space reference geometry** comes solely from the **geometry library** at `~/.ethograph/geometries/*.yaml` (each file has a `references:` list — name/vertices/edges/color — and may hold several named geometries). The geometry drawn behind the trajectory is named by `app_state.space_library_geometry` (SCOPE_LOCAL), set via the Space controls' "Library geometry:" combo or as a default in `gui_settings.yaml` / a dataset's `local_settings.yaml`. `load_library_geometries()` / `_load_references()` in `plots_space.py`. No per-dataset `space.yaml`/`arena.yaml` lookup exists. The library dir is created on first GUI launch (`ensure_geometry_library()`, called from `cli.launch`) by copying the packaged defaults from `ethograph/geometries/*.yaml` (PR-contributed; Moll2025 example `moll2025.yaml` → geometry name `setup`; shipped in wheels via `[tool.setuptools.package-data]`); it never re-seeds an existing dir, so user deletions stick. Templates set their default via `DATASETS[...]["library_geometry"]` → `resolve_dataset_paths` → applied in `IOWidget._on_select_template_clicked`.
-- **Panels are dock widgets (pynaviz-style).** `UnifiedPanelContainer` hosts a nested `QMainWindow` (`_dock_host`, nesting enabled); every panel is a `QDockWidget` with a slim title bar (name + ⠿ move menu + ✕). Panels can be arranged freely — side by side, stacked, tabbed, floated — by dragging the title bar or via the ⠿ menu ("Below / Right of / Tab with <panel>"). Default arrangement: vertical stack in `_PANEL_ORDER`, line plots at the bottom.
-- **Layout persistence is automatic; NO JSON layout files exist.** `app_state.panel_layout` (= `layout_state()`: open panels + each panel's full `panel_settings()` — feature, dim selections (absent dim = "All"), color — + a `dock_state_b64` arrangement blob) is SCOPE_LOCAL → the dataset's `.ethograph/local_settings.yaml`; `app_state.window_state` (outer geometry/docks/sidebar) is global → `gui_settings.yaml`. Both are refreshed by `MetaWidget._snapshot_layouts` (registered as `app_state._layout_snapshot_provider`, called on every 10s auto-save and on close) and re-applied automatically (window: startup; panels: `apply_saved_panel_layout()` after each dataset load). There are no Save/Load layout menu actions.
-- **Templates ship layouts via `local_settings.yaml`.** Selecting a template downloads data + optionally the release asset `local_settings.yaml` into the dataset's `.ethograph/` (`download_template_local_settings()`, never overwrites an existing local file); the normal settings autoload then applies it. Template authors just upload their dataset's `.ethograph/local_settings.yaml` to the GitHub release. Never special-case a `dataset_key` in GUI code — put per-dataset settings in `DATASETS` metadata instead.
-
-### Rendering Sources & Streaming (`io/plot_sources`)
-
-The rendering layer provides **lazy, viewport-aware data streaming** without converting to xarray. All sources implement the `PlotSource` protocol and work with `WindowedBuffer` for efficient caching.
-
-**Core Pattern:**
-```python
-# Create a source (lazy, no data loaded yet)
-source = NWBSource("data.nwb", "acquisition/video_cam-1")
-
-# Wrap in buffer for viewport caching
-buffer = WindowedBuffer(buffer_multiplier=5.0)
-buffer.set_source(source)
-
-# Viewport pan/zoom triggers lazy load
-data = buffer.get(t0=10.0, t1=20.0)  # SampleSlice(timestamps, values)
-```
-
-**Source Types:**
-- `FileSource` — audioio, ephys, memmap loaders (existing)
-- `XarraySource` — xr.Dataset slicing (existing)
-- `PynappleSource` — Direct pynapple Tsd/TsdFrame access
-  - Wraps `restrict()` for time slicing
-  - No xarray intermediate
+- The add-panel popup (`SourcePopup`, bottom bar "➕ Add panel" / Ctrl+N) drags a Media/Feature source onto the plot area (or Enter for the default spot); every panel has a ✕. Templates define layouts in the same instance terms.
+- **Video motion (pixel-change) is a drop-time `(time, camera)` feature.** The cover page's "Compute video motion" checkbox runs `extract_video_motion()` per camera and writes a throwaway `.nc` stacked on a `camera` dim (`cam-1`, `cam-2`, …; NaN-padded; needs an `individuals` coord). That `.nc` becomes `nc_file_path`; catalog auto-detects `video_motion` with a `camera` combo (lineplot-per-camera + heatmap-all-cameras for free); media/pose still come from the tmp alignment via `nwb_file_path`.
+- Initial visibility after load derives purely from data availability (`DataWidget._setup_panel_controls`): audio → trace + spectrogram, features → feature plot, neo/neurons → neural panels. `_create_default_audio_panels()` makes one trace+spectrogram pair per mic (pinned to its first channel) when several exist, else one global-following pair.
+- There is NO saved per-panel yes/no state, no panel checkboxes, no Shift+A/S/E/F/C toggles. Never assume a boolean visibility toggle per plot type.
+- **Duplicates are never prevented.** Dropping an already-shown source always creates another instance; the user removes extras via ✕. Never add "already shown → just reveal it" dedup logic.
+- **Audio panels are instances.** Collections `plot_container.audio_trace_plots`/`spectrogram_plots`; created via `add_audio_panel("audiotrace"|"spectrogram", mic_name=None)`, removed via `remove_audio_panel(plot)`. `audio_trace_plot`/`spectrogram_plot` are compat properties (first or None). Each instance may pin a mic/channel: `plot.mic_name` is an `audio_source_map` key (`None` follows the global Mic combo). Popup lists ONE entry per mic (`Audio (Mic1)`); on drop a channel picker pins file+channel. Sidebar "Channel:" combo re-pins the active panel via `set_audio_panel_mic(plot, key)`. `audio_mic_channels` maps mic → ordered keys. Spectrogram settings apply to all instances. When removing an instance, stop its `ThrottleDebounce` (`plot._td.stop()`).
+- **Extra camera views are instances, each in its OWN closable shell dock.** `VideoArea._extras` keyed by unique instance key (`"cam"`, `"cam (2)"`, …) with the real name on `view.camera_name` (always read via `getattr(view, "camera_name", key)`). Each extra gets its own `QDockWidget` (`CameraViewDock {key}`); only the primary lives in the "Video" dock. Closing defers `remove_extra(key)` → `camera_view_removed(view)`; `_on_camera_view_removed` (only when the LAST view of a camera closes) drops its pose layers and resets any combo naming it. `add_camera(..., duplicate=True)` always creates a new view; without it, existing views reload. `remove_camera(name)` removes all views of that camera.
+- **Static images are camera-like media (`IMAGE_EXTENSIONS` in `io/validation.py`).** A dropped/browsed image is stored in `app_state.image_paths` (SCOPE_LOCAL) and listed as `Image (name.png)` + a permanent "Image — browse…" entry (`IMAGE_BROWSE` sentinel). Each drop creates a static view via `add_image_view()`. Static views are timeless (no playback), but the PRIMARY camera's pose/skeleton overlays and animates: `_display_pose_on_image()` + `CameraView.set_overlay_time(t)`, driven by `_on_time_marker_updated`. An image + pose drop with NO video works — the details dialog asks pose fps, the image is written as a static `video_cam-N` stream at that fps, session duration from the pose file; image-only drops are rejected ("no time axis").
+- **All line plots are equal instances.** `plot_container.line_plots` is the only collection; `add_lineplot(feature=None)` / `remove_lineplot(plot)`. No `line_plot` attribute, no built-in/extra distinction. The heatmap is a fixed singleton; `set_feature_view("heatmap"|"lineplot")` shows/hides it. `get_current_plot()` = active feature plot, else first line plot, else heatmap.
+- **One canonical feature list.** `catalog.feature_choices()` is the single source for the features combo, popup, and panel creation — never list features from raw `ds.data_vars` (it contains bookkeeping vars like `onset_s`). Any feature offered anywhere must be displayable everywhere.
+- **Feature plots render ONLY from their own `panel_state`** (`PanelStateMixin` in `plots_base.py`, used by LinePlot AND HeatmapPlot; forked from globals on first render via `_ensure_panel_state()`). Never make a feature plot read `app_state.features_sel`/`get_selections()` for rendering — that recreates cross-panel coupling. The sidebar edits the active plot via `set_panel_control()`; the global `*_sel` mirror is only for shared consumers (labels, changepoints). Changing a feature must never auto-switch lineplot⇄heatmap; only the explicit "Feature plot type:" combo converts the active panel (carrying `panel_settings()` over, removing a converted line-plot instance). An "All" checkbox = absence of that dim from `panel_state["selections"]`.
+- **Space plots are instances like line plots.** `DataWidget.space_plots` collection; `add_space_plot(feature=None, view_3d=None)` (each drop = a NEW dock, never reconfigures), removed by closing its shell dock (`SpacePlot.closed` → `remove_space_plot`). `DataWidget.space_plot` = active instance. Only the active instance's X/Y/Z + dim controls show in the sidebar's Space context. New space docks go in the shell's **top** area (never "left" — its title bar collided with the top bar). Persist per dataset in `panel_layout["space_plots"]` (each instance's `space_settings()`), recreated by `apply_space_layout_state()`, dock positions via objectNames `SpacePlotDock_{i}`. Shell dock arrangement lives ONLY per dataset (`panel_layout["shell_dock_state_b64"]` → local_settings.yaml, travels with templates); `window_state` → gui_settings.yaml holds only machine-local prefs (window geometry; right sidebar always starts visible), never layout. Applied via `shell.apply_dock_state_b64()` — **deferred to show when hidden**, since restoreState must run on a VISIBLE window or Qt evicts docks created in between; later docks are placed via `shell.restoreDockWidget()`.
+- **Space plot controls are catalog-driven** (`plots_space.py`): Feature + "Space dim:" combo (default: a dim named `space`, else the first) + X/Y/Z combos of that dim's values (default x/y/z, else first three) + one combo per remaining dim + Color combo ("Labels" = label-highlight; any feature = per-point coloring, disables highlight). Renders purely from its own combos — never reads global `*_sel`.
+- **Space reference geometry** comes solely from the **geometry library** at `~/.ethograph/geometries/*.yaml` (each file has a `references:` list — name/vertices/edges/color). **One file = one selectable geometry, keyed by filename stem**; all of a file's references draw together. `app_state.space_library_geometry` (SCOPE_LOCAL) holds that stem, set via the Space "Library geometry:" combo or a default in gui/local settings. `load_library_geometries()`/`_load_references()` in `plots_space.py`. The library is seeded on first GUI launch (`ensure_geometry_library()`) by copying `ethograph/geometries/*.yaml` (e.g. `moll2025_geometry.yaml` → `space_library_geometry: moll2025_geometry`); it never re-seeds an existing dir, so user deletions stick. Templates set their default via `DATASETS[...]["library_geometry"]`.
+- **Panels are dock widgets (pynaviz-style).** `UnifiedPanelContainer` hosts a nested `QMainWindow` (`_dock_host`, nesting enabled); every panel is a `QDockWidget` with a slim title bar (name + ⠿ move menu + ✕). Arrange freely (side by side, stacked, tabbed, floated). Default: vertical stack in `_PANEL_ORDER`, line plots at the bottom.
+- **Layout persistence is automatic; NO JSON layout files exist.** `app_state.panel_layout` (open panels + each `panel_settings()` + a `dock_state_b64` blob) is SCOPE_LOCAL → dataset's `local_settings.yaml`; `app_state.window_state` (outer geometry) is global → `gui_settings.yaml`. Both refreshed by `MetaWidget._snapshot_layouts` (on 10s auto-save + close) and re-applied automatically. No Save/Load layout actions.
+- **Templates ship layouts via `local_settings.yaml`.** Selecting a template downloads data + optionally the release asset `local_settings.yaml` into `.ethograph/` (`download_template_local_settings()`, never overwrites a local file). Never special-case a `dataset_key` in GUI code — put per-dataset settings in `DATASETS` metadata.
 
 ### Video Sync: `video_sync.py`
 
@@ -329,45 +245,43 @@ data = buffer.get(t0=10.0, t1=20.0)  # SampleSlice(timestamps, values)
 
 ### Labels
 
-**Storage:** TSV file (`{name}_labels.tsv`) alongside the `.nc`. Columns: `onset_s, offset_s, labels (int), individual, trial, human_verified, changepoint_corrected, prediction_source, n_samples`. The `n_samples` column stores per-trial sample count for dense conversion. Label names managed centrally in `mapping.txt`.
+**Storage:** TSV (`{name}_labels.tsv`) alongside the `.nc`. Columns: `onset_s, offset_s, labels (int), individual, trial, human_verified, changepoint_corrected, prediction_source, n_samples` (`n_samples` = per-trial count for dense conversion). Label names in `mapping.txt`. Legacy `.nc` embedded labels auto-migrate to TSV on first load.
 
-**Module structure:** `intervals.py` has interval operations + mapping loaders + `find_blocks`. `ml.py` has dense↔interval conversion + ML post-processing (`stitch_gaps`, `purge_small_blocks`, `fix_endings`). Old `core.py` merged into `intervals.py`; old `dense.py` renamed to `ml.py`.
+**Modules:** `intervals.py` (interval ops + mapping loaders + `find_blocks`), `ml.py` (dense↔interval + `stitch_gaps`/`purge_small_blocks`/`fix_endings`).
 
-**In-memory:** `app_state._all_labels_df` (all trials), `app_state.label_intervals` (current trial view). Per-trial metadata stored as columns, not a separate dict.
+**In-memory:** `app_state._all_labels_df` (all trials), `app_state.label_intervals` (current trial). Per-trial metadata as columns, not a dict.
 
-**Per-plot-type rendering:** `app_state.label_overlay_modes` (persisted) maps plot type key (`lineplot`, `audio`, `spectrogram`, `heatmap`, `ephys`, `neo`) → `"full" | "bottom" | "none"`. Applies to every plot instance of that type — there is no visibility hierarchy or fallback between plots. Defaults live in `DEFAULT_LABEL_OVERLAY_MODES` (app_constants.py); the user edits them via the "Show labels per plot type" button in the Label overlay box (`LabelsPerPlotDialog` in widgets_labels.py).
+**Per-plot-type rendering:** `app_state.label_overlay_modes` maps plot type key (`lineplot`, `audio`, `spectrogram`, `heatmap`, `ephys`, `neo`) → `"full"|"bottom"|"none"`, applied to every instance of that type — no visibility hierarchy. Defaults in `DEFAULT_LABEL_OVERLAY_MODES` (app_constants.py); edited via "Show labels per plot type" (`LabelsPerPlotDialog`).
 
-**Labels on new panels:** Any path that creates or shows a panel must end with `plot_container.schedule_labels_redraw()` so existing labels appear immediately — the redraw is deferred (coalesced, next event-loop tick) because it must run AFTER the panel's content render (`update_plot`/`set_source`): "bottom"-strip overlay modes position rectangles from the plot's y viewRange, so drawing before the content sets the real range leaves labels invisible. `_update_panel_visibility()` and `update_audio_panels()` already schedule it; never emit `labels_redraw_needed` synchronously from a panel-creation path.
+**Labels on new panels:** Any path that creates/shows a panel must end with `plot_container.schedule_labels_redraw()` — deferred (coalesced, next tick) because it must run AFTER content render, or "bottom"-strip rectangles (positioned from the y viewRange) are invisible. Never emit `labels_redraw_needed` synchronously from a panel-creation path.
 
-**Predictions:** Per-trial `.npy`/`.pickle` files in prediction folders. Shape `(T, n_classes)` → confidence via `1 - normalized_entropy`, labels via `argmax`. Confidence stays in memory for GUI overlay, never stored in our format. The dotted confidence curve is on by default (master "Confidence" checkbox in the predictions importer) and gated per feature plot by the "Predictions: Show predictions" checkbox in the sidebar coords section (`show_predictions` in `panel_state`, default true, persisted via `panel_settings()`).
+**Predictions:** Per-trial `.npy`/`.pickle`. Shape `(T, n_classes)` → confidence via `1 - normalized_entropy`, labels via `argmax`. Confidence stays in memory, never stored. Dotted confidence curve on by default, gated per feature plot by "Predictions: Show predictions" (`show_predictions` in `panel_state`).
 
-**Top-bar File menu:** "Import labels…" / "Import predictions…" / "Export labels…" each pop up their own I/O sub-panel (`io_widget.labels_group` / `pred_group` / `export_panel`); `IOWidget.restore_subpanel()` returns the borrowed widget on popup close. There is no "Load data…" menu entry and no toggle-button row on the IOWidget — the full I/O widget is never shown; data loading happens only on the cover page (which borrows `io_widget.load_panel`).
+**Top-bar File menu:** "Import labels…" / "Import predictions…" / "Export labels…" each borrow their own I/O sub-panel (`IOWidget.restore_subpanel()` returns it on close). No "Load data…" entry — data loading happens only on the cover page.
 
-**Crowsetta interop:** `EthographSeq` format registered at import time. Export adapter converts int→string labels via mapping for sharing. Internal storage stays integer-based.
-
-**Migration:** Old `.nc` files with embedded labels auto-migrate to TSV on first load.
+**Crowsetta interop:** `EthographSeq` registered at import; export adapter converts int→string labels via mapping. Internal storage stays integer-based.
 
 ### Widget Orchestration
 
-`MetaWidget` creates all widgets and wires signals. `DataWidget` is the central orchestrator — handles trial changes, plot updates, video/audio loading.
+`MetaWidget` creates all widgets and wires signals; `DataWidget` is the central orchestrator (trial changes, plot updates, video/audio loading). Signal flow: `NavigationWidget` → `trial_changed` → `DataWidget.on_trial_changed()` → updates everything.
 
-**Signal flow:** `NavigationWidget` → `trial_changed` → `DataWidget.on_trial_changed()` → updates everything.
+**Context-sensitive right sidebar:** which setting sections the "Data" section shows per plot type is defined solely by `_CONTEXT_MAP` (+ `_CONTEXT_TITLE`) in `gui/right_context.py`; `RightContextPanel.set_context()` shows/hides the sections. `MetaWidget._build_context_panel()` borrows the actual group widgets from `DataWidget`/`PlotSettingsWidget`/`NavigationWidget` into section keys, and `MetaWidget._on_active_panel()` swaps the context on panel click (only for kinds in `_CONTEXT_KINDS`; raster keeps the current sidebar). Contexts: `ephys` (Phy viewer) → `phy` section = `EphysWidget.traceview_panel` (channel/gain/pyramid/probe/cluster table); `neo` (Neo viewer) → `neocontrols` (`PlotSettingsWidget.neo_controls_group`: per-panel gain + auto-gain + channel spacing, editing the active Neo panel via `set_active_neo_plot`) — channels are chosen at drop time. Neither ephys nor neo includes the `shared` (autoscale / lock-axes) group — those don't apply to the trace views. The top-bar **Neural** menu keeps only "Open interactive PSTH…" (`EphysWidget._open_psth`) and "Firing rates…" (pops `EphysWidget.firing_rate_panel`) — the Phy TraceView popup is gone.
+
+**Neo trace panels are dynamic instances (one per stream/modality).** A Neo file exposes multiple `signal_streams` (EMG, accelerometer, amplifier…) via `EphysData.stream_info`; each is a modality with its own channel set. `plots_container._DYNAMIC_PANEL_SPECS["neo"]` (`cls=EphysTracePlot`, `group="neo"`) makes `add_panel("neo", stream_name=…, channels=…)` create a new instance per modality (collection `plot_container.neo_trace_plots`; there is NO `neo_trace_plot` singleton). `add_panel` calls back into `DataWidget.configure_neo_plot(plot)` (needs `ephys_source_map` + `load_ephys`) to load the stream, set the `FileSource`, and restrict to `plot.neo_channels` via `set_custom_channel_set` (None = all). The add-panel popup lists one "Neo (Ephys)" source per stream (`DataWidget.neo_stream_names()`, excluding the Phy/kilosort stream); dropping one opens `ChannelSelectDialog` (multi-select, default all) → `DataWidget.add_neo_panel`. `on_kilosort_loaded()` drops any Neo panel that duplicates the Phy stream; `refresh_neo_panels()` re-renders on trial change. Layout persistence stores `{type: "neo", stream_name, channels}` per instance.
+
+**Neo AND Phy trace panels are NOT auto-loaded (they are heavy).** On dataset/Kilosort load the code only resolves the Phy loader stream (`_ensure_default_ephys_stream`) and pre-wires the Phy source (`configure_ephys_trace_plot`, hidden). Both panels are added on demand from the "➕ Add panel" popup: the **Ephys** header offers "Ephys (Phy-like viewer)" (kind `"phy"`, shown when `MetaWidget._phy_available()` / `EphysWidget.has_phy_trace()` — a raw `.bin`/`.dat` Kilosort loader resolves) and one "Neo (…)" per stream. `MetaWidget._add_phy_panel()` re-shows the Phy singleton (`set_neural_panel_mode("trace")` + `configure_ephys_trace_plot`), so closing it via ✕ and re-adding works. `refresh_source_popup()` repopulates the popup (called on each open and after Kilosort load). Saved layouts still restore whatever panels were open.
 
 ### Neuron Loading (Kilosort / Pynapple)
 
-Two loading paths, both producing a `nap.TsGroup` + cluster table:
-- **Kilosort folder**: loads `.npy` files, `cluster_info.tsv`, raw `.dat` trace. Full features (probe map, spike waveforms, raster).
-- **Pynapple file** (`.npz`/`.nwb`): loads via `nap.load_file()`, extracts `data["units"]` TsGroup. Raster-only (no raw traces, no probe map). TsGroup metadata columns populate the cluster table.
-
-State: `app_state.neurons_path` (was `kilosort_folder`), `app_state.has_neurons` (was `has_kilosort`). `EphysWidget._neurons_source` is `"kilosort"` or `"pynapple"`.
+Two paths, both → `nap.TsGroup` + cluster table: **Kilosort folder** (`.npy` + `cluster_info.tsv` + raw `.dat`; full features — probe map, waveforms, raster) and **Pynapple file** (`.npz`/`.nwb` via `nap.load_file()`, `data["units"]`; raster-only). State: `app_state.neurons_path`, `app_state.has_neurons`; `EphysWidget._neurons_source` is `"kilosort"`/`"pynapple"`.
 
 ### Kilosort Channel Mapping
 
-Two index spaces: **site index** (0..n_sites-1, indexes `channel_positions.npy`) vs **hardware channel** (from `channel_map.npy`, can exceed n_sites). `cluster_info.tsv` `ch` column = hardware channel. Always index `channel_positions` by site index.
+Two index spaces: **site index** (0..n_sites-1, indexes `channel_positions.npy`) vs **hardware channel** (`channel_map.npy`, can exceed n_sites; `cluster_info.tsv` `ch` column). Always index `channel_positions` by site index.
 
 ### Changepoint Correction
 
-Bridge pattern: intervals→dense→correct→intervals. Kinematic CPs stored as dense `int8` arrays. Audio CPs stored as onset/offset float pairs (compact at 44kHz).
+Bridge pattern: intervals→dense→correct→intervals. Kinematic CPs stored as dense `int8`; audio CPs as onset/offset float pairs.
 
 ---
 

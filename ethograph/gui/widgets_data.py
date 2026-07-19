@@ -272,15 +272,18 @@ class DataPanel(QWidget):
         parent_layout.addStretch()
 
     def _create_pose_section(self, parent_layout):
-        self.pose_groupbox = QGroupBox("Pose controls")
+        self.pose_groupbox = QGroupBox("Pose overlay")
         pose_layout = QVBoxLayout()
-        pose_layout.setSpacing(2)
+        pose_layout.setSpacing(4)
         pose_layout.setContentsMargins(4, 4, 4, 4)
         self.pose_groupbox.setLayout(pose_layout)
 
-        # Confidence filter (applies to both points and skeleton edges)
-        threshold_layout = QHBoxLayout()
-        threshold_layout.addWidget(QLabel("Confidence ≥"))
+        # ── Filter keypoints ──
+        filter_box = QGroupBox("Filter keypoints")
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(5)
+        filter_row.setContentsMargins(4, 4, 4, 4)
+        filter_row.addWidget(QLabel("Filter below confidence:"))
         self.pose_hide_threshold_spin = QDoubleSpinBox()
         self.pose_hide_threshold_spin.setObjectName("pose_hide_threshold_spin")
         self.pose_hide_threshold_spin.setRange(0.0, 1.0)
@@ -292,31 +295,39 @@ class DataPanel(QWidget):
             "is also hidden on any frame where one of its two keypoints is hidden."
         )
         self.pose_hide_threshold_spin.setValue(self.app_state.pose_hide_threshold)
-        threshold_layout.addWidget(self.pose_hide_threshold_spin)
-        threshold_layout.addStretch()
-        pose_layout.addLayout(threshold_layout)
-
-        # Keypoints row: master visibility toggle + per-keypoint filter popup
-        keypoints_row = QHBoxLayout()
-        self.pose_show_keypoints_checkbox = QCheckBox("Show keypoints")
-        self.pose_show_keypoints_checkbox.setChecked(True)
-        self.pose_show_keypoints_checkbox.setToolTip(
-            "Show/hide keypoint markers (skeleton edges are unaffected)"
-        )
-        keypoints_row.addWidget(self.pose_show_keypoints_checkbox)
+        filter_row.addWidget(self.pose_hide_threshold_spin)
         self.filter_keypoints_btn = QPushButton("Filter individual keypoints…")
         self.filter_keypoints_btn.setToolTip(
             "Open a popup to show/hide individual keypoints. Hidden keypoints "
             "also drop any skeleton edge touching them."
         )
-        keypoints_row.addWidget(self.filter_keypoints_btn)
-        keypoints_row.addStretch()
-        pose_layout.addLayout(keypoints_row)
+        filter_row.addWidget(self.filter_keypoints_btn)
+        filter_row.addStretch()
+        filter_box.setLayout(filter_row)
+        pose_layout.addWidget(filter_box)
 
-        # Points (markers) row
-        points_row = QHBoxLayout()
-        points_row.addWidget(QLabel("<b>Points:</b>"))
-        points_row.addWidget(QLabel("Size"))
+        # ── Design ──
+        design_box = QGroupBox("Design")
+        design_vbox = QVBoxLayout()
+        design_vbox.setSpacing(4)
+        design_vbox.setContentsMargins(4, 4, 4, 4)
+        grid = QGridLayout()
+        grid.setSpacing(5)
+        for col, header in enumerate(["", "Show", "Show text", "Size / width", "Base colour"]):
+            grid.addWidget(QLabel(f"<b>{header}</b>" if header else ""), 0, col)
+
+        # Points row
+        grid.addWidget(QLabel("Points"), 1, 0)
+        self.pose_show_keypoints_checkbox = QCheckBox()
+        self.pose_show_keypoints_checkbox.setChecked(True)
+        self.pose_show_keypoints_checkbox.setToolTip(
+            "Show/hide keypoint markers (skeleton edges are unaffected)"
+        )
+        grid.addWidget(self.pose_show_keypoints_checkbox, 1, 1)
+        self.pose_show_text_checkbox = QCheckBox()
+        self.pose_show_text_checkbox.setChecked(False)
+        self.pose_show_text_checkbox.setToolTip("Show keypoint/individual labels on pose markers")
+        grid.addWidget(self.pose_show_text_checkbox, 1, 2)
         self.pose_point_size_spin = QDoubleSpinBox()
         self.pose_point_size_spin.setObjectName("pose_point_size_spin")
         self.pose_point_size_spin.setRange(1.0, 50.0)
@@ -324,36 +335,34 @@ class DataPanel(QWidget):
         self.pose_point_size_spin.setDecimals(0)
         self.pose_point_size_spin.setFixedWidth(55)
         self.pose_point_size_spin.setValue(10.0)
-        points_row.addWidget(self.pose_point_size_spin)
+        grid.addWidget(self.pose_point_size_spin, 1, 3)
+        points_color_cell = QHBoxLayout()
+        points_color_cell.setSpacing(2)
+        self.pose_points_color_btn = QPushButton()
+        self.pose_points_color_btn.setObjectName("pose_points_color_btn")
+        self.pose_points_color_btn.setFixedWidth(40)
+        self.pose_points_color_btn.setToolTip("Uniform colour for all pose points")
+        self.pose_points_color_btn.setIcon(
+            _color_swatch_icon(self.app_state.pose_points_base_color or "#FF3333")
+        )
+        points_color_cell.addWidget(self.pose_points_color_btn)
+        self.pose_points_use_base_checkbox = QCheckBox()
+        self.pose_points_use_base_checkbox.setChecked(self.app_state.pose_points_use_base)
+        self.pose_points_use_base_checkbox.setToolTip(
+            "Checked: all points use the base colour.\n"
+            "Unchecked: per-keypoint colours (turbo colormap)."
+        )
+        points_color_cell.addWidget(self.pose_points_use_base_checkbox)
+        grid.addLayout(points_color_cell, 1, 4)
 
-        self.pose_show_text_checkbox = QCheckBox("Show text")
-        self.pose_show_text_checkbox.setChecked(False)
-        self.pose_show_text_checkbox.setToolTip("Show keypoint/individual labels on pose markers")
-        points_row.addWidget(self.pose_show_text_checkbox)
-
-        points_row.addWidget(QLabel("Text size"))
-        self.pose_text_size_spin = QDoubleSpinBox()
-        self.pose_text_size_spin.setObjectName("pose_text_size_spin")
-        self.pose_text_size_spin.setRange(4.0, 72.0)
-        self.pose_text_size_spin.setSingleStep(1.0)
-        self.pose_text_size_spin.setDecimals(0)
-        self.pose_text_size_spin.setFixedWidth(55)
-        self.pose_text_size_spin.setValue(12.0)
-        points_row.addWidget(self.pose_text_size_spin)
-        points_row.addStretch()
-        pose_layout.addLayout(points_row)
-
-        # Skeleton (edges) row
-        skeleton_row = QHBoxLayout()
-        skeleton_row.addWidget(QLabel("<b>Skeleton:</b>"))
-        self.pose_show_skeleton_checkbox = QCheckBox("Show")
+        # Skeleton row
+        grid.addWidget(QLabel("Skeleton"), 2, 0)
+        self.pose_show_skeleton_checkbox = QCheckBox()
         self.pose_show_skeleton_checkbox.setChecked(self.app_state.pose_show_skeleton)
         self.pose_show_skeleton_checkbox.setToolTip(
             "Draw skeleton edges (from the NWB ndx-pose Skeleton or the skeleton editor)"
         )
-        skeleton_row.addWidget(self.pose_show_skeleton_checkbox)
-
-        skeleton_row.addWidget(QLabel("Line width"))
+        grid.addWidget(self.pose_show_skeleton_checkbox, 2, 1)
         self.pose_skeleton_width_spin = QDoubleSpinBox()
         self.pose_skeleton_width_spin.setObjectName("pose_skeleton_width_spin")
         self.pose_skeleton_width_spin.setRange(0.5, 20.0)
@@ -361,32 +370,51 @@ class DataPanel(QWidget):
         self.pose_skeleton_width_spin.setDecimals(1)
         self.pose_skeleton_width_spin.setFixedWidth(55)
         self.pose_skeleton_width_spin.setValue(2.0)
-        skeleton_row.addWidget(self.pose_skeleton_width_spin)
-
-        skeleton_row.addWidget(QLabel("Base colour"))
+        grid.addWidget(self.pose_skeleton_width_spin, 2, 3)
+        skeleton_color_cell = QHBoxLayout()
+        skeleton_color_cell.setSpacing(2)
         self.pose_skeleton_color_btn = QPushButton()
         self.pose_skeleton_color_btn.setObjectName("pose_skeleton_color_btn")
         self.pose_skeleton_color_btn.setFixedWidth(40)
-        self.pose_skeleton_color_btn.setToolTip(
-            "Uniform colour for skeleton edges (per-segment colours from the "
-            "skeleton editor take precedence)."
-        )
+        self.pose_skeleton_color_btn.setToolTip("Uniform colour for all skeleton edges")
         self.pose_skeleton_color_btn.setIcon(
             _color_swatch_icon(self.app_state.skeleton_base_color or "#00CC66")
         )
-        skeleton_row.addWidget(self.pose_skeleton_color_btn)
-        skeleton_row.addStretch()
-        pose_layout.addLayout(skeleton_row)
+        skeleton_color_cell.addWidget(self.pose_skeleton_color_btn)
+        self.pose_skeleton_use_base_checkbox = QCheckBox()
+        self.pose_skeleton_use_base_checkbox.setChecked(self.app_state.skeleton_use_base)
+        self.pose_skeleton_use_base_checkbox.setToolTip(
+            "Checked: all edges use the base colour.\n"
+            "Unchecked: per-edge custom colours from the skeleton editor / NWB."
+        )
+        skeleton_color_cell.addWidget(self.pose_skeleton_use_base_checkbox)
+        grid.addLayout(skeleton_color_cell, 2, 4)
+        grid.setColumnStretch(5, 1)
+        design_vbox.addLayout(grid)
 
-        # Actions row
-        btn_row = QHBoxLayout()
-        self.rotate_btn = QPushButton("Rotate video/pose by 90°")
-        self.rotate_btn.setToolTip("Rotate all video and pose layers by 90° clockwise")
-        btn_row.addWidget(self.rotate_btn)
-        btn_row.addStretch()
-        pose_layout.addLayout(btn_row)
+        text_size_row = QHBoxLayout()
+        text_size_row.addWidget(QLabel("Text size"))
+        self.pose_text_size_spin = QDoubleSpinBox()
+        self.pose_text_size_spin.setObjectName("pose_text_size_spin")
+        self.pose_text_size_spin.setRange(4.0, 72.0)
+        self.pose_text_size_spin.setSingleStep(1.0)
+        self.pose_text_size_spin.setDecimals(0)
+        self.pose_text_size_spin.setFixedWidth(55)
+        self.pose_text_size_spin.setValue(12.0)
+        text_size_row.addWidget(self.pose_text_size_spin)
+        text_size_row.addStretch()
+        design_vbox.addLayout(text_size_row)
+        design_box.setLayout(design_vbox)
+        pose_layout.addWidget(design_box)
 
-        # Pose ↔ Video matching
+        # ── Actions ──
+        self.create_skeleton_btn = QPushButton("Create / edit skeleton…")
+        self.create_skeleton_btn.setToolTip(
+            "Open an editor to draw skeleton connections on real pose data:\n"
+            "drag between keypoints to connect, then assign color categories."
+        )
+        pose_layout.addWidget(self.create_skeleton_btn)
+
         self.pose_match_btn = QPushButton("Match Pose ↔ Video")
         self.pose_match_btn.setToolTip(
             "Open dialog to match NWB PoseEstimation containers to video cameras.\n"
@@ -394,13 +422,6 @@ class DataPanel(QWidget):
         )
         self.pose_match_btn.clicked.connect(self._on_pose_match_clicked)
         pose_layout.addWidget(self.pose_match_btn)
-
-        self.create_skeleton_btn = QPushButton("Create / edit skeleton…")
-        self.create_skeleton_btn.setToolTip(
-            "Open an editor to draw skeleton connections on real pose data:\n"
-            "drag between keypoints to connect, then assign color categories."
-        )
-        pose_layout.addWidget(self.create_skeleton_btn)
         pose_layout.addStretch()
 
         self.pose_groupbox.hide()
@@ -550,6 +571,9 @@ class DataWidget(QWidget):
         self.pose_show_skeleton_checkbox = panel.pose_show_skeleton_checkbox
         self.pose_skeleton_width_spin = panel.pose_skeleton_width_spin
         self.pose_skeleton_color_btn = panel.pose_skeleton_color_btn
+        self.pose_skeleton_use_base_checkbox = panel.pose_skeleton_use_base_checkbox
+        self.pose_points_color_btn = panel.pose_points_color_btn
+        self.pose_points_use_base_checkbox = panel.pose_points_use_base_checkbox
         self.create_skeleton_btn = panel.create_skeleton_btn
         self.pose_show_keypoints_checkbox = panel.pose_show_keypoints_checkbox
         self.filter_keypoints_btn = panel.filter_keypoints_btn
@@ -563,10 +587,14 @@ class DataWidget(QWidget):
         panel.pose_show_text_checkbox.stateChanged.connect(self._on_pose_text_toggled)
         panel.pose_point_size_spin.valueChanged.connect(self._on_pose_point_size_changed)
         panel.pose_text_size_spin.valueChanged.connect(self._on_pose_text_size_changed)
-        panel.rotate_btn.clicked.connect(self.pose_mgr.on_rotate_video_pose)
         panel.pose_show_skeleton_checkbox.stateChanged.connect(self._on_pose_show_skeleton_toggled)
         panel.pose_skeleton_width_spin.valueChanged.connect(self._on_pose_skeleton_width_changed)
         panel.pose_skeleton_color_btn.clicked.connect(self._on_skeleton_color_clicked)
+        panel.pose_skeleton_use_base_checkbox.stateChanged.connect(
+            self._on_skeleton_use_base_toggled
+        )
+        panel.pose_points_color_btn.clicked.connect(self._on_points_color_clicked)
+        panel.pose_points_use_base_checkbox.stateChanged.connect(self._on_points_use_base_toggled)
         panel.create_skeleton_btn.clicked.connect(self._on_create_skeleton_clicked)
         panel._update_pose_callback = self.update_pose
 
@@ -623,6 +651,25 @@ class DataWidget(QWidget):
             return
         self.app_state.skeleton_base_color = color.name().upper()
         self.pose_skeleton_color_btn.setIcon(_color_swatch_icon(self.app_state.skeleton_base_color))
+        self.pose_mgr.refresh_skeleton()
+
+    def _on_skeleton_use_base_toggled(self, state: int):
+        self.app_state.skeleton_use_base = self.pose_skeleton_use_base_checkbox.isChecked()
+        self.pose_mgr.refresh_skeleton()
+
+    def _on_points_color_clicked(self):
+        current = self.app_state.pose_points_base_color or "#FF3333"
+        color = QColorDialog.getColor(QColor(current), self, "Points base colour")
+        if not color.isValid():
+            return
+        self.app_state.pose_points_base_color = color.name().upper()
+        self.pose_points_color_btn.setIcon(
+            _color_swatch_icon(self.app_state.pose_points_base_color)
+        )
+        self.pose_mgr.refresh_skeleton()
+
+    def _on_points_use_base_toggled(self, state: int):
+        self.app_state.pose_points_use_base = self.pose_points_use_base_checkbox.isChecked()
         self.pose_mgr.refresh_skeleton()
 
     def _on_create_skeleton_clicked(self):
@@ -1078,11 +1125,11 @@ class DataWidget(QWidget):
             pc.set_spectrogram_visible(False)
         if self.catalog and self.catalog.features and not pc.line_plots:
             pc.add_lineplot()
-        pc.set_neo_visible(bool(self.app_state.has_neo))
-        if self.app_state.has_neo:
-            self._configure_neo_panel()
-        if self.app_state.has_neurons:
-            self.show_neural_panel()
+        # Neo + Phy trace panels are heavy; they are NOT shown automatically.
+        # The user adds them on demand from the "➕ Add panel" popup. Just make
+        # sure the Phy loader's stream is resolvable.
+        if self.app_state.ephys_source_map:
+            self._ensure_default_ephys_stream()
 
         # Row 2: mic selector
         if self.app_state.has_audio:
@@ -1114,17 +1161,6 @@ class DataWidget(QWidget):
         self.panels_row3_layout.addWidget(self.sort_channels_btn)
         self.panels_row3_layout.addStretch()
 
-        # Row 4: Neo stream combo
-        self._neo_stream_label = QLabel("Preview stream:")
-        self.neo_stream_combo = QComboBox()
-        self.neo_stream_combo.setObjectName("neo_stream_combo")
-        self.neo_stream_combo.currentTextChanged.connect(self._on_neo_stream_changed)
-        self.panels_row4_layout.addWidget(self._neo_stream_label)
-        self.panels_row4_layout.addWidget(self.neo_stream_combo)
-        self._neo_stream_label.hide()
-        self.neo_stream_combo.hide()
-        self.panels_row4_layout.addStretch()
-
         # Row 5: neural view combo
         self._neural_view_label = QLabel("View:")
         self.neural_view_combo = QComboBox()
@@ -1138,12 +1174,11 @@ class DataWidget(QWidget):
         self.panels_row5_layout.addStretch()
 
 
-        if self.app_state.has_neo and self.ephys_widget:
-            self._populate_neo_stream_combo()
-
         if self.app_state.has_neurons and self.ephys_widget:
             self._neural_view_label.show()
             self.neural_view_combo.show()
+            # Wire the Phy loader/source so it renders instantly when the user
+            # adds the Phy viewer from the popup — but keep the panel hidden.
             self.ephys_widget.configure_ephys_trace_plot()
 
         self.video_mgr.set_audio_row_widgets(self._audio_row_widgets)
@@ -1399,98 +1434,113 @@ class DataWidget(QWidget):
             self.ephys_widget.set_neural_view(mode)
 
     # ------------------------------------------------------------------
-    # Neo-Viewer panel
+    # Neo trace panels (one instance per stream/modality)
     # ------------------------------------------------------------------
 
-    def _populate_neo_stream_combo(self):
-        """Populate the Neo stream combo with available streams, greying out
-        any stream that matches kilosort params (n_channels, sample_rate)."""
-        source_map = getattr(self.app_state, "ephys_source_map", {})
-        if not source_map:
-            self._neo_stream_label.hide()
-            self.neo_stream_combo.hide()
+    def _kilosort_params(self) -> dict | None:
+        return getattr(self.ephys_widget, "_kilosort_params", None) if self.ephys_widget else None
+
+    def _neo_stream_meta(self, filepath, stream_id) -> tuple[int, float] | None:
+        """(n_channels, rate) for a stream, cached so opening the add-panel
+        popup doesn't re-parse the ephys header for every stream each time."""
+        cache = self.__dict__.setdefault("_stream_meta_cache", {})
+        key = (str(filepath), str(stream_id))
+        if key not in cache:
+            try:
+                loader = load_ephys(filepath, str(stream_id))
+                cache[key] = (int(loader.n_channels), float(loader.rate))
+            except Exception:
+                cache[key] = None
+        return cache[key]
+
+    def _stream_matches_kilosort(self, filepath, stream_id) -> bool:
+        """True if a Neo stream is the probe stream shown in the Phy trace."""
+        ks = self._kilosort_params()
+        if not ks:
+            return False
+        meta = self._neo_stream_meta(filepath, stream_id)
+        if meta is None:
+            return False
+        n_ch, rate = meta
+        return n_ch == ks.get("n_channels_dat", 0) and abs(rate - ks.get("sample_rate", 0)) < 1.0
+
+    def neo_stream_names(self, exclude_kilosort: bool = True) -> list[str]:
+        """Display names of Neo streams (modalities), optionally excluding the
+        stream that feeds the Phy trace (matches kilosort params)."""
+        source_map = getattr(self.app_state, "ephys_source_map", {}) or {}
+        names = []
+        for name, entry in source_map.items():
+            if not entry or len(entry) < 2:
+                continue
+            filepath, stream_id = entry[0], entry[1]
+            if exclude_kilosort and self._stream_matches_kilosort(filepath, stream_id):
+                continue
+            names.append(name)
+        return names
+
+    def neo_stream_channel_count(self, stream_name: str) -> int:
+        source_map = getattr(self.app_state, "ephys_source_map", {}) or {}
+        entry = source_map.get(stream_name)
+        if entry is None:
+            return 0
+        filepath, stream_id, _ch = entry
+        meta = self._neo_stream_meta(filepath, stream_id)
+        return meta[0] if meta is not None else 0
+
+    def _ensure_default_ephys_stream(self) -> None:
+        """Ensure ephys_stream_sel points at a valid stream so the Phy trace
+        loader (get_ephys_source) resolves — even when every stream is neo."""
+        source_map = getattr(self.app_state, "ephys_source_map", {}) or {}
+        if source_map and self.app_state.ephys_stream_sel not in source_map:
+            self.app_state.ephys_stream_sel = next(iter(source_map))
+
+    def add_neo_panel(self, stream_name: str, channels: list[int] | None = None):
+        return self.plot_container.add_panel("neo", stream_name=stream_name, channels=channels)
+
+    def configure_neo_plot(self, plot) -> None:
+        """Load the plot's stream and render it (called back from add_panel)."""
+        stream_name = getattr(plot, "neo_stream_name", None)
+        source_map = getattr(self.app_state, "ephys_source_map", {}) or {}
+        entry = source_map.get(stream_name)
+        if entry is None:
             return
-
-        ks_params = None
-        if self.ephys_widget:
-            ks_params = getattr(self.ephys_widget, "_kilosort_params", None)
-
-        self.neo_stream_combo.blockSignals(True)
-        self.neo_stream_combo.clear()
-
-        for display_name, (filepath, stream_id, _ch) in source_map.items():
-            self.neo_stream_combo.addItem(display_name)
-
-            # Grey out streams matching kilosort params
-            if ks_params:
-                try:
-                    loader = load_ephys(filepath, stream_id)
-                    ks_sr = ks_params.get("sample_rate", 0)
-                    ks_nch = ks_params.get("n_channels_dat", 0)
-                    if loader.n_channels == ks_nch and abs(loader.rate - ks_sr) < 1.0:
-                        idx = self.neo_stream_combo.count() - 1
-                        model = self.neo_stream_combo.model()
-                        item = model.item(idx)
-                        if item:
-                            item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
-                except Exception:
-                    pass
-
-        self.neo_stream_combo.blockSignals(False)
-
-        show_combo = self.neo_stream_combo.count() > 0
-        self._neo_stream_label.setVisible(show_combo)
-        self.neo_stream_combo.setVisible(show_combo)
-
-        if show_combo:
-            # Select first enabled item
-            for i in range(self.neo_stream_combo.count()):
-                item = self.neo_stream_combo.model().item(i)
-                if item and (item.flags() & Qt.ItemIsEnabled):
-                    self.neo_stream_combo.setCurrentIndex(i)
-                    break
-
-    def _on_neo_stream_changed(self, stream_name: str):
-        if not self.app_state.ready or not stream_name:
-            return
-        self._configure_neo_panel(stream_name)
-
-    def _configure_neo_panel(self, stream_name: str | None = None):
-        """Configure the Neo-Viewer panel with the selected stream."""
-        if not self.plot_container:
-            return
-
-        if stream_name is None:
-            stream_name = self.neo_stream_combo.currentText() if hasattr(self, "neo_stream_combo") else ""
-        if not stream_name:
-            return
-
-        source_map = getattr(self.app_state, "ephys_source_map", {})
-        if stream_name not in source_map:
-            return
-
-        # Track the selected stream regardless of panel visibility so that
-        # configure_ephys_trace_plot() always knows which stream is active.
-        self.app_state.ephys_stream_sel = stream_name
-
-        filepath, stream_id, channel_idx = source_map[stream_name]
+        filepath, stream_id, channel_idx = entry
         try:
             loader = load_ephys(filepath, str(stream_id))
         except Exception:
             return
-
         neo_starting_time = float(getattr(loader, "starting_time", 0.0) or 0.0)
-
-        neo_plot = self.plot_container.neo_trace_plot
-        neo_plot.set_loader(loader, channel_idx)
-        neo_plot.set_source(FileSource("neo", loader, start_time=neo_starting_time))
-
-        if self.plot_container._panel_visible["neo"]:
+        plot.set_loader(loader, channel_idx or 0)
+        plot.set_source(FileSource("neo", loader, start_time=neo_starting_time))
+        channels = getattr(plot, "neo_channels", None)
+        if channels is not None:
+            plot.set_custom_channel_set(np.asarray(channels, dtype=int))
+        if self.app_state.ready:
             xmin, xmax = self.plot_container.get_current_xlim()
-            neo_plot.update_plot_content(xmin, xmax)
-            neo_plot.auto_channel_spacing()
-            neo_plot.auto_gain()
-            neo_plot.autoscale()
+            plot.update_plot_content(xmin, xmax)
+            plot.auto_channel_spacing()
+            plot.auto_gain()
+            plot.autoscale()
+
+    def refresh_neo_panels(self) -> None:
+        """Re-render every Neo trace instance (e.g. on trial change)."""
+        if not self.plot_container:
+            return
+        for plot in self.plot_container.neo_trace_plots:
+            self.configure_neo_plot(plot)
+
+    def on_kilosort_loaded(self) -> None:
+        """After Kilosort loads, the Phy trace owns the probe stream — drop any
+        Neo panel that now duplicates it, and keep the Phy loader stream valid."""
+        self._ensure_default_ephys_stream()
+        pc = self.plot_container
+        if pc is None:
+            return
+        source_map = getattr(self.app_state, "ephys_source_map", {}) or {}
+        for plot in list(pc.neo_trace_plots):
+            entry = source_map.get(getattr(plot, "neo_stream_name", None))
+            if entry and self._stream_matches_kilosort(entry[0], entry[1]):
+                pc.remove_panel(plot)
 
     def cycle_view_mode(self):
         if not hasattr(self, "view_mode_combo") or not self.view_mode_combo.isVisible():
@@ -2358,8 +2408,9 @@ class DataWidget(QWidget):
             for plot in list(pc.line_plots):
                 pc.remove_lineplot(plot)
             pc.set_heatmap_visible(False)
-        if getattr(pc.neo_trace_plot, "_source", None) is None:
-            pc.set_neo_visible(False)
+        for plot in list(pc.neo_trace_plots):
+            if getattr(plot, "_source", None) is None:
+                pc.remove_panel(plot)
         if not self.app_state.has_neurons:
             pc.set_ephys_visible(False)
 
@@ -2565,10 +2616,6 @@ class DataWidget(QWidget):
             return
         self.show_envelope_checkbox.show()
         self.video_mgr.update_video(plot_container=self.plot_container)
-        video = getattr(self.app_state, "video", None)
-        if video:
-            nav = self.meta_widget.navigation_widget
-            nav.connect_video_sync(video)
 
     def update_audio(self):
         if not self.app_state.ready:
@@ -2582,6 +2629,10 @@ class DataWidget(QWidget):
         self.video_mgr.toggle_pause_resume(self.plot_container)
 
     def _on_time_marker_updated(self, time_s: float):
+        # Static-image views have no frame clock — the marker animates their
+        # pose overlay directly.
+        for view in self.video_mgr.image_views():
+            view.set_overlay_time(time_s)
         visible = [sp for sp in self.space_plots if sp.isVisible()]
         if not visible:
             return
@@ -2690,9 +2741,13 @@ class DataWidget(QWidget):
     def _apply_extra_cameras(self):
         desired = self._get_desired_extra_cameras()
         # Compare by camera name (dict keys are unique per view instance —
-        # duplicates of the same camera are allowed).
+        # duplicates of the same camera are allowed). Static-image views are
+        # not cameras — the combos never name them, so reconciling against
+        # `desired` would wrongly remove them.
         current = {
-            getattr(view, "camera_name", key) for key, view in self.video_mgr.extra_widgets.items()
+            getattr(view, "camera_name", key)
+            for key, view in self.video_mgr.extra_widgets.items()
+            if not getattr(view, "static_image_path", None)
         }
 
         for name in current - desired:

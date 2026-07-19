@@ -63,9 +63,10 @@ class RestrictionWindow:
         ``"trial_start"``  — trial start to next trial start (stop unknown)
         ``"label"``        — a single label instance (with context padding)
         ``"sequence"``     — a matched label sequence span
+        ``"fixed"``        — fixed-size window anchored at an interval start
     """
 
-    mode: str  # "session" | "trial" | "label" | "sequence"
+    mode: str  # "session" | "trial" | "trial_start" | "label" | "sequence" | "fixed"
     time_range: TimeRange  # effective display window (including extra context)
     core_range: TimeRange  # the actual interval (without extra context)
     trial_id: int | str | None = None
@@ -448,12 +449,9 @@ def infer_slider_range(
         return "trial", TimeRange(0.0, stop - start)
 
     # Start-only: extend to next trial's start
-    df = nwb_alignment.trials_df
-    if not df.empty and "start_time" in df.columns:
-        all_starts = sorted(df["start_time"].dropna().values)
-        for s in all_starts:
-            if s > start:
-                return "trial_start", TimeRange(0.0, s - start)
+    tsr = trial_start_range(nwb_alignment, trial_id)
+    if tsr is not None:
+        return "trial_start", tsr
 
     # Last trial or no next: use session extent
     if source_collection is not None:
@@ -462,6 +460,24 @@ def infer_slider_range(
             return "session", TimeRange(0.0, sr.end_s - start)
 
     return "session", None
+
+
+def trial_start_range(nwb_alignment, trial_id) -> TimeRange | None:
+    """Trial-relative range from this trial's start to the next trial's start.
+
+    Returns ``None`` when the trial has no start time or no later trial
+    exists (last trial).
+    """
+    start = nwb_alignment.start_time(trial_id)
+    if start is None:
+        return None
+    df = nwb_alignment.trials_df
+    if df.empty or "start_time" not in df.columns:
+        return None
+    next_starts = [s for s in df["start_time"].dropna().values if s > start]
+    if not next_starts:
+        return None
+    return TimeRange(0.0, float(min(next_starts)) - start)
 
 
 def find_closest_trial(nwb_alignment, trials: list, global_time: float) -> tuple[int | str, float]:

@@ -33,6 +33,9 @@ AUDIO_EXTENSIONS = {
 
 POSE_EXTENSIONS = {".h5", ".hdf5", ".csv", ".slp", ".nwb"}
 
+# Still images shown as static media views (arena photo, reference frame).
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+
 EPHYS_EXTENSIONS_RAW = {".dat", ".bin", ".raw"}
 
 EPHYS_EXTENSIONS = {
@@ -102,6 +105,7 @@ def _qt_filter(label: str, exts: set[str]) -> str:
 VIDEO_FILE_FILTER = _qt_filter("Video files", VIDEO_EXTENSIONS)
 AUDIO_FILE_FILTER = _qt_filter("Audio files", AUDIO_EXTENSIONS)
 EPHYS_FILE_FILTER = _qt_filter("Ephys files", EPHYS_EXTENSIONS)
+IMAGE_FILE_FILTER = _qt_filter("Image files", IMAGE_EXTENSIONS)
 
 
 def find_temporal_dims(ds: xr.Dataset) -> set[str]:

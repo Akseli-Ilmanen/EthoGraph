@@ -192,18 +192,20 @@ def test_store_select_tsdframe_single_column(multi_tsdframe_data):
 
 
 def test_store_select_with_time_window(multi_tsdframe_data):
-    """Narrower time window restricts the returned data."""
+    """Narrower time window restricts the returned data (time stays absolute)."""
     store = PynappleStore(multi_tsdframe_data)
     full = store.select("speed", {}, t0=0.0, t1=10.0)
     windowed = store.select("speed", {}, t0=2.0, t1=5.0)
     assert windowed is not None
     assert len(windowed.time) < len(full.time)
-    assert windowed.time[0] >= 0.0 - 0.1
-    assert windowed.time[-1] <= 3.0 + 0.1
+    assert windowed.time[0] >= 2.0 - 0.1
+    assert windowed.time[-1] <= 5.0 + 0.1
 
 
-def test_store_trial_relative_time():
-    """Passing absolute t0/t1 returns trial-relative times (start near 0)."""
+def test_store_absolute_time():
+    """Returned time keeps absolute session coordinates (never re-based to t0),
+    so a viewport starting anywhere (e.g. a sliding fixed window) aligns with
+    the plot x-axis."""
     trials = nap.IntervalSet(start=[100, 200], end=[110, 210])
     t = np.linspace(100, 210, 11000)
     speed = nap.Tsd(t=t, d=np.random.randn(len(t)), time_support=trials)
@@ -212,12 +214,12 @@ def test_store_trial_relative_time():
     store = PynappleStore(data)
     pd = store.select("speed", {}, t0=100.0, t1=110.0)
     assert pd is not None
-    assert pd.time[0] < 1.0  # trial-relative, near 0
-    assert pd.time[-1] <= 10.5
+    assert pd.time[0] >= 100.0 - 0.1
+    assert pd.time[-1] <= 110.0 + 0.1
 
     pd2 = store.select("speed", {}, t0=200.0, t1=210.0)
     assert pd2 is not None
-    assert pd2.time[0] < 1.0
+    assert pd2.time[0] >= 200.0 - 0.1
 
 
 def test_store_select_nonexistent_feature(multi_tsdframe_data):

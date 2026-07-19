@@ -6,7 +6,7 @@ import numpy as np
 import ruptures as rpt
 import xarray as xr
 
-from qtpy.QtCore import QLocale, Qt, Signal
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -955,7 +955,6 @@ class ChangepointsWidget(QWidget):
             self.automatic_min_label_length_spin,
             self.automatic_stitch_gap_spin,
         ):
-            spin.setLocale(QLocale(QLocale.C))
             spin.setDecimals(3)
             spin.setSuffix(" s")
 
@@ -1382,7 +1381,6 @@ class LabelThresholdsDialog(QDialog):
             self._table.setItem(row_idx, 1, name_item)
 
             spin = QDoubleSpinBox()
-            spin.setLocale(QLocale(QLocale.C))
             spin.setRange(0.001, 100000)
             spin.setDecimals(3)
             spin.setSuffix(" s")

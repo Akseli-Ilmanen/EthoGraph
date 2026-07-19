@@ -31,6 +31,7 @@ from ethograph.gui.pose_overlay import OverlayStyle, PoseOverlayData
 from ethograph.io.nwb_alignment import pose_keys_for_cameras, pose_video_links_from_nwb
 from ethograph.io.nwb_import import _get_absolute_timestamps
 from ethograph.skeleton import nwb_skeleton_to_config
+from ethograph.skeleton.config import hex_to_rgba
 
 logger = logging.getLogger(__name__)
 
@@ -278,20 +279,16 @@ def _match_skeleton_nodes(nodes: list[str], keypoints: set[str]) -> dict[str, st
 
 
 def _resolve_skeleton_colors(config: dict | None, base_color: str | None) -> dict | None:
-    """Apply the base colour to edges that have no assigned category.
+    """Recolour every skeleton edge AND anchored shape with the uniform ``base_color``.
 
-    Edges with a non-empty ``segment`` (assigned a category in the editor) keep
-    their colour; unassigned edges — including every edge of an NWB-derived
-    skeleton — take ``base_color``. Returns ``config`` unchanged when there is
-    nothing to recolour.
+    Called only when the "use base colour" checkbox is on; otherwise the
+    per-edge/per-shape colours from the editor / NWB config are used as-is.
     """
     if config is None or not base_color:
         return config
-    connections = [
-        ({**c, "color": base_color} if not c.get("segment") else c)
-        for c in config["connections"]
-    ]
-    return {**config, "connections": connections}
+    connections = [{**c, "color": base_color} for c in config["connections"]]
+    shapes = [{**s, "color": base_color} for s in config.get("shapes", [])]
+    return {**config, "connections": connections, "shapes": shapes}
 
 
 def pose_render_to_movement_ds(pr: PoseRenderData) -> xr.Dataset:
@@ -559,11 +556,14 @@ class PoseDisplayManager:
 
     def _resolved_skeleton_config(self, pr: PoseRenderData) -> dict | None:
         """Skeleton + shapes config after override/base-colour resolution."""
-        override = getattr(self.app_state, "skeleton_config_override", None)
-        config = override if override is not None else pr.skeleton_config
-        config = _resolve_skeleton_colors(config, getattr(self.app_state, "skeleton_base_color", None))
         if not self._skeleton_enabled():
             return None
+        override = getattr(self.app_state, "skeleton_config_override", None)
+        config = override if override is not None else pr.skeleton_config
+        if getattr(self.app_state, "skeleton_use_base", True):
+            config = _resolve_skeleton_colors(
+                config, getattr(self.app_state, "skeleton_base_color", None)
+            )
         return config
 
     def _points_visible(self) -> bool:
@@ -583,8 +583,13 @@ class PoseDisplayManager:
             values = self.all_keypoints
         else:
             values = properties[color_prop].unique().tolist()
-        cycle = sample_colormap(len(values), "turbo")
-        color_map = dict(zip(values, cycle))
+        if getattr(self.app_state, "pose_points_use_base", False):
+            base = getattr(self.app_state, "pose_points_base_color", None) or "#FF3333"
+            rgba = hex_to_rgba(base)
+            color_map = {v: rgba for v in values}
+        else:
+            cycle = sample_colormap(len(values), "turbo")
+            color_map = dict(zip(values, cycle))
 
         return OverlayStyle(
             color_prop=color_prop,
@@ -602,18 +607,6 @@ class PoseDisplayManager:
         if overlay is None:
             return
         data = PoseOverlayData(pr)
-        if data.n_frames and np.any(data.shown):
-            shown_pos = data.positions[data.shown]
-            logger.info(
-                "Pose overlay diag: camera=%s img_height=%.0f "
-                "display-px x=[%.0f..%.0f] y=[%.0f..%.0f]",
-                camera_name,
-                view.image_height(),
-                np.nanmin(shown_pos[:, 0]),
-                np.nanmax(shown_pos[:, 0]),
-                np.nanmin(shown_pos[:, 1]),
-                np.nanmax(shown_pos[:, 1]),
-            )
         style = self._build_overlay_style(pr.properties)
         overlay.set_data(
             data,
@@ -657,13 +650,20 @@ class PoseDisplayManager:
         hidden_keypoints
             Set of keypoint names to hide (from the UI keypoints table).
         """
-        primary_combo = getattr(self._data_widget, "primary_camera_combo", None)
-        primary_name = primary_combo.currentText() if primary_combo else None
+        primary_name = self._primary_camera_name()
         if primary_name is not None:
             self._display_pose_on_primary(self._camera_index(primary_name), hidden_keypoints)
 
         for key, view in self.video_mgr.extra_widgets.items():
-            self._display_pose_on_extra(getattr(view, "camera_name", key), hidden_keypoints, view)
+            if getattr(view, "static_image_path", None):
+                self._display_pose_on_image(view, hidden_keypoints)
+            else:
+                self._display_pose_on_extra(getattr(view, "camera_name", key), hidden_keypoints, view)
+
+    def _primary_camera_name(self) -> str | None:
+        combo = getattr(self._data_widget, "primary_camera_combo", None)
+        name = combo.currentText() if combo is not None else None
+        return name or None
 
     def _display_pose_on_primary(self, camera_idx: int, hidden_keypoints: set[str]) -> None:
         """Render pose on the primary camera view (driven by keypoints table selection)."""
@@ -679,6 +679,28 @@ class PoseDisplayManager:
         self._display_frame_background(pr)
         self._primary_pr = pr
         self._display_pose_on_view(view, pr, camera_name)
+        if view.plot is None:
+            # Primary shows a still image — the overlay has no frame clock,
+            # so time-marker updates drive it via the pose's own fps.
+            view.static_pose_fps = self._resolve_camera_fps(camera_idx)
+
+    def _display_pose_on_image(self, view: Any, hidden_keypoints: set[str]) -> None:
+        """Render the PRIMARY camera's pose on a static-image view.
+
+        Images are timeless media; the overlay mirrors the primary camera's
+        pose and animates with the time marker (``CameraView.set_overlay_time``).
+        """
+        primary_name = self._primary_camera_name()
+        if primary_name is None or primary_name not in self.app_state.nwb_alignment.cameras:
+            view.clear_overlay()
+            return
+        camera_idx = self._camera_index(primary_name)
+        pr = self._prepare_pose(camera_idx, hidden_keypoints)
+        if pr is None:
+            view.clear_overlay()
+            return
+        self._display_pose_on_view(view, pr, None)
+        view.static_pose_fps = self._resolve_camera_fps(camera_idx)
 
     def _display_pose_on_extra(
         self,
@@ -751,6 +773,11 @@ class PoseDisplayManager:
             self._display_pose_on_view(self.video_area.primary, self._primary_pr, primary_name)
         for key, view in self.video_mgr.extra_widgets.items():
             camera_name = getattr(view, "camera_name", key)
+            if getattr(view, "static_image_path", None):
+                # Image views mirror the primary camera's pose.
+                if self._primary_pr is not None:
+                    self._display_pose_on_view(view, self._primary_pr, None)
+                continue
             pr = self._extra_pr.get(camera_name)
             if pr is not None:
                 self._display_pose_on_view(view, pr, camera_name)

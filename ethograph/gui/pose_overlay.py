@@ -314,6 +314,7 @@ class PoseOverlay:
 
         if self._skeleton is not None and self._edges:
             arr = self._skeleton.geometry.positions.data
+            arr[:, 2] = 0.0
             for i, (a, b, _) in enumerate(self._edges):
                 if shown[a] and shown[b]:
                     arr[2 * i, :2] = world[a]
@@ -325,6 +326,7 @@ class PoseOverlay:
 
         if self._bbox_lines is not None and data.bbox_corners is not None:
             arr = self._bbox_lines.geometry.positions.data
+            arr[:, 2] = 0.0
             corners = data.bbox_corners[f] if in_range else None
             bshown = data.bbox_shown[f] if in_range else None
             n_boxes = data.bbox_corners.shape[1]

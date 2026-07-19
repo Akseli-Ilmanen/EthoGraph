@@ -30,6 +30,7 @@ from qtpy.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -44,11 +45,12 @@ from ethograph.io.validation import (
     AUDIO_EXTENSIONS,
     EPHYS_EXTENSIONS,
     EPHYS_EXTENSIONS_RAW,
+    IMAGE_EXTENSIONS,
     POSE_EXTENSIONS,
     VIDEO_EXTENSIONS,
 )
 
-from .notify import notify, notify_dialog
+from .notify import notify_dialog
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +85,7 @@ def classify_files(paths: list[str]) -> dict[str, list[str]]:
         "session": [],
         "video": [],
         "pose": [],
+        "image": [],
         "audio": [],
         "ephys": [],
         "neurons": [],
@@ -105,6 +108,8 @@ def classify_files(paths: list[str]) -> dict[str, list[str]]:
             buckets["npy"].append(p)
         elif ext in VIDEO_EXTENSIONS:
             buckets["video"].append(p)
+        elif ext in IMAGE_EXTENSIONS:
+            buckets["image"].append(p)
         elif ext in POSE_EXTENSIONS:
             buckets["pose"].append(p)
         elif ext in AUDIO_EXTENSIONS:
@@ -146,6 +151,18 @@ def _audio_info(path: str) -> tuple[float, float]:
     with wave.open(path, "rb") as w:
         rate = float(w.getframerate())
         return rate, w.getnframes() / rate
+
+
+def _pose_duration(pose_path: str, source_software: str | None, fps: float) -> float:
+    """Duration in seconds of a pose file at *fps* (its only time source)."""
+    from ethograph.gui.pose_render import load_pose_from_file
+
+    pr = load_pose_from_file(pose_path, source_software, fps)
+    if len(pr.data) == 0:
+        raise RuntimeError(f"Pose file {Path(pose_path).name} holds no frames.")
+    frame_col = 1 if pr.data.shape[1] > 3 else 0
+    n_frames = int(pr.data[:, frame_col].max()) + 1
+    return n_frames / fps
 
 
 class _CamMatchDialog(QDialog):
@@ -208,11 +225,20 @@ class _DropDetailsDialog(QDialog):
 
     Everything detectable (video fps, audio rate, ephys params) is read on drop
     and never surfaced. Only genuinely unknowable values appear here: a numpy
-    file's sample rate, and a pose file's source software when its extension is
-    ambiguous. The dialog shows only the rows that are actually needed.
+    file's sample rate, a pose file's source software when its extension is
+    ambiguous, and the pose frame rate when no video was dropped alongside
+    (image + pose drop). The dialog shows only the rows that are actually
+    needed.
     """
 
-    def __init__(self, need_npy_sr: bool, npy_name: str | None, need_pose_software: bool, parent=None):
+    def __init__(
+        self,
+        need_npy_sr: bool,
+        npy_name: str | None,
+        need_pose_software: bool,
+        need_pose_fps: bool = False,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("A few more details")
         self.setMinimumWidth(440)
@@ -220,6 +246,7 @@ class _DropDetailsDialog(QDialog):
 
         self._sr_spin = None
         self._software_combo = None
+        self._pose_fps_spin = None
 
         if need_npy_sr:
             layout.addWidget(
@@ -246,6 +273,23 @@ class _DropDetailsDialog(QDialog):
             row.addWidget(self._software_combo, 1)
             layout.addLayout(row)
 
+        if need_pose_fps:
+            layout.addWidget(
+                QLabel(
+                    "No video was dropped, so the pose frame rate cannot be "
+                    "read from anywhere — the camera fps the pose was tracked at:"
+                )
+            )
+            row = QHBoxLayout()
+            row.addWidget(QLabel("Pose frame rate:"))
+            self._pose_fps_spin = QDoubleSpinBox()
+            self._pose_fps_spin.setRange(0.001, 100000.0)
+            self._pose_fps_spin.setDecimals(3)
+            self._pose_fps_spin.setValue(30.0)
+            self._pose_fps_spin.setSuffix(" fps")
+            row.addWidget(self._pose_fps_spin, 1)
+            layout.addLayout(row)
+
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -256,6 +300,9 @@ class _DropDetailsDialog(QDialog):
 
     def source_software(self) -> str | None:
         return self._software_combo.currentText() if self._software_combo is not None else None
+
+    def pose_fps(self) -> float | None:
+        return self._pose_fps_spin.value() if self._pose_fps_spin is not None else None
 
 
 class _DropList(QListWidget):
@@ -311,16 +358,21 @@ class CoverPage(QDialog):
         outer.setContentsMargins(24, 24, 24, 24)
         outer.setSpacing(16)
 
-        intro = QLabel("Three ways to get data into ethograph — pick one:")
-        intro.setWordWrap(True)
-        intro.setStyleSheet("font-size: 13pt; font-weight: 600;")
-        outer.addWidget(intro)
-
         body = QHBoxLayout()
         body.setSpacing(16)
         body.addWidget(self._build_template_card(), 1)
-        body.addWidget(self._build_drop_card(), 1)
-        body.addWidget(self._build_custom_card(), 2)
+
+        # Cards 2 + 3 share a column with the load bar directly beneath them —
+        # the bar belongs to those two paths only, not to templates.
+        right = QVBoxLayout()
+        right.setSpacing(16)
+        cards = QHBoxLayout()
+        cards.setSpacing(16)
+        cards.addWidget(self._build_drop_card(), 1)
+        cards.addWidget(self._build_custom_card(), 2)
+        right.addLayout(cards, 1)
+        right.addWidget(self._build_load_bar())
+        body.addLayout(right, 3)
         outer.addLayout(body)
 
         outer.addWidget(self._build_supported_types_strip())
@@ -353,6 +405,7 @@ class CoverPage(QDialog):
 
         rows = [
             ("🎞 Video", _fmt(VIDEO_EXTENSIONS)),
+            ("🖼 Image", _fmt(IMAGE_EXTENSIONS) + "  — static view, pose/skeleton overlays on top"),
             ("🔊 Audio", _fmt(AUDIO_EXTENSIONS)),
             ("📈 Pose estimation", pose_estimation),
             ("⚡ Ephys", ephys),
@@ -444,15 +497,9 @@ class CoverPage(QDialog):
         )
         layout.addWidget(self._video_motion_cb)
 
-        row = QHBoxLayout()
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(self._drop.clear_paths)
-        load_btn = QPushButton("Load")
-        load_btn.setMinimumHeight(36)
-        load_btn.clicked.connect(self._on_load_dropped)
-        row.addWidget(clear_btn)
-        row.addWidget(load_btn, 1)
-        layout.addLayout(row)
+        layout.addWidget(clear_btn)
         return card
 
     def _build_custom_card(self) -> QFrame:
@@ -479,6 +526,38 @@ class CoverPage(QDialog):
         layout.addStretch()
         return card
 
+    def _build_load_bar(self) -> QFrame:
+        """Shared Load strip below the cards — one button for options 2 and 3.
+
+        A drop auto-populates the custom set-up fields, so both paths end in
+        the same load; a single button makes that explicit.
+        """
+        bar = QFrame()
+        bar.setObjectName("loadBar")
+        bar.setStyleSheet(
+            "QFrame#loadBar { border: 1px solid rgba(255,255,255,35);"
+            " border-radius: 10px; background-color: rgba(255,255,255,10); }"
+        )
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(16, 10, 16, 10)
+        row.setSpacing(16)
+
+        label = QLabel(
+            f'<span style="color:{_ACCENTS["drop"]}; font-weight:700;">Drag and drop files (2)</span>'
+            f' or <span style="color:{_ACCENTS["custom"]}; font-weight:700;">define custom multi-trial set-up (3)</span>'
+            ", then click load."
+        )
+        label.setTextFormat(Qt.RichText)
+        label.setWordWrap(True)
+        row.addWidget(label, 1)
+
+        self._shared_load_btn = QPushButton("Load")
+        self._shared_load_btn.setMinimumHeight(44)
+        self._shared_load_btn.setMinimumWidth(220)
+        self._shared_load_btn.clicked.connect(self._on_shared_load)
+        row.addWidget(self._shared_load_btn)
+        return bar
+
     # ------------------------------------------------------------------
     # Load panel borrow / return (pattern shared with top-bar popups)
     # ------------------------------------------------------------------
@@ -498,12 +577,11 @@ class CoverPage(QDialog):
         self._load_panel_borrowed = True
         io = self.io_widget
         io.load_buttons_row.hide()
+        # The panel's own Load button is replaced by the shared load bar
+        # below the cards (which serves both drag & drop and custom set-up).
+        io.load_button.hide()
         self._load_host_layout.addWidget(io.load_panel)
         io.load_panel.show()
-        # The panel's Load button runs IOWidget._on_load_clicked (connected at
-        # IOWidget init, so it fires first and blocks until the load finishes);
-        # this closes the cover page afterwards so the main window can show.
-        io.load_button.clicked.connect(self._close_if_loaded)
 
     def _return_load_panel(self):
         """Give the load panel back to the IO tab (it must outlive this dialog)."""
@@ -511,8 +589,8 @@ class CoverPage(QDialog):
             return
         self._load_panel_borrowed = False
         io = self.io_widget
-        io.load_button.clicked.disconnect(self._close_if_loaded)
         self._load_host_layout.removeWidget(io.load_panel)
+        io.load_button.show()
         io.load_buttons_row.show()
         # Re-insert at the top of the IO widget (original position).
         io.layout().insertWidget(0, io.load_panel)
@@ -526,6 +604,8 @@ class CoverPage(QDialog):
         self._close_if_loaded()
 
     def _on_wizard(self):
+        # Custom set-up = multi-trial data: x-limits follow the trial interval.
+        self.app_state.xlim_mode = "interval"
         self.io_widget._on_create_nc_clicked()
         # The wizard populates fields but may not auto-load; trigger a load if a
         # session path is now set.
@@ -533,23 +613,37 @@ class CoverPage(QDialog):
             self.io_widget._on_load_clicked()
         self._close_if_loaded()
 
-    def _on_load_dropped(self):
-        paths = list(self._drop.paths)
-        if not paths:
-            notify("Drop some files first.", "warning")
-            return
-        buckets = classify_files(paths)
+    def _on_shared_load(self):
+        """Shared Load button: dropped files (if any) win, else the custom fields."""
+        if self._drop.paths:
+            if not self._prepare_dropped():
+                return
+            # Dropped loose media = one long unsegmented recording: a fixed
+            # sliding window is the useful default view.
+            self.app_state.xlim_mode = "fixed"
+        else:
+            # Custom set-up = multi-trial data: x-limits follow the trial interval.
+            self.app_state.xlim_mode = "interval"
+        self.io_widget._on_load_clicked()
+        self._close_if_loaded()
+
+    def _prepare_dropped(self) -> bool:
+        """Classify the dropped files and populate the IO fields from them.
+
+        Returns True when the IO fields are ready to load, False when the user
+        cancelled a follow-up prompt or preparation failed.
+        """
+        buckets = classify_files(list(self._drop.paths))
         try:
             details = self._collect_drop_details(buckets)
             if details is None:
-                return  # user cancelled the follow-up prompt
+                return False  # user cancelled the follow-up prompt
             self._populate_io_from_buckets(buckets, details)
         except Exception as e:  # noqa: BLE001 - outermost GUI boundary
             logger.exception("Failed to prepare dropped files")
             notify_dialog(f"Could not prepare dropped files:\n{e}", "critical")
-            return
-        self.io_widget._on_load_clicked()
-        self._close_if_loaded()
+            return False
+        return True
 
     # ------------------------------------------------------------------
     # Drag & drop → IO fields
@@ -563,14 +657,21 @@ class CoverPage(QDialog):
         """
         need_npy_sr = bool(buckets["npy"])
         ambiguous_pose = any(Path(p).suffix.lower() in AMBIGUOUS_POSE_EXTENSIONS for p in buckets["pose"])
-        if not need_npy_sr and not ambiguous_pose:
-            return {"data_sr": None, "source_software": None}
+        # Pose without a video (image + pose drop): the fps cannot be read
+        # from anywhere, so it must be asked.
+        need_pose_fps = bool(buckets["pose"]) and not buckets["video"]
+        if not need_npy_sr and not ambiguous_pose and not need_pose_fps:
+            return {"data_sr": None, "source_software": None, "pose_fps": None}
 
         npy_name = Path(buckets["npy"][0]).name if need_npy_sr else None
-        dlg = _DropDetailsDialog(need_npy_sr, npy_name, ambiguous_pose, parent=self)
+        dlg = _DropDetailsDialog(need_npy_sr, npy_name, ambiguous_pose, need_pose_fps, parent=self)
         if not dlg.exec_():
             return None
-        return {"data_sr": dlg.data_sr(), "source_software": dlg.source_software()}
+        return {
+            "data_sr": dlg.data_sr(),
+            "source_software": dlg.source_software(),
+            "pose_fps": dlg.pose_fps(),
+        }
 
     def _populate_io_from_buckets(self, buckets: dict[str, list[str]], details: dict):
         io = self.io_widget
@@ -578,6 +679,7 @@ class CoverPage(QDialog):
 
         videos = buckets["video"]
         poses = buckets["pose"]
+        images = buckets["image"]
 
         if buckets["npy"]:
             self._populate_io_from_npy(buckets, details)
@@ -587,18 +689,35 @@ class CoverPage(QDialog):
         if no_media and (buckets["ephys"] or buckets["neurons"]):
             self._populate_io_from_ephys(buckets)
             return
+        if images and no_media:
+            raise RuntimeError(
+                "An image alone has no time axis — drop it together with a "
+                "pose, video, audio or session file."
+            )
 
-        cam_map: list[tuple[str, str | None]] = []  # (video, pose|None)
-        # The camera-order dialog only matters when pose files must be paired
-        # with videos; videos alone get arbitrary cam-1, cam-2, … names.
-        if poses and (len(videos) > 1 or len(poses) > 1):
-            dlg = _CamMatchDialog(videos, poses, parent=self)
-            if not dlg.exec_():
-                raise RuntimeError("Camera assignment cancelled.")
-            videos = dlg.ordered_videos()
-            poses = dlg.ordered_poses()
-        for i, v in enumerate(videos):
-            cam_map.append((v, poses[i] if i < len(poses) else None))
+        cam_map: list[tuple[str, str | None]] = []  # (video|image, pose|None)
+        if videos:
+            # The camera-order dialog only matters when pose files must be paired
+            # with videos; videos alone get arbitrary cam-1, cam-2, … names.
+            if poses and (len(videos) > 1 or len(poses) > 1):
+                dlg = _CamMatchDialog(videos, poses, parent=self)
+                if not dlg.exec_():
+                    raise RuntimeError("Camera assignment cancelled.")
+                videos = dlg.ordered_videos()
+                poses = dlg.ordered_poses()
+            for i, v in enumerate(videos):
+                cam_map.append((v, poses[i] if i < len(poses) else None))
+        elif poses:
+            # Pose without video: a still image stands in as the "camera"
+            # background (static view, pose animates on top of it).
+            if not images:
+                raise RuntimeError(
+                    "A pose file without a video needs a background image "
+                    "(.png / .jpg) to display on — drop one alongside, or "
+                    "drop the matching video."
+                )
+            for i, p in enumerate(poses):
+                cam_map.append((images[min(i, len(images) - 1)], p))
 
         session_files = buckets["session"]
         has_media = bool(cam_map or buckets["audio"])
@@ -613,11 +732,11 @@ class CoverPage(QDialog):
             # loader picks it up via nwb_file_path.
             app_state.nc_file_path = session_files[0]
             if has_media:
-                nwb_path = self._build_tmp_alignment(cam_map, buckets["audio"])
+                nwb_path = self._build_tmp_alignment(cam_map, buckets["audio"], details)
                 app_state.nwb_file_path = str(nwb_path)
         else:
             # Pure media: synthesise a single-trial alignment.tmp.nwb.
-            nwb_path = self._build_tmp_alignment(cam_map, buckets["audio"])
+            nwb_path = self._build_tmp_alignment(cam_map, buckets["audio"], details)
             app_state.nwb_file_path = str(nwb_path)
             if cam_map and self._video_motion_cb.isChecked():
                 # Video motion requested → the session is an xarray .nc holding a
@@ -634,22 +753,28 @@ class CoverPage(QDialog):
         app_state.metadata_path = None
 
         # A drop defines a fresh single-trial session, so it is authoritative:
-        # clear every media folder first, then set only the ones actually dropped.
-        # Otherwise a stale pose/audio folder from a previous drop survives (these
-        # are persisted SCOPE_LOCAL fields) and _validate_media_files warns that
-        # the new alignment has no pose/audio media.
+        # clear every media path first, then set only the ones actually dropped.
+        # Otherwise a stale path from a previous drop survives (these are
+        # persisted SCOPE_LOCAL fields, and setting nc_file_path above reloaded
+        # the dropped folder's local_settings.yaml, which can restore a previous
+        # session's ephys/kilosort folders) and _validate_media_files warns that
+        # the new alignment has no matching media.
         app_state.video_folder = None
         app_state.audio_folder = None
         app_state.pose_folder = None
+        app_state.ephys_path = None
+        app_state.neurons_path = None
+        app_state.image_paths = list(images)
 
         if videos:
             app_state.video_folder = str(Path(videos[0]).parent)
-            if len(cam_map) > 1:
-                # Several videos dropped = one trial filmed by multiple cameras in
-                # parallel, so show every camera as its own view (not just cam-1).
-                # Devices match the `video_cam-{i+1}` streams synthesised above.
-                app_state.primary_camera = "cam-1"
-                app_state.extra_cameras = [f"cam-{i + 1}" for i in range(1, len(cam_map))]
+        if len(cam_map) > 1:
+            # Several videos (or image-backed pose cams) dropped = one trial
+            # filmed by multiple cameras in parallel, so show every camera as
+            # its own view (not just cam-1). Devices match the
+            # `video_cam-{i+1}` streams synthesised above.
+            app_state.primary_camera = "cam-1"
+            app_state.extra_cameras = [f"cam-{i + 1}" for i in range(1, len(cam_map))]
         if poses:
             app_state.pose_folder = str(Path(poses[0]).parent)
             app_state.source_software = details.get("source_software")
@@ -689,6 +814,7 @@ class CoverPage(QDialog):
         app_state = self.app_state
         app_state.nc_file_path = output_path
         app_state.metadata_path = None
+        app_state.image_paths = list(buckets["image"])
         if video_path:
             app_state.video_folder = str(Path(video_path).parent)
 
@@ -712,6 +838,7 @@ class CoverPage(QDialog):
         app_state = self.app_state
         app_state.nc_file_path = output_path
         app_state.metadata_path = None
+        app_state.image_paths = list(buckets["image"])
         if ephys_path:
             app_state.ephys_path = ephys_path
         if neurons_path:
@@ -771,8 +898,14 @@ class CoverPage(QDialog):
         ds.to_netcdf(out_path)
         return out_path
 
-    def _build_tmp_alignment(self, cam_map, audio_files) -> Path:
-        """Create a single-trial alignment.tmp.nwb from loose media files."""
+    def _build_tmp_alignment(self, cam_map, audio_files, details: dict | None = None) -> Path:
+        """Create a single-trial alignment.tmp.nwb from loose media files.
+
+        A ``cam_map`` entry may pair a pose file with a still image instead of
+        a video (image + pose drop): the image becomes a static ``video_cam-N``
+        stream at the user-provided pose fps, and the session duration comes
+        from the pose file itself.
+        """
         import pandas as pd
 
         from ethograph.gui.video_manager import probe_video
@@ -781,9 +914,28 @@ class CoverPage(QDialog):
         if not cam_map and not audio_files:
             raise RuntimeError("No media files to build an alignment from.")
 
+        details = details or {}
         streams: list[dict] = []
         stop_time = 0.0
         for i, (video, pose) in enumerate(cam_map):
+            if Path(video).suffix.lower() in IMAGE_EXTENSIONS:
+                pose_fps = details.get("pose_fps")
+                if not pose_fps or not pose:
+                    raise RuntimeError(
+                        "An image-backed camera needs a pose file and its frame rate."
+                    )
+                duration = _pose_duration(pose, details.get("source_software"), pose_fps)
+                stop_time = max(stop_time, duration)
+                streams.append({"name": f"video_cam-{i + 1}", "files": [video], "rate": pose_fps})
+                streams.append({"name": f"pose_cam-{i + 1}", "files": [pose], "rate": pose_fps})
+                logger.info(
+                    "Drop alignment cam-%d: static image %s, pose %s at %s fps",
+                    i + 1,
+                    Path(video).name,
+                    Path(pose).name,
+                    pose_fps,
+                )
+                continue
             probe = probe_video(video)
             fps = probe.fps
             if not fps:

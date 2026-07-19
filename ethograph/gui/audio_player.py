@@ -45,6 +45,8 @@ class AudioPlayer:
         self._timer.timeout.connect(self._advance)
         self._start_time = 0.0
         self._start_wall = 0.0
+        # Optional hook invoked whenever playing flips (start/stop/auto-stop).
+        self.on_state_changed: Callable[[], None] | None = None
 
     @property
     def playing(self) -> bool:
@@ -69,6 +71,7 @@ class AudioPlayer:
 
         self._start_audio_if_available(current_time, end_time)
         self._timer.start()
+        self._notify_state_changed()
 
     def _start_audio_if_available(self, current_time: float, end_time: float):
         try:
@@ -112,6 +115,11 @@ class AudioPlayer:
             pass
         self._timer.stop()
         self._playing = False
+        self._notify_state_changed()
+
+    def _notify_state_changed(self):
+        if self.on_state_changed is not None:
+            self.on_state_changed()
 
     def play_segment(self, onset_s: float, offset_s: float):
         """Play a segment with automatic stop at *offset_s*.
@@ -127,6 +135,7 @@ class AudioPlayer:
         self._start_time = onset_s
         self._start_wall = _time.perf_counter()
         self._playing = True
+        self._notify_state_changed()
 
         speed = self.app_state.audio_playback_speed
 

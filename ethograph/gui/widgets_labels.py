@@ -228,7 +228,7 @@ class LabelsWidget(QWidget):
             *plot_container.spectrogram_plots,
             *plot_container.audio_trace_plots,
             *plot_container.heatmap_plots,
-            plot_container.neo_trace_plot,
+            *plot_container.neo_trace_plots,
             plot_container.ephys_trace_plot,
             *plot_container.line_plots,
         ]:
@@ -236,6 +236,9 @@ class LabelsWidget(QWidget):
                 plot.plot_clicked.connect(self._on_plot_clicked)
         # Panels created later (any dynamic panel) get the same click handling.
         plot_container.panel_added.connect(lambda p: p.plot_clicked.connect(self._on_plot_clicked))
+        # Static-image primary has no frame clock — the marker drives the
+        # current-label overlay directly (video sessions use frame_changed).
+        plot_container.time_marker_updated.connect(self._on_marker_time_for_overlay)
 
     def set_meta_widget(self, meta_widget):
         """Set reference to the meta widget for layout refresh."""
@@ -1343,22 +1346,23 @@ class LabelsWidget(QWidget):
 
         canvas_widget.resizeEvent = _on_canvas_resize
 
-        def _update_labels_text(video_frame=None):
+        def _update_labels_text(video_frame=None, time_s=None):
             overlay = getattr(self, "_label_overlay", None)
             if overlay is None:
                 return
             if getattr(self, "_label_overlay_hidden", False):
                 overlay.hide()
                 return
-            video = getattr(self.app_state, "video", None)
-            if video_frame is None:
-                video_frame = int(getattr(self.app_state, "current_frame", 0) or 0)
-            if video:
-                time_s = video.frame_to_time(video_frame)
-            elif hasattr(self.app_state, "video_fps") and self.app_state.video_fps:
-                time_s = video_frame / self.app_state.video_fps
-            else:
-                return
+            if time_s is None:
+                video = getattr(self.app_state, "video", None)
+                if video_frame is None:
+                    video_frame = int(getattr(self.app_state, "current_frame", 0) or 0)
+                if video:
+                    time_s = video.frame_to_time(video_frame)
+                elif hasattr(self.app_state, "video_fps") and self.app_state.video_fps:
+                    time_s = video_frame / self.app_state.video_fps
+                else:
+                    return
             df = self.app_state.label_intervals
             ind = self._current_individual()
             mappings = self._mappings
@@ -1427,6 +1431,14 @@ class LabelsWidget(QWidget):
         self._label_overlay_last_text = ""
         if hasattr(self, "_update_labels_text"):
             self._update_labels_text()
+
+    def _on_marker_time_for_overlay(self, time_s: float):
+        """Update the current-label overlay from marker time when no video runs."""
+        if getattr(self.app_state, "video", None) is not None:
+            return
+        updater = getattr(self, "_update_labels_text", None)
+        if updater is not None:
+            updater(time_s=time_s)
 
 
 class LabelsPerPlotDialog(QDialog):

@@ -196,43 +196,79 @@ class LinePlot(PanelStateMixin, BasePlot):
 
 
 class MultiColoredLineItem(pg.GraphicsObject):
-    """Efficient multi-colored line for PyQtGraph."""
+    """Efficient multi-colored line for PyQtGraph.
+
+    Segments are grouped by color and drawn as one QPainterPath per unique
+    color, so build/paint cost scales with the number of colors rather than
+    the number of samples. Continuous color gradients are quantized to keep
+    the path count bounded.
+    """
+
+    _MAX_UNIQUE_COLORS = 256
 
     def __init__(self, x, y, colors, width=2):
         super().__init__()
-        self.x = x
-        self.y = y
+        self.x = np.asarray(x, dtype=float)
+        self.y = np.asarray(y, dtype=float)
         self.colors = colors
         self.width = width
-        self.generatePicture()
+        self._paths: list[tuple[pg.QtGui.QPen, pg.QtGui.QPainterPath]] = []
+        self._bounds = pg.QtCore.QRectF()
+        self._build_paths()
 
-    def generatePicture(self):
-        self.picture = pg.QtGui.QPicture()
-        painter = pg.QtGui.QPainter(self.picture)
-        painter.setCompositionMode(pg.QtGui.QPainter.CompositionMode.CompositionMode_SourceOver)
+    def _segment_colors(self, n_seg: int) -> np.ndarray:
+        """Per-segment colors as (n_seg, 3) uint8, white-padded if short."""
+        rgb = np.atleast_2d(np.asarray(self.colors, dtype=float))[:n_seg, :3]
+        finite = rgb[np.isfinite(rgb).all(axis=1)]
+        if finite.size and finite.max() <= 1:
+            rgb = rgb * 255
+        rgb = np.nan_to_num(rgb, nan=255).clip(0, 255).astype(np.uint8)
+        if len(rgb) < n_seg:
+            pad = np.full((n_seg - len(rgb), 3), 255, dtype=np.uint8)
+            rgb = np.vstack([rgb, pad])
+        return rgb
 
-        for i in range(len(self.x) - 1):
-            if i < len(self.colors):
-                color = self.colors[i]
-                if max(color) <= 1:
-                    color = tuple(int(c * 255) for c in color)
-            else:
-                color = (255, 255, 255)
+    def _build_paths(self):
+        x, y = self.x, self.y
+        n_seg = len(x) - 1
+        if n_seg < 1:
+            return
 
-            pen = pg.mkPen(color=color, width=self.width)
-            painter.setPen(pen)
-            painter.drawLine(
-                pg.QtCore.QPointF(self.x[i], self.y[i]),
-                pg.QtCore.QPointF(self.x[i + 1], self.y[i + 1]),
+        rgb = self._segment_colors(n_seg)
+        unique, inverse = np.unique(rgb, axis=0, return_inverse=True)
+        if len(unique) > self._MAX_UNIQUE_COLORS:
+            rgb = (rgb >> 3) << 3
+            unique, inverse = np.unique(rgb, axis=0, return_inverse=True)
+
+        # Each segment becomes an independent point pair; connect mask
+        # [T, F, T, F, ...] joins only within pairs.
+        for k, color in enumerate(unique):
+            idx = np.flatnonzero(inverse == k)
+            xk = np.empty(2 * len(idx))
+            yk = np.empty(2 * len(idx))
+            xk[0::2], xk[1::2] = x[idx], x[idx + 1]
+            yk[0::2], yk[1::2] = y[idx], y[idx + 1]
+            connect = np.zeros(len(xk), dtype=bool)
+            connect[0::2] = True
+            path = pg.functions.arrayToQPath(xk, yk, connect=connect)
+            pen = pg.mkPen(color=tuple(int(c) for c in color), width=self.width)
+            self._paths.append((pen, path))
+
+        finite = np.isfinite(x) & np.isfinite(y)
+        if finite.any():
+            xf, yf = x[finite], y[finite]
+            self._bounds = pg.QtCore.QRectF(
+                pg.QtCore.QPointF(xf.min(), yf.min()),
+                pg.QtCore.QPointF(xf.max(), yf.max()),
             )
 
-        painter.end()
-
     def paint(self, painter, *args):
-        painter.drawPicture(0, 0, self.picture)
+        for pen, path in self._paths:
+            painter.setPen(pen)
+            painter.drawPath(path)
 
     def boundingRect(self):
-        return pg.QtCore.QRectF(self.picture.boundingRect())
+        return self._bounds
 
 
 def _nan_safe_curve_args(y):
@@ -419,8 +455,7 @@ def clear_plot_items(plot_item, items_list):
         plot_item.removeItem(item)
 
         if isinstance(item, MultiColoredLineItem):
-            if hasattr(item, "picture"):
-                item.picture = None
+            item._paths.clear()
             item.x = None
             item.y = None
             item.colors = None

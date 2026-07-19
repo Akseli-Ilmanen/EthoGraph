@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from qtpy.QtCore import QSize, Qt
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
     QDoubleSpinBox,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -27,20 +26,28 @@ from ethograph.io.time_model import (
     TimeRange,
     find_closest_trial,
     infer_slider_range,
+    trial_start_range,
 )
 from ethograph.utils.sequences import get_label_instances, match_sequences
 
 from .app_constants import AUDIO_SPEED_MAX, AUDIO_SPEED_MIN, AUDIO_SPEED_STEP
 from .dialog_screen_recorder import RecordButton
-from .widgets_bottom_bar import _playback_icon
 
 NAVIGATE_MODES = ["Trial", "Label", "Sequence"]
-SLIDER_SCOPES = ["Trial", "Trial Start", "Session"]
+SLIDER_SCOPES = [
+    "Trial start → Trial end",
+    "Trial start → Trial start (i+1)",
+    "Session start → Session end",
+]
+XLIM_MODES = ["Slider scope", "Fixed window"]
+
+_XLIM_KEY_TO_DISPLAY = {"interval": "Slider scope", "fixed": "Fixed window"}
+_XLIM_DISPLAY_TO_KEY = {v: k for k, v in _XLIM_KEY_TO_DISPLAY.items()}
 
 _SCOPE_KEY_TO_DISPLAY = {
-    "trial": "Trial",
-    "trial_start": "Trial Start",
-    "session": "Session",
+    "trial": "Trial start → Trial end",
+    "trial_start": "Trial start → Trial start (i+1)",
+    "session": "Session start → Session end",
 }
 _SCOPE_DISPLAY_TO_KEY = {v: k for k, v in _SCOPE_KEY_TO_DISPLAY.items()}
 
@@ -105,7 +112,7 @@ class NavigationWidget(QWidget):
         filter_hint.setStyleSheet("color: grey; font-size: 10px;")
         navigate_layout.addWidget(filter_hint)
 
-        # Navigate by / Slider scope
+        # Navigate by
         nav_mode_row = QHBoxLayout()
         nav_mode_row.addWidget(QLabel("Navigate by:"))
         self.navigate_combo = QComboBox()
@@ -114,15 +121,6 @@ class NavigationWidget(QWidget):
         self.navigate_combo.currentTextChanged.connect(self._on_navigate_changed)
         nav_mode_row.addWidget(self.navigate_combo, stretch=1)
         navigate_layout.addLayout(nav_mode_row)
-
-        scope_row = QHBoxLayout()
-        scope_row.addWidget(QLabel("Slider scope:"))
-        self.scope_combo = QComboBox()
-        self.scope_combo.setObjectName("slider_scope_combo")
-        self.scope_combo.addItems(SLIDER_SCOPES)
-        self.scope_combo.currentTextChanged.connect(self._on_scope_changed)
-        scope_row.addWidget(self.scope_combo, stretch=1)
-        navigate_layout.addLayout(scope_row)
 
         # Unified prev / next / counter row
         nav_row = QHBoxLayout()
@@ -191,8 +189,35 @@ class NavigationWidget(QWidget):
 
         navigate_layout.addWidget(self._stack)
 
-        # Before / After padding
-        ba_row = QHBoxLayout()
+        # Slider scope
+        scope_row = QHBoxLayout()
+        scope_row.addWidget(QLabel("Slider scope:"))
+        self.scope_combo = QComboBox()
+        self.scope_combo.setObjectName("slider_scope_combo")
+        self.scope_combo.addItems(SLIDER_SCOPES)
+        self.scope_combo.currentTextChanged.connect(self._on_scope_changed)
+        scope_row.addWidget(self.scope_combo, stretch=1)
+        navigate_layout.addLayout(scope_row)
+
+        # X-limits mode: slider-scope-based or fixed window
+        xlim_row = QHBoxLayout()
+        xlim_row.addWidget(QLabel("X-limits:"))
+        self.xlim_combo = QComboBox()
+        self.xlim_combo.setObjectName("xlim_mode_combo")
+        self.xlim_combo.addItems(XLIM_MODES)
+        self.xlim_combo.setToolTip(
+            "Slider scope: x-limits follow the slider scope's interval\n"
+            "(trial period / label / sequence) plus Before/After padding.\n"
+            "Fixed window: x-limits span a fixed-size window from t=0."
+        )
+        self.xlim_combo.currentTextChanged.connect(self._on_xlim_mode_changed)
+        xlim_row.addWidget(self.xlim_combo, stretch=1)
+        navigate_layout.addLayout(xlim_row)
+
+        # Before / After padding (interval mode only)
+        self.interval_pad_widget = QWidget()
+        ba_row = QHBoxLayout(self.interval_pad_widget)
+        ba_row.setContentsMargins(0, 0, 0, 0)
         ba_row.addWidget(QLabel("Before:"))
         self.before_spin = QDoubleSpinBox()
         self.before_spin.setRange(0.0, 600.0)
@@ -209,7 +234,23 @@ class NavigationWidget(QWidget):
         self.after_spin.setValue(app_state.get_with_default("after_s_trial"))
         self.after_spin.valueChanged.connect(self._on_before_after_changed)
         ba_row.addWidget(self.after_spin)
-        navigate_layout.addLayout(ba_row)
+        navigate_layout.addWidget(self.interval_pad_widget)
+
+        # Window size (fixed mode only)
+        self.fixed_window_widget = QWidget()
+        fw_row = QHBoxLayout(self.fixed_window_widget)
+        fw_row.setContentsMargins(0, 0, 0, 0)
+        fw_row.addWidget(QLabel("Window size:"))
+        self.fixed_window_spin = QDoubleSpinBox()
+        self.fixed_window_spin.setObjectName("fixed_window_spin")
+        self.fixed_window_spin.setRange(0.1, 36000.0)
+        self.fixed_window_spin.setSingleStep(1.0)
+        self.fixed_window_spin.setDecimals(1)
+        self.fixed_window_spin.setSuffix(" s")
+        self.fixed_window_spin.setValue(app_state.get_with_default("fixed_window_s"))
+        self.fixed_window_spin.valueChanged.connect(self._on_fixed_window_changed)
+        fw_row.addWidget(self.fixed_window_spin, stretch=1)
+        navigate_layout.addWidget(self.fixed_window_widget)
 
         # Auto-play checkbox
         self.autoplay_checkbox = QCheckBox("Auto-play on navigate")
@@ -230,25 +271,28 @@ class NavigationWidget(QWidget):
         jump_row.addWidget(jump_btn)
         navigate_layout.addLayout(jump_row)
 
-        # ── Playback ─────────────────────────────────────────────────
-        playback_group = QGroupBox()
-        playback_group.setFlat(True)
-        self.playback_group = playback_group  # exposed for the video context sidebar
-        playback_layout = QGridLayout()
-        playback_layout.setSpacing(0)
-        playback_layout.setContentsMargins(0, 0, 0, 0)
-        playback_group.setLayout(playback_layout)
+        # Jump step (arrow-key time step)
+        step_row = QHBoxLayout()
+        self.time_jump_label = QLabel("Jump step:")
+        step_row.addWidget(self.time_jump_label)
+        self.time_jump_spin = QDoubleSpinBox()
+        self.time_jump_spin.setRange(0.001, 1000.0)
+        self.time_jump_spin.setSingleStep(0.1)
+        self.time_jump_spin.setDecimals(3)
+        self.time_jump_spin.setSuffix(" s")
+        self.time_jump_spin.setToolTip("Step size for keyboard time jumps (Shift+←/→)")
+        self.time_jump_spin.setValue(app_state.get_with_default("time_jump_s"))
+        self.time_jump_spin.valueChanged.connect(lambda v: setattr(app_state, "time_jump_s", v))
+        step_row.addWidget(self.time_jump_spin, stretch=1)
+        navigate_layout.addLayout(step_row)
 
-        self.fps_label = QLabel("Playback FPS:")
-        self.fps_playback_edit = QLineEdit()
-        self.fps_playback_edit.setObjectName("fps_playback_edit")
-        self.fps_playback_edit.setText(str(app_state.get_with_default("fps_playback")))
-        self.fps_playback_edit.editingFinished.connect(self._on_fps_changed)
-        self.fps_playback_edit.setToolTip(
-            "Playback FPS for video.\n"
-            "Audio playback speed is coupled to this setting.\n"
-            "Set to recording FPS for normal audio playback."
-        )
+        # ── Playback controls ────────────────────────────────────────
+        playback_group = QGroupBox("Playback controls")
+        self.playback_group = playback_group  # exposed for the video context sidebar
+        playback_layout = QVBoxLayout()
+        playback_layout.setSpacing(2)
+        playback_layout.setContentsMargins(2, 2, 2, 2)
+        playback_group.setLayout(playback_layout)
 
         self.audio_speed_label = QLabel("Audio speed:")
         self.audio_speed_spin = QDoubleSpinBox()
@@ -259,6 +303,9 @@ class NavigationWidget(QWidget):
         self.audio_speed_spin.setSuffix("\u00d7")
         self.audio_speed_spin.setValue(app_state.get_with_default("audio_playback_speed"))
         self.audio_speed_spin.valueChanged.connect(self._on_audio_speed_changed)
+        # Playback FPS is edited only in the bottom playback bar; react to the
+        # app_state signal so audio speed stays coupled to it.
+        app_state.fps_playback_changed.connect(self._on_fps_playback_changed)
 
         self.coupling_button = QPushButton("\U0001f517")
         self.coupling_button.setCheckable(True)
@@ -266,7 +313,7 @@ class NavigationWidget(QWidget):
         self.coupling_button.setFixedWidth(30)
         self.coupling_button.toggled.connect(self._on_coupling_toggled)
 
-        self.skip_frames_checkbox = QCheckBox("Skip Frames")
+        self.skip_frames_checkbox = QCheckBox("Skip frames")
         self.skip_frames_checkbox.setChecked(app_state.get_with_default("skip_frames"))
         self.skip_frames_checkbox.setToolTip(
             "Skip frames to match playback FPS.\n"
@@ -280,44 +327,38 @@ class NavigationWidget(QWidget):
         self.center_playback_checkbox.setChecked(app_state.get_with_default("center_playback"))
         self.center_playback_checkbox.toggled.connect(lambda v: setattr(app_state, "center_playback", v))
 
-        self.time_jump_label = QLabel("Jump step (ms):")
-        self.time_jump_spin = QDoubleSpinBox()
-        self.time_jump_spin.setRange(1.0, 5000.0)
-        self.time_jump_spin.setSingleStep(10.0)
-        self.time_jump_spin.setDecimals(0)
-        self.time_jump_spin.setSuffix(" ms")
-        self.time_jump_spin.setValue(app_state.get_with_default("time_jump_ms"))
-        self.time_jump_spin.valueChanged.connect(lambda v: setattr(app_state, "time_jump_ms", v))
-
-        playback_layout.addWidget(self.fps_label, 0, 0)
-        playback_layout.addWidget(self.fps_playback_edit, 0, 1)
-        playback_layout.addWidget(self.skip_frames_checkbox, 0, 2)
-        playback_layout.addWidget(self.audio_speed_label, 1, 0)
-        playback_layout.addWidget(self.audio_speed_spin, 1, 1)
-        playback_layout.addWidget(self.coupling_button, 1, 2)
-        playback_layout.addWidget(self.time_jump_label, 2, 0)
-        playback_layout.addWidget(self.time_jump_spin, 2, 1)
-        playback_layout.addWidget(self.center_playback_checkbox, 2, 2)
-
-        self._play_icon = _playback_icon("play")
-        self._pause_icon = _playback_icon("pause")
-        self.play_pause_btn = QPushButton()
-        self.play_pause_btn.setIcon(self._play_icon)
-        self.play_pause_btn.setIconSize(QSize(16, 16))
-        self.play_pause_btn.setToolTip("Play / Pause  (Space)")
-        self.play_pause_btn.setFixedWidth(36)
-        self.play_pause_btn.clicked.connect(self._on_play_pause_clicked)
-
-        self.record_button = RecordButton(shell, parent=self)
         self.hide_label_text_cb = QCheckBox("Hide label text")
         self.hide_label_text_cb.setToolTip("Hide the label name overlay shown on the video canvas during playback")
         self.hide_label_text_cb.toggled.connect(self._on_hide_label_text_toggled)
 
-        play_record_row = QHBoxLayout()
-        play_record_row.addWidget(self.play_pause_btn)
-        play_record_row.addWidget(self.record_button)
-        playback_layout.addLayout(play_record_row, 3, 0, 1, 2)
-        playback_layout.addWidget(self.hide_label_text_cb, 3, 2)
+        checks_row = QHBoxLayout()
+        checks_row.addWidget(self.skip_frames_checkbox)
+        checks_row.addWidget(self.center_playback_checkbox)
+        checks_row.addWidget(self.hide_label_text_cb)
+        checks_row.addStretch()
+        playback_layout.addLayout(checks_row)
+
+        audio_row = QHBoxLayout()
+        audio_row.addWidget(self.audio_speed_label)
+        audio_row.addWidget(self.audio_speed_spin)
+        audio_row.addWidget(self.coupling_button)
+        audio_row.addStretch()
+        playback_layout.addLayout(audio_row)
+
+        self.rotate_btn = QPushButton("Rotate video/pose by 90°")
+        self.rotate_btn.setToolTip("Rotate all video and pose layers by 90° clockwise")
+        self.rotate_btn.clicked.connect(self._on_rotate_clicked)
+        rotate_row = QHBoxLayout()
+        rotate_row.addWidget(self.rotate_btn)
+        rotate_row.addStretch()
+        playback_layout.addLayout(rotate_row)
+
+        self.record_button = RecordButton(shell, parent=self)
+        record_row = QHBoxLayout()
+        record_row.addWidget(QLabel("Screenrecord gui video:"))
+        record_row.addWidget(self.record_button)
+        record_row.addStretch()
+        playback_layout.addLayout(record_row)
 
         # ── Assemble ─────────────────────────────────────────────────
         main_layout.addWidget(navigate_group)
@@ -331,9 +372,11 @@ class NavigationWidget(QWidget):
         self.navigate_combo.setCurrentIndex(nav_idx)
 
         saved_scope = app_state.get_with_default("slider_scope")
-        scope_display = _SCOPE_KEY_TO_DISPLAY.get(saved_scope, "Trial")
+        scope_display = _SCOPE_KEY_TO_DISPLAY.get(saved_scope, SLIDER_SCOPES[0])
         scope_idx = SLIDER_SCOPES.index(scope_display) if scope_display in SLIDER_SCOPES else 0
         self.scope_combo.setCurrentIndex(scope_idx)
+
+        self._sync_xlim_combo_from_state()
 
     # ==================================================================
     # Public API (used by widgets_data, shortcuts, widgets_meta, etc.)
@@ -352,6 +395,10 @@ class NavigationWidget(QWidget):
     def refresh_after_load(self):
         self._populate_label_combo()
         self._populate_individual_combo()
+        # The load path may have set xlim_mode after this widget was built
+        # (cover-page drag & drop defaults to "fixed", custom set-up to
+        # "interval") — re-sync the combo from app_state.
+        self._sync_xlim_combo_from_state()
 
     def on_labels_changed(self):
         """Refresh label/sequence instances after labels are modified.
@@ -461,6 +508,61 @@ class NavigationWidget(QWidget):
         else:
             self._apply_slider_scope()
 
+    def _on_xlim_mode_changed(self, mode_text: str):
+        mode = _XLIM_DISPLAY_TO_KEY.get(mode_text, "interval")
+        self.app_state.xlim_mode = mode
+        self._sync_xlim_widgets(mode)
+        self._apply_slider_scope()
+        self._update_viewport_for_scope()
+
+    def _sync_xlim_widgets(self, mode: str):
+        self.interval_pad_widget.setVisible(mode == "interval")
+        self.fixed_window_widget.setVisible(mode == "fixed")
+
+    def _sync_xlim_combo_from_state(self):
+        mode = self.app_state.get_with_default("xlim_mode")
+        display = _XLIM_KEY_TO_DISPLAY.get(mode, "Slider scope")
+        self.xlim_combo.blockSignals(True)
+        self.xlim_combo.setCurrentIndex(XLIM_MODES.index(display))
+        self.xlim_combo.blockSignals(False)
+        self._sync_xlim_widgets(mode)
+
+    def _on_fixed_window_changed(self, value: float):
+        self.app_state.fixed_window_s = value
+        if self.app_state.get_with_default("xlim_mode") == "fixed":
+            self._apply_slider_scope()
+            self._update_viewport_for_scope()
+
+    def _fixed_pan_extent(self) -> TimeRange | None:
+        """Full extent the fixed window can slide over (scope-dependent)."""
+        if self.app_state.slider_scope == "session":
+            sc = getattr(self.app_state, "source_collection", None)
+            return sc.session_range if sc else None
+        alignment = getattr(self.app_state, "trial_alignment", None)
+        return alignment.trial_range if alignment else None
+
+    def _apply_fixed_window(self, anchor: float | None = None):
+        """Build a fixed-size restrict_window anchored at *anchor* (or t=0).
+
+        ``core_range`` is the visible window of ``fixed_window_s`` seconds;
+        ``time_range`` spans the whole scope extent so the window can be
+        dragged / slid across a long recording (plots pan within it, buffers
+        load from it).
+        """
+        size = self.app_state.get_with_default("fixed_window_s")
+        trial_id = getattr(self.app_state, "trials_sel", None)
+        extent = self._fixed_pan_extent()
+        base = anchor if anchor is not None else (extent.start_s if extent else 0.0)
+        if extent is not None:
+            base = max(extent.start_s, min(base, extent.end_s - size))
+        window = TimeRange(base, base + size)
+        self.app_state.restrict_window = RestrictionWindow(
+            mode="fixed",
+            time_range=extent.union(window) if extent else window,
+            core_range=window,
+            trial_id=trial_id,
+        )
+
     def _update_viewport_for_scope(self):
         """Set the plot x-range to match the current restrict_window."""
         if self.plot_container is None:
@@ -468,11 +570,15 @@ class NavigationWidget(QWidget):
         rw = getattr(self.app_state, "restrict_window", None)
         if rw is None:
             return
+        # Re-apply zoom constraints first: in fixed mode the span is locked
+        # (minXRange == maxXRange), so stale limits would block the new range.
+        self.plot_container._apply_all_zoom_constraints()
         master = getattr(self.plot_container, "_xlink_master", None) or getattr(
             self.plot_container, "_feature_plot", None
         )
         if master is not None:
-            master.vb.setXRange(rw.time_range.start_s, rw.time_range.end_s, padding=0)
+            tr = rw.core_range if rw.mode == "fixed" else rw.time_range
+            master.vb.setXRange(tr.start_s, tr.end_s, padding=0)
 
     def _snap_to_closest_trial(self):
         """Switch to the trial closest to the current time marker, then update viewport."""
@@ -511,6 +617,10 @@ class NavigationWidget(QWidget):
 
     def _apply_slider_scope(self):
         """Build restrict_window from the current slider scope + before/after."""
+        if self.app_state.get_with_default("xlim_mode") == "fixed":
+            self._apply_fixed_window()
+            return
+
         alignment = getattr(self.app_state, "trial_alignment", None)
         trial_id = getattr(self.app_state, "trials_sel", None)
         scope = self.app_state.slider_scope
@@ -527,7 +637,10 @@ class NavigationWidget(QWidget):
                 trial_id=trial_id,
             )
         elif scope == "trial_start" and alignment and alignment.trial_range:
-            core = alignment.trial_range
+            # End at the next trial's start; fall back to the alignment range
+            # (video duration / session end) for the last trial.
+            sio = getattr(self.app_state, "nwb_alignment", None)
+            core = (trial_start_range(sio, trial_id) if sio else None) or alignment.trial_range
             time_range = TimeRange(core.start_s - before, core.end_s + after)
             self.app_state.restrict_window = RestrictionWindow(
                 mode="trial_start",
@@ -564,7 +677,7 @@ class NavigationWidget(QWidget):
         if sio is None or trial_id is None:
             return
         scope, _ = infer_slider_range(sio, trial_id, sc)
-        display = _SCOPE_KEY_TO_DISPLAY.get(scope, "Trial")
+        display = _SCOPE_KEY_TO_DISPLAY.get(scope, SLIDER_SCOPES[0])
         self.scope_combo.blockSignals(True)
         self.scope_combo.setCurrentText(display)
         self.scope_combo.blockSignals(False)
@@ -784,14 +897,23 @@ class NavigationWidget(QWidget):
         if self.plot_container is None:
             return
 
-        extra_t0 = self.before_spin.value()
-        extra_t1 = self.after_spin.value()
-
         master = getattr(self.plot_container, "_xlink_master", None) or getattr(
             self.plot_container, "_feature_plot", None
         )
-        if master is not None:
-            master.vb.setXRange(onset_s - extra_t0, offset_s + extra_t1, padding=0)
+
+        if self.app_state.get_with_default("xlim_mode") == "fixed":
+            # Fixed window: anchor at the navigated interval's onset for
+            # label/sequence navigation, else at the scope origin (t=0).
+            anchor = onset_s if self.app_state.navigate_mode in ("label", "sequence") else None
+            self._apply_fixed_window(anchor)
+            rw = self.app_state.restrict_window
+            if master is not None and rw is not None:
+                master.vb.setXRange(rw.core_range.start_s, rw.core_range.end_s, padding=0)
+        else:
+            extra_t0 = self.before_spin.value()
+            extra_t1 = self.after_spin.value()
+            if master is not None:
+                master.vb.setXRange(onset_s - extra_t0, offset_s + extra_t1, padding=0)
 
         self.plot_container.update_time_marker_by_time(onset_s)
 
@@ -873,65 +995,35 @@ class NavigationWidget(QWidget):
     # Playback
     # ==================================================================
 
-    def _on_play_pause_clicked(self):
-        if hasattr(self, "_data_widget") and self._data_widget is not None:
-            self._data_widget.toggle_pause_resume()
-        self._sync_play_icon()
-
-    def _sync_play_icon(self):
-        video = getattr(self.app_state, "video", None)
-        playing = video.is_playing if video else False
-        self.play_pause_btn.setIcon(self._pause_icon if playing else self._play_icon)
-
-    def connect_video_sync(self, sync):
-        """Connect playback_stopped signal to reset the play button icon."""
-        if getattr(self, "_connected_sync", None) is sync:
+    def _on_rotate_clicked(self):
+        pose_mgr = getattr(self.data_widget, "pose_mgr", None) if self.data_widget else None
+        if pose_mgr is None:
+            notify("No video/pose loaded to rotate.", severity="warning")
             return
-        if getattr(self, "_connected_sync", None) is not None:
-            try:
-                self._connected_sync.playback_stopped.disconnect(self._sync_play_icon)
-            except (RuntimeError, TypeError):
-                pass
-        sync.playback_stopped.connect(self._sync_play_icon)
-        self._connected_sync = sync
+        pose_mgr.on_rotate_video_pose()
 
     def _get_recording_fps(self) -> float | None:
         """Return the recording FPS from video metadata or NWB alignment."""
         return self.app_state.video_fps
 
-    def _on_fps_changed(self):
-        text = self.fps_playback_edit.text()
-        try:
-            fps_playback = float(text)
-        except ValueError:
-            notify(f"Invalid playback FPS: {text!r}", severity="warning")
+    def _on_fps_playback_changed(self, fps_playback: float):
+        """Keep audio speed coupled to playback FPS (edited in the bottom bar)."""
+        if not self.app_state.av_speed_coupled:
             return
-        if fps_playback <= 0:
-            notify(
-                f"Playback FPS must be positive (got {fps_playback})",
-                severity="warning",
-            )
-            return
-        self.app_state.fps_playback = fps_playback
-        if self.app_state.av_speed_coupled:
-            recording_fps = self._get_recording_fps()
-            if recording_fps:
-                audio_speed = fps_playback / recording_fps
-                self.app_state.audio_playback_speed = audio_speed
-                self.audio_speed_spin.blockSignals(True)
-                self.audio_speed_spin.setValue(audio_speed)
-                self.audio_speed_spin.blockSignals(False)
+        recording_fps = self._get_recording_fps()
+        if recording_fps:
+            audio_speed = fps_playback / recording_fps
+            self.app_state.audio_playback_speed = audio_speed
+            self.audio_speed_spin.blockSignals(True)
+            self.audio_speed_spin.setValue(audio_speed)
+            self.audio_speed_spin.blockSignals(False)
 
     def _on_audio_speed_changed(self, value: float):
         self.app_state.audio_playback_speed = value
         if self.app_state.av_speed_coupled:
             recording_fps = self._get_recording_fps()
             if recording_fps:
-                fps_playback = value * recording_fps
-                self.app_state.fps_playback = fps_playback
-                self.fps_playback_edit.blockSignals(True)
-                self.fps_playback_edit.setText(str(fps_playback))
-                self.fps_playback_edit.blockSignals(False)
+                self.app_state.fps_playback = value * recording_fps
 
     def _on_coupling_toggled(self, checked: bool):
         self.app_state.av_speed_coupled = checked

@@ -384,8 +384,10 @@ class PynappleLoader(_CatalogMixin):
     """Stateless feature access backed by raw pynapple objects.
 
     No trial state — callers always pass ``t0, t1`` (absolute session
-    times).  The loader ``restrict()``-s to that range, subtracts ``t0``
-    so returned time starts near 0, and returns numpy in a PlotData.
+    times).  The loader ``restrict()``-s to that range and returns numpy in
+    a PlotData with time in absolute session coordinates — the same
+    coordinates as the plot x-axis, so a viewport starting anywhere (e.g. a
+    sliding fixed window) renders at the right position.
     """
 
     def __init__(
@@ -435,11 +437,10 @@ class PynappleLoader(_CatalogMixin):
         return result
 
     def _restrict(self, obj: Any, t0: float, t1: float):
-        """Restrict to ``[t0, t1]`` (absolute session times). Returns ``(obj, t0)``."""
+        """Restrict to ``[t0, t1]`` (absolute session times)."""
         import pynapple as nap
 
-        obj = obj.restrict(nap.IntervalSet(start=t0, end=t1))
-        return obj, t0
+        return obj.restrict(nap.IntervalSet(start=t0, end=t1))
 
     def _select_all_keypoints(
         self,
@@ -462,11 +463,11 @@ class PynappleLoader(_CatalogMixin):
             obj = self._feature_objs.get(kp_name)
             if obj is None:
                 continue
-            obj, offset = self._restrict(obj, t0, t1)
+            obj = self._restrict(obj, t0, t1)
             if len(obj) == 0:
                 continue
             if time is None:
-                time = obj.t - offset
+                time = obj.t
 
             if isinstance(obj, nap.TsdFrame):
                 cols = set(str(c) for c in obj.columns)
@@ -524,12 +525,12 @@ class PynappleLoader(_CatalogMixin):
             return None
 
         obj = self._feature_objs[actual_key]
-        obj, offset = self._restrict(obj, t0, t1)
+        obj = self._restrict(obj, t0, t1)
 
         if len(obj) == 0:
             return None
 
-        time = obj.t - offset
+        time = obj.t
 
         # --- extract numpy based on type + selections ---
         if isinstance(obj, nap.Tsd):
@@ -567,7 +568,7 @@ class PynappleLoader(_CatalogMixin):
         color_data = None
         if data.ndim == 1 and color_variable and color_variable in self._feature_objs:
             color_obj = self._feature_objs[color_variable]
-            color_obj, _ = self._restrict(color_obj, t0, t1)
+            color_obj = self._restrict(color_obj, t0, t1)
             if isinstance(color_obj, nap.TsdFrame) and len(color_obj) > 0:
                 color_data = color_obj.values
 
@@ -589,14 +590,14 @@ class PynappleLoader(_CatalogMixin):
                 cp_units = meta.index[meta["type"] == "changepoints"]
                 for uid in cp_units:
                     ts_obj = raw_obj[uid]
-                    ts_obj, _ = self._restrict(ts_obj, t0, t1)
+                    ts_obj = self._restrict(ts_obj, t0, t1)
                     if len(ts_obj) == 0:
                         continue
                     if isinstance(ts_obj, nap.Tsd):
                         mask = ts_obj.values.astype(bool)
-                        cp_times = ts_obj.t[mask] - t0
+                        cp_times = ts_obj.t[mask]
                     else:
-                        cp_times = ts_obj.t - t0
+                        cp_times = ts_obj.t
                     if len(cp_times) == 0:
                         continue
                     binary = np.zeros(len(time), dtype=np.int8)
@@ -640,14 +641,14 @@ class PynappleLoader(_CatalogMixin):
             cp_units = meta.index[meta["type"] == "changepoints"]
             for uid in cp_units:
                 ts_obj = obj[uid]
-                ts_obj, _ = self._restrict(ts_obj, t0, t1)
+                ts_obj = self._restrict(ts_obj, t0, t1)
                 if len(ts_obj) == 0:
                     continue
                 if isinstance(ts_obj, nap.Tsd):
                     mask = ts_obj.values.astype(bool)
-                    all_times.append(ts_obj.t[mask] - t0)
+                    all_times.append(ts_obj.t[mask])
                 else:
-                    all_times.append(ts_obj.t - t0)
+                    all_times.append(ts_obj.t)
         if not all_times:
             return np.array([], dtype=np.float64)
         return np.unique(np.concatenate(all_times)).astype(np.float64)

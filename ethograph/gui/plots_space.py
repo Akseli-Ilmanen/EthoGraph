@@ -96,9 +96,9 @@ def load_geometry_yaml(path: Path) -> Optional[dict]:
         return yaml.safe_load(f)
 
 
-#: User library of reference geometries. Drop a ``*.yaml`` file here (each with
-#: a ``references:`` list, possibly several named geometries) to make its
-#: geometries selectable in the Space controls / persist-able as a default via
+#: User library of reference geometries. Drop a ``*.yaml`` file here (a
+#: ``references:`` list of vertices/edges) to make it selectable — by file
+#: stem — in the Space controls / persist-able as a default via
 #: ``space_library_geometry`` in gui_settings.yaml or local_settings.yaml.
 GEOMETRY_LIBRARY_DIR = Path.home() / ".ethograph" / "geometries"
 
@@ -118,14 +118,15 @@ def ensure_geometry_library() -> Path:
     return GEOMETRY_LIBRARY_DIR
 
 
-def load_library_geometries(lib_dir: Path | None = None) -> dict[str, "ReferenceGeometry"]:
-    """Parse every YAML file in the geometry library, keyed by geometry name.
+def load_library_geometries(lib_dir: Path | None = None) -> dict[str, list["ReferenceGeometry"]]:
+    """Parse every YAML file in the geometry library, keyed by file stem.
 
-    On a name collision the geometry from the alphabetically later file wins.
+    One file = one selectable geometry (e.g. ``moll2025_geometry.yaml`` →
+    ``"moll2025_geometry"``); all of a file's ``references`` are drawn together.
     Unparseable files are skipped with a log message (user-supplied input).
     """
     lib_dir = GEOMETRY_LIBRARY_DIR if lib_dir is None else Path(lib_dir)
-    geometries: dict[str, ReferenceGeometry] = {}
+    geometries: dict[str, list[ReferenceGeometry]] = {}
     if not lib_dir.is_dir():
         return geometries
     for path in sorted(lib_dir.glob("*.y*ml")):
@@ -137,8 +138,8 @@ def load_library_geometries(lib_dir: Path | None = None) -> dict[str, "Reference
         except Exception:
             logger.exception("Failed to parse geometry library file %s", path)
             continue
-        for ref in refs:
-            geometries[ref.name] = ref
+        if refs:
+            geometries[path.stem] = refs
     return geometries
 
 
@@ -967,18 +968,19 @@ class SpacePlot(QWidget):
     def _load_references(self) -> list[ReferenceGeometry]:
         """Reference geometry to overlay, resolved from the geometry library.
 
-        The geometry named by ``app_state.space_library_geometry`` (chosen in
-        the Space controls, or set as a default in gui_settings.yaml /
-        local_settings.yaml) is looked up in ``~/.ethograph/geometries/``.
+        ``app_state.space_library_geometry`` (chosen in the Space controls, or
+        set as a default in gui_settings.yaml / local_settings.yaml) is the
+        stem of a YAML file in ``~/.ethograph/geometries/``; all of that
+        file's references are drawn.
         """
         selected = getattr(self.app_state, "space_library_geometry", None)
         if not selected:
             return []
-        geom = load_library_geometries().get(selected)
-        if geom is None:
-            logger.warning("Geometry %r not found in %s", selected, GEOMETRY_LIBRARY_DIR)
+        refs = load_library_geometries().get(selected)
+        if refs is None:
+            logger.warning("Geometry file %r not found in %s", selected, GEOMETRY_LIBRARY_DIR)
             return []
-        return [geom]
+        return refs
 
     def _draw_references(self):
         """Draw all reference geometry items."""
@@ -1154,10 +1156,14 @@ class SpacePlot(QWidget):
             return
 
         times = self._trajectory_times
-        idx = int(np.searchsorted(times, time_position, side="right") - 1)
-        idx = np.clip(idx, 0, len(times) - 1)
-
         X, Y, Z = self._trajectory_pos
+        if len(times) == 0 or len(X) == 0:
+            self._remove_time_marker()
+            return
+
+        idx = int(np.searchsorted(times, time_position, side="right") - 1)
+        idx = int(np.clip(idx, 0, len(X) - 1))
+
         x, y = float(X[idx]), float(Y[idx])
 
         is_gl = isinstance(self.space_widget, gl.GLViewWidget)

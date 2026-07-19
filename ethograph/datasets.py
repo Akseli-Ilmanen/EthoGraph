@@ -28,7 +28,7 @@ DATASETS: dict[str, dict] = {
         "has_audio": False,
         "import_labels": True,
         # Reference geometry from the bundled library (ethograph/geometries/)
-        "library_geometry": "setup",
+        "library_geometry": "moll2025_geometry",
         "media": [
             {
                 "video_cam-1": "2024-12-17_115_Crow1-cam-1.mp4",
@@ -98,7 +98,7 @@ DATASETS: dict[str, dict] = {
                 "labels_visible: true\n"
                 "pose_markers_visible: true\n"
                 "feature_view_mode: LinePlot\n"
-                "space_library_geometry: setup\n"
+                "space_library_geometry: moll2025_geometry\n"
                 "space_plot_type: Space Plot\n"
                 "ephys_offset: 0.0\n"
                 "panel_layout:\n"

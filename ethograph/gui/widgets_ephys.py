@@ -761,56 +761,14 @@ class EphysWidget(QWidget):
         main_layout.setContentsMargins(2, 2, 2, 2)
         self.setLayout(main_layout)
 
-        self._create_toggle_buttons(main_layout)
         self._create_traceview_panel(main_layout)
         self._create_firing_rate_panel(main_layout)
 
-        self._show_panel("traceview")
+        # traceview_panel is borrowed into the right sidebar's "Phy viewer"
+        # context; firing_rate_panel is popped from the top-bar Neural menu.
+        self.traceview_panel.show()
+        self.firing_rate_panel.show()
         self.setEnabled(False)
-
-    # ------------------------------------------------------------------
-    # Toggle buttons
-    # ------------------------------------------------------------------
-
-    def _create_toggle_buttons(self, main_layout):
-        toggle_widget = QWidget()
-        toggle_layout = QHBoxLayout()
-        toggle_layout.setSpacing(2)
-        toggle_layout.setContentsMargins(0, 0, 0, 0)
-        toggle_widget.setLayout(toggle_layout)
-
-        toggle_defs = [
-            ("traceview_toggle", "Phy TraceView", self._toggle_traceview),
-            ("firing_rate_toggle", "Firing rates", self._toggle_firing_rate),
-        ]
-        for attr, label, callback in toggle_defs:
-            btn = QPushButton(label)
-            btn.setCheckable(True)
-            btn.clicked.connect(callback)
-            toggle_layout.addWidget(btn)
-            setattr(self, attr, btn)
-
-        main_layout.addWidget(toggle_widget)
-
-    def _show_panel(self, panel_name: str):
-        panels = {
-            "traceview": (self.traceview_panel, self.traceview_toggle),
-            "firing_rate": (self.firing_rate_panel, self.firing_rate_toggle),
-        }
-        for name, (panel, toggle) in panels.items():
-            if name == panel_name:
-                panel.show()
-                toggle.setChecked(True)
-            else:
-                panel.hide()
-                toggle.setChecked(False)
-        self._refresh_layout()
-
-    def _toggle_traceview(self):
-        self._show_panel("traceview" if self.traceview_toggle.isChecked() else "firing_rate")
-
-    def _toggle_firing_rate(self):
-        self._show_panel("firing_rate" if self.firing_rate_toggle.isChecked() else "traceview")
 
     def _open_psth(self):
         from .widgets_psth import PSTHDialog
@@ -821,7 +779,6 @@ class EphysWidget(QWidget):
             self._psth_dialog = PSTHDialog(self.app_state, self, labels_w, nav, parent=self)
             self._psth_dialog.trial_jump_requested.connect(self._on_psth_trial_jump)
 
-        self._show_panel("traceview")
         self._psth_dialog.show()
         self._psth_dialog.raise_()
         self._psth_dialog.activateWindow()
@@ -866,7 +823,7 @@ class EphysWidget(QWidget):
         self.ephys_gain_label = QLabel("Gain:")
         self.ephys_gain_spin = QDoubleSpinBox()
         self.ephys_gain_spin.setObjectName("ephys_gain_spin")
-        self.ephys_gain_spin.setRange(-10.0, 10.0)
+        self.ephys_gain_spin.setRange(-100.0, 100.0)
         self.ephys_gain_spin.setSingleStep(0.1)
         self.ephys_gain_spin.setDecimals(1)
         self.ephys_gain_spin.setValue(0.0)
@@ -999,11 +956,6 @@ class EphysWidget(QWidget):
         layout.addWidget(cluster_table_header)
         layout.addWidget(self.cluster_table)
 
-        psth_btn = QPushButton("Open interactive PSTH →")
-        psth_btn.setToolTip("Open PSTH popup aligned to labels or trial events.")
-        psth_btn.clicked.connect(self._open_psth)
-        layout.addWidget(psth_btn)
-
         main_layout.addWidget(self.traceview_panel)
 
     # ------------------------------------------------------------------
@@ -1040,9 +992,47 @@ class EphysWidget(QWidget):
                 return None, 0
 
         try:
+            stream_id = self._match_neural_stream(ephys_path, stream_id)
             return load_ephys(ephys_path, stream_id), channel_idx
         except Exception:
             return None, 0
+
+    def _match_neural_stream(self, ephys_path: str, stream_id: str) -> str:
+        # NOTE: Claude-authored — unsure whether to keep. Revisit.
+        """Pick the Neo stream that matches the probe when Kilosort is loaded.
+
+        The Neo stream combo may point at an auxiliary stream (e.g. a 2-channel
+        Intan digital-input stream). Pairing that with a full-probe channel
+        order breaks the ephys trace rendering, so resolve to the stream whose
+        channel count / sample rate matches the Kilosort params instead.
+        """
+        if not self._kilosort_params:
+            return stream_id
+        ks_nch = self._kilosort_params.get("n_channels_dat")
+        ks_sr = self._kilosort_params.get("sample_rate")
+        try:
+            info = load_ephys(ephys_path, str(stream_id)).stream_info
+        except Exception:
+            return stream_id
+        if not info:
+            return stream_id
+        if ks_nch is not None:
+            matches = [sid for sid, meta in info.items() if meta.get("n_channels") == ks_nch]
+            if matches:
+                if ks_sr is not None:
+                    for sid in matches:
+                        if abs(info[sid].get("rate", 0.0) - ks_sr) < 1.0:
+                            return sid
+                return matches[0]
+        return max(info.items(), key=lambda kv: kv[1].get("n_channels", 0))[0]
+
+    def has_phy_trace(self) -> bool:
+        """True when a raw-data Phy trace can be shown (Kilosort raw .bin/.dat
+        loader resolved). Gates the "Ephys (Phy-like viewer)" popup source."""
+        if self._phy_loader is not None:
+            return True
+        loader, _ = self._resolve_phy_loader()
+        return loader is not None
 
     def configure_ephys_trace_plot(self):
         # When Kilosort is loaded, _phy_loader is captured once at load time
@@ -1126,10 +1116,9 @@ class EphysWidget(QWidget):
 
     def _on_pyramid_toggled(self, checked: bool):
         if self.plot_container:
-            for plot in (
-                getattr(self.plot_container, "ephys_trace_plot", None),
-                getattr(self.plot_container, "neo_trace_plot", None),
-            ):
+            plots = [getattr(self.plot_container, "ephys_trace_plot", None)]
+            plots += list(getattr(self.plot_container, "neo_trace_plots", ()) or ())
+            for plot in plots:
                 if plot is not None:
                     plot.buffer.use_pyramid = checked
                     plot.buffer._invalidate_cache()
@@ -1342,8 +1331,10 @@ class EphysWidget(QWidget):
             self._phy_loader = self._phy_reader
         else:
             self._phy_loader, _ = self._resolve_phy_loader()
+        # Pre-wire the Phy loader/source so the panel renders instantly when the
+        # user adds it from the popup — but do NOT show it (it is heavy; the user
+        # opts in via "➕ Add panel" → "Ephys (Phy-like viewer)").
         if self._phy_loader is not None and self.plot_container:
-            self.plot_container.set_ephys_visible(True)
             self.configure_ephys_trace_plot()
 
         if self._tsgroup is not None:
@@ -1353,9 +1344,10 @@ class EphysWidget(QWidget):
         self.app_state.has_neurons = True
 
         if self.data_widget:
-            self.data_widget.show_neural_panel()
-            if hasattr(self.data_widget, "_populate_neo_stream_combo"):
-                self.data_widget._populate_neo_stream_combo()
+            self.data_widget.on_kilosort_loaded()
+        # A raw .bin/.dat Phy trace is now addable — refresh the add-panel popup.
+        if self.meta_widget is not None:
+            self.meta_widget.refresh_source_popup()
 
     def _load_pynapple_file(self, path: Path):
         """Load neuron data from a Pynapple-compatible file (.npz or .nwb)."""
@@ -2614,7 +2606,7 @@ class EphysWidget(QWidget):
         self.configure_ephys_trace_plot()
         self._redraw_selected_clusters()
         if self.data_widget:
-            self.data_widget._configure_neo_panel()
+            self.data_widget.refresh_neo_panels()
 
     def _redraw_selected_clusters(self):
         if not self._multi_cluster_colors:

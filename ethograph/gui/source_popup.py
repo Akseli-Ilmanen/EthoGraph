@@ -22,16 +22,21 @@ typing. Feature plot-type options are gated by data shape ``(T, N)``:
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from qtpy.QtCore import QMimeData, QPoint, Qt
 from qtpy.QtGui import QDrag
 from qtpy.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QDialog,
+    QDialogButtonBox,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -39,6 +44,9 @@ from qtpy.QtWidgets import (
 logger = logging.getLogger(__name__)
 
 SOURCE_MIME = "application/x-ethograph-source"
+
+#: Sentinel source name for the popup's "Image — browse…" entry.
+IMAGE_BROWSE = "__browse__"
 
 _ROLE_KIND = Qt.UserRole
 _ROLE_NAME = Qt.UserRole + 1
@@ -64,6 +72,12 @@ def allowed_plot_types(kind: str, name: str, app_state) -> list[str]:
         return ["Audio Trace", "Spectrogram Trace"]
     if kind == "video":
         return ["Video"]
+    if kind == "image":
+        return ["Image"]
+    if kind == "neo":
+        return ["Neo Trace"]
+    if kind == "phy":
+        return ["Phy TraceView"]
     if kind == "feature":
         options = ["Lineplot"]
         n = feature_ncols(app_state, name)
@@ -108,6 +122,67 @@ class PlotTypePicker(QDialog):
                 self._accept_item(item)
             return
         super().keyPressEvent(event)
+
+
+class ChannelSelectDialog(QDialog):
+    """Multi-select channel picker for a Neo stream. Defaults to all channels;
+    returns the chosen 0-based channel indices (a Neo panel shows them as a
+    stacked multi-channel trace)."""
+
+    def __init__(self, n_channels: int, channel_names=None, parent=None, title: str = "Select channels"):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setModal(True)
+        self.resize(240, min(460, 120 + 22 * max(1, n_channels)))
+        names = channel_names or [f"Ch {i}" for i in range(n_channels)]
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+
+        self._all_cb = QCheckBox("(All)")
+        self._all_cb.setChecked(True)
+        self._all_cb.toggled.connect(self._on_all)
+        layout.addWidget(self._all_cb)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        holder = QWidget()
+        holder_layout = QVBoxLayout(holder)
+        holder_layout.setContentsMargins(0, 0, 0, 0)
+        holder_layout.setSpacing(1)
+        self._checks: list[QCheckBox] = []
+        for i in range(n_channels):
+            cb = QCheckBox(str(names[i]) if i < len(names) else f"Ch {i}")
+            cb.setChecked(True)
+            cb.toggled.connect(self._on_item)
+            holder_layout.addWidget(cb)
+            self._checks.append(cb)
+        holder_layout.addStretch()
+        scroll.setWidget(holder)
+        layout.addWidget(scroll)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _on_all(self, checked: bool):
+        for cb in self._checks:
+            cb.blockSignals(True)
+            cb.setChecked(checked)
+            cb.blockSignals(False)
+
+    def _on_item(self, _):
+        self._all_cb.blockSignals(True)
+        self._all_cb.setChecked(all(cb.isChecked() for cb in self._checks))
+        self._all_cb.blockSignals(False)
+
+    def selected_channels(self) -> list[int] | None:
+        """Chosen channel indices; None when all are selected (show everything)."""
+        chosen = [i for i, cb in enumerate(self._checks) if cb.isChecked()]
+        if len(chosen) == len(self._checks):
+            return None
+        return chosen
 
 
 class _SourceList(QListWidget):
@@ -191,12 +266,15 @@ class SourcePopup(QWidget):
         item.setData(_ROLE_NAME, name)
         self._list.addItem(item)
 
-    def refresh(self, catalog=None):
+    def refresh(self, catalog=None, neo_streams=None, phy_available=False):
         """Repopulate from the current session (cameras, mics, features).
 
         *catalog* is the loaded DataCatalog: its ``feature_choices()`` is the
         canonical feature list (same one the features combo displays), so
         every offered feature is representable in the sidebar controls.
+        *neo_streams* are Neo stream/modality display names (EMG, accelerometer,
+        …); each is a "neo" source whose channels are picked on drop.
+        *phy_available* adds the raw-data "Ephys (Phy-like viewer)" source.
         """
         self._list.clear()
         sio = getattr(self.app_state, "nwb_alignment", None)
@@ -216,6 +294,21 @@ class SourcePopup(QWidget):
             audio_names = list(getattr(self.app_state, "audio_source_map", None) or {})
         for name in audio_names:
             self._add_source(f"Audio ({name})", "audio", name)
+        # Static images (arena photo, reference frame): each dropped/browsed
+        # image is a Media source; a browse entry lets the user add one now.
+        for img in getattr(self.app_state, "image_paths", None) or []:
+            self._add_source(f"Image ({Path(img).name})", "image", str(img))
+        self._add_source("Static image — browse…", "image", IMAGE_BROWSE)
+
+        # Ephys sources: the raw-data Phy trace (singleton, re-showable) plus
+        # one Neo source per stream/modality (EMG, accelerometer, amplifier…).
+        # Dropping a Neo source opens a channel picker; each drop = a new panel.
+        if phy_available or neo_streams:
+            self._add_header("Ephys")
+            if phy_available:
+                self._add_source("Phy trace-view (Ephys multi-channel)", "phy", "phy")
+            for stream in neo_streams or []:
+                self._add_source(f"Neo ({stream})", "neo", str(stream))
 
         self._add_header("Features")
         features: list[str] = catalog.feature_choices() if catalog is not None else []

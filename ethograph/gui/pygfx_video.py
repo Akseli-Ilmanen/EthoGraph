@@ -85,6 +85,9 @@ class CameraView(QWidget):
         self._plot: Optional[PlotVideo] = None
         self._static: Optional[_StaticImagePlot] = None
         self._overlay: Optional[PoseOverlay] = None
+        #: Set for static-image views: source file + fps of the pose shown on top.
+        self.static_image_path: Optional[str] = None
+        self.static_pose_fps: float = 0.0
         self._fps: float = 0.0
         self._time_offset: float = 0.0
         self._start_frame: int = 0
@@ -274,10 +277,23 @@ class CameraView(QWidget):
     def seek_to_time(self, t_trial: float) -> None:
         """Seek from a trial-relative time (used for follower cameras)."""
         if self._plot is None or self._fps <= 0:
+            self.set_overlay_time(t_trial)
             return
         video_t = t_trial - self._time_offset + self._start_frame / self._fps
         frame = int(round(video_t * self._fps))
         self.seek_video_frame(frame)
+
+    def set_overlay_time(self, t_trial: float) -> None:
+        """Animate the pose overlay on a static-image view from marker time.
+
+        Video views ignore this — their overlay is driven by the decoder's
+        frame updates; a static image has no frame clock, so the pose frame
+        is derived from the trial time and the pose's own fps.
+        """
+        if self._static is None or self._overlay is None or self.static_pose_fps <= 0:
+            return
+        self._overlay.set_frame(int(round(t_trial * self.static_pose_fps)))
+        self.request_draw()
 
     def request_draw(self) -> None:
         if self._plot is not None:
@@ -321,6 +337,8 @@ class CameraView(QWidget):
             self._static.canvas.setParent(None)
             self._static.close()
             self._static = None
+        self.static_image_path = None
+        self.static_pose_fps = 0.0
         self._fps = 0.0
         self._time_offset = 0.0
         self._start_frame = 0

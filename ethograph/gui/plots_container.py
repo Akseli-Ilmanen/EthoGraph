@@ -142,14 +142,12 @@ _PANEL_RATIOS = {
 # are not listed: they are instances managed by add_panel/remove_panel.
 # guard_attr: app_state boolean that must be True for the panel to appear; None = always allowed
 _PANEL_ORDER = [
-    ("neo", None),
     ("ephys", "has_neurons"),
     ("raster", "has_neurons"),
 ]
 
 # Maps fixed panel name -> widget attribute name on the container
 _PANEL_PLOT_ATTR = {
-    "neo": "neo_trace_plot",
     "ephys": "ephys_trace_plot",
     "raster": "raster_plot",
 }
@@ -167,6 +165,10 @@ _DYNAMIC_PANEL_SPECS = {
     "spectrogram": {"cls": SpectrogramPlot, "group": "audio", "overlay_rescale": False},
     "lineplot": {"cls": LinePlot, "group": "feature", "overlay_rescale": True},
     "heatmap": {"cls": HeatmapPlot, "group": "feature", "overlay_rescale": False},
+    # Neo trace: one instance per stream/modality (EMG, accelerometer, …),
+    # each showing a chosen channel subset. Configured by DataWidget via the
+    # ``configure_neo_plot`` callback (needs ephys_source_map + load_ephys).
+    "neo": {"cls": EphysTracePlot, "group": "neo", "overlay_rescale": True},
 }
 
 
@@ -299,7 +301,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # Fixed singleton panels; everything else (lineplot/heatmap/
         # audiotrace/spectrogram) is a dynamic instance (all equal,
         # duplicates allowed) managed by add_panel/remove_panel.
-        self.neo_trace_plot = EphysTracePlot(app_state)  # Neo-Viewer panel
         self.ephys_trace_plot = EphysTracePlot(app_state)  # Phy-Viewer panel
         self.raster_plot = RasterPlot(app_state)
 
@@ -317,7 +318,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         # --- Panel visibility state (fixed panels; dynamic panels exist or don't) ---
         self._panel_visible: dict[str, bool] = {
-            "neo": False,
             "ephys": False,
             "raster": False,
         }
@@ -330,9 +330,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.dataset_cp_items: list = []
 
         self.overlay_manager = OverlayManager()
-        self.neo_trace_plot.vb.sigYRangeChanged.connect(
-            lambda: self.overlay_manager.rescale_for_plot(self.neo_trace_plot)
-        )
         self.ephys_trace_plot.vb.sigYRangeChanged.connect(
             lambda: self.overlay_manager.rescale_for_plot(self.ephys_trace_plot)
         )
@@ -370,15 +367,16 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # --- Current-label floating indicator (top-right corner) ---
         self._label_indicator = CurrentLabelIndicator(self)
 
-        # --- X-axis linking: all panels link to the x-axis master ---
-        # The master is whichever panel is first visible; we use audio_trace_plot
-        # if audio is present, otherwise the feature plot.
+        # --- X-axis sync: every panel's x-range change is copied verbatim to
+        # all other open panels (see _sync_panel_xrange). _xlink_master is the
+        # first open panel — kept as the conventional target for programmatic
+        # range setting (slider/navigation); any panel drives the rest equally.
         self._xlink_master = None
+        self._xsync_guard = False
 
         # Connect zoom events for changepoint line style updates
         # (dynamic panels connect per instance in add_panel)
         for plot in (
-            self.neo_trace_plot,
             self.ephys_trace_plot,
             self.raster_plot,
         ):
@@ -396,7 +394,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # ActivePanelManager (set as self.active_panels by MetaWidget).
         self._last_clicked_panel = "feature"
         self.active_panels = None
-        self.neo_trace_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "neo"))
         self.ephys_trace_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "ephys"))
         self.raster_plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", "raster"))
 
@@ -407,7 +404,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     def _create_panel_docks(self):
         """One QDockWidget per fixed panel; ✕ hides it (dynamic-panel ✕ removes)."""
         closers = {
-            "neo": lambda: self.set_neo_visible(False),
             "ephys": lambda: self.set_ephys_visible(False),
             "raster": lambda: self.set_raster_visible(False),
         }
@@ -459,8 +455,15 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     def spectrogram_plots(self) -> list:
         return self.panels_of_type("spectrogram")
 
+    @property
+    def neo_trace_plots(self) -> list:
+        return self.panels_of_type("neo")
+
     def _audio_plots(self) -> list:
         return self._panels_of_group("audio")
+
+    def _neo_plots(self) -> list:
+        return self._panels_of_group("neo")
 
     @property
     def _fallback_plot(self):
@@ -476,6 +479,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def _open_docks(self) -> list[QDockWidget]:
         docks = [self._dyn_docks[p] for p in self._audio_plots() if not self._dyn_docks[p].isHidden()]
+        docks += [self._dyn_docks[p] for p in self._neo_plots() if not self._dyn_docks[p].isHidden()]
         docks += [self._panel_docks[n] for n, _ in _PANEL_ORDER if not self._panel_docks[n].isHidden()]
         docks += [
             self._dyn_docks[p] for p in self._panels_of_group("feature") if not self._dyn_docks[p].isHidden()
@@ -554,9 +558,17 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             return list(ds.data_vars)
         return []
 
-    def add_panel(self, panel_type: str, *, feature: str | None = None, mic_name: str | None = None):
+    def add_panel(
+        self,
+        panel_type: str,
+        *,
+        feature: str | None = None,
+        mic_name: str | None = None,
+        stream_name: str | None = None,
+        channels: list[int] | None = None,
+    ):
         """Create a NEW panel instance of any dynamic type ("lineplot",
-        "heatmap", "audiotrace", "spectrogram").
+        "heatmap", "audiotrace", "spectrogram", "neo").
 
         General rule: what already exists never matters — every call creates
         another instance (duplicates included); the user removes extras via
@@ -577,6 +589,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             if feature in self._available_features():
                 plot.set_panel_control("features", feature)
             title = feature or panel_type
+        elif group == "neo":
+            plot.neo_stream_name = stream_name
+            plot.neo_channels = list(channels) if channels is not None else None
+            title = f"Neo — {stream_name}" if stream_name else "Neo"
         else:
             plot.mic_name = mic_name
             title = f"{panel_type} — {mic_name}" if mic_name else panel_type
@@ -598,7 +614,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             plot.vb.sigYRangeChanged.connect(lambda *_, p=plot: self.overlay_manager.rescale_for_plot(p))
         if panel_type == "spectrogram":
             plot.bufferUpdated.connect(self.spectrogram_buffer_updated)
-        clicked_key = "feature" if group == "feature" else "audio"
+        clicked_key = {"feature": "feature", "neo": "neo"}.get(group, "audio")
         plot.plot_clicked.connect(lambda _: setattr(self, "_last_clicked_panel", clicked_key))
         # Register with the active-panel manager so it highlights + shows controls.
         if self.active_panels is not None:
@@ -619,6 +635,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
             if self.app_state.ready and source is not None:
                 t0, t1 = self.get_current_xlim()
                 plot.update_plot(t0=t0, t1=t1)
+        elif group == "neo":
+            dw = self._data_widget
+            if dw is not None and hasattr(dw, "configure_neo_plot"):
+                dw.configure_neo_plot(plot)
         elif self.app_state.ready:
             plot.update_plot()
         self.panel_added.emit(plot)
@@ -632,9 +652,28 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         if self.active_panels is not None:
             self.active_panels.unregister(plot)
         # The throttle/debounce QTimers are not parented to the widget — stop
-        # them so no callback fires into the deleted plot.
+        # them so no callback fires into the deleted plot. Stopping alone is
+        # not enough: the plot's own viewbox range signal would re-arm the
+        # debounce (via _on_view_range_changed) between deleteLater() and the
+        # actual C++ deletion, firing _do_range_update on a dead object. So
+        # first sever that self-retrigger, then stop the timers.
+        handler = getattr(plot, "_on_view_range_changed", None)
+        if handler is not None:
+            for sig_name in ("sigRangeChanged", "sigXRangeChanged"):
+                sig = getattr(plot.vb, sig_name, None)
+                if sig is not None:
+                    try:
+                        sig.disconnect(handler)
+                    except (TypeError, RuntimeError):
+                        pass
+        if getattr(plot, "_xsync_connected", False):
+            plot._xsync_connected = False
+            try:
+                plot.plotItem.vb.sigXRangeChanged.disconnect(self._sync_panel_xrange)
+            except (TypeError, RuntimeError):
+                pass
         plot._td.stop()
-        if plot.panel_group == "audio":
+        if plot.panel_group in ("audio", "neo"):
             plot.set_source(None)
         self._dyn_panels.remove(plot)
         dock = self._dyn_docks.pop(plot, None)
@@ -659,6 +698,11 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
                 if not dock.isHidden() and not dock.isFloating():
                     return dock
             return None
+        if group == "neo":
+            for plot in reversed(self._neo_plots()):
+                dock = self._dyn_docks[plot]
+                if not dock.isHidden() and not dock.isFloating():
+                    return dock
         return self._last_open_dock()
 
     def _last_open_dock(self) -> QDockWidget | None:
@@ -666,6 +710,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         for docks in (
             [self._dyn_docks[p] for p in self._panels_of_group("feature")],
             [self._panel_docks[n] for n, _ in _PANEL_ORDER],
+            [self._dyn_docks[p] for p in self._neo_plots()],
             [self._dyn_docks[p] for p in self._audio_plots()],
         ):
             for dock in reversed(docks):
@@ -755,6 +800,14 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         panels = []
         for plot in self._audio_plots():
             panels.append({"type": plot.panel_type, "mic": plot.mic_name})
+        for plot in self._neo_plots():
+            panels.append(
+                {
+                    "type": "neo",
+                    "stream_name": getattr(plot, "neo_stream_name", None),
+                    "channels": getattr(plot, "neo_channels", None),
+                }
+            )
         for name, _ in _PANEL_ORDER:
             if self._panel_visible[name]:
                 panels.append({"type": name})
@@ -778,7 +831,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         for e in entries:
             if e.get("type") in ("audiotrace", "spectrogram"):
                 self.add_panel(e["type"], mic_name=e.get("mic"))
-        self.set_neo_visible("neo" in types)
+            elif e.get("type") == "neo":
+                self.add_panel("neo", stream_name=e.get("stream_name"), channels=e.get("channels"))
         if "raster" in types:
             self.set_neural_panel_mode("raster")
         elif "ephys" in types:
@@ -853,6 +907,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         """All open panels in visual order: audio + fixed panels + feature panels."""
         return (
             self._audio_plots()
+            + self._neo_plots()
             + [self._get_panel_widget(n) for n in self._visible_panel_names()]
             + self._panels_of_group("feature")
         )
@@ -896,20 +951,37 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.labels_redraw_needed.emit()
 
     def _setup_xlinks_from_visible(self, visible_names: list[str] | None = None):
-        """Link all panels to the first open panel's x-axis."""
+        """Keep all panels' x-ranges in sync via explicit setXRange.
+
+        pyqtgraph's ``setXLink`` propagates by aligning pixel geometries,
+        which is only meaningful for viewboxes sharing one scene — across
+        separate dock widgets it shifts/scales the propagated range (and
+        needs two hops through a master for non-master drags). Instead,
+        any panel's x-range change is copied verbatim to every other open
+        panel, making all panels equal.
+        """
         widgets = self._visible_panel_widgets()
-        if not widgets:
-            self._xlink_master = None
+        self._xlink_master = widgets[0] if widgets else None
+        for widget in widgets:
+            if getattr(widget, "_xsync_connected", False):
+                continue
+            widget._xsync_connected = True
+            widget.plotItem.vb.sigXRangeChanged.connect(self._sync_panel_xrange)
+
+    def _sync_panel_xrange(self, vb, xrange):
+        """Copy one panel's new x-range to all other open panels."""
+        if self._xsync_guard:
             return
-
-        master = widgets[0]
-        self._xlink_master = master
-        for widget in widgets[1:]:
-            widget.plotItem.setXLink(master.plotItem)
-
-        # Keep hidden singletons linked too so they are in sync when shown.
-        if self.neo_trace_plot is not master:
-            self.neo_trace_plot.plotItem.setXLink(master.plotItem)
+        self._xsync_guard = True
+        try:
+            t0, t1 = xrange
+            for widget in self._visible_panel_widgets():
+                other = widget.plotItem.vb
+                if other is vb:
+                    continue
+                other.setXRange(t0, t1, padding=0)
+        finally:
+            self._xsync_guard = False
 
     def _apply_panel_sizes(self):
         """Default vertical sizing from `_PANEL_RATIOS` via resizeDocks.
@@ -921,9 +993,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         if total <= 0:
             return
 
-        v = self._panel_visible
         has_audio_panel = self.app_state.has_audio and bool(self._audio_plots())
-        has_neural_panel = v["neo"] or (self.app_state.has_neurons and (v["ephys"] or v["raster"]))
+        has_neural_panel = bool(self._neo_plots()) or (
+            self.app_state.has_neurons and (self._panel_visible["ephys"] or self._panel_visible["raster"])
+        )
         ratios = _PANEL_RATIOS.get((has_audio_panel, has_neural_panel), {"feature": 1.0})
 
         visible_names = self._visible_panel_names()
@@ -934,32 +1007,25 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         n_feature = len(feature_panels)
         feature_share = ratios.get("feature", 0.3) * total if n_feature else 0.0
 
-        # Every audio instance gets its panel type's ratio share.
+        # Every audio / neo instance gets its group's ratio share.
         audio_raw = [
             (self._dyn_docks[plot], ratios.get(plot.panel_type, 0.2) * total) for plot in self._audio_plots()
         ]
+        neo_raw = [(self._dyn_docks[plot], ratios.get("neo", 0.15) * total) for plot in self._neo_plots()]
 
         raw = {}
         for name in visible_names:
             raw[name] = ratios.get(name, 0.2) * total
 
-        # When neo and phy panels coexist, enforce a 1:5 size ratio between them.
-        phy_present = [n for n in ("ephys", "raster") if n in raw]
-        if "neo" in raw and phy_present:
-            neo_phy_total = raw["neo"] + sum(raw[n] for n in phy_present)
-            raw["neo"] = neo_phy_total / 6
-            phy_raw_total = sum(raw[n] for n in phy_present)
-            for n in phy_present:
-                raw[n] = raw[n] / phy_raw_total * (neo_phy_total * 5 / 6)
-
-        total_alloc = sum(raw.values()) + feature_share + sum(size for _, size in audio_raw)
+        instance_raw = audio_raw + neo_raw
+        total_alloc = sum(raw.values()) + feature_share + sum(size for _, size in instance_raw)
         if total_alloc <= 0:
             return
         scale = total / total_alloc
         member_size = max(1, int(feature_share / n_feature * scale)) if n_feature else 0
 
         docks, sizes = [], []
-        for dock, size in audio_raw:
+        for dock, size in instance_raw:
             docks.append(dock)
             sizes.append(max(1, int(size * scale)))
         for name in visible_names:
@@ -1021,12 +1087,6 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     # ------------------------------------------------------------------
     # Ephys panel show/hide
     # ------------------------------------------------------------------
-
-    def set_neo_visible(self, visible: bool):
-        self._set_panel_visible("neo", visible)
-        if not visible:
-            self.neo_trace_plot.buffer.loader = None
-            self.neo_trace_plot.set_source(None)
 
     def set_ephys_visible(self, visible: bool):
         if self._panel_visible["ephys"] == visible:
@@ -1144,6 +1204,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def _visible_plots(self):
         for plot in self._audio_plots():
+            if not self._dyn_docks[plot].isHidden():
+                yield plot
+        for plot in self._neo_plots():
             if not self._dyn_docks[plot].isHidden():
                 yield plot
         for name, _ in _PANEL_ORDER:

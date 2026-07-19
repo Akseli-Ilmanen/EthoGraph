@@ -66,6 +66,7 @@ class PlotSettingsWidget(QWidget):
         self._create_spectrogram_panel(main_layout)
         self._create_heatmap_panel(main_layout)
         self._create_audio_channel_group(main_layout)
+        self._create_neo_controls_group(main_layout)
         self._create_shared_controls(main_layout)
 
         self._restore_lineplot_defaults()
@@ -392,8 +393,8 @@ class PlotSettingsWidget(QWidget):
         group_layout.addWidget(QLabel("Library geometry:"), row, 0)
         self.space_library_combo = QComboBox()
         self.space_library_combo.setToolTip(
-            "Reference geometry drawn behind the trajectory, loaded from the "
-            "geometry library (~/.ethograph/geometries/*.yaml)"
+            "Reference geometry drawn behind the trajectory — one entry per "
+            "YAML file in the geometry library (~/.ethograph/geometries/*.yaml)"
         )
         self.space_library_combo.currentTextChanged.connect(self._on_space_library_changed)
         # Re-sync when set externally (e.g. a template's library_geometry default)
@@ -526,6 +527,124 @@ class PlotSettingsWidget(QWidget):
         if not key or key == plot.mic_name:
             return
         pc.set_audio_panel_mic(plot, key)
+
+    # ------------------------------------------------------------------
+    # Neo trace controls (context sidebar for the Neo viewer)
+    # ------------------------------------------------------------------
+
+    def _create_neo_controls_group(self, main_layout):
+        """Per-panel gain + channel-spacing controls shown in the neo sidebar
+        context. Edits the *active* Neo trace panel (each is one modality)."""
+        self._active_neo_plot = None
+        self.neo_controls_group = QGroupBox("Neo trace controls")
+        layout = QVBoxLayout()
+        layout.setSpacing(2)
+        layout.setContentsMargins(2, 2, 2, 2)
+        self.neo_controls_group.setLayout(layout)
+
+        gain_row = QHBoxLayout()
+        gain_row.addWidget(QLabel("Gain:"))
+        self.neo_gain_spin = QDoubleSpinBox()
+        self.neo_gain_spin.setRange(-100.0, 100.0)
+        self.neo_gain_spin.setSingleStep(0.1)
+        self.neo_gain_spin.setDecimals(1)
+        self.neo_gain_spin.setToolTip(
+            "Display gain: negative = amplify, positive = attenuate (Ctrl+Wheel on the plot)"
+        )
+        self.neo_gain_spin.valueChanged.connect(self._on_neo_gain_changed)
+        gain_row.addWidget(self.neo_gain_spin)
+        self.neo_auto_gain_cb = QCheckBox("Auto gain")
+        self.neo_auto_gain_cb.setChecked(True)
+        self.neo_auto_gain_cb.setToolTip("Quantile-based auto-scaling (Phy method)")
+        self.neo_auto_gain_cb.toggled.connect(self._on_neo_auto_gain_toggled)
+        gain_row.addWidget(self.neo_auto_gain_cb)
+        gain_row.addStretch()
+        layout.addLayout(gain_row)
+
+        spacing_row = QHBoxLayout()
+        spacing_row.addWidget(QLabel("Channel spacing:"))
+        self.neo_spacing_spin = QDoubleSpinBox()
+        self.neo_spacing_spin.setRange(0.1, 1000.0)
+        self.neo_spacing_spin.setSingleStep(0.5)
+        self.neo_spacing_spin.setDecimals(2)
+        self.neo_spacing_spin.setToolTip("Vertical offset between consecutive channels")
+        self.neo_spacing_spin.valueChanged.connect(self._on_neo_spacing_changed)
+        spacing_row.addWidget(self.neo_spacing_spin)
+        self.neo_auto_spacing_btn = QPushButton("Auto")
+        self.neo_auto_spacing_btn.setToolTip("Recompute spacing to fit the channels")
+        self.neo_auto_spacing_btn.clicked.connect(self._on_neo_auto_spacing_clicked)
+        spacing_row.addWidget(self.neo_auto_spacing_btn)
+        spacing_row.addStretch()
+        layout.addLayout(spacing_row)
+
+        main_layout.addWidget(self.neo_controls_group)
+
+    def set_active_neo_plot(self, plot):
+        """Point the Neo trace controls at *plot* and mirror its gain/spacing."""
+        self._active_neo_plot = plot
+        self._sync_neo_controls()
+
+    def _sync_neo_controls(self):
+        plot = self._active_neo_plot
+        if plot is None:
+            return
+        self.neo_gain_spin.blockSignals(True)
+        self.neo_spacing_spin.blockSignals(True)
+        self.neo_gain_spin.setValue(float(getattr(plot.buffer, "display_gain", 0.0)))
+        self.neo_spacing_spin.setValue(float(getattr(plot.buffer, "channel_spacing", 3.0)))
+        self.neo_gain_spin.blockSignals(False)
+        self.neo_spacing_spin.blockSignals(False)
+
+    def _neo_plot_active(self):
+        plot = self._active_neo_plot
+        pc = self.plot_container
+        if plot is None or pc is None or plot not in pc.neo_trace_plots:
+            return None
+        return plot
+
+    def _rerender_neo(self, plot):
+        pc = self.plot_container
+        xmin, xmax = pc.get_current_xlim()
+        plot.update_plot_content(xmin, xmax)
+
+    def _on_neo_gain_changed(self, value: float):
+        plot = self._neo_plot_active()
+        if plot is None:
+            return
+        if self.neo_auto_gain_cb.isChecked():
+            self.neo_auto_gain_cb.blockSignals(True)
+            self.neo_auto_gain_cb.setChecked(False)
+            self.neo_auto_gain_cb.blockSignals(False)
+        plot.buffer.display_gain = value
+        self._rerender_neo(plot)
+
+    def _on_neo_auto_gain_toggled(self, checked: bool):
+        plot = self._neo_plot_active()
+        if plot is None or not checked:
+            return
+        new_gain = plot.auto_gain()
+        self.neo_gain_spin.blockSignals(True)
+        self.neo_gain_spin.setValue(new_gain)
+        self.neo_gain_spin.blockSignals(False)
+        self._rerender_neo(plot)
+
+    def _on_neo_spacing_changed(self, value: float):
+        plot = self._neo_plot_active()
+        if plot is None:
+            return
+        plot.buffer.channel_spacing = value
+        plot._setup_global_y_space()
+        self._rerender_neo(plot)
+        plot.autoscale()
+
+    def _on_neo_auto_spacing_clicked(self):
+        plot = self._neo_plot_active()
+        if plot is None:
+            return
+        plot.auto_channel_spacing()
+        self._sync_neo_controls()
+        self._rerender_neo(plot)
+        plot.autoscale()
 
     def _create_shared_controls(self, main_layout):
         shared_widget = QWidget()

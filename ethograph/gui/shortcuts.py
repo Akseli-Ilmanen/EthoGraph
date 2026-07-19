@@ -59,7 +59,9 @@ def bind_global_shortcuts(meta_widget):
 
     def toggle_pause_resume():
         data_widget.toggle_pause_resume()
-        navigation_widget._sync_play_icon()
+        bottom_bar = getattr(shell, "bottom_bar", None)
+        if bottom_bar is not None:
+            bottom_bar._sync_play_icon()
 
     bind("Space", toggle_pause_resume, guarded=True)
     bind("V", labels_widget._play_segment, guarded=True)

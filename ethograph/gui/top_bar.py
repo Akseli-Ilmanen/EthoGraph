@@ -252,12 +252,15 @@ class TopBarBuilder:
     def _build_neural_menu(self, menu_bar):
         menu = menu_bar.addMenu("&Neural")
         ephys = getattr(self.meta, "ephys_widget", None)
+        # Phy TraceView controls now live in the right sidebar's "Phy viewer"
+        # context (shown when the Phy trace panel is clicked). The Neural menu
+        # keeps only the interactive PSTH launcher and the firing-rate popup.
+        psth_open = self._first_method(ephys, "_open_psth")
+        act = menu.addAction("Open interactive PSTH…", psth_open) if psth_open else menu.addAction("Open interactive PSTH…")
+        if psth_open is None:
+            act.setEnabled(False)
         menu.addAction(
-            "Phy TraceView…", lambda: self._popup_section("ephys", "Phy TraceView", ephys)
-        )
-        psth = getattr(self.meta, "psth_widget", None) or ephys
-        menu.addAction(
-            "Firing rates…", lambda: self._popup_section("firing", "Firing rates", psth)
+            "Firing rates…", lambda: self._popup_section("firing", "Firing rates", ephys)
         )
 
     # ------------------------------------------------------------------

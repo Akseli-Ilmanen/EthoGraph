@@ -74,8 +74,9 @@ def test_every_panel_has_close_and_move_buttons(gui):
     shell, meta = gui
     pc = meta.plot_container
     # Every fixed panel is a dock with a slim title bar holding move + ✕
-    # buttons (dynamic panels get theirs per-instance in add_panel).
-    assert len(pc._panel_docks) == 3
+    # buttons (dynamic panels — incl. neo — get theirs per-instance in
+    # add_panel). Fixed panels are the Phy trace + raster.
+    assert set(pc._panel_docks) == {"ephys", "raster"}
     meta.app_state.has_audio = True
     plot = pc.add_audio_panel("audiotrace")
     dock = pc._dyn_docks[plot]
@@ -519,8 +520,8 @@ def test_cover_page_borrows_and_returns_load_panel(gui, qtbot):
 
 
 def test_cover_page_custom_load_accepts_page(gui, qtbot, monkeypatch):
-    """Custom set-up path: clicking the borrowed load panel's Load button
-    closes (accepts) the cover page once the dataset is loaded — otherwise the
+    """Custom set-up path: clicking the shared Load bar's button closes
+    (accepts) the cover page once the dataset is loaded — otherwise the
     modal dialog stays open forever and the main window never appears."""
     from qtpy.QtWidgets import QDialog
 
@@ -531,13 +532,14 @@ def test_cover_page_custom_load_accepts_page(gui, qtbot, monkeypatch):
     page = CoverPage(shell, io)
     page.show()
     qtbot.waitExposed(page)
+    assert io.load_button.isHidden()  # replaced by the shared Load bar
 
     monkeypatch.setattr(
         io.data_widget,
         "on_load_clicked",
         lambda: setattr(meta.app_state, "ready", True),
     )
-    io.load_button.click()
+    page._shared_load_btn.click()
 
     assert page.result() == QDialog.Accepted
     assert not page.isVisible()
@@ -548,7 +550,7 @@ def test_cover_page_classify_files():
     from ethograph.gui.cover_page import classify_files
 
     buckets = classify_files(
-        ["a.mp4", "b.h5", "c.wav", "d.dat", "s.nc", "labels.tsv", "junk.xyz"]
+        ["a.mp4", "b.h5", "c.wav", "d.dat", "s.nc", "labels.tsv", "arena.png", "junk.xyz"]
     )
     assert buckets["video"] == ["a.mp4"]
     assert buckets["pose"] == ["b.h5"]
@@ -556,7 +558,34 @@ def test_cover_page_classify_files():
     assert buckets["ephys"] == ["d.dat"]
     assert buckets["session"] == ["s.nc"]
     assert buckets["labels"] == ["labels.tsv"]
+    assert buckets["image"] == ["arena.png"]
     assert buckets["unknown"] == ["junk.xyz"]
+
+
+def test_cover_page_image_only_drop_rejected(gui):
+    """An image alone has no time axis — the drop must fail with guidance."""
+    from ethograph.gui.cover_page import CoverPage, classify_files
+
+    shell, meta = gui
+    page = CoverPage(shell, meta.io_widget)
+    buckets = classify_files(["arena.png"])
+    with pytest.raises(RuntimeError, match="no time axis"):
+        page._populate_io_from_buckets(
+            buckets, {"data_sr": None, "source_software": None, "pose_fps": None}
+        )
+
+
+def test_cover_page_pose_without_image_or_video_rejected(gui):
+    """A pose file needs either a video or a background image to display on."""
+    from ethograph.gui.cover_page import CoverPage, classify_files
+
+    shell, meta = gui
+    page = CoverPage(shell, meta.io_widget)
+    buckets = classify_files(["tracking.slp"])
+    with pytest.raises(RuntimeError, match="background image"):
+        page._populate_io_from_buckets(
+            buckets, {"data_sr": None, "source_software": None, "pose_fps": 30.0}
+        )
 
 
 

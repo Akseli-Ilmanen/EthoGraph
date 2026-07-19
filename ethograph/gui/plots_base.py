@@ -480,7 +480,11 @@ class BasePlot(pg.PlotWidget):
                 data_range = data_xmax - data_xmin
                 padding = min(data_range * AXIS_LIMIT_PADDING_RATIO, 5)
 
-                if preserve_default_range:
+                if self.app_state.get_with_default("xlim_mode") == "fixed":
+                    # Fixed window: span stays locked to fixed_window_s so
+                    # dragging pans the window instead of resizing it.
+                    min_range = max_range = min(self.app_state.view_span, data_range + 2 * padding)
+                elif preserve_default_range:
                     view_span = self.app_state.view_span
                     # view_span is 0 in trial mode → the default view is the
                     # whole window, so lock relative to its full range.
@@ -535,11 +539,20 @@ class BasePlot(pg.PlotWidget):
                 xRange = xMax - xMin
                 padding = xRange * AXIS_LIMIT_PADDING_RATIO
 
+                if self.app_state.get_with_default("xlim_mode") == "fixed":
+                    # Fixed window: lock the visible span so dragging pans the
+                    # window across the data instead of resizing it.
+                    span = min(self.app_state.view_span, xRange + 2 * padding)
+                    min_x_range = max_x_range = span
+                else:
+                    min_x_range = None
+                    max_x_range = xRange * (1 + AXIS_LIMIT_PADDING_RATIO)
+
                 self.vb.setLimits(
                     xMin=xMin - padding,
                     xMax=xMax + padding,
-                    minXRange=None,
-                    maxXRange=xRange * (1 + AXIS_LIMIT_PADDING_RATIO),
+                    minXRange=min_x_range,
+                    maxXRange=max_x_range,
                 )
 
         self._apply_y_constraints()

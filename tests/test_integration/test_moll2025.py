@@ -15,7 +15,7 @@ from ethograph.labels.intervals import find_interval_at
 
 
 def _navigate_to_trial(meta, trial_id):
-    meta.navigation_widget.scope_combo.setCurrentText("Trial")
+    meta.navigation_widget.scope_combo.setCurrentText("Trial start → Trial end")
     QApplication.processEvents()
     meta.navigation_widget.trials_combo.setCurrentText(str(trial_id))
     QApplication.processEvents()
@@ -131,7 +131,7 @@ class TestMoll2025Loading:
 
     def test_navigate_to_second_trial(self, moll2025_gui):
         _, meta = moll2025_gui
-        meta.navigation_widget.scope_combo.setCurrentText("Trial")
+        meta.navigation_widget.scope_combo.setCurrentText("Trial start → Trial end")
         QApplication.processEvents()
         trials = meta.app_state.trials
         if len(trials) < 2:

@@ -104,6 +104,10 @@ class AppStateSpec:
         "after_s_label": (float, 1.0, True),
         "before_s_sequence": (float, 1.0, True),
         "after_s_sequence": (float, 1.0, True),
+        # How the plot x-limits are derived: "interval" (trial/label/sequence
+        # extent + before/after padding) or "fixed" (fixed-size window from t=0)
+        "xlim_mode": (str, "interval", True),
+        "fixed_window_s": (float, 10.0, True),
         "pose_markers_visible": (bool, True, True, SCOPE_LOCAL),
         "labels_visible": (bool, True, True, SCOPE_LOCAL),
         # Per-plot-type label rendering: "full" | "bottom" | "none"
@@ -112,8 +116,8 @@ class AppStateSpec:
         # Panel layout (UnifiedPanelContainer.layout_state()): per-dataset,
         # auto-saved to .ethograph/local_settings.yaml like other local vars.
         "panel_layout": (dict | None, None, True, SCOPE_LOCAL),
-        # Outer window state (geometry/docks/sidebar, base64 blobs): app-wide,
-        # auto-saved to gui_settings.yaml. No JSON layout files exist.
+        # Outer window state (geometry base64 blob): app-wide, auto-saved to
+        # gui_settings.yaml. No JSON layout files exist.
         "window_state": (dict | None, None, True),
         # Data
         "data_loader": (object | None, None, False),
@@ -135,7 +139,7 @@ class AppStateSpec:
         "skip_frames": (bool, True, True),
         "filter_warnings": (bool, True, True),
         "center_playback": (bool, False, True),
-        "time_jump_ms": (float, 100.0, True),
+        "time_jump_s": (float, 0.1, True),
         "time": (
             xr.DataArray | None,
             None,
@@ -177,9 +181,13 @@ class AppStateSpec:
         "audio_path": (str | None, None, False),
         "pose_path": (str | None, None, False),
         "source_software": (str | None, None, True, SCOPE_LOCAL),
+        "image_paths": (list[str], [], True, SCOPE_LOCAL),
         "nwb_pose_keys": (list[str], [], True, SCOPE_LOCAL),
         "pose_hide_threshold": (float, 0.9, True),
         "pose_show_skeleton": (bool, False, True),
+        "pose_points_use_base": (bool, False, True),
+        "pose_points_base_color": (str | None, "#FF3333", True),
+        "skeleton_use_base": (bool, True, True),
         "skeleton_base_color": (str | None, "#00CC66", True),
         "skeleton_config_override": (dict | None, None, True),
         # Plotting
@@ -417,6 +425,8 @@ class ObservableAppState(QObject):
 
     @property
     def view_span(self) -> float:
+        if self.get_with_default("xlim_mode") == "fixed":
+            return self.get_with_default("fixed_window_s")
         return self.before_s + self.after_s
 
     @property
@@ -425,10 +435,12 @@ class ObservableAppState(QObject):
 
         Plots use this for x-axis limits and zoom constraints.
         The padded ``restrict_window.time_range`` is for slider/scroll limits.
+        In fixed x-limits mode the core window is just a viewport that slides
+        over the full scope extent, so the extent is the data range.
         """
         rw = getattr(self, "restrict_window", None)
         if rw is not None:
-            return rw.core_range
+            return rw.time_range if rw.mode == "fixed" else rw.core_range
         return self.trial_bounds
 
     @property

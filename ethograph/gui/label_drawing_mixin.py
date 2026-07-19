@@ -48,8 +48,8 @@ class LabelDrawingMixin:
       - audio_cp_items: list
       - osc_event_items: list
       - dataset_cp_items: list
-      - spectrogram_plots, audio_trace_plots, heatmap_plots (instance lists),
-        ephys_trace_plot, neo_trace_plot
+      - spectrogram_plots, audio_trace_plots, heatmap_plots, neo_trace_plots
+        (instance lists), ephys_trace_plot
       - current_plot (property or attribute)
     """
 
@@ -57,7 +57,6 @@ class LabelDrawingMixin:
     # Dynamic panels are instance lists; any other plot is a line-plot instance.
     _PLOT_TYPE_ATTRS = {
         "ephys_trace_plot": "ephys",
-        "neo_trace_plot": "neo",
     }
 
     def set_label_mappings(self, mappings: Dict[int, Dict[str, Any]]):
@@ -71,13 +70,10 @@ class LabelDrawingMixin:
         candidates = list(getattr(self, "spectrogram_plots", ()) or ())
         candidates += list(getattr(self, "audio_trace_plots", ()) or ())
         candidates += list(getattr(self, "heatmap_plots", ()) or ())
-        for attr in (
-            "neo_trace_plot",
-            "ephys_trace_plot",
-        ):
-            plot = getattr(self, attr, None)
-            if plot is not None:
-                candidates.append(plot)
+        candidates += list(getattr(self, "neo_trace_plots", ()) or ())
+        plot = getattr(self, "ephys_trace_plot", None)
+        if plot is not None:
+            candidates.append(plot)
         return candidates
 
     def _plot_type_key(self, plot) -> str:
@@ -87,6 +83,8 @@ class LabelDrawingMixin:
             return "audio"
         if plot in (getattr(self, "heatmap_plots", ()) or ()):
             return "heatmap"
+        if plot in (getattr(self, "neo_trace_plots", ()) or ()):
+            return "neo"
         for attr, type_key in self._PLOT_TYPE_ATTRS.items():
             if plot is getattr(self, attr, None):
                 return type_key

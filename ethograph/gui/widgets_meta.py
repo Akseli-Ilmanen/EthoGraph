@@ -1,16 +1,19 @@
 """Widget container for other collapsible widgets."""
 
 import logging
+from pathlib import Path
 
-from qtpy.QtCore import Qt, QTimer
+from qtpy.QtCore import QLocale, Qt, QTimer
 from qtpy.QtWidgets import (
     QComboBox,
+    QFileDialog,
     QMessageBox,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
+from ethograph.io.validation import IMAGE_FILE_FILTER
 from ethograph.utils.paths import default_config_dir
 from ethograph.utils.qt import (
     apply_compact_widget_style,
@@ -30,7 +33,7 @@ from .make_pretty import LayoutManager
 from .notify import notify
 from .plots_container import UnifiedPanelContainer
 from .shortcuts import bind_global_shortcuts
-from .source_popup import PlotTypePicker, SourcePopup, allowed_plot_types
+from .source_popup import ChannelSelectDialog, IMAGE_BROWSE, PlotTypePicker, SourcePopup, allowed_plot_types
 from .widget_trials import TrialsWidget
 from .widgets_changepoints import ChangepointsWidget
 from .widgets_data import DataPanel, DataWidget
@@ -54,6 +57,14 @@ class MetaWidget(GridSectionContainer):
             The main application window hosting video, plots and this sidebar.
         """
         super().__init__()
+
+        # Dot-decimal everywhere: widgets inherit their parent's locale, so
+        # besides the default (for parentless widgets/dialogs) the shell's
+        # whole tree must be forced to the C locale — the OS locale may use
+        # "," as decimal separator.
+        QLocale.setDefault(QLocale.c())
+        if isinstance(shell, QWidget):
+            shell.setLocale(QLocale.c())
 
         self.shell = shell
 
@@ -275,6 +286,8 @@ class MetaWidget(GridSectionContainer):
             "pose": getattr(dp, "pose_groupbox", None),
             "energy": getattr(dp, "energy_group", None),
             "audiochannel": getattr(ps, "audio_channel_group", None),
+            "neocontrols": getattr(ps, "neo_controls_group", None),
+            "phy": getattr(self.ephys_widget, "traceview_panel", None),
             "lineplot": getattr(ps, "lineplot_panel", None),
             "spaceplot": getattr(ps, "spaceplot_panel", None),
             "spectrogram": getattr(ps, "spectrogram_panel", None),
@@ -350,7 +363,6 @@ class MetaWidget(GridSectionContainer):
         # Only the fixed singletons register here; every dynamic panel
         # (lineplot/heatmap/audiotrace/spectrogram) registers per instance.
         fixed = [
-            (pc.neo_trace_plot, PanelKind.NEO, None),
             (pc.ephys_trace_plot, PanelKind.EPHYS, None),
             (pc.raster_plot, PanelKind.RASTER, None),
         ]
@@ -373,7 +385,7 @@ class MetaWidget(GridSectionContainer):
             if hasattr(video_area, "camera_view_removed"):
                 video_area.camera_view_removed.connect(self.active_panels.unregister)
 
-    _CONTEXT_KINDS = frozenset({"audiotrace", "spectrogram", "lineplot", "heatmap", "space"})
+    _CONTEXT_KINDS = frozenset({"audiotrace", "spectrogram", "lineplot", "heatmap", "space", "ephys", "neo"})
 
     def _on_active_panel(self, reg):
         """A panel was clicked → track it, and show its controls in the sidebar.
@@ -394,6 +406,8 @@ class MetaWidget(GridSectionContainer):
             self.data_widget.set_active_space_plot(reg.widget)
         if kind in (PanelKind.AUDIOTRACE, PanelKind.SPECTROGRAM):
             self.plot_settings_widget.set_active_audio_plot(reg.widget)
+        if kind == PanelKind.NEO:
+            self.plot_settings_widget.set_active_neo_plot(reg.widget)
         if kind == PanelKind.VIDEO:
             self.focus_video_context()
         elif kind in self._CONTEXT_KINDS:
@@ -408,13 +422,32 @@ class MetaWidget(GridSectionContainer):
         if not self.app_state.ready:
             notify("Load a dataset before adding panels.", "warning")
             return
-        self.source_popup.refresh(catalog=self.data_widget.catalog)
+        self.refresh_source_popup()
         if anchor is not None:
             pos = anchor.mapToGlobal(anchor.rect().topLeft())
             self.source_popup.popup_at(pos, open_upward=True)
         else:
             pos = self.plot_container.mapToGlobal(self.plot_container.rect().topLeft())
             self.source_popup.popup_at(pos)
+
+    def _phy_available(self) -> bool:
+        """Whether the raw-data Phy trace can be offered/added."""
+        ew = self.ephys_widget
+        return bool(getattr(self.app_state, "has_neurons", False)) and ew is not None and ew.has_phy_trace()
+
+    def refresh_source_popup(self):
+        """Repopulate the add-panel popup from the current session (Media,
+        Features, Neo streams, and the Phy trace when raw ephys is loaded)."""
+        try:
+            neo_streams = self.data_widget.neo_stream_names()
+        except Exception:  # ephys probing must never block the add-panel popup
+            logger.exception("neo_stream_names failed; opening popup without Neo sources")
+            neo_streams = []
+        self.source_popup.refresh(
+            catalog=self.data_widget.catalog,
+            neo_streams=neo_streams,
+            phy_available=self._phy_available(),
+        )
 
     def _on_source_dropped(self, kind: str, name: str):
         """Popup source dropped on the plot area (or Enter) → pick type & create panel."""
@@ -485,8 +518,47 @@ class MetaWidget(GridSectionContainer):
             plot = pc.add_audio_panel(panel_type, mic_name=mic_key)
             if plot is not None:
                 self._activate_panel(plot, panel_type)
+        elif kind == "neo":
+            self._add_neo_panel(name)
+        elif kind == "phy":
+            self._add_phy_panel()
         elif kind == "video":
             self._add_camera_view(name)
+        elif kind == "image":
+            self._add_image_view(name)
+
+    def _add_phy_panel(self):
+        """Add (or re-show) the Phy-like raw-data trace panel. It is a singleton
+        toggled visible — closing it hides it; re-adding here brings it back."""
+        ew = self.ephys_widget
+        pc = self.plot_container
+        if ew is None or not ew.has_phy_trace():
+            notify("No raw ephys/Kilosort data loaded for the Phy viewer.", "warning")
+            return
+        pc.set_neural_panel_mode("trace")
+        ew.configure_ephys_trace_plot()
+        self._activate_panel(pc.ephys_trace_plot, "ephys")
+        pc.schedule_labels_redraw()
+
+    def _add_neo_panel(self, stream_name: str):
+        """Dropping a Neo stream/modality → pick channels (default all) → add a
+        new Neo trace panel showing those channels of that stream."""
+        dw = self.data_widget
+        n_ch = dw.neo_stream_channel_count(stream_name)
+        if n_ch <= 0:
+            notify(f"Could not read channels for Neo stream '{stream_name}'.", "warning")
+            return
+        channels = None
+        if n_ch > 1:
+            dlg = ChannelSelectDialog(n_ch, parent=self.shell, title=f"Channels — {stream_name}")
+            if not dlg.exec_():
+                return
+            channels = dlg.selected_channels()
+            if channels is not None and not channels:
+                return
+        plot = dw.add_neo_panel(stream_name, channels=channels)
+        if plot is not None:
+            self._activate_panel(plot, "neo")
 
     def _audio_channel_keys(self, name: str) -> list[str]:
         """Ordered ``audio_source_map`` keys (one per channel) for a popup
@@ -569,6 +641,42 @@ class MetaWidget(GridSectionContainer):
             except Exception:  # noqa: BLE001 - pose is best-effort
                 pass
         notify(f"Added camera view: {name}")
+
+    def _add_image_view(self, name: str):
+        """Dropping an image source adds a static view of it — always.
+
+        ``IMAGE_BROWSE`` (the popup's "Image — browse…" entry) first asks for a
+        file and registers it in ``app_state.image_paths`` so it stays listed
+        as a Media source. The primary camera's pose/skeleton is overlaid and
+        animates with the time marker.
+        """
+        dw = self.data_widget
+        vm = getattr(dw, "video_mgr", None)
+        if vm is None:
+            notify("Load a dataset before adding image views.", "warning")
+            return
+
+        path = name
+        if path == IMAGE_BROWSE:
+            path, _ = QFileDialog.getOpenFileName(
+                self.shell, "Choose an image", "", IMAGE_FILE_FILTER
+            )
+            if not path:
+                return
+            images = list(getattr(self.app_state, "image_paths", None) or [])
+            if path not in images:
+                self.app_state.image_paths = [*images, path]
+
+        self.shell.set_video_viewer_visible(True)
+        view = vm.add_image_view(path)
+        if view is None:
+            return
+        if getattr(dw, "pose_mgr", None) is not None and hasattr(dw, "get_hidden_keypoints"):
+            try:
+                dw.pose_mgr._display_pose_on_image(view, dw.get_hidden_keypoints())
+            except Exception:  # noqa: BLE001 - pose is best-effort
+                pass
+        notify(f"Added image view: {Path(path).name}")
 
     def _on_plot_focus(self, panel_type: str):
         """Show only the clicked plot's settings, unless zen / Labels / Nav active.
@@ -777,13 +885,19 @@ class MetaWidget(GridSectionContainer):
     def configure_layout_for_data(self):
         """Configure panel visibility and layout after a dataset load."""
         self.plot_container.configure_panels()
-        self.source_popup.refresh(catalog=self.data_widget.catalog)
+        self.source_popup.refresh(
+            catalog=self.data_widget.catalog,
+            neo_streams=self.data_widget.neo_stream_names(),
+            phy_available=self._phy_available(),
+        )
         self._relocate_overlay_checkboxes()
         self._set_default_context()
 
+        # Neo + Phy trace panels are heavy and are added on demand from the
+        # popup, not shown automatically. Just resolve the Phy loader stream
+        # and pre-wire its source so it renders instantly when added.
         if self.app_state.ephys_path:
-            self.data_widget._configure_neo_panel()
-            self.plot_container.set_neo_visible(True)
+            self.data_widget._ensure_default_ephys_stream()
 
         if self.app_state.has_neurons:
             self.data_widget._configure_ephys_trace_plot()

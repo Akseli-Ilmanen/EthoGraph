@@ -257,13 +257,20 @@ class EphysTraceBuffer:
             return None
 
         if channel_indices is not None:
-            valid = channel_indices[channel_indices < data_all.shape[1]]
+            in_range = channel_indices < data_all.shape[1]
+            valid = channel_indices[in_range]
             if len(valid) == 0:
                 return None
             data_all = data_all[:, valid]
             ch_mean = self._cache_mean[valid]
             ch_std_arr = self._cache_std[valid]
             n_ch = len(valid)
+            # Keep y_positions aligned with the channels that actually exist in
+            # the data; otherwise a probe order wider than the loaded stream
+            # (e.g. a full-probe order on a 2-channel digital stream) breaks the
+            # y-offset broadcast below.
+            if y_positions is not None and len(y_positions) == len(in_range):
+                y_positions = y_positions[in_range]
         else:
             ch_start, ch_end = channel_range or (0, total_ch - 1)
             ch_start = max(0, ch_start)
@@ -591,6 +598,13 @@ class EphysTracePlot(BasePlot):
             elif ev.isFinish():
                 self._drag_last_y = None
                 self._drag_last_x = None
+                # A right *click* (negligible drag) seeks to that time instead of
+                # zooming: emit plot_clicked so the shared seek path runs (moves
+                # the red marker / seeks the video), same as the other plots.
+                delta = ev.scenePos() - ev.buttonDownScenePos()
+                if abs(delta.x()) + abs(delta.y()) < 4:
+                    view_x = self.vb.mapSceneToView(ev.scenePos()).x()
+                    self.plot_clicked.emit({"x": view_x, "button": Qt.RightButton})
             else:
                 step = 8.0
                 if self._drag_last_y is not None:
@@ -888,7 +902,7 @@ class EphysTracePlot(BasePlot):
         self._hw_to_order_idx = {int(hw): i for i, hw in enumerate(self._total_ordered_channels)}
         margin = spacing * 1.5
         y_max = (total - 1) * spacing + margin
-        max_y_range = 0.70 * total * spacing
+        max_y_range = y_max + margin
         self.vb.setLimits(yMin=-margin, yMax=y_max, maxYRange=max_y_range)
         self.plot_item.setYRange(-margin, y_max, padding=0)
         self.y_space_changed.emit()
@@ -900,7 +914,7 @@ class EphysTracePlot(BasePlot):
         spacing = self.buffer.channel_spacing
         margin = spacing * 1.5
         y_max = (total - 1) * spacing + margin
-        max_y_range = 0.70 * total * spacing
+        max_y_range = y_max + margin
         self.vb.setLimits(yMin=-margin, yMax=y_max, maxYRange=max_y_range)
 
     def _channels_in_viewport(self) -> tuple[NDArray, NDArray]:

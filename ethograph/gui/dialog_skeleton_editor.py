@@ -373,6 +373,15 @@ class ShapeAnchorDialog(QDialog):
         self._point_scatter: pg.ScatterPlotItem | None = None
 
         layout = QVBoxLayout(self)
+        help_label = QLabel(
+            "Click a yellow control point on the template, choose a keypoint, "
+            "then <b>Bind point → keypoint</b>. Bind ≥2 points and the shape "
+            "will follow those keypoints each frame (2 = rigid rotate/scale, "
+            "3+ = deform). Use Proportions to resize the template."
+        )
+        help_label.setWordWrap(True)
+        help_label.setStyleSheet("color: #aaa;")
+        layout.addWidget(help_label)
         body = QHBoxLayout()
         layout.addLayout(body, stretch=1)
 
@@ -395,6 +404,7 @@ class ShapeAnchorDialog(QDialog):
         right.addWidget(self.kp_combo)
         bind_btn = QPushButton("Bind point → keypoint")
         bind_btn.clicked.connect(self._bind)
+        right.addWidget(bind_btn)
         right.addWidget(QLabel("<b>Anchors</b>"))
         self.bind_list = QListWidget()
         right.addWidget(self.bind_list, stretch=1)
@@ -569,6 +579,13 @@ class SkeletonEditorDialog(QDialog):
         self.assign_btn = QPushButton("Assign to selected edges")
         self.assign_btn.clicked.connect(self._assign_to_selected)
         right.addWidget(self.assign_btn)
+        self.set_color_btn = QPushButton("Set colour of selected edges…")
+        self.set_color_btn.setToolTip(
+            "Give the selected edges an explicit colour (kept as-is; the pose "
+            "panel's base colour only recolours edges left uncoloured)."
+        )
+        self.set_color_btn.clicked.connect(self._set_edge_color)
+        right.addWidget(self.set_color_btn)
         self.del_edges_btn = QPushButton("Delete selected edges")
         self.del_edges_btn.clicked.connect(self.canvas.remove_selected)
         right.addWidget(self.del_edges_btn)
@@ -661,10 +678,22 @@ class SkeletonEditorDialog(QDialog):
         name, color = self._categories[row]
         self.canvas.apply_category(color, name)
 
+    def _set_edge_color(self):
+        if not self.canvas.selected:
+            return
+        color = QColorDialog.getColor(QColor(_DEFAULT_COLOR), self, "Edge colour")
+        if not color.isValid():
+            return
+        hex_color = _hex(color)
+        # Tag the segment with the hex so _resolve_skeleton_colors keeps this
+        # colour instead of overriding it with the pose panel's base colour.
+        self.canvas.apply_category(hex_color, hex_color)
+
     def _sync_assign_enabled(self, *_):
-        can_assign = self.cat_list.currentRow() >= 0 and bool(self.canvas.selected)
-        self.assign_btn.setEnabled(can_assign)
-        self.del_edges_btn.setEnabled(bool(self.canvas.selected))
+        has_selection = bool(self.canvas.selected)
+        self.assign_btn.setEnabled(self.cat_list.currentRow() >= 0 and has_selection)
+        self.set_color_btn.setEnabled(has_selection)
+        self.del_edges_btn.setEnabled(has_selection)
 
     # ── shapes ──
 

@@ -15,9 +15,9 @@ the shell dock arrangement (``shell_dock_state_b64``: space-plot / camera
 dock positions) — lives in ``app_state.panel_layout`` → the dataset's
 ``.ethograph/local_settings.yaml``, so it travels with the dataset.
 ``app_state.window_state`` → ``gui_settings.yaml`` holds only machine-local
-window prefs: geometry (this screen) + sidebar visibility. Both are
-auto-saved (10 s timer + close) and restored automatically — there are no
-save/load layout actions.
+window prefs: geometry (this screen). Both are auto-saved (10 s timer +
+close) and restored automatically — there are no save/load layout actions.
+The right sidebar always starts visible (its visibility is not persisted).
 """
 
 from __future__ import annotations
@@ -80,6 +80,7 @@ class EthographMainWindow(QMainWindow):
         self._extra_lineplot_count = 0
         self._window_state_restored = False
         self._pending_dock_state_b64: str | None = None
+        self._video_dock_enabled = True
 
         self._create_menus()
 
@@ -285,13 +286,13 @@ class EthographMainWindow(QMainWindow):
 
     def capture_window_state(self) -> dict:
         """Machine-specific window prefs only: geometry (where the window sits
-        on THIS screen) and sidebar visibility. ALL layout — panels, shell
-        dock arrangement — is per-dataset state in app_state.panel_layout →
-        .ethograph/local_settings.yaml."""
+        on THIS screen). ALL layout — panels, shell dock arrangement — is
+        per-dataset state in app_state.panel_layout →
+        .ethograph/local_settings.yaml. Sidebar visibility is deliberately
+        NOT persisted: the sidebar always starts visible."""
         return {
             "version": _LAYOUT_VERSION,
             "geometry_b64": base64.b64encode(bytes(self.saveGeometry())).decode("ascii"),
-            "sidebar_visible": bool(self._sidebar_dock and self._sidebar_dock.isVisible()),
         }
 
     def capture_dock_state_b64(self) -> str:
@@ -323,12 +324,11 @@ class EthographMainWindow(QMainWindow):
             logger.warning("Could not restore window geometry: %s", e)
 
     def _restore_window_prefs(self):
-        """Restore the machine-local window prefs (sidebar visibility;
-        geometry was already restored at startup)."""
-        payload = self._saved_window_state()
-        if not payload:
-            return
-        self._sidebar_toggle.setChecked(payload.get("sidebar_visible", True))
+        """Enforce startup window prefs on first show. The sidebar is always
+        shown at startup regardless of how the last session ended (geometry
+        was already restored at startup)."""
+        self._sidebar_toggle.setChecked(True)
+        self._set_sidebar_visible(True)
 
     def apply_dock_state_b64(self, blob: str) -> None:
         """Apply a dataset's dock-arrangement blob (panel_layout →
@@ -357,8 +357,23 @@ class EthographMainWindow(QMainWindow):
         for dock in visible_before:
             if dock.isHidden():
                 dock.show()
+        # Same principle in reverse: a session without a primary video must
+        # not get its Video dock back from a blob saved with one.
+        if not self._video_dock_enabled and getattr(self, "_video_dock", None) is not None:
+            self._video_dock.hide()
         # restoreState can reset corner ownership — re-assert full-height sidebars.
         self._apply_corner_ownership()
+
+    def set_video_dock_visible(self, visible: bool) -> None:
+        """Show/hide the primary Video dock.
+
+        Sessions without a primary video (or static image) get no video panel
+        slot at all — the dock's existence follows the data, like every other
+        panel."""
+        self._video_dock_enabled = visible
+        dock = getattr(self, "_video_dock", None)
+        if dock is not None:
+            dock.setVisible(visible)
 
     def showEvent(self, event):
         super().showEvent(event)

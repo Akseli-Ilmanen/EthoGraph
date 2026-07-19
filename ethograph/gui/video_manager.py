@@ -15,6 +15,8 @@ import av
 from qtpy.QtCore import QEvent, Qt, QTimer, Signal
 from qtpy.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
+from ethograph.io.validation import IMAGE_EXTENSIONS
+
 from .notify import notify
 from .pygfx_video import CameraView
 from .video_sync import VideoSync
@@ -188,12 +190,36 @@ class VideoManager:
             )
         else:
             self.app_state.video_path = None
+        shell = getattr(self.video_area, "shell", None)
         if not self.app_state.video_path:
+            # No video in this session/trial → no Video panel slot at all.
+            self._cleanup_primary_video()
+            if shell is not None:
+                shell.set_video_dock_visible(False)
             return
+        if shell is not None:
+            shell.set_video_dock_visible(True)
         restore_frame = max(0, int(getattr(self.app_state, "current_frame", 0) or 0))
+        if Path(self.app_state.video_path).suffix.lower() in IMAGE_EXTENSIONS:
+            # Pose-only session: the "camera" is a still image (no playback).
+            self._cleanup_primary_video()
+            self._setup_primary_image()
+            return
         self._warn_video_format()
         self._cleanup_primary_video()
         self._setup_primary_video(restore_frame)
+
+    def _setup_primary_image(self):
+        import imageio.v3 as iio
+
+        try:
+            img = iio.imread(self.app_state.video_path)
+        except (OSError, ValueError) as e:
+            notify(f"Image file could not be loaded: {e}", "warning")
+            return
+        view = self.primary_view
+        view.set_static_image(img)
+        view.static_image_path = self.app_state.video_path
 
     def _cleanup_primary_video(self):
         sync = getattr(self.app_state, "video", None)
@@ -415,6 +441,36 @@ class VideoManager:
             view.seek_to_time(video.frame_to_time(video.current_frame))
         else:
             view.seek_video_frame(0)
+
+    def add_image_view(self, image_path: str):
+        """Show a still image (.png/.jpg …) as a static camera-like view.
+
+        The view lives in its own closable shell dock like any extra camera;
+        duplicates are allowed. The pose overlay (primary camera's pose) is
+        attached separately by :class:`PoseDisplayManager`.
+        """
+        import imageio.v3 as iio
+
+        try:
+            img = iio.imread(image_path)
+        except (OSError, ValueError) as e:
+            notify(f"Image '{Path(image_path).name}' could not be loaded: {e}", "warning")
+            return None
+        view = self.video_area.add_extra(Path(image_path).stem)
+        view.set_static_image(img)
+        view.static_image_path = str(image_path)
+        return view
+
+    def image_views(self) -> list[CameraView]:
+        """Every static-image view (primary included, if it shows an image)."""
+        views = [
+            view
+            for view in self.extra_widgets.values()
+            if getattr(view, "static_image_path", None)
+        ]
+        if getattr(self.primary_view, "static_image_path", None):
+            views.insert(0, self.primary_view)
+        return views
 
     def remove_camera(self, camera_name: str):
         """Remove every view of *camera_name* (duplicates included)."""
