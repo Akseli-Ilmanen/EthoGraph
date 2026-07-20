@@ -516,9 +516,7 @@ class LabelsWidget(QWidget):
         section["widget"].deleteLater()
         self.app_state._branch_shown.pop(branch_idx, None)
         if self.app_state._active_branch == branch_idx:
-            self.app_state._active_branch = 0 if 0 in self._branch_sections else next(
-                iter(self._branch_sections), 0
-            )
+            self.app_state._active_branch = 0 if 0 in self._branch_sections else next(iter(self._branch_sections), 0)
         if self._previous_active_branch == branch_idx:
             self._previous_active_branch = None
         if self.labels_table is section["table"]:
