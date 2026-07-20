@@ -13,7 +13,7 @@ import pytest
 
 pg = pytest.importorskip("pyqtgraph")
 
-from ethograph.gui.plots_lineplot import _nan_safe_curve_args, plot_multidim, plot_singledim
+from ethograph.gui.plots_lineplot import _nan_safe_curve_args, plot_multidim, plot_singledim  # noqa: E402
 
 
 @pytest.fixture

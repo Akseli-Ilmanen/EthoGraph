@@ -267,12 +267,6 @@ class PlotSettingsWidget(QWidget):
         if not self.plot_container:
             return
 
-        edits = {
-            "ymin": self.ymin_edit,
-            "ymax": self.ymax_edit,
-            "percentile_ylim": self.percentile_ylim_edit,
-        }
-
         ymin = self._parse_float(self.ymin_edit.text())
         ymax = self._parse_float(self.ymax_edit.text())
         pct = self._parse_float(self.percentile_ylim_edit.text())

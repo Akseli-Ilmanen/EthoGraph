@@ -639,7 +639,8 @@ class CoverPage(QDialog):
 
         label = QLabel(
             f'<span style="color:{_ACCENTS["drop"]}; font-weight:700;">Drag and drop files (2)</span>'
-            f' or <span style="color:{_ACCENTS["custom"]}; font-weight:700;">define custom multi-trial set-up (3)</span>'
+            f' or <span style="color:{_ACCENTS["custom"]}; font-weight:700;">'
+            "define custom multi-trial set-up (3)</span>"
             ", then click load."
         )
         label.setTextFormat(Qt.RichText)

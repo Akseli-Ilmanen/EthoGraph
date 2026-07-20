@@ -194,7 +194,7 @@ ignore = [
 
 [tool.ruff]
 line-length = 120
-exclude = ["__init__.py", "build", ".eggs", "scripts"]
+exclude = ["__init__.py", "build", ".eggs", "scripts", "ethograph/_vendor", "*.ipynb"]
 lint.select = [
     "E",
     "F",
