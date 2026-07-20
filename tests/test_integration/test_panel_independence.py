@@ -33,14 +33,11 @@ def test_heatmap_drop_uses_dropped_feature(moll2025_gui):
 
     hm = pc.heatmap_plot
     assert hm._effective_feature() == feat_b, (
-        f"heatmap feature leaked: {hm._effective_feature()!r} != {feat_b!r}; "
-        f"panel_state={hm.panel_state}"
+        f"heatmap feature leaked: {hm._effective_feature()!r} != {feat_b!r}; panel_state={hm.panel_state}"
     )
     assert pc.active_feature_plot is hm, f"active is {pc.active_feature_plot}"
     combo = dw.combos.get("features")
-    assert get_combo_value(combo) == feat_b, (
-        f"sidebar combo shows {get_combo_value(combo)!r}, expected {feat_b!r}"
-    )
+    assert get_combo_value(combo) == feat_b, f"sidebar combo shows {get_combo_value(combo)!r}, expected {feat_b!r}"
     # The original lineplot is untouched.
     assert lp._effective_feature() == feat_a
 
@@ -85,14 +82,11 @@ def test_lineplot_drop_uses_dropped_feature(moll2025_gui):
     assert len(pc.line_plots) == n_before + 1
     new_plot = pc.line_plots[-1]
     assert new_plot._effective_feature() == feat_b, (
-        f"lineplot feature leaked: {new_plot._effective_feature()!r} != {feat_b!r}; "
-        f"panel_state={new_plot.panel_state}"
+        f"lineplot feature leaked: {new_plot._effective_feature()!r} != {feat_b!r}; panel_state={new_plot.panel_state}"
     )
     assert pc.active_feature_plot is new_plot
     combo = dw.combos.get("features")
-    assert get_combo_value(combo) == feat_b, (
-        f"sidebar combo shows {get_combo_value(combo)!r}, expected {feat_b!r}"
-    )
+    assert get_combo_value(combo) == feat_b, f"sidebar combo shows {get_combo_value(combo)!r}, expected {feat_b!r}"
     assert lp._effective_feature() == feat_a
 
 

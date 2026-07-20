@@ -424,9 +424,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         dock = QDockWidget(title, self._dock_host)
         dock.setWidget(widget)
         dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
-        dock.setTitleBarWidget(
-            _PanelDockTitleBar(dock, title, on_close, on_move=lambda: self._show_move_menu(dock))
-        )
+        dock.setTitleBarWidget(_PanelDockTitleBar(dock, title, on_close, on_move=lambda: self._show_move_menu(dock)))
         return dock
 
     # ------------------------------------------------------------------
@@ -481,9 +479,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         docks = [self._dyn_docks[p] for p in self._audio_plots() if not self._dyn_docks[p].isHidden()]
         docks += [self._dyn_docks[p] for p in self._neo_plots() if not self._dyn_docks[p].isHidden()]
         docks += [self._panel_docks[n] for n, _ in _PANEL_ORDER if not self._panel_docks[n].isHidden()]
-        docks += [
-            self._dyn_docks[p] for p in self._panels_of_group("feature") if not self._dyn_docks[p].isHidden()
-        ]
+        docks += [self._dyn_docks[p] for p in self._panels_of_group("feature") if not self._dyn_docks[p].isHidden()]
         return docks
 
     def _show_move_menu(self, dock: QDockWidget):
@@ -1008,9 +1004,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         feature_share = ratios.get("feature", 0.3) * total if n_feature else 0.0
 
         # Every audio / neo instance gets its group's ratio share.
-        audio_raw = [
-            (self._dyn_docks[plot], ratios.get(plot.panel_type, 0.2) * total) for plot in self._audio_plots()
-        ]
+        audio_raw = [(self._dyn_docks[plot], ratios.get(plot.panel_type, 0.2) * total) for plot in self._audio_plots()]
         neo_raw = [(self._dyn_docks[plot], ratios.get("neo", 0.15) * total) for plot in self._neo_plots()]
 
         raw = {}

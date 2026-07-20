@@ -248,8 +248,7 @@ class PanelStateMixin:
             settings["feature"] = str(feature)
         if "selections" in self.panel_state:
             settings["selections"] = {
-                str(k): (v.item() if hasattr(v, "item") else v)
-                for k, v in self.panel_state["selections"].items()
+                str(k): (v.item() if hasattr(v, "item") else v) for k, v in self.panel_state["selections"].items()
             }
         color = self.panel_state.get("color")
         if color and color != "None":
@@ -264,9 +263,7 @@ class PanelStateMixin:
         if settings.get("feature"):
             self.panel_state["feature"] = settings["feature"]
         if isinstance(settings.get("selections"), dict):
-            self.panel_state["selections"] = self._sanitize_selections(
-                settings["selections"]
-            )
+            self.panel_state["selections"] = self._sanitize_selections(settings["selections"])
         if settings.get("color"):
             self.panel_state["color"] = settings["color"]
         if "show_predictions" in settings:

@@ -21,11 +21,10 @@ from typing import Optional
 
 import numpy as np
 import pygfx as gfx
-from qtpy.QtCore import QEvent, Signal
-from qtpy.QtWidgets import QVBoxLayout, QWidget
-
 from pynaviz.audiovideo import PlotVideo
 from pynaviz.utils import RenderTriggerSource
+from qtpy.QtCore import QEvent, Signal
+from qtpy.QtWidgets import QVBoxLayout, QWidget
 
 from .pose_overlay import PoseOverlay
 

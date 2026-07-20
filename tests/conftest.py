@@ -234,9 +234,7 @@ def gui(request, qtbot, tmp_path, monkeypatch):
     # dataset dirs, and never apply one a previous run left behind.
     meta.app_state._layout_snapshot_provider = None
     _real_apply = meta.apply_saved_panel_layout
-    meta.apply_saved_panel_layout = lambda: (
-        setattr(meta.app_state, "panel_layout", None) or _real_apply()
-    )
+    meta.apply_saved_panel_layout = lambda: setattr(meta.app_state, "panel_layout", None) or _real_apply()
     if show:
         shell.show()
 

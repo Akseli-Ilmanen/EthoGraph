@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Optional
 
 import numpy as np
-
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QDoubleValidator
 from qtpy.QtWidgets import (
@@ -548,9 +547,7 @@ class PlotSettingsWidget(QWidget):
         self.neo_gain_spin.setRange(-100.0, 100.0)
         self.neo_gain_spin.setSingleStep(0.1)
         self.neo_gain_spin.setDecimals(1)
-        self.neo_gain_spin.setToolTip(
-            "Display gain: negative = amplify, positive = attenuate (Ctrl+Wheel on the plot)"
-        )
+        self.neo_gain_spin.setToolTip("Display gain: negative = amplify, positive = attenuate (Ctrl+Wheel on the plot)")
         self.neo_gain_spin.valueChanged.connect(self._on_neo_gain_changed)
         gain_row.addWidget(self.neo_gain_spin)
         self.neo_auto_gain_cb = QCheckBox("Auto gain")

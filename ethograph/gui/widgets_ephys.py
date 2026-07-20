@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import pynapple as nap
 import pyqtgraph as pg
-
 from qtpy.QtCore import (
     QItemSelectionModel,
     QRect,

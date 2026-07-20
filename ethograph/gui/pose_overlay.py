@@ -347,9 +347,7 @@ class PoseOverlay:
             anchor_ok = shown[sdef["anchor_tracks"]].all() and not np.any(np.isnan(anchor_pos))
             outline = None
             if anchor_ok:
-                outline = shape_outline_for_frame(
-                    sdef["template"], sdef["anchor_names"], anchor_pos, sdef["scale"]
-                )
+                outline = shape_outline_for_frame(sdef["template"], sdef["anchor_names"], anchor_pos, sdef["scale"])
             if outline is not None:
                 closed = np.vstack([outline, outline[:1]])  # (K+1, 2) in (x, y)
                 arr[:, :2] = self._to_world(closed.astype(np.float32))

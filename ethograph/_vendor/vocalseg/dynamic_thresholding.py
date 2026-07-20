@@ -1,7 +1,8 @@
-from tqdm import tqdm
-from .utils import _normalize, spectrogram_nn, norm
 import numpy as np
 from scipy import ndimage
+from tqdm import tqdm
+
+from .utils import _normalize, norm, spectrogram_nn
 
 
 def contiguous_regions(condition):
@@ -57,7 +58,7 @@ def dynamic_threshold_segmentation(
 
     Arguments:
         vocalization {[type]} -- waveform of song
-        rate {[type]} -- samplerate of datas
+        rate {[type]} -- samplerate of data
 
     Keyword Arguments:
         min_level_db {int} -- default dB minimum of spectrogram (threshold anything below) (default: {-80})
@@ -129,9 +130,7 @@ def dynamic_threshold_segmentation(
 
         # Look at how much silence exists in the signal
         onsets, offsets = onsets_offsets(vocal_envelope > silence_threshold) / fft_rate
-        onsets_sil, offsets_sil = (
-            onsets_offsets(vocal_envelope <= silence_threshold) / fft_rate
-        )
+        onsets_sil, offsets_sil = onsets_offsets(vocal_envelope <= silence_threshold) / fft_rate
 
         # if there is a silence of at least min_silence_for_spec length,
         #  and a vocalization of no greater than max_vocal_for_spec length, the env is good

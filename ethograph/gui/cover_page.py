@@ -63,7 +63,7 @@ LABEL_EXTENSIONS = {".tsv"}
 # Pose extensions whose source software cannot be inferred from the suffix alone
 # (a ``.slp`` is always SLEAP; a ``.h5``/``.csv`` could be several tools).
 AMBIGUOUS_POSE_EXTENSIONS = {".h5", ".hdf5", ".csv"}
-# Ordered list of pose/bbox source softwares offered in the follow-up prompt.
+# Ordered list of pose/bbox source software offered in the follow-up prompt.
 POSE_SOFTWARES = ["DeepLabCut", "SLEAP", "LightningPose", "Anipose", "VIA-tracks"]
 
 # One accent colour per entry point — repeated on the card border, the number
@@ -306,9 +306,7 @@ class _DropDetailsDialog(QDialog):
             note.setTextFormat(Qt.RichText)
             note.setWordWrap(True)
             layout.addWidget(note)
-            self._extract_audio_cb = QCheckBox(
-                "Extract the audio for audio trace / spectrogram plots"
-            )
+            self._extract_audio_cb = QCheckBox("Extract the audio for audio trace / spectrogram plots")
             self._extract_audio_cb.setChecked(extract_audio_default)
             layout.addWidget(self._extract_audio_cb)
 
@@ -379,10 +377,7 @@ class _DropList(QListWidget):
         super().__init__(parent)
         self.setAcceptDrops(True)
         self.paths: list[str] = []
-        self.setStyleSheet(
-            f"QListWidget {{ border: 2px dashed {accent}; border-radius: 8px;"
-            " min-height: 160px; }"
-        )
+        self.setStyleSheet(f"QListWidget {{ border: 2px dashed {accent}; border-radius: 8px; min-height: 160px; }}")
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -473,8 +468,7 @@ class CoverPage(QDialog):
         rows = [
             (
                 "🎞 Video",
-                _fmt(VIDEO_EXTENSIONS)
-                + "  — if the video contains audio, just drop the file: the GUI "
+                _fmt(VIDEO_EXTENSIONS) + "  — if the video contains audio, just drop the file: the GUI "
                 "can extract it for the audio trace / spectrogram plots",
             ),
             ("🔊 Audio", _fmt(AUDIO_EXTENSIONS)),
@@ -584,8 +578,7 @@ class CoverPage(QDialog):
         card, layout = self._make_card(
             2,
             "Drag &amp; drop",
-            "Quick exploration: drop single, already-aligned media / feature / "
-            "label files (single trial assumed).",
+            "Quick exploration: drop single, already-aligned media / feature / label files (single trial assumed).",
             _ACCENTS["drop"],
         )
         self._drop = _DropList(accent=_ACCENTS["drop"])
@@ -764,9 +757,7 @@ class CoverPage(QDialog):
         need_pose_fps = bool(buckets["pose"]) and not buckets["video"]
         # Videos with an embedded audio track: ask whether to extract it (npy
         # drops ignore audio, so don't offer it there).
-        audio_track_videos = (
-            [] if need_npy_sr else [v for v in buckets["video"] if _video_has_audio(v)]
-        )
+        audio_track_videos = [] if need_npy_sr else [v for v in buckets["video"] if _video_has_audio(v)]
         if not need_npy_sr and not ambiguous_pose and not need_pose_fps and not audio_track_videos:
             return {
                 "data_sr": None,
@@ -814,8 +805,7 @@ class CoverPage(QDialog):
             return
         if images and no_media:
             raise RuntimeError(
-                "An image alone has no time axis — drop it together with a "
-                "pose, video, audio or session file."
+                "An image alone has no time axis — drop it together with a pose, video, audio or session file."
             )
 
         cam_map: list[tuple[str, str | None]] = []  # (video|image, pose|None)
@@ -981,9 +971,7 @@ class CoverPage(QDialog):
         from ethograph.gui.dialog_busy_progress import BusyProgressDialog
 
         dlg = BusyProgressDialog("Extracting audio from video…", parent=self)
-        paths, error = dlg.execute(
-            lambda: [str(_extract_audio_wav(v, self._drop_tmp_dir)) for v in videos]
-        )
+        paths, error = dlg.execute(lambda: [str(_extract_audio_wav(v, self._drop_tmp_dir)) for v in videos])
         if error or paths is None:
             raise RuntimeError(f"Could not extract audio from video: {error}")
         return paths
@@ -1065,9 +1053,7 @@ class CoverPage(QDialog):
             if Path(video).suffix.lower() in IMAGE_EXTENSIONS:
                 pose_fps = details.get("pose_fps")
                 if not pose_fps or not pose:
-                    raise RuntimeError(
-                        "An image-backed camera needs a pose file and its frame rate."
-                    )
+                    raise RuntimeError("An image-backed camera needs a pose file and its frame rate.")
                 duration = _pose_duration(pose, details.get("source_software"), pose_fps)
                 stop_time = max(stop_time, duration)
                 streams.append({"name": f"video_cam-{i + 1}", "files": [video], "rate": pose_fps})
@@ -1148,9 +1134,7 @@ class CoverPage(QDialog):
     # ------------------------------------------------------------------
 
     def _is_loaded(self) -> bool:
-        return bool(getattr(self.app_state, "ready", False)) or (
-            getattr(self.app_state, "dt", None) is not None
-        )
+        return bool(getattr(self.app_state, "ready", False)) or (getattr(self.app_state, "dt", None) is not None)
 
     def _close_if_loaded(self):
         if self._is_loaded():

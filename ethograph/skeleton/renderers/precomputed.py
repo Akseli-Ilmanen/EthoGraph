@@ -80,9 +80,7 @@ class PrecomputedRenderer(BaseRenderer):
         self.vectors = None
         self.edge_indices = None
 
-    def _convert_position_to_napari(
-        self, pos: np.ndarray, frame_idx: int, is_3d: bool
-    ) -> np.ndarray:
+    def _convert_position_to_napari(self, pos: np.ndarray, frame_idx: int, is_3d: bool) -> np.ndarray:
         """Convert position from Movement to napari format.
 
         Parameters
@@ -137,12 +135,8 @@ class PrecomputedRenderer(BaseRenderer):
             return None
 
         # Convert positions to napari format
-        start_napari = self._convert_position_to_napari(
-            start_pos, frame_idx, is_3d
-        )
-        end_napari = self._convert_position_to_napari(
-            end_pos, frame_idx, is_3d
-        )
+        start_napari = self._convert_position_to_napari(start_pos, frame_idx, is_3d)
+        end_napari = self._convert_position_to_napari(end_pos, frame_idx, is_3d)
 
         # Compute direction vector and create vector in napari format
         direction = end_napari - start_napari
@@ -177,17 +171,13 @@ class PrecomputedRenderer(BaseRenderer):
         # Iterate over all frames, individuals, and connections
         for frame_idx in range(self.n_frames):
             for ind_idx in range(self.n_individuals):
-                for conn_idx, (start_kp, end_kp) in enumerate(
-                    self.connections
-                ):
+                for conn_idx, (start_kp, end_kp) in enumerate(self.connections):
                     # Get keypoint positions
                     start_pos = position[frame_idx, :, start_kp, ind_idx]
                     end_pos = position[frame_idx, :, end_kp, ind_idx]
 
                     # Create vector if positions are valid
-                    vector = self._create_vector_from_positions(
-                        start_pos, end_pos, frame_idx, is_3d
-                    )
+                    vector = self._create_vector_from_positions(start_pos, end_pos, frame_idx, is_3d)
                     if vector is not None:
                         vectors_list.append(vector)
                         edge_indices_list.append(conn_idx)
@@ -216,9 +206,7 @@ class PrecomputedRenderer(BaseRenderer):
         n_edges = len(self.connections)
         # Assume not all vectors are valid (some have NaN)
         # Use 80% as estimate
-        estimated_valid_vectors = (
-            self.n_frames * self.n_individuals * n_edges * 0.8
-        )
+        estimated_valid_vectors = self.n_frames * self.n_individuals * n_edges * 0.8
         return (estimated_valid_vectors * bytes_per_vector) / (1024**2)
 
     def get_info(self) -> dict[str, str | int | float]:

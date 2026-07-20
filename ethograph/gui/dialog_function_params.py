@@ -266,11 +266,11 @@ _OSCILLATORY_PREAMBLE = (
 
 def _build_registry() -> dict[str, FunctionSpec]:
     import vocalpy as voc
+
     from ethograph._vendor.vocalseg.continuity_filtering import continuity_segmentation
     from ethograph._vendor.vocalseg.dynamic_thresholding import (
         dynamic_threshold_segmentation,
     )
-
     from ethograph.features.changepoints import (
         find_nearest_turning_points_binary,
         find_troughs_binary,

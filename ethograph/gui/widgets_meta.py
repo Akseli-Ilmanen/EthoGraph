@@ -33,7 +33,7 @@ from .make_pretty import LayoutManager
 from .notify import notify
 from .plots_container import UnifiedPanelContainer
 from .shortcuts import bind_global_shortcuts
-from .source_popup import ChannelSelectDialog, IMAGE_BROWSE, PlotTypePicker, SourcePopup, allowed_plot_types
+from .source_popup import IMAGE_BROWSE, ChannelSelectDialog, PlotTypePicker, SourcePopup, allowed_plot_types
 from .widget_trials import TrialsWidget
 from .widgets_changepoints import ChangepointsWidget
 from .widgets_data import DataPanel, DataWidget
@@ -378,9 +378,7 @@ class MetaWidget(GridSectionContainer):
                 self.active_panels.register(primary, PanelKind.VIDEO, clicked_signal=primary.clicked)
             if hasattr(video_area, "camera_added"):
                 video_area.camera_added.connect(
-                    lambda view: self.active_panels.register(
-                        view, PanelKind.VIDEO, clicked_signal=view.clicked
-                    )
+                    lambda view: self.active_panels.register(view, PanelKind.VIDEO, clicked_signal=view.clicked)
                 )
             if hasattr(video_area, "camera_view_removed"):
                 video_area.camera_view_removed.connect(self.active_panels.unregister)
@@ -658,9 +656,7 @@ class MetaWidget(GridSectionContainer):
 
         path = name
         if path == IMAGE_BROWSE:
-            path, _ = QFileDialog.getOpenFileName(
-                self.shell, "Choose an image", "", IMAGE_FILE_FILTER
-            )
+            path, _ = QFileDialog.getOpenFileName(self.shell, "Choose an image", "", IMAGE_FILE_FILTER)
             if not path:
                 return
             images = list(getattr(self.app_state, "image_paths", None) or [])
@@ -865,7 +861,6 @@ class MetaWidget(GridSectionContainer):
         apply_compact_widget_style(self, font_size=font_size)
 
     def _set_sidebar_default_width(self):
-        from qtpy.QtCore import Qt
 
         self.setMinimumWidth(SIDEBAR_MIN_WIDTH_PX)
 
@@ -943,4 +938,3 @@ class MetaWidget(GridSectionContainer):
             show_layers=space_type == "Layers",
             show_space=space_type == "Space Plot",
         )
-

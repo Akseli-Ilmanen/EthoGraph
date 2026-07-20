@@ -35,7 +35,6 @@ from qtpy.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,

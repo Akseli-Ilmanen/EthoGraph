@@ -15,8 +15,6 @@ import pytest
 from ethograph.io.validation import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
 
 
-
-
 def _menu(shell, title: str):
     for action in shell.menuBar().actions():
         if action.text().replace("&", "") == title:
@@ -38,7 +36,6 @@ def _find_action(menu, label: str):
 # ---------------------------------------------------------------------------
 # Top bar (no dataset needed)
 # ---------------------------------------------------------------------------
-
 
 
 def test_video_area_survives_attach(gui):
@@ -94,7 +91,6 @@ def test_top_bar_has_expected_menus(gui):
     assert titles == ["File", "Changepoints", "Neural", "Help"]
 
 
-
 def test_show_changepoints_menu_action_syncs_state(gui):
     shell, meta = gui
     cp_menu = _menu(shell, "Changepoints")
@@ -106,7 +102,6 @@ def test_show_changepoints_menu_action_syncs_state(gui):
     action.trigger()  # simulate the user clicking the menu item
     assert checkbox.isChecked() != start
     assert meta.app_state.show_changepoints == checkbox.isChecked()
-
 
 
 def test_changepoints_popup_borrows_and_returns_detached_widget(gui):
@@ -237,7 +232,6 @@ def test_video_context_shows_playback_and_pose(birdpark_gui):
     meta.focus_video_context()
     assert meta.context_panel.current_context() == "video"
     assert meta.navigation_widget.playback_group.isVisibleTo(meta.context_panel)
-
 
 
 def test_zen_mode_toggle(gui, qtbot):
@@ -549,9 +543,7 @@ def test_cover_page_custom_load_accepts_page(gui, qtbot, monkeypatch):
 def test_cover_page_classify_files():
     from ethograph.gui.cover_page import classify_files
 
-    buckets = classify_files(
-        ["a.mp4", "b.h5", "c.wav", "d.dat", "s.nc", "labels.tsv", "arena.png", "junk.xyz"]
-    )
+    buckets = classify_files(["a.mp4", "b.h5", "c.wav", "d.dat", "s.nc", "labels.tsv", "arena.png", "junk.xyz"])
     assert buckets["video"] == ["a.mp4"]
     assert buckets["pose"] == ["b.h5"]
     assert buckets["audio"] == ["c.wav"]
@@ -570,9 +562,7 @@ def test_cover_page_image_only_drop_rejected(gui):
     page = CoverPage(shell, meta.io_widget)
     buckets = classify_files(["arena.png"])
     with pytest.raises(RuntimeError, match="no time axis"):
-        page._populate_io_from_buckets(
-            buckets, {"data_sr": None, "source_software": None, "pose_fps": None}
-        )
+        page._populate_io_from_buckets(buckets, {"data_sr": None, "source_software": None, "pose_fps": None})
 
 
 def test_cover_page_pose_without_image_or_video_rejected(gui):
@@ -583,10 +573,7 @@ def test_cover_page_pose_without_image_or_video_rejected(gui):
     page = CoverPage(shell, meta.io_widget)
     buckets = classify_files(["tracking.slp"])
     with pytest.raises(RuntimeError, match="background image"):
-        page._populate_io_from_buckets(
-            buckets, {"data_sr": None, "source_software": None, "pose_fps": 30.0}
-        )
-
+        page._populate_io_from_buckets(buckets, {"data_sr": None, "source_software": None, "pose_fps": 30.0})
 
 
 def test_cover_page_builds_single_trial_alignment(gui, birdpark_data_dir):
@@ -596,9 +583,7 @@ def test_cover_page_builds_single_trial_alignment(gui, birdpark_data_dir):
 
     shell, meta = gui
     data_dir = Path(birdpark_data_dir)
-    videos = sorted(
-        p for p in data_dir.iterdir() if p.suffix.lower() in VIDEO_EXTENSIONS
-    )
+    videos = sorted(p for p in data_dir.iterdir() if p.suffix.lower() in VIDEO_EXTENSIONS)
     audio_only = AUDIO_EXTENSIONS - VIDEO_EXTENSIONS
     audios = sorted(p for p in data_dir.iterdir() if p.suffix.lower() in audio_only)
     if not videos:
@@ -672,7 +657,6 @@ def test_cover_page_audio_only_alignment(gui, birdpark_data_dir):
 # ---------------------------------------------------------------------------
 # End-to-end: load a template dataset, then drive a menu action
 # ---------------------------------------------------------------------------
-
 
 
 def test_birdpark_load_then_toggle_changepoints_via_menu(birdpark_gui):

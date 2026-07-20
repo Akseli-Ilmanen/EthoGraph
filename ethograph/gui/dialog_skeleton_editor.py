@@ -34,7 +34,6 @@ from qtpy.QtWidgets import (
     QPushButton,
     QSlider,
     QVBoxLayout,
-    QWidget,
 )
 
 from ethograph.skeleton.shapes import SHAPE_TEMPLATES, shape_outline_for_frame
@@ -315,7 +314,8 @@ class _SkeletonCanvas(pg.PlotWidget):
             self._edge_items.append(item)
             if selected:
                 halo = pg.PlotCurveItem(
-                    [xy[a, 0], xy[b, 0]], [xy[a, 1], xy[b, 1]],
+                    [xy[a, 0], xy[b, 0]],
+                    [xy[a, 1], xy[b, 1]],
                     pen=pg.mkPen("w", width=1, style=Qt.DashLine),
                 )
                 self.addItem(halo)
@@ -343,7 +343,8 @@ class _SkeletonCanvas(pg.PlotWidget):
                 continue
             closed = np.vstack([outline, outline[0]])
             item = pg.PlotCurveItem(
-                closed[:, 0], closed[:, 1],
+                closed[:, 0],
+                closed[:, 1],
                 pen=pg.mkPen(shape.get("color", "#FFCC00"), width=2),
             )
             self.addItem(item)
@@ -457,8 +458,13 @@ class ShapeAnchorDialog(QDialog):
         self._template_items.append(curve)
         names = self.template.anchor_point_names()
         spots = [
-            {"pos": (self.template.control_points[n][0] * sx, self.template.control_points[n][1] * sy),
-             "data": n, "size": 14, "brush": pg.mkBrush(255, 200, 0), "pen": pg.mkPen("w")}
+            {
+                "pos": (self.template.control_points[n][0] * sx, self.template.control_points[n][1] * sy),
+                "data": n,
+                "size": 14,
+                "brush": pg.mkBrush(255, 200, 0),
+                "pen": pg.mkPen("w"),
+            }
             for n in names
         ]
         self._point_scatter = pg.ScatterPlotItem(spots=spots)
@@ -709,9 +715,7 @@ class SkeletonEditorDialog(QDialog):
         if not (0 <= row < len(self._shapes)):
             return
         shape = self._shapes[row]
-        dialog = ShapeAnchorDialog(
-            shape["type"], self.canvas.keypoints, parent=self, existing=shape
-        )
+        dialog = ShapeAnchorDialog(shape["type"], self.canvas.keypoints, parent=self, existing=shape)
         if dialog.exec_():
             self._shapes[row] = dialog.get_shape()
             self._refresh_shapes()
@@ -756,9 +760,7 @@ class SkeletonEditorDialog(QDialog):
         """Return a skeleton config dict from the current edges/colors/shapes."""
         names = self.canvas.keypoints
         connections = []
-        for (a, b), color, segment in zip(
-            self.canvas.edges, self.canvas.edge_colors, self.canvas.edge_segments
-        ):
+        for (a, b), color, segment in zip(self.canvas.edges, self.canvas.edge_colors, self.canvas.edge_segments):
             connections.append(
                 {
                     "start": names[a],

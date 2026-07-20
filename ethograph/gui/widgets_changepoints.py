@@ -5,7 +5,6 @@ import logging
 import numpy as np
 import ruptures as rpt
 import xarray as xr
-
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QCheckBox,

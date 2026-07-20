@@ -104,32 +104,28 @@ class EthographMainWindow(QMainWindow):
         self.setCentralWidget(meta_widget.plot_container)
         self._video_dock = self.add_dock_widget(self.video_area, area="top", name="Video")
         self._video_dock.setObjectName("VideoDock")
-        QTimer.singleShot(
-            0, lambda: self.resizeDocks([self._video_dock], [300], Qt.Vertical)
-        )
+        QTimer.singleShot(0, lambda: self.resizeDocks([self._video_dock], [300], Qt.Vertical))
 
         # Bottom playback bar — no dock title bar (an empty widget removes the
         # "Playback" text and the line it occupies).
         from .widgets_bottom_bar import BottomPlaybackBar
+
         bottom_bar = BottomPlaybackBar(meta_widget.app_state)
         self._bottom_bar_dock = self.add_dock_widget(bottom_bar, area="bottom", name="Playback")
         self._bottom_bar_dock.setObjectName("BottomBarDock")
         self._bottom_bar_dock.setTitleBarWidget(QWidget())
-        self._bottom_bar_dock.setFeatures(
-            QDockWidget.DockWidgetFeature.NoDockWidgetFeatures
-        )
+        self._bottom_bar_dock.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
         self.bottom_bar = bottom_bar
 
         # Add-panel popup: opened from the bottom bar's ➕ button (or Ctrl+N),
         # anchored above the button.
-        bottom_bar.add_panel_btn.clicked.connect(
-            lambda: meta_widget.show_source_popup(bottom_bar.add_panel_btn)
-        )
+        bottom_bar.add_panel_btn.clicked.connect(lambda: meta_widget.show_source_popup(bottom_bar.add_panel_btn))
 
         # Wire bottom bar to data_widget and video sync
         data_widget = getattr(meta_widget, "data_widget", None)
         if data_widget is not None and hasattr(self, "bottom_bar"):
             self.bottom_bar.set_data_widget(data_widget)
+
             # Connect video sync when it becomes available
             def _wire_video_sync():
                 if data_widget.video_mgr and hasattr(data_widget.video_mgr, "video_sync"):

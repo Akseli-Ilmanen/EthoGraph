@@ -88,10 +88,7 @@ class RightContextPanel(QWidget):
         # panel's green selection edge so the link is obvious to the user.
         self._title = QLabel("")
         self._title.setWordWrap(True)
-        self._title.setStyleSheet(
-            f"color: {_ACTIVE_GREEN}; font-weight: bold; font-size: 14px; "
-            "padding: 4px 2px;"
-        )
+        self._title.setStyleSheet(f"color: {_ACTIVE_GREEN}; font-weight: bold; font-size: 14px; padding: 4px 2px;")
         self._title.setVisible(False)
         layout.addWidget(self._title)
 

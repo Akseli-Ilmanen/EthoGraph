@@ -82,9 +82,7 @@ class BottomPlaybackBar(QWidget):
         # Add-panel button — opens the SourcePopup (wired in main_window).
         self.add_panel_btn = QPushButton("➕ Add panel")
         self.add_panel_btn.setFixedWidth(90)
-        self.add_panel_btn.setToolTip(
-            "Add a panel: drag a source onto the plot area, or press Enter  (Ctrl+N)"
-        )
+        self.add_panel_btn.setToolTip("Add a panel: drag a source onto the plot area, or press Enter  (Ctrl+N)")
         layout.addWidget(self.add_panel_btn)
 
         # Play/pause button
@@ -234,9 +232,7 @@ class BottomPlaybackBar(QWidget):
         tr = self.app_state.padded_bounds
         if tr is not None:
             t0 = max(tr.start_s, min(t0, tr.end_s - span))
-        master = getattr(plot_container, "_xlink_master", None) or getattr(
-            plot_container, "_feature_plot", None
-        )
+        master = getattr(plot_container, "_xlink_master", None) or getattr(plot_container, "_feature_plot", None)
         if master is not None:
             master.vb.setXRange(t0, t0 + span, padding=0)
         if move_marker:

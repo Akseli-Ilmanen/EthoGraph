@@ -47,9 +47,7 @@ def rgba_to_hex(rgba: tuple[float, ...]) -> str:
     return f"#{r:02X}{g:02X}{b:02X}"
 
 
-def connections_to_edge_indices(
-    connections: list[dict[str, Any]], keypoint_names: list[str]
-) -> list[tuple[int, int]]:
+def connections_to_edge_indices(connections: list[dict[str, Any]], keypoint_names: list[str]) -> list[tuple[int, int]]:
     """Convert connection definitions to keypoint index pairs.
 
     Parameters
@@ -76,15 +74,9 @@ def connections_to_edge_indices(
         end_name = conn["end"]
 
         if start_name not in keypoint_names:
-            raise ValueError(
-                f"Start keypoint '{start_name}' not found "
-                f"in dataset keypoints: {keypoint_names}"
-            )
+            raise ValueError(f"Start keypoint '{start_name}' not found in dataset keypoints: {keypoint_names}")
         if end_name not in keypoint_names:
-            raise ValueError(
-                f"End keypoint '{end_name}' not found "
-                f"in dataset keypoints: {keypoint_names}"
-            )
+            raise ValueError(f"End keypoint '{end_name}' not found in dataset keypoints: {keypoint_names}")
 
         start_idx = keypoint_names.index(start_name)
         end_idx = keypoint_names.index(end_name)
@@ -204,9 +196,7 @@ def save_yaml_config(config: dict[str, Any], path: str | Path) -> None:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
 
-def validate_config(
-    config: dict[str, Any], dataset: xr.Dataset
-) -> tuple[bool, list[str]]:
+def validate_config(config: dict[str, Any], dataset: xr.Dataset) -> tuple[bool, list[str]]:
     """Validate skeleton configuration against a dataset.
 
     Parameters
@@ -242,18 +232,12 @@ def validate_config(
         if "start" not in conn:
             errors.append(f"Connection {i} missing 'start' keypoint")
         elif conn["start"] not in keypoint_names:
-            errors.append(
-                f"Connection {i}: keypoint '{conn['start']}' not found "
-                f"in dataset"
-            )
+            errors.append(f"Connection {i}: keypoint '{conn['start']}' not found in dataset")
 
         if "end" not in conn:
             errors.append(f"Connection {i} missing 'end' keypoint")
         elif conn["end"] not in keypoint_names:
-            errors.append(
-                f"Connection {i}: keypoint '{conn['end']}' not found "
-                f"in dataset"
-            )
+            errors.append(f"Connection {i}: keypoint '{conn['end']}' not found in dataset")
 
     is_valid = len(errors) == 0
     return is_valid, errors
@@ -281,9 +265,7 @@ def config_to_arrays(
         - segment_labels: list of segment names
 
     """
-    connections = connections_to_edge_indices(
-        config["connections"], keypoint_names
-    )
+    connections = connections_to_edge_indices(config["connections"], keypoint_names)
 
     n_edges = len(connections)
     edge_colors = np.zeros((n_edges, 4))

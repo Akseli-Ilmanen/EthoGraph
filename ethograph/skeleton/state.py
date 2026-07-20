@@ -66,9 +66,7 @@ class SkeletonState:
         self.keypoint_names = keypoint_names
 
     @classmethod
-    def from_config(
-        cls, config: dict[str, Any], dataset: xr.Dataset
-    ) -> "SkeletonState":
+    def from_config(cls, config: dict[str, Any], dataset: xr.Dataset) -> "SkeletonState":
         """Create SkeletonState from a configuration dictionary.
 
         Parameters
@@ -85,9 +83,7 @@ class SkeletonState:
 
         """
         keypoint_names = list(dataset.coords["keypoints"].values)
-        connections, colors, widths, labels = config_to_arrays(
-            config, keypoint_names
-        )
+        connections, colors, widths, labels = config_to_arrays(config, keypoint_names)
 
         return cls(
             connections=connections,
@@ -200,14 +196,9 @@ class SkeletonState:
 
         """
         if start_keypoint not in self.keypoint_names:
-            raise ValueError(
-                f"Start keypoint '{start_keypoint}' not found "
-                f"in dataset keypoints"
-            )
+            raise ValueError(f"Start keypoint '{start_keypoint}' not found in dataset keypoints")
         if end_keypoint not in self.keypoint_names:
-            raise ValueError(
-                f"End keypoint '{end_keypoint}' not found in dataset keypoints"
-            )
+            raise ValueError(f"End keypoint '{end_keypoint}' not found in dataset keypoints")
 
         start_idx = self.keypoint_names.index(start_keypoint)
         end_idx = self.keypoint_names.index(end_keypoint)
@@ -225,9 +216,7 @@ class SkeletonState:
         # Add segment label
         self.segment_labels.append(segment)
 
-    def remove_connection(
-        self, start_keypoint: str, end_keypoint: str
-    ) -> bool:
+    def remove_connection(self, start_keypoint: str, end_keypoint: str) -> bool:
         """Remove a connection from the skeleton.
 
         Parameters
@@ -282,34 +271,19 @@ class SkeletonState:
         # Check that all arrays have consistent lengths
         n_connections = len(self.connections)
         if len(self.edge_colors) != n_connections:
-            errors.append(
-                f"edge_colors has {len(self.edge_colors)} entries, "
-                f"expected {n_connections}"
-            )
+            errors.append(f"edge_colors has {len(self.edge_colors)} entries, expected {n_connections}")
         if len(self.edge_widths) != n_connections:
-            errors.append(
-                f"edge_widths has {len(self.edge_widths)} entries, "
-                f"expected {n_connections}"
-            )
+            errors.append(f"edge_widths has {len(self.edge_widths)} entries, expected {n_connections}")
         if len(self.segment_labels) != n_connections:
-            errors.append(
-                f"segment_labels has {len(self.segment_labels)} entries, "
-                f"expected {n_connections}"
-            )
+            errors.append(f"segment_labels has {len(self.segment_labels)} entries, expected {n_connections}")
 
         # Check that all connection indices are valid
         max_idx = len(self.keypoint_names) - 1
         for i, (start_idx, end_idx) in enumerate(self.connections):
             if start_idx > max_idx:
-                errors.append(
-                    f"Connection {i}: start index {start_idx} exceeds "
-                    f"max keypoint index {max_idx}"
-                )
+                errors.append(f"Connection {i}: start index {start_idx} exceeds max keypoint index {max_idx}")
             if end_idx > max_idx:
-                errors.append(
-                    f"Connection {i}: end index {end_idx} exceeds "
-                    f"max keypoint index {max_idx}"
-                )
+                errors.append(f"Connection {i}: end index {end_idx} exceeds max keypoint index {max_idx}")
 
         is_valid = len(errors) == 0
         return is_valid, errors

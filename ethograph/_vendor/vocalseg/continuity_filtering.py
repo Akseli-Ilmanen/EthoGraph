@@ -1,10 +1,11 @@
-from tqdm.autonotebook import tqdm
-from .utils import _normalize, spectrogram, norm, plot_spec
-from .dynamic_thresholding import dynamic_threshold_segmentation
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy import ndimage, signal
-import matplotlib.pyplot as plt
-import matplotlib
+from tqdm.autonotebook import tqdm
+
+from .dynamic_thresholding import dynamic_threshold_segmentation
+from .utils import plot_spec
 
 cmap = matplotlib.colors.ListedColormap(np.random.rand(256, 3))
 cmap.set_bad(color=(0, 0, 0, 0))
@@ -41,7 +42,7 @@ def continuity_segmentation(
 
     Arguments:
         vocalization {[type]} -- waveform of song
-        rate {[type]} -- samplerate of datas
+        rate {[type]} -- samplerate of data
 
     Keyword Arguments:
         min_level_db {int} -- default dB minimum of spectrogram (threshold anything below) (default: {-80})
@@ -125,31 +126,25 @@ def continuity_segmentation(
         plot_interim(mask)
 
     # Create a smoothing filter for the mask in time and frequency
-    continuity_filter = make_continuity_filter(
-        neighborhood_freq_hz, neighborhood_time_ms, spec_bin_hz, hop_length_ms
-    )
+    continuity_filter = make_continuity_filter(neighborhood_freq_hz, neighborhood_time_ms, spec_bin_hz, hop_length_ms)
     print(np.shape(continuity_filter))
     ### remove non-continuous regions of the mask
     # apply filter
-    mask = signal.fftconvolve(
-        (1 - mask.astype("float32")), continuity_filter, mode="same"
-    )
+    mask = signal.fftconvolve((1 - mask.astype("float32")), continuity_filter, mode="same")
     # threshold filter
     mask = mask < neighborhood_thresh
 
     if verbose:
         plot_interim(mask)
 
-    # find continous elements
+    # find continuous elements
     elements = segment_mask(mask)
 
     if verbose:
         plot_interim(elements, cmap=cmap, zero_nan=True)
 
     # get element timing
-    unique_elements, syllable_start_times, syllable_end_times = get_syllable_timing(
-        elements, hop_length_ms
-    )
+    unique_elements, syllable_start_times, syllable_end_times = get_syllable_timing(elements, hop_length_ms)
     print("unique elements: {}".format(len(unique_elements)))
     # merge elements that are nearby to each other
     if temporal_neighbor_merge_distance_ms > 0:
@@ -217,8 +212,7 @@ def continuity_segmentation(
 
 
 def remove_small_elements(elements, min_element_size):
-    """ remove elements that are below some threshold size
-    """
+    """remove elements that are below some threshold size"""
     # get unique points
     unique_elements = np.unique(elements[elements != 0].astype(int))
 
@@ -265,8 +259,7 @@ def merge_temporal_neighbors(
         # get elements that start between the beginning of this element and the
         #    end of this element plus temporal_neighbor_merge_distance_ms
         overlapping_syllables = np.where(
-            (syllable_start_times > st)
-            & (syllable_start_times < et + (temporal_neighbor_merge_distance_ms))
+            (syllable_start_times > st) & (syllable_start_times < et + (temporal_neighbor_merge_distance_ms))
         )[0]
         # print(overlapping_syllables)
         if len(overlapping_syllables) > 0:
@@ -276,9 +269,7 @@ def merge_temporal_neighbors(
                 elements[elements == syll_name] = element
             # remove from lists
             unique_elements = np.delete(unique_elements, overlapping_syllables)
-            syllable_start_times = np.delete(
-                syllable_start_times, overlapping_syllables
-            )
+            syllable_start_times = np.delete(syllable_start_times, overlapping_syllables)
             syllable_end_times = np.delete(syllable_end_times, overlapping_syllables)
 
     return elements
@@ -326,9 +317,7 @@ def merge_overlapping_elements(
         #   c3: or start after st and before et and are longer than overlap_thresh
         #   c4: fully overlap syllable
         c1 = (syllable_start_times < (et - overlap_thresh)) & (syllable_end_times > et)
-        c2 = (syllable_start_times < (st)) & (
-            syllable_end_times > (st + overlap_thresh)
-        )
+        c2 = (syllable_start_times < (st)) & (syllable_end_times > (st + overlap_thresh))
         c3 = ((syllable_start_times > (st)) & (syllable_end_times < et)) & (
             (syllable_end_times - syllable_start_times) > overlap_thresh
         )
@@ -374,19 +363,10 @@ def mask_spectrogram(spec, mask_thresh_std):
     Returns:
         [type] -- [description]
     """
-    return (
-        (
-            spec.T
-            < (np.median(spec, axis=1) + mask_thresh_std * np.std(spec, axis=1)) + 1e-5
-        )
-        .astype("float32")
-        .T
-    )
+    return (spec.T < (np.median(spec, axis=1) + mask_thresh_std * np.std(spec, axis=1)) + 1e-5).astype("float32").T
 
 
-def make_continuity_filter(
-    neighborhood_freq_hz, neighborhood_time_ms, spec_bin_hz, hop_length_ms
-):
+def make_continuity_filter(neighborhood_freq_hz, neighborhood_time_ms, spec_bin_hz, hop_length_ms):
     """
      Generate a filter for continuous elements
 
@@ -437,8 +417,7 @@ def get_syllable_timing(elements, hop_length_ms):
 
     # get the time coverage of each element
     total_coverage = [
-        np.sum(elements == i, axis=0)
-        for i in tqdm(unique_elements, desc="element coverage", leave=False)
+        np.sum(elements == i, axis=0) for i in tqdm(unique_elements, desc="element coverage", leave=False)
     ]
 
     # get the start and end times of each syllable

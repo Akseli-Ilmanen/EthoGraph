@@ -249,10 +249,7 @@ def _read_skeleton_config(container: Any, keypoints: set[str]) -> dict | None:
     if skel is None:
         return None
 
-    nodes = [
-        n.decode() if isinstance(n, bytes) else str(n)
-        for n in np.asarray(skel.nodes[:]).ravel()
-    ]
+    nodes = [n.decode() if isinstance(n, bytes) else str(n) for n in np.asarray(skel.nodes[:]).ravel()]
     edges = np.asarray(skel.edges[:]).astype(int).reshape(-1, 2)
 
     name_map = _match_skeleton_nodes(nodes, keypoints)
@@ -308,11 +305,7 @@ def pose_render_to_movement_ds(pr: PoseRenderData) -> xr.Dataset:
         ind = pr.properties["individual"].to_numpy()
     else:
         ind = np.array(["ind_0"] * len(kp))
-    conf = (
-        pr.properties["confidence"].to_numpy()
-        if "confidence" in pr.properties.columns
-        else np.ones(len(kp))
-    )
+    conf = pr.properties["confidence"].to_numpy() if "confidence" in pr.properties.columns else np.ones(len(kp))
 
     keypoints = list(dict.fromkeys(kp))
     individuals = list(dict.fromkeys(ind))
@@ -332,12 +325,8 @@ def pose_render_to_movement_ds(pr: PoseRenderData) -> xr.Dataset:
 
     return xr.Dataset(
         data_vars={
-            "position": xr.DataArray(
-                position, dims=["time", "space", "keypoints", "individuals"]
-            ),
-            "confidence": xr.DataArray(
-                confidence, dims=["time", "keypoints", "individuals"]
-            ),
+            "position": xr.DataArray(position, dims=["time", "space", "keypoints", "individuals"]),
+            "confidence": xr.DataArray(confidence, dims=["time", "keypoints", "individuals"]),
         },
         coords={
             "time": np.arange(n_t),
@@ -436,9 +425,7 @@ class PoseDisplayManager:
             if not pose_path:
                 return None
             try:
-                source_software = self.app_state.source_software or getattr(
-                    self.app_state.ds, "source_software", None
-                )
+                source_software = self.app_state.source_software or getattr(self.app_state.ds, "source_software", None)
                 pr = load_pose_from_file(
                     pose_path,
                     source_software,
@@ -561,9 +548,7 @@ class PoseDisplayManager:
         override = getattr(self.app_state, "skeleton_config_override", None)
         config = override if override is not None else pr.skeleton_config
         if getattr(self.app_state, "skeleton_use_base", True):
-            config = _resolve_skeleton_colors(
-                config, getattr(self.app_state, "skeleton_base_color", None)
-            )
+            config = _resolve_skeleton_colors(config, getattr(self.app_state, "skeleton_base_color", None))
         return config
 
     def _points_visible(self) -> bool:
@@ -631,11 +616,7 @@ class PoseDisplayManager:
         if pr is None:
             return None
         ds = pose_render_to_movement_ds(pr)
-        positions = (
-            ds.position.isel(individuals=0)
-            .transpose("time", "keypoints", "space")
-            .values
-        )
+        positions = ds.position.isel(individuals=0).transpose("time", "keypoints", "space").values
         return list(ds.coords["keypoints"].values), positions
 
     def _skeleton_width(self) -> float:

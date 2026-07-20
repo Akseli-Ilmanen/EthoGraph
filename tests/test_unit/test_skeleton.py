@@ -15,20 +15,14 @@ from ethograph.skeleton.config import (
     save_yaml_config,
     validate_config,
 )
-
-from ethograph.skeleton.config import config_to_arrays
 from ethograph.skeleton.renderers import PrecomputedRenderer
 
 
-def test_precomputed_renderer_init(
-    synthetic_skeleton_dataset, simple_skeleton_config
-):
+def test_precomputed_renderer_init(synthetic_skeleton_dataset, simple_skeleton_config):
     """Test PrecomputedRenderer initialization."""
     ds = synthetic_skeleton_dataset(n_frames=50, n_keypoints=3)
     keypoint_names = list(ds.coords["keypoints"].values)
-    connections, colors, widths, _ = config_to_arrays(
-        simple_skeleton_config, keypoint_names
-    )
+    connections, colors, widths, _ = config_to_arrays(simple_skeleton_config, keypoint_names)
 
     renderer = PrecomputedRenderer(
         dataset=ds,
@@ -43,16 +37,12 @@ def test_precomputed_renderer_init(
     assert renderer.vectors is None  # Not prepared yet
 
 
-def test_precomputed_renderer_2d_vector_format(
-    synthetic_skeleton_dataset, simple_skeleton_config
-):
+def test_precomputed_renderer_2d_vector_format(synthetic_skeleton_dataset, simple_skeleton_config):
     """Test that 2D vectors have correct napari format (N, 2, 3)."""
     # Create 2D dataset
     ds = synthetic_skeleton_dataset(n_frames=10, n_keypoints=3, spatial_dims=2)
     keypoint_names = list(ds.coords["keypoints"].values)
-    connections, colors, widths, _ = config_to_arrays(
-        simple_skeleton_config, keypoint_names
-    )
+    connections, colors, widths, _ = config_to_arrays(simple_skeleton_config, keypoint_names)
 
     renderer = PrecomputedRenderer(
         dataset=ds,
@@ -76,16 +66,12 @@ def test_precomputed_renderer_2d_vector_format(
     assert len(renderer.vectors) <= 30
 
 
-def test_precomputed_renderer_3d_vector_format(
-    synthetic_skeleton_dataset, simple_skeleton_config
-):
+def test_precomputed_renderer_3d_vector_format(synthetic_skeleton_dataset, simple_skeleton_config):
     """Test that 3D vectors have correct napari format (N, 2, 4)."""
     # Create 3D dataset
     ds = synthetic_skeleton_dataset(n_frames=10, n_keypoints=3, spatial_dims=3)
     keypoint_names = list(ds.coords["keypoints"].values)
-    connections, colors, widths, _ = config_to_arrays(
-        simple_skeleton_config, keypoint_names
-    )
+    connections, colors, widths, _ = config_to_arrays(simple_skeleton_config, keypoint_names)
 
     renderer = PrecomputedRenderer(
         dataset=ds,
@@ -101,15 +87,11 @@ def test_precomputed_renderer_3d_vector_format(
     assert renderer.vectors.shape[2] == 4  # [t, z, y, x] for 3D+time
 
 
-def test_precomputed_renderer_coordinate_order(
-    synthetic_skeleton_dataset, simple_skeleton_config
-):
+def test_precomputed_renderer_coordinate_order(synthetic_skeleton_dataset, simple_skeleton_config):
     """Test that coordinates are in correct napari order [t, y, x]."""
     ds = synthetic_skeleton_dataset(n_frames=5, n_keypoints=3, spatial_dims=2)
     keypoint_names = list(ds.coords["keypoints"].values)
-    connections, colors, widths, _ = config_to_arrays(
-        simple_skeleton_config, keypoint_names
-    )
+    connections, colors, widths, _ = config_to_arrays(simple_skeleton_config, keypoint_names)
 
     renderer = PrecomputedRenderer(
         dataset=ds,
@@ -135,15 +117,11 @@ def test_precomputed_renderer_coordinate_order(
         assert 0 < start_pos[2] < 200  # x coordinate
 
 
-def test_precomputed_renderer_direction_vector(
-    synthetic_skeleton_dataset, simple_skeleton_config
-):
+def test_precomputed_renderer_direction_vector(synthetic_skeleton_dataset, simple_skeleton_config):
     """Test that direction vectors are computed correctly."""
     ds = synthetic_skeleton_dataset(n_frames=5, n_keypoints=3, spatial_dims=2)
     keypoint_names = list(ds.coords["keypoints"].values)
-    connections, colors, widths, _ = config_to_arrays(
-        simple_skeleton_config, keypoint_names
-    )
+    connections, colors, widths, _ = config_to_arrays(simple_skeleton_config, keypoint_names)
 
     renderer = PrecomputedRenderer(
         dataset=ds,
@@ -167,15 +145,11 @@ def test_precomputed_renderer_direction_vector(
         assert direction[0] == 0
 
 
-def test_precomputed_renderer_nan_handling(
-    skeleton_dataset_with_nans, simple_skeleton_config
-):
+def test_precomputed_renderer_nan_handling(skeleton_dataset_with_nans, simple_skeleton_config):
     """Test that NaN keypoints are skipped correctly."""
     ds = skeleton_dataset_with_nans
     keypoint_names = list(ds.coords["keypoints"].values)
-    connections, colors, widths, _ = config_to_arrays(
-        simple_skeleton_config, keypoint_names
-    )
+    connections, colors, widths, _ = config_to_arrays(simple_skeleton_config, keypoint_names)
 
     renderer = PrecomputedRenderer(
         dataset=ds,
@@ -199,15 +173,11 @@ def test_precomputed_renderer_nan_handling(
     assert len(renderer.vectors) < max_vectors
 
 
-def test_precomputed_renderer_cleanup(
-    synthetic_skeleton_dataset, simple_skeleton_config
-):
+def test_precomputed_renderer_cleanup(synthetic_skeleton_dataset, simple_skeleton_config):
     """Test that cleanup properly releases memory."""
     ds = synthetic_skeleton_dataset(n_frames=10, n_keypoints=3)
     keypoint_names = list(ds.coords["keypoints"].values)
-    connections, colors, widths, _ = config_to_arrays(
-        simple_skeleton_config, keypoint_names
-    )
+    connections, colors, widths, _ = config_to_arrays(simple_skeleton_config, keypoint_names)
 
     renderer = PrecomputedRenderer(
         dataset=ds,
@@ -223,15 +193,11 @@ def test_precomputed_renderer_cleanup(
     assert renderer.vectors is None
 
 
-def test_precomputed_renderer_estimate_memory(
-    synthetic_skeleton_dataset, simple_skeleton_config
-):
+def test_precomputed_renderer_estimate_memory(synthetic_skeleton_dataset, simple_skeleton_config):
     """Test memory estimation is reasonable."""
     ds = synthetic_skeleton_dataset(n_frames=100, n_keypoints=3)
     keypoint_names = list(ds.coords["keypoints"].values)
-    connections, colors, widths, _ = config_to_arrays(
-        simple_skeleton_config, keypoint_names
-    )
+    connections, colors, widths, _ = config_to_arrays(simple_skeleton_config, keypoint_names)
 
     renderer = PrecomputedRenderer(
         dataset=ds,
@@ -249,15 +215,11 @@ def test_precomputed_renderer_estimate_memory(
     assert estimated_mb < 100
 
 
-def test_precomputed_renderer_get_info(
-    synthetic_skeleton_dataset, simple_skeleton_config
-):
+def test_precomputed_renderer_get_info(synthetic_skeleton_dataset, simple_skeleton_config):
     """Test get_info method returns correct information."""
     ds = synthetic_skeleton_dataset(n_frames=20, n_keypoints=3)
     keypoint_names = list(ds.coords["keypoints"].values)
-    connections, colors, widths, _ = config_to_arrays(
-        simple_skeleton_config, keypoint_names
-    )
+    connections, colors, widths, _ = config_to_arrays(simple_skeleton_config, keypoint_names)
 
     renderer = PrecomputedRenderer(
         dataset=ds,
@@ -302,9 +264,7 @@ def test_precomputed_renderer_no_valid_vectors(simple_skeleton_config):
     )
 
     keypoint_names = list(ds.coords["keypoints"].values)
-    connections, colors, widths, _ = config_to_arrays(
-        simple_skeleton_config, keypoint_names
-    )
+    connections, colors, widths, _ = config_to_arrays(simple_skeleton_config, keypoint_names)
 
     renderer = PrecomputedRenderer(
         dataset=ds,
@@ -369,9 +329,7 @@ def test_config_to_arrays(simple_skeleton_config):
     """Test conversion of config dict to renderer arrays."""
     keypoint_names = simple_skeleton_config["keypoints"]
 
-    connections, colors, widths, labels = config_to_arrays(
-        simple_skeleton_config, keypoint_names
-    )
+    connections, colors, widths, labels = config_to_arrays(simple_skeleton_config, keypoint_names)
 
     # Check connections
     assert len(connections) == 3
@@ -403,12 +361,8 @@ def test_save_and_load_yaml_config(simple_skeleton_config):
         loaded_config = load_yaml_config(config_path)
 
         # Verify content
-        assert (
-            loaded_config["keypoints"] == simple_skeleton_config["keypoints"]
-        )
-        assert len(loaded_config["connections"]) == len(
-            simple_skeleton_config["connections"]
-        )
+        assert loaded_config["keypoints"] == simple_skeleton_config["keypoints"]
+        assert len(loaded_config["connections"]) == len(simple_skeleton_config["connections"])
 
 
 def test_load_yaml_config_nonexistent_file():
@@ -417,9 +371,7 @@ def test_load_yaml_config_nonexistent_file():
         load_yaml_config("/nonexistent/path/config.yaml")
 
 
-def test_validate_config_valid(
-    simple_skeleton_config, synthetic_skeleton_dataset
-):
+def test_validate_config_valid(simple_skeleton_config, synthetic_skeleton_dataset):
     """Test validation of a valid configuration."""
     ds = synthetic_skeleton_dataset(n_keypoints=3)
 
@@ -440,9 +392,7 @@ def test_validate_config_missing_connections(synthetic_skeleton_dataset):
     assert any("connections" in err for err in errors)
 
 
-def test_validate_config_invalid_keypoint(
-    simple_skeleton_config, synthetic_skeleton_dataset
-):
+def test_validate_config_invalid_keypoint(simple_skeleton_config, synthetic_skeleton_dataset):
     """Test validation fails when connection references invalid keypoint."""
     ds = synthetic_skeleton_dataset(n_keypoints=2)  # Only 2 keypoints
 

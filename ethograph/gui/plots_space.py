@@ -123,7 +123,7 @@ def load_library_geometries(lib_dir: Path | None = None) -> dict[str, list["Refe
 
     One file = one selectable geometry (e.g. ``moll2025_geometry.yaml`` →
     ``"moll2025_geometry"``); all of a file's ``references`` are drawn together.
-    Unparseable files are skipped with a log message (user-supplied input).
+    Unparsable files are skipped with a log message (user-supplied input).
     """
     lib_dir = GEOMETRY_LIBRARY_DIR if lib_dir is None else Path(lib_dir)
     geometries: dict[str, list[ReferenceGeometry]] = {}
@@ -447,9 +447,7 @@ class SpacePlot(QWidget):
             self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
             # Skipped when the saved window state placed the dock — this
             # deferred resize would stomp the restored width.
-            if not self.dock_widget.restored_from_state and getattr(
-                self, "_apply_default_width", True
-            ):
+            if not self.dock_widget.restored_from_state and getattr(self, "_apply_default_width", True):
                 QTimer.singleShot(0, self._apply_default_dock_width)
             self.dock_widget.installEventFilter(self)
         else:

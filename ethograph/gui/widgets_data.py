@@ -320,9 +320,7 @@ class DataPanel(QWidget):
         grid.addWidget(QLabel("Points"), 1, 0)
         self.pose_show_keypoints_checkbox = QCheckBox()
         self.pose_show_keypoints_checkbox.setChecked(True)
-        self.pose_show_keypoints_checkbox.setToolTip(
-            "Show/hide keypoint markers (skeleton edges are unaffected)"
-        )
+        self.pose_show_keypoints_checkbox.setToolTip("Show/hide keypoint markers (skeleton edges are unaffected)")
         grid.addWidget(self.pose_show_keypoints_checkbox, 1, 1)
         self.pose_show_text_checkbox = QCheckBox()
         self.pose_show_text_checkbox.setChecked(False)
@@ -342,15 +340,12 @@ class DataPanel(QWidget):
         self.pose_points_color_btn.setObjectName("pose_points_color_btn")
         self.pose_points_color_btn.setFixedWidth(40)
         self.pose_points_color_btn.setToolTip("Uniform colour for all pose points")
-        self.pose_points_color_btn.setIcon(
-            _color_swatch_icon(self.app_state.pose_points_base_color or "#FF3333")
-        )
+        self.pose_points_color_btn.setIcon(_color_swatch_icon(self.app_state.pose_points_base_color or "#FF3333"))
         points_color_cell.addWidget(self.pose_points_color_btn)
         self.pose_points_use_base_checkbox = QCheckBox()
         self.pose_points_use_base_checkbox.setChecked(self.app_state.pose_points_use_base)
         self.pose_points_use_base_checkbox.setToolTip(
-            "Checked: all points use the base colour.\n"
-            "Unchecked: per-keypoint colours (turbo colormap)."
+            "Checked: all points use the base colour.\nUnchecked: per-keypoint colours (turbo colormap)."
         )
         points_color_cell.addWidget(self.pose_points_use_base_checkbox)
         grid.addLayout(points_color_cell, 1, 4)
@@ -377,9 +372,7 @@ class DataPanel(QWidget):
         self.pose_skeleton_color_btn.setObjectName("pose_skeleton_color_btn")
         self.pose_skeleton_color_btn.setFixedWidth(40)
         self.pose_skeleton_color_btn.setToolTip("Uniform colour for all skeleton edges")
-        self.pose_skeleton_color_btn.setIcon(
-            _color_swatch_icon(self.app_state.skeleton_base_color or "#00CC66")
-        )
+        self.pose_skeleton_color_btn.setIcon(_color_swatch_icon(self.app_state.skeleton_base_color or "#00CC66"))
         skeleton_color_cell.addWidget(self.pose_skeleton_color_btn)
         self.pose_skeleton_use_base_checkbox = QCheckBox()
         self.pose_skeleton_use_base_checkbox.setChecked(self.app_state.skeleton_use_base)
@@ -590,9 +583,7 @@ class DataWidget(QWidget):
         panel.pose_show_skeleton_checkbox.stateChanged.connect(self._on_pose_show_skeleton_toggled)
         panel.pose_skeleton_width_spin.valueChanged.connect(self._on_pose_skeleton_width_changed)
         panel.pose_skeleton_color_btn.clicked.connect(self._on_skeleton_color_clicked)
-        panel.pose_skeleton_use_base_checkbox.stateChanged.connect(
-            self._on_skeleton_use_base_toggled
-        )
+        panel.pose_skeleton_use_base_checkbox.stateChanged.connect(self._on_skeleton_use_base_toggled)
         panel.pose_points_color_btn.clicked.connect(self._on_points_color_clicked)
         panel.pose_points_use_base_checkbox.stateChanged.connect(self._on_points_use_base_toggled)
         panel.create_skeleton_btn.clicked.connect(self._on_create_skeleton_clicked)
@@ -663,9 +654,7 @@ class DataWidget(QWidget):
         if not color.isValid():
             return
         self.app_state.pose_points_base_color = color.name().upper()
-        self.pose_points_color_btn.setIcon(
-            _color_swatch_icon(self.app_state.pose_points_base_color)
-        )
+        self.pose_points_color_btn.setIcon(_color_swatch_icon(self.app_state.pose_points_base_color))
         self.pose_mgr.refresh_skeleton()
 
     def _on_points_use_base_toggled(self, state: int):
@@ -1172,7 +1161,6 @@ class DataWidget(QWidget):
         self._neural_view_label.hide()
         self.neural_view_combo.hide()
         self.panels_row5_layout.addStretch()
-
 
         if self.app_state.has_neurons and self.ephys_widget:
             self._neural_view_label.show()
@@ -1830,8 +1818,7 @@ class DataWidget(QWidget):
 
         if error is None and feature_name:
             notify(
-                f'Envelope saved as feature "{feature_name}" — '
-                "add it via ➕ Add panel (heatmap shows all channels).",
+                f'Envelope saved as feature "{feature_name}" — add it via ➕ Add panel (heatmap shows all channels).',
                 "info",
             )
 
@@ -1890,9 +1877,7 @@ class DataWidget(QWidget):
                 if loader is None:
                     continue
                 raw = np.asarray(loader[0 : len(loader)], dtype=np.float64)
-                env_by_path[audio_path] = compute_energy_envelope_multichannel(
-                    raw, loader.rate, metric, app_state
-                )
+                env_by_path[audio_path] = compute_energy_envelope_multichannel(raw, loader.rate, metric, app_state)
             env_time, envelopes = env_by_path[audio_path]
             da = xr.DataArray(
                 envelopes,
@@ -3004,9 +2989,7 @@ class DataWidget(QWidget):
             sp.show()
 
     def _highlight_positions_in_space_plot(self, start_time: float, end_time: float):
-        visible = [
-            sp for sp in self.space_plots if sp.dock_widget is not None and sp.dock_widget.isVisible()
-        ]
+        visible = [sp for sp in self.space_plots if sp.dock_widget is not None and sp.dock_widget.isVisible()]
         if not visible:
             return
 

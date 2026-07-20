@@ -55,9 +55,7 @@ def test_nwb_config_feeds_existing_renderer():
     position = np.random.rand(n_frames, 2, len(keypoints), 1) * 100
     ds = xr.Dataset(
         data_vars={
-            "position": xr.DataArray(
-                position, dims=["time", "space", "keypoints", "individuals"]
-            ),
+            "position": xr.DataArray(position, dims=["time", "space", "keypoints", "individuals"]),
         },
         coords={
             "time": np.arange(n_frames),

@@ -110,9 +110,7 @@ class VideoArea(QWidget):
             view.dock_widget = dock
             dock.installEventFilter(self)
             desired_width = max(200, int(shell.width() * 0.2))
-            QTimer.singleShot(
-                0, lambda: shell.resizeDocks([dock], [desired_width], Qt.Horizontal)
-            )
+            QTimer.singleShot(0, lambda: shell.resizeDocks([dock], [desired_width], Qt.Horizontal))
         else:
             self._splitter.addWidget(view)
             self._equalize()
@@ -258,9 +256,7 @@ class VideoManager:
         alignment = getattr(self.app_state, "trial_alignment", None)
         video_time_offset = alignment.video_offset if alignment else 0.0
         fps = self.app_state.video_fps
-        start_frame, end_frame, effective_offset = self._trial_clip(
-            fps, video_time_offset, probe.nframes
-        )
+        start_frame, end_frame, effective_offset = self._trial_clip(fps, video_time_offset, probe.nframes)
 
         view = self.primary_view
         try:
@@ -362,11 +358,7 @@ class VideoManager:
 
     def views_for_camera(self, camera_name: str) -> list[CameraView]:
         """Every extra view showing *camera_name* (duplicates included)."""
-        return [
-            view
-            for key, view in self.extra_widgets.items()
-            if getattr(view, "camera_name", key) == camera_name
-        ]
+        return [view for key, view in self.extra_widgets.items() if getattr(view, "camera_name", key) == camera_name]
 
     def add_camera(
         self,
@@ -421,9 +413,7 @@ class VideoManager:
         if sio is not None:
             trial_id = self.app_state.trials_sel
             time_offset = sio.stream_offset_for_trial(trial_id, "video", camera_name)
-        start_frame, end_frame, effective_offset = self._trial_clip(
-            probe.fps, time_offset, probe.nframes
-        )
+        start_frame, end_frame, effective_offset = self._trial_clip(probe.fps, time_offset, probe.nframes)
         try:
             view.set_video(
                 video_path,
@@ -463,11 +453,7 @@ class VideoManager:
 
     def image_views(self) -> list[CameraView]:
         """Every static-image view (primary included, if it shows an image)."""
-        views = [
-            view
-            for view in self.extra_widgets.values()
-            if getattr(view, "static_image_path", None)
-        ]
+        views = [view for view in self.extra_widgets.values() if getattr(view, "static_image_path", None)]
         if getattr(self.primary_view, "static_image_path", None):
             views.insert(0, self.primary_view)
         return views

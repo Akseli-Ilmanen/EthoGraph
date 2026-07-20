@@ -1,6 +1,6 @@
 # ethograph
 
-<img src="docs/source/media/demo.gif" alt="EthoGraph demo" width="60%">
+<img src="docs/source/media/demo.gif" alt="EthoGraph demo" width="100%">
 
 EthoGraph is a graphical user interface for visualizing and segmenting
 multimodal timeseries behavioural data. It builds upon a number of

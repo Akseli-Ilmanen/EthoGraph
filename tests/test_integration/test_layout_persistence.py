@@ -53,18 +53,14 @@ def test_dataset_dock_state_applies_on_show(qtbot):
 
     win = EthographMainWindow()
     qtbot.addWidget(win)
-    dock = win.add_dock_widget(
-        QLabel("space"), area="top", name="Space Plot", object_name="SpacePlotDock_0"
-    )
+    dock = win.add_dock_widget(QLabel("space"), area="top", name="Space Plot", object_name="SpacePlotDock_0")
     win.addDockWidget(Qt.BottomDockWidgetArea, dock)
     blob = win.capture_dock_state_b64()
     win.close()
 
     win2 = EthographMainWindow()  # fresh machine: no window_state anywhere
     qtbot.addWidget(win2)
-    dock2 = win2.add_dock_widget(
-        QLabel("space"), area="top", name="Space Plot", object_name="SpacePlotDock_0"
-    )
+    dock2 = win2.add_dock_widget(QLabel("space"), area="top", name="Space Plot", object_name="SpacePlotDock_0")
     win2.apply_dock_state_b64(blob)  # dataset load happens while hidden
     assert win2.dockWidgetArea(dock2) == Qt.TopDockWidgetArea  # deferred
     win2.show()

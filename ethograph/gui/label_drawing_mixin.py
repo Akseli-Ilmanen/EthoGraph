@@ -9,9 +9,6 @@ from ethograph.labels.intervals import EVENT_TYPE_POINT
 
 from .app_constants import (
     CP_COLOR_OSC_EVENT,
-    DEFAULT_LABEL_OVERLAY_MODES,
-    LABEL_OVERLAY_MODE_FULL,
-    LABEL_OVERLAY_MODE_NONE,
     CP_COLOR_SPECTROGRAM,
     CP_COLOR_WAVEFORM,
     CP_LINE_WIDTH_MEDIUM,
@@ -22,6 +19,9 @@ from .app_constants import (
     CP_SCATTER_Y_POSITION_RATIO,
     CP_ZOOM_MEDIUM_THRESHOLD,
     CP_ZOOM_VERY_OUT_THRESHOLD,
+    DEFAULT_LABEL_OVERLAY_MODES,
+    LABEL_OVERLAY_MODE_FULL,
+    LABEL_OVERLAY_MODE_NONE,
     PREDICTION_FALLBACK_Y_HEIGHT,
     PREDICTION_FALLBACK_Y_TOP,
     PREDICTION_LABELS_HEIGHT_RATIO,
@@ -133,7 +133,9 @@ class LabelDrawingMixin:
                 pass
         plot.label_items.clear()
 
-    def _draw_intervals_on_plot(self, plot, intervals_df, label_ids=None, position="main", mode=LABEL_OVERLAY_MODE_FULL):
+    def _draw_intervals_on_plot(
+        self, plot, intervals_df, label_ids=None, position="main", mode=LABEL_OVERLAY_MODE_FULL
+    ):
         if not hasattr(plot, "label_items"):
             plot.label_items = []
         if intervals_df is None or intervals_df.empty:

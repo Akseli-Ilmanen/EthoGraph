@@ -129,9 +129,7 @@ class TopBarBuilder:
         btn.setCheckable(True)
         btn.setAutoRaise(True)
         sidebar_action = getattr(self.shell, "_sidebar_toggle", None)
-        visible = (sidebar_action is None or sidebar_action.isChecked()) and not getattr(
-            self.shell, "_zen_mode", False
-        )
+        visible = (sidebar_action is None or sidebar_action.isChecked()) and not getattr(self.shell, "_zen_mode", False)
         btn.setChecked(visible)
         btn.toggled.connect(lambda vis: self.shell.set_zen_mode(not vis))
         menu_bar.setCornerWidget(btn, Qt.TopRightCorner)
@@ -199,21 +197,15 @@ class TopBarBuilder:
         # happens only on the cover page.
         menu.addAction(
             "Import labels…",
-            lambda: self._popup_section(
-                "import_labels", "Import labels", getattr(io, "labels_group", None)
-            ),
+            lambda: self._popup_section("import_labels", "Import labels", getattr(io, "labels_group", None)),
         )
         menu.addAction(
             "Import predictions…",
-            lambda: self._popup_section(
-                "import_predictions", "Import predictions", getattr(io, "pred_group", None)
-            ),
+            lambda: self._popup_section("import_predictions", "Import predictions", getattr(io, "pred_group", None)),
         )
         menu.addAction(
             "Export labels…",
-            lambda: self._popup_section(
-                "export_labels", "Export labels", getattr(io, "export_panel", None)
-            ),
+            lambda: self._popup_section("export_labels", "Export labels", getattr(io, "export_panel", None)),
         )
         menu.addSeparator()
         save_labels = self._first_method(io, "_save_labels")
@@ -231,9 +223,7 @@ class TopBarBuilder:
         menu = menu_bar.addMenu("&Changepoints")
         cp = getattr(self.meta, "changepoints_widget", None)
 
-        self._add_checkbox_action(
-            menu, "Show changepoints", getattr(cp, "show_cp_checkbox", None)
-        )
+        self._add_checkbox_action(menu, "Show changepoints", getattr(cp, "show_cp_checkbox", None))
         self._add_checkbox_action(
             menu,
             "Changepoint correction",
@@ -256,12 +246,14 @@ class TopBarBuilder:
         # context (shown when the Phy trace panel is clicked). The Neural menu
         # keeps only the interactive PSTH launcher and the firing-rate popup.
         psth_open = self._first_method(ephys, "_open_psth")
-        act = menu.addAction("Open interactive PSTH…", psth_open) if psth_open else menu.addAction("Open interactive PSTH…")
+        act = (
+            menu.addAction("Open interactive PSTH…", psth_open)
+            if psth_open
+            else menu.addAction("Open interactive PSTH…")
+        )
         if psth_open is None:
             act.setEnabled(False)
-        menu.addAction(
-            "Firing rates…", lambda: self._popup_section("firing", "Firing rates", ephys)
-        )
+        menu.addAction("Firing rates…", lambda: self._popup_section("firing", "Firing rates", ephys))
 
     # ------------------------------------------------------------------
     # Help menu
