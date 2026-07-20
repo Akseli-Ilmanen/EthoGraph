@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
-    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=c557aaec" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=17f663f2" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
@@ -41,7 +41,7 @@
   <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
 
-    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
     <script src="../_static/doctools.js?v=9bcbadda"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/design-tabs.js?v=f930bc37"></script>
@@ -51,7 +51,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Flying &amp; singing zebra finches - Birdpark" href="convert_dataset_birdpark.html" />
-    <link rel="prev" title="Tool-using crows - Moll et al., 2025" href="create_dataset_Moll25.html" />
+    <link rel="prev" title="Sound production in philodoptera" href="create_dataset_cricket.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -152,8 +152,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../user_guide/index.html">
-    User guide
+  <a class="nav-link nav-internal" href="../advanced/index.html">
+    Advanced
   </a>
 </li>
 
@@ -281,8 +281,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../user_guide/index.html">
-    User guide
+  <a class="nav-link nav-internal" href="../advanced/index.html">
+    Advanced
   </a>
 </li>
 
@@ -365,8 +365,8 @@
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="create_dataset_cricket.html">Sound production in philodoptera</a></li>
 <li class="toctree-l1"><a class="reference internal" href="create_dataset_Moll25.html">Tool-using crows - Moll et al., 2025</a></li>
+<li class="toctree-l1"><a class="reference internal" href="create_dataset_cricket.html">Sound production in philodoptera</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Social rats - PAIR-R24M</a></li>
 <li class="toctree-l1"><a class="reference internal" href="convert_dataset_birdpark.html">Flying &amp; singing zebra finches - Birdpark</a></li>
 <li class="toctree-l1"><a class="reference internal" href="convert_datset_lockbox.html">Tool-using mice - Lockbox</a></li>
@@ -435,6 +435,9 @@
 <p>Data from Marshall et al. (2021)¹ (<a class="reference external" href="https://figshare.com/articles/dataset/pairs_dataset/14754374">figshare</a>), a multi-animal 3D pose dataset about the dyadic interactions in laboratory rats.</p>
 <hr class="docutils" />
 <p>¹ Marshall, J., Klibaite, U., Gellis, A., Aldarondo, D., Olveczky, B., &amp; Dunn, T. W. (2021). The PAIR-R24M Dataset for Multi-animal 3D Pose Estimation. Proceedings of the Neural Information Processing Systems Track on Datasets and Benchmarks, 1. <a class="reference external" href="https://datasets-benchmarks-proceedings.neurips.cc/paper/2021/hash/1ff8a7b5dc7a7d1f0ed65aaa29c04b1e-Abstract-round1.html">https://datasets-benchmarks-proceedings.neurips.cc/paper/2021/hash/1ff8a7b5dc7a7d1f0ed65aaa29c04b1e-Abstract-round1.html</a></p>
+<a class="reference internal image-reference" href="../_images/pair24.png"><img alt="../_images/pair24.png" src="../_images/pair24.png" style="width: 800px;" />
+</a>
+<p>Figure taken from Fig. 1 from Marshall et al. (2021)</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
@@ -674,12 +677,12 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="create_dataset_Moll25.html"
+       href="create_dataset_cricket.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Tool-using crows - Moll et al., 2025</p>
+        <p class="prev-next-title">Sound production in philodoptera</p>
       </div>
     </a>
     <a class="right-next"
@@ -704,9 +707,12 @@
 
   <div class="sidebar-secondary-item">
 
+  
   <div class="tocsection sourcelink">
-    <a href="../_sources/examples/convert_dataset_pair24.ipynb.txt">
-      <i class="fa-solid fa-file-lines"></i> Show Source
+    <a href="../_sources/examples/convert_dataset_pair24.ipynb" download>
+      
+        <i class="fa-solid fa-download"></i> Download notebook
+      
     </a>
   </div>
 </div>

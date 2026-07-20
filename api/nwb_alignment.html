@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
-    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=c557aaec" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=17f663f2" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
@@ -41,7 +41,7 @@
   <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
 
-    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
     <script src="../_static/doctools.js?v=9bcbadda"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/design-tabs.js?v=f930bc37"></script>
@@ -152,8 +152,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../user_guide/index.html">
-    User guide
+  <a class="nav-link nav-internal" href="../advanced/index.html">
+    Advanced
   </a>
 </li>
 
@@ -281,8 +281,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../user_guide/index.html">
-    User guide
+  <a class="nav-link nav-internal" href="../advanced/index.html">
+    Advanced
   </a>
 </li>
 
@@ -437,9 +437,9 @@
 <p>The NWB alignment file (<code class="docutils literal notranslate"><span class="pre">&lt;project&gt;/.ethograph/alignment.nwb</span></code>) stores trial
 timing, media file paths, and stream offsets. It is the single source of
 truth for “what file corresponds to what trial, and when did it start”.</p>
-<p>See <a class="reference internal" href="../user_guide/nwb_alignment.html"><span class="doc">NWB alignment</span></a> for the user-facing walkthrough and
-<span class="xref std std-ref">Media and alignment on a TrialTree</span> for
-runtime access via <code class="docutils literal notranslate"><span class="pre">dt.nwb_alignment</span></code>.</p>
+<p>See <a class="reference internal" href="../getting_started/preparing_data.html#target-nwb-alignment"><span class="std std-ref">Alignment</span></a> for the user-facing walkthrough.
+At runtime the same interface is available via <code class="docutils literal notranslate"><span class="pre">dt.nwb_alignment</span></code> on a
+loaded TrialTree.</p>
 <hr class="docutils" />
 <section id="creating-alignment-files">
 <h2>Creating alignment files<a class="headerlink" href="#creating-alignment-files" title="Link to this heading">#</a></h2>
@@ -828,9 +828,12 @@ When no NWB file is available, the base class is used directly.</p>
 
   <div class="sidebar-secondary-item">
 
+  
   <div class="tocsection sourcelink">
-    <a href="../_sources/api/nwb_alignment.rst.txt">
-      <i class="fa-solid fa-file-lines"></i> Show Source
+    <a href="../_sources/api/nwb_alignment.rst">
+      
+        <i class="fa-solid fa-file-lines"></i> Show Source
+      
     </a>
   </div>
 </div>

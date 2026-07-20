@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="_static/sphinx-design.min.css?v=95c83b7e" />
-    <link rel="stylesheet" type="text/css" href="_static/css/custom.css?v=c557aaec" />
+    <link rel="stylesheet" type="text/css" href="_static/css/custom.css?v=17f663f2" />
   
   <!-- So that users can add custom icons -->
   <script defer src="_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
@@ -41,7 +41,7 @@
   <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
 
-    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/documentation_options.js?v=9eb32ce0"></script>
     <script src="_static/doctools.js?v=9bcbadda"></script>
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/design-tabs.js?v=f930bc37"></script>
@@ -151,8 +151,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="user_guide/index.html">
-    User guide
+  <a class="nav-link nav-internal" href="advanced/index.html">
+    Advanced
   </a>
 </li>
 
@@ -282,8 +282,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="user_guide/index.html">
-    User guide
+  <a class="nav-link nav-internal" href="advanced/index.html">
+    Advanced
   </a>
 </li>
 
@@ -385,13 +385,12 @@
 <section id="ethograph">
 <h1>ethograph<a class="headerlink" href="#ethograph" title="Link to this heading">#</a></h1>
 <p>EthoGraph is a graphical user interface for visualizing and segmenting
-multimodal timeseries behavioural data. It is built on top of
-<a class="reference external" href="https://pynapple.org/index.html">pynapple</a>,
-<a class="reference external" href="https://www.pyqtgraph.org/">PyQtGraph</a> (2D timeseries plots),
-<a class="reference external" href="https://pygfx.org/">pygfx</a> (GPU video and pose/skeleton overlays, via
-<a class="reference external" href="https://github.com/pynapple-org/pynaviz">pynaviz</a>), and
-<a class="reference external" href="https://movement.neuroinformatics.dev/">Movement</a>.</p>
-<p>Note this GUI is still in development. I welcome people testing it and providing feedback!</p>
+multimodal timeseries behavioural data. It builds upon a number of <a class="reference internal" href="#target-support"><span class="std std-ref">open-source
+libraries</span></a> to load and quickly render video and pose files, audio and
+spectrograms, ephys recordings in various formats, and arbitrary
+multi-dimensional timeseries — all on one shared timeline.</p>
+<p>Note this GUI is still in development. I welcome people testing it and
+<a class="reference internal" href="community/contributing.html"><span class="doc">providing feedback</span></a>!</p>
 <style>
   .vimeo-wrapper { width: 100%; }
   @media (min-width: 768px) {
@@ -401,7 +400,40 @@ multimodal timeseries behavioural data. It is built on top of
 <div class="vimeo-wrapper">
   <div style="padding:56.25% 0 0 0;position:relative;"><iframe src="https://player.vimeo.com/video/1206424641?badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479" frameborder="0" allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share" referrerpolicy="strict-origin-when-cross-origin" style="position:absolute;top:0;left:0;width:100%;height:100%;" title="Ethograph Demo"></iframe></div>
 </div>
-<script src="https://player.vimeo.com/api/player.js"></script></section>
+<script src="https://player.vimeo.com/api/player.js"></script><section id="quickstart">
+<h2>Quickstart<a class="headerlink" href="#quickstart" title="Link to this heading">#</a></h2>
+<p>To install the GUI, run the following. For more detailed instructions, see
+<a class="reference internal" href="getting_started/installation.html"><span class="doc">installation</span></a></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio]&quot;</span><span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.12
+</pre></div>
+</div>
+<p>To open the GUI, run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ethograph<span class="w"> </span>launch
+</pre></div>
+</div>
+<p>After launching, there are some <a class="reference internal" href="examples/index.html"><span class="doc">example datasets</span></a> you can explore the GUI. To
+learn more about all the functionalities, I recommend the
+<a class="reference internal" href="getting_started/user_manual.html"><span class="doc">user manual</span></a>.</p>
+</section>
+<section id="support">
+<span id="target-support"></span><h2>Support<a class="headerlink" href="#support" title="Link to this heading">#</a></h2>
+<a class="reference internal image-reference" href="_images/opensource.png"><img alt="Open-source projects EthoGraph depends on" class="align-left" src="_images/opensource.png" style="width: 60%;" />
+</a>
+<p>EthoGraph is built on top of a number of open-source projects:
+<a class="reference external" href="https://pyav.org/docs/stable/">PyAV</a>,
+<a class="reference external" href="https://github.com/bendalab/audioio">audioio</a>,
+<a class="reference external" href="https://neo.readthedocs.io">Neo</a>,
+<a class="reference external" href="https://github.com/vocalpy/crowsetta">crowsetta</a>,
+<a class="reference external" href="https://www.nwb.org/">Neurodata Without Borders</a>,
+<a class="reference external" href="https://docs.xarray.dev/">xarray</a>,
+<a class="reference external" href="https://pynapple.org/index.html">pynapple</a>,
+<a class="reference external" href="https://movement.neuroinformatics.dev/">movement</a>,
+<a class="reference external" href="https://github.com/cortex-lab/phy">phy</a>,
+<a class="reference external" href="https://www.pyqtgraph.org/">PyQtGraph</a>, and
+<a class="reference external" href="https://pygfx.org/">pygfx</a> (via
+<a class="reference external" href="https://github.com/pynapple-org/pynaviz">pynaviz</a>).</p>
+</section>
+</section>
 
 
                 </article>
@@ -434,10 +466,26 @@ multimodal timeseries behavioural data. It is built on top of
 
 
   <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#quickstart">Quickstart</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#support">Support</a></li>
+</ul>
+  </nav></div>
 
+  <div class="sidebar-secondary-item">
+
+  
   <div class="tocsection sourcelink">
-    <a href="_sources/index.rst.txt">
-      <i class="fa-solid fa-file-lines"></i> Show Source
+    <a href="_sources/index.rst">
+      
+        <i class="fa-solid fa-file-lines"></i> Show Source
+      
     </a>
   </div>
 </div>

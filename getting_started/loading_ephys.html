@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
-    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=c557aaec" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=17f663f2" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
@@ -41,7 +41,7 @@
   <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
 
-    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
     <script src="../_static/doctools.js?v=9bcbadda"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/design-tabs.js?v=f930bc37"></script>
@@ -50,8 +50,8 @@
     <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/getting_started/loading_ephys.html" />
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Multi-trial setup" href="multi_trial.html" />
-    <link rel="prev" title="From a numpy file" href="loading_numpy.html" />
+    <link rel="next" title="Preparing your own data" href="preparing_data.html" />
+    <link rel="prev" title="Installation" href="installation.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -152,8 +152,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../user_guide/index.html">
-    User guide
+  <a class="nav-link nav-internal" href="../advanced/index.html">
+    Advanced
   </a>
 </li>
 
@@ -281,8 +281,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../user_guide/index.html">
-    User guide
+  <a class="nav-link nav-internal" href="../advanced/index.html">
+    Advanced
   </a>
 </li>
 
@@ -365,18 +365,10 @@
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="user_manual.html">User Manual</a></li>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart with templates</a></li>
-<li class="toctree-l1"><a class="reference internal" href="wizard.html">Getting Started Wizard</a></li>
-<li class="toctree-l1 current active has-children"><a class="reference internal" href="data_loading.html">Loading Data</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
-<li class="toctree-l2"><a class="reference internal" href="loading_pose.html">From a pose file</a></li>
-<li class="toctree-l2"><a class="reference internal" href="loading_audio.html">From an audio file</a></li>
-<li class="toctree-l2"><a class="reference internal" href="loading_numpy.html">From a numpy file</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">From an ephys recording</a></li>
-<li class="toctree-l2"><a class="reference internal" href="multi_trial.html">Multi-trial setup</a></li>
-</ul>
-</details></li>
-<li class="toctree-l1"><a class="reference internal" href="data_requirements.html">Data Format Requirements</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">From an ephys recording</a></li>
+<li class="toctree-l1"><a class="reference internal" href="preparing_data.html">Preparing your own data</a></li>
 </ul>
 </div>
 </nav></div>
@@ -420,9 +412,6 @@
     
     <li class="breadcrumb-item"><a href="index.html" class="nav-link">Getting started</a></li>
     
-    
-    <li class="breadcrumb-item"><a href="data_loading.html" class="nav-link">Loading Data</a></li>
-    
     <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">From an ephys recording</span></li>
   </ul>
 </nav>
@@ -460,9 +449,34 @@
 <p>EthoGraph recognises a Kilosort folder by the <code class="docutils literal notranslate"><span class="pre">spike_times.npy</span></code> inside it, and reads the sample rate and channel count from the file header or <code class="docutils literal notranslate"><span class="pre">params.py</span></code> automatically — no output path and no questions for known formats. Raw binary (<code class="docutils literal notranslate"><span class="pre">.dat</span></code> / <code class="docutils literal notranslate"><span class="pre">.bin</span></code> / <code class="docutils literal notranslate"><span class="pre">.raw</span></code>) has no header; drop it together with its Kilosort folder so the metadata comes from <code class="docutils literal notranslate"><span class="pre">params.py</span></code> (see below).</p>
 <hr class="docutils" />
 </section>
+<section id="two-ephys-trace-viewers">
+<span id="target-ephys-viewers"></span><h2>Two ephys trace viewers<a class="headerlink" href="#two-ephys-trace-viewers" title="Link to this heading">#</a></h2>
+<p>Raw traces can be shown in either of two panels, added from <strong>➕ Add panel</strong> (<code class="docutils literal notranslate"><span class="pre">Ctrl+N</span></code>) under the <strong>Ephys</strong> header.</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p></p></th>
+<th class="head"><p><strong>Neo (<code class="docutils literal notranslate"><span class="pre">stream</span></code>)</strong></p></th>
+<th class="head"><p><strong>Ephys (Phy-like viewer)</strong></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Reads</p></td>
+<td><p>Any <a class="reference external" href="https://neo.readthedocs.io">Neo</a>-supported format (<a class="reference internal" href="#target-ephys-formats"><span class="std std-ref">table below</span></a>)</p></td>
+<td><p>Raw binary (<code class="docutils literal notranslate"><span class="pre">.dat</span></code> / <code class="docutils literal notranslate"><span class="pre">.bin</span></code> / <code class="docutils literal notranslate"><span class="pre">.raw</span></code>) + Kilosort folder</p></td>
+</tr>
+<tr class="row-odd"><td><p>Strength</p></td>
+<td><p>Wide format compatibility</p></td>
+<td><p>Fast zooming across many channels, with Kilosort spike waveforms overlaid on the trace</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The Phy-like viewer is inspired by <a class="reference external" href="https://github.com/cortex-lab/phy">phy</a>.</p>
+<hr class="docutils" />
+</section>
 <section id="supported-formats">
 <span id="target-ephys-formats"></span><h2>Supported formats<a class="headerlink" href="#supported-formats" title="Link to this heading">#</a></h2>
-<p>EthoGraph uses <a class="reference external" href="https://neo.readthedocs.io">Neo</a> to read files with recognised headers — sample rate, channel count, and dtype are extracted automatically. Raw binary files are handled via phylib and require a Kilosort folder.</p>
+<p>EthoGraph uses <a class="reference external" href="https://neo.readthedocs.io">Neo</a> to read files with recognised headers — sample rate, channel count, and dtype are extracted automatically. Raw binary files have no header, so they are handled via phylib and require a Kilosort folder.</p>
 <section id="known-formats-headers-auto-detected">
 <h3>Known formats (headers auto-detected)<a class="headerlink" href="#known-formats-headers-auto-detected" title="Link to this heading">#</a></h3>
 <div class="pst-scrollable-table-container"><table class="table">
@@ -523,11 +537,11 @@
 </tbody>
 </table>
 </div>
-<p>When a format supports multiple signal streams (e.g. amplifier vs auxiliary channels in Intan), the GUI lets you select the desired stream from a combo box.</p>
+<p>When a format carries multiple signal streams (e.g. amplifier vs auxiliary channels in Intan), each stream appears as its own <code class="docutils literal notranslate"><span class="pre">Neo</span> <span class="pre">(stream)</span></code> entry in the <strong>➕ Add panel</strong> popup, so you can open them side by side in separate panels.</p>
 </section>
 <section id="raw-binary-dat-bin-raw">
 <h3>Raw binary (<code class="docutils literal notranslate"><span class="pre">.dat</span></code> / <code class="docutils literal notranslate"><span class="pre">.bin</span></code> / <code class="docutils literal notranslate"><span class="pre">.raw</span></code>)<a class="headerlink" href="#raw-binary-dat-bin-raw" title="Link to this heading">#</a></h3>
-<p>Raw binary files produced by Kilosort carry no metadata. They are loaded via <a class="reference external" href="https://github.com/cortex-lab/phylib">phylib</a> using <code class="docutils literal notranslate"><span class="pre">n_channels</span></code> and <code class="docutils literal notranslate"><span class="pre">sample_rate</span></code> read from <code class="docutils literal notranslate"><span class="pre">params.py</span></code>. Use the <strong>Kilosort folder</strong> picker rather than the ephys file browser — EthoGraph resolves the <code class="docutils literal notranslate"><span class="pre">.dat</span></code> path from <code class="docutils literal notranslate"><span class="pre">params.py</span></code> internally.</p>
+<p>Raw binary files produced by Kilosort carry no metadata. They are loaded via <a class="reference external" href="https://github.com/cortex-lab/phylib">phylib</a> using <code class="docutils literal notranslate"><span class="pre">n_channels</span></code> and <code class="docutils literal notranslate"><span class="pre">sample_rate</span></code> read from <code class="docutils literal notranslate"><span class="pre">params.py</span></code>. Use the <strong>Kilosort folder</strong> picker rather than the ephys file browser — EthoGraph resolves the <code class="docutils literal notranslate"><span class="pre">.dat</span></code> path from <code class="docutils literal notranslate"><span class="pre">params.py</span></code> internally. This is what backs the <a class="reference internal" href="#target-ephys-viewers"><span class="std std-ref">Phy-like viewer</span></a>.</p>
 </section>
 </section>
 <hr class="docutils" />
@@ -590,14 +604,14 @@
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">cluster_info.tsv</span></code> — cluster groups, best hardware channel (<code class="docutils literal notranslate"><span class="pre">ch</span></code>), depth, firing-rate statistics. Both <code class="docutils literal notranslate"><span class="pre">KSLabel</span></code> (automatic Kilosort classification) and <code class="docutils literal notranslate"><span class="pre">group</span></code> (phy manual curation) are imported.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">channel_positions.npy</span></code> + <code class="docutils literal notranslate"><span class="pre">channel_map.npy</span></code> — probe geometry for the raster and probe-channel dialog.</p></li>
-<li><p>The raw <code class="docutils literal notranslate"><span class="pre">.dat</span></code> file (from <code class="docutils literal notranslate"><span class="pre">dat_path</span></code>) — displayed in the trace panel via the phylib loader.</p></li>
+<li><p>The raw <code class="docutils literal notranslate"><span class="pre">.dat</span></code> file (from <code class="docutils literal notranslate"><span class="pre">dat_path</span></code>) — displayed in the <a class="reference internal" href="#target-ephys-viewers"><span class="std std-ref">Phy-like viewer</span></a>, with spike waveforms overlaid on the trace.</p></li>
 </ul>
 <hr class="docutils" />
 </section>
 </section>
 <section id="ephys-with-multiple-trials">
 <span id="target-ephys-multi-trial"></span><h2>Ephys with multiple trials<a class="headerlink" href="#ephys-with-multiple-trials" title="Link to this heading">#</a></h2>
-<p>Ephys is session-wide. If you have separate video/audio files per trial, build a <code class="docutils literal notranslate"><span class="pre">session.nc</span></code> first (see <a class="reference internal" href="multi_trial.html"><span class="doc">Multi-trial setup</span></a>), then select the ephys file separately in the I/O widget.</p>
+<p>Ephys is session-wide. If you have separate video/audio files per trial, build a <code class="docutils literal notranslate"><span class="pre">session.nc</span></code> first (see <a class="reference internal" href="preparing_data.html"><span class="doc">Preparing your own data</span></a>), then select the ephys file separately in the I/O widget.</p>
 </section>
 </section>
 
@@ -612,20 +626,20 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="loading_numpy.html"
+       href="installation.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">From a numpy file</p>
+        <p class="prev-next-title">Installation</p>
       </div>
     </a>
     <a class="right-next"
-       href="multi_trial.html"
+       href="preparing_data.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Multi-trial setup</p>
+        <p class="prev-next-title">Preparing your own data</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -649,6 +663,7 @@
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#load-it-drag-drop">Load it — drag &amp; drop</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#two-ephys-trace-viewers">Two ephys trace viewers</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#supported-formats">Supported formats</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#known-formats-headers-auto-detected">Known formats (headers auto-detected)</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#raw-binary-dat-bin-raw">Raw binary (<code class="docutils literal notranslate"><span class="pre">.dat</span></code> / <code class="docutils literal notranslate"><span class="pre">.bin</span></code> / <code class="docutils literal notranslate"><span class="pre">.raw</span></code>)</a></li>
@@ -666,9 +681,12 @@
 
   <div class="sidebar-secondary-item">
 
+  
   <div class="tocsection sourcelink">
-    <a href="../_sources/getting_started/loading_ephys.md.txt">
-      <i class="fa-solid fa-file-lines"></i> Show Source
+    <a href="../_sources/getting_started/loading_ephys.md">
+      
+        <i class="fa-solid fa-file-lines"></i> Show Source
+      
     </a>
   </div>
 </div>

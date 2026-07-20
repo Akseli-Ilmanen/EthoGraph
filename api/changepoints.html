@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
-    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=c557aaec" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=17f663f2" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
@@ -41,7 +41,7 @@
   <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
 
-    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
     <script src="../_static/doctools.js?v=9bcbadda"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/design-tabs.js?v=f930bc37"></script>
@@ -154,8 +154,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../user_guide/index.html">
-    User guide
+  <a class="nav-link nav-internal" href="../advanced/index.html">
+    Advanced
   </a>
 </li>
 
@@ -283,8 +283,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../user_guide/index.html">
-    User guide
+  <a class="nav-link nav-internal" href="../advanced/index.html">
+    Advanced
   </a>
 </li>
 
@@ -440,7 +440,7 @@
 audio, and spectral time series. Ethograph exposes detectors (binary masks
 aligned to the signal’s time axis), merging and snapping utilities, and
 feature generators that turn changepoints into model-ready inputs.</p>
-<p>See <a class="reference internal" href="../user_guide/changepoints/index.html"><span class="doc">Changepoints</span></a> for the conceptual overview and
+<p>See <a class="reference internal" href="../advanced/changepoints/index.html"><span class="doc">Changepoints</span></a> for the conceptual overview and
 the <a class="reference internal" href="#target-changepoint-features-api"><span class="std std-ref">changepoint features</span></a> section
 below for the representations used by downstream segmentation models.</p>
 <hr class="docutils" />
@@ -660,7 +660,7 @@ Combines kinematic, audio, and oscillation changepoints.</p>
 <h2>Label correction<a class="headerlink" href="#label-correction" title="Link to this heading">#</a></h2>
 <p>Snap interval-based labels to nearby changepoints. The full pipeline
 (<code class="docutils literal notranslate"><span class="pre">correct_changepoints</span></code>) runs purge → stitch → snap → purge; see
-<a class="reference internal" href="../user_guide/changepoints/correction.html"><span class="doc">Changepoint correction</span></a> for parameter guidance.</p>
+<a class="reference internal" href="../advanced/changepoints/correction.html"><span class="doc">Changepoint correction</span></a> for parameter guidance.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="ethograph.features.changepoints.correct_changepoints">
 <span class="sig-prename descclassname"><span class="pre">ethograph.features.changepoints.</span></span><span class="sig-name descname"><span class="pre">correct_changepoints</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cp_times</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_duration_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stitch_gap_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_expansion_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_shrink_s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_thresholds_s</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">do_purge</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">do_stitch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">do_snap</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">do_purge_after</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ethograph/features/changepoints.html#correct_changepoints"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ethograph.features.changepoints.correct_changepoints" title="Link to this definition">#</a></dt>
@@ -827,8 +827,8 @@ their feature’s time axis, tagged with <code class="docutils literal notransla
 and <code class="docutils literal notranslate"><span class="pre">attrs[&quot;target_feature&quot;]</span></code>. Audio changepoints, which would be
 prohibitively large at audio sample rates, are stored instead as
 <code class="docutils literal notranslate"><span class="pre">audio_cp_onsets</span></code> / <code class="docutils literal notranslate"><span class="pre">audio_cp_offsets</span></code> float pairs. See
-<a class="reference internal" href="../user_guide/changepoints/kinematic.html"><span class="doc">Kinematic changepoints</span></a> and
-<a class="reference internal" href="../user_guide/changepoints/audio.html"><span class="doc">Audio changepoints</span></a> for examples.</p>
+<a class="reference internal" href="../advanced/changepoints/kinematic.html"><span class="doc">Kinematic changepoints</span></a> and
+<a class="reference internal" href="../advanced/changepoints/audio.html"><span class="doc">Audio changepoints</span></a> for examples.</p>
 </section>
 </section>
 
@@ -910,9 +910,12 @@ prohibitively large at audio sample rates, are stored instead as
 
   <div class="sidebar-secondary-item">
 
+  
   <div class="tocsection sourcelink">
-    <a href="../_sources/api/changepoints.rst.txt">
-      <i class="fa-solid fa-file-lines"></i> Show Source
+    <a href="../_sources/api/changepoints.rst">
+      
+        <i class="fa-solid fa-file-lines"></i> Show Source
+      
     </a>
   </div>
 </div>
