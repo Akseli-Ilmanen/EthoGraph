@@ -372,7 +372,15 @@ class XarrayLoader(_CatalogMixin):
         tc = eto.get_time_coord(next(iter(self._ds.data_vars.values()), None))
         if tc is None:
             return np.array([], dtype=np.float64)
-        return extract_cp_times(self._ds, tc.values)
+        cp_times = extract_cp_times(self._ds, tc.values)
+
+        all_cp_times = [cp_times]
+        if "audio_cp_onsets" in self._ds.data_vars and "audio_cp_offsets" in self._ds.data_vars:
+            all_cp_times.append(self._ds["audio_cp_onsets"].values.astype(np.float64))
+            all_cp_times.append(self._ds["audio_cp_offsets"].values.astype(np.float64))
+        if len(all_cp_times) > 1:
+            cp_times = np.unique(np.concatenate(all_cp_times))
+        return cp_times
 
 
 # ---------------------------------------------------------------------------

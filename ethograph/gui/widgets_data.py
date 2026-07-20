@@ -1171,35 +1171,21 @@ class DataWidget(QWidget):
 
         self.video_mgr.set_audio_row_widgets(self._audio_row_widgets)
 
-        # Overlays row 1 — three dropdowns choose what is rendered as labels.
-        # Main fills the entire plot (except top strips). Top1 / Top2 are
-        # narrow top strips, each independently configurable to a label
-        # branch or to the imported predictions. Label sits flush against
-        # its combo; an explicit gap separates the three label/combo groups.
+        # Overlays row 1 — label branches are shown/hidden via their own
+        # checkboxes in the Labels panel (branch 0 = Full, 1 = Top1, 2 =
+        # Top2, fixed). This row only carries the Predictions overlay toggle,
+        # which occupies whichever of Top1/Top2 isn't already used by a
+        # shown branch.
         row1 = self.overlays_row1_layout
         row1.setSpacing(2)
-        _GROUP_GAP = 6
-        _COMBO_WIDTH = 72
 
-        row1.addWidget(QLabel("Full:"))
-        self.main_labels_combo = QComboBox()
-        self.main_labels_combo.setFixedWidth(_COMBO_WIDTH)
-        self.main_labels_combo.currentIndexChanged.connect(lambda _i: self._on_label_slot_changed("main"))
-        row1.addWidget(self.main_labels_combo)
-        row1.addSpacing(_GROUP_GAP)
-
-        row1.addWidget(QLabel("Top 1:"))
-        self.top1_labels_combo = QComboBox()
-        self.top1_labels_combo.setFixedWidth(_COMBO_WIDTH)
-        self.top1_labels_combo.currentIndexChanged.connect(lambda _i: self._on_label_slot_changed("top1"))
-        row1.addWidget(self.top1_labels_combo)
-        row1.addSpacing(_GROUP_GAP)
-
-        row1.addWidget(QLabel("Top 2:"))
-        self.top2_labels_combo = QComboBox()
-        self.top2_labels_combo.setFixedWidth(_COMBO_WIDTH)
-        self.top2_labels_combo.currentIndexChanged.connect(lambda _i: self._on_label_slot_changed("top2"))
-        row1.addWidget(self.top2_labels_combo)
+        self.show_predictions_overlay_checkbox = QCheckBox("Predictions")
+        self.show_predictions_overlay_checkbox.setChecked(False)
+        self.show_predictions_overlay_checkbox.setToolTip(
+            "Show imported predictions as a top strip (fills Top1, or Top2 if Top1 is used by a branch)"
+        )
+        self.show_predictions_overlay_checkbox.stateChanged.connect(self._on_show_predictions_overlay_changed)
+        row1.addWidget(self.show_predictions_overlay_checkbox)
 
         row1.addStretch()
 
@@ -1220,10 +1206,6 @@ class DataWidget(QWidget):
         row2.addStretch()
 
         self._set_controls_enabled(False)
-
-        # Populate the slot dropdowns with whatever branches the labels widget
-        # already has — this happens after data load, so branches exist.
-        self.refresh_label_slot_dropdowns()
 
     # ------------------------------------------------------------------
     # Combo / checkbox handlers
@@ -1265,149 +1247,25 @@ class DataWidget(QWidget):
         self.plot_container.hide_confidence_plot()
 
     # ------------------------------------------------------------------
-    # Label slot dropdowns (Main / Top1 / Top2)
+    # Predictions overlay toggle
     # ------------------------------------------------------------------
+    # Label branches themselves are shown/hidden via their own checkboxes in
+    # the Labels panel (fixed position: branch 0 = Full, 1 = Top1, 2 = Top2).
 
-    def _label_slot_options(self, *, allow_predictions: bool, allow_none: bool):
-        """Build (display_text, value) pairs for a label slot dropdown.
-
-        Branches are read from the labels widget's mapping. Predictions is
-        offered iff a predictions df has been loaded.
-        """
-        options: list[tuple[str, object]] = []
-        if allow_none:
-            options.append(("(none)", None))
-        if self.labels_widget is not None:
-            for branch_idx in sorted(self.labels_widget._branch_sections):
-                options.append((f"Branch {branch_idx}", branch_idx))
-        if allow_predictions and self.app_state.pred_labels_df is not None:
-            options.append(("Predict", "predictions"))
-        return options
-
-    def _populate_label_slot_combo(self, combo: QComboBox, options, current_value):
-        """Re-fill *combo* with *options*, restoring *current_value* if present."""
-        combo.blockSignals(True)
-        combo.clear()
-        chosen_index = 0
-        for i, (text, value) in enumerate(options):
-            combo.addItem(text, userData=value)
-            if value == current_value:
-                chosen_index = i
-        if options:
-            combo.setCurrentIndex(chosen_index)
-        combo.blockSignals(False)
-
-    def refresh_label_slot_dropdowns(self, *, new_branch: int | None = None, predictions_added: bool = False):
-        """Repopulate the three slot dropdowns from current branches/predictions.
-
-        Auto-fill rules:
-          - new_branch: place the new branch into Top1 if free, else Top2.
-            If both are taken, leave them alone.
-          - predictions_added: same auto-fill rule, value="predictions".
-        """
-        if not hasattr(self, "main_labels_combo"):
-            return
-
-        state = self.app_state
-
-        # Auto-fill Top1/Top2 before repopulating, so the new value is selected.
-        if new_branch is not None and new_branch != state._main_labels_source:
-            if state._top1_source is None:
-                state._top1_source = new_branch
-            elif state._top2_source is None:
-                state._top2_source = new_branch
-        if predictions_added:
-            already_in_slot = state._top1_source == "predictions" or state._top2_source == "predictions"
-            if not already_in_slot:
-                if state._top1_source is None:
-                    state._top1_source = "predictions"
-                elif state._top2_source is None:
-                    state._top2_source = "predictions"
-
-        main_opts = self._label_slot_options(allow_predictions=False, allow_none=True)
-        top_opts = self._label_slot_options(allow_predictions=True, allow_none=True)
-
-        self._populate_label_slot_combo(
-            self.main_labels_combo,
-            main_opts,
-            state._main_labels_source,
-        )
-        self._populate_label_slot_combo(
-            self.top1_labels_combo,
-            top_opts,
-            state._top1_source,
-        )
-        self._populate_label_slot_combo(
-            self.top2_labels_combo,
-            top_opts,
-            state._top2_source,
-        )
-
-    def set_main_labels_branch(self, branch_idx: int):
-        """Programmatic main-slot change (used by Shift+B shortcut)."""
-        idx = self.main_labels_combo.findData(branch_idx)
-        if idx < 0:
-            return
-        self.main_labels_combo.setCurrentIndex(idx)
-
-    def toggle_predictions_slot(self):
-        """Toggle predictions in/out of the Top1/Top2 slots (Ctrl+Y).
-
-        If predictions is already in a slot, clear it. Otherwise drop it
-        into the first free slot (Top1, then Top2). No-op when no
-        predictions have been imported.
-        """
-        if self.app_state.pred_labels_df is None:
-            return
-        state = self.app_state
-        if state._top1_source == "predictions":
-            target_combo, target = self.top1_labels_combo, None
-            state_attr = "_top1_source"
-        elif state._top2_source == "predictions":
-            target_combo, target = self.top2_labels_combo, None
-            state_attr = "_top2_source"
-        elif state._top1_source is None:
-            target_combo, target = self.top1_labels_combo, "predictions"
-            state_attr = "_top1_source"
-        elif state._top2_source is None:
-            target_combo, target = self.top2_labels_combo, "predictions"
-            state_attr = "_top2_source"
-        else:
-            return  # both slots taken by something else
-        idx = target_combo.findData(target)
-        if idx < 0:
-            # Combo wasn't populated yet — set state directly and refresh.
-            setattr(state, state_attr, target)
-            self.refresh_label_slot_dropdowns()
-            return
-        target_combo.setCurrentIndex(idx)
-
-    def _on_label_slot_changed(self, slot: str):
-        """User changed Main / Top1 / Top2 dropdown — persist + redraw."""
-        state = self.app_state
-        combo = {
-            "main": self.main_labels_combo,
-            "top1": self.top1_labels_combo,
-            "top2": self.top2_labels_combo,
-        }[slot]
-        new_value = combo.currentData()
-        if slot == "main":
-            prev = state._main_labels_source
-            if isinstance(prev, int) and prev != new_value and self.labels_widget:
-                self.labels_widget._previous_main_branch = prev
-            state._main_labels_source = new_value
-        elif slot == "top1":
-            state._top1_source = new_value
-        else:
-            state._top2_source = new_value
-
-        if self.labels_widget is not None:
-            self.labels_widget._sync_active_label_ids()
+    def _on_show_predictions_overlay_changed(self, qt_state):
+        """User toggled the Predictions overlay checkbox — persist + redraw."""
+        self.app_state._show_predictions_overlay = qt_state == Qt.Checked
         if self.app_state.ready:
             ds_kwargs = self.app_state.get_ds_kwargs()
             self.update_label_plot(ds_kwargs)
         if self.labels_widget is not None:
             self.labels_widget.refresh_labels_shapes_layer()
+
+    def toggle_predictions_slot(self):
+        """Toggle the Predictions overlay on/off (Ctrl+Y). No-op with no predictions loaded."""
+        if self.app_state.pred_labels_df is None:
+            return
+        self.show_predictions_overlay_checkbox.setChecked(not self.show_predictions_overlay_checkbox.isChecked())
 
     def cycle_neural_view(self):
         if not hasattr(self, "neural_view_combo") or not self.neural_view_combo.isVisible():
@@ -2567,11 +2425,9 @@ class DataWidget(QWidget):
         self.update_label_plot(ds_kwargs)
 
     def update_label_plot(self, ds_kwargs):
-        # Labels are hidden when every slot is None.
+        # Labels are hidden when no branch is shown and predictions aren't toggled on.
         state = self.app_state
-        any_slot = (
-            state._main_labels_source is not None or state._top1_source is not None or state._top2_source is not None
-        )
+        any_slot = bool(state._branch_shown and any(state._branch_shown.values())) or state._show_predictions_overlay
         if not any_slot:
             if self.plot_container:
                 for plot in self.plot_container._get_all_plots():

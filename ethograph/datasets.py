@@ -156,7 +156,6 @@ DATASETS: dict[str, dict] = {
         ],
         "release_tag": "birdpark",
         "size_mb": 76,
-        "downsample": 100,
     },
     "philodoptera": {
         "name": "Philodoptera — Motor control of sound production in crickets",

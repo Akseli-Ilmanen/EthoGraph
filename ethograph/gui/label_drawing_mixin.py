@@ -108,6 +108,10 @@ class LabelDrawingMixin:
         if not self.label_mappings:
             return
 
+        # "Full" (main) must not visually cover the top1/top2 strips — reserve
+        # their height so the main rectangle stops right below them.
+        top_positions_present = {slot["position"] for slot in (slots or []) if slot["position"] in ("top1", "top2")}
+
         for plot in self._get_all_plots():
             self._clear_labels_on_plot(plot)
             mode = self._label_overlay_mode(plot)
@@ -120,6 +124,7 @@ class LabelDrawingMixin:
                     label_ids=slot.get("label_ids"),
                     position=slot["position"],
                     mode=mode,
+                    top_positions_present=top_positions_present,
                 )
 
     def _clear_labels_on_plot(self, plot):
@@ -134,7 +139,13 @@ class LabelDrawingMixin:
         plot.label_items.clear()
 
     def _draw_intervals_on_plot(
-        self, plot, intervals_df, label_ids=None, position="main", mode=LABEL_OVERLAY_MODE_FULL
+        self,
+        plot,
+        intervals_df,
+        label_ids=None,
+        position="main",
+        mode=LABEL_OVERLAY_MODE_FULL,
+        top_positions_present: frozenset = frozenset(),
     ):
         if not hasattr(plot, "label_items"):
             plot.label_items = []
@@ -151,7 +162,9 @@ class LabelDrawingMixin:
             if is_point:
                 self._draw_single_point(plot, row["onset_s"], labels)
             else:
-                self._draw_single_label(plot, row["onset_s"], row["offset_s"], labels, position, mode)
+                self._draw_single_label(
+                    plot, row["onset_s"], row["offset_s"], labels, position, mode, top_positions_present
+                )
 
     def _draw_single_point(self, plot, time_s, labels):
         """Draw a point event as a thick vertical line in the label's color."""
@@ -175,14 +188,24 @@ class LabelDrawingMixin:
     def _is_inverted_y_plot(self, plot) -> bool:
         return plot in (getattr(self, "heatmap_plots", ()) or ())
 
-    def _draw_single_label(self, plot, start_time, end_time, labels, position="main", mode=LABEL_OVERLAY_MODE_FULL):
+    def _draw_single_label(
+        self,
+        plot,
+        start_time,
+        end_time,
+        labels,
+        position="main",
+        mode=LABEL_OVERLAY_MODE_FULL,
+        top_positions_present: frozenset = frozenset(),
+    ):
         """Draw a single label rectangle.
 
-        position: ``"main"`` -> standard full-plot rectangle, or — when the
-        plot type's overlay mode is ``"bottom"`` — a bottom strip (top strip
-        on the inverted-Y heatmap). ``"top1"``/``"top2"`` -> stacked thin top
-        strips, drawn over the main rectangles. Top2 sits directly under Top1
-        so two prediction-like sources can co-exist visibly.
+        position: ``"main"`` -> standard full-plot rectangle (or, when top1/top2
+        are also shown, a rectangle stopping short of those strips so it never
+        covers them) — or, when the plot type's overlay mode is ``"bottom"``, a
+        bottom strip (top strip on the inverted-Y heatmap). ``"top1"``/``"top2"``
+        -> stacked thin top strips, drawn over the main rectangles. Top2 sits
+        directly under Top1 so two prediction-like sources can co-exist visibly.
         """
         if labels not in self.label_mappings:
             return
@@ -190,13 +213,32 @@ class LabelDrawingMixin:
 
         is_main = position == "main"
 
-        if is_main and mode == LABEL_OVERLAY_MODE_FULL:
+        if is_main and mode == LABEL_OVERLAY_MODE_FULL and not top_positions_present:
             self._draw_standard_label(plot, start_time, end_time, color_rgb)
             return
 
         inverted_y = self._is_inverted_y_plot(plot)
         y_lo, y_hi = plot.plot_item.getViewBox().viewRange()[1]
         degenerate = y_hi <= y_lo
+
+        if is_main and mode == LABEL_OVERLAY_MODE_FULL:
+            # Full, but top1/top2 strips are also shown: fill everything
+            # below them instead of the whole plot.
+            strip_height = (
+                PREDICTION_FALLBACK_Y_HEIGHT if degenerate else (y_hi - y_lo) * PREDICTION_LABELS_HEIGHT_RATIO
+            )
+            reserved = strip_height * len(top_positions_present)
+            if inverted_y:
+                # Top1/Top2 occupy the y_lo side on inverted plots; leave room there.
+                y_bottom = 0 if degenerate else y_lo
+                y_top = PREDICTION_FALLBACK_Y_TOP if degenerate else y_hi
+                y0, y1 = y_bottom + reserved, y_top
+            else:
+                y_bottom = 0 if degenerate else y_lo
+                y_top = PREDICTION_FALLBACK_Y_TOP if degenerate else y_hi
+                y0, y1 = y_bottom, y_top - reserved
+            self._draw_label_region(plot, start_time, end_time, color_rgb, y0, y1, Z_INDEX_LABELS, alpha=180)
+            return
 
         if is_main:
             # Main in "bottom" mode: bottom strip (or top strip when y is inverted)

@@ -701,23 +701,25 @@ def snap_boundaries(
 
 
 def _snap_onset(boundary, cp_times, max_expansion_s, max_shrink_s):
-    nearest_idx = np.argmin(np.abs(cp_times - boundary))
-    cp_val = float(cp_times[nearest_idx])
-    expansion = boundary - cp_val
-    shrink = cp_val - boundary
-    if expansion > max_expansion_s or shrink > max_shrink_s:
+    # cp before boundary -> expansion (onset moves earlier); cp after -> shrink (onset moves later)
+    lo = boundary - max_expansion_s
+    hi = boundary + max_shrink_s
+    candidates = cp_times[(cp_times >= lo) & (cp_times <= hi)]
+    if len(candidates) == 0:
         return boundary
-    return cp_val
+    nearest_idx = np.argmin(np.abs(candidates - boundary))
+    return float(candidates[nearest_idx])
 
 
 def _snap_offset(boundary, cp_times, max_expansion_s, max_shrink_s):
-    nearest_idx = np.argmin(np.abs(cp_times - boundary))
-    cp_val = float(cp_times[nearest_idx])
-    expansion = cp_val - boundary
-    shrink = boundary - cp_val
-    if expansion > max_expansion_s or shrink > max_shrink_s:
+    # cp after boundary -> expansion (offset moves later); cp before -> shrink (offset moves earlier)
+    lo = boundary - max_shrink_s
+    hi = boundary + max_expansion_s
+    candidates = cp_times[(cp_times >= lo) & (cp_times <= hi)]
+    if len(candidates) == 0:
         return boundary
-    return cp_val
+    nearest_idx = np.argmin(np.abs(candidates - boundary))
+    return float(candidates[nearest_idx])
 
 
 def _resolve_overlaps(df: pd.DataFrame, eps: float = 1e-3) -> pd.DataFrame:

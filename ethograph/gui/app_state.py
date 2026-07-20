@@ -346,12 +346,14 @@ class ObservableAppState(QObject):
         self._all_labels_df: pd.DataFrame | None = None
         self._metadata_df: pd.DataFrame | None = None
         self._label_mappings: dict | None = None
-        # Label rendering slots — Main (full plot rectangles), Top1 + Top2 (top strips).
-        # Main is always a branch index (or None to hide). Top1/Top2 may be a branch
-        # index, the literal "predictions", or None.
-        self._main_labels_source: int | None = 0
-        self._top1_source: int | str | None = None
-        self._top2_source: int | str | None = None
+        # Label branches have a fixed position mapping: branch 0 always draws
+        # "full" (the entire plot), branch 1 always draws "top1", branch 2
+        # always draws "top2" — there are never more than 3 branches. Only
+        # one branch is "active" (editable by clicking/labeling) at a time;
+        # each branch's overlay visibility is independent of whether it's active.
+        self._active_branch: int = 0
+        self._branch_shown: dict[int, bool] = {0: True}
+        self._show_predictions_overlay: bool = False
 
         from ethograph.io.nwb_alignment import EmpytAlignment
 
@@ -382,28 +384,40 @@ class ObservableAppState(QObject):
 
     @property
     def active_label_ids(self) -> set[int] | None:
-        """Return label IDs belonging to any branch currently shown in a label slot.
+        """Return label IDs belonging to any branch currently shown as an overlay.
 
         Returns None when no mappings are loaded (meaning all IDs allowed).
-        Predictions slots don't contribute — predictions are rendered separately
-        and don't gate click/edit behavior.
+        This gates which existing labels can be clicked/selected/displayed —
+        it is independent of which branch is *editable* (see
+        :attr:`editable_label_ids`).
         """
         mappings = self._label_mappings
         if not mappings:
             return None
-        active = self._active_branches
-        return {lid for lid, data in mappings.items() if isinstance(lid, int) and data.get("branch", 0) in active}
+        shown = self._shown_branches
+        return {lid for lid, data in mappings.items() if isinstance(lid, int) and data.get("branch", 0) in shown}
 
     @property
-    def _active_branches(self) -> set[int]:
-        """Set of branch indices currently displayed in any slot (main, top1, top2)."""
-        out: set[int] = set()
-        if isinstance(self._main_labels_source, int):
-            out.add(self._main_labels_source)
-        for slot in (self._top1_source, self._top2_source):
-            if isinstance(slot, int):
-                out.add(slot)
-        return out
+    def _shown_branches(self) -> set[int]:
+        """Set of branch indices whose visibility checkbox is currently on."""
+        return {b for b, shown in self._branch_shown.items() if shown}
+
+    @property
+    def editable_label_ids(self) -> set[int] | None:
+        """Label IDs belonging to the currently active (editable) branch.
+
+        New labels are only ever drawn into the active branch; labels of
+        every other branch must never be trimmed/overwritten by it,
+        regardless of whether those other branches are currently shown.
+        """
+        mappings = self._label_mappings
+        if not mappings:
+            return None
+        return {
+            lid
+            for lid, data in mappings.items()
+            if isinstance(lid, int) and data.get("branch", 0) == self._active_branch
+        }
 
     @property
     def trial_bounds(self) -> TimeRange | None:
@@ -587,9 +601,9 @@ class ObservableAppState(QObject):
             "_all_labels_df",
             "_metadata_df",
             "_label_mappings",
-            "_main_labels_source",
-            "_top1_source",
-            "_top2_source",
+            "_active_branch",
+            "_branch_shown",
+            "_show_predictions_overlay",
         ):
             super().__setattr__(name, value)
             return
