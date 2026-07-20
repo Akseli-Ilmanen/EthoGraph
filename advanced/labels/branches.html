@@ -449,41 +449,61 @@
                   
   <section class="tex2jax_ignore mathjax_ignore" id="label-branches">
 <span id="target-label-branches"></span><h1>Label branches<a class="headerlink" href="#label-branches" title="Link to this heading">#</a></h1>
-<p>Within a single branch, each timepoint can only belong to <strong>one label</strong>.
-When you place a new label that overlaps an existing one in the same branch,
-the existing label is trimmed or split automatically. This is by design:
-downstream action-segmentation models require a single class per frame, and
-the plot overlays assume non-overlapping intervals.</p>
-<p>Sometimes, however, you need <strong>overlapping annotations</strong> at different
-timescales — for example, brief transient events like syllables or
-movements (<code class="docutils literal notranslate"><span class="pre">song</span></code>, <code class="docutils literal notranslate"><span class="pre">peck</span></code>, <code class="docutils literal notranslate"><span class="pre">jump</span></code>) on one tier, and longer behavioural
-states like arousal or passivity (<code class="docutils literal notranslate"><span class="pre">active</span></code>, <code class="docutils literal notranslate"><span class="pre">resting</span></code>, <code class="docutils literal notranslate"><span class="pre">sleep</span></code>) on another.
-A bird can be <code class="docutils literal notranslate"><span class="pre">active</span></code> and producing a <code class="docutils literal notranslate"><span class="pre">song</span></code> at the same time, and those
-annotations need to coexist. Label branches solve this.</p>
-<hr class="docutils" />
-<section id="how-branches-work">
-<h2>How branches work<a class="headerlink" href="#how-branches-work" title="Link to this heading">#</a></h2>
-<p>Each label in <code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code> belongs to a branch (default <code class="docutils literal notranslate"><span class="pre">0</span></code>). Labels in
-<strong>different branches are independent</strong>: they can overlap freely without
-trimming each other. Labels in the <strong>same branch</strong> remain mutually exclusive.</p>
-<p>Exactly one branch is the <strong>Main labels</strong> branch (the editing branch). When
-a branch is the Main slot:</p>
-<ul class="simple">
-<li><p>Keyboard shortcuts and click-to-label only create intervals for labels in
-that branch.</p></li>
-<li><p>Existing labels in other branches are protected — they are never trimmed
-or overwritten.</p></li>
-<li><p>Up to two additional branches (or the imported predictions) can be shown
-alongside the Main labels as thin top strips — see
-<a class="reference internal" href="#label-display-slots"><span class="std std-ref">Choosing what to display: Main / Top 1 / Top 2</span></a> below for how to configure them.</p></li>
-</ul>
+<p>Within a single branch, each timepoint can only belong to <strong>one label</strong> —
+overlapping labels in the same branch are trimmed/split automatically.
+Branches let you keep <strong>independent, overlapping tiers</strong> (e.g. transient
+<code class="docutils literal notranslate"><span class="pre">song</span></code>/<code class="docutils literal notranslate"><span class="pre">peck</span></code>/<code class="docutils literal notranslate"><span class="pre">jump</span></code> events vs. longer <code class="docutils literal notranslate"><span class="pre">active</span></code>/<code class="docutils literal notranslate"><span class="pre">resting</span></code>/<code class="docutils literal notranslate"><span class="pre">sleep</span></code> states)
+that never trim each other.</p>
+<p>Analogous to <strong>git branches</strong>: only one branch is active (editable) at a
+time, and changes you make in one branch can never change labels in another.</p>
 <video autoplay loop muted playsinline style="width:100%">
   <source src="../../_static/media/branch.mp4" type="video/mp4">
-</video></section>
+</video><hr class="docutils" />
+<section id="fixed-branch-positions">
+<h2>Fixed branch positions<a class="headerlink" href="#fixed-branch-positions" title="Link to this heading">#</a></h2>
+<p>There are at most <strong>3 branches</strong>, each with a fixed draw position:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Branch</p></th>
+<th class="head"><p>Draws as</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p><strong>Full</strong> — fills the plot</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
+<td><p><strong>Top 1</strong> — thin top strip</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">2</span></code></p></td>
+<td><p><strong>Top 2</strong> — thin strip below Top 1</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>If Top 1/Top 2 are shown, Full automatically stops short of them instead of
+covering them.</p>
+<p>Exactly one branch is <strong>active</strong> (editable) at a time. Only the active
+branch’s labels can be created, selected, deleted (Ctrl+D), or played back
+(V) — labels on other branches are protected even while shown.</p>
+<ul class="simple">
+<li><p>Click a branch’s name in the Labels panel to make it active (highlighted).</p></li>
+<li><p>Each branch has its own <strong>checkbox</strong> (left of its <strong>x</strong> delete button) to
+show/hide it as an overlay — independent of which branch is active.</p></li>
+<li><p><strong>Shift+B</strong> swaps the active branch with the previously-active one.</p></li>
+<li><p>Drag a label row between branch tables to move it; the mapping file
+updates automatically.</p></li>
+<li><p><strong>+</strong> adds a new branch (max 3); <strong>x</strong> deletes one (must be empty first).</p></li>
+<li><p>Imported <strong>predictions</strong> are a separate overlay, toggled with the
+“Predictions” checkbox or <strong>Ctrl+Y</strong>, filling whichever of Top 1/Top 2
+isn’t already used by a shown branch.</p></li>
+</ul>
+</section>
 <hr class="docutils" />
 <section id="assigning-branches-in-mapping-txt">
 <h2>Assigning branches in <code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code><a class="headerlink" href="#assigning-branches-in-mapping-txt" title="Link to this heading">#</a></h2>
-<p>Add a third column to any line in <code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>:</p>
+<p>Add a third column to any line in <code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code> (values <code class="docutils literal notranslate"><span class="pre">0</span></code>-<code class="docutils literal notranslate"><span class="pre">2</span></code>; omitted
+defaults to <code class="docutils literal notranslate"><span class="pre">0</span></code>):</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="mi">0</span> <span class="n">background</span>
 <span class="mi">1</span> <span class="n">song</span> <span class="mi">0</span>
 <span class="mi">2</span> <span class="n">peck</span> <span class="mi">0</span>
@@ -493,74 +513,9 @@ alongside the Main labels as thin top strips — see
 <span class="mi">6</span> <span class="n">sleep</span> <span class="mi">1</span>
 </pre></div>
 </div>
-<p>Labels without an explicit branch number default to branch <code class="docutils literal notranslate"><span class="pre">0</span></code>.
-In this example, transient events (<code class="docutils literal notranslate"><span class="pre">song</span></code> / <code class="docutils literal notranslate"><span class="pre">peck</span></code> / <code class="docutils literal notranslate"><span class="pre">jump</span></code>) live on
-branch 0 and behavioural states (<code class="docutils literal notranslate"><span class="pre">active</span></code> / <code class="docutils literal notranslate"><span class="pre">resting</span></code> / <code class="docutils literal notranslate"><span class="pre">sleep</span></code>) on
-branch 1 — a <code class="docutils literal notranslate"><span class="pre">song</span></code> interval and an <code class="docutils literal notranslate"><span class="pre">active</span></code> interval can overlap
-because they belong to different branches.</p>
-<p>See <a class="reference internal" href="mapping.html"><span class="doc">Label mapping (mapping.txt)</span></a> for the full mapping file format.</p>
-</section>
-<hr class="docutils" />
-<section id="switching-branches-in-the-gui">
-<h2>Switching branches in the GUI<a class="headerlink" href="#switching-branches-in-the-gui" title="Link to this heading">#</a></h2>
-<p>Each branch appears as a section in the Labels panel. The branch shown in
-the <strong>Main</strong> slot of the <em>Overlays</em> row (see below) is the editing branch.
-Press <strong>Shift+B</strong> to toggle the Main slot between the current and the
-previously-selected branch.</p>
-<p>You can also <strong>drag labels between branches</strong>: grab a label row from one
-branch table and drop it onto another. The mapping file is updated
-automatically.</p>
-<hr class="docutils" />
-</section>
-<section id="choosing-what-to-display-main-top-1-top-2">
-<span id="label-display-slots"></span><h2>Choosing what to display: Main / Top 1 / Top 2<a class="headerlink" href="#choosing-what-to-display-main-top-1-top-2" title="Link to this heading">#</a></h2>
-<p>The <strong>Overlays</strong> row in the Data panel has three dropdowns that decide
-which annotations are drawn on the plots:</p>
-<div class="pst-scrollable-table-container"><table class="table">
-<thead>
-<tr class="row-odd"><th class="head"><p>Slot</p></th>
-<th class="head"><p>Where it draws</p></th>
-<th class="head"><p>Allowed values</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><strong>Main</strong></p></td>
-<td><p>Full plot height (or a single bottom strip on spectrogram-style plots)</p></td>
-<td><p>Any branch, or <code class="docutils literal notranslate"><span class="pre">(none)</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p><strong>Top 1</strong></p></td>
-<td><p>Thin strip at the top of the plot</p></td>
-<td><p>Any branch, the imported <code class="docutils literal notranslate"><span class="pre">Predictions</span></code>, or <code class="docutils literal notranslate"><span class="pre">(none)</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><strong>Top 2</strong></p></td>
-<td><p>Thin strip just below Top 1</p></td>
-<td><p>Same options as Top 1</p></td>
-</tr>
-</tbody>
-</table>
-</div>
-<p>Defaults and auto-fill behaviour:</p>
-<ul class="simple">
-<li><p>On startup, Main is set to <strong>Branch 0</strong> and both top slots are empty.</p></li>
-<li><p>When you <strong>import predictions</strong>, they are placed into Top 1 if it is
-empty, otherwise into Top 2. If both are taken, the slots are left
-unchanged — pick a slot manually.</p></li>
-<li><p>When you <strong>add a new branch</strong> with the <strong>+</strong> button, it is placed into
-Top 1 if it is empty, otherwise into Top 2. Same fallback as above.</p></li>
-<li><p>Press <strong>Ctrl+Y</strong> to toggle Predictions in or out of the top slots.</p></li>
-</ul>
-<p>Changing a dropdown immediately redraws every plot.</p>
-</section>
-<hr class="docutils" />
-<section id="adding-and-removing-branches">
-<h2>Adding and removing branches<a class="headerlink" href="#adding-and-removing-branches" title="Link to this heading">#</a></h2>
-<ul class="simple">
-<li><p>Click the <strong>+</strong> button below the branch tables to add a new empty branch.
-The new branch is auto-assigned to the first free top slot.</p></li>
-<li><p>Click the <strong>x</strong> button on a branch header to delete it. A branch can only
-be deleted when it contains no labels — move all labels out first.
-Slots that referenced the deleted branch are reset to <code class="docutils literal notranslate"><span class="pre">(none)</span></code>.</p></li>
-</ul>
+<p>Here <code class="docutils literal notranslate"><span class="pre">song</span></code>/<code class="docutils literal notranslate"><span class="pre">peck</span></code>/<code class="docutils literal notranslate"><span class="pre">jump</span></code> live on branch 0 (Full) and <code class="docutils literal notranslate"><span class="pre">active</span></code>/<code class="docutils literal notranslate"><span class="pre">resting</span></code>/
+<code class="docutils literal notranslate"><span class="pre">sleep</span></code> on branch 1 (Top 1) — a <code class="docutils literal notranslate"><span class="pre">song</span></code> interval and an <code class="docutils literal notranslate"><span class="pre">active</span></code> interval
+can overlap freely. See <a class="reference internal" href="mapping.html"><span class="doc">Label mapping (mapping.txt)</span></a> for the full mapping file format.</p>
 </section>
 </section>
 
@@ -611,11 +566,8 @@ Slots that referenced the deleted branch are reset to <code class="docutils lite
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#how-branches-work">How branches work</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#fixed-branch-positions">Fixed branch positions</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#assigning-branches-in-mapping-txt">Assigning branches in <code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#switching-branches-in-the-gui">Switching branches in the GUI</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#choosing-what-to-display-main-top-1-top-2">Choosing what to display: Main / Top 1 / Top 2</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#adding-and-removing-branches">Adding and removing branches</a></li>
 </ul>
   </nav></div>
 

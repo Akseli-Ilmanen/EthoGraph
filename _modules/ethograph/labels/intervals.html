@@ -1141,23 +1141,25 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_snap_onset</span><span class="p">(</span><span class="n">boundary</span><span class="p">,</span> <span class="n">cp_times</span><span class="p">,</span> <span class="n">max_expansion_s</span><span class="p">,</span> <span class="n">max_shrink_s</span><span class="p">):</span>
-    <span class="n">nearest_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">cp_times</span> <span class="o">-</span> <span class="n">boundary</span><span class="p">))</span>
-    <span class="n">cp_val</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">cp_times</span><span class="p">[</span><span class="n">nearest_idx</span><span class="p">])</span>
-    <span class="n">expansion</span> <span class="o">=</span> <span class="n">boundary</span> <span class="o">-</span> <span class="n">cp_val</span>
-    <span class="n">shrink</span> <span class="o">=</span> <span class="n">cp_val</span> <span class="o">-</span> <span class="n">boundary</span>
-    <span class="k">if</span> <span class="n">expansion</span> <span class="o">&gt;</span> <span class="n">max_expansion_s</span> <span class="ow">or</span> <span class="n">shrink</span> <span class="o">&gt;</span> <span class="n">max_shrink_s</span><span class="p">:</span>
+    <span class="c1"># cp before boundary -&gt; expansion (onset moves earlier); cp after -&gt; shrink (onset moves later)</span>
+    <span class="n">lo</span> <span class="o">=</span> <span class="n">boundary</span> <span class="o">-</span> <span class="n">max_expansion_s</span>
+    <span class="n">hi</span> <span class="o">=</span> <span class="n">boundary</span> <span class="o">+</span> <span class="n">max_shrink_s</span>
+    <span class="n">candidates</span> <span class="o">=</span> <span class="n">cp_times</span><span class="p">[(</span><span class="n">cp_times</span> <span class="o">&gt;=</span> <span class="n">lo</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">cp_times</span> <span class="o">&lt;=</span> <span class="n">hi</span><span class="p">)]</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">boundary</span>
-    <span class="k">return</span> <span class="n">cp_val</span>
+    <span class="n">nearest_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">candidates</span> <span class="o">-</span> <span class="n">boundary</span><span class="p">))</span>
+    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">candidates</span><span class="p">[</span><span class="n">nearest_idx</span><span class="p">])</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_snap_offset</span><span class="p">(</span><span class="n">boundary</span><span class="p">,</span> <span class="n">cp_times</span><span class="p">,</span> <span class="n">max_expansion_s</span><span class="p">,</span> <span class="n">max_shrink_s</span><span class="p">):</span>
-    <span class="n">nearest_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">cp_times</span> <span class="o">-</span> <span class="n">boundary</span><span class="p">))</span>
-    <span class="n">cp_val</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">cp_times</span><span class="p">[</span><span class="n">nearest_idx</span><span class="p">])</span>
-    <span class="n">expansion</span> <span class="o">=</span> <span class="n">cp_val</span> <span class="o">-</span> <span class="n">boundary</span>
-    <span class="n">shrink</span> <span class="o">=</span> <span class="n">boundary</span> <span class="o">-</span> <span class="n">cp_val</span>
-    <span class="k">if</span> <span class="n">expansion</span> <span class="o">&gt;</span> <span class="n">max_expansion_s</span> <span class="ow">or</span> <span class="n">shrink</span> <span class="o">&gt;</span> <span class="n">max_shrink_s</span><span class="p">:</span>
+    <span class="c1"># cp after boundary -&gt; expansion (offset moves later); cp before -&gt; shrink (offset moves earlier)</span>
+    <span class="n">lo</span> <span class="o">=</span> <span class="n">boundary</span> <span class="o">-</span> <span class="n">max_shrink_s</span>
+    <span class="n">hi</span> <span class="o">=</span> <span class="n">boundary</span> <span class="o">+</span> <span class="n">max_expansion_s</span>
+    <span class="n">candidates</span> <span class="o">=</span> <span class="n">cp_times</span><span class="p">[(</span><span class="n">cp_times</span> <span class="o">&gt;=</span> <span class="n">lo</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">cp_times</span> <span class="o">&lt;=</span> <span class="n">hi</span><span class="p">)]</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">boundary</span>
-    <span class="k">return</span> <span class="n">cp_val</span>
+    <span class="n">nearest_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">candidates</span> <span class="o">-</span> <span class="n">boundary</span><span class="p">))</span>
+    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">candidates</span><span class="p">[</span><span class="n">nearest_idx</span><span class="p">])</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_resolve_overlaps</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">eps</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-3</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
