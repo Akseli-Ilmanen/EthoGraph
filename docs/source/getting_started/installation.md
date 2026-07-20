@@ -74,7 +74,7 @@ used for environment creation, not for installing ethograph itself.
 
 :::{tab-item} conda
 ```bash
-conda create -y -n ethograph -c conda-forge python=3.12
+conda create -y -n ethograph python=3.12
 conda activate ethograph
 ```
 :::
@@ -226,4 +226,11 @@ the model extra along with `omegaconf`:
 ```bash
 conda install pytorch=2.5.1 torchvision=0.20.1 torchaudio=2.5.1 pytorch-cuda=12.1 -c pytorch -c nvidia
 uv pip install "ethograph[model]" omegaconf
+```
+
+```{tip}
+Using `conda-forge` (`conda create -y -n ethograph -c conda-forge python=3.12`)
+can help here: it keeps all conda-installed packages on one channel, avoiding
+ABI conflicts between `defaults` and `conda-forge` builds of shared libraries
+that PyTorch/CUDA packages depend on.
 ```

@@ -5,7 +5,7 @@ Changepoint detection methods (Xu et al., 2025) allow finding transitions in
 time series data. This can be leveraged to identify **candidates** of action
 boundaries in various data formats (kinematic, audio, spectral).
 
-![Changepoints overview](../../media/changepoints0.gif)
+![Changepoints overview](../../_static/media/changepoints0.gif)
 
 ---
 

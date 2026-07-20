@@ -10,7 +10,7 @@ To create a new behavioural label:
 3. The label will be created and displayed with a color-coded overlay.
 
 
-![keyboard](../../media/keyboard.png)
+![keyboard](../../_static/media/keyboard.png)
 
 ---
 

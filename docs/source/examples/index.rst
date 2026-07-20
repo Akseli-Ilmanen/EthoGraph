@@ -20,7 +20,7 @@ in the right-hand sidebar, or browse the whole folder on GitHub.
    :class-container: examples-gallery
 
    .. grid-item-card:: Tool-using crows
-      :img-top: assets/moll1.png
+      :img-top: ../_static/media/moll1.png
       :link: create_dataset_Moll25
       :link-type: doc
       :class-card: example-card
@@ -29,7 +29,7 @@ in the right-hand sidebar, or browse the whole folder on GitHub.
       features and kinematic features of a Carrion crow doing a tool-use task..
 
    .. grid-item-card:: Sound production in crickets
-      :img-top: assets/cricket0.png
+      :img-top: ../_static/media/cricket0.png
       :link: create_dataset_cricket
       :link-type: doc
       :class-card: example-card
@@ -38,7 +38,7 @@ in the right-hand sidebar, or browse the whole folder on GitHub.
       dataset, so movement and sound features can be explored side by side.
 
    .. grid-item-card:: Social rats
-      :img-top: assets/pair24.png
+      :img-top: ../_static/media/pair24.png
       :link: convert_dataset_pair24
       :link-type: doc
       :class-card: example-card
@@ -47,7 +47,7 @@ in the right-hand sidebar, or browse the whole folder on GitHub.
       interactions between laboratory rats.
 
    .. grid-item-card:: Flying & singing zebra finches
-      :img-top: assets/birdpark0.png
+      :img-top: ../_static/media/birdpark0.png
       :link: convert_dataset_birdpark
       :link-type: doc
       :class-card: example-card
@@ -56,7 +56,7 @@ in the right-hand sidebar, or browse the whole folder on GitHub.
       arrays and backpack-mounted accelerometers for zebra finch groups.
 
    .. grid-item-card:: Tool-using mice
-      :img-top: assets/lockbox2.gif
+      :img-top: ../_static/media/lockbox2.gif
       :link: convert_datset_lockbox
       :link-type: doc
       :class-card: example-card

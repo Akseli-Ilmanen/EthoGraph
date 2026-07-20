@@ -163,6 +163,8 @@ Session metadata (trial timing, media paths, FPS, offsets) is accessed via `app_
 
 **AppStateSpec** — type-checked spec (~40 variables). **ObservableAppState** — Qt signals auto-generated per variable (e.g. `current_frame_changed`), dynamic `*_sel` attributes for xarray selections, auto-saves to YAML. Key signals: `trial_changed`, `restrict_window_changed`, `labels_modified`, `verification_changed`.
 
+Anything that determines the plot x-extent — `xlim_mode`, `fixed_window_s`, `navigate_mode`, `slider_scope` — is `SCOPE_LOCAL` (per-dataset `local_settings.yaml`). A view mode picked for one dataset must never follow the user into the next: a "fixed 10 s window" chosen for a dropped continuous recording would otherwise clamp an unrelated 60 s template to a 10 s slice. `load_from_yaml` strips local-scope keys from the global file so stale entries written by older versions can't act as sticky defaults.
+
 ### Time Model + Navigation: `time_model.py`
 
 Canonical home for the core types (re-exported from `gui/plots_timeseriessource.py` for compat):

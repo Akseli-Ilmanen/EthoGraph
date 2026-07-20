@@ -106,8 +106,8 @@ class AppStateSpec:
         "after_s_sequence": (float, 1.0, True),
         # How the plot x-limits are derived: "interval" (trial/label/sequence
         # extent + before/after padding) or "fixed" (fixed-size window from t=0)
-        "xlim_mode": (str, "interval", True),
-        "fixed_window_s": (float, 10.0, True),
+        "xlim_mode": (str, "interval", True, SCOPE_LOCAL),
+        "fixed_window_s": (float, 10.0, True, SCOPE_LOCAL),
         "pose_markers_visible": (bool, True, True, SCOPE_LOCAL),
         "labels_visible": (bool, True, True, SCOPE_LOCAL),
         # Per-plot-type label rendering: "full" | "bottom" | "none"
@@ -150,8 +150,8 @@ class AppStateSpec:
         "metadata_path": (str | None, None, True, SCOPE_LOCAL),
         "trial_alignment": (TrialVideoBounds | None, None, False),
         "ephys_offset": (float, 0.0, True, SCOPE_LOCAL),
-        "navigate_mode": (str, "trial", True),
-        "slider_scope": (str, "trial", True),
+        "navigate_mode": (str, "trial", True, SCOPE_LOCAL),
+        "slider_scope": (str, "trial", True, SCOPE_LOCAL),
         "restrict_window": (RestrictionWindow | None, None, False),
         "label_instance_idx": (int, 0, False),
         "sequence_pattern": (str, "", True),
@@ -1077,6 +1077,11 @@ class ObservableAppState(QObject):
 
             global_path = self._global_settings_path()
             global_state = self._yaml_read(global_path)
+            # Drop per-dataset keys left in the global file by older versions
+            # (e.g. xlim_mode/navigate_mode) — they must never become a
+            # sticky default that follows the user into the next dataset.
+            local_keys = AppStateSpec.saveable_attributes(scope=AppStateSpec.SCOPE_LOCAL)
+            global_state = {k: v for k, v in global_state.items() if k not in local_keys}
             if global_state:
                 self.load_from_dict(global_state)
                 logger.info("Global state loaded from %s", global_path)

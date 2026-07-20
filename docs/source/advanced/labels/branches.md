@@ -35,7 +35,7 @@ a branch is the Main slot:
 
 ```{raw} html
 <video autoplay loop muted playsinline style="width:100%">
-  <source src="../../_static/videos/branch.mp4" type="video/mp4">
+  <source src="../../_static/media/branch.mp4" type="video/mp4">
 </video>
 ```
 

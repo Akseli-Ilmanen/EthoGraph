@@ -108,7 +108,7 @@ exclude_patterns = [
     "advanced/data_index.md",
     "advanced/gui_index.md",
     "advanced/examples.md",
-    "media/changepoints.ipynb",
+    "_static/media/changepoints.ipynb",
 ]
 
 # -- Intersphinx mapping -----------------------------------------------------
@@ -150,8 +150,8 @@ html_theme_options = {
         }
     ],
     "logo": {
-        "image_light": "media/icon.png",
-        "image_dark": "media/icon.png",
+        "image_light": "_static/media/icon.png",
+        "image_dark": "_static/media/icon.png",
         "text": project,
     },
 }
@@ -172,19 +172,11 @@ def _remove_if_exists(path: Path) -> None:
         shutil.rmtree(path)
 
 
-def _sync_link_or_copy(src: Path, dst: Path) -> None:
-    if dst.exists() or dst.is_symlink():
-        _remove_if_exists(dst)
-    try:
-        dst.symlink_to(src, target_is_directory=src.is_dir())
-    except OSError:
-        if src.is_dir():
-            shutil.copytree(src, dst)
-        else:
-            shutil.copy2(src, dst)
-
-
 def setup(app):
+    # Notebooks live under examples/ (repo root) and reference their preview
+    # images relative to that location, e.g. "../docs/source/_static/media/x.png".
+    # The copies below live one level deeper (docs/source/examples/), so that
+    # relative prefix is rewritten to "../_static/media/" on copy.
     src = Path(app.srcdir).resolve().parent.parent / "examples"
     dst = Path(app.srcdir) / "examples"
     dst.mkdir(exist_ok=True)
@@ -197,15 +189,11 @@ def setup(app):
         while name.endswith(".ipynb.ipynb"):
             name = name[: -len(".ipynb")]
         target = dst / name
-        _sync_link_or_copy(nb, target)
+        _remove_if_exists(target)
+        text = nb.read_text(encoding="utf-8")
+        text = text.replace("../docs/source/_static/media/", "../_static/media/")
+        target.write_text(text, encoding="utf-8")
         keep_paths.add(target)
-
-    # Also link/copy the assets folder if it exists.
-    assets_src = src / "assets"
-    assets_dst = dst / "assets"
-    if assets_src.is_dir():
-        _sync_link_or_copy(assets_src, assets_dst)
-        keep_paths.add(assets_dst)
 
     # Remove stale generated files from prior runs.
     for child in dst.iterdir():

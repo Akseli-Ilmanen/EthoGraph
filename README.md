@@ -1,8 +1,8 @@
 # ethograph
 
 <p align="center">
-  <img src="docs/source/media/demo.gif" alt="EthoGraph demo" width="40.8%">
-  <img src="docs/source/_static/videos/label_basic_downsampled.gif" alt="Labelling in EthoGraph" width="58.1%">
+  <img src="docs/source/_static/media/demo.gif" alt="EthoGraph demo" width="40.8%">
+  <img src="docs/source/_static/media/label_basic_downsampled.gif" alt="Labelling in EthoGraph" width="58.1%">
 </p>
 
 EthoGraph is a graphical user interface for visualizing and segmenting
@@ -41,7 +41,7 @@ recommend the
 
 ## Support
 
-<img src="docs/source/media/opensource.png" alt="Open-source projects EthoGraph depends on" width="60%">
+<img src="docs/source/_static/media/opensource.png" alt="Open-source projects EthoGraph depends on" width="60%">
 
 EthoGraph is built on top of a number of open-source projects:
 [PyAV](https://pyav.org/docs/stable/),

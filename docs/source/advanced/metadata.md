@@ -1,20 +1,16 @@
 (target-metadata)=
 # Trial metadata
 
-EthoGraph lets you attach per-trial condition metadata (e.g. stimulus conditions) via a plain TSV file. Once loaded, the **Trials tab** in the GUI turns these columns into interactive filters so you
-can restrict navigation and analysis to any subset of trials.
+Attach per-trial conditions (e.g. stimulus, reward outcome) via a TSV file. The
+trials table in the GUI turns those columns into filters, restricting navigation
+and analysis to a subset of trials.
 
 ---
 
-## The metadata TSV file
+## The metadata file
 
-### File format
-
-The file must be tab-separated (`.tsv`). Comma-separated (`.csv`) and Excel
-(`.xlsx`) are also accepted.
-
-One row per trial. The only required column is **`trial`**, which must match
-the trial identifiers in your dataset.
+Tab-separated (`.tsv`); `.csv`, `.xlsx` and `.xls` also work. One row per trial.
+The only required column is **`trial`**, matching the trial IDs in your dataset.
 
 ```
 trial   food_pellet_side   rewarded
@@ -22,89 +18,69 @@ trial   food_pellet_side   rewarded
 2       right              yes
 3       left               no
 4       right              yes
-5       left               yes
-6       right              no
 ```
 
-- Column names are arbitrary — add as many as you need.
-- Values can be strings, integers, or floats.
-- Missing values are allowed.
+Add any columns you like — categorical (pellet side, protocol variant) or
+numeric (stimulus intensity). Values may be strings, ints or floats; missing
+values are allowed.
 
-### What columns to include
-
-Any variable that differs across trials:
-
-- **Categorical:** pellet side (left/right), reward outcome, protocol variant, recording site, …
-- **Numeric:** trial number within session, stimulus_intensity, …
-
-Columns named `start_time` and `stop_time` (in seconds) are treated as trial
-timing and used to set navigation boundaries rather than shown as filterable
-conditions. Columns following the `video_*`, `audio_*`, `pose_*`, `ephys_*`
-naming convention are treated as media paths and are also hidden from the
-filter UI.
+Some names are reserved for structure rather than conditions: `start_time` /
+`stop_time` (seconds) define trial boundaries for navigation, and `video_*`,
+`audio_*`, `pose_*`, `ephys_*` and `*_start` hold media paths and offsets.
 
 ---
 
 ## Loading metadata
 
-### Auto-detection
+Loading a dataset auto-detects a sidecar `{stem}_metadata.tsv` beside it — e.g.
+`session.nc` picks up `session_metadata.tsv`.
 
-When you load a dataset, EthoGraph automatically looks for a sidecar file named
-`{data_stem}_metadata.tsv` in the same folder. For example, loading `session.nc`
-will pick up `session_metadata.tsv` if it exists.
+To use a different file, set the **Metadata:** field in the loader form on the
+start page (*Custom set-up* card) before clicking **Load**. It accepts a table,
+or an `.nwb` / `.npz` / pynapple folder to read trial metadata from. The path is
+saved with the project. The **Template** button next to it writes a
+`{stem}_metadata.tsv` pre-filled with all trial IDs, ready to edit in a
+spreadsheet.
 
-The full priority order is:
+Sources are tried in this order:
 
-1. **Explicit path** set in the **Metadata:** field of the I/O panel (or via
-   `metadata_path` in the API).
-2. **Sidecar TSV** — `{stem}_metadata.tsv` next to the data file (auto-detected).
-3. **NWB trials table** — extra columns in `nwb.trials` (for `.nwb` sources).
-4. **Pynapple IntervalSet metadata** — metadata columns from `.npz` or folder
-   sources.
+1. The **Metadata:** field (or `metadata_path` in the API).
+2. The **NWB trials table**, when the data source is a `.nwb` file.
+3. The **sidecar TSV** next to the data file.
+4. **Pynapple `IntervalSet` metadata**, for `.npz` or folder sources.
 
-### Using a custom path or filename
-
-If your file has a different name or location, point to it in the
-**Metadata:** field in the I/O panel (the browse button next to the field) before
-loading the dataset. The path is saved in the project settings and restored on
-next open.
-
-### Generating a template
-
-Click the **Template** button next to the Metadata field. EthoGraph writes a
-`{stem}_metadata.tsv` pre-populated with all trial IDs and opens it in the
-field — edit it in a spreadsheet editor, then reload the dataset.
+With none of these, trials carry no conditions and no filtering UI appears.
+Drag & drop loading never uses a metadata table.
 
 ---
 
-## The Trials tab
+## The trials table
 
-The **Trials tab** (collapsible panel in the sidebar) shows all trials in the
-loaded session as a table and lets you filter which trials are active in the
-navigator.
+Top of the **Navigation** section in the right sidebar, above the navigation
+controls. Lists every trial in the session; shown only when the metadata has at
+least one column besides `trial`.
 
-### Filtering trials
+### Filtering
 
-Click the filter icon (≡) in any column header. Categorical columns show a
-checkbox list of unique values; numeric columns offer a `≥` / `≤` threshold.
-All active filters are AND-combined. A yellow icon indicates an active filter;
-click it again and choose **Remove filter** to clear it.
+Click the funnel icon at the right edge of a column header (the rest of the
+header sorts). Categorical columns give a checkbox list with an **(All)**
+toggle; numeric columns give a `≥` / `≤` threshold with a **Remove filter**
+button. Filters are AND-combined, and the funnel turns yellow while one is
+active.
 
-### Effect on navigation
+Filtered-out trials disappear from the table and from the trial navigator — the
+*Previous / Next trial* buttons and the trial slider skip them. A combination
+matching no trials is ignored rather than emptying the navigator.
 
-Filtered-out trials are hidden in the table and removed from the trial
-navigator — the *Previous / Next trial* buttons and the trial slider skip them.
-The set of visible trials is updated live whenever a filter changes. **Note**:
-Operations such as changepoint correction across trials, or purging short labels
-are applied only to filtered trials.
-
+**Note:** operations across trials, such as changepoint correction or purging
+short labels, apply only to the filtered trials.
 
 ---
 
-## Export labels
+## Export
 
-Metadata is also merged into exported label DataFrames automatically via
-`enrich_labels_df()`, so every label row carries the trial's condition columns.
+Metadata is merged into exported label DataFrames by `enrich_labels_df()`, so
+every label row carries its trial's condition columns.
 
 ---
 

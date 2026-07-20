@@ -108,7 +108,7 @@ class NavigationWidget(QWidget):
         navigate_layout.setContentsMargins(2, 2, 2, 2)
         navigate_group.setLayout(navigate_layout)
 
-        filter_hint = QLabel("Only navigates trials visible in the Trials tab")
+        filter_hint = QLabel("Only navigates trials visible in the trials table")
         filter_hint.setStyleSheet("color: grey; font-size: 10px;")
         navigate_layout.addWidget(filter_hint)
 

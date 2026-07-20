@@ -695,6 +695,10 @@ class CoverPage(QDialog):
     # ------------------------------------------------------------------
 
     def _on_template(self):
+        # Templates are segmented multi-trial datasets: x-limits follow the
+        # trial interval. Set explicitly — otherwise a previous drag & drop
+        # ("fixed") would carry over and clamp the view to fixed_window_s.
+        self.app_state.xlim_mode = "interval"
         self.io_widget._on_select_template_clicked()
         self._close_if_loaded()
 
