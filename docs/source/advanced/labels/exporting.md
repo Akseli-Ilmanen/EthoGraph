@@ -74,7 +74,7 @@ recalculated.
 ### Timing columns (computed, requires alignment)
 
 These columns convert trial-relative times to session-absolute times. They
-only appear when the {doc}`NWB alignment file <../nwb_alignment>` has real
+only appear when the {ref}`NWB alignment file <target-nwb-alignment>` has real
 trial start/stop times (i.e. `alignment.has_real_timing` is `True`).
 
 | Column | Type | Description |

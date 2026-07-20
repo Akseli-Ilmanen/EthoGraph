@@ -50,6 +50,16 @@ def _fix_wayland_opengl():
     os.environ.setdefault("PYOPENGL_PLATFORM", "glx")
 
 
+def _require_gui_extra(exc: ImportError) -> None:
+    """Turn a missing GUI dependency into an actionable install hint."""
+    sys.exit(
+        f"ethograph: the GUI dependencies are not installed ({exc.name} is missing).\n"
+        '\n    pip install "ethograph[gui]"          # GUI\n'
+        '    pip install "ethograph[gui,audio]"    # GUI + audio\n'
+        "\nThe plain `ethograph` install is the library only (TrialTree, I/O, labels)."
+    )
+
+
 def launch():
     """Launch the ethograph GUI."""
     logging.basicConfig(
@@ -59,18 +69,24 @@ def launch():
     _fix_wayland_opengl()
     _ensure_qt_plugins()
 
-    from qtpy.QtCore import QLocale
-    from qtpy.QtWidgets import QApplication
+    try:
+        from qtpy.QtCore import QLocale
+        from qtpy.QtWidgets import QApplication
+    except ImportError as exc:
+        _require_gui_extra(exc)
 
     # Before any widget exists: children inherit the locale of the widget tree
     # they are inserted into, so the OS locale (possibly comma-decimal) must
     # never leak into the shell. Dot decimals everywhere.
     QLocale.setDefault(QLocale.c())
 
-    from ethograph.gui import theme
-    from ethograph.gui.main_window import EthographMainWindow
-    from ethograph.gui.plots_space import ensure_geometry_library
-    from ethograph.gui.widgets_meta import MetaWidget
+    try:
+        from ethograph.gui import theme
+        from ethograph.gui.main_window import EthographMainWindow
+        from ethograph.gui.plots_space import ensure_geometry_library
+        from ethograph.gui.widgets_meta import MetaWidget
+    except ImportError as exc:
+        _require_gui_extra(exc)
 
     ensure_geometry_library()
 

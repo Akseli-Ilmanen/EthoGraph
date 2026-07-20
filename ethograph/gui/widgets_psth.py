@@ -182,7 +182,7 @@ class PSTHDialog(QDialog):
         self._cluster_combo = QComboBox()
         self._cluster_combo.setToolTip("Select cluster to compute PSTH for")
         self._cluster_combo.currentIndexChanged.connect(self._on_cluster_combo_changed)
-        gl.addWidget(self._cluster_combo)
+        gl.addLayout(self._make_stepper_row(self._cluster_combo, self._step_cluster))
         filter_row = QHBoxLayout()
         self._filter_visible_cb = QCheckBox("Filter to visible in Cluster Table")
         self._filter_visible_cb.setChecked(True)
@@ -204,7 +204,7 @@ class PSTHDialog(QDialog):
             "Choose what each trial is aligned to.\nLabels show the first occurrence of that label per trial."
         )
         self._align_combo.currentIndexChanged.connect(self._on_align_changed)
-        gl.addWidget(self._align_combo)
+        gl.addLayout(self._make_stepper_row(self._align_combo, self._step_align))
 
         # Onset / Offset radio (only relevant for labels)
         boundary_row = QHBoxLayout()
@@ -306,6 +306,67 @@ class PSTHDialog(QDialog):
         layout.addWidget(nav_btn)
 
         return sidebar
+
+    # ------------------------------------------------------------------
+    # Stepper controls (click through options without opening the dropdown)
+    # ------------------------------------------------------------------
+
+    def _make_stepper_row(self, combo: QComboBox, step_fn) -> QHBoxLayout:
+        """Wrap ``combo`` between ◀/▶ buttons that step through its entries."""
+        row = QHBoxLayout()
+        prev_btn = QPushButton("◀")
+        prev_btn.setFixedWidth(28)
+        prev_btn.setToolTip("Previous")
+        prev_btn.clicked.connect(lambda: step_fn(-1))
+        row.addWidget(prev_btn)
+        row.addWidget(combo, 1)
+        next_btn = QPushButton("▶")
+        next_btn.setFixedWidth(28)
+        next_btn.setToolTip("Next")
+        next_btn.clicked.connect(lambda: step_fn(1))
+        row.addWidget(next_btn)
+        return row
+
+    def _step_combo(self, combo: QComboBox, delta: int, is_valid=None):
+        """Advance ``combo`` by ``delta``, wrapping around and skipping separators.
+
+        ``is_valid`` optionally further restricts which entries are valid stops;
+        it receives each candidate's ``itemData`` and returns a bool.
+        """
+        n = combo.count()
+        if n == 0:
+            return
+        idx = combo.currentIndex()
+        for _ in range(n):
+            idx = (idx + delta) % n
+            data = combo.itemData(idx)
+            if data is None:  # separators carry no data
+                continue
+            if is_valid is not None and not is_valid(data):
+                continue
+            combo.setCurrentIndex(idx)
+            return
+
+    def _step_cluster(self, delta: int):
+        self._step_combo(self._cluster_combo, delta)
+
+    def _step_align(self, delta: int):
+        present = self._labels_present_in_session()
+        # Trial start/end (str data) always valid; labels (int) only if they occur.
+        self._step_combo(
+            self._align_combo,
+            delta,
+            is_valid=lambda data: not isinstance(data, int) or data in present,
+        )
+
+    def _labels_present_in_session(self) -> set[int]:
+        """Label ids that occur in at least one trial of the current session."""
+        present: set[int] = set()
+        for trial_id in self._build_trial_list():
+            df = self.app_state.get_trial_intervals(trial_id)
+            if df is not None and len(df):
+                present.update(int(v) for v in df["labels"].unique())
+        return present
 
     # ------------------------------------------------------------------
     # Combo population
@@ -606,7 +667,7 @@ class PSTHDialog(QDialog):
 
             ref_arr = np.array(ref_times_abs)
             ref_ts = nap.Ts(t=ref_arr)
-            peri_nap = nap.compute_perievent(tsgroup[self._current_cluster_id], ref_ts, minmax=(-pre_s, post_s))
+            peri_nap = nap.compute_perievent(tsgroup[self._current_cluster_id], ref_ts, window=(-pre_s, post_s))
 
             self._perievent = {
                 valid_display[k]: (peri_nap[k].t if k in peri_nap else np.array([], dtype=np.float64))

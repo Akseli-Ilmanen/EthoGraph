@@ -36,6 +36,7 @@ from ethograph.utils.qt import populate_if_exists
 from .app_state import AppStateSpec
 from .dialog_select_template import TemplateDialog
 from .notify import notify, notify_dialog
+from .top_bar import SectionPopup
 from .wizard_overview import NCWizardDialog
 
 logger = logging.getLogger(__name__)
@@ -841,6 +842,18 @@ class IOWidget(QWidget):
             self.data_widget.update_main_plot(preserve_x_range=True)
             if self.data_widget.plot_container:
                 self.data_widget.plot_container.labels_redraw_needed.emit()
+        self._close_labels_popup()
+
+    def _close_labels_popup(self):
+        """Close the top-bar "Import labels" popup hosting ``labels_group``.
+
+        Only relevant after a direct .tsv import; conversion formats
+        (crowsetta, pynapple) keep the popup open so the user can see the
+        converted-TSV output path.
+        """
+        popup = self.labels_group.window()
+        if isinstance(popup, SectionPopup):
+            popup.close()
 
     def _import_crowsetta_labels(self, format_name):
         filter_map = {

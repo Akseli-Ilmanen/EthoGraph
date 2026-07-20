@@ -113,6 +113,8 @@ def notify_dialog(
 ) -> None:
     """Show a modal QMessageBox and log to console."""
     try:
+        if severity not in _DIALOG:
+            severity = "error"
         title = title or _DEFAULT_TITLE[severity]
         logger.info("[%s] %s", title, message)
         if not SUPPRESS:

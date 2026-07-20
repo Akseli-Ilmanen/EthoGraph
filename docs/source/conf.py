@@ -105,9 +105,9 @@ exclude_patterns = [
     "**.ipynb_checkpoints",
     "**/includes/**",
     "api_generated/**",
-    "user_guide/data_index.md",
-    "user_guide/gui_index.md",
-    "user_guide/examples.md",
+    "advanced/data_index.md",
+    "advanced/gui_index.md",
+    "advanced/examples.md",
     "media/changepoints.ipynb",
 ]
 
@@ -133,6 +133,11 @@ html_theme = "pydata_sphinx_theme"
 html_title = "ethograph"
 html_static_path = ["_static"]
 html_css_files = ["css/custom.css"]
+
+# Serve page sources under their own extension rather than the default
+# ".txt", so the "Download source" link on an example page hands back a
+# usable ``.ipynb`` instead of ``foo.ipynb.txt``.
+html_sourcelink_suffix = ""
 
 html_theme_options = {
     "navbar_align": "left",

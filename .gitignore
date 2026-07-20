@@ -79,6 +79,8 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+docs/_build_check/
+docs/jupyter_execute/
 
 # MkDocs documentation
 /site/

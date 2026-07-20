@@ -1,24 +1,10 @@
-# User guide
+# Advanced
 
-Start with the **user manual** for an end-to-end walkthrough, then dive into
-the topic pages for the individual features.
+Topic pages for the individual features. For the end-to-end walkthrough, see
+the {doc}`user manual <../getting_started/user_manual>`.
 
 ::::{grid} 1 2 2 2
 :gutter: 3
-
-:::{grid-item-card} {fas}`book-open` User manual
-:link: user_manual
-:link-type: doc
-
-Complete walkthrough: loading data, labelling, changepoints, export.
-:::
-
-:::{grid-item-card} {fas}`link` NWB alignment
-:link: nwb_alignment
-:link-type: doc
-
-`alignment.nwb`: trial timing, media paths, stream offsets.
-:::
 
 :::{grid-item-card} {fas}`table` Trial metadata
 :link: metadata
@@ -64,8 +50,6 @@ Common issues and fixes.
 :maxdepth: 2
 :hidden:
 
-user_manual
-nwb_alignment
 metadata
 labels/index
 changepoints/index

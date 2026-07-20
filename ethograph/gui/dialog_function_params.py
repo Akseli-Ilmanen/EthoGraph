@@ -203,7 +203,7 @@ DOC_URLS: dict[str, str] = {
     "find_troughs": "https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.find_peaks.html",
     "find_turning_points": "https://ethograph.readthedocs.io/en/latest/changepoints/#kinematic-changepoints",
     "continuity_cp": "https://github.com/timsainb/vocalization-segmentation",
-    "oscillatory_events": "https://pynapple.org/user_guide/12_filtering.html#detecting-oscillatory-events",
+    "oscillatory_events": "https://pynapple.org/advanced/12_filtering.html#detecting-oscillatory-events",
 }
 
 

@@ -306,7 +306,7 @@ class SourcePopup(QWidget):
         if phy_available or neo_streams:
             self._add_header("Ephys")
             if phy_available:
-                self._add_source("Phy trace-view (Ephys multi-channel)", "phy", "phy")
+                self._add_source("Phy (Multi-channel trace)", "phy", "phy")
             for stream in neo_streams or []:
                 self._add_source(f"Neo ({stream})", "neo", str(stream))
 

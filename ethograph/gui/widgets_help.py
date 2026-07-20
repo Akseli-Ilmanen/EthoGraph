@@ -42,7 +42,7 @@ class HelpWidget(QWidget):
 
         self.shortcuts_button = QPushButton("⌨ Shortcuts")
         self.shortcuts_button.clicked.connect(
-            lambda: webbrowser.open("https://Akseli-Ilmanen.github.io/ethograph/user_guide/shortcuts.html")
+            lambda: webbrowser.open("https://Akseli-Ilmanen.github.io/ethograph/advanced/shortcuts.html")
         )
         help_layout.addWidget(self.shortcuts_button)
 

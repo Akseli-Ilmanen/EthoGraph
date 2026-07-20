@@ -10,7 +10,7 @@ audio, and spectral time series. Ethograph exposes detectors (binary masks
 aligned to the signal's time axis), merging and snapping utilities, and
 feature generators that turn changepoints into model-ready inputs.
 
-See :doc:`../user_guide/changepoints/index` for the conceptual overview and
+See :doc:`../advanced/changepoints/index` for the conceptual overview and
 the :ref:`changepoint features <target-changepoint-features-api>` section
 below for the representations used by downstream segmentation models.
 
@@ -59,7 +59,7 @@ Label correction
 
 Snap interval-based labels to nearby changepoints. The full pipeline
 (``correct_changepoints``) runs purge → stitch → snap → purge; see
-:doc:`../user_guide/changepoints/correction` for parameter guidance.
+:doc:`../advanced/changepoints/correction` for parameter guidance.
 
 .. autofunction:: correct_changepoints
 
@@ -120,5 +120,5 @@ their feature's time axis, tagged with ``attrs["type"] = "changepoints"``
 and ``attrs["target_feature"]``. Audio changepoints, which would be
 prohibitively large at audio sample rates, are stored instead as
 ``audio_cp_onsets`` / ``audio_cp_offsets`` float pairs. See
-:doc:`../user_guide/changepoints/kinematic` and
-:doc:`../user_guide/changepoints/audio` for examples.
+:doc:`../advanced/changepoints/kinematic` and
+:doc:`../advanced/changepoints/audio` for examples.

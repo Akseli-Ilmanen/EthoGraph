@@ -36,7 +36,7 @@ from ethograph.utils.download import (  # noqa: E402
     write_example_configs,
 )
 
-_ASSETS_DIR = Path(__file__).parent / "assets" / "templates"
+TEMPLATE_ASSETS_DIR = Path(__file__).parent / "assets" / "templates"
 
 try:
     import audioio as _audioio  # noqa: F401
@@ -195,7 +195,7 @@ class TemplateDialog(QDialog):
         if not image_name:
             label.setText("(no preview)")
             return
-        image_path = _ASSETS_DIR / image_name
+        image_path = TEMPLATE_ASSETS_DIR / image_name
         if not image_path.exists():
             label.setText("Downloading preview...")
             return

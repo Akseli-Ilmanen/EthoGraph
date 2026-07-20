@@ -110,5 +110,5 @@ Metadata is also merged into exported label DataFrames automatically via
 
 ## References
 
-- {doc}`nwb_alignment` — trial timing metadata in NWB
+- {ref}`NWB alignment <target-nwb-alignment>` — trial timing metadata in NWB
 - {doc}`labels/index` — label export and the enriched labels DataFrame

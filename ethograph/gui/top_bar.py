@@ -37,7 +37,7 @@ from qtpy.QtWidgets import (
 logger = logging.getLogger(__name__)
 
 DOCS_URL = "https://Akseli-Ilmanen.github.io/ethograph"
-SHORTCUTS_URL = "https://Akseli-Ilmanen.github.io/ethograph/user_guide/shortcuts.html"
+SHORTCUTS_URL = "https://Akseli-Ilmanen.github.io/ethograph/advanced/shortcuts.html"
 ISSUES_URL = "https://github.com/akseli-ilmanen/ethograph/issues"
 TUTORIALS_URL = "https://www.youtube.com/playlist?list=PLAI16F70Jqg0yE5LNO0lKouVIXkSwQkTN"
 

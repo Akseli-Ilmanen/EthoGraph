@@ -1278,16 +1278,25 @@ class EphysWidget(QWidget):
 
         dat_path_str = ks_params.get("dat_path", "")
         if dat_path_str and not Path(dat_path_str).is_file():
-            notify(
-                f"dat_path not found on this machine:\n{dat_path_str}\n\nPlease update the path to the raw data file.",
-                "warning",
-            )
-            dialog = ParamsDialog(self, defaults=ks_params)
-            if dialog.exec_() != QDialog.Accepted:
-                return
-            ks_params = dialog.get_params()
-            _write_params_py(folder, ks_params)
-            notify(f"Updated params.py in {folder}")
+            # params.py records the sorting machine's path; look for the same
+            # recording next to the Kilosort output before bothering the user.
+            relocated = self._resolve_dat_path(folder, ks_params)
+            if relocated is not None:
+                ks_params["dat_path"] = str(relocated)
+                _write_params_py(folder, ks_params)
+                notify(f"Raw data relocated to {relocated}")
+            else:
+                notify(
+                    f"dat_path not found on this machine:\n{dat_path_str}\n\n"
+                    "Please update the path to the raw data file.",
+                    "warning",
+                )
+                dialog = ParamsDialog(self, defaults=ks_params)
+                if dialog.exec_() != QDialog.Accepted:
+                    return
+                ks_params = dialog.get_params()
+                _write_params_py(folder, ks_params)
+                notify(f"Updated params.py in {folder}")
 
         ks_sr = ks_params.get("sample_rate")
         if ks_sr is None:
@@ -1550,27 +1559,35 @@ class EphysWidget(QWidget):
             notify(f"Failed to load {path.name}: {e}", "warning")
             return None
 
-    def _resolve_dat_path(self, ks_folder: Path) -> Path | None:
+    def _resolve_dat_path(self, ks_folder: Path, params: dict | None = None) -> Path | None:
+        """Locate the raw recording a Kilosort folder was sorted from.
 
-        dat_path_str = (self._kilosort_params or {}).get("dat_path")
+        ``params.py`` records ``dat_path`` as it was on the sorting machine, so
+        it routinely points at a drive that does not exist here.  The raw file
+        normally sits in the Kilosort folder or its parent (Kilosort writes its
+        output into a subfolder of the recording), so both are searched.
+        """
+        search_dirs = [ks_folder, ks_folder.parent]
+
+        dat_path_str = (params or self._kilosort_params or {}).get("dat_path")
         if dat_path_str:
             candidate = Path(dat_path_str)
             if candidate.is_file():
                 return candidate
-            relative = ks_folder / candidate.name
-            if relative.is_file():
-                return relative
-            relative2 = ks_folder / candidate
-            if relative2.is_file():
-                return relative2
+            for folder in search_dirs:
+                for relative in (folder / candidate.name, folder / candidate):
+                    if relative.is_file():
+                        return relative
 
-        for folder in [ks_folder]:
+        # No usable dat_path: fall back to the largest raw file, since a
+        # recording sits alongside much smaller aux/digital-in companions.
+        for folder in search_dirs:
             try:
-                for entry in folder.iterdir():
-                    if entry.is_file() and entry.suffix.lower() in EPHYS_EXTENSIONS_RAW:
-                        return entry
+                raw = [e for e in folder.iterdir() if e.is_file() and e.suffix.lower() in EPHYS_EXTENSIONS_RAW]
             except OSError:
-                pass
+                continue
+            if raw:
+                return max(raw, key=lambda e: e.stat().st_size)
 
         ephys_path_str = getattr(self.app_state, "ephys_path", None)
         if ephys_path_str:

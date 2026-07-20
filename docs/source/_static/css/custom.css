@@ -71,6 +71,32 @@ justify-content: space-between;
   transform: translateY(-5px);
 }
 
+/* Examples gallery — image-led cards */
+.examples-gallery .example-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.examples-gallery .example-card .sd-card-img-top {
+  height: 190px;
+  object-fit: contain;
+  background-color: #ffffff;
+  padding: 0.5rem;
+}
+
+.examples-gallery .example-card .sd-card-body {
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.examples-gallery .example-card .sd-card-title {
+  font-size: 1.05rem;
+}
+
+.examples-gallery .example-card p {
+  font-size: 0.9rem;
+  color: var(--pst-color-text-muted);
+}
+
 /* Ensuring content area uses full width when sidebar is hidden */
 .bd-page-width {
   max-width: 90% !important;

@@ -326,7 +326,7 @@ class VideoManager:
             self._video_format_warned = True
             notify(
                 f"Video format '{ext}' may have inaccurate frame seeking. "
-                f"See https://akseli-ilmanen.github.io/ethograph/user_guide/troubleshooting.html",
+                f"See https://akseli-ilmanen.github.io/ethograph/advanced/troubleshooting.html",
                 "warning",
             )
 

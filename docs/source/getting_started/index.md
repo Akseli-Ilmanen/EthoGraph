@@ -3,39 +3,33 @@
 ::::{grid} 1 2 2 2
 :gutter: 3
 
+:::{grid-item-card} {fas}`book-open` User manual
+:link: user_manual
+:link-type: doc
+
+Start here: install, what ethograph shows, loading your data, labelling,
+features and changepoints.
+:::
+
 :::{grid-item-card} {fas}`download` Installation
 :link: installation
 :link-type: doc
 
-How to install ethograph.
+Conda environments, extras, troubleshooting.
 :::
 
-:::{grid-item-card} {fas}`rocket` Quickstart
-:link: quickstart
+:::{grid-item-card} {fas}`bolt` Ephys
+:link: loading_ephys
 :link-type: doc
 
-Try the GUI immediately with built-in template datasets.
+Supported formats, Kilosort output, and the two trace viewers.
 :::
 
-:::{grid-item-card} {fas}`hat-wizard` Setup wizard
-:link: wizard
+:::{grid-item-card} {fas}`list-check` Preparing your own data
+:link: preparing_data
 :link-type: doc
 
-Answer a few questions to get personalised setup instructions for your data.
-:::
-
-:::{grid-item-card} {fas}`database` Loading data
-:link: data_loading
-:link-type: doc
-
-Load pose, video, audio files or custom arrays in the GUI.
-:::
-
-:::{grid-item-card} {fas}`list-check` Data format requirements
-:link: data_requirements
-:link-type: doc
-
-Format specs for xarray, pynapple, and NWB backends.
+Dataset schema, trial structure, and media alignment for trialized data.
 :::
 
 ::::
@@ -44,10 +38,8 @@ Format specs for xarray, pynapple, and NWB backends.
 :maxdepth: 2
 :hidden:
 
-
+user_manual
 installation
-quickstart
-wizard
-data_loading
-data_requirements
+loading_ephys
+preparing_data
 ```

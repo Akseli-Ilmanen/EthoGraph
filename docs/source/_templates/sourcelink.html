@@ -1,0 +1,14 @@
+{# Overrides the pydata-sphinx-theme component so notebook pages offer the
+   raw .ipynb as a download rather than a "Show Source" view of JSON. #}
+{% if show_source and has_source and sourcename %}
+  {% set is_notebook = sourcename.endswith(".ipynb") %}
+  <div class="tocsection sourcelink">
+    <a href="{{ pathto('_sources/' + sourcename, true)|e }}"{% if is_notebook %} download{% endif %}>
+      {% if is_notebook %}
+        <i class="fa-solid fa-download"></i> {{ _("Download notebook") }}
+      {% else %}
+        <i class="fa-solid fa-file-lines"></i> {{ _("Show Source") }}
+      {% endif %}
+    </a>
+  </div>
+{% endif %}

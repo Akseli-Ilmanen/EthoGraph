@@ -23,10 +23,24 @@ EthoGraph recognises a Kilosort folder by the `spike_times.npy` inside it, and r
 
 ---
 
+(target-ephys-viewers)=
+## Two ephys trace viewers
+
+Raw traces can be shown in either of two panels, added from **➕ Add panel** (`Ctrl+N`) under the **Ephys** header.
+
+| | **Neo (`stream`)** | **Ephys (Phy-like viewer)** |
+|---|---|---|
+| Reads | Any [Neo](https://neo.readthedocs.io)-supported format ({ref}`table below <target-ephys-formats>`) | Raw binary (`.dat` / `.bin` / `.raw`) + Kilosort folder |
+| Strength | Wide format compatibility | Fast zooming across many channels, with Kilosort spike waveforms overlaid on the trace |
+
+The Phy-like viewer is inspired by [phy](https://github.com/cortex-lab/phy).
+
+---
+
 (target-ephys-formats)=
 ## Supported formats
 
-EthoGraph uses [Neo](https://neo.readthedocs.io) to read files with recognised headers — sample rate, channel count, and dtype are extracted automatically. Raw binary files are handled via phylib and require a Kilosort folder.
+EthoGraph uses [Neo](https://neo.readthedocs.io) to read files with recognised headers — sample rate, channel count, and dtype are extracted automatically. Raw binary files have no header, so they are handled via phylib and require a Kilosort folder.
 
 ### Known formats (headers auto-detected)
 
@@ -49,11 +63,11 @@ EthoGraph uses [Neo](https://neo.readthedocs.io) to read files with recognised h
 | `.edr`, `.wcp` | WinEDR / WinWCP |
 | `.nwb` | NWB file|
 
-When a format supports multiple signal streams (e.g. amplifier vs auxiliary channels in Intan), the GUI lets you select the desired stream from a combo box.
+When a format carries multiple signal streams (e.g. amplifier vs auxiliary channels in Intan), each stream appears as its own `Neo (stream)` entry in the **➕ Add panel** popup, so you can open them side by side in separate panels.
 
 ### Raw binary (`.dat` / `.bin` / `.raw`)
 
-Raw binary files produced by Kilosort carry no metadata. They are loaded via [phylib](https://github.com/cortex-lab/phylib) using `n_channels` and `sample_rate` read from `params.py`. Use the **Kilosort folder** picker rather than the ephys file browser — EthoGraph resolves the `.dat` path from `params.py` internally.
+Raw binary files produced by Kilosort carry no metadata. They are loaded via [phylib](https://github.com/cortex-lab/phylib) using `n_channels` and `sample_rate` read from `params.py`. Use the **Kilosort folder** picker rather than the ephys file browser — EthoGraph resolves the `.dat` path from `params.py` internally. This is what backs the {ref}`Phy-like viewer <target-ephys-viewers>`.
 
 ---
 
@@ -93,11 +107,11 @@ EthoGraph reads `dat_path`, `n_channels_dat`, and `sample_rate` from it. If the 
 
 - `cluster_info.tsv` — cluster groups, best hardware channel (`ch`), depth, firing-rate statistics. Both `KSLabel` (automatic Kilosort classification) and `group` (phy manual curation) are imported.
 - `channel_positions.npy` + `channel_map.npy` — probe geometry for the raster and probe-channel dialog.
-- The raw `.dat` file (from `dat_path`) — displayed in the trace panel via the phylib loader.
+- The raw `.dat` file (from `dat_path`) — displayed in the {ref}`Phy-like viewer <target-ephys-viewers>`, with spike waveforms overlaid on the trace.
 
 ---
 
 (target-ephys-multi-trial)=
 ## Ephys with multiple trials
 
-Ephys is session-wide. If you have separate video/audio files per trial, build a `session.nc` first (see {doc}`multi_trial`), then select the ephys file separately in the I/O widget.
+Ephys is session-wide. If you have separate video/audio files per trial, build a `session.nc` first (see {doc}`preparing_data`), then select the ephys file separately in the I/O widget.

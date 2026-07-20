@@ -441,6 +441,7 @@ def _wizard_single_media_helper(
     video_offset: float | None = None,
     audio_offset: float | None = None,
     nwb_dir: Path | None = None,
+    duration: float | None = None,
 ):
     """Create a minimal NWB alignment file for a single-trial wizard.
 
@@ -451,10 +452,16 @@ def _wizard_single_media_helper(
         Should be the directory of the output ``.nc`` file so that
         ``discover_nwb`` finds the sidecar on next load.
         Falls back to the media-file parent when not supplied.
+    duration:
+        Explicit trial length in seconds.  Required when no video/pose/audio
+        is supplied (e.g. an ephys-only drop), since the alignment cannot
+        then infer timing from media files.
     """
     from ethograph.io.nwb_alignment import align_media_per_trial
 
     row: dict = {"trial": 1, "start_time": 0.0}
+    if duration is not None:
+        row["stop_time"] = float(duration)
 
     if video_path is not None:
         row["video_cam-1"] = Path(video_path).name
@@ -601,6 +608,33 @@ def wizard_single_from_npy_file(
     return ds
 
 
+def _ephys_session_duration(
+    ephys_path: str | Path | None,
+    neurons_path: str | Path | None,
+) -> float:
+    """Session length for an ephys-only session, read from the recording itself.
+
+    Without video/audio/pose there is nothing else to infer trial timing from,
+    so the ephys file (or the Kilosort output) is the only time anchor.
+    """
+    from ethograph.io.ephys_loader import load_ephys
+    from ethograph.utils.stream_durations import get_kilosort_duration
+
+    duration = None
+    if ephys_path:
+        # load_ephys (unlike get_ephys_duration) propagates the real reason a
+        # format could not be opened, which is what the user needs to see.
+        loader = load_ephys(ephys_path)
+        duration = len(loader) / loader.rate
+
+    if not duration and neurons_path:
+        duration = get_kilosort_duration(str(neurons_path))
+
+    if not duration or duration <= 0:
+        raise ValueError(f"Recording has no readable duration: {ephys_path or neurons_path}")
+    return duration
+
+
 def wizard_single_from_ephys(
     video_path: str | None = None,
     fps: int = 30,
@@ -610,6 +644,8 @@ def wizard_single_from_ephys(
     video_offset: float | None = None,
     audio_offset: float | None = None,
     output_nc_path: str | Path | None = None,
+    ephys_path: str | Path | None = None,
+    neurons_path: str | Path | None = None,
 ):
     if individuals is None:
         individuals = [
@@ -627,6 +663,10 @@ def wizard_single_from_ephys(
 
         ds["video_motion"] = extract_video_motion(video_path, fps=ds.attrs["fps"], time_coord_name="time_video")
 
+    duration = None
+    if not (video_path or audio_path):
+        duration = _ephys_session_duration(ephys_path, neurons_path)
+
     nwb_dir = Path(output_nc_path).parent if output_nc_path else None
     _wizard_single_media_helper(
         ds,
@@ -635,6 +675,7 @@ def wizard_single_from_ephys(
         video_offset=video_offset,
         audio_offset=audio_offset,
         nwb_dir=nwb_dir,
+        duration=duration,
     )
     return ds
 

@@ -24,6 +24,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from qtpy.QtCore import Qt
+from qtpy.QtGui import QPixmap
 from qtpy.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -41,6 +42,8 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ethograph.datasets import DATASETS
+from ethograph.gui.dialog_select_template import TEMPLATE_ASSETS_DIR
 from ethograph.io.validation import (
     AUDIO_EXTENSIONS,
     EPHYS_EXTENSIONS,
@@ -153,6 +156,51 @@ def _audio_info(path: str) -> tuple[float, float]:
         return rate, w.getnframes() / rate
 
 
+def _video_has_audio(path: str) -> bool:
+    """True when the video container holds at least one audio stream."""
+    try:
+        import av
+
+        with av.open(path) as container:
+            return any(s.type == "audio" for s in container.streams)
+    except Exception:  # noqa: BLE001 - unreadable container = no usable audio
+        return False
+
+
+def _extract_audio_wav(video_path: str, out_dir: Path) -> Path:
+    """Decode a video's embedded audio track to a throwaway .wav in *out_dir*.
+
+    The wav then flows through the normal audio pipeline (audioio/soundfile
+    readers, ``audio_mic-N`` alignment streams) exactly like a dropped audio
+    file.
+    """
+    import av
+    import numpy as np
+    import soundfile as sf
+
+    out_path = out_dir / f"{Path(video_path).stem}_audio-{uuid4().hex[:8]}.wav"
+    with av.open(video_path) as container:
+        streams = [s for s in container.streams if s.type == "audio"]
+        if not streams:
+            raise RuntimeError(f"No audio track in {Path(video_path).name}.")
+        stream = streams[0]
+        rate = int(stream.rate)
+        chunks: list[np.ndarray] = []
+        for frame in container.decode(stream):
+            arr = frame.to_ndarray()
+            if not frame.format.is_planar:
+                # Packed formats decode to (1, samples*channels) interleaved.
+                arr = arr.reshape(-1, len(frame.layout.channels)).T
+            chunks.append(arr)
+    if not chunks:
+        raise RuntimeError(f"Audio track in {Path(video_path).name} holds no samples.")
+    data = np.concatenate(chunks, axis=1).T  # (samples, channels)
+    if data.dtype not in (np.int16, np.int32, np.float32, np.float64):
+        data = data.astype(np.float32)
+    sf.write(out_path, data, rate)
+    return out_path
+
+
 def _pose_duration(pose_path: str, source_software: str | None, fps: float) -> float:
     """Duration in seconds of a pose file at *fps* (its only time source)."""
     from ethograph.gui.pose_render import load_pose_from_file
@@ -228,7 +276,8 @@ class _DropDetailsDialog(QDialog):
     file's sample rate, a pose file's source software when its extension is
     ambiguous, and the pose frame rate when no video was dropped alongside
     (image + pose drop). The dialog shows only the rows that are actually
-    needed.
+    needed. One preference also lives here: whether to extract a dropped
+    video's embedded audio track for the audio trace / spectrogram.
     """
 
     def __init__(
@@ -237,6 +286,8 @@ class _DropDetailsDialog(QDialog):
         npy_name: str | None,
         need_pose_software: bool,
         need_pose_fps: bool = False,
+        audio_track_videos: list[str] | None = None,
+        extract_audio_default: bool = True,
         parent=None,
     ):
         super().__init__(parent)
@@ -247,6 +298,19 @@ class _DropDetailsDialog(QDialog):
         self._sr_spin = None
         self._software_combo = None
         self._pose_fps_spin = None
+        self._extract_audio_cb = None
+
+        if audio_track_videos:
+            names = ", ".join(f"<b>{Path(v).name}</b>" for v in audio_track_videos)
+            note = QLabel(f"{names} contains an audio track.")
+            note.setTextFormat(Qt.RichText)
+            note.setWordWrap(True)
+            layout.addWidget(note)
+            self._extract_audio_cb = QCheckBox(
+                "Extract the audio for audio trace / spectrogram plots"
+            )
+            self._extract_audio_cb.setChecked(extract_audio_default)
+            layout.addWidget(self._extract_audio_cb)
 
         if need_npy_sr:
             layout.addWidget(
@@ -304,6 +368,9 @@ class _DropDetailsDialog(QDialog):
     def pose_fps(self) -> float | None:
         return self._pose_fps_spin.value() if self._pose_fps_spin is not None else None
 
+    def extract_audio(self) -> bool:
+        return self._extract_audio_cb is not None and self._extract_audio_cb.isChecked()
+
 
 class _DropList(QListWidget):
     """A QListWidget that accepts file drops and records the paths."""
@@ -360,7 +427,7 @@ class CoverPage(QDialog):
 
         body = QHBoxLayout()
         body.setSpacing(16)
-        body.addWidget(self._build_template_card(), 1)
+        body.addWidget(self._build_template_card(), 2)
 
         # Cards 2 + 3 share a column with the load bar directly beneath them —
         # the bar belongs to those two paths only, not to templates.
@@ -368,11 +435,11 @@ class CoverPage(QDialog):
         right.setSpacing(16)
         cards = QHBoxLayout()
         cards.setSpacing(16)
-        cards.addWidget(self._build_drop_card(), 1)
-        cards.addWidget(self._build_custom_card(), 2)
+        cards.addWidget(self._build_drop_card(), 2)
+        cards.addWidget(self._build_custom_card(), 5)
         right.addLayout(cards, 1)
         right.addWidget(self._build_load_bar())
-        body.addLayout(right, 3)
+        body.addLayout(right, 7)
         outer.addLayout(body)
 
         outer.addWidget(self._build_supported_types_strip())
@@ -404,13 +471,16 @@ class CoverPage(QDialog):
         )
 
         rows = [
-            ("🎞 Video", _fmt(VIDEO_EXTENSIONS)),
-            ("🖼 Image", _fmt(IMAGE_EXTENSIONS) + "  — static view, pose/skeleton overlays on top"),
+            (
+                "🎞 Video",
+                _fmt(VIDEO_EXTENSIONS)
+                + "  — if the video contains audio, just drop the file: the GUI "
+                "can extract it for the audio trace / spectrogram plots",
+            ),
             ("🔊 Audio", _fmt(AUDIO_EXTENSIONS)),
             ("📈 Pose estimation", pose_estimation),
             ("⚡ Ephys", ephys),
-            ("🧠 Neurons", "Kilosort folder  ·  pynapple <code>.npz</code> / <code>.nwb</code>"),
-            ("📊 Features", _fmt(NPY_EXTENSIONS) + "  ·  session <code>.nc</code> / <code>.nwb</code> / <code>.npz</code>"),
+            ("📊 Features", _fmt(NPY_EXTENSIONS) + " / <code>.nc</code> / <code>.nwb</code> / <code>.npz</code>"),
         ]
         items = "".join(f"<li><b>{name}</b>&nbsp;&nbsp;{exts}</li>" for name, exts in rows)
         cells = f"<ul style='margin:0; -qt-list-indent:1;'>{items}</ul>"
@@ -475,8 +545,40 @@ class CoverPage(QDialog):
         template_btn.setMinimumHeight(48)
         template_btn.clicked.connect(self._on_template)
         layout.addWidget(template_btn)
+        for preview in self._build_template_previews():
+            layout.addWidget(preview, alignment=Qt.AlignCenter)
         layout.addStretch()
         return card
+
+    @staticmethod
+    def _build_template_previews(limit: int = 3) -> list[QLabel]:
+        """Stacked preview images of the first few template datasets.
+
+        Fills the otherwise empty lower half of card 1 with a taste of what
+        "Browse templates…" opens. Animated previews are skipped — a still
+        strip should not draw the eye away from the drop zone.
+        """
+        previews: list[QLabel] = []
+        for ds in DATASETS.values():
+            if len(previews) >= limit:
+                break
+            name = ds.get("image", "")
+            if not name or name.lower().endswith(".gif"):
+                continue
+            path = TEMPLATE_ASSETS_DIR / name
+            if not path.exists():
+                continue
+            pixmap = QPixmap(str(path))
+            if pixmap.isNull():
+                continue
+            label = QLabel()
+            # Height cap is generous so near-square previews still get a
+            # reasonable width; wide ones stay bound by the 210 px width.
+            label.setPixmap(pixmap.scaled(210, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            label.setAlignment(Qt.AlignCenter)
+            label.setToolTip(ds.get("name", ""))
+            previews.append(label)
+        return previews
 
     def _build_drop_card(self) -> QFrame:
         card, layout = self._make_card(
@@ -641,7 +743,7 @@ class CoverPage(QDialog):
             self._populate_io_from_buckets(buckets, details)
         except Exception as e:  # noqa: BLE001 - outermost GUI boundary
             logger.exception("Failed to prepare dropped files")
-            notify_dialog(f"Could not prepare dropped files:\n{e}", "critical")
+            notify_dialog(f"Could not prepare dropped files:\n{e}", "error")
             return False
         return True
 
@@ -660,17 +762,38 @@ class CoverPage(QDialog):
         # Pose without a video (image + pose drop): the fps cannot be read
         # from anywhere, so it must be asked.
         need_pose_fps = bool(buckets["pose"]) and not buckets["video"]
-        if not need_npy_sr and not ambiguous_pose and not need_pose_fps:
-            return {"data_sr": None, "source_software": None, "pose_fps": None}
+        # Videos with an embedded audio track: ask whether to extract it (npy
+        # drops ignore audio, so don't offer it there).
+        audio_track_videos = (
+            [] if need_npy_sr else [v for v in buckets["video"] if _video_has_audio(v)]
+        )
+        if not need_npy_sr and not ambiguous_pose and not need_pose_fps and not audio_track_videos:
+            return {
+                "data_sr": None,
+                "source_software": None,
+                "pose_fps": None,
+                "extract_audio": False,
+                "audio_track_videos": [],
+            }
 
         npy_name = Path(buckets["npy"][0]).name if need_npy_sr else None
-        dlg = _DropDetailsDialog(need_npy_sr, npy_name, ambiguous_pose, need_pose_fps, parent=self)
+        dlg = _DropDetailsDialog(
+            need_npy_sr,
+            npy_name,
+            ambiguous_pose,
+            need_pose_fps,
+            audio_track_videos=audio_track_videos,
+            extract_audio_default=not buckets["audio"],
+            parent=self,
+        )
         if not dlg.exec_():
             return None
         return {
             "data_sr": dlg.data_sr(),
             "source_software": dlg.source_software(),
             "pose_fps": dlg.pose_fps(),
+            "extract_audio": dlg.extract_audio(),
+            "audio_track_videos": audio_track_videos,
         }
 
     def _populate_io_from_buckets(self, buckets: dict[str, list[str]], details: dict):
@@ -720,11 +843,16 @@ class CoverPage(QDialog):
                 cam_map.append((images[min(i, len(images) - 1)], p))
 
         session_files = buckets["session"]
-        has_media = bool(cam_map or buckets["audio"])
+        audio_files = list(buckets["audio"])
+        has_media = bool(cam_map or audio_files)
         if has_media:
             # Fresh per-drop temp dir so throwaway files never share a
             # .ethograph/local_settings.yaml with a previous drop.
             self._drop_tmp_dir = self._prepare_drop_dir()
+        if details.get("extract_audio") and details.get("audio_track_videos"):
+            # The user opted to pull the videos' embedded audio: each track
+            # becomes a throwaway .wav that joins the dropped audio files.
+            audio_files += self._extract_video_audio(details["audio_track_videos"])
         if session_files:
             # A real session/feature file was provided — use it directly. Media
             # dropped alongside it still needs a synthesised alignment (the
@@ -732,11 +860,11 @@ class CoverPage(QDialog):
             # loader picks it up via nwb_file_path.
             app_state.nc_file_path = session_files[0]
             if has_media:
-                nwb_path = self._build_tmp_alignment(cam_map, buckets["audio"], details)
+                nwb_path = self._build_tmp_alignment(cam_map, audio_files, details)
                 app_state.nwb_file_path = str(nwb_path)
         else:
             # Pure media: synthesise a single-trial alignment.tmp.nwb.
-            nwb_path = self._build_tmp_alignment(cam_map, buckets["audio"], details)
+            nwb_path = self._build_tmp_alignment(cam_map, audio_files, details)
             app_state.nwb_file_path = str(nwb_path)
             if cam_map and self._video_motion_cb.isChecked():
                 # Video motion requested → the session is an xarray .nc holding a
@@ -778,8 +906,8 @@ class CoverPage(QDialog):
         if poses:
             app_state.pose_folder = str(Path(poses[0]).parent)
             app_state.source_software = details.get("source_software")
-        if buckets["audio"]:
-            app_state.audio_folder = str(Path(buckets["audio"][0]).parent)
+        if audio_files:
+            app_state.audio_folder = str(Path(audio_files[0]).parent)
         if buckets["ephys"]:
             app_state.ephys_path = buckets["ephys"][0]
         if buckets["neurons"]:
@@ -832,7 +960,11 @@ class CoverPage(QDialog):
         anchor = ephys_path or neurons_path
         output_path = str(Path(anchor).with_suffix(".nc")) if ephys_path else str(Path(anchor) / "session.nc")
 
-        dt = wizard_single_from_ephys(output_nc_path=output_path)
+        dt = wizard_single_from_ephys(
+            output_nc_path=output_path,
+            ephys_path=ephys_path,
+            neurons_path=neurons_path,
+        )
         dt.to_netcdf(output_path)
 
         app_state = self.app_state
@@ -843,6 +975,18 @@ class CoverPage(QDialog):
             app_state.ephys_path = ephys_path
         if neurons_path:
             app_state.neurons_path = neurons_path
+
+    def _extract_video_audio(self, videos: list[str]) -> list[str]:
+        """Extract each video's audio track to a .wav behind a busy dialog."""
+        from ethograph.gui.dialog_busy_progress import BusyProgressDialog
+
+        dlg = BusyProgressDialog("Extracting audio from video…", parent=self)
+        paths, error = dlg.execute(
+            lambda: [str(_extract_audio_wav(v, self._drop_tmp_dir)) for v in videos]
+        )
+        if error or paths is None:
+            raise RuntimeError(f"Could not extract audio from video: {error}")
+        return paths
 
     def _compute_video_motion_nc(self, cam_map) -> Path:
         """Compute per-camera motion energy behind a busy dialog and return the .nc."""

@@ -4,7 +4,7 @@ API reference
 =============
 
 Organized by module group. Each page has full signatures with type hints,
-examples, and cross-links to the user guide.
+examples, and cross-links to the narrative docs.
 
 .. toctree::
    :maxdepth: 1
