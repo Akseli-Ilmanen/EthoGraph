@@ -7,7 +7,7 @@
 :link: user_manual
 :link-type: doc
 
-Start here: install, what ethograph shows, loading your data, labelling,
+Start here: install, Visualizing multimodal data, loading your data, labelling,
 features and changepoints.
 :::
 

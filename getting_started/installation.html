@@ -506,7 +506,7 @@ used for environment creation, not for installing ethograph itself.</p>
 <input checked="checked" id="sd-tab-item-5" name="sd-tab-set-2" type="radio">
 <label class="sd-tab-label" for="sd-tab-item-5">
 conda</label><div class="sd-tab-content docutils">
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>create<span class="w"> </span>-y<span class="w"> </span>-n<span class="w"> </span>ethograph<span class="w"> </span>-c<span class="w"> </span>conda-forge<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.12
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>create<span class="w"> </span>-y<span class="w"> </span>-n<span class="w"> </span>ethograph<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.12
 conda<span class="w"> </span>activate<span class="w"> </span>ethograph
 </pre></div>
 </div>
@@ -663,6 +663,13 @@ the model extra along with <code class="docutils literal notranslate"><span clas
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>install<span class="w"> </span><span class="nv">pytorch</span><span class="o">=</span><span class="m">2</span>.5.1<span class="w"> </span><span class="nv">torchvision</span><span class="o">=</span><span class="m">0</span>.20.1<span class="w"> </span><span class="nv">torchaudio</span><span class="o">=</span><span class="m">2</span>.5.1<span class="w"> </span>pytorch-cuda<span class="o">=</span><span class="m">12</span>.1<span class="w"> </span>-c<span class="w"> </span>pytorch<span class="w"> </span>-c<span class="w"> </span>nvidia
 uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[model]&quot;</span><span class="w"> </span>omegaconf
 </pre></div>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Using <code class="docutils literal notranslate"><span class="pre">conda-forge</span></code> (<code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">create</span> <span class="pre">-y</span> <span class="pre">-n</span> <span class="pre">ethograph</span> <span class="pre">-c</span> <span class="pre">conda-forge</span> <span class="pre">python=3.12</span></code>)
+can help here: it keeps all conda-installed packages on one channel, avoiding
+ABI conflicts between <code class="docutils literal notranslate"><span class="pre">defaults</span></code> and <code class="docutils literal notranslate"><span class="pre">conda-forge</span></code> builds of shared libraries
+that PyTorch/CUDA packages depend on.</p>
 </div>
 </section>
 </section>

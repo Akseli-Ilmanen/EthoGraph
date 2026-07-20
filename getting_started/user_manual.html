@@ -441,8 +441,9 @@ recordings.</p>
 <p>Launch with <code class="docutils literal notranslate"><span class="pre">ethograph</span> <span class="pre">launch</span></code>, or the desktop shortcut. See
 <a class="reference internal" href="installation.html"><span class="doc">Installation</span></a> for detailed  instructions.</p>
 </section>
-<section id="what-ethograph-shows">
-<h2>What ethograph shows<a class="headerlink" href="#what-ethograph-shows" title="Link to this heading">#</a></h2>
+<section id="multimodal-visualization">
+<h2>Multimodal visualization<a class="headerlink" href="#multimodal-visualization" title="Link to this heading">#</a></h2>
+<p>Ethograph allows you to visualize a number of different data modalities:</p>
 <div class="pst-scrollable-table-container"><table class="table">
 <thead>
 <tr class="row-odd"><th class="head"><p>Data</p></th>
@@ -499,12 +500,21 @@ recordings.</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">.nwb</span></code> (loaded via <code class="xref py py-mod docutils literal notranslate"><span class="pre">pynapple</span></code>)</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">.nwb</span></code></p></td>
 </tr>
+<tr class="row-odd"><td><p><strong>numpy</strong></p></td>
+<td><p>plain array</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.npy</span></code></p></td>
+</tr>
 </tbody>
 </table>
 </div>
-<p>Unlike a plain numpy array, all three formats carry explicit timestamps with
+<p>Unlike a plain numpy array, the top three formats carry explicit timestamps with
 each value. This allows <code class="docutils literal notranslate"><span class="pre">ethograph</span></code> to automatically align data of different
 sampling rates and modalities (video, audio &amp; electrophysiology).</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">.npy</span></code> only supports <code class="docutils literal notranslate"><span class="pre">(T,</span> <span class="pre">D)</span></code> dimensional data. It can be loaded via drag &amp; drop, you’ll be asked for the sampling
+rate of each timestamp (T), and it is converted internally into a timestamped object.</p>
+</div>
 </section>
 <section id="loading-your-data">
 <span id="target-data-loading"></span><h2>Loading your data<a class="headerlink" href="#loading-your-data" title="Link to this heading">#</a></h2>
@@ -564,7 +574,7 @@ scenarios you may have to write a custom Python script:</p>
 events. Press a number key to select a label class, click on the timeseries plot to
 mark the onset, click again to mark the offset, then press <strong>V</strong> to play back
 the segment you just labelled.</p>
-<a class="reference internal image-reference" href="../_images/label_basic.gif"><img alt="Labelling workflow — select class, click onset, click offset, press V to review" src="../_images/label_basic.gif" style="width: 100%;" />
+<a class="reference internal image-reference" href="_static/media/label_basic.gif"><img alt="Labelling workflow — select class, click onset, click offset, press V to review" src="_static/media/label_basic.gif" style="width: 100%;" />
 </a>
 <p>The <a class="reference internal" href="../advanced/labels/index.html"><span class="doc">labels</span></a> documentation includes more info on how to:</p>
 <ul class="simple">
@@ -1201,7 +1211,7 @@ Dims: (&#39;time&#39;,), Shape: (1169,)
 <br>
 <p>In the GUI, you can switch between features using the <strong>Feature</strong> dropdown and <strong>select</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.sel.html#xarray.DataArray.sel" title="(in xarray v2026.7.0)"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sel()</span></code></a>) a unique combination of feature dimensions. In the video below, the user switches from the feature <code class="docutils literal notranslate"><span class="pre">speed</span></code> to <code class="docutils literal notranslate"><span class="pre">velocity</span></code>, with the selection dimensions <code class="docutils literal notranslate"><span class="pre">individual=crow1</span></code>, <code class="docutils literal notranslate"><span class="pre">keypoint=beakTip</span></code> and <code class="docutils literal notranslate"><span class="pre">space=[&quot;x&quot;,</span> <span class="pre">&quot;y&quot;,</span> <span class="pre">&quot;z&quot;]</span></code> (All checkbox ticked). Thanks to <a class="reference internal" href="../api/ethograph.sel_valid.html#ethograph.sel_valid" title="ethograph.sel_valid"><code class="xref py py-func docutils literal notranslate"><span class="pre">sel_valid()</span></code></a>, any invalid dimensions are ignored (e.g. it’s not problematic that speed does not have a <code class="docutils literal notranslate"><span class="pre">space</span></code> dimension).</p>
 <video controls loop muted autoplay width="100%">
-  <source src="../_static/videos/dropdown.mp4" type="video/mp4">
+  <source src="../_static/media/dropdown.mp4" type="video/mp4">
 </video>
 <p>The layout of the GUI has changed since this video was recorded, but the functionality remains the same.</p>
 <br>
@@ -1453,7 +1463,7 @@ from the start page. The notebooks that built them are in the
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install">Install</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#what-ethograph-shows">What ethograph shows</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#multimodal-visualization">Multimodal visualization</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#loading-your-data">Loading your data</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#single-recording-or-trials">Single recording, or trials?</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#drag-drop">Drag &amp; drop</a></li>

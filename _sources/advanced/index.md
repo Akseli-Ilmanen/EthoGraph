@@ -10,7 +10,7 @@ the {doc}`user manual <../getting_started/user_manual>`.
 :link: metadata
 :link-type: doc
 
-Per-trial conditions (metadata.tsv) and the Trials tab filter UI.
+Per-trial conditions (metadata.tsv) and the trials table filter UI.
 :::
 
 :::{grid-item-card} {fas}`tags` Labels

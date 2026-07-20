@@ -446,105 +446,74 @@
                   
   <section class="tex2jax_ignore mathjax_ignore" id="trial-metadata">
 <span id="target-metadata"></span><h1>Trial metadata<a class="headerlink" href="#trial-metadata" title="Link to this heading">#</a></h1>
-<p>EthoGraph lets you attach per-trial condition metadata (e.g. stimulus conditions) via a plain TSV file. Once loaded, the <strong>Trials tab</strong> in the GUI turns these columns into interactive filters so you
-can restrict navigation and analysis to any subset of trials.</p>
+<p>Attach per-trial conditions (e.g. stimulus, reward outcome) via a TSV file. The
+trials table in the GUI turns those columns into filters, restricting navigation
+and analysis to a subset of trials.</p>
 <hr class="docutils" />
-<section id="the-metadata-tsv-file">
-<h2>The metadata TSV file<a class="headerlink" href="#the-metadata-tsv-file" title="Link to this heading">#</a></h2>
-<section id="file-format">
-<h3>File format<a class="headerlink" href="#file-format" title="Link to this heading">#</a></h3>
-<p>The file must be tab-separated (<code class="docutils literal notranslate"><span class="pre">.tsv</span></code>). Comma-separated (<code class="docutils literal notranslate"><span class="pre">.csv</span></code>) and Excel
-(<code class="docutils literal notranslate"><span class="pre">.xlsx</span></code>) are also accepted.</p>
-<p>One row per trial. The only required column is <strong><code class="docutils literal notranslate"><span class="pre">trial</span></code></strong>, which must match
-the trial identifiers in your dataset.</p>
+<section id="the-metadata-file">
+<h2>The metadata file<a class="headerlink" href="#the-metadata-file" title="Link to this heading">#</a></h2>
+<p>Tab-separated (<code class="docutils literal notranslate"><span class="pre">.tsv</span></code>); <code class="docutils literal notranslate"><span class="pre">.csv</span></code>, <code class="docutils literal notranslate"><span class="pre">.xlsx</span></code> and <code class="docutils literal notranslate"><span class="pre">.xls</span></code> also work. One row per trial.
+The only required column is <strong><code class="docutils literal notranslate"><span class="pre">trial</span></code></strong>, matching the trial IDs in your dataset.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">trial</span>   <span class="n">food_pellet_side</span>   <span class="n">rewarded</span>
 <span class="mi">1</span>       <span class="n">left</span>               <span class="n">yes</span>
 <span class="mi">2</span>       <span class="n">right</span>              <span class="n">yes</span>
 <span class="mi">3</span>       <span class="n">left</span>               <span class="n">no</span>
 <span class="mi">4</span>       <span class="n">right</span>              <span class="n">yes</span>
-<span class="mi">5</span>       <span class="n">left</span>               <span class="n">yes</span>
-<span class="mi">6</span>       <span class="n">right</span>              <span class="n">no</span>
 </pre></div>
 </div>
-<ul class="simple">
-<li><p>Column names are arbitrary — add as many as you need.</p></li>
-<li><p>Values can be strings, integers, or floats.</p></li>
-<li><p>Missing values are allowed.</p></li>
-</ul>
-</section>
-<section id="what-columns-to-include">
-<h3>What columns to include<a class="headerlink" href="#what-columns-to-include" title="Link to this heading">#</a></h3>
-<p>Any variable that differs across trials:</p>
-<ul class="simple">
-<li><p><strong>Categorical:</strong> pellet side (left/right), reward outcome, protocol variant, recording site, …</p></li>
-<li><p><strong>Numeric:</strong> trial number within session, stimulus_intensity, …</p></li>
-</ul>
-<p>Columns named <code class="docutils literal notranslate"><span class="pre">start_time</span></code> and <code class="docutils literal notranslate"><span class="pre">stop_time</span></code> (in seconds) are treated as trial
-timing and used to set navigation boundaries rather than shown as filterable
-conditions. Columns following the <code class="docutils literal notranslate"><span class="pre">video_*</span></code>, <code class="docutils literal notranslate"><span class="pre">audio_*</span></code>, <code class="docutils literal notranslate"><span class="pre">pose_*</span></code>, <code class="docutils literal notranslate"><span class="pre">ephys_*</span></code>
-naming convention are treated as media paths and are also hidden from the
-filter UI.</p>
-</section>
+<p>Add any columns you like — categorical (pellet side, protocol variant) or
+numeric (stimulus intensity). Values may be strings, ints or floats; missing
+values are allowed.</p>
+<p>Some names are reserved for structure rather than conditions: <code class="docutils literal notranslate"><span class="pre">start_time</span></code> /
+<code class="docutils literal notranslate"><span class="pre">stop_time</span></code> (seconds) define trial boundaries for navigation, and <code class="docutils literal notranslate"><span class="pre">video_*</span></code>,
+<code class="docutils literal notranslate"><span class="pre">audio_*</span></code>, <code class="docutils literal notranslate"><span class="pre">pose_*</span></code>, <code class="docutils literal notranslate"><span class="pre">ephys_*</span></code> and <code class="docutils literal notranslate"><span class="pre">*_start</span></code> hold media paths and offsets.</p>
 </section>
 <hr class="docutils" />
 <section id="loading-metadata">
 <h2>Loading metadata<a class="headerlink" href="#loading-metadata" title="Link to this heading">#</a></h2>
-<section id="auto-detection">
-<h3>Auto-detection<a class="headerlink" href="#auto-detection" title="Link to this heading">#</a></h3>
-<p>When you load a dataset, EthoGraph automatically looks for a sidecar file named
-<code class="docutils literal notranslate"><span class="pre">{data_stem}_metadata.tsv</span></code> in the same folder. For example, loading <code class="docutils literal notranslate"><span class="pre">session.nc</span></code>
-will pick up <code class="docutils literal notranslate"><span class="pre">session_metadata.tsv</span></code> if it exists.</p>
-<p>The full priority order is:</p>
+<p>Loading a dataset auto-detects a sidecar <code class="docutils literal notranslate"><span class="pre">{stem}_metadata.tsv</span></code> beside it — e.g.
+<code class="docutils literal notranslate"><span class="pre">session.nc</span></code> picks up <code class="docutils literal notranslate"><span class="pre">session_metadata.tsv</span></code>.</p>
+<p>To use a different file, set the <strong>Metadata:</strong> field in the loader form on the
+start page (<em>Custom set-up</em> card) before clicking <strong>Load</strong>. It accepts a table,
+or an <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> / <code class="docutils literal notranslate"><span class="pre">.npz</span></code> / pynapple folder to read trial metadata from. The path is
+saved with the project. The <strong>Template</strong> button next to it writes a
+<code class="docutils literal notranslate"><span class="pre">{stem}_metadata.tsv</span></code> pre-filled with all trial IDs, ready to edit in a
+spreadsheet.</p>
+<p>Sources are tried in this order:</p>
 <ol class="arabic simple">
-<li><p><strong>Explicit path</strong> set in the <strong>Metadata:</strong> field of the I/O panel (or via
-<code class="docutils literal notranslate"><span class="pre">metadata_path</span></code> in the API).</p></li>
-<li><p><strong>Sidecar TSV</strong> — <code class="docutils literal notranslate"><span class="pre">{stem}_metadata.tsv</span></code> next to the data file (auto-detected).</p></li>
-<li><p><strong>NWB trials table</strong> — extra columns in <code class="docutils literal notranslate"><span class="pre">nwb.trials</span></code> (for <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> sources).</p></li>
-<li><p><strong>Pynapple IntervalSet metadata</strong> — metadata columns from <code class="docutils literal notranslate"><span class="pre">.npz</span></code> or folder
-sources.</p></li>
+<li><p>The <strong>Metadata:</strong> field (or <code class="docutils literal notranslate"><span class="pre">metadata_path</span></code> in the API).</p></li>
+<li><p>The <strong>NWB trials table</strong>, when the data source is a <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> file.</p></li>
+<li><p>The <strong>sidecar TSV</strong> next to the data file.</p></li>
+<li><p><strong>Pynapple <code class="docutils literal notranslate"><span class="pre">IntervalSet</span></code> metadata</strong>, for <code class="docutils literal notranslate"><span class="pre">.npz</span></code> or folder sources.</p></li>
 </ol>
+<p>With none of these, trials carry no conditions and no filtering UI appears.
+Drag &amp; drop loading never uses a metadata table.</p>
 </section>
-<section id="using-a-custom-path-or-filename">
-<h3>Using a custom path or filename<a class="headerlink" href="#using-a-custom-path-or-filename" title="Link to this heading">#</a></h3>
-<p>If your file has a different name or location, point to it in the
-<strong>Metadata:</strong> field in the I/O panel (the browse button next to the field) before
-loading the dataset. The path is saved in the project settings and restored on
-next open.</p>
-</section>
-<section id="generating-a-template">
-<h3>Generating a template<a class="headerlink" href="#generating-a-template" title="Link to this heading">#</a></h3>
-<p>Click the <strong>Template</strong> button next to the Metadata field. EthoGraph writes a
-<code class="docutils literal notranslate"><span class="pre">{stem}_metadata.tsv</span></code> pre-populated with all trial IDs and opens it in the
-field — edit it in a spreadsheet editor, then reload the dataset.</p>
+<hr class="docutils" />
+<section id="the-trials-table">
+<h2>The trials table<a class="headerlink" href="#the-trials-table" title="Link to this heading">#</a></h2>
+<p>Top of the <strong>Navigation</strong> section in the right sidebar, above the navigation
+controls. Lists every trial in the session; shown only when the metadata has at
+least one column besides <code class="docutils literal notranslate"><span class="pre">trial</span></code>.</p>
+<section id="filtering">
+<h3>Filtering<a class="headerlink" href="#filtering" title="Link to this heading">#</a></h3>
+<p>Click the funnel icon at the right edge of a column header (the rest of the
+header sorts). Categorical columns give a checkbox list with an <strong>(All)</strong>
+toggle; numeric columns give a <code class="docutils literal notranslate"><span class="pre">≥</span></code> / <code class="docutils literal notranslate"><span class="pre">≤</span></code> threshold with a <strong>Remove filter</strong>
+button. Filters are AND-combined, and the funnel turns yellow while one is
+active.</p>
+<p>Filtered-out trials disappear from the table and from the trial navigator — the
+<em>Previous / Next trial</em> buttons and the trial slider skip them. A combination
+matching no trials is ignored rather than emptying the navigator.</p>
+<p><strong>Note:</strong> operations across trials, such as changepoint correction or purging
+short labels, apply only to the filtered trials.</p>
 </section>
 </section>
 <hr class="docutils" />
-<section id="the-trials-tab">
-<h2>The Trials tab<a class="headerlink" href="#the-trials-tab" title="Link to this heading">#</a></h2>
-<p>The <strong>Trials tab</strong> (collapsible panel in the sidebar) shows all trials in the
-loaded session as a table and lets you filter which trials are active in the
-navigator.</p>
-<section id="filtering-trials">
-<h3>Filtering trials<a class="headerlink" href="#filtering-trials" title="Link to this heading">#</a></h3>
-<p>Click the filter icon (≡) in any column header. Categorical columns show a
-checkbox list of unique values; numeric columns offer a <code class="docutils literal notranslate"><span class="pre">≥</span></code> / <code class="docutils literal notranslate"><span class="pre">≤</span></code> threshold.
-All active filters are AND-combined. A yellow icon indicates an active filter;
-click it again and choose <strong>Remove filter</strong> to clear it.</p>
-</section>
-<section id="effect-on-navigation">
-<h3>Effect on navigation<a class="headerlink" href="#effect-on-navigation" title="Link to this heading">#</a></h3>
-<p>Filtered-out trials are hidden in the table and removed from the trial
-navigator — the <em>Previous / Next trial</em> buttons and the trial slider skip them.
-The set of visible trials is updated live whenever a filter changes. <strong>Note</strong>:
-Operations such as changepoint correction across trials, or purging short labels
-are applied only to filtered trials.</p>
-</section>
-</section>
-<hr class="docutils" />
-<section id="export-labels">
-<h2>Export labels<a class="headerlink" href="#export-labels" title="Link to this heading">#</a></h2>
-<p>Metadata is also merged into exported label DataFrames automatically via
-<code class="docutils literal notranslate"><span class="pre">enrich_labels_df()</span></code>, so every label row carries the trial’s condition columns.</p>
+<section id="export">
+<h2>Export<a class="headerlink" href="#export" title="Link to this heading">#</a></h2>
+<p>Metadata is merged into exported label DataFrames by <code class="docutils literal notranslate"><span class="pre">enrich_labels_df()</span></code>, so
+every label row carries its trial’s condition columns.</p>
 </section>
 <hr class="docutils" />
 <section id="references">
@@ -603,23 +572,13 @@ are applied only to filtered trials.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-metadata-tsv-file">The metadata TSV file</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#file-format">File format</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#what-columns-to-include">What columns to include</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-metadata-file">The metadata file</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#loading-metadata">Loading metadata</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-trials-table">The trials table</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#filtering">Filtering</a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#loading-metadata">Loading metadata</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#auto-detection">Auto-detection</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#using-a-custom-path-or-filename">Using a custom path or filename</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#generating-a-template">Generating a template</a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-trials-tab">The Trials tab</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#filtering-trials">Filtering trials</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#effect-on-navigation">Effect on navigation</a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#export-labels">Export labels</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#export">Export</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#references">References</a></li>
 </ul>
   </nav></div>

@@ -10,7 +10,7 @@ the hand starts decelerating. These minima can even be used to identify
 sub-movements, such as the small second corrective speed bump in the figure
 below (Meyer et al., 1988).
 
-![Kinematic changepoints](../../media/changepoints1.png)
+![Kinematic changepoints](../../_static/media/changepoints1.png)
 
 ---
 
@@ -31,7 +31,7 @@ A custom algorithm that identifies the boundaries of peak regions rather than
 the peaks themselves. The idea is that behaviour transitions happen not at
 the peak of a movement, but where the animal starts or stops accelerating.
 
-![Turning points](../../media/changepoints2.png)
+![Turning points](../../_static/media/changepoints2.png)
 
 The algorithm works in four steps:
 
