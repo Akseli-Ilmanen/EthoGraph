@@ -58,6 +58,7 @@ gui = [
     "PyQt6",
     "qtpy",
     "pyqtgraph",
+    "PyOpenGL",
     "pygfx>=0.15.3",
     "pynaviz>=0.1",
     "rendercanvas",
