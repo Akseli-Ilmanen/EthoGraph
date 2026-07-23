@@ -696,16 +696,10 @@ class CoverPage(QDialog):
     # ------------------------------------------------------------------
 
     def _on_template(self):
-        # Templates are segmented multi-trial datasets: x-limits follow the
-        # trial interval. Set explicitly — otherwise a previous drag & drop
-        # ("fixed") would carry over and clamp the view to fixed_window_s.
-        self.app_state.xlim_mode = "interval"
         self.io_widget._on_select_template_clicked()
         self._close_if_loaded()
 
     def _on_wizard(self):
-        # Custom set-up = multi-trial data: x-limits follow the trial interval.
-        self.app_state.xlim_mode = "interval"
         self.io_widget._on_create_nc_clicked()
         # The wizard populates fields but may not auto-load; trigger a load if a
         # session path is now set.
@@ -718,12 +712,6 @@ class CoverPage(QDialog):
         if self._drop.paths:
             if not self._prepare_dropped():
                 return
-            # Dropped loose media = one long unsegmented recording: a fixed
-            # sliding window is the useful default view.
-            self.app_state.xlim_mode = "fixed"
-        else:
-            # Custom set-up = multi-trial data: x-limits follow the trial interval.
-            self.app_state.xlim_mode = "interval"
         self.io_widget._on_load_clicked()
         self._close_if_loaded()
 

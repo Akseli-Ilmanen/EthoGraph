@@ -7,6 +7,12 @@ hears. Callers drive the timeline marker and the video frame from
 :meth:`AudioClock.elapsed_s`, so those can never drift away from the sound
 (unlike a wall-clock or a frame-count timer, which accumulate error).
 
+The span is resampled once (offline, at preload) to a fixed device-friendly
+output rate, so **any** playback speed and **any** source sample rate can play:
+the device's maximum rate no longer limits playback. This is what makes fast
+pitch-shifted playback and high-rate (e.g. ultrasonic) recordings audible — the
+latter via slow "time-expansion" speeds that shift content into the audible band.
+
 The stream callback runs on PortAudio's thread, so it only touches a preloaded
 NumPy array and an integer counter — no disk reads, no Qt, no Python-heavy work.
 """
@@ -19,6 +25,11 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# Fixed output sample rate. Every sound card supports 48 kHz and it spans the
+# full audible band, so we always resample the span to it rather than driving
+# the device at ``media_rate * speed`` (which the device's max rate would cap).
+OUTPUT_RATE = 48000.0
+
 
 class AudioClock:
     """Play a mono span and expose the true (audible) playback position.
@@ -30,40 +41,68 @@ class AudioClock:
     samplerate
         The *media* sample rate (Hz) of ``data``.
     speed
-        Playback speed multiplier. The stream runs at ``samplerate * speed``;
-        :meth:`elapsed_s` still returns media-time seconds.
+        Playback speed multiplier (media-seconds per real-second). The span is
+        resampled so it plays at ``speed`` regardless of the device rate;
+        :meth:`elapsed_s` always returns media-time seconds.
     """
 
     def __init__(self, data: np.ndarray, samplerate: float, *, speed: float = 1.0):
-        self._data = np.ascontiguousarray(np.asarray(data).ravel(), dtype="float32")
-        self._samplerate = float(samplerate)
+        self._media = np.ascontiguousarray(np.asarray(data).ravel(), dtype="float32")
+        self._fs = float(samplerate)  # media sample rate
         self._speed = float(speed) if speed and speed > 0 else 1.0
-        self._idx = 0  # media frames handed to the device
+        # Output buffer + rate, filled by _prepare_output(); default is the
+        # legacy "drive the device at fs*speed" path used when scipy is absent.
+        self._data = self._media
+        self._out_rate = self._fs * self._speed
+        self._idx = 0  # output frames handed to the device
         self._finished = False
         self._stream = None
         self._latency_s = 0.0
 
     @property
-    def samplerate(self) -> float:
-        return self._samplerate
-
-    @property
     def duration_s(self) -> float:
-        return len(self._data) / self._samplerate if self._samplerate else 0.0
+        """Length of the span in media-time seconds."""
+        return len(self._media) / self._fs if self._fs else 0.0
+
+    def _prepare_output(self) -> None:
+        """Resample the span to ``OUTPUT_RATE`` so any speed / source rate plays.
+
+        Falls back to streaming the raw media at ``fs * speed`` when SciPy is
+        unavailable (works up to the device's max sample rate).
+        """
+        if len(self._media) == 0 or self._fs <= 0:
+            return
+        try:
+            from scipy.signal import resample_poly
+        except ImportError:
+            self._data = self._media
+            self._out_rate = self._fs * self._speed
+            return
+
+        # Output length so the span lasts (duration / speed) real-seconds at
+        # OUTPUT_RATE: resample by OUTPUT_RATE / (fs * speed).
+        up = int(round(OUTPUT_RATE))
+        down = max(1, int(round(self._fs * self._speed)))
+        out = resample_poly(self._media, up, down).astype("float32", copy=False)
+        self._data = np.ascontiguousarray(out)
+        self._out_rate = OUTPUT_RATE
 
     def start(self) -> bool:
         """Open and start the output stream. Returns ``False`` if audio is
         unavailable (no backend, no device, empty span) so the caller can fall
         back to a wall-clock/frame timer."""
-        if len(self._data) == 0 or self._samplerate <= 0:
+        if len(self._media) == 0 or self._fs <= 0:
             return False
         try:
             import sounddevice as sd
         except ImportError:
             return False
+        self._prepare_output()
+        if len(self._data) == 0 or self._out_rate <= 0:
+            return False
         try:
             self._stream = sd.OutputStream(
-                samplerate=self._samplerate * self._speed,
+                samplerate=self._out_rate,
                 channels=1,
                 dtype="float32",
                 callback=self._callback,
@@ -102,10 +141,15 @@ class AudioClock:
         return self._finished
 
     def elapsed_s(self) -> float:
-        """Media-time seconds that are *audible now* (frames played minus the
-        output latency). Clamped to ``[0, duration]``."""
-        played = self._idx / self._samplerate - self._latency_s * self._speed
-        return max(0.0, min(played, self.duration_s))
+        """Media-time seconds that are *audible now*, clamped to ``[0, duration]``.
+
+        The device has played ``idx`` output frames = ``idx / out_rate`` real
+        seconds; media time advances ``speed``× faster than real time.
+        """
+        if self._out_rate <= 0:
+            return 0.0
+        real_s = self._idx / self._out_rate - self._latency_s
+        return max(0.0, min(real_s * self._speed, self.duration_s))
 
     def stop(self):
         if self._stream is not None:

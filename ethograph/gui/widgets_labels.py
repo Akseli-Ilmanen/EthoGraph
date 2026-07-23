@@ -253,6 +253,8 @@ class LabelsWidget(QWidget):
 
     def attach_overlay_groupbox(self, groupbox):
         """Add per-plot-type label controls to the "Label overlay" groupbox."""
+        groupbox.layout().addWidget(self.hide_label_cb)
+
         self.labels_per_plot_btn = QPushButton("Show labels per plot type")
         self.labels_per_plot_btn.setToolTip(
             "Choose how label rectangles render on each plot type: full plot, bottom strip, or not at all"
@@ -338,6 +340,25 @@ class LabelsWidget(QWidget):
         legend.setStyleSheet("QLabel { color: #aaa; font-size: 11px; padding: 2px 0px; }")
         legend.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout.addWidget(legend)
+
+        # "Hide label" lives in the "Label overlay" groupbox at the bottom of
+        # this panel (see attach_overlay_groupbox) since it's an overlay
+        # display setting, not a labeling action.
+        self.hide_label_cb = QCheckBox("Hide label")
+        self.hide_label_cb.setToolTip("Hide the label-name overlay shown on the video during playback")
+        self.hide_label_cb.setChecked(bool(self.app_state.get_with_default("hide_label_text")))
+        self.hide_label_cb.toggled.connect(lambda v: setattr(self.app_state, "hide_label_text", v))
+
+        self.segment_end_continuous_cb = QCheckBox("Play to exact time (not nearest frame)")
+        self.segment_end_continuous_cb.setToolTip(
+            "When playing a selected segment (V), stop the red marker on the label's exact "
+            "offset time. Unchecked (default), it stops on the nearest video frame's time instead."
+        )
+        self.segment_end_continuous_cb.setChecked(bool(self.app_state.get_with_default("segment_end_continuous_time")))
+        self.segment_end_continuous_cb.toggled.connect(
+            lambda v: setattr(self.app_state, "segment_end_continuous_time", v)
+        )
+        layout.addWidget(self.segment_end_continuous_cb)
 
         # Scrollable area for branch tables
         scroll = QScrollArea()
@@ -1348,7 +1369,10 @@ class LabelsWidget(QWidget):
             start_frame = self.app_state.video.time_to_frame(onset_s, round_nearest=True)
             end_frame = self.app_state.video.time_to_frame(offset_s, round_nearest=True)
             # Video shows nearest frames; audio uses the exact label bounds so
-            # its tail isn't clipped to the frame grid (Phase 2).
+            # its tail isn't clipped to the frame grid (Phase 2). Whether the
+            # marker itself stops on the exact offset_s or the nearest frame's
+            # time is controlled by the "Play segment: end at exact time"
+            # checkbox (app_state.segment_end_continuous_time).
             self.app_state.video.play_segment(start_frame, end_frame, audio_t0=onset_s, audio_t1=offset_s)
         else:
             self._play_audio_segment(onset_s, offset_s)

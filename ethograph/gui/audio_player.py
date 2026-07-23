@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time as _time
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from qtpy.QtCore import QTimer
 
@@ -43,6 +43,13 @@ class AudioPlayer:
         self._timer = QTimer()
         self._timer.setInterval(33)
         self._timer.timeout.connect(self._advance)
+        # Real (audible) playback clock, when an audio device is available —
+        # resamples to a fixed output rate so the marker tracks the exact
+        # audible position instead of drifting from a wall-clock estimate.
+        # ``None`` means silent playback (no device/backend/audio path): the
+        # marker still runs, driven by a wall-clock fallback.
+        self._clock: Any = None
+        self._clock_start_marker = 0.0
         self._start_time = 0.0
         self._start_wall = 0.0
         # Hard stop boundary for segment playback; ``None`` = open playback to
@@ -68,21 +75,19 @@ class AudioPlayer:
         if current_time >= end_time:
             return
 
-        self._start_time = current_time
-        self._start_wall = _time.perf_counter()
         self._segment_end = None
         self._playing = True
-
-        self._start_audio_if_available(current_time, end_time)
+        self._begin_clock(current_time, end_time, marker_start=current_time)
         self._timer.start()
         self._notify_state_changed()
 
-    def _start_audio_if_available(self, current_time: float, end_time: float):
-        try:
-            import sounddevice as sd
-        except ImportError:
-            return
+    def _build_clock(self, t0_s: float, t1_s: float):
+        """Preload the selected audio span into an :class:`AudioClock`.
 
+        Returns ``None`` when audio is unavailable so the caller falls back to
+        a silent, wall-clock-driven marker.
+        """
+        from .audio_clock import AudioClock
         from .plots_spectrogram import SharedAudioCache
 
         # Follow the last-clicked audio panel (playback_mic_key); resolve both
@@ -90,35 +95,42 @@ class AudioPlayer:
         resolved_path, channel_idx = self.app_state.get_audio_source(self.app_state.playback_mic_selection())
         audio_path = resolved_path or getattr(self.app_state, "audio_path", None)
         if not audio_path:
-            return
+            return None
 
         loader = SharedAudioCache.get_loader(audio_path)
         if loader is None:
-            return
+            return None
 
         fs = loader.rate
-
-        start_sample = max(0, int(current_time * fs))
-        end_sample = min(len(loader), int(end_time * fs))
+        start_sample = max(0, int(t0_s * fs))
+        end_sample = min(len(loader), int(t1_s * fs))
         if end_sample <= start_sample:
-            return
+            return None
 
-        audio_data = loader[start_sample:end_sample]
-        if audio_data.ndim > 1:
-            ch = min(channel_idx, audio_data.shape[1] - 1)
-            audio_data = audio_data[:, ch]
+        segment = loader[start_sample:end_sample]
+        if segment.ndim > 1:
+            ch = min(channel_idx, segment.shape[1] - 1)
+            segment = segment[:, ch]
 
-        speed = self.app_state.audio_playback_speed
-        sd.stop()
-        sd.play(audio_data, samplerate=int(fs * speed))
+        speed = self.app_state.playback_speed_pct / 100.0
+        return AudioClock(segment, fs, speed=speed)
+
+    def _begin_clock(self, t0_s: float, t1_s: float, *, marker_start: float):
+        """Start the audio clock over ``[t0_s, t1_s]``, falling back to a
+        silent wall-clock marker if no audio device is usable."""
+        clock = self._build_clock(t0_s, t1_s)
+        if clock is not None and clock.start():
+            self._clock = clock
+            self._clock_start_marker = marker_start
+        else:
+            self._clock = None
+            self._start_time = marker_start
+            self._start_wall = _time.perf_counter()
 
     def stop(self):
-        try:
-            import sounddevice as sd
-
-            sd.stop()
-        except ImportError:
-            pass
+        if self._clock is not None:
+            self._clock.stop()
+            self._clock = None
         self._timer.stop()
         self._playing = False
         self._segment_end = None
@@ -131,29 +143,32 @@ class AudioPlayer:
     def play_segment(self, onset_s: float, offset_s: float):
         """Play a segment, stopping the marker exactly on *offset_s*.
 
-        If audio is available, plays it via ``sounddevice``.
+        If audio is available, plays it through the audio-master clock.
         Always drives the time marker from *onset_s* until *offset_s*.
         """
         if offset_s <= onset_s:
             return
 
-        self._start_audio_if_available(onset_s, offset_s)
-
-        self._start_time = onset_s
-        self._start_wall = _time.perf_counter()
         self._segment_end = offset_s
         self._playing = True
+        self._begin_clock(onset_s, offset_s, marker_start=onset_s)
         self._update_marker(onset_s)  # snap start exactly onto the boundary
         self._notify_state_changed()
         self._timer.start()
 
     def _advance(self):
-        elapsed = _time.perf_counter() - self._start_wall
-        speed = self.app_state.audio_playback_speed
-        current = self._start_time + elapsed * speed
+        if self._clock is not None:
+            elapsed = self._clock.elapsed_s()
+            current = self._clock_start_marker + elapsed
+            finished = self._clock.finished
+        else:
+            speed = self.app_state.playback_speed_pct / 100.0
+            elapsed = (_time.perf_counter() - self._start_wall) * speed
+            current = self._start_time + elapsed
+            finished = False
         end = self._segment_end if self._segment_end is not None else self._get_xlim()[1]
 
-        if current >= end:
+        if finished or current >= end:
             self._update_marker(end)  # land exactly on the boundary, not past it
             self.stop()
             return

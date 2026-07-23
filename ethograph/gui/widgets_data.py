@@ -1,4 +1,4 @@
-"""Widget for selecting start/stop times and playing a segment in napari."""
+"""Widget for selecting start/stop times and playing a segment."""
 
 import logging
 import os
@@ -1083,8 +1083,9 @@ class DataWidget(QWidget):
             self.populate_keypoints(keypoint_names)
 
         slot_layout.addStretch()
-        # The Space/Cameras group is no longer shown (cameras via drag-drop, no
-        # napari layers/space-plot toggle). Kept hidden for backwards-compat refs.
+        # The Space/Cameras group itself is hidden (cameras are added via
+        # drag-drop now), but its combos stay alive as headless state driven
+        # programmatically elsewhere (pose_render, shortcuts, PCA auto-switch).
         self.slot_groupbox.hide()
 
         self._setup_panel_controls()
@@ -1942,9 +1943,6 @@ class DataWidget(QWidget):
             pred_cb.setChecked(plot.show_predictions_enabled())
             pred_cb.blockSignals(False)
 
-    # Backwards-compatible alias.
-    sync_combos_to_active_plot = sync_sidebar_from_active_plot
-
     def apply_panel_control(self, key: str, value):
         """Generic entry point for EVERY data-panel selection control (feature
         dropdown, dimension combos, colours, and 'All' checkboxes).
@@ -2351,6 +2349,9 @@ class DataWidget(QWidget):
         self.app_state.current_frame = 0
         self.update_video()
         self._init_or_update_extra_cameras()
+        # Reconcile background proxy jobs to the new trial's visible videos
+        # (cancel stale ones, start/swap for the current set).
+        self.video_mgr.sync_proxies()
         self.update_audio()
         self.update_pose()
         self.update_label()
@@ -2424,6 +2425,23 @@ class DataWidget(QWidget):
             return
         self.show_envelope_checkbox.show()
         self.video_mgr.update_video(plot_container=self.plot_container)
+
+    def set_video_quality(self, proxy: bool):
+        """Switch video decoding between full-res and a low-res proxy.
+
+        Non-blocking: enabling kicks off background proxy generation for every
+        visible video and swaps each in when ready; disabling cancels the jobs
+        and reverts to full-res. Frame timing is identical between source and
+        proxy, so labels/alignment are unaffected.
+        """
+        if proxy and self.pose_mgr.has_active_skeleton_overlay():
+            notify(
+                "Pose/skeleton overlay may be misaligned on the proxy video "
+                "(different resolution than the source).",
+                "warning",
+            )
+        self.app_state.video_quality_mode = "proxy" if proxy else "full"
+        self.video_mgr.sync_proxies()
 
     def update_audio(self):
         if not self.app_state.ready:
@@ -2520,9 +2538,6 @@ class DataWidget(QWidget):
             return
         self.app_state.space_plot_type = text
 
-        show_layers = text == "Layers"
-        self.layout_mgr.toggle_layer_docks_with_anchor(show_layers)
-
         if text == "Space Plot":
             if self.space_plots:
                 self.update_space_plot()
@@ -2584,6 +2599,9 @@ class DataWidget(QWidget):
             if self.pose_mgr is not None:
                 self.pose_mgr.update_extra_camera_pose(name, self.get_hidden_keypoints())
 
+        # Video panels opened/closed → reconcile background proxy jobs.
+        self.video_mgr.sync_proxies()
+
     def _on_camera_view_removed(self, view):
         """A camera view was removed (its dock's ✕, or programmatically).
 
@@ -2605,6 +2623,8 @@ class DataWidget(QWidget):
                 changed = True
         if changed:
             self._save_extra_cameras()
+        # A video panel closed → cancel its now-orphaned proxy job.
+        self.video_mgr.sync_proxies()
 
     def _get_desired_extra_cameras(self) -> set[str]:
         if not hasattr(self, "_extra_camera_combos"):

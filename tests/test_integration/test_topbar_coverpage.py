@@ -88,7 +88,7 @@ def test_every_panel_has_close_and_move_buttons(gui):
 def test_top_bar_has_expected_menus(gui):
     shell, meta = gui
     titles = [a.text().replace("&", "") for a in shell.menuBar().actions()]
-    assert titles == ["File", "Changepoints", "Neural", "Help"]
+    assert titles == ["File", "Changepoints", "Tools", "Help"]
 
 
 def test_show_changepoints_menu_action_syncs_state(gui):

@@ -164,22 +164,34 @@ class BottomPlaybackBar(QWidget):
             self.playback_mode_combo.addItem(label_text, mode_value)
         self.playback_mode_combo.setToolTip(
             "Audio-synced: audio + video locked (may drop frames).\n"
-            "Smooth: every video frame, may run slower than the set FPS, no audio.\n"
-            "Real-time (skip frames): approximate the set FPS by dropping frames, no audio."
+            "Smooth: every video frame, may run slower than the set speed, no audio.\n"
+            "Real-time (skip frames): approximate the set speed by dropping frames, no audio."
         )
         self.playback_mode_combo.currentIndexChanged.connect(self._on_playback_mode_changed)
         bot.addWidget(self.playback_mode_combo)
 
-        # Playback FPS (audio speed is coupled to it)
-        bot.addWidget(QLabel("FPS:"))
-        self.fps_display = QLineEdit()
-        self.fps_display.setFixedWidth(46)
-        self.fps_display.setText(str(app_state.get_with_default("fps_playback")))
-        self.fps_display.setToolTip(
-            "Playback FPS. Audio speed is coupled to this — set it to the recording FPS for normal-pitch audio."
+        # Playback speed as a % of the original recording (drives video FPS and
+        # audio pitch/rate together — see _update_speed_info for the derived
+        # fps/kHz readout).
+        bot.addWidget(QLabel("Speed:"))
+        self.speed_display = QLineEdit()
+        self.speed_display.setFixedWidth(46)
+        self.speed_display.setText(f"{app_state.get_with_default('playback_speed_pct'):.0f}")
+        self.speed_display.setToolTip(
+            "Playback speed as a % of the original recording. 100% = native speed.\n"
+            "Scales both the video frame rate and the audio pitch/rate together —\n"
+            "e.g. 50% plays at half speed, one octave lower."
         )
-        self.fps_display.editingFinished.connect(self._on_fps_changed)
-        bot.addWidget(self.fps_display)
+        self.speed_display.editingFinished.connect(self._on_speed_pct_changed)
+        bot.addWidget(self.speed_display)
+        bot.addWidget(QLabel("%"))
+
+        self.speed_info_label = QLabel()
+        self.speed_info_label.setStyleSheet("color: #999999;")
+        self.speed_info_label.setToolTip(
+            "Effective frame rate / audio sample rate at the current speed setting."
+        )
+        bot.addWidget(self.speed_info_label)
 
         # Center playback + Hide label text
         self.center_playback_cb = QCheckBox("Center")
@@ -188,11 +200,24 @@ class BottomPlaybackBar(QWidget):
         self.center_playback_cb.toggled.connect(lambda v: setattr(self.app_state, "center_playback", v))
         bot.addWidget(self.center_playback_cb)
 
-        self.hide_label_cb = QCheckBox("Hide label")
-        self.hide_label_cb.setToolTip("Hide the label-name overlay shown on the video during playback")
-        self.hide_label_cb.setChecked(bool(app_state.get_with_default("hide_label_text")))
-        self.hide_label_cb.toggled.connect(lambda v: setattr(self.app_state, "hide_label_text", v))
-        bot.addWidget(self.hide_label_cb)
+        # Low-res proxy decoding for smooth navigation (generated on first use).
+        self.proxy_cb = QCheckBox("Proxy")
+        self.proxy_cb.setToolTip(
+            "Play video from a smaller, low-resolution copy so moving through\n"
+            "the video stays smooth on large or high-resolution recordings.\n"
+            "\n"
+            "The copy is generated in the background the first time you enable it\n"
+            "(a ⏳ badge shows on the video panel), then reused. It has the same\n"
+            "frame rate and length as the original, so labels and timing stay\n"
+            "exactly aligned.\n"
+            "\n"
+            "Copies are cached in a '.ethograph_proxies' folder next to each\n"
+            "video and reused across sessions. Uncheck to play the original\n"
+            "full-resolution video."
+        )
+        self.proxy_cb.setChecked(app_state.get_with_default("video_quality_mode") == "proxy")
+        self.proxy_cb.toggled.connect(self._on_proxy_toggled)
+        bot.addWidget(self.proxy_cb)
 
         # Rotate video/pose 90° (circular arrow)
         self.rotate_btn = QPushButton("↻")
@@ -244,19 +269,23 @@ class BottomPlaybackBar(QWidget):
         # no auto-generated signal — trial changes are announced via trial_changed.
         # The slider position itself follows time_marker_updated (see
         # set_data_widget), not current_frame — one time-based mapping both ways.
-        app_state.fps_playback_changed.connect(self._update_fps_display)
+        app_state.playback_speed_pct_changed.connect(self._update_speed_display)
         app_state.trial_changed.connect(self._update_trial_label)
         app_state.trial_changed.connect(self._update_audio_indicator)
         app_state.trial_changed.connect(self._update_playback_mode_combo)
+        app_state.trial_changed.connect(self._update_speed_info)
         app_state.playback_mic_key_changed.connect(self._update_audio_indicator)
+        app_state.playback_mic_key_changed.connect(self._update_speed_info)
         if hasattr(app_state, "ready_changed"):
             app_state.ready_changed.connect(self._update_trial_label)
             app_state.ready_changed.connect(self._update_audio_indicator)
             app_state.ready_changed.connect(self._update_playback_mode_combo)
+            app_state.ready_changed.connect(self._update_speed_info)
 
         self._update_trial_label()
         self._update_audio_indicator()
         self._update_playback_mode_combo()
+        self._update_speed_info()
         self._sync_play_icon()
 
     def _on_playback_mode_changed(self, index: int):
@@ -272,6 +301,14 @@ class BottomPlaybackBar(QWidget):
             self.playback_mode_combo.blockSignals(True)
             self.playback_mode_combo.setCurrentIndex(idx)
             self.playback_mode_combo.blockSignals(False)
+
+    def _on_proxy_toggled(self, checked: bool):
+        """Switch video decode quality (full-res ⇄ low-res proxy)."""
+        dw = getattr(self, "_data_widget", None)
+        if dw is not None and hasattr(dw, "set_video_quality"):
+            dw.set_video_quality(checked)
+        else:
+            self.app_state.video_quality_mode = "proxy" if checked else "full"
 
     def _on_rotate_clicked(self):
         dw = getattr(self, "_data_widget", None)
@@ -380,26 +417,57 @@ class BottomPlaybackBar(QWidget):
         self.time_slider.setValue(slider_pos)
         self.time_slider.blockSignals(False)
 
-    def _update_fps_display(self):
-        """Update FPS display."""
-        fps = self.app_state.fps_playback
-        self.fps_display.blockSignals(True)
-        self.fps_display.setText(f"{fps:.1f}")
-        self.fps_display.blockSignals(False)
+    def _update_speed_display(self):
+        """Reflect ``playback_speed_pct`` in the speed field."""
+        pct = self.app_state.playback_speed_pct
+        self.speed_display.blockSignals(True)
+        self.speed_display.setText(f"{pct:.0f}")
+        self.speed_display.blockSignals(False)
+        self._update_speed_info()
 
-    def _on_fps_changed(self):
-        """Handle FPS field edit."""
-        text = self.fps_display.text().strip()
+    def _on_speed_pct_changed(self):
+        """Handle speed % field edit."""
+        text = self.speed_display.text().strip()
         if not text:
             return
         try:
-            fps = float(text)
-            if fps > 0:
-                self.app_state.fps_playback = fps
+            pct = float(text)
+            if pct > 0:
+                self.app_state.playback_speed_pct = pct
             else:
-                self.fps_display.setText(f"{self.app_state.fps_playback:.1f}")
+                self.speed_display.setText(f"{self.app_state.playback_speed_pct:.0f}")
         except ValueError:
-            self.fps_display.setText(f"{self.app_state.fps_playback:.1f}")
+            self.speed_display.setText(f"{self.app_state.playback_speed_pct:.0f}")
+        self._update_speed_info()
+
+    def _native_audio_rate(self) -> float | None:
+        """Native sample rate (Hz) of the audio that will actually play, if any."""
+        audio_path, _ = self.app_state.get_audio_source(self.app_state.playback_mic_selection())
+        audio_path = audio_path or getattr(self.app_state, "audio_path", None)
+        if not audio_path:
+            return None
+        from .plots_spectrogram import SharedAudioCache
+
+        loader = SharedAudioCache.get_loader(audio_path)
+        return float(loader.rate) if loader is not None else None
+
+    def _update_speed_info(self):
+        """Show the derived fps / sample-rate readout at the current speed %.
+
+        Purely informational — playback always resamples to a fixed output
+        rate (see ``audio_clock.OUTPUT_RATE``), so this never clips against
+        the sound device's max sample rate, even for high-rate (ultrasonic)
+        recordings or very slow/fast speeds.
+        """
+        pct = self.app_state.playback_speed_pct
+        parts = []
+        native_fps = getattr(self.app_state, "video_fps", None)
+        if native_fps:
+            parts.append(f"{native_fps * pct / 100.0:.1f} fps")
+        native_sr = self._native_audio_rate()
+        if native_sr:
+            parts.append(f"{native_sr * pct / 100.0 / 1000.0:.1f} kHz")
+        self.speed_info_label.setText(f"({', '.join(parts)})" if parts else "")
 
     def _update_trial_label(self):
         """Update trial label with the actual trial ID plus positional counter."""

@@ -16,14 +16,30 @@ from qtpy.QtCore import QEvent, Qt, QTimer, Signal
 from qtpy.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
 from ethograph.io.validation import IMAGE_EXTENSIONS
+from ethograph.io.video_proxy import proxy_cache_path
+from ethograph.utils.paths import ethograph_home
 
 from .notify import notify
+from .proxy_manager import ProxyManager
 from .pygfx_video import CameraView
 from .video_sync import VideoSync
 
 
 def is_url(path: str) -> bool:
     return path.startswith("http://") or path.startswith("https://")
+
+
+def proxy_cache_dir(video_path: str | None = None) -> Path:
+    """Central directory holding all cached video proxies.
+
+    One shared location (``~/.ethograph/proxies``) rather than a folder beside
+    each source, so the whole cache is easy to find and clear when disk space
+    is tight, and so proxies can be written even when the source lives on
+    read-only or network media. Filenames are keyed by source identity
+    (path + size + mtime), so a single flat folder never collides. The
+    *video_path* argument is accepted for call-site compatibility but ignored.
+    """
+    return ethograph_home() / "proxies"
 
 
 @dataclass
@@ -161,6 +177,10 @@ class VideoManager:
         self.app_state = app_state
         self._video_format_warned = False
         self._audio_row_widgets: list = []
+        self.proxy_mgr = ProxyManager(proxy_cache_dir, parent=video_area)
+        self.proxy_mgr.proxy_ready.connect(self._on_proxy_ready)
+        self.proxy_mgr.proxy_started.connect(lambda s: self._set_proxy_badge(s, "generating"))
+        self.proxy_mgr.proxy_failed.connect(lambda s: self._set_proxy_badge(s, "failed"))
 
     @property
     def primary_view(self) -> CameraView:
@@ -226,6 +246,13 @@ class VideoManager:
                 sync.frame_changed.disconnect(self._on_primary_frame_changed)
             except (RuntimeError, TypeError):
                 pass
+            # Drop the proxy-swap hook BEFORE cleanup() — stopping the sync
+            # emits playback_stopped, which would otherwise re-enter
+            # _apply_ready_proxies and loop back into another reload.
+            try:
+                sync.playback_stopped.disconnect(self._apply_ready_proxies)
+            except (RuntimeError, TypeError):
+                pass
             sync.cleanup()
             self.app_state.video = None
         self.primary_view.clear()
@@ -241,6 +268,122 @@ class VideoManager:
             if start_frame > 0 or end_frame < nframes:
                 return start_frame, end_frame, 0.0
         return 0, nframes, time_offset
+
+    def _decode_path(self, video_path: str) -> str:
+        """Return the path the DECODER should read for *video_path*.
+
+        In "proxy" quality mode, substitute a cached low-res proxy when one
+        already exists; otherwise fall back to the source (never generate
+        synchronously — that would freeze the GUI for minutes). Alignment and
+        frame math elsewhere always use the source, which is safe because the
+        proxy has identical fps and frame count.
+        """
+        if getattr(self.app_state, "video_quality_mode", "full") != "proxy":
+            return video_path
+        if Path(video_path).suffix.lower() in IMAGE_EXTENSIONS or is_url(video_path):
+            return video_path
+        try:
+            proxy = proxy_cache_path(video_path, proxy_cache_dir(video_path))
+        except OSError:
+            return video_path
+        return str(proxy) if proxy.exists() else video_path
+
+    def visible_video_sources(self) -> list[str]:
+        """Source paths of every view currently showing a (non-image) video.
+
+        De-duplicated: the same physical file shown in several views yields a
+        single proxy job.
+        """
+        sources: list[str] = []
+        seen: set[str] = set()
+        for view in [self.primary_view, *self.extra_widgets.values()]:
+            if not getattr(view, "has_video", False):
+                continue
+            src = getattr(view, "source_video_path", None)
+            if not src or src in seen:
+                continue
+            if Path(src).suffix.lower() in IMAGE_EXTENSIONS or is_url(src):
+                continue
+            seen.add(src)
+            sources.append(src)
+        return sources
+
+    def sync_proxies(self) -> None:
+        """Reconcile background proxy jobs against the on-screen video set.
+
+        The single choke point for proxy lifecycle: call it whenever the set
+        of visible videos may have changed (panel open/close, trial change,
+        quality toggle). Starts jobs for newly-visible videos, cancels jobs
+        for videos that went away (so the thread count never grows unbounded),
+        and swaps in any proxy that is already available.
+        """
+        if getattr(self.app_state, "video_quality_mode", "full") == "proxy":
+            self.proxy_mgr.sync(self.visible_video_sources())
+        else:
+            self.proxy_mgr.cancel_all()
+            self._clear_proxy_badges()
+        self._apply_ready_proxies()
+
+    def _on_proxy_ready(self, source: str) -> None:
+        self._apply_ready_proxies()
+        self._set_proxy_badge(source, "ready")
+
+    def _set_proxy_badge(self, source: str, state: str | None) -> None:
+        for view in [self.primary_view, *self.extra_widgets.values()]:
+            if getattr(view, "source_video_path", None) == source and hasattr(view, "set_proxy_badge"):
+                view.set_proxy_badge(state)
+
+    def _clear_proxy_badges(self) -> None:
+        for view in [self.primary_view, *self.extra_widgets.values()]:
+            if hasattr(view, "set_proxy_badge"):
+                view.set_proxy_badge(None)
+
+    def _apply_ready_proxies(self) -> None:
+        """Reload any view whose decode path no longer matches the desired one.
+
+        Idempotent: swaps a view onto its proxy once available, or back to the
+        source when proxy mode is off. The primary is skipped while playing so
+        playback isn't interrupted; it re-applies when playback stops or on the
+        next sync.
+        """
+        # Reloading a view tears down its VideoSync, which emits signals that
+        # can re-enter here — guard against recursion.
+        if getattr(self, "_applying_proxies", False):
+            return
+        self._applying_proxies = True
+        try:
+            view = self.primary_view
+            if getattr(view, "has_video", False):
+                src = getattr(view, "source_video_path", None)
+                if src and self._decode_path(src) != getattr(view, "decode_video_path", None):
+                    video = getattr(self.app_state, "video", None)
+                    if video is None or not video.is_playing:
+                        self._reload_primary()
+            for view in list(self.extra_widgets.values()):
+                if not getattr(view, "has_video", False):
+                    continue
+                src = getattr(view, "source_video_path", None)
+                if src and self._decode_path(src) != getattr(view, "decode_video_path", None):
+                    self._reload_extra(view)
+        finally:
+            self._applying_proxies = False
+
+    def _reload_primary(self) -> None:
+        frame = max(0, int(getattr(self.app_state, "current_frame", 0) or 0))
+        self._cleanup_primary_video()
+        self._setup_primary_video(frame)
+
+    def _reload_extra(self, view: CameraView) -> None:
+        camera = getattr(view, "camera_name", None)
+        src = getattr(view, "source_video_path", None)
+        if not camera or not src:
+            return
+        try:
+            probe = probe_video(src)
+        except (OSError, ValueError, av.AVError):
+            return
+        self._load_extra_video(view, camera, src, probe)
+        self._sync_widget_to_current_time(view)
 
     def _setup_primary_video(self, restore_frame: int):
         try:
@@ -259,9 +402,10 @@ class VideoManager:
         start_frame, end_frame, effective_offset = self._trial_clip(fps, video_time_offset, probe.nframes)
 
         view = self.primary_view
+        decode = self._decode_path(self.app_state.video_path)
         try:
             view.set_video(
-                self.app_state.video_path,
+                decode,
                 fps=fps,
                 time_offset=effective_offset,
                 start_frame=start_frame,
@@ -270,6 +414,8 @@ class VideoManager:
         except (OSError, ValueError) as e:
             notify(f"Video file could not be loaded: {e}", "warning")
             return
+        view.source_video_path = self.app_state.video_path
+        view.decode_video_path = decode
 
         sync = VideoSync(
             app_state=self.app_state,
@@ -282,6 +428,8 @@ class VideoManager:
 
         sync.frame_changed.connect(self._on_primary_frame_changed)
         sync.frame_changed.connect(self._sync_extra_cameras)
+        # Apply any proxy swap that was deferred while playing, once stopped.
+        sync.playback_stopped.connect(self._apply_ready_proxies)
         restore_frame = min(restore_frame, max(0, sync.total_frames - 1))
         sync.seek_to_frame(restore_frame)
         self.app_state.current_frame = restore_frame
@@ -414,9 +562,10 @@ class VideoManager:
             trial_id = self.app_state.trials_sel
             time_offset = sio.stream_offset_for_trial(trial_id, "video", camera_name)
         start_frame, end_frame, effective_offset = self._trial_clip(probe.fps, time_offset, probe.nframes)
+        decode = self._decode_path(video_path)
         try:
             view.set_video(
-                video_path,
+                decode,
                 fps=probe.fps,
                 time_offset=effective_offset,
                 start_frame=start_frame,
@@ -424,6 +573,9 @@ class VideoManager:
             )
         except (OSError, ValueError) as e:
             notify(f"Camera '{camera_name}' failed to load: {e}", "warning")
+            return
+        view.source_video_path = video_path
+        view.decode_video_path = decode
 
     def _sync_widget_to_current_time(self, view: CameraView):
         video = getattr(self.app_state, "video", None)
@@ -475,6 +627,7 @@ class VideoManager:
         sio.set_stream_rate(fps, "video", camera_name)
 
     def cleanup(self):
+        self.proxy_mgr.cancel_all()
         if getattr(self.app_state, "video", None):
             self.app_state.video.stop()
             self.app_state.video = None

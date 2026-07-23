@@ -104,9 +104,12 @@ class AppStateSpec:
         "after_s_label": (float, 1.0, True),
         "before_s_sequence": (float, 1.0, True),
         "after_s_sequence": (float, 1.0, True),
-        # How the plot x-limits are derived: "interval" (trial/label/sequence
-        # extent + before/after padding) or "fixed" (fixed-size window from t=0)
-        "xlim_mode": (str, "interval", True, SCOPE_LOCAL),
+        # How the plot x-limits are derived: "interval" (follows slider scope:
+        # trial/label/sequence extent + before/after padding) or "fixed"
+        # (fixed-size window from t=0). User preference, not tied to how the
+        # dataset was loaded — SCOPE_GLOBAL (default) so it persists across
+        # datasets instead of being guessed per load path.
+        "xlim_mode": (str, "interval", True),
         "fixed_window_s": (float, 10.0, True, SCOPE_LOCAL),
         "pose_markers_visible": (bool, True, True, SCOPE_LOCAL),
         "labels_visible": (bool, True, True, SCOPE_LOCAL),
@@ -133,12 +136,17 @@ class AppStateSpec:
         "trial_conditions": (list | None, None, False),
         "keypoints": (list[str], [], False),
         "import_labels_nc_data": (bool, False, True),
-        "fps_playback": (float, 30.0, True),
-        "audio_playback_speed": (float, 1.0, True),
-        "av_speed_coupled": (bool, True, True),
+        # Playback speed as a % of the original recording speed (100 = native
+        # speed). Drives both the video frame rate and the audio pitch/rate
+        # together — there is no separate FPS or audio-speed control.
+        "playback_speed_pct": (float, 100.0, True),
         # "auto" | "synced" | "smooth" | "skip" — global playback preference.
         "playback_mode": (str, "auto", True),
         "hide_label_text": (bool, False, True),
+        # Segment playback (V key / "Play segment"): when True, the red marker
+        # ends on the label's exact (sub-frame) offset time; when False (default)
+        # it ends on the nearest video frame's time. See docs/advanced/playback.md.
+        "segment_end_continuous_time": (bool, False, True),
         "filter_warnings": (bool, True, True),
         "center_playback": (bool, False, True),
         "time_jump_s": (float, 0.1, True),
@@ -180,6 +188,11 @@ class AppStateSpec:
         "ephys_path": (str | None, None, True, SCOPE_LOCAL),
         "neurons_path": (str | None, None, True, SCOPE_LOCAL),
         "video_path": (str | None, None, False),
+        # Playback quality: "full" decodes the source video; "proxy" decodes a
+        # cached low-res/short-GOP copy for smooth navigation. Global viewing
+        # pref (not per-dataset). Only affects which file the DECODER reads;
+        # all alignment/frame math stays on the source.
+        "video_quality_mode": (str, "full", True),
         "audio_path": (str | None, None, False),
         # audio_source_map key driving audio PLAYBACK (last-clicked audio panel);
         # None follows the global mic combo. Distinct from what each panel draws.
@@ -1144,7 +1157,7 @@ class ObservableAppState(QObject):
             global_path = self._global_settings_path()
             global_state = self._yaml_read(global_path)
             # Drop per-dataset keys left in the global file by older versions
-            # (e.g. xlim_mode/navigate_mode) — they must never become a
+            # (e.g. navigate_mode/slider_scope) — they must never become a
             # sticky default that follows the user into the next dataset.
             local_keys = AppStateSpec.saveable_attributes(scope=AppStateSpec.SCOPE_LOCAL)
             global_state = {k: v for k, v in global_state.items() if k not in local_keys}

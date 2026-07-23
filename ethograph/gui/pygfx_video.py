@@ -17,14 +17,15 @@ Seeking model:
 from __future__ import annotations
 
 import queue
+from types import MethodType
 from typing import Optional
 
 import numpy as np
 import pygfx as gfx
 from pynaviz.audiovideo import PlotVideo
 from pynaviz.utils import RenderTriggerSource
-from qtpy.QtCore import QEvent, Signal
-from qtpy.QtWidgets import QVBoxLayout, QWidget
+from qtpy.QtCore import QEvent, Qt, QTimer, Signal
+from qtpy.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from .pose_overlay import PoseOverlay
 
@@ -92,7 +93,55 @@ class CameraView(QWidget):
         self._start_frame: int = 0
         self._end_frame: int = 0
         self._suppress_sync = False
+        #: Wheel-zoom only acts on the active (last-clicked) view. The
+        #: ActivePanelManager toggles this via widgets_meta; defaults True so a
+        #: standalone view (tests, no manager) zooms without a prior click.
+        self.selected = True
         self.setMinimumSize(120, 90)
+
+        # Proxy-generation badge (top-left overlay): ⏳ while a low-res proxy
+        # is being generated for this view, ✓/⚠ briefly on finish, hidden
+        # otherwise. A floating child so it sits over the video canvas.
+        self._proxy_badge = QLabel(self)
+        self._proxy_badge.setStyleSheet(
+            "QLabel { background: rgba(0,0,0,160); color: #e6e6e6;"
+            " padding: 2px 6px; border-radius: 4px; font-size: 11px; }"
+        )
+        self._proxy_badge.hide()
+        self._proxy_badge_timer = QTimer(self)
+        self._proxy_badge_timer.setSingleShot(True)
+        self._proxy_badge_timer.timeout.connect(self._proxy_badge.hide)
+
+    def set_proxy_badge(self, state: Optional[str]) -> None:
+        """Show the proxy-generation indicator. *state* ∈ {generating, ready,
+        failed, None}; ``None`` hides it immediately."""
+        self._proxy_badge_timer.stop()
+        if state == "generating":
+            self._proxy_badge.setText("⏳ proxy…")
+            self._proxy_badge.setToolTip("Generating a low-resolution proxy for smooth navigation")
+        elif state == "ready":
+            self._proxy_badge.setText("✓ proxy")
+            self._proxy_badge.setToolTip("Playing the low-resolution proxy")
+            self._proxy_badge_timer.start(2500)
+        elif state == "failed":
+            self._proxy_badge.setText("⚠ proxy")
+            self._proxy_badge.setToolTip("Proxy generation failed — using full resolution")
+            self._proxy_badge_timer.start(4000)
+        else:
+            self._proxy_badge.hide()
+            return
+        self._proxy_badge.adjustSize()
+        self._position_proxy_badge()
+        self._proxy_badge.show()
+        self._proxy_badge.raise_()
+
+    def _position_proxy_badge(self) -> None:
+        self._proxy_badge.move(6, 6)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._proxy_badge.isVisible():
+            self._position_proxy_badge()
 
     # ------------------------------------------------------------------
     # Loading
@@ -166,6 +215,29 @@ class CameraView(QWidget):
         # emit `clicked` (used by the active-panel manager for the green edge).
         self._plot.renderer.add_event_handler(self._on_pointer_down, "pointer_down")
         self._install_click_filter(self._plot.canvas)
+        self._enable_scroll_zoom(self._plot.controller)
+
+    def _enable_scroll_zoom(self, controller) -> None:
+        """Rebind the scroll wheel from frame-stepping to camera zoom.
+
+        pynaviz's ``GetController`` repurposes zoom-to-cursor into stepping one
+        frame per wheel notch. Frame navigation happens via the slider / play
+        controls here, so the wheel is freed for zoom-to-cursor — matching the
+        static-image views (plain ``PanZoomController``). Restore the base pygfx
+        behaviour by delegating to it instead of the frame-step override; the
+        base does not emit a pynaviz sync event, so zoom stays local and never
+        moves the playhead. Gated on :pyattr:`selected` so only the active view
+        zooms. Bound via ``MethodType`` because pygfx's action dispatcher
+        introspects ``func.__func__.__code__`` (needs a real bound method)."""
+        view = self
+
+        def _zoom_to_point(ctrl, delta, *, screen_pos, rect):
+            if not view.selected:
+                return
+            gfx.PanZoomController._update_zoom_to_point(ctrl, delta, screen_pos=screen_pos, rect=rect)
+            ctrl.renderer_request_draw()
+
+        controller._update_zoom_to_point = MethodType(_zoom_to_point, controller)
 
     def set_static_image(self, img: np.ndarray) -> None:
         """Show a still frame (pose-only mode, no video)."""

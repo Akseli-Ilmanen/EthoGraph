@@ -320,9 +320,9 @@ class NavigationWidget(QWidget):
     def refresh_after_load(self):
         self._populate_label_combo()
         self._populate_individual_combo()
-        # The load path may have set xlim_mode after this widget was built
-        # (cover-page drag & drop defaults to "fixed", custom set-up to
-        # "interval") — re-sync the combo from app_state.
+        # xlim_mode is a global user preference and may have been loaded/
+        # changed since this widget was built — re-sync the combo from
+        # app_state.
         self._sync_xlim_combo_from_state()
 
     def on_labels_changed(self):

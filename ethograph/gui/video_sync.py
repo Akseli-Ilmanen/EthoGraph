@@ -28,10 +28,6 @@ logger = logging.getLogger(__name__)
 # refresh rate can't be queried.
 RENDER_FPS_FALLBACK = 60.0
 
-# Above this speed audio is unintelligible, so playback drops the audio-master
-# clock and free-runs the frame timer instead.
-AUDIO_SPEED_MAX = 2.5
-
 
 class VideoSync(QObject):
     """Video player synchronized with the plots and audio playback."""
@@ -55,6 +51,9 @@ class VideoSync(QObject):
 
         self._audio_player: Any = None
         self._segment_end_frame: Optional[int] = None
+        # True (sub-frame) end time of the segment being played, set only when
+        # ``app_state.segment_end_continuous_time`` is on (see play_segment()).
+        self._segment_end_time_s: Optional[float] = None
         self._current_frame: int = 0
 
         # Phase 3: audio-master clock (regular playback). When set, playback is
@@ -95,7 +94,8 @@ class VideoSync(QObject):
 
     @property
     def fps_playback(self) -> float:
-        return self.app_state.fps_playback
+        """Render-target FPS: native video FPS scaled by ``playback_speed_pct``."""
+        return self.fps * self.app_state.playback_speed_pct / 100.0
 
     @property
     def is_playing(self) -> bool:
@@ -110,6 +110,9 @@ class VideoSync(QObject):
     # ------------------------------------------------------------------
 
     def seek_to_frame(self, frame: int):
+        # An explicit seek always shows the frame-exact time — clear any
+        # leftover marker override from a prior continuous-end segment finish.
+        self.marker_time_override = None
         frame = max(0, min(int(frame), self.total_frames - 1)) if self.total_frames else 0
         self.view.seek_trial_frame(frame)
         self._apply_frame(frame)
@@ -118,15 +121,21 @@ class VideoSync(QObject):
         """Update state + notify listeners (plots, extra cameras)."""
         self._current_frame = frame
         self.app_state.current_frame = frame
+        finishing_segment = self._segment_end_frame is not None and frame >= self._segment_end_frame
+        if finishing_segment and self._segment_end_time_s is not None:
+            # Continuous-end mode: snap the marker to the segment's true
+            # (sub-frame) end time rather than the nearest frame's time.
+            self.marker_time_override = self._segment_end_time_s
         self.frame_changed.emit(frame)
-        if self._segment_end_frame is not None and frame >= self._segment_end_frame:
+        if finishing_segment:
             self._segment_end_frame = None
-            self.stop()
+            self.stop(clear_marker_override=self._segment_end_time_s is None)
 
     def _on_view_time_changed(self, video_time: float):
         """User interacted with the video canvas (scroll/keys)."""
         if self.fps <= 0:
             return
+        self.marker_time_override = None
         frame = int(round(video_time * self.fps)) - self.view.start_frame
         frame = max(0, min(frame, self.total_frames - 1)) if self.total_frames else 0
         self._apply_frame(frame)
@@ -139,6 +148,7 @@ class VideoSync(QObject):
         if self.is_playing:
             return
         self._segment_end_frame = None
+        self._segment_end_time_s = None
         self._audio_clock = None
         self._smooth_mode = False
         self.marker_time_override = None
@@ -148,8 +158,10 @@ class VideoSync(QObject):
         mode = self.app_state.effective_playback_mode()
 
         # Audio-synced: drive playback from real audio output so marker/video
-        # can't drift. Audio only ever plays in this mode.
-        if mode == PLAYBACK_MODE_SYNCED and self.fps > 0 and self._playback_speed() <= AUDIO_SPEED_MAX:
+        # can't drift. Audio only ever plays in this mode. There is no speed cap
+        # — the audio device's max sample rate is the only limit; beyond it the
+        # stream simply fails to open and playback falls through silently.
+        if mode == PLAYBACK_MODE_SYNCED and self.fps > 0:
             t0, t1 = self._current_frame / self.fps, self.total_frames / self.fps
             clock = self._build_audio_clock(t0, t1)
             if clock is not None and clock.start():
@@ -172,20 +184,28 @@ class VideoSync(QObject):
         # Skip frames (default): approximate real-time fps by dropping frames.
         self._start_timer()
 
-    def stop(self):
+    def stop(self, clear_marker_override: bool = True):
+        """Stop playback.
+
+        ``clear_marker_override=False`` lets a continuous-end segment finish
+        (see ``_apply_frame``) leave the marker frozen on the segment's exact
+        end time instead of snapping it back to the last frame's time.
+        """
         self._play_timer.stop()
         self._segment_end_frame = None
+        self._segment_end_time_s = None
         if self._audio_clock is not None:
             self._audio_clock.stop()
             self._audio_clock = None
         self._smooth_mode = False
-        self.marker_time_override = None
+        if clear_marker_override:
+            self.marker_time_override = None
         self._stop_audio()
         self.playback_stopped.emit()
 
     def _playback_speed(self) -> float:
-        # Audio is always coupled to the playback FPS (no separate speed control).
-        return self.fps_playback / self.fps if self.fps else 1.0
+        # Single speed lever for both video FPS and audio pitch/rate.
+        return self.app_state.playback_speed_pct / 100.0
 
     def toggle_pause_resume(self):
         self.stop() if self.is_playing else self.start()
@@ -300,6 +320,11 @@ class VideoSync(QObject):
         ``audio_t0``/``audio_t1`` are the true (sub-frame) segment bounds in
         seconds; when given, audio is sliced from them so it isn't quantized to
         the video frame grid (Phase 2). Video still shows the nearest frames.
+
+        When ``app_state.segment_end_continuous_time`` is on and ``audio_t1``
+        is given, the red marker snaps to that exact end time when the segment
+        finishes instead of stopping on the nearest frame's time — see
+        docs/advanced/playback.md.
         """
         self.stop()
 
@@ -309,6 +334,9 @@ class VideoSync(QObject):
             end_frame = min(start_frame + 1, self.total_frames - 1)
 
         self._segment_end_frame = end_frame
+        self._segment_end_time_s = (
+            audio_t1 if (audio_t1 is not None and self.app_state.segment_end_continuous_time) else None
+        )
         self.view.seek_trial_frame(start_frame, synchronous=True)
         self._apply_frame(start_frame)
         self._segment_end_frame = end_frame  # _apply_frame may have cleared it
@@ -350,10 +378,7 @@ class VideoSync(QObject):
                 channel_idx = min(channel_idx, segment.shape[1] - 1)
                 segment = segment[:, channel_idx]
 
-            if self.app_state.av_speed_coupled:
-                rate = (self.fps_playback / self.fps) * audio_sr
-            else:
-                rate = self.app_state.audio_playback_speed * audio_sr
+            rate = self._playback_speed() * audio_sr
 
             self._audio_player = PlayAudio()
             self._audio_player.play(data=segment, rate=float(rate), blocking=False)

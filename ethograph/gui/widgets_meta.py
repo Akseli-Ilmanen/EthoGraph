@@ -406,10 +406,22 @@ class MetaWidget(GridSectionContainer):
             self.app_state.playback_mic_key = getattr(reg.widget, "mic_name", None) or self.app_state.mics_sel
         if kind == PanelKind.NEO:
             self.plot_settings_widget.set_active_neo_plot(reg.widget)
+        self._update_video_selection(reg if kind == PanelKind.VIDEO else None)
         if kind == PanelKind.VIDEO:
             self.focus_video_context()
         elif kind in self._CONTEXT_KINDS:
             self._on_plot_focus(kind)
+
+    def _update_video_selection(self, reg):
+        """Mark exactly the active camera view as selected so wheel-zoom only
+        acts on it; a non-video active panel deselects all views (``reg`` None)."""
+        video_area = getattr(self.shell, "video_area", None)
+        if video_area is None:
+            return
+        active = reg.widget if reg is not None else None
+        for view in [getattr(video_area, "primary", None), *video_area.extras.values()]:
+            if view is not None:
+                view.selected = view is active
 
     def show_source_popup(self, anchor: QWidget | None = None):
         """Open the add-panel popup (bottom-bar ➕ button or Ctrl+N).

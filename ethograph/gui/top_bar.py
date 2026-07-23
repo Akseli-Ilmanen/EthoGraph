@@ -3,7 +3,7 @@
 Reorganises actions that previously lived on the right sidebar into a
 conventional application menu bar:
 
-    File | Changepoints | Neural | Help
+    File | Changepoints | Tools | Help
 
 Menu items come in three flavours:
 
@@ -116,13 +116,12 @@ class TopBarBuilder:
         menu_bar.clear()
         self._build_file_menu(menu_bar)
         self._build_changepoints_menu(menu_bar)
-        self._build_neural_menu(menu_bar)
         self._build_tools_menu(menu_bar)
         self._build_help_menu(menu_bar)
         self._add_sidebar_toggle_button(menu_bar)
 
     def _build_tools_menu(self, menu_bar):
-        """Tools menu — currently the GUI screen recorder."""
+        """Tools menu — screen recorder + neural (PSTH / firing rates) actions."""
         from qtpy.QtWidgets import QLabel, QWidgetAction
 
         from .dialog_screen_recorder import RecordButton
@@ -137,6 +136,21 @@ class TopBarBuilder:
         action = QWidgetAction(menu)
         action.setDefaultWidget(row)
         menu.addAction(action)
+
+        menu.addSeparator()
+        ephys = getattr(self.meta, "ephys_widget", None)
+        # Phy TraceView controls live in the right sidebar's "Phy viewer"
+        # context (shown when the Phy trace panel is clicked). Tools keeps
+        # only the interactive PSTH launcher and the firing-rate popup.
+        psth_open = self._first_method(ephys, "_open_psth")
+        act = (
+            menu.addAction("Open interactive PSTH…", psth_open)
+            if psth_open
+            else menu.addAction("Open interactive PSTH…")
+        )
+        if psth_open is None:
+            act.setEnabled(False)
+        menu.addAction("Firing rates…", lambda: self._popup_section("firing", "Firing rates", ephys))
 
     def _add_sidebar_toggle_button(self, menu_bar):
         """Checkable button at the far right of the menu bar toggling the
@@ -252,26 +266,6 @@ class TopBarBuilder:
             "Run changepoint correction…",
             lambda: self._popup_section("cp", "Changepoint correction", cp),
         )
-
-    # ------------------------------------------------------------------
-    # Neural menu
-    # ------------------------------------------------------------------
-
-    def _build_neural_menu(self, menu_bar):
-        menu = menu_bar.addMenu("&Neural")
-        ephys = getattr(self.meta, "ephys_widget", None)
-        # Phy TraceView controls now live in the right sidebar's "Phy viewer"
-        # context (shown when the Phy trace panel is clicked). The Neural menu
-        # keeps only the interactive PSTH launcher and the firing-rate popup.
-        psth_open = self._first_method(ephys, "_open_psth")
-        act = (
-            menu.addAction("Open interactive PSTH…", psth_open)
-            if psth_open
-            else menu.addAction("Open interactive PSTH…")
-        )
-        if psth_open is None:
-            act.setEnabled(False)
-        menu.addAction("Firing rates…", lambda: self._popup_section("firing", "Firing rates", ephys))
 
     # ------------------------------------------------------------------
     # Help menu

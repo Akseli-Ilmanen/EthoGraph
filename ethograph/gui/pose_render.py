@@ -743,6 +743,13 @@ class PoseDisplayManager:
                 view.overlay.set_edge_width(width)
                 view.request_draw()
 
+    def has_active_skeleton_overlay(self) -> bool:
+        """Whether a skeleton is currently drawn on at least one camera view."""
+        if not self._skeleton_enabled():
+            return False
+        prs = [self._primary_pr, *self._extra_pr.values()]
+        return any(pr is not None and self._resolved_skeleton_config(pr) for pr in prs)
+
     def refresh_skeleton(self) -> None:
         """Rebuild overlays with the current skeleton config (colours changed).
 
