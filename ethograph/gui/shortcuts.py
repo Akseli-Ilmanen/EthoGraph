@@ -126,7 +126,8 @@ def bind_global_shortcuts(meta_widget):
     bind("Alt+Left", lambda: _jump_spike(-1))
 
     def stop_recording():
-        record_btn = getattr(navigation_widget, "record_button", None)
+        top_bar = getattr(shell, "_top_bar", None)
+        record_btn = getattr(top_bar, "_record_button", None)
         if record_btn is not None:
             record_btn._stop_recording()
 

@@ -61,6 +61,44 @@ to reach a modern sound server.) Routing playback through `pw-play`/`paplay`
 instead makes audio audible but not sample-accurately synced, so it isn't
 suitable for precise annotation.
 
+(audio-formats)=
+### Supported audio formats
+
+The waveform, spectrogram and playback all read audio through
+[`audioio`](https://github.com/bendalab/audioio) (libsndfile). Supported
+**standalone** audio files:
+
+| Format | Extension | Notes |
+|--------|-----------|-------|
+| WAV    | `.wav`    | Recommended — PCM `.wav` loads fastest and is the best-tested path. |
+| FLAC   | `.flac`   | Lossless, compact. |
+| OGG    | `.ogg`    | Vorbis. |
+| MP3    | `.mp3`    | Requires a recent libsndfile (≥ 1.1). |
+
+**Audio embedded in a video (`.mp4`/`.mov`/`.avi`) is not read in place.** The
+AAC/other codecs inside a video container are not decoded for analysis, so these
+extensions are deliberately absent from the audio file picker. How to get the
+audio out depends on how you load:
+
+- **Drag & drop:** when you drop a video that has an embedded audio track, tick
+  **"extract audio"** on the cover page — EthoGraph extracts it to a throwaway
+  `.wav` that then feeds the normal `audio_mic-N` pipeline. This is a
+  convenience for one-off, single-session loads.
+- **Custom set-up:** there is no per-video extraction step here. Convert your
+  videos to audio **in bulk yourself** before loading (one WAV/FLAC/OGG per
+  clip), then point the loader at those files. For example, with `ffmpeg`:
+
+  ```bash
+  for f in *.mp4; do ffmpeg -i "$f" -vn -acodec pcm_s16le "${f%.mp4}.wav"; done
+  ```
+
+  Extracting once, up front, is faster and more reliable than re-decoding the
+  container on every load.
+
+If a file cannot be decoded you get a single log line naming the file and the
+reason (e.g. *"Cannot load audio from video container … enable 'extract audio'"*)
+rather than a stream of errors; convert the file to one of the formats above.
+
 ### Opening `.tsv` label files in Excel
 
 Excel on Windows may not correctly parse `.tsv` files when double-clicked due to regional delimiter settings.

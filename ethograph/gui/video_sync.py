@@ -4,18 +4,33 @@
 (``seek_to_frame``, ``play_segment``, ``frame_to_time`` …) but drives a
 :class:`~ethograph.gui.pygfx_video.CameraView` instead of napari dims.
 
-Playback is a QTimer stepping trial frames: the render rate is capped at
-30 fps and frames are skipped to honour ``fps_playback`` (this is the old
-"skip frames" behaviour, now the only path — there is no napari dims.play).
+Playback is a QTimer stepping trial frames at ``fps_playback``; there is no
+render-rate cap — the async decoder drops stale seek requests, so it is the
+natural limiter (no forced frame-skipping, no napari dims.play).
 """
 
+import logging
 from typing import Any, Optional
 
 from qtpy.QtCore import QObject, QTimer, Signal
+from qtpy.QtGui import QGuiApplication
 
 from ethograph.utils.audio import get_audio_sr
 
-MAX_RENDER_FPS = 30.0
+logger = logging.getLogger(__name__)
+
+# The frame timer is capped at the display refresh rate (queried at runtime):
+# the monitor can't show more distinct frames than that, and it bounds the
+# per-frame storm (frame_changed → plot/marker redraws, pose overlay, GL draws)
+# so fast playback can't flood the event loop / GL canvas and crash. When
+# fps_playback exceeds the refresh rate, playback steps several source frames
+# per tick and the async decoder drops the stale ones. Used only if the screen
+# refresh rate can't be queried.
+RENDER_FPS_FALLBACK = 60.0
+
+# Above this speed audio is unintelligible, so playback drops the audio-master
+# clock and free-runs the frame timer instead.
+AUDIO_SPEED_MAX = 2.5
 
 
 class VideoSync(QObject):
@@ -41,6 +56,16 @@ class VideoSync(QObject):
         self._audio_player: Any = None
         self._segment_end_frame: Optional[int] = None
         self._current_frame: int = 0
+
+        # Phase 3: audio-master clock (regular playback). When set, playback is
+        # driven from real audio output; the marker sits on the exact clock time
+        # via ``marker_time_override`` (read by plots_container).
+        self._audio_clock: Any = None
+        self._clock_start_frame: int = 0
+        self._clock_start_marker: float = 0.0
+        self.marker_time_override: Optional[float] = None
+        # Smooth mode: decode-paced (synchronous) stepping, every frame, no audio.
+        self._smooth_mode: bool = False
 
         self._play_timer = QTimer()
         self._play_timer.timeout.connect(self._advance)
@@ -71,10 +96,6 @@ class VideoSync(QObject):
     @property
     def fps_playback(self) -> float:
         return self.app_state.fps_playback
-
-    @property
-    def skip_frames(self) -> bool:
-        return self.app_state.skip_frames
 
     @property
     def is_playing(self) -> bool:
@@ -118,19 +139,68 @@ class VideoSync(QObject):
         if self.is_playing:
             return
         self._segment_end_frame = None
+        self._audio_clock = None
+        self._smooth_mode = False
+        self.marker_time_override = None
+
+        from .app_constants import PLAYBACK_MODE_SMOOTH, PLAYBACK_MODE_SYNCED
+
+        mode = self.app_state.effective_playback_mode()
+
+        # Audio-synced: drive playback from real audio output so marker/video
+        # can't drift. Audio only ever plays in this mode.
+        if mode == PLAYBACK_MODE_SYNCED and self.fps > 0 and self._playback_speed() <= AUDIO_SPEED_MAX:
+            t0, t1 = self._current_frame / self.fps, self.total_frames / self.fps
+            clock = self._build_audio_clock(t0, t1)
+            if clock is not None and clock.start():
+                self._audio_clock = clock
+                self._clock_start_frame = self._current_frame
+                self._clock_start_marker = self.frame_to_time(self._current_frame)
+                render_fps = min(self.fps_playback, self._render_cap())
+                if render_fps > 0:
+                    self._play_timer.start(int(1000 / render_fps))
+                return
+            # synced requested but no usable audio device → fall through silent.
+
+        if mode == PLAYBACK_MODE_SMOOTH:
+            # Decode-paced: show every frame in order (may run slower than fps).
+            self._smooth_mode = True
+            render_fps = min(self.fps_playback, self._render_cap()) if self.fps_playback > 0 else self._render_cap()
+            self._play_timer.start(int(1000 / render_fps))
+            return
+
+        # Skip frames (default): approximate real-time fps by dropping frames.
         self._start_timer()
 
     def stop(self):
         self._play_timer.stop()
         self._segment_end_frame = None
+        if self._audio_clock is not None:
+            self._audio_clock.stop()
+            self._audio_clock = None
+        self._smooth_mode = False
+        self.marker_time_override = None
         self._stop_audio()
         self.playback_stopped.emit()
+
+    def _playback_speed(self) -> float:
+        # Audio is always coupled to the playback FPS (no separate speed control).
+        return self.fps_playback / self.fps if self.fps else 1.0
 
     def toggle_pause_resume(self):
         self.stop() if self.is_playing else self.start()
 
+    def _render_cap(self) -> float:
+        """Max frame-timer rate: the display refresh rate (queried at runtime)."""
+        screen = QGuiApplication.primaryScreen()
+        rate = screen.refreshRate() if screen is not None else 0.0
+        return rate if rate and rate > 0 else RENDER_FPS_FALLBACK
+
     def _start_timer(self):
-        render_fps = min(self.fps_playback, MAX_RENDER_FPS)
+        # Fire at min(fps_playback, display refresh); at higher playback speeds
+        # step several frames per tick (the async decoder drops the stale ones)
+        # rather than flooding the event loop / GL canvas with timer ticks.
+        render_fps = min(self.fps_playback, self._render_cap())
         if render_fps <= 0:
             return
         self._step = self.fps_playback / render_fps
@@ -138,6 +208,12 @@ class VideoSync(QObject):
         self._play_timer.start(int(1000 / render_fps))
 
     def _advance(self):
+        if self._audio_clock is not None:
+            self._advance_from_clock()
+            return
+        if self._smooth_mode:
+            self._advance_smooth()
+            return
         self._frame_accum += self._step
         next_frame = int(round(self._frame_accum))
         max_frame = self.total_frames - 1
@@ -153,7 +229,78 @@ class VideoSync(QObject):
         self.view.seek_trial_frame(next_frame)
         self._apply_frame(next_frame)
 
-    def play_segment(self, start_frame: int, end_frame: int):
+    def _advance_smooth(self):
+        """Decode-paced stepping: advance one frame, decoding it synchronously so
+        no frame is ever skipped. Under load this runs slower than real-time
+        instead of dropping frames (the tradeoff for a smooth review pass)."""
+        next_frame = self._current_frame + 1
+        max_frame = self.total_frames - 1
+        if self._segment_end_frame is not None:
+            max_frame = min(max_frame, self._segment_end_frame)
+        next_frame = min(next_frame, max_frame)
+        self.view.seek_trial_frame(next_frame, synchronous=True)
+        self._apply_frame(next_frame)
+        if next_frame >= max_frame and self._segment_end_frame is None:
+            self.stop()
+
+    def _advance_from_clock(self):
+        """Drive video + marker from the audio clock's real playback position."""
+        clock = self._audio_clock
+        elapsed = clock.elapsed_s()
+        max_frame = self.total_frames - 1
+        frame = min(self._clock_start_frame + int(round(elapsed * self.fps)), max_frame)
+        # The playhead sits on the exact (sub-frame) clock time; plots_container
+        # reads this override so it isn't quantized to the displayed frame.
+        self.marker_time_override = self._clock_start_marker + elapsed
+        self.view.seek_trial_frame(frame)
+        self._apply_frame(frame)
+        if clock.finished or frame >= max_frame:
+            self.stop()
+
+    def _build_audio_clock(self, t0_s: float, t1_s: float):
+        """Preload the selected audio span and wrap it in an :class:`AudioClock`.
+
+        Returns ``None`` when audio is unavailable so the caller falls back to
+        the frame timer.
+        """
+        from .audio_clock import AudioClock
+
+        resolved, channel_idx = self.app_state.get_audio_source(self.app_state.playback_mic_selection())
+        audio_path = resolved or self.app_state.audio_path or self.audio_source
+        if not audio_path:
+            return None
+        try:
+            from audioio import AudioLoader
+        except ImportError:
+            return None
+        try:
+            with AudioLoader(audio_path) as data:
+                fs = data.rate
+                s0 = max(0, int(t0_s * fs))
+                s1 = min(len(data), int(t1_s * fs))
+                if s1 <= s0:
+                    return None
+                segment = data[s0:s1]
+            if segment.ndim > 1:
+                segment = segment[:, min(channel_idx, segment.shape[1] - 1)]
+            return AudioClock(segment, fs, speed=self._playback_speed())
+        except Exception:
+            logger.warning("Could not build audio clock; falling back.", exc_info=True)
+            return None
+
+    def play_segment(
+        self,
+        start_frame: int,
+        end_frame: int,
+        audio_t0: float | None = None,
+        audio_t1: float | None = None,
+    ):
+        """Play frames ``[start_frame, end_frame]`` with synchronized audio.
+
+        ``audio_t0``/``audio_t1`` are the true (sub-frame) segment bounds in
+        seconds; when given, audio is sliced from them so it isn't quantized to
+        the video frame grid (Phase 2). Video still shows the nearest frames.
+        """
         self.stop()
 
         start_frame = max(0, min(int(start_frame), self.total_frames - 1))
@@ -166,33 +313,53 @@ class VideoSync(QObject):
         self._apply_frame(start_frame)
         self._segment_end_frame = end_frame  # _apply_frame may have cleared it
 
-        audio_path = self.app_state.audio_path or self.audio_source
-        if audio_path:
-            try:
-                from audioio import AudioLoader, PlayAudio
-            except ImportError:
-                audio_path = None
-        if audio_path:
+        if self.fps > 0:
+            if audio_t0 is None or audio_t1 is None:
+                audio_t0, audio_t1 = start_frame / self.fps, end_frame / self.fps
+            self._start_audio(audio_t0, audio_t1)
+
+        self._start_timer()
+
+    def _start_audio(self, t0_s: float, t1_s: float):
+        """Play the selected audio channel over the trial-relative span ``[t0_s, t1_s]``.
+
+        Best-effort: a missing audio path, absent backend, or a failing output
+        device leaves playback video-only rather than aborting it.
+        """
+        # Follow the last-clicked audio panel (playback_mic_key); resolve both
+        # the file and channel from it, falling back to the global audio path.
+        resolved_path, channel_idx = self.app_state.get_audio_source(self.app_state.playback_mic_selection())
+        audio_path = resolved_path or self.app_state.audio_path or self.audio_source
+        if not audio_path:
+            return
+        try:
+            from audioio import AudioLoader, PlayAudio
+        except ImportError:
+            return
+
+        try:
             with AudioLoader(audio_path) as data:
                 audio_sr = data.rate
-                start_sample = int(start_frame / self.fps * audio_sr)
-                end_sample = int(end_frame / self.fps * audio_sr)
+                start_sample = max(0, int(t0_s * audio_sr))
+                end_sample = int(t1_s * audio_sr)
+                if end_sample <= start_sample:
+                    return
                 segment = data[start_sample:end_sample]
 
             if segment.ndim > 1:
-                _, channel_idx = self.app_state.get_audio_source()
-                n_channels = segment.shape[1]
-                channel_idx = min(channel_idx, n_channels - 1)
+                channel_idx = min(channel_idx, segment.shape[1] - 1)
                 segment = segment[:, channel_idx]
 
             if self.app_state.av_speed_coupled:
                 rate = (self.fps_playback / self.fps) * audio_sr
             else:
                 rate = self.app_state.audio_playback_speed * audio_sr
+
             self._audio_player = PlayAudio()
             self._audio_player.play(data=segment, rate=float(rate), blocking=False)
-
-        self._start_timer()
+        except Exception:
+            logger.warning("Audio playback failed; continuing video-only.", exc_info=True)
+            self._audio_player = None
 
     def _stop_audio(self):
         if self._audio_player:

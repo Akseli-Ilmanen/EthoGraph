@@ -296,6 +296,8 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
         # Coalesces deferred label redraws (see schedule_labels_redraw).
         self._labels_redraw_scheduled = False
+        # Coalesces deferred x-axis alignment (see schedule_axis_align).
+        self._axis_align_scheduled = False
 
         # --- Plots ---
         # Fixed singleton panels; everything else (lineplot/heatmap/
@@ -870,6 +872,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._label_indicator._reposition()
+        self.schedule_axis_align()
 
     def _update_label_indicator(self, time_s: float):
         # Label indicator (text badge) is only shown on video, not on plots
@@ -922,10 +925,14 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         # there is no single "bottom" panel to delegate them to.
         for widget in self._visible_panel_widgets():
             widget.plotItem.getAxis("bottom").setStyle(showValues=True)
+            if not getattr(widget, "_align_yhook", False):
+                widget._align_yhook = True
+                widget.plotItem.vb.sigYRangeChanged.connect(self.schedule_axis_align)
 
         self._apply_all_zoom_constraints()
         QTimer.singleShot(0, self._apply_panel_sizes)
         self.schedule_labels_redraw()
+        self.schedule_axis_align()
 
     def schedule_labels_redraw(self) -> None:
         """Redraw labels once the pending panel-content renders are done.
@@ -945,6 +952,104 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
     def _emit_labels_redraw(self) -> None:
         self._labels_redraw_scheduled = False
         self.labels_redraw_needed.emit()
+
+    # ------------------------------------------------------------------
+    # X-axis alignment across stacked panels
+    # ------------------------------------------------------------------
+
+    def schedule_axis_align(self) -> None:
+        """Line up the plotting rectangle (left + right insets) of every open
+        panel so their time axes start/end at the same pixel and one second is
+        the same width everywhere.
+
+        Two things break vertical alignment of stacked, x-linked panels:
+          * left y-axis width varies with tick-label length (a value with more
+            decimal places pushes the plot area right), so panels start at
+            different x positions and, for the same time range, have different
+            pixels-per-second;
+          * a colorbar (spectrogram, heatmap) reserves space on the right that
+            plain line/audio panels don't, so their right edges differ.
+
+        Deferred (coalesced, next tick) because axis widths are only accurate
+        after the pending content render + paint has updated the tick text.
+        """
+        if self._axis_align_scheduled:
+            return
+        self._axis_align_scheduled = True
+        QTimer.singleShot(0, self._align_axes_left)
+
+    def _align_axes_left(self) -> None:
+        """Pass 1: give every open panel a common left-axis width."""
+        self._axis_align_scheduled = False
+        panels = list(self._visible_plots())
+        if len(panels) < 2:
+            for plot in panels:
+                self._clear_right_reserve(plot)
+                plot.plotItem.getAxis("left").setWidth()
+                if getattr(plot, "_align_left_forced", False):
+                    plot.plotItem.hideAxis("left")
+                    plot._align_left_forced = False
+            return
+
+        naturals = []
+        for plot in panels:
+            axis = plot.plotItem.getAxis("left")
+            if not axis.isVisible():
+                # e.g. the raster hides its left axis; show a valueless gutter
+                # so its plot area still lines up with the others.
+                axis.show()
+                axis.setStyle(showValues=False)
+                plot._align_left_forced = True
+            axis.setWidth()  # reset to auto → maximumWidth() is the natural width
+            naturals.append(axis.maximumWidth())
+
+        target = max(naturals)
+        for plot in panels:
+            plot.plotItem.getAxis("left").setWidth(target)
+
+        # Right-inset measurement needs the new left widths laid out first.
+        QTimer.singleShot(0, self._align_axes_right)
+
+    def _align_axes_right(self) -> None:
+        """Pass 2: reserve matching right-side space so colorbar panels and
+        plain panels share the same right inset."""
+        panels = list(self._visible_plots())
+        if len(panels) < 2:
+            return
+
+        for plot in panels:
+            self._clear_right_reserve(plot)
+
+        insets = {plot: self._right_inset(plot) for plot in panels}
+        target = max(insets.values())
+        for plot in panels:
+            deficit = target - insets[plot]
+            if deficit < 1.0:
+                continue
+            axis = plot.plotItem.getAxis("right")
+            if axis.isVisible():
+                # An overlay (confidence/envelope scale) already owns the right
+                # axis — leave it; the panel still aligns on the left.
+                continue
+            plot.plotItem.showAxis("right")
+            axis.setStyle(showValues=False)
+            axis.setWidth(int(round(deficit)))
+            plot._align_right_reserved = True
+
+    def _clear_right_reserve(self, plot) -> None:
+        if getattr(plot, "_align_right_reserved", False):
+            axis = plot.plotItem.getAxis("right")
+            axis.setWidth()
+            plot.plotItem.hideAxis("right")
+            plot._align_right_reserved = False
+
+    @staticmethod
+    def _right_inset(plot) -> float:
+        """Pixels between the plotting rectangle's right edge and the widget's
+        right edge (captures a colorbar / right axis)."""
+        vb = plot.plotItem.getViewBox()
+        scene_rect = vb.mapRectToScene(vb.boundingRect())
+        return max(0.0, plot.width() - scene_rect.right())
 
     def _setup_xlinks_from_visible(self, visible_names: list[str] | None = None):
         """Keep all panels' x-ranges in sync via explicit setXRange.
@@ -1220,7 +1325,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self.update_time_marker_by_time(time_s)
         video = getattr(self.app_state, "video", None)
         if video:
-            frame = video.time_to_frame(time_s)
+            frame = video.time_to_frame(time_s, round_nearest=True)
             video.blockSignals(True)
             video.seek_to_frame(frame)
             video.blockSignals(False)
@@ -1228,7 +1333,12 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def update_time_marker_and_window(self, frame_number):
         video = getattr(self.app_state, "video", None)
-        if video:
+        # During audio-clock playback the video posts the exact (sub-frame)
+        # marker time so the playhead isn't quantized to the displayed frame.
+        override = getattr(video, "marker_time_override", None) if video is not None else None
+        if override is not None:
+            current_time = override
+        elif video:
             current_time = video.frame_to_time(frame_number)
         else:
             current_time = frame_number / self.app_state.video_fps
@@ -1324,6 +1434,7 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._apply_all_zoom_constraints()
         QTimer.singleShot(0, self._apply_panel_sizes)
         self.schedule_labels_redraw()
+        self.schedule_axis_align()
 
     # --- Time slider ---
 

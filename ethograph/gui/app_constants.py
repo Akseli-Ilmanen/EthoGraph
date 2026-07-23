@@ -179,3 +179,20 @@ AUDIO_SPEED_MIN = 0.1
 AUDIO_SPEED_MAX = 10.0
 AUDIO_SPEED_STEP = 0.25
 AUDIO_SPEED_DEFAULT = 1.0
+
+# =============================================================================
+# PLAYBACK MODE (video_sync.py, widgets_bottom_bar.py)
+# =============================================================================
+# Auto follows audio presence (audio → synced, none → smooth); the others are
+# explicit user overrides. Audio is only played in "synced" mode.
+PLAYBACK_MODE_AUTO = "auto"
+PLAYBACK_MODE_SYNCED = "synced"   # audio-master clock; drops video frames to stay locked
+PLAYBACK_MODE_SMOOTH = "smooth"   # decode-paced; every frame, may run slower than fps; no audio
+PLAYBACK_MODE_SKIP = "skip"       # approximate real-time fps by skipping frames; no audio
+
+# (display label, mode value) for the bottom-bar combo, in order.
+PLAYBACK_MODE_CHOICES = [
+    ("Audio-synced", PLAYBACK_MODE_SYNCED),
+    ("Smooth (every frame)", PLAYBACK_MODE_SMOOTH),
+    ("Real-time (skip frames)", PLAYBACK_MODE_SKIP),
+]

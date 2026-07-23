@@ -520,6 +520,8 @@ class PlotSettingsWidget(QWidget):
         if not key or key == plot.mic_name:
             return
         pc.set_audio_panel_mic(plot, key)
+        # Re-pinning the active panel's channel also redirects playback to it.
+        self.app_state.playback_mic_key = key
 
     # ------------------------------------------------------------------
     # Neo trace controls (context sidebar for the Neo viewer)

@@ -1013,8 +1013,8 @@ class LabelsWidget(QWidget):
                 self._apply_label()
 
         elif button == Qt.RightButton and self.app_state.video:
-            frame = self.app_state.video.time_to_frame(t_clicked)
-            self.app_state.video.seek_to_frame(frame)
+            # Seek to the nearest frame but keep the playhead on the exact click.
+            self._seek_to_frame(t_clicked)
 
     def _active_label_is_point(self) -> bool:
         """True iff the currently selected label class is declared as a point."""
@@ -1267,11 +1267,20 @@ class LabelsWidget(QWidget):
         self.refresh_labels_shapes_layer()
 
     def _seek_to_frame(self, time_s: float):
-        """Seek video and update time marker to the specified time in seconds."""
+        """Seek to *time_s*, keeping the red marker on the EXACT (sub-frame) time.
+
+        The video can only display discrete frames, so it shows the nearest one,
+        but the playhead stays on the true clicked/label time. This lets audio
+        syllable boundaries be placed precisely even between video frames. See
+        docs/source/advanced/playback.md.
+        """
         if hasattr(self.app_state, "video") and self.app_state.video:
-            video_frame = self.app_state.video.time_to_frame(time_s)
+            video_frame = self.app_state.video.time_to_frame(time_s, round_nearest=True)
+            # seek_to_frame fires frame_changed (syncs pose/extra cameras and
+            # snaps the marker to the frame); we then override the marker so it
+            # sits on the exact time, not the frame grid.
             self.app_state.video.seek_to_frame(video_frame)
-        elif self.plot_container:
+        if self.plot_container:
             self.plot_container.update_time_marker_by_time(time_s)
 
     def _delete_label(self):
@@ -1338,7 +1347,9 @@ class LabelsWidget(QWidget):
             # boundary instead of truncating up to a frame short.
             start_frame = self.app_state.video.time_to_frame(onset_s, round_nearest=True)
             end_frame = self.app_state.video.time_to_frame(offset_s, round_nearest=True)
-            self.app_state.video.play_segment(start_frame, end_frame)
+            # Video shows nearest frames; audio uses the exact label bounds so
+            # its tail isn't clipped to the frame grid (Phase 2).
+            self.app_state.video.play_segment(start_frame, end_frame, audio_t0=onset_s, audio_t1=offset_s)
         else:
             self._play_audio_segment(onset_s, offset_s)
 
@@ -1405,7 +1416,7 @@ class LabelsWidget(QWidget):
             overlay = getattr(self, "_label_overlay", None)
             if overlay is None:
                 return
-            if getattr(self, "_label_overlay_hidden", False):
+            if self.app_state.hide_label_text:
                 overlay.hide()
                 return
             if time_s is None:
@@ -1453,8 +1464,21 @@ class LabelsWidget(QWidget):
             overlay.raise_()
 
         self.app_state.current_frame_changed.connect(_update_labels_text)
+        self.app_state.hide_label_text_changed.connect(self._on_hide_label_text_changed)
         self._update_labels_text = _update_labels_text
         _update_labels_text()
+
+    def _on_hide_label_text_changed(self, *_):
+        """React to the bottom-bar "Hide label text" checkbox."""
+        overlay = getattr(self, "_label_overlay", None)
+        if overlay is None:
+            return
+        if self.app_state.hide_label_text:
+            overlay.hide()
+        else:
+            self._label_overlay_last_text = ""
+            if hasattr(self, "_update_labels_text"):
+                self._update_labels_text()
 
     @staticmethod
     def _overlay_stylesheet(color: str) -> str:

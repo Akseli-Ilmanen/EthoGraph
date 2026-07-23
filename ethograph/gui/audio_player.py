@@ -85,7 +85,10 @@ class AudioPlayer:
 
         from .plots_spectrogram import SharedAudioCache
 
-        audio_path = getattr(self.app_state, "audio_path", None)
+        # Follow the last-clicked audio panel (playback_mic_key); resolve both
+        # file and channel from it, falling back to the global audio path.
+        resolved_path, channel_idx = self.app_state.get_audio_source(self.app_state.playback_mic_selection())
+        audio_path = resolved_path or getattr(self.app_state, "audio_path", None)
         if not audio_path:
             return
 
@@ -94,7 +97,6 @@ class AudioPlayer:
             return
 
         fs = loader.rate
-        _, channel_idx = self.app_state.get_audio_source()
 
         start_sample = max(0, int(current_time * fs))
         end_sample = min(len(loader), int(end_time * fs))

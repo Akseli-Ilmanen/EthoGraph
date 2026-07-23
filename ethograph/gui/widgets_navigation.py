@@ -30,9 +30,6 @@ from ethograph.io.time_model import (
 )
 from ethograph.utils.sequences import get_label_instances, match_sequences
 
-from .app_constants import AUDIO_SPEED_MAX, AUDIO_SPEED_MIN, AUDIO_SPEED_STEP
-from .dialog_screen_recorder import RecordButton
-
 NAVIGATE_MODES = ["Trial", "Label", "Sequence"]
 SLIDER_SCOPES = [
     "Trial start → Trial end",
@@ -286,83 +283,11 @@ class NavigationWidget(QWidget):
         step_row.addWidget(self.time_jump_spin, stretch=1)
         navigate_layout.addLayout(step_row)
 
-        # ── Playback controls ────────────────────────────────────────
-        playback_group = QGroupBox("Playback controls")
-        self.playback_group = playback_group  # exposed for the video context sidebar
-        playback_layout = QVBoxLayout()
-        playback_layout.setSpacing(2)
-        playback_layout.setContentsMargins(2, 2, 2, 2)
-        playback_group.setLayout(playback_layout)
-
-        self.audio_speed_label = QLabel("Audio speed:")
-        self.audio_speed_spin = QDoubleSpinBox()
-        self.audio_speed_spin.setObjectName("audio_speed_spin")
-        self.audio_speed_spin.setRange(AUDIO_SPEED_MIN, AUDIO_SPEED_MAX)
-        self.audio_speed_spin.setSingleStep(AUDIO_SPEED_STEP)
-        self.audio_speed_spin.setDecimals(2)
-        self.audio_speed_spin.setSuffix("\u00d7")
-        self.audio_speed_spin.setValue(app_state.get_with_default("audio_playback_speed"))
-        self.audio_speed_spin.valueChanged.connect(self._on_audio_speed_changed)
-        # Playback FPS is edited only in the bottom playback bar; react to the
-        # app_state signal so audio speed stays coupled to it.
-        app_state.fps_playback_changed.connect(self._on_fps_playback_changed)
-
-        self.coupling_button = QPushButton("\U0001f517")
-        self.coupling_button.setCheckable(True)
-        self.coupling_button.setChecked(app_state.get_with_default("av_speed_coupled"))
-        self.coupling_button.setFixedWidth(30)
-        self.coupling_button.toggled.connect(self._on_coupling_toggled)
-
-        self.skip_frames_checkbox = QCheckBox("Skip frames")
-        self.skip_frames_checkbox.setChecked(app_state.get_with_default("skip_frames"))
-        self.skip_frames_checkbox.setToolTip(
-            "Skip frames to match playback FPS.\n"
-            "Good for low-resolution video and fast streaming/seeking.\n"
-            "For high-resolution video, disabling this\n"
-            "sometimes gives smoother playback."
-        )
-        self.skip_frames_checkbox.toggled.connect(lambda v: setattr(app_state, "skip_frames", v))
-
-        self.center_playback_checkbox = QCheckBox("Center playback")
-        self.center_playback_checkbox.setChecked(app_state.get_with_default("center_playback"))
-        self.center_playback_checkbox.toggled.connect(lambda v: setattr(app_state, "center_playback", v))
-
-        self.hide_label_text_cb = QCheckBox("Hide label text")
-        self.hide_label_text_cb.setToolTip("Hide the label name overlay shown on the video canvas during playback")
-        self.hide_label_text_cb.toggled.connect(self._on_hide_label_text_toggled)
-
-        checks_row = QHBoxLayout()
-        checks_row.addWidget(self.skip_frames_checkbox)
-        checks_row.addWidget(self.center_playback_checkbox)
-        checks_row.addWidget(self.hide_label_text_cb)
-        checks_row.addStretch()
-        playback_layout.addLayout(checks_row)
-
-        audio_row = QHBoxLayout()
-        audio_row.addWidget(self.audio_speed_label)
-        audio_row.addWidget(self.audio_speed_spin)
-        audio_row.addWidget(self.coupling_button)
-        audio_row.addStretch()
-        playback_layout.addLayout(audio_row)
-
-        self.rotate_btn = QPushButton("Rotate video/pose by 90°")
-        self.rotate_btn.setToolTip("Rotate all video and pose layers by 90° clockwise")
-        self.rotate_btn.clicked.connect(self._on_rotate_clicked)
-        rotate_row = QHBoxLayout()
-        rotate_row.addWidget(self.rotate_btn)
-        rotate_row.addStretch()
-        playback_layout.addLayout(rotate_row)
-
-        self.record_button = RecordButton(shell, parent=self)
-        record_row = QHBoxLayout()
-        record_row.addWidget(QLabel("Screenrecord gui video:"))
-        record_row.addWidget(self.record_button)
-        record_row.addStretch()
-        playback_layout.addLayout(record_row)
+        # Playback controls (mode / FPS / center / hide-label / rotate) now
+        # live in the bottom playback bar; screen recording is in Tools menu.
 
         # ── Assemble ─────────────────────────────────────────────────
         main_layout.addWidget(navigate_group)
-        main_layout.addWidget(playback_group)
         self.setLayout(main_layout)
 
         # Restore saved modes
@@ -994,55 +919,6 @@ class NavigationWidget(QWidget):
     # ==================================================================
     # Playback
     # ==================================================================
-
-    def _on_rotate_clicked(self):
-        pose_mgr = getattr(self.data_widget, "pose_mgr", None) if self.data_widget else None
-        if pose_mgr is None:
-            notify("No video/pose loaded to rotate.", severity="warning")
-            return
-        pose_mgr.on_rotate_video_pose()
-
-    def _get_recording_fps(self) -> float | None:
-        """Return the recording FPS from video metadata or NWB alignment."""
-        return self.app_state.video_fps
-
-    def _on_fps_playback_changed(self, fps_playback: float):
-        """Keep audio speed coupled to playback FPS (edited in the bottom bar)."""
-        if not self.app_state.av_speed_coupled:
-            return
-        recording_fps = self._get_recording_fps()
-        if recording_fps:
-            audio_speed = fps_playback / recording_fps
-            self.app_state.audio_playback_speed = audio_speed
-            self.audio_speed_spin.blockSignals(True)
-            self.audio_speed_spin.setValue(audio_speed)
-            self.audio_speed_spin.blockSignals(False)
-
-    def _on_audio_speed_changed(self, value: float):
-        self.app_state.audio_playback_speed = value
-        if self.app_state.av_speed_coupled:
-            recording_fps = self._get_recording_fps()
-            if recording_fps:
-                self.app_state.fps_playback = value * recording_fps
-
-    def _on_coupling_toggled(self, checked: bool):
-        self.app_state.av_speed_coupled = checked
-        self.coupling_button.setText("\U0001f517" if checked else "\U0001f513")
-
-    def _on_hide_label_text_toggled(self, checked: bool):
-        labels_widget = getattr(self, "_labels_widget", None)
-        if labels_widget is None:
-            return
-        labels_widget._label_overlay_hidden = checked
-        overlay = getattr(labels_widget, "_label_overlay", None)
-        if overlay is None:
-            return
-        if checked:
-            overlay.hide()
-        else:
-            labels_widget._label_overlay_last_text = ""
-            if hasattr(labels_widget, "_update_labels_text"):
-                labels_widget._update_labels_text()
 
     def _step_frame(self, direction: int):
         if not self.app_state.ready:

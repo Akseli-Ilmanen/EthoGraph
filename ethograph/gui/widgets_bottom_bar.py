@@ -8,13 +8,19 @@ from typing import TYPE_CHECKING
 from qtpy.QtCore import QRectF, QSize, Qt
 from qtpy.QtGui import QColor, QIcon, QMouseEvent, QPainter, QPainterPath, QPen, QPixmap
 from qtpy.QtWidgets import (
+    QCheckBox,
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QSlider,
+    QVBoxLayout,
     QWidget,
 )
+
+from .app_constants import PLAYBACK_MODE_CHOICES
 
 if TYPE_CHECKING:
     from ethograph.gui.app_state import ObservableAppState
@@ -50,6 +56,33 @@ def _playback_icon(kind: str, color: str = "#e6e6e6") -> QIcon:
     return QIcon(pm)
 
 
+def _speaker_icon(color: str = "#e6e6e6") -> QPixmap:
+    """Render a small antialiased speaker glyph for the playback-audio indicator."""
+    s = 64
+    pm = QPixmap(s, s)
+    pm.fill(Qt.transparent)
+    painter = QPainter(pm)
+    painter.setRenderHint(QPainter.Antialiasing)
+    c = QColor(color)
+    painter.setBrush(c)
+    painter.setPen(QPen(c, s * 0.06, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+    cone = QPainterPath()
+    cone.moveTo(s * 0.12, s * 0.40)
+    cone.lineTo(s * 0.26, s * 0.40)
+    cone.lineTo(s * 0.44, s * 0.24)
+    cone.lineTo(s * 0.44, s * 0.76)
+    cone.lineTo(s * 0.26, s * 0.60)
+    cone.lineTo(s * 0.12, s * 0.60)
+    cone.closeSubpath()
+    painter.drawPath(cone)
+    painter.setBrush(Qt.NoBrush)
+    painter.setPen(QPen(c, s * 0.07, Qt.SolidLine, Qt.RoundCap))
+    painter.drawArc(QRectF(s * 0.40, s * 0.32, s * 0.26, s * 0.36), -60 * 16, 120 * 16)
+    painter.drawArc(QRectF(s * 0.40, s * 0.22, s * 0.42, s * 0.56), -55 * 16, 110 * 16)
+    painter.end()
+    return pm
+
+
 class _InteractiveSlider(QSlider):
     """QSlider that tracks mouse interaction."""
 
@@ -73,19 +106,26 @@ class BottomPlaybackBar(QWidget):
         super().__init__(parent=parent)
         self.app_state = app_state
         self.setStyleSheet("QWidget { background-color: #2a2a2a; color: white; padding: 4px; }")
-        self.setFixedHeight(40)
+        self.setFixedHeight(64)
 
-        layout = QHBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(8, 4, 8, 4)
+        outer = QHBoxLayout(self)
+        outer.setSpacing(8)
+        outer.setContentsMargins(8, 4, 8, 4)
 
-        # Add-panel button — opens the SourcePopup (wired in main_window).
-        self.add_panel_btn = QPushButton("➕ Add panel")
+        # Add-panel button spans both rows on the left (opens SourcePopup).
+        self.add_panel_btn = QPushButton("➕ Add\npanel")
         self.add_panel_btn.setFixedWidth(90)
+        self.add_panel_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         self.add_panel_btn.setToolTip("Add a panel: drag a source onto the plot area, or press Enter  (Ctrl+N)")
-        layout.addWidget(self.add_panel_btn)
+        outer.addWidget(self.add_panel_btn)
 
-        # Play/pause button
+        rows = QVBoxLayout()
+        rows.setSpacing(4)
+        outer.addLayout(rows, stretch=1)
+
+        # ── Top row: play/pause + time slider ────────────────────────────
+        top = QHBoxLayout()
+        top.setSpacing(8)
         self._play_icon = _playback_icon("play")
         self._pause_icon = _playback_icon("pause")
         self.play_pause_btn = QPushButton()
@@ -94,31 +134,74 @@ class BottomPlaybackBar(QWidget):
         self.play_pause_btn.setFixedWidth(36)
         self.play_pause_btn.setToolTip("Play / Pause  (Space)")
         self.play_pause_btn.clicked.connect(self._on_play_pause_clicked)
-        layout.addWidget(self.play_pause_btn)
+        top.addWidget(self.play_pause_btn)
 
-        # Time slider
         self.time_slider = _InteractiveSlider(Qt.Horizontal)
         self.time_slider.setRange(0, _TIMEBAR_RESOLUTION)
-        self.time_slider.setMinimumHeight(20)
+        self.time_slider.setMinimumHeight(18)
         self.time_slider.setTracking(True)
         self.time_slider.valueChanged.connect(self._on_slider_value_changed)
-        layout.addWidget(self.time_slider, stretch=1)
+        top.addWidget(self.time_slider, stretch=1)
+        rows.addLayout(top)
 
-        # FPS display/edit
-        fps_label = QLabel("FPS:")
-        fps_label.setFixedWidth(40)
-        layout.addWidget(fps_label)
+        # ── Bottom row: audio channel · mode · FPS · toggles · rotate · trials
+        bot = QHBoxLayout()
+        bot.setSpacing(8)
 
+        # Playback-audio indicator (channel Play will sound); hidden if silent.
+        self._audio_ind_icon = QLabel()
+        self._audio_ind_icon.setPixmap(_speaker_icon().scaled(16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self._audio_ind_label = QLabel()
+        self._audio_ind_label.setStyleSheet("color: #b8b8b8;")
+        for w in (self._audio_ind_icon, self._audio_ind_label):
+            w.setToolTip("Channel used for audio playback (follows the last-clicked audio panel)")
+            w.hide()
+            bot.addWidget(w)
+
+        # Playback mode
+        self.playback_mode_combo = QComboBox()
+        for label_text, mode_value in PLAYBACK_MODE_CHOICES:
+            self.playback_mode_combo.addItem(label_text, mode_value)
+        self.playback_mode_combo.setToolTip(
+            "Audio-synced: audio + video locked (may drop frames).\n"
+            "Smooth: every video frame, may run slower than the set FPS, no audio.\n"
+            "Real-time (skip frames): approximate the set FPS by dropping frames, no audio."
+        )
+        self.playback_mode_combo.currentIndexChanged.connect(self._on_playback_mode_changed)
+        bot.addWidget(self.playback_mode_combo)
+
+        # Playback FPS (audio speed is coupled to it)
+        bot.addWidget(QLabel("FPS:"))
         self.fps_display = QLineEdit()
-        self.fps_display.setFixedWidth(50)
+        self.fps_display.setFixedWidth(46)
         self.fps_display.setText(str(app_state.get_with_default("fps_playback")))
         self.fps_display.setToolTip(
-            "Playback FPS for video.\n"
-            "Audio playback speed is coupled to this setting.\n"
-            "Set to recording FPS for normal audio playback."
+            "Playback FPS. Audio speed is coupled to this — set it to the recording FPS for normal-pitch audio."
         )
         self.fps_display.editingFinished.connect(self._on_fps_changed)
-        layout.addWidget(self.fps_display)
+        bot.addWidget(self.fps_display)
+
+        # Center playback + Hide label text
+        self.center_playback_cb = QCheckBox("Center")
+        self.center_playback_cb.setToolTip("Keep the playhead centered in the view during playback")
+        self.center_playback_cb.setChecked(bool(app_state.get_with_default("center_playback")))
+        self.center_playback_cb.toggled.connect(lambda v: setattr(self.app_state, "center_playback", v))
+        bot.addWidget(self.center_playback_cb)
+
+        self.hide_label_cb = QCheckBox("Hide label")
+        self.hide_label_cb.setToolTip("Hide the label-name overlay shown on the video during playback")
+        self.hide_label_cb.setChecked(bool(app_state.get_with_default("hide_label_text")))
+        self.hide_label_cb.toggled.connect(lambda v: setattr(self.app_state, "hide_label_text", v))
+        bot.addWidget(self.hide_label_cb)
+
+        # Rotate video/pose 90° (circular arrow)
+        self.rotate_btn = QPushButton("↻")
+        self.rotate_btn.setFixedSize(26, 22)
+        self.rotate_btn.setToolTip("Rotate all video and pose layers by 90° clockwise")
+        self.rotate_btn.clicked.connect(self._on_rotate_clicked)
+        bot.addWidget(self.rotate_btn)
+
+        bot.addStretch()
 
         # Trial navigation cluster: ◀ Trial <id> (i/n) ▶
         nav_style = """
@@ -136,25 +219,26 @@ class BottomPlaybackBar(QWidget):
         """
 
         self.prev_btn = QPushButton("◀")
-        self.prev_btn.setFixedSize(28, 24)
+        self.prev_btn.setFixedSize(28, 22)
         self.prev_btn.setStyleSheet(nav_style)
         self.prev_btn.setToolTip("Previous trial")
         self.prev_btn.setFocusPolicy(Qt.NoFocus)
         self.prev_btn.clicked.connect(self._on_prev_trial)
-        layout.addWidget(self.prev_btn)
+        bot.addWidget(self.prev_btn)
 
         self.trial_label = QLabel("Trial - / -")
         self.trial_label.setMinimumWidth(100)
         self.trial_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.trial_label)
+        bot.addWidget(self.trial_label)
 
         self.next_btn = QPushButton("▶")
-        self.next_btn.setFixedSize(28, 24)
+        self.next_btn.setFixedSize(28, 22)
         self.next_btn.setStyleSheet(nav_style)
         self.next_btn.setToolTip("Next trial")
         self.next_btn.setFocusPolicy(Qt.NoFocus)
         self.next_btn.clicked.connect(self._on_next_trial)
-        layout.addWidget(self.next_btn)
+        bot.addWidget(self.next_btn)
+        rows.addLayout(bot)
 
         # Wire app_state signals. trials_sel is a dynamic *_sel attribute with
         # no auto-generated signal — trial changes are announced via trial_changed.
@@ -162,11 +246,53 @@ class BottomPlaybackBar(QWidget):
         # set_data_widget), not current_frame — one time-based mapping both ways.
         app_state.fps_playback_changed.connect(self._update_fps_display)
         app_state.trial_changed.connect(self._update_trial_label)
+        app_state.trial_changed.connect(self._update_audio_indicator)
+        app_state.trial_changed.connect(self._update_playback_mode_combo)
+        app_state.playback_mic_key_changed.connect(self._update_audio_indicator)
         if hasattr(app_state, "ready_changed"):
             app_state.ready_changed.connect(self._update_trial_label)
+            app_state.ready_changed.connect(self._update_audio_indicator)
+            app_state.ready_changed.connect(self._update_playback_mode_combo)
 
         self._update_trial_label()
+        self._update_audio_indicator()
+        self._update_playback_mode_combo()
         self._sync_play_icon()
+
+    def _on_playback_mode_changed(self, index: int):
+        if index < 0:
+            return
+        self.app_state.playback_mode = self.playback_mode_combo.itemData(index)
+
+    def _update_playback_mode_combo(self):
+        """Reflect the effective mode (auto follows audio presence)."""
+        effective = self.app_state.effective_playback_mode()
+        idx = self.playback_mode_combo.findData(effective)
+        if idx >= 0:
+            self.playback_mode_combo.blockSignals(True)
+            self.playback_mode_combo.setCurrentIndex(idx)
+            self.playback_mode_combo.blockSignals(False)
+
+    def _on_rotate_clicked(self):
+        dw = getattr(self, "_data_widget", None)
+        pose_mgr = getattr(dw, "pose_mgr", None) if dw is not None else None
+        if pose_mgr is None:
+            from .notify import notify
+
+            notify("No video/pose loaded to rotate.", severity="warning")
+            return
+        pose_mgr.on_rotate_video_pose()
+
+    def _update_audio_indicator(self):
+        """Show the channel Play will sound, or hide the indicator when silent."""
+        label = self.app_state.playback_audio_label()
+        if label:
+            self._audio_ind_label.setText(label)
+            tooltip = self.app_state.playback_audio_tooltip() or ""
+            for w in (self._audio_ind_icon, self._audio_ind_label):
+                w.setToolTip(tooltip)
+        self._audio_ind_icon.setVisible(bool(label))
+        self._audio_ind_label.setVisible(bool(label))
 
     def _on_play_pause_clicked(self):
         """Toggle playback."""

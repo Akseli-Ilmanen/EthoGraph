@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,23 @@ from .app_constants import (  # noqa: E402
 from .plots_base import BasePlot, ThrottleDebounce  # noqa: E402
 
 
+def _audio_load_hint(audio_path, err: Exception) -> str:
+    """Build a single actionable message for an unreadable audio file."""
+    from ..io.validation import VIDEO_EXTENSIONS
+
+    ext = Path(str(audio_path)).suffix.lower()
+    if ext in VIDEO_EXTENSIONS:
+        return (
+            f"Cannot load audio from video container '{audio_path}': EthoGraph does "
+            "not decode embedded (e.g. AAC) audio in place. Re-drop the video with "
+            "the 'extract audio' option enabled, or supply a separate WAV/FLAC/OGG file."
+        )
+    return (
+        f"Failed to load audio file '{audio_path}' ({err}). Supported audio formats "
+        "are WAV, FLAC, OGG and MP3; convert other formats before loading."
+    )
+
+
 class SharedAudioCache:
     """Singleton cache for AudioLoader instances.
 
@@ -33,6 +51,9 @@ class SharedAudioCache:
     """
 
     _instances = {}
+    #: Paths that already failed to load, so we log the reason once instead of
+    #: spamming the console on every plot refresh / zoom.
+    _failed: set[str] = set()
     _lock = threading.Lock()
 
     @classmethod
@@ -41,13 +62,16 @@ class SharedAudioCache:
             return None
 
         with cls._lock:
+            if audio_path in cls._failed:
+                return None
             if audio_path not in cls._instances:
                 try:
                     from audioio import AudioLoader
 
                     cls._instances[audio_path] = AudioLoader(audio_path, buffersize=buffer_size)
-                except (OSError, IOError, ValueError) as e:
-                    logger.error("Failed to load audio file %s: %s", audio_path, e)
+                except (OSError, IOError, ValueError, RuntimeError) as e:
+                    cls._failed.add(audio_path)
+                    logger.error("%s", _audio_load_hint(audio_path, e))
                     return None
             return cls._instances[audio_path]
 
@@ -55,6 +79,7 @@ class SharedAudioCache:
     def clear_cache(cls):
         with cls._lock:
             cls._instances.clear()
+            cls._failed.clear()
 
 
 class SpectrogramPlot(BasePlot):

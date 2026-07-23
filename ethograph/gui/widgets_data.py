@@ -1120,20 +1120,11 @@ class DataWidget(QWidget):
         if self.app_state.ephys_source_map:
             self._ensure_default_ephys_stream()
 
-        # Row 2: mic selector
-        if self.app_state.has_audio:
-            self.mics_combo = QComboBox()
-            self.mics_combo.setObjectName("mics_combo")
-            self.mics_combo.addItems(expanded)
-            self.mics_combo.currentTextChanged.connect(self._on_mics_changed)
-            self.controls.append(self.mics_combo)
-            self._mic_label = QLabel("Mic:")
-            self.panels_row2_layout.addWidget(self._mic_label)
-            self.panels_row2_layout.addWidget(self.mics_combo)
-            self.panels_row2_layout.addStretch()
-            self._audio_row_widgets.extend([self._mic_label, self.mics_combo])
-            if expanded:
-                self.app_state.set_key_sel("mics", expanded[0])
+        # Seed the default mic/channel selection. There is no visible global
+        # "Mic:" combo — playback follows the last-clicked audio panel and each
+        # panel's own "Channel:" combo (see docs/source/advanced/playback.md).
+        if self.app_state.has_audio and expanded:
+            self.app_state.set_key_sel("mics", expanded[0])
 
         # Row 3: feature view controls
         self.panels_row3_layout.addWidget(QLabel("View:"))
@@ -1414,17 +1405,6 @@ class DataWidget(QWidget):
             pc.set_spectrogram_visible(True)
         pc.update_audio_panels()
 
-    def _on_mics_changed(self, mic_name):
-        if not self.app_state.ready or not mic_name:
-            return
-        self.app_state.set_key_sel("mics", mic_name)
-        self.update_audio()
-        self.plot_container.clear_audio_cache()
-        self.plot_container.update_audio_panels()
-        current_plot = self.plot_container.get_current_plot()
-        xmin, xmax = current_plot.get_current_xlim()
-        self.update_main_plot(t0=xmin, t1=xmax)
-
     def _get_audio_channel_count(self, audio_path):
         try:
             from audioio import AudioLoader
@@ -1491,25 +1471,15 @@ class DataWidget(QWidget):
                 expanded_items.append(mic_file)
         return expanded_items
 
-    def update_mics_combo_for_trial(self, ds):
-        combo = getattr(self, "mics_combo", None)
-        if combo is None:
-            return
+    def refresh_audio_sources_for_trial(self, ds):
+        """Rebuild ``audio_source_map`` for the current trial (media paths can be
+        per-trial) and keep the ``mics_sel`` selection valid."""
         new_items = self.app_state.nwb_alignment.mics
         if not new_items:
             return
-        new_items = np.array(new_items, dtype=str)
-        prev_index = combo.currentIndex()
-        combo.blockSignals(True)
-        combo.clear()
-        expanded = self._expand_mics_with_channels(new_items)
-        combo.addItems(expanded)
-        if prev_index < combo.count():
-            combo.setCurrentIndex(prev_index)
-        else:
-            combo.setCurrentIndex(0)
-        combo.blockSignals(False)
-        self.app_state.set_key_sel("mics", combo.currentText())
+        expanded = self._expand_mics_with_channels(np.array(new_items, dtype=str))
+        if expanded and getattr(self.app_state, "mics_sel", None) not in expanded:
+            self.app_state.set_key_sel("mics", expanded[0])
 
     def _update_device_sels_for_trial(self, ds):
         cameras = self.app_state.nwb_alignment.cameras
@@ -2199,9 +2169,6 @@ class DataWidget(QWidget):
             if saved is None or find_combo_index(primary_combo, saved) < 0:
                 self.app_state.primary_camera = get_combo_value(primary_combo)
 
-        mics_combo = getattr(self, "mics_combo", None)
-        if isinstance(mics_combo, QComboBox):
-            _normalize_from_combo("mics", mics_combo)
 
     # ------------------------------------------------------------------
     # Trial change
@@ -2367,7 +2334,7 @@ class DataWidget(QWidget):
                     src.set_trial(trial_idx)
 
         self._update_device_sels_for_trial(self.app_state.ds)
-        self.update_mics_combo_for_trial(self.app_state.ds)
+        self.refresh_audio_sources_for_trial(self.app_state.ds)
 
         features_combo = self.combos.get("features")
         fallback_feature = features_combo.itemText(0) if features_combo and features_combo.count() else None

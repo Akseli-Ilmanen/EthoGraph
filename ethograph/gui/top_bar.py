@@ -117,8 +117,26 @@ class TopBarBuilder:
         self._build_file_menu(menu_bar)
         self._build_changepoints_menu(menu_bar)
         self._build_neural_menu(menu_bar)
+        self._build_tools_menu(menu_bar)
         self._build_help_menu(menu_bar)
         self._add_sidebar_toggle_button(menu_bar)
+
+    def _build_tools_menu(self, menu_bar):
+        """Tools menu — currently the GUI screen recorder."""
+        from qtpy.QtWidgets import QLabel, QWidgetAction
+
+        from .dialog_screen_recorder import RecordButton
+
+        menu = menu_bar.addMenu("&Tools")
+        row = QWidget()
+        row_layout = QVBoxLayout(row)
+        row_layout.setContentsMargins(10, 6, 10, 6)
+        row_layout.addWidget(QLabel("Screen-record the GUI video:"))
+        self._record_button = RecordButton(self.shell)
+        row_layout.addWidget(self._record_button)
+        action = QWidgetAction(menu)
+        action.setDefaultWidget(row)
+        menu.addAction(action)
 
     def _add_sidebar_toggle_button(self, menu_bar):
         """Checkable button at the far right of the menu bar toggling the

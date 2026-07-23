@@ -32,7 +32,7 @@ from qtpy.QtWidgets import QLabel, QVBoxLayout, QWidget
 _CONTEXT_MAP: dict[str, list[str]] = {
     # The old napari-era "Space/Cameras" group (slot) is gone — cameras are
     # opened by drag-drop and there is no layers/space-plot toggle.
-    "video": ["pose", "playback"],
+    "video": ["pose"],
     # Audio trace: channel + envelope controls + shared axes. Spectrogram:
     # channel + its panel.
     "audiotrace": ["audiochannel", "energy", "shared"],

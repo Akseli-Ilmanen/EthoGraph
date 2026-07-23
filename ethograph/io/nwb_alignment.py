@@ -1001,7 +1001,7 @@ def _add_external_series(
             ImageSeries(
                 rate=float(rate),
                 starting_time=seg_starts[0],
-                num_samples=np.uint64(sum(int(n) for n in seg_nsamples)),
+                num_samples=int(sum(int(n) for n in seg_nsamples)),
                 **kwargs,
             )
         )

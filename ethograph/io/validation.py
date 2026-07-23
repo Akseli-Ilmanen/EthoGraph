@@ -20,15 +20,17 @@ if TYPE_CHECKING:
 # Not all tested
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".wmv"}
 
+#: Standalone audio files the waveform/spectrogram/playback loader
+#: (``audioio.AudioLoader`` → libsndfile) can decode directly.  Video
+#: containers (``.mp4``/``.mov``/``.avi``) are deliberately excluded: their
+#: embedded AAC/etc. streams are NOT loaded in place — the cover page extracts
+#: them to a throwaway ``.wav`` via the "extract audio" option instead.  See
+#: docs/source/advanced/troubleshooting.md ("Audio formats").
 AUDIO_EXTENSIONS = {
     ".wav",
     ".flac",
     ".ogg",
     ".mp3",
-    ".aac",
-    ".mp4",
-    ".avi",
-    ".mov",
 }
 
 POSE_EXTENSIONS = {".h5", ".hdf5", ".csv", ".slp", ".nwb"}

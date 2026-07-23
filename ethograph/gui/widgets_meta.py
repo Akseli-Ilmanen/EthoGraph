@@ -150,7 +150,6 @@ class MetaWidget(GridSectionContainer):
         self.changepoints_widget.data_widget = self.data_widget
         self.changepoints_widget.set_motif_mappings(self.labels_widget._mappings)
         self.navigation_widget.set_mappings(self.labels_widget._mappings)
-        self.navigation_widget._labels_widget = self.labels_widget
         self.navigation_widget._data_widget = self.data_widget
         self.navigation_widget.set_plot_container(self.plot_container)
         self.ephys_widget.set_plot_container(self.plot_container)
@@ -293,7 +292,6 @@ class MetaWidget(GridSectionContainer):
             "spectrogram": getattr(ps, "spectrogram_panel", None),
             "heatmap": getattr(ps, "heatmap_panel", None),
             "shared": getattr(ps, "shared_widget", None),
-            "playback": getattr(nav, "playback_group", None),
         }
         panel = RightContextPanel(sections)
         panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -404,6 +402,8 @@ class MetaWidget(GridSectionContainer):
             self.data_widget.set_active_space_plot(reg.widget)
         if kind in (PanelKind.AUDIOTRACE, PanelKind.SPECTROGRAM):
             self.plot_settings_widget.set_active_audio_plot(reg.widget)
+            # Playback follows the last-clicked audio panel (its pin, else global).
+            self.app_state.playback_mic_key = getattr(reg.widget, "mic_name", None) or self.app_state.mics_sel
         if kind == PanelKind.NEO:
             self.plot_settings_widget.set_active_neo_plot(reg.widget)
         if kind == PanelKind.VIDEO:

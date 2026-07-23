@@ -30,6 +30,13 @@ Detection methods (kinematic, audio, ruptures) and label-boundary correction.
 
 
 
+:::{grid-item-card} {fas}`play` Playback & marker
+:link: playback
+:link-type: doc
+
+Precise (sub-frame) clicking, the timeline marker, and which channel Play sounds.
+:::
+
 :::{grid-item-card} {fas}`keyboard` Shortcuts
 :link: shortcuts
 :link-type: doc
@@ -53,6 +60,7 @@ Common issues and fixes.
 metadata
 labels/index
 changepoints/index
+playback
 shortcuts
 troubleshooting
 ```

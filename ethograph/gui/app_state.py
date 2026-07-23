@@ -136,7 +136,9 @@ class AppStateSpec:
         "fps_playback": (float, 30.0, True),
         "audio_playback_speed": (float, 1.0, True),
         "av_speed_coupled": (bool, True, True),
-        "skip_frames": (bool, True, True),
+        # "auto" | "synced" | "smooth" | "skip" — global playback preference.
+        "playback_mode": (str, "auto", True),
+        "hide_label_text": (bool, False, True),
         "filter_warnings": (bool, True, True),
         "center_playback": (bool, False, True),
         "time_jump_s": (float, 0.1, True),
@@ -179,6 +181,9 @@ class AppStateSpec:
         "neurons_path": (str | None, None, True, SCOPE_LOCAL),
         "video_path": (str | None, None, False),
         "audio_path": (str | None, None, False),
+        # audio_source_map key driving audio PLAYBACK (last-clicked audio panel);
+        # None follows the global mic combo. Distinct from what each panel draws.
+        "playback_mic_key": (str | None, None, False),
         "pose_path": (str | None, None, False),
         "source_software": (str | None, None, True, SCOPE_LOCAL),
         "image_paths": (list[str], [], True, SCOPE_LOCAL),
@@ -515,6 +520,53 @@ class ObservableAppState(QObject):
             ephys_path = os.path.normpath(os.path.join(os.path.dirname(base_ephys_path), filename))
 
         return ephys_path, stream_id, channel_idx
+
+    def playback_mic_selection(self) -> str | None:
+        """audio_source_map key that drives playback: the last-clicked panel's
+        pin, else the global mic. Only returns a key valid in the current
+        dataset (a stale key from a prior dataset is ignored)."""
+        for key in (self.playback_mic_key, getattr(self, "mics_sel", None)):
+            if key and key in self.audio_source_map:
+                return key
+        return None
+
+    def playback_audio_label(self) -> str | None:
+        """Compact indicator label ``ChN: first-10-chars…`` (full name in tooltip)."""
+        key = self.playback_mic_selection()
+        if not key:
+            return None
+        mic_file, ch = self.audio_source_map.get(key, (key, 0))
+        name = str(mic_file)
+        short = name[:10] + ("…" if len(name) > 10 else "")
+        return f"Ch{ch + 1}: {short}"
+
+    def playback_audio_tooltip(self) -> str | None:
+        """Full channel description for the indicator's hover tooltip."""
+        key = self.playback_mic_selection()
+        if not key:
+            return None
+        mic_file, ch = self.audio_source_map.get(key, (key, 0))
+        return f"Playback channel {ch + 1} — {mic_file}"
+
+    def has_playback_audio(self) -> bool:
+        """Whether an audio channel is available to play back."""
+        return bool(getattr(self, "has_audio", False) or self.audio_path or self.playback_mic_selection())
+
+    def effective_playback_mode(self) -> str:
+        """Resolve ``playback_mode`` to a concrete mode for the current data.
+
+        ``auto`` follows audio presence; an explicit ``synced`` with no audio
+        degrades to ``smooth`` (there is nothing to synchronise to).
+        """
+        from .app_constants import PLAYBACK_MODE_AUTO, PLAYBACK_MODE_SMOOTH, PLAYBACK_MODE_SYNCED
+
+        mode = self.playback_mode
+        has_audio = self.has_playback_audio()
+        if mode == PLAYBACK_MODE_AUTO:
+            return PLAYBACK_MODE_SYNCED if has_audio else PLAYBACK_MODE_SMOOTH
+        if mode == PLAYBACK_MODE_SYNCED and not has_audio:
+            return PLAYBACK_MODE_SMOOTH
+        return mode
 
     def get_audio_source(self, mic_name: str | None = None) -> tuple[str | None, int]:
         """Get audio file path and channel index for a mic selection.
