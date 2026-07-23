@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Playback &amp; the timeline marker &#8212; ethograph</title>
+    <title>Video &amp; Audio playback &#8212; ethograph</title>
   
   
   
@@ -382,7 +382,7 @@
 <li class="toctree-l2"><a class="reference internal" href="changepoints/correction.html">Changepoint correction</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 current active"><a class="current reference internal" href="#">Playback &amp; the timeline marker</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Video &amp; Audio playback</a></li>
 <li class="toctree-l1"><a class="reference internal" href="shortcuts.html">Keyboard Shortcuts</a></li>
 <li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
 </ul>
@@ -428,7 +428,7 @@
     
     <li class="breadcrumb-item"><a href="index.html" class="nav-link">Advanced</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Playback &amp; the timeline marker</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Video &amp; Audio playback</span></li>
   </ul>
 </nav>
 </div>
@@ -445,8 +445,8 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section class="tex2jax_ignore mathjax_ignore" id="playback-the-timeline-marker">
-<h1>Playback &amp; the timeline marker<a class="headerlink" href="#playback-the-timeline-marker" title="Link to this heading">#</a></h1>
+  <section class="tex2jax_ignore mathjax_ignore" id="video-audio-playback">
+<h1>Video &amp; Audio playback<a class="headerlink" href="#video-audio-playback" title="Link to this heading">#</a></h1>
 <section id="the-red-marker-is-on-time-not-the-video-frame">
 <h2>The red marker is on <em>time</em>, not the video frame<a class="headerlink" href="#the-red-marker-is-on-time-not-the-video-frame" title="Link to this heading">#</a></h2>
 <p>Video is recorded as discrete frames (e.g. ~47 per second), but audio and other
@@ -480,9 +480,39 @@ runs slower than the set FPS rather than skipping frames. No audio.</p></li>
 <li><p><strong>Real-time (skip frames)</strong> — approximates the set FPS by skipping frames when
 needed. No audio.</p></li>
 </ul>
-<p>The default follows your data (audio present → Audio-synced, otherwise Smooth);
-once you pick a mode it is remembered. Playback speed is the <strong>FPS</strong> field next
-to the dropdown — audio pitch is normal when FPS equals the recording rate.</p>
+<section id="speed-and-high-rate-ultrasonic-audio">
+<h3>Speed and high-rate (ultrasonic) audio<a class="headerlink" href="#speed-and-high-rate-ultrasonic-audio" title="Link to this heading">#</a></h3>
+<p>Playback speed is set as a <strong>% of the original recording</strong> (the “Speed” field
+in the bottom bar), not a raw FPS — 100% is native speed, 50% half (one octave
+lower), 200% double. It drives video FPS and audio pitch/rate together; a
+readout shows the effective rates, e.g. <code class="docutils literal notranslate"><span class="pre">(120.0</span> <span class="pre">fps,</span> <span class="pre">44.1</span> <span class="pre">kHz)</span></code>.</p>
+<p>Audio is resampled to a fixed 48 kHz output, so the sound card’s max rate never
+caps playback. Any speed works (very fast audio just chirps), and <strong>high-rate
+recordings</strong> (e.g. ultrasonic audio at 200–384 kHz) play even though no card
+outputs those rates directly — set the speed <strong>well below</strong> 100% to
+<strong>time-expand</strong> them into the audible range (e.g. 10% shifts a 50 kHz call to
+~5 kHz), still locked to the video.</p>
+</section>
+</section>
+<section id="video-proxies-for-smooth-navigation">
+<h2>Video proxies for smooth navigation<a class="headerlink" href="#video-proxies-for-smooth-navigation" title="Link to this heading">#</a></h2>
+<p>Large or high-resolution video can be slow to move through. The <strong>Proxy</strong>
+checkbox in the bottom bar makes it responsive by playing a smaller,
+low-resolution copy instead of the original.</p>
+<p>Enabling it generates that copy in the background for every visible video (the
+app stays responsive meanwhile). A badge on each panel shows progress —
+<strong>⏳ proxy…</strong>, <strong>✓ proxy</strong>, or <strong>⚠ proxy</strong> on failure (which keeps the original)
+— and the panel switches to the proxy once ready. Uncheck to return to full
+resolution.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The proxy has the <strong>same frame rate and frame count</strong> as the original — only
+the resolution drops — so labels and timing stay exactly aligned. Use full
+resolution to inspect fine visual detail, the proxy for general navigation.</p>
+</div>
+<p>Proxies are cached in one central folder, <strong><code class="docutils literal notranslate"><span class="pre">~/.ethograph/proxies</span></code></strong>, reused
+across sessions and generated only once per source file. To free disk space,
+just delete that folder — proxies regenerate on demand.</p>
 </section>
 <section id="which-channel-play-will-sound">
 <h2>Which channel Play will sound<a class="headerlink" href="#which-channel-play-will-sound" title="Link to this heading">#</a></h2>
@@ -496,6 +526,24 @@ audio panel is active).</p></li>
 </ul>
 <p>The bottom bar shows a small speaker icon with the active channel as
 <code class="docutils literal notranslate"><span class="pre">ChN:</span> <span class="pre">filename…</span></code>; hover over it to see the full channel name.</p>
+</section>
+<section id="playing-back-a-selected-label-segment">
+<h2>Playing back a selected label segment<a class="headerlink" href="#playing-back-a-selected-label-segment" title="Link to this heading">#</a></h2>
+<p>Left-click a label to select it, then press <strong>V</strong> (or the segment play
+button) to play just that segment. The video always shows the <strong>nearest
+frame</strong> to the label’s onset/offset, since it can only display whole frames —
+but where the red marker (and playback) <strong>ends</strong> is a choice:</p>
+<ul class="simple">
+<li><p><strong>Nearest frame end</strong> (default) — the marker stops on the time of the last
+displayed frame, which may be up to half a frame before or after the
+label’s true offset.</p></li>
+<li><p><strong>Exact time end</strong> — the marker continues past the last displayed frame and
+stops on the label’s true (sub-frame) offset time, matching where the audio
+actually ends.</p></li>
+</ul>
+<p>Toggle this with the <strong>“Play to exact time (not nearest frame)”</strong> checkbox at
+the top of the Labels panel. This is a global preference (applies across
+datasets).</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>During playback the marker is driven by the <strong>audio output itself</strong> (an
@@ -555,8 +603,13 @@ unintelligible) and the video free-runs.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-red-marker-is-on-time-not-the-video-frame">The red marker is on <em>time</em>, not the video frame</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#playback-modes">Playback modes</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#playback-modes">Playback modes</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#speed-and-high-rate-ultrasonic-audio">Speed and high-rate (ultrasonic) audio</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#video-proxies-for-smooth-navigation">Video proxies for smooth navigation</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#which-channel-play-will-sound">Which channel Play will sound</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#playing-back-a-selected-label-segment">Playing back a selected label segment</a></li>
 </ul>
   </nav></div>
 

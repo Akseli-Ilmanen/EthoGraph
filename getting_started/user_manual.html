@@ -585,6 +585,22 @@ the segment you just labelled.</p>
 <li><p>export labels</p></li>
 </ul>
 </section>
+<section id="video-audio-playback">
+<h2>Video &amp; audio playback<a class="headerlink" href="#video-audio-playback" title="Link to this heading">#</a></h2>
+<p>Two things are easy to miss when you first play back a recording:</p>
+<ul class="simple">
+<li><p><strong>The red timeline marker tracks exact time, not the video frame.</strong> Video is
+discrete frames, but audio and other signals have far finer resolution, so
+clicking a plot places the marker (and any label) at the exact time you
+clicked — the video just seeks to the nearest frame as a visual reference.</p></li>
+<li><p><strong>Only “Audio-synced” playback plays sound.</strong> The playback mode dropdown in
+the bottom bar also offers silent “Smooth” and “Real-time” modes; pick
+Audio-synced whenever you need to hear the audio locked to the video.</p></li>
+</ul>
+<p>See <a class="reference internal" href="../advanced/playback.html"><span class="doc">Video &amp; Audio playback</span></a> for the full details, including playback
+speed/pitch, video proxies for smooth scrubbing, and which audio channel
+Play uses.</p>
+</section>
 <section id="feature-dropdowns">
 <h2>Feature dropdowns<a class="headerlink" href="#feature-dropdowns" title="Link to this heading">#</a></h2>
 <p>To showcase some <code class="docutils literal notranslate"><span class="pre">ethograph</span></code> functionalities, we will use pose data from a carrion crow performing a tool-use task (Moll et al., 2025¹). The <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.Dataset</span></code></a> is from one behavioural trial, and shows position, velocity, speed, and acceleration for 3 keypoints tracked in 3D.</p>
@@ -1471,6 +1487,7 @@ from the start page. The notebooks that built them are in the
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#labelling">Labelling</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#video-audio-playback">Video &amp; audio playback</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#feature-dropdowns">Feature dropdowns</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changepoints">Changepoints</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#storing-trials-dataset-vs-trialtree">Storing trials: Dataset vs TrialTree</a></li>

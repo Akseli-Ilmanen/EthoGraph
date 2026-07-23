@@ -30,7 +30,7 @@ Detection methods (kinematic, audio, ruptures) and label-boundary correction.
 
 
 
-:::{grid-item-card} {fas}`play` Playback & marker
+:::{grid-item-card} {fas}`play` Video & Audio playback
 :link: playback
 :link-type: doc
 

@@ -1,4 +1,4 @@
-# Playback & the timeline marker
+# Video & Audio playback
 
 ## The red marker is on *time*, not the video frame
 
@@ -33,9 +33,44 @@ The **playback mode** dropdown in the bottom bar picks how video (and audio) pla
 - **Real-time (skip frames)** — approximates the set FPS by skipping frames when
   needed. No audio.
 
-The default follows your data (audio present → Audio-synced, otherwise Smooth);
-once you pick a mode it is remembered. Playback speed is the **FPS** field next
-to the dropdown — audio pitch is normal when FPS equals the recording rate.
+
+### Speed and high-rate (ultrasonic) audio
+
+Playback speed is set as a **% of the original recording** (the "Speed" field
+in the bottom bar), not a raw FPS — 100% is native speed, 50% half (one octave
+lower), 200% double. It drives video FPS and audio pitch/rate together; a
+readout shows the effective rates, e.g. `(120.0 fps, 44.1 kHz)`.
+
+Audio is resampled to a fixed 48 kHz output, so the sound card's max rate never
+caps playback. Any speed works (very fast audio just chirps), and **high-rate
+recordings** (e.g. ultrasonic audio at 200–384 kHz) play even though no card
+outputs those rates directly — set the speed **well below** 100% to
+**time-expand** them into the audible range (e.g. 10% shifts a 50 kHz call to
+~5 kHz), still locked to the video.
+
+
+## Video proxies for smooth navigation
+
+Large or high-resolution video can be slow to move through. The **Proxy**
+checkbox in the bottom bar makes it responsive by playing a smaller,
+low-resolution copy instead of the original.
+
+Enabling it generates that copy in the background for every visible video (the
+app stays responsive meanwhile). A badge on each panel shows progress —
+**⏳ proxy…**, **✓ proxy**, or **⚠ proxy** on failure (which keeps the original)
+— and the panel switches to the proxy once ready. Uncheck to return to full
+resolution.
+
+```{note}
+The proxy has the **same frame rate and frame count** as the original — only
+the resolution drops — so labels and timing stay exactly aligned. Use full
+resolution to inspect fine visual detail, the proxy for general navigation.
+```
+
+Proxies are cached in one central folder, **`~/.ethograph/proxies`**, reused
+across sessions and generated only once per source file. To free disk space,
+just delete that folder — proxies regenerate on demand.
+
 
 ## Which channel Play will sound
 
@@ -49,6 +84,24 @@ selection you made**, so you always hear what you are looking at:
 
 The bottom bar shows a small speaker icon with the active channel as
 `ChN: filename…`; hover over it to see the full channel name.
+
+## Playing back a selected label segment
+
+Left-click a label to select it, then press **V** (or the segment play
+button) to play just that segment. The video always shows the **nearest
+frame** to the label's onset/offset, since it can only display whole frames —
+but where the red marker (and playback) **ends** is a choice:
+
+- **Nearest frame end** (default) — the marker stops on the time of the last
+  displayed frame, which may be up to half a frame before or after the
+  label's true offset.
+- **Exact time end** — the marker continues past the last displayed frame and
+  stops on the label's true (sub-frame) offset time, matching where the audio
+  actually ends.
+
+Toggle this with the **"Play to exact time (not nearest frame)"** checkbox at
+the top of the Labels panel. This is a global preference (applies across
+datasets).
 
 ```{note}
 During playback the marker is driven by the **audio output itself** (an
