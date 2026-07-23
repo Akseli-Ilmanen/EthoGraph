@@ -574,8 +574,7 @@ scenarios you may have to write a custom Python script:</p>
 events. Press a number key to select a label class, click on the timeseries plot to
 mark the onset, click again to mark the offset, then press <strong>V</strong> to play back
 the segment you just labelled.</p>
-<a class="reference internal image-reference" href="_static/media/label_basic.gif"><img alt="Labelling workflow — select class, click onset, click offset, press V to review" src="_static/media/label_basic.gif" style="width: 100%;" />
-</a>
+<div style="padding:48.25% 0 0 0;position:relative;"><iframe src="https://player.vimeo.com/video/1212440885?badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479" frameborder="0" allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share" referrerpolicy="strict-origin-when-cross-origin" style="position:absolute;top:0;left:0;width:100%;height:100%;" title="ethograph_label_basic"></iframe></div><script src="https://player.vimeo.com/api/player.js"></script>
 <p>The <a class="reference internal" href="../advanced/labels/index.html"><span class="doc">labels</span></a> documentation includes more info on how to:</p>
 <ul class="simple">
 <li><p>label in the GUI</p></li>
@@ -583,6 +582,20 @@ the segment you just labelled.</p>
 <li><p>deal with labels overlapping in time (label branches)</p></li>
 <li><p>import labels from other formats (Pynapple, NWB, BORIS, audacity, Raven, …)</p></li>
 <li><p>export labels</p></li>
+</ul>
+</section>
+<section id="the-interface">
+<h2>The interface<a class="headerlink" href="#the-interface" title="Link to this heading">#</a></h2>
+<p>The layout is <strong>responsive and panel-based</strong>: every plot, video and trace lives
+in its own panel that you can drag, stack, tab, float and resize freely.</p>
+<ul class="simple">
+<li><p><strong>Click a panel to edit it.</strong> The right sidebar is context-sensitive — clicking
+a panel shows the settings for <em>that</em> panel (e.g. the feature and its
+dimensions for a line plot, or the channel for an audio panel).</p></li>
+<li><p><strong>Add panels with the ➕ Add panel button</strong> (bottom-left of the window, or
+<code class="docutils literal notranslate"><span class="pre">Ctrl+N</span></code>): drag a data source onto the plot area, or press Enter to drop it in
+the default spot. Remove any panel with its ✕. You can open as many as you
+like — e.g. the same feature as both a line plot and a heatmap.</p></li>
 </ul>
 </section>
 <section id="video-audio-playback">
@@ -1226,11 +1239,7 @@ Dims: (&#39;time&#39;,), Shape: (1169,)
 <hr class="docutils" />
 <br>
 <p>In the GUI, you can switch between features using the <strong>Feature</strong> dropdown and <strong>select</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.sel.html#xarray.DataArray.sel" title="(in xarray v2026.7.0)"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sel()</span></code></a>) a unique combination of feature dimensions. In the video below, the user switches from the feature <code class="docutils literal notranslate"><span class="pre">speed</span></code> to <code class="docutils literal notranslate"><span class="pre">velocity</span></code>, with the selection dimensions <code class="docutils literal notranslate"><span class="pre">individual=crow1</span></code>, <code class="docutils literal notranslate"><span class="pre">keypoint=beakTip</span></code> and <code class="docutils literal notranslate"><span class="pre">space=[&quot;x&quot;,</span> <span class="pre">&quot;y&quot;,</span> <span class="pre">&quot;z&quot;]</span></code> (All checkbox ticked). Thanks to <a class="reference internal" href="../api/ethograph.sel_valid.html#ethograph.sel_valid" title="ethograph.sel_valid"><code class="xref py py-func docutils literal notranslate"><span class="pre">sel_valid()</span></code></a>, any invalid dimensions are ignored (e.g. it’s not problematic that speed does not have a <code class="docutils literal notranslate"><span class="pre">space</span></code> dimension).</p>
-<video controls loop muted autoplay width="100%">
-  <source src="../_static/media/dropdown.mp4" type="video/mp4">
-</video>
-<p>The layout of the GUI has changed since this video was recorded, but the functionality remains the same.</p>
-<br>
+<div style="padding:57.64% 0 0 0;position:relative;"><iframe src="https://player.vimeo.com/video/1212439026?badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479&amp;loop=1" frameborder="0" allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share" referrerpolicy="strict-origin-when-cross-origin" style="position:absolute;top:0;left:0;width:100%;height:100%;" title="ethograph_feature_dropdowns"></iframe></div><script src="https://player.vimeo.com/api/player.js"></script><br>
 <br>
 <p>At the end of the video and in the plot below, one can see that particularly <code class="docutils literal notranslate"><span class="pre">velocity</span></code> for <code class="docutils literal notranslate"><span class="pre">keypoint=beakTip</span></code> and <code class="docutils literal notranslate"><span class="pre">space=z</span></code> (green line) defines segmentation boundaries of the crows downward movement, inserting the stick tool into the dispenser.</p>
 <div class="cell tag_hide-input docutils container">
@@ -1487,6 +1496,7 @@ from the start page. The notebooks that built them are in the
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#labelling">Labelling</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-interface">The interface</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#video-audio-playback">Video &amp; audio playback</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#feature-dropdowns">Feature dropdowns</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changepoints">Changepoints</a></li>

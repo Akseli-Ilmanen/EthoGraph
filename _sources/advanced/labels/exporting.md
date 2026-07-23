@@ -1,6 +1,9 @@
 (target-exporting-labels)=
 # Exporting labels
 
+**File → Export labels…** opens the export panel described below (save button,
+post-processing actions, remote backup settings).
+
 ## Label file format
 
 Labels are stored in a **TSV file** alongside the `.nc` data file. The `.nc`

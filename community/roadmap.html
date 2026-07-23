@@ -438,7 +438,7 @@
 </ul>
 <section id="import-predictions-from-action-segmentation-models">
 <h3>Import predictions from action segmentation models<a class="headerlink" href="#import-predictions-from-action-segmentation-models" title="Link to this heading">#</a></h3>
-<p>Import predictions from action segmentation models (DLC2Action, ASFormer, MS-TCN) directly in the GUI. Per-trial prediction files (<code class="docutils literal notranslate"><span class="pre">.npy</span></code>/<code class="docutils literal notranslate"><span class="pre">.pickle</span></code>) with shape <code class="docutils literal notranslate"><span class="pre">(T,</span> <span class="pre">n_classes)</span></code> or <code class="docutils literal notranslate"><span class="pre">(T,)</span></code> will be converted to label intervals with confidence overlay (1 - entropy of classwise softmax).</p>
+<p>Done — <strong>File → Import predictions…</strong> loads per-trial <code class="docutils literal notranslate"><span class="pre">.npy</span></code>/<code class="docutils literal notranslate"><span class="pre">.pickle</span></code> files with shape <code class="docutils literal notranslate"><span class="pre">(T,</span> <span class="pre">n_classes)</span></code> or <code class="docutils literal notranslate"><span class="pre">(T,)</span></code> from action segmentation models (DLC2Action, ASFormer, MS-TCN) and converts them to label intervals with a confidence overlay (1 - entropy of classwise softmax).</p>
 </section>
 </section>
 <hr class="docutils" />
