@@ -30,7 +30,7 @@ dependencies = [
     "scipy",
     "scikit-learn",
     "matplotlib",
-    "pynapple",
+    "pynapple>=0.10",
     "pyyaml",
     "crowsetta",
     "pynwb",
