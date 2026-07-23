@@ -9,7 +9,7 @@ Currently this is still more of a collection of notes, than a roadmap.
 - Discussion on schema for segmentation feature data: https://github.com/neuroinformatics-unit/movement/issues/978
 
 ### Import predictions from action segmentation models
-Import predictions from action segmentation models (DLC2Action, ASFormer, MS-TCN) directly in the GUI. Per-trial prediction files (`.npy`/`.pickle`) with shape `(T, n_classes)` or `(T,)` will be converted to label intervals with confidence overlay (1 - entropy of classwise softmax).
+Done — **File → Import predictions…** loads per-trial `.npy`/`.pickle` files with shape `(T, n_classes)` or `(T,)` from action segmentation models (DLC2Action, ASFormer, MS-TCN) and converts them to label intervals with a confidence overlay (1 - entropy of classwise softmax).
 
 ---
 

@@ -1,7 +1,8 @@
 (target-importing-labels)=
 # Importing labels
 
-In the **Import labels** tab, the **Labels format** combo offers:
+Open **File → Import labels…** to bring up the import panel. The **Labels
+format** combo offers:
 
 | Option | Source | Converter |
 |--------|--------|-----------|

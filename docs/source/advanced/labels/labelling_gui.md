@@ -37,3 +37,11 @@ Use the labels widget interface:
 
 See {doc}`../changepoints/correction` for how label boundaries are snapped to
 detected changepoints.
+
+---
+
+## Importing / exporting labels
+
+Labels are imported and exported from the top-bar **File** menu: **Import
+labels…**, **Import predictions…**, and **Export labels…** each open their
+own panel. See {doc}`importing` and {doc}`exporting` for details.
