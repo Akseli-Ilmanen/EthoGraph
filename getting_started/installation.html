@@ -556,11 +556,15 @@ macOS / Windows</label><div class="sd-tab-content docutils">
 <input id="sd-tab-item-8" name="sd-tab-set-3" type="radio">
 <label class="sd-tab-label" for="sd-tab-item-8">
 Linux</label><div class="sd-tab-content docutils">
-<p>First install the PortAudio system library, then install the audio extra:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>libportaudio2<span class="w">   </span><span class="c1"># Debian / Ubuntu</span>
+<p>First install the PortAudio system library <strong>and the ALSA plugins</strong>, then
+install the audio extra:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>libportaudio2<span class="w"> </span>libasound2-plugins<span class="w">   </span><span class="c1"># Debian / Ubuntu</span>
 uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio]&quot;</span>
 </pre></div>
 </div>
+<p><code class="docutils literal notranslate"><span class="pre">libasound2-plugins</span></code> is the ALSA→PipeWire/PulseAudio bridge; without it
+PortAudio can’t reach a modern sound server. See <a class="reference internal" href="../advanced/troubleshooting.html#no-audio-device"><span class="std std-ref">Silent audio on Linux</span></a> if
+playback is still silent.</p>
 </div>
 </div>
 <p>If you are using a <strong>conda environment</strong>, optionally create a desktop shortcut:</p>
@@ -575,6 +579,7 @@ uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </s
 </div>
 <p>Or use the desktop/Start Menu shortcut created above.</p>
 </div>
+<p>Global settings live in <code class="docutils literal notranslate"><span class="pre">~/.ethograph</span></code> (override with the <code class="docutils literal notranslate"><span class="pre">ETHOGRAPH_HOME</span></code> environment variable).</p>
 </section>
 </section>
 <section id="core-only-library">
@@ -626,8 +631,9 @@ You can combine them as needed:</p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>Linux users adding <code class="docutils literal notranslate"><span class="pre">audio</span></code> must first install the PortAudio system library:
-<code class="docutils literal notranslate"><span class="pre">sudo</span> <span class="pre">apt</span> <span class="pre">install</span> <span class="pre">libportaudio2</span></code></p>
+<p>Linux users adding <code class="docutils literal notranslate"><span class="pre">audio</span></code> must first install the PortAudio system library
+<strong>and the ALSA plugins</strong>:
+<code class="docutils literal notranslate"><span class="pre">sudo</span> <span class="pre">apt</span> <span class="pre">install</span> <span class="pre">libportaudio2</span> <span class="pre">libasound2-plugins</span></code></p>
 </div>
 <p>Combine extras with commas:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio,dandi,dev,docs]&quot;</span>

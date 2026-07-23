@@ -489,6 +489,23 @@ complex for pip’s resolver.</p>
 </div>
 <p>See <a class="reference internal" href="../getting_started/installation.html"><span class="doc">Installation</span></a> for full instructions.</p>
 </section>
+<section id="silent-audio-on-linux">
+<span id="no-audio-device"></span><h3>Silent audio on Linux<a class="headerlink" href="#silent-audio-on-linux" title="Link to this heading">#</a></h3>
+<p>If playback is silent, check what PortAudio sees:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import sounddevice as sd; print(sd.query_devices())&quot;</span>
+</pre></div>
+</div>
+<p>A default device of <code class="docutils literal notranslate"><span class="pre">[-1,</span> <span class="pre">-1]</span></code> means PortAudio found no device. On a
+PipeWire/PulseAudio desktop this is almost always the missing ALSA bridge —
+install it and restart ethograph:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>libasound2-plugins<span class="w"> </span>pipewire-alsa
+</pre></div>
+</div>
+<p>(Debian/Ubuntu’s bundled PortAudio only speaks ALSA, so it needs this bridge
+to reach a modern sound server.) Routing playback through <code class="docutils literal notranslate"><span class="pre">pw-play</span></code>/<code class="docutils literal notranslate"><span class="pre">paplay</span></code>
+instead makes audio audible but not sample-accurately synced, so it isn’t
+suitable for precise annotation.</p>
+</section>
 <section id="opening-tsv-label-files-in-excel">
 <h3>Opening <code class="docutils literal notranslate"><span class="pre">.tsv</span></code> label files in Excel<a class="headerlink" href="#opening-tsv-label-files-in-excel" title="Link to this heading">#</a></h3>
 <p>Excel on Windows may not correctly parse <code class="docutils literal notranslate"><span class="pre">.tsv</span></code> files when double-clicked due to regional delimiter settings.</p>
@@ -561,6 +578,7 @@ complex for pip’s resolver.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#my-dataset-format-is-not-supported">My dataset format is not supported</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#what-does-this-button-do">What does this button do?</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-fails-with-resolution-too-deep">Installation fails with “resolution-too-deep”</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#silent-audio-on-linux">Silent audio on Linux</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#opening-tsv-label-files-in-excel">Opening <code class="docutils literal notranslate"><span class="pre">.tsv</span></code> label files in Excel</a></li>
 </ul>
 </li>

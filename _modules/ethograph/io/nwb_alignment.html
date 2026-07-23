@@ -946,6 +946,14 @@
                 <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
         <span class="k">return</span> <span class="kc">None</span>
 
+    <span class="k">def</span><span class="w"> </span><span class="nf">_session_end_time</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Largest ``stop_time`` across trials, or ``None`` if unavailable.&quot;&quot;&quot;</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trials_df</span>
+        <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span> <span class="ow">or</span> <span class="s2">&quot;stop_time&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">stops</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">&quot;stop_time&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">dropna</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">stops</span><span class="o">.</span><span class="n">max</span><span class="p">())</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">stops</span><span class="o">.</span><span class="n">empty</span> <span class="k">else</span> <span class="kc">None</span>
+
 <div class="viewcode-block" id="NWBAlignment.stream_offset_for_trial">
 <a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.NWBAlignment.stream_offset_for_trial">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">stream_offset_for_trial</span><span class="p">(</span>
@@ -1028,9 +1036,18 @@
                 <span class="n">t_end</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">ts</span><span class="p">[</span><span class="n">frame_end</span> <span class="o">-</span> <span class="mi">1</span><span class="p">])</span> <span class="k">if</span> <span class="n">frame_end</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">frame_end</span> <span class="o">&lt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="n">ts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
             <span class="k">elif</span> <span class="n">rate</span> <span class="ow">and</span> <span class="n">rate</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
                 <span class="n">t_start</span> <span class="o">=</span> <span class="n">starting_time</span> <span class="o">+</span> <span class="n">frame_start</span> <span class="o">/</span> <span class="n">rate</span>
-                <span class="k">if</span> <span class="n">frame_end</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                    <span class="k">continue</span>
-                <span class="n">t_end</span> <span class="o">=</span> <span class="n">starting_time</span> <span class="o">+</span> <span class="n">frame_end</span> <span class="o">/</span> <span class="n">rate</span>
+                <span class="k">if</span> <span class="n">frame_end</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">t_end</span> <span class="o">=</span> <span class="n">starting_time</span> <span class="o">+</span> <span class="n">frame_end</span> <span class="o">/</span> <span class="n">rate</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># Last/only file: end from num_samples (written for rate</span>
+                    <span class="c1"># mode), falling back to the trials table&#39;s session end.</span>
+                    <span class="n">num</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">acq</span><span class="p">,</span> <span class="s2">&quot;num_samples&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">num</span><span class="p">:</span>
+                        <span class="n">t_end</span> <span class="o">=</span> <span class="n">starting_time</span> <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="n">num</span><span class="p">)</span> <span class="o">/</span> <span class="n">rate</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">t_end</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_session_end_time</span><span class="p">()</span>
+                    <span class="k">if</span> <span class="n">t_end</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="k">continue</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="k">continue</span>
 
@@ -1360,6 +1377,88 @@
     <span class="k">return</span> <span class="n">result</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_segments_contiguous</span><span class="p">(</span><span class="n">seg_starts</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">seg_nsamples</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">rate</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;True when every segment starts where the previous one ended (constant rate).</span>
+
+<span class="sd">    A contiguous run can be stored as compact ``rate`` + ``starting_time`` metadata;</span>
+<span class="sd">    a run with gaps needs per-sample ``timestamps`` to preserve those gaps.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">rate</span> <span class="ow">or</span> <span class="n">rate</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="n">tol</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">/</span> <span class="n">rate</span>
+    <span class="n">expected</span> <span class="o">=</span> <span class="n">seg_starts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">start</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">seg_starts</span><span class="p">,</span> <span class="n">seg_nsamples</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">start</span> <span class="o">-</span> <span class="n">expected</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">tol</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">expected</span> <span class="o">=</span> <span class="n">start</span> <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">/</span> <span class="n">rate</span>
+    <span class="k">return</span> <span class="kc">True</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_add_external_series</span><span class="p">(</span>
+    <span class="n">nwbfile</span><span class="p">:</span> <span class="n">NWBFile</span><span class="p">,</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">files</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">seg_starts</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+    <span class="n">seg_nsamples</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+    <span class="n">rate</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Add an external-file ImageSeries with compact timing where possible.</span>
+
+<span class="sd">    Uses ``rate`` + ``starting_time`` for a single contiguous constant-rate</span>
+<span class="sd">    timeline (the common case — sidecar stays tiny); falls back to dense</span>
+<span class="sd">    per-sample ``timestamps`` only when segments have gaps a single rate can&#39;t</span>
+<span class="sd">    express. With no rate, stores one frame per file at its start time.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">pynwb.image</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageSeries</span>
+
+    <span class="n">files</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">files</span><span class="p">)</span>
+    <span class="n">seg_starts</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">seg_starts</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">nwbfile</span><span class="o">.</span><span class="n">acquisition</span><span class="p">:</span>
+        <span class="k">del</span> <span class="n">nwbfile</span><span class="o">.</span><span class="n">acquisition</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">rate</span> <span class="ow">or</span> <span class="n">rate</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">nwbfile</span><span class="o">.</span><span class="n">add_acquisition</span><span class="p">(</span>
+            <span class="n">ImageSeries</span><span class="p">(</span>
+                <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+                <span class="n">description</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+                <span class="n">external_file</span><span class="o">=</span><span class="n">files</span><span class="p">,</span>
+                <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;external&quot;</span><span class="p">,</span>
+                <span class="n">starting_frame</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">files</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span>
+                <span class="n">timestamps</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">seg_starts</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="n">starting_frames</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">files</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+    <span class="n">acc</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">seg_nsamples</span><span class="p">):</span>
+        <span class="n">starting_frames</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">acc</span>
+        <span class="n">acc</span> <span class="o">+=</span> <span class="nb">int</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+
+    <span class="n">kwargs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+        <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+        <span class="n">external_file</span><span class="o">=</span><span class="n">files</span><span class="p">,</span>
+        <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;external&quot;</span><span class="p">,</span>
+        <span class="n">starting_frame</span><span class="o">=</span><span class="n">starting_frames</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">_segments_contiguous</span><span class="p">(</span><span class="n">seg_starts</span><span class="p">,</span> <span class="n">seg_nsamples</span><span class="p">,</span> <span class="n">rate</span><span class="p">):</span>
+        <span class="c1"># external + rate carries no data array, so num_samples must be given</span>
+        <span class="c1"># explicitly (this is also what lets readers find the last file&#39;s end).</span>
+        <span class="n">nwbfile</span><span class="o">.</span><span class="n">add_acquisition</span><span class="p">(</span>
+            <span class="n">ImageSeries</span><span class="p">(</span>
+                <span class="n">rate</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">rate</span><span class="p">),</span>
+                <span class="n">starting_time</span><span class="o">=</span><span class="n">seg_starts</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+                <span class="n">num_samples</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">seg_nsamples</span><span class="p">)),</span>
+                <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">s</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">n</span><span class="p">))</span> <span class="o">/</span> <span class="n">rate</span> <span class="k">for</span> <span class="n">s</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">seg_starts</span><span class="p">,</span> <span class="n">seg_nsamples</span><span class="p">)])</span>
+        <span class="n">nwbfile</span><span class="o">.</span><span class="n">add_acquisition</span><span class="p">(</span><span class="n">ImageSeries</span><span class="p">(</span><span class="n">timestamps</span><span class="o">=</span><span class="n">ts</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">))</span>
+
+
 <div class="viewcode-block" id="sync_acquisition_for_streams">
 <a class="viewcode-back" href="../../../api/nwb_alignment.html#ethograph.sync_acquisition_for_streams">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">sync_acquisition_for_streams</span><span class="p">(</span>
@@ -1381,8 +1480,6 @@
 <span class="sd">        Mapping of stream name to sampling rate, e.g.</span>
 <span class="sd">        ``{&quot;video&quot;: 30.0, &quot;audio&quot;: 44100.0, &quot;pose&quot;: 30.0}``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="kn">from</span><span class="w"> </span><span class="nn">pynwb.image</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageSeries</span>
-
     <span class="n">df</span> <span class="o">=</span> <span class="n">nwbfile</span><span class="o">.</span><span class="n">trials</span><span class="o">.</span><span class="n">to_dataframe</span><span class="p">()</span>
     <span class="n">stream_devices</span> <span class="o">=</span> <span class="n">_parse_stream_devices</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">))</span>
 
@@ -1408,37 +1505,17 @@
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">starts</span> <span class="o">=</span> <span class="n">valid</span><span class="p">[</span><span class="s2">&quot;start_time&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
 
-            <span class="n">timestamps_parts</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-            <span class="n">starting_frames</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-            <span class="n">frame_count</span> <span class="o">=</span> <span class="mi">0</span>
-
+            <span class="n">seg_starts</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">seg_nsamples</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
             <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">row</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">valid</span><span class="o">.</span><span class="n">iterrows</span><span class="p">()):</span>
-                <span class="n">file_start</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">starts</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
                 <span class="n">duration</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;stop_time&quot;</span><span class="p">])</span> <span class="o">-</span> <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;start_time&quot;</span><span class="p">])</span>
-                <span class="n">n_samples</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">duration</span> <span class="o">*</span> <span class="n">rate</span><span class="p">))</span>
-
-                <span class="n">ts</span> <span class="o">=</span> <span class="n">file_start</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_samples</span><span class="p">)</span> <span class="o">/</span> <span class="n">rate</span>
-                <span class="n">timestamps_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span>
-                <span class="n">starting_frames</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">frame_count</span><span class="p">)</span>
-                <span class="n">frame_count</span> <span class="o">+=</span> <span class="n">n_samples</span>
+                <span class="n">seg_starts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">starts</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
+                <span class="n">seg_nsamples</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">duration</span> <span class="o">*</span> <span class="n">rate</span><span class="p">)))</span>
 
             <span class="k">if</span> <span class="n">device</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="n">d</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">nwbfile</span><span class="o">.</span><span class="n">devices</span><span class="o">.</span><span class="n">values</span><span class="p">()]:</span>
                 <span class="n">nwbfile</span><span class="o">.</span><span class="n">create_device</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s2"> device </span><span class="si">{</span><span class="n">device</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
-            <span class="n">acq_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">device</span><span class="si">}</span><span class="s2">&quot;</span>
-            <span class="k">if</span> <span class="n">acq_name</span> <span class="ow">in</span> <span class="n">nwbfile</span><span class="o">.</span><span class="n">acquisition</span><span class="p">:</span>
-                <span class="k">del</span> <span class="n">nwbfile</span><span class="o">.</span><span class="n">acquisition</span><span class="p">[</span><span class="n">acq_name</span><span class="p">]</span>
-
-            <span class="n">nwbfile</span><span class="o">.</span><span class="n">add_acquisition</span><span class="p">(</span>
-                <span class="n">ImageSeries</span><span class="p">(</span>
-                    <span class="n">name</span><span class="o">=</span><span class="n">acq_name</span><span class="p">,</span>
-                    <span class="n">description</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s2"> from </span><span class="si">{</span><span class="n">device</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-                    <span class="n">external_file</span><span class="o">=</span><span class="n">external_files</span><span class="p">,</span>
-                    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;external&quot;</span><span class="p">,</span>
-                    <span class="n">starting_frame</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">starting_frames</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span>
-                    <span class="n">timestamps</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">timestamps_parts</span><span class="p">),</span>
-                <span class="p">)</span>
-            <span class="p">)</span></div>
+            <span class="n">_add_external_series</span><span class="p">(</span><span class="n">nwbfile</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">device</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">external_files</span><span class="p">,</span> <span class="n">seg_starts</span><span class="p">,</span> <span class="n">seg_nsamples</span><span class="p">,</span> <span class="n">rate</span><span class="p">)</span></div>
 
 
 
@@ -1745,42 +1822,18 @@
         <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">files</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">n_trials</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
             <span class="c1"># Session-wide: one file spanning all trials</span>
             <span class="n">t0</span> <span class="o">=</span> <span class="n">starting_time</span> <span class="k">if</span> <span class="n">starting_time</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="n">trial_starts</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-            <span class="n">t1</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">trial_stops</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
-            <span class="n">n_samples</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">((</span><span class="n">t1</span> <span class="o">-</span> <span class="n">t0</span><span class="p">)</span> <span class="o">*</span> <span class="n">rate</span><span class="p">))</span> <span class="k">if</span> <span class="n">rate</span> <span class="k">else</span> <span class="mi">1</span>
-            <span class="n">timestamps</span> <span class="o">=</span> <span class="n">t0</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_samples</span><span class="p">)</span> <span class="o">/</span> <span class="n">rate</span> <span class="k">if</span> <span class="n">rate</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">t0</span><span class="p">])</span>
-            <span class="n">nwbfile</span><span class="o">.</span><span class="n">add_acquisition</span><span class="p">(</span>
-                <span class="n">ImageSeries</span><span class="p">(</span>
-                    <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
-                    <span class="n">description</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
-                    <span class="n">external_file</span><span class="o">=</span><span class="n">files</span><span class="p">,</span>
-                    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;external&quot;</span><span class="p">,</span>
-                    <span class="n">starting_frame</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span>
-                    <span class="n">timestamps</span><span class="o">=</span><span class="n">timestamps</span><span class="p">,</span>
-                <span class="p">)</span>
-            <span class="p">)</span>
+            <span class="n">n_samples</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">((</span><span class="nb">float</span><span class="p">(</span><span class="n">trial_stops</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">-</span> <span class="n">t0</span><span class="p">)</span> <span class="o">*</span> <span class="n">rate</span><span class="p">))</span> <span class="k">if</span> <span class="n">rate</span> <span class="k">else</span> <span class="mi">1</span>
+            <span class="n">_add_external_series</span><span class="p">(</span><span class="n">nwbfile</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">files</span><span class="p">,</span> <span class="p">[</span><span class="n">t0</span><span class="p">],</span> <span class="p">[</span><span class="n">n_samples</span><span class="p">],</span> <span class="n">rate</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="c1"># Per-trial: one file per trial</span>
-            <span class="n">timestamps_parts</span> <span class="o">=</span> <span class="p">[]</span>
-            <span class="n">starting_frames</span> <span class="o">=</span> <span class="p">[]</span>
-            <span class="n">frame_count</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">seg_starts</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">seg_nsamples</span> <span class="o">=</span> <span class="p">[]</span>
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">files</span><span class="p">),</span> <span class="n">n_trials</span><span class="p">)):</span>
                 <span class="n">t0</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">trial_starts</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
                 <span class="n">dur</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">trial_stops</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="o">-</span> <span class="n">t0</span>
-                <span class="n">n_samples</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">dur</span> <span class="o">*</span> <span class="n">rate</span><span class="p">))</span> <span class="k">if</span> <span class="n">rate</span> <span class="k">else</span> <span class="mi">1</span>
-                <span class="n">ts</span> <span class="o">=</span> <span class="n">t0</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_samples</span><span class="p">)</span> <span class="o">/</span> <span class="n">rate</span> <span class="k">if</span> <span class="n">rate</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">t0</span><span class="p">])</span>
-                <span class="n">timestamps_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span>
-                <span class="n">starting_frames</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">frame_count</span><span class="p">)</span>
-                <span class="n">frame_count</span> <span class="o">+=</span> <span class="n">n_samples</span>
-            <span class="n">nwbfile</span><span class="o">.</span><span class="n">add_acquisition</span><span class="p">(</span>
-                <span class="n">ImageSeries</span><span class="p">(</span>
-                    <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
-                    <span class="n">description</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
-                    <span class="n">external_file</span><span class="o">=</span><span class="n">files</span><span class="p">[:</span><span class="n">n_trials</span><span class="p">],</span>
-                    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;external&quot;</span><span class="p">,</span>
-                    <span class="n">starting_frame</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">starting_frames</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span>
-                    <span class="n">timestamps</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">timestamps_parts</span><span class="p">),</span>
-                <span class="p">)</span>
-            <span class="p">)</span>
+                <span class="n">seg_starts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t0</span><span class="p">)</span>
+                <span class="n">seg_nsamples</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">dur</span> <span class="o">*</span> <span class="n">rate</span><span class="p">))</span> <span class="k">if</span> <span class="n">rate</span> <span class="k">else</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">_add_external_series</span><span class="p">(</span><span class="n">nwbfile</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">files</span><span class="p">[:</span><span class="n">n_trials</span><span class="p">],</span> <span class="n">seg_starts</span><span class="p">,</span> <span class="n">seg_nsamples</span><span class="p">,</span> <span class="n">rate</span><span class="p">)</span>
 
     <span class="n">output</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">output_path</span><span class="p">)</span>
     <span class="n">output</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
