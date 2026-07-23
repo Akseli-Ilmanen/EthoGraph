@@ -2,13 +2,13 @@
 <!DOCTYPE html>
 
 
-<html lang="en" data-content_root="../../" >
+<html lang="en" data-content_root="../" >
 
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Labelling in the GUI &#8212; ethograph</title>
+    <title>Playback &amp; the timeline marker &#8212; ethograph</title>
   
   
   
@@ -27,39 +27,39 @@
   </noscript>
   
   <!-- Loaded before other Sphinx assets -->
-  <link href="../../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
-<link href="../../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+  <link href="../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
 
-    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
-    <link rel="stylesheet" type="text/css" href="../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
-    <link rel="stylesheet" type="text/css" href="../../_static/sphinx-design.min.css?v=95c83b7e" />
-    <link rel="stylesheet" type="text/css" href="../../_static/css/custom.css?v=17f663f2" />
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=17f663f2" />
   
   <!-- So that users can add custom icons -->
-  <script defer src="../../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
+  <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
   <!-- Pre-loaded scripts that we'll load fully later -->
-  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
-<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
 
-    <script src="../../_static/documentation_options.js?v=9eb32ce0"></script>
-    <script src="../../_static/doctools.js?v=9bcbadda"></script>
-    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
-    <script src="../../_static/design-tabs.js?v=f930bc37"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'advanced/labels/labelling_gui';</script>
+    <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'advanced/playback';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
-    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/advanced/labels/labelling_gui.html" />
-    <link rel="index" title="Index" href="../../genindex.html" />
-    <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="Label mapping (mapping.txt)" href="mapping.html" />
-    <link rel="prev" title="Labels" href="index.html" />
+    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/advanced/playback.html" />
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Keyboard Shortcuts" href="shortcuts.html" />
+    <link rel="prev" title="Changepoint correction" href="changepoints/correction.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
   
     
-    <script src="../../_static/searchtools.js"></script>
-    <script src="../../_static/language_data.js"></script>
-    <script src="../../searchindex.js"></script>
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
   
   </head>
   <body data-default-mode="">
@@ -79,7 +79,7 @@
   <dialog id="pst-search-dialog">
     
 <form class="bd-search d-flex align-items-center"
-      action="../../search.html"
+      action="../search.html"
       method="get">
   <i class="fa-solid fa-magnifying-glass"></i>
   <input type="search"
@@ -115,7 +115,7 @@
     
   
 
-<a class="navbar-brand logo" href="../../index.html">
+<a class="navbar-brand logo" href="../index.html">
   
   
   
@@ -126,8 +126,8 @@
       
     
     
-    <img src="../../_static/icon.png" class="logo__image only-light" alt=""/>
-    <img src="../../_static/icon.png" class="logo__image only-dark pst-js-only" alt=""/>
+    <img src="../_static/icon.png" class="logo__image only-light" alt=""/>
+    <img src="../_static/icon.png" class="logo__image only-dark pst-js-only" alt=""/>
   
   
     <p class="title logo__title">ethograph</p>
@@ -145,35 +145,35 @@
   <ul class="bd-navbar-elements navbar-nav">
     
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../getting_started/index.html">
+  <a class="nav-link nav-internal" href="../getting_started/index.html">
     Getting started
   </a>
 </li>
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="../index.html">
+  <a class="nav-link nav-internal" href="index.html">
     Advanced
   </a>
 </li>
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../examples/index.html">
+  <a class="nav-link nav-internal" href="../examples/index.html">
     Examples
   </a>
 </li>
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../api_index.html">
+  <a class="nav-link nav-internal" href="../api_index.html">
     API reference
   </a>
 </li>
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../community/index.html">
+  <a class="nav-link nav-internal" href="../community/index.html">
     Community
   </a>
 </li>
@@ -274,35 +274,35 @@
   <ul class="bd-navbar-elements navbar-nav">
     
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../getting_started/index.html">
+  <a class="nav-link nav-internal" href="../getting_started/index.html">
     Getting started
   </a>
 </li>
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="../index.html">
+  <a class="nav-link nav-internal" href="index.html">
     Advanced
   </a>
 </li>
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../examples/index.html">
+  <a class="nav-link nav-internal" href="../examples/index.html">
     Examples
   </a>
 </li>
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../api_index.html">
+  <a class="nav-link nav-internal" href="../api_index.html">
     API reference
   </a>
 </li>
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../community/index.html">
+  <a class="nav-link nav-internal" href="../community/index.html">
     Community
   </a>
 </li>
@@ -365,26 +365,26 @@
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="../metadata.html">Trial metadata</a></li>
-<li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Labels</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">Labelling in the GUI</a></li>
-<li class="toctree-l2"><a class="reference internal" href="mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="branches.html">Label branches</a></li>
-<li class="toctree-l2"><a class="reference internal" href="importing.html">Importing labels</a></li>
-<li class="toctree-l2"><a class="reference internal" href="exporting.html">Exporting labels</a></li>
+<li class="toctree-l1"><a class="reference internal" href="metadata.html">Trial metadata</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="labels/index.html">Labels</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="labels/labelling_gui.html">Labelling in the GUI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/mapping.html">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/branches.html">Label branches</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/importing.html">Importing labels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="labels/exporting.html">Exporting labels</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../changepoints/index.html">Changepoints</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="../changepoints/overview.html">Overview</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../changepoints/kinematic.html">Kinematic changepoints</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../changepoints/audio.html">Audio changepoints</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../changepoints/ruptures.html">Ruptures</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../changepoints/correction.html">Changepoint correction</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="changepoints/index.html">Changepoints</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/overview.html">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/kinematic.html">Kinematic changepoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/audio.html">Audio changepoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/ruptures.html">Ruptures</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changepoints/correction.html">Changepoint correction</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1"><a class="reference internal" href="../playback.html">Playback &amp; the timeline marker</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../shortcuts.html">Keyboard Shortcuts</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Playback &amp; the timeline marker</a></li>
+<li class="toctree-l1"><a class="reference internal" href="shortcuts.html">Keyboard Shortcuts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
 </ul>
 </div>
 </nav></div>
@@ -421,17 +421,14 @@
   <ul class="bd-breadcrumbs">
     
     <li class="breadcrumb-item breadcrumb-home">
-      <a href="../../index.html" class="nav-link" aria-label="Home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
         <i class="fa-solid fa-home"></i>
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="../index.html" class="nav-link">Advanced</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Advanced</a></li>
     
-    
-    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Labels</a></li>
-    
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Labelling in the GUI</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Playback &amp; the timeline marker</span></li>
   </ul>
 </nav>
 </div>
@@ -448,40 +445,65 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section class="tex2jax_ignore mathjax_ignore" id="labelling-in-the-gui">
-<span id="target-labelling-gui"></span><h1>Labelling in the GUI<a class="headerlink" href="#labelling-in-the-gui" title="Link to this heading">#</a></h1>
-<section id="creating-labels">
-<h2>Creating labels<a class="headerlink" href="#creating-labels" title="Link to this heading">#</a></h2>
-<p>To create a new behavioural label:</p>
-<ol class="arabic simple">
-<li><p>Press one of the number/letters keys (see image below) to activate a specific behavioural label.</p></li>
-<li><p>Click twice on the line plot to define the start and end boundaries of the label. For point events, click only once.</p></li>
-<li><p>The label will be created and displayed with a color-coded overlay.</p></li>
-</ol>
-<p><img alt="keyboard" src="../../_images/keyboard.png" /></p>
-</section>
-<hr class="docutils" />
-<section id="playing-back-labels">
-<h2>Playing back labels<a class="headerlink" href="#playing-back-labels" title="Link to this heading">#</a></h2>
-<p>Once you’ve created a label, click on it and press <code class="docutils literal notranslate"><span class="pre">v</span></code> to play the segment.</p>
-<p>You can also use <code class="docutils literal notranslate"><span class="pre">Left</span></code> / <code class="docutils literal notranslate"><span class="pre">Right</span></code> to navigate individual frames, or right-click
-to jump to specific timepoints. Over time you may find this faster than
-playing the video.</p>
-</section>
-<hr class="docutils" />
-<section id="editing-and-deleting-labels">
-<h2>Editing and deleting labels<a class="headerlink" href="#editing-and-deleting-labels" title="Link to this heading">#</a></h2>
-<p>Use the labels widget interface:</p>
+  <section class="tex2jax_ignore mathjax_ignore" id="playback-the-timeline-marker">
+<h1>Playback &amp; the timeline marker<a class="headerlink" href="#playback-the-timeline-marker" title="Link to this heading">#</a></h1>
+<section id="the-red-marker-is-on-time-not-the-video-frame">
+<h2>The red marker is on <em>time</em>, not the video frame<a class="headerlink" href="#the-red-marker-is-on-time-not-the-video-frame" title="Link to this heading">#</a></h2>
+<p>Video is recorded as discrete frames (e.g. ~47 per second), but audio and other
+signals have far finer time resolution — a birdsong syllable can be shorter than
+a single video frame. So the red timeline marker (the playhead) tracks the true
+<strong>time</strong>, not the nearest video frame.</p>
+<p>When you click on a plot (waveform, spectrogram, line plot):</p>
 <ul class="simple">
-<li><p><strong>Edit</strong>: Select a label (Left-click), press <code class="docutils literal notranslate"><span class="pre">Ctrl</span> <span class="pre">+</span> <span class="pre">E</span></code>, then click twice to define new start/stop boundary.</p></li>
-<li><p><strong>Delete</strong>: Select a label (Left-click), press <code class="docutils literal notranslate"><span class="pre">Ctrl</span> <span class="pre">+</span> <span class="pre">D</span></code> to delete.</p></li>
+<li><p>the marker jumps to <strong>exactly where you clicked</strong>, down to sub-frame precision;</p></li>
+<li><p>the video seeks to the <strong>nearest frame</strong> to that time and displays it;</p></li>
+<li><p>a label you place is stored at the <strong>exact clicked time</strong>, not snapped to a frame.</p></li>
 </ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Because the video can only show whole frames, the displayed frame and the red
+marker can sit up to half a frame apart (~10 ms). This is expected and lets you
+place a syllable boundary precisely between two frames — you judge the boundary
+from the waveform/spectrogram, and the video is a reference. Stepping frame by
+frame (arrow keys) moves the marker onto exact frame times.</p>
+</div>
 </section>
-<hr class="docutils" />
-<section id="changepoint-correction">
-<h2>Changepoint correction<a class="headerlink" href="#changepoint-correction" title="Link to this heading">#</a></h2>
-<p>See <a class="reference internal" href="../changepoints/correction.html"><span class="doc">Changepoint correction</span></a> for how label boundaries are snapped to
-detected changepoints.</p>
+<section id="playback-modes">
+<h2>Playback modes<a class="headerlink" href="#playback-modes" title="Link to this heading">#</a></h2>
+<p>The <strong>playback mode</strong> dropdown in the bottom bar picks how video (and audio) play:</p>
+<ul class="simple">
+<li><p><strong>Audio-synced</strong> — audio and video are locked together, driven by the audio
+output itself, so they never drift. Under load the video may drop frames to
+stay in sync. This is the only mode that plays sound.</p></li>
+<li><p><strong>Smooth (every frame)</strong> — shows every video frame in order; under load it
+runs slower than the set FPS rather than skipping frames. No audio.</p></li>
+<li><p><strong>Real-time (skip frames)</strong> — approximates the set FPS by skipping frames when
+needed. No audio.</p></li>
+</ul>
+<p>The default follows your data (audio present → Audio-synced, otherwise Smooth);
+once you pick a mode it is remembered. Playback speed is the <strong>FPS</strong> field next
+to the dropdown — audio pitch is normal when FPS equals the recording rate.</p>
+</section>
+<section id="which-channel-play-will-sound">
+<h2>Which channel Play will sound<a class="headerlink" href="#which-channel-play-will-sound" title="Link to this heading">#</a></h2>
+<p>When you press <strong>Play</strong> (or Space), the video and the selected audio play
+together. With several audio panels open, playback follows the <strong>last audio
+selection you made</strong>, so you always hear what you are looking at:</p>
+<ul class="simple">
+<li><p>clicking an audio trace / spectrogram panel, or</p></li>
+<li><p>changing that panel’s <strong>Channel</strong> dropdown in the right sidebar (shown when an
+audio panel is active).</p></li>
+</ul>
+<p>The bottom bar shows a small speaker icon with the active channel as
+<code class="docutils literal notranslate"><span class="pre">ChN:</span> <span class="pre">filename…</span></code>; hover over it to see the full channel name.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>During playback the marker is driven by the <strong>audio output itself</strong> (an
+audio-master clock), so the playhead, the video frame and the sound stay locked
+and don’t drift apart over long clips. If no audio device is available, playback
+falls back to a frame timer; above ~2.5× speed the audio is dropped (it would be
+unintelligible) and the video free-runs.</p>
+</div>
 </section>
 </section>
 
@@ -496,20 +518,20 @@ detected changepoints.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="index.html"
+       href="changepoints/correction.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Labels</p>
+        <p class="prev-next-title">Changepoint correction</p>
       </div>
     </a>
     <a class="right-next"
-       href="mapping.html"
+       href="shortcuts.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Label mapping (<code class="docutils literal notranslate"><span class="pre">mapping.txt</span></code>)</p>
+        <p class="prev-next-title">Keyboard Shortcuts</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -532,10 +554,9 @@ detected changepoints.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#creating-labels">Creating labels</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#playing-back-labels">Playing back labels</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#editing-and-deleting-labels">Editing and deleting labels</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changepoint-correction">Changepoint correction</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-red-marker-is-on-time-not-the-video-frame">The red marker is on <em>time</em>, not the video frame</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#playback-modes">Playback modes</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#which-channel-play-will-sound">Which channel Play will sound</a></li>
 </ul>
   </nav></div>
 
@@ -543,7 +564,7 @@ detected changepoints.</p>
 
   
   <div class="tocsection sourcelink">
-    <a href="../../_sources/advanced/labels/labelling_gui.md">
+    <a href="../_sources/advanced/playback.md">
       
         <i class="fa-solid fa-file-lines"></i> Show Source
       
@@ -564,8 +585,8 @@ detected changepoints.</p>
   </div>
   
   <!-- Scripts loaded after <body> so the DOM is not blocked -->
-  <script defer src="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
-<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
+  <script defer src="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
 
   <footer class="bd-footer">
 <div class="bd-footer__inner bd-page-width">

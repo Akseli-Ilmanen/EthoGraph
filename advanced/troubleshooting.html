@@ -382,6 +382,7 @@
 <li class="toctree-l2"><a class="reference internal" href="changepoints/correction.html">Changepoint correction</a></li>
 </ul>
 </details></li>
+<li class="toctree-l1"><a class="reference internal" href="playback.html">Playback &amp; the timeline marker</a></li>
 <li class="toctree-l1"><a class="reference internal" href="shortcuts.html">Keyboard Shortcuts</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Troubleshooting</a></li>
 </ul>
@@ -506,6 +507,61 @@ to reach a modern sound server.) Routing playback through <code class="docutils 
 instead makes audio audible but not sample-accurately synced, so it isn’t
 suitable for precise annotation.</p>
 </section>
+<section id="supported-audio-formats">
+<span id="audio-formats"></span><h3>Supported audio formats<a class="headerlink" href="#supported-audio-formats" title="Link to this heading">#</a></h3>
+<p>The waveform, spectrogram and playback all read audio through
+<a class="reference external" href="https://github.com/bendalab/audioio"><code class="docutils literal notranslate"><span class="pre">audioio</span></code></a> (libsndfile). Supported
+<strong>standalone</strong> audio files:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Format</p></th>
+<th class="head"><p>Extension</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>WAV</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.wav</span></code></p></td>
+<td><p>Recommended — PCM <code class="docutils literal notranslate"><span class="pre">.wav</span></code> loads fastest and is the best-tested path.</p></td>
+</tr>
+<tr class="row-odd"><td><p>FLAC</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.flac</span></code></p></td>
+<td><p>Lossless, compact.</p></td>
+</tr>
+<tr class="row-even"><td><p>OGG</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.ogg</span></code></p></td>
+<td><p>Vorbis.</p></td>
+</tr>
+<tr class="row-odd"><td><p>MP3</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.mp3</span></code></p></td>
+<td><p>Requires a recent libsndfile (≥ 1.1).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Audio embedded in a video (<code class="docutils literal notranslate"><span class="pre">.mp4</span></code>/<code class="docutils literal notranslate"><span class="pre">.mov</span></code>/<code class="docutils literal notranslate"><span class="pre">.avi</span></code>) is not read in place.</strong> The
+AAC/other codecs inside a video container are not decoded for analysis, so these
+extensions are deliberately absent from the audio file picker. How to get the
+audio out depends on how you load:</p>
+<ul>
+<li><p><strong>Drag &amp; drop:</strong> when you drop a video that has an embedded audio track, tick
+<strong>“extract audio”</strong> on the cover page — EthoGraph extracts it to a throwaway
+<code class="docutils literal notranslate"><span class="pre">.wav</span></code> that then feeds the normal <code class="docutils literal notranslate"><span class="pre">audio_mic-N</span></code> pipeline. This is a
+convenience for one-off, single-session loads.</p></li>
+<li><p><strong>Custom set-up:</strong> there is no per-video extraction step here. Convert your
+videos to audio <strong>in bulk yourself</strong> before loading (one WAV/FLAC/OGG per
+clip), then point the loader at those files. For example, with <code class="docutils literal notranslate"><span class="pre">ffmpeg</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="k">for</span><span class="w"> </span>f<span class="w"> </span><span class="k">in</span><span class="w"> </span>*.mp4<span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span>ffmpeg<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$f</span><span class="s2">&quot;</span><span class="w"> </span>-vn<span class="w"> </span>-acodec<span class="w"> </span>pcm_s16le<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">f</span><span class="p">%.mp4</span><span class="si">}</span><span class="s2">.wav&quot;</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
+</pre></div>
+</div>
+<p>Extracting once, up front, is faster and more reliable than re-decoding the
+container on every load.</p>
+</li>
+</ul>
+<p>If a file cannot be decoded you get a single log line naming the file and the
+reason (e.g. <em>“Cannot load audio from video container … enable ‘extract audio’”</em>)
+rather than a stream of errors; convert the file to one of the formats above.</p>
+</section>
 <section id="opening-tsv-label-files-in-excel">
 <h3>Opening <code class="docutils literal notranslate"><span class="pre">.tsv</span></code> label files in Excel<a class="headerlink" href="#opening-tsv-label-files-in-excel" title="Link to this heading">#</a></h3>
 <p>Excel on Windows may not correctly parse <code class="docutils literal notranslate"><span class="pre">.tsv</span></code> files when double-clicked due to regional delimiter settings.</p>
@@ -579,6 +635,7 @@ suitable for precise annotation.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#what-does-this-button-do">What does this button do?</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-fails-with-resolution-too-deep">Installation fails with “resolution-too-deep”</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#silent-audio-on-linux">Silent audio on Linux</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#supported-audio-formats">Supported audio formats</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#opening-tsv-label-files-in-excel">Opening <code class="docutils literal notranslate"><span class="pre">.tsv</span></code> label files in Excel</a></li>
 </ul>
 </li>
