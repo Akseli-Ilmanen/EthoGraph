@@ -1,26 +1,5 @@
 # Video & Audio playback
 
-## The red marker is on *time*, not the video frame
-
-Video is recorded as discrete frames (e.g. ~47 per second), but audio and other
-signals have far finer time resolution — a birdsong syllable can be shorter than
-a single video frame. So the red timeline marker (the playhead) tracks the true
-**time**, not the nearest video frame.
-
-When you click on a plot (waveform, spectrogram, line plot):
-
-- the marker jumps to **exactly where you clicked**, down to sub-frame precision;
-- the video seeks to the **nearest frame** to that time and displays it;
-- a label you place is stored at the **exact clicked time**, not snapped to a frame.
-
-```{note}
-Because the video can only show whole frames, the displayed frame and the red
-marker can sit up to half a frame apart (~10 ms). This is expected and lets you
-place a syllable boundary precisely between two frames — you judge the boundary
-from the waveform/spectrogram, and the video is a reference. Stepping frame by
-frame (arrow keys) moves the marker onto exact frame times.
-```
-
 ## Playback modes
 
 The **playback mode** dropdown in the bottom bar picks how video (and audio) play:
@@ -47,6 +26,29 @@ recordings** (e.g. ultrasonic audio at 200–384 kHz) play even though no card
 outputs those rates directly — set the speed **well below** 100% to
 **time-expand** them into the audible range (e.g. 10% shifts a 50 kHz call to
 ~5 kHz), still locked to the video.
+
+
+## The red marker timeline marker
+
+Video is recorded as discrete frames (e.g. ~47 per second), but audio and other
+signals have far finer time resolution — a birdsong syllable can be shorter than
+a single video frame. So the red timeline marker (the playhead) tracks the true
+**time**, not the nearest video frame.
+
+When you click on a plot (waveform, spectrogram, line plot):
+
+- the marker jumps to **exactly where you clicked**, down to sub-frame precision;
+- the video seeks to the **nearest frame** to that time and displays it;
+- a label you place is stored at the **exact clicked time**, not snapped to a frame.
+
+```{note}
+Because the video can only show whole frames, the displayed frame and the red
+marker can sit up to half a frame apart (~10 ms). This is expected and lets you
+place a syllable boundary precisely between two frames — you judge the boundary
+from the waveform/spectrogram, and the video is a reference. Stepping frame by
+frame (arrow keys) moves the marker onto exact frame times.
+```
+
 
 
 ## Video proxies for smooth navigation
