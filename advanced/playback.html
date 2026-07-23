@@ -447,27 +447,6 @@
                   
   <section class="tex2jax_ignore mathjax_ignore" id="video-audio-playback">
 <h1>Video &amp; Audio playback<a class="headerlink" href="#video-audio-playback" title="Link to this heading">#</a></h1>
-<section id="the-red-marker-is-on-time-not-the-video-frame">
-<h2>The red marker is on <em>time</em>, not the video frame<a class="headerlink" href="#the-red-marker-is-on-time-not-the-video-frame" title="Link to this heading">#</a></h2>
-<p>Video is recorded as discrete frames (e.g. ~47 per second), but audio and other
-signals have far finer time resolution — a birdsong syllable can be shorter than
-a single video frame. So the red timeline marker (the playhead) tracks the true
-<strong>time</strong>, not the nearest video frame.</p>
-<p>When you click on a plot (waveform, spectrogram, line plot):</p>
-<ul class="simple">
-<li><p>the marker jumps to <strong>exactly where you clicked</strong>, down to sub-frame precision;</p></li>
-<li><p>the video seeks to the <strong>nearest frame</strong> to that time and displays it;</p></li>
-<li><p>a label you place is stored at the <strong>exact clicked time</strong>, not snapped to a frame.</p></li>
-</ul>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>Because the video can only show whole frames, the displayed frame and the red
-marker can sit up to half a frame apart (~10 ms). This is expected and lets you
-place a syllable boundary precisely between two frames — you judge the boundary
-from the waveform/spectrogram, and the video is a reference. Stepping frame by
-frame (arrow keys) moves the marker onto exact frame times.</p>
-</div>
-</section>
 <section id="playback-modes">
 <h2>Playback modes<a class="headerlink" href="#playback-modes" title="Link to this heading">#</a></h2>
 <p>The <strong>playback mode</strong> dropdown in the bottom bar picks how video (and audio) play:</p>
@@ -493,6 +472,27 @@ outputs those rates directly — set the speed <strong>well below</strong> 100% 
 <strong>time-expand</strong> them into the audible range (e.g. 10% shifts a 50 kHz call to
 ~5 kHz), still locked to the video.</p>
 </section>
+</section>
+<section id="the-red-marker-timeline-marker">
+<h2>The red marker timeline marker<a class="headerlink" href="#the-red-marker-timeline-marker" title="Link to this heading">#</a></h2>
+<p>Video is recorded as discrete frames (e.g. ~47 per second), but audio and other
+signals have far finer time resolution — a birdsong syllable can be shorter than
+a single video frame. So the red timeline marker (the playhead) tracks the true
+<strong>time</strong>, not the nearest video frame.</p>
+<p>When you click on a plot (waveform, spectrogram, line plot):</p>
+<ul class="simple">
+<li><p>the marker jumps to <strong>exactly where you clicked</strong>, down to sub-frame precision;</p></li>
+<li><p>the video seeks to the <strong>nearest frame</strong> to that time and displays it;</p></li>
+<li><p>a label you place is stored at the <strong>exact clicked time</strong>, not snapped to a frame.</p></li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Because the video can only show whole frames, the displayed frame and the red
+marker can sit up to half a frame apart (~10 ms). This is expected and lets you
+place a syllable boundary precisely between two frames — you judge the boundary
+from the waveform/spectrogram, and the video is a reference. Stepping frame by
+frame (arrow keys) moves the marker onto exact frame times.</p>
+</div>
 </section>
 <section id="video-proxies-for-smooth-navigation">
 <h2>Video proxies for smooth navigation<a class="headerlink" href="#video-proxies-for-smooth-navigation" title="Link to this heading">#</a></h2>
@@ -602,11 +602,11 @@ unintelligible) and the video free-runs.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-red-marker-is-on-time-not-the-video-frame">The red marker is on <em>time</em>, not the video frame</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#playback-modes">Playback modes</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#speed-and-high-rate-ultrasonic-audio">Speed and high-rate (ultrasonic) audio</a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-red-marker-timeline-marker">The red marker timeline marker</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#video-proxies-for-smooth-navigation">Video proxies for smooth navigation</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#which-channel-play-will-sound">Which channel Play will sound</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#playing-back-a-selected-label-segment">Playing back a selected label segment</a></li>
