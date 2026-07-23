@@ -40,10 +40,10 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.gui.dialog_function_params import _do_open_source
-from ethograph.utils.paths import ethograph_home
 from ethograph.gui.wizard_media_files import extract_file_row
 from ethograph.gui.wizard_multi_codegen import generate_alignment_code
 from ethograph.gui.wizard_overview import ModalityConfig, WizardState
+from ethograph.utils.paths import ethograph_home
 
 logger = logging.getLogger(__name__)
 

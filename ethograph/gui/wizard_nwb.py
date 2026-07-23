@@ -29,8 +29,8 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.gui.make_pretty import styled_link
-from ethograph.utils.paths import ethograph_home
 from ethograph.gui.notify import notify_dialog
+from ethograph.utils.paths import ethograph_home
 
 logger = logging.getLogger(__name__)
 

@@ -188,9 +188,7 @@ class BottomPlaybackBar(QWidget):
 
         self.speed_info_label = QLabel()
         self.speed_info_label.setStyleSheet("color: #999999;")
-        self.speed_info_label.setToolTip(
-            "Effective frame rate / audio sample rate at the current speed setting."
-        )
+        self.speed_info_label.setToolTip("Effective frame rate / audio sample rate at the current speed setting.")
         bot.addWidget(self.speed_info_label)
 
         # Center playback + Hide label text

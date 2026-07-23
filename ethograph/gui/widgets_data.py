@@ -2167,7 +2167,6 @@ class DataWidget(QWidget):
             if saved is None or find_combo_index(primary_combo, saved) < 0:
                 self.app_state.primary_camera = get_combo_value(primary_combo)
 
-
     # ------------------------------------------------------------------
     # Trial change
     # ------------------------------------------------------------------
@@ -2436,8 +2435,7 @@ class DataWidget(QWidget):
         """
         if proxy and self.pose_mgr.has_active_skeleton_overlay():
             notify(
-                "Pose/skeleton overlay may be misaligned on the proxy video "
-                "(different resolution than the source).",
+                "Pose/skeleton overlay may be misaligned on the proxy video (different resolution than the source).",
                 "warning",
             )
         self.app_state.video_quality_mode = "proxy" if proxy else "full"

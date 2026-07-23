@@ -24,7 +24,7 @@ import numpy as np
 import pygfx as gfx
 from pynaviz.audiovideo import PlotVideo
 from pynaviz.utils import RenderTriggerSource
-from qtpy.QtCore import QEvent, Qt, QTimer, Signal
+from qtpy.QtCore import QEvent, QTimer, Signal
 from qtpy.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from .pose_overlay import PoseOverlay

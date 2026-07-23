@@ -145,8 +145,13 @@ def generate_proxy(
     # Keep the real extension (…​.part.mp4) so ffmpeg can infer the muxer.
     tmp_path = proxy_path.with_suffix(".part" + proxy_path.suffix)
     cmd = build_proxy_command(
-        video_path, tmp_path, scale_height=scale_height, gop=gop,
-        crf=crf, preset=preset, hwaccel=hwaccel,
+        video_path,
+        tmp_path,
+        scale_height=scale_height,
+        gop=gop,
+        crf=crf,
+        preset=preset,
+        hwaccel=hwaccel,
     )
 
     if verbose:

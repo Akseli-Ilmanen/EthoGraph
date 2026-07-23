@@ -186,9 +186,9 @@ AUDIO_SPEED_DEFAULT = 1.0
 # Auto follows audio presence (audio → synced, none → smooth); the others are
 # explicit user overrides. Audio is only played in "synced" mode.
 PLAYBACK_MODE_AUTO = "auto"
-PLAYBACK_MODE_SYNCED = "synced"   # audio-master clock; drops video frames to stay locked
-PLAYBACK_MODE_SMOOTH = "smooth"   # decode-paced; every frame, may run slower than fps; no audio
-PLAYBACK_MODE_SKIP = "skip"       # approximate real-time fps by skipping frames; no audio
+PLAYBACK_MODE_SYNCED = "synced"  # audio-master clock; drops video frames to stay locked
+PLAYBACK_MODE_SMOOTH = "smooth"  # decode-paced; every frame, may run slower than fps; no audio
+PLAYBACK_MODE_SKIP = "skip"  # approximate real-time fps by skipping frames; no audio
 
 # (display label, mode value) for the bottom-bar combo, in order.
 PLAYBACK_MODE_CHOICES = [

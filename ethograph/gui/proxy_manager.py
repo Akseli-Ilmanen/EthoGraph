@@ -41,9 +41,7 @@ class _ProxyJob(QThread):
         try:
             self._proxy.parent.mkdir(parents=True, exist_ok=True)
             cmd = build_proxy_command(self._source, self._tmp)
-            self._proc = subprocess.Popen(
-                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
+            self._proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             ret = self._proc.wait()
             if self._cancelled:
                 self._tmp.unlink(missing_ok=True)
