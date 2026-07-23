@@ -278,7 +278,6 @@ class MetaWidget(GridSectionContainer):
 
         dp = self.data_panel
         ps = self.plot_settings_widget
-        nav = self.navigation_widget
         sections = {
             "coords": getattr(dp, "coords_groupbox", None),
             "slot": getattr(dp, "slot_groupbox", None),
