@@ -23,16 +23,11 @@ This file lives outside the repo and is never committed.
    ```
    If it reports failures, run it **a second time** — pre-commit fixes files in place on the first pass, and the second run confirms everything is clean.
 
-2. Commit all changes (including any files pre-commit just fixed):
+2. Commit all changes (including any files pre-commit just fixed). Push to main:
    ```powershell
-   git add -A
-   git commit -m "fix: linting"
+   git add -A && git commit -m "fix: linting" && git push origin main
    ```
 
-3. Push to main:
-   ```powershell
-   git push origin main
-   ```
 
 ## Release steps
 
