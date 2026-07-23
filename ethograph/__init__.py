@@ -34,7 +34,7 @@ from ethograph.io.time_model import (
     TimeSource,
 )
 from ethograph.io.trialtree import TrialTree
-from ethograph.utils.paths import get_project_root
+from ethograph.utils.paths import ethograph_home, get_project_root
 from ethograph.utils.xr_utils import get_ds_duration, get_time_coord, sel_valid
 
 

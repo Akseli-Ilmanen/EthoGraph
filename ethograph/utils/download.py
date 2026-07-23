@@ -146,9 +146,9 @@ def ensure_default_configs() -> None:
     """Write default configs to ``~/.ethograph/`` if they don't exist yet."""
     import sys
 
-    from ethograph.utils.paths import SETTINGS_DIR
+    from ethograph.utils.paths import ethograph_home
 
-    global_dir = Path.home() / SETTINGS_DIR
+    global_dir = ethograph_home()
     global_dir.mkdir(parents=True, exist_ok=True)
     mapping = global_dir / "mapping.txt"
     if not mapping.exists():

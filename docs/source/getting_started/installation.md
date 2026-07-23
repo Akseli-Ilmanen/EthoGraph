@@ -125,11 +125,16 @@ uv pip install "ethograph[gui,audio]"
 :::
 
 :::{tab-item} Linux
-First install the PortAudio system library, then install the audio extra:
+First install the PortAudio system library **and the ALSA plugins**, then
+install the audio extra:
 ```bash
-sudo apt install libportaudio2   # Debian / Ubuntu
+sudo apt install libportaudio2 libasound2-plugins   # Debian / Ubuntu
 uv pip install "ethograph[gui,audio]"
 ```
+
+`libasound2-plugins` is the ALSA→PipeWire/PulseAudio bridge; without it
+PortAudio can't reach a modern sound server. See {ref}`no-audio-device` if
+playback is still silent.
 :::
 
 ::::
@@ -149,6 +154,8 @@ After installation, launch ethograph from the terminal:
 
 Or use the desktop/Start Menu shortcut created above.
 ```
+
+Global settings live in `~/.ethograph` (override with the `ETHOGRAPH_HOME` environment variable).
 
 ### Core only (library)
 
@@ -185,8 +192,9 @@ You can combine them as needed:
 | `docs`     | Documentation build dependencies                                    |
 
 ```{note}
-Linux users adding `audio` must first install the PortAudio system library:
-`sudo apt install libportaudio2`
+Linux users adding `audio` must first install the PortAudio system library
+**and the ALSA plugins**:
+`sudo apt install libportaudio2 libasound2-plugins`
 ```
 
 Combine extras with commas:

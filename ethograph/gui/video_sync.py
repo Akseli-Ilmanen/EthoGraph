@@ -60,8 +60,9 @@ class VideoSync(QObject):
     def frame_to_time(self, frame: int) -> float:
         return frame / self.fps + self._time_offset
 
-    def time_to_frame(self, time_s: float) -> int:
-        return int((time_s - self._time_offset) * self.fps)
+    def time_to_frame(self, time_s: float, *, round_nearest: bool = False) -> int:
+        frames = (time_s - self._time_offset) * self.fps
+        return round(frames) if round_nearest else int(frames)
 
     @property
     def fps(self) -> float:

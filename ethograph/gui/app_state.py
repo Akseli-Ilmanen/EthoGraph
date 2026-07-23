@@ -34,7 +34,7 @@ from ethograph.labels.tsv_store import (
     set_trial_in_tsv,
     set_trial_meta_attr,
 )
-from ethograph.utils.paths import auto_git_commit
+from ethograph.utils.paths import auto_git_commit, ethograph_home
 from ethograph.utils.qt import find_combo_index
 
 logger = logging.getLogger(__name__)
@@ -840,7 +840,7 @@ class ObservableAppState(QObject):
     PATH_SUFFIXES = ("_path", "_folder")
 
     def _global_settings_path(self) -> Path:
-        return Path.home() / self.SETTINGS_DIRNAME / self.GLOBAL_SETTINGS_FILENAME
+        return ethograph_home() / self.GLOBAL_SETTINGS_FILENAME
 
     def _local_settings_path(self) -> Path | None:
         nc_file_path = getattr(self, "nc_file_path", None)

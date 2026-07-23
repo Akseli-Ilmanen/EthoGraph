@@ -70,7 +70,7 @@ _EVENT_TYPE_GLYPH = {
 _BRANCH_POSITION = {0: "main", 1: "top1", 2: "top2"}
 _BRANCH_POSITION_LABEL = {0: "Full", 1: "Top1", 2: "Top2"}
 MAX_LABEL_BRANCHES = 3
-from ethograph.utils.paths import find_mapping_file  # noqa: E402
+from ethograph.utils.paths import ethograph_home, find_mapping_file  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -609,7 +609,7 @@ class LabelsWidget(QWidget):
     def _browse_mapping_file(self):
         """Browse for a mapping.txt file and reload mappings."""
         current = find_mapping_file()
-        start_dir = str(current.parent) if current else str(Path.home() / ".ethograph")
+        start_dir = str(current.parent) if current else str(ethograph_home())
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select mapping.txt file",
@@ -1334,8 +1334,10 @@ class LabelsWidget(QWidget):
             return
 
         if self.app_state.video:
-            start_frame = self.app_state.video.time_to_frame(onset_s)
-            end_frame = self.app_state.video.time_to_frame(offset_s)
+            # Round to the nearest frame so the marker lands on the label
+            # boundary instead of truncating up to a frame short.
+            start_frame = self.app_state.video.time_to_frame(onset_s, round_nearest=True)
+            end_frame = self.app_state.video.time_to_frame(offset_s, round_nearest=True)
             self.app_state.video.play_segment(start_frame, end_frame)
         else:
             self._play_audio_segment(onset_s, offset_s)

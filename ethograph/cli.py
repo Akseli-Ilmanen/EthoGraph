@@ -69,6 +69,10 @@ def launch():
     _fix_wayland_opengl()
     _ensure_qt_plugins()
 
+    from ethograph.utils.paths import ethograph_home
+
+    logging.getLogger("ethograph").info("Global settings directory: %s", ethograph_home())
+
     try:
         from qtpy.QtCore import QLocale
         from qtpy.QtWidgets import QApplication

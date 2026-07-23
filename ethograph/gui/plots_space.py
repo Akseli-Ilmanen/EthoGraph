@@ -29,6 +29,7 @@ from qtpy.QtWidgets import (
 from ethograph.features.preprocessing import interpolate_nans
 from ethograph.gui.plots_lineplot import MultiColoredLineItem
 from ethograph.io.catalog import DataLoader
+from ethograph.utils.paths import ethograph_home
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ def load_geometry_yaml(path: Path) -> Optional[dict]:
 #: ``references:`` list of vertices/edges) to make it selectable — by file
 #: stem — in the Space controls / persist-able as a default via
 #: ``space_library_geometry`` in gui_settings.yaml or local_settings.yaml.
-GEOMETRY_LIBRARY_DIR = Path.home() / ".ethograph" / "geometries"
+GEOMETRY_LIBRARY_DIR = ethograph_home() / "geometries"
 
 #: Default geometries shipped with the package — contribute new ones via PR.
 BUNDLED_GEOMETRIES_DIR = Path(__file__).resolve().parents[1] / "geometries"

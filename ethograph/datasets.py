@@ -11,10 +11,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ethograph.utils.paths import ethograph_home
+
 if TYPE_CHECKING:
     import xarray as xr
 
-DOWNLOAD_BASE = Path.home() / ".ethograph" / "example_data"
+DOWNLOAD_BASE = ethograph_home() / "example_data"
 
 DATASETS: dict[str, dict] = {
     "moll2025": {

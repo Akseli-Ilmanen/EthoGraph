@@ -39,6 +39,28 @@ uv pip install "ethograph[all]"
 
 See {doc}`../getting_started/installation` for full instructions.
 
+(no-audio-device)=
+### Silent audio on Linux
+
+If playback is silent, check what PortAudio sees:
+
+```bash
+python -c "import sounddevice as sd; print(sd.query_devices())"
+```
+
+A default device of `[-1, -1]` means PortAudio found no device. On a
+PipeWire/PulseAudio desktop this is almost always the missing ALSA bridge —
+install it and restart ethograph:
+
+```bash
+sudo apt install libasound2-plugins pipewire-alsa
+```
+
+(Debian/Ubuntu's bundled PortAudio only speaks ALSA, so it needs this bridge
+to reach a modern sound server.) Routing playback through `pw-play`/`paplay`
+instead makes audio audible but not sample-accurately synced, so it isn't
+suitable for precise annotation.
+
 ### Opening `.tsv` label files in Excel
 
 Excel on Windows may not correctly parse `.tsv` files when double-clicked due to regional delimiter settings.

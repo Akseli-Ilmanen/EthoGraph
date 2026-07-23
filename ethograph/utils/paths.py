@@ -10,6 +10,46 @@ logger = logging.getLogger(__name__)
 
 SETTINGS_DIR = ".ethograph"
 
+#: Environment variable that overrides the location of the global settings
+#: directory.  When set, its value is used verbatim as the ``.ethograph``
+#: settings directory instead of ``~/.ethograph``.
+ETHOGRAPH_HOME_ENV = "ETHOGRAPH_HOME"
+
+
+def ethograph_home() -> Path:
+    """Return the global settings directory (the ``.ethograph`` folder).
+
+    Every global (user-level) config, download, and cache location in ethograph
+    is anchored here.  Resolution order:
+
+    1. ``$ETHOGRAPH_HOME`` — if set, used verbatim (``~`` is expanded).  This is
+       the escape hatch for CI, automation harnesses, or relocating settings to
+       another drive, and avoids having to fake ``USERPROFILE``/``HOME`` so that
+       :func:`pathlib.Path.home` resolves correctly.
+    2. ``~/.ethograph`` — the default for a normal interactive session.
+
+    The directory is *not* created; callers that write into it create it as
+    needed.  On Windows, :func:`pathlib.Path.home` raises ``RuntimeError`` when
+    none of ``USERPROFILE``/``HOME``/``HOMEDRIVE`` are set (there is no
+    password-database fallback as on POSIX), so setting ``$ETHOGRAPH_HOME`` is
+    the robust way to run in a stripped environment.
+
+    Returns
+    -------
+    Path
+        Absolute path to the ``.ethograph`` settings directory.
+
+    Examples
+    --------
+    >>> import ethograph as eto
+    >>> eto.ethograph_home()  # doctest: +SKIP
+    PosixPath('/home/user/.ethograph')
+    """
+    override = os.environ.get(ETHOGRAPH_HOME_ENV)
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / SETTINGS_DIR
+
 
 def get_project_root(start: Path | None = None) -> Path:
     """Find the repository root by walking up from *start* until ``pyproject.toml`` is found.
@@ -139,7 +179,7 @@ def find_config(name: str, data_dir: Path | str | None = None) -> Path | None:
             if candidate.exists():
                 return candidate
 
-    global_candidate = Path.home() / SETTINGS_DIR / name
+    global_candidate = ethograph_home() / name
     if global_candidate.exists():
         return global_candidate
 
@@ -154,7 +194,7 @@ def default_config_dir(data_dir: Path | str | None = None) -> Path:
     """
     if data_dir is not None:
         return Path(data_dir) / SETTINGS_DIR
-    return Path.home() / SETTINGS_DIR
+    return ethograph_home()
 
 
 def find_mapping_file(data_dir: Path | str | None = None) -> Path | None:

@@ -78,12 +78,17 @@ def sel_valid(da, sel_kwargs):
         da = da.sel(**sel_kwargs_filtered)
     if isel_kwargs:
         da = da.isel(**isel_kwargs)
-    da = da.squeeze()
 
     time_dim = next((dim for dim in da.dims if "time" in dim), None)
 
     if time_dim is None:
         raise ValueError("No dimension containing 'time' found in the DataArray.")
+
+    # Squeeze only non-time singletons: a zero-width/singleton time selection
+    # must keep its length-1 time axis, not collapse into a scalar.
+    squeeze_dims = [d for d in da.dims if d != time_dim and da.sizes[d] == 1]
+    if squeeze_dims:
+        da = da.squeeze(squeeze_dims)
 
     da = da.transpose(time_dim, ...)
 

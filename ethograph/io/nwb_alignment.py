@@ -513,6 +513,14 @@ class NWBAlignment:
                 return float(val)
         return None
 
+    def _session_end_time(self) -> float | None:
+        """Largest ``stop_time`` across trials, or ``None`` if unavailable."""
+        df = self.trials_df
+        if df.empty or "stop_time" not in df.columns:
+            return None
+        stops = df["stop_time"].dropna()
+        return float(stops.max()) if not stops.empty else None
+
     def stream_offset_for_trial(
         self,
         trial,
@@ -590,9 +598,18 @@ class NWBAlignment:
                 t_end = float(ts[frame_end - 1]) if frame_end is not None and frame_end <= len(ts) else float(ts[-1])
             elif rate and rate > 0:
                 t_start = starting_time + frame_start / rate
-                if frame_end is None:
-                    continue
-                t_end = starting_time + frame_end / rate
+                if frame_end is not None:
+                    t_end = starting_time + frame_end / rate
+                else:
+                    # Last/only file: end from num_samples (written for rate
+                    # mode), falling back to the trials table's session end.
+                    num = getattr(acq, "num_samples", None)
+                    if num:
+                        t_end = starting_time + int(num) / rate
+                    else:
+                        t_end = self._session_end_time()
+                    if t_end is None:
+                        continue
             else:
                 continue
 
@@ -911,6 +928,88 @@ def _parse_stream_devices(columns: list[str]) -> dict[str, list[str]]:
     return result
 
 
+def _segments_contiguous(seg_starts: list[float], seg_nsamples: list[int], rate: float) -> bool:
+    """True when every segment starts where the previous one ended (constant rate).
+
+    A contiguous run can be stored as compact ``rate`` + ``starting_time`` metadata;
+    a run with gaps needs per-sample ``timestamps`` to preserve those gaps.
+    """
+    if not rate or rate <= 0:
+        return False
+    tol = 0.5 / rate
+    expected = seg_starts[0]
+    for start, n in zip(seg_starts, seg_nsamples):
+        if abs(start - expected) > tol:
+            return False
+        expected = start + int(n) / rate
+    return True
+
+
+def _add_external_series(
+    nwbfile: NWBFile,
+    name: str,
+    files: list[str],
+    seg_starts: list[float],
+    seg_nsamples: list[int],
+    rate: float | None,
+) -> None:
+    """Add an external-file ImageSeries with compact timing where possible.
+
+    Uses ``rate`` + ``starting_time`` for a single contiguous constant-rate
+    timeline (the common case — sidecar stays tiny); falls back to dense
+    per-sample ``timestamps`` only when segments have gaps a single rate can't
+    express. With no rate, stores one frame per file at its start time.
+    """
+    from pynwb.image import ImageSeries
+
+    files = list(files)
+    seg_starts = [float(s) for s in seg_starts]
+    if name in nwbfile.acquisition:
+        del nwbfile.acquisition[name]
+
+    if not rate or rate <= 0:
+        nwbfile.add_acquisition(
+            ImageSeries(
+                name=name,
+                description=name,
+                external_file=files,
+                format="external",
+                starting_frame=np.arange(len(files), dtype=np.int32),
+                timestamps=np.asarray(seg_starts, dtype=np.float64),
+            )
+        )
+        return
+
+    starting_frames = np.zeros(len(files), dtype=np.int32)
+    acc = 0
+    for i, n in enumerate(seg_nsamples):
+        starting_frames[i] = acc
+        acc += int(n)
+
+    kwargs = dict(
+        name=name,
+        description=name,
+        external_file=files,
+        format="external",
+        starting_frame=starting_frames,
+    )
+
+    if _segments_contiguous(seg_starts, seg_nsamples, rate):
+        # external + rate carries no data array, so num_samples must be given
+        # explicitly (this is also what lets readers find the last file's end).
+        nwbfile.add_acquisition(
+            ImageSeries(
+                rate=float(rate),
+                starting_time=seg_starts[0],
+                num_samples=np.uint64(sum(int(n) for n in seg_nsamples)),
+                **kwargs,
+            )
+        )
+    else:
+        ts = np.concatenate([s + np.arange(int(n)) / rate for s, n in zip(seg_starts, seg_nsamples)])
+        nwbfile.add_acquisition(ImageSeries(timestamps=ts, **kwargs))
+
+
 def sync_acquisition_for_streams(
     nwbfile: NWBFile,
     stream_rates: dict[str, float],
@@ -930,8 +1029,6 @@ def sync_acquisition_for_streams(
         Mapping of stream name to sampling rate, e.g.
         ``{"video": 30.0, "audio": 44100.0, "pose": 30.0}``.
     """
-    from pynwb.image import ImageSeries
-
     df = nwbfile.trials.to_dataframe()
     stream_devices = _parse_stream_devices(list(df.columns))
 
@@ -957,37 +1054,17 @@ def sync_acquisition_for_streams(
             else:
                 starts = valid["start_time"].values.astype(float)
 
-            timestamps_parts: list[np.ndarray] = []
-            starting_frames: list[int] = []
-            frame_count = 0
-
+            seg_starts: list[float] = []
+            seg_nsamples: list[int] = []
             for i, (_, row) in enumerate(valid.iterrows()):
-                file_start = float(starts[i])
                 duration = float(row["stop_time"]) - float(row["start_time"])
-                n_samples = max(1, int(duration * rate))
-
-                ts = file_start + np.arange(n_samples) / rate
-                timestamps_parts.append(ts)
-                starting_frames.append(frame_count)
-                frame_count += n_samples
+                seg_starts.append(float(starts[i]))
+                seg_nsamples.append(max(1, int(duration * rate)))
 
             if device not in [d.name for d in nwbfile.devices.values()]:
                 nwbfile.create_device(name=device, description=f"{stream} device {device}")
 
-            acq_name = f"{stream}_{device}"
-            if acq_name in nwbfile.acquisition:
-                del nwbfile.acquisition[acq_name]
-
-            nwbfile.add_acquisition(
-                ImageSeries(
-                    name=acq_name,
-                    description=f"{stream} from {device}",
-                    external_file=external_files,
-                    format="external",
-                    starting_frame=np.array(starting_frames, dtype=np.int32),
-                    timestamps=np.concatenate(timestamps_parts),
-                )
-            )
+            _add_external_series(nwbfile, f"{stream}_{device}", external_files, seg_starts, seg_nsamples, rate)
 
 
 def _infer_times_from_media(
@@ -1288,42 +1365,18 @@ def align_media_from_streams(
         elif len(files) == 1 and n_trials > 1:
             # Session-wide: one file spanning all trials
             t0 = starting_time if starting_time is not None else float(trial_starts[0])
-            t1 = float(trial_stops[-1])
-            n_samples = max(1, int((t1 - t0) * rate)) if rate else 1
-            timestamps = t0 + np.arange(n_samples) / rate if rate else np.array([t0])
-            nwbfile.add_acquisition(
-                ImageSeries(
-                    name=name,
-                    description=name,
-                    external_file=files,
-                    format="external",
-                    starting_frame=np.array([0], dtype=np.int32),
-                    timestamps=timestamps,
-                )
-            )
+            n_samples = max(1, int((float(trial_stops[-1]) - t0) * rate)) if rate else 1
+            _add_external_series(nwbfile, name, files, [t0], [n_samples], rate)
         else:
             # Per-trial: one file per trial
-            timestamps_parts = []
-            starting_frames = []
-            frame_count = 0
+            seg_starts = []
+            seg_nsamples = []
             for i in range(min(len(files), n_trials)):
                 t0 = float(trial_starts[i])
                 dur = float(trial_stops[i]) - t0
-                n_samples = max(1, int(dur * rate)) if rate else 1
-                ts = t0 + np.arange(n_samples) / rate if rate else np.array([t0])
-                timestamps_parts.append(ts)
-                starting_frames.append(frame_count)
-                frame_count += n_samples
-            nwbfile.add_acquisition(
-                ImageSeries(
-                    name=name,
-                    description=name,
-                    external_file=files[:n_trials],
-                    format="external",
-                    starting_frame=np.array(starting_frames, dtype=np.int32),
-                    timestamps=np.concatenate(timestamps_parts),
-                )
-            )
+                seg_starts.append(t0)
+                seg_nsamples.append(max(1, int(dur * rate)) if rate else 1)
+            _add_external_series(nwbfile, name, files[:n_trials], seg_starts, seg_nsamples, rate)
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)

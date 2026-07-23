@@ -29,6 +29,7 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.gui.make_pretty import styled_link
+from ethograph.utils.paths import ethograph_home
 from ethograph.gui.notify import notify_dialog
 
 logger = logging.getLogger(__name__)
@@ -301,7 +302,7 @@ class _DownloadPage(QWidget):
 
     def set_summary(self, dandiset_id: str, paths: list[str]):
         self._summary.setText(f"<b>{len(paths)}</b> NWB file(s) from dandiset <b>{dandiset_id}</b> will be downloaded.")
-        default_dir = Path.home() / ".ethograph" / "dandi" / dandiset_id
+        default_dir = ethograph_home() / "dandi" / dandiset_id
         if not self.output_edit.text():
             self.output_edit.setText(str(default_dir))
 

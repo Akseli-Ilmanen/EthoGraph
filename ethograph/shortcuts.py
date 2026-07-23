@@ -6,6 +6,8 @@ import stat
 import sys
 from pathlib import Path
 
+from ethograph.utils.paths import ETHOGRAPH_HOME_ENV, ethograph_home
+
 ASSETS_DIR = Path(__file__).parent / "assets"
 ICON_EXTENSIONS = {"win32": ".ico", "linux": ".png", "darwin": ".png"}
 
@@ -123,4 +125,7 @@ def install_shortcut() -> int:
         print(f"  Desktop: {desktop / 'ethograph.lnk'}")
 
     print("Shortcut installed successfully.")
+
+    print(f"\nGlobal settings are stored in: {ethograph_home()}")
+    print(f"  (override with the {ETHOGRAPH_HOME_ENV} environment variable)")
     return 0

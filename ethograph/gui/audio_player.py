@@ -45,6 +45,9 @@ class AudioPlayer:
         self._timer.timeout.connect(self._advance)
         self._start_time = 0.0
         self._start_wall = 0.0
+        # Hard stop boundary for segment playback; ``None`` = open playback to
+        # the view edge. ``_advance`` snaps the marker to it exactly on stop.
+        self._segment_end: float | None = None
         # Optional hook invoked whenever playing flips (start/stop/auto-stop).
         self.on_state_changed: Callable[[], None] | None = None
 
@@ -67,6 +70,7 @@ class AudioPlayer:
 
         self._start_time = current_time
         self._start_wall = _time.perf_counter()
+        self._segment_end = None
         self._playing = True
 
         self._start_audio_if_available(current_time, end_time)
@@ -115,6 +119,7 @@ class AudioPlayer:
             pass
         self._timer.stop()
         self._playing = False
+        self._segment_end = None
         self._notify_state_changed()
 
     def _notify_state_changed(self):
@@ -122,7 +127,7 @@ class AudioPlayer:
             self.on_state_changed()
 
     def play_segment(self, onset_s: float, offset_s: float):
-        """Play a segment with automatic stop at *offset_s*.
+        """Play a segment, stopping the marker exactly on *offset_s*.
 
         If audio is available, plays it via ``sounddevice``.
         Always drives the time marker from *onset_s* until *offset_s*.
@@ -134,29 +139,20 @@ class AudioPlayer:
 
         self._start_time = onset_s
         self._start_wall = _time.perf_counter()
+        self._segment_end = offset_s
         self._playing = True
+        self._update_marker(onset_s)  # snap start exactly onto the boundary
         self._notify_state_changed()
-
-        speed = self.app_state.audio_playback_speed
-
-        self._timer.timeout.disconnect()
-        self._timer.timeout.connect(self._advance)
-
-        def _stop_at_end():
-            elapsed = _time.perf_counter() - self._start_wall
-            if onset_s + elapsed * speed >= offset_s:
-                self.stop()
-
-        self._timer.timeout.connect(_stop_at_end)
         self._timer.start()
 
     def _advance(self):
         elapsed = _time.perf_counter() - self._start_wall
         speed = self.app_state.audio_playback_speed
         current = self._start_time + elapsed * speed
-        xlim = self._get_xlim()
+        end = self._segment_end if self._segment_end is not None else self._get_xlim()[1]
 
-        if current > xlim[1]:
+        if current >= end:
+            self._update_marker(end)  # land exactly on the boundary, not past it
             self.stop()
             return
 
