@@ -28,6 +28,14 @@ Labelling in the GUI, importing/exporting labels.
 Detection methods (kinematic, audio, ruptures) and label-boundary correction.
 :::
 
+:::{grid-item-card} {fas}`crosshairs` Keypoint labelling
+:link: keypoint_labelling
+:link-type: doc
+
+Labelling keypoints by clicking the video, the fill backends (spline, optical
+flow, PosePAL), and when to train a detector instead.
+:::
+
 
 
 :::{grid-item-card} {fas}`play` Video & Audio playback
@@ -60,6 +68,7 @@ Common issues and fixes.
 metadata
 labels/index
 changepoints/index
+keypoint_labelling
 playback
 shortcuts
 troubleshooting

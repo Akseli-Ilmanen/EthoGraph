@@ -251,7 +251,13 @@ motion is smooth.
 |---------|--------|------------|-------|----------|
 | **Spline** (default) | Monotone piecewise cubic (PCHIP) interpolation per keypoint, over that keypoint's own labelled frames[^pchip] | No — geometry only | Instant; nothing is decoded | CPU |
 | **Optical flow** | Pyramidal Lucas-Kanade sparse tracking, run forward and backward across each gap[^lk] | Yes | Roughly real-time | CPU |
-| **CoTracker3** | Transformer point tracker with joint attention across tracked points, run forward and backward across each gap[^cotracker] | Yes | Fast on a GPU (well under a second per gap); minutes per fill on CPU | **GPU strongly recommended** — CUDA or Apple Silicon |
+| **PosePAL (CoTracker3 + refinement)** | A transformer point tracker[^cotracker] whose per-keypoint appearance features are first fitted to the frames you labelled[^posepal], then run forward and backward across each gap | Yes | A few minutes for the fit, once; seconds per fill after that | **GPU only** — CUDA or Apple Silicon |
+
+```{seealso}
+This page covers *installing* the backends. Which one to reach for, how the
+labelling loop works, and when to train a DeepLabCut detector instead are
+covered in {doc}`../advanced/keypoint_labelling`.
+```
 
 ### Optical flow
 
@@ -263,15 +269,19 @@ This is the backend to reach for **when you have no GPU** and the spline is not
 following the animal closely enough: it uses the pixels, runs at roughly video
 speed on a laptop CPU, and needs no model weights.
 
-### CoTracker3 — plan on a GPU
+### PosePAL — plan on a GPU
+
+PosePAL[^posepal] is the learned backend: it takes CoTracker3[^cotracker],
+freezes the network, and optimises *only* the per-keypoint appearance features
+against the frames you already labelled, so the tracker knows what your keypoints
+look like on *this* animal in *this* recording. It is the method this GUI offers
+for tracking with a model — the unrefined tracker is not a separate choice.
 
 ```{important}
-CoTracker3 is a transformer run over every frame of every gap. On a CUDA GPU or
-Apple Silicon a fill is a few seconds; **on a plain CPU it is an order of
-magnitude slower**, and the gap grows with video resolution and with the
-distance between your labelled frames. It stays selectable on CPU — for a short,
-small clip it is merely slow — but it is not a practical way to label a real
-recording. Without a GPU, use *Spline* or *Optical flow*.
+The fit is 500 optimisation steps, not a single forward pass, so this backend is
+**GPU-only** and is greyed out without one. Without a GPU, use *Spline* or
+*Optical flow*. Budget around **5 GB of VRAM** (measured on an RTX 3080 with a
+480p clip).
 ```
 
 Install it with one command:
@@ -292,13 +302,31 @@ Check that PyTorch actually found the GPU:
 python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else '')"
 ```
 
-The labelling dialog reports the same thing: the backend is listed as
-**CoTracker3 (cuda)**, **(mps)** or **(cpu) — slow**, so the device it resolved
-is visible before you start a fill rather than discovered afterwards. The ~97 MB
-model weights download automatically into `~/.ethograph/models/cotracker` on the
-first fill.
+The labelling dialog reports the same thing: the backend is listed as **PosePAL
+(CoTracker3 + refinement) (cuda)** or **(mps)**, so the device it resolved is
+visible before you start a fill rather than discovered afterwards. The ~97 MB
+CoTracker3 weights download automatically into `~/.ethograph/models/cotracker` on
+the first fill; the refinement itself needs no extra weights, since it is fitted
+from your own labels.
+
+**How it behaves in the dialog**
+
+- The first fill runs the fit (a few minutes on a GPU), then fills. The progress
+  dialog names which phase it is in.
+- The fit is **saved next to the video** (`<video>.posepal.pt`) and reused by
+  every later fill made from the same labels, so re-filling without labelling
+  anything new costs a forward pass, not another fit.
+- Label or correct a point and the fit is out of date: the next fill redoes it
+  by itself, from scratch. There is no separate fit button — the Fill tab just
+  says which phases the next fill will pay for.
+- Cancelling keeps the previous fit *and* the previous fill; a half-optimised
+  model is never used.
 
 ```{note}
+Editing the keypoint schema invalidates a fit — the features are learned per
+keypoint — and the fit needs at least two labelled frames close enough together
+to fall in one training window.
+
 No GPU of your own? The optical-flow backend is the honest local answer. Renting
 one is only worth it for large labelling jobs — the fill is not the slow part of
 annotation, the clicking is.
@@ -330,3 +358,5 @@ that PyTorch/CUDA packages depend on.
 [^lk]: Lucas, B. D. & Kanade, T. (1981). [An Iterative Image Registration Technique with an Application to Stereo Vision](https://www.ri.cmu.edu/pub_files/pub3/lucas_bruce_d_1981_1/lucas_bruce_d_1981_1.pdf). *IJCAI*, 674–679. The pyramidal form used here is Bouguet, J.-Y. (2001), [Pyramidal Implementation of the Lucas Kanade Feature Tracker](https://robots.stanford.edu/cs223b04/algo_tracking.pdf), via [`cv2.calcOpticalFlowPyrLK`](https://docs.opencv.org/4.x/dc/d6b/group__video__track.html#ga473e4b886d0bcc6b65831eb88ed93323).
 
 [^cotracker]: Karaev, N., Makarov, I., Wang, J., Neverova, N., Vedaldi, A. & Rupprecht, C. (2024). [CoTracker3: Simpler and Better Point Tracking by Pseudo-Labelling Real Videos](https://arxiv.org/abs/2410.11831). [Project page](https://cotracker3.github.io/) · [GitHub](https://github.com/facebookresearch/co-tracker)
+
+[^posepal]: Pan, Z., Pan, B., Yang, G., Harley, A. W. & Guibas, L. (2025). [Animal Pose Labeling Using General-Purpose Point Trackers](https://arxiv.org/abs/2506.03868). Reference implementation: [PosePAL](https://github.com/Zhuoyang-Pan/PosePAL). EthoGraph implements the method against upstream CoTracker3 rather than the authors' fork; the optimiser settings follow the paper (Adam, 1e-3 → 1e-5, Huber tracking loss, L1 pull-back weighted 0.01).
