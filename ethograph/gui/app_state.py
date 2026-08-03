@@ -208,6 +208,14 @@ class AppStateSpec:
         "skeleton_use_base": (bool, True, True),
         "skeleton_base_color": (str | None, "#00CC66", True),
         "skeleton_config_override": (dict | None, None, True),
+        # Keypoint labelling: the schema being labelled and the chosen fill
+        # backend. The labelled coordinates themselves are project data and go
+        # to a sidecar next to the video, never here.
+        "labelling_keypoints": (list[str], [], True, SCOPE_LOCAL),
+        "labelling_individuals": (list[str], [], True, SCOPE_LOCAL),
+        "labelling_backend": (str, "spline", True),
+        # Labelling marker diameter, in SCREEN pixels (zoom-independent).
+        "labelling_point_size": (float, 16.0, True),
         # Plotting
         "ymin": (float | None, None, True),
         "ymax": (float | None, None, True),

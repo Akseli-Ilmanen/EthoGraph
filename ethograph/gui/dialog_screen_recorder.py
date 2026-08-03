@@ -11,7 +11,7 @@ from typing import Optional
 import imageio.v3 as iio
 import numpy as np
 from PIL import Image
-from qtpy.QtCore import QTimer, Signal
+from qtpy.QtCore import QObject, QTimer, Signal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -21,7 +21,6 @@ from qtpy.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -249,8 +248,8 @@ class RecordDialog(QDialog):
         hint = QLabel(
             "Navigate as usual — <b>Space</b> to play/pause, arrow keys to "
             "step, etc. Everything on screen is captured.<br>"
-            "To stop: press <b>Ctrl+Space</b> or click the red "
-            "<b>Recording</b> button."
+            "To stop: press <b>Ctrl+Space</b> or choose "
+            "<b>Tools → Stop screen recording</b>."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -299,18 +298,20 @@ def _reveal_in_explorer(path: Path) -> None:
         subprocess.Popen(["xdg-open", str(path.parent)])
 
 
-# ── Record button ────────────────────────────────────────────────────
+# ── Record controller ────────────────────────────────────────────────
 
 
-class RecordButton(QWidget):
-    """Toggle button that manages the full record lifecycle."""
+class RecordController(QObject):
+    """Owns the record lifecycle; driven directly by the Tools menu entry.
+
+    There is no button of its own — ``toggle()`` is what the menu action (and
+    the Ctrl+Space shortcut) call, and ``state_changed`` tells the menu how to
+    label itself.
+    """
 
     recording_started = Signal()
     recording_stopped = Signal(str)  # emits output path
-
-    _STYLE_NORMAL = ""
-    _STYLE_RECORDING = "background-color: #cc3333; color: white;"
-    _STYLE_RENDERING = "background-color: #2e8b2e; color: white;"
+    state_changed = Signal(str)  # "idle" | "recording" | "rendering"
 
     def __init__(self, viewer, parent=None):
         super().__init__(parent)
@@ -318,27 +319,30 @@ class RecordButton(QWidget):
         self._recorder: Optional[ScreenRecorder] = None
         self._rendering = False
 
-        self._btn = QPushButton("Record")
-        self._btn.clicked.connect(self._on_click)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._btn)
-
         self._render_poll = QTimer(self)
         self._render_poll.setInterval(200)
         self._render_poll.timeout.connect(self._check_render_done)
         self._render_thread: Optional[threading.Thread] = None
         self._render_outputs: list[Path] = []
 
-    def _on_click(self) -> None:
+    @property
+    def state(self) -> str:
+        if self._rendering:
+            return "rendering"
+        if self._recorder is not None and self._recorder.is_recording:
+            return "recording"
+        return "idle"
+
+    def toggle(self) -> None:
+        """Start recording (after the settings dialog), or stop a running one."""
         if self._rendering:
             return
         if self._recorder and self._recorder.is_recording:
             self._stop_recording()
             return
 
-        dlg = RecordDialog(self)
+        parent = self._viewer if isinstance(self._viewer, QWidget) else None
+        dlg = RecordDialog(parent)
         if dlg.exec_() != QDialog.Accepted:
             return
         if not dlg.save_mp4 and not dlg.save_gif:
@@ -349,7 +353,7 @@ class RecordButton(QWidget):
             filters.append("MP4 (*.mp4)")
         if dlg.save_gif:
             filters.append("GIF (*.gif)")
-        path, _ = QFileDialog.getSaveFileName(self, "Save recording as", str(Path.home()), ";;".join(filters))
+        path, _ = QFileDialog.getSaveFileName(parent, "Save recording as", str(Path.home()), ";;".join(filters))
         if not path:
             return
 
@@ -363,9 +367,8 @@ class RecordButton(QWidget):
             save_gif=dlg.save_gif,
         )
 
-        self._btn.setText("Recording")
-        self._btn.setStyleSheet(self._STYLE_RECORDING)
         self._recorder.start(Path(path))
+        self.state_changed.emit("recording")
         self.recording_started.emit()
 
     def _stop_recording(self) -> None:
@@ -378,9 +381,7 @@ class RecordButton(QWidget):
         if self._recorder.needs_gif_render:
             # GIF rendering in background thread
             self._rendering = True
-            self._btn.setText("Rendering...")
-            self._btn.setStyleSheet(self._STYLE_RENDERING)
-            self._btn.setEnabled(False)
+            self.state_changed.emit("rendering")
             self._render_outputs = list(immediate)
             recorder = self._recorder
             self._recorder = None
@@ -404,12 +405,10 @@ class RecordButton(QWidget):
             outputs = self._render_outputs
             self._render_outputs = []
             self._rendering = False
-            self._btn.setEnabled(True)
             self._finish(outputs)
 
     def _finish(self, outputs: list[Path]):
-        self._btn.setText("Record")
-        self._btn.setStyleSheet(self._STYLE_NORMAL)
+        self.state_changed.emit("idle")
         if outputs:
             self.recording_stopped.emit(str(outputs[0]))
             _reveal_in_explorer(outputs[0])

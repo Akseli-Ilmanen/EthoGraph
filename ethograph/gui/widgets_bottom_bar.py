@@ -10,17 +10,22 @@ from qtpy.QtGui import QColor, QIcon, QMouseEvent, QPainter, QPainterPath, QPen,
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSlider,
     QVBoxLayout,
     QWidget,
 )
 
-from .app_constants import PLAYBACK_MODE_CHOICES
+from ethograph.datasets import is_template_path
+from ethograph.utils.ffmpeg import ffmpeg_available
+
+from .app_constants import BOTTOM_BAR_MIN_WIDTH_PX, PLAYBACK_MODE_CHOICES
 
 if TYPE_CHECKING:
     from ethograph.gui.app_state import ObservableAppState
@@ -97,6 +102,39 @@ class _InteractiveSlider(QSlider):
     def mouseReleaseEvent(self, event: QMouseEvent):
         self.is_dragging = False
         super().mouseReleaseEvent(event)
+
+
+class BottomBarScrollHost(QScrollArea):
+    """Horizontally scrollable host for the playback bar.
+
+    The bar packs ~900 px of controls, so as a bare dock widget its minimum
+    width pinned the whole window layout: on a small screen there was no slack
+    left, and the right sidebar's separator could not be dragged at all. Inside
+    a scroll area the bar keeps its natural width, the dock's minimum width
+    becomes small, and narrow windows scroll to reach the far controls.
+    """
+
+    def __init__(self, bar: QWidget, parent=None):
+        super().__init__(parent)
+        self._bar = bar
+        self.setWidget(bar)
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setMinimumWidth(BOTTOM_BAR_MIN_WIDTH_PX)
+        self.setStyleSheet("QScrollArea { background-color: #2a2a2a; border: none; }")
+        self.horizontalScrollBar().rangeChanged.connect(lambda *_: self._sync_height())
+        self._sync_height()
+
+    def _sync_height(self):
+        """Grow by the scrollbar's height only while a scrollbar is shown."""
+        sb = self.horizontalScrollBar()
+        extent = sb.sizeHint().height() if sb.maximum() > 0 else 0
+        # minimumHeight, not height(): the bar's fixed height is set in its
+        # constructor, long before it is first laid out.
+        bar_h = self._bar.minimumHeight() or self._bar.sizeHint().height()
+        self.setFixedHeight(bar_h + extent)
 
 
 class BottomPlaybackBar(QWidget):
@@ -200,31 +238,9 @@ class BottomPlaybackBar(QWidget):
 
         # Low-res proxy decoding for smooth navigation (generated on first use).
         self.proxy_cb = QCheckBox("Proxy")
-        self.proxy_cb.setToolTip(
-            "Play video from a smaller, low-resolution copy so moving through\n"
-            "the video stays smooth on large or high-resolution recordings.\n"
-            "\n"
-            "The copy is generated in the background the first time you enable it\n"
-            "(a ⏳ badge shows on the video panel), then reused. It has the same\n"
-            "frame rate and length as the original, so labels and timing stay\n"
-            "exactly aligned.\n"
-            "\n"
-            "Copies are cached in a '.ethograph_proxies' folder next to each\n"
-            "video and reused across sessions. Uncheck to play the original\n"
-            "full-resolution video."
-        )
         self.proxy_cb.setChecked(app_state.get_with_default("video_quality_mode") == "proxy")
         self.proxy_cb.toggled.connect(self._on_proxy_toggled)
-        from ethograph.utils.ffmpeg import ffmpeg_available
-
-        if not ffmpeg_available():
-            self.proxy_cb.setChecked(False)
-            self.proxy_cb.setEnabled(False)
-            self.proxy_cb.setToolTip(
-                "Proxy generation requires ffmpeg (optional). Video plays at full\n"
-                'resolution without it. Install with: uv pip install "ethograph[proxy]",\n'
-                "or conda install -c conda-forge ffmpeg."
-            )
+        self._update_proxy_checkbox()
         bot.addWidget(self.proxy_cb)
 
         # Rotate video/pose 90° (circular arrow)
@@ -289,6 +305,7 @@ class BottomPlaybackBar(QWidget):
             app_state.ready_changed.connect(self._update_audio_indicator)
             app_state.ready_changed.connect(self._update_playback_mode_combo)
             app_state.ready_changed.connect(self._update_speed_info)
+            app_state.ready_changed.connect(self._update_proxy_checkbox)
 
         self._update_trial_label()
         self._update_audio_indicator()
@@ -309,6 +326,47 @@ class BottomPlaybackBar(QWidget):
             self.playback_mode_combo.blockSignals(True)
             self.playback_mode_combo.setCurrentIndex(idx)
             self.playback_mode_combo.blockSignals(False)
+
+    _PROXY_TOOLTIP = (
+        "Play video from a smaller, low-resolution copy so moving through\n"
+        "the video stays smooth on large or high-resolution recordings.\n"
+        "\n"
+        "The copy is generated in the background the first time you enable it\n"
+        "(a ⏳ badge shows on the video panel), then reused. It has the same\n"
+        "frame rate and length as the original, so labels and timing stay\n"
+        "exactly aligned.\n"
+        "\n"
+        "Copies are cached in a '.ethograph_proxies' folder next to each\n"
+        "video and reused across sessions. Uncheck to play the original\n"
+        "full-resolution video."
+    )
+    _PROXY_NO_FFMPEG_TOOLTIP = (
+        "Proxy generation requires ffmpeg (optional). Video plays at full\n"
+        'resolution without it. Install with: uv pip install "ethograph[proxy]",\n'
+        "or conda install -c conda-forge ffmpeg."
+    )
+    _PROXY_TEMPLATE_TOOLTIP = (
+        "Template datasets ship small, already low-resolution videos —\n"
+        "a proxy copy would not make navigation any smoother."
+    )
+
+    def _update_proxy_checkbox(self):
+        """Enable the proxy toggle only where a proxy can and should be built."""
+        if not ffmpeg_available():
+            self.proxy_cb.setChecked(False)
+            self.proxy_cb.setEnabled(False)
+            self.proxy_cb.setToolTip(self._PROXY_NO_FFMPEG_TOOLTIP)
+        elif self._is_template_dataset():
+            self.proxy_cb.setChecked(False)
+            self.proxy_cb.setEnabled(False)
+            self.proxy_cb.setToolTip(self._PROXY_TEMPLATE_TOOLTIP)
+        else:
+            self.proxy_cb.setEnabled(True)
+            self.proxy_cb.setToolTip(self._PROXY_TOOLTIP)
+
+    def _is_template_dataset(self) -> bool:
+        """True when the loaded data comes from the downloaded templates tree."""
+        return any(is_template_path(getattr(self.app_state, attr, None)) for attr in ("nc_file_path", "nwb_file_path"))
 
     def _on_proxy_toggled(self, checked: bool):
         """Switch video decode quality (full-res ⇄ low-res proxy)."""

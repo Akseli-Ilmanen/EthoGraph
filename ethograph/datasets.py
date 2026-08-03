@@ -303,6 +303,17 @@ def dataset_dir(key: str) -> Path:
     return DOWNLOAD_BASE / DATASETS[key]["folder"]
 
 
+def is_template_path(path: str | Path | None) -> bool:
+    """Check whether *path* lives inside the downloaded template datasets tree."""
+    if not path:
+        return False
+    try:
+        Path(path).expanduser().resolve().relative_to(DOWNLOAD_BASE.resolve())
+    except (ValueError, OSError):
+        return False
+    return True
+
+
 def is_dataset_downloaded(key: str) -> bool:
     """Check whether all GUI assets for a dataset are present locally."""
     if key not in DATASETS:

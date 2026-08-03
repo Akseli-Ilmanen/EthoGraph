@@ -5,8 +5,7 @@
 ### Install uv
 
 [uv](https://docs.astral.sh/uv/) is a fast Python package manager.
-ethograph uses uv for installation regardless of how you create your
-virtual environment.
+ethograph uses uv for installation.
 
 ::::{tab-set}
 
@@ -199,14 +198,15 @@ falls back to software `libx264`. For NVENC, install ffmpeg from conda-forge
 ethograph uses optional extras to keep the base install lightweight.
 You can combine them as needed:
 
-| Extra      | What it adds                                                        |
-|------------|---------------------------------------------------------------------|
-| `gui`      | Full graphical interface (PyQtGraph, pygfx/pynaviz, neural tools)   |
-| `audio`    | Waveform, spectrogram, vocalisation analysis (`sounddevice` etc.)   |
-| `dandi`    | DANDI archive download client (heavy, opt-in)                       |
-| `proxy`    | Bundled ffmpeg for faster scrubbing in long videos (optional)       |
-| `dev`      | Testing and linting tools                                           |
-| `docs`     | Documentation build dependencies                                    |
+| Extra          | What it adds                                                        |
+|----------------|---------------------------------------------------------------------|
+| `gui`          | Full graphical interface (PyQtGraph, pygfx/pynaviz, neural tools)   |
+| `audio`        | Waveform, spectrogram, vocalisation analysis (`sounddevice` etc.)   |
+| `dandi`        | DANDI archive download client (heavy, opt-in)                       |
+| `proxy`        | Bundled ffmpeg for faster scrubbing in long videos (optional)       |
+| `optical-flow` | OpenCV keypoint-fill backend (see below)                            |
+| `dev`          | Testing and linting tools                                           |
+| `docs`         | Documentation build dependencies                                    |
 
 ```{note}
 Linux users adding `audio` must first install the PortAudio system library
@@ -239,6 +239,29 @@ If the update doesn't seem to work, try creating a fresh environment
 and reinstalling from scratch.
 ```
 
+(target-keypoint-fill)=
+## Keypoint labelling backends (optional)
+
+**Tools ▸ Keypoint labelling…** lets you label a few frames by clicking the
+video and fill the rest automatically. The default *Spline* backend needs
+**nothing extra** — it ships with the base install and is a strong baseline when
+motion is smooth.
+
+Two further backends are available — optical flow, and
+[CoTracker3](https://github.com/facebookresearch/co-tracker):
+
+```bash
+uv pip install "ethograph[optical-flow]"
+
+uv pip install --torch-backend=auto torch "cotracker @ git+https://github.com/facebookresearch/co-tracker.git@82e02e8029753ad4ef13cf06be7f4fc5facdda4d"
+```
+
+| Backend | Method | Uses video | Speed | Hardware |
+|---------|--------|------------|-------|----------|
+| **Spline** (default) | Monotone piecewise cubic (PCHIP) interpolation per keypoint, over that keypoint's own labelled frames[^pchip] | No — geometry only | Instant; nothing is decoded | CPU |
+| **Optical flow** | Pyramidal Lucas-Kanade sparse tracking, run forward and backward across each gap[^lk] | Yes | Roughly real-time | CPU |
+| **CoTracker3** | Transformer point tracker with joint attention across tracked points, run forward and backward across each gap[^cotracker] | Yes | Slowest — seconds per gap on CPU, far quicker on a GPU | CPU, or CUDA / Apple Silicon (detected automatically) |
+
 ## Model training (experimental)
 
 ```{warning}
@@ -259,3 +282,9 @@ can help here: it keeps all conda-installed packages on one channel, avoiding
 ABI conflicts between `defaults` and `conda-forge` builds of shared libraries
 that PyTorch/CUDA packages depend on.
 ```
+
+[^pchip]: Fritsch, F. N. & Carlson, R. E. (1980). [Monotone Piecewise Cubic Interpolation](https://doi.org/10.1137/0717021). *SIAM Journal on Numerical Analysis*, 17(2), 238–246. Implemented by [`scipy.interpolate.PchipInterpolator`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.PchipInterpolator.html).
+
+[^lk]: Lucas, B. D. & Kanade, T. (1981). [An Iterative Image Registration Technique with an Application to Stereo Vision](https://www.ri.cmu.edu/pub_files/pub3/lucas_bruce_d_1981_1/lucas_bruce_d_1981_1.pdf). *IJCAI*, 674–679. The pyramidal form used here is Bouguet, J.-Y. (2001), [Pyramidal Implementation of the Lucas Kanade Feature Tracker](https://robots.stanford.edu/cs223b04/algo_tracking.pdf), via [`cv2.calcOpticalFlowPyrLK`](https://docs.opencv.org/4.x/dc/d6b/group__video__track.html#ga473e4b886d0bcc6b65831eb88ed93323).
+
+[^cotracker]: Karaev, N., Makarov, I., Wang, J., Neverova, N., Vedaldi, A. & Rupprecht, C. (2024). [CoTracker3: Simpler and Better Point Tracking by Pseudo-Labelling Real Videos](https://arxiv.org/abs/2410.11831). [Project page](https://cotracker3.github.io/) · [GitHub](https://github.com/facebookresearch/co-tracker)

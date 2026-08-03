@@ -91,6 +91,40 @@ def test_top_bar_has_expected_menus(gui):
     assert titles == ["File", "Changepoints", "Tools", "Help"]
 
 
+def test_tools_menu_screen_record_is_a_plain_action(gui, monkeypatch):
+    """The Tools entry itself starts/stops recording — no nested button."""
+    from qtpy.QtWidgets import QDialog, QWidgetAction
+
+    from ethograph.gui import dialog_screen_recorder as dsr
+
+    shell, meta = gui
+    tools = _menu(shell, "Tools")
+    assert not any(isinstance(a, QWidgetAction) for a in tools.actions())
+    action = _find_action(tools, "Screen-record")
+    builder = shell._top_bar
+
+    # Triggering the entry goes straight to the recorder's settings dialog.
+    opened = []
+
+    class _StubDialog:
+        def __init__(self, parent=None):
+            opened.append(1)
+
+        def exec_(self):
+            return QDialog.Rejected
+
+    monkeypatch.setattr(dsr, "RecordDialog", _StubDialog)
+    action.trigger()
+    assert opened == [1]
+    assert builder._record_controller.state == "idle"  # cancelled → nothing started
+
+    # State drives the entry's label (the only stop affordance besides Ctrl+Space).
+    builder._on_record_state("recording")
+    assert "Stop" in action.text()
+    builder._on_record_state("idle")
+    assert "Screen-record" in action.text()
+
+
 def test_show_changepoints_menu_action_syncs_state(gui):
     shell, meta = gui
     cp_menu = _menu(shell, "Changepoints")
@@ -552,6 +586,57 @@ def test_cover_page_classify_files():
     assert buckets["labels"] == ["labels.tsv"]
     assert buckets["image"] == ["arena.png"]
     assert buckets["unknown"] == ["junk.xyz"]
+
+
+def test_sidebar_can_be_widened_on_a_small_window(gui, qtbot):
+    """The right sidebar must stay draggable on small screens.
+
+    The playback bar packs ~900 px of controls; docked bare, its minimum width
+    became the window's, so the sidebar separator would not move at all.
+    """
+    from qtpy.QtCore import Qt
+
+    shell, meta = gui
+    shell.show()
+    qtbot.waitExposed(shell)
+    shell.resize(1000, 640)
+    qtbot.wait(200)
+    # The bar is hosted in a scroll area, so it never dictates the window width.
+    assert shell._bottom_bar_host.minimumSizeHint().width() < 300
+    dock = shell._sidebar_dock
+    shell.resizeDocks([dock], [600], Qt.Horizontal)
+    qtbot.wait(200)
+    assert dock.width() >= 500
+
+
+def test_cover_page_shrinks_below_content_size(gui, qtbot):
+    """Short screens: the page must be resizable smaller than its content.
+
+    All cards live in a scroll area, so the dialog's minimum size stays well
+    under a 1024x768 laptop screen instead of being pinned by the cards.
+    """
+    from ethograph.gui.cover_page import CoverPage
+
+    shell, meta = gui
+    page = CoverPage(shell, meta.io_widget)
+    page.show()
+    qtbot.waitExposed(page)
+    assert page.minimumSizeHint().height() <= 560
+    page.resize(760, 460)
+    qtbot.waitUntil(lambda: page.height() <= 470, timeout=2000)
+    assert page.width() <= 780
+    page.close()
+
+
+def test_cover_page_scales_with_screen_height(gui):
+    """Fixed pixel sizes are multiplied by a screen-height-derived factor."""
+    from ethograph.gui import cover_page as cp
+
+    shell, meta = gui
+    page = cp.CoverPage(shell, meta.io_widget)
+    assert cp._MIN_SCALE <= page._scale <= 1.0
+    assert page._px(100) == max(1, round(100 * page._scale))
+    assert page._px(48) <= 48  # never grows beyond the tuned 1080 px sizes
 
 
 def test_cover_page_image_only_drop_rejected(gui):

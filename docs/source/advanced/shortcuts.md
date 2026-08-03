@@ -78,7 +78,7 @@ while you are typing in a text field, spin box or editable combo box.
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl+0` | Show / hide the control sidebar |
-| `Ctrl+Z` | Zen mode — hide the sidebar and skip its refreshes |
+| `Shift+Z` | Zen mode — slide the sidebar out / back in and skip its refreshes |
 
 ## Changepoint Navigation
 

@@ -37,6 +37,7 @@ from qtpy.QtWidgets import (
     QLabel,
     QListWidget,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -74,6 +75,21 @@ _ACCENTS = {
     "drop": "#81c784",
     "custom": "#ffb74d",
 }
+
+# The card paddings, button heights and preview sizes below were tuned on a
+# 1080 px-tall screen. On shorter screens (13" laptops, scaled displays) they
+# are multiplied by ``CoverPage._scale`` so the page still fits vertically.
+_REFERENCE_SCREEN_HEIGHT = 1080
+_MIN_SCALE = 0.6
+
+
+def _available_geometry(widget=None):
+    """Available geometry of the widget's screen (primary screen as fallback)."""
+    handle = getattr(widget, "screen", None) if widget is not None else None
+    screen = handle() if callable(handle) else None
+    if screen is None:
+        screen = QApplication.primaryScreen()
+    return screen.availableGeometry()
 
 
 def classify_files(paths: list[str]) -> dict[str, list[str]]:
@@ -373,11 +389,13 @@ class _DropDetailsDialog(QDialog):
 class _DropList(QListWidget):
     """A QListWidget that accepts file drops and records the paths."""
 
-    def __init__(self, parent=None, accent: str = "rgba(255,255,255,60)"):
+    def __init__(self, parent=None, accent: str = "rgba(255,255,255,60)", min_height: int = 160):
         super().__init__(parent)
         self.setAcceptDrops(True)
         self.paths: list[str] = []
-        self.setStyleSheet(f"QListWidget {{ border: 2px dashed {accent}; border-radius: 8px; min-height: 160px; }}")
+        self.setStyleSheet(
+            f"QListWidget {{ border: 2px dashed {accent}; border-radius: 8px; min-height: {min_height}px; }}"
+        )
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -415,21 +433,30 @@ class CoverPage(QDialog):
         self.setWindowTitle("ethograph — get started")
         self.setModal(True)
         self.setWindowFlags(self.windowFlags() | Qt.WindowMinimizeButtonHint)
+        self.setSizeGripEnabled(True)
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(24, 24, 24, 24)
-        outer.setSpacing(16)
+        avail = _available_geometry(self)
+        self._scale = max(_MIN_SCALE, min(1.0, avail.height() / _REFERENCE_SCREEN_HEIGHT))
+
+        # All content lives in a scroll area: without it the dialog's minimum
+        # size hint (three cards + the supported-types strip) exceeds a short
+        # screen and the window cannot be made smaller than its content.
+        content = QWidget()
+        outer = QVBoxLayout(content)
+        m = self._px(24)
+        outer.setContentsMargins(m, m, m, m)
+        outer.setSpacing(self._px(16))
 
         body = QHBoxLayout()
-        body.setSpacing(16)
+        body.setSpacing(self._px(16))
         body.addWidget(self._build_template_card(), 2)
 
         # Cards 2 + 3 share a column with the load bar directly beneath them —
         # the bar belongs to those two paths only, not to templates.
         right = QVBoxLayout()
-        right.setSpacing(16)
+        right.setSpacing(self._px(16))
         cards = QHBoxLayout()
-        cards.setSpacing(16)
+        cards.setSpacing(self._px(16))
         cards.addWidget(self._build_drop_card(), 2)
         cards.addWidget(self._build_custom_card(), 5)
         right.addLayout(cards, 1)
@@ -439,12 +466,32 @@ class CoverPage(QDialog):
 
         outer.addWidget(self._build_supported_types_strip())
 
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.viewport().setAutoFillBackground(False)
+        content.setAutoFillBackground(False)
+        scroll.setWidget(content)
+        shell_layout = QVBoxLayout(self)
+        shell_layout.setContentsMargins(0, 0, 0, 0)
+        shell_layout.addWidget(scroll)
+        # Small enough that the user can always shrink the window; the scroll
+        # area takes over once the content no longer fits.
+        self.setMinimumSize(min(700, avail.width()), min(420, avail.height()))
+
+    def _px(self, value: float) -> int:
+        """Scale a pixel size tuned for a 1080 px-tall screen to this screen."""
+        return max(1, int(round(value * self._scale)))
+
+    def _pt(self, value: float) -> float:
+        """Scale a point font size, rounded to a half-point."""
+        return round(value * self._scale * 2) / 2
+
     # ------------------------------------------------------------------
     # Layout builders
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _build_supported_types_strip() -> QFrame:
+    def _build_supported_types_strip(self) -> QFrame:
         """A one-line reference of what can be dragged & dropped (with examples)."""
 
         def _fmt(exts) -> str:
@@ -479,29 +526,29 @@ class CoverPage(QDialog):
         items = "".join(f"<li><b>{name}</b>&nbsp;&nbsp;{exts}</li>" for name, exts in rows)
         cells = f"<ul style='margin:0; -qt-list-indent:1;'>{items}</ul>"
 
+        font_pt = self._pt(10)
         frame = QFrame()
         frame.setObjectName("typesStrip")
         frame.setStyleSheet(
             "QFrame#typesStrip { border-top: 1px solid rgba(255,255,255,25);"
-            " padding-top: 8px; }"
+            f" padding-top: {self._px(8)}px; }}"
             " QFrame#typesStrip code { color: #81c784; }"
         )
         lay = QVBoxLayout(frame)
-        lay.setContentsMargins(4, 6, 4, 0)
-        lay.setSpacing(2)
+        lay.setContentsMargins(self._px(4), self._px(6), self._px(4), 0)
+        lay.setSpacing(self._px(2))
         heading = QLabel("Supported files — drag any of these onto the drop zone:")
-        heading.setStyleSheet("color: rgba(255,255,255,150); font-size: 10pt;")
+        heading.setStyleSheet(f"color: rgba(255,255,255,150); font-size: {font_pt}pt;")
         lay.addWidget(heading)
         body = QLabel(cells)
         body.setTextFormat(Qt.RichText)
         body.setOpenExternalLinks(True)
         body.setWordWrap(True)
-        body.setStyleSheet("font-size: 10pt;")
+        body.setStyleSheet(f"font-size: {font_pt}pt;")
         lay.addWidget(body)
         return frame
 
-    @staticmethod
-    def _make_card(num: int, title: str, subtitle: str, accent: str) -> tuple[QFrame, QVBoxLayout]:
+    def _make_card(self, num: int, title: str, subtitle: str, accent: str) -> tuple[QFrame, QVBoxLayout]:
         """A numbered, accent-coloured card holding one entry point."""
         card = QFrame()
         card.setObjectName("coverCard")
@@ -511,12 +558,12 @@ class CoverPage(QDialog):
             f" background-color: rgba(255,255,255,10); }}"
         )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(10)
+        layout.setContentsMargins(self._px(16), self._px(14), self._px(16), self._px(14))
+        layout.setSpacing(self._px(10))
 
         header = QLabel(
-            f'<span style="color:{accent}; font-size:16pt; font-weight:700;">{num}</span>'
-            f'&nbsp;&nbsp;<span style="font-size:12pt; font-weight:600;">{title}</span>'
+            f'<span style="color:{accent}; font-size:{self._pt(16)}pt; font-weight:700;">{num}</span>'
+            f'&nbsp;&nbsp;<span style="font-size:{self._pt(12)}pt; font-weight:600;">{title}</span>'
         )
         layout.addWidget(header)
 
@@ -536,7 +583,7 @@ class CoverPage(QDialog):
         # BMP text glyph (not a colour emoji) — renders as a stable black
         # symbol on Windows / macOS / Linux system fonts.
         template_btn = QPushButton("🐦‍⬛  Browse templates…")
-        template_btn.setMinimumHeight(48)
+        template_btn.setMinimumHeight(self._px(48))
         template_btn.clicked.connect(self._on_template)
         layout.addWidget(template_btn)
         for preview in self._build_template_previews():
@@ -544,14 +591,16 @@ class CoverPage(QDialog):
         layout.addStretch()
         return card
 
-    @staticmethod
-    def _build_template_previews(limit: int = 3) -> list[QLabel]:
+    def _build_template_previews(self, limit: int | None = None) -> list[QLabel]:
         """Stacked preview images of the first few template datasets.
 
         Fills the otherwise empty lower half of card 1 with a taste of what
         "Browse templates…" opens. Animated previews are skipped — a still
-        strip should not draw the eye away from the drop zone.
+        strip should not draw the eye away from the drop zone. Short screens
+        show fewer (and smaller) previews so the cards stay readable.
         """
+        if limit is None:
+            limit = 3 if self._scale > 0.85 else (2 if self._scale > 0.7 else 1)
         previews: list[QLabel] = []
         for ds in DATASETS.values():
             if len(previews) >= limit:
@@ -568,7 +617,7 @@ class CoverPage(QDialog):
             label = QLabel()
             # Height cap is generous so near-square previews still get a
             # reasonable width; wide ones stay bound by the 210 px width.
-            label.setPixmap(pixmap.scaled(210, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            label.setPixmap(pixmap.scaled(self._px(210), self._px(150), Qt.KeepAspectRatio, Qt.SmoothTransformation))
             label.setAlignment(Qt.AlignCenter)
             label.setToolTip(ds.get("name", ""))
             previews.append(label)
@@ -581,7 +630,7 @@ class CoverPage(QDialog):
             "Quick exploration: drop single, already-aligned media / feature / label files (single trial assumed).",
             _ACCENTS["drop"],
         )
-        self._drop = _DropList(accent=_ACCENTS["drop"])
+        self._drop = _DropList(accent=_ACCENTS["drop"], min_height=self._px(160))
         layout.addWidget(self._drop, 1)
 
         self._video_motion_cb = QCheckBox("Compute video motion — pixel change  (video only)")
@@ -607,7 +656,7 @@ class CoverPage(QDialog):
             _ACCENTS["custom"],
         )
         wizard_btn = QPushButton("🧙  Data wizard — prepare my data")
-        wizard_btn.setMinimumHeight(48)
+        wizard_btn.setMinimumHeight(self._px(48))
         wizard_btn.clicked.connect(self._on_wizard)
         layout.addWidget(wizard_btn)
 
@@ -634,8 +683,8 @@ class CoverPage(QDialog):
             " border-radius: 10px; background-color: rgba(255,255,255,10); }"
         )
         row = QHBoxLayout(bar)
-        row.setContentsMargins(16, 10, 16, 10)
-        row.setSpacing(16)
+        row.setContentsMargins(self._px(16), self._px(10), self._px(16), self._px(10))
+        row.setSpacing(self._px(16))
 
         label = QLabel(
             f'<span style="color:{_ACCENTS["drop"]}; font-weight:700;">Drag and drop files (2)</span>'
@@ -648,8 +697,8 @@ class CoverPage(QDialog):
         row.addWidget(label, 1)
 
         self._shared_load_btn = QPushButton("Load")
-        self._shared_load_btn.setMinimumHeight(44)
-        self._shared_load_btn.setMinimumWidth(220)
+        self._shared_load_btn.setMinimumHeight(self._px(44))
+        self._shared_load_btn.setMinimumWidth(self._px(220))
         self._shared_load_btn.clicked.connect(self._on_shared_load)
         row.addWidget(self._shared_load_btn)
         return bar
@@ -1151,7 +1200,18 @@ def show_cover_page(shell) -> bool:
     page = CoverPage(shell, io_widget)
     shell._cover_page = page
     # Size from the screen (the shell is still hidden, its geometry pending);
-    # wide enough that the custom-loader path fields are readable.
-    screen = QApplication.primaryScreen().availableGeometry()
-    page.resize(int(screen.width() * 0.85), int(screen.height() * 0.75))
+    # wide enough that the custom-loader path fields are readable. Short screens
+    # get a larger fraction of the available height — 75% of a 768 px laptop
+    # screen leaves the cards clipped, while 75% of a 1440 px one is plenty.
+    screen = _available_geometry(page)
+    height_ratio = 0.75 if screen.height() >= _REFERENCE_SCREEN_HEIGHT else 0.92
+    width = min(int(screen.width() * 0.85), screen.width())
+    height = min(int(screen.height() * height_ratio), screen.height())
+    page.resize(width, height)
+    # Centre on the available area so a full-height window is not pushed under
+    # the taskbar (the dialog stays freely resizable from any edge).
+    page.move(
+        screen.x() + (screen.width() - width) // 2,
+        screen.y() + (screen.height() - height) // 2,
+    )
     return page.exec_() == QDialog.Accepted

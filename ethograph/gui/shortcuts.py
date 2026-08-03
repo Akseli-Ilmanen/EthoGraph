@@ -55,7 +55,7 @@ def bind_global_shortcuts(meta_widget):
         """Zen mode: hide the right sidebar for a distraction-free view."""
         shell.set_zen_mode(not shell._zen_mode)
 
-    bind("Ctrl+Z", toggle_zen_mode)
+    bind("Shift+Z", toggle_zen_mode, guarded=True)
 
     def toggle_pause_resume():
         data_widget.toggle_pause_resume()
@@ -127,9 +127,9 @@ def bind_global_shortcuts(meta_widget):
 
     def stop_recording():
         top_bar = getattr(shell, "_top_bar", None)
-        record_btn = getattr(top_bar, "_record_button", None)
-        if record_btn is not None:
-            record_btn._stop_recording()
+        recorder = getattr(top_bar, "_record_controller", None)
+        if recorder is not None:
+            recorder._stop_recording()
 
     bind("Ctrl+Space", stop_recording)
 

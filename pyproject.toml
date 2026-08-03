@@ -107,6 +107,35 @@ model = [
     "tqdm",
 ]
 
+# CoTracker3 point-tracking backend for pose keypoint fill.
+#
+# There is deliberately NO [co-tracker] extra. cotracker has no PyPI release and
+# declares no dependencies of its own (`install_requires=[]`, not even torch), so
+# an extra could only ever contain torch — and PyPI rejects metadata containing a
+# direct URL reference, so the git ref can never live in one either. Declaring
+# half the requirement in an extra and half on the command line was more moving
+# parts than just naming both, and an editable install silently ignores a newly
+# added extra until it is reinstalled by path.
+#
+# So it is one explicit command, the same convention the [model] extra uses
+# (kept in sync as pose_fill.COTRACKER_INSTALL_HINT):
+#
+#   uv pip install --torch-backend=auto torch \
+#     "cotracker @ git+https://github.com/facebookresearch/co-tracker.git@82e02e8029753ad4ef13cf06be7f4fc5facdda4d"
+#
+# --torch-backend=auto matters: PyPI's Windows torch wheels are CPU-only, so a
+# GPU is otherwise silently ignored. The ~97 MB CoTracker weights then download
+# on first use (see pose_fill.download_cotracker_checkpoint).
+#
+# Licence: CoTracker is CC-BY-NC, not OSI open-source, and some institutions
+# reject it on review — another reason never to pull it in implicitly.
+
+# Optical-flow fill backend. Use the headless build: plain opencv-python ships
+# Qt plugins that conflict with PyQt6.
+optical-flow = [
+  "opencv-python-headless",
+]
+
 # Development
 dev = [
     "pytest",

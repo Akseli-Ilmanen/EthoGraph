@@ -338,6 +338,22 @@ def pose_render_to_movement_ds(pr: PoseRenderData) -> xr.Dataset:
     )
 
 
+def movement_ds_to_pose_render(ds: xr.Dataset, file_name: str) -> PoseRenderData:
+    """Inverse of :func:`pose_render_to_movement_ds`.
+
+    Lets an in-memory poses dataset (e.g. one built by the keypoint labelling
+    dialog) render through exactly the same path as an imported DLC file.
+    """
+    data, bbox_data, properties = poses_ds_to_points(ds)
+    return PoseRenderData(
+        data=data,
+        properties=properties,
+        data_not_nan=~np.any(np.isnan(data), axis=1),
+        file_name=file_name,
+        bbox_data=bbox_data,
+    )
+
+
 def apply_confidence_filter(pr: PoseRenderData, threshold: float) -> PoseRenderData:
     """Mask out points below confidence threshold (UI-driven filtering)."""
     if threshold <= 0.0 or "confidence" not in pr.properties.columns:
@@ -378,6 +394,10 @@ class PoseDisplayManager:
         self._primary_pr: PoseRenderData | None = None
         self._extra_pr: dict[str, PoseRenderData] = {}
         self._camera_keypoints: dict[str, list[str]] = {}
+        #: In-memory pose shown on the primary camera instead of the file/NWB
+        #: one — set by the keypoint labelling dialog so filled keypoints are
+        #: indistinguishable from imported predictions.
+        self._pose_override: PoseRenderData | None = None
 
     @property
     def all_keypoints(self) -> list[str]:
@@ -392,6 +412,15 @@ class PoseDisplayManager:
 
     def _camera_index(self, camera_name: str | None = None) -> int:
         return self.app_state.nwb_alignment.cameras.index(camera_name)
+
+    def set_pose_override(self, pr: PoseRenderData | None) -> None:
+        """Show *pr* on the primary camera instead of its loaded pose."""
+        self._pose_override = pr
+
+    def _primary_camera_index(self) -> int | None:
+        name = self._primary_camera_name()
+        cameras = self.app_state.nwb_alignment.cameras
+        return cameras.index(name) if name in cameras else None
 
     def _camera_name_for_index(self, camera_idx: int) -> str:
         cameras = self.app_state.nwb_alignment.cameras
@@ -411,6 +440,9 @@ class PoseDisplayManager:
         return getattr(sio, "nwb", None)
 
     def _load_pose_for_camera(self, camera_idx: int) -> PoseRenderData | None:
+        if self._pose_override is not None and camera_idx == self._primary_camera_index():
+            return self._pose_override
+
         trial_id = self.app_state.trials_sel
         sio = self.app_state.nwb_alignment
         cameras = sio.cameras

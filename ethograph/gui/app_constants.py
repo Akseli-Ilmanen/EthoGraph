@@ -54,6 +54,10 @@ SIDEBAR_DEFAULT_WIDTH_RATIO = 0.40
 SIDEBAR_AFTER_LOAD_WIDTH_RATIO = 0.25
 SIDEBAR_MIN_WIDTH_PX = 280
 
+# The playback bar's controls are ~900 px wide; without a small explicit
+# minimum its dock pins the window layout and the sidebar cannot be widened.
+BOTTOM_BAR_MIN_WIDTH_PX = 240
+
 # Dock layout (layout_manager.py)
 LAYER_DOCK_WIDTH_RATIO = 0.20
 VERTICAL_SPLIT_RATIO = 0.45

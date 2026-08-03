@@ -85,6 +85,9 @@ class CameraView(QWidget):
         self._plot: Optional[PlotVideo] = None
         self._static: Optional[_StaticImagePlot] = None
         self._overlay: Optional[PoseOverlay] = None
+        #: Active keypoint labelling mode (ethograph.gui.pose_edit_mixin), if any.
+        self._label_mode = None
+        self._pan_control = None  # saved controls["mouse1"] while labelling
         #: Set for static-image views: source file + fps of the pose shown on top.
         self.static_image_path: Optional[str] = None
         self.static_pose_fps: float = 0.0
@@ -214,6 +217,8 @@ class CameraView(QWidget):
         # Qt event filter never sees them. Hook the renderer's pointer event to
         # emit `clicked` (used by the active-panel manager for the green edge).
         self._plot.renderer.add_event_handler(self._on_pointer_down, "pointer_down")
+        self._plot.renderer.add_event_handler(self._on_pointer_move, "pointer_move")
+        self._plot.renderer.add_event_handler(self._on_pointer_up, "pointer_up")
         self._install_click_filter(self._plot.canvas)
         self._enable_scroll_zoom(self._plot.controller)
 
@@ -245,6 +250,8 @@ class CameraView(QWidget):
         self._static = _StaticImagePlot(img, parent=self)
         self.layout().addWidget(self._static.canvas)
         self._static.renderer.add_event_handler(self._on_pointer_down, "pointer_down")
+        self._static.renderer.add_event_handler(self._on_pointer_move, "pointer_move")
+        self._static.renderer.add_event_handler(self._on_pointer_up, "pointer_up")
         self._install_click_filter(self._static.canvas)
 
     @staticmethod
@@ -262,6 +269,27 @@ class CameraView(QWidget):
 
     def _on_pointer_down(self, event=None) -> None:
         self.clicked.emit()
+        self._dispatch_label(event, "handle_click")
+
+    def _on_pointer_move(self, event=None) -> None:
+        self._dispatch_label(event, "handle_move")
+
+    def _on_pointer_up(self, event=None) -> None:
+        self._dispatch_label(event, "handle_release")
+
+    def _dispatch_label(self, event, method: str) -> None:
+        """Forward a canvas pointer event to the labelling mode, if active.
+
+        Press/release act on the left button only, so right-drag zoom and
+        middle-click quickzoom keep working while labelling.
+        """
+        if self._label_mode is None or event is None:
+            return
+        if method != "handle_move" and getattr(event, "button", 1) != 1:
+            return
+        image_xy = self.screen_to_image(event.x, event.y)
+        if image_xy is not None:
+            getattr(self._label_mode, method)(*image_xy)
 
     def _install_click_filter(self, canvas) -> None:
         """Also catch Qt clicks (e.g. on the 2px margin around the canvas)."""
@@ -302,6 +330,71 @@ class CameraView(QWidget):
         if self._static is not None:
             return float(self._static.texture.size[1])
         return 0.0
+
+    # ------------------------------------------------------------------
+    # Keypoint labelling
+    # ------------------------------------------------------------------
+
+    def scene(self) -> gfx.Scene | None:
+        """The pygfx scene backing this view (video or static image)."""
+        if self._plot is not None:
+            return self._plot.scene
+        if self._static is not None:
+            return self._static.scene
+        return None
+
+    def _render_target(self):
+        """``(renderer, camera, controller)`` of whichever plot is loaded."""
+        plot = self._plot if self._plot is not None else self._static
+        if plot is None:
+            return None, None, None
+        return plot.renderer, plot.camera, plot.controller
+
+    def screen_to_image(self, x: float, y: float) -> tuple[float, float] | None:
+        """Unproject canvas coordinates to texture pixels.
+
+        Uses the pygfx camera, so it stays correct under pan and zoom. Returns
+        image-space ``(x, y)`` with y pointing *down* — the video texture is
+        rendered y-flipped, matching the convention in
+        :mod:`~ethograph.gui.pose_overlay`.
+        """
+        renderer, camera, _ = self._render_target()
+        if renderer is None:
+            return None
+        width, height = renderer.logical_size
+        if not width or not height:
+            return None
+        ndc = np.array([2.0 * x / width - 1.0, 1.0 - 2.0 * y / height, 0.0, 1.0])
+        world = np.linalg.inv(np.asarray(camera.camera_matrix)) @ ndc
+        world = world / world[3]
+        return float(world[0]), self.image_height() - float(world[1])
+
+    def image_units_per_pixel(self) -> float:
+        """Image pixels spanned by one screen pixel at the current zoom."""
+        origin = self.screen_to_image(0.0, 0.0)
+        offset = self.screen_to_image(1.0, 0.0)
+        if origin is None or offset is None:
+            return 1.0
+        return abs(offset[0] - origin[0]) or 1.0
+
+    def set_label_mode(self, mode) -> None:
+        """Attach/detach a keypoint labelling mode (``None`` detaches).
+
+        Left-drag is handed over to labelling while a mode is attached; panning
+        moves to ``Shift`` + left-drag so navigation stays available.
+        """
+        self._label_mode = mode
+        _, _, controller = self._render_target()
+        if controller is None:
+            return
+        if mode is not None and self._pan_control is None:
+            self._pan_control = controller.controls.pop("mouse1", None)
+            if self._pan_control is not None:
+                controller.controls["shift+mouse1"] = self._pan_control
+        elif mode is None and self._pan_control is not None:
+            controller.controls.pop("shift+mouse1", None)
+            controller.controls["mouse1"] = self._pan_control
+            self._pan_control = None
 
     def clear_overlay(self) -> None:
         if self._overlay is not None:
@@ -392,6 +485,8 @@ class CameraView(QWidget):
     # ------------------------------------------------------------------
 
     def clear(self) -> None:
+        self._label_mode = None
+        self._pan_control = None
         if self._overlay is not None:
             self._overlay.clear()
             self._overlay = None

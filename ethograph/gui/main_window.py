@@ -108,10 +108,14 @@ class EthographMainWindow(QMainWindow):
 
         # Bottom playback bar — no dock title bar (an empty widget removes the
         # "Playback" text and the line it occupies).
-        from .widgets_bottom_bar import BottomPlaybackBar
+        from .widgets_bottom_bar import BottomBarScrollHost, BottomPlaybackBar
 
         bottom_bar = BottomPlaybackBar(meta_widget.app_state)
-        self._bottom_bar_dock = self.add_dock_widget(bottom_bar, area="bottom", name="Playback")
+        # Docked inside a scrollable host: the bar's own width would otherwise
+        # become the window's minimum width, leaving no slack to drag the
+        # sidebar separator on small screens.
+        self._bottom_bar_host = BottomBarScrollHost(bottom_bar)
+        self._bottom_bar_dock = self.add_dock_widget(self._bottom_bar_host, area="bottom", name="Playback")
         self._bottom_bar_dock.setObjectName("BottomBarDock")
         self._bottom_bar_dock.setTitleBarWidget(QWidget())
         self._bottom_bar_dock.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
@@ -228,7 +232,7 @@ class EthographMainWindow(QMainWindow):
     def set_zen_mode(self, on: bool):
         """Hide the right sidebar (zen mode). Sidebar updates are skipped.
 
-        Toggled via ``Ctrl+Z``.  While on, the right control sidebar is
+        Toggled via ``Shift+Z``.  While on, the right control sidebar is
         hidden and ``app_state.zen_mode`` is set so widgets can skip
         expensive refreshes.
         """

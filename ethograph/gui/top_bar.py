@@ -36,6 +36,14 @@ from qtpy.QtWidgets import (
 
 logger = logging.getLogger(__name__)
 
+# Tools → the one screen-recording entry, relabelled per recorder state.
+# Plain text, no glyphs: ⏺/⏹ render as tofu boxes in Windows menu fonts.
+_RECORD_ACTION_LABELS = {
+    "idle": "Screen-record the GUI…",
+    "recording": "Stop screen recording  (Ctrl+Space)",
+    "rendering": "Rendering recording…",
+}
+
 DOCS_URL = "https://Akseli-Ilmanen.github.io/ethograph"
 SHORTCUTS_URL = "https://Akseli-Ilmanen.github.io/ethograph/advanced/shortcuts.html"
 ISSUES_URL = "https://github.com/akseli-ilmanen/ethograph/issues"
@@ -122,20 +130,20 @@ class TopBarBuilder:
 
     def _build_tools_menu(self, menu_bar):
         """Tools menu — screen recorder + neural (PSTH / firing rates) actions."""
-        from qtpy.QtWidgets import QLabel, QWidgetAction
-
-        from .dialog_screen_recorder import RecordButton
+        from .dialog_screen_recorder import RecordController
 
         menu = menu_bar.addMenu("&Tools")
-        row = QWidget()
-        row_layout = QVBoxLayout(row)
-        row_layout.setContentsMargins(10, 6, 10, 6)
-        row_layout.addWidget(QLabel("Screen-record the GUI video:"))
-        self._record_button = RecordButton(self.shell)
-        row_layout.addWidget(self._record_button)
-        action = QWidgetAction(menu)
-        action.setDefaultWidget(row)
-        menu.addAction(action)
+        # The menu entry IS the recorder: clicking it opens the settings dialog
+        # and starts recording (and stops a running one) — no nested button.
+        self._record_controller = RecordController(self.shell, parent=self.shell)
+        self._record_action = menu.addAction(
+            _RECORD_ACTION_LABELS["idle"],
+            self._record_controller.toggle,
+        )
+        self._record_controller.state_changed.connect(self._on_record_state)
+
+        menu.addSeparator()
+        menu.addAction("Keypoint labelling…", self._open_keypoint_labelling)
 
         menu.addSeparator()
         ephys = getattr(self.meta, "ephys_widget", None)
@@ -152,12 +160,24 @@ class TopBarBuilder:
             act.setEnabled(False)
         menu.addAction("Firing rates…", lambda: self._popup_section("firing", "Firing rates", ephys))
 
+    def _open_keypoint_labelling(self):
+        """Open the keypoint labelling dialog (owned by the DataWidget, so the
+        Tools entry and the Pose sidebar button raise the same instance)."""
+        open_dialog = self._first_method(getattr(self.meta, "data_widget", None), "open_keypoint_labelling")
+        if open_dialog is not None:
+            open_dialog()
+
+    def _on_record_state(self, state: str):
+        """Relabel the single Tools entry as the recorder changes state."""
+        self._record_action.setText(_RECORD_ACTION_LABELS.get(state, _RECORD_ACTION_LABELS["idle"]))
+        self._record_action.setEnabled(state != "rendering")
+
     def _add_sidebar_toggle_button(self, menu_bar):
         """Checkable button at the far right of the menu bar toggling the
-        right control sidebar — a discoverable alternative to Ctrl+Z."""
+        right control sidebar — a discoverable alternative to Shift+Z."""
         btn = QToolButton(menu_bar)
         btn.setText("◨ Sidebar")
-        btn.setToolTip("Show/hide the right sidebar (Ctrl+Z)")
+        btn.setToolTip("Show/hide the right sidebar (Shift+Z)")
         btn.setCheckable(True)
         btn.setAutoRaise(True)
         sidebar_action = getattr(self.shell, "_sidebar_toggle", None)

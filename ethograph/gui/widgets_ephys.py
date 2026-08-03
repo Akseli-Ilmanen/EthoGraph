@@ -11,9 +11,7 @@ import pynapple as nap
 import pyqtgraph as pg
 from qtpy.QtCore import (
     QItemSelectionModel,
-    QRect,
     QRectF,
-    QSortFilterProxyModel,
     Qt,
     Signal,
 )
@@ -50,6 +48,13 @@ from ethograph.features.neural import (
     firing_rate_to_xarray,
 )
 from ethograph.gui.notify import notify
+from ethograph.gui.table_filter import (
+    SORT_ROLE,
+    CategoryFilterDialog,
+    FilterHeaderView,
+    MultiColumnFilterProxy,
+    NumericFilterDialog,
+)
 from ethograph.utils.qt import (
     find_combo_index,
     get_combo_value,
@@ -459,33 +464,20 @@ def _write_params_py(folder: Path, params: dict):
     (folder / "params.py").write_text("\n".join(lines) + "\n")
 
 
-_SORT_ROLE = Qt.UserRole + 1
 _COLOR_ROLE = Qt.UserRole + 2
 
 
-class _MultiColumnFilterProxy(QSortFilterProxyModel):
-    """Proxy that filters rows by categorical or numeric criteria on multiple columns."""
+class _ChannelFilterProxy(MultiColumnFilterProxy):
+    """Column filtering plus the probe view's "only these channels" restriction.
+
+    The channel restriction is not a header filter — it is driven by the probe
+    map selection — so it lives here rather than in the shared proxy.
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._cat_filters: dict[int, set[str]] = {}
-        self._num_filters: dict[int, tuple[str, float]] = {}
         self._visible_channels: set[int] | None = None
         self._ch_col: int | None = None
-
-    def set_cat_filter(self, col: int, allowed: set[str]):
-        if not allowed:
-            self._cat_filters.pop(col, None)
-        else:
-            self._cat_filters[col] = allowed
-        self.invalidateFilter()
-
-    def set_numeric_filter(self, col: int, op: str | None, value: float | None):
-        if op is None or value is None:
-            self._num_filters.pop(col, None)
-        else:
-            self._num_filters[col] = (op, value)
-        self.invalidateFilter()
 
     def set_visible_channel_filter(self, channels: set[int] | None, ch_col: int | None):
         self._visible_channels = channels
@@ -493,206 +485,15 @@ class _MultiColumnFilterProxy(QSortFilterProxyModel):
         self.invalidateFilter()
 
     def filterAcceptsRow(self, source_row: int, source_parent):
-        model = self.sourceModel()
-        for col, allowed in self._cat_filters.items():
-            item = model.item(source_row, col)
-            if item is None:
-                return False
-            if item.text() not in allowed:
-                return False
-        for col, (op, threshold) in self._num_filters.items():
-            item = model.item(source_row, col)
-            if item is None:
-                return False
-            try:
-                val = float(item.data(_SORT_ROLE))
-            except (ValueError, TypeError):
-                return False
-            if op == ">=" and val < threshold:
-                return False
-            if op == "<=" and val > threshold:
-                return False
-        if self._visible_channels is not None and self._ch_col is not None:
-            item = model.item(source_row, self._ch_col)
-            if item is None:
-                return False
-            try:
-                ch = int(float(item.data(_SORT_ROLE)))
-            except (ValueError, TypeError):
-                return False
-            if ch not in self._visible_channels:
-                return False
-        return True
-
-    def lessThan(self, left, right):
-        left_val = left.data(_SORT_ROLE)
-        right_val = right.data(_SORT_ROLE)
-        if left_val is not None and right_val is not None:
-            return float(left_val) < float(right_val)
-        return super().lessThan(left, right)
-
-
-class _CatFilterDialog(QDialog):
-    """Checkbox popup for categorical column filtering."""
-
-    def __init__(self, col: int, all_values: list[str], active: set[str], parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Filter")
-        self._col = col
-        layout = QVBoxLayout(self)
-        layout.setSpacing(2)
-        layout.setContentsMargins(8, 8, 8, 8)
-        self._all_cb = QCheckBox("(All)")
-        self._all_cb.setChecked(not active)
-        layout.addWidget(self._all_cb)
-        self._checks: list[tuple[str, QCheckBox]] = []
-        for val in sorted(all_values):
-            cb = QCheckBox(val)
-            cb.setChecked(not active or val in active)
-            layout.addWidget(cb)
-            self._checks.append((val, cb))
-        self._all_cb.toggled.connect(self._on_all)
-        for _, cb in self._checks:
-            cb.toggled.connect(self._on_item)
-        btn = QPushButton("OK")
-        btn.clicked.connect(self.accept)
-        layout.addWidget(btn)
-
-    def _on_all(self, checked: bool):
-        for _, cb in self._checks:
-            cb.blockSignals(True)
-            cb.setChecked(checked)
-            cb.blockSignals(False)
-
-    def _on_item(self, _):
-        self._all_cb.blockSignals(True)
-        self._all_cb.setChecked(all(cb.isChecked() for _, cb in self._checks))
-        self._all_cb.blockSignals(False)
-
-    def get_allowed(self) -> set[str]:
-        checked = {v for v, cb in self._checks if cb.isChecked()}
-        return set() if checked == {v for v, _ in self._checks} else checked
-
-
-class _NumFilterDialog(QDialog):
-    """Threshold filter dialog for numeric columns."""
-
-    def __init__(self, col: int, current: tuple[str, float] | None, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Filter")
-        self._col = col
-        self._cleared = False
-        layout = QVBoxLayout(self)
-        layout.setSpacing(6)
-        layout.setContentsMargins(8, 8, 8, 8)
-        op_row = QHBoxLayout()
-        self._op_combo = QComboBox()
-        self._op_combo.addItems(["\u2265", "\u2264"])
-        op_row.addWidget(self._op_combo)
-        self._spin = QDoubleSpinBox()
-        self._spin.setRange(-1e9, 1e9)
-        self._spin.setDecimals(3)
-        op_row.addWidget(self._spin)
-        layout.addLayout(op_row)
-        if current:
-            op, val = current
-            self._op_combo.setCurrentText("\u2265" if op == ">=" else "\u2264")
-            self._spin.setValue(val)
-        btn_row = QHBoxLayout()
-        ok_btn = QPushButton("OK")
-        ok_btn.clicked.connect(self.accept)
-        clear_btn = QPushButton("Remove filter")
-        clear_btn.clicked.connect(self._clear)
-        btn_row.addWidget(ok_btn)
-        btn_row.addWidget(clear_btn)
-        layout.addLayout(btn_row)
-
-    def _clear(self):
-        self._cleared = True
-        self.accept()
-
-    def get_filter(self) -> tuple[str, float] | None:
-        if self._cleared:
-            return None
-        return (
-            ">=" if self._op_combo.currentText() == "\u2265" else "<=",
-            self._spin.value(),
-        )
-
-
-class _FilterHeaderView(QHeaderView):
-    """Column header that draws filter icons for filterable columns.
-
-    A dedicated zone of width _FILTER_ZONE_W is reserved on the right side of
-    each filterable column.  Clicking anywhere in that zone triggers the filter
-    dialog; clicking elsewhere triggers the normal sort.
-    """
-
-    filter_requested = Signal(int)
-    _FILTER_ZONE_W = 20  # px reserved on the right of filterable columns
-
-    def __init__(self, cat_cols: set[int], num_cols: set[int], parent=None):
-        super().__init__(Qt.Horizontal, parent)
-        self._cat_cols = cat_cols
-        self._num_cols = num_cols
-        self._active: set[int] = set()
-        self.setSectionsClickable(True)
-
-    def set_filterable(self, cat_cols: set[int], num_cols: set[int]):
-        self._cat_cols = cat_cols
-        self._num_cols = num_cols
-        self.viewport().update()
-
-    def set_active_filters(self, active: set[int]):
-        self._active = active
-        self.viewport().update()
-
-    @property
-    def _all_filterable(self) -> set[int]:
-        return self._cat_cols | self._num_cols
-
-    def _filter_zone_x(self, logical: int) -> int:
-        """Left edge of the filter zone for *logical* column."""
-        return self.sectionViewportPosition(logical) + self.sectionSize(logical) - self._FILTER_ZONE_W
-
-    def _icon_rect(self, logical: int) -> QRect:
-        s = 11
-        zone_x = self._filter_zone_x(logical)
-        h = self.height()
-        x = zone_x + (self._FILTER_ZONE_W - s) // 2
-        return QRect(x, (h - s) // 2, s, s)
-
-    def paintSection(self, painter, rect, logical):
-        painter.save()
-        super().paintSection(painter, rect, logical)
-        painter.restore()
-        if logical not in self._all_filterable:
-            return
-        # Subtle separator at the start of the filter zone
-        zone_x = self._filter_zone_x(logical)
-        painter.save()
-        painter.setPen(QPen(QColor(120, 120, 120, 80), 1))
-        painter.drawLine(zone_x, rect.top() + 3, zone_x, rect.bottom() - 3)
-        painter.restore()
-        # Filter icon (funnel) centred in the zone
-        ir = self._icon_rect(logical)
-        x, y, s = ir.x(), ir.y(), ir.width()
-        color = QColor(255, 215, 0) if logical in self._active else QColor(180, 180, 180)
-        painter.save()
-        painter.setPen(QPen(color, 1.5))
-        painter.drawLine(x, y, x + s, y)
-        painter.drawLine(x + 2, y + 4, x + s - 2, y + 4)
-        painter.drawLine(x + 4, y + 8, x + s - 4, y + 8)
-        painter.restore()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            logical = self.logicalIndexAt(event.pos())
-            if logical in self._all_filterable:
-                if event.pos().x() >= self._filter_zone_x(logical):
-                    self.filter_requested.emit(logical)
-                    return
-        super().mousePressEvent(event)
+        if not super().filterAcceptsRow(source_row, source_parent):
+            return False
+        if self._visible_channels is None or self._ch_col is None:
+            return True
+        try:
+            channel = int(float(self.sourceModel().index(source_row, self._ch_col, source_parent).data(SORT_ROLE)))
+        except (ValueError, TypeError):
+            return False
+        return channel in self._visible_channels
 
 
 class _ClusterIdDelegate(QStyledItemDelegate):
@@ -902,7 +703,7 @@ class EphysWidget(QWidget):
         self._multi_cluster_colors: dict[int, tuple] = {}
 
         self._cluster_model = QStandardItemModel()
-        self._cluster_proxy = _MultiColumnFilterProxy()
+        self._cluster_proxy = _ChannelFilterProxy()
         self._cluster_proxy.setSourceModel(self._cluster_model)
 
         self.cluster_table = QTableView()
@@ -924,7 +725,7 @@ class EphysWidget(QWidget):
 
         self._cluster_id_delegate = _ClusterIdDelegate(self.cluster_table)
 
-        self._filter_header = _FilterHeaderView(set(), set())
+        self._filter_header = FilterHeaderView(set(), set())
         self._filter_header.setDefaultSectionSize(40)
         self._filter_header.setMinimumSectionSize(20)
         self._filter_header.setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -1668,7 +1469,7 @@ class EphysWidget(QWidget):
         item = QStandardItem(text)
         item.setEditable(False)
         if sort_value is not None:
-            item.setData(sort_value, _SORT_ROLE)
+            item.setData(sort_value, SORT_ROLE)
         if user_data is not None:
             item.setData(user_data, Qt.UserRole)
         return item
@@ -1809,7 +1610,7 @@ class EphysWidget(QWidget):
             else:
                 # Check whether the column has numeric sort values
                 is_numeric = any(
-                    model.item(row, col_idx) is not None and model.item(row, col_idx).data(_SORT_ROLE) is not None
+                    model.item(row, col_idx) is not None and model.item(row, col_idx).data(SORT_ROLE) is not None
                     for row in range(model.rowCount())
                 )
                 if is_numeric:
@@ -1853,7 +1654,7 @@ class EphysWidget(QWidget):
         if logical_col in self._filter_cat_cols:
             values = self._filter_col_cats.get(logical_col, [])
             active = self._filter_cat_active.get(logical_col, set())
-            dialog = _CatFilterDialog(logical_col, values, active, self)
+            dialog = CategoryFilterDialog(logical_col, values, active, self)
             if dialog.exec_() == QDialog.Accepted:
                 allowed = dialog.get_allowed()
                 if allowed:
@@ -1864,7 +1665,7 @@ class EphysWidget(QWidget):
                 self._update_header_active_filters()
         elif logical_col in self._filter_num_cols:
             current = self._filter_num_active.get(logical_col)
-            dialog = _NumFilterDialog(logical_col, current, self)
+            dialog = NumericFilterDialog(logical_col, current, self)
             if dialog.exec_() == QDialog.Accepted:
                 f = dialog.get_filter()
                 if f is None:

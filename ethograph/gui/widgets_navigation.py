@@ -929,17 +929,35 @@ class NavigationWidget(QWidget):
             new_frame = max(0, min(new_frame, self.app_state.num_frames - 1))
             video.seek_to_frame(new_frame)
 
+    def _current_time(self) -> float | None:
+        """Where the playhead is — from the video, else the middle of the view."""
+        video = self.app_state.video
+        if video is not None:
+            return video.frame_to_time(self.app_state.current_frame)
+        if self.plot_container is None:
+            return None
+        t0, t1 = self.plot_container.get_current_xlim()
+        return (t0 + t1) / 2.0
+
     def _step_window(self, direction: int):
+        """Jump one view span, clamped to the navigable extent (Shift+←/→).
+
+        Goes through :meth:`_seek_to_time`, which moves the marker, scrolls the
+        window and seeks the video — the previous implementation called a
+        ``_step_time_no_video`` helper and a ``plot_container.time_slider`` that
+        both went away with the bottom bar, so this raised AttributeError.
+        """
         if not self.app_state.ready:
             return
-        self._step_time_no_video(direction)
-        video = self.app_state.video
-        if video and self.plot_container:
-            new_time = self.plot_container.time_slider.current_time
-            frame = video.time_to_frame(new_time)
-            video.blockSignals(True)
-            video.seek_to_frame(frame)
-            video.blockSignals(False)
+        span = self.app_state.view_span
+        current = self._current_time()
+        if span <= 0 or current is None:
+            return
+        target = current + direction * span
+        bounds = self.app_state.padded_bounds
+        if bounds is not None:
+            target = max(bounds.start_s, min(target, bounds.end_s))
+        self._seek_to_time(target)
 
     def _sync_trials_combo_color(self):
         idx = self.trials_combo.currentIndex()

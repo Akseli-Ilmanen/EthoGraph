@@ -1,0 +1,113 @@
+"""Window stepping (Shift+arrows) in the navigation widget.
+
+Regression cover for a crash: ``_step_window`` still called a
+``_step_time_no_video`` helper and a ``plot_container.time_slider`` that both
+went away with the bottom-bar refactor, so every Shift+arrow raised
+AttributeError from the global shortcut.
+
+The widget is built headless with a bare ``QWidget`` for the shell — nothing in
+this path touches the real main window.
+"""
+
+from __future__ import annotations
+
+import pytest
+from qtpy.QtWidgets import QApplication, QWidget
+
+from ethograph.gui.app_state import ObservableAppState
+from ethograph.gui.widgets_navigation import NavigationWidget
+
+VIEW_SPAN = 4.0
+FPS = 25.0
+
+
+class _FakePlotContainer:
+    """The two methods window stepping needs off the plot container."""
+
+    def __init__(self, xlim=(0.0, 10.0)):
+        self._xlim = xlim
+        self.marked: list[float] = []
+
+    def get_current_xlim(self):
+        return self._xlim
+
+    def update_time_marker_by_time(self, time_s: float):
+        self.marked.append(time_s)
+
+
+class _FakeVideo:
+    """A playhead: frames at a fixed rate, recording every seek."""
+
+    def __init__(self, frame: int = 0):
+        self.frame = frame
+        self.seeks: list[int] = []
+
+    def frame_to_time(self, frame: int) -> float:
+        return frame / FPS
+
+    def time_to_frame(self, time_s: float, round_nearest: bool = False) -> int:
+        return int(round(time_s * FPS))
+
+    def seek_to_frame(self, frame: int) -> None:
+        self.frame = frame
+        self.seeks.append(frame)
+
+
+@pytest.fixture(scope="module")
+def qapp():
+    return QApplication.instance() or QApplication([])
+
+
+@pytest.fixture
+def nav(qapp, tmp_path):
+    state = ObservableAppState()
+    state._yaml_path = str(tmp_path / "gui_settings.yaml")  # never touch the real settings
+    widget = NavigationWidget(QWidget(), state)
+    widget.plot_container = _FakePlotContainer()
+    state.ready = True
+    state.xlim_mode = "fixed"
+    state.fixed_window_s = VIEW_SPAN
+    yield widget
+    widget.close()
+
+
+def test_stepping_forward_moves_one_view_span(nav):
+    """Without a video the playhead is the middle of the visible window."""
+    nav.step_window_forward()
+
+    assert nav.plot_container.marked == [5.0 + VIEW_SPAN]
+
+
+def test_stepping_backward_moves_the_other_way(nav):
+    nav.step_window_backward()
+
+    assert nav.plot_container.marked == [5.0 - VIEW_SPAN]
+
+
+def test_stepping_follows_the_video_playhead_when_there_is_one(nav):
+    nav.app_state.video = _FakeVideo()
+    nav.app_state.current_frame = 50  # 2.0 s at 25 fps
+
+    nav.step_window_forward()
+
+    assert nav.plot_container.marked == [2.0 + VIEW_SPAN]
+    assert nav.app_state.video.seeks == [int(round((2.0 + VIEW_SPAN) * FPS))]
+
+
+def test_stepping_does_nothing_before_a_dataset_is_ready(nav):
+    nav.app_state.ready = False
+
+    nav.step_window_forward()
+
+    assert nav.plot_container.marked == []
+
+
+def test_stepping_does_nothing_without_a_span(nav):
+    """A zero span would step nowhere; trial mode with no padding gives one."""
+    nav.app_state.xlim_mode = "interval"
+    nav.app_state.before_s_trial = 0.0
+    nav.app_state.after_s_trial = 0.0
+
+    nav.step_window_forward()
+
+    assert nav.plot_container.marked == []

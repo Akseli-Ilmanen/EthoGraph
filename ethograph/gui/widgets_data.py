@@ -408,6 +408,13 @@ class DataPanel(QWidget):
         )
         pose_layout.addWidget(self.create_skeleton_btn)
 
+        self.label_keypoints_btn = QPushButton("Label keypoints…")
+        self.label_keypoints_btn.setToolTip(
+            "Label a handful of frames by clicking the video, then let a point\n"
+            "tracker fill the rest. No training and no GPU required."
+        )
+        pose_layout.addWidget(self.label_keypoints_btn)
+
         self.pose_match_btn = QPushButton("Match Pose ↔ Video")
         self.pose_match_btn.setToolTip(
             "Open dialog to match NWB PoseEstimation containers to video cameras.\n"
@@ -536,6 +543,7 @@ class DataWidget(QWidget):
         self.video_mgr.set_frame_changed_callback(self._on_primary_frame_changed)
         shell.video_area.camera_view_removed.connect(self._on_camera_view_removed)
         self.pose_mgr: PoseDisplayManager | None = None  # created after set_data_panel
+        self._keypoint_labelling_dialog = None
         self.app_state.audio_video_sync = None
         self.catalog = None  # DataCatalog set after load
 
@@ -568,6 +576,7 @@ class DataWidget(QWidget):
         self.pose_points_color_btn = panel.pose_points_color_btn
         self.pose_points_use_base_checkbox = panel.pose_points_use_base_checkbox
         self.create_skeleton_btn = panel.create_skeleton_btn
+        self.label_keypoints_btn = panel.label_keypoints_btn
         self.pose_show_keypoints_checkbox = panel.pose_show_keypoints_checkbox
         self.filter_keypoints_btn = panel.filter_keypoints_btn
 
@@ -587,6 +596,7 @@ class DataWidget(QWidget):
         panel.pose_points_color_btn.clicked.connect(self._on_points_color_clicked)
         panel.pose_points_use_base_checkbox.stateChanged.connect(self._on_points_use_base_toggled)
         panel.create_skeleton_btn.clicked.connect(self._on_create_skeleton_clicked)
+        panel.label_keypoints_btn.clicked.connect(self.open_keypoint_labelling)
         panel._update_pose_callback = self.update_pose
 
         panel.energy_configure_btn.clicked.connect(self._open_energy_params)
@@ -678,6 +688,27 @@ class DataWidget(QWidget):
             self.app_state.skeleton_config_override = dialog.get_config()
             self.pose_show_skeleton_checkbox.setChecked(True)
             self.update_pose()
+
+    def open_keypoint_labelling(self):
+        """Open (or raise) the keypoint labelling dialog.
+
+        Non-modal and kept as a single instance: the user labels while
+        navigating frames, and both the Tools menu and the Pose sidebar button
+        route here.
+        """
+        from .dialog_pose_labelling import PoseLabellingDialog
+
+        existing = getattr(self, "_keypoint_labelling_dialog", None)
+        if existing is not None and existing.isVisible():
+            existing.raise_()
+            existing.activateWindow()
+            return existing
+
+        dialog = PoseLabellingDialog(self, parent=self.shell)
+        dialog.finished.connect(lambda _=0: setattr(self, "_keypoint_labelling_dialog", None))
+        self._keypoint_labelling_dialog = dialog
+        dialog.show()
+        return dialog
 
     def set_references(
         self,
@@ -1736,6 +1767,92 @@ class DataWidget(QWidget):
 
         self._register_feature(feature_name)
         return feature_name
+
+    def add_keypoint_features(self, arrays: dict[str, xr.DataArray]) -> list[str]:
+        """Make labelled/filled keypoint arrays available as plottable features.
+
+        The keypoints *are* a dataset: their time axis is the video's own frame
+        grid (frame index × 1/fps), and the keypoint and individual names come
+        from the labelling dialog. So this does not require a dataset to already
+        exist — when the session has no xarray behind it (the common case after
+        dropping a bare video, which loads through pynapple) a single-trial
+        TrialTree is built from these arrays instead. When an xarray trial IS
+        loaded the arrays are merged into it, carrying their own time dim
+        (``pose_annotate.FEATURE_TIME_DIM``) because the video frame rate rarely
+        matches the trial's own ``time``.
+        """
+        from ethograph.io.catalog import XarrayLoader, catalog_from_xarray
+
+        app_state = self.app_state
+        names = list(arrays)
+        stale_dims = sorted({dim for array in arrays.values() for dim in array.dims})
+        store = app_state.data_loader
+        dt = getattr(app_state, "dt", None)
+        mergeable = (
+            dt is not None
+            and store is not None
+            and getattr(store, "backend", None) == "xarray"
+            and not getattr(dt, "_is_continuous", False)
+        )
+
+        if mergeable:
+            trial_id = app_state.trials_sel
+            if trial_id is None:
+                notify("No trial is selected.", "warning")
+                return []
+
+            def _assign(ds: xr.Dataset) -> xr.Dataset:
+                # Drop a previous load first: re-running with different keypoints
+                # would otherwise outer-join the old and new axes together.
+                ds = ds.drop_vars(names, errors="ignore").drop_dims(stale_dims, errors="ignore")
+                return ds.assign(arrays)
+
+            dt.update_trial(trial_id, _assign)
+            app_state.ds = dt.trial(trial_id)
+            store.update_ds(app_state.ds)
+        else:
+            existing = getattr(store, "catalog", None)
+            if existing is not None and existing.features:
+                notify(
+                    "This session already serves features from a non-xarray source; "
+                    "export to NetCDF and load that instead.",
+                    "warning",
+                )
+                return []
+            if not self._install_keypoint_dataset(arrays, catalog_from_xarray, XarrayLoader):
+                return []
+
+        for name in names:
+            self._register_feature(name)
+        return names
+
+    def _install_keypoint_dataset(self, arrays, catalog_from_xarray, XarrayLoader) -> bool:
+        """Build a fresh single-trial session out of the keypoint arrays alone.
+
+        Only reached when nothing else is serving features, so replacing the
+        loader cannot strand another source's panels.
+        """
+        app_state = self.app_state
+        trial_id = app_state.trials_sel if app_state.trials_sel is not None else 1
+        ds = xr.Dataset(arrays, attrs={"trial": trial_id})
+        from ethograph.io.trialtree import TrialTree
+
+        try:
+            # validate=False: this tree holds only the keypoint features, which
+            # is a legal session but not the shape the full validator expects.
+            dt = TrialTree.from_datasets([ds], validate=False)
+        except (ValueError, KeyError) as e:
+            notify(f"Could not build a dataset from the keypoints: {e}", "error")
+            return False
+
+        app_state.dt = dt
+        app_state.ds = dt.trial(trial_id)
+        if not app_state.trials:
+            app_state.trials = [trial_id]
+        app_state.trials_sel = trial_id
+        self.catalog = catalog_from_xarray(app_state.ds, dt)
+        app_state.data_loader = XarrayLoader(app_state.ds, self.catalog)
+        return True
 
     def _register_feature(self, feature_name: str) -> None:
         """Add a computed feature to the catalog + features combo so the
