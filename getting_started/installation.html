@@ -431,65 +431,21 @@
                   
   <section class="tex2jax_ignore mathjax_ignore" id="installation">
 <span id="target-installation"></span><h1>Installation<a class="headerlink" href="#installation" title="Link to this heading">#</a></h1>
-<section id="install-ffmpeg">
-<h2>Install ffmpeg<a class="headerlink" href="#install-ffmpeg" title="Link to this heading">#</a></h2>
-<p>ethograph uses <a class="reference external" href="https://ffmpeg.org/">ffmpeg</a> for video and audio processing.
-Check if it is already installed:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ffmpeg<span class="w"> </span>-version
-</pre></div>
-</div>
-<p>If the command is not found, install it:</p>
-<div class="sd-tab-set docutils">
-<input checked="checked" id="sd-tab-item-0" name="sd-tab-set-0" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-0">
-Windows</label><div class="sd-tab-content docutils">
-<ol class="arabic simple">
-<li><p>Download <code class="docutils literal notranslate"><span class="pre">ffmpeg-release-essentials.zip</span></code> from <a class="reference external" href="https://www.gyan.dev/ffmpeg/builds/">gyan.dev</a>.</p></li>
-<li><p>Extract the zip and copy the <code class="docutils literal notranslate"><span class="pre">bin</span></code> folder to <code class="docutils literal notranslate"><span class="pre">C:\ffmpeg\bin</span></code>.</p></li>
-<li><p>Add <code class="docutils literal notranslate"><span class="pre">C:\ffmpeg\bin</span></code> to your system <strong>PATH</strong>:</p>
-<ul class="simple">
-<li><p>Search for <em>“Environment Variables”</em> in the Start menu.</p></li>
-<li><p>Under <em>System variables</em>, select <strong>Path</strong> → <strong>Edit</strong> → <strong>New</strong> → paste <code class="docutils literal notranslate"><span class="pre">C:\ffmpeg\bin</span></code>.</p></li>
-</ul>
-</li>
-<li><p>Open a <strong>new</strong> terminal and verify: <code class="docutils literal notranslate"><span class="pre">ffmpeg</span> <span class="pre">-version</span></code>.</p></li>
-</ol>
-</div>
-<input id="sd-tab-item-1" name="sd-tab-set-0" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-1">
-macOS</label><div class="sd-tab-content docutils">
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>brew<span class="w"> </span>install<span class="w"> </span>ffmpeg
-</pre></div>
-</div>
-</div>
-<input id="sd-tab-item-2" name="sd-tab-set-0" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-2">
-Linux</label><div class="sd-tab-content docutils">
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Debian/Ubuntu</span>
-sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>ffmpeg
-
-<span class="c1"># Fedora</span>
-sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>ffmpeg
-</pre></div>
-</div>
-</div>
-</div>
-</section>
 <section id="install-uv">
 <h2>Install uv<a class="headerlink" href="#install-uv" title="Link to this heading">#</a></h2>
 <p><a class="reference external" href="https://docs.astral.sh/uv/">uv</a> is a fast Python package manager.
 ethograph uses uv for installation regardless of how you create your
 virtual environment.</p>
 <div class="sd-tab-set docutils">
-<input checked="checked" id="sd-tab-item-3" name="sd-tab-set-1" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-3">
+<input checked="checked" id="sd-tab-item-0" name="sd-tab-set-0" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-0">
 macOS / Linux</label><div class="sd-tab-content docutils">
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-LsSf<span class="w"> </span>https://astral.sh/uv/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
 </pre></div>
 </div>
 </div>
-<input id="sd-tab-item-4" name="sd-tab-set-1" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-4">
+<input id="sd-tab-item-1" name="sd-tab-set-0" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-1">
 Windows</label><div class="sd-tab-content docutils">
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">winget</span> <span class="n">install</span> <span class="n">astral</span><span class="o">-</span><span class="n">sh</span><span class="o">.</span><span class="n">uv</span>
 </pre></div>
@@ -498,21 +454,46 @@ Windows</label><div class="sd-tab-content docutils">
 </div>
 </div>
 </section>
+<section id="quick-install">
+<h2>Quick install<a class="headerlink" href="#quick-install" title="Link to this heading">#</a></h2>
+<p>Use this if you just want to <strong>run the ethograph GUI</strong> — for teaching, for
+annotating data, or to try it out. It is one command, and there is no
+environment to create or activate.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.12<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio]&quot;</span>
+</pre></div>
+</div>
+<p>Then launch it from any terminal:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ethograph<span class="w"> </span>launch
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">install</span></code> puts ethograph in its own isolated environment and adds the
+<code class="docutils literal notranslate"><span class="pre">ethograph</span></code> command to your PATH, so it never clashes with your other Python
+projects and is always available without activating anything.</p>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>To update later, run <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">upgrade</span> <span class="pre">ethograph</span></code>; to remove it,
+<code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">tool</span> <span class="pre">uninstall</span> <span class="pre">ethograph</span></code>.</p>
+</div>
+</section>
 <section id="create-a-virtual-environment">
 <h2>Create a virtual environment<a class="headerlink" href="#create-a-virtual-environment" title="Link to this heading">#</a></h2>
+<p>Use this approach instead if you want to <strong>write scripts or code against
+ethograph</strong> — import <code class="docutils literal notranslate"><span class="pre">TrialTree</span></code>, build pipelines, or develop the package. Here
+ethograph is installed <em>into an environment you activate</em>, alongside whatever
+else you import, rather than as a standalone tool.</p>
 <p>You can use either conda or uv to create the environment — conda is only
 used for environment creation, not for installing ethograph itself.</p>
 <div class="sd-tab-set docutils">
-<input checked="checked" id="sd-tab-item-5" name="sd-tab-set-2" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-5">
+<input checked="checked" id="sd-tab-item-2" name="sd-tab-set-1" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-2">
 conda</label><div class="sd-tab-content docutils">
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>create<span class="w"> </span>-y<span class="w"> </span>-n<span class="w"> </span>ethograph<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.12
 conda<span class="w"> </span>activate<span class="w"> </span>ethograph
 </pre></div>
 </div>
 </div>
-<input id="sd-tab-item-6" name="sd-tab-set-2" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-6">
+<input id="sd-tab-item-3" name="sd-tab-set-1" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-3">
 uv</label><div class="sd-tab-content docutils">
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>venv<span class="w"> </span>--python<span class="o">=</span><span class="m">3</span>.12
 </pre></div>
@@ -546,15 +527,15 @@ terminal prompt.</p>
 <h4>Adding audio support<a class="headerlink" href="#adding-audio-support" title="Link to this heading">#</a></h4>
 <p>Audio support (waveform display, spectrogram, vocalisation analysis) is an optional extra.</p>
 <div class="sd-tab-set docutils">
-<input checked="checked" id="sd-tab-item-7" name="sd-tab-set-3" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-7">
+<input checked="checked" id="sd-tab-item-4" name="sd-tab-set-2" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-4">
 macOS / Windows</label><div class="sd-tab-content docutils">
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio]&quot;</span>
 </pre></div>
 </div>
 </div>
-<input id="sd-tab-item-8" name="sd-tab-set-3" type="radio">
-<label class="sd-tab-label" for="sd-tab-item-8">
+<input id="sd-tab-item-5" name="sd-tab-set-2" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-5">
 Linux</label><div class="sd-tab-content docutils">
 <p>First install the PortAudio system library <strong>and the ALSA plugins</strong>, then
 install the audio extra:</p>
@@ -600,6 +581,29 @@ archive</a> via the GUI wizard:</p>
 </pre></div>
 </div>
 </section>
+<section id="faster-scrubbing-in-long-videos-optional">
+<h3>Faster scrubbing in long videos (optional)<a class="headerlink" href="#faster-scrubbing-in-long-videos-optional" title="Link to this heading">#</a></h3>
+<p>EthoGraph works <strong>fully without ffmpeg</strong> — every feature is available, including
+video-motion extraction, which runs in-process through PyAV (bundled with the
+<code class="docutils literal notranslate"><span class="pre">gui</span></code> extra). The only thing ffmpeg adds is <em>proxy generation</em>: a low-resolution
+copy of a video that makes seeking through long, high-resolution recordings
+smoother. Video always plays at full resolution without it, so for short teaching
+clips it buys nothing.</p>
+<p>If you do work with long recordings, add ffmpeg with:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[proxy]&quot;</span>
+</pre></div>
+</div>
+<p>This bundles a private ffmpeg binary (via <code class="docutils literal notranslate"><span class="pre">imageio-ffmpeg</span></code>) with no PATH setup.
+If you already have ffmpeg installed on your system, EthoGraph picks it up
+automatically — or point it at a specific executable with the <code class="docutils literal notranslate"><span class="pre">ETHOGRAPH_FFMPEG</span></code>
+environment variable.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The bundled ffmpeg does <strong>not</strong> include NVENC, so GPU (<code class="docutils literal notranslate"><span class="pre">cuda</span></code>) proxy encoding
+falls back to software <code class="docutils literal notranslate"><span class="pre">libx264</span></code>. For NVENC, install ffmpeg from conda-forge
+(<code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">install</span> <span class="pre">-c</span> <span class="pre">conda-forge</span> <span class="pre">ffmpeg</span></code>) or your system package manager.</p>
+</div>
+</section>
 <section id="optional-dependency-groups">
 <h3>Optional dependency groups<a class="headerlink" href="#optional-dependency-groups" title="Link to this heading">#</a></h3>
 <p>ethograph uses optional extras to keep the base install lightweight.
@@ -620,10 +624,13 @@ You can combine them as needed:</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dandi</span></code></p></td>
 <td><p>DANDI archive download client (heavy, opt-in)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dev</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">proxy</span></code></p></td>
+<td><p>Bundled ffmpeg for faster scrubbing in long videos (optional)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dev</span></code></p></td>
 <td><p>Testing and linting tools</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">docs</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">docs</span></code></p></td>
 <td><p>Documentation build dependencies</p></td>
 </tr>
 </tbody>
@@ -727,8 +734,8 @@ that PyTorch/CUDA packages depend on.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-ffmpeg">Install ffmpeg</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-uv">Install uv</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#quick-install">Quick install</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#create-a-virtual-environment">Create a virtual environment</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-the-package">Install the package</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#with-the-gui-recommended">With the GUI (recommended)</a><ul class="nav section-nav flex-column">
@@ -737,6 +744,7 @@ that PyTorch/CUDA packages depend on.</p>
 </li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#core-only-library">Core only (library)</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#dandi-archive-downloads">DANDI archive downloads</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#faster-scrubbing-in-long-videos-optional">Faster scrubbing in long videos (optional)</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-dependency-groups">Optional dependency groups</a></li>
 </ul>
 </li>

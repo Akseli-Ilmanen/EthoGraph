@@ -544,13 +544,17 @@ AAC/other codecs inside a video container are not decoded for analysis, so these
 extensions are deliberately absent from the audio file picker. How to get the
 audio out depends on how you load:</p>
 <ul>
-<li><p><strong>Drag &amp; drop:</strong> when you drop a video that has an embedded audio track, tick
-<strong>“extract audio”</strong> on the cover page — EthoGraph extracts it to a throwaway
-<code class="docutils literal notranslate"><span class="pre">.wav</span></code> that then feeds the normal <code class="docutils literal notranslate"><span class="pre">audio_mic-N</span></code> pipeline. This is a
-convenience for one-off, single-session loads.</p></li>
-<li><p><strong>Custom set-up:</strong> there is no per-video extraction step here. Convert your
-videos to audio <strong>in bulk yourself</strong> before loading (one WAV/FLAC/OGG per
-clip), then point the loader at those files. For example, with <code class="docutils literal notranslate"><span class="pre">ffmpeg</span></code>:</p>
+<li><p><strong>Drag &amp; drop (no ffmpeg needed):</strong> when you drop a video that has an embedded
+audio track, tick <strong>“extract audio”</strong> on the cover page — EthoGraph extracts it
+to a throwaway <code class="docutils literal notranslate"><span class="pre">.wav</span></code> that then feeds the normal <code class="docutils literal notranslate"><span class="pre">audio_mic-N</span></code> pipeline. This
+runs entirely through PyAV (bundled with the <code class="docutils literal notranslate"><span class="pre">gui</span></code> extra), so no separate
+ffmpeg install is required. It is a convenience for one-off, single-session
+loads.</p></li>
+<li><p><strong>Custom set-up (bulk):</strong> there is no per-video extraction step here. Convert
+your videos to audio <strong>in bulk yourself</strong> before loading (one WAV/FLAC/OGG per
+clip), then point the loader at those files. This route uses the <code class="docutils literal notranslate"><span class="pre">ffmpeg</span></code> CLI —
+handy for many files at once, but not something EthoGraph itself needs. For
+example:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="k">for</span><span class="w"> </span>f<span class="w"> </span><span class="k">in</span><span class="w"> </span>*.mp4<span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span>ffmpeg<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$f</span><span class="s2">&quot;</span><span class="w"> </span>-vn<span class="w"> </span>-acodec<span class="w"> </span>pcm_s16le<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">f</span><span class="p">%.mp4</span><span class="si">}</span><span class="s2">.wav&quot;</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
 </pre></div>
 </div>

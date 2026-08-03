@@ -80,13 +80,17 @@ AAC/other codecs inside a video container are not decoded for analysis, so these
 extensions are deliberately absent from the audio file picker. How to get the
 audio out depends on how you load:
 
-- **Drag & drop:** when you drop a video that has an embedded audio track, tick
-  **"extract audio"** on the cover page — EthoGraph extracts it to a throwaway
-  `.wav` that then feeds the normal `audio_mic-N` pipeline. This is a
-  convenience for one-off, single-session loads.
-- **Custom set-up:** there is no per-video extraction step here. Convert your
-  videos to audio **in bulk yourself** before loading (one WAV/FLAC/OGG per
-  clip), then point the loader at those files. For example, with `ffmpeg`:
+- **Drag & drop (no ffmpeg needed):** when you drop a video that has an embedded
+  audio track, tick **"extract audio"** on the cover page — EthoGraph extracts it
+  to a throwaway `.wav` that then feeds the normal `audio_mic-N` pipeline. This
+  runs entirely through PyAV (bundled with the `gui` extra), so no separate
+  ffmpeg install is required. It is a convenience for one-off, single-session
+  loads.
+- **Custom set-up (bulk):** there is no per-video extraction step here. Convert
+  your videos to audio **in bulk yourself** before loading (one WAV/FLAC/OGG per
+  clip), then point the loader at those files. This route uses the `ffmpeg` CLI —
+  handy for many files at once, but not something EthoGraph itself needs. For
+  example:
 
   ```bash
   for f in *.mp4; do ffmpeg -i "$f" -vn -acodec pcm_s16le "${f%.mp4}.wav"; done

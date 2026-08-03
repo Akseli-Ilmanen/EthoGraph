@@ -2,46 +2,6 @@
 # Installation
 
 
-### Install ffmpeg
-
-ethograph uses [ffmpeg](https://ffmpeg.org/) for video and audio processing.
-Check if it is already installed:
-
-```bash
-ffmpeg -version
-```
-
-If the command is not found, install it:
-
-::::{tab-set}
-
-:::{tab-item} Windows
-1. Download `ffmpeg-release-essentials.zip` from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/).
-2. Extract the zip and copy the `bin` folder to `C:\ffmpeg\bin`.
-3. Add `C:\ffmpeg\bin` to your system **PATH**:
-   - Search for *"Environment Variables"* in the Start menu.
-   - Under *System variables*, select **Path** → **Edit** → **New** → paste `C:\ffmpeg\bin`.
-4. Open a **new** terminal and verify: `ffmpeg -version`.
-:::
-
-:::{tab-item} macOS
-```bash
-brew install ffmpeg
-```
-:::
-
-:::{tab-item} Linux
-```bash
-# Debian/Ubuntu
-sudo apt install ffmpeg
-
-# Fedora
-sudo dnf install ffmpeg
-```
-:::
-
-::::
-
 ### Install uv
 
 [uv](https://docs.astral.sh/uv/) is a fast Python package manager.
@@ -65,7 +25,37 @@ Works from both PowerShell and Command Prompt. `winget` is built into Windows 11
 
 ::::
 
+## Quick install
+
+Use this if you just want to **run the ethograph GUI** — for teaching, for
+annotating data, or to try it out. It is one command, and there is no
+environment to create or activate.
+
+```bash
+uv tool install --python 3.12 "ethograph[gui,audio]"
+```
+
+Then launch it from any terminal:
+
+```bash
+ethograph launch
+```
+
+`uv tool install` puts ethograph in its own isolated environment and adds the
+`ethograph` command to your PATH, so it never clashes with your other Python
+projects and is always available without activating anything.
+
+```{tip}
+To update later, run `uv tool upgrade ethograph`; to remove it,
+`uv tool uninstall ethograph`.
+```
+
 ## Create a virtual environment
+
+Use this approach instead if you want to **write scripts or code against
+ethograph** — import `TrialTree`, build pipelines, or develop the package. Here
+ethograph is installed *into an environment you activate*, alongside whatever
+else you import, rather than as a standalone tool.
 
 You can use either conda or uv to create the environment — conda is only
 used for environment creation, not for installing ethograph itself.
@@ -178,6 +168,32 @@ archive](https://dandiarchive.org/) via the GUI wizard:
 uv pip install "ethograph[dandi]"
 ```
 
+### Faster scrubbing in long videos (optional)
+
+EthoGraph works **fully without ffmpeg** — every feature is available, including
+video-motion extraction, which runs in-process through PyAV (bundled with the
+`gui` extra). The only thing ffmpeg adds is *proxy generation*: a low-resolution
+copy of a video that makes seeking through long, high-resolution recordings
+smoother. Video always plays at full resolution without it, so for short teaching
+clips it buys nothing.
+
+If you do work with long recordings, add ffmpeg with:
+
+```bash
+uv pip install "ethograph[proxy]"
+```
+
+This bundles a private ffmpeg binary (via `imageio-ffmpeg`) with no PATH setup.
+If you already have ffmpeg installed on your system, EthoGraph picks it up
+automatically — or point it at a specific executable with the `ETHOGRAPH_FFMPEG`
+environment variable.
+
+```{note}
+The bundled ffmpeg does **not** include NVENC, so GPU (`cuda`) proxy encoding
+falls back to software `libx264`. For NVENC, install ffmpeg from conda-forge
+(`conda install -c conda-forge ffmpeg`) or your system package manager.
+```
+
 ### Optional dependency groups
 
 ethograph uses optional extras to keep the base install lightweight.
@@ -188,6 +204,7 @@ You can combine them as needed:
 | `gui`      | Full graphical interface (PyQtGraph, pygfx/pynaviz, neural tools)   |
 | `audio`    | Waveform, spectrogram, vocalisation analysis (`sounddevice` etc.)   |
 | `dandi`    | DANDI archive download client (heavy, opt-in)                       |
+| `proxy`    | Bundled ffmpeg for faster scrubbing in long videos (optional)       |
 | `dev`      | Testing and linting tools                                           |
 | `docs`     | Documentation build dependencies                                    |
 

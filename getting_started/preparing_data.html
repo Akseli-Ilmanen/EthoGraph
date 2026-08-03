@@ -471,7 +471,7 @@ section below has a tab per backend.</p>
 <p><strong>NWB needs almost none of this.</strong> An <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> file already stores trials, media
 references and features together, so it loads directly — no session file to
 build, no alignment step. Trials come from <code class="docutils literal notranslate"><span class="pre">nwb.trials</span></code>, media from
-<a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.image.html#pynwb.image.ImageSeries" title="(in PyNWB v4.0.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ImageSeries</span></code></a> in <code class="docutils literal notranslate"><span class="pre">nwb.acquisition</span></code>. If <code class="docutils literal notranslate"><span class="pre">nwb.trials</span></code> is
+<a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.image.html#pynwb.image.ImageSeries" title="(in PyNWB v4.1.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ImageSeries</span></code></a> in <code class="docutils literal notranslate"><span class="pre">nwb.acquisition</span></code>. If <code class="docutils literal notranslate"><span class="pre">nwb.trials</span></code> is
 absent the recording is one trial; if a DANDI file lacks local media paths, the
 GUI writes <code class="docutils literal notranslate"><span class="pre">.ethograph/alignment.nwb</span></code> on first load. The NWB tabs below only
 note where behaviour differs.</p>
@@ -592,7 +592,7 @@ NWB</label><div class="sd-tab-content docutils">
 <ul class="simple">
 <li><p><strong>Trials</strong>: <code class="docutils literal notranslate"><span class="pre">nwb.trials</span></code> table (<code class="docutils literal notranslate"><span class="pre">start_time</span></code>, <code class="docutils literal notranslate"><span class="pre">stop_time</span></code>, plus custom columns).</p></li>
 <li><p><strong>Behavioural data</strong>: <code class="xref py py-class docutils literal notranslate"><span class="pre">TimeSeries</span></code> in <code class="docutils literal notranslate"><span class="pre">nwb.processing</span></code> modules.</p></li>
-<li><p><strong>Electrophysiology</strong>: <a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.ecephys.html#pynwb.ecephys.ElectricalSeries" title="(in PyNWB v4.0.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ElectricalSeries</span></code></a> in <code class="docutils literal notranslate"><span class="pre">nwb.acquisition</span></code>.</p></li>
+<li><p><strong>Electrophysiology</strong>: <a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.ecephys.html#pynwb.ecephys.ElectricalSeries" title="(in PyNWB v4.1.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ElectricalSeries</span></code></a> in <code class="docutils literal notranslate"><span class="pre">nwb.acquisition</span></code>.</p></li>
 <li><p><strong>Pose estimation</strong>: <code class="docutils literal notranslate"><span class="pre">PoseEstimation</span></code> containers (ndx-pose extension).</p></li>
 </ul>
 </div>
@@ -684,8 +684,8 @@ not available for pynapple backends.</p>
 <label class="sd-tab-label" for="sd-tab-item-11">
 NWB</label><div class="sd-tab-content docutils">
 <p>NWB files represent a single subject per file —
-<a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.file.html#pynwb.file.NWBFile.subject" title="(in PyNWB v4.0.0)"><code class="xref py py-attr docutils literal notranslate"><span class="pre">subject</span></code></a> is a singular
-<a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.file.html#pynwb.file.Subject" title="(in PyNWB v4.0.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Subject</span></code></a> object
+<a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.file.html#pynwb.file.NWBFile.subject" title="(in PyNWB v4.1.0)"><code class="xref py py-attr docutils literal notranslate"><span class="pre">subject</span></code></a> is a singular
+<a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.file.html#pynwb.file.Subject" title="(in PyNWB v4.1.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Subject</span></code></a> object
 (<a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.file.html">PyNWB docs</a>).
 Multi-subject experiments use separate <code class="docutils literal notranslate"><span class="pre">.nwb</span></code> files per subject. Individual
 selection is not available when loading a single NWB file.</p>
@@ -936,7 +936,7 @@ section is for multi-trial, multi-camera or session-wide media.</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">alignment.trials_df</span></code>, <code class="docutils literal notranslate"><span class="pre">alignment.start_time(trial)</span></code>, <code class="docutils literal notranslate"><span class="pre">alignment.stop_time(trial)</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>Media files</strong></p></td>
-<td><p><a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.image.html#pynwb.image.ImageSeries" title="(in PyNWB v4.0.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ImageSeries</span></code></a> in <code class="docutils literal notranslate"><span class="pre">nwb.acquisition</span></code> per stream/device</p></td>
+<td><p><a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.image.html#pynwb.image.ImageSeries" title="(in PyNWB v4.1.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ImageSeries</span></code></a> in <code class="docutils literal notranslate"><span class="pre">nwb.acquisition</span></code> per stream/device</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">alignment.resolve_media_path(trial,</span> <span class="pre">stream,</span> <span class="pre">device)</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Stream rates</strong></p></td>
@@ -1024,7 +1024,7 @@ flow through to label TSV exports.</p></li>
 inferred from the media files. When present they enable session-mode
 navigation and let the GUI restrict neural data to trial windows.</p></li>
 <li><p><strong>Multi-camera NWB files</strong> need no table: each camera is already a separate
-<a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.image.html#pynwb.image.ImageSeries" title="(in PyNWB v4.0.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ImageSeries</span></code></a> in <code class="docutils literal notranslate"><span class="pre">nwb.acquisition</span></code>, discovered
+<a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.image.html#pynwb.image.ImageSeries" title="(in PyNWB v4.1.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ImageSeries</span></code></a> in <code class="docutils literal notranslate"><span class="pre">nwb.acquisition</span></code>, discovered
 automatically.</p></li>
 </ul>
 </section>
@@ -1368,7 +1368,7 @@ code:</p>
 <tr class="row-odd"><td><p><strong>Build</strong></p></td>
 <td><p><a class="reference internal" href="../api/ethograph.from_datasets.html#ethograph.from_datasets" title="ethograph.from_datasets"><code class="xref py py-func docutils literal notranslate"><span class="pre">from_datasets()</span></code></a></p></td>
 <td><p><code class="xref py py-func docutils literal notranslate"><span class="pre">save_file()</span></code></p></td>
-<td><p><a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.html#pynwb.NWBHDF5IO" title="(in PyNWB v4.0.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">NWBHDF5IO</span></code></a></p></td>
+<td><p><a class="reference external" href="https://pynwb.readthedocs.io/en/stable/pynwb.html#pynwb.NWBHDF5IO" title="(in PyNWB v4.1.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">NWBHDF5IO</span></code></a></p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Alignment</strong></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">.ethograph/alignment.nwb</span></code></p></td>
