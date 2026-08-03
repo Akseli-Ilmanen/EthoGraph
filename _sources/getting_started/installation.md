@@ -247,20 +247,62 @@ video and fill the rest automatically. The default *Spline* backend needs
 **nothing extra** — it ships with the base install and is a strong baseline when
 motion is smooth.
 
-Two further backends are available — optical flow, and
-[CoTracker3](https://github.com/facebookresearch/co-tracker):
-
-```bash
-uv pip install "ethograph[optical-flow]"
-
-uv pip install --torch-backend=auto torch "cotracker @ git+https://github.com/facebookresearch/co-tracker.git@82e02e8029753ad4ef13cf06be7f4fc5facdda4d"
-```
-
 | Backend | Method | Uses video | Speed | Hardware |
 |---------|--------|------------|-------|----------|
 | **Spline** (default) | Monotone piecewise cubic (PCHIP) interpolation per keypoint, over that keypoint's own labelled frames[^pchip] | No — geometry only | Instant; nothing is decoded | CPU |
 | **Optical flow** | Pyramidal Lucas-Kanade sparse tracking, run forward and backward across each gap[^lk] | Yes | Roughly real-time | CPU |
-| **CoTracker3** | Transformer point tracker with joint attention across tracked points, run forward and backward across each gap[^cotracker] | Yes | Slowest — seconds per gap on CPU, far quicker on a GPU | CPU, or CUDA / Apple Silicon (detected automatically) |
+| **CoTracker3** | Transformer point tracker with joint attention across tracked points, run forward and backward across each gap[^cotracker] | Yes | Fast on a GPU (well under a second per gap); minutes per fill on CPU | **GPU strongly recommended** — CUDA or Apple Silicon |
+
+### Optical flow
+
+```bash
+uv pip install "ethograph[optical-flow]"
+```
+
+This is the backend to reach for **when you have no GPU** and the spline is not
+following the animal closely enough: it uses the pixels, runs at roughly video
+speed on a laptop CPU, and needs no model weights.
+
+### CoTracker3 — plan on a GPU
+
+```{important}
+CoTracker3 is a transformer run over every frame of every gap. On a CUDA GPU or
+Apple Silicon a fill is a few seconds; **on a plain CPU it is an order of
+magnitude slower**, and the gap grows with video resolution and with the
+distance between your labelled frames. It stays selectable on CPU — for a short,
+small clip it is merely slow — but it is not a practical way to label a real
+recording. Without a GPU, use *Spline* or *Optical flow*.
+```
+
+Install it with one command:
+
+```bash
+uv pip install --torch-backend=auto torch "cotracker @ git+https://github.com/facebookresearch/co-tracker.git@82e02e8029753ad4ef13cf06be7f4fc5facdda4d"
+```
+
+`--torch-backend=auto` is the part that matters: PyPI's Windows PyTorch wheels
+are **CPU-only**, so without it a perfectly good GPU is silently ignored and you
+end up on the slow path without being told. CoTracker itself has no PyPI
+release, which is why it is installed from a pinned commit rather than as an
+`ethograph[...]` extra.
+
+Check that PyTorch actually found the GPU:
+
+```bash
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else '')"
+```
+
+The labelling dialog reports the same thing: the backend is listed as
+**CoTracker3 (cuda)**, **(mps)** or **(cpu) — slow**, so the device it resolved
+is visible before you start a fill rather than discovered afterwards. The ~97 MB
+model weights download automatically into `~/.ethograph/models/cotracker` on the
+first fill.
+
+```{note}
+No GPU of your own? The optical-flow backend is the honest local answer. Renting
+one is only worth it for large labelling jobs — the fill is not the slow part of
+annotation, the clicking is.
+```
 
 ## Model training (experimental)
 

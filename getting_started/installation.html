@@ -673,13 +673,6 @@ and reinstalling from scratch.</p>
 video and fill the rest automatically. The default <em>Spline</em> backend needs
 <strong>nothing extra</strong> — it ships with the base install and is a strong baseline when
 motion is smooth.</p>
-<p>Two further backends are available — optical flow, and
-<a class="reference external" href="https://github.com/facebookresearch/co-tracker">CoTracker3</a>:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[optical-flow]&quot;</span>
-
-uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--torch-backend<span class="o">=</span>auto<span class="w"> </span>torch<span class="w"> </span><span class="s2">&quot;cotracker @ git+https://github.com/facebookresearch/co-tracker.git@82e02e8029753ad4ef13cf06be7f4fc5facdda4d&quot;</span>
-</pre></div>
-</div>
 <div class="pst-scrollable-table-container"><table class="table">
 <thead>
 <tr class="row-odd"><th class="head"><p>Backend</p></th>
@@ -705,12 +698,57 @@ uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </s
 <tr class="row-even"><td><p><strong>CoTracker3</strong></p></td>
 <td><p>Transformer point tracker with joint attention across tracked points, run forward and backward across each gap<a class="footnote-reference brackets" href="#cotracker" id="id3" role="doc-noteref"><span class="fn-bracket">[</span>3<span class="fn-bracket">]</span></a></p></td>
 <td><p>Yes</p></td>
-<td><p>Slowest — seconds per gap on CPU, far quicker on a GPU</p></td>
-<td><p>CPU, or CUDA / Apple Silicon (detected automatically)</p></td>
+<td><p>Fast on a GPU (well under a second per gap); minutes per fill on CPU</p></td>
+<td><p><strong>GPU strongly recommended</strong> — CUDA or Apple Silicon</p></td>
 </tr>
 </tbody>
 </table>
 </div>
+<section id="optical-flow">
+<h3>Optical flow<a class="headerlink" href="#optical-flow" title="Link to this heading">#</a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[optical-flow]&quot;</span>
+</pre></div>
+</div>
+<p>This is the backend to reach for <strong>when you have no GPU</strong> and the spline is not
+following the animal closely enough: it uses the pixels, runs at roughly video
+speed on a laptop CPU, and needs no model weights.</p>
+</section>
+<section id="cotracker3-plan-on-a-gpu">
+<h3>CoTracker3 — plan on a GPU<a class="headerlink" href="#cotracker3-plan-on-a-gpu" title="Link to this heading">#</a></h3>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>CoTracker3 is a transformer run over every frame of every gap. On a CUDA GPU or
+Apple Silicon a fill is a few seconds; <strong>on a plain CPU it is an order of
+magnitude slower</strong>, and the gap grows with video resolution and with the
+distance between your labelled frames. It stays selectable on CPU — for a short,
+small clip it is merely slow — but it is not a practical way to label a real
+recording. Without a GPU, use <em>Spline</em> or <em>Optical flow</em>.</p>
+</div>
+<p>Install it with one command:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--torch-backend<span class="o">=</span>auto<span class="w"> </span>torch<span class="w"> </span><span class="s2">&quot;cotracker @ git+https://github.com/facebookresearch/co-tracker.git@82e02e8029753ad4ef13cf06be7f4fc5facdda4d&quot;</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">--torch-backend=auto</span></code> is the part that matters: PyPI’s Windows PyTorch wheels
+are <strong>CPU-only</strong>, so without it a perfectly good GPU is silently ignored and you
+end up on the slow path without being told. CoTracker itself has no PyPI
+release, which is why it is installed from a pinned commit rather than as an
+<code class="docutils literal notranslate"><span class="pre">ethograph[...]</span></code> extra.</p>
+<p>Check that PyTorch actually found the GPU:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else &#39;&#39;)&quot;</span>
+</pre></div>
+</div>
+<p>The labelling dialog reports the same thing: the backend is listed as
+<strong>CoTracker3 (cuda)</strong>, <strong>(mps)</strong> or <strong>(cpu) — slow</strong>, so the device it resolved
+is visible before you start a fill rather than discovered afterwards. The ~97 MB
+model weights download automatically into <code class="docutils literal notranslate"><span class="pre">~/.ethograph/models/cotracker</span></code> on the
+first fill.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>No GPU of your own? The optical-flow backend is the honest local answer. Renting
+one is only worth it for large labelling jobs — the fill is not the slow part of
+annotation, the clicking is.</p>
+</div>
+</section>
 </section>
 <section id="model-training-experimental">
 <h2>Model training (experimental)<a class="headerlink" href="#model-training-experimental" title="Link to this heading">#</a></h2>
@@ -812,7 +850,11 @@ that PyTorch/CUDA packages depend on.</p>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#for-developers">For developers</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#update-the-package">Update the package</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#keypoint-labelling-backends-optional">Keypoint labelling backends (optional)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#keypoint-labelling-backends-optional">Keypoint labelling backends (optional)</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#optical-flow">Optical flow</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cotracker3-plan-on-a-gpu">CoTracker3 — plan on a GPU</a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-training-experimental">Model training (experimental)</a></li>
 </ul>
   </nav></div>
