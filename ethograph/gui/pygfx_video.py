@@ -27,6 +27,7 @@ from pynaviz.utils import RenderTriggerSource
 from qtpy.QtCore import QEvent, QTimer, Signal
 from qtpy.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from .app_constants import MEDIA_VIEW_MIN_HEIGHT, MEDIA_VIEW_MIN_WIDTH
 from .pose_overlay import PoseOverlay
 
 
@@ -100,7 +101,7 @@ class CameraView(QWidget):
         #: ActivePanelManager toggles this via widgets_meta; defaults True so a
         #: standalone view (tests, no manager) zooms without a prior click.
         self.selected = True
-        self.setMinimumSize(120, 90)
+        self.setMinimumSize(MEDIA_VIEW_MIN_WIDTH, MEDIA_VIEW_MIN_HEIGHT)
 
         # Proxy-generation badge (top-left overlay): ⏳ while a low-res proxy
         # is being generated for this view, ✓/⚠ briefly on finish, hidden

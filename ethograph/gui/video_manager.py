@@ -19,6 +19,7 @@ from ethograph.io.validation import IMAGE_EXTENSIONS
 from ethograph.io.video_proxy import proxy_cache_path
 from ethograph.utils.paths import ethograph_home
 
+from .app_constants import MEDIA_VIEW_MIN_HEIGHT, MEDIA_VIEW_MIN_WIDTH
 from .notify import notify
 from .proxy_manager import ProxyManager
 from .pygfx_video import CameraView
@@ -119,7 +120,7 @@ class VideoArea(QWidget):
         self._extras[key] = view
         shell = self.shell
         if shell is not None and hasattr(shell, "add_dock_widget"):
-            view.setMinimumSize(120, 120)
+            view.setMinimumSize(MEDIA_VIEW_MIN_WIDTH, MEDIA_VIEW_MIN_HEIGHT)
             dock = shell.add_dock_widget(view, area="top", name=key)
             dock.setObjectName(f"CameraViewDock {key}")
             dock._camera_key = key

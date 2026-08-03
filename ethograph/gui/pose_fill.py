@@ -37,6 +37,19 @@ CONFIDENCE_DECAY_FRAMES = 10.0
 #: Pixels of forward/backward disagreement that costs a factor 1/e of confidence.
 DISAGREEMENT_SCALE = 10.0
 
+#: Rough seconds per gap for CoTracker3 at ``MAX_SIDE`` with a handful of
+#: points, measured on an RTX 3080 and a desktop CPU. Only used to warn about
+#: the CPU path — a 20-anchor fill is ~90 s there against ~7 s on the GPU,
+#: which is slow but not prohibitive, so the backend stays selectable.
+COTRACKER_SECONDS_PER_GAP = {"cuda": 0.3, "mps": 1.0, "cpu": 4.6}
+
+
+def estimate_cotracker_seconds(n_gaps: int, device: str | None = None) -> float:
+    """Rough wall-clock for a CoTracker fill of *n_gaps* gaps."""
+    resolved = resolve_device(device)
+    per_gap = COTRACKER_SECONDS_PER_GAP.get(resolved.split(":")[0], COTRACKER_SECONDS_PER_GAP["cpu"])
+    return max(0, int(n_gaps)) * per_gap
+
 
 @runtime_checkable
 class FillBackend(Protocol):
@@ -463,8 +476,20 @@ def available_backends() -> list[BackendInfo]:
     else:
         cotracker_hint = ""
     # Showing the resolved device makes it obvious whether the GPU was picked
-    # up — a silent CPU fallback on a CUDA machine is the confusing case.
-    label = f"CoTracker3 ({resolve_device()})" if installed else "CoTracker3"
+    # up — a silent CPU fallback on a CUDA machine is the confusing case. The
+    # CPU path is ~13x slower (see COTRACKER_SECONDS_PER_GAP): usable, so it is
+    # never hidden, but the cost is named up front rather than discovered.
+    label = "CoTracker3"
+    if installed:
+        device = resolve_device()
+        label = f"CoTracker3 ({device})"
+        if device == "cpu":
+            label += " — slow"
+            slow = (
+                "No GPU found: roughly 5 s per gap, so ~90 s for 20 labelled\n"
+                "frames. Optical flow is far quicker on CPU."
+            )
+            cotracker_hint = f"{cotracker_hint}\n{slow}" if cotracker_hint else slow
     return [
         BackendInfo("spline", "Spline (no extra dependencies)", True),
         BackendInfo(

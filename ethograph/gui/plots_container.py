@@ -41,6 +41,7 @@ from .app_constants import (
     ENVELOPE_OVERLAY_COLOR,
     ENVELOPE_OVERLAY_DEBOUNCE_MS,
     ENVELOPE_OVERLAY_WIDTH,
+    PANEL_MIN_HEIGHT,
     PLOT_CONTAINER_SIZE_HINT_HEIGHT,
 )
 from .audio_player import AudioPlayer
@@ -356,6 +357,9 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
         self._dock_host.setDockOptions(
             QMainWindow.AnimatedDocks | QMainWindow.AllowNestedDocks | QMainWindow.AllowTabbedDocks
         )
+        # Its layout minimum is the sum of every open panel's minimum, which
+        # would propagate outwards and stop the video/plots separator early.
+        self._dock_host.setMinimumHeight(PANEL_MIN_HEIGHT)
         main_layout.addWidget(self._dock_host)
 
         # Audio playback (no-video mode)
@@ -424,6 +428,10 @@ class UnifiedPanelContainer(LabelDrawingMixin, QWidget):
 
     def _make_dock(self, title: str, widget: QWidget, on_close) -> QDockWidget:
         dock = QDockWidget(title, self._dock_host)
+        # An explicit minimum overrides the widget's minimumSizeHint, which for
+        # a pyqtgraph view is large enough to block the video/plots separator
+        # long before the plots reach ~10% of the window.
+        widget.setMinimumHeight(PANEL_MIN_HEIGHT)
         dock.setWidget(widget)
         dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
         dock.setTitleBarWidget(_PanelDockTitleBar(dock, title, on_close, on_move=lambda: self._show_move_menu(dock)))

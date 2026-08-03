@@ -64,8 +64,19 @@ VERTICAL_SPLIT_RATIO = 0.45
 LAYOUT_RELEASE_DELAY_MS = 300
 
 # Plot container (plot_container.py, widgets_meta.py)
-PLOT_CONTAINER_MIN_HEIGHT = 250
+#
+# The media/plots separator must be draggable across the whole window (~10/90
+# either way), and Qt clamps a separator drag at the minimum size of whatever
+# sits on each side.  Every minimum below is therefore deliberately tiny — a
+# panel squeezed to a sliver is the user's call, not the layout's.  Default
+# proportions come from sizeHints and resizeDocks, never from minimums.
+PLOT_CONTAINER_MIN_HEIGHT = 48
 PLOT_CONTAINER_SIZE_HINT_HEIGHT = 300
+#: Minimum height of a single plot panel (its dock adds the 17 px title bar).
+PANEL_MIN_HEIGHT = 24
+#: Minimum size of a camera / space-plot view (the media half of the split).
+MEDIA_VIEW_MIN_WIDTH = 60
+MEDIA_VIEW_MIN_HEIGHT = 40
 DOCK_WIDGET_BOTTOM_MARGIN = 50
 
 # Layout spacing (widgets_data.py, widgets_labels.py)

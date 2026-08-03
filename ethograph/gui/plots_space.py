@@ -27,6 +27,7 @@ from qtpy.QtWidgets import (
 )
 
 from ethograph.features.preprocessing import interpolate_nans
+from ethograph.gui.app_constants import MEDIA_VIEW_MIN_HEIGHT, MEDIA_VIEW_MIN_WIDTH
 from ethograph.gui.plots_lineplot import MultiColoredLineItem
 from ethograph.io.catalog import DataLoader
 from ethograph.utils.paths import ethograph_home
@@ -444,7 +445,7 @@ class SpacePlot(QWidget):
             self.dock_widget = self.shell.add_dock_widget(
                 self, area="top", name=name, object_name=self.dock_object_name
             )
-            self.setMinimumSize(120, 120)
+            self.setMinimumSize(MEDIA_VIEW_MIN_WIDTH, MEDIA_VIEW_MIN_HEIGHT)
             self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
             # Skipped when the saved window state placed the dock — this
             # deferred resize would stomp the restored width.
