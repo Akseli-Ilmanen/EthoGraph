@@ -222,7 +222,7 @@ class BottomPlaybackBar(QWidget):
             self.proxy_cb.setEnabled(False)
             self.proxy_cb.setToolTip(
                 "Proxy generation requires ffmpeg (optional). Video plays at full\n"
-                "resolution without it. Install with: uv pip install \"ethograph[proxy]\",\n"
+                'resolution without it. Install with: uv pip install "ethograph[proxy]",\n'
                 "or conda install -c conda-forge ffmpeg."
             )
         bot.addWidget(self.proxy_cb)
