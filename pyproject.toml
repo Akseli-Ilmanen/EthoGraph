@@ -92,6 +92,11 @@ dandi = [
     "dandi",
 ]
 
+# Proxy generation: faster scrubbing in long videos (optional)
+proxy = [
+    "imageio-ffmpeg",
+]
+
 
 # Model training (experimental): ethograph.model + ethograph.video_features
 # torch/torchvision are deliberately excluded — install a CUDA-matched build

@@ -20,11 +20,21 @@ Note this GUI is still in development. I welcome people testing it and
 
 ## Quickstart
 
-To install the GUI, run the following. For more detailed instructions, see the
-[installation guide](https://akseli-ilmanen.github.io/ethograph/getting_started/installation.html).
+First install [uv](https://docs.astral.sh/uv/), a fast Python package manager:
 
 ```bash
-uv pip install "ethograph[gui,audio]" --python 3.12
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+winget install astral-sh.uv
+```
+
+Then install the GUI as a standalone tool — one command, no environment to
+create or activate:
+
+```bash
+uv tool install --python 3.12 "ethograph[gui,audio]"
 ```
 
 To open the GUI, run:
@@ -32,6 +42,10 @@ To open the GUI, run:
 ```bash
 ethograph launch
 ```
+
+For installing into a dedicated virtual environment, optional extras, and
+troubleshooting, see the
+[installation guide](https://akseli-ilmanen.github.io/ethograph/getting_started/installation.html).
 
 After launching, there are some
 [example datasets](https://akseli-ilmanen.github.io/ethograph/examples/index.html)

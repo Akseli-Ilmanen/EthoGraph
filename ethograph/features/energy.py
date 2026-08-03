@@ -350,16 +350,15 @@ def _ava_spect_bounds(
     return float(log_spect.min()), float(log_spect.max())
 
 
-def get_lowpass_envelope(audio_path: str, audio_sr: int | None, fps: float):
+def get_lowpass_envelope(audio_path: str, audio_sr: int | None, fps: float) -> np.ndarray:
     """Load an audio file and return a lowpass amplitude envelope aligned to video frames.
-
-    Converts MP4 to WAV if needed, computes :func:`lowpass_envelope`, then
-    interpolates to match the video frame rate.
 
     Parameters
     ----------
     audio_path : str
-        Path to the audio file (.wav or .mp4).
+        Path to a decodable audio file (see :data:`AUDIO_EXTENSIONS`). Video
+        containers are not accepted — extract the audio track first, e.g. via
+        the cover page's "extract audio" option.
     audio_sr : int or None
         Override the file's sample rate. If None, use the file's own rate.
     fps : float
@@ -368,37 +367,18 @@ def get_lowpass_envelope(audio_path: str, audio_sr: int | None, fps: float):
 
     Returns
     -------
-    envelope : numpy.ndarray
+    numpy.ndarray
         Amplitude envelope resampled to ``fps``, length = n_frames.
-    gen_wav_path : str or None
-        Path to a temporary WAV file created from MP4, or None if no
-        conversion was needed.
     """
-    from pathlib import Path
-
     import audioio as aio
     from scipy.interpolate import interp1d
-
-    from ethograph.utils.audio import mp4_to_wav
-
-    gen_wav_path = None
-    suffix = Path(audio_path).suffix.lower()
-    if suffix == ".mp4":
-        gen_wav_path = mp4_to_wav(audio_path)
-        audio_path = gen_wav_path
 
     data, sr = aio.load_audio(audio_path)
     if audio_sr is not None:
         sr = audio_sr
-
     if data.ndim > 1:
         data = data[:, 0]
 
     env_time, envelope = lowpass_envelope(data, sr)
-    n_video_frames = int(len(data) / sr * fps)
-
-    video_time = np.arange(n_video_frames) / fps
-    interp_fn = interp1d(env_time, envelope, kind="linear", fill_value="extrapolate")
-    envelope = interp_fn(video_time)
-
-    return envelope, gen_wav_path
+    video_time = np.arange(int(len(data) / sr * fps)) / fps
+    return interp1d(env_time, envelope, kind="linear", fill_value="extrapolate")(video_time)

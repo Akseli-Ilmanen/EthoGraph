@@ -21,6 +21,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ethograph.utils.ffmpeg import ffmpeg_executable
+
 #: Bump when the encode recipe changes so stale proxies are regenerated.
 _PROXY_RECIPE_VERSION = 1
 
@@ -61,7 +63,7 @@ def build_proxy_command(
     proxy_path = Path(proxy_path)
     use_nvenc = hwaccel == "cuda"
 
-    cmd = ["ffmpeg", "-y"]
+    cmd = [ffmpeg_executable(), "-y"]
     if hwaccel:
         cmd.extend(["-hwaccel", hwaccel])
     elif sys.platform == "darwin":

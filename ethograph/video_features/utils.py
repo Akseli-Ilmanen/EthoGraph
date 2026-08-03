@@ -1,9 +1,7 @@
 import argparse
 import os
 import pickle
-import platform
 import random
-import subprocess
 from pathlib import Path
 from typing import Union
 
@@ -113,22 +111,6 @@ def form_list_from_user_input(
         random.shuffle(path_list)
 
     return path_list
-
-
-def which_ffmpeg() -> str:
-    """Determines the path to ffmpeg library
-
-    Returns:
-        str -- path to the library
-    """
-    # Determine the platform on which the program is running
-    if platform.system().lower() == "windows":
-        result = subprocess.run(["where", "ffmpeg"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        ffmpeg_path = result.stdout.decode("utf-8").splitlines()[0]
-    else:
-        result = subprocess.run(["which", "ffmpeg"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        ffmpeg_path = result.stdout.decode("utf-8").splitlines()[0]
-    return ffmpeg_path
 
 
 def build_cfg_path(feature_type: str) -> os.PathLike:

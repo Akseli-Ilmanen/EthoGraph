@@ -215,6 +215,16 @@ class BottomPlaybackBar(QWidget):
         )
         self.proxy_cb.setChecked(app_state.get_with_default("video_quality_mode") == "proxy")
         self.proxy_cb.toggled.connect(self._on_proxy_toggled)
+        from ethograph.utils.ffmpeg import ffmpeg_available
+
+        if not ffmpeg_available():
+            self.proxy_cb.setChecked(False)
+            self.proxy_cb.setEnabled(False)
+            self.proxy_cb.setToolTip(
+                "Proxy generation requires ffmpeg (optional). Video plays at full\n"
+                "resolution without it. Install with: uv pip install \"ethograph[proxy]\",\n"
+                "or conda install -c conda-forge ffmpeg."
+            )
         bot.addWidget(self.proxy_cb)
 
         # Rotate video/pose 90° (circular arrow)

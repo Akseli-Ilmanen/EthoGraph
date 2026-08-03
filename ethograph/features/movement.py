@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import re
-import shutil
-import subprocess
-import sys
-import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 import matplotlib
@@ -329,19 +325,43 @@ def get_angle_rgb(xy_pos, smooth_func=None, smoothing_params=None, input_type="p
     return rgb_matrix, angles
 
 
+def _gray_frames(video_path: Path, scale_width: int) -> Iterator[np.ndarray]:
+    """Yield downscaled grayscale frames of a video as ``uint8`` ndarrays.
+
+    Decodes with PyAV (in-process FFmpeg libraries) and reformats each frame to
+    ``scale_width`` pixels wide, preserving aspect ratio with even height, using
+    nearest-neighbour scaling — the exact equivalent of ffmpeg's
+    ``scale=W:-1:flags=neighbor,format=gray``.
+    """
+    try:
+        import av
+    except ImportError as e:
+        raise ImportError('av is required. Install it with: uv pip install "ethograph[gui]"') from e
+
+    with av.open(str(video_path)) as container:
+        stream = container.streams.video[0]
+        stream.thread_type = "AUTO"
+        scale_height: int | None = None
+        for frame in container.decode(stream):
+            if scale_height is None:
+                scale_height = max(2, round(frame.height * scale_width / frame.width / 2) * 2)
+            yield frame.reformat(
+                width=scale_width, height=scale_height, format="gray", interpolation="POINT"
+            ).to_ndarray()
+
+
 def extract_video_motion(
     video_path: Path | str,
     fps: float,
     time_coord_name: str = "time",
     scale_width: int = 160,
-    hwaccel: str | None = None,
     verbose: bool = True,
 ) -> xr.DataArray:
     """Compute per-frame pixel difference (motion energy) from a video file.
 
-    Uses ffmpeg ``signalstats`` filter (YDIF — mean absolute luma difference
-    between consecutive frames).  Frames are spatially downscaled to
-    ``scale_width`` pixels wide before analysis.
+    Computes YDIF — the mean absolute difference between consecutive luma
+    planes — over frames decoded in-process via PyAV. Frames are spatially
+    downscaled to ``scale_width`` pixels wide before analysis.
 
     Parameters
     ----------
@@ -354,11 +374,8 @@ def extract_video_motion(
         Name given to the time dimension in the returned DataArray.
     scale_width : int
         Width (px) to downscale frames to before computing motion.
-    hwaccel : str or None
-        ffmpeg hardware acceleration backend (e.g. ``"cuda"``). On macOS,
-        ``"videotoolbox"`` is used automatically when None.
     verbose : bool
-        If True, stream ffmpeg output to the terminal in real time.
+        If True, show a tqdm progress bar over decoded frames.
 
     Returns
     -------
@@ -366,51 +383,24 @@ def extract_video_motion(
         1-D array of motion values with a time coordinate in seconds.
     """
     video_path = Path(video_path)
-
     if not video_path.exists():
         raise FileNotFoundError(f"Video not found: {video_path}")
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tmp_video = Path(tmp_dir) / "video.mp4"
-        temp_path = Path(tmp_dir) / "motion.txt"
+    frames = _gray_frames(video_path, scale_width)
+    if verbose:
+        from tqdm import tqdm
 
-        shutil.copy(video_path, tmp_video)
+        frames = tqdm(frames, desc=f"motion {video_path.name}", unit="frame")
 
-        if sys.platform == "win32":
-            filter_str = f"scale={scale_width}:-1:flags=neighbor,format=gray,signalstats,metadata=print:file=motion.txt:key=lavfi.signalstats.YDIF"  # noqa: E501
-            cwd = tmp_dir
-            input_path = "video.mp4"
-        else:
-            temp_path_ffmpeg = temp_path.as_posix()
-            filter_str = f"scale={scale_width}:-1:flags=neighbor,format=gray,signalstats,metadata=print:file={temp_path_ffmpeg}:key=lavfi.signalstats.YDIF"  # noqa: E501
-            cwd = None
-            input_path = tmp_video.as_posix()
-
-        cmd = ["ffmpeg", "-y"]
-
-        if hwaccel:
-            cmd.extend(["-hwaccel", hwaccel])
-        elif sys.platform == "darwin":
-            cmd.extend(["-hwaccel", "videotoolbox"])
-
-        cmd.extend(["-i", input_path, "-vf", filter_str, "-f", "null", "-"])
-
-        if verbose:
-            # Live output to terminal
-            result = subprocess.run(cmd, cwd=cwd)
-        else:
-            result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
-
-        if result.returncode != 0:
-            err = result.stderr if hasattr(result, "stderr") and result.stderr else "Unknown error"
-            raise RuntimeError(f"FFmpeg error: {err}")
-
-        text = temp_path.read_text()
-        pattern = r"lavfi\.signalstats\.YDIF=(\d+\.?\d*)"
-        motion = np.array([float(m) for m in re.findall(pattern, text)], dtype=np.float32)
+    motion: list[float] = []
+    previous: np.ndarray | None = None
+    for frame in frames:
+        current = frame.astype(np.int16)
+        motion.append(0.0 if previous is None else float(np.abs(current - previous).mean()))
+        previous = current
 
     return xr.DataArray(
-        motion,
+        np.asarray(motion, dtype=np.float32),
         dims=[time_coord_name],
         coords={time_coord_name: np.arange(len(motion)) / fps},
     )
