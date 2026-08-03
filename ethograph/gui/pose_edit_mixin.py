@@ -28,8 +28,32 @@ never require changing mode first.
 :meth:`KeypointStore.promote_fill`) — that is how a prediction is accepted or
 corrected. Deleting stays anchors-only: there is nothing to remove from a
 prediction, and clearing the label under it simply hands the point back to the
-next fill. The anchor overlay still draws labels *only*; predictions are the
-ordinary pose overlay's job, so the two never look alike.
+next fill.
+
+Provenance is the third visual channel: fill
+--------------------------------------------
+The overlay draws **both** kinds of point, because accepting a prediction means
+looking at it first. A *label* is a solid marker; a *prediction* is the same
+shape and the same keypoint colour drawn **hollow** — the interior is left empty
+so the pixels being judged stay visible underneath, and the colour moves to the
+edge. Fill/hollow is a channel of its own, so neither shape (individual) nor
+colour (keypoint) has to be spent on it, and a click that turns a hollow marker
+solid is exactly the act of pinning it.
+
+Because this overlay now shows everything, the labelling dialog does *not* push
+its pose override while a mode is attached: the ordinary pose overlay would draw
+a second marker on every point, in a colour scheme that says nothing about where
+the point came from.
+
+Locked: canvas control without labelling
+----------------------------------------
+``locked`` suspends the *pointer* interaction without detaching the mode: the
+anchor overlay stays on screen, the active pair is kept, and left-drag goes back
+to panning. Looking around a frame at high zoom is otherwise only possible by
+disarming, which drops the overlay and the target with it. Keyboard editing
+(``Backspace``, ``Ctrl+Z``) is deliberately untouched — the lock is about what
+the pointer does, and those keys act on a point the user has selected on
+purpose.
 
 Two labelling modes, after napari-deeplabcut
 --------------------------------------------
@@ -48,8 +72,8 @@ They differ only in what happens *after* a point is placed:
 ``Tab`` cycles the keypoint and ``1``–``9`` select the individual in both modes;
 the dialog owns the key handling.
 
-While a mode is active, left-drag pans no longer — panning moves to ``Shift`` +
-left-drag so the wheel/zoom controls keep working.
+While a mode is active and unlocked, left-drag pans no longer — panning moves to
+``Shift`` + left-drag so the wheel/zoom controls keep working.
 """
 
 from __future__ import annotations
@@ -87,6 +111,13 @@ _ACTIVE_EDGE_WIDTH = 1.0
 
 #: Alpha applied to the individuals that are not currently being edited.
 _INACTIVE_ALPHA = 0.35
+
+#: Predictions are drawn hollow — no interior, keypoint colour on the edge — so
+#: the pixels being judged stay visible and provenance costs neither shape nor
+#: colour. The edge is drawn a little heavier than a label's, since an outline
+#: of the same width reads as fainter than a filled disc.
+_FILL_INTERIOR = (0.0, 0.0, 0.0, 0.0)
+_FILL_EDGE_WIDTH = 2.5
 
 #: Marker shape per individual, in display order — the individual axis of the
 #: hierarchy. Colour is spent on keypoints instead, so the two never collide.
@@ -141,14 +172,16 @@ def keypoint_colors(n: int) -> np.ndarray:
 
 
 class AnchorOverlay:
-    """pygfx markers + labels for the anchors of one frame.
+    """pygfx markers + labels for the points of one frame.
 
-    One :class:`pygfx.Points` layer per individual — a marker *shape* is a
-    material property, not a per-vertex one, so the shape-per-individual
-    encoding needs one object each. Within a layer, vertices are coloured per
-    keypoint. Keypoint names are drawn for the active individual only (with a
-    full schema on several individuals the canvas is otherwise unreadable),
-    while each individual's own name sits at the centroid of its labelled points.
+    **Two** :class:`pygfx.Points` layers per individual — a marker *shape* and
+    an edge style are material properties, not per-vertex ones, so shape (the
+    individual) and fill (the provenance) each need an object of their own.
+    Within a layer, vertices are coloured per keypoint: solid for a label,
+    hollow for a prediction. Keypoint names are drawn for the active individual
+    only (with a full schema on several individuals the canvas is otherwise
+    unreadable), while each individual's own name sits at the centroid of its
+    points.
     """
 
     def __init__(self, scene: gfx.Scene, keypoint_names: list[str], individual_names: list[str], img_height: float):
@@ -160,10 +193,13 @@ class AnchorOverlay:
         n_kp = len(self._keypoint_names)
         self._colors = keypoint_colors(n_kp)
         self._layers: list[gfx.Points] = []
+        self._fill_layers: list[gfx.Points] = []
         # No layers when there is nothing to draw: a zero-vertex geometry is not
         # worth defending against downstream.
         if n_kp:
-            self._layers = [self._add_layer(i, n_kp) for i in range(len(self._individual_names))]
+            n_ind = len(self._individual_names)
+            self._layers = [self._add_layer(i, n_kp, human=True) for i in range(n_ind)]
+            self._fill_layers = [self._add_layer(i, n_kp, human=False) for i in range(n_ind)]
 
         # The active point is a separate single-vertex object so it can carry a
         # white outline; marker materials only expose one edge colour for all
@@ -190,22 +226,36 @@ class AnchorOverlay:
             else []
         )
 
-    def _add_layer(self, index: int, n_kp: int) -> gfx.Points:
-        """One markers object for the *index*-th individual, in its own shape."""
-        layer = gfx.Points(
-            gfx.Geometry(
-                positions=np.full((n_kp, 3), _OFFSCREEN, dtype=np.float32),
-                colors=self._colors.copy(),
-            ),
-            gfx.PointsMarkerMaterial(
-                size=_ANCHOR_SIZE,
-                size_space="screen",  # constant on screen, unaffected by zoom
-                marker=marker_for_individual(index),
-                color_mode="vertex",
-                edge_width=2.0,
-                edge_color=_IDLE_EDGE,
-            ),
+    def _add_layer(self, index: int, n_kp: int, human: bool) -> gfx.Points:
+        """One markers object for the *index*-th individual, in its own shape.
+
+        *human* picks the provenance style: a solid marker for a label, a hollow
+        one for a prediction. The hollow layer carries its keypoint colours in
+        ``edge_colors`` rather than ``colors``, since that is the buffer the
+        edge is drawn from once ``edge_color_mode`` is per-vertex.
+        """
+        colors = self._colors.copy()
+        geometry = gfx.Geometry(
+            positions=np.full((n_kp, 3), _OFFSCREEN, dtype=np.float32),
+            **({"colors": colors} if human else {"edge_colors": colors}),
         )
+        shared = dict(
+            size=_ANCHOR_SIZE,
+            size_space="screen",  # constant on screen, unaffected by zoom
+            marker=marker_for_individual(index),
+        )
+        material = (
+            gfx.PointsMarkerMaterial(color_mode="vertex", edge_width=2.0, edge_color=_IDLE_EDGE, **shared)
+            if human
+            else gfx.PointsMarkerMaterial(
+                color=_FILL_INTERIOR,
+                color_mode="uniform",
+                edge_color_mode="vertex",
+                edge_width=_FILL_EDGE_WIDTH,
+                **shared,
+            )
+        )
+        layer = gfx.Points(geometry, material)
         layer.local.z = _Z_ANCHORS
         self._scene.add(layer)
         return layer
@@ -223,16 +273,25 @@ class AnchorOverlay:
         self._scene.add(text)
         return text
 
-    def set_positions(self, positions: np.ndarray, active_individual: int, active_keypoint: int) -> None:
-        """Draw ``(n_individuals, n_keypoints, 2)`` image-space anchors.
+    def set_positions(
+        self,
+        positions: np.ndarray,
+        human: np.ndarray,
+        active_individual: int,
+        active_keypoint: int,
+    ) -> None:
+        """Draw ``(n_individuals, n_keypoints, 2)`` image-space points.
 
-        ``NaN`` hides a marker. *active_individual* / *active_keypoint* index
-        the pair the next click will write to.
+        *positions* is every point on the frame — labels over fill — and *human*
+        is the matching ``(n_individuals, n_keypoints)`` provenance mask, which
+        decides whether a marker is drawn solid or hollow. ``NaN`` hides it.
+        *active_individual* / *active_keypoint* index the pair the next click
+        will write to.
         """
         n_ind, n_kp = positions.shape[0], positions.shape[1]
         if not self._layers or n_kp == 0 or n_ind == 0:
             self._active.visible = False
-            for layer in self._layers:
+            for layer in [*self._layers, *self._fill_layers]:
                 layer.visible = False
             for text in [*self._keypoint_texts, *self._individual_texts]:
                 text.visible = False
@@ -242,19 +301,10 @@ class AnchorOverlay:
         world[:, :, 1] = self._img_height - world[:, :, 1]
         shown = ~np.isnan(positions[:, :, 0])
 
-        for i, layer in enumerate(self._layers):
-            layer.visible = True
-            buffer = layer.geometry.positions
-            buffer.data[:, 2] = 0.0
-            buffer.data[:, :2] = np.where(shown[i][:, None], world[i], _OFFSCREEN)
-            buffer.update_full()
-
-            colors = self._colors.copy()
-            if n_ind > 1 and i != active_individual:
-                colors[:, 3] = _INACTIVE_ALPHA
-            color_buffer = layer.geometry.colors
-            color_buffer.data[:] = colors
-            color_buffer.update_full()
+        for i, (layer, fill_layer) in enumerate(zip(self._layers, self._fill_layers)):
+            dim = n_ind > 1 and i != active_individual
+            self._draw_layer(layer, layer.geometry.colors, world[i], shown[i] & human[i], dim)
+            self._draw_layer(fill_layer, fill_layer.geometry.edge_colors, world[i], shown[i] & ~human[i], dim)
 
         active_buffer = self._active.geometry.positions
         active_shown = shown[active_individual, active_keypoint] if n_kp else False
@@ -276,16 +326,42 @@ class AnchorOverlay:
                 centre = np.nanmean(world[i][shown[i]], axis=0)
                 text.local.position = (float(centre[0]) + 6, float(centre[1]) - 14, _Z_TEXT)
 
+    def _draw_layer(self, layer: gfx.Points, color_buffer, world: np.ndarray, shown: np.ndarray, dim: bool) -> None:
+        """Position and tint one individual's markers of one provenance.
+
+        *color_buffer* is whichever buffer that layer draws its keypoint colours
+        from — ``colors`` for a solid marker, ``edge_colors`` for a hollow one —
+        so dimming an inactive individual is the same operation either way.
+        """
+        layer.visible = True
+        positions = layer.geometry.positions
+        positions.data[:, 2] = 0.0
+        positions.data[:, :2] = np.where(shown[:, None], world, _OFFSCREEN)
+        positions.update_full()
+
+        colors = self._colors.copy()
+        if dim:
+            colors[:, 3] = _INACTIVE_ALPHA
+        color_buffer.data[:] = colors
+        color_buffer.update_full()
+
     def set_point_size(self, size: float) -> None:
         """Resize every marker in place — no rebuild, so a spinbox can drive it."""
-        for layer in self._layers:
+        for layer in [*self._layers, *self._fill_layers]:
             layer.material.size = float(size)
         self._active.material.size = float(size) * _ACTIVE_SIZE_RATIO
 
     def clear(self) -> None:
-        for obj in [*self._layers, self._active, *self._keypoint_texts, *self._individual_texts]:
+        for obj in [
+            *self._layers,
+            *self._fill_layers,
+            self._active,
+            *self._keypoint_texts,
+            *self._individual_texts,
+        ]:
             self._scene.remove(obj)
         self._layers = []
+        self._fill_layers = []
         self._keypoint_texts = []
         self._individual_texts = []
 
@@ -302,6 +378,7 @@ class KeypointLabelMode:
         on_advance_frame: Callable[[], None] | None = None,
         on_released: Callable[[], None] | None = None,
         point_size: float = _ANCHOR_SIZE,
+        locked: bool = False,
     ):
         self.view = view
         self.store = store
@@ -312,6 +389,9 @@ class KeypointLabelMode:
         #: mouse move of a drag can happen once the edit has settled.
         self.on_released = on_released or (lambda: None)
         self.mode = mode
+        #: While True the pointer does nothing here and pans the view instead;
+        #: read by the view when it binds left-drag (see ``set_label_locked``).
+        self._locked = bool(locked)
         self.frame = 0
         #: The active pair is held by name, not by index: with per-individual
         #: keypoint sets an index means different things on different branches,
@@ -433,6 +513,24 @@ class KeypointLabelMode:
         self._drag_recorded = False
         self.refresh()
 
+    @property
+    def locked(self) -> bool:
+        """Whether the pointer pans the view instead of labelling."""
+        return self._locked
+
+    def set_locked(self, locked: bool) -> None:
+        """Suspend (or resume) pointer labelling, keeping everything else.
+
+        The overlay and the active pair survive, so unlocking carries on exactly
+        where labelling left off; the view hands left-drag back to its pan
+        controller for as long as the lock is on.
+        """
+        self._locked = bool(locked)
+        self._dragging = None
+        self._drag_recorded = False
+        self.view.set_label_locked(self._locked)
+        self.refresh()
+
     def handle_click(self, x: float, y: float) -> None:
         """Place the active keypoint, or grab an existing point to move it.
 
@@ -442,7 +540,12 @@ class KeypointLabelMode:
         backend put it, so a prediction that is already right is accepted by
         clicking it and a wrong one is fixed by dragging it. Either way the next
         fill sees a human point, since fills are re-derived from labels alone.
+
+        Locked, the pointer belongs to the camera: nothing is placed, grabbed or
+        pinned, and the drag pans instead.
         """
+        if self._locked:
+            return
         self._cursor = (x, y)
         existing = self.store.nearest(self.frame, (x, y), self._hit_radius(), include_fill=True)
         if existing is not None:
@@ -475,6 +578,8 @@ class KeypointLabelMode:
         self._changed()
 
     def handle_move(self, x: float, y: float) -> None:
+        if self._locked:
+            return
         self._cursor = (x, y)
         if self._dragging is None:
             return
@@ -491,6 +596,8 @@ class KeypointLabelMode:
         return self._dragging is not None
 
     def handle_release(self, x: float, y: float) -> None:
+        if self._locked:
+            return
         self._cursor = (x, y)
         self._dragging = None
         self._drag_recorded = False
@@ -557,9 +664,11 @@ class KeypointLabelMode:
         self.refresh()
 
     def refresh(self) -> None:
+        """Redraw the frame's points — labels solid, predictions hollow."""
         self._sync_active()
         self._overlay.set_positions(
-            self.store.anchor_positions(self.frame),
+            self.store.positions(self.frame),
+            self.store.human_mask(self.frame),
             self.store.individual_index(self._individual) if self._individual is not None else 0,
             self.store.keypoint_index(self._keypoint) if self._keypoint is not None else 0,
         )

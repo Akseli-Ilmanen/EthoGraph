@@ -107,7 +107,8 @@ model = [
     "tqdm",
 ]
 
-# CoTracker3 point-tracking backend for pose keypoint fill.
+# PosePAL fill backend for pose keypoints (CoTracker3 + query-feature
+# refinement, see ethograph/gui/pose_refine.py).
 #
 # There is deliberately NO [co-tracker] extra. cotracker has no PyPI release and
 # declares no dependencies of its own (`install_requires=[]`, not even torch), so

@@ -24,7 +24,7 @@ import numpy as np
 import pygfx as gfx
 from pynaviz.audiovideo import PlotVideo
 from pynaviz.utils import RenderTriggerSource
-from qtpy.QtCore import QEvent, QTimer, Signal
+from qtpy.QtCore import QEvent, Qt, QTimer, Signal
 from qtpy.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from .app_constants import MEDIA_VIEW_MIN_HEIGHT, MEDIA_VIEW_MIN_WIDTH
@@ -179,11 +179,28 @@ class CameraView(QWidget):
         return self._plot
 
     def canvas_widget(self) -> QWidget | None:
+        """The canvas as laid out — what Qt overlays are parented to."""
         if self._plot is not None:
             return self._plot.canvas
         if self._static is not None:
             return self._static.canvas
         return None
+
+    def key_target(self) -> QWidget | None:
+        """The widget a key press pressed over the video actually lands on.
+
+        ``rendercanvas``'s ``RenderCanvas`` is a *wrapper*: the inner render
+        widget is the one with a focus policy, and its ``keyPressEvent`` neither
+        ignores the event nor calls the base class, so nothing propagates out to
+        the wrapper or the main window. An event filter installed on the wrapper
+        alone therefore never sees a key pressed while the video has focus —
+        which is exactly when the labelling dialog needs Backspace and Ctrl+Z.
+        """
+        canvas = self.canvas_widget()
+        if canvas is None:
+            return None
+        focusable = [w for w in canvas.findChildren(QWidget) if w.focusPolicy() != Qt.NoFocus]
+        return focusable[0] if focusable else canvas
 
     def set_video(
         self,
@@ -306,11 +323,23 @@ class CameraView(QWidget):
         """Forward a canvas pointer event to the labelling mode, if active.
 
         Press/release act on the left button only, so right-drag zoom and
-        middle-click quickzoom keep working while labelling.
+        middle-click quickzoom keep working while labelling. A locked mode is
+        skipped here as well as inside it, so panning costs no unprojection.
+
+        A press carrying **any modifier belongs to the camera**: ``Shift`` +
+        left-drag is what pans while a mode is armed (see
+        :meth:`_bind_pan_to_shift`), and forwarding it as well panned the view
+        *and* dragged the point under the cursor at the same time. Only the
+        press is filtered — a drag can only have been started by an unmodified
+        press, so moves and releases stay unconditional; a release dropped
+        because a modifier happened to be down would leave the point stuck to
+        the cursor.
         """
-        if self._label_mode is None or event is None:
+        if self._label_mode is None or event is None or self._label_mode.locked:
             return
         if method != "handle_move" and getattr(event, "button", 1) != 1:
+            return
+        if method == "handle_click" and getattr(event, "modifiers", ()):
             return
         image_xy = self.screen_to_image(event.x, event.y)
         if image_xy is not None:
@@ -409,14 +438,27 @@ class CameraView(QWidget):
         moves to ``Shift`` + left-drag so navigation stays available.
         """
         self._label_mode = mode
+        self._bind_pan_to_shift(mode is not None and not mode.locked)
+
+    def set_label_locked(self, locked: bool) -> None:
+        """Give left-drag back to panning without detaching the labelling mode.
+
+        A locked mode keeps drawing its anchors and keeps its active keypoint —
+        only the pointer changes hands — so the user can look around a frame and
+        carry straight on labelling afterwards.
+        """
+        self._bind_pan_to_shift(self._label_mode is not None and not locked)
+
+    def _bind_pan_to_shift(self, to_shift: bool) -> None:
+        """Move the pan control between ``mouse1`` and ``shift+mouse1``."""
         _, _, controller = self._render_target()
         if controller is None:
             return
-        if mode is not None and self._pan_control is None:
+        if to_shift and self._pan_control is None:
             self._pan_control = controller.controls.pop("mouse1", None)
             if self._pan_control is not None:
                 controller.controls["shift+mouse1"] = self._pan_control
-        elif mode is None and self._pan_control is not None:
+        elif not to_shift and self._pan_control is not None:
             controller.controls.pop("shift+mouse1", None)
             controller.controls["mouse1"] = self._pan_control
             self._pan_control = None

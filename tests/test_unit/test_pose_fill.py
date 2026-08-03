@@ -12,10 +12,11 @@ import pytest
 
 from ethograph.gui import pose_fill
 from ethograph.gui.pose_fill import (
-    CoTrackerBackend,
+    POSEPAL_BACKEND,
     FillBackend,
     OpticalFlowBackend,
     SplineBackend,
+    _CoTrackerTracking,
     _GapBackend,
     available_backends,
     build_backend,
@@ -94,7 +95,7 @@ def _frames(n: int = N_FRAMES, size: int = 64) -> np.ndarray:
 
 
 def test_backends_satisfy_the_protocol():
-    for backend in (SplineBackend(), OpticalFlowBackend(), CoTrackerBackend(object())):
+    for backend in (SplineBackend(), OpticalFlowBackend(), _CoTrackerTracking(object())):
         assert isinstance(backend, FillBackend)
         assert isinstance(backend.name, str)
         assert isinstance(backend.requires_video, bool)
@@ -108,7 +109,7 @@ def test_spline_needs_no_video():
 def test_available_backends_always_offers_spline():
     infos = {info.key: info for info in available_backends()}
     assert infos["spline"].available is True
-    for key in ("flow", "cotracker"):
+    for key in ("flow", POSEPAL_BACKEND):
         assert infos[key].available or infos[key].hint
 
 
@@ -166,10 +167,10 @@ def test_find_checkpoint_honours_an_explicit_path(tmp_path):
 
 def test_missing_weights_do_not_block_the_backend(tmp_path, monkeypatch):
     """Weights download on first use, so absent weights are a note, not a block."""
-    pytest.importorskip("torch")
-    pytest.importorskip("cotracker")
+    monkeypatch.setattr(pose_fill, "_module_available", lambda name: True)
+    monkeypatch.setattr(pose_fill, "resolve_device", lambda preferred=None: "cuda")
     monkeypatch.setattr(pose_fill, "cotracker_checkpoint_dir", lambda: tmp_path / "absent")
-    info = {i.key: i for i in available_backends()}["cotracker"]
+    info = {i.key: i for i in available_backends()}[POSEPAL_BACKEND]
     assert info.available is True
     assert "download" in info.hint
 
@@ -182,7 +183,7 @@ def test_install_hint_pins_a_commit():
 
 def test_uninstalled_cotracker_reports_the_single_install_command(monkeypatch):
     monkeypatch.setattr(pose_fill, "_module_available", lambda name: name not in {"torch", "cotracker"})
-    info = {i.key: i for i in available_backends()}["cotracker"]
+    info = {i.key: i for i in available_backends()}[POSEPAL_BACKEND]
     assert info.available is False
     assert info.hint == pose_fill.COTRACKER_INSTALL_HINT
 
@@ -245,25 +246,56 @@ def test_spline_handles_partial_anchors():
     assert not np.any(np.isnan(filled))
 
 
-def test_spline_holds_endpoints_outside_the_anchored_span():
+def test_spline_leaves_frames_outside_the_anchored_span_empty():
+    """Only the gaps between labels are filled — never past the outermost one."""
     anchors = {5: np.array([[5.0, 5.0], [1.0, 1.0]]), 15: np.array([[15.0, 5.0], [2.0, 1.0]])}
-    filled, _ = SplineBackend().fill(anchors, N_FRAMES, None)
-    np.testing.assert_allclose(filled[0, 0], filled[5, 0])
-    np.testing.assert_allclose(filled[20, 0], filled[15, 0])
+    filled, confidence = SplineBackend().fill(anchors, N_FRAMES, None)
+
+    assert np.all(np.isnan(filled[:5]))
+    assert np.all(np.isnan(filled[16:]))
+    assert np.all(np.isnan(confidence[:5]))
+    assert np.all(np.isnan(confidence[16:]))
+    assert not np.any(np.isnan(filled[5:16]))
 
 
-def test_spline_with_a_single_anchor_is_constant():
+def test_spline_with_a_single_anchor_fills_only_that_frame():
+    """One label brackets nothing, so there is no gap to interpolate across."""
     anchors = {4: np.array([[3.0, 4.0], [5.0, 6.0]])}
     filled, _ = SplineBackend().fill(anchors, N_FRAMES, None)
-    np.testing.assert_allclose(filled[0], anchors[4])
-    np.testing.assert_allclose(filled[20], anchors[4])
+    np.testing.assert_allclose(filled[4], anchors[4])
+    assert np.all(np.isnan(np.delete(filled, 4, axis=0)))
+
+
+def test_spline_holds_a_keypoint_labelled_once_across_the_span():
+    """Within the span a point with a single label is held, not dropped.
+
+    It is what seeds the gap backends' endpoints for that keypoint.
+    """
+    anchors = {
+        0: np.array([[0.0, 0.0], [5.0, 6.0]]),
+        20: np.array([[20.0, 0.0], [np.nan, np.nan]]),
+    }
+    filled, _ = SplineBackend().fill(anchors, N_FRAMES, None)
+    np.testing.assert_allclose(filled[:, 1], np.tile([5.0, 6.0], (N_FRAMES, 1)))
 
 
 def test_unlabelled_keypoint_stays_nan():
-    anchors = {0: np.array([[1.0, 1.0], [np.nan, np.nan]])}
+    anchors = {
+        0: np.array([[1.0, 1.0], [np.nan, np.nan]]),
+        20: np.array([[2.0, 1.0], [np.nan, np.nan]]),
+    }
     filled, confidence = SplineBackend().fill(anchors, N_FRAMES, None)
     assert np.all(np.isnan(filled[:, 1]))
     assert np.all(confidence[:, 1] == 0.0)
+
+
+def test_anchor_span_reports_the_outermost_labelled_frames():
+    assert pose_fill.anchor_span(_anchors(), N_FRAMES) == (0, 20)
+    assert pose_fill.anchor_span({7: np.array([[1.0, 1.0]])}, N_FRAMES) == (7, 7)
+    # Frames past the end of the video, and rows carrying no point, are not labels.
+    assert pose_fill.anchor_span({99: np.array([[1.0, 1.0]])}, N_FRAMES) is None
+    assert pose_fill.anchor_span({3: np.array([[np.nan, np.nan]])}, N_FRAMES) is None
+    assert pose_fill.anchor_span({}, N_FRAMES) is None
 
 
 def test_fill_without_anchors_raises():
@@ -331,11 +363,83 @@ def test_gap_backend_honours_frame_source_scale():
     np.testing.assert_allclose(filled[5, 0], [5.0, 2.5])
 
 
-def test_gap_backend_covers_frames_outside_the_anchored_span():
+def test_gap_backend_leaves_frames_outside_the_anchored_span_empty():
+    """The same rule as the spline: a fill stops at the outermost labels."""
     anchors = {5: np.array([[5.0, 5.0]]), 15: np.array([[15.0, 5.0]])}
-    filled, _ = _HoldBackend().fill(anchors, N_FRAMES, _frames())
-    assert not np.any(np.isnan(filled))
-    np.testing.assert_allclose(filled[0, 0], filled[5, 0])
+    filled, confidence = _HoldBackend().fill(anchors, N_FRAMES, _frames())
+
+    assert not np.any(np.isnan(filled[5:16]))
+    assert np.all(np.isnan(filled[:5]))
+    assert np.all(np.isnan(filled[16:]))
+    assert np.all(np.isnan(confidence[16:]))
+
+
+class _NaNIntolerantBackend(_GapBackend):
+    """A tracker that, like CoTracker3, cannot be handed a NaN query.
+
+    CoTracker attends jointly across points, so one NaN query row returns NaN
+    for *every* point. Reproduced here as an assertion rather than by spreading
+    NaN, so the test names the contract it is protecting.
+    """
+
+    name = "nan-intolerant"
+
+    def _track(self, clip, points, query_frame):
+        assert np.isfinite(points).all(), "a NaN query reached the tracker"
+        positions = np.repeat(np.asarray(points)[None], len(clip), axis=0)
+        return positions.astype(np.float64), np.ones((len(clip), len(points)))
+
+
+def test_a_point_labelled_nowhere_never_reaches_the_tracker():
+    """It has no spline seed either, so its endpoints are NaN.
+
+    Passing it through blanked every *other* point across every tracked gap,
+    leaving only the untracked head and tail filled.
+    """
+    anchors = {
+        0: np.array([[0.0, 0.0], [np.nan, np.nan]]),
+        10: np.array([[10.0, 5.0], [np.nan, np.nan]]),
+    }
+
+    filled, confidence = _NaNIntolerantBackend().fill(anchors, N_FRAMES, _frames())
+
+    # The labelled point is tracked across the gap it was seeded on...
+    assert not np.any(np.isnan(filled[:11, 0]))
+    np.testing.assert_allclose(filled[5, 0], [5.0, 2.5])
+    assert confidence[5, 0] > 0.0
+    # ...and the one labelled nowhere stays empty rather than inventing a track.
+    assert np.all(np.isnan(filled[:, 1]))
+    np.testing.assert_allclose(confidence[:11, 1], 0.0)
+
+
+def test_a_backend_is_told_which_rows_it_is_tracking():
+    """Dropped rows compress the query list, so query ``i`` is not point ``i``.
+
+    PosePAL holds one learned feature per point row; without the mapping every
+    point after a dropped one would be tracked by another keypoint's feature.
+    """
+    rows: list[list[int]] = []
+
+    class _RecordingBackend(_HoldBackend):
+        def _on_rows(self, announced):
+            rows.append(announced.tolist())
+
+    anchors = {
+        0: np.array([[0.0, 0.0], [np.nan, np.nan], [10.0, 10.0]]),
+        10: np.array([[10.0, 5.0], [np.nan, np.nan], [20.0, 15.0]]),
+    }
+
+    _RecordingBackend().fill(anchors, N_FRAMES, _frames())
+
+    assert rows == [[0, 2]]
+
+
+def test_a_gap_with_nothing_trackable_keeps_the_seed():
+    """Every point unlabelled on both endpoints: the gap is skipped, not crashed."""
+    anchors = {0: np.array([[np.nan, np.nan]]), 10: np.array([[np.nan, np.nan]])}
+
+    filled, _ = _NaNIntolerantBackend().fill(anchors, N_FRAMES, _frames())
+    assert np.all(np.isnan(filled))
 
 
 class _DriftBackend(_GapBackend):
@@ -384,7 +488,7 @@ def test_gap_backend_cancellation_stops_early():
 def test_cotracker_preserves_anchors_with_a_fake_predictor():
     pytest.importorskip("torch")
     anchors = _anchors()
-    backend = CoTrackerBackend(_FakePredictor(), device="cpu")
+    backend = _CoTrackerTracking(_FakePredictor(), device="cpu")
     filled, confidence = backend.fill(anchors, N_FRAMES, _frames())
 
     for frame, points in anchors.items():
@@ -395,7 +499,7 @@ def test_cotracker_preserves_anchors_with_a_fake_predictor():
 def test_cotracker_handles_partial_anchors():
     pytest.importorskip("torch")
     anchors = _partial_anchors()
-    backend = CoTrackerBackend(_FakePredictor(), device="cpu")
+    backend = _CoTrackerTracking(_FakePredictor(), device="cpu")
     filled, confidence = backend.fill(anchors, N_FRAMES, _frames())
 
     for frame, points in anchors.items():
@@ -409,7 +513,7 @@ def test_cotracker_blends_a_held_track_across_the_gap():
     """A predictor that never moves gives the plain left/right crossfade."""
     pytest.importorskip("torch")
     anchors = {0: np.array([[0.0, 0.0]]), 10: np.array([[10.0, 0.0]])}
-    backend = CoTrackerBackend(_FakePredictor(), device="cpu")
+    backend = _CoTrackerTracking(_FakePredictor(), device="cpu")
     filled, _ = backend.fill(anchors, 11, _frames(11))
     np.testing.assert_allclose(filled[5, 0], [5.0, 0.0])
 
@@ -426,4 +530,4 @@ def test_optical_flow_preserves_anchors():
 
 def test_cotracker_uses_the_resolved_device_by_default():
     pytest.importorskip("torch")
-    assert CoTrackerBackend(_FakePredictor())._device == resolve_device()
+    assert _CoTrackerTracking(_FakePredictor())._device == resolve_device()

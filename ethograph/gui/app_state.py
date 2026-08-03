@@ -220,6 +220,11 @@ class AppStateSpec:
         # costs a fill point a factor 1/e of confidence. Tighter on a small
         # frame than on a 4K one, so it is a setting rather than a constant.
         "labelling_disagreement_px": (float, 10.0, True),
+        # Custom CoTracker3 weights, empty for the stock checkpoint. A model
+        # fine-tuned on animal footage is a drop-in state dict, so which weights
+        # to load is a user choice rather than a constant in pose_fill. Global:
+        # it is a property of the machine's models, not of one dataset.
+        "labelling_cotracker_checkpoint": (str, "", True),
         # Plotting
         "ymin": (float | None, None, True),
         "ymax": (float | None, None, True),

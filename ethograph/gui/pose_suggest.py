@@ -45,27 +45,31 @@ Fill backend     Fails when                                  Suggest with
                                                              ``uniform``
 ``flow``         displacement exceeds Lucas-Kanade's         ``motion``, then
                  pyramid capture range; occlusion            ``uncertain``
-``cotracker``    occlusion, target leaves frame              ``uncertain``
+``posepal``      occlusion, target leaves frame              ``uncertain``, then
+                                                             ``diverse``
 ===============  ==========================================  ====================
 
-``diverse`` suits **none** of them, which is worth stating plainly because it is
-DeepLabCut's default and the obvious thing to copy. Its premise is that labels
-are *training data*, so the model needs varied appearance to generalise from.
-Every fill backend here is frozen or purely geometric — none learns from your
-labels — so a visually distinct frame where tracking already succeeded buys
-nothing. ``diverse`` earns its place for the DeepLabCut ``CollectedData`` export
-(``store_to_dlc_h5``), where the labels really are training data.
+``diverse`` suits neither ``spline`` nor ``flow``, which is worth stating plainly
+because it is DeepLabCut's default and the obvious thing to copy. Its premise is
+that labels are *training data*, so the model needs varied appearance to
+generalise from. Those two are frozen or purely geometric — neither learns from
+your labels — so a visually distinct frame where tracking already succeeded buys
+nothing. It earns its place for ``posepal``
+(:mod:`ethograph.gui.pose_refine`), the one backend that *is* fitted to the
+labels: there the appearance embedding does generalise across the video, and
+frames covering distinct poses and lighting are what it needs.
 
 Why ``uncertain`` is the right criterion for tracker fill
 ---------------------------------------------------------
 DeepLabCut and SLEAP select frames to *train* a pose model, so redundancy is the
-enemy and visual diversity is the goal. A point tracker is not trained here at
-all: CoTracker3 takes queries of ``(t, x, y)`` — **one query frame per point** —
-and propagates them, so extra labelled frames exist only to reset accumulated
-drift. The frames worth labelling are therefore the ones where tracking *fails*
-(occlusion, motion blur, the animal leaving frame), which is not the same set as
-the visually diverse ones. ``uncertain`` ranks by the fill's own confidence —
-forward/backward disagreement and visibility — closing the label → fill →
+enemy and visual diversity is the goal. No detector is trained here: CoTracker3
+takes queries of ``(t, x, y)`` — **one query frame per point** — and propagates
+them, so extra labelled frames mostly serve to reset accumulated drift (PosePAL
+additionally fits the query embedding to them, which is why ``diverse`` earns a
+place there). The frames worth labelling are therefore the ones where tracking
+*fails* (occlusion, motion blur, the animal leaving frame), which is not the
+same set as the visually diverse ones. ``uncertain`` ranks by the fill's own
+confidence — forward/backward disagreement and visibility — closing the label → fill →
 correct-the-worst → fill loop. It is the analogue of SLEAP's ``prediction_score``.
 
 One thing neither GUI enforces, and which matters for the stated goal: SLEAP's
@@ -206,12 +210,16 @@ def frame_confidence(confidence: np.ndarray) -> np.ndarray:
 
     Averages over the trailing (point) axes rather than taking the minimum: a
     structurally absent point — an asymmetric schema leaves those at zero
-    forever — would otherwise pin every frame to the same worst score.
+    forever — would otherwise pin every frame to the same worst score. A frame
+    the fill did not cover at all scores ``NaN``, computed without ``nanmean``'s
+    empty-slice warning since a whole video's worth of them is normal.
     """
     array = np.asarray(confidence, dtype=np.float64)
     if array.ndim == 1:
         return array
-    return np.nanmean(array.reshape(len(array), -1), axis=1)
+    flat = array.reshape(len(array), -1)
+    counted = np.sum(~np.isnan(flat), axis=1)
+    return np.where(counted > 0, np.nansum(flat, axis=1) / np.maximum(counted, 1), np.nan)
 
 
 def suggest_uncertain(
@@ -220,13 +228,22 @@ def suggest_uncertain(
     exclude: set[int] | None = None,
     min_gap: int | None = None,
 ) -> list[int]:
-    """Frames the fill was least confident about, worst first."""
+    """Frames the fill was least confident about, worst first.
+
+    Only frames the fill actually covered are offered. A fill spans the labelled
+    frames and nothing beyond them, so a ``NaN`` score means the frame lies
+    outside that span: there is no prediction there to doubt, and nothing to
+    correct. This method points at the *gaps between* labels — where the fill ran
+    and did badly — not at the unlabelled tail, which would otherwise dominate
+    the ranking simply by being empty.
+    """
     exclude = set(exclude or ())
     scores = frame_confidence(confidence)
     n_frames = len(scores)
     if count <= 0 or not n_frames:
         return []
-    order = np.argsort(scores, kind="stable")
+    covered = np.flatnonzero(~np.isnan(scores))
+    order = covered[np.argsort(scores[covered], kind="stable")]
     ranked = [int(f) for f in order if int(f) not in exclude]
     gap = default_min_gap(n_frames, count) if min_gap is None else int(min_gap)
     return enforce_min_gap(ranked, gap, count)

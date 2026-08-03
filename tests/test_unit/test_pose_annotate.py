@@ -20,7 +20,6 @@ from ethograph.gui.pose_annotate import (
     UnknownIndividualError,
     UnknownKeypointError,
     sidecar_path,
-    store_to_dlc_dataframe,
     store_to_kinematics,
     store_to_movement_ds,
 )
@@ -142,6 +141,19 @@ def test_set_fill_reasserts_anchors(store):
     # Untouched keypoints keep the backend's values.
     np.testing.assert_allclose(store.filled[2, 0, 1], [0.0, 0.0])
     assert store.confidence[2, 0, 1] == 0.5
+
+
+def test_fill_range_reports_what_the_fill_covered(store):
+    """Backends fill the span between labels, and readers must not run past it."""
+    assert store.fill_range is None
+
+    filled = np.full((10, 1, 3, 2), np.nan)
+    filled[3:8] = 1.0
+    store.set_fill(filled, np.full((10, 1, 3), 0.5))
+    assert store.fill_range == (3, 7)
+
+    store.clear_fill()
+    assert store.fill_range is None
 
 
 def test_set_fill_rejects_wrong_shape(store):
@@ -725,27 +737,6 @@ def test_store_to_movement_ds_round_trips_through_pose_render(pair):
     assert len(rows) == 2
     assert {(row[2], row[3]) for row in rows} == {(22.0, 11.0), (44.0, 33.0)}
     assert set(pr.properties["individual"].unique()) == {"crow_a", "crow_b"}
-
-
-def test_dlc_dataframe_has_labelled_frames_only(store):
-    store.set_point(2, "beak", (1.0, 2.0))
-    store.set_point(7, "eye", (3.0, 4.0))
-    df = store_to_dlc_dataframe(store, scorer="tester", video_name="clip")
-
-    assert len(df) == 2
-    assert list(df.columns.names) == ["scorer", "bodyparts", "coords"]
-    assert df.columns.get_level_values("bodyparts").unique().tolist() == NAMES
-    assert df.iloc[0][("tester", "beak", "x")] == 1.0
-    assert np.isnan(df.iloc[0][("tester", "tail", "x")])
-
-
-def test_dlc_dataframe_uses_the_multi_animal_layout(pair):
-    pair.set_point(2, "beak", (1.0, 2.0), "crow_b")
-    df = store_to_dlc_dataframe(pair, scorer="tester", video_name="clip")
-
-    assert list(df.columns.names) == ["scorer", "individuals", "bodyparts", "coords"]
-    assert df.iloc[0][("tester", "crow_b", "beak", "x")] == 1.0
-    assert np.isnan(df.iloc[0][("tester", "crow_a", "beak", "x")])
 
 
 # ----------------------------------------------------------------------

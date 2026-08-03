@@ -34,10 +34,11 @@ deletes the selected point and ``Ctrl+Z`` undoes. Clicking a *filled* point pins
 it as a label, which is how a prediction is accepted or corrected. See
 :mod:`~ethograph.gui.pose_edit_mixin`.
 
-Navigation splits by modifier: plain ``←``/``→`` step one frame (the main
-window's own binding, untouched), ``Shift+←``/``Shift+→`` jump between the
-suggested frames — the ones worth labelling, which is what you actually move
-through while annotating.
+Navigation: plain ``←``/``→`` step one frame (the main window's own binding,
+untouched) and ``N`` jumps to the next suggested frame — the ones worth
+labelling, which is what you actually move through while annotating. Going
+*back* has no key: the suggestions are a queue to work down, and any frame at
+all is one click away in the points table.
 
 The points table has one row per ``(frame, individual)`` and an ``x``/``y``
 column pair per keypoint, so everything on a frame is visible at once. The
@@ -52,9 +53,9 @@ says which a row is (one hand-placed point makes the row the user's), predicted
 coordinates are dimmed, and the ``Frame``, ``Individual`` and ``Source`` headers
 carry the funnel filters of :mod:`~ethograph.gui.table_filter` — so "show me
 only what I labelled", or "only the frames the fill invented", is one click.
-Before a fill the rows are the labelled frames; afterwards they are every frame,
-which is why the table is a virtual model (:class:`PointTableModel`) rather than
-a widget grid.
+Before a fill the rows are the labelled frames; afterwards they are every frame
+the fill covers — the span between the outermost labels — which is why the table
+is a virtual model (:class:`PointTableModel`) rather than a widget grid.
 
 "Load into the GUI" turns the keypoints — and optionally velocity, speed and
 acceleration derived from them — into ordinary plottable features, so a fill can
@@ -71,13 +72,15 @@ persisted at all, and never feeds the next fill — see
 
 from __future__ import annotations
 
+import hashlib
 import html
+import json
 import logging
 from contextlib import contextmanager
 
 import numpy as np
-from qtpy.QtCore import QAbstractTableModel, QEvent, QModelIndex, QRect, Qt
-from qtpy.QtGui import QBrush, QColor, QPalette, QPen
+from qtpy.QtCore import QAbstractTableModel, QEvent, QModelIndex, QRect, Qt, QTimer
+from qtpy.QtGui import QBrush, QColor, QKeySequence, QPalette, QPen, QShortcut
 from qtpy.QtWidgets import (
     QAbstractItemView,
     QAbstractSpinBox,
@@ -110,11 +113,11 @@ from ethograph.gui.notify import notify
 from ethograph.gui.pose_annotate import (
     DEFAULT_INDIVIDUAL,
     KINEMATICS,
-    RECOMMENDED_ANCHORS,
+    RECOMMENDED_LABEL_SHARE,
     KeypointStore,
     KeypointStoreError,
+    refinement_path,
     sidecar_path,
-    store_to_dlc_h5,
     store_to_kinematics,
     store_to_movement_ds,
 )
@@ -125,7 +128,14 @@ from ethograph.gui.pose_edit_mixin import (
     glyph_for_individual,
     keypoint_colors,
 )
-from ethograph.gui.pose_fill import VideoFrameSource, available_backends, build_backend
+from ethograph.gui.pose_fill import (
+    COTRACKER_CHECKPOINT_NAME,
+    POSEPAL_BACKEND,
+    VideoFrameSource,
+    available_backends,
+    build_backend,
+    cotracker_checkpoint_dir,
+)
 from ethograph.gui.pose_render import movement_ds_to_pose_render
 from ethograph.gui.pose_suggest import suggest_frames
 from ethograph.gui.table_filter import (
@@ -174,7 +184,7 @@ FILL_SOURCE = "Fill"
 
 #: Backends that score confidence by forward/backward tracking agreement, and
 #: so take a disagreement tolerance. The spline scores by distance instead.
-_TRACKING_BACKENDS = ("flow", "cotracker")
+_TRACKING_BACKENDS = ("flow", POSEPAL_BACKEND)
 
 _FIXED_COLUMN_TOOLTIPS = (
     "Video frame. Click a cell to jump the playhead there.",
@@ -187,7 +197,7 @@ _FIXED_COLUMN_TOOLTIPS = (
     "How much the fill trusts this row, averaged over its keypoints.\n"
     "1.00 means you labelled it by hand; low means the fill was lost.\n\n"
     "Spline: decays with distance from the nearest labelled frame.\n"
-    "Optical flow and CoTracker3: each gap is tracked twice, forwards from\n"
+    "Optical flow and PosePAL: each gap is tracked twice, forwards from\n"
     "the label on its left and backwards from the one on its right — the\n"
     "score falls as the two tracks disagree, and drops to zero where either\n"
     "tracker reports the point as lost.\n\n"
@@ -236,6 +246,8 @@ _SUGGEST_METHODS = (
         "and backwards disagreed most — the ones worth correcting.\n"
         "The backends are frozen, so extra labels reset drift rather\n"
         "than teach anything.\n\n"
+        "Only frames the fill covered, i.e. between your first and\n"
+        "last label — past those there is nothing to correct.\n\n"
         "Needs a fill to have run.",
     ),
 )
@@ -261,8 +273,8 @@ _AFTER_CLICK_CHOICES = (
     (
         AFTER_CLICK_STAY,
         "Stay on this frame",
-        "Never move the playhead. Navigate yourself with ← / → (single frames)\n"
-        "and Shift+← / Shift+→ (suggested frames).",
+        "Never move the playhead. Navigate yourself with ← / → (single frames),\n"
+        "N (next suggested frame) or the points table.",
     ),
 )
 
@@ -352,7 +364,7 @@ class PointTableModel(QAbstractTableModel):
     Columns are ``Frame | Individual | Source`` then an ``x``/``y`` pair per
     keypoint. Values are read from the store on demand rather than copied into
     cells, for two reasons: once a fill exists there is a row for *every* frame
-    of the video, which no item-based table can hold; and a view that reads the
+    it covers, which no item-based table can hold; and a view that reads the
     store cannot disagree with it, which the previous diffing item table could.
 
     Provenance is shown twice over. The ``Source`` cell states whether the row
@@ -580,6 +592,19 @@ class PoseLabellingDialog(QDialog):
         #: What the table's rows and columns were built from — recomputing the
         #: layout on every drag is what this avoids.
         self._table_signature: tuple | None = None
+        #: The refined backend, kept between fills so its fit — minutes of GPU —
+        #: is paid once, together with what it was built for.
+        self._refined_backend = None
+        self._refined_built_for: tuple | None = None
+        #: The video the kept fit belongs to — a fit is never valid for another.
+        self._refined_video: str | None = None
+        #: Tab / Shift+Tab / Shift+H / N, which have to be shortcuts — the tree and
+        #: the table swallow them otherwise. See :meth:`_bind_shortcuts`.
+        self._shortcuts: list[QShortcut] = []
+        #: Whether the pose overlay currently carries our fill — see
+        #: :meth:`_push_pose_override`, which hands the canvas to the anchor
+        #: overlay while a mode is armed.
+        self._override_pushed = False
 
         self.store = self._load_store()
         self._build_ui()
@@ -588,6 +613,7 @@ class PoseLabellingDialog(QDialog):
 
         self._install_key_filter(True)
         self.app_state.current_frame_changed.connect(self._on_frame_changed)
+        self.app_state.video_path_changed.connect(self._on_video_changed)
 
     # ------------------------------------------------------------------
     # Store lifecycle
@@ -679,6 +705,15 @@ class PoseLabellingDialog(QDialog):
         box = QVBoxLayout(page)
         box.addWidget(self._build_mode_controls())
         box.addWidget(self._build_table_group(), stretch=1)
+
+        clear_row = QHBoxLayout()
+        clear_row.addStretch()
+        clear_all_btn = QPushButton("Clear all labels…")
+        clear_all_btn.setToolTip("Delete every labelled point in the table. Filled points are not affected.")
+        clear_all_btn.clicked.connect(self._on_clear_all_labels)
+        clear_row.addWidget(clear_all_btn)
+        box.addLayout(clear_row)
+
         box.addWidget(self._build_suggest_group())
         return page
 
@@ -758,7 +793,8 @@ class PoseLabellingDialog(QDialog):
 
         Editing needs no mode of its own: clicking an existing point always
         selects and drags it, ``Backspace`` deletes the selected point and
-        ``Ctrl+Z`` undoes.
+        ``Ctrl+Z`` undoes. **Lock** is the way to stop clicking from labelling
+        without stopping the mode, which would take the anchor overlay with it.
         """
         widget = QWidget()
         box = QVBoxLayout(widget)
@@ -795,6 +831,20 @@ class PoseLabellingDialog(QDialog):
         self.loop_btn.clicked.connect(lambda checked: self.set_interaction_mode(LOOP_MODE if checked else None))
         row.addWidget(self.loop_btn)
 
+        # Sits with the mode buttons because it is the third answer to "what
+        # does a click on the video do": label, sweep, or nothing at all.
+        self.lock_check = QCheckBox("Lock")
+        self.lock_check.setToolTip(
+            "Look around without labelling: left-drag pans the video again and\n"
+            "clicks no longer place, move or pin points.\n\n"
+            "The labels stay on screen and the active keypoint is kept, so\n"
+            "unticking carries on exactly where you were — unlike stopping the\n"
+            "mode, which takes the anchor overlay with it. Backspace and Ctrl+Z\n"
+            "still act on the selected point."
+        )
+        self.lock_check.toggled.connect(self._on_lock_toggled)
+        row.addWidget(self.lock_check)
+
         self.individual_combo = QComboBox()
         self.individual_combo.setToolTip("Which individual the next click labels (1-9 also select it).")
         self.individual_combo.currentIndexChanged.connect(self._on_individual_combo_changed)
@@ -810,18 +860,21 @@ class PoseLabellingDialog(QDialog):
 
         box.addLayout(row)
 
-        # Its own row, shown only in Loop mode: the mode row is already full,
-        # and this choice is the whole substance of Loop mode.
+        # Its own row: the mode row is already full, and this choice is the
+        # whole substance of Loop mode. It governs approving too, so it is shown
+        # once a fill exists as well as in Loop mode.
         self.after_click_row = QWidget()
         after_click = QHBoxLayout(self.after_click_row)
         after_click.setContentsMargins(0, 0, 0, 0)
         after_click.setSpacing(4)
-        after_click.addWidget(QLabel("Between clicks:"))
+        after_click.addWidget(QLabel("Then go to:"))
         self.after_click_combo = QComboBox()
         for key, label, tip in _AFTER_CLICK_CHOICES:
             self.after_click_combo.addItem(label, key)
             self.after_click_combo.setItemData(self.after_click_combo.count() - 1, tip, Qt.ToolTipRole)
-        self.after_click_combo.setToolTip("Where the playhead goes after each click in Loop mode.")
+        self.after_click_combo.setToolTip(
+            "Where the playhead goes after each click in Loop mode, and after\nShift+H approves a frame."
+        )
         after_click.addWidget(self.after_click_combo, stretch=1)
         self.after_click_row.hide()
         box.addWidget(self.after_click_row)
@@ -835,9 +888,37 @@ class PoseLabellingDialog(QDialog):
         )
         self.active_label.hide()
 
+        # Says what the two marker styles on the canvas mean. Only once a fill
+        # exists: with no predictions on screen there is nothing to tell apart.
+        self.legend_label = QLabel('<span style="opacity:0.7;">●&nbsp;label&nbsp;&nbsp;&nbsp;○&nbsp;prediction</span>')
+        self.legend_label.setTextFormat(Qt.RichText)
+        self.legend_label.setToolTip(
+            "Filled markers are your labels; hollow ones are what the fill\n"
+            "predicted — drawn empty so you can see the pixels underneath and\n"
+            "judge them. Click a hollow marker to pin it as a label (it turns\n"
+            "solid), or drag it to correct it first."
+        )
+        self.legend_label.hide()
+
+        # Approving is the other half of reviewing a fill: the legend says which
+        # markers are predictions, this accepts them. Shown on the same terms —
+        # with no fill on screen there is nothing to approve.
+        self.approve_btn = QPushButton("Approve frame")
+        self.approve_btn.setToolTip(
+            "Shift+H — keep every predicted point on this frame as your own\n"
+            "label, for all individuals at once, then go where 'Then go to:'\n"
+            "says. Reviewing a fill is mostly agreeing with it, so agreeing is\n"
+            "one key; correct the odd point by dragging it first.\n\n"
+            "Points you already labelled are left exactly as they are."
+        )
+        self.approve_btn.clicked.connect(self._approve_frame)
+        self.approve_btn.hide()
+
         status_row = QHBoxLayout()
         status_row.setSpacing(6)
         status_row.addWidget(self.active_label)
+        status_row.addWidget(self.legend_label)
+        status_row.addWidget(self.approve_btn)
         status_row.addStretch()
 
         # Marker size is in SCREEN pixels, so it stays put when the canvas is
@@ -856,6 +937,25 @@ class PoseLabellingDialog(QDialog):
         status_row.addWidget(self.point_size_spin)
         box.addLayout(status_row)
         return widget
+
+    def _refresh_legend(self) -> None:
+        """Explain solid vs hollow, but only while both are on the canvas."""
+        self.legend_label.setVisible(self._mode is not None and self.store.filled is not None)
+
+    def _refresh_approve_button(self) -> None:
+        """Offer approving only once there is a prediction to approve.
+
+        Unlike the legend this does not need a mode: reviewing a fill is looking
+        at the video and agreeing, which no more requires arming labelling than
+        deleting a point does.
+        """
+        self.approve_btn.setVisible(self.store.filled is not None)
+
+    def _on_lock_toggled(self, locked: bool) -> None:
+        """Hand the pointer to the camera, or take it back for labelling."""
+        if self._mode is not None:
+            self._mode.set_locked(locked)
+        self._refresh_active_label()
 
     def _on_point_size_changed(self, value: int) -> None:
         self.app_state.labelling_point_size = float(value)
@@ -886,7 +986,9 @@ class PoseLabellingDialog(QDialog):
 
         loop = self.interaction_mode == LOOP_MODE
         self.keypoint_combo.setVisible(loop)
-        self.after_click_row.setVisible(loop)
+        # Also once a fill exists, since it is then what Shift+H (approve this
+        # frame) does next — approving needs no mode at all.
+        self.after_click_row.setVisible(loop or self.store.filled is not None)
         if not loop or self._mode is None:
             return
         keypoints = self._mode.active_keypoints
@@ -926,9 +1028,18 @@ class PoseLabellingDialog(QDialog):
     def _refresh_active_label(self) -> None:
         """Show the marker the next click will drop, or hide the line when idle."""
         self._refresh_target_combos()
+        self._refresh_legend()
+        self._refresh_approve_button()
         if self._mode is None:
             self.active_label.hide()
             self.point_size_spin.hide()
+            return
+        if self._mode.locked:
+            # The chip promises what the next click does, so while the pointer
+            # belongs to the camera it must say so rather than name a keypoint.
+            self.active_label.setText('<span style="opacity:0.75;">🔒 Locked — clicks pan the video</span>')
+            self.active_label.show()
+            self.point_size_spin.show()
             return
         individual = self._mode.active_individual
         keypoint = self._mode.active_keypoint
@@ -952,8 +1063,8 @@ class PoseLabellingDialog(QDialog):
         """The points table — seeks the video when clicked, right-click edits.
 
         A view over a virtual model rather than a widget table: once a fill
-        exists the row set spans the whole video, which is far more rows than
-        cell widgets can be made for.
+        exists the row set spans every frame it covers, which is far more rows
+        than cell widgets can be made for.
         """
         self.point_model = PointTableModel(self.store, self)
         self.point_proxy = MultiColumnFilterProxy(self)
@@ -963,7 +1074,9 @@ class PoseLabellingDialog(QDialog):
         self.point_table.setModel(self.point_proxy)
         header = PairedHeaderView(len(_FIXED_COLUMNS), self.point_table)
         self.point_table.setHorizontalHeader(header)
-        header.set_filterable({INDIVIDUAL_COLUMN, SOURCE_COLUMN}, {FRAME_COLUMN, CONFIDENCE_COLUMN})
+        # Frame carries no funnel: the rows are already in frame order and the
+        # suggestion navigation is how you move between frames.
+        header.set_filterable({INDIVIDUAL_COLUMN, SOURCE_COLUMN}, {CONFIDENCE_COLUMN})
         header.filter_requested.connect(self._on_filter_requested)
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
         # ResizeToContents measures rows to size a column; with a fill loaded
@@ -979,7 +1092,7 @@ class PoseLabellingDialog(QDialog):
         self.point_table.setToolTip(
             "Click a cell to jump to that frame and make its keypoint active.\n"
             "Right-click to delete — or pin — the selected rows' points.\n"
-            "The funnels in the Frame, Individual and Source headers filter the rows."
+            "The funnels in the Individual, Source and Confidence headers filter the rows."
         )
         # clicked, not the selection signal: the table also selects itself when
         # the playhead moves, and that must not seek back.
@@ -1008,7 +1121,9 @@ class PoseLabellingDialog(QDialog):
             if dialog.exec_():
                 self.point_proxy.set_cat_filter(column, dialog.get_allowed())
         elif header.is_numeric(column):
-            dialog = NumericFilterDialog(column, self.point_proxy.num_filter(column), self)
+            # "≤" by default: what this column is for is finding the rows the
+            # fill is least sure about, not the ones it already got right.
+            dialog = NumericFilterDialog(column, self.point_proxy.num_filter(column), self, default_op="<=")
             if dialog.exec_():
                 criterion = dialog.get_filter()
                 self.point_proxy.set_numeric_filter(column, *(criterion or (None, None)))
@@ -1087,6 +1202,24 @@ class PoseLabellingDialog(QDialog):
         self._after_table_edit()
         notify(f"Pinned {pinned} filled point(s) as labels.", "info")
 
+    def _on_clear_all_labels(self) -> None:
+        """Wipe every labelled point in the table, after confirming."""
+        n_frames = len(self.store.anchors)
+        if n_frames == 0:
+            notify("There are no labels to clear.", "info")
+            return
+        confirm = QMessageBox.question(
+            self,
+            "Clear all labels",
+            f"Delete every labelled point on {n_frames} frame(s)?\n"
+            "Filled (predicted) points are kept. This cannot be undone.",
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        self.store.clear_all_labels()
+        self._after_table_edit()
+        notify("Cleared all labels.", "info")
+
     def _after_table_edit(self) -> None:
         """A bulk edit touched several frames, so nothing narrow can be repainted."""
         if self._mode is not None:
@@ -1139,31 +1272,27 @@ class PoseLabellingDialog(QDialog):
         self.suggestion_label = QLabel("No suggested frames yet.")
         box.addWidget(self.suggestion_label)
 
-        nav = QHBoxLayout()
-        prev_btn = QPushButton("← Previous  (Shift+←)")
-        prev_btn.setToolTip("Jump to the previous suggested frame. Plain ← / → step one frame at a time.")
-        prev_btn.clicked.connect(lambda: self._step_suggestion(-1))
-        nav.addWidget(prev_btn)
-        next_btn = QPushButton("(Shift+→)  Next →")
-        next_btn.setToolTip("Jump to the next suggested frame. Plain ← / → step one frame at a time.")
-        next_btn.clicked.connect(lambda: self._step_suggestion(1))
-        nav.addWidget(next_btn)
-        box.addLayout(nav)
+        # One direction only: the suggestions are a queue to work down, and any
+        # frame — suggested or not — is one click away in the points table.
+        next_btn = QPushButton("Next suggested frame  (N)")
+        next_btn.setToolTip(
+            "Jump to the next suggested frame, wrapping at the end.\n"
+            "Plain ← / → step one frame at a time; the points table seeks to any frame."
+        )
+        next_btn.clicked.connect(self._next_suggestion)
+        box.addWidget(next_btn)
         self._refresh_suggest_count_label()
         return group
 
     def _default_suggest_percent(self) -> float:
-        """The share that works out to :data:`RECOMMENDED_ANCHORS` frames.
+        """:data:`RECOMMENDED_LABEL_SHARE` — roughly every 10th frame.
 
-        The recommendation is a *count* — about twenty labelled frames is what
-        the fill backends need — so it is converted here rather than picking an
-        arbitrary percentage that would mean twenty frames on one clip and two
-        thousand on another.
+        A spacing, not a count: the backends bridge *gaps*, and a gap is
+        measured in frames, so the same share means the same difficulty on a
+        200-frame clip and on an hour of footage. The resolved count is spelled
+        out beside the spin box, which is where an unreasonable one shows up.
         """
-        n_frames = self._n_frames()
-        if not n_frames:
-            return 10.0
-        return min(100.0, max(MIN_SUGGEST_PERCENT, round(RECOMMENDED_ANCHORS / n_frames * 100, 1)))
+        return RECOMMENDED_LABEL_SHARE
 
     def _suggest_count(self) -> int:
         """Frames the requested percentage works out to, at least one."""
@@ -1220,9 +1349,79 @@ class PoseLabellingDialog(QDialog):
         self.disagreement_spin.valueChanged.connect(self._on_disagreement_changed)
         disagreement.addWidget(self.disagreement_spin, stretch=1)
         box.addWidget(self.disagreement_row)
-        self._refresh_disagreement_row()
 
-        fill_btn = QPushButton("Fill remaining frames")
+        # The stock checkpoint is a default, not a constant: a CoTracker3
+        # fine-tuned on animal footage is a drop-in state dict, and picking one
+        # must not mean editing pose_fill.
+        self.checkpoint_row = QWidget()
+        checkpoint = QHBoxLayout(self.checkpoint_row)
+        checkpoint.setContentsMargins(0, 0, 0, 0)
+        checkpoint.addWidget(QLabel("Model weights:"))
+        self.checkpoint_edit = QLineEdit(self.app_state.labelling_cotracker_checkpoint)
+        self.checkpoint_edit.setPlaceholderText(f"Stock CoTracker3 ({COTRACKER_CHECKPOINT_NAME})")
+        self.checkpoint_edit.setToolTip(
+            "A CoTracker3 checkpoint to track with. Leave empty for the stock\n"
+            "weights, downloaded on first use.\n\n"
+            "Point this at weights fine-tuned for your footage — anything sharing\n"
+            "the CoTracker3 architecture loads here. A different architecture\n"
+            "will not: that needs a new backend."
+        )
+        self.checkpoint_edit.editingFinished.connect(self._on_checkpoint_edited)
+        checkpoint.addWidget(self.checkpoint_edit, stretch=1)
+        browse_btn = QPushButton("Browse…")
+        browse_btn.clicked.connect(self._on_browse_checkpoint)
+        checkpoint.addWidget(browse_btn)
+        box.addWidget(self.checkpoint_row)
+
+        # Refinement is the one backend carrying state between fills: the fit is
+        # minutes of GPU, so a fill reuses it whenever the labels it was made
+        # from still stand. Fill decides that by itself, so there is no fit
+        # BUTTON — a second verb for a step the first one already takes reads as
+        # a choice about the result, which it never was. What the user cannot
+        # infer is which phases the next fill will pay for, and that is text.
+        self.refinement_row = QWidget()
+        refinement = QVBoxLayout(self.refinement_row)
+        refinement.setContentsMargins(0, 0, 0, 0)
+
+        self.refinement_method = QLabel(
+            "Filling runs two phases: <b>fit</b> — learn what your keypoints look like "
+            "in this video (minutes on a GPU) — then <b>track</b> — follow them across "
+            "every gap (fast). Fill does both and skips the fit while it still matches "
+            "your labels."
+        )
+        self.refinement_method.setWordWrap(True)
+        self.refinement_method.setToolTip(
+            "The fit optimises CoTracker3's per-keypoint appearance features against\n"
+            "the frames you labelled, so it tracks YOUR keypoints on THIS animal\n"
+            "rather than whatever the query patch happened to look like.\n\n"
+            "It depends only on your labels and the video, so it is cached in memory\n"
+            "and saved next to the video, and every fill that follows is just the\n"
+            "tracking pass. Correct a point and the fit is out of date: the next fill\n"
+            "redoes it by itself, from scratch — there is no incremental fitting, so a\n"
+            "refit and a first fit are the same work."
+        )
+        refinement.addWidget(self.refinement_method)
+
+        self.refinement_status = QLabel()
+        self.refinement_status.setWordWrap(True)
+        self.refinement_status.setToolTip(
+            "What the next fill will have to do: fit and track, or track alone.\n"
+            "Cancelling it leaves your labels, your fill and the current fit as\n"
+            "they are."
+        )
+        refinement.addWidget(self.refinement_status)
+        box.addWidget(self.refinement_row)
+
+        self._refresh_backend_rows()
+
+        fill_btn = QPushButton("Fill frames between labels")
+        fill_btn.setToolTip(
+            "Fill every frame from the first labelled one to the last.\n\n"
+            "Frames before the first label and after the last are left empty:\n"
+            "there is no second label to interpolate towards and nothing to\n"
+            "track between, so anything put there would be a guess extended\n"
+            "from one end. Label further out to extend the range."
+        )
         fill_btn.clicked.connect(self._on_fill)
         box.addWidget(fill_btn)
 
@@ -1270,14 +1469,12 @@ class PoseLabellingDialog(QDialog):
         box.addWidget(load_btn)
 
         movement_btn = QPushButton("Export poses (NetCDF)…")
-        movement_btn.setToolTip("Write a movement-compatible poses dataset covering every frame.")
+        movement_btn.setToolTip(
+            "Write a movement-compatible poses dataset covering every frame of the\n"
+            "video; frames outside the filled span are NaN, as movement expects."
+        )
         movement_btn.clicked.connect(self._on_export_movement)
         box.addWidget(movement_btn)
-
-        dlc_btn = QPushButton("Export DeepLabCut CollectedData…")
-        dlc_btn.setToolTip("Write labelled frames only, for training a DLC model elsewhere.")
-        dlc_btn.clicked.connect(self._on_export_dlc)
-        box.addWidget(dlc_btn)
         return group
 
     def _export_image_height(self) -> float | None:
@@ -1578,6 +1775,9 @@ class PoseLabellingDialog(QDialog):
         mode = self.interaction_mode
         self.sequential_btn.setChecked(mode == SEQUENTIAL_MODE)
         self.loop_btn.setChecked(mode == LOOP_MODE)
+        # There is nothing to lock while the canvas is not armed — clicks pan
+        # already — but the tick is remembered for the next time it is.
+        self.lock_check.setEnabled(mode is not None)
 
     def _attach_mode(self, mode: str = SEQUENTIAL_MODE) -> None:
         self.store.n_frames = self._n_frames() or self.store.n_frames
@@ -1589,9 +1789,13 @@ class PoseLabellingDialog(QDialog):
             on_advance_frame=self._advance_frame,
             point_size=float(self.app_state.labelling_point_size),
             on_released=self._on_store_changed,
+            locked=self.lock_check.isChecked(),
         )
         self._mode.set_frame(int(self.app_state.current_frame or 0))
         self._install_key_filter(True)
+        # The anchor overlay now draws the fill too, so the pose overlay must
+        # stop drawing it or every point gets two markers.
+        self._push_pose_override()
         self._sync_tree_selection()
         self._refresh_active_label()
 
@@ -1602,6 +1806,9 @@ class PoseLabellingDialog(QDialog):
         # the Keypoints tree has selected once labelling is disarmed.
         self._mode.detach()
         self._mode = None
+        # Hand the fill back to the pose overlay, which is what shows it once
+        # the anchor overlay is gone.
+        self._push_pose_override()
         self._save_store()
         self._sync_mode_buttons()
         self._refresh_active_label()
@@ -1659,14 +1866,17 @@ class PoseLabellingDialog(QDialog):
         Before a fill only labelled rows exist, and columns cover only the
         keypoints carrying at least one label — an unlabelled 20-keypoint schema
         would otherwise push the ones being worked on off the side. Once a fill
-        exists every frame has a position for every point, so every frame gets a
-        row: a prediction is then visible, filterable and correctable from here
-        and not only on the canvas.
+        exists every frame *it covers* has a position for every point, so each of
+        those gets a row: a prediction is then visible, filterable and
+        correctable from here and not only on the canvas. That is the labelled
+        span rather than the whole video — a fill stops at the outermost labels,
+        so rows outside it would be empty ones nothing can ever populate.
         """
-        if self.store.filled is not None:
+        span = self.store.fill_range
+        if span is not None:
             rows = [
                 (frame, individual)
-                for frame in range(self.store.n_frames)
+                for frame in range(span[0], span[1] + 1)
                 for individual in self.store.individual_names
             ]
             return rows, list(self.store.keypoint_names)
@@ -1678,11 +1888,18 @@ class PoseLabellingDialog(QDialog):
     def _layout_signature(self) -> tuple:
         """What :meth:`_table_layout` depends on, cheap enough to test per drag.
 
-        With a fill loaded the row set is the whole video, so it must not be
-        rebuilt — or even enumerated — on every mouse move of a drag.
+        With a fill loaded the row set is one row per covered frame per
+        individual, so it must not be rebuilt — or even enumerated — on every
+        mouse move of a drag; ``fill_range`` is two numbers and stands in for
+        all of them.
         """
-        if self.store.filled is not None:
-            return (True, self.store.n_frames, tuple(self.store.individual_names), tuple(self.store.keypoint_names))
+        if self.store.fill_range is not None:
+            return (
+                True,
+                self.store.fill_range,
+                tuple(self.store.individual_names),
+                tuple(self.store.keypoint_names),
+            )
         rows, columns = self._table_layout()
         return (False, tuple(rows), tuple(columns))
 
@@ -1760,48 +1977,113 @@ class PoseLabellingDialog(QDialog):
         dialog, the **video canvas** (which belongs to the main window, so
         clicking to place a point takes focus out of the dialog) and the **main
         window** itself (key events propagate up to it from any widget inside).
-        Without the third, Shift+arrows reached the main window's own
-        window-stepping shortcut instead of stepping the suggested frames.
+        Without the third, the keys pressed while looking at the video —
+        ``Backspace``, ``Ctrl+Z``, ``Shift+H``, ``N`` — did nothing at all, or
+        hit whatever the main window binds instead.
 
-        Only the arrow keys are claimed from the main window — see
+        The canvas target is :meth:`CameraView.key_target`, **not** the widget
+        the canvas is laid out as: rendercanvas nests the render widget that
+        takes focus inside a wrapper, and that inner widget swallows every key
+        press. Filtering the wrapper saw nothing, so Backspace did nothing at
+        the one moment it is wanted — right after clicking the video.
+
+        Only those few keys are claimed from the main window — see
         :meth:`_owned_key`. Everything else there belongs to whatever the user
         is doing over there.
 
         Installed for the dialog's whole lifetime, not only while a mode is
         armed: deleting the keypoint you have selected must not require arming
         labelling first. Re-installing is safe (Qt drops the earlier
-        registration of the same filter), and the canvas only exists once a
-        video is loaded.
+        registration of the same filter) and is what follows the canvas when
+        another video replaces it; the canvas only exists once one is loaded.
         """
-        for widget in (self, self._view.canvas_widget(), self._shell):
+        for widget in (self, self._view.key_target(), self._shell):
             if widget is None:
                 continue
             if install:
                 widget.installEventFilter(self)
             else:
                 widget.removeEventFilter(self)
+        if install and not self._shortcuts:
+            self._bind_shortcuts()
+
+    def _on_video_changed(self, _path=None) -> None:
+        """Follow the canvas: another video builds a new render widget.
+
+        Deferred, because the signal fires from ``app_state`` and the view has
+        not necessarily swapped its canvas yet.
+        """
+        QTimer.singleShot(0, self._reinstall_key_filter)
+
+    def _reinstall_key_filter(self) -> None:
+        self._install_key_filter(True)
+
+    def _bind_shortcuts(self) -> None:
+        """Bind the keys an item view would otherwise eat, as real shortcuts.
+
+        The event filter cannot have them, because it sits on the dialog rather
+        than on the tree and the table and they never let the key propagate:
+        Qt turns **Tab** into focus navigation inside ``QWidget::event`` of
+        whatever holds focus, and ``QAbstractItemView`` turns any **printable**
+        key — ``Shift+H`` and ``N`` included — into a keyboard type-ahead search
+        and accepts it. Both silently did nothing whenever focus was in the tree or
+        the table, which is most of the time: you pick the frame to review by
+        clicking its row. Shortcuts are dispatched *before* the key press
+        reaches the focus widget, so they win.
+
+        Window context, so they are live anywhere in the dialog but never steal
+        the key from the main window — where the ``KeyPress`` branch of
+        :meth:`eventFilter` handles it instead, this dialog not being active.
+        """
+        bindings = [
+            (QKeySequence(Qt.Key_Tab), lambda: self._cycle_keypoint(1)),
+            (QKeySequence(Qt.SHIFT | Qt.Key_Tab), lambda: self._cycle_keypoint(-1)),
+            (QKeySequence(Qt.Key_Backtab), lambda: self._cycle_keypoint(-1)),
+            (QKeySequence(Qt.SHIFT | Qt.Key_H), self._approve_frame),
+            (QKeySequence(Qt.Key_N), self._next_suggestion),
+        ]
+        for sequence, slot in bindings:
+            shortcut = QShortcut(sequence, self)
+            shortcut.setContext(Qt.WindowShortcut)
+            shortcut.activated.connect(slot)
+            self._shortcuts.append(shortcut)
+
+    def _cycle_keypoint(self, step: int) -> None:
+        if self._mode is None:
+            return
+        self._mode.cycle(step)
+        self._on_store_changed()
 
     def _owned_key(self, event, main_window: bool = False) -> bool:
         """Keys this dialog consumes, given what is armed and where they landed.
 
         Deletion and undo always count; the target keys only while a mode runs,
         so the main window keeps its `1`-`9` behaviour labels. Events that came
-        from the *main window* yield everything except the arrows: the user is
-        working over there, and only the suggestion stepping is meant to reach
-        across.
+        from the *main window* yield everything except the few keys pressed
+        while looking at the video: the user is working over there.
         """
         key = event.key()
-        # Shift+arrows step the suggested frames — claimed from the main
-        # window's window-stepping only while there is a list to step through.
-        # Plain arrows are left alone: single-frame stepping stays theirs.
-        if key in (Qt.Key_Left, Qt.Key_Right):
-            return bool(self._suggestions) and self._shift_only(event)
-        if main_window:
-            return False
+        # `N` jumps to the next suggested frame. Nothing in the main window
+        # binds it (the behaviour labels are 1-9, 0, QWERTZUIOP and ASDFGHJKL),
+        # so it reaches across without taking anything away — and the arrows
+        # stay entirely the main window's, single-frame stepping included.
+        if key == Qt.Key_N and not event.modifiers():
+            return not self._typing()
+        # Deleting and undoing reach across from the main window too: you press
+        # them right after clicking the video, and whether that click left focus
+        # on the canvas or on some other panel is not something to have to know.
+        # Neither key is bound over there, so nothing is taken away.
         if key in (Qt.Key_Backspace, Qt.Key_Delete):
             return not self._typing()
         if key == Qt.Key_Z and event.modifiers() & Qt.ControlModifier:
             return True
+        # Shift+H approves the frame on screen, so it reaches across for the same
+        # reason: you press it while looking at the video. The main window binds
+        # plain `H` (behaviour label 26), which Shift+H does not match.
+        if key == Qt.Key_H and self._shift_only(event):
+            return not self._typing()
+        if main_window:
+            return False
         if self._mode is None:
             return False
         if key in (Qt.Key_Tab, Qt.Key_Backtab):
@@ -1826,26 +2108,36 @@ class PoseLabellingDialog(QDialog):
         # there passes through here and must cost as little as possible.
         if event.type() not in (QEvent.ShortcutOverride, QEvent.KeyPress):
             return False
-        # The main window binds 1-9 (behaviour labels) and Shift+arrows (window
-        # stepping) as QShortcuts. Accepting the ShortcutOverride keeps those
-        # from swallowing the key, so the KeyPress below still reaches us.
+        # The main window binds 1-9 (behaviour labels) as QShortcuts. Accepting
+        # the ShortcutOverride keeps those from swallowing the key, so the
+        # KeyPress below still reaches us.
         if not self._owned_key(event, main_window=obj is self._shell):
             return False
+        key = event.key()
         if event.type() == QEvent.ShortcutOverride:
+            # The keys we bind ourselves are the exception: this dialog's own
+            # QShortcut is what makes them work at all (see _bind_shortcuts),
+            # and accepting the override here would suppress that shortcut
+            # exactly like any other — leaving the key press to the focused tree
+            # or table, which turn it into focus navigation and type-ahead
+            # search respectively. Declining lets our shortcut run.
+            if key in (Qt.Key_Tab, Qt.Key_Backtab, Qt.Key_H, Qt.Key_N):
+                return False
             event.accept()
             return True
-        key = event.key()
         if key in (Qt.Key_Backspace, Qt.Key_Delete):
             return self._delete_selected_point()
         if key == Qt.Key_Z and event.modifiers() & Qt.ControlModifier:
             self._on_undo()
             return True
-        if key in (Qt.Key_Left, Qt.Key_Right):
-            self._step_suggestion(1 if key == Qt.Key_Right else -1)
+        if key == Qt.Key_H:
+            self._approve_frame()
+            return True
+        if key == Qt.Key_N:
+            self._next_suggestion()
             return True
         if key in (Qt.Key_Tab, Qt.Key_Backtab):
-            self._mode.cycle(1 if key == Qt.Key_Tab else -1)
-            self._on_store_changed()
+            self._cycle_keypoint(1 if key == Qt.Key_Tab else -1)
             return True
         if self._mode.select_individual_by_number(key - Qt.Key_1 + 1):
             self._on_store_changed()
@@ -1884,65 +2176,218 @@ class PoseLabellingDialog(QDialog):
 
     def _on_backend_changed(self, _index: int) -> None:
         self.app_state.labelling_backend = self.backend_combo.currentData()
-        self._refresh_disagreement_row()
+        self._refresh_backend_rows()
 
     def _on_disagreement_changed(self, value: float) -> None:
         self.app_state.labelling_disagreement_px = float(value)
 
-    def _refresh_disagreement_row(self) -> None:
-        """Show the tolerance only for backends whose confidence uses it."""
-        self.disagreement_row.setVisible(self.backend_combo.currentData() in _TRACKING_BACKENDS)
+    def _on_checkpoint_edited(self) -> None:
+        self.app_state.labelling_cotracker_checkpoint = self.checkpoint_edit.text().strip()
 
-    def _on_fill(self) -> None:
+    def _on_browse_checkpoint(self) -> None:
+        start = self.app_state.labelling_cotracker_checkpoint or str(cotracker_checkpoint_dir())
+        path, _ = QFileDialog.getOpenFileName(self, "CoTracker3 weights", start, "Checkpoint (*.pth *.pt)")
+        if not path:
+            return
+        self.checkpoint_edit.setText(path)
+        self._on_checkpoint_edited()
+
+    def _refresh_backend_rows(self) -> None:
+        """Show each option only for the backends it actually applies to."""
+        key = self.backend_combo.currentData()
+        self.disagreement_row.setVisible(key in _TRACKING_BACKENDS)
+        # Custom weights and the fit are both PosePAL's, since it is the only
+        # backend loading a CoTracker3 state dict at all.
+        self.checkpoint_row.setVisible(key == POSEPAL_BACKEND)
+        self.refinement_row.setVisible(key == POSEPAL_BACKEND)
+        if key == POSEPAL_BACKEND:
+            self._refresh_refinement_status()
+
+    # ------------------------------------------------------------------
+    # Test-time refinement
+    # ------------------------------------------------------------------
+
+    def _refinement_signature(self) -> str:
+        """Identifies the labels a fit was made from.
+
+        Every anchor goes in, so labelling one more frame marks the fit stale —
+        it stays perfectly usable, it is simply no longer the best fit available.
+        The schema goes in too: the delta is indexed by point row, so renaming or
+        adding a keypoint makes an old fit meaningless rather than merely dated.
+        """
+        payload = [self.store.keypoint_names, self.store.individual_names]
+        for frame in sorted(self.store.anchors):
+            payload.append([frame, np.round(self.store.anchors[frame], 3).tolist()])
+        return hashlib.sha1(json.dumps(payload).encode()).hexdigest()
+
+    def _refinement_status_text(self) -> str:
+        """What the next fill will spend its time on — never merely that a fit exists.
+
+        The wait is what the user is deciding about, and it is the fit: whether
+        the next fill costs minutes or seconds is exactly whether this fit still
+        matches the labels.
+        """
+        backend = self._refined_backend
+        refinement = getattr(backend, "refinement", None)
+        if refinement is None or not refinement.fitted:
+            return "Not fitted — the next fill fits first (a few minutes), then tracks."
+        frames = refinement.n_anchor_frames
+        if refinement.matches(self._refinement_signature()):
+            return f"Fitted on {frames} labelled frames — the next fill only tracks."
+        return (
+            f"Fitted on {frames} labelled frames, but your labels changed since — "
+            "the next fill fits again first (a few minutes)."
+        )
+
+    def _refresh_refinement_status(self) -> None:
+        self.refinement_status.setText(self._refinement_status_text())
+
+    def _refined_backend_for(self, progress):
+        """Build the refined backend, or hand back the one already loaded.
+
+        Rebuilt only when something it was constructed around changed — the
+        weights or the point-row count — since rebuilding drops the fit.
+        """
+        checkpoint = self.app_state.labelling_cotracker_checkpoint or None
+        built_for = (checkpoint, self.store.n_points)
+        if self._refined_backend is None or self._refined_built_for != built_for:
+            self._refined_backend = build_backend(
+                POSEPAL_BACKEND,
+                checkpoint=checkpoint,
+                progress=progress,
+                disagreement_px=float(self.app_state.labelling_disagreement_px),
+                n_points=self.store.n_points,
+            )
+            self._refined_built_for = built_for
+            self._refined_video = None
+        if self._refined_video != self._video_path():
+            # A fit describes one video's pixels; carrying it to the next one
+            # would be worse than not fitting. The signature cannot catch this —
+            # it is made of labels, which a copied sidecar can match exactly.
+            self._refined_backend.refinement.clear()
+            self._refined_video = self._video_path()
+            self._load_refinement(self._refined_backend)
+        self._refined_backend.disagreement_px = float(self.app_state.labelling_disagreement_px)
+        return self._refined_backend
+
+    def _load_refinement(self, backend) -> None:
+        """Restore a saved fit for this video, if one still applies."""
+        video = self._video_path()
+        if not video:
+            return
+        path = refinement_path(video)
+        if not path.is_file():
+            return
+        try:
+            backend.refinement.load(path, self._refinement_signature())
+        except Exception:  # noqa: BLE001 - a cache that cannot be read is a cache miss
+            logger.warning("Ignoring unreadable refinement at %s", path, exc_info=True)
+
+    def _save_refinement(self, backend) -> None:
+        video = self._video_path()
+        if video and backend.refinement.fitted:
+            backend.refinement.save(refinement_path(video))
+
+    def _ready_to_fill(self) -> bool:
         if not self.store.anchor_frames():
             notify("Label at least one frame before filling.", "warning")
-            return
+            return False
         n_frames = self._n_frames()
         if not n_frames:
             notify("Frame count is unknown — load a video first.", "warning")
-            return
+            return False
         self.store.n_frames = n_frames
+        return True
 
+    def _on_fill(self) -> None:
+        if not self._ready_to_fill():
+            return
         key = self.backend_combo.currentData()
         label = self.backend_combo.currentText()
         busy = BusyProgressDialog(f"Filling frames with {label}…", parent=self)
+        # A refined fill is two phases and spends most of its wait in the first,
+        # so the backend renames the stage as it goes rather than claiming to be
+        # filling throughout.
+        stage: str | None = None
 
-        def report(stage: str):
+        def set_stage(text: str) -> None:
+            nonlocal stage
+            stage = text
+
+        # A cancelled fill must leave the previous one alone. Backends answer a
+        # cancel with the spline seed they started from — they have arrays to
+        # return — so applying that result would trade a fill the user liked for
+        # a plain interpolation they never asked for, and with PosePAL the wait
+        # they are cancelling out of is usually the fit.
+        cancelled = False
+
+        def report(default: str):
             def progress(fraction: float) -> bool:
-                busy.setLabelText(f"{stage} {fraction:.0%}")
+                nonlocal cancelled
+                busy.setLabelText(f"{stage or default} {fraction:.0%}")
                 busy.pump_events()
-                return not busy.wasCanceled()
+                cancelled = cancelled or busy.wasCanceled()
+                return not cancelled
 
             return progress
 
         # The backend is built INSIDE the dialog: CoTracker downloads ~97 MB of
         # weights on first use, and that must be visible and cancellable rather
         # than freezing the UI before any progress bar exists.
-        result, error = busy.execute(self._build_and_fill, key, label, report)
+        result, error = busy.execute(self._build_and_fill, key, label, report, set_stage)
+        self._refresh_backend_rows()
+        if cancelled:
+            notify("Fill cancelled — nothing was changed.", "info")
+            return
         if error is not None or result is None:
             return
 
         filled, confidence = result
         self.store.set_fill_from_flat(filled, confidence)
         self._push_pose_override()
+        if self._mode is not None:
+            # Predictions are drawn by the anchor overlay while armed, so the
+            # canvas only shows the new fill once the mode redraws.
+            self._mode.refresh()
+        self._refresh_legend()
+        # There is now something to approve, so the "Then go to:" row and the
+        # Approve button appear.
+        self._refresh_target_combos()
+        self._refresh_approve_button()
         # Every row's coordinates and provenance changed, and the table now
-        # covers every frame rather than the labelled ones.
+        # covers every frame of the labelled span rather than the labels alone.
         self._refresh_point_table(full=True)
         self._save_store()
-        notify(f"Filled {n_frames} frames from {len(self.store.anchor_frames())} labelled ones.", "info")
-
-    def _build_and_fill(self, key: str, label: str, report):
-        """Backends track flat points — the individual/keypoint split is restored after."""
-        backend = build_backend(
-            key,
-            progress=report("Downloading CoTracker3 weights…"),
-            disagreement_px=float(self.app_state.labelling_disagreement_px),
+        span = self.store.fill_range
+        if span is None:
+            notify("Nothing was filled — the labels carry no point to track.", "warning")
+            return
+        notify(
+            f"Filled frames {span[0]}–{span[1]} ({span[1] - span[0] + 1} of {self.store.n_frames}) "
+            f"from {len(self.store.anchor_frames())} labelled ones.",
+            "info",
         )
+
+    def _build_and_fill(self, key: str, label: str, report, set_stage):
+        """Backends track flat points — the individual/keypoint split is restored after."""
+        download = report("Downloading CoTracker3 weights…")
+        if key == POSEPAL_BACKEND:
+            backend = self._refined_backend_for(download)
+            backend.on_stage = set_stage
+            backend.signature = self._refinement_signature()
+        else:
+            backend = build_backend(
+                key,
+                checkpoint=self.app_state.labelling_cotracker_checkpoint or None,
+                progress=download,
+                disagreement_px=float(self.app_state.labelling_disagreement_px),
+                n_points=self.store.n_points,
+            )
         frames = None
         if backend.requires_video:
             frames = self._open_frames()
         try:
-            return backend.fill(
+            filled = backend.fill(
                 self.store.flat_anchors(),
                 self.store.n_frames,
                 frames,
@@ -1951,6 +2396,9 @@ class PoseLabellingDialog(QDialog):
         finally:
             if frames is not None:
                 frames.close()
+        if key == POSEPAL_BACKEND:
+            self._save_refinement(backend)
+        return filled
 
     def _open_frames(self, max_side: int = MAX_SIDE) -> VideoFrameSource:
         video = self._video_path()
@@ -2040,9 +2488,33 @@ class PoseLabellingDialog(QDialog):
         self._seek(self._suggestions[self._suggestion_index])
         self._refresh_suggestion_label()
 
-    def _advance_frame(self) -> None:
-        """Where Loop mode goes after a click — whatever "Between clicks" says.
+    def _approve_frame(self) -> None:
+        """``Shift+H``: keep this frame's predictions as labels, then move on.
 
+        Reviewing a fill is mostly *agreeing* with it, so agreeing has to cost
+        one key. This is the same promotion as the table's "Pin filled points as
+        labels", for every individual on the frame at once — the odd wrong point
+        is corrected by dragging it, which pins it too.
+
+        No mode is needed: approving is looking at the video and saying yes, no
+        more a labelling action than deleting a point is. Where the playhead
+        goes next is the explicit "Then go to:" choice, never inferred from
+        whether a suggestion list happens to exist.
+        """
+        frame = self._current_frame()
+        if not self.store.has_fill(frame) and not self.store.is_human(frame):
+            notify(f"Nothing to approve on frame {frame} — it carries no points.", "warning")
+            return
+        # Zero promotions is not a failure: an already-approved frame is agreed
+        # with too, and the point of the key is to keep moving.
+        if self.store.promote_fill(frame):
+            self._after_table_edit()
+        self._advance_frame()
+
+    def _advance_frame(self) -> None:
+        """Where the playhead goes next — whatever "Then go to:" says.
+
+        Shared by a Loop-mode click and by ``Shift+H`` (approve this frame).
         Explicit rather than inferred: this used to follow the suggestion list
         whenever one existed, which meant the same click did different things
         depending on state the user could not see from the canvas.
@@ -2051,7 +2523,7 @@ class PoseLabellingDialog(QDialog):
         if behaviour == AFTER_CLICK_FRAME:
             self._step_frames(1)
         elif behaviour == AFTER_CLICK_SUGGESTION:
-            self._step_suggestion(1)
+            self._next_suggestion()
 
     def _step_frames(self, direction: int) -> None:
         """Seek one frame, clamped to the clip."""
@@ -2061,11 +2533,17 @@ class PoseLabellingDialog(QDialog):
         frame = int(self.app_state.current_frame or 0) + direction
         self._seek(max(0, min(frame, total - 1)))
 
-    def _step_suggestion(self, step: int) -> None:
+    def _next_suggestion(self) -> None:
+        """``N``: the next frame worth labelling, wrapping at the end.
+
+        There is deliberately no key for the previous one — the suggestions are
+        a queue to work down, and going back to any frame at all (suggested or
+        not) is one click in the points table.
+        """
         if not self._suggestions:
             notify("No suggestions yet — press Suggest frames.", "warning")
             return
-        self._go_to_suggestion(self._suggestion_index + step)
+        self._go_to_suggestion(self._suggestion_index + 1)
 
     def _refresh_suggestion_label(self) -> None:
         if not self._suggestions:
@@ -2081,6 +2559,8 @@ class PoseLabellingDialog(QDialog):
     def _on_clear_fill(self) -> None:
         self.store.clear_fill()
         self._push_pose_override()
+        # Nothing left to approve, so the button and its "Then go to:" row go.
+        self._refresh_active_label()
         self._refresh_point_table(full=True)
 
     def _push_pose_override(self) -> None:
@@ -2088,19 +2568,33 @@ class PoseLabellingDialog(QDialog):
 
         Confidence filtering then comes for free — low-confidence filled points
         are hidden by the existing "Filter below confidence" spinbox.
+
+        **Not while a mode is armed**: the anchor overlay already draws every
+        point there, solid for a label and hollow for a prediction, so this
+        would put a second marker on each one in a colour scheme that says
+        nothing about where the point came from. Disarming hands the fill back
+        to the pose overlay.
         """
         pose_mgr = self._data_widget.pose_mgr
         if pose_mgr is None:
             return
+        if self._mode is not None:
+            if self._override_pushed:
+                pose_mgr.set_pose_override(None)
+                self._override_pushed = False
+                self._data_widget.update_pose()
+            return
         fps = self._fps()
         if self.store.filled is None or not fps:
             pose_mgr.set_pose_override(None)
+            self._override_pushed = False
         else:
             # No y-flip here: the overlay draws in image coordinates and does
             # its own `y_world = img_height - y` (see pose_overlay). Flipping
             # first would mirror the points off the animal.
             ds = store_to_movement_ds(self.store, fps)
             pose_mgr.set_pose_override(movement_ds_to_pose_render(ds, "labelled keypoints"))
+            self._override_pushed = True
         self._data_widget.update_pose()
 
     # ------------------------------------------------------------------
@@ -2118,38 +2612,17 @@ class PoseLabellingDialog(QDialog):
         store_to_movement_ds(self.store, fps, self._export_image_height()).to_netcdf(path)
         notify(f"Wrote {path}", "info")
 
-    def _on_export_dlc(self) -> None:
-        if not self.store.anchor_frames():
-            notify("Nothing to export — no frames are labelled.", "warning")
-            return
-        scorer, ok = QInputDialog.getText(self, "DeepLabCut export", "Scorer name:", text="ethograph")
-        if not ok or not scorer.strip():
-            return
-        scorer = scorer.strip()
-        default = f"CollectedData_{scorer}.h5"
-        path, _ = QFileDialog.getSaveFileName(self, "Export CollectedData", default, "HDF5 (*.h5)")
-        if not path:
-            return
-        video = self._video_path()
-        video_name = video.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].rsplit(".", 1)[0] if video else "video"
-        try:
-            store_to_dlc_h5(self.store, path, scorer, video_name)
-        except ImportError:
-            QMessageBox.warning(
-                self,
-                "DeepLabCut export",
-                "Writing HDF5 needs pytables:\n\n    pip install tables",
-            )
-            return
-        notify(f"Wrote {path} ({len(self.store.anchor_frames())} labelled frames)", "info")
-
     # ------------------------------------------------------------------
 
     def closeEvent(self, event):
         self._detach_mode()
         self._install_key_filter(False)
-        try:
-            self.app_state.current_frame_changed.disconnect(self._on_frame_changed)
-        except (TypeError, RuntimeError):
-            pass
+        for signal, slot in (
+            (self.app_state.current_frame_changed, self._on_frame_changed),
+            (self.app_state.video_path_changed, self._on_video_changed),
+        ):
+            try:
+                signal.disconnect(slot)
+            except (TypeError, RuntimeError):
+                pass
         super().closeEvent(event)

@@ -199,6 +199,46 @@ def test_uncertain_spreads_across_one_bad_stretch():
     assert all(g >= 10 for g in np.diff(picks)), picks
 
 
+def test_uncertain_ignores_the_frames_the_fill_never_reached():
+    """A fill stops at the outermost labels; past them there is no prediction.
+
+    Those frames score NaN, and a NaN is not a bad prediction — it is no
+    prediction. Suggesting them would send the user past their last label
+    instead of into the gaps between labels, which is what needs correcting.
+    """
+    conf = _confidence(range(60, 70))
+    conf[80:] = np.nan  # nothing labelled out here, so nothing was filled either
+
+    picks = suggest_frames("uncertain", 3, N_FRAMES, confidence=conf, min_gap=5)
+
+    assert picks, "the filled stretch still has frames worth labelling"
+    assert all(pick < 80 for pick in picks), picks
+
+
+def test_uncertain_stays_inside_the_filled_span():
+    """The span is bounded on both sides: nothing before the first label either."""
+    conf = _confidence(range(60, 70))
+    conf[:40] = np.nan
+    conf[150:] = np.nan
+
+    picks = suggest_frames("uncertain", 5, N_FRAMES, confidence=conf, min_gap=5)
+
+    assert all(40 <= pick < 150 for pick in picks), picks
+    assert any(60 <= pick < 70 for pick in picks), picks
+
+
+def test_uncertain_returns_nothing_when_no_frame_was_filled():
+    conf = np.full((N_FRAMES, 3), np.nan)
+    assert suggest_frames("uncertain", 3, N_FRAMES, confidence=conf) == []
+
+
+def test_frame_confidence_is_nan_where_the_fill_did_not_reach():
+    conf = np.array([[1.0, 0.0], [np.nan, np.nan]])
+    scores = pose_suggest.frame_confidence(conf)
+    assert scores[0] == 0.5
+    assert np.isnan(scores[1])
+
+
 def test_frame_confidence_averages_over_points():
     conf = np.array([[1.0, 0.0], [0.5, 0.5]])
     np.testing.assert_allclose(pose_suggest.frame_confidence(conf), [0.5, 0.5])

@@ -5,9 +5,17 @@ One protocol, three implementations, chosen in the labelling dialog:
 - :class:`SplineBackend` — monotone cubic interpolation, no new dependencies.
   Ignores pixels entirely and is the yardstick the others must beat.
 - :class:`OpticalFlowBackend` — Lucas-Kanade forward/backward (``opencv-python-headless``).
-- :class:`CoTrackerBackend` — CoTracker3 point tracking (``ethograph[co-tracker]``).
+- ``PosePALBackend`` (:mod:`ethograph.gui.pose_refine`) — CoTracker3 point
+  tracking with its query features fitted to the user's labels. GPU only, and
+  imported lazily so nothing here depends on torch.
 
-All three share the same invariant, asserted by the tests: **anchor frames come
+:class:`_CoTrackerTracking` holds the plain CoTracker3 gap tracking that PosePAL
+builds on. It is **not** offered as a backend of its own: unrefined tracking
+follows the appearance a point had on one frame and drifts onto the wrong leg or
+the other animal, which the refinement exists to fix, so choosing between them
+was a choice between a method and a worse version of the same method.
+
+All of them share the same invariant, asserted by the tests: **anchor frames come
 back exactly as they were labelled.** Pixel-based backends seed missing points
 from a spline pre-pass, so partially labelled anchors (beak on some frames, tail
 on others) work without a shared frame list.
@@ -37,18 +45,11 @@ CONFIDENCE_DECAY_FRAMES = 10.0
 #: Pixels of forward/backward disagreement that costs a factor 1/e of confidence.
 DISAGREEMENT_SCALE = 10.0
 
-#: Rough seconds per gap for CoTracker3 at ``MAX_SIDE`` with a handful of
-#: points, measured on an RTX 3080 and a desktop CPU. Only used to warn about
-#: the CPU path — a 20-anchor fill is ~90 s there against ~7 s on the GPU,
-#: which is slow but not prohibitive, so the backend stays selectable.
-COTRACKER_SECONDS_PER_GAP = {"cuda": 0.3, "mps": 1.0, "cpu": 4.6}
-
-
-def estimate_cotracker_seconds(n_gaps: int, device: str | None = None) -> float:
-    """Rough wall-clock for a CoTracker fill of *n_gaps* gaps."""
-    resolved = resolve_device(device)
-    per_gap = COTRACKER_SECONDS_PER_GAP.get(resolved.split(":")[0], COTRACKER_SECONDS_PER_GAP["cpu"])
-    return max(0, int(n_gaps)) * per_gap
+#: The learned backend: CoTracker3 plus the query-feature refinement of Pan et
+#: al. 2025 (:mod:`ethograph.gui.pose_refine`). Named after the paper's reference
+#: implementation, since the tracker alone is not something the user can pick.
+POSEPAL_BACKEND = "posepal"
+POSEPAL_LABEL = "PosePAL (CoTracker3 + refinement)"
 
 
 @runtime_checkable
@@ -65,16 +66,19 @@ class FillBackend(Protocol):
         frames: object | None,
         progress: Progress,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Return ``(positions, confidence)`` for every frame.
+        """Return ``(positions, confidence)`` for every frame of the video.
 
-        ``anchors`` maps frame index to an ``(n_points, 2)`` array of
-        ``(x, y)`` with ``NaN`` for unlabelled points. ``frames`` is a frame
-        source indexable by frame index and slice (see :class:`VideoFrameSource`);
-        it is ``None`` for backends with ``requires_video = False``.
+        Only the gaps *between* labels are filled: frames before the first
+        labelled one and after the last come back as ``NaN`` (see
+        :func:`anchor_span`). ``anchors`` maps frame index to an
+        ``(n_points, 2)`` array of ``(x, y)`` with ``NaN`` for unlabelled
+        points. ``frames`` is a frame source indexable by frame index and slice
+        (see :class:`VideoFrameSource`); it is ``None`` for backends with
+        ``requires_video = False``.
         """
 
 
-def _no_progress(_fraction: float) -> bool:
+def no_progress(_fraction: float) -> bool:
     return True
 
 
@@ -100,6 +104,31 @@ def _empty(n_frames: int, n_points: int) -> tuple[np.ndarray, np.ndarray]:
     )
 
 
+def anchor_span(anchors: dict[int, np.ndarray], n_frames: int) -> tuple[int, int] | None:
+    """First and last labelled frame, clipped to the video; ``None`` if unlabelled.
+
+    This is the span a fill covers. Outside it there is no second label to
+    interpolate towards and nothing to track between, so whatever a backend
+    produced there would be an extrapolation of a single endpoint — asserted
+    with the same confidence as a genuinely bracketed frame, which is what made
+    it worth suppressing. A user who labels frames 100 to 500 of a 1000-frame
+    video gets exactly those 401 frames.
+    """
+    labelled = sorted(
+        frame for frame, points in anchors.items() if 0 <= frame < n_frames and np.isfinite(points[:, 0]).any()
+    )
+    return (labelled[0], labelled[-1]) if labelled else None
+
+
+def _restrict_to_span(filled: np.ndarray, confidence: np.ndarray, span: tuple[int, int] | None) -> None:
+    """Blank every frame outside *span* — no position, and no score either."""
+    n_frames = filled.shape[0]
+    first, last = span if span is not None else (n_frames, n_frames - 1)
+    for array in (filled, confidence):
+        array[:first] = np.nan
+        array[last + 1 :] = np.nan
+
+
 # ----------------------------------------------------------------------
 # Spline
 # ----------------------------------------------------------------------
@@ -108,8 +137,10 @@ def _empty(n_frames: int, n_points: int) -> tuple[np.ndarray, np.ndarray]:
 class SplineBackend:
     """Per-point monotone cubic (PCHIP) interpolation over its own anchors.
 
-    Outside the anchored span the nearest anchor value is held rather than
-    extrapolated — a cubic run past its data produces confident nonsense.
+    Only the labelled span is filled (see :func:`anchor_span`); a cubic run past
+    its data produces confident nonsense. Within that span a point labelled on
+    only some of the frames holds its nearest value rather than extrapolating,
+    so a keypoint labelled once is still available to the gap backends as a seed.
     Confidence decays exponentially with distance from the nearest anchor.
     """
 
@@ -119,7 +150,7 @@ class SplineBackend:
     def __init__(self, decay_frames: float = CONFIDENCE_DECAY_FRAMES):
         self._decay = float(decay_frames)
 
-    def fill(self, anchors, n_frames, frames=None, progress: Progress = _no_progress):
+    def fill(self, anchors, n_frames, frames=None, progress: Progress = no_progress):
         if not anchors:
             raise ValueError("No labelled frames — label at least one frame before filling.")
         n_points = _n_points(anchors)
@@ -144,6 +175,7 @@ class SplineBackend:
             distance = np.min(np.abs(grid[:, None] - np.asarray(labelled)[None, :]), axis=1)
             confidence[:, k] = np.exp(-distance / self._decay)
 
+        _restrict_to_span(filled, confidence, anchor_span(anchors, n_frames))
         _apply_anchors(filled, confidence, anchors)
         return filled, confidence
 
@@ -170,9 +202,9 @@ def _blend(forward: np.ndarray, backward: np.ndarray) -> np.ndarray:
 class _GapBackend:
     """Base for backends that track each gap between consecutive anchor frames.
 
-    A spline pre-pass provides positions for points that are missing on a
-    gap's endpoints and covers the span before the first / after the last
-    anchor, where there is nothing to track between.
+    A spline pre-pass provides positions for points that are missing on a gap's
+    endpoints. Nothing outside the labelled span is produced — there is no gap
+    there to track across (see :func:`anchor_span`).
 
     *disagreement_px* is the confidence scale: pixels of forward/backward
     disagreement that cost a factor 1/e. It is a constructor argument because
@@ -184,17 +216,27 @@ class _GapBackend:
     requires_video = True
 
     def __init__(self, disagreement_px: float = DISAGREEMENT_SCALE):
-        if disagreement_px <= 0:
-            raise ValueError("disagreement_px must be positive — it is the scale of an exponential.")
-        self._disagreement = float(disagreement_px)
+        self.disagreement_px = disagreement_px
 
-    def fill(self, anchors, n_frames, frames=None, progress: Progress = _no_progress):
+    @property
+    def disagreement_px(self) -> float:
+        return self._disagreement
+
+    @disagreement_px.setter
+    def disagreement_px(self, value: float) -> None:
+        # Settable because a backend can outlive the spin box that set it: the
+        # refined backend is kept across fills so its fit is not repaid.
+        if value <= 0:
+            raise ValueError("disagreement_px must be positive — it is the scale of an exponential.")
+        self._disagreement = float(value)
+
+    def fill(self, anchors, n_frames, frames=None, progress: Progress = no_progress):
         if not anchors:
             raise ValueError("No labelled frames — label at least one frame before filling.")
         if frames is None:
             raise ValueError(f"The {self.name} backend needs video frames.")
 
-        seed, seed_confidence = SplineBackend().fill(anchors, n_frames, None, _no_progress)
+        seed, seed_confidence = SplineBackend().fill(anchors, n_frames, None, no_progress)
         filled, confidence = seed.copy(), seed_confidence.copy()
 
         anchor_frames = [f for f in sorted(anchors) if 0 <= f < n_frames]
@@ -208,19 +250,39 @@ class _GapBackend:
             scale = float(getattr(frames, "scale", 1.0))
             left = _seeded_endpoints(anchors, seed, start) / scale
             right = _seeded_endpoints(anchors, seed, end) / scale
+            # A point labelled nowhere in the video has no spline seed either, so
+            # its endpoints stay NaN. Such a row must never reach the tracker:
+            # CoTracker attends jointly across points, so ONE NaN query comes
+            # back as NaN for every point in the gap — blanking the whole span
+            # while the untracked head and tail keep their seed. Track what is
+            # seeded and leave the rest at the seed.
+            trackable = np.isfinite(left).all(axis=1) & np.isfinite(right).all(axis=1)
+            if not trackable.any():
+                continue
 
-            forward, visible_forward = self._track(clip, left, 0)
-            backward, visible_backward = self._track(clip, right, end - start)
+            self._on_rows(np.flatnonzero(trackable))
+            forward, visible_forward = self._track(clip, left[trackable], 0)
+            backward, visible_backward = self._track(clip, right[trackable], end - start)
             forward, backward = forward * scale, backward * scale
 
-            filled[start : end + 1] = _blend(forward, backward)
+            filled[start : end + 1, trackable] = _blend(forward, backward)
             disagreement = np.linalg.norm(forward - backward, axis=-1)
-            confidence[start : end + 1] = np.minimum(visible_forward, visible_backward) * np.exp(
+            confidence[start : end + 1, trackable] = np.minimum(visible_forward, visible_backward) * np.exp(
                 -disagreement / self._disagreement
             )
 
         _apply_anchors(filled, confidence, anchors)
         return filled, confidence
+
+    def _on_rows(self, rows: np.ndarray) -> None:
+        """Which flat point rows the next :meth:`_track` calls are about.
+
+        Rows with no seed are dropped above, so the query list a tracker sees is
+        *compressed* — query ``i`` is point ``rows[i]``, not point ``i``. Only
+        matters to a backend holding per-row state (PosePAL's learned query
+        features, one per point); tracking a point is otherwise independent of
+        which point it is, so the default ignores it.
+        """
 
     def _track(self, clip: np.ndarray, points: np.ndarray, query_frame: int) -> tuple[np.ndarray, np.ndarray]:
         """Track *points* (given at *query_frame*) across every frame of *clip*.
@@ -287,18 +349,14 @@ class OpticalFlowBackend(_GapBackend):
 # ----------------------------------------------------------------------
 
 
-class CoTrackerBackend(_GapBackend):
+class _CoTrackerTracking(_GapBackend):
     """CoTracker3 point tracking, forward from the left anchor and backward
     from the right, blended linearly across the gap.
 
-    Because gaps are short (~10 frames at the recommended anchor density)
-    drift is bounded and no test-time optimisation is needed — fine-tuning the
-    query-point embedding on the labelled frames (Pan et al. 2025, "Animal Pose
-    Labeling Using General-Purpose Point Trackers", arXiv:2506.03868) buys its
-    accuracy over a *single* query at frame 0, which re-querying every gap
-    already avoids, and costs minutes of GPU per video. Cost here is dominated
-    by frame feature extraction rather than point count, so tracking 20
-    keypoints costs about what 3 do.
+    The tracking half of ``PosePALBackend``, which is the only thing that
+    instantiates it — see this module's docstring for why plain CoTracker3 is
+    not a backend the user picks. Cost is dominated by frame feature extraction
+    rather than point count, so tracking 20 keypoints costs about what 3 do.
     """
 
     name = "CoTracker3"
@@ -355,9 +413,18 @@ def resolve_device(preferred: str | None = None) -> str:
     return available[0]
 
 
-#: CoTracker3 offline weights (~97 MB). Fetched once into the checkpoint dir so
-#: installing the backend stays a single pip command — the model itself has no
-#: PyPI release and cannot ship weights through the dependency resolver.
+#: The *default* CoTracker3 offline weights (~97 MB). Fetched once into the
+#: checkpoint dir so installing the backend stays a single pip command — the
+#: model itself has no PyPI release and cannot ship weights through the
+#: dependency resolver.
+#:
+#: Pinned rather than "latest" on purpose: a state dict only loads into the
+#: architecture it was trained against, so the weights and :data:`COTRACKER_COMMIT`
+#: move together. Better weights — a variant fine-tuned on animal footage, say —
+#: are a drop-in state dict for the *same* architecture, and are selected by
+#: passing ``checkpoint=`` to :func:`build_backend` (the dialog's "Model weights"
+#: row, ``app_state.labelling_cotracker_checkpoint``), never by editing this URL.
+#: A genuinely different architecture would be a new backend, not a new URL.
 COTRACKER_CHECKPOINT_URL = "https://huggingface.co/facebook/cotracker3/resolve/main/scaled_offline.pth"
 COTRACKER_CHECKPOINT_NAME = "scaled_offline.pth"
 
@@ -481,33 +548,24 @@ def _module_available(module: str) -> bool:
 def available_backends() -> list[BackendInfo]:
     """Describe every backend so the dialog can grey out the missing ones."""
     # torch and cotracker install together but resolve separately (cotracker has
-    # no PyPI release), so report whichever is actually missing. Weights are NOT
-    # a precondition — they download on first use.
+    # no PyPI release), so a missing either way reports the same one command.
+    # Weights are NOT a precondition — they download on first use.
     installed = _module_available("torch") and _module_available("cotracker")
-    if not installed:
-        cotracker_hint = COTRACKER_INSTALL_HINT
-    elif find_cotracker_checkpoint() is None:
-        cotracker_hint = "~97 MB of weights will download on first use"
+    # PosePAL is 500 optimisation steps, not a forward pass: on CPU it is not
+    # slow but unusable, so it is offered only with a GPU.
+    device = resolve_device() if installed else "cpu"
+    on_gpu = installed and device != "cpu"
+    label = POSEPAL_LABEL
+    if on_gpu:
+        # Naming the resolved device confirms the GPU was picked up — PyPI's
+        # Windows torch wheels are CPU-only unless --torch-backend=auto was used.
+        label = f"{POSEPAL_LABEL} ({device})"
+        hint = "" if find_cotracker_checkpoint() else "~97 MB of weights will download on first use"
+    elif installed:
+        hint = "Needs a CUDA or Apple Silicon GPU — it fits a model to your labels."
     else:
-        cotracker_hint = ""
-    # Showing the resolved device makes it obvious whether the GPU was picked
-    # up — a silent CPU fallback on a CUDA machine is the confusing case, and
-    # PyPI's Windows torch wheels are CPU-only unless --torch-backend=auto was
-    # used. The CPU path is an order of magnitude slower (see
-    # COTRACKER_SECONDS_PER_GAP) and grows with resolution and gap length: it
-    # stays selectable, but it is not a practical way to label a recording.
-    label = "CoTracker3"
-    if installed:
-        device = resolve_device()
-        label = f"CoTracker3 ({device})"
-        if device == "cpu":
-            label += " — slow"
-            slow = (
-                "No GPU found: CoTracker3 needs one to be practical — expect\n"
-                "minutes per fill here, more on high-resolution video. Use\n"
-                "optical flow or the spline on CPU."
-            )
-            cotracker_hint = f"{cotracker_hint}\n{slow}" if cotracker_hint else slow
+        hint = COTRACKER_INSTALL_HINT
+
     return [
         BackendInfo("spline", "Spline (no extra dependencies)", True),
         BackendInfo(
@@ -516,7 +574,7 @@ def available_backends() -> list[BackendInfo]:
             _module_available("cv2"),
             "pip install opencv-python-headless",
         ),
-        BackendInfo("cotracker", label, installed, cotracker_hint),
+        BackendInfo(POSEPAL_BACKEND, label, on_gpu, hint),
     ]
 
 
@@ -526,6 +584,7 @@ def build_backend(
     device: str | None = None,
     progress: Progress | None = None,
     disagreement_px: float = DISAGREEMENT_SCALE,
+    n_points: int | None = None,
 ) -> FillBackend:
     """Instantiate a backend by key, importing heavy dependencies only now.
 
@@ -533,16 +592,30 @@ def build_backend(
     ``progress`` reports the one-time CoTracker weight download; call this from
     inside the progress dialog so a ~97 MB fetch is visible and cancellable.
     ``disagreement_px`` tunes the confidence of the tracking backends only —
-    the spline scores by distance from the nearest anchor instead.
+    the spline scores by distance from the nearest anchor instead. ``n_points``
+    is the flat ``(individual, keypoint)`` row count, needed only by PosePAL,
+    which learns one feature per row.
     """
     if key == "spline":
         return SplineBackend()
     if key == "flow":
         return OpticalFlowBackend(disagreement_px=disagreement_px)
-    if key == "cotracker":
+    if key == POSEPAL_BACKEND:
+        if not n_points:
+            raise ValueError("PosePAL fits one feature per point — pass n_points.")
+        # Imported here and nowhere else: this module must stay importable
+        # without torch, and pose_refine imports both torch and cotracker.
+        from ethograph.gui.pose_refine import PosePALBackend, QueryFeatureRefinement
+
         resolved = resolve_device(device)
         predictor = load_cotracker_predictor(checkpoint, resolved, progress)
-        return CoTrackerBackend(predictor, device=resolved, disagreement_px=disagreement_px)
+        refinement = QueryFeatureRefinement(predictor, n_points, device=resolved)
+        return PosePALBackend(
+            predictor,
+            refinement,
+            device=resolved,
+            disagreement_px=disagreement_px,
+        )
     raise ValueError(f"Unknown fill backend {key!r}")
 
 

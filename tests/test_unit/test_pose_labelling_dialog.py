@@ -21,14 +21,31 @@ from ethograph.gui.app_state import ObservableAppState  # noqa: E402
 from ethograph.gui.dialog_pose_labelling import (  # noqa: E402
     _FIXED_COLUMNS,
     CONFIDENCE_COLUMN,
-    FRAME_COLUMN,
     INDIVIDUAL_COLUMN,
     SOURCE_COLUMN,
     PoseLabellingDialog,
 )
+from ethograph.gui.pose_annotate import RECOMMENDED_LABEL_SHARE  # noqa: E402
 from ethograph.gui.pose_edit_mixin import LOOP_MODE, SEQUENTIAL_MODE  # noqa: E402
+from ethograph.gui.pose_fill import SplineBackend  # noqa: E402
 
 NAMES = ["beak", "tail", "eye"]
+
+
+class _FakeRenderWidget(QWidget):
+    """The inner widget rendercanvas actually gives focus to.
+
+    Its ``keyPressEvent`` neither ignores the event nor calls the base class,
+    exactly like ``rendercanvas.qt.QRenderWidget`` — so a key pressed over the
+    video stops here and never propagates to the wrapper or the main window.
+    """
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setFocusPolicy(Qt.StrongFocus)
+
+    def keyPressEvent(self, event):
+        event.accept()
 
 
 class _FakeView:
@@ -36,17 +53,25 @@ class _FakeView:
 
     def __init__(self):
         self._scene = gfx.Scene()
+        # A wrapper holding the focusable render widget, as rendercanvas nests
+        # them: filtering the wrapper alone sees no keys at all.
         self._canvas = QWidget()
+        self._render_widget = _FakeRenderWidget(self._canvas)
         self.fps = 25.0
         self.n_frames = 10
         self.start_frame = 0
         self.label_mode = None
+        self.pan_with_left_drag = True
 
     def scene(self):
         return self._scene
 
     def canvas_widget(self):
         return self._canvas
+
+    def key_target(self):
+        focusable = [w for w in self._canvas.findChildren(QWidget) if w.focusPolicy() != Qt.NoFocus]
+        return focusable[0] if focusable else self._canvas
 
     def image_height(self):
         return 480.0
@@ -56,6 +81,10 @@ class _FakeView:
 
     def set_label_mode(self, mode):
         self.label_mode = mode
+        self.pan_with_left_drag = mode is None or mode.locked
+
+    def set_label_locked(self, locked):
+        self.pan_with_left_drag = locked
 
     def request_draw(self):
         pass
@@ -71,12 +100,22 @@ class _FakeShell(QWidget):
         self.video_area = type("_Area", (), {"primary": _FakeView()})()
 
 
+class _FakePoseManager:
+    """Records what the dialog hands to the ordinary pose overlay."""
+
+    def __init__(self):
+        self.override = None
+
+    def set_pose_override(self, render):
+        self.override = render
+
+
 class _FakeDataWidget:
     """Everything ``PoseLabellingDialog`` reads off the data widget."""
 
     def __init__(self, app_state):
         self.app_state = app_state
-        self.pose_mgr = None
+        self.pose_mgr = _FakePoseManager()
         self.shell = _FakeShell()
 
     def update_pose(self):
@@ -259,6 +298,59 @@ def test_tab_cycles_keypoints_of_the_active_individual(dialog):
     assert dialog._mode.active_keypoint == "tail"
 
 
+def test_tab_cycles_when_the_tree_has_focus(dialog):
+    """Regression: Tab silently did nothing whenever a child widget had focus.
+
+    Sending the event to the dialog (as the test above does) cannot catch this —
+    Qt turns Tab into focus navigation inside the *focused* widget's ``event()``,
+    so it never propagates up to the dialog's filter. Only the dialog's own
+    QShortcut runs early enough, and the filter has to decline the
+    ShortcutOverride for Tab or it suppresses that shortcut itself.
+    """
+    from qtpy.QtTest import QTest
+
+    dialog.show()
+    dialog.activateWindow()
+    QApplication.processEvents()
+    dialog.set_interaction_mode(SEQUENTIAL_MODE)
+    dialog.tree.setFocus()
+    QApplication.processEvents()
+    assert isinstance(QApplication.focusWidget(), type(dialog.tree))
+
+    QTest.keyClick(QApplication.focusWidget(), Qt.Key_Tab)
+    QApplication.processEvents()
+
+    assert dialog._mode.active_keypoint == "tail"
+
+
+def test_backspace_reaches_across_from_the_main_window(dialog):
+    """You press it right after clicking the video, and where the click left
+    focus is not something the user should have to know."""
+    dialog.store.set_point(0, "tail", (5.0, 6.0))
+    _select_leaf(dialog, "individual_0", "tail")
+
+    _key(dialog, Qt.Key_Backspace, target=dialog._shell)
+
+    assert dialog.store.is_anchor(0, "tail") is False
+
+
+def test_backspace_works_when_the_render_widget_has_focus(dialog):
+    """Regression: the filter sat on the canvas *wrapper*, which never sees a key.
+
+    Clicking the video to place a point focuses rendercanvas's inner render
+    widget, whose ``keyPressEvent`` swallows the event — so Backspace did
+    nothing at exactly the moment it is wanted. The filter has to go on
+    ``CameraView.key_target()``, the widget the press actually lands on.
+    """
+    dialog.store.set_point(0, "eye", (5.0, 6.0))
+    _select_leaf(dialog, "individual_0", "eye")
+
+    _key(dialog, Qt.Key_Backspace, target=dialog._view.key_target())
+
+    assert dialog._view.key_target() is not dialog._view.canvas_widget()
+    assert dialog.store.is_anchor(0, "eye") is False
+
+
 def test_tree_marks_the_points_labelled_on_this_frame(dialog):
     dialog.store.set_point(0, "tail", (5.0, 6.0))
     dialog._refresh_tree_marks()
@@ -411,6 +503,47 @@ def test_switching_mode_keeps_the_same_canvas_mode_object(dialog):
 def test_loop_mode_can_be_armed_from_cold(dialog):
     dialog.loop_btn.click()
     assert dialog.interaction_mode == LOOP_MODE
+
+
+def test_the_lock_suspends_labelling_without_dropping_the_mode(dialog):
+    dialog.set_interaction_mode(SEQUENTIAL_MODE)
+    mode = dialog._mode
+    dialog.lock_check.setChecked(True)
+
+    assert dialog._mode is mode  # still armed, still drawing its anchors
+    assert dialog.interaction_mode == SEQUENTIAL_MODE
+    assert mode.locked is True
+    mode.handle_click(100.0, 100.0)
+    assert dialog.store.anchor_frames() == []
+
+    dialog.lock_check.setChecked(False)
+    assert mode.locked is False
+    mode.handle_click(100.0, 100.0)
+    assert dialog.store.anchor_frames() == [0]
+
+
+def test_the_lock_is_kept_when_the_mode_is_rearmed(dialog):
+    """A schema change restarts the canvas mode; the lock must not fall off."""
+    dialog.set_interaction_mode(SEQUENTIAL_MODE)
+    dialog.lock_check.setChecked(True)
+    dialog._apply_schema(keypoints=[*NAMES, "wing"])
+
+    assert dialog._mode.locked is True
+
+
+def test_the_lock_says_so_in_place_of_the_target(dialog):
+    dialog.set_interaction_mode(SEQUENTIAL_MODE)
+    dialog.lock_check.setChecked(True)
+
+    assert "Locked" in dialog.active_label.text()
+    assert "beak" not in dialog.active_label.text()
+
+
+def test_the_lock_is_only_offered_while_the_canvas_is_armed(dialog):
+    dialog.set_interaction_mode(None)
+    assert dialog.lock_check.isEnabled() is False
+    dialog.set_interaction_mode(SEQUENTIAL_MODE)
+    assert dialog.lock_check.isEnabled() is True
 
 
 def test_the_active_line_names_what_the_next_click_places(dialog):
@@ -626,60 +759,97 @@ def test_the_share_never_resolves_to_zero_frames(dialog):
     assert dialog._suggest_count() == 1
 
 
-def test_the_default_share_aims_at_the_recommended_count(dialog):
-    """20 anchors of a 10-frame clip is the whole clip, so it clamps."""
-    assert dialog._default_suggest_percent() == 100.0
+def test_the_default_share_is_a_spacing_not_a_count(dialog):
+    """Roughly every 10th frame, whatever the clip length — the backends bridge
+    gaps, and a gap is measured in frames."""
+    assert dialog._default_suggest_percent() == RECOMMENDED_LABEL_SHARE
+    assert dialog.suggest_percent_spin.value() == RECOMMENDED_LABEL_SHARE
+    assert dialog._suggest_count() == 1  # of the fake view's 10 frames
 
 
-def test_shift_arrows_step_the_suggested_frames(dialog, monkeypatch):
+def test_n_steps_to_the_next_suggested_frame(dialog, monkeypatch):
+    """One direction only — the suggestions are a queue, and the points table
+    is how you go back to any frame at all."""
     dialog._suggestions = [1, 5, 9]
     dialog._suggestion_index = 0
     landed = _seeks(dialog, monkeypatch)
 
-    _key(dialog, Qt.Key_Right, Qt.ShiftModifier)
-    _key(dialog, Qt.Key_Left, Qt.ShiftModifier)
+    _key(dialog, Qt.Key_N)
+    _key(dialog, Qt.Key_N)
 
-    assert landed == [5, 1]
+    assert landed == [5, 9]
 
 
-def test_shift_arrows_reach_the_dialog_from_the_main_window(dialog, monkeypatch):
-    """Regression: pressed while looking at the video, they hit the main
-    window's own window-stepping shortcut instead of the suggestions."""
+def test_n_wraps_at_the_end_of_the_suggestions(dialog, monkeypatch):
+    dialog._suggestions = [1, 5, 9]
+    dialog._suggestion_index = 2
+    landed = _seeks(dialog, monkeypatch)
+
+    _key(dialog, Qt.Key_N)
+
+    assert landed == [1]
+
+
+def test_n_reaches_the_dialog_from_the_main_window(dialog, monkeypatch):
+    """It is pressed while looking at the video, not at the dialog."""
     dialog._suggestions = [1, 5, 9]
     dialog._suggestion_index = 0
     landed = _seeks(dialog, monkeypatch)
 
-    _key(dialog, Qt.Key_Right, Qt.ShiftModifier, target=dialog._shell)
+    _key(dialog, Qt.Key_N, target=dialog._shell)
 
     assert landed == [5]
 
 
-def test_the_main_window_keeps_its_other_keys(dialog):
-    """Only the arrows reach across; the user is working over there."""
+def test_n_steps_once_per_press_with_the_table_focused(dialog, qapp, monkeypatch):
+    """``N`` is printable, so ``QAbstractItemView`` eats it as a type-ahead
+    search — only the dialog's own QShortcut runs early enough. And exactly one
+    of the shortcut and the event filter may act, or a press skips a frame."""
+    from qtpy.QtTest import QTest
+
     dialog._suggestions = [1, 5, 9]
-    dialog.store.set_point(0, "beak", (1.0, 2.0))
-    _select_leaf(dialog, "individual_0", "beak")
+    dialog._suggestion_index = 0
+    dialog.show()
+    dialog.activateWindow()
+    dialog.point_table.setFocus()
+    QApplication.processEvents()
+    landed = _seeks(dialog, monkeypatch)
 
-    _key(dialog, Qt.Key_Backspace, target=dialog._shell)
+    QTest.keyClick(QApplication.focusWidget(), Qt.Key_N)
+    QApplication.processEvents()
 
-    assert dialog.store.is_anchor(0, "beak") is True
+    assert landed == [5]
 
 
-def test_plain_arrows_are_left_to_the_main_window(dialog, monkeypatch):
-    """Single-frame stepping stays a global shortcut, suggestions are Shift."""
+def test_the_main_window_keeps_its_number_keys(dialog):
+    """`1`-`9` are behaviour labels over there, so they must not reach across —
+    unlike Backspace and Ctrl+Z, which nothing in the main window binds."""
+    dialog._suggestions = [1, 5, 9]
+    dialog.set_interaction_mode(SEQUENTIAL_MODE)
+    dialog._apply_schema(individuals=["a", "b"])
+
+    _key(dialog, Qt.Key_2, target=dialog._shell)
+
+    assert dialog._mode.active_individual == "a"
+
+
+def test_the_arrows_are_left_to_the_main_window(dialog, monkeypatch):
+    """Both plain and Shift: frame stepping and window stepping stay global
+    shortcuts, and the suggestions moved off the arrows entirely."""
     dialog._suggestions = [1, 5, 9]
     landed = _seeks(dialog, monkeypatch)
 
     _key(dialog, Qt.Key_Right)
+    _key(dialog, Qt.Key_Right, Qt.ShiftModifier)
+    _key(dialog, Qt.Key_Left, Qt.ShiftModifier)
 
     assert landed == []
 
 
-def test_shift_arrows_are_not_claimed_without_suggestions(dialog, monkeypatch):
-    """Nothing to step through, so the main window keeps its window-stepping."""
+def test_n_warns_instead_of_seeking_without_suggestions(dialog, monkeypatch):
     landed = _seeks(dialog, monkeypatch)
 
-    _key(dialog, Qt.Key_Right, Qt.ShiftModifier)
+    _key(dialog, Qt.Key_N)
 
     assert landed == []
 
@@ -717,12 +887,202 @@ def test_loop_follows_the_suggestions_when_asked(dialog, monkeypatch):
     assert landed == [6]
 
 
-def test_the_between_clicks_row_belongs_to_loop_mode(dialog):
+def test_the_then_go_to_row_belongs_to_loop_mode(dialog):
     dialog.set_interaction_mode(SEQUENTIAL_MODE)
     assert dialog.after_click_row.isVisibleTo(dialog) is False
 
     dialog.set_interaction_mode(LOOP_MODE)
     assert dialog.after_click_row.isVisibleTo(dialog) is True
+
+
+def test_the_then_go_to_row_also_appears_for_approving(dialog):
+    """It says where Shift+H lands too, and approving needs no mode.
+
+    ``isHidden`` rather than ``isVisibleTo``: with no mode armed the dialog is
+    still on the Keypoints tab, so the whole Label page is hidden — arming one
+    to look would defeat the point of the test.
+    """
+    dialog.set_interaction_mode(None)
+    assert dialog.after_click_row.isHidden() is True
+
+    _fill(dialog.store)
+    dialog._refresh_active_label()
+
+    assert dialog.after_click_row.isHidden() is False
+
+
+# ----------------------------------------------------------------------
+# Approving a fill (Shift+H)
+# ----------------------------------------------------------------------
+
+
+def test_shift_h_keeps_the_frames_predictions_as_labels(dialog):
+    _fill(dialog.store, value=7.0)
+    dialog.app_state.current_frame = 4
+
+    _key(dialog, Qt.Key_H, Qt.ShiftModifier)
+
+    assert all(dialog.store.is_anchor(4, name) for name in NAMES)
+    assert dialog.store.anchor_positions_for(4).tolist() == [[7.0, 7.0]] * len(NAMES)
+
+
+def test_shift_h_leaves_the_other_frames_predicted(dialog):
+    """Approving is per frame — that is what makes it a review step."""
+    _fill(dialog.store)
+    dialog.app_state.current_frame = 4
+
+    _key(dialog, Qt.Key_H, Qt.ShiftModifier)
+
+    assert dialog.store.is_human(4) is True
+    assert dialog.store.is_human(5) is False
+
+
+def test_shift_h_never_overwrites_a_label_you_placed(dialog):
+    dialog.store.set_point(4, "beak", (1.0, 2.0))
+    _fill(dialog.store, value=7.0)
+    dialog.app_state.current_frame = 4
+
+    _key(dialog, Qt.Key_H, Qt.ShiftModifier)
+
+    assert dialog.store.anchor_positions_for(4)[0].tolist() == [1.0, 2.0]
+    assert dialog.store.anchor_positions_for(4)[1].tolist() == [7.0, 7.0]
+
+
+def test_shift_h_then_goes_where_the_dropdown_says(dialog, monkeypatch):
+    _fill(dialog.store)
+    dialog.after_click_combo.setCurrentIndex(dialog.after_click_combo.findData("frame"))
+    dialog.app_state.current_frame = 4
+    landed = _seeks(dialog, monkeypatch)
+
+    _key(dialog, Qt.Key_H, Qt.ShiftModifier)
+
+    assert landed == [5]
+
+
+def test_shift_h_can_follow_the_suggestions_instead(dialog, monkeypatch):
+    _fill(dialog.store)
+    dialog.after_click_combo.setCurrentIndex(dialog.after_click_combo.findData("suggestion"))
+    dialog._suggestions = [2, 6]
+    dialog._suggestion_index = 0
+    landed = _seeks(dialog, monkeypatch)
+
+    _key(dialog, Qt.Key_H, Qt.ShiftModifier)
+
+    assert landed == [6]
+
+
+def test_shift_h_moves_on_from_an_already_approved_frame(dialog, monkeypatch):
+    """Agreeing with a frame that is already yours still means "next"."""
+    _fill(dialog.store)
+    dialog.app_state.current_frame = 4
+    dialog.store.promote_fill(4)
+    dialog.after_click_combo.setCurrentIndex(dialog.after_click_combo.findData("frame"))
+    landed = _seeks(dialog, monkeypatch)
+
+    _key(dialog, Qt.Key_H, Qt.ShiftModifier)
+
+    assert landed == [5]
+
+
+def test_shift_h_stays_put_when_the_frame_carries_nothing(dialog, monkeypatch):
+    """Silently advancing past empty frames would look like a broken key."""
+    dialog.app_state.current_frame = 4
+    landed = _seeks(dialog, monkeypatch)
+
+    _key(dialog, Qt.Key_H, Qt.ShiftModifier)
+
+    assert landed == []
+
+
+def test_plain_h_is_left_to_the_main_windows_behaviour_label(dialog):
+    _fill(dialog.store)
+    dialog.app_state.current_frame = 4
+
+    _key(dialog, Qt.Key_H)
+
+    assert dialog.store.is_human(4) is False
+
+
+def test_shift_h_works_when_the_points_table_has_focus(dialog, qapp):
+    """Regression: the table ate it as type-ahead search.
+
+    You pick the frame to review by clicking its row, which leaves focus on the
+    table — and ``QAbstractItemView`` turns any printable key into a keyboard
+    search and accepts it, so the press never propagated to the dialog's filter.
+    Only the dialog's own QShortcut runs early enough.
+    """
+    from qtpy.QtTest import QTest
+
+    _fill(dialog.store)
+    dialog.show()
+    dialog.activateWindow()
+    dialog.app_state.current_frame = 4
+    dialog.point_table.setFocus()
+    QApplication.processEvents()
+
+    QTest.keyClick(QApplication.focusWidget(), Qt.Key_H, Qt.ShiftModifier)
+    QApplication.processEvents()
+
+    assert dialog.store.is_human(4) is True
+
+
+def test_shift_h_works_when_the_tree_has_focus(dialog, qapp):
+    """Same swallowing, from the other item view."""
+    from qtpy.QtTest import QTest
+
+    _fill(dialog.store)
+    dialog.show()
+    dialog.activateWindow()
+    dialog.app_state.current_frame = 4
+    dialog.tree.setFocus()
+    QApplication.processEvents()
+
+    QTest.keyClick(QApplication.focusWidget(), Qt.Key_H, Qt.ShiftModifier)
+    QApplication.processEvents()
+
+    assert dialog.store.is_human(4) is True
+
+
+def test_shift_h_approves_once_per_press(dialog, qapp, monkeypatch):
+    """The QShortcut and the event filter both know the key — only one may act.
+
+    Firing twice would silently skip the frame after the one approved.
+    """
+    from qtpy.QtTest import QTest
+
+    _fill(dialog.store)
+    dialog.show()
+    dialog.activateWindow()
+    dialog.after_click_combo.setCurrentIndex(dialog.after_click_combo.findData("frame"))
+    dialog.app_state.current_frame = 4
+    dialog.tree.setFocus()
+    QApplication.processEvents()
+    landed = _seeks(dialog, monkeypatch)
+
+    QTest.keyClick(QApplication.focusWidget(), Qt.Key_H, Qt.ShiftModifier)
+    QApplication.processEvents()
+
+    assert landed == [5]
+
+
+def test_shift_h_reaches_across_from_the_main_window(dialog):
+    """You press it while looking at the video, not at the dialog."""
+    _fill(dialog.store)
+    dialog.app_state.current_frame = 4
+
+    _key(dialog, Qt.Key_H, Qt.ShiftModifier, target=dialog._shell)
+
+    assert dialog.store.is_human(4) is True
+
+
+def test_the_approve_button_waits_for_a_fill(dialog):
+    """With no predictions on screen there is nothing to approve."""
+    assert dialog.approve_btn.isHidden() is True
+
+    _fill(dialog.store)
+    dialog._refresh_active_label()
+
+    assert dialog.approve_btn.isHidden() is False
 
 
 # ----------------------------------------------------------------------
@@ -738,6 +1098,21 @@ def test_filling_gives_every_frame_a_row(dialog):
 
     assert dialog.point_model.rowCount() == dialog.store.n_frames
     assert _table_headers(dialog) == ["Frame", "Individual", "Source", "Confidence", *NAMES]
+
+
+def test_the_table_stops_where_the_fill_does(dialog):
+    """A fill bridges the labels and no further, and rows follow it.
+
+    Rows past the last label would be permanently empty ones — nothing can ever
+    populate them short of labelling further out, which changes the span anyway.
+    """
+    for frame in (2, 5):
+        dialog.store.set_point(frame, "beak", (float(frame), 1.0))
+    anchors, n_frames = dialog.store.flat_anchors(), dialog.store.n_frames
+    dialog.store.set_fill_from_flat(*SplineBackend().fill(anchors, n_frames, None))
+    dialog._refresh_point_table(full=True)
+
+    assert {frame for frame, _individual in dialog.point_model.rows} == {2, 3, 4, 5}
 
 
 def test_filled_rows_are_marked_fill_and_labelled_ones_human(dialog):
@@ -794,6 +1169,41 @@ def test_deleting_a_filled_row_keeps_the_labels_on_it(dialog):
     assert _table_rows(dialog)[4][: len(_FIXED_COLUMNS) + 1] == ("4", "individual_0", "Human", "1.00", "10.0")
 
 
+def test_the_canvas_shows_predictions_alongside_labels(dialog):
+    """Judging a prediction means seeing it — hollow, next to the solid labels."""
+    dialog.store.set_point(0, "beak", (10.0, 20.0))
+    _fill(dialog.store)
+    dialog.set_interaction_mode(SEQUENTIAL_MODE)
+    overlay = dialog._mode._overlay
+
+    drawn = overlay._layers[0].geometry.positions.data[:, 0] > -1e5
+    predicted = overlay._fill_layers[0].geometry.positions.data[:, 0] > -1e5
+    assert list(drawn) == [True, False, False]
+    assert list(predicted) == [False, True, True]
+
+
+def test_the_pose_overlay_yields_the_canvas_while_a_mode_is_armed(dialog):
+    """Otherwise every point carries two markers, one of them provenance-blind."""
+    _fill(dialog.store)
+    dialog._push_pose_override()
+    assert dialog._data_widget.pose_mgr.override is not None
+
+    dialog.set_interaction_mode(SEQUENTIAL_MODE)
+    assert dialog._data_widget.pose_mgr.override is None
+
+    dialog.set_interaction_mode(None)
+    assert dialog._data_widget.pose_mgr.override is not None
+
+
+def test_the_legend_appears_only_once_predictions_are_on_screen(dialog):
+    dialog.set_interaction_mode(SEQUENTIAL_MODE)
+    assert dialog.legend_label.isVisibleTo(dialog) is False
+
+    _fill(dialog.store)
+    dialog._refresh_active_label()
+    assert dialog.legend_label.isVisibleTo(dialog) is True
+
+
 def test_the_disagreement_tolerance_belongs_to_the_tracking_backends(dialog):
     """The spline scores by distance from an anchor — the tolerance is meaningless."""
     combo = dialog.backend_combo
@@ -807,6 +1217,30 @@ def test_the_disagreement_tolerance_belongs_to_the_tracking_backends(dialog):
 def test_the_disagreement_tolerance_is_remembered(dialog):
     dialog.disagreement_spin.setValue(25.0)
     assert dialog.app_state.labelling_disagreement_px == 25.0
+
+
+def test_custom_weights_belong_to_posepal(dialog):
+    """Only PosePAL loads a state dict — the others have nothing to point at."""
+    combo = dialog.backend_combo
+    combo.setCurrentIndex(combo.findData("flow"))
+    assert dialog.checkpoint_row.isHidden() is True
+
+    combo.setCurrentIndex(combo.findData(dialog_module.POSEPAL_BACKEND))
+    assert dialog.checkpoint_row.isHidden() is False
+
+
+def test_custom_weights_are_remembered(dialog, tmp_path):
+    """The stock checkpoint is a default: fine-tuned weights must not mean editing pose_fill."""
+    weights = tmp_path / "animals.pth"
+    dialog.checkpoint_edit.setText(str(weights))
+    dialog.checkpoint_edit.editingFinished.emit()
+    assert dialog.app_state.labelling_cotracker_checkpoint == str(weights)
+
+
+def test_no_custom_weights_means_the_stock_checkpoint(dialog):
+    """Empty is the default, not a path — build_backend must see None, not ''."""
+    assert dialog.app_state.labelling_cotracker_checkpoint == ""
+    assert (dialog.app_state.labelling_cotracker_checkpoint or None) is None
 
 
 def test_the_confidence_column_is_empty_before_a_fill(dialog):
@@ -896,14 +1330,21 @@ def test_individual_filter_keeps_one_animal(dialog):
     assert _table_rows(dialog) == [("5", "b", "Human", "", "3.0", "4.0")]
 
 
-def test_the_frame_column_filters_numerically(dialog):
-    for frame in (1, 5, 9):
-        dialog.store.set_point(frame, "beak", (1.0, 2.0))
-    dialog._refresh_point_table()
+def test_the_confidence_filter_opens_on_at_most(dialog, monkeypatch):
+    """Low confidence is what the column is read for, so "≤" is the default."""
+    captured = {}
 
-    dialog.point_proxy.set_numeric_filter(FRAME_COLUMN, ">=", 5)
+    class _Cancelled:
+        def __init__(self, column, current, parent, default_op=">="):
+            captured["default_op"] = default_op
 
-    assert _frames_shown(dialog) == ["5", "9"]
+        def exec_(self):
+            return False
+
+    monkeypatch.setattr(dialog_module, "NumericFilterDialog", _Cancelled)
+    dialog._on_filter_requested(CONFIDENCE_COLUMN)
+
+    assert captured["default_op"] == "<="
 
 
 def test_clicking_a_funnel_applies_the_chosen_categories(dialog, monkeypatch):
@@ -930,9 +1371,9 @@ def test_clicking_a_funnel_applies_the_chosen_categories(dialog, monkeypatch):
 
 
 def test_the_filterable_columns_are_the_fixed_ones(dialog):
-    """Filtering an x/y pair is meaningless — those are coordinates."""
+    """Filtering an x/y pair is meaningless — those are coordinates. Frame
+    carries no funnel either: the rows are already ordered by it."""
     assert dialog.point_table.horizontalHeader().filterable == {
-        FRAME_COLUMN,
         INDIVIDUAL_COLUMN,
         SOURCE_COLUMN,
         CONFIDENCE_COLUMN,
@@ -950,3 +1391,112 @@ def test_a_schema_change_drops_the_filters(dialog):
 
     assert dialog.point_proxy.active_filters() == set()
     assert _frames_shown(dialog) == ["4"]
+
+
+# ----------------------------------------------------------------------
+# Test-time refinement
+# ----------------------------------------------------------------------
+
+
+def _select_backend(dialog, key: str) -> bool:
+    index = dialog.backend_combo.findData(key)
+    if index < 0:
+        return False
+    dialog.backend_combo.setCurrentIndex(index)
+    return True
+
+
+def test_the_refinement_row_belongs_to_posepal_alone(dialog):
+    """Fit state is the one thing no other backend has — and it shows nowhere else."""
+    # isHidden(), not isVisibleTo(): the tab holding the Fill group is itself
+    # hidden while another tab is current, which says nothing about this row.
+    _select_backend(dialog, "spline")
+    dialog._refresh_backend_rows()
+    assert dialog.refinement_row.isHidden()
+
+    if not _select_backend(dialog, dialog_module.POSEPAL_BACKEND):
+        pytest.skip("PosePAL not offered on this machine")
+    dialog._refresh_backend_rows()
+    assert not dialog.refinement_row.isHidden()
+
+
+def test_an_unfitted_refinement_says_the_fill_will_fit(dialog):
+    dialog.store.set_point(0, "beak", (1.0, 2.0))
+    assert "Not fitted" in dialog._refinement_status_text()
+
+
+def test_labelling_another_frame_changes_the_refinement_signature(dialog):
+    """A new label must mark a fit stale — it was made from fewer frames."""
+    dialog.store.set_point(0, "beak", (1.0, 2.0))
+    before = dialog._refinement_signature()
+
+    dialog.store.set_point(5, "beak", (3.0, 4.0))
+    assert dialog._refinement_signature() != before
+
+    # ...and moving a point counts just as much as adding one.
+    moved = dialog._refinement_signature()
+    dialog.store.set_point(5, "beak", (9.0, 9.0))
+    assert dialog._refinement_signature() != moved
+
+
+def test_a_schema_change_changes_the_refinement_signature(dialog):
+    """The delta is indexed by point row, so a renamed keypoint invalidates it."""
+    dialog.store.set_point(0, "beak", (1.0, 2.0))
+    before = dialog._refinement_signature()
+    dialog._apply_schema(individuals=["a", "b"])
+    assert dialog._refinement_signature() != before
+
+
+def test_filling_is_the_only_fit_button(dialog):
+    """Fill fits by itself when the labels have changed, so nothing else may.
+
+    A second button for a step the first one already takes reads as a choice
+    about the result, and there has never been one: a refit is a fresh fit.
+    """
+    assert not hasattr(dialog, "refit_btn")
+
+
+class _CancellingBusy:
+    """A progress dialog the user cancels as soon as work reports progress."""
+
+    def __init__(self, label, parent=None):
+        self.label = label
+
+    def setLabelText(self, text) -> None:
+        pass
+
+    def pump_events(self) -> None:
+        pass
+
+    def wasCanceled(self) -> bool:
+        return True
+
+    def execute(self, fn, *args, **kwargs):
+        return fn(*args, **kwargs), None
+
+
+def test_cancelling_a_fill_keeps_the_fill_it_would_have_replaced(dialog, monkeypatch):
+    """Cancelling is a way out of the wait, not a way to a worse fill.
+
+    Backends answer a cancel with the spline seed they started from — they have
+    arrays to return — so the dialog is what has to refuse it.
+    """
+    for frame in (0, 5):
+        dialog.store.set_point(frame, "beak", (float(frame), 1.0))
+    _fill(dialog.store, value=5.0)
+    before = dialog.store.filled.copy()
+
+    monkeypatch.setattr(dialog_module, "BusyProgressDialog", _CancellingBusy)
+    dialog._on_fill()
+
+    np.testing.assert_array_equal(dialog.store.filled, before)
+
+
+def test_cancelling_the_first_fill_leaves_no_fill(dialog, monkeypatch):
+    for frame in (0, 5):
+        dialog.store.set_point(frame, "beak", (float(frame), 1.0))
+    monkeypatch.setattr(dialog_module, "BusyProgressDialog", _CancellingBusy)
+
+    dialog._on_fill()
+
+    assert dialog.store.filled is None

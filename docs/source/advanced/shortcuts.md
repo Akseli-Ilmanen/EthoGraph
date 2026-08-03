@@ -50,6 +50,26 @@ while you are typing in a text field, spin box or editable combo box.
 | `Ctrl+V` | 'Verify predictions' by editing once or this shortcut |
 | `Shift+B` | Switch the Main labels slot to the previously-selected branch |
 
+## Keypoint Labelling
+
+Live while the {doc}`keypoint labelling dialog <keypoint_labelling>` is
+open, wherever the key is pressed — on the dialog, on the video canvas or
+anywhere in the main window. `Backspace`, `Delete`, `Ctrl+Z`, `Shift+H` and `N`
+work even with no labelling mode armed; the rest need one.
+
+| Shortcut | Action |
+|----------|--------|
+| `Backspace` / `Delete` | Delete the active point on this frame (the outlined one, else the one under the cursor; with no mode armed, the pair selected in the Keypoints tree) |
+| `Ctrl+Z` | Undo the last point placed, moved or deleted |
+| `Shift+H` | Approve this frame — keep every predicted point on it as your own label, for all individuals at once, then go where **Then go to:** says |
+| `Tab` / `Shift+Tab` | Cycle to the next / previous keypoint of the active individual |
+| `1-9` | Select the individual to label |
+| `N` | Jump to the next suggested frame, wrapping at the end (there is no "previous" — click any row of the points table instead) |
+| `Left` / `Right` | Step one frame — the main window's own binding, untouched |
+| Left-click on the video | Place the active keypoint, or select and drag an existing point |
+| Left-click on a filled point | Pin the prediction as a label (drag to correct it first) |
+| `Shift`+left-drag | Pan the video while a mode is armed (tick **Lock** to pan with a plain drag) |
+
 ## Selection Cycling
 
 | Shortcut | Action |

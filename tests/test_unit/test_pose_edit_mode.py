@@ -15,6 +15,7 @@ import pygfx as gfx  # noqa: E402
 
 from ethograph.gui.pose_annotate import KeypointStore  # noqa: E402
 from ethograph.gui.pose_edit_mixin import (  # noqa: E402
+    _OFFSCREEN,
     HIT_RADIUS_PX,
     LOOP_MODE,
     SEQUENTIAL_MODE,
@@ -33,6 +34,8 @@ class _FakeView:
         self._scene = gfx.Scene()
         self.label_mode = None
         self.draws = 0
+        #: What the real view swaps between mouse1 and shift+mouse1.
+        self.pan_with_left_drag = True
 
     def scene(self):
         return self._scene
@@ -45,6 +48,10 @@ class _FakeView:
 
     def set_label_mode(self, mode):
         self.label_mode = mode
+        self.pan_with_left_drag = mode is None or mode.locked
+
+    def set_label_locked(self, locked):
+        self.pan_with_left_drag = locked
 
     def request_draw(self):
         self.draws += 1
@@ -360,6 +367,57 @@ def test_on_changed_fires_for_edits_only(mode):
     assert len(calls) == 1
 
 
+def test_locking_stops_the_pointer_from_labelling(mode):
+    mode.set_locked(True)
+    mode.handle_click(100.0, 200.0)
+    mode.handle_move(120.0, 200.0)
+    mode.handle_release(120.0, 200.0)
+    assert mode.store.anchor_frames() == []
+
+
+def test_locking_does_not_move_an_existing_point(mode):
+    mode.store.set_point(0, "eye", (50.0, 50.0))
+    mode.set_locked(True)
+    mode.handle_click(51.0, 50.0)
+    mode.handle_move(90.0, 90.0)
+    np.testing.assert_allclose(mode.store.positions_for(0)[2], [50.0, 50.0])
+
+
+def test_locking_hands_left_drag_back_to_panning(mode):
+    assert mode.view.pan_with_left_drag is False
+    mode.set_locked(True)
+    assert mode.view.pan_with_left_drag is True
+    mode.set_locked(False)
+    assert mode.view.pan_with_left_drag is False
+
+
+def test_unlocking_resumes_on_the_same_target(mode):
+    """The point of the lock: the overlay and the active pair both survive it."""
+    mode.set_active("tail")
+    mode.set_locked(True)
+    mode.set_locked(False)
+
+    assert mode.locked is False
+    assert mode.active_keypoint == "tail"
+    mode.handle_click(100.0, 200.0)
+    np.testing.assert_allclose(mode.store.positions_for(0)[1], [100.0, 200.0])
+
+
+def test_locking_still_allows_deleting_the_active_point(mode):
+    """The lock covers the pointer, not the keys — Backspace is deliberate."""
+    mode.store.set_point(0, "beak", (10.0, 10.0))
+    mode.set_locked(True)
+    assert mode.delete_selected() is True
+    assert mode.store.labelled_count(0) == 0
+
+
+def test_a_mode_created_locked_starts_panning():
+    view = _FakeView()
+    mode = KeypointLabelMode(view, KeypointStore(keypoint_names=list(NAMES), n_frames=10), locked=True)
+    assert mode.locked is True
+    assert view.pan_with_left_drag is True
+
+
 def test_detach_releases_the_view(mode):
     mode.detach()
     assert mode.view.label_mode is None
@@ -493,6 +551,75 @@ def test_overlay_colours_vertices_by_keypoint(pair_mode):
 
 
 # ----------------------------------------------------------------------
+# Provenance: labels are solid, predictions hollow
+# ----------------------------------------------------------------------
+
+
+def _filled(mode, position=(300.0, 200.0)):
+    """Give the store a fill placing every point at *position*."""
+    store = mode.store
+    filled = np.tile(np.asarray(position, dtype=float), (store.n_frames, store.n_points, 1))
+    store.set_fill_from_flat(filled, np.full((store.n_frames, store.n_points), 0.5))
+    mode.refresh()
+    return store
+
+
+def _drawn(layer) -> np.ndarray:
+    """Which vertices of a layer are on screen rather than parked off it."""
+    return layer.geometry.positions.data[:, 0] > _OFFSCREEN / 2.0
+
+
+def test_predictions_are_drawn_in_their_own_hollow_layer(mode):
+    _filled(mode)
+    overlay = mode._overlay
+
+    assert _drawn(overlay._fill_layers[0]).all()  # every keypoint predicted
+    assert not _drawn(overlay._layers[0]).any()  # none of them labelled
+
+
+def test_a_hollow_marker_has_no_interior_and_a_coloured_edge(mode):
+    """The point being judged stays visible: colour moves to the edge."""
+    material = mode._overlay._fill_layers[0].material
+    assert material.color[3] == 0.0
+    assert str(material.edge_color_mode).endswith("vertex")
+
+    edges = mode._overlay._fill_layers[0].geometry.edge_colors.data
+    solids = mode._overlay._layers[0].geometry.colors.data
+    np.testing.assert_allclose(edges, solids)  # same keypoint colours either way
+
+
+def test_a_prediction_moves_to_the_solid_layer_once_labelled(mode):
+    _filled(mode)
+    mode.store.set_point(0, "tail", (10.0, 10.0))
+    mode.refresh()
+    overlay = mode._overlay
+
+    assert list(_drawn(overlay._layers[0])) == [False, True, False]
+    assert list(_drawn(overlay._fill_layers[0])) == [True, False, True]
+
+
+def test_clicking_a_prediction_pins_it_and_it_turns_solid(mode):
+    """Accepting a fill is a click, and the marker says so immediately."""
+    _filled(mode, (300.0, 200.0))
+    mode.handle_click(301.0, 200.0)
+
+    assert mode.store.is_anchor(0, "beak") is True
+    assert _drawn(mode._overlay._layers[0])[0]
+    assert not _drawn(mode._overlay._fill_layers[0])[0]
+
+
+def test_both_layer_sets_share_the_individuals_marker_shape(pair_mode):
+    overlay = pair_mode._overlay
+    for i, (solid, hollow) in enumerate(zip(overlay._layers, overlay._fill_layers)):
+        assert solid.material.marker == hollow.material.marker == marker_for_individual(i)
+
+
+def test_set_point_size_resizes_the_hollow_markers_too(mode):
+    mode.set_point_size(30.0)
+    assert mode._overlay._fill_layers[0].material.size == 30.0
+
+
+# ----------------------------------------------------------------------
 # Marker size
 # ----------------------------------------------------------------------
 
@@ -535,3 +662,76 @@ def test_a_big_marker_grabs_a_click_further_away(mode):
     mode.refresh()
     mode.handle_click(125.0, 100.0)  # 25 px away: outside the default radius
     assert mode.active_keypoint == "eye"
+
+
+# ----------------------------------------------------------------------
+# What the canvas forwards to the mode (CameraView._dispatch_label)
+# ----------------------------------------------------------------------
+
+
+class _FakeEvent:
+    def __init__(self, modifiers=(), button=1):
+        self.x, self.y = 10.0, 20.0
+        self.modifiers = modifiers
+        self.button = button
+
+
+class _RecordingMode:
+    locked = False
+
+    def __init__(self):
+        self.calls: list[str] = []
+
+    def handle_click(self, x, y):
+        self.calls.append("click")
+
+    def handle_move(self, x, y):
+        self.calls.append("move")
+
+    def handle_release(self, x, y):
+        self.calls.append("release")
+
+
+class _StubView:
+    """The slice of CameraView that _dispatch_label reads."""
+
+    def __init__(self, mode):
+        self._label_mode = mode
+
+    def screen_to_image(self, x, y):
+        return (x, y)
+
+
+def _dispatch(mode, event, method: str) -> None:
+    from ethograph.gui.pygfx_video import CameraView
+
+    CameraView._dispatch_label(_StubView(mode), event, method)
+
+
+def test_a_modified_press_is_left_to_the_camera():
+    """Shift+left-drag pans while a mode is armed, so the press must not also
+    place or grab a point — it used to do both at once."""
+    mode = _RecordingMode()
+    _dispatch(mode, _FakeEvent(modifiers=("Shift",)), "handle_click")
+    assert mode.calls == []
+
+
+def test_a_plain_press_still_labels():
+    mode = _RecordingMode()
+    _dispatch(mode, _FakeEvent(), "handle_click")
+    assert mode.calls == ["click"]
+
+
+def test_a_release_is_forwarded_whatever_is_held():
+    """A drag can only have started on a plain press, so filtering the release
+    could only strand a point on the cursor."""
+    mode = _RecordingMode()
+    _dispatch(mode, _FakeEvent(modifiers=("Shift",)), "handle_release")
+    _dispatch(mode, _FakeEvent(modifiers=("Shift",)), "handle_move")
+    assert mode.calls == ["release", "move"]
+
+
+def test_the_other_buttons_never_reach_the_mode():
+    mode = _RecordingMode()
+    _dispatch(mode, _FakeEvent(button=2), "handle_click")
+    assert mode.calls == []

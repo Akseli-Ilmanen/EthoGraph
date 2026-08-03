@@ -145,9 +145,20 @@ class CategoryFilterDialog(QDialog):
 
 
 class NumericFilterDialog(QDialog):
-    """Threshold filter dialog for numeric columns."""
+    """Threshold filter dialog for numeric columns.
 
-    def __init__(self, col: int, current: tuple[str, float] | None, parent=None):
+    ``default_op`` picks which comparison a fresh filter opens on: which of
+    the two is the interesting one depends on the column (a firing rate is
+    usually filtered from below, a confidence from above).
+    """
+
+    def __init__(
+        self,
+        col: int,
+        current: tuple[str, float] | None,
+        parent=None,
+        default_op: str = ">=",
+    ):
         super().__init__(parent)
         self.setWindowTitle("Filter")
         self._col = col
@@ -158,6 +169,7 @@ class NumericFilterDialog(QDialog):
         op_row = QHBoxLayout()
         self._op_combo = QComboBox()
         self._op_combo.addItems(["≥", "≤"])
+        self._op_combo.setCurrentText("≥" if default_op == ">=" else "≤")
         op_row.addWidget(self._op_combo)
         self._spin = QDoubleSpinBox()
         self._spin.setRange(-1e9, 1e9)

@@ -65,14 +65,22 @@ from pathlib import Path
 from typing import Sequence
 
 import numpy as np
-import pandas as pd
 import xarray as xr
 
 #: Sidecar suffix appended to the video path to persist anchors.
 SIDECAR_SUFFIX = ".keypoints.json"
 
-#: Suggested number of labelled frames shown in the dialog's counter.
-RECOMMENDED_ANCHORS = 20
+#: Sidecar suffix for a cached test-time refinement (see :mod:`pose_refine`).
+REFINEMENT_SUFFIX = ".posepal.pt"
+
+#: Share of a video worth labelling, as a percentage — roughly every 10th frame.
+#:
+#: A *spacing* rather than a count, because what the fill backends care about is
+#: the gap they have to bridge, and a gap is measured in frames. Twenty labels
+#: is dense on a 200-frame clip and nothing on an hour of footage. The figure
+#: follows the ratio CoTracker3 is evaluated at for this task — Pan et al. 2025
+#: report 6 annotated frames for a video of 60 (arXiv:2506.03868).
+RECOMMENDED_LABEL_SHARE = 10.0
 
 #: Name given to the first individual when the user has not named any.
 DEFAULT_INDIVIDUAL = "individual_0"
@@ -117,7 +125,12 @@ class KeypointStore:
         verbatim.
     confidence
         ``(n_frames, n_individuals, n_keypoints)`` in ``[0, 1]``; anchors
-        are ``1.0``.
+        are ``1.0``, and a frame the fill did not cover is ``NaN``.
+    fill_range
+        ``(first, last)`` frame the current fill covers — derived from
+        :attr:`filled` when it is set, never assigned from outside. A fill only
+        bridges the gaps between labels, so this is normally the labelled span
+        and not the whole video.
     """
 
     keypoint_names: list[str]
@@ -128,6 +141,7 @@ class KeypointStore:
     anchors: dict[int, np.ndarray] = field(default_factory=dict)
     filled: np.ndarray | None = None
     confidence: np.ndarray | None = None
+    fill_range: tuple[int, int] | None = None
     _history: list[tuple[int, int, int, np.ndarray | None]] = field(default_factory=list, repr=False)
 
     def __post_init__(self):
@@ -332,6 +346,16 @@ class KeypointStore:
             if not np.isnan(points[i, k, 0]):
                 self.clear_point(frame, keypoint, self.individual_names[i])
 
+    def clear_all_labels(self) -> None:
+        """Drop every labelled point, on every frame and individual.
+
+        Mirrors :meth:`clear_individual` for the whole table rather than one
+        row; any existing fill is left alone, same as a single row's deletion.
+        History is discarded too — there is nothing left to undo back to.
+        """
+        self.anchors.clear()
+        self._history.clear()
+
     def predicted_mask(self, frame: int) -> np.ndarray:
         """``(n_individuals, n_keypoints)`` bool: points the *backend* placed.
 
@@ -431,6 +455,7 @@ class KeypointStore:
     def clear_fill(self) -> None:
         self.filled = None
         self.confidence = None
+        self.fill_range = None
 
     def set_fill(self, filled: np.ndarray, confidence: np.ndarray) -> None:
         """Store a backend result, re-asserting anchors over it.
@@ -458,6 +483,11 @@ class KeypointStore:
         confidence[:, unowned] = np.nan
         self.filled = filled
         self.confidence = confidence
+        # Measured from the result rather than from the anchors: a backend fills
+        # the gaps between labels, and what it actually covered is what readers
+        # (the points table above all) must not go looking beyond.
+        covered = np.flatnonzero(np.isfinite(filled[..., 0]).any(axis=(1, 2)))
+        self.fill_range = (int(covered[0]), int(covered[-1])) if len(covered) else None
 
     def set_fill_from_flat(self, filled: np.ndarray, confidence: np.ndarray) -> None:
         """Store a backend result given as flat points (see :meth:`flat_anchors`)."""
@@ -666,6 +696,18 @@ def sidecar_path(video_path: str | Path) -> Path:
     return video.with_name(video.name + SIDECAR_SUFFIX)
 
 
+def refinement_path(video_path: str | Path) -> Path:
+    """Where a test-time refinement for *video_path* is cached.
+
+    Project data like the anchors, and next to them for the same reason: the fit
+    is minutes of GPU time that belongs to this video, so reopening tomorrow must
+    not re-pay it. Lives here rather than in :mod:`pose_refine` so the dialog can
+    find it without importing torch.
+    """
+    video = Path(video_path)
+    return video.with_name(video.name + REFINEMENT_SUFFIX)
+
+
 # ----------------------------------------------------------------------
 # Export
 # ----------------------------------------------------------------------
@@ -728,46 +770,6 @@ def store_to_movement_ds(store: KeypointStore, fps: float, image_height: float |
         },
         attrs={"ds_type": "poses", "fps": float(fps), "source_software": "ethograph"},
     )
-
-
-def store_to_dlc_dataframe(store: KeypointStore, scorer: str, video_name: str) -> pd.DataFrame:
-    """Anchor frames as a DeepLabCut ``CollectedData`` DataFrame.
-
-    Only labelled frames are included — this is training data for DLC, not a
-    prediction table. The index holds the image paths DLC expects; extracting
-    those PNGs is DLC's job (``deeplabcut.extract_frames``), not EthoGraph's.
-
-    With more than one individual the multi-animal layout is written, which
-    carries DLC's own ``individuals`` column level. Those level names are part
-    of the DLC format and are spelled the way DLC spells them.
-    """
-    frames = store.anchor_frames()
-    if store.n_individuals > 1:
-        columns = pd.MultiIndex.from_product(
-            [[scorer], store.individual_names, store.keypoint_names, ["x", "y"]],
-            names=["scorer", "individuals", "bodyparts", "coords"],
-        )
-    else:
-        columns = pd.MultiIndex.from_product(
-            [[scorer], store.keypoint_names, ["x", "y"]],
-            names=["scorer", "bodyparts", "coords"],
-        )
-    index = pd.MultiIndex.from_tuples(
-        [("labeled-data", video_name, f"img{frame:05d}.png") for frame in frames],
-        names=[None, None, None],
-    )
-    values = np.full((len(frames), len(columns)), np.nan)
-    for row, frame in enumerate(frames):
-        values[row] = store.anchors[frame].reshape(-1)
-    return pd.DataFrame(values, index=index, columns=columns)
-
-
-def store_to_dlc_h5(store: KeypointStore, path: str | Path, scorer: str, video_name: str) -> Path:
-    """Write ``CollectedData_<scorer>.h5`` (a single file, per DLC convention)."""
-    df = store_to_dlc_dataframe(store, scorer, video_name)
-    path = Path(path)
-    df.to_hdf(path, key="df_with_missing", mode="w")
-    return path
 
 
 # ----------------------------------------------------------------------
