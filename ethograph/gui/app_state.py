@@ -216,6 +216,10 @@ class AppStateSpec:
         "labelling_backend": (str, "spline", True),
         # Labelling marker diameter, in SCREEN pixels (zoom-independent).
         "labelling_point_size": (float, 16.0, True),
+        # Source-video pixels of forward/backward tracking disagreement that
+        # costs a fill point a factor 1/e of confidence. Tighter on a small
+        # frame than on a 4K one, so it is a setting rather than a constant.
+        "labelling_disagreement_px": (float, 10.0, True),
         # Plotting
         "ymin": (float | None, None, True),
         "ymax": (float | None, None, True),

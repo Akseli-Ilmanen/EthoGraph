@@ -173,10 +173,20 @@ class _GapBackend:
     A spline pre-pass provides positions for points that are missing on a
     gap's endpoints and covers the span before the first / after the last
     anchor, where there is nothing to track between.
+
+    *disagreement_px* is the confidence scale: pixels of forward/backward
+    disagreement that cost a factor 1/e. It is a constructor argument because
+    the right value depends on the footage — the same 10 px is a fifth of a
+    small animal on one recording and a rounding error on a 4K one.
     """
 
     name = "gap"
     requires_video = True
+
+    def __init__(self, disagreement_px: float = DISAGREEMENT_SCALE):
+        if disagreement_px <= 0:
+            raise ValueError("disagreement_px must be positive — it is the scale of an exponential.")
+        self._disagreement = float(disagreement_px)
 
     def fill(self, anchors, n_frames, frames=None, progress: Progress = _no_progress):
         if not anchors:
@@ -206,7 +216,7 @@ class _GapBackend:
             filled[start : end + 1] = _blend(forward, backward)
             disagreement = np.linalg.norm(forward - backward, axis=-1)
             confidence[start : end + 1] = np.minimum(visible_forward, visible_backward) * np.exp(
-                -disagreement / DISAGREEMENT_SCALE
+                -disagreement / self._disagreement
             )
 
         _apply_anchors(filled, confidence, anchors)
@@ -236,7 +246,8 @@ class OpticalFlowBackend(_GapBackend):
     name = "Optical flow"
     requires_video = True
 
-    def __init__(self, window: int = 21, levels: int = 3):
+    def __init__(self, window: int = 21, levels: int = 3, disagreement_px: float = DISAGREEMENT_SCALE):
+        super().__init__(disagreement_px)
         self._window = int(window)
         self._levels = int(levels)
 
@@ -281,8 +292,11 @@ class CoTrackerBackend(_GapBackend):
     from the right, blended linearly across the gap.
 
     Because gaps are short (~10 frames at the recommended anchor density)
-    drift is bounded and no test-time optimisation is needed — that is a
-    GPU-only technique and is deliberately not implemented. Cost is dominated
+    drift is bounded and no test-time optimisation is needed — fine-tuning the
+    query-point embedding on the labelled frames (Pan et al. 2025, "Animal Pose
+    Labeling Using General-Purpose Point Trackers", arXiv:2506.03868) buys its
+    accuracy over a *single* query at frame 0, which re-querying every gap
+    already avoids, and costs minutes of GPU per video. Cost here is dominated
     by frame feature extraction rather than point count, so tracking 20
     keypoints costs about what 3 do.
     """
@@ -290,7 +304,8 @@ class CoTrackerBackend(_GapBackend):
     name = "CoTracker3"
     requires_video = True
 
-    def __init__(self, predictor, device: str | None = None):
+    def __init__(self, predictor, device: str | None = None, disagreement_px: float = DISAGREEMENT_SCALE):
+        super().__init__(disagreement_px)
         self._predictor = predictor
         self._device = device or resolve_device()
 
@@ -476,9 +491,11 @@ def available_backends() -> list[BackendInfo]:
     else:
         cotracker_hint = ""
     # Showing the resolved device makes it obvious whether the GPU was picked
-    # up — a silent CPU fallback on a CUDA machine is the confusing case. The
-    # CPU path is ~13x slower (see COTRACKER_SECONDS_PER_GAP): usable, so it is
-    # never hidden, but the cost is named up front rather than discovered.
+    # up — a silent CPU fallback on a CUDA machine is the confusing case, and
+    # PyPI's Windows torch wheels are CPU-only unless --torch-backend=auto was
+    # used. The CPU path is an order of magnitude slower (see
+    # COTRACKER_SECONDS_PER_GAP) and grows with resolution and gap length: it
+    # stays selectable, but it is not a practical way to label a recording.
     label = "CoTracker3"
     if installed:
         device = resolve_device()
@@ -486,8 +503,9 @@ def available_backends() -> list[BackendInfo]:
         if device == "cpu":
             label += " — slow"
             slow = (
-                "No GPU found: roughly 5 s per gap, so ~90 s for 20 labelled\n"
-                "frames. Optical flow is far quicker on CPU."
+                "No GPU found: CoTracker3 needs one to be practical — expect\n"
+                "minutes per fill here, more on high-resolution video. Use\n"
+                "optical flow or the spline on CPU."
             )
             cotracker_hint = f"{cotracker_hint}\n{slow}" if cotracker_hint else slow
     return [
@@ -507,21 +525,24 @@ def build_backend(
     checkpoint: str | Path | None = None,
     device: str | None = None,
     progress: Progress | None = None,
+    disagreement_px: float = DISAGREEMENT_SCALE,
 ) -> FillBackend:
     """Instantiate a backend by key, importing heavy dependencies only now.
 
     ``device=None`` auto-detects (CUDA → MPS → CPU) via :func:`resolve_device`.
     ``progress`` reports the one-time CoTracker weight download; call this from
     inside the progress dialog so a ~97 MB fetch is visible and cancellable.
+    ``disagreement_px`` tunes the confidence of the tracking backends only —
+    the spline scores by distance from the nearest anchor instead.
     """
     if key == "spline":
         return SplineBackend()
     if key == "flow":
-        return OpticalFlowBackend()
+        return OpticalFlowBackend(disagreement_px=disagreement_px)
     if key == "cotracker":
         resolved = resolve_device(device)
         predictor = load_cotracker_predictor(checkpoint, resolved, progress)
-        return CoTrackerBackend(predictor, device=resolved)
+        return CoTrackerBackend(predictor, device=resolved, disagreement_px=disagreement_px)
     raise ValueError(f"Unknown fill backend {key!r}")
 
 

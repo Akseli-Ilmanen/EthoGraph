@@ -93,6 +93,8 @@ class CameraView(QWidget):
         self.static_image_path: Optional[str] = None
         self.static_pose_fps: float = 0.0
         self._fps: float = 0.0
+        #: Path currently decoded by ``_plot`` — reloading it reuses the plot.
+        self._video_path: Optional[str] = None
         self._time_offset: float = 0.0
         self._start_frame: int = 0
         self._end_frame: int = 0
@@ -192,10 +194,27 @@ class CameraView(QWidget):
         end_frame: int | None = None,
     ) -> None:
         """Load a video file. Frame indices used by callers are trial frames
-        (0 = ``start_frame`` in the underlying video)."""
-        self.clear()
-        self._plot = PlotVideo(video=video_path, parent=self)
-        self.layout().addWidget(self._plot.canvas)
+        (0 = ``start_frame`` in the underlying video).
+
+        Reloading the file that is already decoded (trial change, camera
+        re-applied, pose reload) keeps the existing ``PlotVideo`` and only
+        re-clips the frame range. Rebuilding it would close one pynaviz decoder
+        process and spawn another within seconds, and on Windows that races the
+        new worker: spawn makes it re-import ``av``/``pygfx``/``pynapple``
+        (~1.5-2 s) before it attaches to the shared-memory frame buffer, while
+        ``PlotVideo.close()`` waits only ``join(timeout=2)`` before dropping the
+        parent's handle — which is what destroys the mapping on Windows. The
+        loser dies with ``FileNotFoundError: [WinError 2] ... 'wnsm_…'``.
+        """
+        video_path = str(video_path)
+        reuse = self._plot is not None and self._video_path == video_path
+        if reuse:
+            self._detach_load_state()
+        else:
+            self.clear()
+            self._plot = PlotVideo(video=video_path, parent=self)
+            self.layout().addWidget(self._plot.canvas)
+        self._video_path = video_path
         self._fit_image_to_canvas(self._plot)
         self._fps = float(fps)
         total = self._plot.data.shape[0]
@@ -203,6 +222,11 @@ class CameraView(QWidget):
         self._end_frame = int(end_frame) if end_frame is not None else total
         self._end_frame = min(self._end_frame, total)
         self._time_offset = float(time_offset)
+        if reuse:
+            # Renderer handlers and the overlay hook below belong to the plot,
+            # which survived — re-adding them would fire each of them twice.
+            self.request_draw()
+            return
 
         self._plot.renderer.add_event_handler(self._on_sync_event, "sync")
         # Route worker-thread frame updates into the pose overlay as well.
@@ -485,12 +509,18 @@ class CameraView(QWidget):
     # Cleanup
     # ------------------------------------------------------------------
 
-    def clear(self) -> None:
-        self._label_mode = None
-        self._pan_control = None
+    def _detach_load_state(self) -> None:
+        """Drop everything tied to one load — labelling mode and pose overlay —
+        while keeping the plot itself. The half of :meth:`clear` that a reusing
+        :meth:`set_video` still needs; the overlay is rebuilt lazily by
+        :meth:`ensure_overlay` on the same scene."""
+        self.set_label_mode(None)
         if self._overlay is not None:
             self._overlay.clear()
             self._overlay = None
+
+    def clear(self) -> None:
+        self._detach_load_state()
         if self._plot is not None:
             self.layout().removeWidget(self._plot.canvas)
             self._plot.canvas.setParent(None)
@@ -507,6 +537,7 @@ class CameraView(QWidget):
         self.static_image_path = None
         self.static_pose_fps = 0.0
         self._fps = 0.0
+        self._video_path = None
         self._time_offset = 0.0
         self._start_frame = 0
         self._end_frame = 0

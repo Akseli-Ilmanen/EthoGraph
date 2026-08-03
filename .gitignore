@@ -16,7 +16,7 @@ docs/build_preview/
 *.csv
 *.tsv
 *.npz
-
+*paper.pdf
 
 
 # Byte-compiled / optimized / DLL files

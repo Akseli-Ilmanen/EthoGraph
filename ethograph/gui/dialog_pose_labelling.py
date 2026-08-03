@@ -172,6 +172,10 @@ FRAME_COLUMN, INDIVIDUAL_COLUMN, SOURCE_COLUMN, CONFIDENCE_COLUMN = range(len(_F
 HUMAN_SOURCE = "Human"
 FILL_SOURCE = "Fill"
 
+#: Backends that score confidence by forward/backward tracking agreement, and
+#: so take a disagreement tolerance. The spline scores by distance instead.
+_TRACKING_BACKENDS = ("flow", "cotracker")
+
 _FIXED_COLUMN_TOOLTIPS = (
     "Video frame. Click a cell to jump the playhead there.",
     "Which individual this row's points belong to.",
@@ -1193,6 +1197,31 @@ class PoseLabellingDialog(QDialog):
         row.addWidget(self.backend_combo, stretch=1)
         box.addLayout(row)
 
+        # Only the tracking backends score by forward/backward agreement; the
+        # spline scores by distance from the nearest anchor, so this row hides
+        # for it rather than sitting there meaning nothing.
+        self.disagreement_row = QWidget()
+        disagreement = QHBoxLayout(self.disagreement_row)
+        disagreement.setContentsMargins(0, 0, 0, 0)
+        disagreement.addWidget(QLabel("Disagreement tolerance:"))
+        self.disagreement_spin = QDoubleSpinBox()
+        self.disagreement_spin.setRange(0.5, 500.0)
+        self.disagreement_spin.setDecimals(1)
+        self.disagreement_spin.setSuffix(" px")
+        self.disagreement_spin.setValue(float(self.app_state.labelling_disagreement_px))
+        self.disagreement_spin.setToolTip(
+            "How far the forward and backward tracks may drift apart before a\n"
+            "point is called unreliable: this many source-video pixels of\n"
+            "disagreement costs a factor 1/e of confidence.\n\n"
+            "Raise it for large or fast animals, lower it to be strict. It only\n"
+            "changes the Confidence column, the confidence filter and which\n"
+            "frames 'Lowest fill confidence' proposes — never the positions."
+        )
+        self.disagreement_spin.valueChanged.connect(self._on_disagreement_changed)
+        disagreement.addWidget(self.disagreement_spin, stretch=1)
+        box.addWidget(self.disagreement_row)
+        self._refresh_disagreement_row()
+
         fill_btn = QPushButton("Fill remaining frames")
         fill_btn.clicked.connect(self._on_fill)
         box.addWidget(fill_btn)
@@ -1855,6 +1884,14 @@ class PoseLabellingDialog(QDialog):
 
     def _on_backend_changed(self, _index: int) -> None:
         self.app_state.labelling_backend = self.backend_combo.currentData()
+        self._refresh_disagreement_row()
+
+    def _on_disagreement_changed(self, value: float) -> None:
+        self.app_state.labelling_disagreement_px = float(value)
+
+    def _refresh_disagreement_row(self) -> None:
+        """Show the tolerance only for backends whose confidence uses it."""
+        self.disagreement_row.setVisible(self.backend_combo.currentData() in _TRACKING_BACKENDS)
 
     def _on_fill(self) -> None:
         if not self.store.anchor_frames():
@@ -1896,7 +1933,11 @@ class PoseLabellingDialog(QDialog):
 
     def _build_and_fill(self, key: str, label: str, report):
         """Backends track flat points — the individual/keypoint split is restored after."""
-        backend = build_backend(key, progress=report("Downloading CoTracker3 weights…"))
+        backend = build_backend(
+            key,
+            progress=report("Downloading CoTracker3 weights…"),
+            disagreement_px=float(self.app_state.labelling_disagreement_px),
+        )
         frames = None
         if backend.requires_video:
             frames = self._open_frames()

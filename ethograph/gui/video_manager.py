@@ -225,7 +225,10 @@ class VideoManager:
             self._setup_primary_image()
             return
         self._warn_video_format()
-        self._cleanup_primary_video()
+        # Only the VideoSync is dropped here: clearing the view too would close
+        # its decoder process, and set_video reuses it when the trial change
+        # kept the same file (see CameraView.set_video).
+        self._teardown_primary_sync()
         self._setup_primary_video(restore_frame)
 
     def _setup_primary_image(self):
@@ -240,7 +243,9 @@ class VideoManager:
         view.set_static_image(img)
         view.static_image_path = self.app_state.video_path
 
-    def _cleanup_primary_video(self):
+    def _teardown_primary_sync(self):
+        """Drop the ``VideoSync`` driving the primary view, leaving the view
+        itself loaded (see :meth:`_cleanup_primary_video` to also unload it)."""
         sync = getattr(self.app_state, "video", None)
         if sync is not None:
             try:
@@ -256,6 +261,9 @@ class VideoManager:
                 pass
             sync.cleanup()
             self.app_state.video = None
+
+    def _cleanup_primary_video(self):
+        self._teardown_primary_sync()
         self.primary_view.clear()
 
     def _trial_clip(self, fps: float, time_offset: float, nframes: int) -> tuple[int, int, float]:
@@ -390,6 +398,9 @@ class VideoManager:
         try:
             probe = probe_video(self.app_state.video_path)
         except (OSError, ValueError, av.AVError) as e:
+            # The caller no longer pre-clears the view (so set_video can reuse a
+            # loaded plot), so an abort has to unload whatever is still shown.
+            self.primary_view.clear()
             notify(f"Video file could not be loaded: {e}", "warning")
             return
 
@@ -413,6 +424,7 @@ class VideoManager:
                 end_frame=end_frame,
             )
         except (OSError, ValueError) as e:
+            view.clear()
             notify(f"Video file could not be loaded: {e}", "warning")
             return
         view.source_video_path = self.app_state.video_path

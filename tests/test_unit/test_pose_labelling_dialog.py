@@ -794,6 +794,21 @@ def test_deleting_a_filled_row_keeps_the_labels_on_it(dialog):
     assert _table_rows(dialog)[4][: len(_FIXED_COLUMNS) + 1] == ("4", "individual_0", "Human", "1.00", "10.0")
 
 
+def test_the_disagreement_tolerance_belongs_to_the_tracking_backends(dialog):
+    """The spline scores by distance from an anchor — the tolerance is meaningless."""
+    combo = dialog.backend_combo
+    combo.setCurrentIndex(combo.findData("spline"))
+    assert dialog.disagreement_row.isHidden() is True
+
+    combo.setCurrentIndex(combo.findData("flow"))
+    assert dialog.disagreement_row.isHidden() is False
+
+
+def test_the_disagreement_tolerance_is_remembered(dialog):
+    dialog.disagreement_spin.setValue(25.0)
+    assert dialog.app_state.labelling_disagreement_px == 25.0
+
+
 def test_the_confidence_column_is_empty_before_a_fill(dialog):
     """There is nothing to be confident about until a backend has run."""
     dialog.store.set_point(3, "beak", (1.0, 2.0))

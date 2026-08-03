@@ -338,6 +338,41 @@ def test_gap_backend_covers_frames_outside_the_anchored_span():
     np.testing.assert_allclose(filled[0, 0], filled[5, 0])
 
 
+class _DriftBackend(_GapBackend):
+    """Forward and backward tracks that disagree by a known number of pixels."""
+
+    name = "drift"
+    DRIFT = 10.0
+
+    def _track(self, clip, points, query_frame):
+        offset = 0.0 if query_frame == 0 else self.DRIFT
+        positions = np.repeat((np.asarray(points) + offset)[None], len(clip), axis=0)
+        return positions.astype(np.float64), np.ones((len(clip), len(points)))
+
+
+def test_disagreement_tolerance_scales_the_confidence():
+    """The confidence knob: how far the two tracks may drift before it counts."""
+    anchors = {0: np.array([[0.0, 0.0]]), 10: np.array([[0.0, 0.0]])}
+
+    strict, strict_confidence = _DriftBackend(disagreement_px=1.0).fill(anchors, 11, _frames(11))
+    lenient, lenient_confidence = _DriftBackend(disagreement_px=100.0).fill(anchors, 11, _frames(11))
+
+    # Same positions either way — the tolerance only scores them.
+    np.testing.assert_allclose(strict, lenient)
+    drift = np.hypot(_DriftBackend.DRIFT, _DriftBackend.DRIFT)
+    assert strict_confidence[5, 0] == pytest.approx(np.exp(-drift / 1.0))
+    assert lenient_confidence[5, 0] == pytest.approx(np.exp(-drift / 100.0))
+
+
+def test_disagreement_tolerance_must_be_positive():
+    with pytest.raises(ValueError):
+        OpticalFlowBackend(disagreement_px=0.0)
+
+
+def test_build_backend_passes_the_tolerance_through():
+    assert build_backend("flow", disagreement_px=42.0)._disagreement == 42.0
+
+
 def test_gap_backend_cancellation_stops_early():
     anchors = _anchors()
     filled, _ = _HoldBackend().fill(anchors, N_FRAMES, _frames(), lambda _f: False)
