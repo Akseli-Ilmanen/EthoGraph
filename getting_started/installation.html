@@ -626,13 +626,10 @@ You can combine them as needed:</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">proxy</span></code></p></td>
 <td><p>Bundled ffmpeg for faster scrubbing in long videos (optional)</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">optical-flow</span></code></p></td>
-<td><p>OpenCV keypoint-fill backend (see below)</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dev</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dev</span></code></p></td>
 <td><p>Testing and linting tools</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">docs</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">docs</span></code></p></td>
 <td><p>Documentation build dependencies</p></td>
 </tr>
 </tbody>
@@ -670,9 +667,7 @@ and reinstalling from scratch.</p>
 <section id="keypoint-labelling-backends-optional">
 <span id="target-keypoint-fill"></span><h2>Keypoint labelling backends (optional)<a class="headerlink" href="#keypoint-labelling-backends-optional" title="Link to this heading">#</a></h2>
 <p><strong>Tools ▸ Keypoint labelling…</strong> lets you label a few frames by clicking the
-video and fill the rest automatically. The default <em>Spline</em> backend needs
-<strong>nothing extra</strong> — it ships with the base install and is a strong baseline when
-motion is smooth.</p>
+video and fill the rest automatically.</p>
 <div class="pst-scrollable-table-container"><table class="table">
 <thead>
 <tr class="row-odd"><th class="head"><p>Backend</p></th>
@@ -704,77 +699,20 @@ motion is smooth.</p>
 </tbody>
 </table>
 </div>
-<div class="admonition seealso">
-<p class="admonition-title">See also</p>
-<p>This page covers <em>installing</em> the backends. Which one to reach for, how the
-labelling loop works, and when to train a DeepLabCut detector instead are
-covered in <a class="reference internal" href="../advanced/keypoint_labelling.html"><span class="doc">Keypoint labelling</span></a>.</p>
-</div>
-<section id="optical-flow">
-<h3>Optical flow<a class="headerlink" href="#optical-flow" title="Link to this heading">#</a></h3>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[optical-flow]&quot;</span>
-</pre></div>
-</div>
-<p>This is the backend to reach for <strong>when you have no GPU</strong> and the spline is not
-following the animal closely enough: it uses the pixels, runs at roughly video
-speed on a laptop CPU, and needs no model weights.</p>
-</section>
-<section id="posepal-plan-on-a-gpu">
-<h3>PosePAL — plan on a GPU<a class="headerlink" href="#posepal-plan-on-a-gpu" title="Link to this heading">#</a></h3>
-<p>PosePAL<a class="footnote-reference brackets" href="#posepal" id="id5" role="doc-noteref"><span class="fn-bracket">[</span>4<span class="fn-bracket">]</span></a> is the learned backend: it takes CoTracker3<a class="footnote-reference brackets" href="#cotracker" id="id6" role="doc-noteref"><span class="fn-bracket">[</span>3<span class="fn-bracket">]</span></a>,
-freezes the network, and optimises <em>only</em> the per-keypoint appearance features
-against the frames you already labelled, so the tracker knows what your keypoints
-look like on <em>this</em> animal in <em>this</em> recording. It is the method this GUI offers
-for tracking with a model — the unrefined tracker is not a separate choice.</p>
-<div class="admonition important">
-<p class="admonition-title">Important</p>
-<p>The fit is 500 optimisation steps, not a single forward pass, so this backend is
-<strong>GPU-only</strong> and is greyed out without one. Without a GPU, use <em>Spline</em> or
-<em>Optical flow</em>. Budget around <strong>5 GB of VRAM</strong> (measured on an RTX 3080 with a
-480p clip).</p>
-</div>
-<p>Install it with one command:</p>
+<p>Spline and optical flow need <strong>nothing extra</strong>, and neither does the <strong>Detect</strong>
+tab, which reads AprilTag <code class="docutils literal notranslate"><span class="pre">tag36h11</span></code> markers and feeds them to whichever backend
+you fill with — OpenCV and <code class="docutils literal notranslate"><span class="pre">pupil-apriltags</span></code> both come with <code class="docutils literal notranslate"><span class="pre">ethograph[gui]</span></code>.</p>
+<p>Only PosePAL is a separate install — GPU only, and <code class="docutils literal notranslate"><span class="pre">--torch-backend=auto</span></code>
+matters since PyPI’s Windows torch wheels are CPU-only:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--torch-backend<span class="o">=</span>auto<span class="w"> </span>torch<span class="w"> </span><span class="s2">&quot;cotracker @ git+https://github.com/facebookresearch/co-tracker.git@82e02e8029753ad4ef13cf06be7f4fc5facdda4d&quot;</span>
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">--torch-backend=auto</span></code> is the part that matters: PyPI’s Windows PyTorch wheels
-are <strong>CPU-only</strong>, so without it a perfectly good GPU is silently ignored and you
-end up on the slow path without being told. CoTracker itself has no PyPI
-release, which is why it is installed from a pinned commit rather than as an
-<code class="docutils literal notranslate"><span class="pre">ethograph[...]</span></code> extra.</p>
-<p>Check that PyTorch actually found the GPU:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else &#39;&#39;)&quot;</span>
-</pre></div>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>This page covers <em>installing</em> the backends. Which one to reach for, how the
+labelling loop works, what the PosePAL fit costs and when to train a DeepLabCut
+detector instead are covered in <a class="reference internal" href="../advanced/keypoint_labelling/index.html"><span class="doc">Keypoint labelling</span></a>.</p>
 </div>
-<p>The labelling dialog reports the same thing: the backend is listed as <strong>PosePAL
-(CoTracker3 + refinement) (cuda)</strong> or <strong>(mps)</strong>, so the device it resolved is
-visible before you start a fill rather than discovered afterwards. The ~97 MB
-CoTracker3 weights download automatically into <code class="docutils literal notranslate"><span class="pre">~/.ethograph/models/cotracker</span></code> on
-the first fill; the refinement itself needs no extra weights, since it is fitted
-from your own labels.</p>
-<p><strong>How it behaves in the dialog</strong></p>
-<ul class="simple">
-<li><p>The first fill runs the fit (a few minutes on a GPU), then fills. The progress
-dialog names which phase it is in.</p></li>
-<li><p>The fit is <strong>saved next to the video</strong> (<code class="docutils literal notranslate"><span class="pre">&lt;video&gt;.posepal.pt</span></code>) and reused by
-every later fill made from the same labels, so re-filling without labelling
-anything new costs a forward pass, not another fit.</p></li>
-<li><p>Label or correct a point and the fit is out of date: the next fill redoes it
-by itself, from scratch. There is no separate fit button — the Fill tab just
-says which phases the next fill will pay for.</p></li>
-<li><p>Cancelling keeps the previous fit <em>and</em> the previous fill; a half-optimised
-model is never used.</p></li>
-</ul>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>Editing the keypoint schema invalidates a fit — the features are learned per
-keypoint — and the fit needs at least two labelled frames close enough together
-to fall in one training window.</p>
-<p>No GPU of your own? The optical-flow backend is the honest local answer. Renting
-one is only worth it for large labelling jobs — the fill is not the slow part of
-annotation, the clicking is.</p>
-</div>
-</section>
 </section>
 <section id="model-training-experimental">
 <h2>Model training (experimental)<a class="headerlink" href="#model-training-experimental" title="Link to this heading">#</a></h2>
@@ -808,13 +746,11 @@ that PyTorch/CUDA packages depend on.</p>
 <p>Lucas, B. D. &amp; Kanade, T. (1981). <a class="reference external" href="https://www.ri.cmu.edu/pub_files/pub3/lucas_bruce_d_1981_1/lucas_bruce_d_1981_1.pdf">An Iterative Image Registration Technique with an Application to Stereo Vision</a>. <em>IJCAI</em>, 674–679. The pyramidal form used here is Bouguet, J.-Y. (2001), <a class="reference external" href="https://robots.stanford.edu/cs223b04/algo_tracking.pdf">Pyramidal Implementation of the Lucas Kanade Feature Tracker</a>, via <a class="reference external" href="https://docs.opencv.org/4.x/dc/d6b/group__video__track.html#ga473e4b886d0bcc6b65831eb88ed93323"><code class="docutils literal notranslate"><span class="pre">cv2.calcOpticalFlowPyrLK</span></code></a>.</p>
 </aside>
 <aside class="footnote brackets" id="cotracker" role="doc-footnote">
-<span class="label"><span class="fn-bracket">[</span>3<span class="fn-bracket">]</span></span>
-<span class="backrefs">(<a role="doc-backlink" href="#id3">1</a>,<a role="doc-backlink" href="#id6">2</a>)</span>
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">3</a><span class="fn-bracket">]</span></span>
 <p>Karaev, N., Makarov, I., Wang, J., Neverova, N., Vedaldi, A. &amp; Rupprecht, C. (2024). <a class="reference external" href="https://arxiv.org/abs/2410.11831">CoTracker3: Simpler and Better Point Tracking by Pseudo-Labelling Real Videos</a>. <a class="reference external" href="https://cotracker3.github.io/">Project page</a> · <a class="reference external" href="https://github.com/facebookresearch/co-tracker">GitHub</a></p>
 </aside>
 <aside class="footnote brackets" id="posepal" role="doc-footnote">
-<span class="label"><span class="fn-bracket">[</span>4<span class="fn-bracket">]</span></span>
-<span class="backrefs">(<a role="doc-backlink" href="#id4">1</a>,<a role="doc-backlink" href="#id5">2</a>)</span>
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">4</a><span class="fn-bracket">]</span></span>
 <p>Pan, Z., Pan, B., Yang, G., Harley, A. W. &amp; Guibas, L. (2025). <a class="reference external" href="https://arxiv.org/abs/2506.03868">Animal Pose Labeling Using General-Purpose Point Trackers</a>. Reference implementation: <a class="reference external" href="https://github.com/Zhuoyang-Pan/PosePAL">PosePAL</a>. EthoGraph implements the method against upstream CoTracker3 rather than the authors’ fork; the optimiser settings follow the paper (Adam, 1e-3 → 1e-5, Huber tracking loss, L1 pull-back weighted 0.01).</p>
 </aside>
 </aside>
@@ -882,11 +818,7 @@ that PyTorch/CUDA packages depend on.</p>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#for-developers">For developers</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#update-the-package">Update the package</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#keypoint-labelling-backends-optional">Keypoint labelling backends (optional)</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#optical-flow">Optical flow</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#posepal-plan-on-a-gpu">PosePAL — plan on a GPU</a></li>
-</ul>
-</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#keypoint-labelling-backends-optional">Keypoint labelling backends (optional)</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-training-experimental">Model training (experimental)</a></li>
 </ul>
   </nav></div>

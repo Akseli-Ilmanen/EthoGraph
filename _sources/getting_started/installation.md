@@ -204,8 +204,7 @@ You can combine them as needed:
 | `audio`        | Waveform, spectrogram, vocalisation analysis (`sounddevice` etc.)   |
 | `dandi`        | DANDI archive download client (heavy, opt-in)                       |
 | `proxy`        | Bundled ffmpeg for faster scrubbing in long videos (optional)       |
-| `optical-flow` | OpenCV keypoint-fill backend (see below)                            |
-| `dev`          | Testing and linting tools                                           |
+| `dev`          | Testing and linting tools                                            |
 | `docs`         | Documentation build dependencies                                    |
 
 ```{note}
@@ -243,9 +242,7 @@ and reinstalling from scratch.
 ## Keypoint labelling backends (optional)
 
 **Tools ▸ Keypoint labelling…** lets you label a few frames by clicking the
-video and fill the rest automatically. The default *Spline* backend needs
-**nothing extra** — it ships with the base install and is a strong baseline when
-motion is smooth.
+video and fill the rest automatically.
 
 | Backend | Method | Uses video | Speed | Hardware |
 |---------|--------|------------|-------|----------|
@@ -253,83 +250,21 @@ motion is smooth.
 | **Optical flow** | Pyramidal Lucas-Kanade sparse tracking, run forward and backward across each gap[^lk] | Yes | Roughly real-time | CPU |
 | **PosePAL (CoTracker3 + refinement)** | A transformer point tracker[^cotracker] whose per-keypoint appearance features are first fitted to the frames you labelled[^posepal], then run forward and backward across each gap | Yes | A few minutes for the fit, once; seconds per fill after that | **GPU only** — CUDA or Apple Silicon |
 
-```{seealso}
-This page covers *installing* the backends. Which one to reach for, how the
-labelling loop works, and when to train a DeepLabCut detector instead are
-covered in {doc}`../advanced/keypoint_labelling`.
-```
+Spline and optical flow need **nothing extra**, and neither does the **Detect**
+tab, which reads AprilTag `tag36h11` markers and feeds them to whichever backend
+you fill with — OpenCV and `pupil-apriltags` both come with `ethograph[gui]`.
 
-### Optical flow
-
-```bash
-uv pip install "ethograph[optical-flow]"
-```
-
-This is the backend to reach for **when you have no GPU** and the spline is not
-following the animal closely enough: it uses the pixels, runs at roughly video
-speed on a laptop CPU, and needs no model weights.
-
-### PosePAL — plan on a GPU
-
-PosePAL[^posepal] is the learned backend: it takes CoTracker3[^cotracker],
-freezes the network, and optimises *only* the per-keypoint appearance features
-against the frames you already labelled, so the tracker knows what your keypoints
-look like on *this* animal in *this* recording. It is the method this GUI offers
-for tracking with a model — the unrefined tracker is not a separate choice.
-
-```{important}
-The fit is 500 optimisation steps, not a single forward pass, so this backend is
-**GPU-only** and is greyed out without one. Without a GPU, use *Spline* or
-*Optical flow*. Budget around **5 GB of VRAM** (measured on an RTX 3080 with a
-480p clip).
-```
-
-Install it with one command:
+Only PosePAL is a separate install — GPU only, and `--torch-backend=auto`
+matters since PyPI's Windows torch wheels are CPU-only:
 
 ```bash
 uv pip install --torch-backend=auto torch "cotracker @ git+https://github.com/facebookresearch/co-tracker.git@82e02e8029753ad4ef13cf06be7f4fc5facdda4d"
 ```
 
-`--torch-backend=auto` is the part that matters: PyPI's Windows PyTorch wheels
-are **CPU-only**, so without it a perfectly good GPU is silently ignored and you
-end up on the slow path without being told. CoTracker itself has no PyPI
-release, which is why it is installed from a pinned commit rather than as an
-`ethograph[...]` extra.
-
-Check that PyTorch actually found the GPU:
-
-```bash
-python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else '')"
-```
-
-The labelling dialog reports the same thing: the backend is listed as **PosePAL
-(CoTracker3 + refinement) (cuda)** or **(mps)**, so the device it resolved is
-visible before you start a fill rather than discovered afterwards. The ~97 MB
-CoTracker3 weights download automatically into `~/.ethograph/models/cotracker` on
-the first fill; the refinement itself needs no extra weights, since it is fitted
-from your own labels.
-
-**How it behaves in the dialog**
-
-- The first fill runs the fit (a few minutes on a GPU), then fills. The progress
-  dialog names which phase it is in.
-- The fit is **saved next to the video** (`<video>.posepal.pt`) and reused by
-  every later fill made from the same labels, so re-filling without labelling
-  anything new costs a forward pass, not another fit.
-- Label or correct a point and the fit is out of date: the next fill redoes it
-  by itself, from scratch. There is no separate fit button — the Fill tab just
-  says which phases the next fill will pay for.
-- Cancelling keeps the previous fit *and* the previous fill; a half-optimised
-  model is never used.
-
-```{note}
-Editing the keypoint schema invalidates a fit — the features are learned per
-keypoint — and the fit needs at least two labelled frames close enough together
-to fall in one training window.
-
-No GPU of your own? The optical-flow backend is the honest local answer. Renting
-one is only worth it for large labelling jobs — the fill is not the slow part of
-annotation, the clicking is.
+```{seealso}
+This page covers *installing* the backends. Which one to reach for, how the
+labelling loop works, what the PosePAL fit costs and when to train a DeepLabCut
+detector instead are covered in {doc}`../advanced/keypoint_labelling/index`.
 ```
 
 ## Model training (experimental)

@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Changepoints &#8212; ethograph</title>
+    <title>1-2. Define keypoints and label frames &#8212; ethograph</title>
   
   
   
@@ -45,13 +45,13 @@
     <script src="../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/design-tabs.js?v=f930bc37"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'advanced/changepoints/index';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'advanced/keypoint_labelling/labelling';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
-    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/advanced/changepoints/index.html" />
+    <link rel="canonical" href="https://Akseli-Ilmanen.github.io/ethograph/advanced/keypoint_labelling/labelling.html" />
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="Overview" href="overview.html" />
-    <link rel="prev" title="Exporting labels" href="../labels/exporting.html" />
+    <link rel="next" title="3. Detect — optional, if your animals wear tags" href="detect.html" />
+    <link rel="prev" title="Keypoint labelling" href="index.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -374,20 +374,20 @@
 <li class="toctree-l2"><a class="reference internal" href="../labels/exporting.html">Exporting labels</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">Changepoints</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="overview.html">Overview</a></li>
-<li class="toctree-l2"><a class="reference internal" href="kinematic.html">Kinematic changepoints</a></li>
-<li class="toctree-l2"><a class="reference internal" href="audio.html">Audio changepoints</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ruptures.html">Ruptures</a></li>
-<li class="toctree-l2"><a class="reference internal" href="correction.html">Changepoint correction</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../changepoints/index.html">Changepoints</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../changepoints/overview.html">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changepoints/kinematic.html">Kinematic changepoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changepoints/audio.html">Audio changepoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changepoints/ruptures.html">Ruptures</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changepoints/correction.html">Changepoint correction</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../keypoint_labelling/index.html">Keypoint labelling</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="../keypoint_labelling/labelling.html">1-2. Define keypoints and label frames</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../keypoint_labelling/detect.html">3. Detect — optional, if your animals wear tags</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../keypoint_labelling/fill.html">4. Fill</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../keypoint_labelling/correction.html">5. The correction loop</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../keypoint_labelling/export.html">6. Visualizing &amp; exporting</a></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Keypoint labelling</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">1-2. Define keypoints and label frames</a></li>
+<li class="toctree-l2"><a class="reference internal" href="detect.html">3. Detect — optional, if your animals wear tags</a></li>
+<li class="toctree-l2"><a class="reference internal" href="fill.html">4. Fill</a></li>
+<li class="toctree-l2"><a class="reference internal" href="correction.html">5. The correction loop</a></li>
+<li class="toctree-l2"><a class="reference internal" href="export.html">6. Visualizing &amp; exporting</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="../playback.html">Video &amp; Audio playback</a></li>
@@ -436,7 +436,10 @@
     
     <li class="breadcrumb-item"><a href="../index.html" class="nav-link">Advanced</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Changepoints</span></li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Keypoint labelling</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">1-2. Define keypoints and label frames</span></li>
   </ul>
 </nav>
 </div>
@@ -453,21 +456,123 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section class="tex2jax_ignore mathjax_ignore" id="changepoints">
-<h1>Changepoints<a class="headerlink" href="#changepoints" title="Link to this heading">#</a></h1>
-<p>Changepoint detection methods for finding candidate behavioural boundaries in
-kinematic, audio, and general time-series data, plus how detected
-changepoints refine human labels.</p>
-<div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="overview.html">Overview</a></li>
-<li class="toctree-l1"><a class="reference internal" href="kinematic.html">Kinematic changepoints</a></li>
-<li class="toctree-l1"><a class="reference internal" href="audio.html">Audio changepoints</a></li>
-<li class="toctree-l1"><a class="reference internal" href="ruptures.html">Ruptures</a></li>
-<li class="toctree-l1"><a class="reference internal" href="correction.html">Changepoint correction</a></li>
-</ul>
+  <section class="tex2jax_ignore mathjax_ignore" id="define-keypoints-and-label-frames">
+<h1>1-2. Define keypoints and label frames<a class="headerlink" href="#define-keypoints-and-label-frames" title="Link to this heading">#</a></h1>
+<p>The first two tabs of the dialog: say what you are labelling, then label it.</p>
+<section id="define-keypoints">
+<h2>1. Define keypoints<a class="headerlink" href="#define-keypoints" title="Link to this heading">#</a></h2>
+<p>Keypoints are defined as one shared list of names instantiated by one or more individuals, shown as a tree with a branch per individual and a leaf per keypoint carrying a per-frame mark and a labelled/total count — unticking the shared-keypoints option lets each individual carry its own subset, and names outside that subset stay permanently empty.</p>
+<p><strong>Colour by</strong> picks what colour tells apart, as in SLEAP — and it is the same setting the pose overlay uses (Pose overlay ▸ Design ▸ Colour by), so the canvas and the overlay never disagree:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Colour by</p></th>
+<th class="head"><p>What it means</p></th>
+<th class="head"><p>Use it</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Keypoint</strong> (default)</p></td>
+<td><p>one colour per body part, the same on every individual</p></td>
+<td><p>labelling — a click answers “which body part is this?”</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Individual</strong></p></td>
+<td><p>one colour per individual, shared by all its keypoints</p></td>
+<td><p>telling two animals apart when they overlap</p></td>
+</tr>
+</tbody>
+</table>
 </div>
+<p>Every marker is a circle either way; the individual you are labelling is drawn at full opacity, the others dimmed, and each carries its name at the centre of its points. Colours are auto-assigned from a spread palette, overridable via <strong>Colour…</strong> — which edits whichever palette is being drawn, the selected keypoint’s or the selected individual’s — applied consistently across overlay, tree and points table, resettable wholesale, and persisted in <code class="docutils literal notranslate"><span class="pre">&lt;video&gt;.keypoints.json</span></code>.</p>
 </section>
+<section id="label-edit">
+<h2>2. Label &amp; Edit<a class="headerlink" href="#label-edit" title="Link to this heading">#</a></h2>
+<p>Arm <strong>Sequential</strong> or <strong>Loop</strong> and click the video:</p>
+<ul class="simple">
+<li><p><strong>Sequential</strong> — label every keypoint on one frame. Each click places the
+active keypoint and advances to the next one this individual still lacks.
+It never navigates.</p></li>
+<li><p><strong>Loop</strong> — sweep one keypoint across frames. Each click places it, then does
+whatever <strong>Then go to</strong> says: step one frame, jump to the next suggested
+frame, or stay put. The same dropdown says where <code class="docutils literal notranslate"><span class="pre">Shift+H</span></code> lands.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">Tab</span></code> cycles keypoints, <code class="docutils literal notranslate"><span class="pre">1</span></code>–<code class="docutils literal notranslate"><span class="pre">9</span></code> pick the individual, <code class="docutils literal notranslate"><span class="pre">Backspace</span></code> deletes the
+active point, <code class="docutils literal notranslate"><span class="pre">Ctrl+Z</span></code> undoes, <code class="docutils literal notranslate"><span class="pre">Shift+H</span></code> approves this frame’s predictions (see
+<a class="reference internal" href="correction.html#target-correction-loop"><span class="std std-ref">5. The correction loop</span></a>). Clicking an existing point always selects and
+drags it — correcting never requires switching mode first.</p>
+<p>The overlay shows <strong>everything</strong> — your labels, anything a detector found, and
+the fill’s predictions — so you can judge a prediction before accepting it: a
+label is a <strong>solid</strong> marker, anything else is the same colour drawn
+<strong>hollow</strong>, left empty so you can see the pixels underneath. A hollow marker
+with a <strong>dot in it</strong> was read off <em>this</em> frame by a detector (see
+<a class="reference internal" href="detect.html#target-detect"><span class="std std-ref">3. Detect — optional, if your animals wear tags</span></a>); an empty one was interpolated between other frames.
+Clicking a hollow marker pins it as a label and it turns solid; dragging one
+corrects it first.</p>
+<p>While a mode is armed, left-drag labels and panning moves to <code class="docutils literal notranslate"><span class="pre">Shift</span></code>+left-drag.
+Tick <strong>Lock</strong> to look around instead: left-drag pans again and clicks no longer
+place, move or pin anything. The labels stay on screen and the active keypoint
+is kept, so unticking carries on where you were — unlike stopping the mode,
+which takes the anchor overlay with it.</p>
+<p><strong>Switching to any other tab locks the pointer on its own.</strong> Defining keypoints,
+detecting and filling are all things you do while <em>looking</em> at the video —
+scrubbing to judge a detection, checking a fill — and a stray click there would
+drop a point you never meant to place, silently. The mode itself keeps running,
+so returning to this tab carries straight on. Your own <strong>Lock</strong> tick is left
+exactly as you set it and applies again the moment you come back.</p>
+<section id="which-frames-to-label">
+<h3>Which frames to label<a class="headerlink" href="#which-frames-to-label" title="Link to this heading">#</a></h3>
+<p>Labelling consecutive frames is close to wasted effort: neighbouring frames look
+almost identical, so the second one tells the tracker nothing the first did not.
+The <strong>Which frames to label</strong> group proposes a spread instead. Ask for a <em>share</em>
+of the video — the default is <strong>10%, roughly every 10th frame</strong>, the density
+CoTracker3 is evaluated at for this task (6 labelled frames of 60<a class="footnote-reference brackets" href="#pan" id="id1" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a>).</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Method</p></th>
+<th class="head"><p>What it picks</p></th>
+<th class="head"><p>Use it</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Evenly spaced</strong></p></td>
+<td><p>equally spaced frames, no video scan</p></td>
+<td><p>first pass; hard to beat on a short clip of one behaviour</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Biggest pixel change</strong></p></td>
+<td><p>frames that differ most from their predecessor</p></td>
+<td><p>fast motion, where a spline cuts the corner</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Most different frames</strong></p></td>
+<td><p>k-means over frame thumbnails, one per cluster (DeepLabCut’s method)</p></td>
+<td><p>long, varied recordings</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Where the detector saw nothing</strong></p></td>
+<td><p>frames furthest from any detection</p></td>
+<td><p><strong>after Detect</strong> — the marker was occluded, blurred or facing away</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Lowest fill confidence</strong></p></td>
+<td><p>frames whose <em>worst keypoint</em> the last fill scored lowest, within the span it covered</p></td>
+<td><p><strong>after a fill</strong> — the correction loop</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">N</span></code> — or <strong>Next suggested frame</strong> — jumps to the next suggestion, wrapping at
+the end; plain <code class="docutils literal notranslate"><span class="pre">←</span></code> / <code class="docutils literal notranslate"><span class="pre">→</span></code> still move one frame at a time. There is no key for the
+<em>previous</em> suggestion: the list is a queue to work down, and clicking a row of
+the points table seeks to any frame, suggested or not.</p>
+</section>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading">#</a></h2>
+</section>
+</section>
+<hr class="footnotes docutils" />
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="pan" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">1</a><span class="fn-bracket">]</span></span>
+<p>Pan, Z., Pan, B., Yang, G., Harley, A. W. &amp; Guibas, L. (2025). <a class="reference external" href="https://arxiv.org/abs/2506.03868">Animal Pose Labeling Using General-Purpose Point Trackers</a>. <em>arXiv:2506.03868</em>. <a class="reference external" href="https://zhuoyang-pan.github.io/animal-labeling">Project page</a> · <a class="reference external" href="https://github.com/Zhuoyang-Pan/PosePAL">Reference implementation</a></p>
+</aside>
+</aside>
 
 
                 </article>
@@ -480,20 +585,20 @@ changepoints refine human labels.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="../labels/exporting.html"
+       href="index.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Exporting labels</p>
+        <p class="prev-next-title">Keypoint labelling</p>
       </div>
     </a>
     <a class="right-next"
-       href="overview.html"
+       href="detect.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Overview</p>
+        <p class="prev-next-title">3. Detect — optional, if your animals wear tags</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -509,10 +614,27 @@ changepoints refine human labels.</p>
 
 
   <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#define-keypoints">1. Define keypoints</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#label-edit">2. Label &amp; Edit</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#which-frames-to-label">Which frames to label</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#references">References</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
 
   
   <div class="tocsection sourcelink">
-    <a href="../../_sources/advanced/changepoints/index.md">
+    <a href="../../_sources/advanced/keypoint_labelling/labelling.md">
       
         <i class="fa-solid fa-file-lines"></i> Show Source
       
