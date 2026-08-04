@@ -14,6 +14,7 @@ from ethograph.gui.pose_suggest import (
     METHODS,
     default_min_gap,
     enforce_min_gap,
+    suggest_detection_gaps,
     suggest_frames,
     suggest_uniform,
 )
@@ -95,12 +96,6 @@ def test_uniform_needs_no_frames():
     assert suggest_frames("uniform", 4, N_FRAMES) == suggest_uniform(4, N_FRAMES)
 
 
-def test_uniform_skips_excluded_frames():
-    exclude = set(range(0, 50))
-    picks = suggest_uniform(5, N_FRAMES, exclude)
-    assert not (set(picks) & exclude)
-
-
 def test_uniform_caps_at_what_is_available():
     assert suggest_uniform(50, 5) == [0, 1, 2, 3, 4]
 
@@ -154,12 +149,6 @@ def test_motion_does_not_return_a_run_of_neighbours():
     assert all(g >= 4 for g in gaps), picks
 
 
-def test_motion_respects_exclusions():
-    exclude = set(range(100, 112))
-    picks = suggest_frames("motion", 3, N_FRAMES, _burst_video(), exclude=exclude)
-    assert not (set(picks) & exclude)
-
-
 # ----------------------------------------------------------------------
 # Uncertain (post-fill)
 # ----------------------------------------------------------------------
@@ -185,12 +174,6 @@ def test_uncertain_needs_no_video():
 def test_uncertain_without_a_fill_raises():
     with pytest.raises(ValueError, match="fill to have run first"):
         suggest_frames("uncertain", 3, N_FRAMES)
-
-
-def test_uncertain_skips_already_labelled_frames():
-    exclude = set(range(60, 70))
-    picks = suggest_frames("uncertain", 3, N_FRAMES, exclude=exclude, confidence=_confidence(range(60, 70)))
-    assert not (set(picks) & exclude)
 
 
 def test_uncertain_spreads_across_one_bad_stretch():
@@ -235,13 +218,29 @@ def test_uncertain_returns_nothing_when_no_frame_was_filled():
 def test_frame_confidence_is_nan_where_the_fill_did_not_reach():
     conf = np.array([[1.0, 0.0], [np.nan, np.nan]])
     scores = pose_suggest.frame_confidence(conf)
-    assert scores[0] == 0.5
+    assert scores[0] == 0.0
     assert np.isnan(scores[1])
 
 
-def test_frame_confidence_averages_over_points():
+def test_frame_confidence_takes_the_worst_point():
+    """One lost keypoint is the whole reason to revisit a frame — an average
+    let the other points vote it back down the ranking."""
     conf = np.array([[1.0, 0.0], [0.5, 0.5]])
-    np.testing.assert_allclose(pose_suggest.frame_confidence(conf), [0.5, 0.5])
+    np.testing.assert_allclose(pose_suggest.frame_confidence(conf), [0.0, 0.5])
+
+
+def test_frame_confidence_skips_points_the_schema_leaves_out():
+    """An asymmetric schema blanks those to NaN; taking them as the minimum
+    would pin every frame of that individual to the same score."""
+    conf = np.array([[0.8, np.nan], [0.4, np.nan]])
+    np.testing.assert_allclose(pose_suggest.frame_confidence(conf), [0.8, 0.4])
+
+
+def test_a_single_bad_keypoint_outranks_a_uniformly_mediocre_frame():
+    conf = np.full((N_FRAMES, 3), 0.5)
+    conf[7] = [0.9, 0.9, 0.1]  # better on average, worse where it matters
+
+    assert suggest_frames("uncertain", 1, N_FRAMES, confidence=conf) == [7]
 
 
 def test_frame_confidence_passes_through_1d():
@@ -267,6 +266,8 @@ def _kwargs_for(method):
     """Whatever that method needs: pixels, a fill's confidence, or nothing."""
     if method == "uncertain":
         return {"confidence": _confidence(range(60, 70))}
+    if method == "detection_gaps":
+        return {"detected": list(range(0, N_FRAMES, 3))}
     if method == "uniform":
         return {}
     return {"frames": _burst_video()}
@@ -282,6 +283,15 @@ def test_every_method_returns_sorted_unique_frames_in_range(method):
 @pytest.mark.parametrize("method", METHODS)
 def test_zero_count_returns_nothing(method):
     assert suggest_frames(method, 0, N_FRAMES, **_kwargs_for(method)) == []
+
+
+@pytest.mark.parametrize("method", METHODS)
+def test_every_method_skips_already_labelled_frames(method):
+    """There is nothing to suggest about a frame that is already labelled, and
+    no method is exempt — including `diverse`, which a per-method test missed."""
+    exclude = set(range(60, 70))
+    picks = suggest_frames(method, 3, N_FRAMES, exclude=exclude, **_kwargs_for(method))
+    assert not (set(picks) & exclude)
 
 
 def test_unknown_method_raises():
@@ -322,3 +332,42 @@ def test_progress_cancellation_stops_decoding():
 
     suggest_frames("motion", 3, N_FRAMES, _burst_video(), progress=progress)
     assert len(calls) == 1
+
+
+# ----------------------------------------------------------------------
+# detection_gaps — the frames a marker detector went blind on
+# ----------------------------------------------------------------------
+
+
+def test_detection_gaps_prefers_the_middle_of_the_longest_blind_stretch():
+    detected = list(range(0, 41)) + list(range(160, N_FRAMES))
+    picks = suggest_detection_gaps(detected, 1, N_FRAMES)
+    assert picks == [100]
+
+
+def test_detection_gaps_never_suggests_a_detected_frame():
+    detected = list(range(0, N_FRAMES, 2))
+    picks = suggest_detection_gaps(detected, 10, N_FRAMES)
+    assert picks and all(frame % 2 for frame in picks)
+
+
+def test_detection_gaps_spreads_across_several_holes():
+    detected = [f for f in range(N_FRAMES) if not (20 <= f < 60 or 120 <= f < 160)]
+    picks = suggest_detection_gaps(detected, 2, N_FRAMES, min_gap=50)
+    assert len(picks) == 2
+    assert 20 <= picks[0] < 60 and 120 <= picks[1] < 160
+
+
+def test_detection_gaps_with_no_detections_falls_back_to_even_spacing():
+    assert suggest_detection_gaps([], 4, N_FRAMES) == suggest_uniform(4, N_FRAMES)
+
+
+def test_detection_gaps_needs_a_detector_run():
+    with pytest.raises(ValueError, match="needs a detector"):
+        suggest_frames("detection_gaps", 3, N_FRAMES)
+
+
+def test_detection_gaps_is_reachable_through_suggest_frames():
+    detected = list(range(0, 41)) + list(range(160, N_FRAMES))
+    assert suggest_frames("detection_gaps", 1, N_FRAMES, detected=detected) == [100]
+    assert "detection_gaps" in METHODS

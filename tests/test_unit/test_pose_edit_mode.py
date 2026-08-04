@@ -14,14 +14,21 @@ pytest.importorskip("pygfx")
 import pygfx as gfx  # noqa: E402
 
 from ethograph.gui.pose_annotate import KeypointStore  # noqa: E402
+from ethograph.gui.pose_convert import (  # noqa: E402
+    COLOR_BY_INDIVIDUAL,
+    COLOR_BY_KEYPOINT,
+)
 from ethograph.gui.pose_edit_mixin import (  # noqa: E402
+    _INACTIVE_ALPHA,
     _OFFSCREEN,
     HIT_RADIUS_PX,
     LOOP_MODE,
+    MARKER_SHAPE,
     SEQUENTIAL_MODE,
     KeypointLabelMode,
-    glyph_for_individual,
-    marker_for_individual,
+    individual_colors_for,
+    keypoint_colors,
+    keypoint_colors_for,
 )
 
 NAMES = ["beak", "tail", "eye"]
@@ -522,32 +529,85 @@ def test_clicking_another_individuals_point_selects_that_individual(pair_mode):
 
 
 # ----------------------------------------------------------------------
-# Shape per individual, colour per keypoint
+# Colour is the identity channel; every marker is a circle
 # ----------------------------------------------------------------------
 
 
-def test_each_individual_gets_its_own_marker_shape():
-    shapes = {marker_for_individual(i) for i in range(4)}
-    assert len(shapes) == 4
-    assert marker_for_individual(0) == "circle"
+def test_every_individual_is_drawn_with_the_same_marker(pair_mode):
+    """Shapes per individual were dropped: colour carries identity alone."""
+    assert {layer.material.marker for layer in pair_mode._overlay._layers} == {MARKER_SHAPE}
 
 
-def test_marker_shapes_wrap_around():
-    from ethograph.gui.pose_edit_mixin import MARKER_SHAPES
-
-    assert marker_for_individual(len(MARKER_SHAPES)) == marker_for_individual(0)
-    assert glyph_for_individual(0) == "●"
-
-
-def test_overlay_draws_one_layer_per_individual(pair_mode):
-    shapes = [layer.material.marker for layer in pair_mode._overlay._layers]
-    assert shapes == [marker_for_individual(0), marker_for_individual(1)]
+def test_one_layer_set_covers_every_individual(pair_mode):
+    """Three layers in total (solid, hollow, pip), not three per individual."""
+    overlay = pair_mode._overlay
+    assert len(overlay._layers) == 3
+    assert len(overlay._solid.geometry.positions.data) == 2 * len(NAMES)
 
 
-def test_overlay_colours_vertices_by_keypoint(pair_mode):
-    colors = pair_mode._overlay._layers[0].geometry.colors.data
-    assert len(colors) == len(NAMES)
-    assert not np.allclose(colors[0], colors[1])
+def test_colour_by_keypoint_repeats_the_palette_on_every_individual(pair_mode):
+    colors = pair_mode._overlay.vertex_colors(active_individual=0)
+    n = len(NAMES)
+
+    assert not np.allclose(colors[0], colors[1])  # keypoints differ
+    np.testing.assert_allclose(colors[:n, :3], colors[n:, :3])  # individuals share
+
+
+def test_colour_by_individual_gives_each_animal_one_colour(pair_mode):
+    pair_mode.set_color_by(COLOR_BY_INDIVIDUAL)
+    colors = pair_mode._overlay.vertex_colors(active_individual=0)
+    n = len(NAMES)
+
+    np.testing.assert_allclose(colors[:n, :3], np.tile(colors[0, :3], (n, 1)))  # keypoints share
+    assert not np.allclose(colors[0, :3], colors[n, :3])  # individuals differ
+
+
+def test_the_inactive_individual_is_dimmed_in_both_modes(pair_mode):
+    n = len(NAMES)
+    for mode in (COLOR_BY_KEYPOINT, COLOR_BY_INDIVIDUAL):
+        pair_mode.set_color_by(mode)
+        colors = pair_mode._overlay.vertex_colors(active_individual=0)
+        assert np.allclose(colors[:n, 3], 1.0)
+        assert np.allclose(colors[n:, 3], _INACTIVE_ALPHA)
+
+
+def test_an_unknown_colour_mode_is_a_bug(mode):
+    with pytest.raises(ValueError):
+        mode.set_color_by("shape")
+
+
+def test_individual_colours_read_the_stores_pins():
+    store = KeypointStore(keypoint_names=list(NAMES), n_frames=10, individual_names=["a", "b"])
+    store.set_individual_color("b", "#ff8000")
+
+    np.testing.assert_allclose(individual_colors_for(store)[1], [1.0, 128 / 255.0, 0.0, 1.0])
+
+
+def test_a_pinned_colour_replaces_only_its_own_keypoint():
+    palette = keypoint_colors(len(NAMES))
+    pinned = keypoint_colors(len(NAMES), [None, "#ff8000", None])
+
+    np.testing.assert_allclose(pinned[1], [1.0, 128 / 255.0, 0.0, 1.0])
+    np.testing.assert_allclose(pinned[[0, 2]], palette[[0, 2]])
+
+
+def test_keypoint_colors_for_reads_the_stores_pins():
+    store = KeypointStore(keypoint_names=list(NAMES), n_frames=10)
+    store.set_keypoint_color("tail", "#ff8000")
+
+    np.testing.assert_allclose(keypoint_colors_for(store)[1], [1.0, 128 / 255.0, 0.0, 1.0])
+
+
+def test_a_new_colour_reaches_the_canvas_without_a_restart(mode):
+    """The overlay is recoloured in place — the layers are keyed by provenance."""
+    mode.store.set_point(0, "tail", (100.0, 100.0))
+    solid = mode._overlay._solid
+    mode.store.set_keypoint_color("tail", "#ff8000")
+
+    mode.refresh_colors()
+
+    assert mode._overlay._solid is solid
+    np.testing.assert_allclose(solid.geometry.colors.data[1], [1.0, 128 / 255.0, 0.0, 1.0])
 
 
 # ----------------------------------------------------------------------
@@ -573,19 +633,19 @@ def test_predictions_are_drawn_in_their_own_hollow_layer(mode):
     _filled(mode)
     overlay = mode._overlay
 
-    assert _drawn(overlay._fill_layers[0]).all()  # every keypoint predicted
-    assert not _drawn(overlay._layers[0]).any()  # none of them labelled
+    assert _drawn(overlay._hollow).all()  # every keypoint predicted
+    assert not _drawn(overlay._solid).any()  # none of them labelled
 
 
 def test_a_hollow_marker_has_no_interior_and_a_coloured_edge(mode):
     """The point being judged stays visible: colour moves to the edge."""
-    material = mode._overlay._fill_layers[0].material
+    material = mode._overlay._hollow.material
     assert material.color[3] == 0.0
     assert str(material.edge_color_mode).endswith("vertex")
 
-    edges = mode._overlay._fill_layers[0].geometry.edge_colors.data
-    solids = mode._overlay._layers[0].geometry.colors.data
-    np.testing.assert_allclose(edges, solids)  # same keypoint colours either way
+    edges = mode._overlay._hollow.geometry.edge_colors.data
+    solids = mode._overlay._solid.geometry.colors.data
+    np.testing.assert_allclose(edges, solids)  # same colours either way
 
 
 def test_a_prediction_moves_to_the_solid_layer_once_labelled(mode):
@@ -594,8 +654,8 @@ def test_a_prediction_moves_to_the_solid_layer_once_labelled(mode):
     mode.refresh()
     overlay = mode._overlay
 
-    assert list(_drawn(overlay._layers[0])) == [False, True, False]
-    assert list(_drawn(overlay._fill_layers[0])) == [True, False, True]
+    assert list(_drawn(overlay._solid)) == [False, True, False]
+    assert list(_drawn(overlay._hollow)) == [True, False, True]
 
 
 def test_clicking_a_prediction_pins_it_and_it_turns_solid(mode):
@@ -604,19 +664,13 @@ def test_clicking_a_prediction_pins_it_and_it_turns_solid(mode):
     mode.handle_click(301.0, 200.0)
 
     assert mode.store.is_anchor(0, "beak") is True
-    assert _drawn(mode._overlay._layers[0])[0]
-    assert not _drawn(mode._overlay._fill_layers[0])[0]
-
-
-def test_both_layer_sets_share_the_individuals_marker_shape(pair_mode):
-    overlay = pair_mode._overlay
-    for i, (solid, hollow) in enumerate(zip(overlay._layers, overlay._fill_layers)):
-        assert solid.material.marker == hollow.material.marker == marker_for_individual(i)
+    assert _drawn(mode._overlay._solid)[0]
+    assert not _drawn(mode._overlay._hollow)[0]
 
 
 def test_set_point_size_resizes_the_hollow_markers_too(mode):
     mode.set_point_size(30.0)
-    assert mode._overlay._fill_layers[0].material.size == 30.0
+    assert mode._overlay._hollow.material.size == 30.0
 
 
 # ----------------------------------------------------------------------
@@ -627,15 +681,17 @@ def test_set_point_size_resizes_the_hollow_markers_too(mode):
 def test_markers_are_sized_in_screen_space(mode):
     """Constant on screen: zooming the canvas must not resize the markers."""
     overlay = mode._overlay
-    assert overlay._layers[0].material.size_space == "screen"
+    assert overlay._solid.material.size_space == "screen"
     assert overlay._active.material.size_space == "screen"
 
 
 def test_set_point_size_resizes_every_layer(mode):
     mode.set_point_size(30)
     assert mode.point_size == 30
-    for layer in mode._overlay._layers:
-        assert layer.material.size == 30
+    assert mode._overlay._solid.material.size == 30
+    assert mode._overlay._hollow.material.size == 30
+    # The pip is a fraction of the marker it sits inside, so it scales with it.
+    assert 0 < mode._overlay._pip.material.size < 30
 
 
 def test_the_active_ring_stays_larger_than_the_markers(mode):

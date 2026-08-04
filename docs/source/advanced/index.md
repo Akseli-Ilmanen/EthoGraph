@@ -29,7 +29,7 @@ Detection methods (kinematic, audio, ruptures) and label-boundary correction.
 :::
 
 :::{grid-item-card} {fas}`crosshairs` Keypoint labelling
-:link: keypoint_labelling
+:link: keypoint_labelling/index
 :link-type: doc
 
 Labelling keypoints by clicking the video, the fill backends (spline, optical
@@ -68,7 +68,7 @@ Common issues and fixes.
 metadata
 labels/index
 changepoints/index
-keypoint_labelling
+keypoint_labelling/index
 playback
 shortcuts
 troubleshooting

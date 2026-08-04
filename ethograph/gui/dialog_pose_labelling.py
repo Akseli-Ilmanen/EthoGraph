@@ -5,6 +5,16 @@ which keypoints), **Label** (the modes, the points table, frame suggestions) and
 **Fill and export**. One column holding every group at once grew taller than a
 screen; the split is by stage, so nothing a stage needs sits on another tab.
 
+Scope: **one video at a time** — a single camera and a single trial, which is
+what a drag & drop of a video gives you. The store is keyed by frame index on
+that video's own frame grid, the sidecar sits next to that video, and the fill
+backends see one continuous clip; there is no trial or camera axis anywhere in
+the model, so a multi-trial ``TrialTree`` (or a second camera view) is *not*
+supported — the dialog always follows ``app_state.video_path``, the primary
+camera's current video, and labels made against another trial are simply
+another sidecar. The full design rules live in
+``docs/source/advanced/keypoint_labelling/``.
+
 Non-modal, because the whole point is to keep navigating frames with the normal
 playhead while labelling. It owns a :class:`~ethograph.gui.pose_annotate.KeypointStore`,
 attaches a :class:`~ethograph.gui.pose_edit_mixin.KeypointLabelMode` to the
@@ -40,19 +50,27 @@ labelling, which is what you actually move through while annotating. Going
 *back* has no key: the suggestions are a queue to work down, and any frame at
 all is one click away in the points table.
 
-The points table has one row per ``(frame, individual)`` and an ``x``/``y``
-column pair per keypoint, so everything on a frame is visible at once. The
-keypoint name is painted once *above* its pair by :class:`PairedHeaderView`.
-Clicking a cell seeks the playhead to that frame and makes the clicked keypoint
-active; conversely the playhead's own row is selected and scrolled to. Rows are
-multi-selectable and right-click deletes their labels — or pins their
-predictions.
+The points table has one row per ``(frame, individual)`` and an ``x``/``y``/
+``conf`` column triple per keypoint, so everything on a frame is visible at
+once. The keypoint name is painted once *above* its triple by
+:class:`GroupedHeaderView`. Clicking a cell seeks the playhead to that frame and
+makes the clicked keypoint active; conversely the playhead's own row is selected
+and scrolled to. Rows are multi-selectable and right-click deletes their labels
+— or pins their predictions.
+
+Confidence is per keypoint rather than per row, because that is the granularity
+the fill actually produces: a row-level average let nine well-tracked points
+hide the one the tracker lost, which is the only point worth going back for.
 
 Human labels and filled predictions live in the same table. A ``Source`` column
 says which a row is (one hand-placed point makes the row the user's), predicted
-coordinates are dimmed, and the ``Frame``, ``Individual`` and ``Source`` headers
-carry the funnel filters of :mod:`~ethograph.gui.table_filter` — so "show me
-only what I labelled", or "only the frames the fill invented", is one click.
+coordinates are dimmed, and the ``Individual`` and ``Source`` headers carry the
+funnel filters of :mod:`~ethograph.gui.table_filter` — so "show me only what I
+labelled", or "only the frames the fill invented", is one click. Confidence
+carries no funnel: one per keypoint would AND together ("beak *and* tail below
+0.5") when the question is always "*any* point below 0.5", and that question is
+what the "Lowest fill confidence" suggestion answers instead.
+
 Before a fill the rows are the labelled frames; afterwards they are every frame
 the fill covers — the span between the outermost labels — which is why the table
 is a virtual model (:class:`PointTableModel`) rather than a widget grid.
@@ -76,16 +94,18 @@ import hashlib
 import html
 import json
 import logging
+from collections.abc import Callable, Sequence
 from contextlib import contextmanager
 
 import numpy as np
 from qtpy.QtCore import QAbstractTableModel, QEvent, QModelIndex, QRect, Qt, QTimer
-from qtpy.QtGui import QBrush, QColor, QKeySequence, QPalette, QPen, QShortcut
+from qtpy.QtGui import QBrush, QColor, QIcon, QImage, QKeySequence, QPalette, QPen, QPixmap, QShortcut
 from qtpy.QtWidgets import (
     QAbstractItemView,
     QAbstractSpinBox,
     QApplication,
     QCheckBox,
+    QColorDialog,
     QComboBox,
     QDialog,
     QDoubleSpinBox,
@@ -101,6 +121,8 @@ from qtpy.QtWidgets import (
     QPushButton,
     QSpinBox,
     QTableView,
+    QTableWidget,
+    QTableWidgetItem,
     QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
@@ -113,20 +135,41 @@ from ethograph.gui.notify import notify
 from ethograph.gui.pose_annotate import (
     DEFAULT_INDIVIDUAL,
     KINEMATICS,
+    LEARNED,
+    MANUAL,
     RECOMMENDED_LABEL_SHARE,
+    AssignmentError,
     KeypointStore,
     KeypointStoreError,
+    detections_path,
+    keypoints_dataset_path,
     refinement_path,
     sidecar_path,
-    store_to_kinematics,
+    store_to_dataset,
     store_to_movement_ds,
 )
+from ethograph.gui.pose_convert import COLOR_BY_INDIVIDUAL, COLOR_BY_KEYPOINT, COLOR_BY_MODES
+from ethograph.gui.pose_detect import (
+    APRILTAG_DETECTOR,
+    TAG_FAMILIES,
+    TAG_PARTS,
+    PointDetectorError,
+    available_detectors,
+    build_detector,
+    diagnose_frame,
+    family_note,
+    label_name,
+    label_preview,
+    learn_assignment,
+    run_detector,
+)
+from ethograph.gui.pose_detect_preview import PreviewPanel
 from ethograph.gui.pose_edit_mixin import (
     LOOP_MODE,
     SEQUENTIAL_MODE,
     KeypointLabelMode,
-    glyph_for_individual,
-    keypoint_colors,
+    individual_colors_for,
+    keypoint_colors_for,
 )
 from ethograph.gui.pose_fill import (
     COTRACKER_CHECKPOINT_NAME,
@@ -143,7 +186,6 @@ from ethograph.gui.table_filter import (
     CategoryFilterDialog,
     FilterHeaderView,
     MultiColumnFilterProxy,
-    NumericFilterDialog,
 )
 
 logger = logging.getLogger(__name__)
@@ -163,23 +205,47 @@ def _blocked(widget):
 #: biggest CPU speedup and costs almost nothing in accuracy at this anchor density.
 MAX_SIDE = 512
 
+#: Detection decodes at **full resolution** — ``None`` for no downscaling.
+#:
+#: The tracking backends can afford 512 px because they follow a texture the
+#: user pointed at; a tag decoder has nothing but pixels. A 6-module tag wants
+#: ~5 px per module *including its border*, so on a 1920 px video the 3.75×
+#: downscale turns a healthy 45 px tag into 12 px — under the ~3 px/module cliff
+#: — and the quad finder stops proposing it at all. Every millimetre of sizing
+#: advice in `pose_tagsheet` is computed against the camera's real width, so
+#: detection has to see that width too or the advice is self-defeating.
+DETECT_MAX_SIDE = None
+
 _LABELLED_MARK = "●"
 _UNLABELLED_MARK = "·"
+
+#: Side of the colour swatch drawn beside a keypoint in the schema tree.
+_SWATCH_PX = 12
 
 #: Keeps the points table from eating the dialog — it scrolls past this.
 #: Sized so the dialog's default height shows a useful run of frames rather
 #: than capping the table early and leaving the extra space blank.
 TABLE_MAX_HEIGHT = 380
 
-#: Columns before the per-keypoint ``x``/``y`` pairs.
-_FIXED_COLUMNS = ("Frame", "Individual", "Source", "Confidence")
+#: Columns before the per-keypoint ``x``/``y``/``conf`` triples.
+_FIXED_COLUMNS = ("Frame", "Individual", "Source")
 
 #: Column indices of :data:`_FIXED_COLUMNS`, since they read badly as bare
 #: numbers in the filter wiring.
-FRAME_COLUMN, INDIVIDUAL_COLUMN, SOURCE_COLUMN, CONFIDENCE_COLUMN = range(len(_FIXED_COLUMNS))
+FRAME_COLUMN, INDIVIDUAL_COLUMN, SOURCE_COLUMN = range(len(_FIXED_COLUMNS))
+
+#: What each keypoint contributes to the table, in column order. Confidence sits
+#: beside the coordinates it scores rather than being averaged into one figure
+#: per row: the fill produces a number per point, and the point it lost is
+#: precisely the one a row-level mean would bury.
+_KEYPOINT_AXES = ("x", "y", "conf")
+COLUMNS_PER_KEYPOINT = len(_KEYPOINT_AXES)
 
 #: Provenance of a ``(frame, individual)`` row — see ``KeypointStore.is_human``.
+#: Three states, ranked as the store ranks them: a row you touched is yours, a
+#: row a detector read off the pixels is evidence, and the rest is inference.
 HUMAN_SOURCE = "Human"
+DETECTED_SOURCE = "Detected"
 FILL_SOURCE = "Fill"
 
 #: Backends that score confidence by forward/backward tracking agreement, and
@@ -190,19 +256,30 @@ _FIXED_COLUMN_TOOLTIPS = (
     "Video frame. Click a cell to jump the playhead there.",
     "Which individual this row's points belong to.",
     f"{HUMAN_SOURCE} — you placed or corrected at least one point on this row.\n"
-    f"{FILL_SOURCE} — every point here came from the fill backend.\n\n"
-    "Filling always rebuilds from the human points alone, so a filled point\n"
-    "only survives a re-fill once you pin it (click it, or use the right-click\n"
-    "menu here).",
-    "How much the fill trusts this row, averaged over its keypoints.\n"
+    f"{DETECTED_SOURCE} — a marker detector read at least one point off this\n"
+    "frame's pixels; the rest, if any, came from the fill.\n"
+    f"{FILL_SOURCE} — every point here was interpolated between other frames.\n\n"
+    "Filling always rebuilds from the observed points — yours and the\n"
+    "detector's — so a *filled* point only survives a re-fill once you pin it\n"
+    "(click it, or use the right-click menu here).",
+)
+
+#: The scoring scheme, shown on every ``conf`` header. It belongs on the column
+#: rather than in a manual: it is the one number here nobody can derive by
+#: looking at the video.
+_CONFIDENCE_TOOLTIP = (
+    "How much the fill trusts this one point.\n"
     "1.00 means you labelled it by hand; low means the fill was lost.\n\n"
     "Spline: decays with distance from the nearest labelled frame.\n"
     "Optical flow and PosePAL: each gap is tracked twice, forwards from\n"
     "the label on its left and backwards from the one on its right — the\n"
     "score falls as the two tracks disagree, and drops to zero where either\n"
     "tracker reports the point as lost.\n\n"
-    "Filter this column to find the frames worth correcting; the 'Lowest\n"
-    "fill confidence' suggestion method ranks by the same number.",
+    "It is per keypoint because that is what the fill produces, and because\n"
+    "one lost point is what makes a frame worth revisiting — an average over\n"
+    "the row would bury it. 'Lowest fill confidence' below ranks frames by\n"
+    "their worst point, so it finds those frames without you reading down\n"
+    "every column."
 )
 
 #: Thumbnails are enough to score frames for suggestions — DeepLabCut clusters
@@ -240,16 +317,86 @@ _SUGGEST_METHODS = (
         "other as possible.",
     ),
     (
+        "detection_gaps",
+        "Where the detector saw nothing  (after detect)",
+        "Frames furthest from any detection — occlusion, blur, the animal\n"
+        "facing away. A marker detector is not uncertain, it is absent, so\n"
+        "its failures are a set of frames rather than a low score, and the\n"
+        "middle of the longest blind stretch is where a fill has least to\n"
+        "go on.\n\nNeeds a detector run.",
+    ),
+    (
         "uncertain",
         "Lowest fill confidence  (after fill)",
-        "Frames the last fill scored lowest, where tracking forwards\n"
-        "and backwards disagreed most — the ones worth correcting.\n"
+        "Frames whose *worst* keypoint the last fill scored lowest,\n"
+        "where tracking forwards and backwards disagreed most — the\n"
+        "ones worth correcting. One lost point is reason enough, so\n"
+        "the other keypoints on the frame cannot vote it down.\n"
         "The backends are frozen, so extra labels reset drift rather\n"
         "than teach anything.\n\n"
         "Only frames the fill covered, i.e. between your first and\n"
         "last label — past those there is nothing to correct.\n\n"
         "Needs a fill to have run.",
     ),
+)
+
+#: Columns of the Detect tab's assignment table. "Label" carries the detector's
+#: own preview — a colour swatch, or the tag itself rendered — as its icon.
+#:
+#: The last column is **"Set by"**, deliberately *not* "Source": the points table
+#: already has a Source column meaning where a coordinate came from
+#: (Human/Detected/Fill), and this one means something entirely different —
+#: whether the *meaning* of a label was proposed or typed. Two columns of the
+#: same name in one dialog, saying different things, is the confusion.
+_ASSIGNMENT_COLUMNS = ("Label", "Individual", "Keypoint", "Matched on", "Set by")
+
+#: How :data:`~ethograph.gui.pose_annotate.LEARNED` / ``MANUAL`` read in the
+#: "Set by" column — the store's vocabulary is for the sidecar, not the user.
+_ASSIGNMENT_SOURCE_LABELS = {LEARNED: "learning", MANUAL: "you"}
+
+_ASSIGNMENT_TOOLTIPS = (
+    "What the detector produces — a decoded tag ID.\nThe icon is that tag itself, rendered.",
+    "Which individual this label lands on.",
+    "Which keypoint of that individual this label lands on.",
+    "How many of your labelled frames agreed on this target when it was learned.\n"
+    "Two is the minimum — the nearest detection to a single click is always\nsomething.",
+    "Where this row's meaning came from — NOT where a coordinate came from\n"
+    "(that is the points table's Source column).\n\n"
+    "learning — proposed by 'Learn from labels'; a later re-learn may change it.\n"
+    "you — you picked it, so no re-learn will ever overwrite it.",
+)
+
+#: Where a detector run scans.
+_RANGE_WHOLE = "whole"
+_RANGE_LABELLED = "labelled"
+_RANGE_FILL = "fill"
+
+_DETECT_RANGES = (
+    (_RANGE_WHOLE, "The whole video", "Every frame. What you want once the settings are right."),
+    (
+        _RANGE_LABELLED,
+        "Your labelled span",
+        "First to last labelled frame — the stretch a fill would cover anyway.\n"
+        "Use it to try the settings out cheaply.",
+    ),
+    (
+        _RANGE_FILL,
+        "The current fill range",
+        "Exactly the frames the last fill covers, to see where detection\n"
+        "improves on it. Falls back to the whole video with no fill loaded.",
+    ),
+)
+
+#: How long the detector preview waits before redrawing. Dragging the playhead
+#: emits a frame change per tick and each redraw decodes a frame, so the point
+#: is to coalesce a scrub into one — short enough to still feel immediate.
+PREVIEW_DEBOUNCE_MS = 120
+
+#: Canvas marker legend. The detected style is only named once a detector has
+#: run — a third symbol nobody can see on screen is noise.
+_LEGEND_LABEL_AND_FILL = '<span style="opacity:0.7;">●&nbsp;label&nbsp;&nbsp;&nbsp;○&nbsp;prediction</span>'
+_LEGEND_WITH_DETECTIONS = (
+    '<span style="opacity:0.7;">●&nbsp;label&nbsp;&nbsp;&nbsp;◉&nbsp;detected&nbsp;&nbsp;&nbsp;○&nbsp;filled</span>'
 )
 
 #: What Loop mode does after each click — the "Between clicks" dropdown.
@@ -279,15 +426,15 @@ _AFTER_CLICK_CHOICES = (
 )
 
 
-class PairedHeaderView(FilterHeaderView):
-    """Two-row horizontal header: a group name spanning each ``x``/``y`` pair.
+class GroupedHeaderView(FilterHeaderView):
+    """Two-row horizontal header: a group name spanning each keypoint's columns.
 
     ``QHeaderView`` has no multi-level support, and repeating the keypoint name
-    in both column labels ("beak x", "beak y") is what made the table so wide.
-    Each of a pair's two sections therefore paints the *same* group name across
-    their union rect and only ``x`` or ``y`` beneath its own half — the two
-    halves join into one centred label, and painting it twice is idempotent, so
-    it survives a partial repaint of either section.
+    in every column label ("beak x", "beak y", "beak conf") is what made the
+    table so wide. Each of a group's sections therefore paints the *same* group
+    name across their union rect and only its own sub-label beneath its own
+    share — the parts join into one centred label, and painting it repeatedly is
+    idempotent, so it survives a partial repaint of any one section.
 
     The first *fixed_columns* sections are ungrouped, painted normally, and are
     the ones that carry the inherited filter funnels.
@@ -296,16 +443,22 @@ class PairedHeaderView(FilterHeaderView):
     #: Slack around a group name, so ResizeToContents never elides it.
     PADDING = 12
 
-    def __init__(self, fixed_columns: int, parent=None):
+    def __init__(self, fixed_columns: int, sub_labels: Sequence[str], parent=None):
         super().__init__(parent=parent)
         self._fixed = int(fixed_columns)
+        #: The label under each column of a group; its length is the group span.
+        self._sub_labels = tuple(sub_labels)
         self._groups: list[str] = []
         self._brushes: list[QBrush] = []
         self.setSectionsClickable(True)
         self.setHighlightSections(False)
 
+    @property
+    def _span(self) -> int:
+        return len(self._sub_labels)
+
     def groups(self) -> list[str]:
-        """The group name over each column pair, left to right."""
+        """The group name over each column group, left to right."""
         return list(self._groups)
 
     def set_groups(self, groups: list[str], brushes: list[QBrush]) -> None:
@@ -317,7 +470,7 @@ class PairedHeaderView(FilterHeaderView):
         """Which group a section belongs to, or ``None`` for a fixed column."""
         if section < self._fixed:
             return None
-        index = (section - self._fixed) // 2
+        index = (section - self._fixed) // self._span
         return index if 0 <= index < len(self._groups) else None
 
     def sectionSizeFromContents(self, section: int):
@@ -331,8 +484,10 @@ class PairedHeaderView(FilterHeaderView):
         size.setHeight(size.height() * 2)
         index = self._group_index(section)
         if index is not None:
-            half = self.fontMetrics().horizontalAdvance(self._groups[index]) // 2
-            size.setWidth(max(size.width(), half + self.PADDING))
+            # Each column of the group carries its share of the name, so the
+            # group's own sections between them are always wide enough for it.
+            share = self.fontMetrics().horizontalAdvance(self._groups[index]) // self._span
+            size.setWidth(max(size.width(), share + self.PADDING))
         return size
 
     def paintSection(self, painter, rect, section: int) -> None:
@@ -343,35 +498,39 @@ class PairedHeaderView(FilterHeaderView):
         painter.save()
         super().paintSection(painter, rect, section)  # background; the label is empty
         half = rect.height() // 2
-        first = self._fixed + 2 * index
+        first = self._fixed + self._span * index
         span = QRect(
             self.sectionViewportPosition(first),
             rect.top(),
-            self.sectionSize(first) + self.sectionSize(first + 1),
+            sum(self.sectionSize(first + offset) for offset in range(self._span)),
             half,
         )
         painter.setPen(QPen(self._brushes[index].color()))
         painter.drawText(span, Qt.AlignCenter, self._groups[index])
         painter.setPen(QPen(self.palette().color(QPalette.ButtonText)))
-        axis = "x" if section == first else "y"
-        painter.drawText(QRect(rect.left(), rect.top() + half, rect.width(), half), Qt.AlignCenter, axis)
+        painter.drawText(
+            QRect(rect.left(), rect.top() + half, rect.width(), half),
+            Qt.AlignCenter,
+            self._sub_labels[section - first],
+        )
         painter.restore()
 
 
 class PointTableModel(QAbstractTableModel):
     """A :class:`KeypointStore` as rows of ``(frame, individual)``.
 
-    Columns are ``Frame | Individual | Source`` then an ``x``/``y`` pair per
-    keypoint. Values are read from the store on demand rather than copied into
-    cells, for two reasons: once a fill exists there is a row for *every* frame
-    it covers, which no item-based table can hold; and a view that reads the
-    store cannot disagree with it, which the previous diffing item table could.
+    Columns are ``Frame | Individual | Source`` then an ``x``/``y``/``conf``
+    triple per keypoint. Values are read from the store on demand rather than
+    copied into cells, for two reasons: once a fill exists there is a row for
+    *every* frame it covers, which no item-based table can hold; and a view that
+    reads the store cannot disagree with it, which the previous diffing item
+    table could.
 
     Provenance is shown twice over. The ``Source`` cell states whether the row
     is the user's or the backend's — one human point anywhere in the row is
     enough, since correcting a single keypoint is what makes a frame yours — and
-    the individual ``x``/``y`` pairs are dimmed wherever the coordinate came
-    from the fill, so a mixed row still reads correctly.
+    each keypoint's triple is dimmed wherever the coordinate came from the fill,
+    so a mixed row still reads correctly.
     """
 
     def __init__(self, store: KeypointStore, parent=None):
@@ -383,9 +542,17 @@ class PointTableModel(QAbstractTableModel):
         #: ``frame -> (first row, last row)``; rows of a frame are contiguous, so
         #: a drag can repaint one frame instead of the whole video.
         self._frame_rows: dict[int, tuple[int, int]] = {}
-        #: One frame's ``(positions, human mask, confidence)``, so a row costs
-        #: one lookup rather than one per cell.
-        self._cache: tuple[int, np.ndarray, np.ndarray, np.ndarray | None] | None = None
+        #: One frame's ``(positions, human mask, detected mask, confidence)``,
+        #: so a row costs one lookup rather than one per cell.
+        self._cache: tuple[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray | None] | None = None
+        #: Set while colour means *individual*: the Individual cell then carries
+        #: the colour, since the keypoint column headers no longer can.
+        self._individual_brush: Callable[[str], QBrush] | None = None
+
+    def set_individual_brush(self, brush: Callable[[str], QBrush] | None) -> None:
+        """Colour the Individual column, or ``None`` to leave it on the palette."""
+        self._individual_brush = brush
+        self.refresh_all()
 
     # ------------------------------------------------------------------
     # Layout
@@ -419,11 +586,15 @@ class PointTableModel(QAbstractTableModel):
         return self._rows[row] if 0 <= row < len(self._rows) else None
 
     def keypoint_at(self, column: int) -> tuple[str, str] | None:
-        """``(keypoint, axis)`` a column belongs to, or ``None`` for a fixed one."""
-        index = (column - len(_FIXED_COLUMNS)) // 2
-        if not 0 <= index < len(self._columns):
+        """``(keypoint, axis)`` a column belongs to, or ``None`` for a fixed one.
+
+        *axis* is one of :data:`_KEYPOINT_AXES` — ``"x"``, ``"y"`` or ``"conf"``.
+        """
+        offset = column - len(_FIXED_COLUMNS)
+        index = offset // COLUMNS_PER_KEYPOINT
+        if offset < 0 or index >= len(self._columns):
             return None
-        return self._columns[index], "xy"[(column - len(_FIXED_COLUMNS)) % 2]
+        return self._columns[index], _KEYPOINT_AXES[offset % COLUMNS_PER_KEYPOINT]
 
     def refresh_frame(self, frame: int | None) -> None:
         """Repaint one frame's rows — what a drag or a single placement changes."""
@@ -448,19 +619,16 @@ class PointTableModel(QAbstractTableModel):
         return 0 if parent.isValid() else len(self._rows)
 
     def columnCount(self, parent=QModelIndex()) -> int:
-        return 0 if parent.isValid() else len(_FIXED_COLUMNS) + 2 * len(self._columns)
+        return 0 if parent.isValid() else len(_FIXED_COLUMNS) + COLUMNS_PER_KEYPOINT * len(self._columns)
 
-    def _frame_data(self, frame: int) -> tuple[np.ndarray, np.ndarray]:
-        return self._frame_cache(frame)[:2]
-
-    def _frame_cache(self, frame: int) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    def _frame_cache(self, frame: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]:
         if self._cache is None or self._cache[0] != frame:
-            confidence = self._store.confidence
             self._cache = (
                 frame,
                 self._store.positions(frame),
                 self._store.human_mask(frame),
-                confidence[frame] if confidence is not None and 0 <= frame < len(confidence) else None,
+                self._store.detected_mask(frame),
+                self._store.confidence_at(frame),
             )
         return self._cache[1:]
 
@@ -471,8 +639,7 @@ class PointTableModel(QAbstractTableModel):
         column = index.column()
 
         if role == Qt.TextAlignmentRole:
-            numeric = column == CONFIDENCE_COLUMN or column >= len(_FIXED_COLUMNS)
-            return int(Qt.AlignRight | Qt.AlignVCenter) if numeric else None
+            return int(Qt.AlignRight | Qt.AlignVCenter) if column >= len(_FIXED_COLUMNS) else None
 
         if column == FRAME_COLUMN:
             if role == Qt.DisplayRole:
@@ -481,59 +648,43 @@ class PointTableModel(QAbstractTableModel):
                 return float(frame)
             return None
         if column == INDIVIDUAL_COLUMN:
+            if role == Qt.ForegroundRole and self._individual_brush is not None:
+                return self._individual_brush(individual)
             return individual if role == Qt.DisplayRole else None
         if column == SOURCE_COLUMN:
             return self._source_data(frame, individual, role)
-        if column == CONFIDENCE_COLUMN:
-            return self._confidence_data(frame, individual, role)
         return self._point_data(frame, individual, column, role)
-
-    def _confidence_data(self, frame: int, individual: str, role):
-        """How much the fill trusts this row, averaged over its keypoints.
-
-        ``nanmean``, matching ``pose_suggest.frame_confidence`` — a keypoint an
-        asymmetric schema leaves out sits at NaN, and taking the minimum would
-        pin every row of that individual to it.
-        """
-        if role not in (Qt.DisplayRole, Qt.ForegroundRole, Qt.ToolTipRole, SORT_ROLE):
-            return None
-        positions, human, confidence = self._frame_cache(frame)
-        index = self._store.individual_index(individual)
-        if confidence is None:
-            return None
-        # A point placed *after* the fill still carries the fill's old score in
-        # the store — the array is a snapshot. Show it as the 1.0 the next fill
-        # will write, rather than a number the user has already superseded.
-        scores = np.where(human[index], 1.0, confidence[index])
-        if np.all(np.isnan(scores)):
-            return None
-        if role == Qt.ForegroundRole:
-            return None if human[index].any() else self._dim_brush()
-        if role == Qt.ToolTipRole:
-            worst = int(np.nanargmin(scores))
-            return f"Lowest: {self._store.keypoint_names[worst]} {scores[worst]:.2f}"
-        value = float(np.nanmean(scores))
-        return f"{value:.2f}" if role == Qt.DisplayRole else value
 
     def _source_data(self, frame: int, individual: str, role):
         index = self._store.individual_index(individual)
-        positions, human_mask = self._frame_data(frame)
-        human = human_mask[index]
+        positions, human_mask, detected_mask, _confidence = self._frame_cache(frame)
+        human, detected = human_mask[index], detected_mask[index]
         # An empty row says nothing rather than "Fill": with the predictions
         # deleted there is no source to name.
         empty = not np.any(~np.isnan(positions[index][:, 0]))
         if role == Qt.DisplayRole:
             if human.any():
                 return HUMAN_SOURCE
-            return "" if empty else FILL_SOURCE
+            if empty:
+                return ""
+            return DETECTED_SOURCE if detected.any() else FILL_SOURCE
         if role == Qt.ForegroundRole and not human.any():
             return self._dim_brush()
         if role == Qt.ToolTipRole:
             total = len(self._store.keypoints_for(individual))
-            return f"{int(human.sum())} of {total} keypoints placed by hand on frame {frame}."
+            hand = f"{int(human.sum())} of {total} keypoints placed by hand on frame {frame}."
+            return hand if not detected.any() else f"{hand}\n{int(detected.sum())} found by the detector."
         return None
 
     def _point_data(self, frame: int, individual: str, column: int, role):
+        """One keypoint's ``x``, ``y`` or ``conf`` cell.
+
+        The three share a dimming rule — a predicted coordinate and the score
+        that judges it are both the backend's, so the whole triple reads as one
+        thing. The store composes the score in the same precedence as the
+        positions (see ``confidence_at``), so a hand-placed point shows ``1.00``
+        and a detected one the detector's own quality rather than the fill's.
+        """
         if role not in (Qt.DisplayRole, Qt.ForegroundRole, SORT_ROLE):
             return None
         target = self.keypoint_at(column)
@@ -541,13 +692,20 @@ class PointTableModel(QAbstractTableModel):
             return None
         keypoint, axis = target
         i, k = self._store.individual_index(individual), self._store.keypoint_index(keypoint)
-        positions, human = self._frame_data(frame)
-        value = positions[i, k, "xy".index(axis)]
+        positions, human, _detected, confidence = self._frame_cache(frame)
+        if axis == "conf":
+            # No position means nothing to score, whatever the fill array still
+            # holds: a deleted point must not keep a confidence behind it.
+            value = np.nan if np.isnan(positions[i, k, 0]) or confidence is None else confidence[i, k]
+            digits = 2
+        else:
+            value = positions[i, k, _KEYPOINT_AXES.index(axis)]
+            digits = 1
         if np.isnan(value):
             return None
         if role == Qt.ForegroundRole:
             return None if human[i, k] else self._dim_brush()
-        return f"{value:.1f}" if role == Qt.DisplayRole else float(value)
+        return f"{value:.{digits}f}" if role == Qt.DisplayRole else float(value)
 
     @staticmethod
     def _dim_brush() -> QBrush:
@@ -559,14 +717,19 @@ class PointTableModel(QAbstractTableModel):
             return None
         fixed = section < len(_FIXED_COLUMNS)
         if role == Qt.DisplayRole:
-            # The keypoint labels stay empty: PairedHeaderView paints the name
+            # The keypoint labels stay empty: GroupedHeaderView paints the name
             # over each pair itself, and repeating it in both would double it.
             return _FIXED_COLUMNS[section] if fixed else ""
         if role == Qt.ToolTipRole:
             if fixed:
                 return _FIXED_COLUMN_TOOLTIPS[section]
             target = self.keypoint_at(section)
-            return None if target is None else f"{target[0]} {target[1]}"
+            if target is None:
+                return None
+            keypoint, axis = target
+            if axis != "conf":
+                return f"{keypoint} {axis}"
+            return f"{keypoint} — fill confidence\n\n{_CONFIDENCE_TOOLTIP}"
         return None
 
 
@@ -605,11 +768,31 @@ class PoseLabellingDialog(QDialog):
         #: :meth:`_push_pose_override`, which hands the canvas to the anchor
         #: overlay while a mode is armed.
         self._override_pushed = False
+        #: The point detector, kept between runs because the live preview asks
+        #: for it on every redraw.
+        self._detector = None
+        self._detector_built_for: tuple | None = None
+        #: The last run *before* the quality threshold, so the threshold can be
+        #: retuned without decoding the video again.
+        self._raw_detections: tuple[dict, dict, dict] | None = None
+        #: A frame source held open for the detector preview — opening a PyAV
+        #: container costs far more than the detection, and this runs per scrub.
+        self._preview_frames = None
+        self._preview_frames_for: tuple | None = None
+        #: Whether head direction has already been offered for the current
+        #: detections. Offering it once when a run first produces oriented
+        #: markers is helpful; re-ticking it on every later refresh would keep
+        #: overruling someone who deliberately turned it off.
+        self._head_direction_offered = False
 
         self.store = self._load_store()
         self._build_ui()
+        self._load_detections()
         self._rebuild_tree()
         self._refresh_point_table()
+        # Colour is app-wide state, so the dialog opens in whatever mode the
+        # pose overlay is already in rather than in its own default.
+        self.apply_color_by()
 
         self._install_key_filter(True)
         self.app_state.current_frame_changed.connect(self._on_frame_changed)
@@ -675,6 +858,10 @@ class PoseLabellingDialog(QDialog):
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_schema_page(), "Define keypoints")
         self.tabs.addTab(self._label_page, "Label && Edit")  # && escapes the mnemonic
+        # Between labelling and filling, because that is where it sits in the
+        # pipeline: it produces observations, which the fill then bridges.
+        self._detect_page = self._build_detect_page()
+        self.tabs.addTab(self._detect_page, "Detect")
         self.tabs.addTab(self._build_output_page(), "Fill and export")
         # Opening the tab IS the intent to label, so arm Sequential rather than
         # making the first click a mode choice.
@@ -706,13 +893,40 @@ class PoseLabellingDialog(QDialog):
         box.addWidget(self._build_mode_controls())
         box.addWidget(self._build_table_group(), stretch=1)
 
+        # Approve beside Clear, because they are the two bulk verdicts on a run:
+        # take all of it, or none of it. Both are confirmed and neither is
+        # undoable, so they belong on the same row rather than a step apart.
         clear_row = QHBoxLayout()
         clear_row.addStretch()
+
+        self.approve_detections_btn = QPushButton("Approve all detections…")
+        self.approve_detections_btn.setToolTip(
+            "Turn every detected point into a label, on every frame — the same\n"
+            "as 'Pin detections as labels' on a row, for the whole run.\n\n"
+            "Use it once a run looks right: labels are what the fill treats as\n"
+            "ground truth and what an export calls human-placed.\n\n"
+            "Points you already labelled are left alone."
+        )
+        self.approve_detections_btn.clicked.connect(self._on_approve_all_detections)
+        clear_row.addWidget(self.approve_detections_btn)
+
+        self.approve_fill_btn = QPushButton("Approve all filled points…")
+        self.approve_fill_btn.setToolTip(
+            "Turn everything the fill produced into labels, across its whole\n"
+            "span — the same as 'Pin filled points as labels' on a row.\n\n"
+            "Detected points inside the span are pinned too: what you are\n"
+            "agreeing with is what is on screen, and the screen shows both.\n\n"
+            "Points you already labelled are left alone."
+        )
+        self.approve_fill_btn.clicked.connect(self._on_approve_all_fill)
+        clear_row.addWidget(self.approve_fill_btn)
+
         clear_all_btn = QPushButton("Clear all labels…")
         clear_all_btn.setToolTip("Delete every labelled point in the table. Filled points are not affected.")
         clear_all_btn.clicked.connect(self._on_clear_all_labels)
         clear_row.addWidget(clear_all_btn)
         box.addLayout(clear_row)
+        self._refresh_bulk_approve_buttons()
 
         box.addWidget(self._build_suggest_group())
         return page
@@ -773,6 +987,45 @@ class PoseLabellingDialog(QDialog):
         self._remove_keypoint_btn.clicked.connect(self._on_remove_keypoint)
         keypoint_row.addWidget(self._remove_keypoint_btn)
         box.addLayout(keypoint_row)
+
+        colour_row = QHBoxLayout()
+        colour_row.addWidget(QLabel("Colour by:"))
+        self.color_by_combo = QComboBox()
+        self.color_by_combo.addItem("Keypoint", COLOR_BY_KEYPOINT)
+        self.color_by_combo.addItem("Individual", COLOR_BY_INDIVIDUAL)
+        self.color_by_combo.setToolTip(
+            "Which axis colour tells apart, on the canvas and the pose overlay alike.\n\n"
+            "Keypoint: one colour per body part, the same on every individual —\n"
+            "the labelling default, since a click answers 'which body part is this?'.\n"
+            "Individual: one colour per individual, shared by all its keypoints —\n"
+            "for pulling two animals apart when they overlap.\n\n"
+            "Either way the individual being labelled is drawn at full opacity and\n"
+            "the others are dimmed."
+        )
+        index = self.color_by_combo.findData(self.color_by)
+        self.color_by_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.color_by_combo.currentIndexChanged.connect(self._on_color_by_changed)
+        colour_row.addWidget(self.color_by_combo)
+        self._colour_btn = QPushButton("Colour…")
+        self._colour_btn.setToolTip(
+            "Pick the colour of the selected item, everywhere it is shown — canvas\n"
+            "markers, this tree and the points table.\n\n"
+            "It edits whichever palette 'Colour by' is drawing: the keypoint's\n"
+            "colour, or the individual's. The choice is saved beside the labels in\n"
+            "the sidecar, so both palettes survive switching between them."
+        )
+        self._colour_btn.clicked.connect(self._on_keypoint_color)
+        colour_row.addWidget(self._colour_btn)
+        self._reset_colours_btn = QPushButton("Reset colours")
+        self._reset_colours_btn.setToolTip(
+            "Hand every keypoint and individual back to the generated palette,\n"
+            "which spreads the schema over distinguishable hues."
+        )
+        self._reset_colours_btn.clicked.connect(self._on_reset_keypoint_colors)
+        colour_row.addWidget(self._reset_colours_btn)
+        colour_row.addStretch()
+        box.addLayout(colour_row)
+
         self._refresh_keypoint_hints()
         return page
 
@@ -784,6 +1037,8 @@ class PoseLabellingDialog(QDialog):
             scope = "the selected individual only"
         self._add_keypoint_btn.setToolTip(f"Add a keypoint to {scope}.")
         self._remove_keypoint_btn.setToolTip(f"Remove the selected keypoint from {scope}.")
+        # Nothing to reset while every colour is still the generated one.
+        self._reset_colours_btn.setEnabled(bool(self.store.keypoint_color or self.store.individual_color))
 
     def _build_mode_controls(self) -> QWidget:
         """One compact row — modes plus the target pickers — over the status chip.
@@ -840,7 +1095,10 @@ class PoseLabellingDialog(QDialog):
             "The labels stay on screen and the active keypoint is kept, so\n"
             "unticking carries on exactly where you were — unlike stopping the\n"
             "mode, which takes the anchor overlay with it. Backspace and Ctrl+Z\n"
-            "still act on the selected point."
+            "still act on the selected point.\n\n"
+            "The other tabs lock the pointer on their own, so a click while you\n"
+            "are detecting or filling cannot drop a stray point. This tick is\n"
+            "left alone by that, and applies again the moment you come back."
         )
         self.lock_check.toggled.connect(self._on_lock_toggled)
         row.addWidget(self.lock_check)
@@ -888,15 +1146,18 @@ class PoseLabellingDialog(QDialog):
         )
         self.active_label.hide()
 
-        # Says what the two marker styles on the canvas mean. Only once a fill
-        # exists: with no predictions on screen there is nothing to tell apart.
-        self.legend_label = QLabel('<span style="opacity:0.7;">●&nbsp;label&nbsp;&nbsp;&nbsp;○&nbsp;prediction</span>')
+        # Says what the marker styles on the canvas mean. Only once something
+        # unlabelled is on screen: with no predictions there is nothing to tell
+        # apart.
+        self.legend_label = QLabel(_LEGEND_LABEL_AND_FILL)
         self.legend_label.setTextFormat(Qt.RichText)
         self.legend_label.setToolTip(
-            "Filled markers are your labels; hollow ones are what the fill\n"
-            "predicted — drawn empty so you can see the pixels underneath and\n"
-            "judge them. Click a hollow marker to pin it as a label (it turns\n"
-            "solid), or drag it to correct it first."
+            "Filled markers are your labels; hollow ones were not placed by you —\n"
+            "drawn empty so you can see the pixels underneath and judge them.\n"
+            "A hollow marker with a dot in it was read off THIS frame by the\n"
+            "detector; an empty one was interpolated between other frames.\n\n"
+            "Click a hollow marker to pin it as a label (it turns solid), or drag\n"
+            "it to correct it first."
         )
         self.legend_label.hide()
 
@@ -939,22 +1200,49 @@ class PoseLabellingDialog(QDialog):
         return widget
 
     def _refresh_legend(self) -> None:
-        """Explain solid vs hollow, but only while both are on the canvas."""
-        self.legend_label.setVisible(self._mode is not None and self.store.filled is not None)
+        """Explain the marker styles, but only while more than one is on screen."""
+        self.legend_label.setVisible(self._mode is not None and self._has_predictions())
+        self.legend_label.setText(_LEGEND_WITH_DETECTIONS if self.store.detections else _LEGEND_LABEL_AND_FILL)
+
+    def _has_predictions(self) -> bool:
+        """Whether anything on screen is not the user's own work."""
+        return self.store.filled is not None or bool(self.store.detections)
 
     def _refresh_approve_button(self) -> None:
         """Offer approving only once there is a prediction to approve.
 
         Unlike the legend this does not need a mode: reviewing a fill is looking
         at the video and agreeing, which no more requires arming labelling than
-        deleting a point does.
+        deleting a point does. A detector run counts — it too is a proposal.
         """
-        self.approve_btn.setVisible(self.store.filled is not None)
+        self.approve_btn.setVisible(self._has_predictions())
 
-    def _on_lock_toggled(self, locked: bool) -> None:
+    def _on_lock_toggled(self, _locked: bool) -> None:
         """Hand the pointer to the camera, or take it back for labelling."""
-        if self._mode is not None:
-            self._mode.set_locked(locked)
+        self._apply_lock()
+
+    def _lock_wanted(self) -> bool:
+        """Whether the pointer should be suspended, for either of two reasons.
+
+        The tick box is the user's standing intent. **Leaving the Label tab is
+        the other**: the other tabs are read-and-configure screens, and on them
+        a click on the video is far more likely to be someone trying to look at
+        a frame — scrubbing to judge a detection, or lining up a fill — than to
+        be a label. Dropping a stray keypoint while reviewing is silent, and
+        costs an undo the user does not know they need.
+
+        The two are kept apart rather than collapsed into the tick box: syncing
+        the box on a tab change would rewrite the user's own setting behind
+        their back, so that a trip to Detect and back would leave labelling
+        locked with no memory of who locked it.
+        """
+        return self.lock_check.isChecked() or self.tabs.currentWidget() is not self._label_page
+
+    def _apply_lock(self) -> None:
+        """Push the effective lock onto the armed mode, if it has changed."""
+        wanted = self._lock_wanted()
+        if self._mode is not None and self._mode.locked != wanted:
+            self._mode.set_locked(wanted)
         self._refresh_active_label()
 
     def _on_point_size_changed(self, value: int) -> None:
@@ -978,8 +1266,12 @@ class PoseLabellingDialog(QDialog):
         with _blocked(self.individual_combo):
             if self._combo_items(self.individual_combo) != individuals:
                 self.individual_combo.clear()
-                for index, name in enumerate(individuals):
-                    self.individual_combo.addItem(f"{glyph_for_individual(index)}  {name}", name)
+                for name in individuals:
+                    self.individual_combo.addItem(name, name)
+            # Re-brushed on every refresh, not only on a rebuild: a recolour or a
+            # change of colour mode leaves the item set alone.
+            for position, name in enumerate(individuals):
+                self.individual_combo.setItemData(position, self._point_brush(name, None), Qt.ForegroundRole)
             position = self.individual_combo.findData(wanted)
             self.individual_combo.setCurrentIndex(position if position >= 0 else 0)
         self.individual_combo.setEnabled(bool(individuals))
@@ -997,9 +1289,9 @@ class PoseLabellingDialog(QDialog):
                 self.keypoint_combo.clear()
                 for name in keypoints:
                     self.keypoint_combo.addItem(name, name)
-                    self.keypoint_combo.setItemData(
-                        self.keypoint_combo.count() - 1, self._keypoint_brush(name), Qt.ForegroundRole
-                    )
+            for position, name in enumerate(keypoints):
+                brush = self._point_brush(self._mode.active_individual, name)
+                self.keypoint_combo.setItemData(position, brush, Qt.ForegroundRole)
             position = self.keypoint_combo.findData(self._mode.active_keypoint)
             self.keypoint_combo.setCurrentIndex(position if position >= 0 else 0)
 
@@ -1047,11 +1339,12 @@ class PoseLabellingDialog(QDialog):
             self.active_label.hide()
             return
 
-        glyph = glyph_for_individual(self.store.individual_index(individual))
-        colour = self._keypoint_brush(keypoint).color().name()
+        # The dot IS the marker the next click drops, in the colour the canvas
+        # will draw it — whichever axis that colour is currently encoding.
+        colour = self._point_brush(individual, keypoint).color().name()
         mode = "Loop" if self._mode.mode == LOOP_MODE else "Sequential"
         self.active_label.setText(
-            f'<span style="color:{colour}; font-size:17px;">{glyph}</span>&nbsp;'
+            f'<span style="color:{colour}; font-size:17px;">●</span>&nbsp;'
             f"<b>{html.escape(individual)}</b>"
             f'&nbsp;·&nbsp;<b style="color:{colour};">{html.escape(keypoint)}</b>'
             f'&nbsp;&nbsp;<span style="opacity:0.6;">— {mode}</span>'
@@ -1072,11 +1365,15 @@ class PoseLabellingDialog(QDialog):
 
         self.point_table = QTableView()
         self.point_table.setModel(self.point_proxy)
-        header = PairedHeaderView(len(_FIXED_COLUMNS), self.point_table)
+        header = GroupedHeaderView(len(_FIXED_COLUMNS), _KEYPOINT_AXES, self.point_table)
         self.point_table.setHorizontalHeader(header)
         # Frame carries no funnel: the rows are already in frame order and the
-        # suggestion navigation is how you move between frames.
-        header.set_filterable({INDIVIDUAL_COLUMN, SOURCE_COLUMN}, {CONFIDENCE_COLUMN})
+        # suggestion navigation is how you move between frames. Neither does
+        # confidence, now that there is one per keypoint — the criteria are
+        # ANDed, so ticking two would ask for "beak *and* tail below 0.5" when
+        # the question is only ever "any point below 0.5". That question is what
+        # the "Lowest fill confidence" suggestion answers, over the whole video.
+        header.set_filterable({INDIVIDUAL_COLUMN, SOURCE_COLUMN}, set())
         header.filter_requested.connect(self._on_filter_requested)
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
         # ResizeToContents measures rows to size a column; with a fill loaded
@@ -1092,7 +1389,9 @@ class PoseLabellingDialog(QDialog):
         self.point_table.setToolTip(
             "Click a cell to jump to that frame and make its keypoint active.\n"
             "Right-click to delete — or pin — the selected rows' points.\n"
-            "The funnels in the Individual, Source and Confidence headers filter the rows."
+            "The funnels in the Individual and Source headers filter the rows.\n"
+            "Each keypoint's 'conf' column says how much the fill trusts that\n"
+            "one point; 'Lowest fill confidence' below finds the worst frames."
         )
         # clicked, not the selection signal: the table also selects itself when
         # the playhead moves, and that must not seek back.
@@ -1109,24 +1408,20 @@ class PoseLabellingDialog(QDialog):
         """The categories offered for a categorical column."""
         if column == INDIVIDUAL_COLUMN:
             return list(self.store.individual_names)
-        return [HUMAN_SOURCE, FILL_SOURCE]
+        return [HUMAN_SOURCE, DETECTED_SOURCE, FILL_SOURCE]
 
     def _on_filter_requested(self, column: int) -> None:
-        """A funnel was clicked: edit that column's filter."""
+        """A funnel was clicked: edit that column's filter.
+
+        Only the categorical ones carry a funnel here — see
+        :meth:`_build_table_group` for why confidence does not.
+        """
         header = self.point_table.horizontalHeader()
-        if header.is_categorical(column):
-            dialog = CategoryFilterDialog(
-                column, self._filter_values(column), self.point_proxy.cat_filter(column), self
-            )
-            if dialog.exec_():
-                self.point_proxy.set_cat_filter(column, dialog.get_allowed())
-        elif header.is_numeric(column):
-            # "≤" by default: what this column is for is finding the rows the
-            # fill is least sure about, not the ones it already got right.
-            dialog = NumericFilterDialog(column, self.point_proxy.num_filter(column), self, default_op="<=")
-            if dialog.exec_():
-                criterion = dialog.get_filter()
-                self.point_proxy.set_numeric_filter(column, *(criterion or (None, None)))
+        if not header.is_categorical(column):
+            return
+        dialog = CategoryFilterDialog(column, self._filter_values(column), self.point_proxy.cat_filter(column), self)
+        if dialog.exec_():
+            self.point_proxy.set_cat_filter(column, dialog.get_allowed())
         header.set_active_filters(self.point_proxy.active_filters())
         self._select_table_row_for_frame()
 
@@ -1174,6 +1469,18 @@ class PoseLabellingDialog(QDialog):
                 "Keep these predicted positions as your own labels, so the next\n"
                 "fill treats them as ground truth instead of re-deriving them."
             )
+        if any(self.store.is_detected(frame, individual) for frame, individual in keys):
+            reject = menu.addAction(f"Reject detections on {suffix}", lambda: self._clear_detection_rows(keys))
+            reject.setToolTip(
+                "Throw away what the detector found here — for the frames where\n"
+                "it locked onto a reflection or misread a tag. Your labels stay,\n"
+                "and re-running the detector will find them again."
+            )
+            bless = menu.addAction(f"Pin detections as labels on {suffix}", lambda: self._pin_detection_rows(keys))
+            bless.setToolTip(
+                "Accept these detected positions as your own labels — for freezing\n"
+                "a run before retuning the detector, or seeding a training set."
+            )
         if menu.isEmpty():
             return
         menu.exec_(self.point_table.viewport().mapToGlobal(position))
@@ -1193,6 +1500,24 @@ class PoseLabellingDialog(QDialog):
         self._after_table_edit()
         notify(f"Removed {removed} filled point(s).", "info")
 
+    def _clear_detection_rows(self, keys: list[tuple[int, str]]) -> None:
+        """Reject the given rows' detections, keeping their labels."""
+        removed = sum(self.store.clear_detections_for(frame, individual) for frame, individual in keys)
+        if not removed:
+            return
+        self._push_pose_override()
+        self._after_table_edit()
+        notify(f"Rejected {removed} detected point(s).", "info")
+
+    def _pin_detection_rows(self, keys: list[tuple[int, str]]) -> None:
+        """Promote the given rows' detections to labels."""
+        pinned = sum(self.store.promote_detections(frame, individual) for frame, individual in keys)
+        if not pinned:
+            notify("Nothing to pin — those points are already labelled.", "info")
+            return
+        self._after_table_edit()
+        notify(f"Pinned {pinned} detected point(s) as labels.", "info")
+
     def _pin_table_rows(self, keys: list[tuple[int, str]]) -> None:
         """Promote the given rows' filled points to labels ("accept the fill")."""
         pinned = sum(self.store.promote_fill(frame, individual) for frame, individual in keys)
@@ -1201,6 +1526,50 @@ class PoseLabellingDialog(QDialog):
             return
         self._after_table_edit()
         notify(f"Pinned {pinned} filled point(s) as labels.", "info")
+
+    def _refresh_bulk_approve_buttons(self) -> None:
+        """Offer each bulk approval only when there is something for it to take."""
+        self.approve_detections_btn.setEnabled(bool(self.store.detections))
+        self.approve_fill_btn.setEnabled(self.store.fill_range is not None)
+
+    def _on_approve_all_detections(self) -> None:
+        """Bless the whole detector run as labels, after confirming."""
+        self._approve_all(
+            "Approve all detections",
+            f"Pin every detected point on {len(self.store.detections)} frame(s) as a label?",
+            self.store.promote_all_detections,
+        )
+
+    def _on_approve_all_fill(self) -> None:
+        """Bless the whole fill as labels, after confirming."""
+        span = self.store.fill_range
+        if span is None:
+            notify("Fill the frames between your labels first.", "warning")
+            return
+        self._approve_all(
+            "Approve all filled points",
+            f"Pin every filled point on frames {span[0]}–{span[1]} as a label?\n"
+            "Detected points in that range are pinned too.",
+            self.store.promote_all_fill,
+        )
+
+    def _approve_all(self, title: str, question: str, promote) -> None:
+        """Confirm, promote in bulk, and repaint — the shape both buttons share.
+
+        Confirmed because it is not undoable: a bulk promotion discards the undo
+        history rather than leaving a stack nobody can walk back (see
+        :meth:`~ethograph.gui.pose_annotate.KeypointStore._promote_bulk`), and
+        the wording says so in the same words "Clear all labels…" uses.
+        """
+        if QMessageBox.question(self, title, f"{question}\nThis cannot be undone.") != QMessageBox.Yes:
+            return
+        promoted = promote()
+        if not promoted:
+            # Not a failure: everything worth taking was already labelled.
+            notify("Nothing to approve — those points are already labels.", "info")
+            return
+        self._after_table_edit()
+        notify(f"Approved {promoted} point(s) as labels.", "info")
 
     def _on_clear_all_labels(self) -> None:
         """Wipe every labelled point in the table, after confirming."""
@@ -1343,8 +1712,8 @@ class PoseLabellingDialog(QDialog):
             "point is called unreliable: this many source-video pixels of\n"
             "disagreement costs a factor 1/e of confidence.\n\n"
             "Raise it for large or fast animals, lower it to be strict. It only\n"
-            "changes the Confidence column, the confidence filter and which\n"
-            "frames 'Lowest fill confidence' proposes — never the positions."
+            "changes each keypoint's 'conf' column and which frames 'Lowest\n"
+            "fill confidence' proposes — never the positions."
         )
         self.disagreement_spin.valueChanged.connect(self._on_disagreement_changed)
         disagreement.addWidget(self.disagreement_spin, stretch=1)
@@ -1458,6 +1827,8 @@ class PoseLabellingDialog(QDialog):
         derive_row.addStretch()
         box.addLayout(derive_row)
 
+        box.addWidget(self._build_head_direction_row())
+
         load_btn = QPushButton("Load into the GUI")
         load_btn.setToolTip(
             "Add the keypoints — and whichever kinematics are ticked — to the\n"
@@ -1477,6 +1848,69 @@ class PoseLabellingDialog(QDialog):
         box.addWidget(movement_btn)
         return group
 
+    def _build_head_direction_row(self) -> QWidget:
+        """Head direction, read off the tags themselves.
+
+        One tick box and nothing to configure: an AprilTag is a square, so the
+        detector already measured which way each one faces when it decoded it.
+        There is no pair of keypoints to nominate, because the heading belongs
+        to the tagged keypoint itself. With no oriented marker in the session
+        there is nothing to offer, and the box says so instead of asking.
+        """
+        widget = QWidget()
+        box = QVBoxLayout(widget)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(2)
+
+        self.head_direction_check = QCheckBox("Head direction (from marker orientation)")
+        box.addWidget(self.head_direction_check)
+
+        self._refresh_head_direction_row()
+        return widget
+
+    def _refresh_head_direction_row(self) -> None:
+        """Offer head direction exactly when an oriented marker was detected.
+
+        Called after a detector run and after schema changes. A run that finds
+        tags turns the tick on by itself — measuring their orientation costs
+        nothing extra, so having it and not offering it would be perverse —
+        while a session with no tags leaves it off and disabled, with the reason
+        in the tooltip rather than in a warning after the fact.
+        """
+        check = getattr(self, "head_direction_check", None)
+        if check is None:
+            return
+        available = self.store.has_orientation
+        check.setEnabled(available)
+        if available:
+            check.setToolTip(
+                "Add each tagged keypoint's forward vector and its heading angle\n"
+                "in degrees.\n\n"
+                "Measured from the tag itself: its printed TOP edge is taken as the\n"
+                "front, so the heading is perpendicular to that edge. One tag is one\n"
+                "heading — nothing to pick, and no second keypoint needed.\n\n"
+                "Frames where the tag did not decode are left empty rather than\n"
+                "interpolated: a heading is a measurement, not a prediction.\n\n"
+                "Applies to 'Load into the GUI' and the NetCDF export."
+            )
+            if not self._head_direction_offered:
+                check.setChecked(True)
+                self._head_direction_offered = True
+        else:
+            check.setChecked(False)
+            check.setToolTip(
+                "Needs a marker that has an orientation of its own.\n\n"
+                "An AprilTag is a square, so decoding one says which way it faces —\n"
+                "run the detector on the Detect tab and this turns on by itself.\n"
+                "Hand-placed keypoints are bare points: a single one cannot face\n"
+                "anywhere, so there is no head direction to compute."
+            )
+            self._head_direction_offered = False
+
+    def _head_direction_wanted(self) -> bool:
+        """Whether to add a heading: asked for, and there is one to add."""
+        return bool(self.head_direction_check.isChecked() and self.store.has_orientation)
+
     def _export_image_height(self) -> float | None:
         """Image height for the y-flip, or ``None`` to keep image coordinates."""
         if not self.invert_y_check.isChecked():
@@ -1490,61 +1924,936 @@ class PoseLabellingDialog(QDialog):
     def _selected_kinematics(self) -> list[str]:
         return [name for name, check in self.kinematic_checks.items() if check.isChecked()]
 
-    def _on_load_into_gui(self) -> None:
-        """Add the keypoints (and ticked kinematics) to the trial as features."""
+    def _build_dataset(self):
+        """The poses dataset both output paths produce, or ``None`` with a reason.
+
+        One builder, so *Load into the GUI* and *Export poses* can never disagree
+        about what a labelling session contains.
+        """
         fps = self._fps()
         if not fps:
             notify("Video frame rate is unknown — cannot build a poses dataset.", "warning")
-            return
-        if not self.store.anchor_frames():
-            notify("Nothing to load — no frames are labelled.", "warning")
+            return None
+        if not self.store.anchor_frames() and not self.store.detection_frames():
+            notify("Nothing to save — no frames are labelled or detected.", "warning")
+            return None
+        try:
+            return store_to_dataset(
+                self.store,
+                fps,
+                # Kinematics and head direction follow the flip, so their y signs
+                # match the trajectory the user is looking at.
+                image_height=self._export_image_height(),
+                kinematics=self._selected_kinematics(),
+                head_direction=self._head_direction_wanted(),
+            )
+        except (KeypointStoreError, ImportError, ValueError) as e:
+            notify(f"Could not build the poses dataset: {e}", "error")
+            return None
+
+    def _on_load_into_gui(self) -> None:
+        """Serve the session's features from the poses dataset, and save a copy.
+
+        The dataset is what the GUI gets — replacing the feature data rather
+        than being merged into it, so ``keypoint`` and ``individual`` arrive as
+        ordinary selectable dimensions. The file written beside the video is the
+        same thing on disk, byte-for-byte what *Export poses* produces; writing
+        it is not how the GUI is fed, so a read-only folder costs a warning and
+        nothing else.
+        """
+        video = self._video_path()
+        if not video:
+            notify("No video is loaded — there is nothing to attach the keypoints to.", "warning")
             return
         if self.store.filled is None:
-            notify("Only the labelled frames will be loaded — run Fill to cover the rest.", "info")
+            notify("Only the observed frames will be loaded — run Fill to cover the rest.", "info")
 
-        ds = store_to_movement_ds(self.store, fps, self._export_image_height())
-        try:
-            # Kinematics come from the flipped positions, so velocity's y sign
-            # matches the trajectory the user is looking at.
-            arrays = store_to_kinematics(ds, self._selected_kinematics())
-        except (KeypointStoreError, ImportError, ValueError) as e:
-            notify(f"Could not derive kinematics: {e}", "error")
+        ds = self._build_dataset()
+        if ds is None:
             return
 
-        added = self._data_widget.add_keypoint_features(arrays)
-        if added:
-            notify(f"Loaded {', '.join(added)} — add a panel to plot them.", "info")
+        path = keypoints_dataset_path(video)
+        try:
+            ds.to_netcdf(path)
+        except OSError as e:
+            notify(f"Loaded, but could not save a copy to {path.name}: {e}", "warning")
+
+        if self._data_widget.load_keypoint_dataset(ds):
+            notify(f"Loaded {', '.join(ds.data_vars)} — saved as {path.name}.", "info")
+
+    # ------------------------------------------------------------------
+    # Detect: markers read off the pixels, one frame at a time
+    # ------------------------------------------------------------------
+
+    def _build_detect_page(self) -> QWidget:
+        """Detector, what its labels mean, and the run itself.
+
+        Its own tab because it is its own stage: it produces *observations*, the
+        same kind of thing a click produces, which the fill on the next tab then
+        bridges. Running it is optional, and running it twice with different
+        parameters never disturbs a label.
+        """
+        page = QWidget()
+        box = QVBoxLayout(page)
+        box.addWidget(self._build_detector_group())
+        # Directly under the parameters, because it is what they do: every spin
+        # box above redraws it on the frame already on screen.
+        box.addWidget(self._build_preview_group())
+        box.addWidget(self._build_assignment_group(), stretch=1)
+        box.addWidget(self._build_run_group())
+        return page
+
+    def _build_preview_group(self) -> QGroupBox:
+        """What the detector sees on this frame — masks, keeps and near misses.
+
+        Tuning by numbers alone is guesswork: you set a tolerance, run thirty
+        thousand frames, and find out afterwards. This costs one decoded frame
+        and a few milliseconds, so it can follow the playhead.
+        """
+        group = QGroupBox("Preview on this frame")
+        box = QVBoxLayout(group)
+
+        self.mask_preview = PreviewPanel()
+        box.addWidget(self.mask_preview)
+
+        controls = QHBoxLayout()
+        self.preview_check = QCheckBox("Show preview")
+        self.preview_check.setChecked(True)
+        self.preview_check.setToolTip(
+            "Redraw as you scrub and as you change the settings above.\n"
+            "Untick to leave it alone — nothing else depends on it."
+        )
+        self.preview_check.toggled.connect(self._on_preview_toggled)
+        controls.addWidget(self.preview_check)
+        controls.addStretch()
+        self.preview_summary = QLabel()
+        self.preview_summary.setWordWrap(True)
+        controls.addWidget(self.preview_summary, stretch=1)
+        box.addLayout(controls)
+
+        # Coalesces a scrub into one redraw: dragging the playhead emits a frame
+        # change per tick, and each redraw decodes a frame.
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(PREVIEW_DEBOUNCE_MS)
+        self._preview_timer.timeout.connect(self._refresh_preview)
+        return group
+
+    def _build_detector_group(self) -> QGroupBox:
+        group = QGroupBox("Detector")
+        box = QVBoxLayout(group)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Find:"))
+        self.detector_combo = QComboBox()
+        for info in available_detectors():
+            self.detector_combo.addItem(info.label, info.key)
+            index = self.detector_combo.count() - 1
+            if not info.available:
+                self.detector_combo.model().item(index).setEnabled(False)
+                self.detector_combo.setItemData(index, f"Not installed — {info.hint}", Qt.ToolTipRole)
+        position = self.detector_combo.findData(self.app_state.detect_detector)
+        self.detector_combo.setCurrentIndex(position if position >= 0 else 0)
+        # A key from an older version (or a detector since removed) resolves to
+        # the first entry — write that back rather than leaving a setting that
+        # names something no longer offered.
+        self.app_state.detect_detector = self.detector_combo.currentData()
+        self.detector_combo.currentIndexChanged.connect(self._on_detector_changed)
+        row.addWidget(self.detector_combo, stretch=1)
+        box.addLayout(row)
+
+        # The family combo offers only what pose_detect can actually construct:
+        # an unlisted AprilTag family aborts the process rather than raising, so
+        # the list is the guard, not a suggestion.
+        self.tag_row = QWidget()
+        tags = QHBoxLayout(self.tag_row)
+        tags.setContentsMargins(0, 0, 0, 0)
+
+        tags.addWidget(QLabel("Family:"))
+        self.tag_family_combo = QComboBox()
+        for name in TAG_FAMILIES:
+            self.tag_family_combo.addItem(name, name)
+            self.tag_family_combo.setItemData(self.tag_family_combo.count() - 1, family_note(name), Qt.ToolTipRole)
+        position = self.tag_family_combo.findData(self.app_state.detect_tag_family)
+        self.tag_family_combo.setCurrentIndex(position if position >= 0 else 0)
+        self.tag_family_combo.setToolTip(
+            "Which AprilTag family you printed. It must match the sheet — a\n"
+            "tag16h5 tag will never decode as tag36h11.\n\n"
+            "tag36h11 is the default: the most IDs and the widest margin. The\n"
+            "smaller families need less paper for the same pixels per module,\n"
+            "which is what makes them worth trying on a small animal."
+        )
+        self.tag_family_combo.currentIndexChanged.connect(self._on_tag_params_changed)
+        tags.addWidget(self.tag_family_combo)
+
+        tags.addWidget(QLabel("Downscale:"))
+        self.tag_decimate_spin = QDoubleSpinBox()
+        self.tag_decimate_spin.setRange(1.0, 4.0)
+        self.tag_decimate_spin.setDecimals(1)
+        self.tag_decimate_spin.setSingleStep(1)
+        self.tag_decimate_spin.setValue(float(self.app_state.detect_quad_decimate))
+        self.tag_decimate_spin.setToolTip(
+            "quad_decimate: how far the frame is shrunk before tags are looked\n"
+            "for. 2.0 runs several times faster and needs tags twice as big —\n"
+            "the library's own default, and the reason small tags 'stop working'\n"
+            "elsewhere. 1.0 (here) searches the full frame.\n\n"
+            "The 'must be ≥N px per side' figure below already includes it."
+        )
+        self.tag_decimate_spin.valueChanged.connect(self._on_tag_params_changed)
+        tags.addWidget(self.tag_decimate_spin)
+
+        tags.addWidget(QLabel("Sharpening:"))
+        self.tag_sharpening_spin = QDoubleSpinBox()
+        self.tag_sharpening_spin.setRange(0.0, 2.0)
+        self.tag_sharpening_spin.setDecimals(2)
+        self.tag_sharpening_spin.setSingleStep(0.05)
+        self.tag_sharpening_spin.setValue(float(self.app_state.detect_decode_sharpening))
+        self.tag_sharpening_spin.setToolTip(
+            "decode_sharpening: applied to the sampled bit pattern before it is\n"
+            "read. Raise it for motion-blurred or slightly out-of-focus tags."
+        )
+        self.tag_sharpening_spin.valueChanged.connect(self._on_tag_params_changed)
+        tags.addWidget(self.tag_sharpening_spin)
+
+        self.tag_corners_check = QCheckBox("Detect the four corners too")
+        self.tag_corners_check.setChecked(bool(self.app_state.detect_tag_corners))
+        self.tag_corners_check.setToolTip(
+            "One tag becomes four keypoints instead of one, so a tagged animal\n"
+            "carries an orientation as well as a position."
+        )
+        self.tag_corners_check.toggled.connect(self._on_tag_params_changed)
+        tags.addWidget(self.tag_corners_check)
+        tags.addStretch()
+        # Printing the tags is NOT offered here. By the time this tab is
+        # reachable there is a video, which means the tags were printed and
+        # stuck on the animals weeks ago — the sheet belongs on the cover page's
+        # "Pre-recording tools", the one screen that exists before a recording.
+        box.addWidget(self.tag_row)
+
+        self._refresh_detector_rows()
+        return group
+
+    def _build_assignment_group(self) -> QGroupBox:
+        """What each detector label *means* — the core of the feature.
+
+        A tag decodes to ``7``; it does not know it is the beak, or bee 12.
+        Learning proposes; the table is where the user overrules, and any row
+        they touch is never overwritten by a re-learn.
+        """
+        group = QGroupBox("What the detector's labels mean")
+        box = QVBoxLayout(group)
+
+        self.assignment_table = QTableWidget(0, len(_ASSIGNMENT_COLUMNS))
+        self.assignment_table.setHorizontalHeaderLabels(list(_ASSIGNMENT_COLUMNS))
+        self.assignment_table.verticalHeader().setVisible(False)
+        self.assignment_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.assignment_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.assignment_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.assignment_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.assignment_table.setMaximumHeight(TABLE_MAX_HEIGHT)
+        self.assignment_table.setToolTip(
+            "One row per label the detector can produce. Pick the individual and\n"
+            "keypoint each one lands on; a row you edit is kept through every\n"
+            "later 'Learn from labels'."
+        )
+        for column, tip in enumerate(_ASSIGNMENT_TOOLTIPS):
+            self.assignment_table.horizontalHeaderItem(column).setToolTip(tip)
+        box.addWidget(self.assignment_table)
+
+        buttons = QHBoxLayout()
+        learn_btn = QPushButton("Learn from labels")
+        learn_btn.setToolTip(
+            "Run the detector on the frames you labelled and match each decoded\n"
+            "tag to the nearest labelled point — so labelling the animal a tag is\n"
+            "stuck to is what teaches EthoGraph whose tag it is.\n\n"
+            "At least two labelled frames must agree before a row is proposed."
+        )
+        learn_btn.clicked.connect(self._on_learn_assignment)
+        buttons.addWidget(learn_btn)
+
+        clear_btn = QPushButton("Clear")
+        clear_btn.setToolTip("Forget every assignment, including the ones you edited by hand.")
+        clear_btn.clicked.connect(self._on_clear_assignment)
+        buttons.addWidget(clear_btn)
+        buttons.addStretch()
+        box.addLayout(buttons)
+
+        self.assignment_warning = QLabel()
+        self.assignment_warning.setWordWrap(True)
+        self.assignment_warning.setToolTip(
+            "Keypoints no label claims produce nothing on a run, and a label\n"
+            "pointing at a keypoint that no longer exists is simply skipped."
+        )
+        box.addWidget(self.assignment_warning)
+        self._refresh_assignment_table()
+        return group
+
+    # -- preview -------------------------------------------------------
+
+    def _preview_wanted(self) -> bool:
+        """Whether to spend a decode: only when ticked and actually on screen."""
+        return self.preview_check.isChecked() and self.tabs.currentWidget() is self._detect_page
+
+    def _schedule_preview(self) -> None:
+        """Redraw shortly — coalescing a scrub or a spin box's repeats."""
+        if self._preview_wanted():
+            self._preview_timer.start()
+
+    def _on_preview_toggled(self, on: bool) -> None:
+        """Unticking must also drop the redraw already queued behind a scrub."""
+        if on:
+            self._schedule_preview()
+        else:
+            self._preview_timer.stop()
+
+    def _preview_frame_source(self):
+        """A frame source kept open for the preview, or ``None`` without a video.
+
+        Kept rather than opened per redraw: opening a PyAV container costs far
+        more than the detection itself, and this runs on every scrub.
+        """
+        video = self._video_path()
+        if not video or not self._fps():
+            return None
+        wanted = (video, self._n_frames(), self._view.start_frame)
+        if self._preview_frames is not None and self._preview_frames_for != wanted:
+            self._close_preview_frames()
+        if self._preview_frames is None:
+            try:
+                self._preview_frames = self._open_frames(max_side=DETECT_MAX_SIDE)
+            except (ValueError, OSError) as e:
+                logger.warning("No preview frames: %s", e)
+                return None
+            self._preview_frames_for = wanted
+        return self._preview_frames
+
+    def _close_preview_frames(self) -> None:
+        if self._preview_frames is not None:
+            self._preview_frames.close()
+        self._preview_frames = None
+        self._preview_frames_for = None
+
+    def _refresh_preview(self) -> None:
+        """Draw the current frame as the detector sees it.
+
+        Everything shown comes from ``diagnose_frame``, which runs the detector's
+        own ``detect`` path — a preview that could disagree with a run would be
+        worse than none. A detector that cannot be built yet (no labels to learn
+        a colour from) is a *message*, not an error: it is the normal state on
+        the way in.
+        """
+        if not self._preview_wanted():
+            return
+        frames = self._preview_frame_source()
+        if frames is None:
+            self.mask_preview.show_message("Load a video to preview the detector.")
+            self.preview_summary.setText("")
+            return
+        frame_index = max(0, min(self._current_frame(), len(frames) - 1))
+        try:
+            image = np.asarray(frames[frame_index])
+            detector = self._current_detector()
+            preview = diagnose_frame(detector, image)
+        except (PointDetectorError, KeypointStoreError, ValueError, OSError) as e:
+            self.mask_preview.show_message(str(e))
+            self.preview_summary.setText("")
+            return
+
+        names = {shape.label: self._label_text(shape.label) for shape in preview.accepted if shape.label is not None}
+        self.mask_preview.show_preview(image, preview, self._preview_colors(preview), names)
+        self._refresh_preview_summary(frame_index, preview)
+
+    def _preview_colors(self, preview) -> dict[int, tuple[float, float, float]]:
+        """One colour per label — the keypoint's own.
+
+        A tag carries no colour of its own, so it borrows the keypoint it is
+        assigned to, which is what makes the preview readable beside the video
+        overlay: the same tag is the same colour in both.
+        """
+        colors: dict[int, tuple[float, float, float]] = {}
+        for entry in self.store.assignment:
+            if entry.keypoint not in self.store.keypoint_names:
+                continue
+            colour = self._keypoint_brush(entry.keypoint).color()
+            colors[entry.label] = (colour.redF(), colour.greenF(), colour.blueF())
+        for shape in preview.shapes:
+            if shape.label is not None:
+                colors.setdefault(shape.label, (1.0, 1.0, 1.0))
+        return colors
+
+    def _refresh_preview_summary(self, frame_index: int, preview) -> None:
+        """Name the failure modes apart — that is the point of the panel.
+
+        Three of them, and only the first two are worth changing a setting for:
+        a tag read but **not trusted** (bit errors had to be corrected), a tag
+        read but assigned to nothing, and nothing found at all. For the last the
+        question is always "was it big enough?", so the frame size and the
+        pixels a tag needs *at this downscale* are stated outright — those two
+        numbers plus the tag on screen settle it without a run.
+        """
+        assigned = set(self.store.assignment_rows())
+        kept = [shape for shape in preview.accepted if shape.label in assigned]
+        unassigned = len(preview.accepted) - len(kept)
+        parts = [f"Frame {frame_index}: {len(kept)} tag(s) decoded"]
+        if unassigned:
+            parts.append(f"{unassigned} decoded but unassigned")
+        if preview.rejected:
+            parts.append(f"{len(preview.rejected)} rejected — misread")
+        if not preview.accepted:
+            parts.append("no tag decoded")
+        width, height = preview.size
+        needed = getattr(self._detector, "min_side_px", None)
+        budget = f"scanned at {width}×{height}"
+        if needed:
+            budget += f", so a tag must be ≥{needed:.0f} px per side here"
+        parts.append(budget)
+        self.preview_summary.setText(" · ".join(parts))
+
+    def _build_run_group(self) -> QGroupBox:
+        group = QGroupBox("Run")
+        box = QVBoxLayout(group)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Over:"))
+        self.detect_range_combo = QComboBox()
+        for key, label, tip in _DETECT_RANGES:
+            self.detect_range_combo.addItem(label, key)
+            self.detect_range_combo.setItemData(self.detect_range_combo.count() - 1, tip, Qt.ToolTipRole)
+        row.addWidget(self.detect_range_combo, stretch=1)
+        box.addLayout(row)
+
+        quality = QHBoxLayout()
+        quality.addWidget(QLabel("Quality threshold:"))
+        self.detect_quality_spin = QDoubleSpinBox()
+        self.detect_quality_spin.setRange(0.0, 1.0)
+        self.detect_quality_spin.setSingleStep(0.05)
+        self.detect_quality_spin.setDecimals(2)
+        self.detect_quality_spin.setValue(float(self.app_state.detect_quality_min))
+        self.detect_quality_spin.setToolTip(
+            "Detections scoring below this are dropped. The score is the decode\n"
+            "margin — how cleanly the tag's bits separated — as a fraction of a\n"
+            "good read. Spurious reads on noise score under 0.15; a real tag\n"
+            "scores about 1.0, so 0.3 sits in the gap between them.\n\n"
+            "Tags needing any bit correction are already rejected outright,\n"
+            "whatever this says.\n\n"
+            "Applied as the results are stored, so retuning it after a run costs\n"
+            "nothing; only a run from a *previous session* has to be repeated."
+        )
+        self.detect_quality_spin.valueChanged.connect(self._on_quality_changed)
+        quality.addWidget(self.detect_quality_spin, stretch=1)
+        box.addLayout(quality)
+
+        run_btn = QPushButton("Run detector")
+        run_btn.setToolTip(
+            "Find every assigned marker over the chosen range. The result joins\n"
+            "your labels as observations, so the fill on the next tab bridges the\n"
+            "frames where nothing was found."
+        )
+        run_btn.clicked.connect(self._on_run_detector)
+        box.addWidget(run_btn)
+
+        clear_btn = QPushButton("Clear detections")
+        clear_btn.setToolTip("Discard the whole run. Your labels — and the assignments — are kept.")
+        clear_btn.clicked.connect(self._on_clear_detections)
+        box.addWidget(clear_btn)
+
+        self.detect_summary = QLabel()
+        self.detect_summary.setWordWrap(True)
+        box.addWidget(self.detect_summary)
+        self._refresh_detect_summary()
+        return group
+
+    # -- detector construction -----------------------------------------
+
+    def _on_detector_changed(self, _index: int) -> None:
+        self.app_state.detect_detector = self.detector_combo.currentData()
+        self._detector = None
+        self._refresh_detector_rows()
+        self._schedule_preview()
+
+    def _on_tag_params_changed(self, _value=None) -> None:
+        self.app_state.detect_tag_family = self.tag_family_combo.currentText()
+        self.app_state.detect_quad_decimate = float(self.tag_decimate_spin.value())
+        self.app_state.detect_decode_sharpening = float(self.tag_sharpening_spin.value())
+        self.app_state.detect_tag_corners = bool(self.tag_corners_check.isChecked())
+        self._detector = None
+        self._schedule_preview()
+        # A family change re-reads every label: tag 7 of tag16h5 and tag 7 of
+        # tag36h11 share a label but are different physical tags, so the names
+        # and thumbnails beside each assignment have to be redrawn.
+        self._refresh_assignment_table()
+
+    def _refresh_detector_rows(self) -> None:
+        """Show each option only for the detector it applies to."""
+        self.tag_row.setVisible(self.detector_combo.currentData() == APRILTAG_DETECTOR)
+
+    def _detector_params(self) -> dict:
+        """Constructor arguments for the current detector, from the widgets."""
+        return {
+            "family": self.tag_family_combo.currentText(),
+            "quad_decimate": float(self.tag_decimate_spin.value()),
+            "decode_sharpening": float(self.tag_sharpening_spin.value()),
+            "parts": TAG_PARTS if self.tag_corners_check.isChecked() else ("centre",),
+        }
+
+    def _current_detector(self, progress=None):
+        """The detector for the current settings, rebuilt only when they change.
+
+        Kept between runs because the live preview asks for it on every redraw.
+        Raises rather than returning ``None`` — it also runs inside
+        ``BusyProgressDialog``, which reports the message.
+        """
+        key = self.detector_combo.currentData()
+        params = self._detector_params()
+        built_for = (key, params)
+        if self._detector is not None and self._detector_built_for == built_for:
+            return self._detector
+        detector = build_detector(key, **params)
+        self._detector = detector
+        self._detector_built_for = built_for
+        return detector
+
+    # -- assignment ----------------------------------------------------
+
+    def _refresh_assignment_table(self) -> None:
+        """Rebuild the label rows from the store's assignment table."""
+        table = self.assignment_table
+        invalid = self.store.assignment.invalid_labels(self.store)
+        entries = self.store.assignment.entries
+        table.blockSignals(True)
+        table.setRowCount(len(entries))
+        for row, entry in enumerate(entries):
+            item = QTableWidgetItem(self._label_text(entry.label))
+            item.setData(Qt.UserRole, entry.label)
+            preview = self._label_icon(entry.label)
+            if preview is not None:
+                item.setIcon(preview)
+            if entry.label in invalid:
+                item.setForeground(QBrush(QColor("#d05050")))
+                item.setToolTip(
+                    "Skipped on a run: this target no longer exists in the schema, "
+                    "or another label already owns that point."
+                )
+            table.setItem(row, 0, item)
+            table.setCellWidget(row, 1, self._assignment_individual_combo(entry))
+            table.setCellWidget(row, 2, self._assignment_keypoint_combo(entry))
+            matched = QTableWidgetItem(f"{entry.matched_frames} frames" if entry.matched_frames else "—")
+            matched.setTextAlignment(int(Qt.AlignRight | Qt.AlignVCenter))
+            table.setItem(row, 3, matched)
+            set_by = QTableWidgetItem(_ASSIGNMENT_SOURCE_LABELS.get(entry.source, entry.source))
+            set_by.setToolTip(_ASSIGNMENT_TOOLTIPS[4])
+            table.setItem(row, 4, set_by)
+        table.blockSignals(False)
+        self._refresh_assignment_warning()
+
+    def _label_text(self, label: int) -> str:
+        """The detector's own name for a label, or the bare number without one."""
+        return label_name(self._detector, label) if self._detector is not None else f"label {label}"
+
+    def _label_icon(self, label: int):
+        """Colour swatch or rendered tag for a label, if the detector offers one."""
+        image = label_preview(self._detector, label) if self._detector is not None else None
+        if image is None:
+            return None
+        array = np.ascontiguousarray(image, dtype=np.uint8)
+        height, width = array.shape[:2]
+        qimage = QImage(array.data, width, height, 3 * width, QImage.Format_RGB888).copy()
+        return QIcon(QPixmap.fromImage(qimage))
+
+    def _assignment_individual_combo(self, entry) -> QComboBox:
+        """Named individuals only — never a "the first one" entry.
+
+        ``individual=None`` means the first individual throughout the store, but
+        offering it *here* would put two spellings of one point in the same
+        dropdown, and a label assigned to each would then both write to that
+        point. A sidecar carrying ``None`` shows the individual it resolves to,
+        and editing anything writes the name.
+        """
+        combo = QComboBox()
+        for name in self.store.individual_names:
+            combo.addItem(name, name)
+        position = 0 if entry.individual is None else combo.findData(entry.individual)
+        if position < 0:
+            combo.addItem(f"{entry.individual} (missing)", entry.individual)
+            position = combo.count() - 1
+        combo.setCurrentIndex(position)
+        combo.currentIndexChanged.connect(lambda _i, label=entry.label: self._on_assignment_edited(label))
+        return combo
+
+    def _assignment_keypoint_combo(self, entry) -> QComboBox:
+        combo = QComboBox()
+        # Filtered by the individual's own set: with an asymmetric schema, half
+        # the keypoints simply do not exist on this animal.
+        for name in self._keypoints_for_assignment(entry.individual):
+            combo.addItem(name, name)
+        position = combo.findData(entry.keypoint)
+        if position < 0:
+            combo.addItem(f"{entry.keypoint} (missing)", entry.keypoint)
+            position = combo.count() - 1
+        combo.setCurrentIndex(position)
+        combo.currentIndexChanged.connect(lambda _i, label=entry.label: self._on_assignment_edited(label))
+        return combo
+
+    def _keypoints_for_assignment(self, individual: str | None) -> list[str]:
+        if not self.store.individual_names:
+            return list(self.store.keypoint_names)
+        if individual is not None and individual not in self.store.individual_names:
+            return list(self.store.keypoint_names)
+        return self.store.keypoints_for(individual)
+
+    def _assignment_row(self, label: int) -> int | None:
+        for row in range(self.assignment_table.rowCount()):
+            item = self.assignment_table.item(row, 0)
+            if item is not None and item.data(Qt.UserRole) == label:
+                return row
+        return None
+
+    def _on_assignment_edited(self, label: int) -> None:
+        """A combo moved: the row becomes the user's and is never re-learned."""
+        row = self._assignment_row(label)
+        if row is None:
+            return
+        individual = self.assignment_table.cellWidget(row, 1).currentData()
+        keypoint = self.assignment_table.cellWidget(row, 2).currentData()
+        try:
+            self.store.assignment.set(label, individual, keypoint, MANUAL)
+        except AssignmentError as e:
+            notify(str(e), "warning")
+        self._save_store()
+        # The preview colours labels by the keypoint they land on.
+        self._schedule_preview()
+        # Deferred: the rebuild replaces the very combo whose signal is running,
+        # and Qt deletes a cell widget the moment it is swapped out.
+        QTimer.singleShot(0, self._refresh_assignment_table)
+
+    def _refresh_assignment_warning(self) -> None:
+        """Name what will silently produce nothing, rather than letting it."""
+        if not len(self.store.assignment):
+            self.assignment_warning.setText("No labels assigned yet — press 'Learn from labels'.")
+            return
+        messages = []
+        invalid = self.store.assignment.invalid_labels(self.store)
+        if invalid:
+            messages.append(
+                f"{len(invalid)} label(s) point at a keypoint or individual that no longer exists, "
+                "or at a point another label already owns."
+            )
+        # Resolved through the store, so "the first individual" and its name are
+        # one row here rather than two spellings.
+        claimed = set(self.store.assignment_rows().values())
+        unclaimed = [
+            f"{individual} · {keypoint}"
+            for i, individual in enumerate(self.store.individual_names)
+            for keypoint in self.store.keypoints_for(individual)
+            if i * self.store.n_keypoints + self.store.keypoint_index(keypoint) not in claimed
+        ]
+        if unclaimed:
+            messages.append("No detector label lands on: " + ", ".join(unclaimed) + ".")
+        self.assignment_warning.setText("  ".join(messages))
+
+    def _on_learn_assignment(self) -> None:
+        """Propose what each label means by matching detections to the labels."""
+        if not self.store.anchor_frames():
+            notify("Label a few frames first — this learns by matching detections to your labels.", "warning")
+            return
+        busy = BusyProgressDialog("Learning what the detector's labels mean…", parent=self)
+
+        def progress(fraction: float) -> bool:
+            busy.setLabelText(f"Scanning your labelled frames… {fraction:.0%}")
+            busy.pump_events()
+            return not busy.wasCanceled()
+
+        learned, error = busy.execute(self._run_learn_assignment, progress)
+        if error is not None or learned is None:
+            return
+        taken = self.store.assignment.learn(learned.proposals)
+        self._refresh_assignment_table()
+        self._save_store()
+        if not learned.proposals:
+            notify(
+                "Nothing could be matched — the detector found no marker near your labels on at "
+                "least two frames. Check the detector's settings, or label the marker itself.",
+                "warning",
+            )
+            return
+        kept = len(learned.proposals) - taken
+        message = f"Learned {taken} assignment(s) from {learned.frames_scanned} labelled frames."
+        if kept:
+            message += f" {kept} left alone (yours, or already taken)."
+        if learned.unmatched_targets:
+            message += f" Nothing detected for: {', '.join(k for _i, k in learned.unmatched_targets)}."
+        notify(message, "info")
+
+    def _run_learn_assignment(self, progress):
+        detector = self._current_detector(progress)
+        frames = self._open_frames(max_side=DETECT_MAX_SIDE)
+        try:
+            return learn_assignment(detector, frames, self.store, progress=progress)
+        finally:
+            frames.close()
+
+    def _on_clear_assignment(self) -> None:
+        if not len(self.store.assignment):
+            return
+        confirm = QMessageBox.question(
+            self,
+            "Clear assignments",
+            f"Forget what all {len(self.store.assignment)} detector label(s) mean?\n"
+            "Rows you edited by hand go too. Detections are not affected.",
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        self.store.assignment.clear()
+        self._refresh_assignment_table()
+        self._save_store()
+
+    # -- the run itself ------------------------------------------------
+
+    def _detect_span(self) -> tuple[int, int]:
+        """The frame range to scan, from the "Over:" combo."""
+        n_frames = self._n_frames() or self.store.n_frames
+        choice = self.detect_range_combo.currentData()
+        if choice == _RANGE_LABELLED:
+            labelled = self.store.anchor_frames()
+            if labelled:
+                return labelled[0], labelled[-1]
+        elif choice == _RANGE_FILL and self.store.fill_range is not None:
+            return self.store.fill_range
+        return 0, max(n_frames - 1, 0)
+
+    def _quality_min(self) -> float:
+        return float(self.detect_quality_spin.value())
+
+    def _on_quality_changed(self, value: float) -> None:
+        """Retune the threshold without re-running — the run is kept in memory."""
+        self.app_state.detect_quality_min = float(value)
+        if self._raw_detections is None:
+            return
+        positions, quality, orientation = self._raw_detections
+        self.store.set_detections_from_flat(positions, quality, self._quality_min(), orientation)
+        self._after_detections_changed()
+
+    def _on_run_detector(self) -> None:
+        if not self.store.assignment_rows():
+            notify(
+                "Nothing to detect — no usable label is assigned to a keypoint. Press 'Learn from labels'.",
+                "warning",
+            )
+            return
+        if not self._n_frames():
+            notify("Frame count is unknown — load a video first.", "warning")
+            return
+        self.store.n_frames = self._n_frames()
+
+        busy = BusyProgressDialog("Detecting markers…", parent=self)
+        cancelled = False
+
+        def progress(fraction: float) -> bool:
+            nonlocal cancelled
+            busy.setLabelText(f"Detecting markers… {fraction:.0%}")
+            busy.pump_events()
+            cancelled = cancelled or busy.wasCanceled()
+            return not cancelled
+
+        result, error = busy.execute(self._run_detection, progress)
+        if cancelled:
+            # Half a run is not a worse run, it is a different one — and one the
+            # user cannot tell apart from a complete one afterwards.
+            notify("Detection cancelled — nothing was changed.", "info")
+            return
+        if error is not None or result is None:
+            return
+
+        positions, quality, orientation = result
+        self._raw_detections = (positions, quality, orientation)
+        found = self.store.set_detections_from_flat(positions, quality, self._quality_min(), orientation)
+        self._after_detections_changed()
+        first, last = self._detect_span()
+        scanned = last - first + 1
+        if not found:
+            notify(
+                "Nothing was detected. Lower the quality threshold, or check the detector's settings.",
+                "warning",
+            )
+            return
+        notify(
+            f"Detected {found} point(s) on {len(self.store.detection_frames())} of {scanned} frames. "
+            "Run Fill to bridge the rest.",
+            "info",
+        )
+
+    def _run_detection(self, progress):
+        detector = self._current_detector(progress)
+        frames = self._open_frames(max_side=DETECT_MAX_SIDE)
+        try:
+            return run_detector(
+                detector,
+                frames,
+                self.store.assignment_rows(),
+                self.store.n_points,
+                self._detect_span(),
+                progress,
+            )
+        finally:
+            frames.close()
+
+    def _on_clear_detections(self) -> None:
+        if not self.store.detections:
+            return
+        self.store.clear_detections()
+        self._raw_detections = None
+        self._after_detections_changed()
+        notify("Cleared the detections; your labels are untouched.", "info")
+
+    def _after_detections_changed(self) -> None:
+        """Everything a detector run touches — the canvas, the table, the cache."""
+        if self._mode is not None:
+            self._mode.refresh()
+        self._push_pose_override()
+        self._refresh_active_label()
+        self._refresh_bulk_approve_buttons()
+        self._refresh_point_table(full=True)
+        self._refresh_detect_summary()
+        # A run is what makes a heading available (or takes it away again).
+        self._refresh_head_direction_row()
+        self._schedule_preview()
+        self._save_detections()
+
+    def _refresh_detect_summary(self) -> None:
+        frames = len(self.store.detections)
+        if not frames:
+            self.detect_summary.setText("No detections. A run adds them beside your labels; it never replaces one.")
+            return
+        total = sum(int(np.count_nonzero(~np.isnan(points[:, :, 0]))) for points in self.store.detections.values())
+        per_keypoint = np.zeros(self.store.n_keypoints, dtype=int)
+        for points in self.store.detections.values():
+            per_keypoint += np.count_nonzero(~np.isnan(points[:, :, 0]), axis=0)
+        worst = ", ".join(
+            f"{name} {count}"
+            for name, count in sorted(zip(self.store.keypoint_names, per_keypoint), key=lambda item: item[1])[:3]
+        )
+        self.detect_summary.setText(
+            f"{total} point(s) on {frames} frames — {frames * 100 / max(self.store.n_frames, 1):.0f}% "
+            f"of the video. Fewest: {worst}."
+        )
+
+    # -- the detection cache -------------------------------------------
+
+    def _detection_signature(self) -> str:
+        """Identifies a run: the detector, its parameters, and where they land.
+
+        The quality threshold is part of it, because the cache holds what was
+        *kept*: lowering the threshold after reopening the dialog has to re-run,
+        which is honest — the discarded detections were never written down.
+        """
+        payload = [
+            self.detector_combo.currentData(),
+            sorted(self._detector_params().items(), key=str),
+            self._quality_min(),
+            sorted(self.store.assignment_rows().items()),
+            self.store.n_frames,
+        ]
+        return hashlib.sha1(json.dumps(payload, default=str).encode()).hexdigest()
+
+    def _load_detections(self) -> None:
+        """Restore a cached run for this video, if it still applies."""
+        video = self._video_path()
+        if not video:
+            return
+        try:
+            loaded = self.store.load_detections(detections_path(video), self._detection_signature())
+        except Exception:  # noqa: BLE001 - a cache that cannot be read is a cache miss
+            logger.warning("Ignoring unreadable detections at %s", detections_path(video), exc_info=True)
+            return
+        if loaded:
+            self._refresh_detect_summary()
+
+    def _save_detections(self) -> None:
+        video = self._video_path()
+        if video:
+            self.store.save_detections(detections_path(video), self._detection_signature())
 
     # ------------------------------------------------------------------
     # Individual / keypoint tree
     # ------------------------------------------------------------------
 
+    @property
+    def color_by(self) -> str:
+        """Which axis colour encodes — the app-wide setting, validated."""
+        mode = getattr(self.app_state, "pose_color_by", COLOR_BY_KEYPOINT)
+        return mode if mode in COLOR_BY_MODES else COLOR_BY_KEYPOINT
+
     def _keypoint_brush(self, keypoint: str) -> QBrush:
-        """The colour the canvas draws *keypoint* in."""
-        rgba = keypoint_colors(self.store.n_keypoints)[self.store.keypoint_index(keypoint)]
+        """The keypoint palette's colour for *keypoint* — pinned or generated."""
+        rgba = keypoint_colors_for(self.store)[self.store.keypoint_index(keypoint)]
         return QBrush(QColor.fromRgbF(*(float(c) for c in rgba)))
+
+    def _individual_brush(self, individual: str) -> QBrush:
+        """The individual palette's colour for *individual*."""
+        rgba = individual_colors_for(self.store)[self.store.individual_index(individual)]
+        return QBrush(QColor.fromRgbF(*(float(c) for c in rgba)))
+
+    def _point_brush(self, individual: str | None, keypoint: str | None) -> QBrush:
+        """The colour the canvas actually draws this point in.
+
+        The one place the colour mode is resolved for Qt widgets, so the tree,
+        the chip, the pickers and the table can never say something the overlay
+        does not. Falls back to the other axis when the caller only has one —
+        an individual branch has no keypoint, and vice versa.
+        """
+        if self.color_by == COLOR_BY_INDIVIDUAL and individual is not None:
+            return self._individual_brush(individual)
+        if keypoint is not None:
+            return self._keypoint_brush(keypoint)
+        return self._individual_brush(individual) if individual is not None else QBrush()
+
+    def _swatch(self, brush: QBrush) -> QIcon:
+        """A filled square of *brush*'s colour, for the tree's name column.
+
+        The mark in the second column is only drawn once the point is labelled
+        on this frame, so a swatch is what makes a colour visible while it is
+        being chosen.
+        """
+        pixmap = QPixmap(_SWATCH_PX, _SWATCH_PX)
+        pixmap.fill(brush.color())
+        return QIcon(pixmap)
+
+    def _group_brushes(self, columns: list[str]) -> list[QBrush]:
+        """Header colours for the points table's keypoint columns.
+
+        Only while colour means keypoint: colouring the beak column orange when
+        the canvas colours by individual would teach a mapping nothing draws.
+        The Individual column carries the colour in that mode instead.
+        """
+        if self.color_by == COLOR_BY_INDIVIDUAL:
+            return [QBrush() for _ in columns]
+        return [self._keypoint_brush(name) for name in columns]
 
     def _rebuild_tree(self) -> None:
         """Recreate the branches; call whenever the schema changes.
 
-        The branch text carries the individual's marker glyph and each leaf's
-        mark is drawn in its keypoint colour, so the tree reads like the canvas:
-        shape = individual, colour = keypoint.
+        Every item carries a swatch of the colour the canvas draws it in, so the
+        tree reads like the canvas in either colour mode: per keypoint (leaves
+        differ, branches share) or per individual (branches differ, each one's
+        leaves share its colour).
         """
         self.tree.blockSignals(True)
         self.tree.clear()
-        for index, individual in enumerate(self.store.individual_names):
-            branch = QTreeWidgetItem([f"{glyph_for_individual(index)}  {individual}", ""])
+        for individual in self.store.individual_names:
+            branch = QTreeWidgetItem([individual, ""])
             branch.setData(0, Qt.UserRole, (individual, None))
+            branch.setIcon(0, self._swatch(self._point_brush(individual, None)))
             for keypoint in self.store.keypoints_for(individual):
                 leaf = QTreeWidgetItem([keypoint, ""])
                 leaf.setData(0, Qt.UserRole, (individual, keypoint))
-                leaf.setForeground(1, self._keypoint_brush(keypoint))
+                leaf.setIcon(0, self._swatch(self._point_brush(individual, keypoint)))
+                leaf.setForeground(1, self._point_brush(individual, keypoint))
                 branch.addChild(leaf)
             self.tree.addTopLevelItem(branch)
             branch.setExpanded(True)
         self.tree.blockSignals(False)
         self._refresh_keypoint_hints()
+        self._refresh_head_direction_row()
         self._refresh_tree_marks()
         self._sync_tree_selection()
         self._refresh_active_label()
@@ -1665,6 +2974,78 @@ class PoseLabellingDialog(QDialog):
         remaining = [n for n in self.store.keypoints_for(individual) if n != keypoint]
         self._apply_schema(individual_keypoints=(individual, remaining))
 
+    def _on_keypoint_color(self) -> None:
+        """Pin a colour on whichever axis is currently being drawn.
+
+        The picker edits what the canvas shows: the selected keypoint's colour
+        while colour means keypoint, the selected individual's while it means
+        individual. Editing the invisible palette would be a control with no
+        visible effect.
+        """
+        if self.color_by == COLOR_BY_INDIVIDUAL:
+            individual = self._selected_individual()
+            if individual is None:
+                notify("Select an individual to colour.", "warning")
+                return
+            chosen = QColorDialog.getColor(self._individual_brush(individual).color(), self, f"Colour for {individual}")
+            if not chosen.isValid():  # the user cancelled
+                return
+            self.store.set_individual_color(individual, chosen.name())
+            self._apply_keypoint_colors()
+            return
+        keypoint = self._selected_keypoint()
+        if keypoint is None:
+            notify("Select a keypoint to colour.", "warning")
+            return
+        chosen = QColorDialog.getColor(self._keypoint_brush(keypoint).color(), self, f"Colour for {keypoint}")
+        if not chosen.isValid():  # the user cancelled
+            return
+        self.store.set_keypoint_color(keypoint, chosen.name())
+        self._apply_keypoint_colors()
+
+    def _on_reset_keypoint_colors(self) -> None:
+        self.store.clear_keypoint_colors()
+        self._apply_keypoint_colors()
+
+    def _on_color_by_changed(self, _index: int) -> None:
+        """Switch the colour axis — app-wide, so the pose overlay follows too."""
+        mode = self.color_by_combo.currentData()
+        if mode == self.color_by:
+            return
+        self.app_state.pose_color_by = mode
+        self.apply_color_by()
+        self._data_widget.update_pose()
+
+    def apply_color_by(self) -> None:
+        """Re-read ``app_state.pose_color_by`` and repaint. Also called from the sidebar."""
+        with _blocked(self.color_by_combo):
+            index = self.color_by_combo.findData(self.color_by)
+            self.color_by_combo.setCurrentIndex(index if index >= 0 else 0)
+        if self._mode is not None:
+            self._mode.set_color_by(self.color_by)
+        self._repaint_colors()
+
+    def _apply_keypoint_colors(self) -> None:
+        """Repaint everything that draws a point in its colour, and save.
+
+        Not a schema change: the arrays, the fill and the active pair are all
+        untouched, so the canvas mode is recoloured in place rather than
+        restarted. A pinned colour *is* project data, so it is saved with the
+        anchors — unlike the colour *mode*, which is a viewing preference.
+        """
+        if self._mode is not None:
+            self._mode.refresh_colors()
+        self._repaint_colors()
+        self._save_store()
+
+    def _repaint_colors(self) -> None:
+        """Rebuild the Qt surfaces that carry a colour — tree, table header, pickers."""
+        self._rebuild_tree()
+        header = self.point_table.horizontalHeader()
+        header.set_groups(header.groups(), self._group_brushes(header.groups()))
+        self.point_model.set_individual_brush(self._individual_brush if self.color_by == COLOR_BY_INDIVIDUAL else None)
+        self._refresh_active_label()
+
     def _require_individual(self) -> str | None:
         """The individual per-individual edits apply to, warning when there is none."""
         individual = self._selected_individual()
@@ -1707,6 +3088,9 @@ class PoseLabellingDialog(QDialog):
                 # leaving a canvas that silently swallows clicks.
                 self.set_interaction_mode(None)
         self._rebuild_tree()
+        # An assignment can now name a keypoint that is gone, or an individual
+        # that is new — the table shows both, so it has to be rebuilt here.
+        self._refresh_assignment_table()
         # The individuals a filter names may not exist any more, and a filter
         # nobody can see the cause of looks like a broken table.
         self._clear_filters()
@@ -1737,7 +3121,9 @@ class PoseLabellingDialog(QDialog):
             # says what the next click places.
             self.tabs.setCurrentWidget(self._label_page)
         self._sync_mode_buttons()
-        self._refresh_active_label()
+        # After the tab switch above, so the lock is decided against the tab
+        # actually showing. Refreshes the status chip on the way through.
+        self._apply_lock()
 
     def _toggle_interaction_mode(self, mode: str) -> None:
         """Arm *mode*, or disarm when it is already the one running."""
@@ -1766,6 +3152,15 @@ class PoseLabellingDialog(QDialog):
 
     def _on_tab_changed(self, index: int) -> None:
         """Arm Sequential when the labelling tab is opened with nothing armed."""
+        # First, because it applies to every tab: away from Label, the pointer
+        # goes back to the camera (see `_lock_wanted`). The armed mode itself
+        # survives, so coming back carries on where it left off.
+        self._apply_lock()
+        if self.tabs.widget(index) is self._detect_page:
+            # Nothing was drawn while the tab was hidden, so opening it is the
+            # first chance to spend a decode on the preview.
+            self._schedule_preview()
+            return
         if self.tabs.widget(index) is not self._label_page or self._mode is not None:
             return
         if self._can_label(quiet=True):
@@ -1789,7 +3184,8 @@ class PoseLabellingDialog(QDialog):
             on_advance_frame=self._advance_frame,
             point_size=float(self.app_state.labelling_point_size),
             on_released=self._on_store_changed,
-            locked=self.lock_check.isChecked(),
+            locked=self._lock_wanted(),
+            color_by=self.color_by,
         )
         self._mode.set_frame(int(self.app_state.current_frame or 0))
         self._install_key_filter(True)
@@ -1829,6 +3225,9 @@ class PoseLabellingDialog(QDialog):
         self._refresh_tree_marks()
         self._sync_tree_selection()
         self._refresh_active_label()
+        # Here rather than in `_refresh_active_label`: what the bulk approvals
+        # need is a detector run or a fill, neither of which is a mode change.
+        self._refresh_bulk_approve_buttons()
         self._refresh_point_table(full=full, frame=frame)
         # A correction has to reach the pose overlay too, or the prediction it
         # replaced stays on screen next to it. Not while a drag is running: the
@@ -1842,6 +3241,7 @@ class PoseLabellingDialog(QDialog):
             self._mode.set_frame(int(frame))
         self._refresh_tree_marks()
         self._select_table_row_for_frame()
+        self._schedule_preview()
 
     def _on_undo(self) -> None:
         # An undo can land on any frame, not the one being viewed, so the table
@@ -1880,10 +3280,17 @@ class PoseLabellingDialog(QDialog):
                 for individual in self.store.individual_names
             ]
             return rows, list(self.store.keypoint_names)
-        points = self.store.labelled_points()
-        rows = list(dict.fromkeys((frame, individual) for frame, individual, _kp, _x, _y in points))
-        labelled = {keypoint for _frame, _individual, keypoint, _x, _y in points}
-        return rows, [name for name in self.store.keypoint_names if name in labelled]
+        # No fill: one row per *observed* ``(frame, individual)`` — labelled or
+        # detected, since a detection is a position on a frame exactly as a
+        # label is, and the same rows are what the next fill will be built from.
+        observed = sorted(set(self.store.anchor_frames()) | set(self.store.detection_frames()))
+        rows: list[tuple[int, str]] = []
+        seen = np.zeros(self.store.n_keypoints, dtype=bool)
+        for frame in observed:
+            present = ~np.isnan(self.store.observation_positions(frame)[:, :, 0])
+            seen |= present.any(axis=0)
+            rows.extend((frame, name) for i, name in enumerate(self.store.individual_names) if present[i].any())
+        return rows, [name for name, keep in zip(self.store.keypoint_names, seen) if keep]
 
     def _layout_signature(self) -> tuple:
         """What :meth:`_table_layout` depends on, cheap enough to test per drag.
@@ -1900,8 +3307,14 @@ class PoseLabellingDialog(QDialog):
                 tuple(self.store.individual_names),
                 tuple(self.store.keypoint_names),
             )
-        rows, columns = self._table_layout()
-        return (False, tuple(rows), tuple(columns))
+        # A detector run is the same problem as a fill: it can add a row per
+        # frame of the video, so it is summarised by its revision counter rather
+        # than enumerated here. The labelled rows stay explicit — there are few
+        # of them, and they change one point at a time.
+        points = self.store.labelled_points()
+        rows = tuple(dict.fromkeys((frame, individual) for frame, individual, _kp, _x, _y in points))
+        labelled = tuple(sorted({keypoint for _frame, _individual, keypoint, _x, _y in points}))
+        return (False, rows, labelled, self.store.detections_revision, tuple(self.store.keypoint_names))
 
     def _refresh_point_table(self, full: bool = False, frame: int | None = None) -> None:
         """Sync the table with the store.
@@ -1917,7 +3330,7 @@ class PoseLabellingDialog(QDialog):
             self._table_signature = signature
             rows, columns = self._table_layout()
             self.point_model.set_layout(rows, columns)
-            self.point_table.horizontalHeader().set_groups(columns, [self._keypoint_brush(name) for name in columns])
+            self.point_table.horizontalHeader().set_groups(columns, self._group_brushes(columns))
         elif full:
             self.point_model.refresh_all()
         else:
@@ -2013,7 +3426,10 @@ class PoseLabellingDialog(QDialog):
         Deferred, because the signal fires from ``app_state`` and the view has
         not necessarily swapped its canvas yet.
         """
+        # The held-open preview source belongs to the video that is going away.
+        self._close_preview_frames()
         QTimer.singleShot(0, self._reinstall_key_filter)
+        self._schedule_preview()
 
     def _reinstall_key_filter(self) -> None:
         self._install_key_filter(True)
@@ -2289,8 +3705,8 @@ class PoseLabellingDialog(QDialog):
             backend.refinement.save(refinement_path(video))
 
     def _ready_to_fill(self) -> bool:
-        if not self.store.anchor_frames():
-            notify("Label at least one frame before filling.", "warning")
+        if not self.store.anchor_frames() and not self.store.detection_frames():
+            notify("Label at least one frame (or run a detector) before filling.", "warning")
             return False
         n_frames = self._n_frames()
         if not n_frames:
@@ -2354,17 +3770,20 @@ class PoseLabellingDialog(QDialog):
         # Approve button appear.
         self._refresh_target_combos()
         self._refresh_approve_button()
+        self._refresh_bulk_approve_buttons()
         # Every row's coordinates and provenance changed, and the table now
         # covers every frame of the labelled span rather than the labels alone.
         self._refresh_point_table(full=True)
         self._save_store()
         span = self.store.fill_range
         if span is None:
-            notify("Nothing was filled — the labels carry no point to track.", "warning")
+            notify("Nothing was filled — the observed frames carry no point to track.", "warning")
             return
+        labelled = len(self.store.anchor_frames())
+        detected = len(self.store.detection_frames())
+        source = f"{labelled} labelled" + (f" and {detected} detected" if detected else "") + " frames"
         notify(
-            f"Filled frames {span[0]}–{span[1]} ({span[1] - span[0] + 1} of {self.store.n_frames}) "
-            f"from {len(self.store.anchor_frames())} labelled ones.",
+            f"Filled frames {span[0]}–{span[1]} ({span[1] - span[0] + 1} of {self.store.n_frames}) from {source}.",
             "info",
         )
 
@@ -2388,7 +3807,11 @@ class PoseLabellingDialog(QDialog):
             frames = self._open_frames()
         try:
             filled = backend.fill(
-                self.store.flat_anchors(),
+                # Observations, not anchors: a detection is evidence from one
+                # frame's pixels exactly as a click is, so the backends bridge
+                # the gaps between both. Nothing in pose_fill knows the
+                # difference — this line is the whole of the coupling.
+                self.store.flat_observations(),
                 self.store.n_frames,
                 frames,
                 report(f"Filling frames with {label}…"),
@@ -2436,15 +3859,19 @@ class PoseLabellingDialog(QDialog):
         if method == "uncertain" and self.store.confidence is None:
             notify("Run Fill first — this suggests the frames the fill was least sure about.", "warning")
             return
+        if method == "detection_gaps" and not self.store.detections:
+            notify("Run a detector first — this suggests the frames it found nothing on.", "warning")
+            return
 
         # Only the pixel methods decode video; the others are instant.
-        if method in ("uniform", "uncertain"):
+        if method in ("uniform", "uncertain", "detection_gaps"):
             picks = suggest_frames(
                 method,
                 count,
                 n_frames,
                 exclude=exclude,
                 confidence=self.store.confidence,
+                detected=self.store.detection_frames(),
             )
             error = None
         else:
@@ -2502,7 +3929,7 @@ class PoseLabellingDialog(QDialog):
         whether a suggestion list happens to exist.
         """
         frame = self._current_frame()
-        if not self.store.has_fill(frame) and not self.store.is_human(frame):
+        if not self.store.has_predictions(frame) and not self.store.is_human(frame):
             notify(f"Nothing to approve on frame {frame} — it carries no points.", "warning")
             return
         # Zero promotions is not a failure: an already-approved frame is agreed
@@ -2566,14 +3993,20 @@ class PoseLabellingDialog(QDialog):
     def _push_pose_override(self) -> None:
         """Render the store through the normal pose overlay.
 
-        Confidence filtering then comes for free — low-confidence filled points
-        are hidden by the existing "Filter below confidence" spinbox.
+        Everything the store holds goes through, labels included and not only a
+        fill: they are the same kind of thing to
+        :mod:`~ethograph.gui.pose_render`, and pushing them registers the schema
+        as this camera's keypoints, so the Pose sidebar's keypoint filter,
+        confidence threshold, marker sizing and skeleton act on hand-labelled
+        points exactly as on an imported DLC file. Confidence filtering then
+        comes for free — low-confidence filled points are hidden by the existing
+        "Filter below confidence" spinbox, and a label always scores 1.0.
 
         **Not while a mode is armed**: the anchor overlay already draws every
         point there, solid for a label and hollow for a prediction, so this
         would put a second marker on each one in a colour scheme that says
-        nothing about where the point came from. Disarming hands the fill back
-        to the pose overlay.
+        nothing about where the point came from. Disarming hands the pose back
+        to the overlay.
         """
         pose_mgr = self._data_widget.pose_mgr
         if pose_mgr is None:
@@ -2585,7 +4018,8 @@ class PoseLabellingDialog(QDialog):
                 self._data_widget.update_pose()
             return
         fps = self._fps()
-        if self.store.filled is None or not fps:
+        empty = self.store.filled is None and not self.store.anchor_frames() and not self.store.detection_frames()
+        if empty or not fps:
             pose_mgr.set_pose_override(None)
             self._override_pushed = False
         else:
@@ -2602,20 +4036,23 @@ class PoseLabellingDialog(QDialog):
     # ------------------------------------------------------------------
 
     def _on_export_movement(self) -> None:
-        fps = self._fps()
-        if not fps:
-            notify("Video frame rate is unknown — cannot build a poses dataset.", "warning")
+        """Write the same dataset *Load into the GUI* loads, where the user asks."""
+        ds = self._build_dataset()
+        if ds is None:
             return
         path, _ = QFileDialog.getSaveFileName(self, "Export poses", "keypoints.nc", "NetCDF (*.nc)")
         if not path:
             return
-        store_to_movement_ds(self.store, fps, self._export_image_height()).to_netcdf(path)
+        ds.to_netcdf(path)
         notify(f"Wrote {path}", "info")
 
     # ------------------------------------------------------------------
 
     def closeEvent(self, event):
         self._detach_mode()
+        self._save_detections()
+        self._preview_timer.stop()
+        self._close_preview_frames()
         self._install_key_filter(False)
         for signal, slot in (
             (self.app_state.current_frame_changed, self._on_frame_changed),

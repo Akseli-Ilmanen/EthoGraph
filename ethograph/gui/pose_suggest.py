@@ -29,8 +29,16 @@ Three methods are offered here:
     best-scoring frames, so the requested count is always returned; the highest-
     motion moments are simply taken first.
 ``uncertain``
-    Frames the last fill was least sure about. Available only after a fill, and
-    the method that actually matches a tracker-based workflow — see below.
+    Frames whose *worst* point the last fill was least sure about. Available only
+    after a fill, and the method that actually matches a tracker-based workflow —
+    see below.
+``detection_gaps``
+    Frames furthest from any *detection*. Available once a detector has run
+    (:mod:`ethograph.gui.pose_detect`), and the natural partner to it: a marker
+    detector either sees the marker or it does not, so the frames it missed —
+    occlusion, blur, the animal facing away — are exactly the ones worth
+    labelling by hand. Ranking by distance from the nearest detection puts the
+    middle of the longest blind stretch first.
 
 Matching the method to the backend
 ----------------------------------
@@ -39,15 +47,17 @@ one helps:
 
 ===============  ==========================================  ====================
 Fill backend     Fails when                                  Suggest with
-===============  ==========================================  ====================
-``spline``       the trajectory turns sharply between        ``motion`` (a proxy
-                 anchors — it never looks at pixels          for curvature), or
+=================  ========================================  ====================
+``spline``         the trajectory turns sharply between      ``motion`` (a proxy
+                   anchors — it never looks at pixels        for curvature), or
                                                              ``uniform``
-``flow``         displacement exceeds Lucas-Kanade's         ``motion``, then
-                 pyramid capture range; occlusion            ``uncertain``
-``posepal``      occlusion, target leaves frame              ``uncertain``, then
+``flow``           displacement exceeds Lucas-Kanade's       ``motion``, then
+                   pyramid capture range; occlusion          ``uncertain``
+``posepal``        occlusion, target leaves frame            ``uncertain``, then
                                                              ``diverse``
-===============  ==========================================  ====================
+any, after Detect  the marker is occluded, blurred, or       ``detection_gaps``
+                   facing away
+=================  ========================================  ====================
 
 ``diverse`` suits neither ``spline`` nor ``flow``, which is worth stating plainly
 because it is DeepLabCut's default and the obvious thing to copy. Its premise is
@@ -97,7 +107,7 @@ FEATURE_MAX_SIDE = 64
 #: asking for 20 frames over 2000 keeps suggestions at least 25 frames apart.
 MIN_GAP_FRACTION = 0.25
 
-METHODS = ("uniform", "diverse", "motion", "uncertain")
+METHODS = ("uniform", "diverse", "motion", "uncertain", "detection_gaps")
 
 
 def default_min_gap(n_frames: int, count: int) -> int:
@@ -206,20 +216,25 @@ def _motion_scores(features: np.ndarray) -> np.ndarray:
 
 
 def frame_confidence(confidence: np.ndarray) -> np.ndarray:
-    """Reduce a fill's confidence array to one score per frame.
+    """Reduce a fill's confidence array to one score per frame — its worst point.
 
-    Averages over the trailing (point) axes rather than taking the minimum: a
-    structurally absent point — an asymmetric schema leaves those at zero
-    forever — would otherwise pin every frame to the same worst score. A frame
-    the fill did not cover at all scores ``NaN``, computed without ``nanmean``'s
-    empty-slice warning since a whole video's worth of them is normal.
+    The minimum over the trailing (point) axes, skipping ``NaN``. A frame is
+    only as good as the keypoint the tracker lost, and that one point is the
+    entire reason to go back to the frame; averaging hid it, letting nine
+    well-tracked points pull a frame with one lost point into the middle of the
+    ranking. Points a schema leaves out are ``NaN`` rather than zero (``set_fill``
+    blanks them), so they are skipped instead of pinning every frame of that
+    individual to the same score.
+
+    A frame the fill did not cover at all scores ``NaN``, computed without
+    ``nanmin``'s empty-slice warning since a whole video's worth is normal.
     """
     array = np.asarray(confidence, dtype=np.float64)
     if array.ndim == 1:
         return array
     flat = array.reshape(len(array), -1)
-    counted = np.sum(~np.isnan(flat), axis=1)
-    return np.where(counted > 0, np.nansum(flat, axis=1) / np.maximum(counted, 1), np.nan)
+    scored = ~np.isnan(flat)
+    return np.where(scored.any(axis=1), np.where(scored, flat, np.inf).min(axis=1), np.nan)
 
 
 def suggest_uncertain(
@@ -229,6 +244,10 @@ def suggest_uncertain(
     min_gap: int | None = None,
 ) -> list[int]:
     """Frames the fill was least confident about, worst first.
+
+    A frame is scored by its worst point (:func:`frame_confidence`), so a single
+    keypoint the tracker lost is enough to bring the frame to the front — which
+    is exactly the correction the next fill needs.
 
     Only frames the fill actually covered are offered. A fill spans the labelled
     frames and nothing beyond them, so a ``NaN`` score means the frame lies
@@ -249,6 +268,39 @@ def suggest_uncertain(
     return enforce_min_gap(ranked, gap, count)
 
 
+def suggest_detection_gaps(
+    detected: Sequence[int],
+    count: int,
+    n_frames: int,
+    exclude: set[int] | None = None,
+    min_gap: int | None = None,
+) -> list[int]:
+    """Frames furthest from any detection — where the detector went blind.
+
+    The complement of a detector run, and the reason detection composes with
+    hand labelling rather than replacing it: a marker detector is not uncertain,
+    it is *absent*, so its failures are a set of frames rather than a low score.
+    Ranking by distance from the nearest detection puts the middle of the
+    longest blind stretch first, which is the frame a fill has least to go on.
+
+    With no detections at all every frame is equally blind, so this falls back
+    to even spacing rather than returning the video in index order.
+    """
+    exclude = set(exclude or ())
+    if count <= 0 or n_frames <= 0:
+        return []
+    detected = np.asarray(sorted({int(f) for f in detected if 0 <= int(f) < n_frames}), dtype=np.int64)
+    if not len(detected):
+        return suggest_uniform(count, n_frames, exclude)
+    grid = np.arange(n_frames)
+    distance = np.min(np.abs(grid[:, None] - detected[None, :]), axis=1)
+    # Stable sort on the negated distance: ties (the two sides of a gap) keep
+    # frame order, so the result does not depend on numpy's sort internals.
+    ranked = [int(f) for f in np.argsort(-distance, kind="stable") if distance[f] > 0 and int(f) not in exclude]
+    gap = default_min_gap(n_frames, count) if min_gap is None else int(min_gap)
+    return enforce_min_gap(ranked, gap, count)
+
+
 def suggest_frames(
     method: str,
     count: int,
@@ -258,6 +310,7 @@ def suggest_frames(
     min_gap: int | None = None,
     progress: Callable[[float], bool] | None = None,
     confidence: np.ndarray | None = None,
+    detected: Sequence[int] | None = None,
 ) -> list[int]:
     """Suggest *count* frames to label.
 
@@ -274,6 +327,8 @@ def suggest_frames(
         ``filter_unique_suggestions``).
     min_gap
         Minimum spacing; defaults to :func:`default_min_gap`.
+    detected
+        Frames a detector found a marker on; ``detection_gaps`` needs it.
     """
     if method not in METHODS:
         raise ValueError(f"Unknown suggestion method {method!r}; expected one of {METHODS}")
@@ -286,6 +341,10 @@ def suggest_frames(
         if confidence is None:
             raise ValueError("The 'uncertain' method needs a fill to have run first.")
         return suggest_uncertain(confidence, count, exclude, min_gap)
+    if method == "detection_gaps":
+        if detected is None:
+            raise ValueError("The 'detection_gaps' method needs a detector to have run first.")
+        return suggest_detection_gaps(detected, count, n_frames, exclude, min_gap)
     if frames is None:
         raise ValueError(f"The {method!r} method needs video frames.")
 

@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dynamic = ["version"]
 
-license = "BSD-3-Clause"
+license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 
 classifiers = [
@@ -72,6 +72,12 @@ gui = [
     "nwb-video-widgets",
     "phylib>=2.6.4",
     "neo",
+    # Keypoint labelling: the optical-flow fill backend, and rendering the tag
+    # sheet. Headless because plain opencv-python ships Qt plugins that conflict
+    # with PyQt6; contrib because cv2.aruco is not in the base wheel.
+    "opencv-contrib-python-headless",
+    # Reading tag36h11 markers on the Detect tab (AprilTag 3).
+    "pupil-apriltags",
 ]
 
 # Audio: waveform display, spectrogram, vocalisation analysis
@@ -110,17 +116,6 @@ model = [
 # PosePAL fill backend for pose keypoints (CoTracker3 + query-feature
 # refinement, see ethograph/gui/pose_refine.py).
 #
-# There is deliberately NO [co-tracker] extra. cotracker has no PyPI release and
-# declares no dependencies of its own (`install_requires=[]`, not even torch), so
-# an extra could only ever contain torch — and PyPI rejects metadata containing a
-# direct URL reference, so the git ref can never live in one either. Declaring
-# half the requirement in an extra and half on the command line was more moving
-# parts than just naming both, and an editable install silently ignores a newly
-# added extra until it is reinstalled by path.
-#
-# So it is one explicit command, the same convention the [model] extra uses
-# (kept in sync as pose_fill.COTRACKER_INSTALL_HINT):
-#
 #   uv pip install --torch-backend=auto torch \
 #     "cotracker @ git+https://github.com/facebookresearch/co-tracker.git@82e02e8029753ad4ef13cf06be7f4fc5facdda4d"
 #
@@ -128,14 +123,6 @@ model = [
 # GPU is otherwise silently ignored. The ~97 MB CoTracker weights then download
 # on first use (see pose_fill.download_cotracker_checkpoint).
 #
-# Licence: CoTracker is CC-BY-NC, not OSI open-source, and some institutions
-# reject it on review — another reason never to pull it in implicitly.
-
-# Optical-flow fill backend. Use the headless build: plain opencv-python ships
-# Qt plugins that conflict with PyQt6.
-optical-flow = [
-  "opencv-python-headless",
-]
 
 # Development
 dev = [

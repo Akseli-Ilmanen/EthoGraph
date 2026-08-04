@@ -4,7 +4,7 @@ One protocol, three implementations, chosen in the labelling dialog:
 
 - :class:`SplineBackend` — monotone cubic interpolation, no new dependencies.
   Ignores pixels entirely and is the yardstick the others must beat.
-- :class:`OpticalFlowBackend` — Lucas-Kanade forward/backward (``opencv-python-headless``).
+- :class:`OpticalFlowBackend` — Lucas-Kanade forward/backward (``opencv-contrib-python-headless``).
 - ``PosePALBackend`` (:mod:`ethograph.gui.pose_refine`) — CoTracker3 point
   tracking with its query features fitted to the user's labels. GPU only, and
   imported lazily so nothing here depends on torch.
@@ -301,8 +301,8 @@ class OpticalFlowBackend(_GapBackend):
     """Lucas-Kanade pyramidal flow, tracked forward and backward per gap.
 
     Real-time on CPU and a useful fallback where torch cannot be installed.
-    Requires ``opencv-python-headless`` — plain ``opencv-python`` ships Qt
-    plugins that conflict with PyQt6.
+    Requires ``opencv-contrib-python-headless`` — plain ``opencv-python`` ships
+    Qt plugins that conflict with PyQt6.
     """
 
     name = "Optical flow"
@@ -572,7 +572,7 @@ def available_backends() -> list[BackendInfo]:
             "flow",
             "Optical flow (OpenCV)",
             _module_available("cv2"),
-            "pip install opencv-python-headless",
+            "pip install opencv-contrib-python-headless",
         ),
         BackendInfo(POSEPAL_BACKEND, label, on_gpu, hint),
     ]
@@ -624,6 +624,30 @@ def build_backend(
 # ----------------------------------------------------------------------
 
 
+def video_size(path: str | Path) -> tuple[int, int] | None:
+    """``(width, height)`` in the video's **own** pixels, or ``None``.
+
+    Read from the stream header, so it costs an open and decodes nothing.
+
+    It is deliberately the *file's* size rather than anything on screen: what
+    is displayed may be a low-resolution proxy (see
+    :mod:`~ethograph.io.video_proxy`) or a downscaled decode, and a number
+    taken from there is wrong by the proxy's own scale factor without
+    announcing it. Returns ``None`` when the file cannot be read, since every
+    caller is asking in order to *offer* a value.
+    """
+    try:
+        import av
+    except ImportError:
+        return None
+    try:
+        with av.open(str(path)) as container:
+            stream = container.streams.video[0]
+            return int(stream.codec_context.width), int(stream.codec_context.height)
+    except (OSError, ValueError, IndexError, StopIteration):
+        return None
+
+
 class VideoFrameSource:
     """Lazily decoded RGB frames, indexable by frame index and slice.
 
@@ -672,6 +696,16 @@ class VideoFrameSource:
 
     def __len__(self) -> int:
         return self._n_frames
+
+    @property
+    def size(self) -> tuple[int, int]:
+        """``(width, height)`` frames are **decoded** at, after ``max_side``.
+
+        Callers that care about pixels rather than positions need this: a tag
+        decoder's whole signal is resolution, and a memory budget is counted in
+        decoded pixels, not source ones.
+        """
+        return self._size
 
     def __getitem__(self, key):
         if isinstance(key, slice):

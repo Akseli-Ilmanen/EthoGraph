@@ -36,9 +36,11 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QListWidget,
+    QMenu,
     QPushButton,
     QScrollArea,
     QSpinBox,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -447,6 +449,8 @@ class CoverPage(QDialog):
         outer.setContentsMargins(m, m, m, m)
         outer.setSpacing(self._px(16))
 
+        outer.addLayout(self._build_prerecording_bar())
+
         body = QHBoxLayout()
         body.setSpacing(self._px(16))
         body.addWidget(self._build_template_card(), 2)
@@ -490,6 +494,38 @@ class CoverPage(QDialog):
     # ------------------------------------------------------------------
     # Layout builders
     # ------------------------------------------------------------------
+
+    def _build_prerecording_bar(self) -> QHBoxLayout:
+        """Tools for the work that happens **before** there is anything to load.
+
+        The cover page is the only screen a user sees before a recording exists,
+        which is exactly when tags have to be printed — putting that behind a
+        loaded dataset (or the keypoint dialog, which needs a video) means it is
+        only reachable once it is too late to use.
+
+        A menu rather than a bare button: printing tags is the first of this
+        kind of tool, not the last.
+        """
+        row = QHBoxLayout()
+        tools = QToolButton()
+        tools.setText("🛠  Pre-recording tools")
+        tools.setPopupMode(QToolButton.InstantPopup)
+        tools.setToolTip("Things to do before a single frame is recorded.")
+        menu = QMenu(tools)
+        menu.addAction("Print tag sheet…", self._open_tag_sheet)
+        tools.setMenu(menu)
+        self._tools_button = tools
+        row.addWidget(tools)
+        row.addStretch()
+        return row
+
+    def _open_tag_sheet(self) -> None:
+        """Print-ready fiducial tags, with no video and no dataset in sight."""
+        from ethograph.gui.dialog_tag_sheet import TagSheetDialog
+
+        self._tag_sheet = TagSheetDialog(self.app_state, parent=self)
+        self._tag_sheet.show()
+        self._tag_sheet.raise_()
 
     def _build_supported_types_strip(self) -> QFrame:
         """A one-line reference of what can be dragged & dropped (with examples)."""

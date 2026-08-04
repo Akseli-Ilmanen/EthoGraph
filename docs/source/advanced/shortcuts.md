@@ -52,7 +52,7 @@ while you are typing in a text field, spin box or editable combo box.
 
 ## Keypoint Labelling
 
-Live while the {doc}`keypoint labelling dialog <keypoint_labelling>` is
+Live while the {doc}`keypoint labelling dialog <keypoint_labelling/index>` is
 open, wherever the key is pressed — on the dialog, on the video canvas or
 anywhere in the main window. `Backspace`, `Delete`, `Ctrl+Z`, `Shift+H` and `N`
 work even with no labelling mode armed; the rest need one.

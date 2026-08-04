@@ -8,12 +8,29 @@ as large markers with a hairline white outline around the active one, so a
 labelled point is never confused with a model output.
 
 Labelling is hierarchical (see :mod:`~ethograph.gui.pose_annotate`): the active
-target is an ``(individual, keypoint)`` pair. The two axes of the hierarchy get
-two *different* visual channels, so both stay readable at once: **shape encodes
-the individual** (circle, triangle, square, …) and **colour encodes the
-keypoint**. Encoding both with colour, as the pose display does, cannot show
-which beak belongs to which animal. Individuals other than the active one are
-dimmed, and the active point carries a thin white outline.
+target is an ``(individual, keypoint)`` pair. **Colour is the identity channel
+for both axes, one at a time** — SLEAP's model, and the same
+``app_state.pose_color_by`` toggle the pose display reads:
+
+``"keypoint"`` (the default)
+    One colour per keypoint, *shared across individuals* — the beak is the same
+    colour on every animal. What you want while labelling: the question a click
+    answers is "which body part is this?".
+``"individual"``
+    One colour per individual, shared across that animal's keypoints — the
+    question becomes "which animal is this?", for pulling two overlapping
+    animals apart.
+
+Markers are all circles: a per-individual shape alphabet was tried and dropped,
+because it made every marker a second thing to decode and still could not be
+read at labelling sizes. What tells the individuals apart within a mode instead
+is that **every individual other than the active one is dimmed**, each carries
+its name at the centroid of its points, and the active point wears a thin white
+outline. Colours come from a generated palette unless the user pins one
+(``KeypointStore.keypoint_color`` / ``individual_color``); either way
+:func:`keypoint_colors_for` / :func:`individual_colors_for` are what every
+surface reads them through, so the canvas, the tree and the points table can
+never disagree about which colour the beak is.
 
 Editing is always available
 --------------------------
@@ -32,13 +49,18 @@ next fill.
 
 Provenance is the third visual channel: fill
 --------------------------------------------
-The overlay draws **both** kinds of point, because accepting a prediction means
+The overlay draws **every** kind of point, because accepting a prediction means
 looking at it first. A *label* is a solid marker; a *prediction* is the same
-shape and the same keypoint colour drawn **hollow** — the interior is left empty
-so the pixels being judged stay visible underneath, and the colour moves to the
-edge. Fill/hollow is a channel of its own, so neither shape (individual) nor
-colour (keypoint) has to be spent on it, and a click that turns a hollow marker
-solid is exactly the act of pinning it.
+colour drawn **hollow** — the interior is left empty so the pixels being judged
+stay visible underneath, and the colour moves to the edge. Fill/hollow is a
+channel of its own, so identity never has to be spent on it, and a click that
+turns a hollow marker solid is exactly the act of pinning it.
+
+A *detection* (:mod:`~ethograph.gui.pose_detect`) is the third state, and it
+belongs on the same channel: drawn hollow **with a pip**, where the ring says
+"not yours" and the centre dot says "read off these pixels, not interpolated
+between two frames". That ranks the three styles the way the store ranks them,
+solid → pip → empty, which is also their order of trustworthiness.
 
 Because this overlay now shows everything, the labelling dialog does *not* push
 its pose override while a mode is attached: the ordinary pose overlay would draw
@@ -78,13 +100,19 @@ While a mode is active and unlocked, left-drag pans no longer — panning moves 
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Callable
 
 import numpy as np
 import pygfx as gfx
 
-from ethograph.gui.pose_annotate import KeypointStore
-from ethograph.gui.pose_convert import sample_colormap
+from ethograph.gui.pose_annotate import KeypointStore, normalise_color
+from ethograph.gui.pose_convert import (
+    COLOR_BY_INDIVIDUAL,
+    COLOR_BY_KEYPOINT,
+    COLOR_BY_MODES,
+    sample_colormap,
+)
 
 #: Sentinel position far outside any frame, used to hide unlabelled markers.
 _OFFSCREEN = -1.0e6
@@ -112,41 +140,22 @@ _ACTIVE_EDGE_WIDTH = 1.0
 #: Alpha applied to the individuals that are not currently being edited.
 _INACTIVE_ALPHA = 0.35
 
-#: Predictions are drawn hollow — no interior, keypoint colour on the edge — so
-#: the pixels being judged stay visible and provenance costs neither shape nor
-#: colour. The edge is drawn a little heavier than a label's, since an outline
+#: Predictions are drawn hollow — no interior, the point's colour on the edge —
+#: so the pixels being judged stay visible and provenance costs no identity
+#: channel. The edge is drawn a little heavier than a label's, since an outline
 #: of the same width reads as fainter than a filled disc.
 _FILL_INTERIOR = (0.0, 0.0, 0.0, 0.0)
 _FILL_EDGE_WIDTH = 2.5
 
-#: Marker shape per individual, in display order — the individual axis of the
-#: hierarchy. Colour is spent on keypoints instead, so the two never collide.
-#: Every name here must exist in ``pygfx.utils.enums.MarkerShape``.
-MARKER_SHAPES = (
-    "circle",
-    "triangle_up",
-    "square",
-    "diamond",
-    "triangle_down",
-    "plus",
-    "cross",
-    "heart",
-    "spade",
-)
+#: A detection is drawn as the hollow marker plus a solid pip at its centre —
+#: a circle at this fraction of the marker size, in the point's colour. Small
+#: enough to leave the pixels around the point visible, big enough to read at a
+#: glance as "there is something inside this one".
+_PIP_SIZE_RATIO = 0.3
 
-#: Text stand-ins for :data:`MARKER_SHAPES`, so the dialog's tree can show the
-#: same shape the canvas draws.
-MARKER_GLYPHS = {
-    "circle": "●",
-    "triangle_up": "▲",
-    "square": "■",
-    "diamond": "◆",
-    "triangle_down": "▼",
-    "plus": "✚",
-    "cross": "✖",
-    "heart": "♥",
-    "spade": "♠",
-}
+#: Every marker is a circle: identity is carried by colour alone (see the module
+#: docstring). Must exist in ``pygfx.utils.enums.MarkerShape``.
+MARKER_SHAPE = "circle"
 
 #: The interaction modes; see the module docstring.
 #: Label every keypoint on one frame; the playhead never moves on its own.
@@ -155,51 +164,94 @@ SEQUENTIAL_MODE = "sequential"
 LOOP_MODE = "loop"
 
 
-def marker_for_individual(index: int) -> str:
-    """pygfx marker shape for the *index*-th individual (wraps around)."""
-    return MARKER_SHAPES[index % len(MARKER_SHAPES)]
+def keypoint_colors(n: int, overrides: Sequence[str | None] | None = None) -> np.ndarray:
+    """``(n, 4)`` RGBA, one distinct colour per name — the generated palette.
 
-
-def glyph_for_individual(index: int) -> str:
-    """Unicode stand-in for :func:`marker_for_individual`."""
-    return MARKER_GLYPHS[marker_for_individual(index)]
-
-
-def keypoint_colors(n: int) -> np.ndarray:
-    """``(n, 4)`` RGBA, one distinct colour per keypoint."""
+    Used for both axes: *n* keypoints or *n* individuals, whichever the display
+    is colouring by. *overrides* aligns with that axis' names: a ``"#rrggbb"``
+    entry pins that slot's colour and ``None`` leaves it on the palette. The
+    palette is still sampled for the whole axis, so pinning one name never
+    shifts the colours of the others — the two colours a user distinguishes are
+    the one they chose and the one it used to be, not their neighbours'.
+    """
     colors = sample_colormap(max(n, 1), "turbo")
-    return np.array([c if len(c) == 4 else (*c, 1.0) for c in colors], dtype=np.float32)[:n]
+    rgba = np.array([c if len(c) == 4 else (*c, 1.0) for c in colors], dtype=np.float32)[:n]
+    for i, spec in enumerate(overrides or ()):
+        if spec is not None and i < n:
+            rgba[i] = _color_to_rgba(spec)
+    return rgba
+
+
+def keypoint_colors_for(store: KeypointStore) -> np.ndarray:
+    """The colours *store*'s keypoints are drawn in, palette plus pinned ones.
+
+    The single source for every surface that colours a keypoint — the canvas
+    overlay, the dialog's tree and the points table header — so none of them can
+    disagree about which colour the beak is.
+    """
+    return keypoint_colors(store.n_keypoints, store.keypoint_color_list())
+
+
+def individual_colors_for(store: KeypointStore) -> np.ndarray:
+    """The same, per individual — what colour-by-individual draws."""
+    return keypoint_colors(store.n_individuals, store.individual_color_list())
+
+
+def _color_to_rgba(spec: str) -> tuple[float, float, float, float]:
+    """``"#rrggbb"`` -> RGBA floats, opaque; the store validates the spelling."""
+    text = normalise_color(spec)
+    return (int(text[1:3], 16) / 255.0, int(text[3:5], 16) / 255.0, int(text[5:7], 16) / 255.0, 1.0)
 
 
 class AnchorOverlay:
     """pygfx markers + labels for the points of one frame.
 
-    **Two** :class:`pygfx.Points` layers per individual — a marker *shape* and
-    an edge style are material properties, not per-vertex ones, so shape (the
-    individual) and fill (the provenance) each need an object of their own.
-    Within a layer, vertices are coloured per keypoint: solid for a label,
-    hollow for a prediction. Keypoint names are drawn for the active individual
-    only (with a full schema on several individuals the canvas is otherwise
-    unreadable), while each individual's own name sits at the centroid of its
-    points.
+    **Three** :class:`pygfx.Points` layers in total, one per provenance style:
+    solid (a label), hollow (a prediction) and the pip that marks a hollow one a
+    detector placed. An edge style is a material property rather than a
+    per-vertex one, which is why provenance needs an object of its own; identity
+    is per-vertex colour, so every individual shares these three layers and the
+    vertex buffers are flat ``(n_individuals * n_keypoints)``.
+
+    Colour follows ``color_by`` — per keypoint (shared across individuals) or
+    per individual (shared across keypoints). Whichever mode is on, individuals
+    other than the active one are drawn dimmed, keypoint names are drawn for the
+    active individual only (with a full schema on several individuals the canvas
+    is otherwise unreadable), and each individual's own name sits at the centroid
+    of its points.
     """
 
-    def __init__(self, scene: gfx.Scene, keypoint_names: list[str], individual_names: list[str], img_height: float):
+    def __init__(
+        self,
+        scene: gfx.Scene,
+        keypoint_names: list[str],
+        individual_names: list[str],
+        img_height: float,
+        colors: np.ndarray | None = None,
+        individual_colors: np.ndarray | None = None,
+        color_by: str = COLOR_BY_KEYPOINT,
+    ):
         self._scene = scene
         self._keypoint_names = list(keypoint_names)
         self._individual_names = list(individual_names)
         self._img_height = float(img_height)
 
         n_kp = len(self._keypoint_names)
-        self._colors = keypoint_colors(n_kp)
-        self._layers: list[gfx.Points] = []
-        self._fill_layers: list[gfx.Points] = []
+        n_ind = len(self._individual_names)
+        self._colors = keypoint_colors(n_kp) if colors is None else np.asarray(colors, dtype=np.float32)
+        self._individual_colors = (
+            keypoint_colors(n_ind) if individual_colors is None else np.asarray(individual_colors, dtype=np.float32)
+        )
+        self._color_by = color_by if color_by in COLOR_BY_MODES else COLOR_BY_KEYPOINT
+        self._solid: gfx.Points | None = None
+        self._hollow: gfx.Points | None = None
+        self._pip: gfx.Points | None = None
         # No layers when there is nothing to draw: a zero-vertex geometry is not
         # worth defending against downstream.
-        if n_kp:
-            n_ind = len(self._individual_names)
-            self._layers = [self._add_layer(i, n_kp, human=True) for i in range(n_ind)]
-            self._fill_layers = [self._add_layer(i, n_kp, human=False) for i in range(n_ind)]
+        if n_kp and n_ind:
+            self._solid = self._add_layer(n_ind * n_kp, human=True)
+            self._hollow = self._add_layer(n_ind * n_kp, human=False)
+            self._pip = self._add_pip_layer(n_ind * n_kp)
 
         # The active point is a separate single-vertex object so it can carry a
         # white outline; marker materials only expose one edge colour for all
@@ -208,7 +260,7 @@ class AnchorOverlay:
             gfx.Geometry(positions=np.full((1, 3), _OFFSCREEN, dtype=np.float32)),
             gfx.PointsMarkerMaterial(
                 size=_ANCHOR_SIZE * _ACTIVE_SIZE_RATIO,
-                marker="circle",
+                marker=MARKER_SHAPE,
                 color=_ACTIVE_FILL,
                 edge_width=_ACTIVE_EDGE_WIDTH,
                 edge_color=_ACTIVE_EDGE,
@@ -218,31 +270,32 @@ class AnchorOverlay:
         scene.add(self._active)
 
         self._keypoint_texts = [self._add_text(name, 11) for name in self._keypoint_names]
-        # The glyph repeats the marker shape, so the canvas itself says which
-        # shape is which animal.
-        self._individual_texts = (
-            [self._add_text(f"{glyph_for_individual(i)} {name}", 13) for i, name in enumerate(self._individual_names)]
-            if len(self._individual_names) > 1
-            else []
-        )
+        # With one individual its name says nothing the canvas does not already
+        # show; with several it is what tells them apart at a glance.
+        self._individual_texts = [self._add_text(name, 13) for name in self._individual_names] if n_ind > 1 else []
 
-    def _add_layer(self, index: int, n_kp: int, human: bool) -> gfx.Points:
-        """One markers object for the *index*-th individual, in its own shape.
+    @property
+    def _layers(self) -> list[gfx.Points]:
+        """The three marker layers, skipping the ones an empty schema left unbuilt."""
+        return [layer for layer in (self._solid, self._hollow, self._pip) if layer is not None]
 
-        *human* picks the provenance style: a solid marker for a label, a hollow
-        one for a prediction. The hollow layer carries its keypoint colours in
-        ``edge_colors`` rather than ``colors``, since that is the buffer the
-        edge is drawn from once ``edge_color_mode`` is per-vertex.
+    def _add_layer(self, n_points: int, human: bool) -> gfx.Points:
+        """One markers object for every point of one provenance style.
+
+        *human* picks the style: a solid marker for a label, a hollow one for a
+        prediction. The hollow layer carries its colours in ``edge_colors``
+        rather than ``colors``, since that is the buffer the edge is drawn from
+        once ``edge_color_mode`` is per-vertex.
         """
-        colors = self._colors.copy()
+        colors = np.tile(np.float32([1.0, 1.0, 1.0, 1.0]), (n_points, 1))
         geometry = gfx.Geometry(
-            positions=np.full((n_kp, 3), _OFFSCREEN, dtype=np.float32),
+            positions=np.full((n_points, 3), _OFFSCREEN, dtype=np.float32),
             **({"colors": colors} if human else {"edge_colors": colors}),
         )
         shared = dict(
             size=_ANCHOR_SIZE,
             size_space="screen",  # constant on screen, unaffected by zoom
-            marker=marker_for_individual(index),
+            marker=MARKER_SHAPE,
         )
         material = (
             gfx.PointsMarkerMaterial(color_mode="vertex", edge_width=2.0, edge_color=_IDLE_EDGE, **shared)
@@ -260,6 +313,26 @@ class AnchorOverlay:
         self._scene.add(layer)
         return layer
 
+    def _add_pip_layer(self, n_points: int) -> gfx.Points:
+        """The centre dot marking a hollow marker as a *detection*."""
+        geometry = gfx.Geometry(
+            positions=np.full((n_points, 3), _OFFSCREEN, dtype=np.float32),
+            colors=np.tile(np.float32([1.0, 1.0, 1.0, 1.0]), (n_points, 1)),
+        )
+        layer = gfx.Points(
+            geometry,
+            gfx.PointsMarkerMaterial(
+                size=_ANCHOR_SIZE * _PIP_SIZE_RATIO,
+                size_space="screen",
+                marker=MARKER_SHAPE,
+                color_mode="vertex",
+                edge_width=0.0,
+            ),
+        )
+        layer.local.z = _Z_ANCHORS
+        self._scene.add(layer)
+        return layer
+
     def _add_text(self, name: str, size: int) -> gfx.Text:
         text = gfx.Text(
             text=str(name),
@@ -273,38 +346,65 @@ class AnchorOverlay:
         self._scene.add(text)
         return text
 
+    def vertex_colors(self, active_individual: int = 0) -> np.ndarray:
+        """``(n_individuals * n_keypoints, 4)`` RGBA in buffer order.
+
+        The whole colour model in one place: one hue per keypoint repeated down
+        the individuals, or one hue per individual repeated across its
+        keypoints, with every individual but the active one dimmed.
+        """
+        n_ind, n_kp = len(self._individual_names), len(self._keypoint_names)
+        if self._color_by == COLOR_BY_INDIVIDUAL:
+            cube = np.repeat(self._individual_colors[:, None, :], n_kp, axis=1).copy()
+        else:
+            cube = np.repeat(self._colors[None, :, :], n_ind, axis=0).copy()
+        if n_ind > 1:
+            dim = np.arange(n_ind) != active_individual
+            cube[dim, :, 3] *= _INACTIVE_ALPHA
+        return cube.reshape(-1, 4)
+
     def set_positions(
         self,
         positions: np.ndarray,
         human: np.ndarray,
         active_individual: int,
         active_keypoint: int,
+        detected: np.ndarray | None = None,
     ) -> None:
         """Draw ``(n_individuals, n_keypoints, 2)`` image-space points.
 
-        *positions* is every point on the frame — labels over fill — and *human*
-        is the matching ``(n_individuals, n_keypoints)`` provenance mask, which
-        decides whether a marker is drawn solid or hollow. ``NaN`` hides it.
+        *positions* is every point on the frame — labels over detections over
+        fill — and *human* / *detected* are the matching
+        ``(n_individuals, n_keypoints)`` provenance masks, which decide whether a
+        marker is drawn solid, hollow with a pip, or hollow. ``NaN`` hides it.
         *active_individual* / *active_keypoint* index the pair the next click
         will write to.
         """
         n_ind, n_kp = positions.shape[0], positions.shape[1]
-        if not self._layers or n_kp == 0 or n_ind == 0:
+        if detected is None:
+            detected = np.zeros_like(human)
+        if self._solid is None or n_kp == 0 or n_ind == 0:
             self._active.visible = False
-            for layer in [*self._layers, *self._fill_layers]:
+            for layer in self._layers:
                 layer.visible = False
             for text in [*self._keypoint_texts, *self._individual_texts]:
                 text.visible = False
             return
+        if (n_ind, n_kp) != (len(self._individual_names), len(self._keypoint_names)):
+            raise ValueError(
+                f"Pose overlay built for {len(self._individual_names)}x{len(self._keypoint_names)} "
+                f"but asked to draw {n_ind}x{n_kp} — the schema changed without rebuilding the overlay."
+            )
 
         world = positions.copy()
         world[:, :, 1] = self._img_height - world[:, :, 1]
         shown = ~np.isnan(positions[:, :, 0])
 
-        for i, (layer, fill_layer) in enumerate(zip(self._layers, self._fill_layers)):
-            dim = n_ind > 1 and i != active_individual
-            self._draw_layer(layer, layer.geometry.colors, world[i], shown[i] & human[i], dim)
-            self._draw_layer(fill_layer, fill_layer.geometry.edge_colors, world[i], shown[i] & ~human[i], dim)
+        colors = self.vertex_colors(active_individual)
+        flat = world.reshape(-1, 2)
+        self._draw_layer(self._solid, self._solid.geometry.colors, flat, (shown & human).ravel(), colors)
+        self._draw_layer(self._hollow, self._hollow.geometry.edge_colors, flat, (shown & ~human).ravel(), colors)
+        self._draw_layer(self._pip, self._pip.geometry.colors, flat, (shown & detected).ravel(), colors)
 
         active_buffer = self._active.geometry.positions
         active_shown = shown[active_individual, active_keypoint] if n_kp else False
@@ -326,12 +426,19 @@ class AnchorOverlay:
                 centre = np.nanmean(world[i][shown[i]], axis=0)
                 text.local.position = (float(centre[0]) + 6, float(centre[1]) - 14, _Z_TEXT)
 
-    def _draw_layer(self, layer: gfx.Points, color_buffer, world: np.ndarray, shown: np.ndarray, dim: bool) -> None:
-        """Position and tint one individual's markers of one provenance.
+    def _draw_layer(
+        self,
+        layer: gfx.Points,
+        color_buffer,
+        world: np.ndarray,
+        shown: np.ndarray,
+        colors: np.ndarray,
+    ) -> None:
+        """Position and tint the markers of one provenance style.
 
-        *color_buffer* is whichever buffer that layer draws its keypoint colours
-        from — ``colors`` for a solid marker, ``edge_colors`` for a hollow one —
-        so dimming an inactive individual is the same operation either way.
+        *color_buffer* is whichever buffer that layer draws its colours from —
+        ``colors`` for a solid marker, ``edge_colors`` for a hollow one — so a
+        recolour is the same operation either way.
         """
         layer.visible = True
         positions = layer.geometry.positions
@@ -339,29 +446,46 @@ class AnchorOverlay:
         positions.data[:, :2] = np.where(shown[:, None], world, _OFFSCREEN)
         positions.update_full()
 
-        colors = self._colors.copy()
-        if dim:
-            colors[:, 3] = _INACTIVE_ALPHA
         color_buffer.data[:] = colors
         color_buffer.update_full()
 
+    def set_colors(self, colors: np.ndarray, individual_colors: np.ndarray | None = None) -> None:
+        """Recolour in place — the caller redraws the positions.
+
+        Every layer re-uploads its colours on the next draw, so a colour change
+        costs no rebuild: the geometries and materials are keyed by provenance,
+        which colour does not touch.
+        """
+        self._colors = np.asarray(colors, dtype=np.float32)
+        if individual_colors is not None:
+            self._individual_colors = np.asarray(individual_colors, dtype=np.float32)
+
+    def set_color_by(self, color_by: str) -> None:
+        """Switch which axis colour encodes; same cost as a recolour."""
+        if color_by not in COLOR_BY_MODES:
+            raise ValueError(f"Unknown colour mode {color_by!r} — expected one of {COLOR_BY_MODES}.")
+        self._color_by = color_by
+
     def set_point_size(self, size: float) -> None:
         """Resize every marker in place — no rebuild, so a spinbox can drive it."""
-        for layer in [*self._layers, *self._fill_layers]:
-            layer.material.size = float(size)
+        for layer in (self._solid, self._hollow):
+            if layer is not None:
+                layer.material.size = float(size)
+        if self._pip is not None:
+            self._pip.material.size = float(size) * _PIP_SIZE_RATIO
         self._active.material.size = float(size) * _ACTIVE_SIZE_RATIO
 
     def clear(self) -> None:
         for obj in [
             *self._layers,
-            *self._fill_layers,
             self._active,
             *self._keypoint_texts,
             *self._individual_texts,
         ]:
             self._scene.remove(obj)
-        self._layers = []
-        self._fill_layers = []
+        self._solid = None
+        self._hollow = None
+        self._pip = None
         self._keypoint_texts = []
         self._individual_texts = []
 
@@ -379,6 +503,7 @@ class KeypointLabelMode:
         on_released: Callable[[], None] | None = None,
         point_size: float = _ANCHOR_SIZE,
         locked: bool = False,
+        color_by: str = COLOR_BY_KEYPOINT,
     ):
         self.view = view
         self.store = store
@@ -407,7 +532,15 @@ class KeypointLabelMode:
         scene = view.scene()
         if scene is None:
             raise ValueError("Camera view has no scene to draw annotations on.")
-        self._overlay = AnchorOverlay(scene, store.keypoint_names, store.individual_names, view.image_height())
+        self._overlay = AnchorOverlay(
+            scene,
+            store.keypoint_names,
+            store.individual_names,
+            view.image_height(),
+            colors=keypoint_colors_for(store),
+            individual_colors=individual_colors_for(store),
+            color_by=color_by,
+        )
         self.point_size = float(point_size)
         self._overlay.set_point_size(self.point_size)
         view.set_label_mode(self)
@@ -664,15 +797,31 @@ class KeypointLabelMode:
         self.refresh()
 
     def refresh(self) -> None:
-        """Redraw the frame's points — labels solid, predictions hollow."""
+        """Redraw the frame's points — solid, pipped or hollow by provenance."""
         self._sync_active()
         self._overlay.set_positions(
             self.store.positions(self.frame),
             self.store.human_mask(self.frame),
             self.store.individual_index(self._individual) if self._individual is not None else 0,
             self.store.keypoint_index(self._keypoint) if self._keypoint is not None else 0,
+            detected=self.store.detected_mask(self.frame),
         )
         self.view.request_draw()
+
+    def refresh_colors(self) -> None:
+        """Re-read the store's colours and redraw.
+
+        A colour change is not a schema change: the layers still match the
+        hierarchy, so the mode is recoloured rather than restarted (which would
+        drop the active pair and rebuild every pygfx object).
+        """
+        self._overlay.set_colors(keypoint_colors_for(self.store), individual_colors_for(self.store))
+        self.refresh()
+
+    def set_color_by(self, color_by: str) -> None:
+        """Switch which axis colour encodes — keypoint or individual."""
+        self._overlay.set_color_by(color_by)
+        self.refresh()
 
     def _changed(self) -> None:
         self.refresh()

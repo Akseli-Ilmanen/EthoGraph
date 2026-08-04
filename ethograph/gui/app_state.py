@@ -203,6 +203,12 @@ class AppStateSpec:
         "nwb_pose_keys": (list[str], [], True, SCOPE_LOCAL),
         "pose_hide_threshold": (float, 0.9, True),
         "pose_show_skeleton": (bool, False, True),
+        # Which axis of the pose hierarchy colour encodes: "keypoint" (one hue
+        # per body part, shared across animals) or "individual" (one hue per
+        # animal, shared across its keypoints) — SLEAP's toggle. Read by the
+        # pose overlay AND the keypoint labelling canvas, so one choice styles
+        # every surface that draws a keypoint.
+        "pose_color_by": (str, "keypoint", True),
         "pose_points_use_base": (bool, False, True),
         "pose_points_base_color": (str | None, "#FF3333", True),
         "skeleton_use_base": (bool, True, True),
@@ -225,6 +231,37 @@ class AppStateSpec:
         # to load is a user choice rather than a constant in pose_fill. Global:
         # it is a property of the machine's models, not of one dataset.
         "labelling_cotracker_checkpoint": (str, "", True),
+        # Point detection (Detect tab): which detector and how it is tuned. The
+        # detections themselves are derived data cached next to the video, and
+        # what each detector label *means* is project data in the anchor
+        # sidecar — neither belongs here.
+        "detect_detector": (str, "apriltag", True),
+        # A share of GOOD_DECISION_MARGIN: 0.3 is a decode margin of 30, which
+        # sits in the empty band between spurious reads (2–13) and real ones
+        # (~119). There is no tag family setting — one family is detected.
+        "detect_quality_min": (float, 0.3, True),
+        # Which AprilTag family, from pose_detect.TAG_FAMILIES. Shared with the
+        # tag sheet on purpose: printing one family and then looking for another
+        # is the mistake worth designing out, so there is one setting, not two.
+        "detect_tag_family": (str, "tag36h11", True),
+        # quad_decimate is local because it trades speed against how big the
+        # tags are in THIS footage; pupil-apriltags' own default of 2.0 halves
+        # the effective tag size, which is why the default here is 1.0.
+        "detect_quad_decimate": (float, 1.0, True, SCOPE_LOCAL),
+        "detect_decode_sharpening": (float, 0.25, True),
+        "detect_tag_corners": (bool, False, True),
+        # Printing the tags (Tools ▸ Print tag sheet…). Page setup is a property
+        # of the *printer*, so it is global; the camera figures the minimum tag
+        # size is computed from describe THIS rig, so they are local. The rows of
+        # a sheet are not settings at all.
+        "tag_sheet_page": (str, "A4", True),
+        "tag_sheet_margin_mm": (float, 10.0, True),
+        "tag_sheet_labels": (bool, True, True),
+        # 4 mm rather than 3: tag36h11 is 8 modules to DICT_4X4's 6, so the same
+        # camera needs a third more paper for the same pixels per module.
+        "tag_sheet_tag_mm": (float, 4.0, True),
+        "tag_sheet_camera_width_px": (int, 0, True, SCOPE_LOCAL),
+        "tag_sheet_fov_mm": (float, 0.0, True, SCOPE_LOCAL),
         # Plotting
         "ymin": (float | None, None, True),
         "ymax": (float | None, None, True),

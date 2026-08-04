@@ -26,7 +26,7 @@ import xarray as xr
 from movement.io import load_dataset
 
 from ethograph.gui.notify import notify
-from ethograph.gui.pose_convert import poses_ds_to_points, sample_colormap
+from ethograph.gui.pose_convert import COLOR_BY_KEYPOINT, COLOR_BY_MODES, poses_ds_to_points, sample_colormap
 from ethograph.gui.pose_overlay import OverlayStyle, PoseOverlayData
 from ethograph.io.nwb_alignment import pose_keys_for_cameras, pose_video_links_from_nwb
 from ethograph.io.nwb_import import _get_absolute_timestamps
@@ -83,9 +83,29 @@ def _strip_keypoint_prefix(properties: pd.DataFrame) -> pd.DataFrame:
     return props
 
 
+#: Extension of a poses dataset saved as NetCDF — what the keypoint labelling
+#: dialog writes, and what ``movement`` datasets are usually stored as. It is a
+#: pose file like any other, so it is read here rather than being a case the
+#: caller has to know about; ``movement.io.load_dataset`` only takes the formats
+#: of the *tracking tools*, and has nothing to convert from.
+POSES_DATASET_SUFFIX = ".nc"
+
+
 def load_pose_from_file(file_path: str, source_software: str, fps: float) -> PoseRenderData:
-    """Load a pose file via movement and return a PoseRenderData."""
-    ds = load_dataset(file_path, source_software, fps)
+    """Load a pose file and return a PoseRenderData.
+
+    A movement poses dataset saved as NetCDF is opened directly; everything else
+    goes through ``movement.io.load_dataset`` to be converted from its tracking
+    tool's own format first. Either way the result is one poses Dataset, and
+    everything after this point is identical.
+    """
+    if Path(file_path).suffix.lower() == POSES_DATASET_SUFFIX:
+        # Read into memory and close: an open NetCDF handle per pose load leaks
+        # one for every camera, every trial change and every re-render.
+        with xr.open_dataset(file_path) as opened:
+            ds = opened.load()
+    else:
+        ds = load_dataset(file_path, source_software, fps)
     data, bbox_data, properties = poses_ds_to_points(ds)
     return PoseRenderData(
         data=data,
@@ -587,14 +607,26 @@ class PoseDisplayManager:
         checkbox = getattr(self._data_widget, "pose_show_keypoints_checkbox", None)
         return checkbox.isChecked() if checkbox is not None else True
 
-    def _build_overlay_style(self, properties: pd.DataFrame) -> OverlayStyle:
-        color_prop = "individual"
-        if len(properties["individual"].unique()) == 1 and "keypoint" in properties.columns:
-            color_prop = "keypoint"
+    def _color_by(self, properties: pd.DataFrame) -> str:
+        """The property colour encodes — the user's choice, if the data has it.
 
-        text_prop = "individual"
-        if "keypoint" in properties.columns and len(properties["keypoint"].unique()) > 1:
-            text_prop = "keypoint"
+        A poses dataset without a ``keypoint`` column (bounding boxes) has only
+        one axis to colour by, so the setting cannot be honoured there.
+        """
+        color_by = getattr(self.app_state, "pose_color_by", COLOR_BY_KEYPOINT)
+        if color_by not in COLOR_BY_MODES or color_by not in properties.columns:
+            return "individual"
+        return color_by
+
+    def _build_overlay_style(self, properties: pd.DataFrame) -> OverlayStyle:
+        # Colour encodes ONE axis, chosen by the user (SLEAP's toggle): keypoint
+        # colours shared across individuals, or one colour per individual shared
+        # across its keypoints. Text then carries the OTHER axis, so turning
+        # labels on always adds what the colours are not already saying.
+        color_prop = self._color_by(properties)
+        text_prop = "individual" if color_prop == "keypoint" else "keypoint"
+        if text_prop not in properties.columns or properties[text_prop].nunique() <= 1:
+            text_prop = color_prop
 
         if color_prop == "keypoint" and self.all_keypoints:
             values = self.all_keypoints

@@ -223,6 +223,13 @@ class PanelStateMixin:
         """
         if key == "features":
             self.panel_state["feature"] = value
+            # A new feature brings its own dims. Selections carried over from the
+            # old one can leave two or more of them free, and `sel_valid` then
+            # returns more than `(time, dim)` — which every plot silently drops.
+            # Re-reducing here is what makes a feature with dims the session did
+            # not start with (`keypoints_position`: space/keypoint/individual)
+            # plottable the moment it is picked.
+            self.panel_state["selections"] = self._sanitize_selections(self._effective_selections())
         elif key == "colors":
             self.panel_state["color"] = value
         elif key == "show_predictions":
@@ -270,21 +277,52 @@ class PanelStateMixin:
             self.panel_state["show_predictions"] = bool(settings["show_predictions"])
 
     def _sanitize_selections(self, selections: dict) -> dict:
-        """Enforce at most ONE "All" (absent) dim per panel: sel_valid output
-        must stay (time,) or (time, dim). A loaded layout (template,
-        hand-edited settings) violating this keeps the FIRST missing
-        multi-value dim as "All"; every later missing dim is pinned to its
-        first value. Single-value dims squeeze away and may stay absent."""
+        """Make *selections* valid for this panel's feature.
+
+        Two rules. A selection naming a value the feature does not have is
+        **dropped** — `.sel()` raises `KeyError` on it, so a panel carrying one
+        renders nothing at all; this is what a selection left over from a
+        previous dataset looks like. Then at most ONE dim is left "All"
+        (absent), because sel_valid output must stay (time,) or (time, dim): a
+        loaded layout violating that keeps the FIRST missing multi-value dim as
+        "All" and every later one is pinned to its first value. Single-value
+        dims squeeze away and may stay absent.
+        """
         sels = dict(selections)
         loader = getattr(self.app_state, "data_loader", None)
         feature = self._effective_feature()
         if loader is None or not feature:
             return sels
         dims = loader.feature_dims(feature)
-        missing_multi = [d for d, vals in dims.items() if d not in sels and len(vals) > 1]
+
+        def values_for(key: str) -> list | None:
+            """What *key* selects from, or ``None`` if the feature has no such dim.
+
+            The combos are named for the catalog (``individuals``) while
+            movement's dim is singular (``individual``); ``XarrayLoader.select``
+            translates between them, so validity is judged on the same terms.
+            """
+            if key in dims:
+                return dims[key]
+            return dims[key[:-1]] if key.endswith("s") and key[:-1] in dims else None
+
+        # A dim the feature lacks entirely is harmless — sel_valid ignores it.
+        sels = {k: v for k, v in sels.items() if (vals := values_for(k)) is None or str(v) in vals}
+        pinned = set(sels) | {k[:-1] for k in sels if k.endswith("s")}
+        missing_multi = [d for d, vals in dims.items() if d not in pinned and len(vals) > 1]
         for d in missing_multi[1:]:
             sels[d] = dims[d][0]
         return sels
+
+    def resync_selections(self) -> None:
+        """Re-validate this panel's selections against the data now loaded.
+
+        Called when the dataset under the panels is replaced: the selections
+        were valid for the *previous* data, and one naming a value that no
+        longer exists raises `KeyError` out of `.sel()` on the next render.
+        """
+        if "selections" in self.panel_state:
+            self.panel_state["selections"] = self._sanitize_selections(self.panel_state["selections"])
 
     def _ensure_panel_state(self):
         """Fork any still-missing state keys from the current globals on first
@@ -293,7 +331,10 @@ class PanelStateMixin:
             return
         ps = self.panel_state
         ps.setdefault("feature", self._effective_feature())
-        ps.setdefault("selections", self.app_state.get_selections())
+        # Sanitized on the way in: the globals are a mirror of whichever panel
+        # was last edited, so they can leave this panel's feature with more than
+        # one free dim — which renders as nothing at all.
+        ps.setdefault("selections", self._sanitize_selections(self.app_state.get_selections()))
         ps.setdefault("color", getattr(self.app_state, "colors_sel", None))
 
 

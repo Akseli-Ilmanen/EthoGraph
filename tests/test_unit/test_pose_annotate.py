@@ -13,13 +13,14 @@ import numpy as np
 import pytest
 
 from ethograph.gui.pose_annotate import (
-    FEATURE_TIME_DIM,
     KINEMATICS,
     KeypointStore,
     KeypointStoreError,
     UnknownIndividualError,
     UnknownKeypointError,
     sidecar_path,
+    store_to_dataset,
+    store_to_head_direction,
     store_to_kinematics,
     store_to_movement_ds,
 )
@@ -656,6 +657,71 @@ def test_resharing_readmits_every_keypoint(pair):
     pair.set_point(0, "eye", (1.0, 1.0), "crow_a")
 
 
+# ----------------------------------------------------------------------
+# Keypoint colours
+# ----------------------------------------------------------------------
+
+
+def test_keypoints_start_on_the_palette(store):
+    assert store.keypoint_color == {}
+    assert store.color_for("beak") is None
+    assert store.keypoint_color_list() == [None, None, None]
+
+
+def test_a_pinned_colour_is_normalised(store):
+    store.set_keypoint_color("beak", "#FF8000")
+
+    assert store.color_for("beak") == "#ff8000"
+    assert store.keypoint_color_list() == ["#ff8000", None, None]
+
+
+def test_a_colour_that_is_not_a_colour_raises(store):
+    with pytest.raises(KeypointStoreError):
+        store.set_keypoint_color("beak", "orange")
+
+
+def test_colouring_an_unknown_keypoint_raises(store):
+    with pytest.raises(UnknownKeypointError):
+        store.set_keypoint_color("wing", "#ff8000")
+
+
+def test_a_colour_can_be_handed_back_to_the_palette(store):
+    store.set_keypoint_color("beak", "#ff8000")
+    store.set_keypoint_color("beak", None)
+
+    assert store.color_for("beak") is None
+
+
+def test_clearing_drops_every_pinned_colour(store):
+    store.set_keypoint_color("beak", "#ff8000")
+    store.set_keypoint_color("eye", "#00ff00")
+    store.clear_keypoint_colors()
+
+    assert store.keypoint_color == {}
+
+
+def test_colours_survive_the_sidecar(store, tmp_path):
+    store.set_keypoint_color("eye", "#00ff00")
+    path = tmp_path / "clip.mp4.keypoints.json"
+    store.save(path)
+
+    assert KeypointStore.load(path).color_for("eye") == "#00ff00"
+
+
+def test_a_colour_follows_its_keypoint_through_a_schema_change(store):
+    store.set_keypoint_color("eye", "#00ff00")
+    store.set_keypoint_names(["wing", "eye"])
+
+    assert store.color_for("eye") == "#00ff00"
+
+
+def test_removing_a_keypoint_drops_its_colour(store):
+    store.set_keypoint_color("eye", "#00ff00")
+    store.set_keypoint_names(["beak", "tail"])
+
+    assert store.keypoint_color == {}
+
+
 def test_legacy_sidecars_are_shared(tmp_path):
     path = tmp_path / "clip.mp4.keypoints.json"
     path.write_text(json.dumps(_legacy_payload()), encoding="utf-8")
@@ -753,36 +819,29 @@ def _moving_store(step: float = 10.0, n: int = 11) -> KeypointStore:
     return store
 
 
-def test_kinematics_are_named_and_shaped_for_the_gui():
+def test_kinematics_keep_the_poses_datasets_own_names_and_dims():
+    """They go back into that dataset, so they share its names and its axes —
+    no prefix, no renamed time. One dataset is the whole point."""
     pytest.importorskip("movement")
     arrays = store_to_kinematics(store_to_movement_ds(_moving_store(), FPS), KINEMATICS)
 
-    assert set(arrays) == {f"keypoints_{n}" for n in ("position", *KINEMATICS)}
-    assert arrays["keypoints_velocity"].dims == (FEATURE_TIME_DIM, "space", "keypoint", "individual")
+    assert set(arrays) == set(KINEMATICS)
+    assert arrays["velocity"].dims == ("time", "space", "keypoint", "individual")
     # Speed is a magnitude, so the space axis is gone.
-    assert arrays["keypoints_speed"].dims == (FEATURE_TIME_DIM, "keypoint", "individual")
-
-
-def test_kinematics_rename_time_so_a_merge_cannot_outer_join():
-    """The keypoints run at video fps, the trial's `time` almost never does."""
-    pytest.importorskip("movement")
-    arrays = store_to_kinematics(store_to_movement_ds(_moving_store(), FPS), ["speed"])
-    for array in arrays.values():
-        assert "time" not in array.dims
-        assert FEATURE_TIME_DIM in array.dims
+    assert arrays["speed"].dims == ("time", "keypoint", "individual")
 
 
 def test_speed_is_in_units_per_second_not_per_frame():
     pytest.importorskip("movement")
     arrays = store_to_kinematics(store_to_movement_ds(_moving_store(step=10.0), FPS), ["speed"])
-    speed = arrays["keypoints_speed"].isel({FEATURE_TIME_DIM: 5, "keypoint": 0, "individual": 0})
+    speed = arrays["speed"].isel({"time": 5, "keypoint": 0, "individual": 0})
     np.testing.assert_allclose(float(speed), 10.0 * FPS)
 
 
 def test_constant_velocity_has_no_acceleration():
     pytest.importorskip("movement")
     arrays = store_to_kinematics(store_to_movement_ds(_moving_store(), FPS), ["acceleration"])
-    middle = arrays["keypoints_acceleration"].isel({FEATURE_TIME_DIM: 5})
+    middle = arrays["acceleration"].isel({"time": 5})
     np.testing.assert_allclose(middle.values, 0.0, atol=1e-9)
 
 
@@ -791,14 +850,14 @@ def test_kinematics_use_the_filled_frames():
     pytest.importorskip("movement")
     store = _moving_store()
     assert len(store.anchor_frames()) == 0  # nothing labelled by hand
-    speed = store_to_kinematics(store_to_movement_ds(store, FPS), ["speed"])["keypoints_speed"]
+    speed = store_to_kinematics(store_to_movement_ds(store, FPS), ["speed"])["speed"]
     assert not np.any(np.isnan(speed.values[1:-1]))
 
 
-def test_position_is_always_included():
+def test_nothing_ticked_derives_nothing():
+    """`position` is already in the dataset; this only adds to it."""
     pytest.importorskip("movement")
-    arrays = store_to_kinematics(store_to_movement_ds(_moving_store(), FPS), [])
-    assert set(arrays) == {"keypoints_position"}
+    assert store_to_kinematics(store_to_movement_ds(_moving_store(), FPS), []) == {}
 
 
 def test_unknown_kinematic_raises():
@@ -823,8 +882,35 @@ def test_kinematics_keep_the_frame_grid():
     pytest.importorskip("movement")
     store = _moving_store(n=11)
     arrays = store_to_kinematics(store_to_movement_ds(store, FPS), ["speed"])
-    time = arrays["keypoints_speed"].coords[FEATURE_TIME_DIM].values
+    time = arrays["speed"].coords["time"].values
     np.testing.assert_allclose(time, np.arange(store.n_frames) / FPS)
+
+
+# ----------------------------------------------------------------------
+# One dataset: what both output paths produce
+# ----------------------------------------------------------------------
+
+
+def test_the_dataset_is_a_movement_poses_file():
+    pytest.importorskip("movement")
+    ds = store_to_dataset(_moving_store(), FPS, kinematics=["speed"])
+
+    assert ds.attrs["ds_type"] == "poses"
+    assert set(ds.dims) == {"time", "space", "keypoint", "individual"}
+    assert {"position", "confidence", "speed"} <= set(ds.data_vars)
+
+
+def test_the_dataset_carries_only_what_was_asked_for():
+    pytest.importorskip("movement")
+    ds = store_to_dataset(_moving_store(), FPS)
+    assert set(ds.data_vars) == {"position", "confidence"}
+
+
+def test_the_dataset_follows_the_y_flip():
+    store = KeypointStore(keypoint_names=["beak"], n_frames=3, individual_names=["bird"])
+    store.set_point(0, "beak", (10.0, 30.0))
+    ds = store_to_dataset(store, FPS, image_height=IMAGE_HEIGHT)
+    assert float(ds.position.sel(space="y", keypoint="beak").isel(time=0, individual=0)) == IMAGE_HEIGHT - 30.0
 
 
 # ----------------------------------------------------------------------
@@ -889,7 +975,218 @@ def test_flipped_velocity_changes_sign(store):
     raw = store_to_kinematics(store_to_movement_ds(down, FPS), ["velocity"])
     flipped = store_to_kinematics(store_to_movement_ds(down, FPS, image_height=IMAGE_HEIGHT), ["velocity"])
 
-    y_raw = raw["keypoints_velocity"].sel(space="y").isel({FEATURE_TIME_DIM: 5, "keypoint": 0, "individual": 0})
-    y_flip = flipped["keypoints_velocity"].sel(space="y").isel({FEATURE_TIME_DIM: 5, "keypoint": 0, "individual": 0})
+    y_raw = raw["velocity"].sel(space="y").isel({"time": 5, "keypoint": 0, "individual": 0})
+    y_flip = flipped["velocity"].sel(space="y").isel({"time": 5, "keypoint": 0, "individual": 0})
     assert float(y_raw) > 0  # y grows downward in image space
     np.testing.assert_allclose(float(y_flip), -float(y_raw))
+
+
+# ----------------------------------------------------------------------
+# Kinematics over sparse anchors — the no-fill case
+# ----------------------------------------------------------------------
+
+
+def _sparse_store(step: float = 10.0, gap: int = 10, n_anchors: int = 5) -> KeypointStore:
+    """Anchors every *gap* frames and NO fill — what labelling alone produces."""
+    n_frames = gap * n_anchors
+    store = KeypointStore(keypoint_names=["beak", "tail"], n_frames=n_frames, individual_names=["bird"])
+    for index in range(n_anchors):
+        frame = index * gap
+        store.set_point(frame, "beak", (frame * step, 0.0))
+        store.set_point(frame, "tail", (frame * step, 50.0))
+    return store
+
+
+def test_sparse_anchors_still_give_a_velocity():
+    """Regression: differentiating the raw grid returned NaN EVERYWHERE.
+
+    A central difference over the stored frames blanks both neighbours of any
+    NaN, and with anchors 10 frames apart every anchor is such a neighbour — so
+    velocity, speed and acceleration all came back empty from positions that
+    were plainly there, and the plot drew nothing.
+    """
+    pytest.importorskip("movement")
+    arrays = store_to_kinematics(store_to_movement_ds(_sparse_store(), FPS), KINEMATICS)
+    for name in ("velocity", "speed", "acceleration"):
+        values = arrays[name].values
+        assert np.isfinite(values).any(), f"{name} is entirely NaN over sparse anchors"
+
+
+def test_sparse_velocity_is_the_average_across_the_gap():
+    """10 px per frame, sampled every 10th frame, is still 10 px/frame."""
+    pytest.importorskip("movement")
+    arrays = store_to_kinematics(store_to_movement_ds(_sparse_store(step=10.0, gap=10), FPS), ["velocity"])
+    x = arrays["velocity"].sel(space="x").isel({"time": 20, "keypoint": 0, "individual": 0})
+    np.testing.assert_allclose(float(x), 10.0 * FPS)
+
+
+def test_kinematics_are_only_scored_where_a_point_was_observed():
+    """Between two anchors there is no evidence, so there is no velocity."""
+    pytest.importorskip("movement")
+    arrays = store_to_kinematics(store_to_movement_ds(_sparse_store(gap=10), FPS), ["velocity"])
+    velocity = arrays["velocity"].isel({"keypoint": 0, "individual": 0})
+    assert np.isfinite(velocity.isel({"time": 20}).values).all()
+    assert np.isnan(velocity.isel({"time": 25}).values).all()
+
+
+def test_dense_kinematics_still_match_movement():
+    """The observed-frame path must reduce to movement's own answer when the
+    data is dense — otherwise a fill's kinematics would quietly change."""
+    movement = pytest.importorskip("movement.kinematics")
+    ds = store_to_movement_ds(_moving_store(step=7.0, n=21), FPS)
+    ours = store_to_kinematics(ds, ["velocity"])["velocity"]
+    theirs = movement.compute_velocity(ds["position"])
+    np.testing.assert_allclose(ours.values, theirs.values)
+
+
+# ----------------------------------------------------------------------
+# Head direction
+# ----------------------------------------------------------------------
+
+
+#: A tag facing the top of the frame, in image coordinates (y DOWN).
+FACING_UP = (0.0, -1.0)
+
+
+def _tagged_store(frames=(0, 1, 2), heading=FACING_UP) -> KeypointStore:
+    """One individual wearing ONE tag on its `marker` keypoint.
+
+    The tag is a single keypoint, not four: its orientation rides along with the
+    detection, which is the whole point of the design.
+    """
+    store = KeypointStore(keypoint_names=["marker", "beak"], n_frames=5, individual_names=["bird"])
+    positions, orientation = {}, {}
+    for frame in frames:
+        points = np.full((1, 2, 2), np.nan)
+        points[0, 0] = (100.0, 200.0)  # `marker`, the tagged keypoint
+        vectors = np.full((1, 2, 2), np.nan)
+        vectors[0, 0] = heading
+        positions[frame], orientation[frame] = points, vectors
+    store.set_detections(positions, orientation=orientation)
+    return store
+
+
+def test_head_direction_comes_from_one_tagged_keypoint():
+    """No pair to nominate: the marker is the keypoint, and it knows its heading."""
+    arrays = store_to_head_direction(_tagged_store(), FPS)
+    vector = arrays["head_direction"].isel(time=0, individual=0).sel(keypoint="marker")
+    np.testing.assert_allclose(vector.values, FACING_UP)
+
+
+def test_an_untagged_keypoint_has_no_heading():
+    """`beak` was never detected by a marker, so it faces nowhere — not zero."""
+    arrays = store_to_head_direction(_tagged_store(), FPS)
+    beak = arrays["head_direction"].isel(individual=0).sel(keypoint="beak")
+    assert np.isnan(beak.values).all()
+
+
+def test_head_direction_keeps_the_keypoint_dimension():
+    """One tag is one heading, so it is per keypoint — unlike movement's own
+    forward vector, which drops the dim because it consumes a pair."""
+    arrays = store_to_head_direction(_tagged_store(), FPS)
+    assert arrays["head_direction"].dims == ("time", "space", "keypoint", "individual")
+    assert arrays["heading"].dims == ("time", "keypoint", "individual")
+
+
+def test_frames_without_a_decode_stay_empty():
+    """A heading is a measurement; nothing interpolates it."""
+    arrays = store_to_head_direction(_tagged_store(frames=(0, 2)), FPS)
+    marker = arrays["head_direction"].isel(individual=0).sel(keypoint="marker")
+    assert not np.isnan(marker.isel(time=0).values).any()
+    assert np.isnan(marker.isel(time=1).values).all()
+    assert np.isnan(marker.isel(time=4).values).all()
+
+
+def test_head_direction_follows_the_y_flip():
+    """Orientation is measured in image coordinates, so flipping the positions
+    without flipping it would point the arrow opposite to the trajectory."""
+    store = _tagged_store()
+    raw = store_to_head_direction(store, FPS, y_flipped=False)
+    flipped = store_to_head_direction(store, FPS, y_flipped=True)
+
+    def y_of(arrays):
+        return float(arrays["head_direction"].isel(time=0, individual=0).sel(keypoint="marker", space="y"))
+
+    np.testing.assert_allclose(y_of(flipped), -y_of(raw))
+
+
+def test_the_flip_leaves_x_alone():
+    store = _tagged_store(heading=(0.6, -0.8))
+    raw = store_to_head_direction(store, FPS, y_flipped=False)
+    flipped = store_to_head_direction(store, FPS, y_flipped=True)
+
+    def x_of(arrays):
+        return float(arrays["head_direction"].isel(time=0, individual=0).sel(keypoint="marker", space="x"))
+
+    np.testing.assert_allclose(x_of(flipped), x_of(raw))
+
+
+def test_heading_is_the_angle_of_the_vector_in_degrees():
+    heading = store_to_head_direction(_tagged_store(), FPS)["heading"]
+    # Forward is (0, -1) and the reference is +x, so the signed angle is -90°.
+    np.testing.assert_allclose(float(heading.isel(time=0, individual=0).sel(keypoint="marker")), -90.0)
+
+
+def test_heading_is_nan_where_nothing_was_measured():
+    """atan2 of a NaN pair must not become an angle."""
+    heading = store_to_head_direction(_tagged_store(frames=(0,)), FPS)["heading"]
+    assert np.isnan(float(heading.isel(time=3, individual=0).sel(keypoint="marker")))
+
+
+def test_head_direction_joins_the_poses_dataset_unrenamed():
+    """It rides in the same dataset as `position`, so it shares its axes."""
+    arrays = store_to_head_direction(_tagged_store(), FPS)
+    assert set(arrays) == {"head_direction", "heading"}
+    assert all("time" in array.dims for array in arrays.values())
+
+    ds = store_to_dataset(_tagged_store(), FPS, head_direction=True)
+    assert {"head_direction", "heading"} <= set(ds.data_vars)
+
+
+def test_head_direction_is_on_the_videos_frame_grid():
+    time = store_to_head_direction(_tagged_store(), FPS)["heading"].coords["time"].values
+    np.testing.assert_allclose(time, np.arange(5) / FPS)
+
+
+def test_head_direction_rejects_a_missing_fps():
+    with pytest.raises(KeypointStoreError, match="fps must be positive"):
+        store_to_head_direction(_tagged_store(), 0.0)
+
+
+def test_a_store_with_no_oriented_marker_offers_nothing(store):
+    """The precondition, stated: no tags means no head direction."""
+    assert store.has_orientation is False
+    arrays = store_to_head_direction(store, FPS)
+    assert np.isnan(arrays["head_direction"].values).all()
+    assert np.isnan(arrays["heading"].values).all()
+
+
+def test_has_orientation_reports_a_tag_run():
+    assert _tagged_store().has_orientation is True
+
+
+def test_clearing_the_detections_takes_the_orientation_with_them():
+    tagged = _tagged_store()
+    tagged.clear_detections()
+    assert tagged.has_orientation is False
+
+
+def test_a_rejected_detection_drops_its_heading():
+    """Rejecting a misread must not leave its heading behind."""
+    tagged = _tagged_store(frames=(0, 1))
+    tagged.clear_detections_for(0)
+    marker = store_to_head_direction(tagged, FPS)["head_direction"].isel(individual=0).sel(keypoint="marker")
+    assert np.isnan(marker.isel(time=0).values).all()
+    assert not np.isnan(marker.isel(time=1).values).any()
+
+
+def test_a_point_dropped_for_quality_drops_its_heading():
+    """A heading is only as good as the decode it came from."""
+    store = KeypointStore(keypoint_names=["marker"], n_frames=3, individual_names=["bird"])
+    store.set_detections(
+        {0: np.array([[[10.0, 20.0]]])},
+        {0: np.array([[0.1]])},
+        quality_min=0.5,
+        orientation={0: np.array([[FACING_UP]])},
+    )
+    assert store.has_orientation is False

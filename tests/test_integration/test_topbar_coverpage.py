@@ -628,6 +628,27 @@ def test_cover_page_shrinks_below_content_size(gui, qtbot):
     page.close()
 
 
+def test_cover_page_offers_the_tag_sheet_before_any_recording(gui):
+    """Tags have to be printed before a video exists, so the entry point must
+    live on the one screen shown before anything is loaded."""
+    pytest.importorskip("cv2")
+    from ethograph.gui.cover_page import CoverPage
+    from ethograph.gui.dialog_tag_sheet import TagSheetDialog
+
+    shell, meta = gui
+    page = CoverPage(shell, meta.io_widget)
+    actions = [action.text() for action in page._tools_button.menu().actions()]
+    assert "Print tag sheet…" in actions
+
+    page._open_tag_sheet()
+    try:
+        assert isinstance(page._tag_sheet, TagSheetDialog)
+        assert page._tag_sheet._pages, "a sheet must lay out with no video and no dataset"
+    finally:
+        page._tag_sheet.close()
+        page.close()
+
+
 def test_cover_page_scales_with_screen_height(gui):
     """Fixed pixel sizes are multiplied by a screen-height-derived factor."""
     from ethograph.gui import cover_page as cp

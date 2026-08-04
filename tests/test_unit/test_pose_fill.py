@@ -21,6 +21,7 @@ from ethograph.gui.pose_fill import (
     available_backends,
     build_backend,
     resolve_device,
+    video_size,
 )
 
 N_FRAMES = 21
@@ -119,6 +120,59 @@ def test_build_backend_rejects_unknown_key():
 
 
 # ----------------------------------------------------------------------
+# The shared invariant
+# ----------------------------------------------------------------------
+
+
+def _spline_backend():
+    return SplineBackend(), None
+
+
+def _gap_backend():
+    return _HoldBackend(), _frames()
+
+
+def _cotracker_backend():
+    pytest.importorskip("torch")
+    return _CoTrackerTracking(_FakePredictor(), device="cpu"), _frames()
+
+
+def _optical_flow_backend():
+    pytest.importorskip("cv2")
+    return OpticalFlowBackend(), _frames()
+
+
+#: Every backend, built the cheapest way that still runs its real fill path.
+#: The trackers get a stand-in predictor rather than weights, so this needs no
+#: GPU and no download.
+BACKENDS = [
+    pytest.param(_spline_backend, id="spline"),
+    pytest.param(_gap_backend, id="gap"),
+    pytest.param(_cotracker_backend, id="cotracker"),
+    pytest.param(_optical_flow_backend, id="optical-flow"),
+]
+
+
+@pytest.mark.parametrize("make_backend", BACKENDS)
+def test_every_backend_returns_anchor_frames_exactly_as_labelled(make_backend):
+    """The one assertion that matters for all of them — see the module docstring.
+
+    Parametrized rather than repeated per backend: it is a property of the
+    *protocol*, so a backend added later inherits the check by joining the list
+    instead of by someone remembering to copy the test.
+    """
+    backend, frames = make_backend()
+    anchors = _anchors()
+    filled, confidence = backend.fill(anchors, N_FRAMES, frames)
+
+    assert filled.shape == (N_FRAMES, N_KEYPOINTS, 2)
+    assert confidence.shape == (N_FRAMES, N_KEYPOINTS)
+    for frame, points in anchors.items():
+        np.testing.assert_allclose(filled[frame], points)
+        np.testing.assert_allclose(confidence[frame], 1.0)
+
+
+# ----------------------------------------------------------------------
 # CoTracker checkpoint resolution
 # ----------------------------------------------------------------------
 
@@ -205,17 +259,6 @@ def test_resolve_device_falls_back_when_preference_is_unavailable():
 # ----------------------------------------------------------------------
 # Spline
 # ----------------------------------------------------------------------
-
-
-def test_spline_preserves_anchors_exactly():
-    anchors = _anchors()
-    filled, confidence = SplineBackend().fill(anchors, N_FRAMES, None)
-
-    assert filled.shape == (N_FRAMES, N_KEYPOINTS, 2)
-    assert confidence.shape == (N_FRAMES, N_KEYPOINTS)
-    for frame, points in anchors.items():
-        np.testing.assert_allclose(filled[frame], points)
-        np.testing.assert_allclose(confidence[frame], 1.0)
 
 
 def test_spline_fills_every_frame():
@@ -322,15 +365,6 @@ def test_progress_cancellation_stops_early():
 def test_gap_backend_requires_frames():
     with pytest.raises(ValueError):
         OpticalFlowBackend().fill(_anchors(), N_FRAMES, None)
-
-
-def test_gap_backend_preserves_anchors():
-    anchors = _anchors()
-    filled, confidence = _HoldBackend().fill(anchors, N_FRAMES, _frames())
-
-    for frame, points in anchors.items():
-        np.testing.assert_allclose(filled[frame], points)
-        np.testing.assert_allclose(confidence[frame], 1.0)
 
 
 def test_gap_backend_blends_linearly_across_the_gap():
@@ -485,17 +519,6 @@ def test_gap_backend_cancellation_stops_early():
         np.testing.assert_allclose(filled[frame], points)
 
 
-def test_cotracker_preserves_anchors_with_a_fake_predictor():
-    pytest.importorskip("torch")
-    anchors = _anchors()
-    backend = _CoTrackerTracking(_FakePredictor(), device="cpu")
-    filled, confidence = backend.fill(anchors, N_FRAMES, _frames())
-
-    for frame, points in anchors.items():
-        np.testing.assert_allclose(filled[frame], points)
-        np.testing.assert_allclose(confidence[frame], 1.0)
-
-
 def test_cotracker_handles_partial_anchors():
     pytest.importorskip("torch")
     anchors = _partial_anchors()
@@ -518,16 +541,35 @@ def test_cotracker_blends_a_held_track_across_the_gap():
     np.testing.assert_allclose(filled[5, 0], [5.0, 0.0])
 
 
-def test_optical_flow_preserves_anchors():
-    pytest.importorskip("cv2")
-    anchors = _anchors()
-    filled, confidence = OpticalFlowBackend().fill(anchors, N_FRAMES, _frames())
-
-    for frame, points in anchors.items():
-        np.testing.assert_allclose(filled[frame], points)
-        np.testing.assert_allclose(confidence[frame], 1.0)
-
-
 def test_cotracker_uses_the_resolved_device_by_default():
     pytest.importorskip("torch")
     assert _CoTrackerTracking(_FakePredictor())._device == resolve_device()
+
+
+def test_video_size_reads_the_files_own_pixels(tmp_path):
+    """The tag sheet sizes tags from this, so it must be the SOURCE resolution.
+
+    What is on screen can be a low-resolution proxy or a downscaled decode;
+    a minimum tag size derived from either is wrong by that scale factor and
+    says nothing about it.
+    """
+    av = pytest.importorskip("av")
+    path = tmp_path / "clip.mp4"
+    with av.open(str(path), mode="w") as container:
+        stream = container.add_stream("mpeg4", rate=25)
+        stream.width, stream.height = 320, 240
+        stream.pix_fmt = "yuv420p"
+        for _ in range(3):
+            frame = av.VideoFrame.from_ndarray(np.zeros((240, 320, 3), dtype=np.uint8), format="rgb24")
+            container.mux(stream.encode(frame))
+        container.mux(stream.encode())
+
+    assert video_size(path) == (320, 240)
+
+
+def test_video_size_is_none_for_something_that_is_not_a_video(tmp_path):
+    """Callers ask in order to OFFER a value, so a bad path is not an error."""
+    path = tmp_path / "notes.txt"
+    path.write_text("no video here", encoding="utf-8")
+    assert video_size(path) is None
+    assert video_size(tmp_path / "missing.mp4") is None

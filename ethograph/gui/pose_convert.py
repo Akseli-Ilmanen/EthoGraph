@@ -17,6 +17,15 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+#: Which axis of the pose hierarchy colour encodes — the value of
+#: ``app_state.pose_color_by``. Kept here, with the other colour helpers,
+#: because both surfaces that draw a keypoint read it: the pose display
+#: (:mod:`~ethograph.gui.pose_render`) and the labelling canvas
+#: (:mod:`~ethograph.gui.pose_edit_mixin`).
+COLOR_BY_KEYPOINT = "keypoint"
+COLOR_BY_INDIVIDUAL = "individual"
+COLOR_BY_MODES = (COLOR_BY_KEYPOINT, COLOR_BY_INDIVIDUAL)
+
 
 def _dim(ds: xr.Dataset, singular: str) -> str | None:
     """Return the dataset's dim name for *singular*, accepting plural too."""

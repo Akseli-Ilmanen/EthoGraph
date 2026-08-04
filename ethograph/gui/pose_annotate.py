@@ -41,20 +41,43 @@ Partially labelled anchors are normal: the user labels the beak on some frames
 and the tail on others, so backends must handle per-point anchor sets rather
 than a single shared frame list (see :meth:`KeypointStore.anchor_frames_for`).
 
-Provenance: human vs fill
--------------------------
-The split between what a person placed and what a backend produced is the
-:attr:`~KeypointStore.anchors` / :attr:`~KeypointStore.filled` split, and a fill
-never feeds the next fill: :meth:`~KeypointStore.flat_anchors` reads the anchors
-alone, so re-filling is a pure function of the labels. :meth:`~KeypointStore.human_mask`
-reports that provenance per point and :meth:`~KeypointStore.is_human` per
+Provenance: observations vs inference
+------------------------------------
+Two *kinds* of coordinate live here, and the split is not "human vs machine":
+
+**Observations** are positions asserted from the pixels of one specific frame —
+:attr:`~KeypointStore.anchors`, which the user clicked, and
+:attr:`~KeypointStore.detections`, which a marker detector read off that same
+frame (see :mod:`~ethograph.gui.pose_detect`). Both are sparse ``frame -> array``
+dicts, and :meth:`~KeypointStore.observations` merges them with **manual winning
+per point**, which is what the fill backends consume.
+
+**Inference** is :attr:`~KeypointStore.filled`: what a backend produced for the
+frames carrying no evidence at all. A fill never feeds the next fill —
+:meth:`~KeypointStore.flat_observations` reads the observations alone, so
+re-filling is a pure function of what was actually observed.
+
+Precedence is therefore **manual > detected > filled** everywhere, which is what
+makes correcting a detection need no new code: clicking one calls the ordinary
+:meth:`~KeypointStore.set_point`, that writes an anchor, and every reader prefers
+it from then on. :meth:`~KeypointStore.human_mask` and
+:meth:`~KeypointStore.detected_mask` report the provenance per point and
+:meth:`~KeypointStore.is_human` / :meth:`~KeypointStore.is_detected` per
 ``(frame, individual)`` row — one human point anywhere in the row makes the row
 human, which is the rule the dialog's ``Source`` column shows.
 
-A filled point becomes human by being touched: clicking one on the canvas pins
-it where the backend put it (see :meth:`~KeypointStore.promote_fill` for the
-same thing over a whole frame). That is how a fill is "accepted" — there is no
-third state between labelled and predicted.
+A predicted point becomes human by being touched: clicking one on the canvas
+pins it where it was (see :meth:`~KeypointStore.promote_fill` for the same thing
+over a whole frame, and :meth:`~KeypointStore.promote_detections` for detections
+alone). That is how a prediction is "accepted" — there is no state between
+labelled and predicted.
+
+Detections are derived data, like the fill, and are never written to the JSON
+sidecar; they are cached separately (see :func:`detections_path`) only because
+re-running a detector over a long video costs minutes. What *is* user intent, and
+so does live in the sidecar beside the anchors, is the :class:`AssignmentTable`:
+what each detector label — tag ``7``, the orange dot — means in terms of an
+``(individual, keypoint)`` pair.
 """
 
 from __future__ import annotations
@@ -73,6 +96,13 @@ SIDECAR_SUFFIX = ".keypoints.json"
 #: Sidecar suffix for a cached test-time refinement (see :mod:`pose_refine`).
 REFINEMENT_SUFFIX = ".posepal.pt"
 
+#: Sidecar suffix for cached detections (see :mod:`pose_detect`).
+DETECTIONS_SUFFIX = ".detections.npz"
+
+#: Suffix for the poses dataset *Load into the GUI* writes and then loads. Output
+#: rather than state: regenerated from the store on every load.
+KEYPOINTS_DATASET_SUFFIX = ".keypoints.nc"
+
 #: Share of a video worth labelling, as a percentage — roughly every 10th frame.
 #:
 #: A *spacing* rather than a count, because what the fill backends care about is
@@ -85,9 +115,25 @@ RECOMMENDED_LABEL_SHARE = 10.0
 #: Name given to the first individual when the user has not named any.
 DEFAULT_INDIVIDUAL = "individual_0"
 
+#: How a pinned keypoint colour is written: ``"#rrggbb"``, lower case.
+COLOR_LENGTH = 7
+
 
 class KeypointStoreError(Exception):
     """Base for keypoint store failures."""
+
+
+def normalise_color(spec: str) -> str:
+    """Validate a keypoint colour and return it as lower-case ``"#rrggbb"``.
+
+    One spelling is stored so a colour can be compared, round-tripped through
+    the sidecar and handed to both Qt and pygfx without either of them having to
+    guess at a format.
+    """
+    text = str(spec).strip().lower()
+    if len(text) != COLOR_LENGTH or not text.startswith("#") or any(c not in "0123456789abcdef" for c in text[1:]):
+        raise KeypointStoreError(f"{spec!r} is not a colour — expected '#rrggbb'.")
+    return text
 
 
 class UnknownKeypointError(KeypointStoreError):
@@ -96,6 +142,213 @@ class UnknownKeypointError(KeypointStoreError):
 
 class UnknownIndividualError(KeypointStoreError):
     """Raised when an individual name is not in the store's schema."""
+
+
+class AssignmentError(KeypointStoreError):
+    """Raised when an assignment would make one point mean two things."""
+
+
+#: An assignment the detector proposed by matching its output to the labels.
+LEARNED = "learned"
+#: An assignment the user typed or picked, which a re-learn must never touch.
+MANUAL = "manual"
+
+
+@dataclass(frozen=True)
+class Assignment:
+    """What one detector label means: a single ``(individual, keypoint)`` pair.
+
+    A tag decodes to the integer ``7`` and a colour blob to "class 2"; neither
+    knows it is the *beak*, or *bee 12*. This closes that gap, and the target
+    being a **pair** is what lets one mechanism cover every marker layout:
+    a colour per keypoint on one animal (``(None, "beak")``), a tag per
+    individual (``("bee_07", "thorax")``), or both at once.
+
+    ``individual=None`` means the first (usually only) individual, exactly as
+    everywhere else in this module.
+    """
+
+    label: int
+    individual: str | None
+    keypoint: str
+    source: str = LEARNED
+    #: How many labelled frames agreed on this target, for the dialog's table.
+    matched_frames: int = 0
+
+    def __post_init__(self):
+        object.__setattr__(self, "label", int(self.label))
+        object.__setattr__(self, "keypoint", str(self.keypoint))
+        if self.individual is not None:
+            object.__setattr__(self, "individual", str(self.individual))
+        if self.source not in (LEARNED, MANUAL):
+            raise AssignmentError(f"Unknown assignment source {self.source!r}; expected {LEARNED!r} or {MANUAL!r}")
+
+    @property
+    def target(self) -> tuple[str | None, str]:
+        return self.individual, self.keypoint
+
+    def to_dict(self) -> dict:
+        return {
+            "label": self.label,
+            "individual": self.individual,
+            "keypoint": self.keypoint,
+            "source": self.source,
+            "matched_frames": self.matched_frames,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict) -> Assignment:
+        return cls(
+            label=payload["label"],
+            individual=payload.get("individual"),
+            keypoint=payload["keypoint"],
+            source=payload.get("source", LEARNED),
+            matched_frames=int(payload.get("matched_frames", 0)),
+        )
+
+
+class AssignmentTable:
+    """``label -> (individual, keypoint)``, keyed by the detector's own label.
+
+    Keyed by the label rather than by the target so that renaming an individual
+    in the schema does not orphan the mapping — the tag is still tag 7. Two
+    labels may never share a target: one row of the point grid is one point, and
+    a second label writing to it would silently overwrite the first.
+
+    Learning is a *proposal*. :meth:`learn` never replaces an entry the user
+    edited (``source == MANUAL``), which is what makes correcting one row and
+    re-learning the rest a usable workflow.
+    """
+
+    def __init__(self, entries: Sequence[Assignment] = ()):
+        self._by_label: dict[int, Assignment] = {}
+        for entry in entries:
+            self._by_label[entry.label] = entry
+
+    # -- reading -------------------------------------------------------
+
+    @property
+    def entries(self) -> list[Assignment]:
+        """Every assignment, ordered by label — the dialog's row order."""
+        return [self._by_label[label] for label in sorted(self._by_label)]
+
+    def __len__(self) -> int:
+        return len(self._by_label)
+
+    def __iter__(self):
+        return iter(self.entries)
+
+    def __contains__(self, label: object) -> bool:
+        return label in self._by_label
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, AssignmentTable) and self.entries == other.entries
+
+    def __repr__(self) -> str:
+        return f"AssignmentTable({self.entries!r})"
+
+    def get(self, label: int) -> Assignment | None:
+        return self._by_label.get(int(label))
+
+    def target(self, label: int) -> tuple[str | None, str] | None:
+        entry = self.get(label)
+        return None if entry is None else entry.target
+
+    def labels(self) -> list[int]:
+        return sorted(self._by_label)
+
+    def owner_of(self, individual: str | None, keypoint: str) -> int | None:
+        """Which label writes to this pair, if any."""
+        for entry in self.entries:
+            if entry.individual == individual and entry.keypoint == keypoint:
+                return entry.label
+        return None
+
+    # -- editing -------------------------------------------------------
+
+    def set(
+        self,
+        label: int,
+        individual: str | None,
+        keypoint: str,
+        source: str = MANUAL,
+        matched_frames: int = 0,
+    ) -> Assignment:
+        """Point *label* at one pair; raises if another label already owns it."""
+        entry = Assignment(label, individual, keypoint, source, matched_frames)
+        owner = self.owner_of(entry.individual, entry.keypoint)
+        if owner is not None and owner != entry.label:
+            raise AssignmentError(
+                f"{entry.individual or 'the first individual'} / {entry.keypoint} is already detected by "
+                f"label {owner} — one point cannot come from two labels."
+            )
+        self._by_label[entry.label] = entry
+        return entry
+
+    def remove(self, label: int) -> bool:
+        return self._by_label.pop(int(label), None) is not None
+
+    def clear(self) -> None:
+        self._by_label.clear()
+
+    def learn(self, proposals: Sequence[Assignment]) -> int:
+        """Merge learned proposals; returns how many were taken.
+
+        A row the user touched is never overwritten, and a proposal whose target
+        is already owned by another label is dropped rather than guessed at.
+        """
+        taken = 0
+        for proposal in proposals:
+            existing = self.get(proposal.label)
+            if existing is not None and existing.source == MANUAL:
+                continue
+            owner = self.owner_of(proposal.individual, proposal.keypoint)
+            if owner is not None and owner != proposal.label:
+                continue
+            self._by_label[proposal.label] = proposal
+            taken += 1
+        return taken
+
+    # -- validation ----------------------------------------------------
+
+    def invalid_labels(self, store: KeypointStore) -> set[int]:
+        """Labels that cannot be written: a missing target, or a taken one.
+
+        Deliberately not pruned: a stale row shown in red says *why* a detector
+        run came back empty, where a silently dropped one does not. Its
+        detections are simply never written (see :meth:`KeypointStore.assignment_rows`).
+
+        Two labels resolving to the *same* point are caught here rather than only
+        in :meth:`set`, because ``individual=None`` (the first individual) and
+        that individual's own name are two spellings of one row — the equality
+        check in :meth:`owner_of` cannot see that, but the schema can. The lower
+        label keeps the point; the other is invalid, not silently overwriting it.
+        """
+        invalid: set[int] = set()
+        claimed: dict[int, int] = {}
+        for entry in self.entries:
+            if entry.individual is not None and entry.individual not in store.individual_names:
+                invalid.add(entry.label)
+                continue
+            if not store.individual_names or not store.has_keypoint(entry.keypoint, entry.individual):
+                invalid.add(entry.label)
+                continue
+            row = store.individual_index(entry.individual) * store.n_keypoints + store.keypoint_index(entry.keypoint)
+            if row in claimed:
+                invalid.add(entry.label)
+            else:
+                claimed[row] = entry.label
+        return invalid
+
+    # -- persistence ---------------------------------------------------
+
+    def to_list(self) -> list[dict]:
+        return [entry.to_dict() for entry in self.entries]
+
+    @classmethod
+    def from_list(cls, payload: Sequence[dict] | None) -> AssignmentTable:
+        """Rebuild from a sidecar; a missing key is simply an empty table."""
+        return cls([Assignment.from_dict(item) for item in (payload or ())])
 
 
 @dataclass
@@ -116,9 +369,38 @@ class KeypointStore:
     keypoint_sets
         ``individual -> keypoints``, only meaningful (and only populated) when
         ``shared_keypoints`` is ``False``.
+    keypoint_color
+        ``keypoint -> "#rrggbb"`` for the keypoints whose colour the user has
+        pinned. Sparse on purpose: an unlisted keypoint takes its colour from
+        the generated palette, which is what makes a fresh schema legible
+        without anyone choosing anything.
+    individual_color
+        The same, per individual: the colour markers take when the display is
+        colouring by individual rather than by keypoint. Two palettes rather
+        than one because the two modes are two different questions ("which
+        body part is this?" / "which animal is this?"), and a pinned colour
+        must survive switching between them.
     anchors
         ``frame -> (n_individuals, n_keypoints, 2)`` array of user-placed
         ``(x, y)``, ``NaN`` where that point is unlabelled on that frame.
+    detections
+        The same layout, read off the pixels of each frame by a detector rather
+        than clicked. Sparse for the same reason: a marker is only found where
+        it is visible. Manual anchors win over these point by point.
+    detection_confidence
+        ``frame -> (n_individuals, n_keypoints)`` detector quality in ``[0, 1]``,
+        ``NaN`` where nothing was detected.
+    detection_orientation
+        ``frame -> (n_individuals, n_keypoints, 2)`` unit forward vector in
+        **image coordinates**, ``NaN`` for a point whose marker has no
+        orientation. An AprilTag is a square, so one decode fixes which way it
+        faces; keeping that beside the position is what lets a head direction be
+        read off a *single* tagged keypoint instead of being reconstructed from
+        two keypoints that happen to sit on the same marker.
+    assignment
+        What each detector label means — see :class:`AssignmentTable`. Persisted
+        in the sidecar next to the anchors, because it is user intent rather
+        than something recomputable from the video.
     filled
         ``(n_frames, n_individuals, n_keypoints, 2)`` backend output, or
         ``None`` before the first fill. Anchor frames are copied through
@@ -138,17 +420,29 @@ class KeypointStore:
     individual_names: list[str] = field(default_factory=lambda: [DEFAULT_INDIVIDUAL])
     shared_keypoints: bool = True
     keypoint_sets: dict[str, list[str]] = field(default_factory=dict)
+    keypoint_color: dict[str, str] = field(default_factory=dict)
+    individual_color: dict[str, str] = field(default_factory=dict)
     anchors: dict[int, np.ndarray] = field(default_factory=dict)
+    detections: dict[int, np.ndarray] = field(default_factory=dict)
+    detection_confidence: dict[int, np.ndarray] = field(default_factory=dict)
+    detection_orientation: dict[int, np.ndarray] = field(default_factory=dict)
+    assignment: AssignmentTable = field(default_factory=AssignmentTable)
     filled: np.ndarray | None = None
     confidence: np.ndarray | None = None
     fill_range: tuple[int, int] | None = None
     _history: list[tuple[int, int, int, np.ndarray | None]] = field(default_factory=list, repr=False)
+    #: Bumped on every change to the detections. A detector run can touch every
+    #: frame of the video, so readers that would otherwise re-derive their state
+    #: from the dict (the points table, which does it per mouse move of a drag)
+    #: compare this integer instead.
+    _detections_revision: int = field(default=0, repr=False)
 
     def __post_init__(self):
         self.keypoint_names = [str(n) for n in self.keypoint_names]
         self.individual_names = [str(n) for n in self.individual_names]
         self.n_frames = int(self.n_frames)
         self._normalise_keypoint_sets()
+        self._normalise_colors()
         self._prune_unowned()
 
     # ------------------------------------------------------------------
@@ -253,6 +547,70 @@ class KeypointStore:
         self.keypoint_sets[individual] = [name for name in self.keypoint_names if name in set(names)]
         self._prune_unowned()
 
+    def set_keypoint_color(self, keypoint: str, color: str | None) -> None:
+        """Pin *keypoint* to ``"#rrggbb"``, or hand it back to the palette.
+
+        A colour is schema data, not a setting: it is keyed by keypoint name and
+        travels with the anchors in the sidecar, so the beak stays the colour it
+        was chosen to be when the project is reopened on another machine.
+        """
+        self.keypoint_index(keypoint)  # a colour for a keypoint that is not in the schema is a bug
+        if color is None:
+            self.keypoint_color.pop(keypoint, None)
+            return
+        self.keypoint_color[keypoint] = normalise_color(color)
+
+    def color_for(self, keypoint: str) -> str | None:
+        """The colour pinned to *keypoint*, or ``None`` when it uses the palette."""
+        self.keypoint_index(keypoint)
+        return self.keypoint_color.get(keypoint)
+
+    def keypoint_color_list(self) -> list[str | None]:
+        """Pinned colours aligned with :attr:`keypoint_names`, ``None`` where unset.
+
+        The form the palette wants: one slot per keypoint, so the caller never
+        has to know which keypoints were pinned.
+        """
+        return [self.keypoint_color.get(name) for name in self.keypoint_names]
+
+    def clear_keypoint_colors(self) -> None:
+        """Drop every pinned colour — both palettes go back to generated ones.
+
+        One button for both axes: "reset colours" means the schema looks the way
+        a fresh one does, whichever axis the display is colouring by.
+        """
+        self.keypoint_color = {}
+        self.individual_color = {}
+
+    def set_individual_color(self, individual: str, color: str | None) -> None:
+        """Pin *individual* to ``"#rrggbb"``, or hand it back to the palette."""
+        self.individual_index(individual)  # a colour for an unknown individual is a bug
+        if color is None:
+            self.individual_color.pop(individual, None)
+            return
+        self.individual_color[individual] = normalise_color(color)
+
+    def individual_color_list(self) -> list[str | None]:
+        """Pinned colours aligned with :attr:`individual_names`, ``None`` where unset."""
+        return [self.individual_color.get(name) for name in self.individual_names]
+
+    def _normalise_colors(self) -> None:
+        """Keep the pinned colours to names the schema still has.
+
+        A colour for a deleted keypoint or individual is state nothing can show,
+        so it goes with the name rather than lingering in the sidecar.
+        """
+        self.keypoint_color = {
+            name: normalise_color(self.keypoint_color[name])
+            for name in self.keypoint_names
+            if name in self.keypoint_color
+        }
+        self.individual_color = {
+            name: normalise_color(self.individual_color[name])
+            for name in self.individual_names
+            if name in self.individual_color
+        }
+
     def _normalise_keypoint_sets(self) -> None:
         """Keep :attr:`keypoint_sets` in step with the individuals and the union."""
         if self.shared_keypoints:
@@ -265,7 +623,13 @@ class KeypointStore:
         self.keypoint_sets = normalised
 
     def _prune_unowned(self) -> None:
-        """Drop anchors for pairs the schema no longer contains."""
+        """Drop anchors and detections for pairs the schema no longer contains.
+
+        Detections go the same way as anchors: a pair an asymmetric schema
+        excludes cannot hold a position, whoever placed it. The *assignments*
+        naming those pairs are deliberately left alone — see
+        :meth:`AssignmentTable.invalid_labels`.
+        """
         unowned = ~self.keypoint_mask()
         if not unowned.any():
             return
@@ -276,36 +640,61 @@ class KeypointStore:
                 points[unowned] = np.nan
                 pruned = True
                 self._drop_if_empty(frame)
+        for frame in list(self.detections):
+            points = self.detections[frame]
+            if np.any(~np.isnan(points[unowned])):
+                points[unowned] = np.nan
+                self.detection_confidence[frame][unowned] = np.nan
+                if frame in self.detection_orientation:
+                    self.detection_orientation[frame][unowned] = np.nan
+                pruned = True
+                self._detections_revision += 1
+                self._drop_detections_if_empty(frame)
         if pruned:
             self._history.clear()
             self.clear_fill()
 
     def _reschema(self, keypoints: list[str], individuals: list[str]) -> None:
-        """Re-index anchors onto a new schema; dropped names lose their points.
+        """Re-index anchors and detections onto a new schema by name.
 
-        Any existing fill is invalidated — its axes no longer match.
+        Dropped names lose their points; any existing fill is invalidated, since
+        its axes no longer match.
         """
         if keypoints == self.keypoint_names and individuals == self.individual_names:
             return
         old_kp = {n: i for i, n in enumerate(self.keypoint_names)}
         old_ind = {n: i for i, n in enumerate(self.individual_names)}
-        remapped: dict[int, np.ndarray] = {}
-        for frame, points in self.anchors.items():
-            new_points = np.full((len(individuals), len(keypoints), 2), np.nan, dtype=np.float64)
-            for i, individual in enumerate(individuals):
-                if individual not in old_ind:
-                    continue
-                for k, keypoint in enumerate(keypoints):
-                    if keypoint in old_kp:
-                        new_points[i, k] = points[old_ind[individual], old_kp[keypoint]]
-            if np.any(~np.isnan(new_points)):
-                remapped[frame] = new_points
+
+        def remap(sparse: dict[int, np.ndarray], trailing: tuple[int, ...]) -> dict[int, np.ndarray]:
+            out: dict[int, np.ndarray] = {}
+            for frame, points in sparse.items():
+                new_points = np.full((len(individuals), len(keypoints), *trailing), np.nan, dtype=np.float64)
+                for i, individual in enumerate(individuals):
+                    if individual not in old_ind:
+                        continue
+                    for k, keypoint in enumerate(keypoints):
+                        if keypoint in old_kp:
+                            new_points[i, k] = points[old_ind[individual], old_kp[keypoint]]
+                if np.any(~np.isnan(new_points)):
+                    out[frame] = new_points
+            return out
+
+        remapped = remap(self.anchors, (2,))
+        self.detections = remap(self.detections, (2,))
+        self._detections_revision += 1
+        self.detection_confidence = {
+            frame: array for frame, array in remap(self.detection_confidence, ()).items() if frame in self.detections
+        }
+        self.detection_orientation = {
+            frame: array for frame, array in remap(self.detection_orientation, (2,)).items() if frame in self.detections
+        }
         self.keypoint_names = keypoints
         self.individual_names = individuals
         self.anchors = remapped
         self._history.clear()
         self.clear_fill()
         self._normalise_keypoint_sets()
+        self._normalise_colors()
         self._prune_unowned()
 
     # ------------------------------------------------------------------
@@ -356,17 +745,252 @@ class KeypointStore:
         self.anchors.clear()
         self._history.clear()
 
-    def predicted_mask(self, frame: int) -> np.ndarray:
-        """``(n_individuals, n_keypoints)`` bool: points the *backend* placed.
+    # ------------------------------------------------------------------
+    # Detections
+    # ------------------------------------------------------------------
 
-        Anchors are copied into :attr:`filled` verbatim, so "has a filled
+    @property
+    def detections_revision(self) -> int:
+        """Changes whenever the detections do — see :attr:`_detections_revision`."""
+        return self._detections_revision
+
+    def _drop_detections_if_empty(self, frame: int) -> None:
+        points = self.detections.get(frame)
+        if points is not None and not np.any(~np.isnan(points)):
+            del self.detections[frame]
+            self.detection_confidence.pop(frame, None)
+            self.detection_orientation.pop(frame, None)
+
+    def set_detections(
+        self,
+        positions: dict[int, np.ndarray],
+        confidence: dict[int, np.ndarray] | None = None,
+        quality_min: float = 0.0,
+        orientation: dict[int, np.ndarray] | None = None,
+    ) -> int:
+        """Replace every detection with the result of a detector run.
+
+        *positions* maps frame to ``(n_individuals, n_keypoints, 2)`` and
+        *confidence* to ``(n_individuals, n_keypoints)``; points scoring below
+        *quality_min* are dropped here rather than in the detector, so the
+        threshold can be retuned without decoding the video again.
+
+        *orientation* is the same shape as *positions* and is filtered by the
+        same mask — a point dropped for quality takes its heading with it, since
+        the heading is only as good as the decode it came from.
+
+        The fill is discarded: it was inferred from the previous observations,
+        and a fill that ignores the evidence now sitting beside it is worse than
+        no fill at all. Deleting a *single* detection deliberately does not do
+        this, exactly as deleting a single label does not.
+        """
+        confidence = confidence or {}
+        orientation = orientation or {}
+        unowned = ~self.keypoint_mask()
+        kept_positions: dict[int, np.ndarray] = {}
+        kept_confidence: dict[int, np.ndarray] = {}
+        kept_orientation: dict[int, np.ndarray] = {}
+        total = 0
+        for frame, points in positions.items():
+            points = np.asarray(points, dtype=np.float64).copy()
+            if points.shape != (self.n_individuals, self.n_keypoints, 2):
+                raise KeypointStoreError(
+                    f"detections for frame {frame} have shape {points.shape}, "
+                    f"expected {(self.n_individuals, self.n_keypoints, 2)}"
+                )
+            scores = confidence.get(frame)
+            scores = (
+                np.full((self.n_individuals, self.n_keypoints), np.nan)
+                if scores is None
+                else np.asarray(scores, dtype=np.float64).copy()
+            )
+            if scores.shape != (self.n_individuals, self.n_keypoints):
+                raise KeypointStoreError(
+                    f"detection confidence for frame {frame} has shape {scores.shape}, "
+                    f"expected {(self.n_individuals, self.n_keypoints)}"
+                )
+            drop = unowned | (np.nan_to_num(scores, nan=1.0) < quality_min)
+            points[drop] = np.nan
+            scores[drop] = np.nan
+            found = ~np.isnan(points[:, :, 0])
+            if not found.any():
+                continue
+            scores[~found] = np.nan
+            headings = orientation.get(frame)
+            headings = (
+                np.full((self.n_individuals, self.n_keypoints, 2), np.nan)
+                if headings is None
+                else np.asarray(headings, dtype=np.float64).copy()
+            )
+            if headings.shape != (self.n_individuals, self.n_keypoints, 2):
+                raise KeypointStoreError(
+                    f"detection orientation for frame {frame} has shape {headings.shape}, "
+                    f"expected {(self.n_individuals, self.n_keypoints, 2)}"
+                )
+            headings[~found] = np.nan
+            kept_positions[int(frame)] = points
+            kept_confidence[int(frame)] = scores
+            if not np.all(np.isnan(headings)):
+                kept_orientation[int(frame)] = headings
+            total += int(found.sum())
+        self.detections = kept_positions
+        self.detection_confidence = kept_confidence
+        self.detection_orientation = kept_orientation
+        self._detections_revision += 1
+        self.clear_fill()
+        return total
+
+    def set_detections_from_flat(
+        self,
+        positions: dict[int, np.ndarray],
+        confidence: dict[int, np.ndarray] | None = None,
+        quality_min: float = 0.0,
+        orientation: dict[int, np.ndarray] | None = None,
+    ) -> int:
+        """As :meth:`set_detections`, given flat ``(n_points, …)`` rows.
+
+        Detectors know nothing of the hierarchy, exactly like the fill backends
+        (see :meth:`flat_anchors`), so this is the shape they hand back.
+        """
+        shape = (self.n_individuals, self.n_keypoints)
+        return self.set_detections(
+            {frame: np.asarray(points).reshape(*shape, 2) for frame, points in positions.items()},
+            {frame: np.asarray(scores).reshape(shape) for frame, scores in (confidence or {}).items()},
+            quality_min,
+            {frame: np.asarray(vectors).reshape(*shape, 2) for frame, vectors in (orientation or {}).items()},
+        )
+
+    def clear_detections(self) -> None:
+        """Discard the whole detector run (and the fill derived from it)."""
+        if not self.detections:
+            return
+        self.detections = {}
+        self.detection_confidence = {}
+        self.detection_orientation = {}
+        self._detections_revision += 1
+        self.clear_fill()
+
+    def clear_detections_for(self, frame: int, individual: str | None = None) -> int:
+        """Reject the detections on one frame; returns how many went.
+
+        For the frames where the detector locked onto a reflection or misread a
+        tag. Labels are untouched, and so is the fill — this is a local
+        correction, like deleting one label.
+        """
+        frame = int(frame)
+        points = self.detections.get(frame)
+        if points is None:
+            return 0
+        found = ~np.isnan(points[:, :, 0])
+        if individual is not None:
+            keep = np.zeros_like(found)
+            keep[self.individual_index(individual)] = found[self.individual_index(individual)]
+            found = keep
+        if not found.any():
+            return 0
+        points[found] = np.nan
+        self.detection_confidence[frame][found] = np.nan
+        if frame in self.detection_orientation:
+            self.detection_orientation[frame][found] = np.nan
+        self._detections_revision += 1
+        self._drop_detections_if_empty(frame)
+        return int(found.sum())
+
+    def detection_frames(self) -> list[int]:
+        """Sorted frames carrying at least one detection."""
+        return sorted(self.detections)
+
+    @property
+    def has_orientation(self) -> bool:
+        """Whether any detection carries a heading — i.e. whether a head
+        direction can be computed at all. Only oriented markers produce one, so
+        a session with no detector run, or one whose detector reports no
+        orientation, simply has no head direction to offer."""
+        return any(np.any(~np.isnan(vectors)) for vectors in self.detection_orientation.values())
+
+    def detected_mask(self, frame: int) -> np.ndarray:
+        """``(n_individuals, n_keypoints)`` bool: points a *detector* placed.
+
+        Points the user also labelled are excluded — manual wins, so their
+        position no longer comes from the detector even though it found them.
+        """
+        points = self.detections.get(int(frame))
+        if points is None:
+            return np.zeros((self.n_individuals, self.n_keypoints), dtype=bool)
+        return ~np.isnan(points[:, :, 0]) & ~self.human_mask(frame)
+
+    def is_detected(self, frame: int, individual: str | None = None) -> bool:
+        """Whether any point of this row comes from a detector."""
+        mask = self.detected_mask(frame)
+        return bool(mask[self.individual_index(individual)].any() if individual is not None else mask.any())
+
+    def promote_detections(self, frame: int, individual: str | None = None) -> int:
+        """Pin this frame's detections as user labels; returns how many.
+
+        Blessing a detector run into ground truth — for seeding a training set,
+        or for freezing a run before retuning the detector's parameters. Points
+        already labelled are left alone, and each promotion is its own undo step.
+        """
+        return self._promote(frame, individual, self.detections.get(int(frame)))
+
+    def observations(self) -> dict[int, np.ndarray]:
+        """Every frame-local position: anchors merged over detections.
+
+        The evidence a fill backend interpolates between, as opposed to the
+        inference it produces. Manual wins per *point*, not per frame, so a
+        corrected keypoint sits beside the detector's other ones.
+        """
+        merged: dict[int, np.ndarray] = {frame: points.copy() for frame, points in self.detections.items()}
+        for frame, points in self.anchors.items():
+            labelled = ~np.isnan(points[:, :, 0])
+            if frame in merged:
+                merged[frame][labelled] = points[labelled]
+            else:
+                merged[frame] = points.copy()
+        return merged
+
+    def flat_observations(self) -> dict[int, np.ndarray]:
+        """:meth:`observations` as ``frame -> (n_points, 2)``, for the backends."""
+        return {frame: points.reshape(-1, 2) for frame, points in self.observations().items()}
+
+    def observation_positions(self, frame: int) -> np.ndarray:
+        """``(n_individuals, n_keypoints, 2)`` of observed points on one frame."""
+        points = self.anchor_positions(frame)
+        detected = self.detections.get(int(frame))
+        if detected is not None:
+            missing = np.isnan(points[:, :, 0])
+            points[missing] = detected[missing]
+        return points
+
+    def assignment_rows(self) -> dict[int, int]:
+        """``detector label -> flat point row``, skipping invalid assignments.
+
+        The flat row is the index a detector's output is written to (see
+        :meth:`flat_anchors`), so this is the whole of what a detector run needs
+        to know about the hierarchy.
+        """
+        invalid = self.assignment.invalid_labels(self)
+        rows: dict[int, int] = {}
+        for entry in self.assignment:
+            if entry.label in invalid:
+                continue
+            i = self.individual_index(entry.individual)
+            rows[entry.label] = i * self.n_keypoints + self.keypoint_index(entry.keypoint)
+        return rows
+
+    # ------------------------------------------------------------------
+
+    def predicted_mask(self, frame: int) -> np.ndarray:
+        """``(n_individuals, n_keypoints)`` bool: points the *backend* inferred.
+
+        Observations are copied into :attr:`filled` verbatim, so "has a filled
         position" is not the same question as "was predicted"; this excludes
-        them, and is therefore the complement of :meth:`human_mask` over the
-        points that exist at all.
+        both the labelled and the detected ones, leaving the points that exist
+        only because a backend interpolated them.
         """
         if self.filled is None or not 0 <= int(frame) < self.n_frames:
             return np.zeros((self.n_individuals, self.n_keypoints), dtype=bool)
-        return ~np.isnan(self.filled[int(frame), :, :, 0]) & ~self.human_mask(frame)
+        return ~np.isnan(self.filled[int(frame), :, :, 0]) & ~self.human_mask(frame) & ~self.detected_mask(frame)
 
     def clear_fill_for(self, frame: int, individual: str | None = None) -> int:
         """Discard the predicted points of *frame*; returns how many went.
@@ -400,16 +1024,22 @@ class KeypointStore:
         return bool(predicted.any())
 
     def promote_fill(self, frame: int, individual: str | None = None) -> int:
-        """Pin the filled points of *frame* as user labels; returns how many.
+        """Pin everything shown on *frame* as user labels; returns how many.
 
-        "Accepting" a fill, in bulk: every filled point that is not already an
-        anchor becomes one exactly where the backend put it, so the next fill
-        treats it as ground truth rather than re-deriving it. Points already
-        labelled are left alone — a human position always wins over a predicted
-        one. Each promotion is its own undo step, as if it had been clicked.
+        "Accepting" a prediction, in bulk: every point that is not already an
+        anchor becomes one exactly where it sits, so the next fill treats it as
+        ground truth rather than re-deriving it. That covers a detection as well
+        as an interpolated point — what the user is agreeing with is what is on
+        the screen, and the screen shows both. Points already labelled are left
+        alone: a human position always wins. Each promotion is its own undo
+        step, as if it had been clicked.
         """
+        return self._promote(frame, individual, self.positions(int(frame)))
+
+    def _promote(self, frame: int, individual: str | None, source: np.ndarray | None) -> int:
+        """Copy *source* positions into the anchors wherever nothing is labelled."""
         frame = int(frame)
-        if self.filled is None or not 0 <= frame < self.n_frames:
+        if source is None or not 0 <= frame < self.n_frames:
             return 0
         rows = range(self.n_individuals) if individual is None else [self.individual_index(individual)]
         owned = self.keypoint_mask()
@@ -417,10 +1047,66 @@ class KeypointStore:
         promoted = 0
         for i in rows:
             for k, keypoint in enumerate(self.keypoint_names):
-                if not owned[i, k] or not np.isnan(placed[i, k, 0]) or np.isnan(self.filled[frame, i, k, 0]):
+                if not owned[i, k] or not np.isnan(placed[i, k, 0]) or np.isnan(source[i, k, 0]):
                     continue
-                self.set_point(frame, keypoint, tuple(self.filled[frame, i, k]), self.individual_names[i])
+                self.set_point(frame, keypoint, tuple(source[i, k]), self.individual_names[i])
                 promoted += 1
+        return promoted
+
+    def promote_all_detections(self) -> int:
+        """Pin **every** detected point on every frame as a user label.
+
+        The bulk form of :meth:`promote_detections`, with the same rule: a point
+        already labelled is left alone, because a human position always wins.
+        """
+        return self._promote_bulk(self.detection_frames(), self.detections.get)
+
+    def promote_all_fill(self) -> int:
+        """Pin **everything shown** across the fill's span as user labels.
+
+        The bulk form of :meth:`promote_fill`, and like it this covers detected
+        points as well as interpolated ones — what is being agreed with is what
+        is on screen, and the screen shows both.
+        """
+        span = self.fill_range
+        frames = range(span[0], span[1] + 1) if span else self.detection_frames()
+        return self._promote_bulk(frames, self.positions)
+
+    def _promote_bulk(self, frames, source_for) -> int:
+        """Promote across many frames at once, vectorised and unundoable.
+
+        Two departures from :meth:`_promote`, both forced by scale — this runs
+        over a whole fill span, which can be every frame of the video:
+
+        **It does not go through `set_point`.** A per-point Python loop over
+        100k frames is tens of millions of iterations; the mask below is a
+        handful of numpy ops per frame.
+
+        **It discards the undo history**, exactly as :meth:`clear_all_labels`
+        does. Recording an entry per promoted point would build a stack nobody
+        can walk back — hundreds of thousands of presses of ``Ctrl+Z`` — and
+        keeping the *old* history while the arrays move underneath it would let
+        a later undo restore a point into a frame it no longer describes. The
+        callers confirm first, for that reason.
+        """
+        owned = self.keypoint_mask()
+        promoted = 0
+        for frame in frames:
+            frame = int(frame)
+            source = source_for(frame)
+            if source is None or not 0 <= frame < self.n_frames:
+                continue
+            points = self.anchors.get(frame)
+            if points is None:
+                points = np.full((self.n_individuals, self.n_keypoints, 2), np.nan, dtype=np.float64)
+                self.anchors[frame] = points
+            missing = owned & np.isnan(points[:, :, 0]) & ~np.isnan(source[:, :, 0])
+            if not missing.any():
+                self._drop_if_empty(frame)
+                continue
+            points[missing] = source[missing]
+            promoted += int(missing.sum())
+        self._history.clear()
         return promoted
 
     def _drop_if_empty(self, frame: int) -> None:
@@ -457,11 +1143,45 @@ class KeypointStore:
         self.confidence = None
         self.fill_range = None
 
-    def set_fill(self, filled: np.ndarray, confidence: np.ndarray) -> None:
-        """Store a backend result, re-asserting anchors over it.
+    def has_predictions(self, frame: int, individual: str | None = None) -> bool:
+        """Whether *frame* carries anything the user has not placed themselves.
 
-        Backends are expected to return anchors verbatim; re-applying them here
-        makes that invariant hold regardless of the backend.
+        What "Approve frame" acts on: a detection is as much a proposal to agree
+        with as an interpolated point.
+        """
+        return self.has_fill(frame, individual) or self.is_detected(frame, individual)
+
+    def confidence_at(self, frame: int) -> np.ndarray | None:
+        """``(n_individuals, n_keypoints)`` score behind :meth:`positions`.
+
+        Composed in the same precedence: ``1.0`` where the user labelled,
+        the detector's own quality where it found a marker, and the fill's score
+        elsewhere. ``None`` when the frame carries neither a detection nor a
+        fill. A point placed *after* a fill still carries the fill's old score in
+        :attr:`confidence` — that array is a snapshot — so the human ``1.0`` is
+        re-applied here rather than read back out of it.
+        """
+        frame = int(frame)
+        has_fill = self.confidence is not None and 0 <= frame < len(self.confidence)
+        detected = self.detections.get(frame)
+        if not has_fill and detected is None:
+            return None
+        out = np.full((self.n_individuals, self.n_keypoints), np.nan, dtype=np.float64)
+        if has_fill:
+            out[:] = self.confidence[frame]
+        if detected is not None:
+            found = self.detected_mask(frame)
+            out[found] = self.detection_confidence[frame][found]
+        out[self.human_mask(frame)] = 1.0
+        return out
+
+    def set_fill(self, filled: np.ndarray, confidence: np.ndarray) -> None:
+        """Store a backend result, re-asserting the observations over it.
+
+        Backends are expected to return what they were given verbatim;
+        re-applying it here makes that invariant hold regardless of the backend.
+        A detection keeps the detector's own quality rather than an anchor's
+        ``1.0`` — it is evidence, but read by a machine.
         """
         filled = np.asarray(filled, dtype=np.float64)
         confidence = np.asarray(confidence, dtype=np.float64)
@@ -470,6 +1190,12 @@ class KeypointStore:
             raise KeypointStoreError(f"filled has shape {filled.shape}, expected {expected}")
         if confidence.shape != expected[:3]:
             raise KeypointStoreError(f"confidence has shape {confidence.shape}, expected {expected[:3]}")
+        for frame, points in self.detections.items():
+            if not 0 <= frame < self.n_frames:
+                continue
+            found = ~np.isnan(points[:, :, 0])
+            filled[frame][found] = points[found]
+            confidence[frame][found] = self.detection_confidence[frame][found]
         for frame, points in self.anchors.items():
             if not 0 <= frame < self.n_frames:
                 continue
@@ -547,10 +1273,14 @@ class KeypointStore:
         return sorted(f for f, points in self.anchors.items() if np.any(~np.isnan(points[i, :, 0])))
 
     def positions(self, frame: int) -> np.ndarray:
-        """``(n_individuals, n_keypoints, 2)``: anchors over fill, else ``NaN``."""
+        """``(n_individuals, n_keypoints, 2)``: manual over detected over fill."""
         out = np.full((self.n_individuals, self.n_keypoints, 2), np.nan, dtype=np.float64)
         if self.filled is not None and 0 <= frame < self.n_frames:
             out[:] = self.filled[frame]
+        detected = self.detections.get(int(frame))
+        if detected is not None:
+            found = ~np.isnan(detected[:, :, 0])
+            out[found] = detected[found]
         points = self.anchors.get(int(frame))
         if points is not None:
             labelled = ~np.isnan(points[:, :, 0])
@@ -639,6 +1369,16 @@ class KeypointStore:
         }
         if not self.shared_keypoints:
             payload["keypoint_set"] = {name: list(kps) for name, kps in self.keypoint_sets.items()}
+        if self.keypoint_color:
+            payload["keypoint_color"] = dict(self.keypoint_color)
+        if self.individual_color:
+            payload["individual_color"] = dict(self.individual_color)
+        # Detections are NOT written here: they are recomputable from the video
+        # and the detector's parameters, and a sidecar carrying a frame per
+        # detected frame is no longer a file anyone can read. What each label
+        # *means* is the part nothing can recompute, so that stays.
+        if len(self.assignment):
+            payload["assignment"] = self.assignment.to_list()
         return payload
 
     @classmethod
@@ -679,7 +1419,10 @@ class KeypointStore:
             individual_names=individuals,
             shared_keypoints=bool(payload.get("shared_keypoints", True)),
             keypoint_sets={str(k): list(v) for k, v in (payload.get("keypoint_set") or {}).items()},
+            keypoint_color={str(k): str(v) for k, v in (payload.get("keypoint_color") or {}).items()},
+            individual_color={str(k): str(v) for k, v in (payload.get("individual_color") or {}).items()},
             anchors=anchors,
+            assignment=AssignmentTable.from_list(payload.get("assignment")),
         )
 
     def save(self, path: str | Path) -> None:
@@ -688,6 +1431,60 @@ class KeypointStore:
     @classmethod
     def load(cls, path: str | Path) -> KeypointStore:
         return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+
+    # ------------------------------------------------------------------
+    # Detection cache
+    # ------------------------------------------------------------------
+
+    def save_detections(self, path: str | Path, signature: str) -> None:
+        """Cache the current detections, tagged with what produced them.
+
+        Derived data, so this is a cache and not a document: it exists only
+        because scanning an hour of footage for tags costs minutes. *signature*
+        identifies the detector and its parameters — :meth:`load_detections`
+        refuses anything else rather than showing one detector's output as
+        another's.
+        """
+        path = Path(path)
+        if not self.detections:
+            path.unlink(missing_ok=True)
+            return
+        frames = np.asarray(sorted(self.detections), dtype=np.int64)
+        blank = np.full((self.n_individuals, self.n_keypoints, 2), np.nan)
+        np.savez_compressed(
+            path,
+            signature=np.asarray(str(signature)),
+            keypoint=np.asarray(self.keypoint_names, dtype=object),
+            individual=np.asarray(self.individual_names, dtype=object),
+            frames=frames,
+            positions=np.stack([self.detections[int(f)] for f in frames]),
+            confidence=np.stack([self.detection_confidence[int(f)] for f in frames]),
+            orientation=np.stack([self.detection_orientation.get(int(f), blank) for f in frames]),
+        )
+
+    def load_detections(self, path: str | Path, signature: str) -> bool:
+        """Restore cached detections; ``False`` when they do not apply here.
+
+        A cache that cannot be read, was written by another detector, or belongs
+        to another schema is a **miss**, not an error — the run is simply redone.
+        """
+        path = Path(path)
+        if not path.is_file():
+            return False
+        with np.load(path, allow_pickle=True) as data:
+            if str(data["signature"]) != str(signature):
+                return False
+            if list(data["keypoint"]) != self.keypoint_names or list(data["individual"]) != self.individual_names:
+                return False
+            frames = [int(f) for f in data["frames"]]
+            positions = {frame: data["positions"][i] for i, frame in enumerate(frames)}
+            confidence = {frame: data["confidence"][i] for i, frame in enumerate(frames)}
+            # Absent in caches written before markers carried a heading; a miss
+            # on this one alone would throw away a perfectly good run.
+            vectors = data["orientation"] if "orientation" in data else None
+            orientation = {} if vectors is None else {frame: vectors[i] for i, frame in enumerate(frames)}
+        self.set_detections(positions, confidence, orientation=orientation)
+        return True
 
 
 def sidecar_path(video_path: str | Path) -> Path:
@@ -706,6 +1503,17 @@ def refinement_path(video_path: str | Path) -> Path:
     """
     video = Path(video_path)
     return video.with_name(video.name + REFINEMENT_SUFFIX)
+
+
+def detections_path(video_path: str | Path) -> Path:
+    """Where a detector run for *video_path* is cached (``<video>.detections.npz``).
+
+    Beside the refinement cache and for the same reason: derived from the video
+    plus a set of parameters, but minutes of work to reproduce. Unlike the
+    anchors it is never the document of record — deleting it costs a re-run.
+    """
+    video = Path(video_path)
+    return video.with_name(video.name + DETECTIONS_SUFFIX)
 
 
 # ----------------------------------------------------------------------
@@ -746,6 +1554,16 @@ def store_to_movement_ds(store: KeypointStore, fps: float, image_height: float |
     if store.confidence is not None:
         confidence[:] = store.confidence.transpose(0, 2, 1)
 
+    # Same precedence as ``positions``: detections over the fill, labels over
+    # both. Written out even with no fill loaded — a detector run is a pose
+    # dataset in its own right.
+    for frame, points in store.detections.items():
+        if not 0 <= frame < store.n_frames:
+            continue
+        for i, k in zip(*np.nonzero(~np.isnan(points[:, :, 0]))):
+            position[frame, :, k, i] = points[i, k]
+            confidence[frame, k, i] = store.detection_confidence[frame][i, k]
+
     for frame, points in store.anchors.items():
         if not 0 <= frame < store.n_frames:
             continue
@@ -779,37 +1597,193 @@ def store_to_movement_ds(store: KeypointStore, fps: float, image_height: float |
 #: Quantities derivable from the labelled + filled keypoint trajectories.
 KINEMATICS = ("velocity", "speed", "acceleration")
 
-#: Prefix for the feature names injected into the GUI's dataset.
-FEATURE_PREFIX = "keypoints"
+#: What :func:`store_to_head_direction` produces. Both fall out of one forward
+#: vector: the vector itself, and its angle — the same quantity in the two forms
+#: people actually plot (a trajectory arrow, and a heading trace over time).
+HEAD_DIRECTION = ("head_direction", "heading")
 
-#: The poses dataset's own time axis, renamed before it is merged into a trial.
-#: It runs at the video frame rate over ``n_frames``, which almost never matches
-#: the trial's ``time``; merging under the same name would outer-join the two
-#: and pad every other feature with NaN. Any name containing "time" is treated
-#: as a time coordinate by ``eto.get_time_coord``.
-FEATURE_TIME_DIM = "time_keypoints"
+
+def _observed_derivative(position: xr.DataArray, order: int) -> xr.DataArray:
+    """The *order*-th time derivative, taken over each point's OWN observed frames.
+
+    ``movement.kinematics`` differentiates with ``DataArray.differentiate``, a
+    central difference over the *stored* grid, so a single ``NaN`` blanks both
+    its neighbours. Keypoint labelling produces exactly that shape of data: with
+    a handful of anchors and no fill every observed frame is surrounded by NaN,
+    and differentiating the grid returns an array that is empty everywhere —
+    a velocity nobody can plot, from positions that are plainly there.
+
+    Differentiating over the frames a point was actually seen on instead gives
+    the average velocity across each gap, placed on the frames the evidence sits
+    on. Where the data *is* dense — after a fill, which is the case these
+    features exist to inspect — the observed frames are every frame, so this
+    reduces to ``np.gradient`` over the full grid and agrees with movement value
+    for value.
+
+    Each ``(keypoint, individual)`` is handled separately because their anchor
+    sets differ: the beak is labelled on some frames and the tail on others.
+    """
+    ordered = position.transpose("time", "space", "keypoint", "individual")
+    values = ordered.values
+    time = ordered.coords["time"].values.astype(float)
+    out = np.full(values.shape, np.nan)
+
+    for k in range(values.shape[2]):
+        for i in range(values.shape[3]):
+            track = values[:, :, k, i]
+            seen = np.flatnonzero(np.all(np.isfinite(track), axis=1))
+            if len(seen) <= order:
+                continue
+            derived = track[seen]
+            for _ in range(order):
+                derived = np.gradient(derived, time[seen], axis=0)
+            out[seen, :, k, i] = derived
+
+    return ordered.copy(data=out)
 
 
 def store_to_kinematics(ds: xr.Dataset, features: Sequence[str] = KINEMATICS) -> dict[str, xr.DataArray]:
     """Derive kinematics from a poses dataset's ``position``.
 
-    Uses ``movement.kinematics``, which needs only ``time`` and ``space`` dims —
-    the ``keypoint`` and ``individual`` axes pass straight through, so every
-    keypoint of every individual is differentiated independently.
+    ``velocity`` and ``acceleration`` are the first and second time derivatives
+    over each point's observed frames (see :func:`_observed_derivative`), and
+    ``speed`` is the magnitude of the velocity — movement's own definition.
 
     Filled frames are included: the point of computing these in the GUI is to
     inspect what a fill produced, not only the frames that were labelled by hand.
+
+    Names are plain and the time dim is the poses dataset's own, because these
+    go straight back into that dataset — see :func:`store_to_dataset`.
     """
-    from movement import kinematics
+    from movement.utils.vector import compute_norm
 
     unknown = set(features) - set(KINEMATICS)
     if unknown:
         raise KeypointStoreError(f"Unknown kinematic(s) {sorted(unknown)}; expected {list(KINEMATICS)}")
 
-    computed: dict[str, xr.DataArray] = {"position": ds["position"]}
-    for name in features:
-        computed[name] = getattr(kinematics, f"compute_{name}")(ds["position"])
-    return {
-        f"{FEATURE_PREFIX}_{name}": array.rename({"time": FEATURE_TIME_DIM}).rename(f"{FEATURE_PREFIX}_{name}")
-        for name, array in computed.items()
+    wanted = set(features)
+    position = ds["position"]
+    velocity = _observed_derivative(position, 1) if wanted & {"velocity", "speed"} else None
+
+    computed: dict[str, xr.DataArray] = {}
+    if "velocity" in wanted:
+        computed["velocity"] = velocity
+    if "speed" in wanted:
+        computed["speed"] = compute_norm(velocity)
+    if "acceleration" in wanted:
+        computed["acceleration"] = _observed_derivative(position, 2)
+    return computed
+
+
+def store_to_head_direction(store: KeypointStore, fps: float, y_flipped: bool = False) -> dict[str, xr.DataArray]:
+    """Forward vector and heading angle, read off each marker's own geometry.
+
+    A head direction needs an *oriented* marker, and an AprilTag is exactly
+    that: a square whose four corners fix which way it faces on every frame it
+    decodes. The detector measures that when it reads the tag (see
+    :func:`~ethograph.gui.pose_detect.quad_forward_vector`) and it is carried
+    here in :attr:`KeypointStore.detection_orientation`, so a heading belongs to
+    **one keypoint** — the tagged point itself.
+
+    It is deliberately not derived from two keypoints. A pair of separately
+    labelled points can give a direction, but only by making the user turn one
+    physical marker into several keypoints and then say which two of them face
+    left and right; get that pairing wrong and the heading is off by a quarter
+    turn with nothing on screen to show it. The tag already knows, so it is
+    asked instead — and a session with no oriented markers simply has no head
+    direction, rather than one invented from an arbitrary pair.
+
+    Both arrays therefore keep the ``keypoint`` dimension, unlike movement's
+    ``compute_forward_vector``: one tagged keypoint is one heading, and a
+    keypoint carrying no oriented marker is ``NaN`` throughout. Frames where the
+    tag did not decode are ``NaN`` too — a heading is a measurement, and is
+    never interpolated by the fill.
+
+    ``y_flipped`` says the positions were flipped to a y-up convention by
+    :func:`store_to_movement_ds`. Orientation is measured in image coordinates,
+    so the flip has to be applied here as well or the arrow points the opposite
+    way to the trajectory drawn under it; mirroring y negates the vector's y
+    component and the angle follows from that.
+
+    Angles are in **degrees**: this is read off a plot rather than fed into
+    another calculation, and nobody eyeballs radians.
+
+    Returns the arrays under their plain movement names on the poses dataset's
+    own ``time`` dim, so they can be assigned straight into an exported file;
+    pass them through :func:`to_keypoint_features` for the GUI instead.
+    """
+    if fps <= 0:
+        raise KeypointStoreError("fps must be positive — read it from the video, do not default it.")
+
+    n_ind, n_kp = store.n_individuals, store.n_keypoints
+    vectors = np.full((store.n_frames, 2, n_kp, n_ind), np.nan, dtype=np.float64)
+    for frame, measured in store.detection_orientation.items():
+        if 0 <= frame < store.n_frames:
+            # store: (individual, keypoint, space) -> ds: (space, keypoint, individual)
+            vectors[frame] = np.asarray(measured, dtype=np.float64).transpose(2, 1, 0)
+
+    if y_flipped:
+        vectors[:, 1] *= -1.0
+
+    # atan2 on a NaN pair yields NaN, so unmeasured frames stay unmeasured.
+    with np.errstate(invalid="ignore"):
+        angles = np.degrees(np.arctan2(vectors[:, 1], vectors[:, 0]))
+
+    coords = {
+        "time": np.arange(store.n_frames) / fps,
+        "keypoint": list(store.keypoint_names),
+        "individual": list(store.individual_names),
     }
+    computed = {
+        "head_direction": xr.DataArray(
+            vectors,
+            dims=["time", "space", "keypoint", "individual"],
+            coords={**coords, "space": ["x", "y"]},
+        ),
+        "heading": xr.DataArray(angles, dims=["time", "keypoint", "individual"], coords=coords),
+    }
+    for array in computed.values():
+        array.attrs["source"] = "marker orientation (AprilTag corners)"
+    computed["heading"].attrs["ylabel"] = "heading (deg)"
+    return computed
+
+
+def store_to_dataset(
+    store: KeypointStore,
+    fps: float,
+    image_height: float | None = None,
+    kinematics: Sequence[str] = (),
+    head_direction: bool = False,
+) -> xr.Dataset:
+    """The whole result of a labelling session as ONE movement poses dataset.
+
+    This is the single artifact the feature produces. *Load into the GUI* writes
+    it and loads it; *Export poses* writes the same thing to a path of the
+    user's choosing. There is deliberately no second, GUI-only shape: a dataset
+    that plots correctly when opened from disk is one that plots correctly when
+    the dialog hands it over, and the way to guarantee that is for them to be
+    the same bytes.
+
+    Everything shares the poses dataset's own dims — ``(time, space, keypoint,
+    individual)`` — so `keypoint` and `individual` are ordinary selectable
+    dimensions rather than names that have to be kept from colliding with
+    whatever the session already had.
+    """
+    ds = store_to_movement_ds(store, fps, image_height)
+    derived = dict(store_to_kinematics(ds, kinematics))
+    if head_direction:
+        derived.update(store_to_head_direction(store, fps, y_flipped=image_height is not None))
+    return ds.assign(derived) if derived else ds
+
+
+def keypoints_dataset_path(video_path: str | Path) -> Path:
+    """Where *Load into the GUI* writes the poses dataset (``<video>.keypoints.nc``).
+
+    Beside the anchors and for the same reason — it belongs to this video — but
+    unlike them it is **output**, regenerated from the store every time. Being a
+    real file rather than a temporary is what makes loading it identical to
+    loading any other dataset: the labels TSV lands next to it, reopening finds
+    it, and it can be handed to anyone.
+    """
+    video = Path(video_path)
+    return video.with_name(video.name + KEYPOINTS_DATASET_SUFFIX)

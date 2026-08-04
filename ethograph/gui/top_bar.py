@@ -114,6 +114,10 @@ class TopBarBuilder:
         self.meta = shell.meta_widget
         self.app_state = getattr(self.meta, "app_state", None)
         self._open_popups: dict[str, SectionPopup] = {}
+        #: The tag sheet, kept only while it is open — a closed one is rebuilt
+        #: so it always reopens on the current video's resolution and the tag
+        #: family the Detect tab is set to.
+        self._tag_sheet = None
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -144,6 +148,9 @@ class TopBarBuilder:
 
         menu.addSeparator()
         menu.addAction("Keypoint labelling…", self._open_keypoint_labelling)
+        # Printing tags is its own errand — it happens once, before any video
+        # exists — so it is reachable without opening the labelling dialog.
+        menu.addAction("Print tag sheet…", self._open_tag_sheet)
 
         menu.addSeparator()
         ephys = getattr(self.meta, "ephys_widget", None)
@@ -166,6 +173,25 @@ class TopBarBuilder:
         open_dialog = self._first_method(getattr(self.meta, "data_widget", None), "open_keypoint_labelling")
         if open_dialog is not None:
             open_dialog()
+
+    def _open_tag_sheet(self):
+        """Open the fiducial tag sheet, sized against the loaded video."""
+        from .dialog_tag_sheet import TagSheetDialog
+
+        if self.app_state is None:
+            return
+        if self._tag_sheet is None or not self._tag_sheet.isVisible():
+            from .pose_fill import video_size
+
+            # Seeded from the video FILE when one is loaded — never from what is
+            # on screen, which may be a low-resolution proxy.
+            path = getattr(self.app_state, "video_path", None)
+            size = video_size(path) if path else None
+            self._tag_sheet = TagSheetDialog(
+                self.app_state, image_width_px=size[0] if size else None, parent=self.shell
+            )
+        self._tag_sheet.show()
+        self._tag_sheet.raise_()
 
     def _on_record_state(self, state: str):
         """Relabel the single Tools entry as the recorder changes state."""

@@ -29,6 +29,7 @@ from qtpy.QtWidgets import (
 
 import ethograph as eto
 from ethograph.gui.notify import notify, notify_dialog
+from ethograph.gui.pose_convert import COLOR_BY_INDIVIDUAL, COLOR_BY_KEYPOINT
 from ethograph.io.catalog import ComboSpec
 from ethograph.io.data_loader import load_features_dataset
 from ethograph.io.plot_sources import FileSource
@@ -385,6 +386,24 @@ class DataPanel(QWidget):
         grid.setColumnStretch(5, 1)
         design_vbox.addLayout(grid)
 
+        color_by_row = QHBoxLayout()
+        color_by_row.addWidget(QLabel("Colour by"))
+        self.pose_color_by_combo = QComboBox()
+        self.pose_color_by_combo.setObjectName("pose_color_by_combo")
+        self.pose_color_by_combo.addItem("Keypoint", COLOR_BY_KEYPOINT)
+        self.pose_color_by_combo.addItem("Individual", COLOR_BY_INDIVIDUAL)
+        self.pose_color_by_combo.setToolTip(
+            "Keypoint: one colour per body part, the same on every animal.\n"
+            "Individual: one colour per animal, the same for all its keypoints.\n\n"
+            "Text labels carry whichever axis the colours are not saying.\n"
+            "Also styles the keypoint labelling canvas."
+        )
+        index = self.pose_color_by_combo.findData(self.app_state.pose_color_by)
+        self.pose_color_by_combo.setCurrentIndex(index if index >= 0 else 0)
+        color_by_row.addWidget(self.pose_color_by_combo)
+        color_by_row.addStretch()
+        design_vbox.addLayout(color_by_row)
+
         text_size_row = QHBoxLayout()
         text_size_row.addWidget(QLabel("Text size"))
         self.pose_text_size_spin = QDoubleSpinBox()
@@ -531,6 +550,10 @@ class DataWidget(QWidget):
         self._space_plot_autocreated = False
 
         self.combos = {}
+        #: The widget occupying each combo's row in the coords form. Kept so a
+        #: row can be hidden when a new catalog lacks that dimension — removing
+        #: it would delete widgets the right sidebar and MetaWidget hold too.
+        self._combo_row_fields: dict[str, QWidget] = {}
         self.all_checkboxes = {}
         self.controls = []
         self._keypoint_names: list[str] = []
@@ -575,6 +598,7 @@ class DataWidget(QWidget):
         self.pose_skeleton_use_base_checkbox = panel.pose_skeleton_use_base_checkbox
         self.pose_points_color_btn = panel.pose_points_color_btn
         self.pose_points_use_base_checkbox = panel.pose_points_use_base_checkbox
+        self.pose_color_by_combo = panel.pose_color_by_combo
         self.create_skeleton_btn = panel.create_skeleton_btn
         self.label_keypoints_btn = panel.label_keypoints_btn
         self.pose_show_keypoints_checkbox = panel.pose_show_keypoints_checkbox
@@ -595,6 +619,7 @@ class DataWidget(QWidget):
         panel.pose_skeleton_use_base_checkbox.stateChanged.connect(self._on_skeleton_use_base_toggled)
         panel.pose_points_color_btn.clicked.connect(self._on_points_color_clicked)
         panel.pose_points_use_base_checkbox.stateChanged.connect(self._on_points_use_base_toggled)
+        panel.pose_color_by_combo.currentIndexChanged.connect(self._on_pose_color_by_changed)
         panel.create_skeleton_btn.clicked.connect(self._on_create_skeleton_clicked)
         panel.label_keypoints_btn.clicked.connect(self.open_keypoint_labelling)
         panel._update_pose_callback = self.update_pose
@@ -631,6 +656,18 @@ class DataWidget(QWidget):
 
     def _on_pose_text_toggled(self, state: int):
         self.pose_mgr.apply_pose_style()
+
+    def _on_pose_color_by_changed(self, _index: int):
+        """Switch the colour axis — for the overlay and any open labelling canvas.
+
+        One setting styles both, so the animal that is blue on the canvas is the
+        animal that is blue on the pose overlay.
+        """
+        self.app_state.pose_color_by = self.pose_color_by_combo.currentData()
+        self.update_pose()
+        dialog = getattr(self, "_keypoint_labelling_dialog", None)
+        if dialog is not None:
+            dialog.apply_color_by()
 
     def _on_pose_point_size_changed(self, value: float):
         self.pose_mgr.apply_pose_style()
@@ -1768,79 +1805,35 @@ class DataWidget(QWidget):
         self._register_feature(feature_name)
         return feature_name
 
-    def add_keypoint_features(self, arrays: dict[str, xr.DataArray]) -> list[str]:
-        """Make labelled/filled keypoint arrays available as plottable features.
+    def load_keypoint_dataset(self, ds: xr.Dataset) -> bool:
+        """Serve features from *ds* instead of the current dataset.
 
-        The keypoints *are* a dataset: their time axis is the video's own frame
-        grid (frame index × 1/fps), and the keypoint and individual names come
-        from the labelling dialog. So this does not require a dataset to already
-        exist — when the session has no xarray behind it (the common case after
-        dropping a bare video, which loads through pynapple) a single-trial
-        TrialTree is built from these arrays instead. When an xarray trial IS
-        loaded the arrays are merged into it, carrying their own time dim
-        (``pose_annotate.FEATURE_TIME_DIM``) because the video frame rate rarely
-        matches the trial's own ``time``.
+        The keypoints **are** a dataset — a movement poses set whose ``keypoint``
+        and ``individual`` are ordinary dimensions — so they replace the feature
+        data rather than being grafted onto whatever was open. Merging was the
+        previous approach and it was wrong twice over: it *crashes* on any trial
+        that already has a variable named ``individual`` (the labels table has
+        one), since xarray cannot tell whether the merged name is a coordinate
+        or a data variable; and the grafted dims reached no combo, so the
+        features could not be reduced to something a plot can draw.
+
+        Only the data layer moves. This is deliberately **not** a file load:
+        that re-runs the whole startup pipeline — media re-resolution, dock
+        registration, ``apply_saved_panel_layout`` and several deferred timers —
+        over a window that is already built, and re-applying a ``restoreState``
+        blob across live pygfx canvases is a native crash. Media, alignment,
+        panels and layout are all left exactly as they are, so nothing here can
+        reach them.
         """
         from ethograph.io.catalog import XarrayLoader, catalog_from_xarray
-
-        app_state = self.app_state
-        names = list(arrays)
-        stale_dims = sorted({dim for array in arrays.values() for dim in array.dims})
-        store = app_state.data_loader
-        dt = getattr(app_state, "dt", None)
-        mergeable = (
-            dt is not None
-            and store is not None
-            and getattr(store, "backend", None) == "xarray"
-            and not getattr(dt, "_is_continuous", False)
-        )
-
-        if mergeable:
-            trial_id = app_state.trials_sel
-            if trial_id is None:
-                notify("No trial is selected.", "warning")
-                return []
-
-            def _assign(ds: xr.Dataset) -> xr.Dataset:
-                # Drop a previous load first: re-running with different keypoints
-                # would otherwise outer-join the old and new axes together.
-                ds = ds.drop_vars(names, errors="ignore").drop_dims(stale_dims, errors="ignore")
-                return ds.assign(arrays)
-
-            dt.update_trial(trial_id, _assign)
-            app_state.ds = dt.trial(trial_id)
-            store.update_ds(app_state.ds)
-        else:
-            existing = getattr(store, "catalog", None)
-            if existing is not None and existing.features:
-                notify(
-                    "This session already serves features from a non-xarray source; "
-                    "export to NetCDF and load that instead.",
-                    "warning",
-                )
-                return []
-            if not self._install_keypoint_dataset(arrays, catalog_from_xarray, XarrayLoader):
-                return []
-
-        for name in names:
-            self._register_feature(name)
-        return names
-
-    def _install_keypoint_dataset(self, arrays, catalog_from_xarray, XarrayLoader) -> bool:
-        """Build a fresh single-trial session out of the keypoint arrays alone.
-
-        Only reached when nothing else is serving features, so replacing the
-        loader cannot strand another source's panels.
-        """
-        app_state = self.app_state
-        trial_id = app_state.trials_sel if app_state.trials_sel is not None else 1
-        ds = xr.Dataset(arrays, attrs={"trial": trial_id})
         from ethograph.io.trialtree import TrialTree
 
+        app_state = self.app_state
+        trial_id = app_state.trials_sel if app_state.trials_sel is not None else 1
         try:
-            # validate=False: this tree holds only the keypoint features, which
-            # is a legal session but not the shape the full validator expects.
-            dt = TrialTree.from_datasets([ds], validate=False)
+            # validate=False: a poses-only tree is a legal session but not the
+            # shape the full validator expects.
+            dt = TrialTree.from_datasets([ds.assign_attrs(trial=trial_id)], validate=False)
         except (ValueError, KeyError) as e:
             notify(f"Could not build a dataset from the keypoints: {e}", "error")
             return False
@@ -1852,7 +1845,78 @@ class DataWidget(QWidget):
         app_state.trials_sel = trial_id
         self.catalog = catalog_from_xarray(app_state.ds, dt)
         app_state.data_loader = XarrayLoader(app_state.ds, self.catalog)
+
+        self._rebuild_coord_controls()
+        # The panels' own selections were valid for the previous data; one that
+        # names an individual or keypoint this dataset does not have raises
+        # KeyError out of `.sel()` the moment the panel next renders.
+        for plot in [*self.plot_container.line_plots, *self.plot_container.heatmap_plots]:
+            plot.resync_selections()
+        if "keypoint" in app_state.ds.coords:
+            self.populate_keypoints([str(k) for k in app_state.ds.coords["keypoint"].values])
+        self.plot_container.schedule_labels_redraw()
         return True
+
+    def _rebuild_coord_controls(self) -> None:
+        """Point the "Xarray coords" combos at the catalog now serving features.
+
+        These are built once, when a session loads, so a catalog arriving later
+        has dimensions with no control at all — and a feature whose dims cannot
+        be pinned is one ``sel_valid`` refuses to return, which reaches the user
+        as a permanently empty panel.
+
+        Updated in place and **never torn down**. This form holds widgets this
+        widget does not own — ``MetaWidget`` inserts "Feature plot type:" at row
+        0, and the right sidebar borrows the whole group box — and
+        ``QFormLayout.removeRow`` *deletes* what it removes, leaving live
+        references to deleted C++ objects behind. A row for a dimension the new
+        catalog does not have is hidden, not removed, for the same reason.
+        """
+        wanted = {name: [str(v) for v in spec.values] for name, spec in self.catalog.combos.items() if spec.values}
+
+        for key, values in wanted.items():
+            combo = self.combos.get(key)
+            if combo is None:
+                self._create_combo_widget(key, values)
+            else:
+                self._refill_combo(combo, values)
+            self._set_combo_row_visible(key, True)
+            self.app_state.set_key_sel(key, get_combo_value(self.combos[key]))
+
+        for key in set(self.combos) - set(wanted) - {"colors"}:
+            self._set_combo_row_visible(key, False)
+
+        self._populate_colors_combo(
+            self.combos["colors"],
+            list(self.catalog.features),
+            rgb_filter=self._colors_rgb_checkbox.isChecked(),
+        )
+
+    @staticmethod
+    def _refill_combo(combo, values: list[str]) -> None:
+        """Replace a combo's items, keeping the selection when it still exists.
+
+        Signals stay blocked: repopulating would otherwise fire one panel update
+        per item, each one routed at the active plot.
+        """
+        previous = get_combo_value(combo)
+        combo.blockSignals(True)
+        combo.clear()
+        for display, raw in zip(clean_display_labels(values), values):
+            combo.addItem(display, raw)
+        index = find_combo_index(combo, previous)
+        combo.setCurrentIndex(index if index >= 0 else 0)
+        combo.blockSignals(False)
+
+    def _set_combo_row_visible(self, key: str, visible: bool) -> None:
+        """Show or hide a dimension's whole row, label included."""
+        field = self._combo_row_fields.get(key)
+        if field is None:
+            return
+        label = self.coords_groupbox_layout.labelForField(field)
+        field.setVisible(visible)
+        if label is not None:
+            label.setVisible(visible)
 
     def _register_feature(self, feature_name: str) -> None:
         """Add a computed feature to the catalog + features combo so the
@@ -1996,10 +2060,15 @@ class DataWidget(QWidget):
             self.controls.append(all_checkbox)
 
             target_layout.addRow(f"{key.capitalize()}:", row_widget)
+            field = row_widget
         else:
             target_layout.addRow(f"{key.capitalize()}:", combo)
+            field = combo
 
         self.combos[key] = combo
+        # The widget occupying the row, so the row can later be hidden without
+        # being removed — see `_rebuild_coord_controls`.
+        self._combo_row_fields[key] = field
         self.controls.append(combo)
 
         return combo
