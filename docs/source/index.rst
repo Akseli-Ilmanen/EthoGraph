@@ -378,18 +378,41 @@ Quickstart
    })();
    </script>
 
-To install the GUI, run the following. For more detailed instructions, see
-:doc:`installation <getting_started/installation>`
+Installation
+------------
+
+EthoGraph is installed with `uv <https://docs.astral.sh/uv/>`_, a fast Python package manager:
+
+.. tab-set::
+
+   .. tab-item:: macOS / Linux
+
+      .. code-block:: bash
+
+         curl -LsSf https://astral.sh/uv/install.sh | sh
+
+   .. tab-item:: Windows
+
+      .. code-block:: bash
+
+         winget install astral-sh.uv
+
+      Works from both PowerShell and Command Prompt; ``winget`` is built into Windows 11.
+
+Then install the GUI as a standalone tool — one command, no environment to create or activate:
 
 .. code-block:: bash
 
-   uv pip install "ethograph[gui,audio]" --python 3.12
+   uv tool install --python 3.12 "ethograph[gui,audio]"
 
 To open the GUI, run:
 
 .. code-block:: bash
 
    ethograph launch
+
+For installing into a dedicated virtual environment, optional extras, and troubleshooting, see the
+:doc:`installation guide <getting_started/installation>`.
 
 After launching, there are some :doc:`example datasets <examples/index>` you can explore the GUI. To
 learn more about all the functionalities, I recommend the
