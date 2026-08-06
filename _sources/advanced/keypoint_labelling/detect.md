@@ -29,7 +29,7 @@ before one ID turns into another *valid* ID.
 | `tag16h5` | 5 | 4×4 | 16 | 30 | 6 |
 
 If your animal is very small and your pixel resolution limited, it may be helpful to take a family with a smaller grid `tag16h5`.
-On the other hand, if those are not limiting factor, then `tag36h11` will give you an orders of magnitude lower false-positive rate and 
+On the other hand, if those are not limiting factor, then `tag36h11` will give you an orders of magnitude lower false-positive rate and
 a few more distinguishable IDs.
 
 ## Print the tags first
