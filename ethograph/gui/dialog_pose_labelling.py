@@ -773,7 +773,7 @@ class PoseLabellingDialog(QDialog):
         self._detector = None
         self._detector_built_for: tuple | None = None
         #: The last run *before* the quality threshold, so the threshold can be
-        #: retuned without decoding the video again.
+        #: returned without decoding the video again.
         self._raw_detections: tuple[dict, dict, dict] | None = None
         #: A frame source held open for the detector preview — opening a PyAV
         #: container costs far more than the detection, and this runs per scrub.

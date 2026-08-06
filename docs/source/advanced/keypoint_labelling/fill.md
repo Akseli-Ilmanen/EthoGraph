@@ -38,7 +38,7 @@ Only PosePAL needs installing; see {ref}`target-keypoint-fill`.
 **With a GPU**, use PosePAL.[^pan] It handles longer gaps and larger
 displacements than either of the others, and because it learns what *your*
 keypoints look like in *this* recording, it stays on the right leg and the right
-animal. 
+animal.
 
 ## Fit and track with PosePAL[^pan]
 

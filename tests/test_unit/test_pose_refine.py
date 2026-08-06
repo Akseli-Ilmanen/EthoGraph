@@ -178,12 +178,7 @@ def test_features_start_at_the_mean_over_the_labelled_frames():
     assert refinement.fit(anchors, N_FRAMES, _Frames(), "sig") is True
 
     for point in range(N_POINTS):
-        expected = np.mean(
-            [
-                frame - start + anchors[frame][point].sum()
-                for frame, start in ((0, 0), (8, 0), (16, 8))
-            ]
-        )
+        expected = np.mean([frame - start + anchors[frame][point].sum() for frame, start in ((0, 0), (8, 0), (16, 8))])
         assert refinement._features[0, :, point].detach().numpy() == pytest.approx(expected)
     assert bool(refinement._learned.all())
 

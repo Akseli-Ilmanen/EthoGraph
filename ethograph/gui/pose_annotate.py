@@ -773,7 +773,7 @@ class KeypointStore:
         *positions* maps frame to ``(n_individuals, n_keypoints, 2)`` and
         *confidence* to ``(n_individuals, n_keypoints)``; points scoring below
         *quality_min* are dropped here rather than in the detector, so the
-        threshold can be retuned without decoding the video again.
+        threshold can be returned without decoding the video again.
 
         *orientation* is the same shape as *positions* and is filtered by the
         same mask — a point dropped for quality takes its heading with it, since
