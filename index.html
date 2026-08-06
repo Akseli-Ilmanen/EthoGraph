@@ -738,15 +738,37 @@ function build(){
 
 dcReset();
 })();
-</script><p>To install the GUI, run the following. For more detailed instructions, see
-<a class="reference internal" href="getting_started/installation.html"><span class="doc">installation</span></a></p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio]&quot;</span><span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.12
+</script></section>
+<section id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Link to this heading">#</a></h2>
+<p>EthoGraph is installed with <a class="reference external" href="https://docs.astral.sh/uv/">uv</a>, a fast Python package manager:</p>
+<div class="sd-tab-set docutils">
+<input checked="checked" id="sd-tab-item-0" name="sd-tab-set-0" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-0">
+macOS / Linux</label><div class="sd-tab-content docutils">
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-LsSf<span class="w"> </span>https://astral.sh/uv/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
+</pre></div>
+</div>
+</div>
+<input id="sd-tab-item-1" name="sd-tab-set-0" type="radio">
+<label class="sd-tab-label" for="sd-tab-item-1">
+Windows</label><div class="sd-tab-content docutils">
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>winget<span class="w"> </span>install<span class="w"> </span>astral-sh.uv
+</pre></div>
+</div>
+<p>Works from both PowerShell and Command Prompt; <code class="docutils literal notranslate"><span class="pre">winget</span></code> is built into Windows 11.</p>
+</div>
+</div>
+<p>Then install the GUI as a standalone tool — one command, no environment to create or activate:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.12<span class="w"> </span><span class="s2">&quot;ethograph[gui,audio]&quot;</span>
 </pre></div>
 </div>
 <p>To open the GUI, run:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ethograph<span class="w"> </span>launch
 </pre></div>
 </div>
+<p>For installing into a dedicated virtual environment, optional extras, and troubleshooting, see the
+<a class="reference internal" href="getting_started/installation.html"><span class="doc">installation guide</span></a>.</p>
 <p>After launching, there are some <a class="reference internal" href="examples/index.html"><span class="doc">example datasets</span></a> you can explore the GUI. To
 learn more about all the functionalities, I recommend the
 <a class="reference internal" href="getting_started/user_manual.html"><span class="doc">user manual</span></a>.</p>
@@ -810,6 +832,7 @@ learn more about all the functionalities, I recommend the
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#quickstart">Quickstart</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#installation">Installation</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#support">Support</a></li>
 </ul>
   </nav></div>
