@@ -102,7 +102,9 @@ class EthographMainWindow(QMainWindow):
         # Plots are the central (expanding) widget; the video sits in a compact
         # top dock so it no longer dominates the window (pynaviz-style stack).
         self.setCentralWidget(meta_widget.plot_container)
-        self._video_dock = self.add_dock_widget(self.video_area, area="top", name="Video")
+        # Titled after the camera it shows once one is loaded (see
+        # VideoManager.refresh_view_title) — never a generic "Video".
+        self._video_dock = self.add_dock_widget(self.video_area, area="top", name="Camera")
         self._video_dock.setObjectName("VideoDock")
         QTimer.singleShot(0, lambda: self.resizeDocks([self._video_dock], [300], Qt.Vertical))
 
@@ -374,6 +376,15 @@ class EthographMainWindow(QMainWindow):
         dock = getattr(self, "_video_dock", None)
         if dock is not None:
             dock.setVisible(visible)
+
+    def set_video_dock_title(self, title: str) -> None:
+        """Re-title the primary camera dock (``"cam-1 (front.mp4)"``).
+
+        Only the visible title changes — the objectName that keys layout
+        persistence stays ``VideoDock``."""
+        dock = getattr(self, "_video_dock", None)
+        if dock is not None:
+            dock.setWindowTitle(title)
 
     def showEvent(self, event):
         super().showEvent(event)

@@ -70,7 +70,7 @@ def allowed_plot_types(kind: str, name: str, app_state) -> list[str]:
     if kind == "audio":
         return ["Audio Trace", "Spectrogram Trace"]
     if kind == "video":
-        return ["Video"]
+        return ["Camera view"]
     if kind == "image":
         return ["Image"]
     if kind == "neo":

@@ -438,8 +438,19 @@ class ObservableAppState(QObject):
 
     @property
     def video_fps(self) -> float | None:
-        camera = self.primary_camera
-        return self.nwb_alignment.get_stream_rate("video", camera)
+        """Frame rate of the primary camera's video.
+
+        The loaded view wins over the stored stream rate: it carries the rate
+        probed from the file actually being decoded, while the stored rate can
+        still describe the previously selected camera — and every time↔frame
+        conversion in the GUI runs through here, so a stale rate desyncs the
+        primary view from the marker and from the other camera views.
+        """
+        sync = getattr(self, "video", None)
+        fps = getattr(getattr(sync, "view", None), "fps", 0.0)
+        if fps:
+            return float(fps)
+        return self.nwb_alignment.get_stream_rate("video", self.primary_camera)
 
     @property
     def sel_attrs(self) -> dict:

@@ -1,10 +1,14 @@
 """Video lifecycle management over pygfx camera views.
 
-``VideoArea`` hosts the primary :class:`CameraView` (inside the "Video"
+``VideoArea`` hosts the primary :class:`CameraView` (inside the video
 dock); every extra camera view is its own closable shell dock, so single
 views can be removed individually. ``VideoManager`` keeps its old public
 surface (update_video, add_camera, extra_widgets, …) but creates pygfx views
 instead of napari layers.
+
+Every view — primary included — carries the camera it shows on
+``view.camera_name`` and is titled by :func:`camera_dock_title`, so no panel
+is ever labelled generically ("Video") while its neighbours name a camera.
 """
 
 from concurrent.futures import ThreadPoolExecutor
@@ -28,6 +32,20 @@ from .video_sync import VideoSync
 
 def is_url(path: str) -> bool:
     return path.startswith("http://") or path.startswith("https://")
+
+
+def camera_dock_title(camera_name: str | None, media_path: str | None) -> str:
+    """Panel title for a camera view: ``"cam-1 (front.mp4)"``.
+
+    The camera name alone is ambiguous once several views are open (and says
+    nothing about which trial's file is on screen), so the file name is
+    appended whenever one is loaded.
+    """
+    name = str(camera_name or "").strip() or "Camera"
+    if not media_path:
+        return name
+    file_name = media_path.rstrip("/").rsplit("/", 1)[-1] if is_url(media_path) else Path(media_path).name
+    return f"{name} ({file_name})" if file_name else name
 
 
 def proxy_cache_dir(video_path: str | None = None) -> Path:
@@ -70,11 +88,11 @@ def probe_video(video_path: str) -> VideoProbe:
 class VideoArea(QWidget):
     """Primary camera view; extra camera views live in their own shell docks.
 
-    The primary view is hosted here (inside the "Video" dock). Every extra
-    camera view is its own closable :class:`QDockWidget` in the shell's top
-    dock area (like space plots) — the user removes any single view via its
-    dock's ✕. Without a shell (tests), extras fall back into the local
-    splitter."""
+    The primary view is hosted here (inside the shell's video dock, titled
+    after the camera it shows). Every extra camera view is its own closable
+    :class:`QDockWidget` in the shell's top dock area (like space plots) — the
+    user removes any single view via its dock's ✕. Without a shell (tests),
+    extras fall back into the local splitter."""
 
     #: Emitted on any mouse press inside the video area (→ video context sidebar).
     clicked = Signal()
@@ -98,6 +116,7 @@ class VideoArea(QWidget):
 
         self._splitter = QSplitter(Qt.Horizontal)
         self.primary = CameraView()
+        self.primary.camera_name = None
         self._splitter.addWidget(self.primary)
         layout.addWidget(self._splitter)
         self._extras: dict[str, CameraView] = {}
@@ -121,7 +140,9 @@ class VideoArea(QWidget):
         shell = self.shell
         if shell is not None and hasattr(shell, "add_dock_widget"):
             view.setMinimumSize(MEDIA_VIEW_MIN_WIDTH, MEDIA_VIEW_MIN_HEIGHT)
-            dock = shell.add_dock_widget(view, area="top", name=key)
+            dock = shell.add_dock_widget(view, area="top", name=camera_dock_title(name, None))
+            # The objectName keys layout persistence and must stay the raw
+            # instance key — the title carries the (mutable) file name.
             dock.setObjectName(f"CameraViewDock {key}")
             dock._camera_key = key
             view.dock_widget = dock
@@ -192,6 +213,29 @@ class VideoManager:
         return self.video_area.extras
 
     # ------------------------------------------------------------------
+    # Panel titles
+    # ------------------------------------------------------------------
+
+    def refresh_view_title(self, view: CameraView) -> None:
+        """Re-title *view*'s panel from the camera it shows and its file.
+
+        The primary lives in the shell's video dock and every extra in its
+        own dock, but both are titled the same way — a panel must never read
+        as a generic "Video" while its neighbours name a camera.
+        """
+        title = camera_dock_title(
+            getattr(view, "camera_name", None),
+            getattr(view, "source_video_path", None) or getattr(view, "static_image_path", None),
+        )
+        dock = getattr(view, "dock_widget", None)
+        if dock is not None:
+            dock.setWindowTitle(title)
+            return
+        shell = getattr(self.video_area, "shell", None)
+        if view is self.primary_view and shell is not None and hasattr(shell, "set_video_dock_title"):
+            shell.set_video_dock_title(title)
+
+    # ------------------------------------------------------------------
     # Primary video
     # ------------------------------------------------------------------
 
@@ -200,6 +244,10 @@ class VideoManager:
             return
         camera = self.app_state.primary_camera
         sio = getattr(self.app_state, "nwb_alignment", None)
+        # The primary is a camera view like any other: it must carry the camera
+        # it shows, so titles, pose lookup and proxy handling can treat it the
+        # same as the extras instead of special-casing "the Video panel".
+        self.primary_view.camera_name = camera
         if camera and sio is not None:
             self.app_state.video_path = sio.resolve_media_path(
                 self.app_state.trials_sel,
@@ -242,6 +290,7 @@ class VideoManager:
         view = self.primary_view
         view.set_static_image(img)
         view.static_image_path = self.app_state.video_path
+        self.refresh_view_title(view)
 
     def _teardown_primary_sync(self):
         """Drop the ``VideoSync`` driving the primary view, leaving the view
@@ -265,6 +314,9 @@ class VideoManager:
     def _cleanup_primary_video(self):
         self._teardown_primary_sync()
         self.primary_view.clear()
+        self.primary_view.source_video_path = None
+        self.primary_view.decode_video_path = None
+        self.refresh_view_title(self.primary_view)
 
     def _trial_clip(self, fps: float, time_offset: float, nframes: int) -> tuple[int, int, float]:
         """Compute (start_frame, end_frame, effective_offset) for the trial."""
@@ -404,13 +456,24 @@ class VideoManager:
             notify(f"Video file could not be loaded: {e}", "warning")
             return
 
+        camera = self.app_state.primary_camera
         if probe.fps and self.app_state.dt is not None:
-            camera = self.app_state.primary_camera
             self.app_state.nwb_alignment.set_stream_rate(probe.fps, "video", camera)
 
-        alignment = getattr(self.app_state, "trial_alignment", None)
-        video_time_offset = alignment.video_offset if alignment else 0.0
-        fps = self.app_state.video_fps
+        # Offset from this camera's own stream, exactly like the extras get
+        # theirs. `trial_alignment` is rebuilt for the primary camera, but it
+        # is one indirection away from the file actually being opened here, so
+        # reading the stream directly keeps the primary from drifting out of
+        # sync with the other views when the primary camera changes.
+        sio = getattr(self.app_state, "nwb_alignment", None)
+        if sio is not None and camera:
+            video_time_offset = sio.stream_offset_for_trial(self.app_state.trials_sel, "video", camera)
+        else:
+            alignment = getattr(self.app_state, "trial_alignment", None)
+            video_time_offset = alignment.video_offset if alignment else 0.0
+        # The probe is the ground truth for the file being decoded; the stored
+        # stream rate can still describe the previously selected camera.
+        fps = probe.fps
         start_frame, end_frame, effective_offset = self._trial_clip(fps, video_time_offset, probe.nframes)
 
         view = self.primary_view
@@ -429,6 +492,7 @@ class VideoManager:
             return
         view.source_video_path = self.app_state.video_path
         view.decode_video_path = decode
+        self.refresh_view_title(view)
 
         sync = VideoSync(
             app_state=self.app_state,
@@ -521,6 +585,41 @@ class VideoManager:
         """Every extra view showing *camera_name* (duplicates included)."""
         return [view for key, view in self.extra_widgets.items() if getattr(view, "camera_name", key) == camera_name]
 
+    def refresh_extra_videos(self) -> None:
+        """Reload every extra camera view for the current trial.
+
+        Extra views are layout instances created by the add-panel popup, so the
+        camera combos are NOT a record of what is on screen — a view dropped
+        from the popup appears in no combo. Iterating the live views (exactly
+        what the pose overlay does) is the only way a view follows the trial;
+        driving this off the combos left drag-dropped panels frozen on the
+        trial that was open when they were created.
+        """
+        views = [view for view in self.extra_widgets.values() if not getattr(view, "static_image_path", None)]
+        if not views:
+            return
+
+        video_folder = getattr(self.app_state, "video_folder", None)
+        paths: dict[str, str] = {}
+        for view in views:
+            name = getattr(view, "camera_name", None)
+            if not name or name in paths:
+                continue
+            path = self._resolve_video_path(name, video_folder)
+            if path:
+                paths[name] = path
+
+        probes = self.open_readers_parallel(paths)
+        for view in views:
+            name = getattr(view, "camera_name", None)
+            video_path = paths.get(name)
+            probe = probes.get(name)
+            if video_path is None or probe is None:
+                continue
+            self._store_camera_fps_in_session(name, probe.fps)
+            self._load_extra_video(view, name, video_path, probe)
+            self._sync_widget_to_current_time(view)
+
     def add_camera(
         self,
         camera_name: str,
@@ -587,8 +686,10 @@ class VideoManager:
         except (OSError, ValueError) as e:
             notify(f"Camera '{camera_name}' failed to load: {e}", "warning")
             return
+        view.camera_name = camera_name
         view.source_video_path = video_path
         view.decode_video_path = decode
+        self.refresh_view_title(view)
 
     def _sync_widget_to_current_time(self, view: CameraView):
         video = getattr(self.app_state, "video", None)
@@ -614,6 +715,7 @@ class VideoManager:
         view = self.video_area.add_extra(Path(image_path).stem)
         view.set_static_image(img)
         view.static_image_path = str(image_path)
+        self.refresh_view_title(view)
         return view
 
     def image_views(self) -> list[CameraView]:

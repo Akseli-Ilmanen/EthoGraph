@@ -2736,6 +2736,11 @@ class DataWidget(QWidget):
             return
         self.app_state.primary_camera_previous = self.app_state.primary_camera
         self.app_state.primary_camera = camera_name
+        # The alignment is computed for the primary camera's stream, so it is
+        # stale the moment that camera changes — without this the new primary
+        # would be clipped and offset by the previous camera's numbers and
+        # drift out of sync with the other camera views.
+        self._build_trial_alignment(self.app_state.trials_sel)
         self.update_video()
         self.update_pose()
 
@@ -2840,9 +2845,17 @@ class DataWidget(QWidget):
             combo.blockSignals(False)
 
     def _init_or_update_extra_cameras(self):
+        # Reload the views that actually exist first. Most are created by
+        # dragging a camera out of the add-panel popup, which touches no combo,
+        # so anything driven off `_extra_camera_combos` alone would leave them
+        # showing whichever trial was open when they were added.
+        self.video_mgr.refresh_extra_videos()
+
         if not hasattr(self, "_extra_camera_combos"):
             return
-        desired = self._get_desired_extra_cameras()
+        # The combos only still create views: the saved `extra_cameras` restore
+        # path. A camera that already has a view was handled above.
+        desired = {name for name in self._get_desired_extra_cameras() if not self.video_mgr.views_for_camera(name)}
         to_add: dict[str, str] = {}
         for camera_name in desired:
             video_path = self.video_mgr._resolve_video_path(camera_name, self.app_state.video_folder)
