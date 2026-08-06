@@ -9,7 +9,7 @@ Open an issue on the
 [GitHub repository](https://github.com/Akseli-Ilmanen/ethograph/issues) with a
 clear description of the problem and steps to reproduce it. Please:
 
-1) In `Navigation & Help`, click on `Print for debugging`. Share this message along with your error.
+1) In topbar `Help\Debug`, click on `Print current state`. Share this message along with your error.
 2) If you have data loading problems, send some sample data to akseli.ilmanen@gmail.com, so I can test it myself.
 
 
